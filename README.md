@@ -241,6 +241,17 @@ Full deployment notes live in [`docs/DEPLOY.md`](docs/DEPLOY.md). Highlights:
 | `hawki_ollama`      | Local embeddings provider (Ollama)                                      |
 | `hawki-vector-database-app` | Laravel PHP application                                         |
 
+
+### Scrape and Convert Command
+```bash
+php artisan crawl:and-convert "https://www.hawk.de/" \
+    --max-pages=100000 \
+    --output-dir=storage/app/private/crawled-data/hawk-full \
+    --label="hawk-full" \
+    --image-exceptions="data:image,.svg,icon,favicon,logo,sprite,placeholder" \
+    --date="meta[property='og:updated_time']"
+```
+
 ### RAWKI Foundations (built on LightRAG)
 
 The pipeline adheres to the LightRAG paper’s workflow: documents are chunked,
