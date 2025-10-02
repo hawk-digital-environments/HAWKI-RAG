@@ -1,0 +1,88 @@
+version: '3.9'
+
+services:
+  neo4j:
+    image: neo4j:5.22
+    container_name: rawki_neo4j
+    ports:
+      - "7475:7474"
+      - "7688:7687"
+    environment:
+      - NEO4J_AUTH=${NEO4J_USER:-neo4j}/${NEO4J_PASSWORD:-ixdlabPass123}
+    volumes:
+      - neo4j_data:/data
+    networks: [ hawki-network ]
+    restart: always
+    healthcheck:
+      test: [ "CMD", "wget", "--spider", "-q", "http://localhost:7474/browser" ]
+      interval: 20s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  rawki_core:
+    build:
+      context: ./lightrag-server
+      dockerfile: Dockerfile
+    container_name: rawki_core
+    env_file:
+      - ./LightRAG.env
+    volumes:
+      - ../../hawki-data/crawled-data:/data/crawled:ro
+    networks: [ hawki-network ]
+    depends_on:
+      - neo4j
+    restart: unless-stopped
+    ports:
+      - "8006:9621"
+    healthcheck:
+      test: [ "CMD", "curl", "-fsS", "http://localhost:9621/health" ]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  rawki_rerank:
+    build:
+      context: ./local-reranker
+      dockerfile: Dockerfile
+    container_name: rawki_rerank
+    networks: [ hawki-network ]
+    restart: unless-stopped
+    ports:
+      - "8005:8000"
+    healthcheck:
+      test: [ "CMD", "curl", "-fsS", "http://localhost:8000/health" ]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  rawki_bridge:
+    build:
+      context: ../python-rag
+      dockerfile: Dockerfile
+    container_name: rawki_bridge
+    env_file:
+      - ./LightRAG.env
+    environment:
+      - QDRANT_HOST=qdrant
+      - QDRANT_PORT=6333
+      - QDRANT_COLLECTION=embeddings_hawk
+      - NEO4J_URI=bolt://neo4j:7687
+      - NEO4J_USER=${NEO4J_USER:-neo4j}
+    volumes:
+      - ../public:/app/public
+    networks: [ hawki-network ]
+    depends_on:
+      - neo4j
+    restart: unless-stopped
+    ports:
+      - "8004:8000"
+
+volumes:
+  neo4j_data:
+
+networks:
+  hawki-network:
+    external: true

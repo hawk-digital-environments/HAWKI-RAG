@@ -1,0 +1,27 @@
+# Reduce Docker build context size and speed up builds
+
+# VCS and local artifacts
+.git
+.gitignore
+.DS_Store
+node_modules
+vendor
+
+# Laravel build outputs and caches
+public/build
+storage/logs
+storage/framework/cache
+storage/framework/sessions
+storage/framework/views
+
+# Large local data (mounted at runtime)
+storage/app/private/crawled-data
+../hawki-data/crawled-data
+
+# Environment and local config (provided at runtime)
+.env
+*.local
+
+# Docker and ops
+docker/*.log
+ops/local-reranker/__pycache__

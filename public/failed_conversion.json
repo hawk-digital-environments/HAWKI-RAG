@@ -1,0 +1,105 @@
+{
+    "generated_at": "2025-08-26T12:01:47+00:00",
+    "total": 459,
+    "processed": 435,
+    "skipped": 0,
+    "failed": 24,
+    "failures": [
+        {
+            "pdf_local_path": "/Users/ixdlab/HAWKI-Vector-Database/storage/app/private/crawled-data/hawk-full/00277/files/1993_09_19-leihverkehrsordnung.pdf",
+            "error": "cURL error 28: Operation timed out after 30002 milliseconds with 0 bytes received (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/Users/ixdlab/HAWKI-Vector-Database/storage/app/private/crawled-data/hawk-full/00304/files/fg_ba_modulhandbuch_po_20_ba.pdf",
+            "error": "cURL error 28: Operation timed out after 30000 milliseconds with 50393750 bytes received (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/Users/ixdlab/HAWKI-Vector-Database/storage/app/private/crawled-data/hawk-full/00701/files/460d72_d78f30d7638542bdb149772df7293f16.pdf",
+            "error": "PDF extraction failed: {\"detail\":\"conversion_failed\"}"
+        },
+        {
+            "pdf_local_path": "/Users/ixdlab/HAWKI-Vector-Database/storage/app/private/crawled-data/hawk-full/00794/files/2_3_Drews.pdf-ea42a8bc6ce97ad573269944c60321ab.pdf",
+            "error": "PDF extraction failed: {\"detail\":\"conversion_failed\"}"
+        },
+        {
+            "pdf_local_path": "/Users/ixdlab/HAWKI-Vector-Database/storage/app/private/crawled-data/hawk-full/01855/files/Kohlenstoff-Tagung-Abstracts-2025.pdf",
+            "error": "cURL error 28: Operation timed out after 30000 milliseconds with 8900871 bytes received (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/Users/ixdlab/HAWKI-Vector-Database/storage/app/private/crawled-data/hawk-full/02558/files/460d72_d78f30d7638542bdb149772df7293f16.pdf",
+            "error": "PDF extraction failed: {\"detail\":\"conversion_failed\"}"
+        },
+        {
+            "pdf_local_path": "/Users/ixdlab/HAWKI-Vector-Database/storage/app/private/crawled-data/hawk-full/08043/files/9783748949152.pdf",
+            "error": "cURL error 28: Operation timed out after 30000 milliseconds with 13865050 bytes received (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/Users/ixdlab/HAWKI-Vector-Database/storage/app/private/crawled-data/hawk-full/08084/files/Handlungsempfehlungen%20Strohpellets.pdf",
+            "error": "PDF extraction failed: {\"detail\":\"conversion_failed\"}"
+        },
+        {
+            "pdf_local_path": "/Users/ixdlab/HAWKI-Vector-Database/storage/app/private/crawled-data/hawk-full/08084/files/Impulspapier_Version17_Final.pdf",
+            "error": "PDF extraction failed: {\"detail\":\"conversion_failed\"}"
+        },
+        {
+            "pdf_local_path": "/Users/ixdlab/HAWKI-Vector-Database/storage/app/private/crawled-data/hawk-full/08087/files/Bachelorthesis_Bergsiek_Carla.pdf",
+            "error": "PDF extraction failed: {\"detail\":\"conversion_failed\"}"
+        },
+        {
+            "pdf_local_path": "/Users/ixdlab/HAWKI-Vector-Database/storage/app/private/crawled-data/hawk-full/08087/files/Bachelorthesis_Blankenburg_Franka.pdf",
+            "error": "PDF extraction failed: {\"detail\":\"conversion_failed\"}"
+        },
+        {
+            "pdf_local_path": "/Users/ixdlab/HAWKI-Vector-Database/storage/app/private/crawled-data/hawk-full/08087/files/Bachelorthesis_Duensing_Maria.pdf",
+            "error": "PDF extraction failed: {\"detail\":\"conversion_failed\"}"
+        },
+        {
+            "pdf_local_path": "/Users/ixdlab/HAWKI-Vector-Database/storage/app/private/crawled-data/hawk-full/08087/files/Bachelorthesis_Giencke_Fenna.pdf",
+            "error": "PDF extraction failed: {\"detail\":\"conversion_failed\"}"
+        },
+        {
+            "pdf_local_path": "/Users/ixdlab/HAWKI-Vector-Database/storage/app/private/crawled-data/hawk-full/08087/files/Bachelorthesis_James_Alice.pdf",
+            "error": "PDF extraction failed: {\"detail\":\"conversion_failed\"}"
+        },
+        {
+            "pdf_local_path": "/Users/ixdlab/HAWKI-Vector-Database/storage/app/private/crawled-data/hawk-full/08087/files/Bachelorthesis_Klinge_Mathilda.pdf",
+            "error": "PDF extraction failed: {\"detail\":\"conversion_failed\"}"
+        },
+        {
+            "pdf_local_path": "/Users/ixdlab/HAWKI-Vector-Database/storage/app/private/crawled-data/hawk-full/08087/files/Bachelorthesis_Lopez_Marie%20Josephine.pdf",
+            "error": "PDF extraction failed: {\"detail\":\"conversion_failed\"}"
+        },
+        {
+            "pdf_local_path": "/Users/ixdlab/HAWKI-Vector-Database/storage/app/private/crawled-data/hawk-full/08087/files/Bachelorthesis_M%C3%BCller_Christin.pdf",
+            "error": "PDF extraction failed: {\"detail\":\"conversion_failed\"}"
+        },
+        {
+            "pdf_local_path": "/Users/ixdlab/HAWKI-Vector-Database/storage/app/private/crawled-data/hawk-full/08087/files/Bachelorthesis_Streubel_Johanna.pdf",
+            "error": "PDF extraction failed: {\"detail\":\"conversion_failed\"}"
+        },
+        {
+            "pdf_local_path": "/Users/ixdlab/HAWKI-Vector-Database/storage/app/private/crawled-data/hawk-full/08087/files/Bachelorthesis_Wagner_Amelie.pdf",
+            "error": "PDF extraction failed: {\"detail\":\"conversion_failed\"}"
+        },
+        {
+            "pdf_local_path": "/Users/ixdlab/HAWKI-Vector-Database/storage/app/private/crawled-data/hawk-full/08087/files/Besche_Sehmer_Wagner_Soziale%20Ungleichheiten_2023.pdf",
+            "error": "PDF extraction failed: {\"detail\":\"conversion_failed\"}"
+        },
+        {
+            "pdf_local_path": "/Users/ixdlab/HAWKI-Vector-Database/storage/app/private/crawled-data/hawk-full/08087/files/Fuhrmann_Tabea_Bachelorthesis.pdf",
+            "error": "PDF extraction failed: {\"detail\":\"conversion_failed\"}"
+        },
+        {
+            "pdf_local_path": "/Users/ixdlab/HAWKI-Vector-Database/storage/app/private/crawled-data/hawk-full/08087/files/Glahn_Stefan_Bachelorthesis.pdf",
+            "error": "PDF extraction failed: {\"detail\":\"conversion_failed\"}"
+        },
+        {
+            "pdf_local_path": "/Users/ixdlab/HAWKI-Vector-Database/storage/app/private/crawled-data/hawk-full/08087/files/Impulspapier_Version17_Final.pdf",
+            "error": "PDF extraction failed: {\"detail\":\"conversion_failed\"}"
+        },
+        {
+            "pdf_local_path": "/Users/ixdlab/HAWKI-Vector-Database/storage/app/private/crawled-data/hawk-full/08087/files/Ziegler_Janina_Bachelorthesis.pdf",
+            "error": "PDF extraction failed: {\"detail\":\"conversion_failed\"}"
+        }
+    ]
+}

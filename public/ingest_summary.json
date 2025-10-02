@@ -1,0 +1,48 @@
+{
+  "timestamp": "2025-09-30T12:43:40.085630Z",
+  "ingested_points": 12,
+  "documents": {
+    "total_docs": 6,
+    "processed_docs": 6,
+    "skipped_docs": 0,
+    "by_format": {
+      "txt": 6
+    },
+    "doc_ids": [
+      "ac6ae3cda0e9cbc9bdb2cc976b1256ca5fe59a3d",
+      "b3052903b0a8f6da8e13624598f9f12e1578be6b",
+      "17875db4de61534476070bc474ade9693df728b4",
+      "3610bbce8c81071cc2f1c33a5edee4ae76fe6583",
+      "225fcf71c9fe864e8fdeec259667fac310d8f27d",
+      "29e0d518c061cd883d70fa511b3723d89fae1992"
+    ]
+  },
+  "qdrant": {
+    "primary_collection": "embeddings_hawk",
+    "primary_point_count": 21,
+    "auxiliary_collections": {
+      "hawki_chunks": 0,
+      "hawki_entities": 0,
+      "hawki_relationships": 0
+    }
+  },
+  "neo4j": {
+    "entity_count": 2071,
+    "triplet_count": 4189,
+    "relationship_counts": [
+      {
+        "type": "REL",
+        "count": 4189
+      }
+    ],
+    "label_counts": [
+      {
+        "labels": [
+          "Entity"
+        ],
+        "count": 2071
+      }
+    ]
+  },
+  "summary_file": "/public/ingest_summary.json"
+}

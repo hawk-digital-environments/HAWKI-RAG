@@ -1,0 +1,13 @@
+{
+    "name": "laravel-crawlee",
+    "version": "1.0.0",
+    "description": "Web crawler using Crawlee for Laravel",
+    "main": "crawler.js",
+    "type": "module",
+    "dependencies": {
+        "crawlee": "^3.13.1",
+        "playwright": "^1.40.0",
+        "axios": "^1.6.0",
+        "sharp": "^0.33.0"
+    }
+}

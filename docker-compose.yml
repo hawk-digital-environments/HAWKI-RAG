@@ -1,0 +1,93 @@
+services:
+    app:
+        build:
+            context: .
+            dockerfile: Dockerfile
+        ports:
+            - "8002:8002"
+        volumes:
+            - .:/var/www
+            - ./storage:/var/www/storage
+            - ../hawki-data/crawled-data:/data/crawled:ro
+        environment:
+            - APP_ENV=local
+            - APP_DEBUG=true
+            - CRAWL_DIR=/data/crawled
+        networks:
+            - hawki-network
+
+    nginx:
+        image: nginx:1.27-alpine
+        ports:
+            - "8003:80"
+        volumes:
+            - ./docker/nginx.conf:/etc/nginx/conf.d/default.conf
+            - .:/var/www
+        depends_on:
+            - app
+        networks:
+            - hawki-network
+    # Qdrant Vector DB
+    qdrant:
+        image: qdrant/qdrant:latest
+        container_name: hawki_qdrant
+        ports:
+        - "6333:6333"
+        - "6334:6334"
+        volumes:
+        - qdrant_data:/qdrant/storage
+        networks:
+        - hawki-network
+        restart: always
+        healthcheck:
+            test: ["CMD", "curl", "-fsS", "http://localhost:6333/readyz"]
+            interval: 15s
+            timeout: 5s
+            retries: 10
+            start_period: 20s
+
+    # Ollama (local models for LLM/embeddings)
+    ollama:
+        image: ollama/ollama:latest
+        container_name: hawki_ollama
+        ports:
+            - "11434:11434"
+        volumes:
+            - ollama:/root/.ollama
+        networks:
+            - hawki-network
+        restart: unless-stopped
+        healthcheck:
+            test: ["CMD", "curl", "-fsS", "http://localhost:11434/api/tags"]
+            interval: 20s
+            timeout: 5s
+            retries: 10
+            start_period: 20s
+    # MinIO Object Storage (disabled)
+    # minio:
+    #     image: minio/minio
+    #     container_name: hawki_minio
+    #     ports:
+    #     - "9000:9000"
+    #     - "9001:9001"
+    #     environment:
+    #         MINIO_ROOT_USER: ${MINIO_ACCESS_KEY}
+    #         MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY}
+    #     volumes:
+    #     - minio_data:/data
+    #     networks:
+    #     - hawki-network
+    #     command: server --console-address ":9001" /data
+    #     restart: always
+    # NOTE: Neo4j and RAWKI services run in a separate stack.
+    # See ops/rawki-docker-compose.yml which joins the same external network.
+
+volumes:
+    # minio_data: # disabled
+    qdrant_data:
+    ollama:
+
+
+networks:
+    hawki-network:
+        external: true
