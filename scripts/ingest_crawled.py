@@ -17,7 +17,7 @@ import sys
 from collections import Counter
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 try:
     import requests
 except ImportError:
@@ -294,6 +294,35 @@ def run_local_estimate(
     }
     return summary
 
+
+def _safe_state_filename(key: str) -> str:
+    digest = hashlib.sha1(key.encode("utf-8", errors="ignore")).hexdigest()
+    return f"{digest}.json"
+
+
+def load_resume_state(path: Path) -> Set[str]:
+    if not path.exists():
+        return set()
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return set()
+    doc_ids = data.get("doc_ids", [])
+    return {str(doc_id) for doc_id in doc_ids if isinstance(doc_id, (str, int))}
+
+
+def save_resume_state(path: Path, doc_ids: Set[str], metadata: Dict[str, Any]) -> None:
+    try:
+        payload = {
+            "doc_ids": sorted(doc_ids),
+            "updated_at": datetime.utcnow().isoformat() + "Z",
+        }
+        payload.update(metadata)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    except Exception as exc:
+        print(f"Warning: failed to persist resume state to {path}: {exc}", file=sys.stderr)
+
 def post_batch(base_url: str, docs: List[Dict], options: Dict, timeout: int) -> tuple[bool, Optional[Dict], Optional[str]]:
     url = base_url.rstrip("/") + "/ingest"
     body = {"docs": docs}
@@ -326,17 +355,63 @@ def main():
     ap.add_argument("--chunk-chars", type=int, default=3200, help="Chunk target size for LightRAG")
     ap.add_argument("--chunk-overlap", type=int, default=100, help="Chunk overlap for LightRAG")
     ap.add_argument("--batch", type=int, default=64, help="POST batch size (docs per request)")
-    ap.add_argument("--timeout", type=int, default=600, help="HTTP request timeout in seconds (default: 600)")
+    ap.add_argument("--timeout", type=int, default=1800, help="HTTP request timeout in seconds (default: 1800)")
     ap.add_argument("--dry", action="store_true", help="Perform a dry run to preview Qdrant/Neo4j impact without embeddings")
     ap.add_argument("--summary-file", default=None, help="Optional path to save the ingest summary JSON")
     ap.add_argument("--dry-include-graph", action="store_true", help="When used with --dry, also estimate Neo4j entities/relationships")
     ap.add_argument("--estimate-only", action="store_true", help="Estimate chunk/point counts locally without contacting the server")
+    ap.add_argument("--resume-state-dir", default="storage/app/private/ingest-state", help="Directory where resume markers are stored")
     args = ap.parse_args()
 
     root = Path(args.root).expanduser().resolve()
     if not root.exists() or not root.is_dir():
         print(f"Root not found or not a directory: {root}", file=sys.stderr)
         sys.exit(2)
+
+    resume_doc_ids: Set[str] = set()
+    resume_state_path: Optional[Path] = None
+    resume_metadata: Dict[str, Any] = {}
+    resume_mode = False
+    state_dir = Path(args.resume_state_dir).expanduser().resolve()
+    resume_key_parts = [
+        args.collection or "default",
+        str(root),
+        args.base_url.rstrip("/"),
+    ]
+    resume_key = "::".join(resume_key_parts)
+    if not args.dry and not args.estimate_only:
+        resume_state_path = state_dir / _safe_state_filename(resume_key)
+        existing_ids = load_resume_state(resume_state_path)
+        resume_metadata = {
+            "collection": args.collection,
+            "root": str(root),
+            "base_url": args.base_url,
+        }
+        if existing_ids:
+            print(
+                f"Found previous ingest state for '{resume_key_parts[0]}' with {len(existing_ids)} documents."
+            )
+            while True:
+                choice = input("Type 'resume' to skip already-ingested docs or 'start' to process everything again [resume/start]: ").strip().lower()
+                if choice in {"", "resume", "start"}:
+                    break
+                print("Please enter 'resume' or 'start'.")
+            if choice in {"", "resume"}:
+                resume_mode = True
+                resume_doc_ids = existing_ids
+                print(f"Resuming ingest; skipping {len(resume_doc_ids)} documents already processed.")
+            else:
+                resume_mode = False
+                resume_doc_ids = set()
+                try:
+                    resume_state_path.unlink(missing_ok=True)
+                except Exception as exc:
+                    print(f"Warning: failed to remove existing resume state: {exc}", file=sys.stderr)
+                print("Starting fresh; previous state will be replaced.")
+        else:
+            print(f"No previous ingest state found for '{resume_key_parts[0]}'. Starting fresh.")
+    else:
+        resume_state_path = None
 
     page_dirs = discover_page_dirs(root)
     if not page_dirs:
@@ -385,6 +460,8 @@ def main():
     sent = 0
     batch_index = 0
     last_response: Optional[Dict] = None
+    skipped_existing = 0
+    processed_doc_ids: Set[str] = set(resume_doc_ids)
 
     print(f"Scanning: {root}")
     if args.dry:
@@ -401,6 +478,10 @@ def main():
         tags = resolve_tags(meta, text)
         rel = str(d.relative_to(root))
         doc_id = make_doc_id(page_url, rel)
+
+        if resume_mode and doc_id in resume_doc_ids:
+            skipped_existing += 1
+            continue
 
         payload = {
             "title": title,
@@ -433,6 +514,9 @@ def main():
                     print(f"Sent {sent}/{total} docs… (batch {batch_index})")
                 if data:
                     last_response = data
+                if not args.dry and resume_state_path is not None:
+                    processed_doc_ids.update(str(doc.get("id")) for doc in docs if doc.get("id"))
+                    save_resume_state(resume_state_path, processed_doc_ids, resume_metadata)
             docs = []
 
     if docs:
@@ -449,6 +533,9 @@ def main():
             print(f"Planned {sent}/{total} docs. Dry run complete.")
         else:
             print(f"Sent {sent}/{total} docs. Done.")
+        if not args.dry and resume_state_path is not None and ok:
+            processed_doc_ids.update(str(doc.get("id")) for doc in docs if doc.get("id"))
+            save_resume_state(resume_state_path, processed_doc_ids, resume_metadata)
 
     if args.dry and last_response:
         summary = last_response.get("summary") or {}
@@ -474,6 +561,12 @@ def main():
                 print(f"Saved summary to {out_path}")
             except Exception as exc:
                 print(f"Failed to write summary to {out_path}: {exc}", file=sys.stderr)
+
+    if resume_state_path is not None:
+        if not args.dry:
+            print(f"Resume state stored at {resume_state_path}")
+        if resume_mode and skipped_existing:
+            print(f"Skipped {skipped_existing} documents already ingested earlier.")
 
 if __name__ == "__main__":
     main()

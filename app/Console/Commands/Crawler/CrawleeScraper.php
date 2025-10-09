@@ -19,6 +19,10 @@ class CrawleeScraper extends Command
     use ManagesDirectories, DirectoryCompleteness, HandlesFileSystem, 
         ManagesExistingData, BuildsConfiguration, ExecutesCrawler;
 
+    private const SKIP_HOSTS = [
+        'publikationsserver.hawk.de',
+    ];
+
     protected $signature = 'crawlee:scrape 
                             {url? : The starting URL to crawl}
                             {--max-pages=100 : Maximum number of pages to crawl}
@@ -88,6 +92,13 @@ class CrawleeScraper extends Command
             $this->error('Invalid URL provided or file not found/readable.');
             return [null, [], false, null, null];
         }
+        if (!$isLocalFile) {
+            $host = Str::lower((string) parse_url($url, PHP_URL_HOST));
+            if ($host && in_array($host, self::SKIP_HOSTS, true)) {
+                $this->warn("Skipping crawl: {$url} is under Forbidden Hosts.");
+                return [null, [], false, null, null];
+            }
+        }
         
         $sitemapUrls = [];
         $baseUrl = null;
@@ -99,6 +110,10 @@ class CrawleeScraper extends Command
                 ->map(fn($line) => trim($line))
                 ->filter(fn($line) => filled($line))
                 ->filter(fn($line) => filter_var($line, FILTER_VALIDATE_URL) !== false)
+                ->reject(function ($line) {
+                    $host = Str::lower((string) parse_url($line, PHP_URL_HOST));
+                    return $host && in_array($host, self::SKIP_HOSTS, true);
+                })
                 ->values()
                 ->toArray();
             

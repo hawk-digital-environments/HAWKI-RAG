@@ -17,12 +17,9 @@ requirements are satisfied before starting the stack:
 
 ### Quick Start (local Laravel dev)
 ```bash
-cd laravel
 composer install
 npm install
 npm run build
-php artisan serve --port=8000
-# Visit http://localhost:8000
 ```
 
 ### Ollama models (host or container)
@@ -30,38 +27,9 @@ php artisan serve --port=8000
 ollama pull llama3:8b
 ollama pull bge-m3
 ```
-*(Ollama streams best via `/generate`; `/chat` may be slower.)*
 
-
-## 🔹 Example Queries
-
-### 1. GWDG – Generating Chat (non-stream):
-```bash
-curl -N http://127.0.0.1:8000/api/qdrant-search \
-  -H "Content-Type: application/json" \
-  -d '{
-    "query":"who is Vincent Timm? name his projects",
-    "top_k":3,
-    "provider":"gwdg"
-  }'
-  ```
-
-### 2. Ollama – Generating Chat (non-stream):
-```bash
-curl -N http://127.0.0.1:8000/api/qdrant-search \
-  -H "Content-Type: application/json" \
-  -d '{
-    "query":"who is Vincent Timm? name his projects",
-    "top_k":3,
-    "provider":"ollama",
-    "is_optimized":true,
-    "preferred_tags":["ausleihe"]
-  }'
-```
-Visit the UI version at: 
-http://127.0.0.1:8000/chat
-
-RAWKI playground: http://127.0.0.1:8003/rawki-playground
+RAWKI playground (Laravel UI): http://127.0.0.1:8002/rawki-playground  
+LightRAG playground (core UI): http://127.0.0.1:8006/
 
 ### Useful Commands
 
@@ -71,10 +39,6 @@ RAWKI playground: http://127.0.0.1:8003/rawki-playground
 - `docker compose -f ops/rawki-docker-compose.yml up -d --build` – rebuild RAWKI services only.
 - `PYTHONPATH=python-rag python -m unittest tests/test_qdrant_http.py tests/test_neo4j_graph.py` – run unit tests.
 - `PYTHONPATH=python-rag python -m unittest tests.integration.test_ingest_and_query` – optional integration smoke test.
-- `docker exec -it hawki_ollama ollama pull bge-m3`
-## RAG Documentation
-
-- [Documentation](https://github.com/hawk-digital-environments/documentation/tree/project/RAG)
 
 ## Updated Architecture
 
@@ -116,11 +80,14 @@ python3 scripts/ingest_crawled.py \
   --graph \
   --collection embeddings_hawk \
   --distance Cosine \
-  --chunk-chars 2000 \
+  --chunk-chars 3200 \
   --chunk-overlap 100 \
   --batch 8 \
-  --timeout 600 \
+  --timeout 1800 \
   --summary-file public/ingest_summary.json
+
+If the same collection/root pair was ingested earlier, the CLI now prompts whether
+to resume (skip previously embedded docs) or start over.
 ```
 
 ```bash
@@ -133,43 +100,7 @@ python3 scripts/ingest_to_lightrag.py \
 
 ### Inspecting counts (Qdrant & Neo4j)
 
-Every successful ingest writes a JSON summary to `public/ingest_summary.json`, e.g.
-
-```json
-{
-  "timestamp": "2025-09-26T15:42:11Z",
-  "ingested_points": 295,
-  "documents": {
-    "total_docs": 22,
-    "processed_docs": 22,
-    "skipped_docs": 0,
-    "by_format": {
-      "markdown": 18,
-      "txt": 4
-    },
-    "doc_ids": ["doc-001", "doc-002", "..."]
-  },
-  "qdrant": {
-    "primary_collection": "embeddings_hawk",
-    "primary_point_count": 302,
-    "auxiliary_collections": {
-      "hawki_entities": 301,
-      "hawki_relationships": 301
-    }
-  },
-  "neo4j": {
-    "entity_count": 2071,
-    "triplet_count": 4189,
-    "relationship_counts": [...],
-    "label_counts": [...]
-  },
-  "summary_file": "public/ingest_summary.json"
-}
-```
-
-*(`doc_ids` list truncated above for readability.)*
-
-Need a quick spot-check? Use curl and Cypher from your host:
+Every successful ingest writes a JSON summary to `public/ingest_summary.json`.
 
 ```bash
 # Qdrant (primary collection)
@@ -242,7 +173,7 @@ Full deployment notes live in [`docs/DEPLOY.md`](docs/DEPLOY.md). Highlights:
 | `hawki-vector-database-app` | Laravel PHP application                                         |
 
 
-### Scrape and Convert Command
+### Scrape and Convert Command 
 ```bash
 php artisan crawl:and-convert "https://www.hawk.de/" \
     --max-pages=100000 \
@@ -258,3 +189,7 @@ The pipeline adheres to the LightRAG paper’s workflow: documents are chunked,
 summarised, entities/relations are extracted, and the graph relationships influence
 retrieval quality. The main difference is that vectors are persisted in Qdrant and the
 knowledge graph in Neo4j without changing the core LightRAG logic.
+
+## Further Reading
+
+- Step-by-step replication guide: [docs/story.md](docs/story.md)
