@@ -50,7 +50,7 @@ services:
     networks: [ hawki-network ]
     restart: unless-stopped
     ports:
-      - "8005:8000"
+      - "8008:8000"
     healthcheck:
       test: [ "CMD", "curl", "-fsS", "http://localhost:8000/health" ]
       interval: 15s
@@ -78,7 +78,7 @@ services:
       - neo4j
     restart: unless-stopped
     ports:
-      - "8004:8000"
+      - "8009:8000"
 
 volumes:
   neo4j_data:

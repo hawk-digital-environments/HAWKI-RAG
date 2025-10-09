@@ -42,7 +42,7 @@ Optional end-to-end smoke test (requires running services):
 
 ```
 LIGHTRAG_BASE_URL=http://localhost:8006 \
-LIGHTRAG_BRIDGE_URL=http://localhost:8004 \
+LIGHTRAG_BRIDGE_URL=http://localhost:8009 \
 LIGHTRAG_SAMPLE_ROOT=/path/to/sample \
 PYTHONPATH=python-rag python -m unittest tests.integration.test_ingest_and_query
 ```

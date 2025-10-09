@@ -49,6 +49,14 @@ services:
     # Ollama (local models for LLM/embeddings)
     ollama:
         image: ollama/ollama:latest
+        deploy:
+            resources:
+                reservations:
+                    devices:
+                    - driver: nvidia
+                      count: all
+                      capabilities:
+                        - gpu
         container_name: hawki_ollama
         ports:
             - "11434:11434"

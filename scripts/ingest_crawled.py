@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 CLI to scan a local crawled-data folder and POST documents in batches to a LightRAG server.
-- Sends to LightRAG /ingest endpoint (default http://localhost:8004/ingest).
+- Sends to LightRAG /ingest endpoint (default http://localhost:8009/ingest).
 
 Notes:
   - This script looks for *.md, *.txt and *.json page metadata. If a folder has JSON (with fields like
@@ -229,7 +229,7 @@ def post_batch(base_url: str, docs: List[Dict], options: Dict, timeout: int) -> 
 def main():
     ap = argparse.ArgumentParser(description="Ingest local crawled-data into LightRAG via HTTP.")
     ap.add_argument("--root", required=True, help="Path to local crawled-data root")
-    ap.add_argument("--base-url", default="http://localhost:8004", help="LightRAG base URL (default: http://localhost:8004)")
+    ap.add_argument("--base-url", default="http://localhost:8009", help="LightRAG base URL (default: http://localhost:8009)")
     ap.add_argument("--provider", default="ollama", help="Embedding/LLM provider name (beware that gwdg is only for chat completio)")
     ap.add_argument("--graph", action="store_true", help="Enable KG extraction during ingest")
     ap.add_argument("--graph-engine", default="lightrag", help="Graph engine")

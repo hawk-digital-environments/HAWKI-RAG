@@ -5,10 +5,10 @@ SHELL := /bin/bash
 # Variables (override via `make VAR=value`)
 ENV_FILE ?= ops/LightRAG.env
 OPS_COMPOSE ?= ops/rawki-docker-compose.yml
-INGEST_BASE ?= http://localhost:8004
+INGEST_BASE ?= http://localhost:8009
 RAWKI_BASE ?= http://localhost:8006
-RERANK_BASE ?= http://localhost:8005
-CRAWLED_ROOT ?= /absolute/path/to/crawled-data
+RERANK_BASE ?= http://localhost:8008
+CRAWLED_ROOT ?= /home/ixdlab-admin/Rawki/RAWKI/storage/app/private/crawled-data
 
 .PHONY: network pull-core build-app up-core up-rag health pull-models ingest logs-core logs-rag down-core down-rag restart-core restart-rag test-services
 
@@ -35,7 +35,7 @@ up-rag:
 health:
 	@echo "Checking Qdrant..." && curl -fsS http://localhost:6333/readyz && echo " OK" || (echo " FAIL" && exit 1)
 	@echo "Checking Ollama..." && curl -fsS http://localhost:11434/api/tags >/dev/null && echo " OK" || (echo " FAIL" && exit 1)
-	@echo "Checking Local Reranker..." && curl -fsS http://localhost:8005/health && echo " OK" || (echo " FAIL" && exit 1)
+	@echo "Checking Local Reranker..." && curl -fsS http://localhost:8008/health && echo " OK" || (echo " FAIL" && exit 1)
 	@echo "Checking Ingestion Bridge..." && curl -fsS $(INGEST_BASE)/health && echo " OK" || (echo " FAIL" && exit 1)
 	@echo "Checking RAWKI (UI/API)..." && curl -fsS $(RAWKI_BASE)/health && echo " OK" || (echo " WARN (skip if not exposed)" && true)
 	@echo "Checking RAWKI (via gateway)..." && curl -fsS http://localhost:8003/rag/health && echo " OK" || (echo " WARN (gateway may be disabled)" && true)

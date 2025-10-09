@@ -40,7 +40,7 @@ return [
         'collection' => env('QDRANT_COLLECTION'),
     ],
     'file_converter' => [
-        'url'             => env('FILE_CONVERTER_URL', 'http://127.0.0.1:8001/extract'),
+        'url'             => env('FILE_CONVERTER_URL', 'http://127.0.0.1:8005/extract'),
         'timeout'         => (int) env('FILE_CONVERTER_TIMEOUT', 300),
         'connect_timeout' => (int) env('FILE_CONVERTER_CONNECT_TIMEOUT', 10),
         'retries'         => (int) env('FILE_CONVERTER_RETRIES', 3),

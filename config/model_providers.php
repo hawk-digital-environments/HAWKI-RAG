@@ -19,7 +19,7 @@ return [
             'api_key' => env('GWDG_API_KEY'),
             'api_url' => env('GWDG_API_URL'),
             'models'  => [
-                'multilingual' => 'llama-3.3-70b-instruct',
+                'multilingual' => 'llama3:8b',
             ],
         ],
 
@@ -37,10 +37,10 @@ return [
             'models' => [
                 'embedding'  => 'bge-m3',
                 // swap to llama3:8b (larger) by setting OLLAMA_TEXT_MODEL in .env
-                'text'       => env('OLLAMA_TEXT_MODEL', 'llama3.2:1b-instruct'),
+                'text'       => env('OLLAMA_TEXT_MODEL', 'llama3:8b'),
                 'multimodal' => env('OLLAMA_VISION_MODEL', 'llava:13b'),
                 // default RAG chat model (uses llama3:8b unless overridden)
-                'rag'        => env('OLLAMA_RAG_MODEL', 'llama3.2:1b-instruct'),
+                'rag'        => env('OLLAMA_RAG_MODEL', 'llama3:8b'),
             ],
         ],
     ],

@@ -110,8 +110,8 @@ endpoint. Run both scripts if the RAWKI UI must mirror the latest corpus.
 
 ```bash
 python3 scripts/ingest_crawled.py \
-  --root storage/app/private/crawled-data/hawk-sample-20 \
-  --base-url http://localhost:8004 \
+  --root storage/app/private/crawled-data/sample-hawk \
+  --base-url http://localhost:8009 \
   --provider ollama \
   --graph \
   --collection embeddings_hawk \

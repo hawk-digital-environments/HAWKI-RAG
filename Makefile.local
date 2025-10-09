@@ -32,7 +32,7 @@ BREW_NEO4J  ?= neo4j
 # Service URLs used by health checks
 QDRANT_HTTP ?= http://127.0.0.1:6333
 OLLAMA_HTTP ?= http://127.0.0.1:11434
-FASTAPI_URL ?= http://127.0.0.1:8004
+FASTAPI_URL ?= http://127.0.0.1:8009
 LARAVEL_URL ?= http://127.0.0.1:8002
 
 .PHONY: ensure-models install-python install-node install-php start-qdrant stop-qdrant start-neo4j stop-neo4j start-python stop-python start-laravel stop-laravel start-all stop-all health
@@ -80,7 +80,7 @@ stop-neo4j:
 
 start-python:
 	@echo "Starting FastAPI bridge (Ctrl+C to stop)..."
-	@cd python-rag && $(UVICORN) app:app --host 0.0.0.0 --port 8004
+	@cd python-rag && $(UVICORN) app:app --host 0.0.0.0 --port 8009
 
 stop-python:
 	@echo "Stopping FastAPI bridge requires Ctrl+C in the terminal where it is running."
