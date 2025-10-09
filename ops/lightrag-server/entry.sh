@@ -19,6 +19,33 @@ ensure("aiofiles", "aiofiles>=24.1,<25")
 ensure("multipart", "python-multipart>=0.0.9,<0.0.10")
 PY
 
+python - <<'PY'
+import os
+import socket
+import sys
+import time
+from urllib.parse import urlparse
+
+uri = os.environ.get("NEO4J_URI", "bolt://neo4j:7687")
+parsed = urlparse(uri)
+host = parsed.hostname or "neo4j"
+port = parsed.port or 7687
+timeout = float(os.environ.get("NEO4J_WAIT_TIMEOUT", "120"))
+deadline = time.time() + timeout
+interval = float(os.environ.get("NEO4J_WAIT_INTERVAL", "3"))
+
+while time.time() < deadline:
+    try:
+        with socket.create_connection((host, port), timeout=5):
+            break
+    except OSError as exc:
+        print(f"Waiting for Neo4j at {host}:{port} ({exc})", file=sys.stderr, flush=True)
+        time.sleep(interval)
+else:
+    sys.stderr.write(f"Neo4j is not reachable at {host}:{port} after {int(timeout)} seconds.\n")
+    sys.exit(1)
+PY
+
 # Prefer the packaged console script if available
 if command -v lightrag-server >/dev/null 2>&1; then
   exec lightrag-server

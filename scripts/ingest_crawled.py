@@ -10,12 +10,14 @@ Notes:
 import argparse
 import hashlib
 import json
+import math
 import os
 import re
 import sys
 from collections import Counter
+from datetime import datetime
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 try:
     import requests
 except ImportError:
@@ -196,6 +198,29 @@ def make_doc_id(page_url: Optional[str], rel_path: str) -> str:
 
 ########################################### BATCH PROCESSING #####################################
 
+def split_text_local(txt: str, target: int, overlap: int) -> List[str]:
+    txt = (txt or "").strip()
+    if not txt:
+        return []
+    if len(txt) <= target:
+        return [txt]
+    out: List[str] = []
+    start = 0
+    length = len(txt)
+    while start < length:
+        end = min(length, start + target)
+        slice_ = txt[start:end]
+        cut = slice_.rfind("\n\n")
+        if cut != -1 and cut > int(target * 0.6):
+            end = start + cut
+        chunk = txt[start:end].strip()
+        if chunk:
+            out.append(chunk)
+        if end >= length:
+            break
+        start = max(0, end - overlap)
+    return out
+
 def batch(iterable, size: int):
     buf = []
     for item in iterable:
@@ -205,6 +230,69 @@ def batch(iterable, size: int):
             buf = []
     if buf:
         yield buf
+
+
+def run_local_estimate(
+    *,
+    page_dirs: List[Path],
+    root: Path,
+    chunk_chars: int,
+    chunk_overlap: int,
+    collection: Optional[str],
+) -> Dict[str, Any]:
+    doc_stats: Dict[str, Any] = {
+        "total_docs": len(page_dirs),
+        "processed_docs": 0,
+        "skipped_docs": 0,
+        "by_format": {},
+        "doc_ids": [],
+    }
+    total_chunks = 0
+
+    for d in page_dirs:
+        meta, _, _, text, source_fmt = load_page_materials(d)
+        if not isinstance(text, str) or text.strip() == "":
+            doc_stats["skipped_docs"] += 1
+            continue
+
+        page_url = first_str(meta.get("url") or meta.get("page_url"))
+        rel = str(d.relative_to(root))
+        doc_id = make_doc_id(page_url, rel)
+        chunks = split_text_local(text, chunk_chars, chunk_overlap) or [text]
+        chunk_count = 0
+        for ch in chunks:
+            if isinstance(ch, str) and ch.strip():
+                chunk_count += 1
+
+        if chunk_count == 0:
+            doc_stats["skipped_docs"] += 1
+            continue
+
+        doc_stats["processed_docs"] += 1
+        doc_stats["doc_ids"].append(doc_id)
+        fmt_key = source_fmt or "unknown"
+        by_fmt = doc_stats["by_format"]
+        by_fmt[fmt_key] = by_fmt.get(fmt_key, 0) + 1
+        chunks_map = doc_stats.setdefault("chunks_per_doc", {})
+        chunks_map[doc_id] = chunk_count
+        total_chunks += chunk_count
+
+    doc_stats["total_chunks"] = total_chunks
+    batch_size = 64
+    summary: Dict[str, Any] = {
+        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "estimate_only": True,
+        "planned_points": total_chunks,
+        "documents": doc_stats,
+        "qdrant_preview": {
+            "collection": collection or "(server default)",
+            "batch_size": batch_size,
+            "planned_batches": math.ceil(total_chunks / batch_size) if total_chunks else 0,
+            "planned_points": total_chunks,
+        },
+        "graph_preview_skipped": "Local estimate does not analyze Neo4j impact.",
+    }
+    return summary
 
 def post_batch(base_url: str, docs: List[Dict], options: Dict, timeout: int) -> tuple[bool, Optional[Dict], Optional[str]]:
     url = base_url.rstrip("/") + "/ingest"
@@ -236,10 +324,13 @@ def main():
     ap.add_argument("--collection", default=None, help="Qdrant collection override")
     ap.add_argument("--distance", default="Cosine", help="Qdrant distance (Cosine|Dot|Euclid)")
     ap.add_argument("--chunk-chars", type=int, default=3200, help="Chunk target size for LightRAG")
-    ap.add_argument("--chunk-overlap", type=int, default=250, help="Chunk overlap for LightRAG")
-    ap.add_argument("--batch", type=int, default=16, help="POST batch size (docs per request)")
-    ap.add_argument("--timeout", type=int, default=300, help="HTTP request timeout in seconds (default: 300)")
+    ap.add_argument("--chunk-overlap", type=int, default=100, help="Chunk overlap for LightRAG")
+    ap.add_argument("--batch", type=int, default=64, help="POST batch size (docs per request)")
+    ap.add_argument("--timeout", type=int, default=600, help="HTTP request timeout in seconds (default: 600)")
+    ap.add_argument("--dry", action="store_true", help="Perform a dry run to preview Qdrant/Neo4j impact without embeddings")
     ap.add_argument("--summary-file", default=None, help="Optional path to save the ingest summary JSON")
+    ap.add_argument("--dry-include-graph", action="store_true", help="When used with --dry, also estimate Neo4j entities/relationships")
+    ap.add_argument("--estimate-only", action="store_true", help="Estimate chunk/point counts locally without contacting the server")
     args = ap.parse_args()
 
     root = Path(args.root).expanduser().resolve()
@@ -252,6 +343,28 @@ def main():
         print("No pages found under root.")
         return
 
+    if args.estimate_only:
+        print(f"Scanning: {root}")
+        print("Running local estimate; server is not contacted.")
+        summary = run_local_estimate(
+            page_dirs=page_dirs,
+            root=root,
+            chunk_chars=args.chunk_chars,
+            chunk_overlap=args.chunk_overlap,
+            collection=args.collection,
+        )
+        preview = json.dumps(summary, indent=2, ensure_ascii=False)
+        print(preview)
+        if args.summary_file:
+            out_path = Path(args.summary_file).expanduser().resolve()
+            try:
+                out_path.parent.mkdir(parents=True, exist_ok=True)
+                out_path.write_text(preview + "\n", encoding="utf-8")
+                print(f"Saved estimate summary to {out_path}")
+            except Exception as exc:
+                print(f"Failed to write summary to {out_path}: {exc}", file=sys.stderr)
+        return
+
     options = {
         "provider": args.provider,
         "graph": bool(args.graph),
@@ -262,6 +375,10 @@ def main():
     }
     if args.collection:
         options["collection"] = args.collection
+    if args.dry:
+        options["dry_run"] = True
+        if args.dry_include_graph:
+            options["dry_include_graph"] = True
 
     docs: List[Dict] = []
     total = 0
@@ -270,6 +387,8 @@ def main():
     last_response: Optional[Dict] = None
 
     print(f"Scanning: {root}")
+    if args.dry:
+        print("Running in dry-run mode; embeddings and database writes are skipped.")
     for d in page_dirs:
         meta, md_path, json_path, text, source_fmt = load_page_materials(d)
         if not isinstance(text, str) or text.strip() == "":
@@ -308,7 +427,10 @@ def main():
                 print(f"Batch {batch_index} failed; docs={doc_ids_batch} ({err or 'see log'})", file=sys.stderr)
             else:
                 sent += len(docs)
-                print(f"Sent {sent}/{total} docs… (batch {batch_index})")
+                if args.dry:
+                    print(f"Planned {sent}/{total} docs… (batch {batch_index}) [dry-run]")
+                else:
+                    print(f"Sent {sent}/{total} docs… (batch {batch_index})")
                 if data:
                     last_response = data
             docs = []
@@ -323,7 +445,24 @@ def main():
                 last_response = data
         else:
             print(f"Batch {batch_index} failed; docs={doc_ids_batch} ({err or 'see log'})", file=sys.stderr)
-        print(f"Sent {sent}/{total} docs. Done.")
+        if args.dry:
+            print(f"Planned {sent}/{total} docs. Dry run complete.")
+        else:
+            print(f"Sent {sent}/{total} docs. Done.")
+
+    if args.dry and last_response:
+        summary = last_response.get("summary") or {}
+        planned_points = summary.get("planned_points")
+        if planned_points is not None:
+            print(f"[dry-run] Estimated Qdrant points: {planned_points}")
+        graph_preview = summary.get("graph_preview") or {}
+        if graph_preview:
+            planned_entities = graph_preview.get("planned_entities")
+            planned_triplets = graph_preview.get("planned_triplets")
+            if planned_entities is not None:
+                print(f"[dry-run] Estimated Neo4j entities: {planned_entities}")
+            if planned_triplets is not None:
+                print(f"[dry-run] Estimated Neo4j relationships: {planned_triplets}")
 
     if args.summary_file and last_response:
         summary = last_response.get("summary")

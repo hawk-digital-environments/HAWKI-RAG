@@ -1,6 +1,7 @@
 ########################################### libs and bibz #####################################
 import json
 import logging
+import math
 import os
 import re
 from datetime import datetime
@@ -147,6 +148,8 @@ class IngestRequest(BaseModel):
     chunk_overlap: int = 250
     graph: bool = False
     graph_engine: str = Field(default=os.environ.get("GRAPH_ENGINE", "fallback"))  # fallback|lightrag
+    dry_run: bool = False
+    dry_include_graph: bool = False
 
 class QueryRequest(BaseModel):
     query: str
@@ -235,15 +238,13 @@ def config():
 ################################## INGESTION LOGIC #################################
 @app.post("/ingest")
 def ingest(body: IngestRequest):
-    provider = get_provider(body.provider)
+    dry_run = bool(body.dry_run)
+
     qdrant = QdrantHTTP()
     if body.collection:
         qdrant.collection = body.collection
 
-    points: List[Dict[str, Any]] = []
-    vector_size: int | None = None
-    point_counter = 1
-
+    chunk_records: List[Dict[str, Any]] = []
     doc_stats: Dict[str, Any] = {
         "total_docs": len(body.docs),
         "processed_docs": 0,
@@ -255,12 +256,12 @@ def ingest(body: IngestRequest):
     for d in body.docs:
         chunks = split_text(d.text, body.chunk_chars, body.chunk_overlap) or [d.text]
         doc_processed = False
+        fmt: Optional[str] = None
+        chunk_count = 0
+
         for idx, ch in enumerate(chunks):
-            try:
-                vec = provider.embed(ch)
-            except Exception as exc:
-                raise HTTPException(status_code=500, detail=f"Embedding failed: {exc}") from exc
-            vector_size = vector_size or len(vec)
+            if not isinstance(ch, str) or not ch.strip():
+                continue
             payload = dict(d.payload)
             payload.update({
                 "content": ch,
@@ -268,35 +269,117 @@ def ingest(body: IngestRequest):
                 "source_format": payload.get("source_format", "text"),
             })
             ensure_tags(payload, ch)
-            points.append({
-                "id": point_counter,
-                "vector": vec,
+            chunk_records.append({
+                "doc_id": str(d.id),
+                "content": ch,
                 "payload": payload,
             })
-            point_counter += 1
             doc_processed = True
+            chunk_count += 1
+            if not fmt:
+                fmt = payload.get("source_format") or "unknown"
 
-        fmt = (payload.get("source_format") or d.payload.get("source_format") if isinstance(d.payload, dict) else None) or "unknown"
         if doc_processed:
             doc_stats["processed_docs"] += 1
             doc_stats["doc_ids"].append(str(d.id))
+            fmt_key = fmt or "unknown"
             by_fmt = doc_stats["by_format"]
-            by_fmt[fmt] = by_fmt.get(fmt, 0) + 1
+            by_fmt[fmt_key] = by_fmt.get(fmt_key, 0) + 1
+            if chunk_count:
+                chunks_map = doc_stats.setdefault("chunks_per_doc", {})
+                chunks_map[str(d.id)] = chunk_count
         else:
             doc_stats["skipped_docs"] += 1
 
-    if not points:
+    total_chunks = len(chunk_records)
+    doc_stats["total_chunks"] = total_chunks
+
+    if total_chunks == 0:
         raise HTTPException(400, detail="No valid content to ingest")
 
+    batch_size = 64
+
+    if dry_run:
+        summary: Dict[str, Any] = {
+            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "dry_run": True,
+            "planned_points": total_chunks,
+            "documents": doc_stats,
+        }
+        summary["qdrant_preview"] = {
+            "collection": qdrant.collection,
+            "batch_size": batch_size,
+            "planned_batches": math.ceil(total_chunks / batch_size),
+            "planned_points": total_chunks,
+        }
+
+        if body.graph and body.dry_include_graph:
+            texts = [rec["content"] for rec in chunk_records]
+            joined = "\n\n".join(texts)
+            if joined:
+                if body.graph_engine == "lightrag":
+                    triplets = extract_triplets_with_lightrag(joined)
+                else:
+                    triplets = extract_triplets_fallback(joined)
+                entity_ids = set()
+                relation_counts: Dict[str, int] = {}
+                for s, r, o in triplets:
+                    if isinstance(s, str) and s.strip():
+                        entity_ids.add(s.strip())
+                    if isinstance(o, str) and o.strip():
+                        entity_ids.add(o.strip())
+                    rel = (r or "").strip() if isinstance(r, str) else str(r or "").strip()
+                    if rel:
+                        relation_counts[rel] = relation_counts.get(rel, 0) + 1
+                summary["graph_preview"] = {
+                    "planned_triplets": len(triplets),
+                    "planned_entities": len(entity_ids),
+                    "relation_counts": relation_counts,
+                }
+        elif body.graph:
+            summary["graph_preview_skipped"] = "Set dry_include_graph=true to estimate Neo4j impact during dry run."
+
+        preview = json.dumps(summary, indent=2, ensure_ascii=False)
+        print(preview)
+        logger.info("Dry-run ingest summary:\n%s", preview)
+
+        try:
+            PUBLIC_DIR.mkdir(parents=True, exist_ok=True)
+            summary_path = PUBLIC_DIR / "ingest_summary.json"
+            summary_path.write_text(preview + "\n", encoding="utf-8")
+            summary["summary_file"] = str(summary_path)
+        except Exception as exc:
+            summary["summary_file_error"] = str(exc)
+
+        return {"ok": True, "dry_run": True, "points": total_chunks, "summary": summary}
+
+    provider = get_provider(body.provider)
+    points: List[Dict[str, Any]] = []
+    vector_size: int | None = None
+    point_counter = 1
+
+    for record in chunk_records:
+        try:
+            vec = provider.embed(record["content"])
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=f"Embedding failed: {exc}") from exc
+        vector_size = vector_size or len(vec)
+        payload = dict(record["payload"])
+        points.append({
+            "id": point_counter,
+            "vector": vec,
+            "payload": payload,
+        })
+        point_counter += 1
+
     qdrant.ensure_collection(vector_size or 1024, distance=body.distance)
-    B = 64
-    for i in range(0, len(points), B):
-        qdrant.upsert(points[i:i+B])
+    for i in range(0, len(points), batch_size):
+        qdrant.upsert(points[i:i+batch_size])
 
     if body.graph:
         try:
             g = Neo4jGraph()
-            texts = [p["payload"]["content"] for p in points]
+            texts = [rec["content"] for rec in chunk_records]
             joined = "\n\n".join(texts)
             if body.graph_engine == "lightrag":
                 triplets = extract_triplets_with_lightrag(joined)
@@ -350,6 +433,8 @@ def ingest(body: IngestRequest):
             except Exception:
                 pass
 
+    summary["dry_run"] = False
+    summary.setdefault("planned_points", total_chunks)
     preview = json.dumps(summary, indent=2, ensure_ascii=False)
     print(preview)
     logger.info("Ingest summary:\n%s", preview)

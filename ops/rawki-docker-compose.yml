@@ -31,7 +31,8 @@ services:
       - ../../hawki-data/crawled-data:/data/crawled:ro
     networks: [ hawki-network ]
     depends_on:
-      - neo4j
+      neo4j:
+        condition: service_healthy
     restart: unless-stopped
     ports:
       - "8006:9621"

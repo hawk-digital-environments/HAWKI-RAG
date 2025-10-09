@@ -116,8 +116,8 @@ python3 scripts/ingest_crawled.py \
   --graph \
   --collection embeddings_hawk \
   --distance Cosine \
-  --chunk-chars 3200 \
-  --chunk-overlap 50 \
+  --chunk-chars 2000 \
+  --chunk-overlap 100 \
   --batch 8 \
   --timeout 600 \
   --summary-file public/ingest_summary.json
