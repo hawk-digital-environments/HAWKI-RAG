@@ -175,6 +175,7 @@ Full deployment notes live in [`docs/DEPLOY.md`](docs/DEPLOY.md). Highlights:
 
 ### Scrape and Convert Command 
 ```bash
+
 php artisan crawl:and-convert "https://www.hawk.de/" \
     --max-pages=100000 \
     --output-dir=storage/app/private/crawled-data/hawk-full \
@@ -183,6 +184,14 @@ php artisan crawl:and-convert "https://www.hawk.de/" \
     --date="meta[property='og:updated_time']"
 ```
 
+```bash
+php artisan crawl:and-convert "https://www.hawk.de/" \
+    --max-pages=100000 \
+    --output-dir=storage/app/private/crawled-data/hawk-text \
+    --label="hawk-text" \
+    --skip-images \
+    --date="meta[property='og:updated_time']"
+```
 ### RAWKI Foundations (built on LightRAG)
 
 The pipeline adheres to the LightRAG paper’s workflow: documents are chunked,

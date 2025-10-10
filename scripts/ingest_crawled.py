@@ -15,7 +15,7 @@ import os
 import re
 import sys
 from collections import Counter
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 try:
@@ -72,6 +72,141 @@ def load_page_materials(dir_path: Path) -> Tuple[Dict, Optional[Path], Optional[
         source_format = "txt"
 
     return meta or {}, md_path, json_path, text, source_format
+
+
+def normalize_path(path_like: Any) -> Optional[Path]:
+    if path_like is None:
+        return None
+    try:
+        path = Path(str(path_like)).expanduser()
+        return path.resolve(strict=False)
+    except Exception:
+        return None
+
+
+def _read_json_file(path: Path) -> Dict[str, Any]:
+    try:
+        return json.loads(path.read_text(encoding="utf-8", errors="ignore"))
+    except Exception:
+        try:
+            return json.loads(path.read_text(errors="ignore"))
+        except Exception:
+            return {}
+
+
+def build_url_maps(root: Path) -> Tuple[Dict[Path, str], Dict[Path, str]]:
+    """
+    Build lookup maps so directories can resolve their page/source URLs.
+    Returns: (page_url_map, source_url_map)
+    """
+    page_url_map: Dict[Path, str] = {}
+    source_url_map: Dict[Path, str] = {}
+    pdf_lookup: Dict[Path, Dict[str, str]] = {}
+    root_resolved = root.resolve(strict=False)
+
+    # Pass 1: collect page URLs and PDF mappings from primary JSON metadata.
+    for dirpath, _, filenames in os.walk(root):
+        dir_path = Path(dirpath)
+        dir_resolved = dir_path.resolve(strict=False)
+        json_files = [fn for fn in filenames if fn.lower().endswith(".json")]
+        if not json_files:
+            continue
+        for fname in json_files:
+            if fname == "conversion_meta.json":
+                continue
+            data = _read_json_file(dir_path / fname)
+            if not isinstance(data, dict):
+                continue
+            page_url = first_str(data.get("url") or data.get("page_url"))
+            if page_url:
+                page_url_map.setdefault(dir_resolved, page_url)
+            pdfs = data.get("pdfs")
+            if isinstance(pdfs, list):
+                for pdf_entry in pdfs:
+                    if not isinstance(pdf_entry, dict):
+                        continue
+                    local_path = normalize_path(pdf_entry.get("local_path"))
+                    pdf_url = first_str(pdf_entry.get("url"))
+                    if not local_path or not pdf_url:
+                        continue
+                    pdf_lookup[local_path] = {
+                        "page_url": page_url,
+                        "source_url": pdf_url,
+                    }
+
+    # Pass 2: link converted PDF output directories back to their source/page URLs.
+    for dirpath, _, filenames in os.walk(root):
+        if "conversion_meta.json" not in filenames:
+            continue
+        dir_path = Path(dirpath)
+        conv_meta = _read_json_file(dir_path / "conversion_meta.json")
+        if not isinstance(conv_meta, dict):
+            continue
+        source_pdf = normalize_path(conv_meta.get("source_pdf"))
+        if not source_pdf:
+            continue
+        info = pdf_lookup.get(source_pdf)
+        if not info:
+            continue
+        target_dirs: Set[Path] = set()
+        dir_resolved = dir_path.resolve(strict=False)
+        target_dirs.add(dir_resolved)
+        output_dir = normalize_path(conv_meta.get("output_dir"))
+        if output_dir:
+            target_dirs.add(output_dir)
+        for base in list(target_dirs):
+            output_path = normalize_path(base / "output")
+            if output_path:
+                target_dirs.add(output_path)
+        for tdir in target_dirs:
+            if not tdir:
+                continue
+            if info.get("page_url"):
+                page_url_map.setdefault(tdir, info["page_url"])
+            if info.get("source_url"):
+                source_url_map.setdefault(tdir, info["source_url"])
+
+    # Default source_url to page_url where specific overrides do not exist.
+    for dir_path, page_url in page_url_map.items():
+        source_url_map.setdefault(dir_path, page_url)
+
+    # Ensure root always resolves within the maps to avoid lookups failing at top-level.
+    if root_resolved in page_url_map and root_resolved not in source_url_map:
+        source_url_map[root_resolved] = page_url_map[root_resolved]
+
+    return page_url_map, source_url_map
+
+
+def resolve_url_for_path(mapping: Dict[Path, str], path: Path, root: Path) -> Optional[str]:
+    """
+    Walk up from path towards root to locate the closest mapped URL.
+    """
+    try:
+        current = path.resolve(strict=False)
+        root_resolved = root.resolve(strict=False)
+    except Exception:
+        return None
+
+    while True:
+        if current in mapping:
+            return mapping[current]
+        if current == root_resolved:
+            break
+        parent = current.parent
+        if parent == current:
+            break
+        try:
+            if not current.is_relative_to(root_resolved):
+                break
+        except AttributeError:
+            # Python < 3.9 fallback
+            cur_str = str(current)
+            root_str = str(root_resolved)
+            if not cur_str.startswith(root_str.rstrip(os.sep) + os.sep):
+                break
+        current = parent
+
+    return None
 ########################################### PAGE DIR DISCOVERY #####################################
 def discover_page_dirs(root: Path) -> List[Path]:
     """Return folders that look like a 'page' (contains json or md/txt)."""
@@ -118,6 +253,11 @@ def load_stopwords() -> set[str]:
     }
     return words 
 STOPWORDS = load_stopwords()
+
+
+def utc_now_iso() -> str:
+    """Return an ISO8601 UTC timestamp with trailing Z."""
+    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 def _flatten_keywords(raw) -> Iterable[str]:
     if raw is None:
@@ -280,7 +420,7 @@ def run_local_estimate(
     doc_stats["total_chunks"] = total_chunks
     batch_size = 64
     summary: Dict[str, Any] = {
-        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "timestamp": utc_now_iso(),
         "estimate_only": True,
         "planned_points": total_chunks,
         "documents": doc_stats,
@@ -315,7 +455,7 @@ def save_resume_state(path: Path, doc_ids: Set[str], metadata: Dict[str, Any]) -
     try:
         payload = {
             "doc_ids": sorted(doc_ids),
-            "updated_at": datetime.utcnow().isoformat() + "Z",
+            "updated_at": utc_now_iso(),
         }
         payload.update(metadata)
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -413,6 +553,8 @@ def main():
     else:
         resume_state_path = None
 
+    page_url_map, source_url_map = build_url_maps(root)
+
     page_dirs = discover_page_dirs(root)
     if not page_dirs:
         print("No pages found under root.")
@@ -472,12 +614,16 @@ def main():
             continue
 
         title = first_str(meta.get("title")) or (title_from_markdown(text) or "Untitled")
-        page_url = first_str(meta.get("url") or meta.get("page_url"))
+        dir_resolved = d.resolve(strict=False)
+        page_url = first_str(meta.get("url") or meta.get("page_url")) or resolve_url_for_path(page_url_map, dir_resolved, root)
         date = first_str(meta.get("date"))
         meta_img = first_str(meta.get("metaImageUrl") or meta.get("meta_img_url"))
         tags = resolve_tags(meta, text)
         rel = str(d.relative_to(root))
-        doc_id = make_doc_id(page_url, rel)
+        source_url = first_str(meta.get("source_url")) or resolve_url_for_path(source_url_map, dir_resolved, root)
+        if not source_url and page_url:
+            source_url = page_url
+        doc_id = make_doc_id(source_url if source_url and source_url != page_url else page_url, rel)
 
         if resume_mode and doc_id in resume_doc_ids:
             skipped_existing += 1
@@ -486,7 +632,7 @@ def main():
         payload = {
             "title": title,
             "page_url": page_url or rel,
-            "source_url": page_url or rel,
+            "source_url": source_url or page_url or rel,
             "date": date,
             "meta_img_url": meta_img,
             "tags": tags or None,

@@ -10,7 +10,7 @@ RAWKI_BASE ?= http://localhost:8006
 RERANK_BASE ?= http://localhost:8008
 CRAWLED_ROOT ?= /home/ixdlab-admin/Rawki/RAWKI/storage/app/private/crawled-data
 
-.PHONY: network pull-core build-app up-core up-rag health pull-models ingest logs-core logs-rag down-core down-rag restart-core restart-rag test-services
+.PHONY: network pull-core build-app up-core up-rag health pull-models ingest logs-core logs-rag down-core down-rag restart-core restart-rag test-services neo4j-fresh
 
 network:
 	@docker network create hawki-network || true
@@ -80,3 +80,13 @@ restart-core:
 
 restart-rag:
 	@docker compose -f $(OPS_COMPOSE) --env-file $(ENV_FILE) up -d --force-recreate
+
+neo4j-fresh:
+	@echo "Stopping Neo4j service..."
+	@docker compose -f $(OPS_COMPOSE) --env-file $(ENV_FILE) stop neo4j >/dev/null 2>&1 || true
+	@docker compose -f $(OPS_COMPOSE) --env-file $(ENV_FILE) rm -f neo4j >/dev/null 2>&1 || true
+	@echo "Removing persisted Neo4j data (databases, transactions)..."
+	@docker compose -f $(OPS_COMPOSE) --env-file $(ENV_FILE) run --rm --entrypoint bash neo4j -lc 'rm -rf /data/databases/* /data/transactions/*' >/dev/null
+	@echo "Starting Neo4j service..."
+	@docker compose -f $(OPS_COMPOSE) --env-file $(ENV_FILE) up -d neo4j >/dev/null
+	@echo "Neo4j store reset complete."
