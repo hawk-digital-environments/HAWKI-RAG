@@ -227,10 +227,30 @@
                     body: JSON.stringify(payload),
                 });
 
-                const data = await response.json();
+                const rawBody = await response.text();
+                let data = null;
+                if (rawBody) {
+                    try {
+                        data = JSON.parse(rawBody);
+                    } catch (parseErr) {
+                        console.error('RAWKI returned non-JSON response', parseErr, rawBody);
+                    }
+                }
 
                 if (!response.ok) {
-                    throw new Error(data.message || 'RAWKI request failed');
+                    const message = data && typeof data === 'object'
+                        ? (data.message || JSON.stringify(data))
+                        : `RAWKI request failed (${response.status})`;
+                    if (!data && rawBody) {
+                        throw new Error(`${message}. Body excerpt: ${rawBody.slice(0, 200)}`);
+                    }
+                    throw new Error(message);
+                }
+
+                if (!data) {
+                    results.style.display = 'block';
+                    rawJson.textContent = rawBody || '';
+                    throw new Error('RAWKI bridge returned an invalid JSON payload. Check RAWKI service logs.');
                 }
 
                 results.style.display = 'block';

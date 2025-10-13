@@ -192,6 +192,17 @@ php artisan crawl:and-convert "https://www.hawk.de/" \
     --skip-images \
     --date="meta[property='og:updated_time']"
 ```
+### RE-ingesting failed Docs Command 
+
+```bash
+python3 scripts/retry_ingest_docs.py \
+  --root storage/app/private/crawled-data/hawk-text \
+  --collection hawk_embeddings \
+  --base-url http://localhost:8009 \
+  --doc-ids-file /home/ixdlab-admin/Rawki/RAWKI/storage/app/private/failed_doc_ids.txt \
+  --batch 16
+```
+
 ### RAWKI Foundations (built on LightRAG)
 
 The pipeline adheres to the LightRAG paper’s workflow: documents are chunked,
@@ -202,3 +213,4 @@ knowledge graph in Neo4j without changing the core LightRAG logic.
 ## Further Reading
 
 - Step-by-step replication guide: [docs/story.md](docs/story.md)
+

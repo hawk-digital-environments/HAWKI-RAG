@@ -71,7 +71,7 @@ This prints a JSON preview of planned Qdrant points.
 python3 scripts/ingest_crawled.py \
   --root storage/app/private/crawled-data/hawk-full \
   --base-url http://localhost:8009 \
-  --collection embeddings_hawk \
+  --collection hawk_embeddings \
   --dry
 ```
 You’ll see batch counts and a summary file without spending GPU time.
@@ -87,7 +87,7 @@ python3 scripts/ingest_crawled.py \
   --base-url http://localhost:8009 \
   --provider ollama \
   --graph \
-  --collection embeddings_hawk \
+  --collection hawk_embeddings\
   --distance Cosine \
   --chunk-chars 3200 \
   --chunk-overlap 100 \
@@ -107,7 +107,7 @@ State files live under `storage/app/private/ingest-state/<hash>.json`.
 
 When the script finishes:
 - All chunks are embedded via Ollama (`bge-m3`).
-- Vectors land in Qdrant (`embeddings_hawk`).
+- Vectors land in Qdrant (`hawk_embeddings`).
 - Triplets become `(:Entity)-[:REL]->(:Entity)` in Neo4j.
 - A summary is written to `public/ingest_summary.json`.
 
@@ -132,7 +132,7 @@ shows the same corpus as Qdrant/Neo4j.
 
 **Qdrant:**
 ```bash
-curl -s -X POST http://localhost:6333/collections/embeddings_hawk/points/count \
+curl -s -X POST http://localhost:6333/collections/hawk_embeddings/points/count \
      -H 'Content-Type: application/json' -d '{"exact": true}'
 ```
 

@@ -74,17 +74,3 @@ script it
     cypher-shell -u neo4j -p ixdlabPass123 \
     "MATCH (n) RETURN labels(n) AS labels, count(*) AS count ORDER BY count DESC;"
   ```
-
-extra scraps 
------------------------------------
-- `:help` inside cypher-shell reminds me of the basics.
-- add `--format plain` if i need CSV-friendly output.
-- if deletes get too big, apoc batching saves me:
-  ```
-  CALL apoc.periodic.iterate(
-    'MATCH (n:Entity) RETURN n',
-    'DETACH DELETE n',
-    {batchSize: 1000}
-  );
-  ```
-  (only works if the APOC plugin is around.)
