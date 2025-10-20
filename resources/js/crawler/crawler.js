@@ -22,6 +22,13 @@ import {
 const config = parseConfiguration();
 const { crawlDir, tempDir } = setupDirectoriesAndCrawlee(config);
 
+const MAX_CONCURRENCY = Math.max(1, Number(config.maxConcurrency ?? 4));
+const MAX_REQUESTS_PER_MINUTE = config.maxRequestsPerMinute ? Math.max(1, Number(config.maxRequestsPerMinute)) : null;
+const REQUEST_DELAY_MS = config.requestDelayMs !== null && config.requestDelayMs !== undefined
+    ? Math.max(0, Number(config.requestDelayMs))
+    : null;
+const USE_RPM_THROTTLE = (!REQUEST_DELAY_MS || REQUEST_DELAY_MS === 0) && !!MAX_REQUESTS_PER_MINUTE;
+
 // Initialize counter for unique IDs
 let itemCounter = config.startFromIndex - 1;
 
@@ -143,6 +150,12 @@ async function runCrawler() {
     
     const { processedUrls: alreadyProcessedUrls, processedData } = loadProcessedUrlsWithTimestamps(crawlDir);
     const processedUrls = new Set(alreadyProcessedUrls);
+    const throttleSummary = USE_RPM_THROTTLE
+        ? `max ${MAX_REQUESTS_PER_MINUTE} requests/minute`
+        : REQUEST_DELAY_MS && REQUEST_DELAY_MS > 0
+            ? `~${Math.round(60000 / REQUEST_DELAY_MS)} requests/minute via ${REQUEST_DELAY_MS}ms delay`
+            : 'no explicit per-minute throttle';
+    console.log(`[Crawler] Throttle settings -> concurrency: ${MAX_CONCURRENCY}, ${throttleSummary}`);
     
     try {
         // Process URLs from various sources
@@ -168,9 +181,20 @@ async function runCrawler() {
             return;
         }
         
+        const preNavigationHooks = [];
+        if (REQUEST_DELAY_MS && REQUEST_DELAY_MS > 0) {
+            preNavigationHooks.push(async () => {
+                await new Promise((resolve) => setTimeout(resolve, REQUEST_DELAY_MS));
+            });
+        }
+
         // Create and configure crawler
         const crawler = new CheerioCrawler({
             maxRequestsPerCrawl: config.maxPages,
+            maxConcurrency: MAX_CONCURRENCY,
+            minConcurrency: 1,
+            ...(USE_RPM_THROTTLE ? { maxRequestsPerMinute: MAX_REQUESTS_PER_MINUTE } : {}),
+            ...(preNavigationHooks.length ? { preNavigationHooks } : {}),
             
             async requestHandler({ request, $, log, response, enqueueLinks }) {
                 const url = request.url;

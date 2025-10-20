@@ -30,7 +30,10 @@ class CrawleeScraper extends Command
                             {--label= : Label for this crawl job}
                             {--skip-images : Skip downloading images to save time and bandwidth}
                             {--image-exceptions= : Comma-separated list of CSS selectors for elements to exclude from image scraping}
-                            {--date= : CSS selector for date elements (e.g., ".date", "#publication-date", "time", "meta[property=\"og:updated_time\"]")}';
+                            {--date= : CSS selector for date elements (e.g., ".date", "#publication-date", "time", "meta[property=\"og:updated_time\"]")}
+                            {--max-concurrency=4 : Maximum number of parallel requests running at a time}
+                            {--max-rpm=60 : Maximum requests per minute to throttle overall rate}
+                            {--request-delay= : Delay between requests in milliseconds (overrides RPM throttle when set)}';
 
     protected $description = 'Scrape websites using Crawlee';
 

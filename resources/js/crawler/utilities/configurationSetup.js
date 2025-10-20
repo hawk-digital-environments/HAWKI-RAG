@@ -15,6 +15,16 @@ export function parseConfiguration() {
         console.error('Starting URL is required');
         process.exit(1);
     }
+
+    const maxConcurrency = Number.isFinite(Number(config.maxConcurrency))
+        ? Math.max(1, Number(config.maxConcurrency))
+        : 4;
+    const maxRequestsPerMinute = Number.isFinite(Number(config.maxRequestsPerMinute))
+        ? Math.max(1, Number(config.maxRequestsPerMinute))
+        : 60;
+    const requestDelayMs = config.requestDelayMs !== undefined && config.requestDelayMs !== null && config.requestDelayMs !== ''
+        ? Math.max(0, Number(config.requestDelayMs))
+        : null;
     
     return {
         outputDir: config.outputDir,
@@ -27,7 +37,10 @@ export function parseConfiguration() {
         incompleteDirectories: config.incompleteDirectories || {},
         emptyDirectoriesToReuse: config.emptyDirectoriesToReuse || [],
         inputUrl: config.url,
-        urls: config.urls
+        urls: config.urls,
+        maxConcurrency,
+        maxRequestsPerMinute,
+        requestDelayMs,
     };
 }
 

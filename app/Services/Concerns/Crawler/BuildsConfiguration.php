@@ -9,6 +9,36 @@ trait BuildsConfiguration
      */
     protected function buildCrawlerConfig(string $url, bool $isLocalFile, ?string $baseUrl, string $outputDir, string $label, int $startFromIndex, bool $shouldContinue, string $sourceType): array
     {
+        $completeness = [
+            'incompleteUrls' => [],
+            'incomplete' => [],
+        ];
+
+        if ($shouldContinue) {
+            $completeness = $this->scanAllDirectoriesForCompleteness($outputDir, $label);
+        }
+
+        $maxConcurrency = 4;
+        $maxRequestsPerMinute = 60;
+        $requestDelay = null;
+
+        if (method_exists($this, 'option')) {
+            $maxConcurrencyOption = $this->option('max-concurrency');
+            if ($maxConcurrencyOption !== null && $maxConcurrencyOption !== '') {
+                $maxConcurrency = max(1, (int) $maxConcurrencyOption);
+            }
+
+            $maxRpmOption = $this->option('max-rpm');
+            if ($maxRpmOption !== null && $maxRpmOption !== '') {
+                $maxRequestsPerMinute = max(1, (int) $maxRpmOption);
+            }
+
+            $requestDelayOption = $this->option('request-delay');
+            if ($requestDelayOption !== null && $requestDelayOption !== '') {
+                $requestDelay = max(0, (int) $requestDelayOption);
+            }
+        }
+
         $config = [
             'url' => $isLocalFile ? $baseUrl : $url,
             'maxPages' => method_exists($this, 'option') ? (int) $this->option('max-pages') : 100,
@@ -16,10 +46,16 @@ trait BuildsConfiguration
             'label' => $label,
             'skipImages' => method_exists($this, 'option') ? $this->option('skip-images') : false,
             'startFromIndex' => $startFromIndex,
-            'incompleteDirectories' => $shouldContinue ? $this->scanAllDirectoriesForCompleteness($outputDir, $label)['incompleteUrls'] : [],
-            'emptyDirectoriesToReuse' => $shouldContinue ? array_diff($this->scanAllDirectoriesForCompleteness($outputDir, $label)['incomplete'], array_keys($this->scanAllDirectoriesForCompleteness($outputDir, $label)['incompleteUrls'])) : [],
-            'sourceType' => $sourceType
+            'incompleteDirectories' => $shouldContinue ? ($completeness['incompleteUrls'] ?? []) : [],
+            'emptyDirectoriesToReuse' => $shouldContinue ? array_diff($completeness['incomplete'] ?? [], array_keys($completeness['incompleteUrls'] ?? [])) : [],
+            'sourceType' => $sourceType,
+            'maxConcurrency' => $maxConcurrency,
+            'maxRequestsPerMinute' => $maxRequestsPerMinute,
         ];
+
+        if ($requestDelay !== null) {
+            $config['requestDelayMs'] = $requestDelay;
+        }
         
         // Add image exceptions if provided
         if (method_exists($this, 'option') && $this->option('image-exceptions')) {

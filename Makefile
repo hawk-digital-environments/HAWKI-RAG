@@ -1,6 +1,20 @@
 # Simple Makefile to streamline the RAWKI pipeline
 
 SHELL := /bin/bash
+OS_NAME := $(shell uname -s)
+
+COMPOSE_BIN ?= docker compose
+
+ifeq ($(OS_NAME),Darwin)
+COMPOSE_PROFILES := cpu
+OLLAMA_SERVICE := ollama_cpu
+export OLLAMA_USE_MPS := 1
+else
+COMPOSE_PROFILES := gpu
+OLLAMA_SERVICE := ollama_gpu
+endif
+
+COMPOSE_CMD = COMPOSE_PROFILES=$(COMPOSE_PROFILES) $(COMPOSE_BIN)
 
 # Variables (override via `make VAR=value`)
 ENV_FILE ?= ops/LightRAG.env
@@ -16,13 +30,14 @@ network:
 	@docker network create hawki-network || true
 
 pull-core:
-	@docker compose pull qdrant nginx ollama
+	@$(COMPOSE_CMD) pull qdrant nginx $(OLLAMA_SERVICE)
 
 build-app:
-	@docker compose build app
+	@$(COMPOSE_CMD) build app
 
 up-core: network pull-core build-app
-	@docker compose up -d qdrant nginx ollama app
+	@echo "Launching core stack (profile: $(COMPOSE_PROFILES))..."
+	@$(COMPOSE_CMD) up -d --remove-orphans qdrant nginx $(OLLAMA_SERVICE) app
 	@echo "Ensuring Ollama has bge-m3 model pulled..."
 	@docker exec hawki_ollama ollama pull bge-m3 >/dev/null 2>&1 || true
 	@echo "Ensuring Ollama has llama3:8b model pulled..."
@@ -64,19 +79,19 @@ ingest:
 		--batch 16
 
 logs-core:
-	@docker compose logs -f qdrant nginx ollama app
+	@$(COMPOSE_CMD) logs -f qdrant nginx $(OLLAMA_SERVICE) app
 
 logs-rag:
 	@docker compose -f $(OPS_COMPOSE) --env-file $(ENV_FILE) logs -f
 
 down-core:
-	@docker compose down
+	@$(COMPOSE_CMD) down
 
 down-rag:
 	@docker compose -f $(OPS_COMPOSE) --env-file $(ENV_FILE) down
 
 restart-core:
-	@docker compose up -d --force-recreate qdrant nginx ollama app
+	@$(COMPOSE_CMD) up -d --force-recreate qdrant nginx $(OLLAMA_SERVICE) app
 
 restart-rag:
 	@docker compose -f $(OPS_COMPOSE) --env-file $(ENV_FILE) up -d --force-recreate

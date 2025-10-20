@@ -1,3 +1,20 @@
+x-ollama-base: &ollama_base
+    image: ollama/ollama:latest
+    container_name: hawki_ollama
+    ports:
+        - "11434:11434"
+    volumes:
+        - ollama:/root/.ollama
+    networks:
+        - hawki-network
+    restart: unless-stopped
+    healthcheck:
+        test: ["CMD", "curl", "-fsS", "http://localhost:11434/api/tags"]
+        interval: 20s
+        timeout: 5s
+        retries: 10
+        start_period: 20s
+
 services:
     app:
         build:
@@ -47,30 +64,23 @@ services:
             start_period: 20s
 
     # Ollama (local models for LLM/embeddings)
-    ollama:
-        image: ollama/ollama:latest
+    ollama_cpu:
+        <<: *ollama_base
+        profiles: ["cpu"]
+        environment:
+            - OLLAMA_USE_MPS=${OLLAMA_USE_MPS:-0}
+
+    ollama_gpu:
+        <<: *ollama_base
+        profiles: ["gpu"]
         deploy:
             resources:
                 reservations:
                     devices:
-                    - driver: nvidia
-                      count: all
-                      capabilities:
-                        - gpu
-        container_name: hawki_ollama
-        ports:
-            - "11434:11434"
-        volumes:
-            - ollama:/root/.ollama
-        networks:
-            - hawki-network
-        restart: unless-stopped
-        healthcheck:
-            test: ["CMD", "curl", "-fsS", "http://localhost:11434/api/tags"]
-            interval: 20s
-            timeout: 5s
-            retries: 10
-            start_period: 20s
+                        - driver: nvidia
+                          count: all
+                          capabilities:
+                            - gpu
     # MinIO Object Storage (disabled)
     # minio:
     #     image: minio/minio
