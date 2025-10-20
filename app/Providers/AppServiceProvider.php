@@ -15,13 +15,9 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        Route::aliasMiddleware('serverAuthentication', ExternalServerAuth::class);
         $this->app->bind('ollama.provider', function () {
             return new OllamaProvider();
         });
-        if (config('model_providers') === null && config('model_provider') !== null) {
-            config()->set('model_providers', config('model_provider'));
-        }
     }
 
     /**

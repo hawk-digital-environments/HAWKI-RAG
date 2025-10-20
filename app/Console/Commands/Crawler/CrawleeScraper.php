@@ -1,29 +1,18 @@
 <?php
 
-namespace App\Console\Commands\Crawler; 
+namespace App\Console\Commands\Crawler;
 
+use App\Services\Crawler\CrawlerOrchestrator;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\File;
 use Illuminate\Support\Str;
-use App\Services\Crawler\CrawlerProgressService;
-use App\Services\Crawler\CrawlerUrlService;
-use App\Services\Concerns\Crawler\ManagesDirectories;
-use App\Services\Concerns\Crawler\DirectoryCompleteness;
-use App\Services\Concerns\Crawler\HandlesFileSystem;
-use App\Services\Concerns\Crawler\ManagesExistingData;
-use App\Services\Concerns\Crawler\BuildsConfiguration;
-use App\Services\Concerns\Crawler\ExecutesCrawler;
 
 class CrawleeScraper extends Command
 {
-    use ManagesDirectories, DirectoryCompleteness, HandlesFileSystem, 
-        ManagesExistingData, BuildsConfiguration, ExecutesCrawler;
-
     private const SKIP_HOSTS = [
         'publikationsserver.hawk.de',
     ];
 
-    protected $signature = 'crawlee:scrape 
+    protected $signature = 'crawlee:scrape
                             {url? : The starting URL to crawl}
                             {--max-pages=100 : Maximum number of pages to crawl}
                             {--output-dir=storage/app/private/crawled-data : Directory to store crawled data}
@@ -35,110 +24,194 @@ class CrawleeScraper extends Command
     protected $description = 'Scrape websites using Crawlee';
 
     public function __construct(
-        private CrawlerProgressService $progressService,
-        private CrawlerUrlService $urlService
+        private CrawlerOrchestrator $orchestrator
     ) {
         parent::__construct();
     }
 
-    public function handle()
+    public function handle(): int
     {
-        // Process and validate input URL
-        [$url, $sitemapUrls, $isLocalFile, $baseUrl, $sourceType] = $this->processInputUrl();
-        if (!$url) return 1;
-        
-        // Setup output directory
-        $outputDir = $this->setupOutputDirectory();
-        if (!$outputDir) return 1;
-        
-        $label = $this->option('label') ?: 'default';
-        
-        // Analyze existing data and get user choice
-        [$shouldContinue, $startFromIndex] = $this->handleExistingData($outputDir, $label);
-        if ($shouldContinue === null) return 0; // User cancelled
-        
-        // Build crawler configuration
-        $config = $this->buildCrawlerConfig($url, $isLocalFile, $baseUrl, $outputDir, $label, $startFromIndex, $shouldContinue, $sourceType);
-        
-        // Handle URL continuation logic
-        $config = $this->handleUrlContinuation($config, $shouldContinue, $startFromIndex, $sourceType, $sitemapUrls, $outputDir, $label);
-        
-        // Execute the crawler
-        $success = $this->executeNodeCrawler($config, $isLocalFile, $shouldContinue, $startFromIndex, $outputDir, $label);
-        
-        if ($success) {
-            // Handle successful completion
-            $this->handleSuccessfulCompletion($sourceType, $config, $startFromIndex, $shouldContinue, $outputDir, $label, $sitemapUrls);
-            return 0;
+        try {
+            // Get URL
+            $url = $this->argument('url');
+            if (blank($url)) {
+                $url = $this->ask('Enter the website URL to crawl (e.g., https://www.hawk.de/en)');
+            }
+
+            if (blank($url)) {
+                $this->error('URL is required');
+                return self::FAILURE;
+            }
+
+            // Check if URL is in skip list (for direct URLs)
+            if (!$this->isLocalFile($url) && $this->isHostForbidden($url)) {
+                $this->warn("Skipping crawl: {$url} is under Forbidden Hosts.");
+                return self::SUCCESS;
+            }
+
+            // Process URL first to validate and get info
+            try {
+                $urlOptions = $this->orchestrator->processUrl($url);
+
+                if ($urlOptions->isLocal()) {
+                    $this->info("Using local sitemap file: {$url}");
+
+                    // Filter out forbidden hosts from sitemap URLs
+                    $filteredUrls = $this->filterForbiddenHosts($urlOptions->sitemapUrls);
+                    $filteredCount = count($urlOptions->sitemapUrls) - count($filteredUrls);
+
+                    if ($filteredCount > 0) {
+                        $this->warn("Filtered out {$filteredCount} URLs from forbidden hosts.");
+                    }
+
+                    if (empty($filteredUrls)) {
+                        $this->error('No valid URLs remaining after filtering forbidden hosts.');
+                        return self::FAILURE;
+                    }
+
+                    $this->info("Found " . count($filteredUrls) . " valid URLs in the sitemap file.");
+
+                    // TODO: Update orchestrator to accept pre-filtered URLs
+                    // For now, the orchestrator will process all URLs from the sitemap
+                }
+            } catch (\InvalidArgumentException $e) {
+                $this->error($e->getMessage());
+                return self::FAILURE;
+            }
+
+            // Get options
+            $label = $this->option('label') ?: 'default';
+            $maxPages = (int) $this->option('max-pages');
+            $skipImages = (bool) $this->option('skip-images');
+
+            // Parse image exceptions
+            $imageExceptions = null;
+            if ($this->option('image-exceptions')) {
+                $imageExceptions = collect(explode(',', $this->option('image-exceptions')))
+                    ->map(fn($item) => trim($item))
+                    ->filter(fn($item) => filled($item))
+                    ->values()
+                    ->toArray();
+
+                if (!empty($imageExceptions)) {
+                    $this->info("Using image exceptions: " . implode(', ', $imageExceptions));
+                }
+            }
+
+            // Date selector
+            $dateSelector = filled($this->option('date')) ? $this->option('date') : null;
+            if ($dateSelector) {
+                $this->info("Using date selector: {$dateSelector}");
+            }
+
+            // Run crawler with callbacks for user interaction
+            $result = $this->orchestrator->crawl(
+                url: $url,
+                label: $label,
+                maxPages: $maxPages,
+                skipImages: $skipImages,
+                imageExceptions: $imageExceptions,
+                dateSelector: $dateSelector,
+                shouldContinueCallback: function ($existingDirs, $directoryAnalysis) {
+                    // Display statistics
+                    $this->displayExistingDataStats($existingDirs, $directoryAnalysis);
+
+                    // Ask user what to do
+                    return $this->choice(
+                        'Existing scraped data found. What would you like to do?',
+                        [
+                            'continue' => 'Continue and re-scrape incomplete directories',
+                            'restart' => 'Start a new scrape from the beginning',
+                            'cancel' => 'Cancel the scrape operation'
+                        ],
+                        'continue'
+                    );
+                },
+                shouldRestartCallback: function () {
+                    return $this->confirm(
+                        'This will DELETE all existing scraped data in the output directory. Are you sure you want to continue?',
+                        false
+                    );
+                }
+            );
+
+            // Display result
+            if ($result->isSuccessful()) {
+                $this->info('Crawling completed successfully.');
+                if ($result->output) {
+                    $this->info($result->output);
+                }
+                if (!$skipImages) {
+                    $this->info('Images have been downloaded to the crawl directory.');
+                }
+                return self::SUCCESS;
+            }
+
+            $this->error('Crawling failed:');
+            if ($result->error) {
+                $this->error($result->error);
+            }
+            return self::FAILURE;
+
+        } catch (\Throwable $e) {
+            $this->error('An error occurred: ' . $e->getMessage());
+            return self::FAILURE;
         }
-        
-        return 1;
     }
 
     /**
-     * Process and validate the input URL
+     * Check if URL host is in forbidden list
      */
-    private function processInputUrl(): array
+    private function isHostForbidden(string $url): bool
     {
-        $url = $this->argument('url');
-        
-        if (blank($url)) {
-            $url = $this->ask('Enter the website URL to crawl (e.g., https://www.hawk.de/en)');
-        }
-        
-        $isLocalFile = File::exists($url) && File::isReadable($url);
-        
-        if (!$isLocalFile && !filter_var($url, FILTER_VALIDATE_URL)) {
-            $this->error('Invalid URL provided or file not found/readable.');
-            return [null, [], false, null, null];
-        }
-        if (!$isLocalFile) {
-            $host = Str::lower((string) parse_url($url, PHP_URL_HOST));
-            if ($host && in_array($host, self::SKIP_HOSTS, true)) {
-                $this->warn("Skipping crawl: {$url} is under Forbidden Hosts.");
-                return [null, [], false, null, null];
-            }
-        }
-        
-        $sitemapUrls = [];
-        $baseUrl = null;
-        
-        if ($isLocalFile) {
-            $this->info("Using local sitemap file: $url");
-            
-            $sitemapUrls = collect(explode("\n", File::get($url)))
-                ->map(fn($line) => trim($line))
-                ->filter(fn($line) => filled($line))
-                ->filter(fn($line) => filter_var($line, FILTER_VALIDATE_URL) !== false)
-                ->reject(function ($line) {
-                    $host = Str::lower((string) parse_url($line, PHP_URL_HOST));
-                    return $host && in_array($host, self::SKIP_HOSTS, true);
-                })
-                ->values()
-                ->toArray();
-            
-            if (blank($sitemapUrls)) {
-                $this->error('The sitemap file does not contain any valid URLs.');
-                return [null, [], false, null, null];
-            }
-            
-            $this->info("Found " . count($sitemapUrls) . " valid URLs in the sitemap file.");
-            
-            $parsedUrl = parse_url($sitemapUrls[0]);
-            $baseUrl = $parsedUrl['scheme'] . '://' . $parsedUrl['host'];
-        } 
-        
-        // Determine source type
-        $sourceType = 'direct';
-        if ($isLocalFile) {
-            $sourceType = 'local';
-        } else {
-            $lowerUrl = Str::lower($url);
-            if (Str::contains($lowerUrl, ['sitemap', '.xml'])) {
-                $sourceType = 'sitemap';
-            }
-        }
-        
-        return [$url, $sitemapUrls, $isLocalFile, $baseUrl, $sourceType];
+        $host = Str::lower((string) parse_url($url, PHP_URL_HOST));
+        return $host && in_array($host, self::SKIP_HOSTS, true);
     }
-} 
+
+    /**
+     * Check if URL is a local file
+     */
+    private function isLocalFile(string $url): bool
+    {
+        return file_exists($url) && is_readable($url);
+    }
+
+    /**
+     * Filter out URLs with forbidden hosts
+     */
+    private function filterForbiddenHosts(array $urls): array
+    {
+        return collect($urls)
+            ->reject(fn($url) => $this->isHostForbidden($url))
+            ->values()
+            ->toArray();
+    }
+
+    /**
+     * Display statistics about existing scraped data
+     */
+    private function displayExistingDataStats(array $existingDirs, $directoryAnalysis): void
+    {
+        $totalExisting = count($existingDirs);
+        $totalComplete = $directoryAnalysis->getTotalComplete();
+        $totalIncomplete = $directoryAnalysis->getTotalIncomplete();
+        $lastCompleteDir = $directoryAnalysis->lastComplete;
+
+        $this->info("Found existing scraped data:");
+        $this->info("  Total directories: {$totalExisting}");
+        $this->info("  Complete directories: {$totalComplete}");
+        $this->info("  Incomplete directories: {$totalIncomplete}");
+
+        if ($totalComplete > 0) {
+            $this->info("  Last complete directory: " . Str::padLeft($lastCompleteDir, 5, '0'));
+        }
+
+        if ($totalIncomplete > 0) {
+            $incompleteList = collect($directoryAnalysis->incomplete)
+                ->map(fn($num) => Str::padLeft($num, 5, '0'))
+                ->implode(', ');
+
+            $this->warn("  Incomplete directories: {$incompleteList}");
+        }
+    }
+}
