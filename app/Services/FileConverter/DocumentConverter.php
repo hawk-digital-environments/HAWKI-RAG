@@ -23,7 +23,14 @@ class DocumentConverter
             throw new \InvalidArgumentException("Invalid file input. Expected UploadedFile or SplFileInfo.");
         }
 
-        $response = Http::attach(
+        $request = Http::timeout((int) config('services.file_converter.timeout', 300))
+            ->connectTimeout((int) config('services.file_converter.connect_timeout', 10));
+
+        if ($token = config('services.file_converter.token')) {
+            $request = $request->withToken($token);
+        }
+
+        $response = $request->attach(
             'file',
             $resource,
             $filename
