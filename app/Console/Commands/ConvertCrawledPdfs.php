@@ -2,11 +2,11 @@
 
 namespace App\Console\Commands;
 
+use App\Services\FileConverter\DocumentConverter;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Log;
 use SplFileInfo;
-use App\Toolkit\FileConverter\DocumentConverter;
 
 class ConvertCrawledPdfs extends Command
 {

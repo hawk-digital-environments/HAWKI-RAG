@@ -1,13 +1,12 @@
 <?php
 
-namespace App\Toolkit\FileConverter;
+namespace App\Services\FileConverter;
 
-use Illuminate\Support\Facades\Http;
 use Illuminate\Http\UploadedFile;
-use Illuminate\Support\Facades\Log;
-use ZipArchive;
-use RecursiveIteratorIterator;
+use Illuminate\Support\Facades\Http;
 use RecursiveDirectoryIterator;
+use RecursiveIteratorIterator;
+use ZipArchive;
 
 class DocumentConverter
 {

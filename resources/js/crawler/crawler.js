@@ -195,7 +195,19 @@ async function runCrawler() {
             minConcurrency: 1,
             ...(USE_RPM_THROTTLE ? { maxRequestsPerMinute: MAX_REQUESTS_PER_MINUTE } : {}),
             ...(preNavigationHooks.length ? { preNavigationHooks } : {}),
-            
+
+            // Session pool configuration to prevent DDoS-like behavior
+            // This reuses sessions/cookies across requests instead of creating new ones
+            sessionPoolOptions: {
+                maxPoolSize: 1,  // Use single session for all requests
+                sessionOptions: {
+                    maxUsageCount: 500,  // Max requests before rotating session
+                    maxErrorScore: 3,    // Max errors before session is retired
+                }
+            },
+
+            // Request handler options to mimic real browser behavior
+            persistCookiesPerSession: true,  // Keep cookies between requests
             async requestHandler({ request, $, log, response, enqueueLinks }) {
                 const url = request.url;
 
