@@ -32,6 +32,25 @@ const USE_RPM_THROTTLE = (!REQUEST_DELAY_MS || REQUEST_DELAY_MS === 0) && !!MAX_
 // Initialize counter for unique IDs
 let itemCounter = config.startFromIndex - 1;
 
+const crawlerMetrics = {
+    totalRequests: 0,
+    skippedAlreadyProcessed: 0,
+    skippedEmptyBody: 0,
+    skipped404: 0,
+    handledPdfRequests: 0,
+    sessionIds: new Set(),
+};
+
+function logCrawlerMetrics() {
+    const sessions = [...crawlerMetrics.sessionIds];
+    console.log(`[Crawler][Metrics] Sessions used: ${sessions.length}`, sessions.length ? `(${sessions.join(', ')})` : '');
+    console.log(`[Crawler][Metrics] Total requests seen: ${crawlerMetrics.totalRequests}`);
+    console.log(`[Crawler][Metrics] Requests skipped (already processed): ${crawlerMetrics.skippedAlreadyProcessed}`);
+    console.log(`[Crawler][Metrics] Requests skipped (empty body): ${crawlerMetrics.skippedEmptyBody}`);
+    console.log(`[Crawler][Metrics] Requests skipped (404): ${crawlerMetrics.skipped404}`);
+    console.log(`[Crawler][Metrics] Direct PDF requests handled: ${crawlerMetrics.handledPdfRequests}`);
+}
+
 /* ===== PDF scraping logic: begin ===== */
 
 /** Fetch a URL as binary Buffer using native fetch. */
@@ -89,7 +108,7 @@ async function downloadPdfsFromHtml($, pageUrl, pageDir, log) {
  * If the current request is a PDF (by URL or content-type), download it directly.
  * Returns { handled: boolean } — if handled, the caller should return early.
  */
-async function maybeHandleDirectPdf({ request, response, log }) {
+async function maybeHandleDirectPdf({ request, response, log, metrics = null }) {
     const url = request.url;
     const isPdfUrl = () => {
         try {
@@ -104,6 +123,10 @@ async function maybeHandleDirectPdf({ request, response, log }) {
     const isPdfHeader = typeof contentType === 'string' && contentType.toLowerCase().includes('application/pdf');
 
     if (!isPdfUrl() && !isPdfHeader) return { handled: false };
+
+    if (metrics) {
+        metrics.handledPdfRequests += 1;
+    }
 
     // Setup page directory for this PDF request
     const directoryInfo = setupPageDirectory(request, crawlDir, itemCounter);
@@ -157,6 +180,8 @@ async function runCrawler() {
             : 'no explicit per-minute throttle';
     console.log(`[Crawler] Throttle settings -> concurrency: ${MAX_CONCURRENCY}, ${throttleSummary}`);
     
+    let progressBarPrinted = false;
+
     try {
         // Process URLs from various sources
         const { allUrlsToProcess, baseUrl } = await processUrlSources(
@@ -176,8 +201,48 @@ async function runCrawler() {
         
         // Build Crawlee requests
         const requests = buildCrawleeRequests(urlQueue);
+        const initialRequests = requests.length;
+        const progressTarget = config.maxPages > 0
+            ? config.maxPages
+            : (initialRequests > 0 ? initialRequests : null);
+        const baseCompleted = Math.max(0, (config.startFromIndex ?? 1) - 1);
+        let completedRequests = 0;
+
+        const markRequestComplete = (log, reason = null) => {
+            completedRequests += 1;
+
+            const progressEnabled = progressTarget !== null || initialRequests > 0;
+            if (progressEnabled) {
+                const totalCompleted = baseCompleted + completedRequests;
+                const target = progressTarget
+                    ?? Math.max(baseCompleted + initialRequests, totalCompleted);
+                const ratio = target > 0 ? Math.min(1, totalCompleted / target) : 1;
+                const PROGRESS_BAR_LENGTH = 24;
+                const filled = Math.min(PROGRESS_BAR_LENGTH, Math.round(ratio * PROGRESS_BAR_LENGTH));
+                const bar = `[${'='.repeat(filled).padEnd(PROGRESS_BAR_LENGTH, ' ')}]`;
+                const percent = (ratio * 100).toFixed(1);
+                const suffix = reason ? ` [${reason}]` : '';
+                process.stdout.write(`\r[Crawler][Progress] ${bar} ${totalCompleted}/${target} ${percent}%${suffix}   `);
+                progressBarPrinted = true;
+
+                if (progressTarget !== null && totalCompleted >= progressTarget) {
+                    process.stdout.write('\n');
+                    progressBarPrinted = false;
+                }
+                return;
+            }
+
+            const totalCompleted = baseCompleted + completedRequests;
+            const base = `[Crawler][Progress] Completed ${totalCompleted} request${totalCompleted === 1 ? '' : 's'}`;
+            const message = reason ? `${base} [${reason}]` : base;
+            if (log?.info) {
+                log.info(message);
+            } else {
+                console.log(message);
+            }
+        };
         
-        if (requests.length === 0) {
+        if (initialRequests === 0 && progressTarget === null) {
             return;
         }
         
@@ -208,24 +273,35 @@ async function runCrawler() {
 
             // Request handler options to mimic real browser behavior
             persistCookiesPerSession: true,  // Keep cookies between requests
-            async requestHandler({ request, $, log, response, enqueueLinks }) {
+            async requestHandler({ request, $, log, response, enqueueLinks, session }) {
                 const url = request.url;
+                crawlerMetrics.totalRequests += 1;
+
+                if (session?.id && !crawlerMetrics.sessionIds.has(session.id)) {
+                    crawlerMetrics.sessionIds.add(session.id);
+                    console.log(`[Crawler][Metrics] Session initialized: ${session.id}`);
+                }
 
                 // 0) Handle direct PDF responses/URLs up-front (binary fetch + save)
-                const handledPdf = await maybeHandleDirectPdf({ request, response, log });
+                const handledPdf = await maybeHandleDirectPdf({ request, response, log, metrics: crawlerMetrics });
                 if (handledPdf.handled) {
+                    markRequestComplete(log, 'pdf');
                     return;
                 }
                 
                 // Skip 404 responses
                 if (response && response.status === 404) {
                     log.info(`SKIPPING 404 Not Found: ${url}`);
+                    crawlerMetrics.skipped404 += 1;
+                    markRequestComplete(log, '404');
                     return;
                 }
                 
                 // Skip already processed URLs (unless reusing directory)
                 if (processedUrls.has(url) && !request.userData.reuseDirectory) {
                     log.info(`Skipping already processed URL: ${url}`);
+                    crawlerMetrics.skippedAlreadyProcessed += 1;
+                    markRequestComplete(log, 'already-processed');
                     return;
                 }
                 
@@ -237,6 +313,8 @@ async function runCrawler() {
 
                 if (bodyText.length === 0) {
                     log.info(`SKIPPING empty body: ${url}`);
+                    crawlerMetrics.skippedEmptyBody += 1;
+                    markRequestComplete(log, 'empty');
                     return;
                 }
                 
@@ -283,6 +361,7 @@ async function runCrawler() {
                     data.pdfs = savedPdfs;
                 }
                 savePageData(pageDir, formattedId, data, title, log);
+                markRequestComplete(log);
                 // Enqueue internal links so the crawler continues beyond the seed.
                 // This keeps the crawl constrained to the same domain.
                 await enqueueLinks({
@@ -297,6 +376,7 @@ async function runCrawler() {
             
             failedRequestHandler({ request, error, log }) {
                 log.error(`Request failed (${request.url}): ${error.message}`);
+                markRequestComplete(log, 'failed');
             }
         });
         
@@ -307,11 +387,21 @@ async function runCrawler() {
         // Cleanup and success
         cleanupTempDirectory(tempDir);
         logSuccess();
+        if (progressBarPrinted) {
+            process.stdout.write('\n');
+            progressBarPrinted = false;
+        }
         
     } catch (error) {
         console.error(`Error during crawling: ${error.message}`);
+        logCrawlerMetrics();
+        if (progressBarPrinted) {
+            process.stdout.write('\n');
+        }
         process.exit(1);
     }
+    
+    logCrawlerMetrics();
 }
 
 // Run the crawler

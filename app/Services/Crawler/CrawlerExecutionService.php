@@ -39,22 +39,38 @@ class CrawlerExecutionService
             }
         }
 
+        $outputBuffer = '';
+        $errorBuffer = '';
+
         $process = Process::path($nodePath)
             ->timeout(0)
             ->idleTimeout(0)
-            ->run('node crawler.js ' . escapeshellarg($jsonConfig));
+            ->run(
+                'node crawler.js ' . escapeshellarg($jsonConfig),
+                function (string $type, string $buffer) use (&$outputBuffer, &$errorBuffer) {
+                    if ($type === 'out') {
+                        $outputBuffer .= $buffer;
+                        fwrite(STDOUT, $buffer);
+                        fflush(STDOUT);
+                    } else {
+                        $errorBuffer .= $buffer;
+                        fwrite(STDERR, $buffer);
+                        fflush(STDERR);
+                    }
+                }
+            );
 
         if ($process->successful()) {
             return new CrawlerResult(
                 success: true,
-                output: $process->output()
+                output: $outputBuffer
             );
         }
 
         return new CrawlerResult(
             success: false,
-            output: $process->output(),
-            error: $process->errorOutput()
+            output: $outputBuffer,
+            error: $errorBuffer !== '' ? $errorBuffer : $process->errorOutput()
         );
     }
 

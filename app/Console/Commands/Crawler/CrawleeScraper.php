@@ -12,6 +12,8 @@ class CrawleeScraper extends Command
         'publikationsserver.hawk.de',
     ];
 
+    private array $forbiddenHostPatterns = [];
+
     protected $signature = 'crawlee:scrape
                             {url? : The starting URL to crawl}
                             {--max-pages=100 : Maximum number of pages to crawl}
@@ -30,6 +32,7 @@ class CrawleeScraper extends Command
         private CrawlerOrchestrator $orchestrator
     ) {
         parent::__construct();
+        $this->forbiddenHostPatterns = $this->loadForbiddenHosts();
     }
 
     public function handle(): int
@@ -168,7 +171,22 @@ class CrawleeScraper extends Command
     private function isHostForbidden(string $url): bool
     {
         $host = Str::lower((string) parse_url($url, PHP_URL_HOST));
-        return $host && in_array($host, self::SKIP_HOSTS, true);
+
+        if (!$host) {
+            return false;
+        }
+
+        if (in_array($host, self::SKIP_HOSTS, true)) {
+            return true;
+        }
+
+        foreach ($this->forbiddenHostPatterns as $pattern) {
+            if (Str::is($pattern, $host)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -188,6 +206,27 @@ class CrawleeScraper extends Command
             ->reject(fn($url) => $this->isHostForbidden($url))
             ->values()
             ->toArray();
+    }
+
+    /**
+     * Load additional forbidden host patterns from storage/forbidden-hosts.txt
+     */
+    private function loadForbiddenHosts(): array
+    {
+        $path = base_path('storage/forbidden-hosts.txt');
+
+        if (!file_exists($path)) {
+            return [];
+        }
+
+        $lines = file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+
+        return collect($lines)
+            ->map(fn($line) => trim($line))
+            ->filter(fn($line) => $line !== '' && !str_starts_with($line, '#'))
+            ->map(fn($line) => Str::lower($line))
+            ->values()
+            ->all();
     }
 
     /**
