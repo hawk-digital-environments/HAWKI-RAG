@@ -13,12 +13,12 @@ COPY requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir -r /tmp/requirements.txt && rm /tmp/requirements.txt
 
 # Install Bun and build the LightRAG WebUI during image build so the frontend is ready at runtime
-RUN bash -lc '
-  set -euo pipefail
-  curl -fsSL https://bun.sh/install | bash
-  export BUN_INSTALL=/root/.bun
-  export PATH="$BUN_INSTALL/bin:$PATH"
-  WEBUI_DIR=$(python - <<'"'"'PY'"'"'
+RUN <<'BASH'
+set -euo pipefail
+curl -fsSL https://bun.sh/install | bash
+export BUN_INSTALL=/root/.bun
+export PATH="$BUN_INSTALL/bin:$PATH"
+WEBUI_DIR=$(python - <<'PY'
 import importlib.util
 import pathlib
 import sys
@@ -27,11 +27,11 @@ if spec is None or spec.origin is None:
     sys.exit("lightrag_webui package not found after installation.")
 print(pathlib.Path(spec.origin).parent)
 PY
-  )
-  cd "$WEBUI_DIR"
-  bun install --frozen-lockfile
-  bun run build
-'
+)
+cd "$WEBUI_DIR"
+bun install --frozen-lockfile
+bun run build
+BASH
 
 # The server reads configuration from environment variables (.env via env_file)
 EXPOSE 9621
