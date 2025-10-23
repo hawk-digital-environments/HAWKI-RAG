@@ -144,6 +144,23 @@ class QdrantHTTP:
         j = r.json()
         return j.get("result", [])
 
+    def delete_by_filter(self, filter_body: Dict[str, Any]) -> Dict[str, Any]:
+        """Delete points matching the supplied Qdrant filter."""
+        payload = {"filter": filter_body}
+        r = self._request(
+            "POST",
+            f"/collections/{self.collection}/points/delete",
+            json=payload,
+            timeout=float(os.environ.get("QDRANT_DELETE_TIMEOUT", self.timeout)),
+        )
+        r.raise_for_status()
+        return r.json()
+
+    def delete_by_doc_id(self, doc_id: str) -> Dict[str, Any]:
+        """Delete all points that belong to the provided document id."""
+        filt = {"must": [{"key": "doc_id", "match": {"value": str(doc_id)}}]}
+        return self.delete_by_filter(filt)
+
     def get_collection_config(self) -> Dict[str, Any]:
         """Fetch the collection configuration from Qdrant."""
         r = self._request("GET", f"/collections/{self.collection}")

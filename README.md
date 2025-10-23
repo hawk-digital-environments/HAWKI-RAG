@@ -168,7 +168,7 @@ Full deployment notes live in [`docs/DEPLOY.md`](docs/DEPLOY.md). Highlights:
 | `rawki_neo4j`       | Knowledge graph database (stores RAWKI triplets)                       |
 | `rawki_core`        | RAWKI UI/API using Qdrant + Neo4j adapters                              |
 | `rawki_bridge`      | FastAPI bridge exposing `/ingest` + enhanced `/query` endpoints         |
-| `rawki_rerank`      | Cohere-compatible reranker (BAAI/bge-reranker-v2-m3 by default)         |
+| `rawki_rerank`      | Cohere-compatible reranker (mixedbread-ai/mxbai-rerank-base-v1 by default) |
 | `hawki_ollama`      | Local embeddings provider (Ollama)                                      |
 | `hawki-vector-database-app` | Laravel PHP application                                         |
 
@@ -213,4 +213,3 @@ knowledge graph in Neo4j without changing the core LightRAG logic.
 ## Further Reading
 
 - Step-by-step replication guide: [docs/story.md](docs/story.md)
-

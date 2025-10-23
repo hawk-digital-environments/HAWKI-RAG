@@ -6,15 +6,15 @@ use Illuminate\Console\Command;
 
 class CrawlAndConvert extends Command
 {
-    /**
-     * Usage example:
-     * php artisan crawl:and-convert "https://www.hawk.de/" \
-     *   --max-pages=100000 \
-     *   --output-dir=storage/app/private/crawled-data/hawk-full \
-     *   --label="hawk-full" \
-     *   --image-exceptions="data:image,.svg,icon,favicon,logo,sprite,placeholder" \
-     *   --date="meta[property='og:updated_time']"
-     */
+        /**
+         * Usage example:
+         * php artisan crawl:and-convert "https://www.hawk.de/" \
+         *   --max-pages=100000 \
+         *   --output-dir=storage/app/private/crawled-data/hawk-full \
+         *   --label="hawk-full" \
+         *   --image-exceptions="data:image,.svg,icon,favicon,logo,sprite,placeholder" \
+         *   --date="meta[property='og:updated_time']"
+         */
     protected $signature = 'crawl:and-convert
         {url : The starting URL to crawl}
         {--max-pages=100 : Maximum number of pages to crawl}

@@ -74,6 +74,15 @@
             border: 1px solid rgba(94, 234, 212, 0.4);
             color: #99f6e4;
         }
+        .provenance {
+            display: none;
+            margin: 0 0 1rem 0;
+            padding: 0.85rem 1rem;
+            border-radius: 0.9rem;
+            background: rgba(22, 78, 99, 0.35);
+            border: 1px solid rgba(94, 234, 212, 0.4);
+            font-size: 0.9rem;
+        }
         .hits-list { display: grid; gap: 1rem; }
         .hit {
             border-radius: 1rem;
@@ -151,6 +160,7 @@
 
         <section class="card" id="results" style="display: none;">
             <h2>Results</h2>
+            <div id="provenance-banner" class="provenance"></div>
             <div id="meta" style="display:flex; flex-wrap:wrap; gap:0.5rem 0.75rem; margin-bottom: 1rem;"></div>
             <div id="answer-block" style="display:none; margin-bottom:1.5rem;">
                 <h3 style="margin-top:0;">RAWKI Answer</h3>
@@ -189,12 +199,43 @@
         const kgBody = document.querySelector('#kg-table tbody');
         const rawJson = document.getElementById('raw-json');
         const metaEl = document.getElementById('meta');
+        const provenanceBanner = document.getElementById('provenance-banner');
 
         function badge(text) {
             const span = document.createElement('span');
             span.className = 'badge';
             span.textContent = text;
             return span;
+        }
+
+        function extractHost(url) {
+            if (!url) return null;
+            try {
+                return new URL(url).hostname.replace(/^www\./i, '');
+            } catch (error) {
+                return null;
+            }
+        }
+
+        function parseTimestamp(value) {
+            if (!value && value !== 0) return null;
+            if (typeof value === 'number') {
+                const ms = value > 1e12 ? value : value * 1000;
+                const date = new Date(ms);
+                return Number.isNaN(date.getTime()) ? null : date;
+            }
+            const text = String(value).trim();
+            if (!text) return null;
+            const parsed = Date.parse(text);
+            if (Number.isNaN(parsed)) return null;
+            const date = new Date(parsed);
+            return Number.isNaN(date.getTime()) ? null : date;
+        }
+
+        function formatISODate(date) {
+            if (!(date instanceof Date)) return null;
+            if (Number.isNaN(date.getTime())) return null;
+            return date.toISOString().slice(0, 10);
         }
 
         form.addEventListener('submit', async (event) => {
@@ -209,6 +250,8 @@
             hitsBlock.style.display = 'none';
             kgBlock.style.display = 'none';
             metaEl.innerHTML = '';
+            provenanceBanner.style.display = 'none';
+            provenanceBanner.textContent = '';
 
             const payload = {
                 query,
@@ -311,10 +354,40 @@
                     });
                 }
 
+                const hostSet = new Set();
+                const timestamps = [];
+                const dateFields = ['ingested_at', 'updated_at', 'modified_at', 'crawled_at', 'captured_at', 'published_at', 'date'];
+                hits.forEach((hit) => {
+                    const payload = hit.payload || {};
+                    const host = extractHost(payload.page_url || payload.source_url || payload.parent_url || payload.parent_page_url || '');
+                    if (host) hostSet.add(host);
+                    dateFields.forEach((field) => {
+                        const parsed = parseTimestamp(payload[field]);
+                        if (parsed) timestamps.push(parsed);
+                    });
+                });
+                let hostSummary = Array.from(hostSet).slice(0, 3).join(', ');
+                if (hostSet.size > 3) hostSummary += ', …';
+                if (!hostSummary) hostSummary = 'internal corpus';
+                let latestLabel = 'unknown date';
+                if (timestamps.length) {
+                    timestamps.sort((a, b) => b.getTime() - a.getTime());
+                    const formatted = formatISODate(timestamps[0]);
+                    if (formatted) latestLabel = formatted;
+                }
+                if (hits.length) {
+                    provenanceBanner.textContent = `Answer based on ${hits.length} internal source${hits.length === 1 ? '' : 's'} (${hostSummary}), as of ${latestLabel}.`;
+                } else {
+                    provenanceBanner.textContent = 'No supporting sources were retrieved. Treat this as a "no answer" result.';
+                }
+                provenanceBanner.style.display = 'block';
+
                 statusEl.textContent = 'Done.';
             } catch (error) {
                 statusEl.textContent = error.message;
                 console.error(error);
+                provenanceBanner.textContent = 'No answer available – RAWKI could not retrieve grounded sources.';
+                provenanceBanner.style.display = 'block';
             } finally {
                 runBtn.disabled = false;
             }

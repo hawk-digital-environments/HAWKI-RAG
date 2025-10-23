@@ -1,7 +1,7 @@
 import logging
 import os
 import time
-from typing import Iterable, Tuple, List, Dict, Any
+from typing import Iterable, Tuple, List, Dict, Any, Optional
 
 from neo4j import GraphDatabase, exceptions as neo4j_exceptions
 
@@ -55,19 +55,48 @@ class Neo4jGraph:
             for record in results
         ]
 
-    def upsert_triplets(self, triplets: Iterable[Tuple[str, str, str]]):
-        """Insert or update triplets by merging nodes and relationships."""
+    def upsert_triplets(self, triplets: Iterable[Tuple[str, str, str]], *, doc_id: Optional[str] = None):
+        """Insert or update triplets by merging nodes and relationships.
+
+        Each relationship is keyed by both its semantic type and the source doc_id
+        so documents can later be rectified or deleted without affecting other facts.
+        """
         cypher = (
             "UNWIND $rows AS row "
             "MERGE (s:Entity {name: row.s}) "
             "MERGE (o:Entity {name: row.o}) "
-            "MERGE (s)-[r:REL {type: row.r}]->(o)"
+            "MERGE (s)-[r:REL {type: row.r, doc_id: row.doc_id}]->(o) "
+            "SET r.updated_at = timestamp()"
         )
-        rows = [{"s": s, "r": r, "o": o} for s, r, o in triplets if s and r and o]
+        doc_key = str(doc_id) if doc_id is not None else "__legacy__"
+        rows = [{"s": s, "r": r, "o": o, "doc_id": doc_key} for s, r, o in triplets if s and r and o]
         if not rows:
             return
         with self._driver.session() as session:
             session.execute_write(lambda tx: tx.run(cypher, rows=rows))
+
+    def delete_by_doc_id(self, doc_id: str) -> Dict[str, int]:
+        """Remove relationships (and orphaned nodes) belonging to a document."""
+        doc_key = str(doc_id)
+        with self._driver.session() as session:
+            def _delete(tx):
+                result = tx.run(
+                    "MATCH (s:Entity)-[r:REL {doc_id: $doc_id}]->(o:Entity) DELETE r",
+                    doc_id=doc_key,
+                )
+                summary = result.consume()
+                return summary.counters.relationships_deleted
+
+            relationships_deleted = session.execute_write(_delete)
+
+            def _cleanup(tx):
+                result = tx.run("MATCH (n:Entity) WHERE NOT (n)--() DELETE n")
+                summary = result.consume()
+                return summary.counters.nodes_deleted
+
+            nodes_deleted = session.execute_write(_cleanup) if relationships_deleted else 0
+
+        return {"relationships_deleted": relationships_deleted, "entities_deleted": nodes_deleted}
 
     def fetch_related(self, terms: Iterable[str], limit: int = 25) -> List[Dict[str, str]]:
         """Pull related entities/relations that match any of the supplied terms."""

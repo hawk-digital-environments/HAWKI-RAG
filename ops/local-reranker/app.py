@@ -4,7 +4,8 @@ from pydantic import BaseModel, Field
 from sentence_transformers import CrossEncoder
 
 app = FastAPI(title="Local Reranker", version="0.1.0")
-model = CrossEncoder("BAAI/bge-reranker-v2-m3")
+# Load the Mixedbread reranker once at startup so every request reuses the weights.
+model = CrossEncoder("mixedbread-ai/mxbai-rerank-base-v1")
 
 class RerankRequest(BaseModel):
     # Cohere-compatible fields
@@ -37,4 +38,3 @@ def rerank(req: RerankRequest) -> Dict[str, Any]:
         } for i, s in top
     ]
     return {"results": results}
-
