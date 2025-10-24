@@ -6,7 +6,9 @@ x-ollama-base: &ollama_base
     volumes:
         - ollama:/root/.ollama
     networks:
-        - hawki-network
+        hawki-network:
+            aliases:
+                - ollama
     restart: unless-stopped
     healthcheck:
         test: ["CMD", "curl", "-fsS", "http://localhost:11434/api/tags"]

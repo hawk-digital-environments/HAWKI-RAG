@@ -203,7 +203,7 @@ python3 scripts/retry_ingest_docs.py \
   --batch 16
 ```
 
-### RAWKI Foundations (built on LightRAG)
+### RAWKI (built on LightRAG)
 
 The pipeline adheres to the LightRAG paper’s workflow: documents are chunked,
 summarised, entities/relations are extracted, and the graph relationships influence
