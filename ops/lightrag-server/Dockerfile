@@ -5,7 +5,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates && \
+RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates curl unzip && \
     rm -rf /var/lib/apt/lists/*
 
 # Install LightRAG and supplemental dependencies
@@ -21,16 +21,19 @@ export PATH="$BUN_INSTALL/bin:$PATH"
 WEBUI_DIR=$(python - <<'PY'
 import importlib.util
 import pathlib
-import sys
 spec = importlib.util.find_spec("lightrag_webui")
-if spec is None or spec.origin is None:
-    sys.exit("lightrag_webui package not found after installation.")
-print(pathlib.Path(spec.origin).parent)
+if spec and spec.origin:
+    print(pathlib.Path(spec.origin).parent)
 PY
 )
-cd "$WEBUI_DIR"
-bun install --frozen-lockfile
-bun run build
+if [ -n "$WEBUI_DIR" ]; then
+  echo "Building LightRAG WebUI in $WEBUI_DIR"
+  cd "$WEBUI_DIR"
+  bun install --frozen-lockfile
+  bun run build
+else
+  echo "LightRAG WebUI package not found; skipping frontend build."
+fi
 BASH
 
 # The server reads configuration from environment variables (.env via env_file)

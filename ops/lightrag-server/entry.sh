@@ -19,6 +19,48 @@ ensure("aiofiles", "aiofiles>=24.1,<25")
 ensure("multipart", "python-multipart>=0.0.9,<0.0.10")
 PY
 
+# If the packaged LightRAG distribution does not include the built WebUI assets,
+# create a tiny placeholder so the server does not crash on startup.
+python - <<'PY'
+import importlib
+import pathlib
+
+try:
+    pkg = importlib.import_module("lightrag")
+    api_server = importlib.import_module("lightrag.api.lightrag_server")
+except ModuleNotFoundError:
+    pkg = None
+    api_server = None
+
+content = "<!doctype html><title>LightRAG UI</title><body><p>Web UI not packaged.</p></body>"
+
+if api_server is not None:
+    server_root = pathlib.Path(api_server.__file__).parent / "webui"
+    try:
+        server_root.mkdir(parents=True, exist_ok=True)
+        index = server_root / "index.html"
+        if not index.exists():
+            index.write_text(content, encoding="utf-8")
+    except OSError:
+        pass
+
+if pkg is not None:
+    root = pathlib.Path(pkg.__file__).parent
+    candidates = [
+        root / "webui_static",
+        root / "lightrag_webui" / "dist",
+        root / "static",
+    ]
+    for path in candidates:
+        try:
+            path.mkdir(parents=True, exist_ok=True)
+            index = path / "index.html"
+            if not index.exists():
+                index.write_text(content, encoding="utf-8")
+        except OSError:
+            continue
+PY
+
 python - <<'PY'
 import os
 import socket
