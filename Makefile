@@ -42,6 +42,8 @@ up-core: network pull-core build-app
 	@docker exec hawki_ollama ollama pull bge-m3 >/dev/null 2>&1 || true
 	@echo "Ensuring Ollama has llama3:8b model pulled..."
 	@docker exec hawki_ollama ollama pull llama3:8b >/dev/null 2>&1 || true
+	@echo "Ensuring Ollama has llama3.1:8b model pulled..."
+	@docker exec -it hawki_ollama ollama pull llama3.1:8b >/dev/null 2>&1 || true
 
 up-rag:
 	@docker compose -f $(OPS_COMPOSE) --env-file $(ENV_FILE) build rawki_rerank || true

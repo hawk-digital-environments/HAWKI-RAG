@@ -67,10 +67,57 @@ class OllamaProvider:
             resp = j.get("response")
             if isinstance(resp, str):
                 return resp
-        # Fallback to /generate
-        url = f"{self.base}/generate"
-        prompt = system + "\n\nUser:\n" + (messages[-1].get("content") if messages else "")
-        r2 = requests.post(url, json={"model": self.rag_model, "prompt": prompt, "stream": False}, timeout=120)
-        r2.raise_for_status()
-        j2 = r2.json()
-        return str(j2.get("response", ""))
+        else:
+            detail = self._extract_error_message(r)
+            status = r.status_code
+            if status == 404 and "model" in detail.lower():
+                raise RuntimeError(
+                    f"Ollama chat model '{self.rag_model}' is not installed. "
+                    "Run `ollama pull` inside the Ollama container or host."
+                )
+            if status != 404:
+                raise RuntimeError(f"Ollama chat HTTP error ({status}): {detail}")
+            # Fallback for legacy endpoints that do not expose /api/chat
+            prompt = system + "\n\nUser:\n" + (messages[-1].get("content") if messages else "")
+            candidates = [f"{self.base}/generate"]
+            if self.base.endswith("/api"):
+                base_no_api = self.base[: -4]
+                candidates.append(f"{base_no_api}/generate")
+                candidates.append(f"{base_no_api}/api/generate")
+            last_error: str | None = None
+            for candidate in candidates:
+                try:
+                    r2 = requests.post(
+                        candidate,
+                        json={"model": self.rag_model, "prompt": prompt, "stream": False},
+                        timeout=120,
+                    )
+                    if r2.ok:
+                        j2 = r2.json()
+                        return str(j2.get("response", ""))
+                    detail = self._extract_error_message(r2)
+                    if r2.status_code == 404 and "model" in detail.lower():
+                        raise RuntimeError(
+                            f"Ollama chat model '{self.rag_model}' is not installed. "
+                            "Run `ollama pull` inside the Ollama container or host."
+                        )
+                    last_error = f"HTTP {r2.status_code}: {detail}"
+                except RequestException as exc:
+                    last_error = str(exc)
+            raise RuntimeError(
+                f"Ollama chat request failed after trying {len(candidates)} endpoints: {last_error}"
+            )
+
+    @staticmethod
+    def _extract_error_message(resp: requests.Response) -> str:
+        detail = ""
+        if resp is not None:
+            try:
+                payload = resp.json()
+            except ValueError:
+                payload = None
+            if isinstance(payload, dict):
+                detail = payload.get("error") or payload.get("message") or str(payload)
+            else:
+                detail = resp.text
+        return detail or ""
