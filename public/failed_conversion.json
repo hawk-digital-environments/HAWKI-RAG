@@ -1,753 +1,1253 @@
 {
-    "generated_at": "2025-10-23T16:23:34+00:00",
+    "generated_at": "2025-10-27T17:26:39+00:00",
     "total": 311,
     "processed": 0,
-    "skipped": 125,
-    "failed": 186,
+    "skipped": 0,
+    "failed": 311,
     "failures": [
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00244/files/fg_ba_modulhandbuch_po_20_ba.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00024/files/beratungsverstaendnis_zsb_09_2024.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00244/files/schnupperangebote_sose_25.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00025/files/bankverbindung_hawk-bibliothek-6_0.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00245/files/master_of_arts_hawk_gestaltung_web.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00025/files/benutzungsordnung_bibliothek_hawk.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00245/files/studienverlaufsplan_ma_250722.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00028/files/hawk_plus_informationsblatt_lv_ehrenamt_202210.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00249/files/nds._landesstipendium_2025_aushang.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00028/files/hawkplus_ehrenamtnachweis_0922.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00250/files/250611_sta_pfllichtpraktikum_kreation_2_3.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00028/files/modulhandbuch_ips_wise_25_26.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00250/files/250728_ausschreibung_pflichtpraktikaten.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00055/files/jahresabschluss_2020_genehmigung_des_mkw_mit_erlass_vom_21_6_2022_1.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00250/files/251002_zweigrad_ausschreibung_praktikum_sose2026_uxui_de.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00055/files/rlp_publikationsrichtlinie_hawk_2025.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00250/files/Praktikum%20Grafik-Design.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00058/files/20250101_merkblatt_register.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00250/files/corporate_design_wanted.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00058/files/hawk_antikorruption_geschenkannahme.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00250/files/grafikpraktikum-bravenewwork.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00058/files/hawk_antikorruption_verhaltenskodex.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00250/files/innen-architekt_28.08.2025.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00072/files/antrag_fruehstudium_0125.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00250/files/junior_color_and_material_design_for_outdoor_footwear_a4_final.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00072/files/antrag_gasthoererinnenschaft_0925.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00250/files/michelmann-praktikum-ia.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00072/files/antrag_teilzeitstudium_1124.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00250/files/praktikanten_aushang.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00072/files/i_24_03_04_aus_karte_web.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00250/files/praktiplakat_maerz-april.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00072/files/teilzeitstudium-learningagreement_1124.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00250/files/slanted-praktikum-25-26_ausschreibung_1.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00074/files/Beitragssatzung-_2024.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00250/files/vfl_wolfsburg_praktikum_-_corporate_design.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00074/files/merkblatt_beitrag_2024ss.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00250/files/vfl_wolfsburg_praktikum_-_marketing_services.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00074/files/merkblatt_beitrag_2024ws_0.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00250/files/werkstudent_kommunikation_07.2025docx.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00074/files/merkblatt_beitrag_2025ss_0.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00259/files/gb_info_datenschutz_0824.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00074/files/merkblatt_beitrag_2025ws_1.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00259/files/gb_stip_prom_ausschreibung_0825.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00078/files/2022ws_auswahlgrenzen_1.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00259/files/gb_stip_prom_bewerbung_0825.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00078/files/2023ss_auswahlgrenzen.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00259/files/gb_stip_stud_ausschreibung_0825_0.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00078/files/2023ws_auswahlgrenzen_1.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00259/files/gb_stip_stud_bewerbung_0825.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00078/files/2024ss_auswahlgrenzen.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00259/files/rlas_richtlinie_abschlusstipendien_hawk_2025_0.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00078/files/2024ws_auswahlgrenzen.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00296/files/begruessung_master_gisa.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00078/files/2025ss_auswahlgrenzen.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00296/files/hawk_modulhanbuch_ma_gesundheit_und_innovation_in_der_sozialen_arbeit_sose_2025.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00081/files/antrag_beurlaubung_1124.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00296/files/ma_gisa_studiengangsuebersicht_2023.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00081/files/antrag_exmatrikulation_1124.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00299/files/2022_09_16_zielvereinbarung_mwk-hawk_2023_2024_homepage.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00081/files/io_z_00_immatrikulationsordnung_hawk_2025a_hawk.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00299/files/hawk_geschaeftsverteilungsplan_0124_1.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00081/files/merkblatt_beitrag_2025ss_0.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00299/files/hawk_organigramm_120825.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00081/files/merkblatt_beitrag_2025ws_1.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00371/files/251007_semesterterminplan_mbi_wise25.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00081/files/merkblatt_krankenversicherung_1124.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00397/files/ndw_2025_programmheft_webversion_0.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00084/files/2025_flyer_mutterschutz_studierende_0825.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00407/files/ADC_Talent_Award_Gewinne_2025_ABSCHLUSS_SEMESTER.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00084/files/antrag_beurlaubung_1124.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00409/files/bankverbindung_hawk-bibliothek-6_0.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00084/files/antrag_erlass_langzeitstudiengebuehr_1124.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00409/files/benutzungsordnung_bibliothek_hawk.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00084/files/antrag_erstattung_semesterbeitrag_1124.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00410/files/Handreichung_Generative_KI_Vincent_Timm_HAWK.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00084/files/antrag_exmatrikulation_1124.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00460/files/loewen_veroeffentlichungen_vortraege_projekte.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00084/files/antrag_fruehstudium_0125.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00488/files/anlage_4_nutzung_einrichtungen.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00084/files/antrag_gasthoererinnenschaft_0925.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00488/files/hawk_gebaeudesystematik.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00084/files/antrag_teilzeitstudium_1124.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00488/files/uberlassungsantrag.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00084/files/generaleinwilligung_1124.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00488/files/ueblo_ueberlassungsordnung_2010a.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00084/files/haertefallantrag_1124.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00492/files/DGWF-Broschuere_Foerdermoeglichkeiten.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00084/files/merkblatt_beitrag_2024ss.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00502/files/2022-09-05_stud.ip_5.2_fuer_studierende_final.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00084/files/merkblatt_beitrag_2024ws_0.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00502/files/stud.ip_5.2_fuer_lehrende_2.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00084/files/merkblatt_beitrag_2025ss_0.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00510/files/antrag_restguthaben_druckerkonto_0.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00084/files/merkblatt_beitrag_2025ws_1.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00510/files/hawk_plotterservice_infos-fuer-studierende.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00084/files/merkblatt_krankenversicherung_1124.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00516/files/anleitung_microsoft_azure_dev_tools_for_teaching.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00084/files/mitteilung_mutterschutz_0525.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00533/files/wegweiser_druckversion_n_24_05_16_bros_web.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00084/files/teilzeitstudium-learningagreement_1124.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00534/files/wegweiser_druckversion_n_24_05_16_bros_web.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00087/files/aaa_zulassungsantrag_0425_0.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00535/files/2022-09-02_studip_5.2_fuer_studierende_2.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00093/files/der_lange_weg_ins_studium_forschungsbericht_hawk-open_web-1_0.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00535/files/25_26_wise_-_materialliste_kf_fd_ia_ld.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00093/files/i_24_03_04_aus_karte_web.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00536/files/wegweiser_studieren_mit_beeintraechtigung_oder_chronischer_erkrankung_holzminden.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00093/files/zugang_studium_ausland_flucht_en_0722.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00537/files/s_25_08_18_bros_web.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00093/files/zusammenfassung_forschungsbericht_hawk-open_einfache-sprache_web.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00538/files/wegweiser_studieren_mit_beeintraechtigung_oder_chronischer_erkrankung_holzminden.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00095/files/i_24_08_13_aus_karte_web.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00539/files/2022_flyer_zusatzfoerderung_im_erasmus_programm.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00096/files/i_25_07_09_aus_karte_web.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00539/files/haertefallantrag_1124.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00096/files/i_25_07_10_fly_web_0.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00539/files/infoblatt_nachteilsausgleich_0525.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00102/files/merkblatt_bewerbung_hochschulstart_2025-05_0.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00539/files/lehre_barrierfrei_gestalten_0.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00104/files/merkblatt_bewerbung_hochschulstart_2025-05_0.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00539/files/wegweiser_studieren_mit_beeintraechtigung_oder_chronischer_erkrankung_holzminden.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00107/files/merkblatt_bewerbung_nc_und_mnc_2025-05_0.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00541/files/hawk_wegweiser_zum_studienbeginn_ressourcenmanagement_herbst_2025.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00108/files/merkblatt_bewerbung_nc_und_mnc_2025-05_0.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00542/files/haertefallantrag_1124.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00110/files/merkblatt_bewerbung_nc_und_mnc_2025-05_0.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00549/files/fg_ba_termine_mappen-_und_studienfachberatung.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00113/files/merkblatt_bewerbung_nc_und_mnc_2025-05_0.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00549/files/schnupperangebote_sose_25.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00115/files/merkblatt_bewerbung_nc_und_mnc_2025-05_0.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00553/files/angebote_fuer_schulen_2025.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00116/files/merkblatt_bewerbung_nc_und_mnc_2025-05_0.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00556/files/2025-01-07_faq_studium_konservierung_und_restaurierung.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00119/files/merkblatt_bewerbung_nc_und_mnc_2025-05_0.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00556/files/2025-01_beratung.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00122/files/merkblatt_bewerbung_nc_und_mnc_2025-05_0.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00556/files/bsc_konservierung_und_restaurierung.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00124/files/merkblatt_bewerbung_nc_und_mnc_2025-05_0.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00556/files/praesentation_infotag-teil_1_15.1.25.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00125/files/fs_bsc_elp_informationen_zur_einstufungspruefung.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00556/files/praesentation_infotag-teil_2_15.1.25.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00125/files/merkblatt_bewerbung_nc_und_mnc_2025-05_0.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00556/files/rias_vdr_ig_asblg_20190520_rza.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00125/files/therapie_studieren_an_der_hawk_ihr_weg_ins_studium.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00556/files/studienberatung.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00126/files/merkblatt_bewerbung_nc_und_mnc_2025-05_0.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00566/files/hawk_informationspflicht_newsletter.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00130/files/merkblatt_bewerbung_hochschulstart_2025-05_0.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00583/files/D8.7_REWARDHeat%20Serious%20Game.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00131/files/merkblatt_bewerbung_nc_und_mnc_2025-05_0.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00594/files/beratungsverstaendnis_zsb_09_2024.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00133/files/Merkblatt_Feststellungsverfahren_WiSe_25_26.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00595/files/SiN_Wege_ins_Studium.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00133/files/merkblatt_bewerbung_nc_und_mnc_2025-05_0.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00597/files/beratungsverstaendnis_zsb_09_2024.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00136/files/4_studienberatung_und_bewerbungsverfahren.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00603/files/2018_dbv_Merkblatt_Musik_Entwurf_SH_Ta_22.02.2018.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00136/files/merkblatt_bewerbung_nc_und_mnc_2025-05_0.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00603/files/terms_of_use.de.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00138/files/merkblatt_bewerbung_nc_und_mnc_2025-05_0.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00604/files/2018_dbv_Merkblatt_Musik_Entwurf_SH_Ta_22.02.2018.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00139/files/merkblatt_bewerbung_nc_und_mnc_2025-05_0.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00604/files/EBooks.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00140/files/merkblatt_bewerbung_nc_und_mnc_2025-05_0.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00604/files/ebc-anleitung_2025.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00142/files/einverstaendniserklaerung_ge_1124.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00605/files/EJournals2.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00142/files/merkblatt_bewerbung_nc_und_mnc_2025-05_0.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00605/files/ejournals-katalog.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00143/files/merkblatt_bewerbung_nc_und_mnc_2025-05_0.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00606/files/1993_09_19-leihverkehrsordnung.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00144/files/merkblatt_bewerbung_nc_und_mnc_2025-05_0.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00606/files/anmeldung_fernleihe_hildesheim_0.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00145/files/merkblatt_bewerbung_nc_und_mnc_2025-05_0.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00606/files/formular_anmeldung_fernleihe.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00146/files/merkblatt_bewerbung_nc_und_mnc_2025-05_0.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00606/files/restguthaben_fernleihe_antrag_0219.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00147/files/merkblatt_bewerbung_nc_und_mnc_2025-05_0.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00607/files/2022_11_28_hawk_open-access-policy_0.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00148/files/merkblatt_bewerbung_nc_und_mnc_2025-05_0.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00607/files/antragsformular_publikationsfonds_0-10.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00149/files/merkblatt_bewerbung_nc_und_mnc_2025-05_0.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00607/files/flyer_ndsopen.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00150/files/merkblatt_bewerbung_nc_und_mnc_2025-05_0.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00608/files/einverstaendniserklaerung_abschlussarbeit_hawk.edoc_0.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00151/files/merkblatt_bewerbung_nc_und_mnc_2025-05_0.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00608/files/formular_verapffentlichung_hawk.edoc_-1.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00152/files/masernschutzimpfung_1124.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00611/files/formular_verapffentlichung_hawk.edoc_.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00152/files/merkblatt_bewerbung_hochschulstart_2025-05_0.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00611/files/isbn-beantragung.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00153/files/masernschutzimpfung_1124.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00612/files/2018_dbv_Merkblatt_Musik_Entwurf_SH_Ta_22.02.2018.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00153/files/merkblatt_bewerbung_nc_und_mnc_2025-05_0.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00612/files/benutzungsordnung_bibliothek_hawk.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00154/files/merkblatt_bewerbung_nc_und_mnc_2025-05_0.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00612/files/dtk_tests_in_lehre_und_forschung.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00155/files/merkblatt_bewerbung_nc_und_mnc_2025-05_0.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00612/files/formular_openlibrary.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00156/files/masernschutzimpfung_1124.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00612/files/formular_testothek_gesundheitscampus_goettingen_0.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00156/files/merkblatt_bewerbung_nc_und_mnc_2025-05_0.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00612/files/rlhausr_z_00_hausordnung_hawk_2023.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00157/files/merkblatt_bewerbung_nc_und_mnc_2025-05_0.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00614/files/2018_dbv_Merkblatt_Musik_Entwurf_SH_Ta_22.02.2018.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00158/files/merkblatt_bewerbung_nc_und_mnc_2025-05_0.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00614/files/benutzungsordnung_bibliothek_hawk.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00159/files/merkblatt_bewerbung_nc_und_mnc_2025-05_0.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00614/files/bibliothek_rollcontainer.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00160/files/merkblatt_bewerbung_hochschulstart_2025-05_0.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00614/files/einverstaendniserklaerung_nutzung_der_hawk-bibliothek.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00161/files/merkblatt_bewerbung_nc_und_mnc_2025-05_0.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00614/files/gebuehrenordnung_2021.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00162/files/merkblatt_bewerbung_nc_und_mnc_2025-05_0.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00614/files/hawk-bib_nutzerkonto.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00163/files/merkblatt_bewerbung_nc_und_mnc_2025-05_0.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00614/files/hawk-bib_online-katalog.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00164/files/merkblatt_bewerbung_hochschulstart_2025-05_0.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00614/files/z_25_02_20_fly_web_0.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00165/files/merkblatt_bewerbung_nc_und_mnc_2025-05_0.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00616/files/2018_dbv_Merkblatt_Musik_Entwurf_SH_Ta_22.02.2018.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00166/files/merkblatt_bewerbung_nc_und_mnc_2025-05_0.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00616/files/benutzungsordnung_bibliothek_hawk.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00167/files/merkblatt_bewerbung_nc_und_mnc_2025-05_0.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00616/files/bibliothek_rollcontainer.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00168/files/merkblatt_bewerbung_nc_und_mnc_2025-05_0.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00616/files/einverstaendniserklaerung_nutzung_der_hawk-bibliothek.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00169/files/merkblatt_bewerbung_nc_und_mnc_2025-05_0.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00616/files/gebuehrenordnung_2021.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00170/files/merkblatt_bewerbung_nc_und_mnc_2025-05_0.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00616/files/hawk-bib_nutzerkonto.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00174/files/aaa_zulassungsantrag_0425.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00616/files/hawk-bib_online-katalog.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00176/files/datenschutzhinweis_hawk_22_23.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00616/files/z_25_02_20_fly_web_0.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00176/files/ordnung_0.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00620/files/benutzungsordnung_bibliothek_hawk.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00176/files/stipo_deutschlandstipendien_hawk_2025.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00620/files/einverstaendniserklaerung_nutzung_der_hawk-bibliothek.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00178/files/sprachkursangebot_wise_2025_26_fuer_website.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00620/files/gebuehrenordnung_2021.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00181/files/hawk_promotionskolleg.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00620/files/z_22_01_02_fly_2_web.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00181/files/hawk_promotionskolleg_struktur.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00622/files/antrag_restguthaben_druckerkonto_0.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00190/files/doku_creative_islands_pilotprojekt_team5_alpert_sommerfeld_oeltjebruns_kleiner.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00622/files/hawk_plotterservice_infos-fuer-studierende.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00213/files/hawk_organigramm_120825.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00623/files/systematik_gesamt_fomatiert.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00244/files/ba_studienverlauf_alle_kf_po_20_sw_ab_sose_25.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00641/files/gb_stip_prom_ausschreibung_0825.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00244/files/fg_ba_modulhandbuch_po_20_ba.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00641/files/gb_stip_prom_bewerbung_0825.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00244/files/schnupperangebote_sose_25.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00641/files/gb_stip_stud_ausschreibung_0825_0.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00245/files/master_of_arts_hawk_gestaltung_web.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00641/files/gb_stip_stud_bewerbung_0825.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00245/files/studienverlaufsplan_ma_250722.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00646/files/02_2024_studhilfskraft-fachcoach_fak_i.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00249/files/nds._landesstipendium_2025_aushang.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00646/files/2025-26_studhilfskraft-fachcoaching_mathe1-2_ext_ofrist.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00250/files/250611_sta_pfllichtpraktikum_kreation_2_3.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00646/files/2025-26_studhilfskraft-fachcoaching_statik1-2_ext_ofrist.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00250/files/250728_ausschreibung_pflichtpraktikaten.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00646/files/i_25_07_09_aus_karte_web.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00250/files/251002_zweigrad_ausschreibung_praktikum_sose2026_uxui_de.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00646/files/i_25_07_10_fly_web_0.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00250/files/Praktikum%20Grafik-Design.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00646/files/infoblatt_hawk_start_plus_i_21_03_02_info_web_0.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00250/files/corporate_design_wanted.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00647/files/konfessionsabhaengige_stipendien_2.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00250/files/grafikpraktikum-bravenewwork.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00647/files/konfessionsunabhaengige_stipendien_1.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00250/files/innen-architekt_28.08.2025.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00651/files/4_studienberatung_und_bewerbungsverfahren.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00250/files/junior_color_and_material_design_for_outdoor_footwear_a4_final.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00651/files/g_22_04_04_bros_web_0.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00250/files/michelmann-praktikum-ia.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00651/files/master_of_arts_hawk_gestaltung_web.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00250/files/praktikanten_aushang.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00661/files/hawk_plus_zertifikat_erklaerung_0723.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00250/files/praktiplakat_maerz-april.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00661/files/lernportfolio_formblatt_230717.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00250/files/slanted-praktikum-25-26_ausschreibung_1.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00661/files/veranstaltungspool_zertifikate_vollstaendige_liste_02_2025.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00250/files/vfl_wolfsburg_praktikum_-_corporate_design.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00661/files/zertifikatanrechnung_sose_2025.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00250/files/vfl_wolfsburg_praktikum_-_marketing_services.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00690/files/beratungsverstaendnis_zsb_09_2024.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00250/files/werkstudent_kommunikation_07.2025docx.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00693/files/fr_pub_henning_wildhagen_20250715_0.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00259/files/gb_info_datenschutz_0824.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00698/files/harteisen_drittmittelprojekte_liste.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00259/files/gb_stip_prom_ausschreibung_0825.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00698/files/harteisen_publikationen.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00259/files/gb_stip_prom_bewerbung_0825.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00698/files/harteisen_vortraege.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00259/files/gb_stip_stud_ausschreibung_0825_0.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00698/files/liste_kooperative_promotionsvorhaben.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00259/files/gb_stip_stud_bewerbung_0825.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00699/files/460d72_d78f30d7638542bdb149772df7293f16.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00259/files/rlas_richtlinie_abschlusstipendien_hawk_2025_0.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00699/files/kooperative_promotionsvorhaben_stand_30-01-2023.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00296/files/begruessung_master_gisa.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00699/files/walentowski-drittmittelprojekte-15-12-2022.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00296/files/hawk_modulhanbuch_ma_gesundheit_und_innovation_in_der_sozialen_arbeit_sose_2025.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00699/files/walentowski_publikationen-14-07-2025.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00296/files/ma_gisa_studiengangsuebersicht_2023.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00699/files/walentowski_redaktionelle_taetigkeiten_und_auszeichnungen.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00299/files/2022_09_16_zielvereinbarung_mwk-hawk_2023_2024_homepage.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00707/files/info_internat_studienbew.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00299/files/hawk_geschaeftsverteilungsplan_0124_1.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00707/files/isap_bewerbungsantrag.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00299/files/hawk_organigramm_120825.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00707/files/z_22_02_12_fly_g_web4.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00371/files/251007_semesterterminplan_mbi_wise25.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00734/files/g_23_02_04_fly_web.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00397/files/ndw_2025_programmheft_webversion_0.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00745/files/pdf-guide_auslandssemester_fak_i.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00407/files/ADC_Talent_Award_Gewinne_2025_ABSCHLUSS_SEMESTER.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00759/files/ablauf_gcg-infotag_2025_web.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00409/files/bankverbindung_hawk-bibliothek-6_0.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00759/files/anfahrtsbeschreibung_gcg.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00409/files/benutzungsordnung_bibliothek_hawk.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00760/files/ndw_2025_programmheft_webversion_0.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00410/files/Handreichung_Generative_KI_Vincent_Timm_HAWK.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00763/files/n_22_10_15_fly_web.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00460/files/loewen_veroeffentlichungen_vortraege_projekte.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00763/files/praxisverbund_adressliste.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00488/files/anlage_4_nutzung_einrichtungen.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00765/files/n_22_10_15_fly_web.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00488/files/hawk_gebaeudesystematik.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00765/files/praxisverbund_adressliste.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00488/files/uberlassungsantrag.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00766/files/n_22_10_15_fly_web.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00488/files/ueblo_ueberlassungsordnung_2010a.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00766/files/praxisverbund_adressliste.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00492/files/DGWF-Broschuere_Foerdermoeglichkeiten.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00818/files/publikationsliste-rohe.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00502/files/2022-09-05_stud.ip_5.2_fuer_studierende_final.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00820/files/akkreditierungsrat_rw.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00502/files/stud.ip_5.2_fuer_lehrende_2.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00821/files/akkreditierungsrat_rw.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00510/files/antrag_restguthaben_druckerkonto_0.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00824/files/prof._lahner_projekte_-_publikationen_-_vortraegestand3-2023_0.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00510/files/hawk_plotterservice_infos-fuer-studierende.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00846/files/publikationsliste.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00516/files/anleitung_microsoft_azure_dev_tools_for_teaching.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00855/files/publikationen.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00533/files/wegweiser_druckversion_n_24_05_16_bros_web.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00856/files/2_3_Drews.pdf-ea42a8bc6ce97ad573269944c60321ab.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00534/files/wegweiser_druckversion_n_24_05_16_bros_web.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00856/files/9783847418467.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00535/files/2022-09-02_studip_5.2_fuer_studierende_2.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00856/files/FrauenLeben_Symposium_Kulturtourismus_in_laendlichen_Raeumen_01.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00535/files/25_26_wise_-_materialliste_kf_fd_ia_ld.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00864/files/nr_28_handreichung_zum_hoerspiel.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00536/files/wegweiser_studieren_mit_beeintraechtigung_oder_chronischer_erkrankung_holzminden.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00878/files/z_22_02_12_fly_b_1_web3.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00537/files/s_25_08_18_bros_web.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00878/files/z_22_02_12_fly_b_2_web3.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00538/files/wegweiser_studieren_mit_beeintraechtigung_oder_chronischer_erkrankung_holzminden.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00887/files/b_25_03_03_bros_web.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00539/files/2022_flyer_zusatzfoerderung_im_erasmus_programm.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00895/files/organigramm.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00539/files/haertefallantrag_1124.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00904/files/landing_page_hawk_international_german.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00539/files/infoblatt_nachteilsausgleich_0525.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00917/files/gdg25_callforentries_de.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00539/files/lehre_barrierfrei_gestalten_0.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         },
         {
-            "pdf_local_path": "/Users/ixdlab/RAWKI/storage/app/private/crawled-data/hawk-test/00965/files/ADC_Talent_Award_Gewinne_2024.pdf",
-            "error": "cURL error 7: Failed to connect to localhost port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://localhost:8001/extract"
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00539/files/wegweiser_studieren_mit_beeintraechtigung_oder_chronischer_erkrankung_holzminden.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00541/files/hawk_wegweiser_zum_studienbeginn_ressourcenmanagement_herbst_2025.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00542/files/haertefallantrag_1124.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00549/files/fg_ba_termine_mappen-_und_studienfachberatung.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00549/files/schnupperangebote_sose_25.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00553/files/angebote_fuer_schulen_2025.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00556/files/2025-01-07_faq_studium_konservierung_und_restaurierung.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00556/files/2025-01_beratung.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00556/files/bsc_konservierung_und_restaurierung.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00556/files/praesentation_infotag-teil_1_15.1.25.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00556/files/praesentation_infotag-teil_2_15.1.25.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00556/files/rias_vdr_ig_asblg_20190520_rza.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00556/files/studienberatung.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00566/files/hawk_informationspflicht_newsletter.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00583/files/D8.7_REWARDHeat%20Serious%20Game.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00594/files/beratungsverstaendnis_zsb_09_2024.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00595/files/SiN_Wege_ins_Studium.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00597/files/beratungsverstaendnis_zsb_09_2024.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00603/files/2018_dbv_Merkblatt_Musik_Entwurf_SH_Ta_22.02.2018.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00603/files/terms_of_use.de.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00604/files/2018_dbv_Merkblatt_Musik_Entwurf_SH_Ta_22.02.2018.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00604/files/EBooks.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00604/files/ebc-anleitung_2025.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00605/files/EJournals2.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00605/files/ejournals-katalog.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00606/files/1993_09_19-leihverkehrsordnung.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00606/files/anmeldung_fernleihe_hildesheim_0.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00606/files/formular_anmeldung_fernleihe.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00606/files/restguthaben_fernleihe_antrag_0219.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00607/files/2022_11_28_hawk_open-access-policy_0.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00607/files/antragsformular_publikationsfonds_0-10.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00607/files/flyer_ndsopen.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00608/files/einverstaendniserklaerung_abschlussarbeit_hawk.edoc_0.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00608/files/formular_verapffentlichung_hawk.edoc_-1.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00611/files/formular_verapffentlichung_hawk.edoc_.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00611/files/isbn-beantragung.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00612/files/2018_dbv_Merkblatt_Musik_Entwurf_SH_Ta_22.02.2018.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00612/files/benutzungsordnung_bibliothek_hawk.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00612/files/dtk_tests_in_lehre_und_forschung.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00612/files/formular_openlibrary.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00612/files/formular_testothek_gesundheitscampus_goettingen_0.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00612/files/rlhausr_z_00_hausordnung_hawk_2023.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00614/files/2018_dbv_Merkblatt_Musik_Entwurf_SH_Ta_22.02.2018.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00614/files/benutzungsordnung_bibliothek_hawk.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00614/files/bibliothek_rollcontainer.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00614/files/einverstaendniserklaerung_nutzung_der_hawk-bibliothek.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00614/files/gebuehrenordnung_2021.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00614/files/hawk-bib_nutzerkonto.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00614/files/hawk-bib_online-katalog.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00614/files/z_25_02_20_fly_web_0.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00616/files/2018_dbv_Merkblatt_Musik_Entwurf_SH_Ta_22.02.2018.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00616/files/benutzungsordnung_bibliothek_hawk.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00616/files/bibliothek_rollcontainer.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00616/files/einverstaendniserklaerung_nutzung_der_hawk-bibliothek.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00616/files/gebuehrenordnung_2021.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00616/files/hawk-bib_nutzerkonto.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00616/files/hawk-bib_online-katalog.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00616/files/z_25_02_20_fly_web_0.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00620/files/benutzungsordnung_bibliothek_hawk.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00620/files/einverstaendniserklaerung_nutzung_der_hawk-bibliothek.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00620/files/gebuehrenordnung_2021.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00620/files/z_22_01_02_fly_2_web.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00622/files/antrag_restguthaben_druckerkonto_0.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00622/files/hawk_plotterservice_infos-fuer-studierende.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00623/files/systematik_gesamt_fomatiert.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00641/files/gb_stip_prom_ausschreibung_0825.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00641/files/gb_stip_prom_bewerbung_0825.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00641/files/gb_stip_stud_ausschreibung_0825_0.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00641/files/gb_stip_stud_bewerbung_0825.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00646/files/02_2024_studhilfskraft-fachcoach_fak_i.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00646/files/2025-26_studhilfskraft-fachcoaching_mathe1-2_ext_ofrist.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00646/files/2025-26_studhilfskraft-fachcoaching_statik1-2_ext_ofrist.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00646/files/i_25_07_09_aus_karte_web.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00646/files/i_25_07_10_fly_web_0.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00646/files/infoblatt_hawk_start_plus_i_21_03_02_info_web_0.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00647/files/konfessionsabhaengige_stipendien_2.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00647/files/konfessionsunabhaengige_stipendien_1.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00651/files/4_studienberatung_und_bewerbungsverfahren.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00651/files/g_22_04_04_bros_web_0.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00651/files/master_of_arts_hawk_gestaltung_web.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00661/files/hawk_plus_zertifikat_erklaerung_0723.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00661/files/lernportfolio_formblatt_230717.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00661/files/veranstaltungspool_zertifikate_vollstaendige_liste_02_2025.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00661/files/zertifikatanrechnung_sose_2025.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00690/files/beratungsverstaendnis_zsb_09_2024.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00693/files/fr_pub_henning_wildhagen_20250715_0.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00698/files/harteisen_drittmittelprojekte_liste.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00698/files/harteisen_publikationen.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00698/files/harteisen_vortraege.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00698/files/liste_kooperative_promotionsvorhaben.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00699/files/460d72_d78f30d7638542bdb149772df7293f16.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00699/files/kooperative_promotionsvorhaben_stand_30-01-2023.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00699/files/walentowski-drittmittelprojekte-15-12-2022.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00699/files/walentowski_publikationen-14-07-2025.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00699/files/walentowski_redaktionelle_taetigkeiten_und_auszeichnungen.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00707/files/info_internat_studienbew.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00707/files/isap_bewerbungsantrag.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00707/files/z_22_02_12_fly_g_web4.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00734/files/g_23_02_04_fly_web.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00745/files/pdf-guide_auslandssemester_fak_i.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00759/files/ablauf_gcg-infotag_2025_web.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00759/files/anfahrtsbeschreibung_gcg.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00760/files/ndw_2025_programmheft_webversion_0.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00763/files/n_22_10_15_fly_web.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00763/files/praxisverbund_adressliste.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00765/files/n_22_10_15_fly_web.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00765/files/praxisverbund_adressliste.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00766/files/n_22_10_15_fly_web.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00766/files/praxisverbund_adressliste.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00818/files/publikationsliste-rohe.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00820/files/akkreditierungsrat_rw.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00821/files/akkreditierungsrat_rw.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00824/files/prof._lahner_projekte_-_publikationen_-_vortraegestand3-2023_0.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00846/files/publikationsliste.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00855/files/publikationen.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00856/files/2_3_Drews.pdf-ea42a8bc6ce97ad573269944c60321ab.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00856/files/9783847418467.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00856/files/FrauenLeben_Symposium_Kulturtourismus_in_laendlichen_Raeumen_01.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00864/files/nr_28_handreichung_zum_hoerspiel.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00878/files/z_22_02_12_fly_b_1_web3.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00878/files/z_22_02_12_fly_b_2_web3.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00887/files/b_25_03_03_bros_web.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00895/files/organigramm.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00904/files/landing_page_hawk_international_german.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00917/files/gdg25_callforentries_de.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
+        },
+        {
+            "pdf_local_path": "/var/www/storage/app/private/crawled-data/hawk-test/00965/files/ADC_Talent_Award_Gewinne_2024.pdf",
+            "error": "cURL error 7: Failed to connect to 127.0.0.1 port 8001 after 0 ms: Could not connect to server (see https://curl.haxx.se/libcurl/c/libcurl-errors.html) for http://127.0.0.1:8001/extract"
         }
     ]
 }

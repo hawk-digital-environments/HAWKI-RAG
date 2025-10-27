@@ -40,11 +40,41 @@ class ConvertCrawledPdfs extends Command
 
         $this->info('Found ' . count($pdfPaths) . ' PDF(s). Converting…');
 
+        $existingMetaCount = 0;
+        foreach ($pdfPaths as $pdfPath) {
+            $destDir = dirname($pdfPath) . '/converted_' . pathinfo($pdfPath, PATHINFO_FILENAME);
+            if (is_file($destDir . '/conversion_meta.json')) {
+                $existingMetaCount++;
+            }
+        }
+
+        $forceReprocess = false;
+        if ($existingMetaCount > 0) {
+            $this->line("Detected {$existingMetaCount} previously converted PDF(s) in this directory.");
+            $choice = $this->choice(
+                'How would you like to proceed?',
+                ['continue', 'restart', 'cancel'],
+                0
+            );
+
+            if ($choice === 'cancel') {
+                $this->info('Conversion cancelled by user request.');
+                return Command::SUCCESS;
+            }
+
+            if ($choice === 'restart') {
+                $forceReprocess = true;
+                $this->warn('Restart selected — existing converted outputs will be re-generated.');
+            } else {
+                $this->info('Continuing will skip already converted PDFs when their hashes match.');
+            }
+        }
+
         $failed = [];
         $processed = 0;
         $skipped = 0;
 
-        // Read retry config (set these in config/services.php via env as we discussed)
+        // Read retry config (set these in config/services.php via env)
         $maxRetries    = (int) config('services.file_converter.retries', 3);
         $retryDelayMs  = (int) config('services.file_converter.retry_delay_ms', 1500);
 
@@ -67,8 +97,14 @@ class ConvertCrawledPdfs extends Command
                 $destDir = dirname($pdfPath) . '/converted_' . pathinfo($pdfInfo->getFilename(), PATHINFO_FILENAME);
                 $metaPath = $destDir . '/conversion_meta.json';
 
+                if ($forceReprocess && File::isDirectory($destDir)) {
+                    if (!File::deleteDirectory($destDir)) {
+                        throw new \RuntimeException("Unable to remove existing conversion output at {$destDir}.");
+                    }
+                }
+
                 // Skip if meta exists and converted_id matches
-                if (is_file($metaPath)) {
+                if (!$forceReprocess && is_file($metaPath)) {
                     $meta = json_decode(@file_get_contents($metaPath), true);
                     if (is_array($meta) && ($meta['converted_id'] ?? null) === $convertedId) {
                         $skipped++;
