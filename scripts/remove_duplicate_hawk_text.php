@@ -3,7 +3,7 @@
  * Remove duplicate hawk-text directories according to noise_candidates.json.
  *
  * Usage:
- *   php scripts/remove_duplicate_hawk_text.php [reportJson] [--dry-run]
+ *   php scripts/remove_duplicate_hawk_text.php noise_candidates.json --dry-run
  *
  * The script reads the JSON produced by filter_hawk_text_noise.php,
  * finds entries with the duplicate_text reason, and deletes each
@@ -34,7 +34,7 @@ foreach ($args as $index => $value) {
 }
 $args = array_values($args);
 
-$reportPath = $args[0] ?? __DIR__ . '/../storage/app/private/crawled-data/hawk-text/noise_candidates.json';
+$reportPath = $args[0] ?? __DIR__ . '/../storage/app/private/crawled-data/hawk-test/noise_candidates.json';
 
 $reportReal = realpath($reportPath);
 if ($reportReal === false || !is_file($reportReal)) {

@@ -15,7 +15,7 @@ class QdrantHTTP:
         scheme = os.environ.get("QDRANT_SCHEME", "http")
         host = os.environ.get("QDRANT_HOST", "qdrant")
         port = int(os.environ.get("QDRANT_PORT", "6333"))
-        self.collection = os.environ.get("QDRANT_COLLECTION", "hawk_embeddings")
+        self.collection = os.environ.get("QDRANT_COLLECTION", "embeddings_hawk")
         self.base = f"{scheme}://{host}:{port}"
         self.api_key = os.environ.get("QDRANT_API_KEY")
         self.timeout = float(os.environ.get("QDRANT_TIMEOUT", "30"))

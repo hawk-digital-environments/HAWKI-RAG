@@ -1,0 +1,64 @@
+{
+  "timestamp": "2025-10-24T02:03:19.778379Z",
+  "ingested_points": 22,
+  "documents": {
+    "total_docs": 8,
+    "processed_docs": 8,
+    "skipped_docs": 0,
+    "by_format": {
+      "txt": 2,
+      "markdown": 6
+    },
+    "doc_ids": [
+      "8f189e8f9725b3b8ef3d636abc7fab07b8e84a41",
+      "4918f489a7c501e29eaf5ac09644f64f8ebe8d73",
+      "c0ec37fdd1b4099067780390d99cbca4c9627879",
+      "5a1d76fb4cd4d512fd49b8f4e1900c4141c5e534",
+      "4771d9ea0370d7e52dd16dd6ee01b9f1f0c343eb",
+      "c92f98ee73c1e3bc20a2ad956b9d0a07e01d4476",
+      "a73ee28deb9b876dab6b979d9de69f16009b9f6e",
+      "e09f8f002f46c886104d89c0e9a4cfa457ace516"
+    ],
+    "chunks_per_doc": {
+      "8f189e8f9725b3b8ef3d636abc7fab07b8e84a41": 1,
+      "4918f489a7c501e29eaf5ac09644f64f8ebe8d73": 3,
+      "c0ec37fdd1b4099067780390d99cbca4c9627879": 10,
+      "5a1d76fb4cd4d512fd49b8f4e1900c4141c5e534": 1,
+      "4771d9ea0370d7e52dd16dd6ee01b9f1f0c343eb": 1,
+      "c92f98ee73c1e3bc20a2ad956b9d0a07e01d4476": 3,
+      "a73ee28deb9b876dab6b979d9de69f16009b9f6e": 2,
+      "e09f8f002f46c886104d89c0e9a4cfa457ace516": 1
+    },
+    "total_chunks": 22
+  },
+  "qdrant": {
+    "primary_collection": "embeddings_hawk",
+    "primary_point_count": 128,
+    "auxiliary_collections": {
+      "hawki_chunks": 0,
+      "hawki_entities": 0,
+      "hawki_relationships": 0
+    }
+  },
+  "neo4j": {
+    "entity_count": 27385,
+    "triplet_count": 213145,
+    "relationship_counts": [
+      {
+        "type": "REL",
+        "count": 213145
+      }
+    ],
+    "label_counts": [
+      {
+        "labels": [
+          "Entity"
+        ],
+        "count": 27385
+      }
+    ]
+  },
+  "dry_run": false,
+  "planned_points": 22,
+  "summary_file": "/public/ingest_summary.json"
+}

@@ -54,7 +54,7 @@ return [
             'port'       => (int) env('QDRANT_PORT', 6333),
 
             // default collection + distance
-            'collection' => env('QDRANT_COLLECTION', 'hawk_embeddings'),
+            'collection' => env('QDRANT_COLLECTION', 'embeddings_hawk'),
             'distance'   => env('QDRANT_DISTANCE', 'Cosine'), // Cosine | Dot | Euclid
 
             'api_key'    => env('QDRANT_API_KEY'),            // null if not secured

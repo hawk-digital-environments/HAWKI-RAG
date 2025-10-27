@@ -16,7 +16,7 @@
 
 declare(strict_types=1);
 
-const DEFAULT_ROOT = __DIR__ . '/../storage/app/private/crawled-data/hawk-text';
+const DEFAULT_ROOT = __DIR__ . '/../storage/app/private/crawled-data/hawk-test';
 const OUTPUT_FILENAME = 'noise_candidates.json';
 
 $root = $argv[1] ?? DEFAULT_ROOT;

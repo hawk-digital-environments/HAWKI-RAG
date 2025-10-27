@@ -13,6 +13,12 @@ from pydantic import BaseModel, Field
 from providers.ollama_provider import OllamaProvider
 from providers.gwdg_provider import GWDGProvider
 from qdrant_http import QdrantHTTP
+from qdrant_strategies import (
+    semantic_search_basic,
+    semantic_search_high_recall,
+    semantic_search_with_threshold,
+    optimized_semantic_search,
+)
 from qdrant_strategies import optimized_semantic_search, semantic_search_basic
 from neo4j_graph import Neo4jGraph
 from lightrag_impl import extract_triplets_fallback, extract_triplets_with_lightrag
@@ -805,6 +811,12 @@ def query(body: QueryRequest):
         mode = body.reranker.lower()
         candidates = current_hits[: max(1, min(body.rerank_top_n, len(current_hits)))]
         orig_scores = [float(h.get("score") or 0.0) for h in candidates]
+        logger.info(
+            "Reranker active (mode=%s, candidates=%d, total_hits=%d)",
+            mode,
+            len(candidates),
+            len(current_hits),
+        )
         try:
             if mode == "cosine":
                 scored = []
