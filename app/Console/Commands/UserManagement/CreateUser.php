@@ -35,5 +35,7 @@ class CreateUser extends Command
             'email' => $email,
             'ip' => $ip,
         ]);
+
+        $this->info('User created successfully!');
     }
 }
