@@ -112,29 +112,6 @@ return [
             // 'encrypt' => env('DB_ENCRYPT', 'yes'),
             // 'trust_server_certificate' => env('DB_TRUST_SERVER_CERTIFICATE', 'false'),
         ],
-
-
-        // 'rag_mysql' => [
-        //     'driver' => 'mysql',
-        //     'url' => env('RAG_DATABASE_URL', "127.0.0.1"),
-        //     'host' => env('RAG_DB_HOST', '127.0.0.1'),
-        //     'port' => env('RAG_DB_PORT', '3306'),
-        //     'database' => env('RAG_DB_DATABASE', 'ragweb'),
-        //     'username' => env('RAG_DB_USERNAME', 'rag_user'),
-        //     'password' => env('RAG_DB_PASSWORD', ''),
-        //     'unix_socket' => env('RAG_DB_SOCKET', ''),
-        //     'charset' => 'utf8mb4',
-        //     'collation' => 'utf8mb4_unicode_ci',
-        //     'prefix' => '',
-        //     'prefix_indexes' => true,
-        //     'strict' => true,
-        //     'engine' => null,
-        //     'options' => extension_loaded('pdo_mysql') ? array_filter([
-        //         PDO::MYSQL_ATTR_SSL_CA => env('MYSQL_ATTR_SSL_CA'),
-        //         PDO::ATTR_EMULATE_PREPARES => true,
-        //         PDO::MYSQL_ATTR_USE_BUFFERED_QUERY => false,
-        //     ]) : [],
-        // ],
     ],
 
     /*
