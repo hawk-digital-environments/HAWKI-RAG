@@ -199,7 +199,7 @@ python3 scripts/retry_ingest_docs.py \
   --root storage/app/private/crawled-data/hawk-text \
   --collection embeddings_hawk \
   --base-url http://localhost:8009 \
-  --doc-ids-file /home/ixdlab-admin/RawkiServer/RAWKI/storage/app/private/failed_doc_ids.txt \
+  --doc-ids-file /home/ixdlab-admin/Rawki/RAWKI/storage/app/private/failed_doc_ids.txt \
   --batch 16
 ```
 
