@@ -58,6 +58,7 @@ class CrawleeScraper extends Command
             // Process URL first to validate and get info
             try {
                 $urlOptions = $this->orchestrator->processUrl($url);
+                $this->ask(json_encode($urlOptions));
 
                 if ($urlOptions->isLocal()) {
                     $this->info("Using local sitemap file: {$url}");

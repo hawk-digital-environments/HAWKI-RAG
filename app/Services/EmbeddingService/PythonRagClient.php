@@ -2,6 +2,7 @@
 
 namespace App\Services\EmbeddingService;
 
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 
 class PythonRagClient
@@ -14,12 +15,11 @@ class PythonRagClient
 
     public function __construct()
     {
-        $this->base = rtrim(env('LIGHTRAG_URL', 'http://lightrag:8000'), '/');
-        // Allow switching to the official LightRAG server endpoints via env
-        $this->healthPath        = env('LIGHTRAG_HEALTH_PATH', '/health');
-        $this->ingestPath        = env('LIGHTRAG_INGEST_PATH', '/ingest');
-        $this->queryPath         = env('LIGHTRAG_QUERY_PATH', '/query');
-        $this->graphFromTextPath = env('LIGHTRAG_GRAPH_TEXT_PATH', '/graph/from-text');
+        $this->base              = config('lightrag.base_url');
+        $this->healthPath        = config('lightrag.health_path');
+        $this->ingestPath        = config('lightrag.ingest_path');
+        $this->queryPath         = config('lightrag.queryPath');
+        $this->graphFromTextPath = config('lightrag.graphFromTextPath');
     }
 
     public function health(): array

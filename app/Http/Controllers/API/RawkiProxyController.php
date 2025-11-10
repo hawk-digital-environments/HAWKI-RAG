@@ -13,9 +13,7 @@ class RawkiProxyController extends Controller
 
     public function __construct()
     {
-        // TODO read value either from config or env.
-        // if all are packaged in the same docker container, can't we use direct comtainer name?
-        $this->baseUrl = rtrim(config('services.rawki.base_url', env('RAWKI_BASE_URL', 'http://rawki_bridge:8000')), '/');
+        $this->baseUrl = config('rawki.base_url');
     }
 
     public function query(Request $request): JsonResponse
@@ -41,7 +39,9 @@ class RawkiProxyController extends Controller
         }
 
         try {
-            $response = Http::timeout(60)->post($this->baseUrl . '/query', $payload);
+            $response = Http::timeout(60)
+                ->post($this->baseUrl . '/query', $payload);
+
         } catch (\Throwable $e) {
             return response()->json([
                 'ok' => false,

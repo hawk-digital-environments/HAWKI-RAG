@@ -23,10 +23,10 @@ class DocumentConverter
             throw new \InvalidArgumentException("Invalid file input. Expected UploadedFile or SplFileInfo.");
         }
 
-        $request = Http::timeout((int) config('services.file_converter.timeout', 300))
-            ->connectTimeout((int) config('services.file_converter.connect_timeout', 10));
+        $request = Http::timeout((int) config('file_converter.timeout', 300))
+            ->connectTimeout((int) config('file_converter.connect_timeout', 10));
 
-        if ($token = config('services.file_converter.token')) {
+        if ($token = config('file_converter.token')) {
             $request = $request->withToken($token);
         }
 
@@ -34,7 +34,7 @@ class DocumentConverter
             'file',
             $resource,
             $filename
-        )->post(config('services.file_converter.url'));
+        )->post(config('file_converter.url'));
         fclose($resource);
 
         if (!$response->successful()) {

@@ -75,8 +75,8 @@ class ConvertCrawledPdfs extends Command
         $skipped = 0;
 
         // Read retry config (set these in config/services.php via env)
-        $maxRetries    = (int) config('services.file_converter.retries', 3);
-        $retryDelayMs  = (int) config('services.file_converter.retry_delay_ms', 1500);
+        $maxRetries    = (int) config('file_converter.retries', 3);
+        $retryDelayMs  = (int) config('file_converter.retry_delay_ms', 1500);
 
         $bar = $this->output->createProgressBar(count($pdfPaths));
         $bar->start();
