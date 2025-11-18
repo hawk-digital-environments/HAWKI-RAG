@@ -221,7 +221,7 @@ class ConvertCrawledPdfs extends Command
             'failures'     => $failed, // each: { pdf_local_path, error }
         ];
 
-        $dest = public_path('failed_conversion.json');
+        $dest = storage_path('logs/failed_conversion.json');
 
         // Write atomically
         $tmp  = $dest . '.tmp';

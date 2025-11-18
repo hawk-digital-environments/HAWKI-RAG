@@ -2,6 +2,28 @@
 
 namespace App\Services\Crawler\Data;
 
+/**
+ * Complete configuration data for a crawler execution.
+ *
+ * This immutable object contains all settings and parameters needed to execute
+ * a web crawling operation. It's built by the configuration service and passed
+ * to the execution service, which converts it to JSON for the Node.js crawler.
+ *
+ * @property-read string $url Target URL or base URL to crawl
+ * @property-read int $maxPages Maximum number of pages to crawl (0 = unlimited)
+ * @property-read string $outputDir Base directory for storing crawled data
+ * @property-read string $label Label/prefix for organizing this crawl's directories
+ * @property-read bool $skipImages Whether to skip downloading images
+ * @property-read int $startFromIndex Index to start crawling from (1-based)
+ * @property-read array $incompleteDirectories Map of incomplete directory numbers to their URLs
+ * @property-read array $emptyDirectoriesToReuse Array of incomplete directory numbers without URL info
+ * @property-read string $sourceType Type of source: 'local', 'sitemap', or 'direct'
+ * @property-read array|null $imageExceptions URLs of images to download even when skipImages is true
+ * @property-read string|null $dateSelector CSS selector for extracting publication dates
+ * @property-read array|null $urls Explicit list of URLs to crawl (for local file sources)
+ * @property-read bool $isLocalFile Whether this is a local file source
+ * @property-read int|null $continueOffset Number of URLs to skip for continuation (remote sources)
+ */
 class CrawlerConfig
 {
     public function __construct(
@@ -21,8 +43,18 @@ class CrawlerConfig
         public readonly ?int $continueOffset = null,
     ) {}
 
+    /**
+     * Convert the configuration to an associative array.
+     *
+     * Serializes the configuration object to an array format suitable for
+     * JSON encoding. Only includes optional fields if they have values.
+     * Used internally by toJson() method.
+     *
+     * @return array Configuration as associative array
+     */
     public function toArray(): array
     {
+        // Build base configuration array
         $config = [
             'url' => $this->url,
             'maxPages' => $this->maxPages,
@@ -35,6 +67,7 @@ class CrawlerConfig
             'sourceType' => $this->sourceType,
         ];
 
+        // Add optional fields if present
         if ($this->imageExceptions !== null) {
             $config['imageExceptions'] = $this->imageExceptions;
         }
@@ -55,6 +88,14 @@ class CrawlerConfig
         return $config;
     }
 
+    /**
+     * Convert the configuration to a JSON string.
+     *
+     * Serializes the configuration to JSON format for passing to the Node.js
+     * crawler process as a command-line argument.
+     *
+     * @return string JSON-encoded configuration
+     */
     public function toJson(): string
     {
         return json_encode($this->toArray());

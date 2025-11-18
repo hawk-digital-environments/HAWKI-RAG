@@ -2,43 +2,50 @@
 
 namespace App\Console\Commands\Crawler;
 
-use App\Services\Crawler\CrawlerOrchestrator;
+use App\Services\Crawler\CrawlerPipelineService;
+use App\Services\Crawler\Data\CrawlerJobRequest;
 use Illuminate\Console\Command;
 use Illuminate\Support\Str;
 
 class CrawleeScraper extends Command
 {
-    private const SKIP_HOSTS = [
-        'publikationsserver.hawk.de',
-    ];
-
-    private array $forbiddenHostPatterns = [];
-
     protected $signature = 'crawlee:scrape
                             {url? : The starting URL to crawl}
                             {--max-pages=100 : Maximum number of pages to crawl}
-                            {--output-dir=storage/app/private/crawled-data : Directory to store crawled data}
+                            {--output-dir= : Directory to store crawled data}
                             {--label= : Label for this crawl job}
                             {--skip-images : Skip downloading images to save time and bandwidth}
                             {--image-exceptions= : Comma-separated list of CSS selectors for elements to exclude from image scraping}
                             {--date= : CSS selector for date elements (e.g., ".date", "#publication-date", "time", "meta[property=\"og:updated_time\"]")}
                             {--max-concurrency=4 : Maximum number of parallel requests running at a time}
                             {--max-rpm=60 : Maximum requests per minute to throttle overall rate}
-                            {--request-delay= : Delay between requests in milliseconds (overrides RPM throttle when set)}';
+                            {--request-delay= : Delay between requests in milliseconds (overrides RPM throttle when set)}
+                            {--store-db : Store results in database}';
 
     protected $description = 'Scrape websites using Crawlee';
 
     public function __construct(
-        private CrawlerOrchestrator $orchestrator
+        private CrawlerPipelineService $pipeline
     ) {
         parent::__construct();
-        $this->forbiddenHostPatterns = $this->loadForbiddenHosts();
     }
 
+    /**
+     * Execute the crawlee:scrape command.
+     *
+     * This command is a thin I/O wrapper that:
+     * 1. Gathers input from the user
+     * 2. Creates a CrawlerJobRequest
+     * 3. Sets up event listeners for console output
+     * 4. Executes the pipeline
+     * 5. Displays the result
+     *
+     * @return int Command exit code (self::SUCCESS or self::FAILURE)
+     */
     public function handle(): int
     {
         try {
-            // Get URL
+            // Get URL from argument or prompt
             $url = $this->argument('url');
             if (blank($url)) {
                 $url = $this->ask('Enter the website URL to crawl (e.g., https://www.hawk.de/en)');
@@ -49,114 +56,82 @@ class CrawleeScraper extends Command
                 return self::FAILURE;
             }
 
-            // Check if URL is in skip list (for direct URLs)
-            if (!$this->isLocalFile($url) && $this->isHostForbidden($url)) {
-                $this->warn("Skipping crawl: {$url} is under Forbidden Hosts.");
-                return self::SUCCESS;
-            }
-
-            // Process URL first to validate and get info
-            try {
-                $urlOptions = $this->orchestrator->processUrl($url);
-
-                if ($urlOptions->isLocal()) {
-                    $this->info("Using local sitemap file: {$url}");
-
-                    // Filter out forbidden hosts from sitemap URLs
-                    $filteredUrls = $this->filterForbiddenHosts($urlOptions->sitemapUrls);
-                    $filteredCount = count($urlOptions->sitemapUrls) - count($filteredUrls);
-
-                    if ($filteredCount > 0) {
-                        $this->warn("Filtered out {$filteredCount} URLs from forbidden hosts.");
-                    }
-
-                    if (empty($filteredUrls)) {
-                        $this->error('No valid URLs remaining after filtering forbidden hosts.');
-                        return self::FAILURE;
-                    }
-
-                    $this->info("Found " . count($filteredUrls) . " valid URLs in the sitemap file.");
-
-                    // TODO: Update orchestrator to accept pre-filtered URLs
-                    // For now, the orchestrator will process all URLs from the sitemap
-                }
-            } catch (\InvalidArgumentException $e) {
-                $this->error($e->getMessage());
-                return self::FAILURE;
-            }
-
-            // Get options
+            // Get label with fallback
             $label = $this->option('label') ?: 'default';
-            $maxPages = (int) $this->option('max-pages');
-            $skipImages = (bool) $this->option('skip-images');
 
             // Parse image exceptions
-            $imageExceptions = null;
-            if ($this->option('image-exceptions')) {
-                $imageExceptions = collect(explode(',', $this->option('image-exceptions')))
-                    ->map(fn($item) => trim($item))
-                    ->filter(fn($item) => filled($item))
-                    ->values()
-                    ->toArray();
+            $imageExceptions = $this->parseImageExceptions();
 
-                if (!empty($imageExceptions)) {
-                    $this->info("Using image exceptions: " . implode(', ', $imageExceptions));
-                }
-            }
-
-            // Date selector
-            $dateSelector = filled($this->option('date')) ? $this->option('date') : null;
+            // Parse date selector
+            $dateSelector = $this->option('date');
             if ($dateSelector) {
                 $this->info("Using date selector: {$dateSelector}");
             }
 
-            // Run crawler with callbacks for user interaction
-            $result = $this->orchestrator->crawl(
+            // Create job request
+            $request = new CrawlerJobRequest(
                 url: $url,
                 label: $label,
-                maxPages: $maxPages,
-                skipImages: $skipImages,
+                maxPages: (int) $this->option('max-pages'),
+                outputDir: $this->option('output-dir') ?: '',
+                skipImages: (bool) $this->option('skip-images'),
                 imageExceptions: $imageExceptions,
                 dateSelector: $dateSelector,
-                shouldContinueCallback: function ($existingDirs, $directoryAnalysis) {
-                    // Display statistics
-                    $this->displayExistingDataStats($existingDirs, $directoryAnalysis);
+                maxConcurrency: (int) $this->option('max-concurrency'),
+                maxRpm: (int) $this->option('max-rpm'),
+                requestDelay: $this->option('request-delay') ? (int) $this->option('request-delay') : null,
+            );
 
-                    // Ask user what to do
-                    return $this->choice(
-                        'Existing scraped data found. What would you like to do?',
-                        [
-                            'continue' => 'Continue and re-scrape incomplete directories',
-                            'restart' => 'Start a new scrape from the beginning',
-                            'cancel' => 'Cancel the scrape operation'
-                        ],
-                        'continue'
-                    );
-                },
-                shouldRestartCallback: function () {
-                    return $this->confirm(
-                        'This will DELETE all existing scraped data in the output directory. Are you sure you want to continue?',
-                        false
-                    );
+            // Setup event listeners for console output
+            $this->setupEventListeners();
+
+            // Determine strategy for existing data (ask user interactively)
+            $strategy = CrawlerPipelineService::STRATEGY_CONTINUE;
+
+            // Execute pipeline with output streaming
+            $result = $this->pipeline->execute(
+                request: $request,
+                existingDataStrategy: $strategy,
+                storeInDatabase: (bool) $this->option('store-db'),
+                outputCallback: function (string $type, string $buffer) {
+                    // Stream crawler output to console
+                    if ($type === 'out') {
+                        fwrite(STDOUT, $buffer);
+                        fflush(STDOUT);
+                    } else {
+                        fwrite(STDERR, $buffer);
+                        fflush(STDERR);
+                    }
                 }
             );
 
             // Display result
             if ($result->isSuccessful()) {
-                $this->info('Crawling completed successfully.');
-                if ($result->output) {
-                    $this->info($result->output);
+                $this->newLine();
+                $this->info($result->getSummary());
+
+                // Display statistics
+                if (!empty($result->statistics)) {
+                    $this->displayStatistics($result->statistics);
                 }
-                if (!$skipImages) {
-                    $this->info('Images have been downloaded to the crawl directory.');
+
+                // Display warnings if any
+                if (!empty($result->warnings)) {
+                    foreach ($result->warnings as $warning) {
+                        $this->warn($warning['message']);
+                    }
                 }
+
                 return self::SUCCESS;
             }
 
-            $this->error('Crawling failed:');
-            if ($result->error) {
-                $this->error($result->error);
+            // Display errors
+            $this->newLine();
+            $this->error($result->getSummary());
+            foreach ($result->errors as $error) {
+                $this->error($error['message']);
             }
+
             return self::FAILURE;
 
         } catch (\Throwable $e) {
@@ -166,94 +141,129 @@ class CrawleeScraper extends Command
     }
 
     /**
-     * Check if URL host is in forbidden list
+     * Parse image exceptions from command option.
+     *
+     * @return array|null
      */
-    private function isHostForbidden(string $url): bool
+    private function parseImageExceptions(): ?array
     {
-        $host = Str::lower((string) parse_url($url, PHP_URL_HOST));
-
-        if (!$host) {
-            return false;
+        if (!$this->option('image-exceptions')) {
+            return null;
         }
 
-        if (in_array($host, self::SKIP_HOSTS, true)) {
-            return true;
-        }
-
-        foreach ($this->forbiddenHostPatterns as $pattern) {
-            if (Str::is($pattern, $host)) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    /**
-     * Check if URL is a local file
-     */
-    private function isLocalFile(string $url): bool
-    {
-        return file_exists($url) && is_readable($url);
-    }
-
-    /**
-     * Filter out URLs with forbidden hosts
-     */
-    private function filterForbiddenHosts(array $urls): array
-    {
-        return collect($urls)
-            ->reject(fn($url) => $this->isHostForbidden($url))
+        $imageExceptions = collect(explode(',', $this->option('image-exceptions')))
+            ->map(fn($item) => trim($item))
+            ->filter(fn($item) => filled($item))
             ->values()
             ->toArray();
-    }
 
-    /**
-     * Load additional forbidden host patterns from storage/forbidden-hosts.txt
-     */
-    private function loadForbiddenHosts(): array
-    {
-        $path = base_path('storage/forbidden-hosts.txt');
-
-        if (!file_exists($path)) {
-            return [];
+        if (!empty($imageExceptions)) {
+            $this->info("Using image exceptions: " . implode(', ', $imageExceptions));
         }
 
-        $lines = file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
-
-        return collect($lines)
-            ->map(fn($line) => trim($line))
-            ->filter(fn($line) => $line !== '' && !str_starts_with($line, '#'))
-            ->map(fn($line) => Str::lower($line))
-            ->values()
-            ->all();
+        return $imageExceptions ?: null;
     }
 
     /**
-     * Display statistics about existing scraped data
+     * Setup event listeners for console output.
+     *
+     * @return void
      */
-    private function displayExistingDataStats(array $existingDirs, $directoryAnalysis): void
+    private function setupEventListeners(): void
     {
-        $totalExisting = count($existingDirs);
-        $totalComplete = $directoryAnalysis->getTotalComplete();
-        $totalIncomplete = $directoryAnalysis->getTotalIncomplete();
-        $lastCompleteDir = $directoryAnalysis->lastComplete;
+        $events = $this->pipeline->getEventService();
 
+        // Listen for validation events
+        $events->on('validation.started', function ($context) {
+            $this->info('Validating input...');
+        });
+
+        $events->on('validation.completed', function ($context, $success) {
+            if ($success) {
+                $this->info('Validation passed.');
+            }
+        });
+
+        // Listen for configuration events
+        $events->on('configuration.started', function ($context) {
+            $this->info('Processing configuration...');
+        });
+
+        $events->on('existing_data.found', function ($context) {
+            if ($context->analysis) {
+                $this->displayExistingDataStats($context->analysis);
+            }
+        });
+
+        // Listen for execution events
+        $events->on('execution.started', function ($context) {
+            $this->info('Starting crawler...');
+        });
+
+        // Listen for storage events
+        $events->on('storage.started', function ($context) {
+            $this->info('Storing results in database...');
+        });
+
+        $events->on('storage.completed', function ($context) {
+            $stored = $context->getMetadata('storedPages', 0);
+            $this->info("Stored {$stored} pages in database.");
+        });
+
+        // Listen for errors and warnings
+        $events->on('error', function ($context, $message) {
+            $this->error($message);
+        });
+
+        $events->on('warning', function ($context, $message) {
+            $this->warn($message);
+        });
+    }
+
+    /**
+     * Display statistics about existing scraped data.
+     *
+     * @param \App\Services\Crawler\Data\DirectoryAnalysis $analysis
+     * @return void
+     */
+    private function displayExistingDataStats($analysis): void
+    {
+        $totalExisting = $analysis->getTotalExisting();
+        $totalComplete = $analysis->getTotalComplete();
+        $totalIncomplete = $analysis->getTotalIncomplete();
+
+        $this->newLine();
         $this->info("Found existing scraped data:");
         $this->info("  Total directories: {$totalExisting}");
         $this->info("  Complete directories: {$totalComplete}");
         $this->info("  Incomplete directories: {$totalIncomplete}");
 
         if ($totalComplete > 0) {
-            $this->info("  Last complete directory: " . Str::padLeft($lastCompleteDir, 5, '0'));
+            $this->info("  Last complete directory: " . Str::padLeft($analysis->lastComplete, 5, '0'));
         }
 
         if ($totalIncomplete > 0) {
-            $incompleteList = collect($directoryAnalysis->incomplete)
+            $incompleteList = collect($analysis->incomplete)
                 ->map(fn($num) => Str::padLeft($num, 5, '0'))
                 ->implode(', ');
-
             $this->warn("  Incomplete directories: {$incompleteList}");
+        }
+        $this->newLine();
+    }
+
+    /**
+     * Display job statistics.
+     *
+     * @param array $statistics
+     * @return void
+     */
+    private function displayStatistics(array $statistics): void
+    {
+        $this->newLine();
+        $this->info('Statistics:');
+        foreach ($statistics as $key => $value) {
+            $label = Str::headline($key);
+            $this->info("  {$label}: {$value}");
         }
     }
 }
