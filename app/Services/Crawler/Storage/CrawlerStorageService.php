@@ -209,4 +209,54 @@ class CrawlerStorageService
 
         return $cleaned;
     }
+
+    /**
+     * Sync crawled data from local filesystem to configured storage disk.
+     *
+     * The Node.js crawler always writes to local filesystem. This method
+     * syncs that data to the configured storage disk (SFTP, S3, etc).
+     */
+    public function syncToConfiguredDisk(string $label, string $localPath): bool
+    {
+        // If using local disk, no sync needed
+        if ($this->storage->diskName() === 'local') {
+            return true;
+        }
+
+        try {
+            \Log::info("Syncing crawled data from local to {$this->storage->diskName()} for label: {$label}");
+
+            if (!is_dir($localPath)) {
+                \Log::warning("Local path does not exist: {$localPath}");
+                return false;
+            }
+
+            // Get all files recursively from local directory
+            $files = new \RecursiveIteratorIterator(
+                new \RecursiveDirectoryIterator($localPath, \RecursiveDirectoryIterator::SKIP_DOTS),
+                \RecursiveIteratorIterator::SELF_FIRST
+            );
+
+            $synced = 0;
+            foreach ($files as $file) {
+                if ($file->isFile()) {
+                    // Get relative path from the label directory
+                    $relativePath = str_replace($localPath . '/', '', $file->getPathname());
+                    $storagePath = $label . '/' . $relativePath;
+
+                    // Read local file and write to storage disk
+                    $contents = file_get_contents($file->getPathname());
+                    $this->storage->put($storagePath, $contents);
+                    $synced++;
+                }
+            }
+
+            \Log::info("Synced {$synced} files to {$this->storage->diskName()} for label: {$label}");
+            return true;
+
+        } catch (\Throwable $e) {
+            \Log::error("Failed to sync data to configured disk: {$e->getMessage()}");
+            return false;
+        }
+    }
 }

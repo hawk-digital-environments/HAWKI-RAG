@@ -135,7 +135,7 @@ class CrawlerStorageManager
 
     public function progressFilePath(string $label): string
     {
-        return "../crawler-progress-{$label}.json";
+        return ".progress/crawler-progress-{$label}.json";
     }
 
     public function getNumberedDirectories(string $label): array

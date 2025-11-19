@@ -337,10 +337,17 @@ class CrawlerPipelineService
     {
         $context->setStage('post_processing');
 
-        // Add any post-processing logic here (e.g., image optimization, PDF conversion)
-        // For now, just collect statistics
-
         if ($context->config) {
+            // Sync local crawled data to configured storage disk (SFTP, S3, etc)
+            $label = $context->config->label;
+            $localPath = $context->config->outputDir . '/' . $label;
+
+            $syncSuccess = $this->storageService->syncToConfiguredDisk($label, $localPath);
+            if (!$syncSuccess) {
+                \Log::warning("Failed to sync crawled data to configured storage disk for label: {$label}");
+            }
+
+            // Collect statistics
             $finalDirs = $this->directoryService->getExistingDirectories(
                 $context->config->outputDir,
                 $context->config->label
