@@ -220,14 +220,7 @@ class CrawlerOrchestrator
      */
     private function handleRestart(string $outputDir, string $label): void
     {
-        $crawlDir = "$outputDir/$label";
-
-        // Remove all files and subdirectories in the crawl directory
-        if (is_dir($crawlDir)) {
-            $this->directoryService->emptyDirectory($crawlDir);
-        }
-
-        // Delete the progress tracking file
+        $this->directoryService->deleteLabel($label);
         $this->progressService->deleteProgress($label);
     }
 

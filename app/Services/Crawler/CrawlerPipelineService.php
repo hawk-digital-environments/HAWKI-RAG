@@ -411,12 +411,7 @@ class CrawlerPipelineService
      */
     private function handleRestart(string $outputDir, string $label): void
     {
-        $crawlDir = "$outputDir/$label";
-
-        if (is_dir($crawlDir)) {
-            $this->directoryService->emptyDirectory($crawlDir);
-        }
-
+        $this->directoryService->deleteLabel($label);
         $this->progressService->deleteProgress($label);
     }
 

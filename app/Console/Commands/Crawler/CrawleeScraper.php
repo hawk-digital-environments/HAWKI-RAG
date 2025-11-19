@@ -13,14 +13,13 @@ class CrawleeScraper extends Command
                             {url? : The starting URL to crawl}
                             {--max-pages=100 : Maximum number of pages to crawl}
                             {--output-dir= : Directory to store crawled data}
-                            {--label= : Label for this crawl job}
+                            {--label= : Label for this crawl job (auto-generated if not provided)}
                             {--skip-images : Skip downloading images to save time and bandwidth}
                             {--image-exceptions= : Comma-separated list of CSS selectors for elements to exclude from image scraping}
                             {--date= : CSS selector for date elements (e.g., ".date", "#publication-date", "time", "meta[property=\"og:updated_time\"]")}
                             {--max-concurrency=4 : Maximum number of parallel requests running at a time}
                             {--max-rpm=60 : Maximum requests per minute to throttle overall rate}
-                            {--request-delay= : Delay between requests in milliseconds (overrides RPM throttle when set)}
-                            {--store-db : Store results in database}';
+                            {--request-delay= : Delay between requests in milliseconds (overrides RPM throttle when set)}';
 
     protected $description = 'Scrape websites using Crawlee';
 
@@ -56,8 +55,11 @@ class CrawleeScraper extends Command
                 return self::FAILURE;
             }
 
-            // Get label with fallback
-            $label = $this->option('label') ?: 'default';
+            // Get label with auto-generated fallback
+            $label = $this->option('label') ?: $this->generateLabel($url);
+
+            // Display the label being used
+            $this->info("Using crawl label: {$label}");
 
             // Parse image exceptions
             $imageExceptions = $this->parseImageExceptions();
@@ -89,10 +91,11 @@ class CrawleeScraper extends Command
             $strategy = CrawlerPipelineService::STRATEGY_CONTINUE;
 
             // Execute pipeline with output streaming
+            // Note: Database storage is now mandatory for all scrape operations
             $result = $this->pipeline->execute(
                 request: $request,
                 existingDataStrategy: $strategy,
-                storeInDatabase: (bool) $this->option('store-db'),
+                storeInDatabase: true,
                 outputCallback: function (string $type, string $buffer) {
                     // Stream crawler output to console
                     if ($type === 'out') {
@@ -138,6 +141,29 @@ class CrawleeScraper extends Command
             $this->error('An error occurred: ' . $e->getMessage());
             return self::FAILURE;
         }
+    }
+
+    /**
+     * Generate a unique label for a crawl session.
+     *
+     * Creates a label based on the domain name and current timestamp.
+     *
+     * @param string $url Starting URL
+     * @return string Generated label
+     */
+    private function generateLabel(string $url): string
+    {
+        // Extract domain from URL
+        $parsed = parse_url($url);
+        $host = $parsed['host'] ?? 'unknown';
+
+        // Clean the domain for use in label (remove www, replace dots with underscores)
+        $cleanHost = str_replace(['www.', '.'], ['', '_'], $host);
+
+        // Add timestamp to make it unique
+        $timestamp = now()->format('Ymd_His');
+
+        return "{$cleanHost}_{$timestamp}";
     }
 
     /**

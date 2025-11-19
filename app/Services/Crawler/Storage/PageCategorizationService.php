@@ -163,7 +163,10 @@ class PageCategorizationService
     {
         $urlLower = strtolower($url);
         $pathLower = strtolower($path);
-        $title = strtolower($data['title'] ?? '');
+
+        // Extract title and ensure it's a string
+        $titleRaw = $data['title'] ?? '';
+        $title = strtolower(is_array($titleRaw) ? ($titleRaw[0] ?? '') : $titleRaw);
 
         // Check for confidential keywords first (highest priority)
         foreach (self::CONFIDENTIAL_KEYWORDS as $keyword) {
@@ -233,8 +236,12 @@ class PageCategorizationService
     {
         $parts = [];
 
-        if (!empty($data['title'])) {
-            $parts[] = $data['title'];
+        // Extract title and ensure it's a string
+        $titleRaw = $data['title'] ?? null;
+        $title = is_array($titleRaw) ? ($titleRaw[0] ?? '') : $titleRaw;
+
+        if (!empty($title)) {
+            $parts[] = $title;
         }
 
         // Note: If you have text content in your JSON, add it here
