@@ -31,31 +31,6 @@ class SubscribeToScrapeEvents extends Command
      */
     public function handle(): int
     {
-        $this->warn('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-        $this->warn('                    DEPRECATION WARNING');
-        $this->warn('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-        $this->line('');
-        $this->warn('This command is deprecated. Event listeners now start automatically');
-        $this->warn('when you submit a scrape job through the ScraperPipelineService.');
-        $this->line('');
-        $this->warn('The new approach:');
-        $this->line('  1. Submit a scrape job via the pipeline');
-        $this->line('  2. Event listener is automatically dispatched as a background job');
-        $this->line('  3. Events are processed only for that specific job');
-        $this->line('  4. Listener stops automatically when job completes');
-        $this->line('');
-        $this->warn('To use the new system:');
-        $this->line('  - Ensure queue worker is running: php artisan queue:work');
-        $this->line('  - Submit jobs through ScraperPipelineService');
-        $this->line('');
-        $this->warn('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-        $this->line('');
-
-        if (!$this->confirm('Do you want to continue with the old subscriber anyway?', false)) {
-            $this->info('Aborting. Please use the queue worker approach instead.');
-            return Command::SUCCESS;
-        }
-
         $channel = $this->option('channel') ?? config('scrape.redis_channel', 'scrape-events');
         $verbose = $this->option('verb');
 
@@ -65,34 +40,47 @@ class SubscribeToScrapeEvents extends Command
         $this->info("Press Ctrl+C to stop");
         $this->line('');
 
+        // Set up signal handling if available
+        $shouldStop = false;
+        if (extension_loaded('pcntl')) {
+            pcntl_async_signals(true);
+            pcntl_signal(SIGTERM, function () use (&$shouldStop) {
+                $shouldStop = true;
+            });
+            pcntl_signal(SIGINT, function () use (&$shouldStop) {
+                $shouldStop = true;
+            });
+        }
+
         try {
-            // Set up signal handlers for graceful shutdown
-            if (extension_loaded('pcntl')) {
-                pcntl_async_signals(true);
+            // Use a persistent connection for pub/sub
+            $redis = new \Redis();
+            $redis->pconnect('redis', 6379, 0);
 
-                $subscriber = new RedisEventSubscriber($channel);
+            $this->info("Connected to Redis successfully!");
+            $this->info("Subscribing to channel...");
 
-                pcntl_signal(SIGTERM, function () use ($subscriber) {
-                    $this->warn('Received SIGTERM, stopping subscriber...');
-                    $subscriber->stop();
-                });
+            // Create the subscriber instance to handle events
+            $subscriber = new RedisEventSubscriber($channel);
 
-                pcntl_signal(SIGINT, function () use ($subscriber) {
-                    $this->warn('Received SIGINT, stopping subscriber...');
-                    $subscriber->stop();
-                });
-            } else {
-                $subscriber = new RedisEventSubscriber($channel);
-                $this->warn('PCNTL extension not loaded. Graceful shutdown may not work properly.');
-            }
+            // Subscribe and process messages using native Redis
+            $redis->subscribe([$channel], function($redis, $chan, $message) use (&$shouldStop, $subscriber) {
+                if ($shouldStop) {
+                    return; // Stop processing
+                }
 
-            // Configure logging based on verbosity
-            if ($verbose) {
-                Log::info("Redis subscriber started in verbose mode");
-            }
+                try {
+                    // Delegate to the existing subscriber's message handler
+                    // We need to use reflection or make the method public
+                    $reflection = new \ReflectionClass($subscriber);
+                    $method = $reflection->getMethod('handleMessage');
+                    $method->setAccessible(true);
+                    $method->invoke($subscriber, $message, $chan);
 
-            // Start subscribing (this blocks)
-            $subscriber->subscribe();
+                } catch (\Exception $e) {
+                    Log::error("Error processing message: " . $e->getMessage());
+                }
+            });
 
             $this->info('Subscriber stopped gracefully');
             return Command::SUCCESS;
@@ -102,6 +90,9 @@ class SubscribeToScrapeEvents extends Command
             Log::error("Redis subscriber fatal error: " . $e->getMessage(), [
                 'exception' => $e
             ]);
+
+            // Retry after a delay
+            sleep(5);
             return Command::FAILURE;
         }
     }

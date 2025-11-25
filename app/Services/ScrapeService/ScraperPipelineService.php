@@ -119,43 +119,17 @@ class ScraperPipelineService
         $context->setStage('execution');
 //        $this->eventService->executionStarted($context);
 
+        // Execute the crawler - persistent Redis subscriber is already listening
         $result = $this->executionService->execute($context->request, $outputCallback);
 
         if($result->event === 'job_submitted'){
             $context->setStage('process_submitted');
-
-            // Start listening for Redis events for this specific job
-            $this->startEventListener($result->jobId);
+            Log::info("Crawler job {$result->jobId} submitted, persistent subscriber will process events");
         }
         else {
             $context->addError( 'Execution failed.', 'execution');
 //          $this->eventService->executionCompleted($context, false);
         }
-    }
-
-    /**
-     * Start Redis event listener for a specific job.
-     *
-     * Dispatches a background job that subscribes to Redis Pub/Sub
-     * and processes events for the given job ID until completion.
-     *
-     * @param string $jobId The job ID to listen for
-     * @return void
-     */
-    private function startEventListener(string $jobId): void
-    {
-        Log::debug('Connection to Redis Channel');
-        $channel = ('scrape-events');
-        $maxWaitSeconds = config('scrape.max_job_duration', 3600); // 1 hour default
-
-//        ProcessScrapeEvents::dispatch($jobId, $channel, $maxWaitSeconds);
-        // Dispatch the event listener job
-        $subscriber = new RedisSubscriber(
-            $jobId,
-            $channel,
-            $maxWaitSeconds,
-        );
-        $subscriber->subscribe();
     }
 
     /**

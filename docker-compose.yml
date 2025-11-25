@@ -37,6 +37,14 @@ services:
             APP_ENV: local
             APP_DEBUG: "true"
             CRAWL_DIR: /var/www/storage/app/public
+            # Redis Configuration
+            REDIS_CLIENT: phpredis
+            REDIS_HOST: redis
+            REDIS_PORT: 6379
+            REDIS_PASSWORD: ""
+            REDIS_DB: 0
+            # Scrape Service Configuration
+            SCRAPE_REDIS_CHANNEL: scrape-events
         networks:
             - hawki-network
         depends_on:

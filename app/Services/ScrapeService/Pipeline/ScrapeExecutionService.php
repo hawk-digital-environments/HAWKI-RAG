@@ -21,7 +21,7 @@ class ScrapeExecutionService
     {
         Log::debug("execute");
         $response = Http::timeout(300)
-            ->post('http://crawler:8000/crawl',
+            ->post('http://host.docker.internal:8004/crawl',
                         $requestConfig->toArray());
 
 

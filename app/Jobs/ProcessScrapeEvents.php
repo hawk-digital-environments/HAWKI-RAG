@@ -31,15 +31,19 @@ class ProcessScrapeEvents implements ShouldQueue
      */
     public $tries = 1;
 
-    protected string $jobId;
+    protected ?string $jobId;
     protected string $channel;
     protected int $maxWaitSeconds;
 
     /**
      * Create a new job instance.
+     *
+     * @param string|null $jobId Specific job ID to listen for, or null to process all events
+     * @param string|null $channel Redis channel name
+     * @param int $maxWaitSeconds Maximum seconds to listen
      */
     public function __construct(
-        string $jobId,
+        ?string $jobId = null,
         ?string $channel = null,
         int $maxWaitSeconds = 3600
     ) {
@@ -53,19 +57,21 @@ class ProcessScrapeEvents implements ShouldQueue
      */
     public function handle(): void
     {
-        Log::info("Starting Redis event listener for job {$this->jobId}");
+        $logContext = $this->jobId ? "for job {$this->jobId}" : "for all jobs";
+        Log::info("Starting Redis event listener {$logContext}");
 
         $startTime = time();
         $shouldStop = false;
 
         try {
-            Log::debug('subscribing!!!');
-            Redis::subscribe([$this->channel], function (string $message) use (&$shouldStop, $startTime) {
+            Log::debug("Subscribing to channel {$this->channel}...");
+            Redis::subscribe([$this->channel], function (string $message) use (&$shouldStop, $startTime, $logContext) {
                 try {
-                    Log::debug('listening!!!');
+                    Log::debug('Redis subscription active, listening for events...');
+
                     // Check timeout
                     if (time() - $startTime > $this->maxWaitSeconds) {
-                        Log::warning("Timeout reached for job {$this->jobId} event listener");
+                        Log::warning("Timeout reached for event listener {$logContext}");
                         $shouldStop = true;
                         return;
                     }
@@ -84,8 +90,8 @@ class ProcessScrapeEvents implements ShouldQueue
                         return;
                     }
 
-                    // Only process events for this specific job
-                    if ($data['job_id'] !== $this->jobId) {
+                    // If job_id filter is set, only process events for that specific job
+                    if ($this->jobId && $data['job_id'] !== $this->jobId) {
                         return; // Ignore events from other jobs
                     }
 
@@ -100,8 +106,8 @@ class ProcessScrapeEvents implements ShouldQueue
                     // Process the event
                     $this->processEvent($packet);
 
-                    // Stop listening if job is completed
-                    if ($packet->event === 'job_completed') {
+                    // If filtering by job_id, stop listening when that job completes
+                    if ($this->jobId && $packet->event === 'job_completed') {
                         Log::info("Job {$this->jobId} completed, stopping event listener");
                         $shouldStop = true;
                     }
@@ -109,13 +115,13 @@ class ProcessScrapeEvents implements ShouldQueue
                 } catch (\Exception $e) {
                     Log::error("Error processing event: " . $e->getMessage(), [
                         'exception' => $e,
-                        'job_id' => $this->jobId
+                        'filter_job_id' => $this->jobId
                     ]);
                 }
             });
 
         } catch (\Exception $e) {
-            Log::error("Redis subscription error for job {$this->jobId}: " . $e->getMessage(), [
+            Log::error("Redis subscription error {$logContext}: " . $e->getMessage(), [
                 'exception' => $e
             ]);
             throw $e;
