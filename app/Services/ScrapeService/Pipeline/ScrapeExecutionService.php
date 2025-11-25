@@ -21,7 +21,7 @@ class ScrapeExecutionService
     {
         Log::debug("execute");
         $response = Http::timeout(300)
-            ->post('http://localhost:8004/crawl',
+            ->post('http://crawler:8000/crawl',
                         $requestConfig->toArray());
 
 

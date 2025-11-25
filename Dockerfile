@@ -25,6 +25,8 @@ RUN apt-get update && apt-get install -y \
 # Install PHP extensions
 RUN docker-php-ext-configure gd --with-freetype --with-jpeg \
  && docker-php-ext-install -j$(nproc) gd pdo_mysql opcache bcmath exif pcntl zip intl \
+ && pecl install redis \
+ && docker-php-ext-enable redis \
  && rm -rf /tmp/*
 
 # Install Composer

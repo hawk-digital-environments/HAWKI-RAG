@@ -16,7 +16,6 @@
         "laravel/tinker": "^2.9",
         "league/commonmark": "^2.7",
         "league/flysystem-sftp-v3": "^3.30.0",
-        "predis/predis": "^3.3",
         "ramsey/uuid": "^4.9",
         "symfony/yaml": "^7.2"
     },

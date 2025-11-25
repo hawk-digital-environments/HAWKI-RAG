@@ -144,13 +144,18 @@ class ScraperPipelineService
      */
     private function startEventListener(string $jobId): void
     {
-        $channel = config('scrape.redis_channel', 'scrape-events');
+        Log::debug('Connection to Redis Channel');
+        $channel = ('scrape-events');
         $maxWaitSeconds = config('scrape.max_job_duration', 3600); // 1 hour default
 
+//        ProcessScrapeEvents::dispatch($jobId, $channel, $maxWaitSeconds);
         // Dispatch the event listener job
-        ProcessScrapeEvents::dispatch($jobId, $channel, $maxWaitSeconds);
-
-        \Log::info("Started Redis event listener for job {$jobId}");
+        $subscriber = new RedisSubscriber(
+            $jobId,
+            $channel,
+            $maxWaitSeconds,
+        );
+        $subscriber->subscribe();
     }
 
     /**

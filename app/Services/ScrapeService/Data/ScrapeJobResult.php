@@ -44,15 +44,15 @@ class ScrapeJobResult
         $artifacts = [];
 
         // Extract statistics from context
-        if ($context->analysis) {
-            $statistics['existingDirectories'] = $context->analysis->getTotalExisting();
-            $statistics['completeDirectories'] = $context->analysis->getTotalComplete();
-            $statistics['incompleteDirectories'] = $context->analysis->getTotalIncomplete();
-        }
+//        if ($context->analysis) {
+//            $statistics['existingDirectories'] = $context->analysis->getTotalExisting();
+//            $statistics['completeDirectories'] = $context->analysis->getTotalComplete();
+//            $statistics['incompleteDirectories'] = $context->analysis->getTotalIncomplete();
+//        }
 
         if ($context->config) {
             $statistics['maxPages'] = $context->config->maxPages;
-            $statistics['startFromIndex'] = $context->config->startFromIndex;
+//            $statistics['startFromIndex'] = $context->config->startFromIndex;
         }
 
         // Extract artifacts
@@ -69,8 +69,8 @@ class ScrapeJobResult
         }
 
         return new static(
-            success: !$context->hasErrors() && ($context->result?->isSuccessful() ?? false),
-            jobId: $context->request->getJobId(),
+            success: !$context->hasErrors(),
+            jobId: $context->jobId,
             statistics: $statistics,
             errors: $context->getErrors(),
             warnings: $context->getWarnings(),

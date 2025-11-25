@@ -29,7 +29,7 @@ class ScrapeContext
     public array $errors = [];
     public array $warnings = [];
 
-    public array $config;
+    public ScrapeJobRequest $config;
 
     public readonly ScrapeProcess $process;
 
@@ -40,7 +40,7 @@ class ScrapeContext
         public readonly ScrapeJobRequest $request
 
     ) {
-        $this->config = $request->toArray();
+        $this->config = $request;
         $this->jobId = Str::uuid()->toString();
 
         $this->process = ScrapeProcess::create([
@@ -48,7 +48,7 @@ class ScrapeContext
             'url' => $request->url,
             'label' => $request->label,
             'status' => $this->stage,
-            'config' => $this->config,
+            'config' => $this->config->toArray(),
             'started_at' => now(),
         ]);
     }

@@ -1,22 +1,15 @@
 <?php
 
-namespace App\Jobs;
+namespace App\Services\ScrapeService;
 
 use App\Models\ScrapeMetadata;
 use App\Models\ScrapeProcess;
 use App\Services\ScrapeService\Data\ScrapeEventPacket;
-use Illuminate\Bus\Queueable;
-use Illuminate\Contracts\Queue\ShouldQueue;
-use Illuminate\Foundation\Bus\Dispatchable;
-use Illuminate\Queue\InteractsWithQueue;
-use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Redis;
 
-class ProcessScrapeEvents implements ShouldQueue
+class RedisSubscriber
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
-
     /**
      * The number of seconds the job can run before timing out.
      *
@@ -48,10 +41,8 @@ class ProcessScrapeEvents implements ShouldQueue
         $this->maxWaitSeconds = $maxWaitSeconds;
     }
 
-    /**
-     * Execute the job.
-     */
-    public function handle(): void
+
+    public function subscribe()
     {
         Log::info("Starting Redis event listener for job {$this->jobId}");
 
@@ -59,7 +50,8 @@ class ProcessScrapeEvents implements ShouldQueue
         $shouldStop = false;
 
         try {
-            Log::debug('subscribing!!!');
+            Log::debug('subscribing!!!  ');
+            Log::debug($this->channel);
             Redis::subscribe([$this->channel], function (string $message) use (&$shouldStop, $startTime) {
                 try {
                     Log::debug('listening!!!');
@@ -120,8 +112,8 @@ class ProcessScrapeEvents implements ShouldQueue
             ]);
             throw $e;
         }
-    }
 
+    }
     /**
      * Process a validated event packet.
      */
@@ -293,12 +285,13 @@ class ProcessScrapeEvents implements ShouldQueue
     protected function isValidEventPacket(array $data): bool
     {
         return isset($data['job_id']) &&
-               isset($data['event']) &&
-               isset($data['data']) &&
-               isset($data['timestamp']) &&
-               is_string($data['job_id']) &&
-               is_string($data['event']) &&
-               is_array($data['data']) &&
-               is_string($data['timestamp']);
+            isset($data['event']) &&
+            isset($data['data']) &&
+            isset($data['timestamp']) &&
+            is_string($data['job_id']) &&
+            is_string($data['event']) &&
+            is_array($data['data']) &&
+            is_string($data['timestamp']);
     }
+
 }
