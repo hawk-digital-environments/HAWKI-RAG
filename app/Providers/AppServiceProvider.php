@@ -3,13 +3,7 @@
 namespace App\Providers;
 
 use App\Services\AI\Providers\OllamaProvider;
-
-use App\Services\Storage\FileStorageService;
-use App\Services\Storage\StorageServiceFactory;
-use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Support\ServiceProvider;
-use App\Http\Middleware\ExternalServerAuth;
-use Illuminate\Support\Facades\Route;
 
 class AppServiceProvider extends ServiceProvider
 {

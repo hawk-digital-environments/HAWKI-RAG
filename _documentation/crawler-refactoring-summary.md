@@ -109,10 +109,11 @@ $events->on('execution.progress', function($context, $output) {
 
 ### 5. **Clean Public Interface**
 External code only needs to import:
+
 ```php
-use App\Services\Crawler\CrawlerPipelineService;
-use App\Services\Crawler\Data\CrawlerJobRequest;
-use App\Services\Crawler\Data\CrawlerJobResult;
+use App\Services\ScrapeService\ScraperPipelineService;
+use App\Services\ScrapeService\Data\ScrapeJobRequest;
+use App\Services\ScrapeService\Data\ScrapeJobResult;
 ```
 
 All subdirectory services are internal implementation details.
@@ -180,19 +181,21 @@ $result = $pipeline->execute($request);
 ## Migration Notes
 
 ### Old Code (Still Works)
+
 ```php
-use App\Services\Crawler\CrawlerOrchestrator;
+use App\Services\ScrapeService\CrawlerOrchestrator;
 
 // CrawlerOrchestrator still works but is deprecated
 $orchestrator->crawl(url: $url, label: $label, ...);
 ```
 
 ### New Code (Recommended)
-```php
-use App\Services\Crawler\CrawlerPipelineService;
-use App\Services\Crawler\Data\CrawlerJobRequest;
 
-$request = new CrawlerJobRequest(url: $url, label: $label);
+```php
+use App\Services\ScrapeService\ScraperPipelineService;
+use App\Services\ScrapeService\Data\ScrapeJobRequest;
+
+$request = new ScrapeJobRequest(url: $url, label: $label);
 $result = $pipeline->execute($request);
 ```
 

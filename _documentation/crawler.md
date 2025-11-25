@@ -101,9 +101,9 @@ app/Services/Crawler/
 When integrating the crawler with other parts of the application (controllers, API endpoints, queue jobs, other services), you should **only import and use `CrawlerPipelineService`** from the main namespace:
 
 ```php
-use App\Services\Crawler\CrawlerPipelineService;
-use App\Services\Crawler\Data\CrawlerJobRequest;
-use App\Services\Crawler\Data\CrawlerJobResult;
+use App\Services\ScrapeService\ScraperPipelineService;
+use App\Services\ScrapeService\Data\ScrapeJobRequest;
+use App\Services\ScrapeService\Data\ScrapeJobResult;
 ```
 
 All services in subdirectories (`Pipeline/`, `Validation/`, `Storage/`, `Events/`) are internal implementation details and should not be directly referenced outside the Crawler namespace. This ensures clean separation of concerns and makes future refactoring easier.
@@ -368,15 +368,16 @@ php artisan crawlee:scrape "/path/to/sitemap.txt" \
 ### Programmatic Usage (PHP)
 
 #### Basic Example
+
 ```php
-use App\Services\Crawler\CrawlerPipelineService;
-use App\Services\Crawler\Data\CrawlerJobRequest;
+use App\Services\ScrapeService\ScraperPipelineService;
+use App\Services\ScrapeService\Data\ScrapeJobRequest;
 
 class CrawlerController extends Controller
 {
-    public function crawl(CrawlerPipelineService $pipeline)
+    public function crawl(ScraperPipelineService $pipeline)
     {
-        $request = new CrawlerJobRequest(
+        $request = new ScrapeJobRequest(
             url: 'https://example.com',
             label: 'my-crawl',
             maxPages: 100
@@ -438,8 +439,8 @@ $result = $pipeline->execute(
 ```php
 namespace App\Jobs;
 
-use App\Services\Crawler\CrawlerPipelineService;
-use App\Services\Crawler\Data\CrawlerJobRequest;
+use App\Services\ScrapeService\ScraperPipelineService;
+use App\Services\ScrapeService\Data\ScrapeJobRequest;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -456,9 +457,9 @@ class CrawlWebsiteJob implements ShouldQueue
         public int $maxPages = 100
     ) {}
 
-    public function handle(CrawlerPipelineService $pipeline)
+    public function handle(ScraperPipelineService $pipeline)
     {
-        $request = new CrawlerJobRequest(
+        $request = new ScrapeJobRequest(
             url: $this->url,
             label: $this->label,
             maxPages: $this->maxPages

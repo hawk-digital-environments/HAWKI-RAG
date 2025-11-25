@@ -1,21 +1,21 @@
-x-ollama-base: &ollama_base
-    image: ollama/ollama:latest
-    container_name: hawki_ollama
-    ports:
-        - "11434:11434"
-    volumes:
-        - ollama:/root/.ollama
-    networks:
-        hawki-network:
-            aliases:
-                - ollama
-    restart: unless-stopped
-    healthcheck:
-        test: ["CMD", "curl", "-fsS", "http://localhost:11434/api/tags"]
-        interval: 20s
-        timeout: 5s
-        retries: 10
-        start_period: 20s
+#x-ollama-base: &ollama_base
+#    image: ollama/ollama:latest
+#    container_name: hawki_ollama
+#    ports:
+#        - "11434:11434"
+#    volumes:
+#        - ollama:/root/.ollama
+#    networks:
+#        hawki-network:
+#            aliases:
+#                - ollama
+#    restart: unless-stopped
+#    healthcheck:
+#        test: ["CMD", "curl", "-fsS", "http://localhost:11434/api/tags"]
+#        interval: 20s
+#        timeout: 5s
+#        retries: 10
+#        start_period: 20s
 
 services:
     app:
@@ -46,66 +46,120 @@ services:
             - app
         networks:
             - hawki-network
+
     # Qdrant Vector DB
-    qdrant:
-        image: qdrant/qdrant:latest
-        container_name: hawki_qdrant
-        ports:
-        - "6333:6333"
-        - "6334:6334"
-        volumes:
-        - qdrant_data:/qdrant/storage
-        networks:
-        - hawki-network
-        restart: always
-        healthcheck:
-            test: ["CMD", "curl", "-fsS", "http://localhost:6333/readyz"]
-            interval: 15s
-            timeout: 5s
-            retries: 10
-            start_period: 20s
+#    qdrant:
+#        image: qdrant/qdrant:latest
+#        container_name: hawki_qdrant
+#        ports:
+#        - "6333:6333"
+#        - "6334:6334"
+#        volumes:
+#        - qdrant_data:/qdrant/storage
+#        networks:
+#        - hawki-network
+#        restart: always
+#        healthcheck:
+#            test: ["CMD", "curl", "-fsS", "http://localhost:6333/readyz"]
+#            interval: 15s
+#            timeout: 5s
+#            retries: 10
+#            start_period: 20s
 
     # Ollama (local models for LLM/embeddings)
-    ollama_cpu:
-        <<: *ollama_base
-        profiles: ["cpu"]
-        environment:
-            - OLLAMA_USE_MPS=${OLLAMA_USE_MPS:-0}
+#    ollama_cpu:
+#        <<: *ollama_base
+#        profiles: ["cpu"]
+#        environment:
+#            - OLLAMA_USE_MPS=${OLLAMA_USE_MPS:-0}
+#
+#    ollama_gpu:
+#        <<: *ollama_base
+#        profiles: ["gpu"]
+#        deploy:
+#            resources:
+#                reservations:
+#                    devices:
+#                        - driver: nvidia
+#                          count: all
+#                          capabilities:
+#                            - gpu
+    # Redis for Pub/Sub between Python microservice and Laravel
+    redis:
+        image: redis:7-alpine
+        container_name: hawki_redis
+        ports:
+            - "6379:6379"
+        volumes:
+            - redis_data:/data
+        networks:
+            - hawki-network
+        restart: unless-stopped
+        command: redis-server --appendonly yes
+        healthcheck:
+            test: ["CMD", "redis-cli", "ping"]
+            interval: 10s
+            timeout: 3s
+            retries: 5
 
-    ollama_gpu:
-        <<: *ollama_base
-        profiles: ["gpu"]
+    crawler:
+        build:
+            context: .
+            dockerfile: ./CustomCrawler/Dockerfile
+        image: crawl4ai-fastapi:latest
+        container_name: crawl4ai-service
+        ports:
+            - "8004:8000"
+        environment:
+            # Optional API security token
+            - CRAWL4AI_API_TOKEN=${CRAWL4AI_API_TOKEN:-}
+            # Maximum concurrent crawl tasks
+            - MAX_CONCURRENT_TASKS=${MAX_CONCURRENT_TASKS:-5}
+            # Server configuration
+            - HOST=${HOST:-0.0.0.0}
+            - PORT=${PORT:-8000}
+            # Optional LLM Provider Keys (for advanced crawl4ai features)
+            - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+            - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+            # Redis Pub/Sub Configuration (recommended)
+            - REDIS_HOST=${REDIS_HOST:-redis}
+            - REDIS_PORT=${REDIS_PORT:-6379}
+            - REDIS_DB=${REDIS_DB:-0}
+            - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+            - REDIS_CHANNEL=${REDIS_CHANNEL:-scrape-events}
+            # WebSocket URL for real-time events (legacy, deprecated)
+            # Example: ws://laravel-app:6001 for Laravel WebSocket
+            - WEBSOCKET_URL=${WEBSOCKET_URL:-}
+            # Data storage path for job files
+            - DATA_PATH=${DATA_PATH:-/app/data/jobs}
+        volumes:
+            # Mount data directory for job-specific storage (new structure)
+            - ./data:/app/data
+            # Mount output directory for backwards compatibility
+            - ./output:/app/output
+            # Shared memory for Playwright (prevents crashes)
+            - /dev/shm:/dev/shm
+        restart: unless-stopped
+        healthcheck:
+            test: ["CMD", "curl", "-f", "http://localhost:8004/health"]
+            interval: 30s
+            timeout: 10s
+            retries: 3
+            start_period: 40s
+        # Resource limits (adjust based on your needs)
         deploy:
             resources:
+                limits:
+                    cpus: '2'
+                    memory: 2G
                 reservations:
-                    devices:
-                        - driver: nvidia
-                          count: all
-                          capabilities:
-                            - gpu
-    # MinIO Object Storage (disabled)
-    # minio:
-    #     image: minio/minio
-    #     container_name: hawki_minio
-    #     ports:
-    #     - "9000:9000"
-    #     - "9001:9001"
-    #     environment:
-    #         MINIO_ROOT_USER: ${MINIO_ACCESS_KEY}
-    #         MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY}
-    #     volumes:
-    #     - minio_data:/data
-    #     networks:
-    #     - hawki-network
-    #     command: server --console-address ":9001" /data
-    #     restart: always
-    # NOTE: Neo4j and RAWKI services run in a separate stack.
-    # See ops/rawki-docker-compose.yml which joins the same external network.
-
+                    cpus: '1'
+                    memory: 1G
 volumes:
     # minio_data: # disabled
     qdrant_data:
     ollama:
+    redis_data:
 
 
 networks:

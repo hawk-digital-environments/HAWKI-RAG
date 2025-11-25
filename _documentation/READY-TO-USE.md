@@ -83,7 +83,7 @@ $pages = ScrapedPage::domain('hawk.de')
 ### 3. Check Statistics
 
 ```php
-use App\Services\Crawler\Storage\PageCategorizationService;
+use App\Services\ScrapeService\Storage\PageCategorizationService;
 
 $service = app(PageCategorizationService::class);
 

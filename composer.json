@@ -12,12 +12,13 @@
         "php": "^8.2",
         "guzzlehttp/guzzle": "^7.9",
         "laravel/framework": "^11.44.1",
+        "laravel/sanctum": "^4.2.0",
         "laravel/tinker": "^2.9",
-        "ramsey/uuid": "^4.9",
-        "symfony/yaml": "^7.2",
         "league/commonmark": "^2.7",
         "league/flysystem-sftp-v3": "^3.30.0",
-        "laravel/sanctum": "^4.2.0"
+        "predis/predis": "^3.3",
+        "ramsey/uuid": "^4.9",
+        "symfony/yaml": "^7.2"
     },
     "require-dev": {
         "fakerphp/faker": "^1.23",

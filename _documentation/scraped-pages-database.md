@@ -242,7 +242,7 @@ The `PageCategorizationService` handles automatic categorization and access leve
 #### Usage Example
 
 ```php
-use App\Services\Crawler\Storage\PageCategorizationService;
+use App\Services\ScrapeService\Storage\PageCategorizationService;
 
 $service = app(PageCategorizationService::class);
 
@@ -440,7 +440,7 @@ The migration includes strategic indexes for common query patterns:
 ### Recategorize All Pages
 
 ```php
-use App\Services\Crawler\Storage\PageCategorizationService;
+use App\Services\ScrapeService\Storage\PageCategorizationService;
 use App\Models\ScrapedPage;
 
 $service = app(PageCategorizationService::class);

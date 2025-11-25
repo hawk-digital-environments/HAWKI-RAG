@@ -93,7 +93,7 @@ $publicPages = ScrapedPage::accessLevel('public')->get();
 $results = ScrapedPage::search('machine learning')->get();
 
 // Get statistics
-$service = app(\App\Services\Crawler\Storage\PageCategorizationService::class);
+$service = app(\App\Services\ScrapeService\Storage\PageCategorizationService::class);
 $stats = $service->getSiteCategoryStatistics();
 ```
 
@@ -209,12 +209,12 @@ created_at, updated_at, deleted_at (soft deletes)
 ### Store Pages Automatically
 
 ```php
-use App\Services\Crawler\CrawlerPipelineService;
-use App\Services\Crawler\Data\CrawlerJobRequest;
+use App\Services\ScrapeService\ScraperPipelineService;
+use App\Services\ScrapeService\Data\ScrapeJobRequest;
 
-$pipeline = app(CrawlerPipelineService::class);
+$pipeline = app(ScraperPipelineService::class);
 
-$request = new CrawlerJobRequest(
+$request = new ScrapeJobRequest(
     url: 'https://wiki.hawk.de',
     label: 'wiki-crawl',
     maxPages: 100
@@ -270,7 +270,7 @@ $results = ScrapedPage::search('project management')
 ### Statistics
 
 ```php
-use App\Services\Crawler\Storage\PageCategorizationService;
+use App\Services\ScrapeService\Storage\PageCategorizationService;
 
 $service = app(PageCategorizationService::class);
 
