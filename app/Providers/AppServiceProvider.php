@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use App\Services\AI\Providers\OllamaProvider;
+use App\Services\ScrapeService\ScraperPipelineService;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider

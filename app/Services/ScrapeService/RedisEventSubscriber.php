@@ -6,7 +6,9 @@ use App\Events\ScrapeEvent;
 use App\Models\ScrapeMetadata;
 use App\Models\ScrapeProcess;
 use App\Services\ScrapeService\Data\ScrapeEventPacket;
-use App\Services\ScrapeService\Pipeline\RedisEventHandler;
+use App\Services\ScrapeService\Pipeline\ScrapeContextBuilder;
+use App\Services\ScrapeService\Pipeline\ScrapeEventHandler;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Redis;
 
@@ -36,14 +38,14 @@ class RedisEventSubscriber
     protected int $reconnectAttempts = 0;
     protected ?\Closure $outputCallback = null;
 
-    protected RedisEventHandler $redisEventHandler;
+    protected ScrapeEventHandler $scrapeEventHandler;
     public function __construct
     (
-        RedisEventHandler $redisEventHandler,
-        ?string $channel = null
+        ScrapeEventHandler $scrapeEventHandler,
+        ?string            $channel = null
     )
     {
-        $this->redisEventHandler = $redisEventHandler;
+        $this->scrapeEventHandler = $scrapeEventHandler;
         $this->channel = $channel ?? config('scrape.redis_channel', 'scrape-events');
     }
 
@@ -196,59 +198,19 @@ class RedisEventSubscriber
      *
      * @param ScrapeEventPacket $packet
      * @return void
+     * @throws \Exception
      */
     protected function processEvent(ScrapeEventPacket $packet): void
     {
-        Log::info("Processing event: {$packet->event} for job {$packet->jobId}", [
-            'job_id' => $packet->jobId,
-            'event' => $packet->event,
-            'data' => $packet->data
-        ]);
-
         // Find the ScrapeProcess record
-        $process = ScrapeProcess::where('job_id', $packet->jobId)->first();
+        $context = ScrapeContextBuilder::rebuildContext($packet->jobId);
 
-        if (!$process) {
-            Log::warning("ScrapeProcess not found for job_id: {$packet->jobId}");
-            // You might want to create it here or handle this case differently
-            return;
-        }
-
-        // Store event in metadata table
-        $this->storeEventMetadata($process, $packet);
-
-        // Update process status based on event type
-        $this->updateProcessStatus($process, $packet);
+        // Call event-specific handlers
+        $this->scrapeEventHandler->handleEventType($context, $packet);
 
         // Dispatch Laravel event (optional - for broadcasting to frontend)
         event(new ScrapeEvent());
 
-        // Call event-specific handlers
-        $this->redisEventHandler->handleEventType($process, $packet);
-    }
-
-    /**
-     * Store event metadata in database.
-     *
-     * @param ScrapeProcess $process
-     * @param ScrapeEventPacket $packet
-     * @return void
-     */
-    protected function storeEventMetadata(ScrapeProcess $process, ScrapeEventPacket $packet): void
-    {
-        try {
-            ScrapeMetadata::create([
-                'scrape_job_id' => $process->id,
-                'event' => $packet->event,
-                'data' => $packet->data,
-                'timestamp' => $packet->timestamp
-            ]);
-        } catch (\Exception $e) {
-            Log::error("Failed to store event metadata: " . $e->getMessage(), [
-                'job_id' => $packet->jobId,
-                'event' => $packet->event
-            ]);
-        }
     }
 
     /**

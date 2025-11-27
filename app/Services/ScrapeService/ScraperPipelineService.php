@@ -2,31 +2,15 @@
 
 namespace App\Services\ScrapeService;
 
-use App\Jobs\ProcessScrapeEvents;
 use App\Services\ScrapeService\Data\ScrapeContext;
 use App\Services\ScrapeService\Data\ScrapeJobRequest;
 use App\Services\ScrapeService\Data\ScrapeJobResult;
 use App\Services\ScrapeService\Pipeline\ScrapeExecutionService;
+use App\Services\ScrapeService\Pipeline\ScrapeContextBuilder;
 use App\Services\ScrapeService\Validation\ScrapeValidationService;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
-/**
- * Main gateway service for the crawler pipeline.
- *
- * This service orchestrates the complete crawler pipeline from start to finish,
- * coordinating all services and managing the flow of data through pipeline stages.
- * It provides a clean, API-ready interface for executing crawler jobs without
- * console dependencies.
- *
- * Pipeline Stages:
- * 1. Validation - Validate input and check business rules
- * 2. Configuration - Process URL and build configuration
- * 3. Pre-Execution - Analyze existing data and prepare
- * 4. Execution - Run the crawler
- * 5. Post-Processing - Process results
- * 6. Storage - Persist to database
- * 7. Finalization - Cleanup and result compilation
- */
 class ScraperPipelineService
 {
 
@@ -50,7 +34,7 @@ class ScraperPipelineService
         ?callable        $outputCallback = null
     ): ScrapeJobResult {
         // Create context to carry state through the pipeline
-        $context = new ScrapeContext($request);
+        $context = ScrapeContextBuilder::buildFromRequest($request);
 
         try {
             // Stage 1: Validation
@@ -65,12 +49,8 @@ class ScraperPipelineService
                 return $this->buildFailureResult($context);
             }
 
-            // Stage 3: Finalization
-            $this->executeFinalization($context);
-
-            // Dispatch completion event
-//            $this->eventService->pipelineCompleted($context);
-
+            //save process in cache so we don't need to rebuild it from database.
+            Cache::put("scrape_process:{$context->jobId}", $context->process, now()->addMinutes(10));
             return ScrapeJobResult::fromContext($context);
 
         } catch (\Throwable $e) {
@@ -124,29 +104,10 @@ class ScraperPipelineService
 
         if($result->event === 'job_submitted'){
             $context->setStage('process_submitted');
-            Log::info("Crawler job {$result->jobId} submitted, persistent subscriber will process events");
         }
         else {
             $context->addError( 'Execution failed.', 'execution');
 //          $this->eventService->executionCompleted($context, false);
-        }
-    }
-
-    /**
-     * Stage 7: Finalization
-     *
-     * Finalizes the pipeline and prepares the result.
-     */
-    private function executeFinalization(ScrapeContext $context): void
-    {
-        $context->setStage('finalization');
-        $context->addMetadata('endTime', now());
-        $context->setEndProcess();
-
-        // Calculate duration
-        if ($context->getMetadata('startTime')) {
-            $duration = $context->getMetadata('endTime')->diffInSeconds($context->getMetadata('startTime'));
-            $context->addMetadata('durationSeconds', $duration);
         }
     }
 

@@ -22,4 +22,13 @@ class ScrapeEventPacket
         public readonly array $data,
         public readonly string $timestamp,
     ) {}
+
+    public function toArray(): array{
+        return [
+            'jobId' => $this->jobId,
+            'event' => $this->event,
+            'data' => $this->data,
+            'timestamp' => $this->timestamp,
+        ];
+    }
 }

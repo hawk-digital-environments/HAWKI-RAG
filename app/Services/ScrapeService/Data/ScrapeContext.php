@@ -23,41 +23,35 @@ use Illuminate\Support\Str;
  */
 class ScrapeContext
 {
+    public readonly ScrapeProcess $process;
     public readonly string $jobId;
-    public string $stage = 'initialized';
+    public string $stage;
+
+    public array $config;
+
+    public array $metadata;
 
     public array $errors = [];
     public array $warnings = [];
 
-    public ScrapeJobRequest $config;
-
-    public readonly ScrapeProcess $process;
-
-    public array $metadata;
-
+    public int $progress = 0;
 
     public function __construct(
-        public readonly ScrapeJobRequest $request
-
+        ScrapeProcess $process,
     ) {
-        $this->config = $request;
-        $this->jobId = Str::uuid()->toString();
+        $this->process = $process;
 
-        $this->process = ScrapeProcess::create([
-            'job_id' => $this->jobId,
-            'url' => $request->url,
-            'label' => $request->label,
-            'status' => $this->stage,
-            'config' => $this->config->toArray(),
-            'started_at' => now(),
-        ]);
+        $this->jobId = $process->job_id;
+        $this->stage = $process->status;
+        $this->config = $process->config;
+
+        $metaCollection = $process->metadata()->get();
+        $this->metadata = $metaCollection->toArray();
+        $this->errors   = $metaCollection->where('event', 'error')->values()->toArray();
+        $this->warnings = $metaCollection->where('event', 'warning')->values()->toArray();
+
+
     }
-
-
-    public function setEndProcess(): void{
-        $this->process->update(['ended_at', now()]);
-    }
-
 
     /**
      * Add metadata to the context.
@@ -85,7 +79,7 @@ class ScrapeContext
      */
     public function getMetadata(string $key, mixed $default = null): mixed
     {
-        return $this->events[$key] ?? $default;
+        return $this->metadata[$key] ?? $default;
     }
 
     /**
@@ -129,8 +123,47 @@ class ScrapeContext
     public function setStage(string $stage): void
     {
         $this->stage = $stage;
-        $this->addMetadata("stage_{$stage}_time", now());
     }
+
+    /**
+     * Set the current stage.
+     *
+     * **/
+    public function getStage(): string
+    {
+        return $this->stage;
+    }
+
+    /**
+     * Set number of scraped URLs
+     * @param int $progress
+     *
+     * **/
+    public function setProgress(int $progress): void
+    {
+        $this->progress = $progress;
+    }
+
+    /**
+     *  get number of scraped URLs.
+     */
+    public function getProgress(): int
+    {
+        return $this->progress;
+    }
+
+    public function setEndProcess(): void{
+        $this->setStage('finalization');
+        $this->process->update(['ended_at' => now()]);
+        $this->addMetadata('endTime', now());
+        // Calculate duration
+        if ($this->getMetadata('startTime')) {
+            $duration = $this->getMetadata('endTime')->diffInSeconds($this->getMetadata('startTime'));
+            $this->addMetadata('durationSeconds', $duration);
+        }
+    }
+
+
 
     /**
      * Check if the context has any errors.

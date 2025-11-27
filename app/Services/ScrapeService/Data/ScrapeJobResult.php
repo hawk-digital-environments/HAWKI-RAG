@@ -2,6 +2,8 @@
 
 namespace App\Services\ScrapeService\Data;
 
+use App\Services\ScrapeService\Pipeline\ScrapeContextBuilder;
+
 /**
  * Result data transfer object returned from the crawler pipeline.
  *

@@ -15,6 +15,7 @@ class ScrapeProcess extends Model
         'job_id',
         'status',
         'config',
+        'progress',
         'started_at',
         'ended_at',
     ];
@@ -28,14 +29,14 @@ class ScrapeProcess extends Model
     /* ----------------------------------
      | Relationships
      ---------------------------------- */
-    public function events(): HasMany
+    public function metadata(): HasMany
     {
         return $this->hasMany(ScrapeMetadata::class);
     }
 
-    public function latestEvent(): HasMany
+    public function elements(): HasMany
     {
-        return $this->events()->latest();
+        return $this->hasMany(ScrapedElement::class);
     }
 
     /* ----------------------------------

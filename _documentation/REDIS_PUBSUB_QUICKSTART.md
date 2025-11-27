@@ -194,7 +194,7 @@ docker exec -it hawki_redis redis-cli
 
 # 4. Verify channel name matches
 # Python: Check .env REDIS_CHANNEL
-# Laravel: Check config/scrape.php 'redis_channel'
+# Laravel: Check config/scraper.php 'redis_channel'
 ```
 
 ### Queue worker not picking up jobs

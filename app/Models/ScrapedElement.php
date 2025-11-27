@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 class ScrapedElement extends Model
@@ -51,6 +52,18 @@ class ScrapedElement extends Model
         'pdf_count' => 'integer',
         'content_length' => 'integer',
     ];
+
+
+
+    /* ----------------------------------
+      | Relationships
+      ---------------------------------- */
+
+    public function process(): BelongsTo
+    {
+        return $this->belongsTo(ScrapeProcess::class, 'scrape_job_id');
+    }
+
 
     /**
      * Boot the model and set up event listeners.
