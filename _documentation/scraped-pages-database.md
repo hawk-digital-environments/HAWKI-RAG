@@ -169,25 +169,25 @@ For the URL `https://projekte.g.hawk.de/some/path`:
 ### Basic Queries
 
 ```php
-use App\Models\ScrapedPage;
+use App\Models\ScrapedElement;
 
 // Find by category
-$pages = ScrapedPage::category('projekte_g_hawk')->get();
+$pages = ScrapedElement::category('projekte_g_hawk')->get();
 
 // Find by domain
-$pages = ScrapedPage::domain('hawk.de')->get();
+$pages = ScrapedElement::domain('hawk.de')->get();
 
 // Find by subdomain
-$pages = ScrapedPage::subdomain('wiki')->get();
+$pages = ScrapedElement::subdomain('wiki')->get();
 
 // Find by access level
-$publicPages = ScrapedPage::accessLevel('public')->get();
+$publicPages = ScrapedElement::accessLevel('public')->get();
 
 // Find by crawler label
-$pages = ScrapedPage::crawlerLabel('my-crawl-2024')->get();
+$pages = ScrapedElement::crawlerLabel('my-crawl-2024')->get();
 
 // Full-text search
-$pages = ScrapedPage::search('machine learning')->get();
+$pages = ScrapedElement::search('machine learning')->get();
 ```
 
 ### Advanced Queries
@@ -441,11 +441,11 @@ The migration includes strategic indexes for common query patterns:
 
 ```php
 use App\Services\ScrapeService\Storage\PageCategorizationService;
-use App\Models\ScrapedPage;
+use App\Models\ScrapedElement;
 
 $service = app(PageCategorizationService::class);
 
-ScrapedPage::chunk(100, function($pages) use ($service) {
+ScrapedElement::chunk(100, function($pages) use ($service) {
     foreach ($pages as $page) {
         $service->recategorize($page);
     }

@@ -81,16 +81,16 @@ php artisan crawlee:scrape "https://projekte.g.hawk.de" \
 ### 3. Query the Data
 
 ```php
-use App\Models\ScrapedPage;
+use App\Models\ScrapedElement;
 
 // Get all pages from projekte.g.hawk.de
-$pages = ScrapedPage::category('projekte_g_hawk')->get();
+$pages = ScrapedElement::category('projekte_g_hawk')->get();
 
 // Get public pages
-$publicPages = ScrapedPage::accessLevel('public')->get();
+$publicPages = ScrapedElement::accessLevel('public')->get();
 
 // Search
-$results = ScrapedPage::search('machine learning')->get();
+$results = ScrapedElement::search('machine learning')->get();
 
 // Get statistics
 $service = app(\App\Services\ScrapeService\Storage\PageCategorizationService::class);

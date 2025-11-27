@@ -61,21 +61,21 @@ php artisan crawlee:scrape "https://projekte.g.hawk.de" \
 ### 2. Query the Data
 
 ```php
-use App\Models\ScrapedPage;
+use App\Models\ScrapedElement;
 
 // All pages from projects site
-$pages = ScrapedPage::category('projekte_g_hawk')->get();
+$pages = ScrapedElement::category('projekte_g_hawk')->get();
 
 // Public pages only
-$public = ScrapedPage::accessLevel('public')->get();
+$public = ScrapedElement::accessLevel('public')->get();
 
 // Search
-$results = ScrapedPage::search('machine learning')
+$results = ScrapedElement::search('machine learning')
     ->category('wiki_hawk')
     ->paginate(20);
 
 // By domain
-$pages = ScrapedPage::domain('hawk.de')
+$pages = ScrapedElement::domain('hawk.de')
     ->where('crawled_at', '>=', now()->subDays(7))
     ->get();
 ```

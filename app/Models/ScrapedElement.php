@@ -5,7 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
-class ScrapedPage extends Model
+class ScrapedElement extends Model
 {
     use SoftDeletes;
 
@@ -26,6 +26,7 @@ class ScrapedPage extends Model
         'pdfs',
         'date',
         'path',
+        // @todo remove raw json.
         'raw_json',
         'site_category',
         'domain',

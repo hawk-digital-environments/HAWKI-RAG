@@ -2,7 +2,7 @@
 //
 //namespace App\Console\Commands\Crawler;
 //
-//use App\Models\ScrapedPage;
+//use App\Models\ScrapedElement;
 //use App\Services\ScrapeService\Storage\CrawlerStorageManager;
 //use Illuminate\Console\Command;
 //
@@ -36,7 +36,7 @@
 //        try {
 //            // Check if data exists
 //            $hasStorage = $this->storage->isDirectory($label);
-//            $pageCount = ScrapedPage::where('crawler_label', $label)->count();
+//            $pageCount = ScrapedElement::where('crawler_label', $label)->count();
 //            $hasDatabase = $pageCount > 0;
 //
 //            // Check for progress file
@@ -89,7 +89,7 @@
 //            // Remove database records (soft delete)
 //            if ($hasDatabase) {
 //                $this->info('Removing database records...');
-//                $deleted = ScrapedPage::where('crawler_label', $label)->delete();
+//                $deleted = ScrapedElement::where('crawler_label', $label)->delete();
 //                $this->info("Removed {$deleted} database records.");
 //            }
 //

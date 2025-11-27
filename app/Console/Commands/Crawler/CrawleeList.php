@@ -2,7 +2,7 @@
 //
 //namespace App\Console\Commands\Crawler;
 //
-//use App\Models\ScrapedPage;
+//use App\Models\ScrapedElement;
 //use App\Services\ScrapeService\Storage\CrawlerStorageManager;
 //use Illuminate\Console\Command;
 //use Carbon\Carbon;
@@ -29,7 +29,7 @@
 //            $this->newLine();
 //
 //            // Get labels from database
-//            $dbLabels = ScrapedPage::selectRaw('crawler_label, COUNT(*) as page_count, MIN(crawled_at) as first_crawled, MAX(crawled_at) as last_crawled')
+//            $dbLabels = ScrapedElement::selectRaw('crawler_label, COUNT(*) as page_count, MIN(crawled_at) as first_crawled, MAX(crawled_at) as last_crawled')
 //                ->whereNotNull('crawler_label')
 //                ->groupBy('crawler_label')
 //                ->orderBy('last_crawled', 'desc')

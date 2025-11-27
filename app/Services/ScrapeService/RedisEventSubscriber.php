@@ -6,6 +6,7 @@ use App\Events\ScrapeEvent;
 use App\Models\ScrapeMetadata;
 use App\Models\ScrapeProcess;
 use App\Services\ScrapeService\Data\ScrapeEventPacket;
+use App\Services\ScrapeService\Pipeline\RedisEventHandler;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Redis;
 
@@ -33,36 +34,118 @@ class RedisEventSubscriber
     protected int $reconnectDelay = 2; // seconds
     protected int $maxReconnectAttempts = 10;
     protected int $reconnectAttempts = 0;
+    protected ?\Closure $outputCallback = null;
 
-    public function __construct(?string $channel = null)
+    protected RedisEventHandler $redisEventHandler;
+    public function __construct
+    (
+        RedisEventHandler $redisEventHandler,
+        ?string $channel = null
+    )
     {
+        $this->redisEventHandler = $redisEventHandler;
         $this->channel = $channel ?? config('scrape.redis_channel', 'scrape-events');
     }
 
     /**
-     * Start subscribing to the Redis channel.
+     * Set output callback for console messages.
+     *
+     * @param \Closure $callback
+     * @return self
+     */
+    public function setOutputCallback(\Closure $callback): self
+    {
+        $this->outputCallback = $callback;
+        return $this;
+    }
+
+    /**
+     * Output a message (to console if callback is set, otherwise to log).
+     *
+     * @param string $message
+     * @param string $type 'info'|'error'|'line'
+     * @return void
+     */
+    protected function output(string $message, string $type = 'info'): void
+    {
+        if ($this->outputCallback) {
+            ($this->outputCallback)($message, $type);
+        }
+    }
+
+    /**
+     * Start subscribing to the Redis channel using native Redis extension.
      * This method will block and run indefinitely until stopped.
+     * Includes signal handling and reconnection logic.
+     *
+     * @return int Exit code (0 for success, 1 for failure)
+     */
+    public function subscribeWithNativeRedis(): int
+    {
+        $this->output('');
+        $this->output("Starting Redis subscriber...", 'info');
+        $this->output("Channel: {$this->channel}", 'info');
+        $this->output("Press Ctrl+C to stop", 'info');
+        $this->output('');
+
+        // Set up signal handling if available
+        $this->setupSignalHandling();
+
+        try {
+            // Use a persistent connection for pub/sub
+            $redis = new \Redis();
+            $redis->pconnect('redis', 6379, 0);
+
+            $this->output("Connected to Redis successfully!", 'info');
+            $this->output("Subscribing to channel...", 'info');
+
+            Log::info("Starting Redis subscriber on channel: {$this->channel}");
+
+            // Subscribe and process messages using native Redis
+            $redis->subscribe([$this->channel], function($redis, $chan, $message) {
+                if ($this->shouldStop) {
+                    return; // Stop processing
+                }
+
+                try {
+                    $this->handleMessage($message, $chan);
+                } catch (\Exception $e) {
+                    Log::error("Error processing message: " . $e->getMessage());
+                }
+            });
+
+            $this->output('Subscriber stopped gracefully', 'info');
+            Log::info("Redis subscriber stopped");
+            return 0; // Success
+
+        } catch (\Exception $e) {
+            $this->output("Fatal error: " . $e->getMessage(), 'error');
+            Log::error("Redis subscriber fatal error: " . $e->getMessage(), [
+                'exception' => $e
+            ]);
+
+            // Retry after a delay
+            sleep(5);
+            return 1; // Failure
+        }
+    }
+
+    /**
+     * Set up PCNTL signal handling for graceful shutdown.
      *
      * @return void
      */
-    public function subscribe(): void
+    protected function setupSignalHandling(): void
     {
-        Log::info("Starting Redis subscriber on channel: {$this->channel}");
-
-        while (!$this->shouldStop) {
-            try {
-                $this->reconnectAttempts = 0;
-
-                Redis::subscribe([$this->channel], function (string $message, string $channel) {
-                    $this->handleMessage($message, $channel);
-                });
-
-            } catch (\Exception $e) {
-                $this->handleSubscriptionError($e);
-            }
+        if (extension_loaded('pcntl')) {
+            pcntl_async_signals(true);
+            pcntl_signal(SIGTERM, function () {
+                $this->shouldStop = true;
+            });
+            pcntl_signal(SIGINT, function () {
+                $this->shouldStop = true;
+            });
         }
-
-        Log::info("Redis subscriber stopped");
     }
 
     /**
@@ -141,7 +224,7 @@ class RedisEventSubscriber
         event(new ScrapeEvent());
 
         // Call event-specific handlers
-        $this->handleEventType($process, $packet);
+        $this->redisEventHandler->handleEventType($process, $packet);
     }
 
     /**
@@ -200,101 +283,6 @@ class RedisEventSubscriber
     }
 
     /**
-     * Handle event-specific logic.
-     *
-     * @param ScrapeProcess $process
-     * @param ScrapeEventPacket $packet
-     * @return void
-     */
-    protected function handleEventType(ScrapeProcess $process, ScrapeEventPacket $packet): void
-    {
-        match ($packet->event) {
-            'sitemap_detected' => $this->handleSitemapDetected($process, $packet),
-            'urls_discovered' => $this->handleUrlsDiscovered($process, $packet),
-            'crawling_started' => $this->handleCrawlingStarted($process, $packet),
-            'url_fetching' => $this->handleUrlFetching($process, $packet),
-            'url_scraped' => $this->handleUrlScraped($process, $packet),
-            'url_completed' => $this->handleUrlCompleted($process, $packet),
-            'job_completed' => $this->handleJobCompleted($process, $packet),
-            default => Log::debug("No specific handler for event: {$packet->event}")
-        };
-    }
-
-    // Event-specific handlers
-
-    protected function handleSitemapDetected(ScrapeProcess $process, ScrapeEventPacket $packet): void
-    {
-        Log::info("Sitemap detected", [
-            'job_id' => $packet->jobId,
-            'sitemap_url' => $packet->data['sitemap_url'] ?? null,
-            'total_urls' => $packet->data['total_urls'] ?? 0
-        ]);
-    }
-
-    protected function handleUrlsDiscovered(ScrapeProcess $process, ScrapeEventPacket $packet): void
-    {
-        Log::info("URLs discovered", [
-            'job_id' => $packet->jobId,
-            'urls_count' => $packet->data['urls_count'] ?? 0,
-            'total_to_crawl' => $packet->data['total_to_crawl'] ?? 0
-        ]);
-    }
-
-    protected function handleCrawlingStarted(ScrapeProcess $process, ScrapeEventPacket $packet): void
-    {
-        Log::info("Crawling started", [
-            'job_id' => $packet->jobId,
-            'total_pages' => $packet->data['total_pages'] ?? 0
-        ]);
-    }
-
-    protected function handleUrlFetching(ScrapeProcess $process, ScrapeEventPacket $packet): void
-    {
-        // You might want to throttle these logs or store them differently
-        Log::debug("Fetching URL", [
-            'job_id' => $packet->jobId,
-            'url' => $packet->data['url'] ?? null,
-            'page_number' => $packet->data['page_number'] ?? null
-        ]);
-    }
-
-    protected function handleUrlScraped(ScrapeProcess $process, ScrapeEventPacket $packet): void
-    {
-        $success = $packet->data['success'] ?? false;
-        $level = $success ? 'info' : 'warning';
-
-        Log::log($level, "URL scraped", [
-            'job_id' => $packet->jobId,
-            'url' => $packet->data['url'] ?? null,
-            'success' => $success,
-            'error' => $packet->data['error'] ?? null
-        ]);
-    }
-
-    protected function handleUrlCompleted(ScrapeProcess $process, ScrapeEventPacket $packet): void
-    {
-        Log::info("URL processing completed", [
-            'job_id' => $packet->jobId,
-            'url' => $packet->data['url'] ?? null,
-            'files_created' => $packet->data['files_created'] ?? []
-        ]);
-    }
-
-    protected function handleJobCompleted(ScrapeProcess $process, ScrapeEventPacket $packet): void
-    {
-        $success = $packet->data['success'] ?? false;
-        $level = $success ? 'info' : 'error';
-
-        Log::log($level, "Job completed", [
-            'job_id' => $packet->jobId,
-            'pages_crawled' => $packet->data['pages_crawled'] ?? 0,
-            'output_directory' => $packet->data['output_directory'] ?? null,
-            'success' => $success,
-            'error' => $packet->data['error'] ?? null
-        ]);
-    }
-
-    /**
      * Validate event packet structure.
      *
      * @param array $data
@@ -310,33 +298,6 @@ class RedisEventSubscriber
                is_string($data['event']) &&
                is_array($data['data']) &&
                is_string($data['timestamp']);
-    }
-
-    /**
-     * Handle subscription errors with reconnection logic.
-     *
-     * @param \Exception $e
-     * @return void
-     */
-    protected function handleSubscriptionError(\Exception $e): void
-    {
-        $this->reconnectAttempts++;
-
-        Log::error("Redis subscription error (attempt {$this->reconnectAttempts}/{$this->maxReconnectAttempts}): " . $e->getMessage(), [
-            'exception' => $e
-        ]);
-
-        if ($this->reconnectAttempts >= $this->maxReconnectAttempts) {
-            Log::critical("Max reconnection attempts reached. Stopping subscriber.");
-            $this->shouldStop = true;
-            return;
-        }
-
-        Log::info("Reconnecting in {$this->reconnectDelay} seconds...");
-        sleep($this->reconnectDelay);
-
-        // Exponential backoff (optional)
-        // $this->reconnectDelay = min($this->reconnectDelay * 2, 60);
     }
 
     /**

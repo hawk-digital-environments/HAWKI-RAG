@@ -11,7 +11,7 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('scraped_pages', function (Blueprint $table) {
+        Schema::create('scraped_elements', function (Blueprint $table) {
             $table->id();
 
             // Basic page information
@@ -27,6 +27,8 @@ return new class extends Migration
             $table->text('path'); // File system path to scraped content
 
             // Raw data storage
+            // @todo remove raw json.
+
             $table->longText('raw_json')->nullable(); // Complete JSON file content
 
             // Categorization fields
@@ -35,6 +37,7 @@ return new class extends Migration
             $table->string('subdomain')->nullable()->index(); // e.g., 'projekte.g', 'wiki'
             $table->string('full_domain')->nullable()->index(); // e.g., 'projekte.g.hawk.de'
 
+            // @todo create proper access control tags.
             // Access control (for future user management)
             $table->enum('access_level', [
                 'public',       // Accessible to everyone
@@ -53,6 +56,8 @@ return new class extends Migration
             $table->integer('pdf_count')->default(0); // Count of PDFs
             $table->integer('content_length')->nullable(); // Length of text content
 
+
+            // @todo do we need to keep the search_text?
             // Search and indexing
             $table->text('search_text')->nullable(); // Processed text for full-text search
             $table->fullText(['title', 'search_text']); // Full-text index
@@ -64,6 +69,9 @@ return new class extends Migration
             $table->index(['site_category', 'access_level']);
             $table->index(['domain', 'subdomain']);
             $table->index(['crawler_label', 'crawled_at']);
+
+
+            // @todo Add vectorization tracking columns. or create a new table for vectorization tracking
         });
     }
 

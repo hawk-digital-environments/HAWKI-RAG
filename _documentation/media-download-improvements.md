@@ -539,7 +539,7 @@ php artisan tinker
 
 ```php
 // Check scraped pages
-$pages = \App\Models\ScrapedPage::where('crawler_label', 'media-test')->get();
+$pages = \App\Models\ScrapedElement::where('crawler_label', 'media-test')->get();
 
 // Check images
 $pages->each(function($page) {
@@ -551,7 +551,7 @@ $pages->each(function($page) {
 });
 
 // Check for specific URL
-$page = \App\Models\ScrapedPage::where('page_url', 'https://projekte.g.hawk.de/specific-page')->first();
+$page = \App\Models\ScrapedElement::where('page_url', 'https://projekte.g.hawk.de/specific-page')->first();
 print_r($page->images);
 print_r($page->documents);
 ```
