@@ -27,17 +27,17 @@ class ScrapeService
     public function startPipeline(array $request, ?callable $outputCallback = null): void
     {
         $jobRequest = new ScrapeJobRequest(
-            url: $request->url,
-            label: $request->label,
-            maxPages: $request->maxPages,
-            outputDir: $request->outputDir,
-            skipImages: $request->skipImages,
-            imageExceptions: $request->imageExceptions,
-            dateSelector: $request->dateSelector,
-            maxConcurrency: $request->maxConcurrency,
-            maxRpm: $request->maxRpm,
-            requestDelay: $request->requestDelay,
-            discoveryMode: $request->discoveryMode ?? false,
+            url: $request['url'],
+            label: $request['label'],
+            maxPages: $request['maxPages'],
+            outputDir: $request['outputDir'],
+            skipImages: $request['skipImages'],
+            imageExceptions: $request['imageExceptions'],
+            dateSelector: $request['dateSelector'],
+            maxConcurrency: $request['maxConcurrency'],
+            maxRpm: $request['maxRpm'],
+            requestDelay: $request['requestDelay'],
+            discoveryMode: $request['discoveryMode'] ?? false,
         );
         $pipeline = app(ScraperPipelineService::class);
         $pipeline->execute($jobRequest, $outputCallback);

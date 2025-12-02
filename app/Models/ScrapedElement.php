@@ -19,38 +19,43 @@ class ScrapedElement extends Model
     public const ACCESS_CONFIDENTIAL = 'confidential';
 
     protected $fillable = [
+        'uuid',
         'title',
+
         'page_url',
-        'page_url_hash',
         'meta_img_url',
+
+        'page_url_hash',
+        'content_hash',
+
+        'language',
+
         'images',
         'pdfs',
-        'date',
-        'path',
-        // @todo remove raw json.
-        'raw_json',
-        'site_category',
+        'published_at',
+
         'domain',
         'subdomain',
-        'full_domain',
+
         'access_level',
-        'crawler_label',
-        'crawler_job_id',
-        'crawled_at',
+
+        'scrape_job_id',
+
         'image_count',
         'pdf_count',
+
         'content_length',
-        'search_text',
+        'search_tags',
     ];
 
     protected $casts = [
         'images' => 'array',
         'pdfs' => 'array',
-        'raw_json' => 'array',
-        'crawled_at' => 'datetime',
+        'scraped_at' => 'datetime',
         'image_count' => 'integer',
         'pdf_count' => 'integer',
         'content_length' => 'integer',
+        'search_tags' => 'array',
     ];
 
 
@@ -62,24 +67,6 @@ class ScrapedElement extends Model
     public function process(): BelongsTo
     {
         return $this->belongsTo(ScrapeProcess::class, 'scrape_job_id');
-    }
-
-
-    /**
-     * Boot the model and set up event listeners.
-     *
-     * @return void
-     */
-    protected static function boot()
-    {
-        parent::boot();
-
-        // Automatically generate URL hash before saving
-        static::saving(function ($page) {
-            if ($page->isDirty('page_url') || empty($page->page_url_hash)) {
-                $page->page_url_hash = hash('sha256', $page->page_url);
-            }
-        });
     }
 
     /**
@@ -150,15 +137,15 @@ class ScrapedElement extends Model
     }
 
     /**
-     * Scope to filter by crawler label.
+     * Scope to filter by scraper label.
      *
      * @param \Illuminate\Database\Eloquent\Builder $query
      * @param string $label
      * @return \Illuminate\Database\Eloquent\Builder
      */
-    public function scopeCrawlerLabel($query, string $label)
+    public function scopescraperLabel($query, string $label)
     {
-        return $query->where('crawler_label', $label);
+        return $query->where('scraper_label', $label);
     }
 
     /**

@@ -23,7 +23,7 @@ return [
     |
     */
 
-    'api_url' => env('CUSTOM_CRAWLER_URL', 'http://host.docker.internal:8004'),
+    'api_url' => env('CUSTOM_CRAWLER_URL', 'http://crawler:8000'),
     'api_key' => env('CUSTOM_CRAWLER_API_KEY', ''),
 
     /*

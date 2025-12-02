@@ -14,6 +14,7 @@ return [
     */
 
     'default' => env('FILESYSTEM_DISK', 'local'),
+    'file_storage' => env('FILE_STORAGE', 'public'),
 
     /*
     |--------------------------------------------------------------------------
@@ -66,7 +67,6 @@ return [
             'root' => env('SFTP_BASE_PATH', '/'),
             'timeout' => 30,
             'visibility' => 'private',
-
         ],
 
     ],

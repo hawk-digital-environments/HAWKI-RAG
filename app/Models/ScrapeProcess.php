@@ -31,12 +31,17 @@ class ScrapeProcess extends Model
      ---------------------------------- */
     public function metadata(): HasMany
     {
-        return $this->hasMany(ScrapeMetadata::class);
+        return $this->hasMany(ScrapeMetadata::class, 'scrape_job_id');
     }
 
     public function elements(): HasMany
     {
-        return $this->hasMany(ScrapedElement::class);
+        return $this->hasMany(ScrapedElement::class, 'scrape_job_id');
+    }
+
+    public function events(): HasMany
+    {
+        return $this->hasMany(ScrapeMetadata::class, 'scrape_job_id');
     }
 
     /* ----------------------------------

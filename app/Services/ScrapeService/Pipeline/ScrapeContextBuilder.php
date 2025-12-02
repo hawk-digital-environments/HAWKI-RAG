@@ -5,6 +5,7 @@ namespace App\Services\ScrapeService\Pipeline;
 use App\Models\ScrapeProcess;
 use App\Services\ScrapeService\Data\ScrapeContext;
 use App\Services\ScrapeService\Data\ScrapeJobRequest;
+use Exception;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -33,10 +34,10 @@ class ScrapeContextBuilder
     /**
      * For Updating the context with Redis Events
      *
-     * @param ScrapeProcess $process
+     * @param string $jobId
      * @return ScrapeContext
      *
-     * @throws \Exception
+     * @throws Exception
      */
     public static function rebuildContext(string $jobId): ScrapeContext{
 

@@ -2,7 +2,7 @@
 
 namespace App\Console\Commands\RedisSubscription;
 
-use App\Services\ScrapeService\RedisEventSubscriber;
+use App\Services\ScrapeService\ScraperEventSubscriber;
 use Illuminate\Console\Command;
 
 class SubscribeToRedisChannel extends Command
@@ -32,7 +32,7 @@ class SubscribeToRedisChannel extends Command
         $channel = $this->option('channel') ?? config('scrape.redis_channel', 'scrape-events');
 
         // Create the subscriber instance
-        $subscriber = new RedisEventSubscriber($channel);
+        $subscriber = new ScraperEventSubscriber($channel);
 
         // Set up output callback to display messages in the console
         $subscriber->setOutputCallback(function (string $message, string $type) {

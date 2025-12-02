@@ -4,6 +4,7 @@ namespace App\Services\ScrapeService\Data;
 
 use App\Models\ScrapeMetadata;
 use App\Models\ScrapeProcess;
+use App\Services\ScrapeService\Pipeline\ScrapeFinalizerService;
 use Illuminate\Support\Str;
 
 /**
@@ -27,7 +28,7 @@ class ScrapeContext
     public readonly string $jobId;
     public string $stage;
 
-    public array $config;
+    public ScrapeJobRequest $config;
 
     public array $metadata;
 
@@ -43,14 +44,12 @@ class ScrapeContext
 
         $this->jobId = $process->job_id;
         $this->stage = $process->status;
-        $this->config = $process->config;
+        $this->config = ScrapeJobRequest::fromArray($process->config);
 
         $metaCollection = $process->metadata()->get();
         $this->metadata = $metaCollection->toArray();
         $this->errors   = $metaCollection->where('event', 'error')->values()->toArray();
         $this->warnings = $metaCollection->where('event', 'warning')->values()->toArray();
-
-
     }
 
     /**
@@ -123,6 +122,8 @@ class ScrapeContext
     public function setStage(string $stage): void
     {
         $this->stage = $stage;
+        // Update the process status in the database
+        $this->process->update(['status' => $stage]);
     }
 
     /**
@@ -161,6 +162,8 @@ class ScrapeContext
             $duration = $this->getMetadata('endTime')->diffInSeconds($this->getMetadata('startTime'));
             $this->addMetadata('durationSeconds', $duration);
         }
+        $finalizer = new ScrapeFinalizerService();
+        $finalizer->executeFinalization($this);
     }
 
 

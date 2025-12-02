@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Redis;
 
 /**
- * Redis Event Subscriber - Laravel Side
+ * Scraper Event Subscriber - Laravel Side
  * ======================================
  * This service subscribes to Redis Pub/Sub channels and processes
  * scrape events published by the Python microservice.
@@ -29,7 +29,7 @@ use Illuminate\Support\Facades\Redis;
  * Run as a Laravel command:
  * php artisan scrape:subscribe
  */
-class RedisEventSubscriber
+class ScraperEventSubscriber
 {
     protected string $channel;
     protected bool $shouldStop = false;
@@ -37,16 +37,16 @@ class RedisEventSubscriber
     protected int $maxReconnectAttempts = 10;
     protected int $reconnectAttempts = 0;
     protected ?\Closure $outputCallback = null;
-
     protected ScrapeEventHandler $scrapeEventHandler;
+
+
     public function __construct
     (
-        ScrapeEventHandler $scrapeEventHandler,
-        ?string            $channel = null
+        ?string $channel = null
     )
     {
-        $this->scrapeEventHandler = $scrapeEventHandler;
         $this->channel = $channel ?? config('scrape.redis_channel', 'scrape-events');
+        $this->scrapeEventHandler = new ScrapeEventHandler();
     }
 
     /**
@@ -96,7 +96,16 @@ class RedisEventSubscriber
         try {
             // Use a persistent connection for pub/sub
             $redis = new \Redis();
-            $redis->pconnect('redis', 6379, 0);
+            $redisConfig = config('database.redis.default');
+            Log::debug("Connecting to Redis: {$redisConfig['host']}:{$redisConfig['port']}");
+
+            $redis->pconnect($redisConfig['host'], $redisConfig['port'], 0);
+
+            // Authenticate if password is set
+            if (!empty($redisConfig['password'])) {
+                $redis->auth($redisConfig['password']);
+                Log::debug("Authenticated with Redis");
+            }
 
             $this->output("Connected to Redis successfully!", 'info');
             $this->output("Subscribing to channel...", 'info');
@@ -105,8 +114,18 @@ class RedisEventSubscriber
 
             // Subscribe and process messages using native Redis
             $redis->subscribe([$this->channel], function($redis, $chan, $message) {
+                // Handle subscription confirmation (not an actual message)
+                if (is_numeric($message)) {
+                    Log::debug("Subscribed to channel: {$chan}");
+                    return;
+                }
+
+                Log::debug("Received message on channel {$chan}: " . substr($message, 0, 200));
+
                 if ($this->shouldStop) {
-                    return; // Stop processing
+                    Log::info("Stop signal received, unsubscribing...");
+                    $redis->unsubscribe();
+                    return;
                 }
 
                 try {

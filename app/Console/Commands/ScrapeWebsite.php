@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Services\ScrapeService\ScraperPipelineService;
 use App\Services\ScrapeService\Data\ScrapeJobRequest;
+use App\Services\ScrapeService\ScrapeService;
 use Illuminate\Console\Command;
 
 class ScrapeWebsite extends Command
@@ -34,7 +35,7 @@ class ScrapeWebsite extends Command
     protected $description = 'Scrape websites';
 
         public function __construct(
-        private ScraperPipelineService $pipeline
+        private readonly ScraperPipelineService $pipeline
     ) {
         parent::__construct();
     }
@@ -71,20 +72,21 @@ class ScrapeWebsite extends Command
             }
 
             // Create job request
-            $request = new ScrapeJobRequest(
-                url: $url,
-                label: $label,
-                maxPages: (int)$this->option('max-pages'),
-                outputDir: $this->option('output-dir') ?: '',
-                skipImages: (bool)$this->option('skip-images'),
-                imageExceptions: $imageExceptions,
-                dateSelector: $dateSelector,
-                maxConcurrency: (int)$this->option('max-concurrency'),
-                maxRpm: (int)$this->option('max-rpm'),
-                requestDelay: $this->option('request-delay') ? (int)$this->option('request-delay') : null,
-            );
-            $this->pipeline->execute(
-                request: $request,
+            $request = [
+                'url' => $url,
+                'label' => $label,
+                'maxPages' => (int)$this->option('max-pages'),
+                'outputDir' => $this->option('output-dir') ?: '',
+                'skipImages' => (bool)$this->option('skip-images'),
+                'imageExceptions' => $imageExceptions,
+                'dateSelector' => $dateSelector,
+                'maxConcurrency' => (int)$this->option('max-concurrency'),
+                'maxRpm' => (int)$this->option('max-rpm'),
+                'requestDelay' => $this->option('request-delay') ? (int)$this->option('request-delay') : null,
+            ];
+
+            $service = new ScrapeService();
+            $service->startPipeline($request,
                 outputCallback: function (string $type, string $buffer) {
                     // Stream crawler output to console
                     if ($type === 'out') {

@@ -13,3 +13,9 @@ Route::get('/rawki-playground', function () {
         'ragPrompt'  => config('model_prompts.prompts.rag') ?? '',
     ]);
 });
+
+
+Route::get('/files/{uuid}/private/{path}', [AiConvController::class, 'downloadAttachment'])
+    ->where([
+        'path' => '.*',
+    ])->name('files.download')->middleware('signed');

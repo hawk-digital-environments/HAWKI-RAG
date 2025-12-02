@@ -6,7 +6,7 @@
 #    volumes:
 #        - ollama:/root/.ollama
 #    networks:
-#        hawki-network:
+#        rawki-network:
 #            aliases:
 #                - ollama
 #    restart: unless-stopped
@@ -36,17 +36,17 @@ services:
         environment:
             APP_ENV: local
             APP_DEBUG: "true"
-            CRAWL_DIR: /var/www/storage/app/public
             # Redis Configuration
             REDIS_CLIENT: phpredis
             REDIS_HOST: redis
             REDIS_PORT: 6379
-            REDIS_PASSWORD: ""
+            REDIS_PASSWORD: "foobared"
             REDIS_DB: 0
             # Scrape Service Configuration
-            SCRAPE_REDIS_CHANNEL: scrape-events
+#            SCRAPE_REDIS_CHANNEL: scrape-events
+
         networks:
-            - hawki-network
+            - rawki-network
         depends_on:
             - redis
 
@@ -55,7 +55,7 @@ services:
     # -------------------------------------------------
     nginx:
         image: nginx:1.27-alpine
-        container_name: hawki_nginx
+        container_name: rawki_nginx
         ports:
             - "8003:80"
         volumes:
@@ -64,24 +64,24 @@ services:
         depends_on:
             - app
         networks:
-            - hawki-network
+            - rawki-network
 
     # -------------------------------------------------
     # Redis (Pub/Sub for Laravel <-> Crawler)
     # -------------------------------------------------
     redis:
         image: redis:7-alpine
-        container_name: hawki_redis
+        container_name: rawki_redis
         ports:
             - "6379:6379"
         volumes:
             - redis_data:/data
         networks:
-            - hawki-network
+            - rawki-network
         restart: unless-stopped
-        command: redis-server --appendonly yes
+        command: redis-server --appendonly yes --requirepass foobared
         healthcheck:
-            test: ["CMD", "redis-cli", "ping"]
+            test: ["CMD", "redis-cli", "-a", "foobared", "ping"]
             interval: 10s
             timeout: 3s
             retries: 5
@@ -90,66 +90,76 @@ services:
     # External Crawler Microservice
     # -------------------------------------------------
     crawler:
-        image: customcrawler
-        container_name: hawki_crawler
+        build:
+            context: .
+            dockerfile: Dockerfile
+        image: crawl4ai-fastapi:latest
+        container_name: crawl4ai-service
         ports:
             - "8004:8000"
         environment:
-            # Crawler Server
-            HOST: 0.0.0.0
-            PORT: 8000
-
-            # Optional API Security
-            CRAWL4AI_API_TOKEN: ${CRAWL4AI_API_TOKEN:-}
-
-            # Task Management
-            MAX_CONCURRENT_TASKS: ${MAX_CONCURRENT_TASKS:-5}
-
-            # Redis Pub/Sub
-            REDIS_HOST: redis
-            REDIS_PORT: 6379
-            REDIS_DB: 0
-            REDIS_PASSWORD: ""
-            REDIS_CHANNEL: scrape-events
-
-            # Shared data path (Laravel storage)
-            DATA_PATH: /app/shared
-
+            # Optional API security token
+            - CRAWL4AI_API_TOKEN=${CRAWL4AI_API_TOKEN:-}
+            # Maximum concurrent crawl tasks
+            - MAX_CONCURRENT_TASKS=${MAX_CONCURRENT_TASKS:-5}
+            # Server configuration
+            - HOST=${HOST:-0.0.0.0}
+            - PORT=${PORT:-8000}
+            # Optional LLM Provider Keys (for advanced crawl4ai features)
+            - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+            - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+            # Redis Pub/Sub Configuration (recommended)
+            - REDIS_ENABLED=true
+            - REDIS_HOST=redis
+            - REDIS_PORT=6379
+            - REDIS_DB=0
+            - REDIS_PASSWORD=foobared
+            - REDIS_CHANNEL=scrape-events
+            # WebSocket URL for real-time events (legacy, deprecated)
+            # Example: ws://laravel-app:6001 for Laravel WebSocket
+            - WEBSOCKET_URL=${WEBSOCKET_URL:-}
+            # Data storage path for job files
+            - DATA_PATH=${DATA_PATH:-/app/shared}
         volumes:
-            # Job data (crawler internal)
+            # Mount data directory for job-specific storage (new structure)
             - ./data:/app/data
-
-            # Backward compatibility output folder
+            # Mount output directory for backwards compatibility
             - ./output:/app/output
-
-            # Shared volume with Laravel
-            - shared_storage:/app/shared
-
-            # Required for Playwright/Chromium
+            # Shared memory for Playwright (prevents crashes)
             - /dev/shm:/dev/shm
-
+            - shared_storage:/app/shared
         networks:
-            - hawki-network
+            - rawki-network
+        depends_on:
+            - redis
         restart: unless-stopped
-
         healthcheck:
-            test: [ "CMD", "curl", "-f", "http://localhost:8000/health" ]
+            test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
             interval: 30s
             timeout: 10s
             retries: 3
             start_period: 40s
+        # Resource limits (adjust based on your needs)
+        deploy:
+            resources:
+                limits:
+                    cpus: '2'
+                    memory: 2G
+                reservations:
+                    cpus: '1'
+                    memory: 1G
 
     # Qdrant Vector DB
 #    qdrant:
 #        image: qdrant/qdrant:latest
-#        container_name: hawki_qdrant
+#        container_name: rawki_qdrant
 #        ports:
 #        - "6333:6333"
 #        - "6334:6334"
 #        volumes:
 #        - qdrant_data:/qdrant/storage
 #        networks:
-#        - hawki-network
+#        - rawki-network
 #        restart: always
 #        healthcheck:
 #            test: ["CMD", "curl", "-fsS", "http://localhost:6333/readyz"]
@@ -176,74 +186,7 @@ services:
 #                          count: all
 #                          capabilities:
 #                            - gpu
-    # Redis for Pub/Sub between Python microservice and Laravel
-#    redis:
-#        image: redis:7-alpine
-#        container_name: hawki_redis
-#        ports:
-#            - "6379:6379"
-#        volumes:
-#            - redis_data:/data
-#        networks:
-#            - hawki-network
-#        restart: unless-stopped
-#        command: redis-server --appendonly yes
-#        healthcheck:
-#            test: ["CMD", "redis-cli", "ping"]
-#            interval: 10s
-#            timeout: 3s
-#            retries: 5
 
-#    crawler:
-#        image: customcrawler
-#        container_name: crawl4ai-service
-#        ports:
-#            - "8004:8000"
-#        environment:
-#            # Optional API security token
-#            - CRAWL4AI_API_TOKEN=${CRAWL4AI_API_TOKEN:-}
-#            # Maximum concurrent crawl tasks
-#            - MAX_CONCURRENT_TASKS=${MAX_CONCURRENT_TASKS:-5}
-#            # Server configuration
-#            - HOST=${HOST:-0.0.0.0}
-#            - PORT=${PORT:-8000}
-#            # Optional LLM Provider Keys (for advanced crawl4ai features)
-#            - OPENAI_API_KEY=${OPENAI_API_KEY:-}
-#            - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
-#            # Redis Pub/Sub Configuration (recommended)
-#            - REDIS_HOST=${REDIS_HOST:-redis}
-#            - REDIS_PORT=${REDIS_PORT:-6379}
-#            - REDIS_DB=${REDIS_DB:-0}
-#            - REDIS_PASSWORD=${REDIS_PASSWORD:-}
-#            - REDIS_CHANNEL=${REDIS_CHANNEL:-scrape-events}
-#            # WebSocket URL for real-time events (legacy, deprecated)
-#            # Example: ws://laravel-app:6001 for Laravel WebSocket
-#            - WEBSOCKET_URL=${WEBSOCKET_URL:-}
-#            # Data storage path for job files
-#            - DATA_PATH=${DATA_PATH:-/app/data/jobs}
-#        volumes:
-#            # Mount data directory for job-specific storage (new structure)
-#            - ./data:/app/data
-#            # Mount output directory for backwards compatibility
-#            - ./output:/app/output
-#            # Shared memory for Playwright (prevents crashes)
-#            - /dev/shm:/dev/shm
-#        restart: unless-stopped
-#        healthcheck:
-#            test: ["CMD", "curl", "-f", "http://localhost:8004/health"]
-#            interval: 30s
-#            timeout: 10s
-#            retries: 3
-#            start_period: 40s
-#        # Resource limits (adjust based on your needs)
-#        deploy:
-#            resources:
-#                limits:
-#                    cpus: '2'
-#                    memory: 2G
-#                reservations:
-#                    cpus: '1'
-#                    memory: 1G
 volumes:
     shared_storage:     # Shared Laravel storage <-> Crawler
     redis_data:
@@ -252,5 +195,5 @@ volumes:
 
 
 networks:
-    hawki-network:
+    rawki-network:
         external: true

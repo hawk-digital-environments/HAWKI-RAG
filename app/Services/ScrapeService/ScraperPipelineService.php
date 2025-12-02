@@ -8,6 +8,7 @@ use App\Services\ScrapeService\Data\ScrapeJobResult;
 use App\Services\ScrapeService\Pipeline\ScrapeExecutionService;
 use App\Services\ScrapeService\Pipeline\ScrapeContextBuilder;
 use App\Services\ScrapeService\Validation\ScrapeValidationService;
+use App\Services\StorageService\StorageService;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
@@ -17,6 +18,7 @@ class ScraperPipelineService
     public function __construct(
         private readonly ScrapeValidationService $validationService,
         private readonly ScrapeExecutionService  $executionService,
+        private readonly StorageService $storageService,
     ) {}
 
     /**
@@ -44,13 +46,20 @@ class ScraperPipelineService
             }
 
             // Stage 2: Execution
-            $this->executeExecution($context, $outputCallback);
+            $crawlerJobId = $this->executeExecution($context, $outputCallback);
             if ($context->hasErrors()) {
                 return $this->buildFailureResult($context);
             }
 
+            // Update process with the actual job_id from the crawler
+            if ($crawlerJobId) {
+                $context->process->update(['job_id' => $crawlerJobId]);
+                $context->process->refresh();
+            }
+
             //save process in cache so we don't need to rebuild it from database.
-            Cache::put("scrape_process:{$context->jobId}", $context->process, now()->addMinutes(10));
+            // Use the process's job_id (which is now the crawler's job_id after update)
+            Cache::put("scrape_process:{$context->process->job_id}", $context->process, now()->addMinutes(10));
             return ScrapeJobResult::fromContext($context);
 
         } catch (\Throwable $e) {
@@ -74,7 +83,7 @@ class ScraperPipelineService
 //        $this->eventService->validationStarted($context);
 
         // Validate request
-        $isValid = $this->validationService->validate($context->request);
+        $isValid = $this->validationService->validate($context->config);
 
         if (!$isValid) {
             foreach ($this->validationService->getErrors() as $error) {
@@ -93,23 +102,33 @@ class ScraperPipelineService
      * Stage 4: Execution
      *
      * Executes the crawler with the built configuration.
+     * Returns the job_id from the crawler if successful, null otherwise.
      */
-    private function executeExecution(ScrapeContext $context, ?callable $outputCallback = null): void
+    private function executeExecution(ScrapeContext $context, ?callable $outputCallback = null): ?string
     {
         $context->setStage('execution');
 //        $this->eventService->executionStarted($context);
 
         // Execute the crawler - persistent Redis subscriber is already listening
-        $result = $this->executionService->execute($context->request, $outputCallback);
+        $result = $this->executionService->execute($context->config, $outputCallback);
 
         if($result->event === 'job_submitted'){
             $context->setStage('process_submitted');
+            return $result->jobId; // Return the crawler's job_id
         }
         else {
             $context->addError( 'Execution failed.', 'execution');
 //          $this->eventService->executionCompleted($context, false);
+            return null;
         }
     }
+
+
+    //@todo decide between broadcasting or command reading.
+    public function readPipelineStatus($jobId): array{
+        return $this->storageService->fetchJobReport($jobId, 'job_state');
+    }
+
 
     /**
      * Build a failure result from context.
