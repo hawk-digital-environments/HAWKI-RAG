@@ -35,7 +35,6 @@ class ScrapeWebsite extends Command
     protected $description = 'Scrape websites';
 
         public function __construct(
-        private readonly ScraperPipelineService $pipeline
     ) {
         parent::__construct();
     }

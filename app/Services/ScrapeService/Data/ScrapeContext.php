@@ -2,8 +2,8 @@
 
 namespace App\Services\ScrapeService\Data;
 
-use App\Models\ScrapeMetadata;
 use App\Models\ScrapeProcess;
+use App\Models\ScrapeStatistics;
 use App\Services\ScrapeService\Pipeline\ScrapeFinalizerService;
 use Illuminate\Support\Str;
 
@@ -17,23 +17,18 @@ use Illuminate\Support\Str;
  *
  * @property ScrapeJobRequest $request Original job request
  * @property ScrapeEventPacket|null $result Execution result
- * @property array $metadata Additional metadata accumulated during processing
  * @property string $stage Current pipeline stage
  * @property array $errors Errors encountered during processing
  * @property array $warnings Warnings generated during processing
  */
 class ScrapeContext
 {
-    public readonly ScrapeProcess $process;
+    public ScrapeProcess $process;
     public readonly string $jobId;
     public string $stage;
 
-    public ScrapeJobRequest $config;
-
-    public array $metadata;
-
-    public array $errors = [];
-    public array $warnings = [];
+    public ScrapeJobRequest $request;
+    public ScrapeStatistics $jobStats;
 
     public int $progress = 0;
 
@@ -43,75 +38,22 @@ class ScrapeContext
         $this->process = $process;
 
         $this->jobId = $process->job_id;
-        $this->stage = $process->status;
-        $this->config = ScrapeJobRequest::fromArray($process->config);
-
-        $metaCollection = $process->metadata()->get();
-        $this->metadata = $metaCollection->toArray();
-        $this->errors   = $metaCollection->where('event', 'error')->values()->toArray();
-        $this->warnings = $metaCollection->where('event', 'warning')->values()->toArray();
+        $this->stage = $process->stage;
+        // Merge the job_id into the request params before creating the request object
+        $requestParams = array_merge($process->request, ['job_id' => $process->job_id]);
+        $this->request = ScrapeJobRequest::fromArray($requestParams);
+        $this->jobStats = ScrapeStatistics::updateOrCreate(
+            ['job_id' => $process->job_id], // The fields to match on (likely your unique constraint)
+            [
+                'started_at'=> now(),
+                'completed_at'=> null,
+                'target_urls' => $this->request->maxPages,
+                'errors'=> [],
+                'warnings'=> [],
+            ] // The attributes to update/create
+        );
     }
 
-    /**
-     * Add metadata to the context.
-     *
-     * @param string $key Metadata key
-     * @param mixed $value Metadata value
-     * @return void
-     */
-    public function addMetadata(string $key, mixed $value): void
-    {
-        $this->metadata[$key] = $value;
-        ScrapeMetadata::create([
-            'scrape_job_id' => $this->process->id,
-            'event' => $key,
-            'data' => $value,
-        ]);
-    }
-
-    /**
-     * Get metadata from the context.
-     *
-     * @param string $key Metadata key
-     * @param mixed $default Default value if key doesn't exist
-     * @return mixed
-     */
-    public function getMetadata(string $key, mixed $default = null): mixed
-    {
-        return $this->metadata[$key] ?? $default;
-    }
-
-    /**
-     * Add an error to the context.
-     *
-     * @param string $message Error message
-     * @param string|null $stage Stage where error occurred
-     * @return void
-     */
-    public function addError(string $message, ?string $stage = null): void
-    {
-        $this->errors[] = [
-            'message' => $message,
-            'stage' => $stage ?? $this->stage,
-            'timestamp' => now()->toIso8601String(),
-        ];
-    }
-
-    /**
-     * Add a warning to the context.
-     *
-     * @param string $message Warning message
-     * @param string|null $stage Stage where warning occurred
-     * @return void
-     */
-    public function addWarning(string $message, ?string $stage = null): void
-    {
-        $this->warnings[] = [
-            'message' => $message,
-            'stage' => $stage ?? $this->stage,
-            'timestamp' => now()->toIso8601String(),
-        ];
-    }
 
     /**
      * Set the current pipeline stage.
@@ -123,7 +65,7 @@ class ScrapeContext
     {
         $this->stage = $stage;
         // Update the process status in the database
-        $this->process->update(['status' => $stage]);
+        $this->process->update(['stage' => $stage]);
     }
 
     /**
@@ -136,32 +78,69 @@ class ScrapeContext
     }
 
     /**
-     * Set number of scraped URLs
-     * @param int $progress
+     * Add metadata to the context.
      *
-     * **/
-    public function setProgress(int $progress): void
+     * @param string $key Metadata key
+     * @param mixed $value Metadata value
+     * @return void
+     */
+    public function setStats(string $key, mixed $value): void
     {
-        $this->progress = $progress;
+        $this->jobStats->{$key} = $value;
+        $this->jobStats->save();
+    }
+
+
+    /**
+     * Get metadata from the context.
+     *
+     * @param string $key Metadata key
+     * @param mixed $default Default value if key doesn't exist
+     * @return mixed
+     */
+    public function getStats(): array
+    {
+        return $this->jobStats->toArray();
     }
 
     /**
-     *  get number of scraped URLs.
+     * Add an error to the context.
+     *
+     * @param string $message Error message
+     * @param string|null $stage Stage where error occurred
+     * @return void
      */
-    public function getProgress(): int
+    public function addError(string $message, ?string $stage = null): void
     {
-        return $this->progress;
+        $this->jobStats->addError([
+            'message' => $message,
+            'stage' => $stage ?? $this->stage,
+            'timestamp' => now()->toIso8601String(),
+        ]);
     }
 
-    public function setEndProcess(): void{
-        $this->setStage('finalization');
-        $this->process->update(['ended_at' => now()]);
-        $this->addMetadata('endTime', now());
-        // Calculate duration
-        if ($this->getMetadata('startTime')) {
-            $duration = $this->getMetadata('endTime')->diffInSeconds($this->getMetadata('startTime'));
-            $this->addMetadata('durationSeconds', $duration);
+    /**
+     * Add a warning to the context.
+     *
+     * @param string $message Warning message
+     * @param string|null $stage Stage where warning occurred
+     * @return void
+     */
+    public function addWarning(string $message, ?string $stage = null): void
+    {
+        $this->jobStats->addWarning([
+            'message' => $message,
+            'stage' => $stage ?? $this->stage,
+            'timestamp' => now()->toIso8601String(),
+        ]);
+    }
+
+    public function setEndProcess($success): void{
+        if(!$success){
+            $this->setStage('failed');
+            return;
         }
+        $this->setStage('finalization');
         $finalizer = new ScrapeFinalizerService();
         $finalizer->executeFinalization($this);
     }
@@ -175,7 +154,7 @@ class ScrapeContext
      */
     public function hasErrors(): bool
     {
-        return count($this->errors) > 0;
+        return count($this->jobStats->errors ?? []) > 0;
     }
 
     /**
@@ -185,7 +164,7 @@ class ScrapeContext
      */
     public function hasWarnings(): bool
     {
-        return count($this->warnings) > 0;
+        return count($this->jobStats->warnings ?? []) > 0;
     }
 
     /**
@@ -195,7 +174,7 @@ class ScrapeContext
      */
     public function getErrors(): array
     {
-        return $this->errors;
+        return $this->jobStats->getErrors();
     }
 
     /**
@@ -205,7 +184,7 @@ class ScrapeContext
      */
     public function getWarnings(): array
     {
-        return $this->warnings;
+        return $this->jobStats->getWarnings();
     }
 
 
@@ -213,14 +192,9 @@ class ScrapeContext
         return [
             'jobId' => $this->jobId ?? null,
             'stage' => $this->stage,
-            'errors' => $this->errors,
-            'warnings' => $this->warnings,
-            'metadata' => $this->metadata,
+            'errors' => $this->getErrors(),
+            'warnings' => $this->getWarnings(),
         ];
     }
-
-
-
-
 
 }

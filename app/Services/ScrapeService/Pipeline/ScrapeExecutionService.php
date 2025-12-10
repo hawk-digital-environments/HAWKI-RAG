@@ -13,29 +13,19 @@ class ScrapeExecutionService
     /**
      *
      * @param callable|null $outputCallback Optional callback for streaming output (callable(string $type, string $buffer))
-     * @return ScrapeEventPacket Result object with success status, output, and any errors
+     * @return bool success true or false
      * @throws ConnectionException
      */
-    public function execute(ScrapeJobRequest $requestConfig, ?callable $outputCallback = null): ScrapeEventPacket
+    public function execute(ScrapeJobRequest $requestConfig, ?callable $outputCallback = null): bool
     {
         try{
             Log::debug("execute");
             $response = Http::timeout(300)
+                ->retry(3, 1000) // Retry up to 3 times with 1 second delay for transient network issues
                 ->post(config('scraper.api_url') . '/crawl',
                     $requestConfig->toArray());
 
-
-            Log::debug('Crawl4AI HTTP status: ' . $response->status());
-            Log::debug('Sitemap URLs: ', $response->json()['sitemap_urls'] ?? []);
-
-            $data = $response->json();
-
-            return new ScrapeEventPacket(
-                $data['job_id'],
-                $data['event'],
-                $data['data'],
-                $data['timestamp'],
-            );
+            return $response->json()['success'];
         }
         catch (\Exception $exception){
             Log::error($exception->getMessage());

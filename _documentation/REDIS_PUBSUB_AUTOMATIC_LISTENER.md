@@ -419,8 +419,8 @@ Balance timeout with expected job duration:
 Ensure proper indexes for performance:
 ```sql
 -- Index on job_id for quick lookups
-CREATE INDEX idx_scrape_metadata_job_id ON scrape_metadata(scrape_job_id);
-CREATE INDEX scrape_job_id ON scrape_processes(job_id);
+CREATE INDEX idx_scrape_metadata_job_id ON scrape_metadata(job_id);
+CREATE INDEX job_id ON scrape_processes(job_id);
 ```
 
 ## Conclusion

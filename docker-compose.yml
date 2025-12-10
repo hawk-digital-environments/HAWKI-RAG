@@ -27,10 +27,10 @@ services:
             dockerfile: Dockerfile
         container_name: hawki_app
         ports:
-            - "8002:8002"
+            - "8002:8000"
         volumes:
             - .:/var/www
-            - ./storage:/var/www/storage
+#            - ./storage:/var/www/storage
             # Shared volume with crawler (Laravel public storage)
             - shared_storage:/var/www/storage/app/public
         environment:
@@ -42,13 +42,28 @@ services:
             REDIS_PORT: 6379
             REDIS_PASSWORD: "foobared"
             REDIS_DB: 0
-            # Scrape Service Configuration
-#            SCRAPE_REDIS_CHANNEL: scrape-events
+            # RabbitMQ Configuration
+            RABBITMQ_HOST: rabbitmq
+            RABBITMQ_PORT: 5672
+            RABBITMQ_USER: ${RABBITMQ_USER:-admin}
+            RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-admin123}
+            RABBITMQ_VHOST: ${RABBITMQ_VHOST:-/}
+            RABBITMQ_EXCHANGE: scrape_events
+            RABBITMQ_EXCHANGE_TYPE: topic
+            RABBITMQ_SCRAPE_QUEUE: scrape-events
+            # Communication Service Configuration
+            COMMUNICATION_SERVICE: ${COMMUNICATION_SERVICE:-rabbitmq}
+            REDIS_SCRAPE_CHANNEL: scrape-events
 
         networks:
             - rawki-network
+            - rawki-bridge
         depends_on:
-            - redis
+#            - redis
+            rabbitmq:
+                condition: service_healthy
+            crawler:
+                condition: service_healthy
 
     # -------------------------------------------------
     # NGINX Reverse Proxy
@@ -65,34 +80,61 @@ services:
             - app
         networks:
             - rawki-network
+            - rawki-bridge
 
     # -------------------------------------------------
     # Redis (Pub/Sub for Laravel <-> Crawler)
     # -------------------------------------------------
-    redis:
-        image: redis:7-alpine
-        container_name: rawki_redis
+#    redis:
+#        image: redis:7-alpine
+#        container_name: rawki_redis
+#        ports:
+#            - "6379:6379"
+#        volumes:
+#            - redis_data:/data
+#        networks:
+#            - rawki-network
+#        restart: unless-stopped
+#        command: redis-server --appendonly yes --requirepass foobared
+#        healthcheck:
+#            test: ["CMD", "redis-cli", "-a", "foobared", "ping"]
+#            interval: 10s
+#            timeout: 3s
+#            retries: 5
+
+    # -------------------------------------------------
+    # RabbitMQ (Message Queue for Laravel <-> Microservices)
+    # -------------------------------------------------
+    rabbitmq:
+        image: rabbitmq:3.13-management-alpine
+        container_name: rawki_rabbitmq
         ports:
-            - "6379:6379"
+            - "5672:5672"   # AMQP protocol port
+            - "15672:15672" # Management UI port
+        environment:
+            RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-admin}
+            RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-admin123}
+            RABBITMQ_DEFAULT_VHOST: ${RABBITMQ_VHOST:-/}
+            # Enable management plugin and other useful plugins
+            RABBITMQ_PLUGINS: rabbitmq_management,rabbitmq_prometheus
         volumes:
-            - redis_data:/data
+            - rabbitmq_data:/var/lib/rabbitmq
+            - rabbitmq_logs:/var/log/rabbitmq
         networks:
             - rawki-network
+            - rawki-bridge
         restart: unless-stopped
-        command: redis-server --appendonly yes --requirepass foobared
         healthcheck:
-            test: ["CMD", "redis-cli", "-a", "foobared", "ping"]
-            interval: 10s
-            timeout: 3s
+            test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+            interval: 15s
+            timeout: 10s
             retries: 5
+            start_period: 30s
 
     # -------------------------------------------------
     # External Crawler Microservice
     # -------------------------------------------------
     crawler:
-        build:
-            context: .
-            dockerfile: Dockerfile
         image: crawl4ai-fastapi:latest
         container_name: crawl4ai-service
         ports:
@@ -108,13 +150,24 @@ services:
             # Optional LLM Provider Keys (for advanced crawl4ai features)
             - OPENAI_API_KEY=${OPENAI_API_KEY:-}
             - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
-            # Redis Pub/Sub Configuration (recommended)
-            - REDIS_ENABLED=true
+            # Communication Configuration
+            - COMMUNICATION_METHOD=rabbitmq
+            # Redis Pub/Sub Configuration (disabled)
+            - REDIS_ENABLED=false
             - REDIS_HOST=redis
             - REDIS_PORT=6379
             - REDIS_DB=0
             - REDIS_PASSWORD=foobared
             - REDIS_CHANNEL=scrape-events
+            # RabbitMQ Configuration (enabled)
+            - RABBITMQ_ENABLED=true
+            - RABBITMQ_HOST=rabbitmq
+            - RABBITMQ_PORT=5672
+            - RABBITMQ_USER=${RABBITMQ_USER:-admin}
+            - RABBITMQ_PASSWORD=${RABBITMQ_PASSWORD:-admin123}
+            - RABBITMQ_VHOST=${RABBITMQ_VHOST:-/}
+            - RABBITMQ_EXCHANGE=scrape_events
+            - RABBITMQ_QUEUE=scrape-events
             # WebSocket URL for real-time events (legacy, deprecated)
             # Example: ws://laravel-app:6001 for Laravel WebSocket
             - WEBSOCKET_URL=${WEBSOCKET_URL:-}
@@ -129,9 +182,11 @@ services:
             - /dev/shm:/dev/shm
             - shared_storage:/app/shared
         networks:
+            - rawki-bridge
             - rawki-network
         depends_on:
-            - redis
+#            - redis
+            - rabbitmq
         restart: unless-stopped
         healthcheck:
             test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
@@ -190,6 +245,8 @@ services:
 volumes:
     shared_storage:     # Shared Laravel storage <-> Crawler
     redis_data:
+    rabbitmq_data:      # RabbitMQ persistent data
+    rabbitmq_logs:      # RabbitMQ logs
     qdrant_data:
     ollama:
 
@@ -197,3 +254,5 @@ volumes:
 networks:
     rawki-network:
         external: true
+    rawki-bridge:
+        driver: bridge

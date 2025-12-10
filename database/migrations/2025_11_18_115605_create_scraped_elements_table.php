@@ -22,7 +22,7 @@ return new class extends Migration
             $table->text('meta_img_url')->nullable(); // Meta/OG image URL
 
 
-            $table->string('page_url_hash', 64)->unique(); // SHA256 hash of URL for indexing
+            $table->string('page_url_hash', 64); // SHA256 hash of URL for indexing
             $table->string('content_hash', 64); // SHA256 hash of URL for indexing
 
             $table->string('language', 64);
@@ -34,10 +34,10 @@ return new class extends Migration
 
             $table->string('domain')->nullable()->index(); // e.g., 'hawk.de'
             $table->string('subdomain')->nullable()->index(); // e.g., 'projekte.g', 'wiki'
-            $table->string('full_domain')->nullable()->index(); // e.g., 'projekte.g.hawk.de'
+            $table->string('canonicalized_path')->nullable()->index(); // e.g., 'projekte.g.hawk.de'
 
             // Crawler metadata
-            $table->string('scrape_job_id'); // Job ID that created this entry
+            $table->string('job_id'); // Job ID that created this entry
 
             // Content metadata
             $table->integer('image_count')->default(0); // Count of images
@@ -49,6 +49,9 @@ return new class extends Migration
             // @todo do we need to keep the search_text?
             // Search and indexing
             $table->json('search_tags')->nullable(); // Processed text for full-text search
+
+            $table->timestamp('fetch_time')->nullable();
+            $table->string('http_status')->nullable();
 
             $table->timestamps();
             $table->softDeletes(); // Soft delete support

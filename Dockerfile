@@ -1,68 +1,87 @@
-# Laravel App with PHP-FPM and Vite build
-FROM php:8.2-fpm
+# ------------------------------------------------------------------------------
+# Base image: PHP-FPM with required extensions
+# ------------------------------------------------------------------------------
+FROM php:8.4-fpm
 
-# Install system dependencies
+# ------------------------------------------------------------------------------
+# System dependencies
+# ------------------------------------------------------------------------------
 RUN apt-get update && apt-get install -y \
     git \
     curl \
-    nodejs \
-    npm \
-    libonig-dev \
-    libxml2-dev \
     zip \
     unzip \
+    supervisor \
+    libonig-dev \
+    libxml2-dev \
     libpng-dev \
     libjpeg-dev \
     libfreetype6-dev \
     libicu-dev \
-    libmagickwand-dev \
     libzip-dev \
     build-essential \
-    bash \
-    supervisor \
+    pkg-config \
  && rm -rf /var/lib/apt/lists/*
 
+# ------------------------------------------------------------------------------
 # Install PHP extensions
+# ------------------------------------------------------------------------------
 RUN docker-php-ext-configure gd --with-freetype --with-jpeg \
- && docker-php-ext-install -j$(nproc) gd pdo_mysql opcache bcmath exif pcntl zip intl \
+ && docker-php-ext-install -j$(nproc) \
+        pdo_mysql gd bcmath exif pcntl intl zip sockets \
  && pecl install redis \
- && docker-php-ext-enable redis \
- && rm -rf /tmp/*
+ && docker-php-ext-enable redis
 
+# ------------------------------------------------------------------------------
+# Install Node.js (official, correct version for Vite)
+# ------------------------------------------------------------------------------
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+ && apt-get install -y nodejs \
+ && node -v && npm -v
+
+# ------------------------------------------------------------------------------
 # Install Composer
-COPY --from=composer:latest /usr/bin/composer /usr/local/bin/composer
+# ------------------------------------------------------------------------------
+COPY --from=composer:2 /usr/bin/composer /usr/local/bin/composer
 
+# ------------------------------------------------------------------------------
+# Set working directory
+# ------------------------------------------------------------------------------
 WORKDIR /var/www
 
-# Copy only composer files for caching
-COPY composer.json composer.lock ./
-
-# Copy rest of application
+# ------------------------------------------------------------------------------
+# Copy the full application
+# ------------------------------------------------------------------------------
 COPY . .
 
-# Install PHP dependencies (no dev)
-RUN composer install --no-dev --optimize-autoloader --no-interaction
+# Install PHP dependencies (skip scripts to avoid artisan errors during build)
+RUN composer install --no-dev --optimize-autoloader --no-interaction --no-scripts
 
-# Copy only package files for caching
-COPY package.json package-lock.json ./
-
-# Install Node dependencies and build Vite assets
+# Install Node dependencies and build frontend assets
 RUN npm ci
 
 # Build frontend assets
-RUN npm run build \
- && cd resources/js/crawler && npm ci
+RUN npm run build
 
-# Fix Laravel permissions
-RUN chown -R www-data:www-data \
-    /var/www/storage \
-    /var/www/bootstrap/cache \
-    /var/www/public/build
+# ------------------------------------------------------------------------------
+# Fix Laravel file/directory permissions
+# ------------------------------------------------------------------------------
+RUN chown -R www-data:www-data /var/www \
+ && find /var/www -type d -exec chmod 755 {} \; \
+ && find /var/www -type f -exec chmod 644 {} \;
 
-# Copy supervisor config
+# ------------------------------------------------------------------------------
+# Copy Supervisor config
+# ------------------------------------------------------------------------------
 COPY docker/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+
+# ------------------------------------------------------------------------------
+# Copy entrypoint script
+# ------------------------------------------------------------------------------
+COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
 
 EXPOSE 9000
 
-# Run supervisor (which will start php-fpm)
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]

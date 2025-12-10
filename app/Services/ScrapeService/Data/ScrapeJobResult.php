@@ -18,7 +18,6 @@ use App\Services\ScrapeService\Pipeline\ScrapeContextBuilder;
  * @property-read array $errors Errors encountered during execution
  * @property-read array $warnings Warnings generated during execution
  * @property-read array $artifacts Paths to generated files and data
- * @property-read array $metadata Additional metadata about the job
  */
 class ScrapeJobResult
 {
@@ -29,7 +28,6 @@ class ScrapeJobResult
         public readonly array $errors = [],
         public readonly array $warnings = [],
         public readonly array $artifacts = [],
-        public readonly array $metadata = [],
     ) {}
 
     /**
@@ -52,22 +50,16 @@ class ScrapeJobResult
 //            $statistics['incompleteDirectories'] = $context->analysis->getTotalIncomplete();
 //        }
 
-        if ($context->config) {
-            $statistics['maxPages'] = $context->config->maxPages;
+        if ($context->request) {
+            $statistics['maxPages'] = $context->request->maxPages;
 //            $statistics['startFromIndex'] = $context->config->startFromIndex;
         }
 
         // Extract artifacts
-        if ($context->config) {
-            $artifacts['outputDir'] = $context->config->outputDir;
-            $artifacts['label'] = $context->config->label;
-            $artifacts['crawlDir'] = "{$context->config->outputDir}/{$context->config->label}";
-        }
-
-        // Calculate duration if available
-        $metadata = $context->metadata;
-        if (isset($metadata['startTime']) && isset($metadata['endTime'])) {
-            $metadata['duration'] = $metadata['endTime']->diffInSeconds($metadata['startTime']);
+        if ($context->request) {
+            $artifacts['outputDir'] = $context->request->outputDir;
+            $artifacts['label'] = $context->request->label;
+            $artifacts['crawlDir'] = "{$context->request->outputDir}/{$context->request->label}";
         }
 
         return new static(
@@ -77,7 +69,6 @@ class ScrapeJobResult
             errors: $context->getErrors(),
             warnings: $context->getWarnings(),
             artifacts: $artifacts,
-            metadata: $metadata,
         );
     }
 
@@ -87,21 +78,18 @@ class ScrapeJobResult
      * @param string $jobId Job identifier
      * @param array $statistics Statistics data
      * @param array $artifacts Artifact paths
-     * @param array $metadata Additional metadata
      * @return static
      */
     public static function success(
         string $jobId,
         array $statistics = [],
-        array $artifacts = [],
-        array $metadata = []
+        array $artifacts = []
     ): static {
         return new static(
             success: true,
             jobId: $jobId,
             statistics: $statistics,
             artifacts: $artifacts,
-            metadata: $metadata,
         );
     }
 
@@ -111,21 +99,18 @@ class ScrapeJobResult
      * @param string $jobId Job identifier
      * @param array $errors Error messages
      * @param array $statistics Statistics data
-     * @param array $metadata Additional metadata
      * @return static
      */
     public static function failure(
         string $jobId,
         array $errors,
-        array $statistics = [],
-        array $metadata = []
+        array $statistics = []
     ): static {
         return new static(
             success: false,
             jobId: $jobId,
             statistics: $statistics,
             errors: $errors,
-            metadata: $metadata,
         );
     }
 
@@ -179,7 +164,6 @@ class ScrapeJobResult
             'errors' => $this->errors,
             'warnings' => $this->warnings,
             'artifacts' => $this->artifacts,
-            'metadata' => $this->metadata,
         ];
     }
 

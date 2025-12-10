@@ -26,6 +26,7 @@ class ScrapeService
      */
     public function startPipeline(array $request, ?callable $outputCallback = null): void
     {
+        Log::debug('startPipeline');
         $jobRequest = new ScrapeJobRequest(
             url: $request['url'],
             label: $request['label'],

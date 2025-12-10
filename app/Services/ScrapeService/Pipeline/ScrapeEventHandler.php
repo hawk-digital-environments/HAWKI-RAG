@@ -2,67 +2,128 @@
 
 namespace App\Services\ScrapeService\Pipeline;
 
+use App\Events\ScrapeEvent;
+use App\Models\ScrapeStatistics;
 use App\Services\ScrapeService\Data\ScrapeContext;
 use App\Services\ScrapeService\Data\ScrapeEventPacket;
+use Exception;
 use Illuminate\Support\Facades\Log;
 
 class ScrapeEventHandler
 {
+
+    private ScrapeDatasetCreator $datasetCreator;
+    public function __construct(
+    )
+    {
+        $this->datasetCreator = new ScrapeDatasetCreator();
+    }
+
+
+    public function handle(array $payload){
+        Log::debug($payload);
+        // Validate message structure
+        if (!$this->isValidEventPacket($payload)) {
+            Log::warning("Invalid event packet structure in job", [
+                'data' => $payload
+            ]);
+            return;
+        }
+        // Create ScrapeEventPacket from the incoming message
+        $packet = $this->createScrapeEventPacket($payload);
+
+        // Process the event using the existing handler
+        $this->processEvent($packet);
+    }
+
     /**
-     * Handle event-specific logic.
+     * Validate event packet structure.
      *
-     * @param ScrapeContext $context
+     * @param array $data
+     * @return bool
+     */
+    protected function isValidEventPacket(array $data): bool
+    {
+        return isset($data['job_id']) &&
+            isset($data['event']) &&
+            isset($data['data']) &&
+            isset($data['timestamp']) &&
+            is_string($data['job_id']) &&
+            is_string($data['event']) &&
+            is_array($data['data']) &&
+            is_string($data['timestamp']);
+    }
+
+    /**
+     * Create a ScrapeEventPacket from decoded payload.
+     *
+     * @param array $data
+     * @return ScrapeEventPacket
+     */
+    protected function createScrapeEventPacket(array $data): ScrapeEventPacket
+    {
+        return new ScrapeEventPacket(
+            jobId: $data['job_id'],
+            event: $data['event'],
+            data: $data['data'],
+            timestamp: $data['timestamp']
+        );
+    }
+
+    /**
+     * Process a validated event packet.
+     *
      * @param ScrapeEventPacket $packet
      * @return void
+     * @throws Exception
      */
-    public function handleEventType(ScrapeContext $context, ScrapeEventPacket $packet): void
+    protected function processEvent(ScrapeEventPacket $packet): void
     {
-        match ($packet->event) {
-            'sitemap_detected' => $this->handleSitemapDetected($context, $packet),
-            'stage_changed' => $this->handleStageChange($context, $packet),
-            'progress_update' => $this->handleProgressUpdate($context, $packet),
-            'job_summary' => $this->handleJobSummary($context, $packet),
-            'urls_discovered' => $this->handleUrlsDiscovered($context, $packet),
-            'crawling_started' => $this->handleCrawlingStarted($context, $packet),
-            'job_completed' => $this->handleFinishedJobs($context, $packet),
-            default => Log::warning("Unknown Packet Received:",$packet->toArray())
-        };
+        // Rebuild context from job ID
+        $context = ScrapeContextBuilder::rebuildContext($packet->jobId);
+
+        switch($packet->event){
+            case('stage'):
+                $this->processStageChange($packet, $context);
+                break;
+            case('report'):
+                $this->processJobReport($packet, $context);
+                break;
+            case('summary'):
+                $this->processSummary($packet, $context);
+                break;
+        }
     }
 
-
-    // Event-specific handlers
-    protected function handleSitemapDetected(ScrapeContext $context, ScrapeEventPacket $packet): void
+    protected function processStageChange(ScrapeEventPacket $packet, ScrapeContext $context): void
     {
-        $context->addMetadata('sitemap_detected', true);
-        $context->addMetadata('total_urls', $packet->data['total_urls']);
-    }
-
-    protected function handleUrlsDiscovered(ScrapeContext $context, ScrapeEventPacket $packet): void
-    {
-        $context->addMetadata('total_to_crawl', $packet->data['total_to_crawl']);
-    }
-
-    protected function handleCrawlingStarted(ScrapeContext $context, ScrapeEventPacket $packet): void
-    {
-        $context->setStage('crawling');
-    }
-
-    protected function handleStageChange(ScrapeContext $context, ScrapeEventPacket $packet): void{
         $context->setStage($packet->data['stage']);
+        if($packet->data['stage'] === 'sitemap_detected'){
+            $context->setStats('total_urls', $packet->data['details']['total_urls']);
+        }
     }
 
-    protected function handleProgressUpdate(ScrapeContext $context, ScrapeEventPacket $packet): void{
-        $context->setProgress($packet->data['progress_percentage']);
-    }
-
-    protected function handleJobSummary(ScrapeContext $context, ScrapeEventPacket $packet): void{
-        $context->setStage($packet->data['stage']);
-        $context->addMetadata('job_summary', $packet->data);
-    }
-
-    protected function handleFinishedJobs(ScrapeContext $context, ScrapeEventPacket $packet): void
+    /**
+     * @throws Exception
+     */
+    protected function processJobReport(ScrapeEventPacket $packet, ScrapeContext $context): void
     {
-        $context->setEndProcess();
+        if(array_key_exists('stats', $packet->data)){
+            foreach($packet->data['stats'] as $name => $value){
+                $context->setStats($name, $value);
+            }
+        }
+        if(array_key_exists('url_completion', $packet->data)){
+            $completion = $packet->data['url_completion'];
+            $context->setStats('current_url', $completion['url']);
+            $this->datasetCreator->createElementData($context, $completion['url_hash']);
+        }
     }
+    protected function processSummary(ScrapeEventPacket $packet, ScrapeContext $context): void
+    {
+        $this->datasetCreator->recordScrapeSummary($context, $packet->data);
+        $context->setEndProcess(true);
+    }
+
 
 }

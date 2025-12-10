@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class ScrapeProcess extends Model
 {
@@ -13,15 +14,12 @@ class ScrapeProcess extends Model
         'url',
         'label',
         'job_id',
-        'status',
-        'config',
-        'progress',
-        'started_at',
-        'ended_at',
+        'stage',
+        'request',
     ];
 
     protected $casts = [
-        'config' => 'array',
+        'request' => 'array',
     ];
 
 
@@ -29,19 +27,14 @@ class ScrapeProcess extends Model
     /* ----------------------------------
      | Relationships
      ---------------------------------- */
-    public function metadata(): HasMany
-    {
-        return $this->hasMany(ScrapeMetadata::class, 'scrape_job_id');
-    }
-
     public function elements(): HasMany
     {
-        return $this->hasMany(ScrapedElement::class, 'scrape_job_id');
+        return $this->hasMany(ScrapedElement::class, 'job_id');
     }
 
-    public function events(): HasMany
+    public function status(): HasOne
     {
-        return $this->hasMany(ScrapeMetadata::class, 'scrape_job_id');
+        return $this->hasOne(ScrapeJobState::class, 'job_id', 'job_id');
     }
 
     /* ----------------------------------
@@ -50,39 +43,15 @@ class ScrapeProcess extends Model
 
     public function markRunning(): void
     {
-        $this->update(['status' => 'running']);
+        $this->update(['stage' => 'running']);
     }
 
     public function markCompleted(bool $success = true): void
     {
         $this->update([
-            'status' => $success ? 'completed' : 'failed'
+            'stage' => $success ? 'completed' : 'failed'
         ]);
     }
-
-    public function markFailed(string $reason = null): void
-    {
-        $payload = ['error' => $reason];
-
-        // store final event
-        $this->recordEvent('job_failed', $payload);
-
-        $this->update(['status' => 'failed']);
-    }
-
-
-    /* ----------------------------------
-     | Event Recording
-     ---------------------------------- */
-
-    public function recordEvent(string $eventName, array $data = []): ScrapeMetadata
-    {
-        return $this->events()->create([
-            'event' => $eventName,
-            'data'  => $data,
-        ]);
-    }
-
 
     /* ----------------------------------
      | Query Scopes
@@ -90,17 +59,17 @@ class ScrapeProcess extends Model
 
     public function scopeRunning($query)
     {
-        return $query->where('status', 'running');
+        return $query->where('stage', 'running');
     }
 
     public function scopeCompleted($query)
     {
-        return $query->where('status', 'completed');
+        return $query->where('stage', 'completed');
     }
 
     public function scopeFailed($query)
     {
-        return $query->where('status', 'failed');
+        return $query->where('stage', 'failed');
     }
 
 

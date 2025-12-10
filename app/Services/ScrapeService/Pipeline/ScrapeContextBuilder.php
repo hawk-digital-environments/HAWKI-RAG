@@ -19,14 +19,21 @@ class ScrapeContextBuilder
     * @return ScrapeContext
     **/
     public static function buildFromRequest(ScrapeJobRequest $request): ScrapeContext{
+        // Generate job_id first
+        $jobId = Str::uuid()->toString();
+
+        // Recreate request with the job_id
+        $requestWithJobId = ScrapeJobRequest::fromArray(array_merge(
+            $request->toArray(),
+            ['job_id' => $jobId]
+        ));
 
         $process = ScrapeProcess::create([
-            'job_id' => Str::uuid()->toString(),
+            'job_id' => $jobId,
             'url' => $request->url,
             'label' => $request->label,
-            'status' => 'initialized',
-            'config' => $request->toArray(),
-            'started_at' => now(),
+            'stage' => 'initialized',
+            'request' => $requestWithJobId->toArray(),
         ]);
         return new ScrapeContext($process);
     }
@@ -48,7 +55,7 @@ class ScrapeContextBuilder
 
         if(!$process) {
             Log::error('Scrape Process is not initialized correctly or could not be found!');
-            throw new \Exception("Scrape process '{$jobId}' not found");
+            throw new Exception("Scrape process '{$jobId}' not found");
         }
 
         return new ScrapeContext($process);

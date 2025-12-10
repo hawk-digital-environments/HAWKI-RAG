@@ -2,7 +2,7 @@
 
 
 return [
-    'url'             => env('FILE_CONVERTER_URL', 'http://127.0.0.1:8001/extract'),
+    'url'             => env('FILE_CONVERTER_URL', 'http://127.0.0.1:8002/extract'),
     'timeout'         => (int) env('FILE_CONVERTER_TIMEOUT', 600),
     'connect_timeout' => (int) env('FILE_CONVERTER_CONNECT_TIMEOUT', 20),
     'retries'         => (int) env('FILE_CONVERTER_RETRIES', 3),

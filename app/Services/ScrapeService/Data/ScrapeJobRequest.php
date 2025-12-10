@@ -35,6 +35,7 @@ class ScrapeJobRequest
         public readonly int $maxRpm = 60,
         public readonly ?int $requestDelay = null,
         public readonly bool $discoveryMode = false,
+        public readonly ?string $jobId = null,
     ) {}
 
     /**
@@ -59,6 +60,7 @@ class ScrapeJobRequest
             maxRpm: $params['maxRpm'] ?? $params['max_rpm'] ?? 60,
             requestDelay: $params['requestDelay'] ?? $params['request_delay'] ?? null,
             discoveryMode: $params['discoveryMode'] ?? false,
+            jobId: $params['jobId'] ?? $params['job_id'] ?? null,
         );
     }
 
@@ -70,6 +72,7 @@ class ScrapeJobRequest
     public function toArray(): array
     {
         return [
+            'job_id' => $this->jobId,
             'url' => $this->url,
             'label' => $this->label,
             'max_pages' => $this->maxPages,

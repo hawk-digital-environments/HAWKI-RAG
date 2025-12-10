@@ -13,10 +13,10 @@ class ScrapedElement extends Model
     /**
      * Access level constants
      */
-    public const ACCESS_PUBLIC = 'public';
-    public const ACCESS_INTERNAL = 'internal';
-    public const ACCESS_RESTRICTED = 'restricted';
-    public const ACCESS_CONFIDENTIAL = 'confidential';
+    public const ACCESS_PUBLIC = 'public'; // External Access
+    public const ACCESS_INTERNAL = 'internal'; // Studi
+    public const ACCESS_RESTRICTED = 'restricted'; // Mitarbeiter
+    public const ACCESS_CONFIDENTIAL = 'confidential'; // Admin of HAWKI
 
     protected $fillable = [
         'uuid',
@@ -36,22 +36,26 @@ class ScrapedElement extends Model
 
         'domain',
         'subdomain',
+        'canonicalized_path',
 
         'access_level',
 
-        'scrape_job_id',
+        'job_id',
 
         'image_count',
         'pdf_count',
 
         'content_length',
         'search_tags',
+
+        'fetch_time',
+        'http_status'
     ];
 
     protected $casts = [
         'images' => 'array',
         'pdfs' => 'array',
-        'scraped_at' => 'datetime',
+        'fetch_time' => 'datetime',
         'image_count' => 'integer',
         'pdf_count' => 'integer',
         'content_length' => 'integer',
@@ -66,7 +70,7 @@ class ScrapedElement extends Model
 
     public function process(): BelongsTo
     {
-        return $this->belongsTo(ScrapeProcess::class, 'scrape_job_id');
+        return $this->belongsTo(ScrapeProcess::class, 'job_id');
     }
 
     /**
@@ -146,18 +150,6 @@ class ScrapedElement extends Model
     public function scopescraperLabel($query, string $label)
     {
         return $query->where('scraper_label', $label);
-    }
-
-    /**
-     * Scope to search in title and content.
-     *
-     * @param \Illuminate\Database\Eloquent\Builder $query
-     * @param string $searchTerm
-     * @return \Illuminate\Database\Eloquent\Builder
-     */
-    public function scopeSearch($query, string $searchTerm)
-    {
-        return $query->whereFullText(['title', 'search_text'], $searchTerm);
     }
 
     /**

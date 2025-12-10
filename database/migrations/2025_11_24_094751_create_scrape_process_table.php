@@ -18,13 +18,10 @@ return new class extends Migration
             $table->string('job_id')->unique();
 
             // pending | running | completed | failed
-            $table->string('status')->default('pending');
+            $table->string('stage')->default('pending');
 
             // JSON config with crawl settings
-            $table->json('config')->nullable();
-
-            $table->timestamp('started_at')->nullable();
-            $table->timestamp('ended_at')->nullable();
+            $table->json('request');
 
             $table->timestamps();
         });
