@@ -103,7 +103,7 @@ When integrating the crawler with other parts of the application (controllers, A
 ```php
 use App\Services\ScrapeService\ScraperPipelineService;
 use App\Services\ScrapeService\Data\ScrapeJobRequest;
-use App\Services\ScrapeService\Data\ScrapeJobResult;
+use App\Services\ScrapeService\Data\ScrapeRequestResult;
 ```
 
 All services in subdirectories (`Pipeline/`, `Validation/`, `Storage/`, `Events/`) are internal implementation details and should not be directly referenced outside the Crawler namespace. This ensures clean separation of concerns and makes future refactoring easier.

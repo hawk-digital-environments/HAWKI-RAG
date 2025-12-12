@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Services\ScrapeService\ScrapeService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 
 class ScrapeController extends Controller
 {
@@ -18,17 +19,20 @@ class ScrapeController extends Controller
             'url' => 'required|string',
             'label' => 'required|string',
             'maxPages' => 'integer',
-            'outputDir' => 'string',
+            'outputDir' => 'string|nullable',
             'skipImages' => 'boolean:',
-            'imageExceptions' => 'boolean',
-            'dateSelector' => 'string',
+            'imageExceptions' => 'boolean|nullable',
+            'dateSelector' => 'string|nullable',
             'maxConcurrency' => 'integer',
             'maxRpm' => 'integer',
             'requestDelay' => 'integer',
             'discoveryMode'=> 'boolean',
         ]);
-        $this->scrapeService->startPipeline($validatedData);
-        return response()->json([]);
+        $result = $this->scrapeService->startPipeline($validatedData);
+        return response()->json([
+            'success' => true,
+            'result' => $result->toArray()
+        ]);
     }
 
     public function cancelScrape(Request $request){

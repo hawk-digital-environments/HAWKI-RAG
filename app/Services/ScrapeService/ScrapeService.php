@@ -4,6 +4,7 @@ namespace App\Services\ScrapeService;
 
 use App\Models\ScrapeProcess;
 use App\Services\ScrapeService\Data\ScrapeJobRequest;
+use App\Services\ScrapeService\Data\ScrapeRequestResult;
 use Exception;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
@@ -22,16 +23,15 @@ class ScrapeService
      *
      * @param array $request
      * @param callable|null $outputCallback
-     * @return void
+     * @return ScrapeRequestResult
      */
-    public function startPipeline(array $request, ?callable $outputCallback = null): void
+    public function startPipeline(array $request, ?callable $outputCallback = null): ScrapeRequestResult
     {
-        Log::debug('startPipeline');
         $jobRequest = new ScrapeJobRequest(
             url: $request['url'],
             label: $request['label'],
             maxPages: $request['maxPages'],
-            outputDir: $request['outputDir'],
+            outputDir: $request['outputDir'] ?: '',
             skipImages: $request['skipImages'],
             imageExceptions: $request['imageExceptions'],
             dateSelector: $request['dateSelector'],
@@ -41,7 +41,7 @@ class ScrapeService
             discoveryMode: $request['discoveryMode'] ?? false,
         );
         $pipeline = app(ScraperPipelineService::class);
-        $pipeline->execute($jobRequest, $outputCallback);
+        return $pipeline->execute($jobRequest, $outputCallback);
     }
 
     /**
@@ -117,9 +117,8 @@ class ScrapeService
      */
     public function getScrapeInformation(string $jobId): array{
         $process = ScrapeProcess::where('job_id', $jobId)->firstOrFail();
-        $metadata = $process->metadata->toArray();
         $data = $process->toArray();
-        $data['metadata'] = $metadata;
+        $data['stats'] = $process->stats;
         return $data;
     }
 
@@ -133,8 +132,7 @@ class ScrapeService
     public function getScrapeResult(string $jobId, int $elementId): array
     {
         $process = ScrapeProcess::where('job_id', $jobId)->firstOrFail();
-        $element = $process->elements()->findOrFail($elementId);
-        return $element;
+        return $process->elements()->findOrFail($elementId);
     }
 
 
@@ -157,7 +155,6 @@ class ScrapeService
                 ->post(config('scraper.api_url'). '/scrape',
                     $url);
 
-            Log::debug($response->getBody());
             return $response->getBody();
         }
         catch (ConnectionException $exception){

@@ -25,7 +25,6 @@ class ScrapeDatasetCreator
     public function createElementData(ScrapeContext $context, string $urlHash): void
     {
         $elementData = $this->storageService->fetchElementData($context->jobId, $urlHash);
-        Log::debug($elementData);
         try{
             // Helper function to extract first element if arrayed, otherwise return as-is
             $extractValue = fn($value) => is_array($value) ? ($value[0] ?? null) : $value;

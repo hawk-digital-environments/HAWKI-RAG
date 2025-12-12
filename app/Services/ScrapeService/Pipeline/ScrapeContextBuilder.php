@@ -3,6 +3,7 @@
 namespace App\Services\ScrapeService\Pipeline;
 
 use App\Models\ScrapeProcess;
+use App\Models\ScrapeStatistics;
 use App\Services\ScrapeService\Data\ScrapeContext;
 use App\Services\ScrapeService\Data\ScrapeJobRequest;
 use Exception;
@@ -27,14 +28,25 @@ class ScrapeContextBuilder
             $request->toArray(),
             ['job_id' => $jobId]
         ));
-
-        $process = ScrapeProcess::create([
+        $process = ScrapeProcess::create(
+            [
             'job_id' => $jobId,
             'url' => $request->url,
             'label' => $request->label,
             'stage' => 'initialized',
             'request' => $requestWithJobId->toArray(),
         ]);
+        ScrapeStatistics::create(
+            [
+                'job_id' => $process->job_id,
+                'started_at'=> now(),
+                'completed_at'=> null,
+                'target_urls' => $request->maxPages,
+                'errors'=> [],
+                'warnings'=> [],
+            ] // The attributes to update/create
+        );
+
         return new ScrapeContext($process);
     }
 

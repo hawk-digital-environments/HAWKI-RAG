@@ -113,7 +113,7 @@ External code only needs to import:
 ```php
 use App\Services\ScrapeService\ScraperPipelineService;
 use App\Services\ScrapeService\Data\ScrapeJobRequest;
-use App\Services\ScrapeService\Data\ScrapeJobResult;
+use App\Services\ScrapeService\Data\ScrapeRequestResult;
 ```
 
 All subdirectory services are internal implementation details.

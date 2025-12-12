@@ -4,13 +4,15 @@ namespace App\Services\ScrapeService;
 
 use App\Services\ScrapeService\Data\ScrapeContext;
 use App\Services\ScrapeService\Data\ScrapeJobRequest;
-use App\Services\ScrapeService\Data\ScrapeJobResult;
+use App\Services\ScrapeService\Data\ScrapeRequestResult;
 use App\Services\ScrapeService\Pipeline\ScrapeExecutionService;
 use App\Services\ScrapeService\Pipeline\ScrapeContextBuilder;
 use App\Services\ScrapeService\Validation\ScrapeValidationService;
 use App\Services\StorageService\StorageService;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
+use Throwable;
 
 class ScraperPipelineService
 {
@@ -29,12 +31,12 @@ class ScraperPipelineService
      *
      * @param ScrapeJobRequest $request Job request with all parameters
      * @param callable|null $outputCallback Optional callback for streaming crawler output
-     * @return ScrapeJobResult Complete job result
+     * @return ScrapeRequestResult Complete job result
      */
     public function execute(
         ScrapeJobRequest $request,
         ?callable        $outputCallback = null
-    ): ScrapeJobResult
+    ): ScrapeRequestResult
     {
         // Create context to carry state through the pipeline
         $context = ScrapeContextBuilder::buildFromRequest($request);
@@ -52,10 +54,12 @@ class ScraperPipelineService
                 return $this->buildFailureResult($context);
             }
 
-            Cache::put("scrape_process:{$context->process->job_id}", $context->process, now()->addMinutes(10));
-            return ScrapeJobResult::fromContext($context);
-
-        } catch (\Throwable $e) {
+            Cache::put("scrape_process:{$context->jobId}", $context->process, now()->addMinutes(10));
+            return ScrapeRequestResult::success(
+                $context->jobId,
+                $context->getStage(),
+            );
+        } catch (Throwable $e) {
             $context->addError($e->getMessage());
             Log::error($e->getMessage());
             return $this->buildFailureResult($context);
@@ -74,16 +78,16 @@ class ScraperPipelineService
         $context->setStage('validation');
 
         // Validate request
-        $isValid = $this->validationService->validate($context->request);
+        $isValid = $this->validationService->validate($context->getRequest());
 
         if (!$isValid) {
             foreach ($this->validationService->getErrors() as $error) {
-                $context->addError($error, 'validation');
+                $context->addError($error);
             }
         }
 
         foreach ($this->validationService->getWarnings() as $warning) {
-            $context->addWarning($warning, 'validation');
+            $context->addWarning($warning);
         }
     }
 
@@ -92,22 +96,26 @@ class ScraperPipelineService
      *
      * Executes the crawler with the built configuration.
      * Returns the job_id from the crawler if successful, null otherwise.
+     * @throws ConnectionException
      */
     private function executeExecution(ScrapeContext $context, ?callable $outputCallback = null): void
     {
         $context->setStage('execution');
 
         // Execute the crawler - persistent Redis subscriber is already listening
-        $success = $this->executionService->execute($context->request, $outputCallback);
+        $success = $this->executionService->execute($context->getRequest(), $outputCallback);
 
         if($success){
             $context->setStage('process_submitted');
         }
         else {
-            $context->addError( 'Execution failed.', 'execution');
+            $context->addError( 'Execution failed.');
         }
     }
 
+    /**
+     * @throws \Exception
+     */
     public function readPipelineStatus($jobId): array{
         return $this->storageService->fetchJobReport($jobId, 'job_state');
     }
@@ -116,12 +124,13 @@ class ScraperPipelineService
     /**
      * Build a failure result from context.
      */
-    private function buildFailureResult(ScrapeContext $context): ScrapeJobResult
+    private function buildFailureResult(ScrapeContext $context): ScrapeRequestResult
     {
-        return ScrapeJobResult::failure(
+        return ScrapeRequestResult::failure(
             jobId: $context->jobId,
+            stage: $context->getStage(),
             errors: $context->getErrors(),
-            statistics: []
+            warnings: $context->getWarnings()
         );
     }
 }

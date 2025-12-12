@@ -5,7 +5,7 @@ namespace App\Services\ScrapeService\Data;
 use App\Models\ScrapeProcess;
 use App\Models\ScrapeStatistics;
 use App\Services\ScrapeService\Pipeline\ScrapeFinalizerService;
-use Illuminate\Support\Str;
+use Exception;
 
 /**
  * Context object that travels through the crawler pipeline stages.
@@ -23,58 +23,32 @@ use Illuminate\Support\Str;
  */
 class ScrapeContext
 {
-    public ScrapeProcess $process;
     public readonly string $jobId;
-    public string $stage;
 
-    public ScrapeJobRequest $request;
+    public ScrapeProcess $process;
     public ScrapeStatistics $jobStats;
 
     public int $progress = 0;
 
     public function __construct(
-        ScrapeProcess $process,
+        ScrapeProcess $process
     ) {
-        $this->process = $process;
-
         $this->jobId = $process->job_id;
-        $this->stage = $process->stage;
-        // Merge the job_id into the request params before creating the request object
-        $requestParams = array_merge($process->request, ['job_id' => $process->job_id]);
-        $this->request = ScrapeJobRequest::fromArray($requestParams);
-        $this->jobStats = ScrapeStatistics::updateOrCreate(
-            ['job_id' => $process->job_id], // The fields to match on (likely your unique constraint)
-            [
-                'started_at'=> now(),
-                'completed_at'=> null,
-                'target_urls' => $this->request->maxPages,
-                'errors'=> [],
-                'warnings'=> [],
-            ] // The attributes to update/create
-        );
+        $this->process = $process;
+        $this->jobStats = $process->stats;
     }
-
 
     /**
      * Set the current pipeline stage.
      *
-     * @param string $stage Stage name
+ * @param string $stage Stage name
      * @return void
      */
     public function setStage(string $stage): void
     {
-        $this->stage = $stage;
         // Update the process status in the database
         $this->process->update(['stage' => $stage]);
-    }
-
-    /**
-     * Set the current stage.
-     *
-     * **/
-    public function getStage(): string
-    {
-        return $this->stage;
+        $this->process->save();
     }
 
     /**
@@ -90,19 +64,6 @@ class ScrapeContext
         $this->jobStats->save();
     }
 
-
-    /**
-     * Get metadata from the context.
-     *
-     * @param string $key Metadata key
-     * @param mixed $default Default value if key doesn't exist
-     * @return mixed
-     */
-    public function getStats(): array
-    {
-        return $this->jobStats->toArray();
-    }
-
     /**
      * Add an error to the context.
      *
@@ -110,11 +71,11 @@ class ScrapeContext
      * @param string|null $stage Stage where error occurred
      * @return void
      */
-    public function addError(string $message, ?string $stage = null): void
+    public function addError(string $message): void
     {
         $this->jobStats->addError([
             'message' => $message,
-            'stage' => $stage ?? $this->stage,
+            'stage' => $this->process->stage,
             'timestamp' => now()->toIso8601String(),
         ]);
     }
@@ -135,6 +96,9 @@ class ScrapeContext
         ]);
     }
 
+    /**
+     * @throws Exception
+     */
     public function setEndProcess($success): void{
         if(!$success){
             $this->setStage('failed');
@@ -187,11 +151,20 @@ class ScrapeContext
         return $this->jobStats->getWarnings();
     }
 
+    public function getStage(): string
+    {
+        return $this->process->stage;
+    }
+
+    public function getRequest(): ScrapeJobRequest{
+        return ScrapeJobRequest::fromArray($this->process->request);
+    }
+
 
     public function toArray(): array{
         return [
             'jobId' => $this->jobId ?? null,
-            'stage' => $this->stage,
+            'stage' => $this->process->stage,
             'errors' => $this->getErrors(),
             'warnings' => $this->getWarnings(),
         ];

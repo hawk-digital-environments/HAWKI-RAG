@@ -3,6 +3,7 @@
 namespace App\Services\ScrapeService\Pipeline;
 
 use App\Events\ScrapeEvent;
+use App\Jobs\ScrapeEventJob;
 use App\Models\ScrapeStatistics;
 use App\Services\ScrapeService\Data\ScrapeContext;
 use App\Services\ScrapeService\Data\ScrapeEventPacket;
@@ -21,7 +22,6 @@ class ScrapeEventHandler
 
 
     public function handle(array $payload){
-        Log::debug($payload);
         // Validate message structure
         if (!$this->isValidEventPacket($payload)) {
             Log::warning("Invalid event packet structure in job", [
@@ -81,7 +81,6 @@ class ScrapeEventHandler
     {
         // Rebuild context from job ID
         $context = ScrapeContextBuilder::rebuildContext($packet->jobId);
-
         switch($packet->event){
             case('stage'):
                 $this->processStageChange($packet, $context);

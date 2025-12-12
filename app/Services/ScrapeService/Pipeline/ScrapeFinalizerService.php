@@ -28,6 +28,7 @@ class ScrapeFinalizerService
 
             $this->checkupElements($context);
             $context->setStage('Scrape-Completed');
+            $context->setStats('completed_at', now());
             Cache::forget("scrape_process:{$context->jobId}");
 
         } catch (\Exception $e) {
@@ -80,7 +81,6 @@ class ScrapeFinalizerService
                 // Check if element exists in database
                 if (in_array($urlHash, $existingElements)) {
                     $syncedCount++;
-                    Log::debug("Element already exists in database: {$urlHash}");
                     continue;
                 }
 
