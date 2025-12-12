@@ -79,7 +79,7 @@
                 <input type="text" id="requestDelay" value="0">
 
                 <button class="send-btn" onclick="sendRequest()">Send</button>
-                <button class="stop-btn" onclick="stopPolling()">Stop</button>
+                <button class="stop-btn" onclick="stop()">Stop</button>
             </div>
             <div class="col-6">
                 <div id="log"></div>
@@ -196,5 +196,29 @@
 `;
     }
 
+
+    async function stop(){
+        stopPolling();
+        const response = await fetch('/cancelScrape', {
+            method: 'POST',
+            headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+            },
+            body: JSON.stringify({ 'jobId': jobId })
+        });
+        const json = await response.json();
+        const d = json.data;
+
+        await poll(jobId);
+
+        document.querySelector('#log').innerHTML += `<br><br>
+            Job Stopped: ${d.success},
+            Message: ${d.message}<br></br>
+
+        `
+
+    }
 
 </script>

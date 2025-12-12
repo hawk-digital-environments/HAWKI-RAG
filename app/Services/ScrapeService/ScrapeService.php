@@ -52,10 +52,10 @@ class ScrapeService
      * @param string $jobId
      * @return void
      */
-    public function stopPipeline(string $jobId): bool
+    public function stopPipeline(string $jobId): array
     {
-
-        return false;
+        $pipeline = app(ScraperPipelineService::class);
+        return $pipeline->stop($jobId);
     }
 
 

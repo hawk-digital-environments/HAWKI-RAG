@@ -91,7 +91,7 @@ class ScrapeContext
     {
         $this->jobStats->addWarning([
             'message' => $message,
-            'stage' => $stage ?? $this->stage,
+            'stage' => $stage ?? $this->getStage(),
             'timestamp' => now()->toIso8601String(),
         ]);
     }

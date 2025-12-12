@@ -11,6 +11,7 @@ use App\Services\ScrapeService\Validation\ScrapeValidationService;
 use App\Services\StorageService\StorageService;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
@@ -103,13 +104,14 @@ class ScraperPipelineService
         $context->setStage('execution');
 
         // Execute the crawler - persistent Redis subscriber is already listening
-        $success = $this->executionService->execute($context->getRequest(), $outputCallback);
+        $response = $this->executionService->execute($context->getRequest(), $outputCallback);
 
-        if($success){
+        if($response['success']){
             $context->setStage('process_submitted');
         }
         else {
-            $context->addError( 'Execution failed.');
+            $context->setStage('failed');
+            $context->addError($response['message']);
         }
     }
 
@@ -132,5 +134,27 @@ class ScraperPipelineService
             errors: $context->getErrors(),
             warnings: $context->getWarnings()
         );
+    }
+
+
+    public function stop($jobId): array
+    {
+        $context = ScrapeContextBuilder::rebuildContext($jobId);
+
+        $response = Http::timeout(300)
+            ->retry(3, 1000)
+            ->post(config('scraper.api_url') . "/jobs/$jobId/cancel");
+
+        $data = $response->json();
+        Log::debug($data);
+        if($data['success']){
+            $context->setStage('stopped');
+            $context->addWarning("Process canceled at " . now()->format('Y-m-d H:i:s'));
+        }
+
+        return [
+            'success' => $data['success'],
+            'message' => $data['message'] ?? 'No message provided',
+        ];
     }
 }

@@ -39,9 +39,10 @@ class ScrapeController extends Controller
         $validatedData = $request->validate([
             'jobId' => 'required|string',
         ]);
-        $success = $this->scrapeService->stopPipeline($validatedData['jobId']);
+        $data = $this->scrapeService->stopPipeline($validatedData['jobId']);
         return response()->json([
-            'success' => $success,
+            'success' => $data['success'],
+            'message' => $data['message']
         ]);
     }
 

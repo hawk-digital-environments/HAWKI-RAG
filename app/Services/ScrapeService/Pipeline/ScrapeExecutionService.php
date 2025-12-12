@@ -13,23 +13,36 @@ class ScrapeExecutionService
     /**
      *
      * @param callable|null $outputCallback Optional callback for streaming output (callable(string $type, string $buffer))
-     * @return bool success true or false
+     * @return array success and message
      * @throws ConnectionException
      */
-    public function execute(ScrapeJobRequest $requestConfig, ?callable $outputCallback = null): bool
+    public function execute(ScrapeJobRequest $requestConfig, ?callable $outputCallback = null): array
     {
         try{
-            Log::debug("execute");
             $response = Http::timeout(300)
-                ->retry(3, 1000) // Retry up to 3 times with 1 second delay for transient network issues
+                ->retry(3, 1000)
                 ->post(config('scraper.api_url') . '/crawl',
                     $requestConfig->toArray());
 
-            return $response->json()['success'];
-        }
-        catch (\Exception $exception){
-            Log::error($exception->getMessage());
-            throw $exception;
+            $data = $response->json(); // decode JSON to array
+
+            if(isset($data['event']) && $data['event'] === 'job_submitted'){
+                return [
+                    'success' => true,
+                    'message' => $data['data']['message'] ?? 'No message provided',
+                ];
+            } else {
+                return [
+                    'success' => false,
+                    'message' => $data['data']['message'] ?? 'No message provided',
+                ];
+            }
+        } catch (\Exception $e) {
+            // handle errors, maybe log and return error response
+            return [
+                'success' => false,
+                'message' => $e->getMessage(),
+            ];
         }
     }
 }
