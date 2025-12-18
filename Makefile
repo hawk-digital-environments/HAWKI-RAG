@@ -30,14 +30,14 @@ network:
 	@docker network create hawki-network || true
 
 pull-core:
-	@$(COMPOSE_CMD) pull qdrant nginx $(OLLAMA_SERVICE)
+	@$(COMPOSE_CMD) pull qdrant mysql nginx $(OLLAMA_SERVICE)
 
 build-app:
 	@$(COMPOSE_CMD) build app
 
 up-core: network pull-core build-app
 	@echo "Launching core stack (profile: $(COMPOSE_PROFILES))..."
-	@$(COMPOSE_CMD) up -d --remove-orphans qdrant nginx $(OLLAMA_SERVICE) app
+	@$(COMPOSE_CMD) up -d --remove-orphans qdrant mysql nginx $(OLLAMA_SERVICE) app
 	@echo "Ensuring Ollama has bge-m3 model pulled..."
 	@docker exec hawki_ollama ollama pull bge-m3 >/dev/null 2>&1 || true
 	@echo "Ensuring Ollama has llama3:8b model pulled..."
@@ -109,7 +109,7 @@ ingest:
 		--batch 16
 
 logs-core:
-	@$(COMPOSE_CMD) logs -f qdrant nginx $(OLLAMA_SERVICE) app
+	@$(COMPOSE_CMD) logs -f qdrant mysql nginx $(OLLAMA_SERVICE) app
 
 logs-rag:
 	@docker compose -f $(OPS_COMPOSE) --env-file $(ENV_FILE) logs -f
@@ -121,7 +121,7 @@ down-rag:
 	@docker compose -f $(OPS_COMPOSE) --env-file $(ENV_FILE) down
 
 restart-core:
-	@$(COMPOSE_CMD) up -d --force-recreate qdrant nginx $(OLLAMA_SERVICE) app
+	@$(COMPOSE_CMD) up -d --force-recreate qdrant mysql nginx $(OLLAMA_SERVICE) app
 
 restart-rag:
 	@docker compose -f $(OPS_COMPOSE) --env-file $(ENV_FILE) up -d --force-recreate
