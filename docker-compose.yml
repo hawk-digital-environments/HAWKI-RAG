@@ -360,6 +360,22 @@ services:
                           count: all
                           capabilities:
                             - gpu
+    # MinIO Object Storage (disabled)
+    # minio:
+    #     image: minio/minio
+    #     container_name: hawki_minio
+    #     ports:
+    #     - "9000:9000"
+    #     - "9001:9001"
+    #     environment:
+    #         MINIO_ROOT_USER: ${MINIO_ACCESS_KEY}
+    #         MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY}
+    #     volumes:
+    #     - minio_data:/data
+    #     networks:
+    #     - hawki-network
+    #     command: server --console-address ":9001" /data
+    #     restart: always
 
 volumes:
     shared_storage:     # Shared Laravel storage <-> Crawler

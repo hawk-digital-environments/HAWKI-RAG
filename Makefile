@@ -17,8 +17,8 @@ endif
 COMPOSE_CMD = COMPOSE_PROFILES=$(COMPOSE_PROFILES) $(COMPOSE_BIN)
 
 # Variables (override via `make VAR=value`)
-ENV_FILE ?= ops/LightRAG.env
-OPS_COMPOSE ?= ops/rawki-docker-compose.yml
+ENV_FILE ?= python_rag/LightRAG.env
+OPS_COMPOSE ?= python_rag/rawki-docker-compose.yml
 INGEST_BASE ?= http://localhost:8009
 RAWKI_BASE ?= http://localhost:8006
 RERANK_BASE ?= http://localhost:8008
