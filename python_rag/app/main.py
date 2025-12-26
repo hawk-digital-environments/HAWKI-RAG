@@ -10,28 +10,26 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional, Tuple
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
-from providers.ollama_provider import OllamaProvider
-from providers.gwdg_provider import GWDGProvider
-from qdrant_http import QdrantHTTP
-from qdrant_strategies import (
+from core.rag_service import RAGService
+from vectorstore.qdrant_http import QdrantHTTP
+from vectorstore.qdrant_strategies import (
     semantic_search_basic,
     semantic_search_high_recall,
-    semantic_search_with_threshold,
     optimized_semantic_search,
 )
-from qdrant_strategies import optimized_semantic_search, semantic_search_basic
-from neo4j_graph import Neo4jGraph
-from lightrag_impl import extract_triplets_fallback, extract_triplets_with_lightrag
+from graph.neo4j_graph import Neo4jGraph
 ########################################### CONFIG #####################################
 logger = logging.getLogger(__name__)
 BASE_DIR = Path(__file__).resolve().parent
-PROJECT_ROOT = BASE_DIR.parent
+PYTHON_RAG_ROOT = BASE_DIR.parents[1]
+PROJECT_ROOT = PYTHON_RAG_ROOT.parent
 PUBLIC_DIR = PROJECT_ROOT / "public"
 app = FastAPI(title="LightRAG Service", version="0.2.0")
+rag_service = RAGService()
 
 ########################################### PREPROCESSING  #####################################
 def _load_stopwords() -> set[str]:
-    stop_path = BASE_DIR / "german_stopwords_plain.txt"
+    stop_path = PYTHON_RAG_ROOT / "config" / "german_stopwords_plain.txt"
     try:
         content = stop_path.read_text(encoding="utf-8")
     except FileNotFoundError:
@@ -381,11 +379,10 @@ def _delete_document_entries(doc_id: str) -> Dict[str, Any]:
 
 ###################################### INGESTION AND PROVIDER CONFIG ###############################
 def get_provider(name: str):
-    if name == "ollama":
-        return OllamaProvider()
-    if name == "gwdg":
-        return GWDGProvider()
-    raise HTTPException(status_code=400, detail=f"Unknown provider: {name}")
+    try:
+        return rag_service.get_provider(name)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 class IngestDoc(BaseModel):
     id: str | int
@@ -582,10 +579,7 @@ def ingest(body: IngestRequest):
             texts = [rec["content"] for rec in chunk_records]
             joined = "\n\n".join(texts)
             if joined:
-                if body.graph_engine == "lightrag":
-                    triplets = extract_triplets_with_lightrag(joined)
-                else:
-                    triplets = extract_triplets_fallback(joined)
+                triplets = rag_service.extract_triplets(joined, body.graph_engine)
                 entity_ids = set()
                 relation_counts: Dict[str, int] = {}
                 for s, r, o in triplets:
@@ -649,10 +643,7 @@ def ingest(body: IngestRequest):
                 if not text.strip():
                     continue
                 doc_id = record.get("doc_id")
-                if body.graph_engine == "lightrag":
-                    triplets = extract_triplets_with_lightrag(text)
-                else:
-                    triplets = extract_triplets_fallback(text)
+                triplets = rag_service.extract_triplets(text, body.graph_engine)
                 if triplets:
                     g.upsert_triplets(triplets, doc_id=doc_id)
         except Exception as e:
@@ -757,17 +748,6 @@ def replace_document(doc_id: str, body: DocumentUpsertRequest):
     ingest_response["deleted"] = deletion
     return ingest_response
 
-def _cosine(a: list[float], b: list[float]) -> float:
-    import math
-    if not a or not b or len(a) != len(b):
-        return 0.0
-    dp = sum(x*y for x, y in zip(a, b))
-    na = math.sqrt(sum(x*x for x in a))
-    nb = math.sqrt(sum(y*y for y in b))
-    if na == 0 or nb == 0:
-        return 0.0
-    return dp / (na * nb)
-
 @app.post("/query")
 def query(body: QueryRequest):
     prompt_safety = _analyze_prompt_safety(body.query)
@@ -805,144 +785,16 @@ def query(body: QueryRequest):
             top_k=body.top_k,
             filters=filters,
         )
-    def apply_reranker(current_hits: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        if not (body.reranker and body.reranker.lower() != "none" and current_hits):
-            return current_hits
-        mode = body.reranker.lower()
-        candidates = current_hits[: max(1, min(body.rerank_top_n, len(current_hits)))]
-        orig_scores = [float(h.get("score") or 0.0) for h in candidates]
-        logger.info(
-            "Reranker active (mode=%s, candidates=%d, total_hits=%d)",
-            mode,
-            len(candidates),
-            len(current_hits),
-        )
-        try:
-            if mode == "cosine":
-                scored = []
-                for h in candidates:
-                    payload = h.get("payload") or {}
-                    text = _strip_control_chars(payload.get("snippet") or payload.get("content") or payload.get("title") or "")
-                    if not text:
-                        scored.append((0.0, h))
-                        continue
-                    try:
-                        dv = provider.embed(str(text)[:1000])
-                    except Exception:
-                        dv = []
-                    scored.append((_cosine(vec, dv), h))
-                if body.mix_mode:
-                    import math
-
-                    def norm(lst: List[float]) -> List[float]:
-                        lo, hi = min(lst), max(lst)
-                        if math.isclose(lo, hi):
-                            return [0.0 for _ in lst]
-                        return [(x - lo) / (hi - lo) for x in lst]
-
-                    rr_scores = [float(s) for s, _ in scored]
-                    nr = norm(rr_scores)
-                    no = norm(orig_scores)
-                    alpha = max(0.0, min(1.0, float(body.mix_weight)))
-                    mixed = [(alpha * o + (1.0 - alpha) * r, h) for r, (s, h), o in zip(nr, scored, no)]
-                    mixed.sort(key=lambda x: x[0], reverse=True)
-                    return [h for _, h in mixed] + current_hits[len(mixed):]
-                scored.sort(key=lambda x: x[0], reverse=True)
-                return [h for _, h in scored] + current_hits[len(scored):]
-            elif mode == "external":
-                import requests
-
-                rr_url = os.environ.get("RERANKER_API_URL", "").strip()
-                rr_key = os.environ.get("RERANKER_API_KEY", "").strip()
-                if rr_url:
-                    docs = []
-                    for h in candidates:
-                        payload = h.get("payload") or {}
-                        docs.append({
-                            "id": payload.get("page_url") or payload.get("source_url") or str(payload.get("title") or ""),
-                            "text": _strip_control_chars((payload.get("snippet") or payload.get("content") or payload.get("title") or "")[:2000]),
-                        })
-                    headers = {"Content-Type": "application/json"}
-                    if rr_key:
-                        headers["Authorization"] = f"Bearer {rr_key}"
-                    response = requests.post(rr_url, headers=headers, json={"query": user_query, "documents": docs}, timeout=30)
-                    if response.ok:
-                        payload = response.json()
-                        order = payload.get("results") or payload
-                        if isinstance(order, list):
-                            score_map = {str(item.get("id")): float(item.get("score", 0.0)) for item in order}
-
-                            def key_for(hit: Dict[str, Any]) -> str:
-                                p = hit.get("payload") or {}
-                                return str(p.get("page_url") or p.get("source_url") or p.get("title") or "")
-
-                            scored = [(score_map.get(key_for(h), 0.0), h) for h in candidates]
-                            if body.mix_mode:
-                                import math
-
-                                def norm(lst: List[float]) -> List[float]:
-                                    lo, hi = min(lst), max(lst)
-                                    if math.isclose(lo, hi):
-                                        return [0.0 for _ in lst]
-                                    return [(x - lo) / (hi - lo) for x in lst]
-
-                                rr_scores = [float(s) for s, _ in scored]
-                                nr = norm(rr_scores)
-                                no = norm(orig_scores)
-                                alpha = max(0.0, min(1.0, float(body.mix_weight)))
-                                mixed = [(alpha * o + (1.0 - alpha) * r, h) for r, (s, h), o in zip(nr, scored, no)]
-                                mixed.sort(key=lambda x: x[0], reverse=True)
-                                return [h for _, h in mixed] + current_hits[len(mixed):]
-                            scored.sort(key=lambda x: x[0], reverse=True)
-                            return [h for _, h in scored] + current_hits[len(scored):]
-            elif mode == "jina":
-                import requests
-
-                jina_key = os.environ.get("JINA_API_KEY", "").strip()
-                jina_model = os.environ.get("JINA_RERANKER_MODEL", "jina-reranker-v2-base-multilingual").strip()
-                if jina_key:
-                    docs = []
-                    for h in candidates:
-                        payload = h.get("payload") or {}
-                        docs.append(_strip_control_chars((payload.get("snippet") or payload.get("content") or payload.get("title") or "")[:2000]))
-                    headers = {
-                        "Content-Type": "application/json",
-                        "Authorization": f"Bearer {jina_key}"
-                    }
-                    req_body = {"model": jina_model, "query": user_query, "documents": docs}
-                    response = requests.post("https://api.jina.ai/v1/rerank", headers=headers, json=req_body, timeout=30)
-                    if response.ok:
-                        payload = response.json()
-                        results = payload.get("results") or []
-                        rr_scores = [0.0] * len(candidates)
-                        for item in results:
-                            idx = int(item.get("index", -1))
-                            score_val = float(item.get("relevance_score", 0.0))
-                            if 0 <= idx < len(rr_scores):
-                                rr_scores[idx] = score_val
-                        pairs = list(zip(rr_scores, candidates))
-                        if body.mix_mode:
-                            import math
-
-                            def norm(lst: List[float]) -> List[float]:
-                                lo, hi = min(lst), max(lst)
-                                if math.isclose(lo, hi):
-                                    return [0.0 for _ in lst]
-                                return [(x - lo) / (hi - lo) for x in lst]
-
-                            nr = norm(rr_scores)
-                            no = norm(orig_scores)
-                            alpha = max(0.0, min(1.0, float(body.mix_weight)))
-                            mixed = [(alpha * o + (1.0 - alpha) * r, h) for r, h, o in zip(nr, candidates, no)]
-                            mixed.sort(key=lambda x: x[0], reverse=True)
-                            return [h for _, h in mixed] + current_hits[len(mixed):]
-                        pairs.sort(key=lambda x: x[0], reverse=True)
-                        return [h for _, h in pairs] + current_hits[len(pairs):]
-        except Exception:
-            logger.exception("Reranker failed; continuing with original order")
-        return current_hits
-
-    hits = apply_reranker(hits)
+    hits = rag_service.rerank_hits(
+        hits=hits,
+        user_query=user_query,
+        provider=provider,
+        query_vector=vec,
+        mode=body.reranker,
+        top_n=body.rerank_top_n,
+        mix_mode=body.mix_mode,
+        mix_weight=body.mix_weight,
+    )
 
     iterative_enabled = str(os.environ.get(ITERATIVE_RETRIEVAL_ENV, "true")).lower() in ("1", "true", "yes")
     iteration_used = False
@@ -974,7 +826,16 @@ def query(body: QueryRequest):
             )
         if secondary_hits:
             hits = _merge_hits(hits, secondary_hits, max(body.top_k * 2, 12))
-            hits = apply_reranker(hits)
+            hits = rag_service.rerank_hits(
+                hits=hits,
+                user_query=user_query,
+                provider=provider,
+                query_vector=vec,
+                mode=body.reranker,
+                top_n=body.rerank_top_n,
+                mix_mode=body.mix_mode,
+                mix_weight=body.mix_weight,
+            )
 
     try:
         max_context_tokens = int(os.environ.get("RAG_CONTEXT_TOKENS", MAX_CONTEXT_TOKENS_DEFAULT))
@@ -1072,10 +933,7 @@ def query(body: QueryRequest):
 
 @app.post("/graph/from-text")
 def graph_from_text(body: GraphRequest):
-    if body.engine == "lightrag":
-        triplets = extract_triplets_with_lightrag(body.text)
-    else:
-        triplets = extract_triplets_fallback(body.text)
+    triplets = rag_service.extract_triplets(body.text, body.engine)
     g = Neo4jGraph()
     g.upsert_triplets(triplets)
     g.close()

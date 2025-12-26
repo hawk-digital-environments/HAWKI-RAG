@@ -124,7 +124,7 @@
                             <li><code>make up-core</code> – start RAWKI core stack (Ollama, Qdrant, app)</li>
                             <li><code>make up-rag</code> – launch RAWKI services (Neo4j, core, reranker, bridge)</li>
                             <li><code>make ingest CRAWLED_ROOT=/path</code> – ingest local crawl via FastAPI bridge</li>
-                            <li><code>python scripts/ingest_to_lightrag.py --base-url http://localhost:8006</code> – push docs directly to the RAWKI core UI</li>
+                            <li><code>python python_rag/ingest/ingest_to_lightrag.py --base-url http://localhost:8006</code> – push docs directly to the RAWKI core UI</li>
                         </ul>
                     </div>
                 </div>

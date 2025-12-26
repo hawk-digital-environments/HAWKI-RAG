@@ -2,8 +2,6 @@
 
 namespace App\Console\Commands;
 
-use App\Services\ScrapeService\ScraperPipelineService;
-use App\Services\ScrapeService\Data\ScrapeJobRequest;
 use App\Services\ScrapeService\ScrapeService;
 use Illuminate\Console\Command;
 
@@ -34,7 +32,8 @@ class ScrapeWebsite extends Command
      */
     protected $description = 'Scrape websites';
 
-        public function __construct(
+    public function __construct(
+        private ScrapeService $scrapeService
     ) {
         parent::__construct();
     }
@@ -84,8 +83,7 @@ class ScrapeWebsite extends Command
                 'requestDelay' => $this->option('request-delay') ? (int)$this->option('request-delay') : null,
             ];
 
-            $service = new ScrapeService();
-            $service->startPipeline($request,
+            $this->scrapeService->startPipeline($request,
                 outputCallback: function (string $type, string $buffer) {
                     // Stream crawler output to console
                     if ($type === 'out') {

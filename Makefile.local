@@ -47,7 +47,7 @@ ensure-models:
 install-python:
 	@echo "Installing Python dependencies..."
 	@$(PIP) install -r requirements.txt
-	@$(PIP) install -r python-rag/requirements.txt || true
+	@$(PIP) install -r python_rag/requirements.txt || true
 
 install-node:
 	@echo "Installing Node packages..."
@@ -80,7 +80,7 @@ stop-neo4j:
 
 start-python:
 	@echo "Starting FastAPI bridge (Ctrl+C to stop)..."
-	@cd python-rag && $(UVICORN) app:app --host 0.0.0.0 --port 8009
+	@cd python_rag && $(UVICORN) app.main:app --host 0.0.0.0 --port 8009
 
 stop-python:
 	@echo "Stopping FastAPI bridge requires Ctrl+C in the terminal where it is running."

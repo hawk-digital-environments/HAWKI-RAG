@@ -101,7 +101,7 @@ pull-models:
 
 ingest:
 	@if [ "$(CRAWLED_ROOT)" = "/absolute/path/to/crawled-data" ]; then echo "Set CRAWLED_ROOT to your local path, e.g.: make ingest CRAWLED_ROOT=/data/crawled" && exit 1; fi
-	@python3 scripts/ingest_crawled.py \
+	@python3 python_rag/ingest/ingest_crawled.py \
 		--root $(CRAWLED_ROOT) \
 		--base-url $(INGEST_BASE) \
 		--provider ollama \

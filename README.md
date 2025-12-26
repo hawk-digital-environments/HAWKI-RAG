@@ -15,6 +15,16 @@ requirements are satisfied before starting the stack:
 - ≥ 4 CPU cores for smooth ingest and query workloads
 - ≥ 15 GB disk space for Qdrant, Neo4j, and model caches
 
+### Quick Start (Docker)
+```bash
+docker compose up -d
+```
+
+Laravel app: http://localhost:8080  
+MCP endpoint: http://localhost:8080/mcp/rawki  
+Python RAG API: http://localhost:8003  
+Ollama: http://localhost:11434
+
 ### Quick Start (local Laravel dev)
 ```bash
 composer install
@@ -37,8 +47,8 @@ LightRAG playground (core UI): http://127.0.0.1:8006/
 - `make up-rag` – build & launch the RAWKI stack (Neo4j, RAWKI core UI, reranker, bridge).
 - `make ingest CRAWLED_ROOT=/path` – push a crawl into Qdrant/Neo4j via the FastAPI bridge.
 - `docker compose -f ops/rawki-docker-compose.yml up -d --build` – rebuild RAWKI services only.
-- `PYTHONPATH=python-rag python -m unittest tests/test_qdrant_http.py tests/test_neo4j_graph.py` – run unit tests.
-- `PYTHONPATH=python-rag python -m unittest tests.integration.test_ingest_and_query` – optional integration smoke test.
+- `PYTHONPATH=python_rag python -m unittest tests/test_qdrant_http.py tests/test_neo4j_graph.py` – run unit tests.
+- `PYTHONPATH=python_rag python -m unittest tests.integration.test_ingest_and_query` – optional integration smoke test.
 
 ## Updated Architecture
 
@@ -49,7 +59,7 @@ external vector and graph stores while remaining fully orchestrated by RAWKI.
 ### High-Level Flow
 
 1. **Laravel (PHP) ➝ FastAPI bridge** – application calls the
-   `python_rag` service (`python-rag/app.py`) over HTTP. Endpoints:
+   `python_rag` service (`python_rag/app/main.py`) over HTTP. Endpoints:
    - `POST /ingest` – embeds content, stores vectors in Qdrant and triplets in Neo4j.
    - `POST /query` – retrieves from Qdrant, enriches with Neo4j relationships, applies
      reranking, and returns combined context + answer.
@@ -64,16 +74,16 @@ external vector and graph stores while remaining fully orchestrated by RAWKI.
 
 ### Ingestion utilities
 
-- `scripts/ingest_crawled.py` – sends crawled folders to the FastAPI bridge (`/ingest`)
+- `python_rag/ingest/ingest_crawled.py` – sends crawled folders to the FastAPI bridge (`/ingest`)
   so Qdrant + Neo4j are populated.
-- `scripts/ingest_to_lightrag.py` – replays the same folders to the LightRAG core UI’s
+- `python_rag/ingest/ingest_to_lightrag.py` – replays the same folders to the LightRAG core UI’s
   `/documents/texts` endpoint so the UI/GraphML caches stay in sync.
 
 Use the bridge script whenever downstream services depend on the `/query`
 endpoint. Run both scripts if the RAWKI UI must mirror the latest corpus.
 
 ```bash
-python3 scripts/ingest_crawled.py \
+python3 python_rag/ingest/ingest_crawled.py \
   --root storage/app/private/crawled-data/sample-hawk \
   --base-url http://localhost:8009 \
   --provider ollama \
@@ -91,7 +101,7 @@ to resume (skip previously embedded docs) or start over.
 ```
 
 ```bash
-python3 scripts/ingest_to_lightrag.py \
+python3 python_rag/ingest/ingest_to_lightrag.py \
   --root storage/app/private/crawled-data/hawk-full \
   --base-url http://localhost:8006 \
   --batch 8 \
@@ -130,12 +140,12 @@ docker exec -it rawki_neo4j cypher-shell -u "${NEO4J_USER:-neo4j}" -p "${NEO4J_P
 Run them with:
 
 ```bash
-PYTHONPATH=python-rag python -m unittest tests/test_qdrant_http.py tests/test_neo4j_graph.py
+PYTHONPATH=python_rag python -m unittest tests/test_qdrant_http.py tests/test_neo4j_graph.py
 
 LIGHTRAG_BASE_URL=http://localhost:8006 \
 LIGHTRAG_BRIDGE_URL=http://localhost:8004 \
 LIGHTRAG_SAMPLE_ROOT=/absolute/path/to/sample \
-PYTHONPATH=python-rag python -m unittest tests.integration.test_ingest_and_query
+PYTHONPATH=python_rag python -m unittest tests.integration.test_ingest_and_query
 ```
 
 ### Makefile & Smoke Tests
@@ -195,7 +205,7 @@ php artisan crawl:and-convert "https://www.hawk.de/" \
 ### RE-ingesting failed Docs Command 
 
 ```bash
-python3 scripts/retry_ingest_docs.py \
+python3 python_rag/ingest/retry_ingest_docs.py \
   --root storage/app/private/crawled-data/hawk-text \
   --collection embeddings_hawk \
   --base-url http://localhost:8009 \

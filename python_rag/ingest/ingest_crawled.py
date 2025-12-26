@@ -241,7 +241,7 @@ def to_array_list(v) -> List[str]:
 
 def load_stopwords() -> set[str]:
 
-    stop_path = Path(__file__).resolve().parent.parent / "python-rag" / "german_stopwords_plain.txt"
+    stop_path = Path(__file__).resolve().parents[1] / "config" / "german_stopwords_plain.txt"
     try:
         content = stop_path.read_text(encoding="utf-8")
     except FileNotFoundError:

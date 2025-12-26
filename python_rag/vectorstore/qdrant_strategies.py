@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, Iterable, List, Optional
 
-from qdrant_http import QdrantHTTP
+from .qdrant_http import QdrantHTTP
 
 
 def semantic_search_basic(
@@ -107,4 +107,3 @@ def optimized_semantic_search(
         filters=combined_filters or None,
         ef_multiplier=8,
     )
-

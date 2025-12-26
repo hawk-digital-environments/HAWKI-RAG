@@ -12,11 +12,9 @@ use Illuminate\Support\Str;
 
 class ScrapeDatasetCreator
 {
-    protected StorageService $storageService;
     public function __construct(
-    )
-    {
-        $this->storageService = app(StorageService::class);
+        protected StorageService $storageService
+    ) {
     }
 
     /**
