@@ -376,6 +376,7 @@ services:
     #     - hawki-network
     #     command: server --console-address ":9001" /data
     #     restart: always
+    # NOTE: All RAWKI services are defined in this single compose file.
 
 volumes:
     shared_storage:     # Shared Laravel storage <-> Crawler

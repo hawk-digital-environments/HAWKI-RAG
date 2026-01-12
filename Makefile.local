@@ -46,8 +46,7 @@ ensure-models:
 
 install-python:
 	@echo "Installing Python dependencies..."
-	@$(PIP) install -r requirements.txt
-	@$(PIP) install -r python_rag/requirements.txt || true
+	@$(PIP) install -r python_rag/requirements.txt
 
 install-node:
 	@echo "Installing Node packages..."

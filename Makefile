@@ -11,14 +11,14 @@ OLLAMA_SERVICE := ollama_cpu
 export OLLAMA_USE_MPS := 1
 else
 COMPOSE_PROFILES := gpu
-OLLAMA_SERVICE := ollama_gpu
+OLLAMA_SERVICE := ollama_cpu
 endif
 
 COMPOSE_CMD = COMPOSE_PROFILES=$(COMPOSE_PROFILES) $(COMPOSE_BIN)
 
 # Variables (override via `make VAR=value`)
 ENV_FILE ?= python_rag/LightRAG.env
-OPS_COMPOSE ?= python_rag/rawki-docker-compose.yml
+OPS_COMPOSE ?= docker-compose.yml
 INGEST_BASE ?= http://localhost:8009
 RAWKI_BASE ?= http://localhost:8006
 RERANK_BASE ?= http://localhost:8008

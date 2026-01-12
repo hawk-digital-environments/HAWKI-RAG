@@ -46,7 +46,7 @@ LightRAG playground (core UI): http://127.0.0.1:8006/
 - `make up-core` – start RAWKI’s core (Ollama, Qdrant, nginx, Laravel).
 - `make up-rag` – build & launch the RAWKI stack (Neo4j, RAWKI core UI, reranker, bridge).
 - `make ingest CRAWLED_ROOT=/path` – push a crawl into Qdrant/Neo4j via the FastAPI bridge.
-- `docker compose -f python_rag/rawki-docker-compose.yml up -d --build` – rebuild RAWKI services only.
+- `docker compose -f docker-compose.yml up -d --build` – rebuild RAWKI services only.
 - `PYTHONPATH=python_rag python -m unittest tests/test_qdrant_http.py tests/test_neo4j_graph.py` – run unit tests.
 - `PYTHONPATH=python_rag python -m unittest tests.integration.test_ingest_and_query` – optional integration smoke test.
 
@@ -163,8 +163,8 @@ The project-level `Makefile` automates common tasks:
 
 Full deployment notes live in [`docs/DEPLOY.md`](docs/DEPLOY.md). Highlights:
 
-1. **Build images** – `docker compose -f python_rag/rawki-docker-compose.yml build`.
-2. **Launch** – `docker compose -f python_rag/rawki-docker-compose.yml up -d`.
+1. **Build images** – `docker compose -f docker-compose.yml build`.
+2. **Launch** – `docker compose -f docker-compose.yml up -d`.
 3. **Verify** – `make test-services` and optional integration test (see above).
 4. **Upgrades** – when LightRAG releases upstream changes, merge, rebuild, rerun the
    tests, and check that the storage interfaces (`BaseVectorStorage`,
