@@ -11,7 +11,7 @@ OLLAMA_SERVICE := ollama_cpu
 export OLLAMA_USE_MPS := 1
 else
 COMPOSE_PROFILES := gpu
-OLLAMA_SERVICE := ollama_cpu
+OLLAMA_SERVICE := ollama_gpu
 endif
 
 COMPOSE_CMD = COMPOSE_PROFILES=$(COMPOSE_PROFILES) $(COMPOSE_BIN)
@@ -30,14 +30,14 @@ network:
 	@docker network create hawki-network || true
 
 pull-core:
-	@$(COMPOSE_CMD) pull qdrant mysql nginx $(OLLAMA_SERVICE)
+	@$(COMPOSE_CMD) pull qdrant nginx $(OLLAMA_SERVICE)
 
 build-app:
 	@$(COMPOSE_CMD) build app
 
 up-core: network pull-core build-app
 	@echo "Launching core stack (profile: $(COMPOSE_PROFILES))..."
-	@$(COMPOSE_CMD) up -d --remove-orphans qdrant mysql nginx $(OLLAMA_SERVICE) app
+	@$(COMPOSE_CMD) up -d --remove-orphans qdrant nginx $(OLLAMA_SERVICE) app
 	@echo "Ensuring Ollama has bge-m3 model pulled..."
 	@docker exec hawki_ollama ollama pull bge-m3 >/dev/null 2>&1 || true
 	@echo "Ensuring Ollama has llama3:8b model pulled..."

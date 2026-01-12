@@ -14,16 +14,24 @@ class ConvertCrawledPdfs extends Command
      * Usage:
      *   php artisan convert:crawled-pdfs storage/app/private/crawled-data/hawk
      */
-    protected $signature = 'convert:crawled-pdfs {outputDir : Path to crawler output directory}';
+    protected $signature = 'convert:crawled-pdfs {outputDir? : Path to crawler output directory}';
 
     protected $description = 'Convert all PDFs under OUTPUT_DIR/**/files/*.pdf to Markdown using DocumentConverter, skipping already-converted PDFs, and log failures to public/failed_conversion.json';
 
     public function handle(): int
     {
-        $outputDir = base_path($this->argument('outputDir'));
-        if (!is_dir($outputDir)) {
-            $this->error("Output dir not found: $outputDir");
-            return Command::FAILURE;
+        $outputDirArg = $this->argument('outputDir');
+        if ($outputDirArg) {
+            $outputDir = base_path($outputDirArg);
+            if (!is_dir($outputDir)) {
+                $this->error("Output dir not found: $outputDir");
+                return Command::FAILURE;
+            }
+        } else {
+            $outputDir = $this->pickOutputDir();
+            if (!$outputDir) {
+                return Command::FAILURE;
+            }
         }
 
         $converter = new DocumentConverter();
@@ -165,6 +173,33 @@ class ConvertCrawledPdfs extends Command
         }
 
         return Command::SUCCESS;
+    }
+
+    private function pickOutputDir(): ?string
+    {
+        $candidates = [
+            '/app/shared',
+        ];
+
+        $roots = array_values(array_filter($candidates, static fn ($path) => is_dir($path)));
+        if (empty($roots)) {
+            $this->error('No shared crawl directories found. Provide outputDir explicitly.');
+            return null;
+        }
+
+        $root = count($roots) === 1
+            ? $roots[0]
+            : $this->choice('Select the crawl root to inspect', $roots, 0);
+
+        $dirs = File::directories($root);
+        if (empty($dirs)) {
+            $this->error("No crawl folders found under: $root");
+            return null;
+        }
+
+        $selected = $this->choice('Select a crawl folder', $dirs, 0);
+        $this->info("Selected: {$selected}");
+        return $selected;
     }
 
     /**

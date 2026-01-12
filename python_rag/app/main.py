@@ -21,7 +21,7 @@ from graph.neo4j_graph import Neo4jGraph
 ########################################### CONFIG #####################################
 logger = logging.getLogger(__name__)
 BASE_DIR = Path(__file__).resolve().parent
-PYTHON_RAG_ROOT = BASE_DIR.parents[1]
+PYTHON_RAG_ROOT = BASE_DIR.parent
 PROJECT_ROOT = PYTHON_RAG_ROOT.parent
 PUBLIC_DIR = PROJECT_ROOT / "public"
 app = FastAPI(title="LightRAG Service", version="0.2.0")

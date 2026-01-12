@@ -294,7 +294,9 @@ services:
             context: .
             dockerfile: Dockerfile
             target: python-rag
+        image: rawki-python-rag:local
         container_name: raganything_api
+        profiles: ["cpu"]
         environment:
             - RAG_WORKING_DIR=/app/rag_storage
             - OLLAMA_URL=http://ollama:11434
@@ -311,23 +313,12 @@ services:
         restart: unless-stopped
         ports:
             - "8003:8003"
-        deploy:
-            resources:
-                reservations:
-                    devices:
-                        - driver: nvidia
-                          count: all
-                          capabilities:
-                            - gpu
 
     # -------------------------------------------------
     # FastAPI bridge (Python RAG API)
     # -------------------------------------------------
     rawki_bridge:
-        build:
-            context: .
-            dockerfile: Dockerfile
-            target: python-rag
+        image: rawki-python-rag:local
         container_name: rawki_bridge
         env_file:
             - ./python_rag/LightRAG.env
@@ -338,20 +329,61 @@ services:
             - NEO4J_URI=bolt://neo4j:7687
             - NEO4J_USER=${NEO4J_USER:-neo4j}
         volumes:
+            - ./python_rag:/app
             - ./public:/app/public
         networks:
             - hawki-network
         depends_on:
             - neo4j
         restart: unless-stopped
+        command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
         ports:
-            - "8009:8003"
+            - "8009:8000"
 
     # -------------------------------------------------
     # Ollama (local models for LLM/embeddings)
     # -------------------------------------------------
     ollama_cpu:
         <<: *ollama_base
+        profiles: ["cpu"]
+
+    # Optional GPU variants (enable with COMPOSE_PROFILES=gpu)
+    raganything_api_gpu:
+        build:
+            context: .
+            dockerfile: Dockerfile
+            target: python-rag
+        image: rawki-python-rag:local
+        container_name: raganything_api_gpu
+        profiles: ["gpu"]
+        environment:
+            - RAG_WORKING_DIR=/app/rag_storage
+            - OLLAMA_URL=http://ollama:11434
+            - QDRANT_URL=http://qdrant:6333
+            - NEO4J_URI=bolt://neo4j:7687
+        volumes:
+            - rag_storage:/app/rag_storage
+        networks:
+            - hawki-network
+        depends_on:
+            - ollama_gpu
+            - qdrant
+            - neo4j
+        restart: unless-stopped
+        ports:
+            - "8003:8003"
+        deploy:
+            resources:
+                reservations:
+                    devices:
+                        - driver: nvidia
+                          count: all
+                          capabilities:
+                            - gpu
+
+    ollama_gpu:
+        <<: *ollama_base
+        profiles: ["gpu"]
         deploy:
             resources:
                 reservations:
