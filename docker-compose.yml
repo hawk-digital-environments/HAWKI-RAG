@@ -57,7 +57,6 @@ services:
             REDIS_SCRAPE_CHANNEL: scrape-events
         networks:
             - hawki-network
-            - rawki-bridge
         depends_on:
             rabbitmq:
                 condition: service_healthy
@@ -82,7 +81,6 @@ services:
             - app
         networks:
             - hawki-network
-            - rawki-bridge
 
     # -------------------------------------------------
     # Redis (Pub/Sub for Laravel <-> Crawler)
@@ -123,7 +121,6 @@ services:
             - rabbitmq_logs:/var/log/rabbitmq
         networks:
             - hawki-network
-            - rawki-bridge
         restart: unless-stopped
         healthcheck:
             test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
@@ -182,7 +179,6 @@ services:
             - /dev/shm:/dev/shm
             - shared_storage:/app/shared
         networks:
-            - rawki-bridge
             - hawki-network
         depends_on:
             - rabbitmq
@@ -429,5 +425,3 @@ volumes:
 networks:
     hawki-network:
         external: true
-    rawki-bridge:
-        driver: bridge
