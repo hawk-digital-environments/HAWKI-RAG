@@ -100,7 +100,7 @@ The rules below are derived from `docker-compose.yml` and the runtime environmen
 **`raganything_api` (RAG Anything API)**
 - **Image/build:** `rawki-python-rag:local`.
 - **Port:** `8003:8003`.
-- **Profiles:** `cpu` by default; GPU variant is `raganything_api_gpu`.
+- **Profiles:** GPU by default via `make`; CPU fallback is automatic if no GPU is detected.
 - **Role:** FastAPI wrapper used by the Laravel UI and integrations.
 
 **`rawki_rerank` (Reranker)**
@@ -135,7 +135,7 @@ The rules below are derived from `docker-compose.yml` and the runtime environmen
 - **Image/build:** `docker/ollama.Dockerfile` → `hawki-ollama:local`.
 - **Port:** `11434:11434`.
 - **Volume:** `ollama:/root/.ollama`.
-- **Profiles:** `ollama_cpu` or `ollama_gpu` based on `COMPOSE_PROFILES`.
+- **Profiles:** GPU by default via `make`; CPU fallback is automatic if no GPU is detected.
 - **Healthcheck:** `curl -fsS http://localhost:11434/api/tags`.
 
 ### Crawling & Shared Storage

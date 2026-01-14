@@ -1,17 +1,18 @@
 # Simple Makefile to streamline the RAWKI pipeline
 
 SHELL := /bin/bash
-OS_NAME := $(shell uname -s)
 
 COMPOSE_BIN ?= docker compose
 
-ifeq ($(OS_NAME),Darwin)
-COMPOSE_PROFILES := cpu
-OLLAMA_SERVICE := ollama_cpu
-export OLLAMA_USE_MPS := 1
-else
+GPU_AVAILABLE := $(shell command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi -L >/dev/null 2>&1 && echo 1 || echo 0)
+ifeq ($(GPU_AVAILABLE),1)
 COMPOSE_PROFILES := gpu
 OLLAMA_SERVICE := ollama_gpu
+PROFILE_MESSAGE := "GPU detected; using gpu profile."
+else
+COMPOSE_PROFILES := cpu
+OLLAMA_SERVICE := ollama_cpu
+PROFILE_MESSAGE := "GPU not detected; falling back to cpu profile."
 endif
 
 COMPOSE_CMD = COMPOSE_PROFILES=$(COMPOSE_PROFILES) $(COMPOSE_BIN)
@@ -35,6 +36,7 @@ build-app:
 	@$(COMPOSE_CMD) build app
 
 up-core: network pull-core build-app
+	@echo $(PROFILE_MESSAGE)
 	@echo "Launching core stack (profile: $(COMPOSE_PROFILES))..."
 	@$(COMPOSE_CMD) up -d --remove-orphans qdrant nginx $(OLLAMA_SERVICE) app
 	@echo "Ensuring Ollama has bge-m3 model pulled..."
@@ -45,6 +47,7 @@ up-core: network pull-core build-app
 	@docker exec hawki_ollama ollama pull llama3.1:8b >/dev/null 2>&1 || true
 
 up-rag:
+	@echo $(PROFILE_MESSAGE)
 	@docker compose -f $(OPS_COMPOSE) --env-file $(ENV_FILE) build rawki_rerank || true
 	@docker compose -f $(OPS_COMPOSE) --env-file $(ENV_FILE) up -d
 
@@ -105,9 +108,11 @@ down-rag:
 	@docker compose -f $(OPS_COMPOSE) --env-file $(ENV_FILE) down
 
 restart-core:
+	@echo $(PROFILE_MESSAGE)
 	@$(COMPOSE_CMD) up -d --force-recreate qdrant mysql nginx $(OLLAMA_SERVICE) app
 
 restart-rag:
+	@echo $(PROFILE_MESSAGE)
 	@docker compose -f $(OPS_COMPOSE) --env-file $(ENV_FILE) up -d --force-recreate
 
 neo4j-fresh:
