@@ -36,12 +36,11 @@ class ConvertCrawledPdfs extends Command
 
         $converter = new DocumentConverter();
 
-        // Find all PDFs under **/files/*.pdf
-        $pattern  = rtrim($outputDir, DIRECTORY_SEPARATOR) . '/**/files/*.pdf';
-        $pdfPaths = File::glob($pattern);
+        // Find all PDFs under **/files/*.pdf (recursive)
+        $pdfPaths = $this->collectPdfPaths($outputDir);
 
         if (empty($pdfPaths)) {
-            $this->warn("No PDFs found under $outputDir (pattern: $pattern)");
+            $this->warn("No PDFs found under $outputDir (pattern: **/files/*.pdf)");
             $this->writeFailedJson([], 0, 0, 0); // write empty report
             return Command::SUCCESS;
         }
@@ -286,6 +285,29 @@ class ConvertCrawledPdfs extends Command
             return ltrim(substr($path, strlen($baseDir)), '/');
         }
         return $path;
+    }
+
+    /**
+     * Collect PDF files located under the "files" subfolders.
+     *
+     * @return array<int,string>
+     */
+    private function collectPdfPaths(string $outputDir): array
+    {
+        $paths = [];
+        $root = rtrim($outputDir, DIRECTORY_SEPARATOR);
+        foreach (File::allFiles($root) as $file) {
+            if (strtolower($file->getExtension()) !== 'pdf') {
+                continue;
+            }
+            $path = $file->getPathname();
+            if (!str_contains(str_replace('\\', '/', $path), '/files/')) {
+                continue;
+            }
+            $paths[] = $path;
+        }
+        sort($paths);
+        return $paths;
     }
 
     /**
