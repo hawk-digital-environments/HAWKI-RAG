@@ -157,6 +157,15 @@
             <p id="status" style="margin-top: 0.9rem; font-size: 0.95rem; color: #bae6fd;"></p>
         </section>
 
+        <section class="card" style="margin-bottom: 2rem;">
+            <h2 style="margin-bottom: 0.6rem;">MCP Monitor</h2>
+            <p style="margin: 0 0 0.6rem; font-size: 0.9rem; color: #bae6fd;">
+                Latest MCP tool call from <code>processRAG_log.txt</code>.
+            </p>
+            <div class="badge" id="mcp-latest">No MCP activity yet.</div>
+            <div id="mcp-log" style="margin-top: 0.9rem; display: grid; gap: 0.5rem;"></div>
+        </section>
+
         <section class="card" id="results" style="display: none;">
             <h2>Results</h2>
             <div id="provenance-banner" class="provenance"></div>
@@ -199,6 +208,8 @@
         const rawJson = document.getElementById('raw-json');
         const metaEl = document.getElementById('meta');
         const provenanceBanner = document.getElementById('provenance-banner');
+        const mcpLatest = document.getElementById('mcp-latest');
+        const mcpLog = document.getElementById('mcp-log');
 
         function badge(text) {
             const span = document.createElement('span');
@@ -391,6 +402,33 @@
                 runBtn.disabled = false;
             }
         });
+
+        async function pollMcpMonitor() {
+            try {
+                const response = await fetch('/api/mcp/monitor', {
+                    headers: { 'Accept': 'application/json' },
+                });
+                if (!response.ok) return;
+                const data = await response.json();
+                if (data && data.latest) {
+                    mcpLatest.textContent = data.latest;
+                }
+                if (Array.isArray(data.lines) && data.lines.length) {
+                    mcpLog.innerHTML = '';
+                    data.lines.slice(-10).forEach((line) => {
+                        const item = document.createElement('div');
+                        item.className = 'badge';
+                        item.textContent = line;
+                        mcpLog.appendChild(item);
+                    });
+                }
+            } catch (error) {
+                // Ignore polling errors to keep UI responsive.
+            }
+        }
+
+        pollMcpMonitor();
+        setInterval(pollMcpMonitor, 4000);
     </script>
 </body>
 </html>

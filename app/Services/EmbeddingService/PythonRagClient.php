@@ -4,6 +4,7 @@ namespace App\Services\EmbeddingService;
 
 use App\Services\Mcp\McpClient;
 use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Http;
 
 class PythonRagClient
@@ -42,17 +43,22 @@ class PythonRagClient
     {
         $payload = array_merge(['docs' => $docs], $options);
         if ($this->useMcp && $this->mcpClient) {
+            $this->logMcpCall($this->mcpToolIngest, 'attempt');
             $result = $this->mcpClient->callTool($this->mcpToolIngest, $payload);
             $parsed = $this->parseMcpResult($result);
             if ($parsed !== null) {
+                $this->logMcpCall($this->mcpToolIngest, 'success');
                 return $parsed;
             }
+            $this->logMcpCall($this->mcpToolIngest, 'error');
         }
 
         if (! $this->mcpFallback) {
+            $this->logMcpCall($this->mcpToolIngest, 'fallback-disabled');
             return ['error' => 'MCP ingest unavailable'];
         }
 
+        $this->logMcpCall($this->mcpToolIngest, 'fallback-http');
         return Http::timeout(120)->post($this->base . $this->ingestPath, $payload)->json() ?? [];
     }
 
@@ -60,17 +66,22 @@ class PythonRagClient
     {
         $payload = array_merge(['query' => $query], $options);
         if ($this->useMcp && $this->mcpClient) {
+            $this->logMcpCall($this->mcpToolQuery, 'attempt');
             $result = $this->mcpClient->callTool($this->mcpToolQuery, $payload);
             $parsed = $this->parseMcpResult($result);
             if ($parsed !== null) {
+                $this->logMcpCall($this->mcpToolQuery, 'success');
                 return $parsed;
             }
+            $this->logMcpCall($this->mcpToolQuery, 'error');
         }
 
         if (! $this->mcpFallback) {
+            $this->logMcpCall($this->mcpToolQuery, 'fallback-disabled');
             return ['error' => 'MCP query unavailable'];
         }
 
+        $this->logMcpCall($this->mcpToolQuery, 'fallback-http');
         return Http::timeout(60)->post($this->base . $this->queryPath, $payload)->json() ?? [];
     }
 
@@ -102,5 +113,23 @@ class PythonRagClient
         }
 
         return is_array($decoded) ? $decoded : null;
+    }
+
+    private function logMcpCall(string $tool, string $status): void
+    {
+        $path = (string) config('mcp.log_path', storage_path('app/processRAG_log.txt'));
+        $timestamp = date('Y-m-d H:i:s');
+        $line = sprintf("[%s] MCP tool=%s status=%s\n", $timestamp, $tool, $status);
+
+        try {
+            if (str_starts_with($path, storage_path())) {
+                $relative = ltrim(str_replace(storage_path(), '', $path), DIRECTORY_SEPARATOR);
+                Storage::append($relative, $line);
+                return;
+            }
+            file_put_contents($path, $line, FILE_APPEND);
+        } catch (\Throwable $e) {
+            // Avoid breaking the request flow on log failures.
+        }
     }
 }
