@@ -1,31 +1,37 @@
 # RAWKI – HAWKI’s Retrieval Stack
 
-RAWKI is the customised LightRAG deployment used in the HAWKI project. It keeps the
+RAWKI is the customised retrieval deployment used in the HAWKI project. It keeps the
 Laravel application and FastAPI bridge you already know, but rebrands the end-user
 experience and Docker stack, highlighting the combo of **Qdrant** + **Neo4j** + the
-LightRAG core pipeline.
-
-## Welcome to RAWKI
+RAWKI pipeline.
 
 RAWKI is designed for fast retrieval over crawled HAWKI content. By default it uses
-`bge-m3` for embeddings and `llama3:8b` for grounded answers. Make sure the following
-requirements are satisfied before starting the stack:
+`bge-m3` for embeddings and `llama3:8b` / `llama3.1:8b` for grounded answers.
 
-- ≥ 6 GB RAM free (8 GB recommended) so Ollama can serve `llama3:8b`
-- ≥ 4 CPU cores for smooth ingest and query workloads
-- ≥ 15 GB disk space for Qdrant, Neo4j, and model caches
+## Chapter 0 — At a Glance
 
-### Quick Start (Docker)
+- **What you get:** Laravel UI, a FastAPI bridge, Qdrant vectors, Neo4j graph,
+  a reranker, Ollama for models, plus a crawler microservice.
+- **Why it exists:** accelerate retrieval over crawled HAWKI content while keeping
+  the pipeline modular and persistence externalized.
+- **Where config lives:** `docker-compose.yml`, `python_rag/LightRAG.env`, and `Makefile`.
+
+## Chapter 1 — Quick Start (Docker)
+
 ```bash
+docker network create hawki-network || true
 docker compose up -d
 ```
 
-Laravel app: http://localhost:8080  
-MCP endpoint: http://localhost:8080/mcp/rawki  
-Python RAG API: http://localhost:8003  
-Ollama: http://localhost:11434
+Laravel app: `http://localhost:8080`  
+MCP endpoint: `http://localhost:8080/mcp/rawki`  
+Python RAG API: `http://localhost:8003`  
+FastAPI bridge (ingest/query): `http://localhost:8009`  
+Crawler API: `http://localhost:8004`  
+Ollama: `http://localhost:11434`
 
 ### Quick Start (local Laravel dev)
+
 ```bash
 composer install
 npm install
@@ -33,54 +39,132 @@ npm run build
 ```
 
 ### Ollama models (host or container)
+
 ```bash
 ollama pull llama3:8b
+ollama pull llama3.1:8b
 ollama pull bge-m3
 ```
 
-RAWKI playground (Laravel UI): http://127.0.0.1:8002/rawki-playground  
-LightRAG playground (core UI): http://127.0.0.1:8006/
+RAWKI playground (Laravel UI): `http://127.0.0.1:8080/rawki-playground`
 
-### Useful Commands
-
-- `make up-core` – start RAWKI’s core (Ollama, Qdrant, nginx, Laravel).
-- `make up-rag` – build & launch the RAWKI stack (Neo4j, RAWKI core UI, reranker, bridge).
-- `make ingest CRAWLED_ROOT=/path` – push a crawl into Qdrant/Neo4j via the FastAPI bridge.
-- `docker compose -f docker-compose.yml up -d --build` – rebuild RAWKI services only.
-- `PYTHONPATH=python_rag python -m unittest tests/test_qdrant_http.py tests/test_neo4j_graph.py` – run unit tests.
-- `PYTHONPATH=python_rag python -m unittest tests.integration.test_ingest_and_query` – optional integration smoke test.
-
-## Updated Architecture
-
-This release extends the LightRAG paper implementation (HKU, 2024) so the core
-chunking, summarisation and knowledge-graph extraction logic now runs against
-external vector and graph stores while remaining fully orchestrated by RAWKI.
+## Chapter 2 — Architecture in One Page
 
 ### High-Level Flow
 
-1. **Laravel (PHP) ➝ FastAPI bridge** – application calls the
-   `python_rag` service (`python_rag/app/main.py`) over HTTP. Endpoints:
+1. **Laravel (PHP) ➝ FastAPI bridge**: the app calls `rawki_bridge`
+   (`python_rag/app/main.py`) over HTTP.
    - `POST /ingest` – embeds content, stores vectors in Qdrant and triplets in Neo4j.
-   - `POST /query` – retrieves from Qdrant, enriches with Neo4j relationships, applies
-     reranking, and returns combined context + answer.
+   - `POST /query` – retrieves from Qdrant, enriches with Neo4j, reranks, and returns
+     combined context + answer.
 2. **Qdrant** – collections `hawki_chunks`, `hawki_entities`, and
-   `hawki_relationships` are created automatically and hold chunk vectors plus
-   metadata for traceability back to the original PDF/page.
-3. **Neo4j** – persists `Entity` nodes and `REL` edges for every triplet produced by
-   RAWKI’s extractors, giving a navigable knowledge graph.
-4. **RAWKI core server** – still provides the UI and background workers, but now reads
-   from Qdrant/Neo4j via the official storage adapters (`LIGHTRAG_VECTOR_STORAGE` and
-   `LIGHTRAG_GRAPH_STORAGE` set in `python_rag/LightRAG.env`).
+   `hawki_relationships` are created automatically and hold chunk vectors plus metadata.
+3. **Neo4j** – persists `Entity` nodes and `REL` edges for every triplet.
+4. **Reranker** – a Cohere-compatible reranker service (`rawki_rerank`) improves final
+   ordering of retrieved chunks.
 
-### Ingestion utilities
+### Networking Model
+
+All services share a single external Docker network: **`hawki-network`**.
+This makes every container resolvable by its compose service name.
+
+## Chapter 3 — Services, Ports, and Rules
+
+The rules below are derived from `docker-compose.yml` and the runtime environment.
+
+### Core Storage
+
+**`hawki_qdrant` (Vector DB)**
+- **Image/build:** `docker/qdrant.Dockerfile` → `hawki-qdrant:local`.
+- **Ports:** `6333` (REST), `6334` (gRPC).
+- **Volume:** `qdrant_data:/qdrant/storage`.
+- **Healthcheck:** `GET http://localhost:6333/readyz`.
+- **Role:** persists chunk vectors and structured metadata.
+
+**`rawki_neo4j` (Graph DB)**
+- **Image:** `neo4j:5.22`.
+- **Ports:** `7475:7474` (browser), `7688:7687` (bolt).
+- **Volume:** `neo4j_data:/data`.
+- **Healthcheck:** `wget --spider http://localhost:7474/browser`.
+- **Role:** persists entities and relationships extracted from content.
+
+### Ingest and Query Plane
+
+**`rawki_bridge` (FastAPI bridge)**
+- **Image/build:** `rawki-python-rag:local`.
+- **Port:** `8009:8000`.
+- **Env:** `python_rag/LightRAG.env` plus service overrides.
+- **Role:** `/ingest` and `/query` API for applications and scripts.
+- **Notes:** runs Uvicorn with `--reload` for dev-style iteration.
+
+**`raganything_api` (RAG Anything API)**
+- **Image/build:** `rawki-python-rag:local`.
+- **Port:** `8003:8003`.
+- **Profiles:** `cpu` by default; GPU variant is `raganything_api_gpu`.
+- **Role:** FastAPI wrapper used by the Laravel UI and integrations.
+
+**`rawki_rerank` (Reranker)**
+- **Image/build:** `Dockerfile` target `rerank`.
+- **Port:** `8008:8000`.
+- **Healthcheck:** `curl -fsS http://localhost:8000/health`.
+- **Role:** Cohere-compatible reranker (default model: `mixedbread-ai/mxbai-rerank-base-v1`).
+
+### Application Layer
+
+**`hawki_app` (Laravel app)**
+- **Image/build:** `Dockerfile` target `laravel-app`.
+- **Port:** exposed through nginx (see below).
+- **Volumes:** project source mounted into `/var/www`.
+- **Depends on:** `rawki_rabbitmq`, `crawl4ai-service`.
+
+**`rawki_nginx` (Gateway)**
+- **Image:** `nginx:1.27-alpine`.
+- **Port:** `8080:80`.
+- **Config:** `docker/nginx.conf` bound to `/etc/nginx/conf.d/default.conf`.
+- **Role:** routes web requests to Laravel and public endpoints.
+
+### Communication + Models
+
+**`rawki_rabbitmq` (Queue + Management UI)**
+- **Image:** `rabbitmq:3.13-management-alpine`.
+- **Ports:** `5672` (AMQP), `15672` (management UI).
+- **Volumes:** `rabbitmq_data`, `rabbitmq_logs`.
+- **Healthcheck:** `rabbitmq-diagnostics -q ping`.
+
+**`hawki_ollama` (Local LLM + embeddings)**
+- **Image/build:** `docker/ollama.Dockerfile` → `hawki-ollama:local`.
+- **Port:** `11434:11434`.
+- **Volume:** `ollama:/root/.ollama`.
+- **Profiles:** `ollama_cpu` or `ollama_gpu` based on `COMPOSE_PROFILES`.
+- **Healthcheck:** `curl -fsS http://localhost:11434/api/tags`.
+
+### Crawling & Shared Storage
+
+**`crawl4ai-service` (Crawler microservice)**
+- **Image:** `crawl4ai-fastapi:latest`.
+- **Port:** `8004:8000`.
+- **Volumes:**
+  - `./data:/app/data` (new job data)
+  - `./output:/app/output` (legacy output)
+  - `shared_storage:/app/shared` (shared Laravel storage)
+- **Env:** RabbitMQ integration enabled; storage path via `DATA_PATH`.
+- **Healthcheck:** `curl -f http://localhost:8000/health`.
+
+## Chapter 4 — Data Persistence Map
+
+- **Qdrant**: `qdrant_data` volume (vectors & collections).
+- **Neo4j**: `neo4j_data` volume (graph DB files).
+- **Ollama**: `ollama` volume (models, caches).
+- **RabbitMQ**: `rabbitmq_data` and `rabbitmq_logs`.
+- **RAG working data**: `rag_storage` volume for local cache/state.
+- **Crawler output**: `./data` and `shared_storage` (host + shared volume).
+
+## Chapter 5 — Ingestion Utilities
 
 - `python_rag/ingest/ingest_crawled.py` – sends crawled folders to the FastAPI bridge (`/ingest`)
   so Qdrant + Neo4j are populated.
-- `python_rag/ingest/ingest_to_lightrag.py` – replays the same folders to the LightRAG core UI’s
-  `/documents/texts` endpoint so the UI/GraphML caches stay in sync.
 
-Use the bridge script whenever downstream services depend on the `/query`
-endpoint. Run both scripts if the RAWKI UI must mirror the latest corpus.
+Use the bridge script whenever downstream services depend on `/query`.
 
 ```bash
 python3 python_rag/ingest/ingest_crawled.py \
@@ -95,20 +179,10 @@ python3 python_rag/ingest/ingest_crawled.py \
   --batch 8 \
   --timeout 1800 \
   --summary-file public/ingest_summary.json
-
-If the same collection/root pair was ingested earlier, the CLI now prompts whether
-to resume (skip previously embedded docs) or start over.
 ```
 
 ```bash
-python3 python_rag/ingest/ingest_to_lightrag.py \
-  --root storage/app/private/crawled-data/hawk-full \
-  --base-url http://localhost:8006 \
-  --batch 8 \
-  --timeout 180
-```
-
-### Inspecting counts (Qdrant & Neo4j)
+## Chapter 6 — Inspecting Counts (Qdrant & Neo4j)
 
 Every successful ingest writes a JSON summary to `public/ingest_summary.json`.
 
@@ -117,7 +191,7 @@ Every successful ingest writes a JSON summary to `public/ingest_summary.json`.
 curl -s -X POST http://localhost:6333/collections/embeddings_hawk/points/count \
      -H 'Content-Type: application/json' -d '{"exact": true}'
 
-# Qdrant auxiliary collections (LightRAG/RAWKI graph data)
+# Qdrant auxiliary collections (graph data)
 for col in hawki_entities hawki_relationships; do
   curl -s -X POST "http://localhost:6333/collections/${col}/points/count" \
        -H 'Content-Type: application/json' -d '{"exact": true}'
@@ -130,7 +204,15 @@ docker exec -it rawki_neo4j cypher-shell -u "${NEO4J_USER:-neo4j}" -p "${NEO4J_P
   "MATCH (:Entity)-[r:REL]->(:Entity) RETURN count(r) AS triplet_count"
 ```
 
-### Testing
+## Chapter 7 — Makefile Shortcuts
+
+- `make up-core` – start core services (Qdrant, nginx, Ollama, Laravel).
+- `make up-rag` – build & launch the RAWKI stack (Neo4j, reranker, bridge).
+- `make ingest CRAWLED_ROOT=/path` – push a crawl into Qdrant/Neo4j.
+- `make test-services` – curl Qdrant/Neo4j/bridge/rerank health endpoints.
+- `make logs-rag`, `make down-rag` – convenience wrappers for compose.
+
+## Chapter 8 — Testing
 
 - **Unit tests** (`tests/test_qdrant_http.py`, `tests/test_neo4j_graph.py`) mock the
   HTTP/driver layers to exercise retry/backoff paths.
@@ -142,50 +224,23 @@ Run them with:
 ```bash
 PYTHONPATH=python_rag python -m unittest tests/test_qdrant_http.py tests/test_neo4j_graph.py
 
-LIGHTRAG_BASE_URL=http://localhost:8006 \
 LIGHTRAG_BRIDGE_URL=http://localhost:8004 \
-LIGHTRAG_SAMPLE_ROOT=/absolute/path/to/sample \
 PYTHONPATH=python_rag python -m unittest tests.integration.test_ingest_and_query
 ```
 
-### Makefile & Smoke Tests
+## Chapter 9 — Deployment Cheat Sheet
 
-The project-level `Makefile` automates common tasks:
-
-- `make up-core` – builds/starts Qdrant, Neo4j, Ollama, nginx, Laravel app.
-- `make up-rag` – builds/starts LightRAG, the FastAPI bridge, and reranker.
-- `make ingest CRAWLED_ROOT=/path` – pushes a crawl into Qdrant/Neo4j.
-- `make test-services` – curls all five services (Qdrant, Neo4j, LightRAG UI,
-  python_rag bridge, reranker) to confirm readiness.
-- `make logs-rag`, `make down-rag`, etc., wrap the compose commands.
-
-### Deployment Cheat Sheet
-
-Full deployment notes live in [`docs/DEPLOY.md`](docs/DEPLOY.md). Highlights:
+Full deployment notes live in `docs/DEPLOY.md`. Highlights:
 
 1. **Build images** – `docker compose -f docker-compose.yml build`.
 2. **Launch** – `docker compose -f docker-compose.yml up -d`.
-3. **Verify** – `make test-services` and optional integration test (see above).
-4. **Upgrades** – when LightRAG releases upstream changes, merge, rebuild, rerun the
-   tests, and check that the storage interfaces (`BaseVectorStorage`,
-   `BaseGraphStorage`) still match our adapters.
+3. **Verify** – `make test-services` and optional integration test.
+4. **Upgrades** – when upstream dependencies change, rebuild, rerun tests,
+   and verify storage interfaces still match our adapters.
 
-### Components in Docker
+## Chapter 10 — Scrape and Convert Commands
 
-| Service             | Role                                                                    |
-|---------------------|-------------------------------------------------------------------------|
-| `hawki_qdrant`      | Vector store (collections for chunks/entities/relationships)            |
-| `rawki_neo4j`       | Knowledge graph database (stores RAWKI triplets)                       |
-| `rawki_core`        | RAWKI UI/API using Qdrant + Neo4j adapters                              |
-| `rawki_bridge`      | FastAPI bridge exposing `/ingest` + enhanced `/query` endpoints         |
-| `rawki_rerank`      | Cohere-compatible reranker (mixedbread-ai/mxbai-rerank-base-v1 by default) |
-| `hawki_ollama`      | Local embeddings provider (Ollama)                                      |
-| `hawki-vector-database-app` | Laravel PHP application                                         |
-
-
-### Scrape and Convert Command 
 ```bash
-
 php artisan crawl:and-convert "https://www.hawk.de/" \
     --max-pages=100000 \
     --output-dir=storage/app/private/crawled-data/hawk-full \
@@ -202,7 +257,8 @@ php artisan crawl:and-convert "https://www.hawk.de/" \
     --skip-images \
     --date="meta[property='og:updated_time']"
 ```
-### RE-ingesting failed Docs Command 
+
+### Re-ingesting failed docs
 
 ```bash
 python3 python_rag/ingest/retry_ingest_docs.py \
@@ -213,13 +269,6 @@ python3 python_rag/ingest/retry_ingest_docs.py \
   --batch 16
 ```
 
-### RAWKI (built on LightRAG)
-
-The pipeline adheres to the LightRAG paper’s workflow: documents are chunked,
-summarised, entities/relations are extracted, and the graph relationships influence
-retrieval quality. The main difference is that vectors are persisted in Qdrant and the
-knowledge graph in Neo4j without changing the core LightRAG logic.
-
 ## Further Reading
 
-- Step-by-step replication guide: [docs/story.md](docs/story.md)
+- Step-by-step replication guide: `docs/story.md`

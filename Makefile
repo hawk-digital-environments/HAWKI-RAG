@@ -20,7 +20,6 @@ COMPOSE_CMD = COMPOSE_PROFILES=$(COMPOSE_PROFILES) $(COMPOSE_BIN)
 ENV_FILE ?= python_rag/LightRAG.env
 OPS_COMPOSE ?= docker-compose.yml
 INGEST_BASE ?= http://localhost:8009
-RAWKI_BASE ?= http://localhost:8006
 RERANK_BASE ?= http://localhost:8008
 CRAWLED_ROOT ?= /home/ixdlab-admin/Rawki/RAWKI/storage/app/private/crawled-data
 
@@ -62,16 +61,6 @@ health:
 	else \
 		echo "Checking Ingestion Bridge... SKIPPED (rawki_bridge container not running)"; \
 	fi
-	@if docker ps --format '{{.Names}}' | grep -q rawki_core; then \
-		echo "Checking RAWKI (UI/API)..." && curl -fsS $(RAWKI_BASE)/health && echo " OK" || (echo " WARN (service reported unhealthy)" && true); \
-	else \
-		echo "Checking RAWKI (UI/API)... SKIPPED (rawki_core container not running)"; \
-	fi
-	@if docker ps --format '{{.Names}}' | grep -q rawki-nginx; then \
-		echo "Checking RAWKI (via gateway)..." && curl -fsS http://localhost:8003/rag/health && echo " OK" || (echo " WARN (gateway may be disabled)" && true); \
-	else \
-		echo "Checking RAWKI (via gateway)... SKIPPED (nginx gateway not running)"; \
-	fi
 
 test-services:
 	@set -e; \
@@ -79,11 +68,6 @@ test-services:
 	code=$$(curl -s -o /dev/null -w "%{http_code}" http://localhost:6333/readyz || echo 000); \
 	if [ "$$code" = "200" ] || [ "$$code" = "204" ] || [ "$$code" = "404" ]; then echo "healthy ($$code)"; else echo "FAIL ($$code)"; exit 1; fi; \
 	printf "neo4j: "; curl -fsS http://localhost:7475/browser >/dev/null && echo "healthy" || (echo "FAIL" && exit 1); \
-	if docker ps --format '{{.Names}}' | grep -q rawki_core; then \
-		printf "rawki_core: "; curl -fsS $(RAWKI_BASE)/health >/dev/null && echo "healthy" || (echo "WARN" && true); \
-	else \
-		printf "rawki_core: skipped (container not running)\n"; \
-	fi; \
 	if docker ps --format '{{.Names}}' | grep -q rawki_bridge; then \
 		printf "rawki_bridge: "; curl -fsS $(INGEST_BASE)/health >/dev/null && echo "healthy" || (echo "WARN" && true); \
 	else \

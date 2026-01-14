@@ -1,44 +1,50 @@
 import os
 import time
 import unittest
-from pathlib import Path
 
 import requests
 
 
-SKIP_REASON = "Integration tests require LIGHTRAG_BASE_URL and services running"
-
+SKIP_REASON = "Integration tests require RAWKI_BRIDGE_URL (or LIGHTRAG_BRIDGE_URL) and services running"
 
 def _env(name: str, default: str | None = None) -> str | None:
     value = os.environ.get(name, default)
     return value.rstrip("/") if value else value
 
 
+def _first_env(names: list[str]) -> str | None:
+    for name in names:
+        value = _env(name)
+        if value:
+            return value
+    return None
+
+
 class LightRAGIntegrationTests(unittest.TestCase):
-    """End-to-end smoke test covering LightRAG ingestion and retrieval."""
+    """End-to-end smoke test covering RAWKI ingestion and retrieval."""
     @classmethod
     def setUpClass(cls) -> None:
-        cls.base_url = _env("LIGHTRAG_BASE_URL")
-        cls.bridge_url = _env("LIGHTRAG_BRIDGE_URL")
-        cls.sample_root = _env("LIGHTRAG_SAMPLE_ROOT")
-        if not cls.base_url or not cls.bridge_url or not cls.sample_root:
+        cls.bridge_url = _first_env(["RAWKI_BRIDGE_URL", "LIGHTRAG_BRIDGE_URL"])
+        if not cls.bridge_url:
             raise unittest.SkipTest(SKIP_REASON)
 
-        if not Path(cls.sample_root).exists():
-            raise unittest.SkipTest("Sample root does not exist: " + cls.sample_root)
-
     def test_ingest_and_query_roundtrip(self):
-        # 1. Send a tiny document directly to LightRAG so UI storage is updated
-        doc_text = "LightRAG integration smoke test document"
-        ingest_payload = {"texts": [doc_text], "file_sources": ["integration-test"]}
+        # 1. Ingest a tiny document via the bridge
+        doc_text = "RAWKI integration smoke test document"
+        ingest_payload = {
+            "docs": [
+                {"id": "integration-test", "text": doc_text, "payload": {}},
+            ],
+            "graph": False,
+        }
         resp = requests.post(
-            f"{self.base_url}/documents/texts",
+            f"{self.bridge_url}/ingest",
             json=ingest_payload,
             timeout=30,
         )
         self.assertTrue(resp.ok, msg=resp.text[:200])
 
-        # 2. Allow LightRAG background tasks to finish
+        # 2. Allow background tasks to finish
         time.sleep(2)
 
         # 3. Run query via production bridge (Qdrant + Neo4j)

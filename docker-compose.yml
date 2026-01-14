@@ -238,35 +238,7 @@ services:
             start_period: 20s
 
     # -------------------------------------------------
-    # LightRAG core UI/API
-    # -------------------------------------------------
-    rawki_core:
-        build:
-            context: .
-            dockerfile: Dockerfile
-            target: lightrag-core
-        container_name: rawki_core
-        env_file:
-            - ./python_rag/LightRAG.env
-        volumes:
-            - ../hawki-data/crawled-data:/data/crawled:ro
-        networks:
-            - hawki-network
-        depends_on:
-            neo4j:
-                condition: service_healthy
-        restart: unless-stopped
-        ports:
-            - "8006:9621"
-        healthcheck:
-            test: ["CMD", "curl", "-fsS", "http://localhost:9621/health"]
-            interval: 15s
-            timeout: 5s
-            retries: 10
-            start_period: 20s
-
-    # -------------------------------------------------
-    # Cohere-compatible reranker (used by LightRAG)
+    # Cohere-compatible reranker (used by RAWKI)
     # -------------------------------------------------
     rawki_rerank:
         build:
@@ -289,7 +261,7 @@ services:
             start_period: 20s
 
     # -------------------------------------------------
-    # RAG-Anything + LightRAG API (FastAPI)
+    # RAG-Anything API (FastAPI)
     # -------------------------------------------------
     raganything_api:
         build:
@@ -299,6 +271,8 @@ services:
         image: rawki-python-rag:local
         container_name: raganything_api
         profiles: ["cpu"]
+        env_file:
+            - ./python_rag/LightRAG.env
         environment:
             - RAG_WORKING_DIR=/app/rag_storage
             - OLLAMA_URL=http://ollama:11434
@@ -358,6 +332,8 @@ services:
         image: rawki-python-rag:local
         container_name: raganything_api_gpu
         profiles: ["gpu"]
+        env_file:
+            - ./python_rag/LightRAG.env
         environment:
             - RAG_WORKING_DIR=/app/rag_storage
             - OLLAMA_URL=http://ollama:11434

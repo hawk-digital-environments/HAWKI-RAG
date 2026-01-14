@@ -107,7 +107,7 @@
                 <h1>Welcome to RAWKI</h1>
                 <p style="margin-top: 0.4rem;">
                     RAWKI is your HAWKI-branded Retrieval-Augmented Generation stack, combining <strong>Qdrant</strong> for vector search,
-                    <strong>Neo4j</strong> for graph knowledge, and the LightRAG core pipeline for fast knowledge extraction.
+                    <strong>Neo4j</strong> for graph knowledge, and the RAWKI pipeline for fast knowledge extraction.
                 </p>
                 <div class="grid two" style="margin-top: 1rem;">
                     <div>
@@ -124,7 +124,6 @@
                             <li><code>make up-core</code> – start RAWKI core stack (Ollama, Qdrant, app)</li>
                             <li><code>make up-rag</code> – launch RAWKI services (Neo4j, core, reranker, bridge)</li>
                             <li><code>make ingest CRAWLED_ROOT=/path</code> – ingest local crawl via FastAPI bridge</li>
-                            <li><code>python python_rag/ingest/ingest_to_lightrag.py --base-url http://localhost:8006</code> – push docs directly to the RAWKI core UI</li>
                         </ul>
                     </div>
                 </div>
