@@ -115,6 +115,13 @@ class ConvertCrawledPdfs extends Command
                 if (!$forceReprocess && is_file($metaPath)) {
                     $meta = json_decode(@file_get_contents($metaPath), true);
                     if (is_array($meta) && ($meta['converted_id'] ?? null) === $convertedId) {
+                        $flatPath = dirname($pdfPath) . '/' . pathinfo($pdfInfo->getFilename(), PATHINFO_FILENAME) . '_converted.md';
+                        if (!is_file($flatPath)) {
+                            $flatContent = $this->loadMarkdownFromMeta($meta, $destDir);
+                            if ($flatContent !== null) {
+                                File::put($flatPath, $flatContent);
+                            }
+                        }
                         $skipped++;
                         continue;
                     }
@@ -146,6 +153,12 @@ class ConvertCrawledPdfs extends Command
                     'version'        => 1,
                 ];
                 File::put($metaPath, json_encode($metaPayload, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+
+                $flatPath = dirname($pdfPath) . '/' . pathinfo($pdfInfo->getFilename(), PATHINFO_FILENAME) . '_converted.md';
+                $flatContent = $this->pickMarkdownContent($files);
+                if ($flatContent !== null) {
+                    File::put($flatPath, $flatContent);
+                }
 
                 $processed++;
             } catch (\Throwable $e) {
@@ -273,5 +286,48 @@ class ConvertCrawledPdfs extends Command
             return ltrim(substr($path, strlen($baseDir)), '/');
         }
         return $path;
+    }
+
+    /**
+     * Pick a reasonable markdown payload from the converter output.
+     *
+     * @param array<string,string> $files
+     */
+    private function pickMarkdownContent(array $files): ?string
+    {
+        foreach ($files as $relative => $content) {
+            if (str_ends_with(strtolower($relative), '.md')) {
+                return $content;
+            }
+        }
+
+        if ($files === []) {
+            return null;
+        }
+
+        return implode("\n\n", array_values($files));
+    }
+
+    private function loadMarkdownFromMeta(array $meta, string $destDir): ?string
+    {
+        $files = $meta['files'] ?? [];
+        if (!is_array($files)) {
+            return null;
+        }
+
+        foreach ($files as $relative) {
+            if (!is_string($relative)) {
+                continue;
+            }
+            if (!str_ends_with(strtolower($relative), '.md')) {
+                continue;
+            }
+            $path = $destDir . '/' . ltrim($relative, '/');
+            if (is_file($path)) {
+                return (string) file_get_contents($path);
+            }
+        }
+
+        return null;
     }
 }

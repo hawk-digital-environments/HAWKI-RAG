@@ -1,0 +1,45 @@
+flowchart LR
+  Client["MCP client\nhttp://localhost:8080/mcp/rawki"]
+  WebUI["RAWKI playground UI\nhttp://localhost:8080/rawki-playground"]
+  Laravel["Laravel app + MCP server\n:8080"]
+  Proxy["RAWKI proxy API\nPOST /api/rawki/query\n:8080"]
+  Monitor["MCP monitor API\nGET /api/mcp/monitor\n:8080"]
+  Log["processRAG_log.txt\nstorage/app/processRAG_log.txt"]
+  Config["MCP config\nconfig/mcp.php\n.env MCP_*"]
+
+  subgraph Docker["hawki-network (docker)"]
+    Bridge["rawki_bridge (FastAPI)\n:8009 -> 8000\n/ingest /query"]
+    RAGAPI["raganything_api\n:8003"]
+    Qdrant["qdrant\n:6333"]
+    Neo4j["neo4j\n:7474"]
+    Rerank["rawki_rerank\n:8008"]
+    Ollama["ollama\n:11434"]
+    Crawler["crawl4ai-service\n:8004"]
+  end
+
+  Search["Brave/Tavily APIs\n(HTTPS)"]
+
+  WebUI -->|fetch /api/rawki/query| Proxy
+  Proxy -->|HTTP /query| Bridge
+
+  Client -->|JSON-RPC /mcp/rawki| Laravel
+  Config --> Laravel
+  Laravel -->|tools/list| Laravel
+  Laravel -->|tools/call\nrag-query-tool| Bridge
+  Laravel -->|tools/call\nrag-ingest-tool| Bridge
+  Laravel -->|tools/call\nqdrant-search-tool| Qdrant
+  Laravel -->|tools/call\nneo4j-query-tool| Neo4j
+  Laravel -->|tools/call\nsearch-tool| Search
+
+  Bridge --> Qdrant
+  Bridge --> Neo4j
+  Bridge --> Rerank
+  Bridge --> Ollama
+
+  RAGAPI --> Qdrant
+  RAGAPI --> Neo4j
+  RAGAPI --> Rerank
+  RAGAPI --> Ollama
+
+  Laravel -->|log MCP calls| Log
+  Monitor -->|tail latest 20| Log
