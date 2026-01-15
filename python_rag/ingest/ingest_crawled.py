@@ -213,6 +213,15 @@ def discover_page_dirs(root: Path) -> List[Path]:
     out: List[Path] = []
     for dp, dn, fn in os.walk(root):
         p = Path(dp)
+        # Skip converted output folders to avoid duplicate ingestion.
+        parts = [part.lower() for part in p.parts]
+        if any(part.startswith("converted_") for part in parts):
+            dn[:] = []
+            continue
+        if "output" in parts and any(part.startswith("converted_") for part in parts):
+            dn[:] = []
+            continue
+
         files = {Path(dp, f).suffix.lower() for f in fn}
         if any(s in files for s in (".json", ".md", ".txt")):
             out.append(p)
@@ -608,7 +617,11 @@ def main():
     print(f"Scanning: {root}")
     if args.dry:
         print("Running in dry-run mode; embeddings and database writes are skipped.")
-    for d in page_dirs:
+    total_dirs = len(page_dirs)
+    print(f"Discovered {total_dirs} page folders.")
+    for idx, d in enumerate(page_dirs, start=1):
+        rel_dir = str(d.relative_to(root))
+        print(f"Folder {idx}/{total_dirs}: {rel_dir}")
         meta, md_path, json_path, text, source_fmt = load_page_materials(d)
         if not isinstance(text, str) or text.strip() == "":
             continue
@@ -617,6 +630,15 @@ def main():
         dir_resolved = d.resolve(strict=False)
         page_url = first_str(meta.get("url") or meta.get("page_url")) or resolve_url_for_path(page_url_map, dir_resolved, root)
         date = first_str(meta.get("date"))
+        if not date:
+            date = first_str(meta.get("published_at") or meta.get("updated_at") or meta.get("modified_at"))
+        if not date:
+            source_path = md_path or json_path
+            if source_path and source_path.exists():
+                try:
+                    date = datetime.fromtimestamp(source_path.stat().st_mtime, tz=timezone.utc).isoformat()
+                except Exception:
+                    date = None
         meta_img = first_str(meta.get("metaImageUrl") or meta.get("meta_img_url"))
         tags = resolve_tags(meta, text)
         rel = str(d.relative_to(root))

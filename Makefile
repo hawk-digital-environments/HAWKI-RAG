@@ -22,7 +22,17 @@ ENV_FILE ?= python_rag/LightRAG.env
 OPS_COMPOSE ?= docker-compose.yml
 INGEST_BASE ?= http://localhost:8009
 RERANK_BASE ?= http://localhost:8008
-CRAWLED_ROOT ?= /home/ixdlab-admin/Rawki/RAWKI/storage/app/private/crawled-data
+CRAWLED_ROOT ?= /absolute/path/to/crawled-data
+MCP_BASE ?= http://localhost:8080/mcp/rawki
+MCP_INGEST_ROOT ?= /absolute/path/to/crawled-data
+MCP_INGEST_PROVIDER ?= ollama
+MCP_INGEST_GRAPH ?= true
+MCP_INGEST_GRAPH_ENGINE ?= lightrag
+MCP_INGEST_CHUNK_CHARS ?= 3200
+MCP_INGEST_CHUNK_OVERLAP ?= 100
+MCP_INGEST_BATCH ?= 64
+MCP_INGEST_TIMEOUT ?= 1800
+MCP_LIST_ROOT ?= /app/shared
 
 .PHONY: network pull-core build-app up-core up-rag health pull-models ingest logs-core logs-rag down-core down-rag restart-core restart-rag test-services neo4j-fresh
 
@@ -94,6 +104,17 @@ ingest:
 		--provider ollama \
 		--graph \
 		--batch 16
+
+ingest-mcp:
+	@if [ "$(MCP_INGEST_ROOT)" = "" ]; then echo "Set MCP_INGEST_ROOT to your crawled root." && exit 1; fi
+	@curl -fsS $(MCP_BASE) \
+		-H "Content-Type: application/json" \
+		-d '{"jsonrpc":"2.0","id":'"$$(date +%s)"',"method":"tools/call","params":{"name":"rag-folder-ingest-tool","arguments":{"root":"$(MCP_INGEST_ROOT)","base_url":"http://rawki_bridge:8000","provider":"$(MCP_INGEST_PROVIDER)","graph":$(MCP_INGEST_GRAPH),"graph_engine":"$(MCP_INGEST_GRAPH_ENGINE)","chunk_chars":$(MCP_INGEST_CHUNK_CHARS),"chunk_overlap":$(MCP_INGEST_CHUNK_OVERLAP),"batch":$(MCP_INGEST_BATCH),"timeout":$(MCP_INGEST_TIMEOUT)}}}' | python3 -m json.tool
+
+ingest-mcp-list:
+	@curl -fsS $(MCP_BASE) \
+		-H "Content-Type: application/json" \
+		-d '{"jsonrpc":"2.0","id":'"$$(date +%s)"',"method":"tools/call","params":{"name":"rag-folder-list-tool","arguments":{"root":"$(MCP_LIST_ROOT)"}}}' | python3 -m json.tool
 
 logs-core:
 	@$(COMPOSE_CMD) logs -f qdrant mysql nginx $(OLLAMA_SERVICE) app

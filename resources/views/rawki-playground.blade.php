@@ -164,6 +164,67 @@
             </p>
             <div class="badge" id="mcp-latest">No MCP activity yet.</div>
             <div id="mcp-log" style="margin-top: 0.9rem; display: grid; gap: 0.5rem;"></div>
+            <div style="margin-top: 0.8rem;">
+                <button type="button" id="mcp-clear-btn" style="background: linear-gradient(135deg, #f97316, #ef4444);">Clear MCP logs</button>
+            </div>
+        </section>
+
+        <section class="card" style="margin-bottom: 2rem;">
+            <h2 style="margin-bottom: 0.6rem;">Ingest Monitor</h2>
+            <p style="margin: 0 0 0.6rem; font-size: 0.9rem; color: #bae6fd;">
+                Live ingest progress (Qdrant/Neo4j) from <code>ingest_status.json</code>.
+            </p>
+            <div id="ingest-status" class="badge">No ingest activity yet.</div>
+            <div id="ingest-progress" style="margin-top: 0.8rem; display: grid; gap: 0.5rem;"></div>
+            <div style="margin-top: 0.8rem;">
+                <button type="button" id="ingest-clear-btn" style="background: linear-gradient(135deg, #f97316, #ef4444);">Clear ingest logs</button>
+            </div>
+        </section>
+
+        <section class="card" style="margin-bottom: 2rem;">
+            <h2 style="margin-bottom: 0.6rem;">Ingest Data</h2>
+            <p style="margin: 0 0 0.8rem; font-size: 0.9rem; color: #bae6fd;">
+                Select a folder under the shared crawl volume and start ingestion.
+            </p>
+            <div class="grid two">
+                <div>
+                    <label for="ingest-folder">Crawl folder</label>
+                    <select id="ingest-folder" style="width:100%; border-radius:0.8rem; border:1px solid rgba(148,163,184,0.22); background:rgba(15,23,42,0.78); color:inherit; padding:0.7rem 0.8rem;">
+                        <option value="">Loading…</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="ingest-graph">Graph extraction</label>
+                    <label><input type="checkbox" id="ingest-graph" checked /> Enable Neo4j triplets</label>
+                </div>
+            </div>
+            <div style="margin-top: 1rem;">
+                <label for="ingest-collection">Qdrant collection name</label>
+                <input id="ingest-collection" type="text" placeholder="Defaults to folder name" style="width:100%; border-radius:0.8rem; border:1px solid rgba(148,163,184,0.22); background:rgba(15,23,42,0.78); color:inherit; padding:0.7rem 0.8rem;" />
+            </div>
+            <div style="margin-top: 1rem;">
+                <button type="button" id="ingest-btn">Start ingest</button>
+                <button type="button" id="mcp-ingest-btn" style="margin-left:0.6rem; background: linear-gradient(135deg, #22c55e, #0ea5e9);">Start MCP ingest</button>
+                <button type="button" id="ingest-stop-btn" style="margin-left:0.6rem; background: linear-gradient(135deg, #f97316, #ef4444);">Stop ingest</button>
+                <span id="ingest-action" style="margin-left:0.8rem; font-size:0.9rem; color:#bae6fd;"></span>
+            </div>
+        </section>
+
+        <section class="card" style="margin-bottom: 2rem;">
+            <h2 style="margin-bottom: 0.6rem;">RAG Anything Monitor</h2>
+            <p style="margin: 0 0 0.6rem; font-size: 0.9rem; color: #bae6fd;">
+                Live status from the RAG Anything API health endpoint.
+            </p>
+            <div id="rag-status" class="badge">Checking…</div>
+            <div id="rag-details" style="margin-top: 0.8rem; display: grid; gap: 0.5rem;"></div>
+        </section>
+
+        <section class="card" style="margin-bottom: 2rem;">
+            <h2 style="margin-bottom: 0.6rem;">Vector + Graph Stats</h2>
+            <p style="margin: 0 0 0.6rem; font-size: 0.9rem; color: #bae6fd;">
+                Qdrant collections and Neo4j triplets (live counts).
+            </p>
+            <div id="rag-stats" style="display:grid; gap:0.6rem;"></div>
         </section>
 
         <section class="card" id="results" style="display: none;">
@@ -210,6 +271,20 @@
         const provenanceBanner = document.getElementById('provenance-banner');
         const mcpLatest = document.getElementById('mcp-latest');
         const mcpLog = document.getElementById('mcp-log');
+        const ingestStatus = document.getElementById('ingest-status');
+        const ingestProgress = document.getElementById('ingest-progress');
+        const ingestFolder = document.getElementById('ingest-folder');
+        const ingestBtn = document.getElementById('ingest-btn');
+        const ingestAction = document.getElementById('ingest-action');
+        const ingestGraph = document.getElementById('ingest-graph');
+        const ingestCollection = document.getElementById('ingest-collection');
+        const mcpIngestBtn = document.getElementById('mcp-ingest-btn');
+        const mcpClearBtn = document.getElementById('mcp-clear-btn');
+        const ingestClearBtn = document.getElementById('ingest-clear-btn');
+        const ingestStopBtn = document.getElementById('ingest-stop-btn');
+        const ragStatus = document.getElementById('rag-status');
+        const ragDetails = document.getElementById('rag-details');
+        const ragStats = document.getElementById('rag-stats');
 
         function badge(text) {
             const span = document.createElement('span');
@@ -427,8 +502,307 @@
             }
         }
 
+        function formatProgress(progress) {
+            if (!progress) return null;
+            if (progress.sent !== undefined && progress.total !== undefined) {
+                const mode = progress.mode === 'dry' ? 'dry-run' : 'ingest';
+                return `${mode} progress: ${progress.sent}/${progress.total} docs`;
+            }
+            if (progress.found_pdfs !== undefined) {
+                return `found PDFs: ${progress.found_pdfs}`;
+            }
+            return null;
+        }
+
+        async function pollIngestStatus() {
+            try {
+                const response = await fetch('/api/ingest/status', {
+                    headers: { 'Accept': 'application/json' },
+                });
+                if (!response.ok) return;
+                const data = await response.json();
+                const status = data ? data.status : null;
+                if (status) {
+                    const state = status.status || 'unknown';
+                    const updated = status.updated_at || '';
+                    ingestStatus.textContent = `status: ${state}${updated ? ` · ${updated}` : ''}`;
+                }
+
+                ingestProgress.innerHTML = '';
+                if (status) {
+                    const progressText = formatProgress(status.progress);
+                    if (progressText) {
+                        const row = document.createElement('div');
+                        row.className = 'badge';
+                        row.textContent = progressText;
+                        ingestProgress.appendChild(row);
+                    }
+                    if (status.progress && status.progress.folders) {
+                        const row = document.createElement('div');
+                        row.className = 'badge';
+                        row.textContent = `folders: ${status.progress.folders.current}/${status.progress.folders.total}`;
+                        ingestProgress.appendChild(row);
+                    }
+                    if (status.last_line) {
+                        const row = document.createElement('div');
+                        row.className = 'badge';
+                        row.textContent = status.last_line;
+                        ingestProgress.appendChild(row);
+                    }
+                }
+
+                if (Array.isArray(data.log_lines) && data.log_lines.length) {
+                    data.log_lines.slice(-6).forEach((line) => {
+                        const row = document.createElement('div');
+                        row.className = 'badge';
+                        row.textContent = line;
+                        ingestProgress.appendChild(row);
+                    });
+                }
+            } catch (error) {
+                // Ignore polling errors to keep UI responsive.
+            }
+        }
+
+        async function loadIngestFolders() {
+            try {
+                const response = await fetch('/api/ingest/folders', {
+                    headers: { 'Accept': 'application/json' },
+                });
+                if (!response.ok) {
+                    ingestFolder.innerHTML = '<option value="">Failed to load folders</option>';
+                    return;
+                }
+                const data = await response.json();
+                const folders = (data && data.folders) || [];
+                if (!folders.length) {
+                    ingestFolder.innerHTML = '<option value="">No folders found</option>';
+                    return;
+                }
+                ingestFolder.innerHTML = '';
+                folders.forEach((item) => {
+                    const option = document.createElement('option');
+                    option.value = item.path;
+                    option.textContent = item.name;
+                    ingestFolder.appendChild(option);
+                });
+            } catch (error) {
+                ingestFolder.innerHTML = '<option value="">Failed to load folders</option>';
+            }
+        }
+
+        ingestBtn.addEventListener('click', async () => {
+            const path = ingestFolder.value;
+            if (!path) {
+                ingestAction.textContent = 'Select a folder first.';
+                return;
+            }
+            const collectionName = ingestCollection.value.trim() || path.split('/').pop();
+            ingestBtn.disabled = true;
+            ingestAction.textContent = 'Starting ingest…';
+            try {
+                const response = await fetch('/api/ingest/start', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        path,
+                        collection: collectionName,
+                        graph: ingestGraph.checked,
+                    }),
+                });
+                const data = await response.json();
+                if (!response.ok || !data.ok) {
+                    ingestAction.textContent = data.message || 'Failed to start ingest.';
+                } else {
+                    ingestAction.textContent = 'Ingest started. Monitor progress above.';
+                }
+            } catch (error) {
+                ingestAction.textContent = 'Failed to start ingest.';
+            } finally {
+                ingestBtn.disabled = false;
+            }
+        });
+
+        mcpIngestBtn.addEventListener('click', async () => {
+            const path = ingestFolder.value;
+            if (!path) {
+                ingestAction.textContent = 'Select a folder first.';
+                return;
+            }
+            const collectionName = ingestCollection.value.trim() || path.split('/').pop();
+            mcpIngestBtn.disabled = true;
+            ingestAction.textContent = 'Starting MCP ingest…';
+            try {
+                const response = await fetch('/mcp/rawki', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        jsonrpc: '2.0',
+                        id: Date.now(),
+                        method: 'tools/call',
+                        params: {
+                            name: 'rag-folder-ingest-tool',
+                            arguments: {
+                                root: path,
+                                base_url: 'http://rawki_bridge:8000',
+                                provider: 'ollama',
+                                collection: collectionName,
+                                graph: ingestGraph.checked,
+                                graph_engine: 'lightrag',
+                                chunk_chars: 3200,
+                                chunk_overlap: 100,
+                                batch: 64,
+                                timeout: 1800,
+                            },
+                        },
+                    }),
+                });
+                const data = await response.json();
+                if (!response.ok || data.error) {
+                    ingestAction.textContent = (data && data.error && data.error.message) || 'MCP ingest failed.';
+                } else {
+                    ingestAction.textContent = 'MCP ingest started. Monitor MCP logs above.';
+                }
+            } catch (error) {
+                ingestAction.textContent = 'MCP ingest failed.';
+            } finally {
+                mcpIngestBtn.disabled = false;
+            }
+        });
+
+        ingestStopBtn.addEventListener('click', async () => {
+            ingestStopBtn.disabled = true;
+            ingestAction.textContent = 'Stopping ingest…';
+            try {
+                const response = await fetch('/api/ingest/stop', { method: 'POST' });
+                const data = await response.json();
+                if (!response.ok || !data.ok) {
+                    ingestAction.textContent = data.message || 'Failed to stop ingest.';
+                } else {
+                    ingestAction.textContent = 'Ingest stopped.';
+                }
+            } catch (error) {
+                ingestAction.textContent = 'Failed to stop ingest.';
+            } finally {
+                ingestStopBtn.disabled = false;
+            }
+        });
+
         pollMcpMonitor();
         setInterval(pollMcpMonitor, 4000);
+        pollIngestStatus();
+        setInterval(pollIngestStatus, 4000);
+        loadIngestFolders();
+        pollRagHealth();
+        setInterval(pollRagHealth, 5000);
+        pollRagStats();
+        setInterval(pollRagStats, 7000);
+
+        mcpClearBtn.addEventListener('click', async () => {
+            mcpClearBtn.disabled = true;
+            try {
+                await fetch('/api/mcp/monitor/clear', { method: 'POST' });
+                mcpLatest.textContent = 'No MCP activity yet.';
+                mcpLog.innerHTML = '';
+            } catch (error) {
+                // Ignore failures.
+            } finally {
+                mcpClearBtn.disabled = false;
+            }
+        });
+
+        ingestClearBtn.addEventListener('click', async () => {
+            ingestClearBtn.disabled = true;
+            try {
+                await fetch('/api/ingest/status/clear', { method: 'POST' });
+                ingestStatus.textContent = 'No ingest activity yet.';
+                ingestProgress.innerHTML = '';
+            } catch (error) {
+                // Ignore failures.
+            } finally {
+                ingestClearBtn.disabled = false;
+            }
+        });
+
+        async function pollRagHealth() {
+            try {
+                const response = await fetch('/api/rag/health', {
+                    headers: { 'Accept': 'application/json' },
+                });
+                const data = await response.json();
+                if (!response.ok || !data.ok) {
+                    ragStatus.textContent = `status: offline${data && data.status ? ` (${data.status})` : ''}`;
+                    ragDetails.innerHTML = '';
+                    return;
+                }
+                ragStatus.textContent = `status: ok · ${data.latency_ms}ms`;
+                ragDetails.innerHTML = '';
+                if (data.data) {
+                    const row = document.createElement('div');
+                    row.className = 'badge';
+                    row.textContent = JSON.stringify(data.data);
+                    ragDetails.appendChild(row);
+                }
+            } catch (error) {
+                ragStatus.textContent = 'status: offline';
+                ragDetails.innerHTML = '';
+            }
+        }
+
+        async function pollRagStats() {
+            try {
+                const response = await fetch('/api/rag/stats', {
+                    headers: { 'Accept': 'application/json' },
+                });
+                const data = await response.json();
+                if (!response.ok || !data.ok) {
+                    ragStats.innerHTML = '<div class="badge">stats: unavailable</div>';
+                    return;
+                }
+
+                ragStats.innerHTML = '';
+                if (data.qdrant && data.qdrant.collections) {
+                    const header = document.createElement('div');
+                    header.className = 'badge';
+                    header.textContent = 'Qdrant collections';
+                    ragStats.appendChild(header);
+                    data.qdrant.collections.forEach((col) => {
+                        const row = document.createElement('div');
+                        row.className = 'badge';
+                        row.textContent = `${col.name}: ${col.count ?? 'n/a'} points`;
+                        ragStats.appendChild(row);
+                    });
+                }
+
+                if (data.neo4j && data.neo4j.ok) {
+                    const row = document.createElement('div');
+                    row.className = 'badge';
+                    row.textContent = `Neo4j triplets: ${data.neo4j.triplets} · entities: ${data.neo4j.entities}`;
+                    ragStats.appendChild(row);
+
+                    if (Array.isArray(data.neo4j.relationship_types) && data.neo4j.relationship_types.length) {
+                        const relHeader = document.createElement('div');
+                        relHeader.className = 'badge';
+                        relHeader.textContent = 'Neo4j relationship types';
+                        ragStats.appendChild(relHeader);
+                        data.neo4j.relationship_types.slice(0, 6).forEach((rel) => {
+                            const relRow = document.createElement('div');
+                            relRow.className = 'badge';
+                            relRow.textContent = `${rel.type}: ${rel.count}`;
+                            ragStats.appendChild(relRow);
+                        });
+                    }
+                }
+            } catch (error) {
+                ragStats.innerHTML = '<div class="badge">stats: unavailable</div>';
+            }
+        }
     </script>
 </body>
 </html>

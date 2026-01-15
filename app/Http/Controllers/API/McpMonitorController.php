@@ -11,7 +11,7 @@ class McpMonitorController extends Controller
     {
         $path = (string) config('mcp.log_path', storage_path('app/processRAG_log.txt'));
         if (! is_file($path)) {
-            return response()->json(['ok' => false, 'message' => 'Log file not found'], 404);
+            return response()->json(['ok' => false, 'message' => 'Log file not found', 'latest' => null, 'lines' => []]);
         }
 
         $lines = $this->tailLines($path, 20);
@@ -22,6 +22,15 @@ class McpMonitorController extends Controller
             'latest' => $latest,
             'lines' => $lines,
         ]);
+    }
+
+    public function clear(): JsonResponse
+    {
+        $path = (string) config('mcp.log_path', storage_path('app/processRAG_log.txt'));
+        if (is_file($path)) {
+            @unlink($path);
+        }
+        return response()->json(['ok' => true]);
     }
 
     private function tailLines(string $path, int $count): array

@@ -18,10 +18,12 @@ Route::get('/rawki-playground', function () {
 });
 
 
-Route::get('/files/{uuid}/private/{path}', [AiConvController::class, 'downloadAttachment'])
-    ->where([
-        'path' => '.*',
-    ])->name('files.download')->middleware('signed');
+if (class_exists(\App\Http\Controllers\AiConvController::class)) {
+    Route::get('/files/{uuid}/private/{path}', [\App\Http\Controllers\AiConvController::class, 'downloadAttachment'])
+        ->where([
+            'path' => '.*',
+        ])->name('files.download')->middleware('signed');
+}
 
 
 
