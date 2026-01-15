@@ -233,7 +233,24 @@ def first_str(v) -> Optional[str]:
     if v is None:
         return None
     s = str(v).strip()
-    return s or None
+    if not s:
+        return None
+    lowered = s.lower()
+    if lowered in {"null", "none", "n/a", "undefined"}:
+        return None
+    return s
+
+def resolve_date(meta: Dict[str, Any], fallback_path: Optional[Path]) -> Optional[str]:
+    date = first_str(meta.get("date"))
+    if not date:
+        date = first_str(meta.get("published_at") or meta.get("updated_at") or meta.get("modified_at"))
+    if not date:
+        try:
+            if fallback_path and fallback_path.exists():
+                date = datetime.fromtimestamp(fallback_path.stat().st_mtime, tz=timezone.utc).isoformat()
+        except Exception:
+            date = None
+    return date
 
 def to_array_list(v) -> List[str]:
     if isinstance(v, str):
@@ -516,6 +533,8 @@ def main():
     if not root.exists() or not root.is_dir():
         print(f"Root not found or not a directory: {root}", file=sys.stderr)
         sys.exit(2)
+    if not args.collection:
+        args.collection = root.name
 
     resume_doc_ids: Set[str] = set()
     resume_state_path: Optional[Path] = None
@@ -629,17 +648,16 @@ def main():
         title = first_str(meta.get("title")) or (title_from_markdown(text) or "Untitled")
         dir_resolved = d.resolve(strict=False)
         page_url = first_str(meta.get("url") or meta.get("page_url")) or resolve_url_for_path(page_url_map, dir_resolved, root)
-        date = first_str(meta.get("date"))
-        if not date:
-            date = first_str(meta.get("published_at") or meta.get("updated_at") or meta.get("modified_at"))
-        if not date:
-            source_path = md_path or json_path
-            if source_path and source_path.exists():
-                try:
-                    date = datetime.fromtimestamp(source_path.stat().st_mtime, tz=timezone.utc).isoformat()
-                except Exception:
-                    date = None
+        source_path = md_path or json_path or d
+        date = resolve_date(meta, source_path)
         meta_img = first_str(meta.get("metaImageUrl") or meta.get("meta_img_url"))
+        updated_at = first_str(meta.get("updated_at") or meta.get("updatedAt"))
+        fetch_time = first_str(meta.get("fetch_time") or meta.get("fetchTime"))
+        title_list = to_array_list(meta.get("title")) or ([title] if title else [])
+        page_url_list = to_array_list(meta.get("page_url") or meta.get("url")) or ([page_url] if page_url else [])
+        meta_img_list = to_array_list(meta.get("meta_img_url") or meta.get("metaImageUrl"))
+        images_list = to_array_list(meta.get("images"))
+        pdfs_list = to_array_list(meta.get("pdfs"))
         tags = resolve_tags(meta, text)
         rel = str(d.relative_to(root))
         source_url = first_str(meta.get("source_url")) or resolve_url_for_path(source_url_map, dir_resolved, root)
@@ -652,13 +670,28 @@ def main():
             continue
 
         payload = {
-            "title": title,
-            "page_url": page_url or rel,
+            "title": title_list,
+            "page_url": page_url_list,
+            "url_hash": first_str(meta.get("url_hash")),
+            "canonical_url": first_str(meta.get("canonical_url")),
+            "meta_img_url": meta_img_list,
+            "images": images_list,
+            "lang": first_str(meta.get("lang")),
+            "published_at": first_str(meta.get("published_at")),
+            "updated_at": updated_at,
+            "http_status": meta.get("http_status"),
+            "content_length": meta.get("content_length"),
+            "fetch_time": fetch_time,
+            "content_hash": first_str(meta.get("content_hash")),
+            "pdfs": pdfs_list,
+            "page_url_text": page_url or rel,
+            "title_text": title,
             "source_url": source_url or page_url or rel,
             "date": date,
-            "meta_img_url": meta_img,
+            "meta_img_url_text": meta_img,
             "tags": tags or None,
             "source_format": source_fmt,
+            "ingested_at": utc_now_iso(),
         }
 
         docs.append({

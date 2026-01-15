@@ -52,6 +52,7 @@ class RagFolderIngestTool extends Tool
         $baseUrl = (string) ($arguments['base_url'] ?? env('RAWKI_BRIDGE_URL', 'http://rawki_bridge:8000'));
         $resumeDir = storage_path('app/private/ingest-state-mcp/' . uniqid('run_', true));
         File::ensureDirectoryExists($resumeDir);
+        $collection = (string) ($arguments['collection'] ?? basename($root));
 
         $cmd = [
             'python3',
@@ -63,7 +64,7 @@ class RagFolderIngestTool extends Tool
 
         $this->pushOptionalArg($cmd, '--provider', $arguments['provider'] ?? null);
         $this->pushOptionalArg($cmd, '--graph-engine', $arguments['graph_engine'] ?? null);
-        $this->pushOptionalArg($cmd, '--collection', $arguments['collection'] ?? null);
+        $this->pushOptionalArg($cmd, '--collection', $collection);
         $this->pushOptionalArg($cmd, '--distance', $arguments['distance'] ?? null);
         $this->pushOptionalArg($cmd, '--chunk-chars', $arguments['chunk_chars'] ?? null);
         $this->pushOptionalArg($cmd, '--chunk-overlap', $arguments['chunk_overlap'] ?? null);

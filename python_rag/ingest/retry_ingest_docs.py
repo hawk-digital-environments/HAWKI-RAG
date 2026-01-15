@@ -13,6 +13,7 @@ import argparse
 import json
 import re
 import sys
+from datetime import datetime
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Set, Tuple
 
@@ -23,6 +24,8 @@ from ingest_crawled import (
     resolve_url_for_path,
     make_doc_id,
     first_str,
+    resolve_date,
+    to_array_list,
     resolve_tags,
     title_from_markdown,
     post_batch,
@@ -90,15 +93,23 @@ def _queue_doc(
     page_url_map: Dict[Path, str],
     source_url_map: Dict[Path, str],
 ) -> Optional[Tuple[Dict[str, object], str]]:
-    meta, _, _, text, source_fmt = load_page_materials(directory)
+    meta, md_path, json_path, text, source_fmt = load_page_materials(directory)
     if not isinstance(text, str) or not text.strip():
         return None
 
     title = first_str(meta.get("title")) or (title_from_markdown(text) or "Untitled")
     dir_resolved = directory.resolve(strict=False)
     page_url = first_str(meta.get("url") or meta.get("page_url")) or resolve_url_for_path(page_url_map, dir_resolved, root)
-    date = first_str(meta.get("date"))
+    source_path = md_path or json_path or directory
+    date = resolve_date(meta, source_path)
     meta_img = first_str(meta.get("metaImageUrl") or meta.get("meta_img_url"))
+    updated_at = first_str(meta.get("updated_at") or meta.get("updatedAt"))
+    fetch_time = first_str(meta.get("fetch_time") or meta.get("fetchTime"))
+    title_list = to_array_list(meta.get("title")) or ([title] if title else [])
+    page_url_list = to_array_list(meta.get("page_url") or meta.get("url")) or ([page_url] if page_url else [])
+    meta_img_list = to_array_list(meta.get("meta_img_url") or meta.get("metaImageUrl"))
+    images_list = to_array_list(meta.get("images"))
+    pdfs_list = to_array_list(meta.get("pdfs"))
     tags = resolve_tags(meta, text)
     rel = str(directory.relative_to(root))
     source_url = first_str(meta.get("source_url")) or resolve_url_for_path(source_url_map, dir_resolved, root)
@@ -107,13 +118,28 @@ def _queue_doc(
     doc_id = make_doc_id(source_url if source_url and source_url != page_url else page_url, rel)
 
     payload = {
-        "title": title,
-        "page_url": page_url or rel,
+        "title": title_list,
+        "page_url": page_url_list,
+        "url_hash": first_str(meta.get("url_hash")),
+        "canonical_url": first_str(meta.get("canonical_url")),
+        "meta_img_url": meta_img_list,
+        "images": images_list,
+        "lang": first_str(meta.get("lang")),
+        "published_at": first_str(meta.get("published_at")),
+        "updated_at": updated_at,
+        "http_status": meta.get("http_status"),
+        "content_length": meta.get("content_length"),
+        "fetch_time": fetch_time,
+        "content_hash": first_str(meta.get("content_hash")),
+        "pdfs": pdfs_list,
+        "page_url_text": page_url or rel,
+        "title_text": title,
         "source_url": source_url or page_url or rel,
         "date": date,
-        "meta_img_url": meta_img,
+        "meta_img_url_text": meta_img,
         "tags": tags or None,
         "source_format": source_fmt,
+        "ingested_at": datetime.utcnow().isoformat() + "Z",
     }
 
     doc: Dict[str, object] = {

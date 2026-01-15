@@ -233,7 +233,13 @@ class RAGService:
 
                             def key_for(hit: Dict[str, Any]) -> str:
                                 p = hit.get("payload") or {}
-                                return str(p.get("page_url") or p.get("source_url") or p.get("title") or "")
+                                page_url = p.get("page_url_text") or p.get("page_url") or p.get("source_url")
+                                if isinstance(page_url, list):
+                                    page_url = page_url[0] if page_url else ""
+                                title = p.get("title_text") or p.get("title")
+                                if isinstance(title, list):
+                                    title = title[0] if title else ""
+                                return str(page_url or title or "")
 
                             scored = [(score_map.get(key_for(h), 0.0), h) for h in candidates]
                             if mix_mode:

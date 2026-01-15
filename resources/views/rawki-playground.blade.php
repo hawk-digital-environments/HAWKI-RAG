@@ -98,6 +98,20 @@
         summary { cursor: pointer; font-weight: 600; }
         pre { background: rgba(10, 18, 32, 0.85); border-radius: 0.9rem; padding: 1rem; overflow-x: auto; font-size: 0.85rem; }
         ul { margin: 0.4rem 0 0; padding-left: 1.2rem; }
+        .activity-feed { display: grid; gap: 0.55rem; }
+        .activity-item {
+            display: grid;
+            grid-template-columns: 90px 110px 1fr;
+            gap: 0.6rem;
+            align-items: center;
+            padding: 0.6rem 0.75rem;
+            border-radius: 0.8rem;
+            border: 1px solid rgba(148, 163, 184, 0.2);
+            background: rgba(15, 23, 42, 0.62);
+            font-size: 0.85rem;
+            color: #cbd5f5;
+        }
+        .activity-item strong { color: #7dd3fc; font-weight: 600; }
     </style>
 </head>
 <body>
@@ -178,6 +192,26 @@
             <div id="ingest-progress" style="margin-top: 0.8rem; display: grid; gap: 0.5rem;"></div>
             <div style="margin-top: 0.8rem;">
                 <button type="button" id="ingest-clear-btn" style="background: linear-gradient(135deg, #f97316, #ef4444);">Clear ingest logs</button>
+            </div>
+        </section>
+
+        <section class="card" style="margin-bottom: 2rem;">
+            <h2 style="margin-bottom: 0.6rem;">Live Ingestions</h2>
+            <p style="margin: 0 0 0.6rem; font-size: 0.9rem; color: #bae6fd;">
+                Active ingest processes (PID + folder).
+            </p>
+            <div id="ingest-live-status" class="badge">No running ingest process.</div>
+            <div id="ingest-live-list" style="margin-top: 0.8rem; display: grid; gap: 0.5rem;"></div>
+        </section>
+
+        <section class="card" style="margin-bottom: 2rem;">
+            <h2 style="margin-bottom: 0.6rem;">Live Activity</h2>
+            <p style="margin: 0 0 0.6rem; font-size: 0.9rem; color: #bae6fd;">
+                Rolling feed of the latest updates from MCP, ingest, and RAG stats.
+            </p>
+            <div id="activity-feed" class="activity-feed"></div>
+            <div style="margin-top: 0.8rem;">
+                <button type="button" id="activity-clear-btn" style="background: linear-gradient(135deg, #f97316, #ef4444);">Clear activity</button>
             </div>
         </section>
 
@@ -285,12 +319,68 @@
         const ragStatus = document.getElementById('rag-status');
         const ragDetails = document.getElementById('rag-details');
         const ragStats = document.getElementById('rag-stats');
+        const ingestLiveStatus = document.getElementById('ingest-live-status');
+        const ingestLiveList = document.getElementById('ingest-live-list');
+        const activityFeed = document.getElementById('activity-feed');
+        const activityClearBtn = document.getElementById('activity-clear-btn');
+        let activityHistory = [];
+        const lastActivityBySource = new Map();
+        let lastRagStatsHash = '';
 
         function badge(text) {
             const span = document.createElement('span');
             span.className = 'badge';
             span.textContent = text;
             return span;
+        }
+
+        function formatTime(date) {
+            return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        }
+
+        function firstValue(value) {
+            if (Array.isArray(value)) {
+                return value[0] || '';
+            }
+            return value || '';
+        }
+
+        function summarizeLiveIngestions(items) {
+            if (!Array.isArray(items) || !items.length) return null;
+            return items.map((item) => {
+                const path = item.path || '';
+                const name = path ? path.split('/').filter(Boolean).pop() : 'unknown';
+                return `${name} (pid ${item.pid})`;
+            }).join(', ');
+        }
+
+        function renderActivity() {
+            activityFeed.innerHTML = '';
+            activityHistory.forEach((entry) => {
+                const row = document.createElement('div');
+                row.className = 'activity-item';
+                row.innerHTML = `
+                    <div>${formatTime(entry.time)}</div>
+                    <strong>${entry.source}</strong>
+                    <div>${entry.message}</div>
+                `;
+                activityFeed.appendChild(row);
+            });
+        }
+
+        function pushActivity(source, message) {
+            if (!message) return;
+            if (lastActivityBySource.get(source) === message) return;
+            lastActivityBySource.set(source, message);
+            activityHistory.unshift({
+                time: new Date(),
+                source,
+                message,
+            });
+            if (activityHistory.length > 20) {
+                activityHistory = activityHistory.slice(0, 20);
+            }
+            renderActivity();
         }
 
         function extractHost(url) {
@@ -329,6 +419,7 @@
             if (!query) return;
 
             statusEl.textContent = 'Running RAWKI retrieval...';
+            pushActivity('RAWKI', `Query started: "${query.slice(0, 80)}"`);
             runBtn.disabled = true;
             results.style.display = 'none';
             answerBlock.style.display = 'none';
@@ -406,8 +497,8 @@
                         const payload = hit.payload || {};
                         const div = document.createElement('div');
                         div.className = 'hit';
-                        const title = payload.title || 'Untitled';
-                        const url = payload.page_url || payload.source_url || '';
+                        const title = payload.title_text || firstValue(payload.title) || 'Untitled';
+                        const url = payload.page_url_text || firstValue(payload.page_url) || payload.source_url || '';
                         const parentUrl = payload.parent_url || payload.parent_page_url || '';
                         const parentNode = payload.parent_node || payload.parent_id || '';
                         const snippet = (payload.snippet || payload.content || '').slice(0, 400);
@@ -444,7 +535,14 @@
                 const dateFields = ['ingested_at', 'updated_at', 'modified_at', 'crawled_at', 'captured_at', 'published_at', 'date'];
                 hits.forEach((hit) => {
                     const payload = hit.payload || {};
-                    const host = extractHost(payload.page_url || payload.source_url || payload.parent_url || payload.parent_page_url || '');
+                    const host = extractHost(
+                        payload.page_url_text
+                        || firstValue(payload.page_url)
+                        || payload.source_url
+                        || payload.parent_url
+                        || payload.parent_page_url
+                        || ''
+                    );
                     if (host) hostSet.add(host);
                     dateFields.forEach((field) => {
                         const parsed = parseTimestamp(payload[field]);
@@ -468,11 +566,13 @@
                 provenanceBanner.style.display = 'block';
 
                 statusEl.textContent = 'Done.';
+                pushActivity('RAWKI', `Query completed · hits: ${hitCount}`);
             } catch (error) {
                 statusEl.textContent = error.message;
                 console.error(error);
                 provenanceBanner.textContent = 'No answer available – RAWKI could not retrieve grounded sources.';
                 provenanceBanner.style.display = 'block';
+                pushActivity('RAWKI', `Query failed: ${error.message}`);
             } finally {
                 runBtn.disabled = false;
             }
@@ -487,6 +587,7 @@
                 const data = await response.json();
                 if (data && data.latest) {
                     mcpLatest.textContent = data.latest;
+                    pushActivity('MCP', data.latest);
                 }
                 if (Array.isArray(data.lines) && data.lines.length) {
                     mcpLog.innerHTML = '';
@@ -526,6 +627,7 @@
                     const state = status.status || 'unknown';
                     const updated = status.updated_at || '';
                     ingestStatus.textContent = `status: ${state}${updated ? ` · ${updated}` : ''}`;
+                    pushActivity('Ingest', `status: ${state}${updated ? ` · ${updated}` : ''}`);
                 }
 
                 ingestProgress.innerHTML = '';
@@ -548,6 +650,7 @@
                         row.className = 'badge';
                         row.textContent = status.last_line;
                         ingestProgress.appendChild(row);
+                        pushActivity('Ingest', status.last_line);
                     }
                 }
 
@@ -561,6 +664,33 @@
                 }
             } catch (error) {
                 // Ignore polling errors to keep UI responsive.
+            }
+        }
+
+        async function pollIngestLive() {
+            try {
+                const response = await fetch('/api/ingest/live', {
+                    headers: { 'Accept': 'application/json' },
+                });
+                if (!response.ok) return;
+                const data = await response.json();
+                const live = (data && data.live_ingestions) || [];
+                ingestLiveList.innerHTML = '';
+                if (!live.length) {
+                    ingestLiveStatus.textContent = 'No running ingest process.';
+                    return;
+                }
+                ingestLiveStatus.textContent = `running: ${live.length}`;
+                live.forEach((item) => {
+                    const row = document.createElement('div');
+                    row.className = 'badge';
+                    const path = item.path || '';
+                    const name = path ? path.split('/').filter(Boolean).pop() : 'unknown';
+                    row.textContent = `${name} · pid ${item.pid}`;
+                    ingestLiveList.appendChild(row);
+                });
+            } catch (error) {
+                // Ignore polling errors.
             }
         }
 
@@ -616,11 +746,14 @@
                 const data = await response.json();
                 if (!response.ok || !data.ok) {
                     ingestAction.textContent = data.message || 'Failed to start ingest.';
+                    pushActivity('Ingest', ingestAction.textContent);
                 } else {
                     ingestAction.textContent = 'Ingest started. Monitor progress above.';
+                    pushActivity('Ingest', `Started ingest for ${collectionName}`);
                 }
             } catch (error) {
                 ingestAction.textContent = 'Failed to start ingest.';
+                pushActivity('Ingest', ingestAction.textContent);
             } finally {
                 ingestBtn.disabled = false;
             }
@@ -666,11 +799,14 @@
                 const data = await response.json();
                 if (!response.ok || data.error) {
                     ingestAction.textContent = (data && data.error && data.error.message) || 'MCP ingest failed.';
+                    pushActivity('MCP', ingestAction.textContent);
                 } else {
                     ingestAction.textContent = 'MCP ingest started. Monitor MCP logs above.';
+                    pushActivity('MCP', `Started MCP ingest for ${collectionName}`);
                 }
             } catch (error) {
                 ingestAction.textContent = 'MCP ingest failed.';
+                pushActivity('MCP', ingestAction.textContent);
             } finally {
                 mcpIngestBtn.disabled = false;
             }
@@ -682,13 +818,20 @@
             try {
                 const response = await fetch('/api/ingest/stop', { method: 'POST' });
                 const data = await response.json();
+                const liveSummary = summarizeLiveIngestions(data && data.live_ingestions);
+                if (liveSummary) {
+                    pushActivity('Ingest', `Live ingestions before stop: ${liveSummary}`);
+                }
                 if (!response.ok || !data.ok) {
                     ingestAction.textContent = data.message || 'Failed to stop ingest.';
+                    pushActivity('Ingest', ingestAction.textContent);
                 } else {
                     ingestAction.textContent = 'Ingest stopped.';
+                    pushActivity('Ingest', 'Ingest stopped');
                 }
             } catch (error) {
                 ingestAction.textContent = 'Failed to stop ingest.';
+                pushActivity('Ingest', ingestAction.textContent);
             } finally {
                 ingestStopBtn.disabled = false;
             }
@@ -698,6 +841,8 @@
         setInterval(pollMcpMonitor, 4000);
         pollIngestStatus();
         setInterval(pollIngestStatus, 4000);
+        pollIngestLive();
+        setInterval(pollIngestLive, 4000);
         loadIngestFolders();
         pollRagHealth();
         setInterval(pollRagHealth, 5000);
@@ -710,6 +855,7 @@
                 await fetch('/api/mcp/monitor/clear', { method: 'POST' });
                 mcpLatest.textContent = 'No MCP activity yet.';
                 mcpLog.innerHTML = '';
+                pushActivity('MCP', 'MCP logs cleared');
             } catch (error) {
                 // Ignore failures.
             } finally {
@@ -723,11 +869,18 @@
                 await fetch('/api/ingest/status/clear', { method: 'POST' });
                 ingestStatus.textContent = 'No ingest activity yet.';
                 ingestProgress.innerHTML = '';
+                pushActivity('Ingest', 'Ingest logs cleared');
             } catch (error) {
                 // Ignore failures.
             } finally {
                 ingestClearBtn.disabled = false;
             }
+        });
+
+        activityClearBtn.addEventListener('click', () => {
+            activityHistory = [];
+            lastActivityBySource.clear();
+            renderActivity();
         });
 
         async function pollRagHealth() {
@@ -739,6 +892,7 @@
                 if (!response.ok || !data.ok) {
                     ragStatus.textContent = `status: offline${data && data.status ? ` (${data.status})` : ''}`;
                     ragDetails.innerHTML = '';
+                    pushActivity('RAG', 'status: offline');
                     return;
                 }
                 ragStatus.textContent = `status: ok · ${data.latency_ms}ms`;
@@ -749,9 +903,11 @@
                     row.textContent = JSON.stringify(data.data);
                     ragDetails.appendChild(row);
                 }
+                pushActivity('RAG', `status: ok · ${data.latency_ms}ms`);
             } catch (error) {
                 ragStatus.textContent = 'status: offline';
                 ragDetails.innerHTML = '';
+                pushActivity('RAG', 'status: offline');
             }
         }
 
@@ -763,10 +919,12 @@
                 const data = await response.json();
                 if (!response.ok || !data.ok) {
                     ragStats.innerHTML = '<div class="badge">stats: unavailable</div>';
+                    pushActivity('Stats', 'stats: unavailable');
                     return;
                 }
 
                 ragStats.innerHTML = '';
+                const statsSnapshot = [];
                 if (data.qdrant && data.qdrant.collections) {
                     const header = document.createElement('div');
                     header.className = 'badge';
@@ -777,6 +935,7 @@
                         row.className = 'badge';
                         row.textContent = `${col.name}: ${col.count ?? 'n/a'} points`;
                         ragStats.appendChild(row);
+                        statsSnapshot.push(`${col.name}:${col.count ?? 'n/a'}`);
                     });
                 }
 
@@ -785,6 +944,7 @@
                     row.className = 'badge';
                     row.textContent = `Neo4j triplets: ${data.neo4j.triplets} · entities: ${data.neo4j.entities}`;
                     ragStats.appendChild(row);
+                    statsSnapshot.push(`neo4j:${data.neo4j.triplets}:${data.neo4j.entities}`);
 
                     if (Array.isArray(data.neo4j.relationship_types) && data.neo4j.relationship_types.length) {
                         const relHeader = document.createElement('div');
@@ -799,8 +959,15 @@
                         });
                     }
                 }
+
+                const statsHash = statsSnapshot.join('|');
+                if (statsHash && statsHash !== lastRagStatsHash) {
+                    pushActivity('Stats', `Updated · Qdrant collections: ${data.qdrant?.collections?.length ?? 0} · Neo4j triplets: ${data.neo4j?.triplets ?? 0}`);
+                    lastRagStatsHash = statsHash;
+                }
             } catch (error) {
                 ragStats.innerHTML = '<div class="badge">stats: unavailable</div>';
+                pushActivity('Stats', 'stats: unavailable');
             }
         }
     </script>

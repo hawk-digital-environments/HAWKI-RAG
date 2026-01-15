@@ -10,6 +10,45 @@ use Symfony\Component\Process\Process;
 
 class IngestController extends Controller
 {
+    private function isPidAlive(int $pid): bool
+    {
+        if ($pid <= 0) {
+            return false;
+        }
+        if (function_exists('posix_kill')) {
+            return @posix_kill($pid, 0);
+        }
+        @exec('kill -0 ' . $pid, $out, $code);
+        return $code === 0;
+    }
+
+    private function listLiveIngestions(): array
+    {
+        $statusPath = (string) config('rawki.ingest_status_path', storage_path('logs/ingest_status.json'));
+        if (!is_file($statusPath)) {
+            return [];
+        }
+
+        $statusRaw = @file_get_contents($statusPath);
+        $status = $statusRaw ? json_decode($statusRaw, true) : null;
+        if (!is_array($status)) {
+            return [];
+        }
+
+        $pid = $status['pid'] ?? null;
+        if (!$pid || !is_numeric($pid) || !$this->isPidAlive((int) $pid)) {
+            return [];
+        }
+
+        return [[
+            'pid' => (int) $pid,
+            'path' => $status['path'] ?? null,
+            'status' => $status['status'] ?? null,
+            'started_at' => $status['started_at'] ?? null,
+            'updated_at' => $status['updated_at'] ?? null,
+        ]];
+    }
+
     public function folders(): JsonResponse
     {
         $root = (string) config('rawki.shared_root', storage_path('app/public'));
@@ -156,9 +195,22 @@ class IngestController extends Controller
 
     public function stop(): JsonResponse
     {
+        $liveBefore = $this->listLiveIngestions();
+        if (!$liveBefore) {
+            return response()->json([
+                'ok' => false,
+                'message' => 'No running ingest process found.',
+                'live_ingestions' => $liveBefore,
+            ], 404);
+        }
+
         $statusPath = (string) config('rawki.ingest_status_path', storage_path('logs/ingest_status.json'));
         if (!is_file($statusPath)) {
-            return response()->json(['ok' => false, 'message' => 'No ingest status found.'], 404);
+            return response()->json([
+                'ok' => false,
+                'message' => 'No ingest status found.',
+                'live_ingestions' => $liveBefore,
+            ], 404);
         }
 
         $statusRaw = @file_get_contents($statusPath);
@@ -179,7 +231,11 @@ class IngestController extends Controller
         }
 
         if (!$stopped) {
-            return response()->json(['ok' => false, 'message' => 'Failed to stop ingest process.'], 500);
+            return response()->json([
+                'ok' => false,
+                'message' => 'Failed to stop ingest process.',
+                'live_ingestions' => $liveBefore,
+            ], 500);
         }
 
         if (is_array($status)) {
@@ -188,6 +244,19 @@ class IngestController extends Controller
             File::put($statusPath, json_encode($status, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
         }
 
-        return response()->json(['ok' => true, 'pid' => $pid]);
+        return response()->json([
+            'ok' => true,
+            'pid' => $pid,
+            'live_ingestions' => $liveBefore,
+        ]);
+    }
+
+    public function live(): JsonResponse
+    {
+        $live = $this->listLiveIngestions();
+        return response()->json([
+            'ok' => true,
+            'live_ingestions' => $live,
+        ]);
     }
 }

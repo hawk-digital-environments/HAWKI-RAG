@@ -17,6 +17,7 @@ Route::post('/mcp/monitor/clear', [McpMonitorController::class, 'clear']);
 Route::get('/ingest/status', [IngestStatusController::class, 'show']);
 Route::post('/ingest/status/clear', [IngestStatusController::class, 'clear']);
 Route::get('/ingest/folders', [IngestController::class, 'folders']);
+Route::get('/ingest/live', [IngestController::class, 'live']);
 Route::post('/ingest/start', [IngestController::class, 'start']);
 Route::post('/ingest/stop', [IngestController::class, 'stop']);
 Route::get('/rag/health', [RagHealthController::class, 'show']);
