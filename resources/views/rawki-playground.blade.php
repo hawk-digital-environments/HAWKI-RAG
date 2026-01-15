@@ -240,6 +240,7 @@
                 <button type="button" id="ingest-btn">Start ingest</button>
                 <button type="button" id="mcp-ingest-btn" style="margin-left:0.6rem; background: linear-gradient(135deg, #22c55e, #0ea5e9);">Start MCP ingest</button>
                 <button type="button" id="ingest-stop-btn" style="margin-left:0.6rem; background: linear-gradient(135deg, #f97316, #ef4444);">Stop ingest</button>
+                <button type="button" id="ingest-delete-btn" style="margin-left:0.6rem; background: linear-gradient(135deg, #f43f5e, #be123c);">Delete folder</button>
                 <span id="ingest-action" style="margin-left:0.8rem; font-size:0.9rem; color:#bae6fd;"></span>
             </div>
         </section>
@@ -316,6 +317,7 @@
         const mcpClearBtn = document.getElementById('mcp-clear-btn');
         const ingestClearBtn = document.getElementById('ingest-clear-btn');
         const ingestStopBtn = document.getElementById('ingest-stop-btn');
+        const ingestDeleteBtn = document.getElementById('ingest-delete-btn');
         const ragStatus = document.getElementById('rag-status');
         const ragDetails = document.getElementById('rag-details');
         const ragStats = document.getElementById('rag-stats');
@@ -686,7 +688,9 @@
                     row.className = 'badge';
                     const path = item.path || '';
                     const name = path ? path.split('/').filter(Boolean).pop() : 'unknown';
-                    row.textContent = `${name} · pid ${item.pid}`;
+                    const pidLabel = item.pid ? `pid ${item.pid}` : 'pid n/a';
+                    const sourceLabel = item.source ? ` · ${item.source}` : '';
+                    row.textContent = `${name} · ${pidLabel}${sourceLabel}`;
                     ingestLiveList.appendChild(row);
                 });
             } catch (error) {
@@ -704,21 +708,24 @@
                     return;
                 }
                 const data = await response.json();
-                const folders = (data && data.folders) || [];
-                if (!folders.length) {
-                    ingestFolder.innerHTML = '<option value="">No folders found</option>';
-                    return;
-                }
-                ingestFolder.innerHTML = '';
-                folders.forEach((item) => {
-                    const option = document.createElement('option');
-                    option.value = item.path;
-                    option.textContent = item.name;
-                    ingestFolder.appendChild(option);
-                });
+                renderFolderOptions(data && data.folders);
             } catch (error) {
                 ingestFolder.innerHTML = '<option value="">Failed to load folders</option>';
             }
+        }
+
+        function renderFolderOptions(folders) {
+            if (!Array.isArray(folders) || !folders.length) {
+                ingestFolder.innerHTML = '<option value="">No folders found</option>';
+                return;
+            }
+            ingestFolder.innerHTML = '';
+            folders.forEach((item) => {
+                const option = document.createElement('option');
+                option.value = item.path;
+                option.textContent = item.name;
+                ingestFolder.appendChild(option);
+            });
         }
 
         ingestBtn.addEventListener('click', async () => {
@@ -834,6 +841,48 @@
                 pushActivity('Ingest', ingestAction.textContent);
             } finally {
                 ingestStopBtn.disabled = false;
+            }
+        });
+
+        ingestDeleteBtn.addEventListener('click', async () => {
+            const path = ingestFolder.value;
+            if (!path) {
+                ingestAction.textContent = 'Select a folder first.';
+                return;
+            }
+            const name = path.split('/').filter(Boolean).pop() || path;
+            if (!confirm(`Delete ${name}? This cannot be undone.`)) {
+                return;
+            }
+            ingestDeleteBtn.disabled = true;
+            ingestAction.textContent = 'Deleting folder…';
+            try {
+                const response = await fetch('/api/ingest/delete', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                    },
+                    body: JSON.stringify({ path }),
+                });
+                const data = await response.json();
+                if (!response.ok || !data.ok) {
+                    ingestAction.textContent = data.message || 'Failed to delete folder.';
+                    pushActivity('Ingest', ingestAction.textContent);
+                } else {
+                    ingestAction.textContent = `Deleted ${name}.`;
+                    pushActivity('Ingest', `Deleted folder ${name}`);
+                    if (data.folders) {
+                        renderFolderOptions(data.folders);
+                    } else {
+                        loadIngestFolders();
+                    }
+                }
+            } catch (error) {
+                ingestAction.textContent = 'Failed to delete folder.';
+                pushActivity('Ingest', ingestAction.textContent);
+            } finally {
+                ingestDeleteBtn.disabled = false;
             }
         });
 

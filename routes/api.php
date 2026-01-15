@@ -20,5 +20,6 @@ Route::get('/ingest/folders', [IngestController::class, 'folders']);
 Route::get('/ingest/live', [IngestController::class, 'live']);
 Route::post('/ingest/start', [IngestController::class, 'start']);
 Route::post('/ingest/stop', [IngestController::class, 'stop']);
+Route::post('/ingest/delete', [IngestController::class, 'deleteFolder']);
 Route::get('/rag/health', [RagHealthController::class, 'show']);
 Route::get('/rag/stats', [RagStatsController::class, 'show']);

@@ -33,6 +33,20 @@ MCP_INGEST_CHUNK_OVERLAP ?= 100
 MCP_INGEST_BATCH ?= 64
 MCP_INGEST_TIMEOUT ?= 1800
 MCP_LIST_ROOT ?= /app/shared
+PIPELINE_URL ?=
+PIPELINE_MAX_PAGES ?= 100
+PIPELINE_OUTPUT_DIR ?=
+PIPELINE_LABEL ?=
+PIPELINE_COLLECTION ?=
+PIPELINE_GRAPH ?= true
+PIPELINE_GRAPH_ENGINE ?= lightrag
+PIPELINE_CHUNK_CHARS ?= 3200
+PIPELINE_CHUNK_OVERLAP ?= 100
+PIPELINE_BATCH ?= 64
+PIPELINE_TIMEOUT ?= 1800
+PIPELINE_PROVIDER ?= ollama
+PIPELINE_DISTANCE ?= Cosine
+PIPELINE_BASE_URL ?= http://rawki_bridge:8000
 
 .PHONY: network pull-core build-app up-core up-rag health pull-models ingest logs-core logs-rag down-core down-rag restart-core restart-rag test-services neo4j-fresh
 
@@ -115,6 +129,15 @@ ingest-mcp-list:
 	@curl -fsS $(MCP_BASE) \
 		-H "Content-Type: application/json" \
 		-d '{"jsonrpc":"2.0","id":'"$$(date +%s)"',"method":"tools/call","params":{"name":"rag-folder-list-tool","arguments":{"root":"$(MCP_LIST_ROOT)"}}}' | python3 -m json.tool
+
+pipeline:
+	@if [ -z "$(PIPELINE_URL)" ]; then echo "Set PIPELINE_URL, e.g.: make pipeline PIPELINE_URL=https://hawk.de"; exit 1; fi
+	@cmd="docker exec -it hawki_app php artisan rawki:pipeline \"$(PIPELINE_URL)\" --max-pages=$(PIPELINE_MAX_PAGES) --provider=$(PIPELINE_PROVIDER) --graph-engine=$(PIPELINE_GRAPH_ENGINE) --distance=$(PIPELINE_DISTANCE) --chunk-chars=$(PIPELINE_CHUNK_CHARS) --chunk-overlap=$(PIPELINE_CHUNK_OVERLAP) --batch=$(PIPELINE_BATCH) --timeout=$(PIPELINE_TIMEOUT) --base-url=$(PIPELINE_BASE_URL)"; \
+	if [ "$(PIPELINE_GRAPH)" = "true" ] || [ "$(PIPELINE_GRAPH)" = "1" ]; then cmd="$$cmd --graph"; fi; \
+	if [ -n "$(PIPELINE_OUTPUT_DIR)" ]; then cmd="$$cmd --output-dir=$(PIPELINE_OUTPUT_DIR)"; fi; \
+	if [ -n "$(PIPELINE_LABEL)" ]; then cmd="$$cmd --label=$(PIPELINE_LABEL)"; fi; \
+	if [ -n "$(PIPELINE_COLLECTION)" ]; then cmd="$$cmd --collection=$(PIPELINE_COLLECTION)"; fi; \
+	eval $$cmd
 
 logs-core:
 	@$(COMPOSE_CMD) logs -f qdrant mysql nginx $(OLLAMA_SERVICE) app

@@ -10,6 +10,35 @@ use Symfony\Component\Process\Process;
 
 class IngestController extends Controller
 {
+    private function buildFolderList(string $root): array
+    {
+        $dirs = File::directories($root);
+        $folders = [];
+        foreach ($dirs as $dir) {
+            $name = basename($dir);
+            if (str_starts_with($name, '.')) {
+                continue;
+            }
+            $folders[] = [
+                'name' => $name,
+                'path' => $dir,
+            ];
+        }
+
+        usort($folders, static fn ($a, $b) => strcmp($a['name'], $b['name']));
+        return $folders;
+    }
+
+    private function resolveSharedRoot(): ?string
+    {
+        $root = (string) config('rawki.shared_root', storage_path('app/public'));
+        if (is_dir($root)) {
+            return $root;
+        }
+        $fallback = storage_path('app/public');
+        return is_dir($fallback) ? $fallback : null;
+    }
+
     private function isPidAlive(int $pid): bool
     {
         if ($pid <= 0) {
@@ -36,45 +65,42 @@ class IngestController extends Controller
         }
 
         $pid = $status['pid'] ?? null;
-        if (!$pid || !is_numeric($pid) || !$this->isPidAlive((int) $pid)) {
-            return [];
+        $updatedAt = $status['updated_at'] ?? null;
+        $updatedTs = $updatedAt ? strtotime($updatedAt) : false;
+        $recentThreshold = time() - 300;
+
+        if ($pid && is_numeric($pid)) {
+            if (!$this->isPidAlive((int) $pid)) {
+                return [];
+            }
+        } else {
+            $isRunning = ($status['status'] ?? null) === 'running';
+            if (!$isRunning || !$updatedTs || $updatedTs < $recentThreshold) {
+                return [];
+            }
         }
 
         return [[
-            'pid' => (int) $pid,
+            'pid' => $pid && is_numeric($pid) ? (int) $pid : null,
             'path' => $status['path'] ?? null,
             'status' => $status['status'] ?? null,
             'started_at' => $status['started_at'] ?? null,
             'updated_at' => $status['updated_at'] ?? null,
+            'source' => $pid && is_numeric($pid) ? 'api' : 'mcp',
         ]];
     }
 
     public function folders(): JsonResponse
     {
-        $root = (string) config('rawki.shared_root', storage_path('app/public'));
-        if (!is_dir($root)) {
-            $fallback = storage_path('app/public');
-            if (is_dir($fallback)) {
-                $root = $fallback;
-            } else {
-                return response()->json(['ok' => false, 'message' => "Shared root not found: {$root}"], 404);
-            }
+        $root = $this->resolveSharedRoot();
+        if (!$root) {
+            return response()->json([
+                'ok' => false,
+                'message' => 'Shared root not found.',
+            ], 404);
         }
 
-        $dirs = File::directories($root);
-        $folders = [];
-        foreach ($dirs as $dir) {
-            $name = basename($dir);
-            if (str_starts_with($name, '.')) {
-                continue;
-            }
-            $folders[] = [
-                'name' => $name,
-                'path' => $dir,
-            ];
-        }
-
-        usort($folders, static fn ($a, $b) => strcmp($a['name'], $b['name']));
+        $folders = $this->buildFolderList($root);
 
         return response()->json([
             'ok' => true,
@@ -257,6 +283,60 @@ class IngestController extends Controller
         return response()->json([
             'ok' => true,
             'live_ingestions' => $live,
+        ]);
+    }
+
+    public function deleteFolder(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'path' => 'required|string',
+        ]);
+
+        $root = $this->resolveSharedRoot();
+        if (!$root) {
+            return response()->json([
+                'ok' => false,
+                'message' => 'Shared root not found.',
+            ], 404);
+        }
+        $path = $data['path'];
+        $resolvedRoot = realpath($root);
+        $resolvedPath = realpath($path);
+        if (!$resolvedRoot || !$resolvedPath) {
+            return response()->json(['ok' => false, 'message' => 'Unable to resolve folder path.'], 422);
+        }
+        $rootPrefix = rtrim($resolvedRoot, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR;
+        $pathPrefix = rtrim($resolvedPath, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR;
+        if (!str_starts_with($pathPrefix, $rootPrefix)) {
+            return response()->json(['ok' => false, 'message' => 'Path must be within shared root.'], 422);
+        }
+        if (!is_dir($resolvedPath)) {
+            return response()->json(['ok' => false, 'message' => "Folder not found: {$resolvedPath}"], 404);
+        }
+
+        try {
+            $deleted = File::deleteDirectory($resolvedPath);
+        } catch (\Throwable $e) {
+            return response()->json(['ok' => false, 'message' => 'Failed to delete folder.'], 500);
+        }
+
+        if (!$deleted || is_dir($resolvedPath)) {
+            $perms = @fileperms($resolvedPath);
+            $permText = $perms ? substr(sprintf('%o', $perms), -4) : 'unknown';
+            return response()->json([
+                'ok' => false,
+                'message' => 'Delete failed. Check folder permissions/ownership.',
+                'path' => $resolvedPath,
+                'writable' => is_writable($resolvedPath),
+                'permissions' => $permText,
+            ], 500);
+        }
+
+        return response()->json([
+            'ok' => true,
+            'deleted' => $resolvedPath,
+            'folders' => $this->buildFolderList($root),
+            'root' => $root,
         ]);
     }
 }
