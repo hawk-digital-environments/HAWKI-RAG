@@ -47,6 +47,7 @@ PIPELINE_TIMEOUT ?= 1800
 PIPELINE_PROVIDER ?= ollama
 PIPELINE_DISTANCE ?= Cosine
 PIPELINE_BASE_URL ?= http://rawki_bridge:8000
+PIPELINE_ASYNC ?= true
 
 .PHONY: network pull-core build-app up-core up-rag health pull-models ingest logs-core logs-rag down-core down-rag restart-core restart-rag test-services neo4j-fresh
 
@@ -138,6 +139,16 @@ pipeline:
 	if [ -n "$(PIPELINE_LABEL)" ]; then cmd="$$cmd --label=$(PIPELINE_LABEL)"; fi; \
 	if [ -n "$(PIPELINE_COLLECTION)" ]; then cmd="$$cmd --collection=$(PIPELINE_COLLECTION)"; fi; \
 	eval $$cmd
+
+pipeline-async:
+	@if [ -z "$(PIPELINE_URL)" ]; then echo "Set PIPELINE_URL, e.g.: make pipeline-async PIPELINE_URL=https://hawk.de"; exit 1; fi
+	@payload="{\"url\":\"$(PIPELINE_URL)\",\"max_pages\":$(PIPELINE_MAX_PAGES),\"provider\":\"$(PIPELINE_PROVIDER)\",\"graph_engine\":\"$(PIPELINE_GRAPH_ENGINE)\",\"distance\":\"$(PIPELINE_DISTANCE)\",\"chunk_chars\":$(PIPELINE_CHUNK_CHARS),\"chunk_overlap\":$(PIPELINE_CHUNK_OVERLAP),\"batch\":$(PIPELINE_BATCH),\"timeout\":$(PIPELINE_TIMEOUT),\"base_url\":\"$(PIPELINE_BASE_URL)\""; \
+	if [ "$(PIPELINE_GRAPH)" = "true" ] || [ "$(PIPELINE_GRAPH)" = "1" ]; then payload="$$payload,\\\"graph\\\":true"; fi; \
+	if [ -n "$(PIPELINE_OUTPUT_DIR)" ]; then payload="$$payload,\\\"output_dir\\\":\\\"$(PIPELINE_OUTPUT_DIR)\\\""; fi; \
+	if [ -n "$(PIPELINE_LABEL)" ]; then payload="$$payload,\\\"label\\\":\\\"$(PIPELINE_LABEL)\\\""; fi; \
+	if [ -n "$(PIPELINE_COLLECTION)" ]; then payload="$$payload,\\\"collection\\\":\\\"$(PIPELINE_COLLECTION)\\\""; fi; \
+	payload="$$payload}"; \
+	curl -fsS http://localhost:8080/api/pipeline/start -H "Content-Type: application/json" -d "$$payload" | python3 -m json.tool
 
 logs-core:
 	@$(COMPOSE_CMD) logs -f qdrant mysql nginx $(OLLAMA_SERVICE) app

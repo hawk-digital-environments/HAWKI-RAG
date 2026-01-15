@@ -1,0 +1,61 @@
+RAWKI Pipeline Cheatsheet
+=========================
+
+Queue worker (required for async)
+--------------------------------
+Start a worker (runs in foreground):
+  docker exec -it hawki_app php artisan queue:work
+
+Stop worker (Ctrl+C). If you need a restart:
+  docker exec -it hawki_app php artisan queue:restart
+
+Check failed jobs:
+  docker exec -it hawki_app php artisan queue:failed
+
+Pipeline (sync)
+--------------
+Run the full pipeline in one shot:
+  make pipeline PIPELINE_URL=https://www.hawk.de
+
+Common overrides:
+  make pipeline PIPELINE_URL=https://www.hawk.de PIPELINE_LABEL=hawk-full PIPELINE_MAX_PAGES=5000
+  make pipeline PIPELINE_URL=https://www.hawk.de PIPELINE_OUTPUT_DIR=/app/shared/Full_HAWK_14JAN
+  make pipeline PIPELINE_URL=https://www.hawk.de PIPELINE_COLLECTION=Full_HAWK_14JAN
+  make pipeline PIPELINE_URL=https://www.hawk.de PIPELINE_GRAPH=false
+
+Pipeline (async / queued)
+-------------------------
+Enqueue the pipeline:
+  make pipeline-async PIPELINE_URL=https://www.hawk.de
+
+Check pipeline status:
+  curl -s http://localhost:8080/api/pipeline/status | jq .
+
+Ingest (API)
+------------
+Start ingest (from UI) uses /api/ingest/start.
+Check ingest status:
+  curl -s http://localhost:8080/api/ingest/status | jq .
+
+Ingest (MCP)
+------------
+List folders (MCP tool):
+  make ingest-mcp-list MCP_LIST_ROOT=/app/shared
+
+Start ingest (MCP tool):
+  make ingest-mcp MCP_INGEST_ROOT=/app/shared/Full_HAWK_14JAN
+
+Neo4j quick checks
+------------------
+Triplet count:
+  docker exec -it rawki_neo4j cypher-shell -u neo4j -p ixdlabPass123 \
+    "MATCH (:Entity)-[r:REL]->(:Entity) RETURN count(r) AS triplets"
+
+Nuke graph (careful):
+  docker exec -it rawki_neo4j cypher-shell -u neo4j -p ixdlabPass123 \
+    "MATCH (n) DETACH DELETE n"
+
+Qdrant quick checks
+-------------------
+List collections:
+  curl -s http://localhost:6333/collections | jq .

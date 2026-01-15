@@ -8,6 +8,7 @@ use App\Http\Controllers\API\IngestStatusController;
 use App\Http\Controllers\API\IngestController;
 use App\Http\Controllers\API\RagHealthController;
 use App\Http\Controllers\API\RagStatsController;
+use App\Http\Controllers\API\PipelineController;
 
 // Health check
 Route::get('/ping', fn() => response()->json(['pong' => true]));
@@ -21,5 +22,7 @@ Route::get('/ingest/live', [IngestController::class, 'live']);
 Route::post('/ingest/start', [IngestController::class, 'start']);
 Route::post('/ingest/stop', [IngestController::class, 'stop']);
 Route::post('/ingest/delete', [IngestController::class, 'deleteFolder']);
+Route::post('/pipeline/start', [PipelineController::class, 'start']);
+Route::get('/pipeline/status', [PipelineController::class, 'status']);
 Route::get('/rag/health', [RagHealthController::class, 'show']);
 Route::get('/rag/stats', [RagStatsController::class, 'show']);
