@@ -38,7 +38,7 @@ class RagIngestTool extends Tool
             ->integer('chunk_chars')->description('Chunk size in characters')
             ->integer('chunk_overlap')->description('Chunk overlap in characters')
             ->boolean('graph')->description('Whether to extract graph data')
-            ->string('graph_engine')->description('Graph engine: fallback or lightrag')
+            ->string('graph_engine')->description('Graph engine: raganything')
             ->boolean('dry_run')->description('If true, do not persist data')
             ->boolean('dry_include_graph')->description('Include graph output in dry runs');
     }

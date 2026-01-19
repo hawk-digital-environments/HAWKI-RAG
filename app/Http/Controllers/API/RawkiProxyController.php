@@ -20,9 +20,11 @@ class RawkiProxyController extends Controller
     {
         $data = $request->validate([
             'query'           => 'required|string',
-            'top_k'           => 'sometimes|integer|min:1|max:25',
+            'top_k'           => 'sometimes|integer|min:1|max:100',
             'is_optimized'    => 'sometimes|boolean',
             'generate'        => 'sometimes|boolean',
+            'fast_mode'       => 'sometimes|boolean',
+            'smart_lookup'    => 'sometimes|boolean',
             'preferred_tags'  => 'sometimes|array',
             'preferred_tags.*'=> 'string',
         ]);
@@ -32,6 +34,8 @@ class RawkiProxyController extends Controller
             'top_k'        => $data['top_k'] ?? 5,
             'is_optimized' => $data['is_optimized'] ?? false,
             'generate'     => $data['generate'] ?? true,
+            'fast_mode'    => $data['fast_mode'] ?? false,
+            'smart_lookup' => $data['smart_lookup'] ?? false,
         ];
 
         if (!empty($data['preferred_tags'])) {

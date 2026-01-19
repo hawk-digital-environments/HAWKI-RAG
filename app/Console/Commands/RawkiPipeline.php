@@ -19,7 +19,7 @@ class RawkiPipeline extends Command
         {--date= : CSS selector for updated_time, e.g. meta[property=\'og:updated_time\']}
         {--provider=ollama : Embedding provider}
         {--graph : Enable Neo4j triplet extraction}
-        {--graph-engine=lightrag : Graph engine}
+        {--graph-engine=raganything : Graph engine}
         {--distance=Cosine : Qdrant distance (Cosine|Dot|Euclid)}
         {--chunk-chars=3200 : Chunk size in characters}
         {--chunk-overlap=100 : Chunk overlap}

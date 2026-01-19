@@ -350,6 +350,21 @@ def resolve_tags(meta: Dict, text: str) -> List[str]:
     if tags:
         return tags
     return fallback_keywords(text)
+
+
+def extract_pdf_links(text: str) -> List[str]:
+    if not text:
+        return []
+    pattern = re.compile(r"https?://[^\s)>\"]+?\.pdf", re.IGNORECASE)
+    links = pattern.findall(text)
+    seen = set()
+    out: List[str] = []
+    for link in links:
+        clean = link.rstrip(").,;\"'")
+        if clean not in seen:
+            seen.add(clean)
+            out.append(clean)
+    return out
 ########################################### TITLES AND DOC IDS PROCESSING #####################################
 
 def title_from_markdown(md: str) -> Optional[str]:
@@ -515,7 +530,7 @@ def main():
     ap.add_argument("--base-url", default="http://localhost:8009", help="LightRAG base URL (default: http://localhost:8009)")
     ap.add_argument("--provider", default="ollama", help="Embedding/LLM provider name (beware that gwdg is only for chat completio)")
     ap.add_argument("--graph", action="store_true", help="Enable KG extraction during ingest")
-    ap.add_argument("--graph-engine", default="lightrag", help="Graph engine")
+    ap.add_argument("--graph-engine", default="raganything", help="Graph engine")
     ap.add_argument("--collection", default=None, help="Qdrant collection override")
     ap.add_argument("--distance", default="Cosine", help="Qdrant distance (Cosine|Dot|Euclid)")
     ap.add_argument("--chunk-chars", type=int, default=3200, help="Chunk target size for LightRAG")
@@ -658,6 +673,8 @@ def main():
         meta_img_list = to_array_list(meta.get("meta_img_url") or meta.get("metaImageUrl"))
         images_list = to_array_list(meta.get("images"))
         pdfs_list = to_array_list(meta.get("pdfs"))
+        if not pdfs_list:
+            pdfs_list = extract_pdf_links(text)
         tags = resolve_tags(meta, text)
         rel = str(d.relative_to(root))
         source_url = first_str(meta.get("source_url")) or resolve_url_for_path(source_url_map, dir_resolved, root)

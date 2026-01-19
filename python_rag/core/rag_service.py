@@ -108,14 +108,12 @@ class RAGService:
         raise ValueError(f"Unknown provider: {name}")
 
     def extract_triplets(self, text: str, engine: str | None) -> List[tuple[str, str, str]]:
-        mode = (engine or "fallback").strip().lower()
-        if mode == "raganything" and self.raganything is not None:
-            triplets = self._extract_triplets_raganything(text)
-            if triplets:
-                return triplets
-        if mode == "lightrag":
-            return extract_triplets_with_lightrag(text)
-        return extract_triplets_fallback(text)
+        mode = (engine or "raganything").strip().lower()
+        if mode != "raganything":
+            logger.warning("Graph engine '%s' requested; enforcing raganything.", mode)
+        if self.raganything is None:
+            raise RuntimeError("RAG-Anything is required but not available.")
+        return self._extract_triplets_raganything(text)
 
     def _extract_triplets_raganything(self, text: str) -> List[tuple[str, str, str]]:
         if self.raganything is None:

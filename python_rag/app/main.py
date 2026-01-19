@@ -4,6 +4,7 @@ import logging
 import math
 import os
 import re
+import time
 from datetime import datetime
 from collections import Counter
 from pathlib import Path
@@ -16,6 +17,7 @@ from vectorstore.qdrant_strategies import (
     semantic_search_basic,
     semantic_search_high_recall,
     optimized_semantic_search,
+    semantic_search_smart,
 )
 from graph.neo4j_graph import Neo4jGraph
 ########################################### CONFIG #####################################
@@ -79,6 +81,11 @@ _CONTEXT_STRIP_TOKENS = [
 
 MAX_CONTEXT_TOKENS_DEFAULT = 2800
 ITERATIVE_RETRIEVAL_ENV = "RAG_ITERATIVE_RETRIEVAL"
+
+_MULTIMODAL_HINT_PATTERN = re.compile(
+    r"\b(figure|fig\.|image|photo|diagram|chart|table|equation|grafik|abbildung|tabelle|diagramm|bild|foto|gleichung)\b",
+    re.IGNORECASE,
+)
 ########################################### TOKENIZATION AND TERM EXTRACTION  #####################################
 def _extract_terms(text: str | None) -> List[str]:
     if not text:
@@ -89,6 +96,12 @@ def _extract_terms(text: str | None) -> List[str]:
         if token not in STOPWORDS and len(token) >= 4:
             tokens.append(token)
     return tokens
+
+
+def _is_multimodal_query(text: str | None) -> bool:
+    if not text:
+        return False
+    return bool(_MULTIMODAL_HINT_PATTERN.search(text))
 
 
 def _strip_control_chars(text: str | None) -> str:
@@ -109,6 +122,67 @@ def _sanitize_prompt_text(text: str | None) -> str:
     # Collapse excessive whitespace but preserve newlines for readability
     cleaned = re.sub(r"[^\S\r\n]+", " ", cleaned)
     return cleaned.strip()
+
+
+def _parse_json_from_text(text: str) -> Dict[str, Any]:
+    if not text:
+        return {}
+    try:
+        return json.loads(text)
+    except Exception:
+        pass
+    match = re.search(r"\{.*\}", text, flags=re.DOTALL)
+    if not match:
+        return {}
+    try:
+        return json.loads(match.group(0))
+    except Exception:
+        return {}
+
+
+def _rewrite_query(provider: Any, query: str) -> Dict[str, Any]:
+    system = (
+        "You are a RAG-Anything query interpreter. "
+        "Return JSON only with keys: "
+        "rewritten_query (string), high_level_keys (array of strings), "
+        "low_level_keys (array of strings), modality_hints (array of strings), "
+        "entity_terms (array of strings). "
+        "Use modality_hints like: text, table, figure, chart, equation, image. "
+        "Keep rewritten_query concise and faithful."
+    )
+    try:
+        raw = provider.chat(system, [{"role": "user", "content": query}])
+    except Exception as exc:
+        logger.warning("Query rewrite failed: %s", exc)
+        return {}
+    data = _parse_json_from_text(raw)
+    if not isinstance(data, dict):
+        return {}
+    return data
+
+
+def _normalize_list(value: Any) -> List[str]:
+    if not value:
+        return []
+    if isinstance(value, str):
+        return [value.strip()] if value.strip() else []
+    if isinstance(value, list):
+        out = []
+        for item in value:
+            if isinstance(item, str) and item.strip():
+                out.append(item.strip())
+        return out
+    return []
+
+
+def _normalize_scores(scores: List[float]) -> List[float]:
+    if not scores:
+        return []
+    lo = min(scores)
+    hi = max(scores)
+    if math.isclose(lo, hi):
+        return [0.0 for _ in scores]
+    return [(s - lo) / (hi - lo) for s in scores]
 
 
 def _sanitize_context_snippet(text: str | None) -> str:
@@ -320,6 +394,96 @@ def _merge_hits(primary: List[Dict[str, Any]], secondary: List[Dict[str, Any]], 
     return merged
 
 
+def _build_structural_hits(
+    terms: List[str],
+    *,
+    limit: int,
+    hops: int,
+    include_rel_match: bool = False,
+) -> List[Dict[str, Any]]:
+    if not terms:
+        return []
+    g = Neo4jGraph()
+    try:
+        rows = g.search_structural(terms, limit=limit, hops=hops, include_rel_match=include_rel_match)
+    except Exception:
+        rows = []
+    finally:
+        try:
+            g.close()
+        except Exception:
+            pass
+
+    hits: List[Dict[str, Any]] = []
+    for row in rows:
+        s = row.get("subject") or ""
+        r = row.get("relation") or ""
+        o = row.get("object") or ""
+        hops_used = int(row.get("hops") or 1)
+        doc_id = row.get("doc_id")
+        content = f"{s} -{r}-> {o}".strip(" -")
+        score = 1.0 / max(1, hops_used)
+        hits.append(
+            {
+                "id": f"neo4j:{s}:{r}:{o}:{doc_id or ''}",
+                "score": score,
+                "payload": {
+                    "component_type": "relation",
+                    "subject": s,
+                    "relation": r,
+                    "object": o,
+                    "doc_id": doc_id,
+                    "content": content,
+                    "title": "Graph relation",
+                },
+                "source": "neo4j",
+            }
+        )
+    return hits
+
+
+def _hit_key(hit: Dict[str, Any]) -> str:
+    payload = hit.get("payload") or {}
+    doc_id = payload.get("doc_id") or ""
+    component = payload.get("component_type") or ""
+    content = payload.get("content") or payload.get("title") or hit.get("id") or ""
+    return f"{doc_id}|{component}|{content}".strip()
+
+
+def _fuse_hits(
+    semantic_hits: List[Dict[str, Any]],
+    structural_hits: List[Dict[str, Any]],
+    *,
+    sem_weight: float,
+    str_weight: float,
+) -> List[Dict[str, Any]]:
+    merged: Dict[str, Dict[str, Any]] = {}
+
+    sem_scores = _normalize_scores([float(h.get("score") or 0.0) for h in semantic_hits])
+    for hit, norm_score in zip(semantic_hits, sem_scores):
+        key = _hit_key(hit)
+        fused = dict(hit)
+        fused["score"] = max(0.0, min(1.0, sem_weight * norm_score))
+        fused.setdefault("signals", {})["semantic"] = norm_score
+        merged[key] = fused
+
+    for hit in structural_hits:
+        key = _hit_key(hit)
+        base = max(0.0, min(1.0, float(hit.get("score") or 0.0)))
+        weighted = str_weight * base
+        if key in merged:
+            merged_hit = merged[key]
+            merged_hit["score"] = float(merged_hit.get("score") or 0.0) + weighted
+            merged_hit.setdefault("signals", {})["structural"] = base
+        else:
+            fused = dict(hit)
+            fused["score"] = weighted
+            fused.setdefault("signals", {})["structural"] = base
+            merged[key] = fused
+
+    return sorted(merged.values(), key=lambda h: float(h.get("score") or 0.0), reverse=True)
+
+
 def _prepare_context_summaries(
     hits: List[Dict[str, Any]], *, max_docs: int, max_tokens: int
 ) -> Tuple[List[Dict[str, Any]], List[int], int]:
@@ -332,6 +496,8 @@ def _prepare_context_summaries(
         title_raw = payload.get("title") or payload.get("page_title") or "Untitled"
         url_raw = payload.get("page_url") or payload.get("source_url") or ""
         snippet_raw = (payload.get("snippet") or payload.get("content") or "")[:1200]
+        component_type = payload.get("component_type") or payload.get("type") or "chunk"
+        source_format = payload.get("source_format") or payload.get("format")
 
         title = _sanitize_context_snippet(title_raw) or "Untitled"
         url = _sanitize_context_snippet(url_raw)
@@ -356,6 +522,8 @@ def _prepare_context_summaries(
             "title": title,
             "url": url,
             "snippet": snippet,
+            "component_type": component_type,
+            "source_format": source_format,
         })
         if used_tokens >= max_tokens:
             break
@@ -397,7 +565,7 @@ class IngestRequest(BaseModel):
     chunk_chars: int = 3200
     chunk_overlap: int = 250
     graph: bool = False
-    graph_engine: str = Field(default=os.environ.get("GRAPH_ENGINE", "fallback"))  # fallback|lightrag
+    graph_engine: str = Field(default=os.environ.get("GRAPH_ENGINE", "raganything"))
     dry_run: bool = False
     dry_include_graph: bool = False
 
@@ -408,6 +576,8 @@ class QueryRequest(BaseModel):
     filters: Dict[str, Any] = Field(default_factory=dict)
     generate: bool = True
     is_optimized: bool = False
+    fast_mode: bool = False
+    smart_lookup: bool = False
     preferred_tags: List[str] | None = None
     # Reranker options: none | cosine | external | jina
     reranker: str = Field(default=os.environ.get("RERANKER_MODE", "none"))
@@ -418,7 +588,7 @@ class QueryRequest(BaseModel):
 
 class GraphRequest(BaseModel):
     text: str
-    engine: str = Field(default=os.environ.get("GRAPH_ENGINE", "fallback"))
+    engine: str = Field(default=os.environ.get("GRAPH_ENGINE", "raganything"))
 
 class DocumentUpsertRequest(BaseModel):
     text: str
@@ -530,6 +700,7 @@ def ingest(body: IngestRequest):
                 "source_format": payload.get("source_format", "text"),
             })
             payload["doc_id"] = str(d.id)
+            payload.setdefault("component_type", "chunk")
             ensure_tags(payload, ch)
             chunk_records.append({
                 "doc_id": str(d.id),
@@ -612,12 +783,77 @@ def ingest(body: IngestRequest):
 
         return {"ok": True, "dry_run": True, "points": total_chunks, "summary": summary}
 
+    graph_triplets_by_doc: Dict[str, List[tuple[str, str, str]]] = {}
+    entity_records: List[Dict[str, Any]] = []
+    relation_records: List[Dict[str, Any]] = []
+    if body.graph:
+        entity_seen: set[tuple[str, str]] = set()
+        relation_seen: set[tuple[str, str]] = set()
+        for record in chunk_records:
+            text = record.get("content") or ""
+            if not text.strip():
+                continue
+            doc_id = str(record.get("doc_id") or "")
+            if not doc_id:
+                continue
+            triplets = rag_service.extract_triplets(text, body.graph_engine)
+            if not triplets:
+                continue
+            graph_triplets_by_doc.setdefault(doc_id, []).extend(triplets)
+            for s, r, o in triplets:
+                s_txt = str(s).strip()
+                o_txt = str(o).strip()
+                r_txt = str(r).strip()
+                if s_txt:
+                    key = (doc_id, s_txt.lower())
+                    if key not in entity_seen:
+                        entity_seen.add(key)
+                        entity_records.append({
+                            "doc_id": doc_id,
+                            "content": s_txt,
+                            "payload": {
+                                "doc_id": doc_id,
+                                "component_type": "entity",
+                                "entity_name": s_txt,
+                            },
+                        })
+                if o_txt:
+                    key = (doc_id, o_txt.lower())
+                    if key not in entity_seen:
+                        entity_seen.add(key)
+                        entity_records.append({
+                            "doc_id": doc_id,
+                            "content": o_txt,
+                            "payload": {
+                                "doc_id": doc_id,
+                                "component_type": "entity",
+                                "entity_name": o_txt,
+                            },
+                        })
+                if s_txt and r_txt and o_txt:
+                    rel_text = f"{s_txt} -{r_txt}-> {o_txt}"
+                    key = (doc_id, rel_text.lower())
+                    if key not in relation_seen:
+                        relation_seen.add(key)
+                        relation_records.append({
+                            "doc_id": doc_id,
+                            "content": rel_text,
+                            "payload": {
+                                "doc_id": doc_id,
+                                "component_type": "relation",
+                                "relation": r_txt,
+                                "subject": s_txt,
+                                "object": o_txt,
+                            },
+                        })
+
     provider = get_provider(body.provider)
     points: List[Dict[str, Any]] = []
     vector_size: int | None = None
     point_counter = 1
 
-    for record in chunk_records:
+    component_records = chunk_records + entity_records + relation_records
+    for record in component_records:
         try:
             vec = provider.embed(record["content"])
         except Exception as exc:
@@ -638,12 +874,7 @@ def ingest(body: IngestRequest):
     if body.graph:
         g = Neo4jGraph()
         try:
-            for record in chunk_records:
-                text = record.get("content") or ""
-                if not text.strip():
-                    continue
-                doc_id = record.get("doc_id")
-                triplets = rag_service.extract_triplets(text, body.graph_engine)
+            for doc_id, triplets in graph_triplets_by_doc.items():
                 if triplets:
                     g.upsert_triplets(triplets, doc_id=doc_id)
         except Exception as e:
@@ -660,6 +891,11 @@ def ingest(body: IngestRequest):
     }
 
     summary["documents"] = doc_stats
+    if body.graph:
+        summary["graph_components"] = {
+            "entity_points": len(entity_records),
+            "relation_points": len(relation_records),
+        }
 
     qdrant_stats: Dict[str, Any] = {
         "primary_collection": qdrant.collection,
@@ -750,6 +986,9 @@ def replace_document(doc_id: str, body: DocumentUpsertRequest):
 
 @app.post("/query")
 def query(body: QueryRequest):
+    timings: Dict[str, float] = {}
+    t0 = time.perf_counter()
+    os.environ["RAG_FAST_MODE"] = "true" if body.fast_mode else "false"
     prompt_safety = _analyze_prompt_safety(body.query)
     if prompt_safety["blocked"]:
         logger.warning("Blocked query by content safety: %s", prompt_safety["issues"])
@@ -764,13 +1003,51 @@ def query(body: QueryRequest):
 
     provider = get_provider(body.provider)
     qdrant = QdrantHTTP()
+    t_rewrite_start = time.perf_counter()
+    rewrite_enabled = (not body.fast_mode) and _is_multimodal_query(user_query)
+    rewrite = {} if not rewrite_enabled else _rewrite_query(provider, user_query)
+    timings["rewrite_ms"] = (time.perf_counter() - t_rewrite_start) * 1000
+    rewritten_query = _sanitize_prompt_text(rewrite.get("rewritten_query") or user_query)
+    high_level_keys = _normalize_list(rewrite.get("high_level_keys"))
+    low_level_keys = _normalize_list(rewrite.get("low_level_keys"))
+    modality_hints = _normalize_list(rewrite.get("modality_hints"))
+    entity_terms = _normalize_list(rewrite.get("entity_terms"))
+    query_terms = list(dict.fromkeys(entity_terms + low_level_keys + high_level_keys + _extract_terms(rewritten_query)))
+
+    t_embed_start = time.perf_counter()
     try:
-        vec = provider.embed(user_query)
+        vec = provider.embed(rewritten_query)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Embedding failed: {exc}") from exc
+    timings["embed_ms"] = (time.perf_counter() - t_embed_start) * 1000
 
     filters = dict(body.filters) if body.filters else None
-    if body.is_optimized:
+    t_qdrant_start = time.perf_counter()
+    keyword_fields = [
+        "title_text",
+        "page_url_text",
+        "source_url",
+        "tags",
+        "content",
+        "pdfs",
+    ]
+    if body.smart_lookup and not body.fast_mode:
+        hits = semantic_search_smart(
+            qdrant,
+            vec,
+            top_k=body.top_k,
+            filters=filters,
+            keyword_terms=query_terms,
+            keyword_fields=keyword_fields,
+        )
+        if not hits:
+            hits = semantic_search_basic(
+                qdrant,
+                vec,
+                top_k=body.top_k,
+                filters=filters,
+            )
+    elif body.is_optimized and not body.fast_mode:
         hits = optimized_semantic_search(
             qdrant,
             vec,
@@ -785,9 +1062,28 @@ def query(body: QueryRequest):
             top_k=body.top_k,
             filters=filters,
         )
+    timings["qdrant_ms"] = (time.perf_counter() - t_qdrant_start) * 1000
+
+    structural_limit = int(os.environ.get("RAG_STRUCTURAL_LIMIT", max(body.top_k * 2, 12)))
+    structural_hops = int(os.environ.get("RAG_STRUCTURAL_HOPS", "2"))
+    t_graph_start = time.perf_counter()
+    structural_hits = [] if body.fast_mode else _build_structural_hits(
+        query_terms,
+        limit=structural_limit,
+        hops=structural_hops,
+        include_rel_match=body.smart_lookup,
+    )
+    timings["graph_ms"] = (time.perf_counter() - t_graph_start) * 1000
+
+    sem_weight = float(os.environ.get("RAG_FUSION_SEM_WEIGHT", "0.6"))
+    str_weight = float(os.environ.get("RAG_FUSION_STR_WEIGHT", "0.4"))
+    hits = _fuse_hits(hits, structural_hits, sem_weight=sem_weight, str_weight=str_weight)
+    # Only return chunk hits to downstream consumers (clean retrieval payload).
+    hits = [h for h in hits if (h.get("payload") or {}).get("component_type") in (None, "", "chunk")]
+    t_rerank_start = time.perf_counter()
     hits = rag_service.rerank_hits(
         hits=hits,
-        user_query=user_query,
+        user_query=rewritten_query,
         provider=provider,
         query_vector=vec,
         mode=body.reranker,
@@ -795,16 +1091,18 @@ def query(body: QueryRequest):
         mix_mode=body.mix_mode,
         mix_weight=body.mix_weight,
     )
+    hits = [h for h in hits if float(h.get("score") or 0.0) >= 0.4]
+    timings["rerank_ms"] = (time.perf_counter() - t_rerank_start) * 1000
 
     iterative_enabled = str(os.environ.get(ITERATIVE_RETRIEVAL_ENV, "true")).lower() in ("1", "true", "yes")
     iteration_used = False
     expansion_terms: List[str] = []
-    if iterative_enabled and _should_iterate(user_query, hits, body.top_k):
+    if iterative_enabled and _should_iterate(rewritten_query, hits, body.top_k):
         iteration_used = True
         expansion_terms = _collect_expansion_terms(hits)
-        expanded_query = user_query
+        expanded_query = rewritten_query
         if expansion_terms:
-            expanded_query = f"{user_query}\nKey entities: {', '.join(expansion_terms[:6])}"
+            expanded_query = f"{rewritten_query}\nKey entities: {', '.join(expansion_terms[:6])}"
         try:
             iter_vec = provider.embed(expanded_query) if expansion_terms else vec
         except Exception:
@@ -828,7 +1126,7 @@ def query(body: QueryRequest):
             hits = _merge_hits(hits, secondary_hits, max(body.top_k * 2, 12))
             hits = rag_service.rerank_hits(
                 hits=hits,
-                user_query=user_query,
+                user_query=rewritten_query,
                 provider=provider,
                 query_vector=vec,
                 mode=body.reranker,
@@ -857,8 +1155,10 @@ def query(body: QueryRequest):
     )
 
     kg_facts: List[Dict[str, str]] = []
-    if hits:
-        kg_terms = set(_extract_terms(user_query))
+    t_kg_start = time.perf_counter()
+    if hits and not body.fast_mode:
+        kg_terms = set(_extract_terms(rewritten_query))
+        kg_terms.update(query_terms)
         for h in hits[: body.top_k]:
             payload = h.get("payload") or {}
             kg_terms.update(_terms_from_payload(payload))
@@ -873,13 +1173,20 @@ def query(body: QueryRequest):
                 kg_facts = []
             finally:
                 g.close()
+    timings["kg_ms"] = (time.perf_counter() - t_kg_start) * 1000
 
     answer = ""
-    if body.generate and context_summaries:
+    if False and context_summaries:
         context_docs = []
         for summary in context_summaries:
+            meta_bits = []
+            if summary.get("component_type"):
+                meta_bits.append(f"type: {summary['component_type']}")
+            if summary.get("source_format"):
+                meta_bits.append(f"format: {summary['source_format']}")
+            meta_line = f"\nMeta: {' · '.join(meta_bits)}" if meta_bits else ""
             context_docs.append(
-                f"Source {summary['idx']}: {summary['title']}\nURL: {summary['url'] or 'n/a'}\nExcerpt:\n{summary['snippet']}"
+                f"Source {summary['idx']}: {summary['title']}\nURL: {summary['url'] or 'n/a'}{meta_line}\nExcerpt:\n{summary['snippet']}"
             )
         graph_section = ""
         if kg_facts:
@@ -896,7 +1203,7 @@ def query(body: QueryRequest):
             + "\n\n".join(context_docs)
             + graph_section
         )
-        messages = [{"role": "user", "content": user_query}]
+        messages = [{"role": "user", "content": rewritten_query}]
         raw_answer = provider.chat(system, messages)
         output_safety = _enforce_output_safety(raw_answer)
         answer = output_safety["answer"]
@@ -917,6 +1224,23 @@ def query(body: QueryRequest):
             "context_docs": len(context_summaries),
             "context_trimmed": trimmed_sources,
             "max_context_tokens": max_context_tokens,
+            "rewrite": {
+                "query": rewritten_query if rewritten_query != body.query else None,
+                "high_level_keys": high_level_keys,
+                "low_level_keys": low_level_keys,
+                "entity_terms": entity_terms,
+                "modality_hints": modality_hints,
+                "enabled": rewrite_enabled,
+            },
+            "timings_ms": {
+                "rewrite": round(timings.get("rewrite_ms", 0.0), 2),
+                "embed": round(timings.get("embed_ms", 0.0), 2),
+                "qdrant": round(timings.get("qdrant_ms", 0.0), 2),
+                "graph": round(timings.get("graph_ms", 0.0), 2),
+                "rerank": round(timings.get("rerank_ms", 0.0), 2),
+                "kg": round(timings.get("kg_ms", 0.0), 2),
+                "total": round((time.perf_counter() - t0) * 1000, 2),
+            },
         },
         "safety": {
             "prompt": {

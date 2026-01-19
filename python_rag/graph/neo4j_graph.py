@@ -145,3 +145,58 @@ class Neo4jGraph:
                 }
             )
         return facts
+
+    def search_structural(
+        self,
+        terms: Iterable[str],
+        *,
+        limit: int = 40,
+        hops: int = 2,
+        include_rel_match: bool = False,
+    ) -> List[Dict[str, Any]]:
+        """Return structural graph candidates based on matched entities and hop expansion."""
+        cleaned = [t.strip().lower() for t in terms if t and len(t.strip()) > 2]
+        if not cleaned:
+            return []
+
+        safe_hops = max(1, int(hops))
+        rel_clause = " OR any(rel IN r WHERE toLower(rel.type) CONTAINS term)" if include_rel_match else ""
+        cypher = (
+            "MATCH p=(s:Entity)-[r:REL*1..%d]->(o:Entity) "
+            "WHERE any(term IN $terms WHERE toLower(s.name) CONTAINS term OR toLower(o.name) CONTAINS term%s) "
+            "WITH s, o, r, size(r) AS hops "
+            "RETURN s.name AS subject, last(r).type AS relation, o.name AS object, last(r).doc_id AS doc_id, hops "
+            "LIMIT $limit"
+        ) % (safe_hops, rel_clause)
+
+        max_attempts = int(os.environ.get("NEO4J_RETRY_ATTEMPTS", "3"))
+        backoff = 0.5
+        attempt = 0
+        while True:
+            attempt += 1
+            try:
+                with self._driver.session() as session:
+                    result = session.execute_read(
+                        lambda tx: list(tx.run(cypher, terms=cleaned, limit=int(limit), hops=int(hops)))
+                    )
+                break
+            except neo4j_exceptions.Neo4jError as exc:
+                if attempt >= max_attempts:
+                    logger.warning("Neo4j structural search failed: %s", exc)
+                    return []
+                logger.warning("Neo4j error (%s). Retrying...", exc)
+                time.sleep(backoff)
+                backoff = min(backoff * 2, 5.0)
+
+        out: List[Dict[str, Any]] = []
+        for record in result:
+            out.append(
+                {
+                    "subject": record.get("subject"),
+                    "relation": record.get("relation"),
+                    "object": record.get("object"),
+                    "doc_id": record.get("doc_id"),
+                    "hops": int(record.get("hops") or 1),
+                }
+            )
+        return out

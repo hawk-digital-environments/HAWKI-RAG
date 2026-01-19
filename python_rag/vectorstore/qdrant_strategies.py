@@ -107,3 +107,24 @@ def optimized_semantic_search(
         filters=combined_filters or None,
         ef_multiplier=8,
     )
+
+
+def semantic_search_smart(
+    qdrant: QdrantHTTP,
+    vector: List[float],
+    *,
+    top_k: int = 5,
+    filters: Optional[Dict[str, Any]] = None,
+    keyword_terms: Optional[Iterable[str]] = None,
+    keyword_fields: Optional[Iterable[str]] = None,
+) -> List[Dict[str, Any]]:
+    """Semantic search with keyword-aware filtering across payload fields."""
+    terms = list(keyword_terms or [])
+    fields = list(keyword_fields or [])
+    return qdrant.search(
+        vector,
+        top_k=top_k,
+        filters=filters,
+        keyword_terms=terms or None,
+        keyword_fields=fields or None,
+    )

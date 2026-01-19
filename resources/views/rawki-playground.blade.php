@@ -9,6 +9,9 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
     <style>
         :root { color-scheme: dark; }
+        html, body {
+            height: 100%;
+        }
         body {
             margin: 0;
             font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
@@ -16,8 +19,9 @@
                         radial-gradient(circle at 85% 30%, rgba(59, 130, 246, 0.1), transparent 45%),
                         #0f172a;
             color: #e2e8f0;
+            overflow: hidden;
         }
-        .container { max-width: 1040px; margin: 0 auto; padding: 2.25rem 1.75rem 4rem; }
+        .container { max-width: 1400px; height: 100%; margin: 0 auto; padding: 1.25rem 1.5rem; }
         h1 { margin: 0; font-weight: 700; font-size: 2rem; letter-spacing: -0.01em; }
         h2 { font-size: 1.25rem; margin-top: 0; }
         p { line-height: 1.6; }
@@ -29,12 +33,41 @@
             padding: 1.4rem 1.6rem;
             box-shadow: 0 22px 55px rgba(15, 23, 42, 0.35);
         }
+        .layout {
+            display: grid;
+            grid-template-columns: minmax(280px, 1fr) minmax(320px, 1.2fr) minmax(320px, 1.3fr);
+            gap: 1.1rem;
+            height: 100%;
+        }
+        .panel {
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+        }
+        .panel h2 {
+            margin-bottom: 0.75rem;
+        }
+        .panel-body {
+            flex: 1;
+            min-height: 0;
+            overflow: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            padding-right: 0.35rem;
+        }
+        .subsection {
+            border-radius: 0.9rem;
+            border: 1px solid rgba(148, 163, 184, 0.2);
+            background: rgba(12, 74, 110, 0.2);
+            padding: 1rem;
+        }
         .grid { display: grid; gap: 1.4rem; }
         .two { grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
-        textarea, input, button { font-family: inherit; }
+        textarea, input, select, button { font-family: inherit; box-sizing: border-box; max-width: 100%; }
         textarea {
             width: 100%;
-            min-height: 120px;
+            min-height: 96px;
             border-radius: 1rem;
             border: 1px solid rgba(148, 163, 184, 0.22);
             background: rgba(15, 23, 42, 0.78);
@@ -112,182 +145,201 @@
             color: #cbd5f5;
         }
         .activity-item strong { color: #7dd3fc; font-weight: 600; }
+        .stat-card {
+            border-radius: 0.9rem;
+            border: 1px solid rgba(148, 163, 184, 0.25);
+            background: rgba(15, 23, 42, 0.65);
+            padding: 0.9rem 1rem;
+        }
+        .stat-card h4 {
+            margin: 0 0 0.7rem;
+            font-size: 0.95rem;
+            color: #bae6fd;
+        }
+        .stat-row {
+            display: flex;
+            justify-content: space-between;
+            gap: 0.75rem;
+            padding: 0.35rem 0;
+            border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+            font-size: 0.88rem;
+        }
+        .stat-row:last-child { border-bottom: none; }
+        .stat-label { color: #e2e8f0; }
+        .stat-value { color: #a5b4fc; font-variant-numeric: tabular-nums; }
+        @media (max-width: 1100px) {
+            body { overflow: auto; }
+            .layout {
+                grid-template-columns: 1fr;
+                height: auto;
+            }
+            .panel-body {
+                overflow: visible;
+                padding-right: 0;
+            }
+        }
     </style>
 </head>
 <body>
     <div class="container">
-        <header class="grid" style="gap: 1.1rem; margin-bottom: 2rem;">
-            <div class="card" style="background: rgba(12, 74, 110, 0.55); border-color: rgba(56, 189, 248, 0.4);">
-                <h1>Welcome to RAWKI</h1>
-                <p style="margin-top: 0.4rem;">
-                    RAWKI is your HAWKI-branded Retrieval-Augmented Generation stack, combining <strong>Qdrant</strong> for vector search,
-                    <strong>Neo4j</strong> for graph knowledge, and the RAWKI pipeline for fast knowledge extraction.
-                </p>
-                <div class="grid two" style="margin-top: 1rem;">
-                    <div>
-                        <h2>Minimum recommended specs</h2>
-                        <ul>
-                            <li>6&nbsp;GB RAM (8&nbsp;GB preferred) to run <code>llama3:8b</code> via Ollama</li>
-                            <li>4 CPU cores for smoother ingest + retrieval</li>
-                            <li>15&nbsp;GB disk for Qdrant/Neo4j data and model caches</li>
-                        </ul>
+        <div class="layout">
+            <section class="card panel">
+                <h2>Ingestion</h2>
+                <div class="panel-body">
+                    <div class="subsection">
+                        <h3 style="margin-top:0;">Ingest Data</h3>
+                        <p style="margin: 0 0 0.8rem; font-size: 0.9rem; color: #bae6fd;">
+                            Select a folder under the shared crawl volume and start ingestion.
+                        </p>
+                        <div class="grid two">
+                            <div>
+                                <label for="ingest-folder">Crawl folder</label>
+                                <select id="ingest-folder" style="width:100%; border-radius:0.8rem; border:1px solid rgba(148,163,184,0.22); background:rgba(15,23,42,0.78); color:inherit; padding:0.7rem 0.8rem;">
+                                    <option value="">Loading…</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label for="ingest-graph">Graph extraction</label>
+                                <label><input type="checkbox" id="ingest-graph" checked /> Enable Neo4j triplets</label>
+                            </div>
+                        </div>
+                        <div style="margin-top: 1rem;">
+                            <label for="ingest-collection">Qdrant collection name</label>
+                            <input id="ingest-collection" type="text" placeholder="Defaults to folder name" style="width:100%; border-radius:0.8rem; border:1px solid rgba(148,163,184,0.22); background:rgba(15,23,42,0.78); color:inherit; padding:0.7rem 0.8rem;" />
+                        </div>
+                        <div style="margin-top: 1rem;">
+                            <button type="button" id="ingest-btn">Start ingest</button>
+                            <button type="button" id="mcp-ingest-btn" style="margin-left:0.6rem; background: linear-gradient(135deg, #22c55e, #0ea5e9);">Start MCP ingest</button>
+                            <button type="button" id="ingest-stop-btn" style="margin-left:0.6rem; background: linear-gradient(135deg, #f97316, #ef4444);">Stop ingest</button>
+                            <button type="button" id="ingest-delete-btn" style="margin-left:0.6rem; background: linear-gradient(135deg, #f43f5e, #be123c);">Delete folder</button>
+                            <span id="ingest-action" style="margin-left:0.8rem; font-size:0.9rem; color:#bae6fd;"></span>
+                        </div>
                     </div>
-                    <div>
-                        <h2>Quick commands</h2>
-                        <ul>
-                            <li><code>make up-core</code> – start RAWKI core stack (Ollama, Qdrant, app)</li>
-                            <li><code>make up-rag</code> – launch RAWKI services (Neo4j, core, reranker, bridge)</li>
-                            <li><code>make ingest CRAWLED_ROOT=/path</code> – ingest local crawl via FastAPI bridge</li>
-                        </ul>
+
+                    <div class="subsection">
+                        <h3 style="margin-top:0;">RAG Anything Monitor</h3>
+                        <p style="margin: 0 0 0.6rem; font-size: 0.9rem; color: #bae6fd;">
+                            Live status from the RAG Anything health endpoint.
+                        </p>
+                        <div id="rag-status" class="badge">Checking…</div>
+                        <div id="rag-details" style="margin-top: 0.8rem; display: grid; gap: 0.5rem;"></div>
+                    </div>
+
+                    <div class="subsection">
+                        <h3 style="margin-top:0;">Vector + Graph Stats</h3>
+                        <p style="margin: 0 0 0.6rem; font-size: 0.9rem; color: #bae6fd;">
+                            Qdrant collections and Neo4j triplets (live counts).
+                        </p>
+                        <div id="rag-stats" style="display:grid; gap:0.6rem;"></div>
                     </div>
                 </div>
-                <p style="margin-top: 1rem; font-size: 0.9rem; color: #bae6fd;">
-                    API endpoints: <code>POST /api/rawki/query</code> (this page), <code>POST /api/qdrant-search</code> (streaming),
-                    <code>POST /api/qdrant-test</code> (JSON test), and <code>POST /query</code> on the RAWKI FastAPI bridge.
-                </p>
-            </div>
-        </header>
+            </section>
 
-        <section class="card" style="margin-bottom: 2rem;">
-            <form id="query-form" class="grid" style="gap: 1.2rem;">
-                <div>
-                    <label for="question">Ask RAWKI anything</label>
-                    <textarea id="question" placeholder="e.g. Wer bekommt ein Werk in der Bibliothek, wenn er nur einen Benutzerausweis vorzeigt?" required></textarea>
-                </div>
-                <div class="grid two">
-                    <div>
-                        <label for="topk">Top-K results</label>
-                        <input id="topk" type="number" min="1" max="10" value="5" />
+            <section class="card panel">
+                <h2>Logs</h2>
+                <div class="panel-body">
+                    <div class="subsection">
+                        <h3 style="margin-top:0;">Live Activity</h3>
+                        <p style="margin: 0 0 0.6rem; font-size: 0.9rem; color: #bae6fd;">
+                            Rolling feed of the latest updates from MCP, ingest, and RAG stats.
+                        </p>
+                        <div id="activity-feed" class="activity-feed"></div>
+                        <div style="margin-top: 0.8rem;">
+                            <button type="button" id="activity-clear-btn" style="background: linear-gradient(135deg, #f97316, #ef4444);">Clear activity</button>
+                        </div>
                     </div>
-                    <div>
-                        <label><input type="checkbox" id="generate" checked /> Generate answer</label>
-                        <label><input type="checkbox" id="optimized" /> Optimized retrieval</label>
+
+                    <div class="subsection">
+                        <h3 style="margin-top:0;">MCP Monitor</h3>
+                        <p style="margin: 0 0 0.6rem; font-size: 0.9rem; color: #bae6fd;">
+                            Latest MCP tool call from <code>processRAG_log.txt</code>.
+                        </p>
+                        <div class="badge" id="mcp-latest">No MCP activity yet.</div>
+                        <div id="mcp-log" style="margin-top: 0.9rem; display: grid; gap: 0.5rem;"></div>
+                        <div style="margin-top: 0.8rem;">
+                            <button type="button" id="mcp-clear-btn" style="background: linear-gradient(135deg, #f97316, #ef4444);">Clear MCP logs</button>
+                        </div>
+                    </div>
+
+                    <div class="subsection">
+                        <h3 style="margin-top:0;">Ingest Monitor</h3>
+                        <p style="margin: 0 0 0.6rem; font-size: 0.9rem; color: #bae6fd;">
+                            Live ingest progress (Qdrant/Neo4j) from <code>ingest_status.json</code>.
+                        </p>
+                        <div id="ingest-status" class="badge">No ingest activity yet.</div>
+                        <div id="ingest-progress" style="margin-top: 0.8rem; display: grid; gap: 0.5rem;"></div>
+                        <div style="margin-top: 0.8rem;">
+                            <button type="button" id="ingest-clear-btn" style="background: linear-gradient(135deg, #f97316, #ef4444);">Clear ingest logs</button>
+                        </div>
+                    </div>
+
+                    <div class="subsection">
+                        <h3 style="margin-top:0;">Live Ingestions</h3>
+                        <p style="margin: 0 0 0.6rem; font-size: 0.9rem; color: #bae6fd;">
+                            Active ingest processes (PID + folder).
+                        </p>
+                        <div id="ingest-live-status" class="badge">No running ingest process.</div>
+                        <div id="ingest-live-list" style="margin-top: 0.8rem; display: grid; gap: 0.5rem;"></div>
                     </div>
                 </div>
-                <div>
-                    <button type="submit" id="run-btn">Run RAWKI retrieval</button>
+            </section>
+
+            <section class="card panel">
+                <h2>Query</h2>
+                <div class="panel-body">
+                    <div class="subsection">
+                        <form id="query-form" class="grid" style="gap: 1.2rem;">
+                            <div>
+                                <label for="question">Ask RAWKI anything</label>
+                                <textarea id="question" placeholder="e.g. Wer bekommt ein Werk in der Bibliothek, wenn er nur einen Benutzerausweis vorzeigt?" required></textarea>
+                            </div>
+                            <div class="grid two">
+                                <div>
+                                    <label for="topk">Top-K results</label>
+                                    <input id="topk" type="number" min="1" value="5" />
+                                </div>
+                                <div>
+                                    <label><input type="checkbox" id="fast-mode" /> Fast mode (skip rewrite + graph)</label>
+                                    <label><input type="checkbox" id="smart-lookup" /> Smart lookup (keyword + graph)</label>
+                                    <label><input type="checkbox" id="optimized" /> Optimized retrieval</label>
+                                </div>
+                            </div>
+                            <div>
+                                <button type="submit" id="run-btn">Run RAWKI retrieval</button>
+                            </div>
+                        </form>
+                        <p id="status" style="margin-top: 0.9rem; font-size: 0.95rem; color: #bae6fd;"></p>
+                    </div>
+
+                    <div class="subsection" id="results" style="display: none;">
+                        <h3 style="margin-top:0;">Results</h3>
+                        <div id="provenance-banner" class="provenance"></div>
+                        <div id="meta" style="display:flex; flex-wrap:wrap; gap:0.5rem 0.75rem; margin-bottom: 1rem;"></div>
+                        <div id="answer-block" style="display:none; margin-bottom:1.5rem;">
+                            <h4 style="margin-top:0;">RAWKI Answer</h4>
+                            <div id="answer" style="white-space: pre-wrap; line-height:1.6;"></div>
+                        </div>
+                        <div id="hits-block" style="display:none;">
+                            <h4>Top vector hits (Qdrant)</h4>
+                            <div class="hits-list" id="hits"></div>
+                        </div>
+                        <div id="kg-block" style="display:none; margin-top:1.6rem;">
+                            <h4>Graph knowledge (Neo4j)</h4>
+                            <table class="kg-table" id="kg-table">
+                                <thead>
+                                    <tr><th>Subject</th><th>Relation</th><th>Object</th></tr>
+                                </thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                        <details style="margin-top: 1.6rem;">
+                            <summary>Raw JSON</summary>
+                            <pre id="raw-json"></pre>
+                        </details>
+                    </div>
                 </div>
-            </form>
-            <p id="status" style="margin-top: 0.9rem; font-size: 0.95rem; color: #bae6fd;"></p>
-        </section>
-
-        <section class="card" style="margin-bottom: 2rem;">
-            <h2 style="margin-bottom: 0.6rem;">MCP Monitor</h2>
-            <p style="margin: 0 0 0.6rem; font-size: 0.9rem; color: #bae6fd;">
-                Latest MCP tool call from <code>processRAG_log.txt</code>.
-            </p>
-            <div class="badge" id="mcp-latest">No MCP activity yet.</div>
-            <div id="mcp-log" style="margin-top: 0.9rem; display: grid; gap: 0.5rem;"></div>
-            <div style="margin-top: 0.8rem;">
-                <button type="button" id="mcp-clear-btn" style="background: linear-gradient(135deg, #f97316, #ef4444);">Clear MCP logs</button>
-            </div>
-        </section>
-
-        <section class="card" style="margin-bottom: 2rem;">
-            <h2 style="margin-bottom: 0.6rem;">Ingest Monitor</h2>
-            <p style="margin: 0 0 0.6rem; font-size: 0.9rem; color: #bae6fd;">
-                Live ingest progress (Qdrant/Neo4j) from <code>ingest_status.json</code>.
-            </p>
-            <div id="ingest-status" class="badge">No ingest activity yet.</div>
-            <div id="ingest-progress" style="margin-top: 0.8rem; display: grid; gap: 0.5rem;"></div>
-            <div style="margin-top: 0.8rem;">
-                <button type="button" id="ingest-clear-btn" style="background: linear-gradient(135deg, #f97316, #ef4444);">Clear ingest logs</button>
-            </div>
-        </section>
-
-        <section class="card" style="margin-bottom: 2rem;">
-            <h2 style="margin-bottom: 0.6rem;">Live Ingestions</h2>
-            <p style="margin: 0 0 0.6rem; font-size: 0.9rem; color: #bae6fd;">
-                Active ingest processes (PID + folder).
-            </p>
-            <div id="ingest-live-status" class="badge">No running ingest process.</div>
-            <div id="ingest-live-list" style="margin-top: 0.8rem; display: grid; gap: 0.5rem;"></div>
-        </section>
-
-        <section class="card" style="margin-bottom: 2rem;">
-            <h2 style="margin-bottom: 0.6rem;">Live Activity</h2>
-            <p style="margin: 0 0 0.6rem; font-size: 0.9rem; color: #bae6fd;">
-                Rolling feed of the latest updates from MCP, ingest, and RAG stats.
-            </p>
-            <div id="activity-feed" class="activity-feed"></div>
-            <div style="margin-top: 0.8rem;">
-                <button type="button" id="activity-clear-btn" style="background: linear-gradient(135deg, #f97316, #ef4444);">Clear activity</button>
-            </div>
-        </section>
-
-        <section class="card" style="margin-bottom: 2rem;">
-            <h2 style="margin-bottom: 0.6rem;">Ingest Data</h2>
-            <p style="margin: 0 0 0.8rem; font-size: 0.9rem; color: #bae6fd;">
-                Select a folder under the shared crawl volume and start ingestion.
-            </p>
-            <div class="grid two">
-                <div>
-                    <label for="ingest-folder">Crawl folder</label>
-                    <select id="ingest-folder" style="width:100%; border-radius:0.8rem; border:1px solid rgba(148,163,184,0.22); background:rgba(15,23,42,0.78); color:inherit; padding:0.7rem 0.8rem;">
-                        <option value="">Loading…</option>
-                    </select>
-                </div>
-                <div>
-                    <label for="ingest-graph">Graph extraction</label>
-                    <label><input type="checkbox" id="ingest-graph" checked /> Enable Neo4j triplets</label>
-                </div>
-            </div>
-            <div style="margin-top: 1rem;">
-                <label for="ingest-collection">Qdrant collection name</label>
-                <input id="ingest-collection" type="text" placeholder="Defaults to folder name" style="width:100%; border-radius:0.8rem; border:1px solid rgba(148,163,184,0.22); background:rgba(15,23,42,0.78); color:inherit; padding:0.7rem 0.8rem;" />
-            </div>
-            <div style="margin-top: 1rem;">
-                <button type="button" id="ingest-btn">Start ingest</button>
-                <button type="button" id="mcp-ingest-btn" style="margin-left:0.6rem; background: linear-gradient(135deg, #22c55e, #0ea5e9);">Start MCP ingest</button>
-                <button type="button" id="ingest-stop-btn" style="margin-left:0.6rem; background: linear-gradient(135deg, #f97316, #ef4444);">Stop ingest</button>
-                <button type="button" id="ingest-delete-btn" style="margin-left:0.6rem; background: linear-gradient(135deg, #f43f5e, #be123c);">Delete folder</button>
-                <span id="ingest-action" style="margin-left:0.8rem; font-size:0.9rem; color:#bae6fd;"></span>
-            </div>
-        </section>
-
-        <section class="card" style="margin-bottom: 2rem;">
-            <h2 style="margin-bottom: 0.6rem;">RAG Anything Monitor</h2>
-            <p style="margin: 0 0 0.6rem; font-size: 0.9rem; color: #bae6fd;">
-                Live status from the RAG Anything API health endpoint.
-            </p>
-            <div id="rag-status" class="badge">Checking…</div>
-            <div id="rag-details" style="margin-top: 0.8rem; display: grid; gap: 0.5rem;"></div>
-        </section>
-
-        <section class="card" style="margin-bottom: 2rem;">
-            <h2 style="margin-bottom: 0.6rem;">Vector + Graph Stats</h2>
-            <p style="margin: 0 0 0.6rem; font-size: 0.9rem; color: #bae6fd;">
-                Qdrant collections and Neo4j triplets (live counts).
-            </p>
-            <div id="rag-stats" style="display:grid; gap:0.6rem;"></div>
-        </section>
-
-        <section class="card" id="results" style="display: none;">
-            <h2>Results</h2>
-            <div id="provenance-banner" class="provenance"></div>
-            <div id="meta" style="display:flex; flex-wrap:wrap; gap:0.5rem 0.75rem; margin-bottom: 1rem;"></div>
-            <div id="answer-block" style="display:none; margin-bottom:1.5rem;">
-                <h3 style="margin-top:0;">RAWKI Answer</h3>
-                <div id="answer" style="white-space: pre-wrap; line-height:1.6;"></div>
-            </div>
-            <div id="hits-block" style="display:none;">
-                <h3>Top vector hits (Qdrant)</h3>
-                <div class="hits-list" id="hits"></div>
-            </div>
-            <div id="kg-block" style="display:none; margin-top:1.6rem;">
-                <h3>Graph knowledge (Neo4j)</h3>
-                <table class="kg-table" id="kg-table">
-                    <thead>
-                        <tr><th>Subject</th><th>Relation</th><th>Object</th></tr>
-                    </thead>
-                    <tbody></tbody>
-                </table>
-            </div>
-            <details style="margin-top: 1.6rem;">
-                <summary>Raw JSON</summary>
-                <pre id="raw-json"></pre>
-            </details>
-        </section>
+            </section>
+        </div>
     </div>
 
     <script>
@@ -431,13 +483,16 @@
             provenanceBanner.style.display = 'none';
             provenanceBanner.textContent = '';
 
-            const payload = {
-                query,
-                top_k: Number(document.getElementById('topk').value) || 5,
-                generate: document.getElementById('generate').checked,
-                is_optimized: document.getElementById('optimized').checked,
-            };
+                const payload = {
+                    query,
+                    top_k: Number(document.getElementById('topk').value) || 5,
+                    generate: false,
+                    is_optimized: document.getElementById('optimized').checked,
+                    fast_mode: document.getElementById('fast-mode').checked,
+                    smart_lookup: document.getElementById('smart-lookup').checked,
+                };
 
+            const startedAt = performance.now();
             try {
                 const response = await fetch('/api/rawki/query', {
                     method: 'POST',
@@ -476,19 +531,39 @@
 
                 results.style.display = 'block';
                 rawJson.textContent = JSON.stringify(data, null, 2);
+                const elapsedMs = Math.round(performance.now() - startedAt);
 
                 const hitCount = typeof data.count === 'number'
                     ? data.count
                     : (Array.isArray(data.hits) ? data.hits.length : 0);
                 metaEl.appendChild(badge(`hits: ${hitCount}`));
+                metaEl.appendChild(badge(`latency: ${elapsedMs} ms`));
+                if (data.retrieval && data.retrieval.rewrite) {
+                    const rewrite = data.retrieval.rewrite;
+                    if (rewrite.query) metaEl.appendChild(badge('rewrite: on'));
+                    const modal = Array.isArray(rewrite.modality_hints) ? rewrite.modality_hints.filter(Boolean) : [];
+                    if (modal.length) metaEl.appendChild(badge(`modalities: ${modal.slice(0, 3).join(', ')}`));
+                    const entities = Array.isArray(rewrite.entity_terms) ? rewrite.entity_terms.filter(Boolean) : [];
+                    if (entities.length) metaEl.appendChild(badge(`entities: ${entities.slice(0, 3).join(', ')}`));
+                }
                 if (Array.isArray(data.kg)) metaEl.appendChild(badge(`kg facts: ${data.kg.length}`));
                 if (data.summary && data.summary.qdrant && data.summary.qdrant.primary_point_count !== undefined) {
                     metaEl.appendChild(badge(`qdrant points: ${data.summary.qdrant.primary_point_count}`));
                 }
 
-                if (payload.generate && data.answer) {
-                    answerBlock.style.display = 'block';
-                    answerEl.textContent = data.answer;
+                answerBlock.style.display = 'none';
+
+                if (data.retrieval && data.retrieval.rewrite) {
+                    const rewrite = data.retrieval.rewrite;
+                    if (rewrite.query) {
+                        pushActivity('Query', `Rewrite: ${rewrite.query.slice(0, 140)}`);
+                    }
+                    if (Array.isArray(rewrite.modality_hints) && rewrite.modality_hints.length) {
+                        pushActivity('Query', `Modalities: ${rewrite.modality_hints.join(', ')}`);
+                    }
+                    if (Array.isArray(rewrite.entity_terms) && rewrite.entity_terms.length) {
+                        pushActivity('Query', `Entities: ${rewrite.entity_terms.slice(0, 6).join(', ')}`);
+                    }
                 }
 
                 const hits = Array.isArray(data.hits) ? data.hits : [];
@@ -501,14 +576,32 @@
                         div.className = 'hit';
                         const title = payload.title_text || firstValue(payload.title) || 'Untitled';
                         const url = payload.page_url_text || firstValue(payload.page_url) || payload.source_url || '';
+                        const sourceUrl = payload.source_url || '';
+                        const pdfsRaw = Array.isArray(payload.pdfs) ? payload.pdfs : (payload.pdfs ? [payload.pdfs] : []);
+                        const pdfs = pdfsRaw.map((entry) => {
+                            if (!entry) return '';
+                            if (typeof entry === 'string') {
+                                const match = entry.match(/https?:\/\/[^\s'"]+?\.pdf/gi);
+                                return match ? match[0] : entry;
+                            }
+                            if (typeof entry === 'object' && entry.url) return entry.url;
+                            return '';
+                        }).filter(Boolean);
                         const parentUrl = payload.parent_url || payload.parent_page_url || '';
                         const parentNode = payload.parent_node || payload.parent_id || '';
                         const snippet = (payload.snippet || payload.content || '').slice(0, 400);
                         const score = typeof hit.score === 'number' ? hit.score.toFixed(4) : 'n/a';
+                        const componentType = payload.component_type || payload.type || 'chunk';
+                        const sourceFormat = payload.source_format || payload.format || '';
+                        const detailBits = [componentType];
+                        if (sourceFormat) detailBits.push(sourceFormat);
                         div.innerHTML = `
                             <h3>${title}</h3>
                             <p style="margin:0 0 0.35rem;font-size:0.85rem;color:#bae6fd;">score: ${score}</p>
+                            <p style="margin:0 0 0.35rem;font-size:0.85rem;color:#a5b4fc;">${detailBits.join(' · ')}</p>
                             ${url ? `<p style=\"margin:0 0 0.35rem;font-size:0.9rem;\"><a href=\"${url}\" target=\"_blank\" rel=\"noopener noreferrer\">${url}</a></p>` : ''}
+                            ${sourceUrl ? `<p style=\"margin:0 0 0.35rem;font-size:0.85rem;color:#cbd5f5;\">resource: <a href=\"${sourceUrl}\" target=\"_blank\" rel=\"noopener noreferrer\">${sourceUrl}</a></p>` : ''}
+                            ${pdfs.length ? `<p style=\"margin:0 0 0.35rem;font-size:0.85rem;color:#cbd5f5;\">pdf: <a href=\"${pdfs[0]}\" target=\"_blank\" rel=\"noopener noreferrer\">${pdfs[0]}</a>${pdfs.length > 1 ? ` (+${pdfs.length - 1})` : ''}</p>` : ''}
                             ${parentUrl ? `<p style=\"margin:0 0 0.3rem;font-size:0.85rem;color:#fef3c7;\">parent url: ${parentUrl}</p>` : ''}
                             ${parentNode ? `<p style=\"margin:0 0 0.3rem;font-size:0.85rem;color:#fef08a;\">parent node: ${parentNode}</p>` : ''}
                             <p style=\"margin:0;font-size:0.9rem;line-height:1.55;\">${snippet.replace(/</g,'&lt;')}</p>
@@ -567,8 +660,8 @@
                 }
                 provenanceBanner.style.display = 'block';
 
-                statusEl.textContent = 'Done.';
-                pushActivity('RAWKI', `Query completed · hits: ${hitCount}`);
+                statusEl.textContent = `Done · ${elapsedMs} ms`;
+                pushActivity('RAWKI', `Query completed · hits: ${hitCount} · ${elapsedMs} ms`);
             } catch (error) {
                 statusEl.textContent = error.message;
                 console.error(error);
@@ -947,10 +1040,7 @@
                 ragStatus.textContent = `status: ok · ${data.latency_ms}ms`;
                 ragDetails.innerHTML = '';
                 if (data.data) {
-                    const row = document.createElement('div');
-                    row.className = 'badge';
-                    row.textContent = JSON.stringify(data.data);
-                    ragDetails.appendChild(row);
+                    // Suppress raw health payload to keep the UI clean.
                 }
                 pushActivity('RAG', `status: ok · ${data.latency_ms}ms`);
             } catch (error) {
@@ -975,38 +1065,54 @@
                 ragStats.innerHTML = '';
                 const statsSnapshot = [];
                 if (data.qdrant && data.qdrant.collections) {
-                    const header = document.createElement('div');
-                    header.className = 'badge';
-                    header.textContent = 'Qdrant collections';
-                    ragStats.appendChild(header);
+                    const card = document.createElement('div');
+                    card.className = 'stat-card';
+                    card.innerHTML = '<h4>Qdrant collections</h4>';
+                    let hiddenEmpty = 0;
                     data.qdrant.collections.forEach((col) => {
+                        const count = col.count ?? 'n/a';
+                        if (typeof count === 'number' && count === 0) {
+                            hiddenEmpty += 1;
+                            return;
+                        }
                         const row = document.createElement('div');
-                        row.className = 'badge';
-                        row.textContent = `${col.name}: ${col.count ?? 'n/a'} points`;
-                        ragStats.appendChild(row);
-                        statsSnapshot.push(`${col.name}:${col.count ?? 'n/a'}`);
+                        row.className = 'stat-row';
+                        row.innerHTML = `<span class="stat-label">${col.name}</span><span class="stat-value">${count} points</span>`;
+                        card.appendChild(row);
+                        statsSnapshot.push(`${col.name}:${count}`);
                     });
+                    if (hiddenEmpty > 0) {
+                        const note = document.createElement('div');
+                        note.className = 'stat-row';
+                        note.innerHTML = `<span class="stat-label">Hidden empty collections</span><span class="stat-value">${hiddenEmpty}</span>`;
+                        card.appendChild(note);
+                    }
+                    ragStats.appendChild(card);
                 }
 
                 if (data.neo4j && data.neo4j.ok) {
+                    const card = document.createElement('div');
+                    card.className = 'stat-card';
+                    card.innerHTML = '<h4>Neo4j graph stats</h4>';
                     const row = document.createElement('div');
-                    row.className = 'badge';
-                    row.textContent = `Neo4j triplets: ${data.neo4j.triplets} · entities: ${data.neo4j.entities}`;
-                    ragStats.appendChild(row);
+                    row.className = 'stat-row';
+                    row.innerHTML = `<span class="stat-label">Triplets</span><span class="stat-value">${data.neo4j.triplets}</span>`;
+                    card.appendChild(row);
+                    const row2 = document.createElement('div');
+                    row2.className = 'stat-row';
+                    row2.innerHTML = `<span class="stat-label">Entities</span><span class="stat-value">${data.neo4j.entities}</span>`;
+                    card.appendChild(row2);
                     statsSnapshot.push(`neo4j:${data.neo4j.triplets}:${data.neo4j.entities}`);
 
                     if (Array.isArray(data.neo4j.relationship_types) && data.neo4j.relationship_types.length) {
-                        const relHeader = document.createElement('div');
-                        relHeader.className = 'badge';
-                        relHeader.textContent = 'Neo4j relationship types';
-                        ragStats.appendChild(relHeader);
                         data.neo4j.relationship_types.slice(0, 6).forEach((rel) => {
                             const relRow = document.createElement('div');
-                            relRow.className = 'badge';
-                            relRow.textContent = `${rel.type}: ${rel.count}`;
-                            ragStats.appendChild(relRow);
+                            relRow.className = 'stat-row';
+                            relRow.innerHTML = `<span class="stat-label">${rel.type}</span><span class="stat-value">${rel.count}</span>`;
+                            card.appendChild(relRow);
                         });
                     }
+                    ragStats.appendChild(card);
                 }
 
                 const statsHash = statsSnapshot.join('|');

@@ -15,7 +15,7 @@ class QdrantHTTP:
         scheme = os.environ.get("QDRANT_SCHEME", "http")
         host = os.environ.get("QDRANT_HOST", "qdrant")
         port = int(os.environ.get("QDRANT_PORT", "6333"))
-        self.collection = os.environ.get("QDRANT_COLLECTION", "embeddings_hawk")
+        self.collection = os.environ.get("QDRANT_COLLECTION", "").strip()
         self.base = f"{scheme}://{host}:{port}"
         self.api_key = os.environ.get("QDRANT_API_KEY")
         self.timeout = float(os.environ.get("QDRANT_TIMEOUT", "30"))
@@ -73,6 +73,53 @@ class QdrantHTTP:
         rc = self._request("PUT", f"/collections/{self.collection}", json=payload)
         rc.raise_for_status()
 
+    def list_collections(self) -> List[str]:
+        """Return all collection names available in Qdrant."""
+        r = self._request("GET", "/collections")
+        r.raise_for_status()
+        data = r.json().get("result", {}) or {}
+        names = []
+        for col in data.get("collections", []) or []:
+            name = col.get("name")
+            if name:
+                names.append(str(name))
+        return names
+
+    def _pick_default_collection(self) -> Optional[str]:
+        """Pick the most populated collection when no default is configured."""
+        try:
+            names = self.list_collections()
+        except Exception as exc:
+            logger.warning("Qdrant default selection failed to list collections: %s", exc)
+            return None
+        best_name = None
+        best_count = -1
+        for name in names:
+            count = self.count_points(name)
+            if count is None:
+                continue
+            if count > best_count:
+                best_name = name
+                best_count = count
+        return best_name
+
+    def _search_collection(
+        self,
+        collection: str,
+        body: Dict[str, Any],
+        timeout: float,
+    ) -> List[Dict[str, Any]]:
+        r = self._request(
+            "POST",
+            f"/collections/{collection}/points/search",
+            json=body,
+            timeout=timeout,
+        )
+        if r.status_code == 404:
+            return []
+        r.raise_for_status()
+        return r.json().get("result", [])
+
     def upsert(self, points: List[Dict[str, Any]]) -> None:
         """Upsert batches of points into the chosen collection."""
         if not points:
@@ -118,8 +165,12 @@ class QdrantHTTP:
         with_payload: bool = True,
         with_vector: bool = False,
         payload_projection: Optional[List[str]] = None,
+        keyword_terms: Optional[List[str]] = None,
+        keyword_fields: Optional[List[str]] = None,
     ) -> List[Dict[str, Any]]:
         """Execute a vector search and return payload-rich results."""
+        timeout = float(os.environ.get("QDRANT_SEARCH_TIMEOUT", self.timeout))
+        search_all = os.environ.get("QDRANT_SEARCH_ALL", "false").lower() in ("1", "true", "yes")
         body: Dict[str, Any] = {
             "vector": vector,
             "limit": int(top_k),
@@ -128,21 +179,82 @@ class QdrantHTTP:
         }
         if filters:
             body["filter"] = {"must": [{"key": k, "match": {"value": v}} for k, v in filters.items()]}
+        if keyword_terms and keyword_fields:
+            should = []
+            for term in keyword_terms[:6]:
+                for field in keyword_fields:
+                    should.append({"key": field, "match": {"value": term}})
+            if should:
+                body.setdefault("filter", {})
+                body["filter"].setdefault("should", [])
+                body["filter"]["should"].extend(should)
         if score_threshold is not None:
             body["score_threshold"] = float(score_threshold)
         if params:
             body["params"] = params
         if payload_projection:
             body["with_payload"] = {"include": payload_projection}
+
+        if search_all:
+            try:
+                collections = self.list_collections()
+            except Exception as exc:
+                logger.warning("Qdrant search-all failed to list collections: %s", exc)
+                collections = []
+            if not collections:
+                return []
+            max_per_collection = int(os.environ.get("QDRANT_SEARCH_ALL_PER_COLLECTION", str(top_k)))
+            merged: List[Dict[str, Any]] = []
+            for name in collections:
+                body["limit"] = int(max_per_collection)
+                results = self._search_collection(name, body, timeout)
+                for hit in results:
+                    if isinstance(hit, dict) and "collection" not in hit:
+                        hit["collection"] = name
+                merged.extend(results)
+            merged.sort(key=lambda h: float(h.get("score") or 0.0), reverse=True)
+            return merged[: int(top_k)]
+
+        collection = self.collection
+        if not collection:
+            collection = self._pick_default_collection() or ""
+            self.collection = collection
+
         r = self._request(
             "POST",
-            f"/collections/{self.collection}/points/search",
+            f"/collections/{collection}/points/search",
             json=body,
-            timeout=float(os.environ.get("QDRANT_SEARCH_TIMEOUT", self.timeout)),
+            timeout=timeout,
         )
-        r.raise_for_status()
-        j = r.json()
-        return j.get("result", [])
+        if r.status_code != 404:
+            r.raise_for_status()
+            j = r.json()
+            return j.get("result", [])
+
+        fallback_enabled = os.environ.get("QDRANT_FALLBACK_ALL", "true").lower() in ("1", "true", "yes")
+        if not fallback_enabled:
+            r.raise_for_status()
+            return []
+
+        try:
+            collections = self.list_collections()
+        except Exception as exc:
+            logger.warning("Qdrant collection fallback failed to list collections: %s", exc)
+            r.raise_for_status()
+            return []
+
+        max_per_collection = int(os.environ.get("QDRANT_FALLBACK_PER_COLLECTION", str(top_k)))
+        merged: List[Dict[str, Any]] = []
+        for name in collections:
+            body["limit"] = int(max_per_collection)
+            results = self._search_collection(name, body, timeout)
+            for hit in results:
+                if isinstance(hit, dict) and "collection" not in hit:
+                    hit["collection"] = name
+            merged.extend(results)
+
+        merged.sort(key=lambda h: float(h.get("score") or 0.0), reverse=True)
+        return merged[: int(top_k)]
 
     def delete_by_filter(self, filter_body: Dict[str, Any]) -> Dict[str, Any]:
         """Delete points matching the supplied Qdrant filter."""

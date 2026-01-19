@@ -25,7 +25,7 @@ class RagFolderIngestTool extends Tool
             ->string('base_url')->description('RAWKI bridge base URL (default: RAWKI_BRIDGE_URL)')
             ->string('provider')->description('Embedding provider, e.g. ollama')
             ->boolean('graph')->description('Enable Neo4j triplet extraction')
-            ->string('graph_engine')->description('Graph engine: fallback or lightrag')
+            ->string('graph_engine')->description('Graph engine: raganything')
             ->string('collection')->description('Qdrant collection override')
             ->string('distance')->description('Qdrant distance: Cosine|Dot|Euclid')
             ->integer('chunk_chars')->description('Chunk size in characters')
@@ -39,6 +39,10 @@ class RagFolderIngestTool extends Tool
 
     public function handle(array $arguments): ToolResult
     {
+        if (! (bool) config('mcp.ingest_enabled', false)) {
+            return ToolResult::error('MCP ingest is disabled. Set MCP_INGEST_ENABLED=true to allow ingest.');
+        }
+
         $root = trim((string) ($arguments['root'] ?? ''));
         if ($root === '') {
             return ToolResult::error('root is required');
@@ -111,7 +115,12 @@ class RagFolderIngestTool extends Tool
         ];
         File::put($statusPath, json_encode($status, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
 
-        $process->run(function ($type, $buffer) use (&$status, $statusPath, $logPath) {
+        $process->start();
+        $status['pid'] = $process->getPid();
+        $status['updated_at'] = now()->toIso8601String();
+        File::put($statusPath, json_encode($status, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+
+        $process->wait(function ($type, $buffer) use (&$status, $statusPath, $logPath) {
             $lines = preg_split("/\\r?\\n/", $buffer, -1, PREG_SPLIT_NO_EMPTY);
             foreach ($lines as $line) {
                 File::append($logPath, $line . PHP_EOL);
