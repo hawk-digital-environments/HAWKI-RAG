@@ -55,7 +55,7 @@ network:
 	@docker network create hawki-network || true
 
 pull-core:
-	@$(COMPOSE_CMD) pull qdrant nginx $(OLLAMA_SERVICE)
+	@$(COMPOSE_CMD) pull nginx || true
 
 build-app:
 	@$(COMPOSE_CMD) build app
@@ -73,7 +73,7 @@ up-core: network pull-core build-app
 
 up-rag:
 	@echo $(PROFILE_MESSAGE)
-	@docker compose -f $(OPS_COMPOSE) --env-file $(ENV_FILE) build rawki_rerank || true
+	@docker compose -f $(OPS_COMPOSE) --env-file $(ENV_FILE) build rawki_rerank rawki_bridge raganything_api raganything_api_gpu || true
 	@docker compose -f $(OPS_COMPOSE) --env-file $(ENV_FILE) up -d
 
 health:

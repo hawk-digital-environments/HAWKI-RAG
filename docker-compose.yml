@@ -60,8 +60,8 @@ services:
         depends_on:
             rabbitmq:
                 condition: service_healthy
-            crawler:
-                condition: service_healthy
+            # crawler:
+            #     condition: service_healthy
 
     # -------------------------------------------------
     # NGINX Reverse Proxy
@@ -132,63 +132,63 @@ services:
     # -------------------------------------------------
     # External Crawler Microservice
     # -------------------------------------------------
-    crawler:
-        image: crawl4ai-fastapi:latest
-        container_name: crawl4ai-service
-        ports:
-            - "8004:8000"
-        environment:
-            # Optional API security token
-            - CRAWL4AI_API_TOKEN=${CRAWL4AI_API_TOKEN:-}
-            # Maximum concurrent crawl tasks
-            - MAX_CONCURRENT_TASKS=${MAX_CONCURRENT_TASKS:-5}
-            # Server configuration
-            - HOST=${HOST:-0.0.0.0}
-            - PORT=${PORT:-8000}
-            # Optional LLM Provider Keys (for advanced crawl4ai features)
-            - OPENAI_API_KEY=${OPENAI_API_KEY:-}
-            - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
-            # Communication Configuration
-            - COMMUNICATION_METHOD=rabbitmq
-            # Redis Pub/Sub Configuration (disabled)
-            - REDIS_ENABLED=false
-            - REDIS_HOST=redis
-            - REDIS_PORT=6379
-            - REDIS_DB=0
-            - REDIS_PASSWORD=foobared
-            - REDIS_CHANNEL=scrape-events
-            # RabbitMQ Configuration (enabled)
-            - RABBITMQ_ENABLED=true
-            - RABBITMQ_HOST=rabbitmq
-            - RABBITMQ_PORT=5672
-            - RABBITMQ_USER=${RABBITMQ_USER:-admin}
-            - RABBITMQ_PASSWORD=${RABBITMQ_PASSWORD:-admin123}
-            - RABBITMQ_VHOST=${RABBITMQ_VHOST:-/}
-            - RABBITMQ_EXCHANGE=scrape_events
-            - RABBITMQ_QUEUE=scrape-events
-            # WebSocket URL for real-time events (legacy, deprecated)
-            - WEBSOCKET_URL=${WEBSOCKET_URL:-}
-            # Data storage path for job files
-            - DATA_PATH=${DATA_PATH:-/app/shared}
-        volumes:
-            # Mount data directory for job-specific storage (new structure)
-            - ./data:/app/data
-            # Mount output directory for backwards compatibility
-            - ./output:/app/output
-            # Shared memory for Playwright (prevents crashes)
-            - /dev/shm:/dev/shm
-            - shared_storage:/app/shared
-        networks:
-            - hawki-network
-        depends_on:
-            - rabbitmq
-        restart: unless-stopped
-        healthcheck:
-            test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-            interval: 30s
-            timeout: 10s
-            retries: 3
-            start_period: 40s
+    # crawler:
+    #     image: crawl4ai-fastapi:latest
+    #     container_name: crawl4ai-service
+    #     ports:
+    #         - "8004:8000"
+    #     environment:
+    #         # Optional API security token
+    #         - CRAWL4AI_API_TOKEN=${CRAWL4AI_API_TOKEN:-}
+    #         # Maximum concurrent crawl tasks
+    #         - MAX_CONCURRENT_TASKS=${MAX_CONCURRENT_TASKS:-5}
+    #         # Server configuration
+    #         - HOST=${HOST:-0.0.0.0}
+    #         - PORT=${PORT:-8000}
+    #         # Optional LLM Provider Keys (for advanced crawl4ai features)
+    #         - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+    #         - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+    #         # Communication Configuration
+    #         - COMMUNICATION_METHOD=rabbitmq
+    #         # Redis Pub/Sub Configuration (disabled)
+    #         - REDIS_ENABLED=false
+    #         - REDIS_HOST=redis
+    #         - REDIS_PORT=6379
+    #         - REDIS_DB=0
+    #         - REDIS_PASSWORD=foobared
+    #         - REDIS_CHANNEL=scrape-events
+    #         # RabbitMQ Configuration (enabled)
+    #         - RABBITMQ_ENABLED=true
+    #         - RABBITMQ_HOST=rabbitmq
+    #         - RABBITMQ_PORT=5672
+    #         - RABBITMQ_USER=${RABBITMQ_USER:-admin}
+    #         - RABBITMQ_PASSWORD=${RABBITMQ_PASSWORD:-admin123}
+    #         - RABBITMQ_VHOST=${RABBITMQ_VHOST:-/}
+    #         - RABBITMQ_EXCHANGE=scrape_events
+    #         - RABBITMQ_QUEUE=scrape-events
+    #         # WebSocket URL for real-time events (legacy, deprecated)
+    #         - WEBSOCKET_URL=${WEBSOCKET_URL:-}
+    #         # Data storage path for job files
+    #         - DATA_PATH=${DATA_PATH:-/app/shared}
+    #     volumes:
+    #         # Mount data directory for job-specific storage (new structure)
+    #         - ./data:/app/data
+    #         # Mount output directory for backwards compatibility
+    #         - ./output:/app/output
+    #         # Shared memory for Playwright (prevents crashes)
+    #         - /dev/shm:/dev/shm
+    #         - shared_storage:/app/shared
+    #     networks:
+    #         - hawki-network
+    #     depends_on:
+    #         - rabbitmq
+    #     restart: unless-stopped
+    #     healthcheck:
+    #         test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+    #         interval: 30s
+    #         timeout: 10s
+    #         retries: 3
+    #         start_period: 40s
 
     # -------------------------------------------------
     # Qdrant Vector DB
@@ -392,7 +392,9 @@ services:
     # NOTE: All RAWKI services are defined in this single compose file.
 
 volumes:
-    shared_storage:     # Shared Laravel storage <-> Crawler
+    shared_storage:
+        external: true     # Shared Laravel storage <-> Crawler
+        name: rawki_shared_storage
     redis_data:
     rabbitmq_data:      # RabbitMQ persistent data
     rabbitmq_logs:      # RabbitMQ logs
