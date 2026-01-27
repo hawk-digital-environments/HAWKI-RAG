@@ -167,6 +167,22 @@
         .stat-row:last-child { border-bottom: none; }
         .stat-label { color: #e2e8f0; }
         .stat-value { color: #a5b4fc; font-variant-numeric: tabular-nums; }
+        .ingest-actions {
+            display: flex;
+            flex-direction: column;
+            align-items: stretch;
+            gap: 0.6rem;
+            max-width: 220px;
+        }
+        .ingest-actions button {
+            width: 100%;
+        }
+        .ingest-action-note {
+            display: inline-block;
+            margin-top: 0.7rem;
+            font-size: 0.9rem;
+            color: #bae6fd;
+        }
         @media (max-width: 1100px) {
             body { overflow: auto; }
             .layout {
@@ -208,11 +224,12 @@
                             <input id="ingest-collection" type="text" placeholder="Defaults to folder name" style="width:100%; border-radius:0.8rem; border:1px solid rgba(148,163,184,0.22); background:rgba(15,23,42,0.78); color:inherit; padding:0.7rem 0.8rem;" />
                         </div>
                         <div style="margin-top: 1rem;">
-                            <button type="button" id="ingest-btn">Start ingest</button>
-                            <button type="button" id="mcp-ingest-btn" style="margin-left:0.6rem; background: linear-gradient(135deg, #22c55e, #0ea5e9);">Start MCP ingest</button>
-                            <button type="button" id="ingest-stop-btn" style="margin-left:0.6rem; background: linear-gradient(135deg, #f97316, #ef4444);">Stop ingest</button>
-                            <button type="button" id="ingest-delete-btn" style="margin-left:0.6rem; background: linear-gradient(135deg, #f43f5e, #be123c);">Delete folder</button>
-                            <span id="ingest-action" style="margin-left:0.8rem; font-size:0.9rem; color:#bae6fd;"></span>
+                            <div class="ingest-actions">
+                                <button type="button" id="ingest-btn">Start ingest</button>
+                                <button type="button" id="ingest-stop-btn" style="background: linear-gradient(135deg, #f97316, #ef4444);">Stop ingest</button>
+                                <button type="button" id="ingest-delete-btn" style="background: linear-gradient(135deg, #f43f5e, #be123c);">Delete folder</button>
+                            </div>
+                            <span id="ingest-action" class="ingest-action-note"></span>
                         </div>
                     </div>
 
@@ -859,7 +876,7 @@
             }
         });
 
-        mcpIngestBtn.addEventListener('click', async () => {
+        if (mcpIngestBtn) mcpIngestBtn.addEventListener('click', async () => {
             const path = ingestFolder.value;
             if (!path) {
                 ingestAction.textContent = 'Select a folder first.';

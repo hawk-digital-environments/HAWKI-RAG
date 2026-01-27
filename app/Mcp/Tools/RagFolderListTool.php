@@ -39,6 +39,9 @@ class RagFolderListTool extends Tool
             if (!$includeHidden && str_starts_with($name, '.')) {
                 continue;
             }
+            if (preg_match('/^sitemaps?$/i', $name)) {
+                continue;
+            }
             $items[] = [
                 'name' => $name,
                 'path' => $dir,

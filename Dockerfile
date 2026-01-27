@@ -60,10 +60,13 @@ RUN chown -R www-data:www-data \
 # Copy supervisor config
 COPY docker/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 COPY docker/php-custom.ini /usr/local/etc/php/conf.d/zz-rawki.ini
+COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
 
 EXPOSE 9000
 
-# Run supervisor (which will start php-fpm)
+# Run entrypoint (fixes permissions) then supervisor (starts php-fpm)
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
 
 # Python RAG API (FastAPI bridge / RAG-Anything)

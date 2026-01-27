@@ -19,6 +19,9 @@ class IngestController extends Controller
             if (str_starts_with($name, '.')) {
                 continue;
             }
+            if (preg_match('/^sitemaps?$/i', $name)) {
+                continue;
+            }
             $folders[] = [
                 'name' => $name,
                 'path' => $dir,
