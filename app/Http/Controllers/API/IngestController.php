@@ -118,6 +118,7 @@ class IngestController extends Controller
             'path' => 'required|string',
             'collection' => 'sometimes|string',
             'provider' => 'sometimes|string',
+            'embedding_model' => 'sometimes|string',
             'graph' => 'sometimes|boolean',
             'graph_engine' => 'sometimes|string',
             'chunk_chars' => 'sometimes|integer',
@@ -162,6 +163,10 @@ class IngestController extends Controller
         if (!empty($data['provider'])) {
             $cmd[] = '--provider';
             $cmd[] = (string) $data['provider'];
+        }
+        if (!empty($data['embedding_model'])) {
+            $cmd[] = '--embedding-model';
+            $cmd[] = (string) $data['embedding_model'];
         }
         if (!empty($data['graph_engine'])) {
             $cmd[] = '--graph-engine';

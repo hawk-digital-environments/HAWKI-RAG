@@ -529,6 +529,7 @@ def main():
     ap.add_argument("--root", required=True, help="Path to local crawled-data root")
     ap.add_argument("--base-url", default="http://localhost:8009", help="LightRAG base URL (default: http://localhost:8009)")
     ap.add_argument("--provider", default="ollama", help="Embedding/LLM provider name (beware that gwdg is only for chat completio)")
+    ap.add_argument("--embedding-model", default=None, help="Embedding model override (e.g. bge-m3, qwen3-embedding)")
     ap.add_argument("--graph", action="store_true", help="Enable KG extraction during ingest")
     ap.add_argument("--graph-engine", default="raganything", help="Graph engine")
     ap.add_argument("--collection", default=None, help="Qdrant collection override")
@@ -633,6 +634,8 @@ def main():
         "chunk_chars": int(args.chunk_chars),
         "chunk_overlap": int(args.chunk_overlap),
     }
+    if args.embedding_model:
+        options["embedding_model"] = args.embedding_model
     if args.collection:
         options["collection"] = args.collection
     if args.dry:

@@ -560,6 +560,7 @@ class IngestDoc(BaseModel):
 class IngestRequest(BaseModel):
     docs: List[IngestDoc]
     provider: str = Field(default=os.environ.get("RAG_DEFAULT_PROVIDER", "ollama"))
+    embedding_model: str | None = None
     collection: str | None = None
     distance: str = Field(default=os.environ.get("QDRANT_DISTANCE", "Cosine"))
     chunk_chars: int = 3200
@@ -848,6 +849,8 @@ def ingest(body: IngestRequest):
                         })
 
     provider = get_provider(body.provider)
+    if body.embedding_model and hasattr(provider, "embed_model"):
+        provider.embed_model = body.embedding_model.strip()
     points: List[Dict[str, Any]] = []
     vector_size: int | None = None
     point_counter = 1

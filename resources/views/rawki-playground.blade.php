@@ -203,6 +203,10 @@
                 <h2>Ingestion</h2>
                 <div class="panel-body">
                     <div class="subsection">
+                        @php
+                            $embedModels = config('rawki.embedding_models', ['bge-m3']);
+                            $embedDefault = config('rawki.embedding_default', $embedModels[0] ?? null);
+                        @endphp
                         <h3 style="margin-top:0;">Ingest Data</h3>
                         <p style="margin: 0 0 0.8rem; font-size: 0.9rem; color: #bae6fd;">
                             Select a folder under the shared crawl volume and start ingestion.
@@ -222,6 +226,14 @@
                         <div style="margin-top: 1rem;">
                             <label for="ingest-collection">Qdrant collection name</label>
                             <input id="ingest-collection" type="text" placeholder="Defaults to folder name" style="width:100%; border-radius:0.8rem; border:1px solid rgba(148,163,184,0.22); background:rgba(15,23,42,0.78); color:inherit; padding:0.7rem 0.8rem;" />
+                        </div>
+                        <div style="margin-top: 1rem;">
+                            <label for="ingest-embedding-model">Embedding model</label>
+                            <select id="ingest-embedding-model" style="width:100%; border-radius:0.8rem; border:1px solid rgba(148,163,184,0.22); background:rgba(15,23,42,0.78); color:inherit; padding:0.7rem 0.8rem;">
+                                @foreach ($embedModels as $model)
+                                    <option value="{{ $model }}" {{ $model === $embedDefault ? 'selected' : '' }}>{{ $model }}</option>
+                                @endforeach
+                            </select>
                         </div>
                         <div style="margin-top: 1rem;">
                             <div class="ingest-actions">
@@ -382,6 +394,7 @@
         const ingestAction = document.getElementById('ingest-action');
         const ingestGraph = document.getElementById('ingest-graph');
         const ingestCollection = document.getElementById('ingest-collection');
+        const ingestEmbeddingModel = document.getElementById('ingest-embedding-model');
         const mcpIngestBtn = document.getElementById('mcp-ingest-btn');
         const mcpClearBtn = document.getElementById('mcp-clear-btn');
         const ingestClearBtn = document.getElementById('ingest-clear-btn');
@@ -857,6 +870,7 @@
                     body: JSON.stringify({
                         path,
                         collection: collectionName,
+                        embedding_model: ingestEmbeddingModel ? ingestEmbeddingModel.value : undefined,
                         graph: ingestGraph.checked,
                     }),
                 });
