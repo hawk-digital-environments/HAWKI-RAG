@@ -11,5 +11,5 @@ return [
     'embedding_models' => array_values(array_filter(array_map('trim', explode(',', env('RAWKI_EMBED_MODELS', env('OLLAMA_EMBED_MODEL', 'bge-m3')))))),
     'embedding_default' => env('RAWKI_EMBED_MODEL', env('OLLAMA_EMBED_MODEL', 'bge-m3')),
     'pipeline_status_path' => env('RAWKI_PIPELINE_STATUS_PATH', storage_path('logs/pipeline_status.json')),
-
+    'rawki_bridge_url' => env('RAWKI_BRIDGE_URL', 'http://rawki_bridge:8000'),
 ];
