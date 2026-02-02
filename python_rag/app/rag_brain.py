@@ -647,9 +647,12 @@ def query_documents(body: Any, *, rag_service: Any, get_provider) -> Dict[str, A
     timings["qdrant_ms"] = (time.perf_counter() - t_qdrant_start) * 1000
 
     structural_limit = int(os.environ.get("RAG_STRUCTURAL_LIMIT", max(body.top_k * 2, 12)))
-    structural_hops = int(os.environ.get("RAG_STRUCTURAL_HOPS", "2"))
+    if body.structural_hops is not None:
+        structural_hops = max(0, int(body.structural_hops))
+    else:
+        structural_hops = int(os.environ.get("RAG_STRUCTURAL_HOPS", "2"))
     t_graph_start = time.perf_counter()
-    structural_hits = [] if body.fast_mode else _build_structural_hits(
+    structural_hits = [] if body.fast_mode or structural_hops == 0 else _build_structural_hits(
         query_terms,
         limit=structural_limit,
         hops=structural_hops,

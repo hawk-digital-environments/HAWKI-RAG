@@ -9,7 +9,12 @@ use Laravel\Mcp\Server\Tool;
 use Laravel\Mcp\Server\Tools\Annotations\Title;
 use Laravel\Mcp\Server\Tools\ToolInputSchema;
 use Laravel\Mcp\Server\Tools\ToolResult;
+use App\Mcp\Tools\McpToolHelpers;
 
+/**
+ * Summary: MCP tool that queries the RAWKI bridge with depth-aware search.
+ * Depth controls retrieval cost and graph usage.
+ */
 #[Title('Rawki Query Search Tool')]
 class RawkiSearchTool extends Tool
 {
@@ -51,22 +56,38 @@ class RawkiSearchTool extends Tool
 
     public function handle(array $arguments): ToolResult
     {
-        $query = trim((string) ($arguments['query'] ?? ''));
+        // Required query input
+        $query = McpToolHelpers::trimString($arguments['query'] ?? null);
         if ($query === '') {
             return ToolResult::error('query is required');
         }
 
         try{
+            $depth = McpToolHelpers::clampInt((int) ($arguments['depth'] ?? 2), 1, 5);
+            $topK = McpToolHelpers::clampInt((int) ($arguments['top_k'] ?? 5), 1, 50);
+
+            // Depth drives graph usage + retrieval breadth.
+            // depth 1-2: fast mode (vector-only)
+            // depth 3-5: enable graph traversal + smart lookup
+            $fastMode = $depth <= 2;
+            $smartLookup = $depth >= 3;
+            $topK = $topK + ($depth >= 4 ? 5 : 0);
+
             $payload = [
                 'query' => $query,
-                'top_k' => (int) ($arguments['top_k'] ?? 5),
+                'top_k' => $topK,
                 'provider' => 'ollama',
-                'filters' => is_array($arguments['filters'] ?? null) ? $arguments['filters'] : [],
+                'filters' => McpToolHelpers::toArray($arguments['filters'] ?? null),
                 'generate' => false,
                 'reranker' => 'external',
                 'rerank_top_n' => 20,
+                'fast_mode' => $fastMode,
+                'smart_lookup' => $smartLookup,
+                // Fast mode explicitly disables graph traversal.
+                'structural_hops' => $fastMode ? 0 : null,
             ];
-            $baseUrl = config('rawki.rawki_bridge_url');
+            $payload = array_filter($payload, static fn ($value) => $value !== null);
+            $baseUrl = McpToolHelpers::rawkiBridgeBaseUrl();
             $response = Http::timeout(60)->post($baseUrl.'/query', $payload);
 
             if (! $response->successful()) {

@@ -62,6 +62,7 @@ class QueryRequest(BaseModel):
     is_optimized: bool = False
     fast_mode: bool = False
     smart_lookup: bool = False
+    structural_hops: int | None = None
     preferred_tags: List[str] | None = None
     # Reranker options: none | cosine | external | jina
     reranker: str = Field(default=os.environ.get("RERANKER_MODE", "none"))
