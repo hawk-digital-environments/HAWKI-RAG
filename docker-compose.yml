@@ -30,6 +30,10 @@ services:
             dockerfile: Dockerfile
             target: laravel-app
         container_name: hawki_app
+        ulimits:
+            nofile:
+                soft: 65535
+                hard: 65535
         volumes:
             - .:/var/www
             # Shared volume with crawler (Laravel public storage)

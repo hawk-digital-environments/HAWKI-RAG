@@ -75,6 +75,7 @@ up-rag:
 	@echo $(PROFILE_MESSAGE)
 	@docker compose -f $(OPS_COMPOSE) --env-file $(ENV_FILE) build rawki_rerank rawki_bridge raganything_api raganything_api_gpu || true
 	@docker compose -f $(OPS_COMPOSE) --env-file $(ENV_FILE) up -d
+	@docker network connect hawki-network hawki-toolkit-file-converter-file-converter-1 >/dev/null 2>&1 || true
 
 health:
 	@echo "Checking Qdrant..." && curl -fsS http://localhost:6333/readyz && echo " OK" || (echo " FAIL" && exit 1)
