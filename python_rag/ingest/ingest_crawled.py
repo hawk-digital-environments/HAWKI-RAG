@@ -773,8 +773,6 @@ def main():
             "fetch_time": fetch_time,
             "content_hash": first_str(meta.get("content_hash")),
             "pdfs": pdfs_list,
-            "page_url_text": page_url or rel,
-            "title_text": title,
             "source_url": source_url or page_url or rel,
             "date": date,
             "meta_img_url_text": meta_img,
