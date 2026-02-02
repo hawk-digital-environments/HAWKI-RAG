@@ -47,6 +47,7 @@ class IngestRequest(BaseModel):
     distance: str = Field(default=os.environ.get("QDRANT_DISTANCE", "Cosine"))
     chunk_chars: int = 3200
     chunk_overlap: int = 250
+    batch_size: int = Field(default=int(os.environ.get("INGEST_BATCH_SIZE", "64")))
     graph: bool = False
     graph_engine: str = Field(default=os.environ.get("GRAPH_ENGINE", "raganything"))
     dry_run: bool = False

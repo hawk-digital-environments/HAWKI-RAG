@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Str;
 use Symfony\Component\Process\Process;
 
 class IngestController extends Controller
@@ -56,41 +58,35 @@ class IngestController extends Controller
 
     private function listLiveIngestions(): array
     {
-        $statusPath = (string) config('rawki.ingest_status_path', storage_path('logs/ingest_status.json'));
-        if (!is_file($statusPath)) {
+        $entries = $this->loadStatusEntries();
+        if (!$entries) {
             return [];
         }
 
-        $statusRaw = @file_get_contents($statusPath);
-        $status = $statusRaw ? json_decode($statusRaw, true) : null;
-        if (!is_array($status)) {
-            return [];
+        $live = [];
+        foreach ($entries as $entry) {
+            if (!is_array($entry)) {
+                continue;
+            }
+            $statusValue = $entry['status'] ?? null;
+            if ($statusValue !== 'running') {
+                continue;
+            }
+            $pid = $entry['pid'] ?? null;
+            $pidValue = ($pid && is_numeric($pid)) ? (int) $pid : null;
+            $live[] = [
+                'pid' => $pidValue,
+                'path' => $entry['path'] ?? null,
+                'status' => $statusValue,
+                'started_at' => $entry['started_at'] ?? null,
+                'updated_at' => $entry['updated_at'] ?? null,
+                'source' => $entry['source'] ?? ($pidValue ? 'api' : 'mcp'),
+                'alive' => null,
+                'collection' => $entry['collection'] ?? null,
+            ];
         }
 
-        $pid = $status['pid'] ?? null;
-        $updatedAt = $status['updated_at'] ?? null;
-        $updatedTs = $updatedAt ? strtotime($updatedAt) : false;
-        $recentThreshold = time() - 300;
-
-        if ($pid && is_numeric($pid)) {
-            if (!$this->isPidAlive((int) $pid)) {
-                return [];
-            }
-        } else {
-            $isRunning = ($status['status'] ?? null) === 'running';
-            if (!$isRunning || !$updatedTs || $updatedTs < $recentThreshold) {
-                return [];
-            }
-        }
-
-        return [[
-            'pid' => $pid && is_numeric($pid) ? (int) $pid : null,
-            'path' => $status['path'] ?? null,
-            'status' => $status['status'] ?? null,
-            'started_at' => $status['started_at'] ?? null,
-            'updated_at' => $status['updated_at'] ?? null,
-            'source' => $pid && is_numeric($pid) ? 'api' : 'mcp',
-        ]];
+        return $live;
     }
 
     public function folders(): JsonResponse
@@ -149,6 +145,7 @@ class IngestController extends Controller
 
         $cmd = [
             'python3',
+            '-u',
             $script,
             '--root', $path,
             '--base-url', $baseUrl,
@@ -196,17 +193,25 @@ class IngestController extends Controller
         $cmd[] = '--summary-file';
         $cmd[] = $summaryPath;
 
-        $status = [
-            'started_at' => now()->toIso8601String(),
-            'updated_at' => now()->toIso8601String(),
+        $collectionExists = $this->collectionExistsInQdrant((string) $collection);
+        $now = now()->toIso8601String();
+        $entry = [
+            'id' => (string) Str::uuid(),
+            'started_at' => $now,
+            'updated_at' => $now,
             'status' => 'running',
             'progress' => null,
             'last_line' => null,
             'summary_path' => $summaryPath,
             'command' => $cmd,
             'path' => $path,
+            'collection' => (string) $collection,
+            'collection_exists' => $collectionExists,
+            'source' => 'api',
         ];
-        File::put($statusPath, json_encode($status, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+        $entries = $this->loadStatusEntries();
+        $entries[] = $entry;
+        $this->saveStatusEntries($entries);
         File::append($logPath, 'INGEST_STARTED ' . $path . PHP_EOL);
 
         $escaped = array_map('escapeshellarg', $cmd);
@@ -215,20 +220,35 @@ class IngestController extends Controller
         $process->setTimeout(null);
         $process->start();
 
-        $status['pid'] = $process->getPid();
-        $status['updated_at'] = now()->toIso8601String();
-        File::put($statusPath, json_encode($status, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+        $entry['pid'] = $process->getPid();
+        $entry['updated_at'] = now()->toIso8601String();
+        $entries = $this->loadStatusEntries();
+        foreach ($entries as &$existing) {
+            if (is_array($existing) && ($existing['id'] ?? null) === $entry['id']) {
+                $existing = $entry;
+                break;
+            }
+        }
+        unset($existing);
+        $this->saveStatusEntries($entries);
 
         return response()->json([
             'ok' => true,
             'pid' => $process->getPid(),
             'status_path' => $statusPath,
             'log_path' => $logPath,
+            'collection_exists' => $collectionExists,
         ]);
     }
 
-    public function stop(): JsonResponse
+    public function stop(Request $request): JsonResponse
     {
+        $data = $request->validate([
+            'pid' => 'sometimes|integer|min:1',
+            'pids' => 'sometimes|array',
+            'pids.*' => 'integer|min:1',
+        ]);
+
         $liveBefore = $this->listLiveIngestions();
         if (!$liveBefore) {
             return response()->json([
@@ -238,33 +258,42 @@ class IngestController extends Controller
             ], 404);
         }
 
-        $statusPath = (string) config('rawki.ingest_status_path', storage_path('logs/ingest_status.json'));
-        if (!is_file($statusPath)) {
-            return response()->json([
-                'ok' => false,
-                'message' => 'No ingest status found.',
-                'live_ingestions' => $liveBefore,
-            ], 404);
+        $targetPids = [];
+        if (!empty($data['pids']) && is_array($data['pids'])) {
+            $targetPids = array_values(array_filter($data['pids'], 'is_numeric'));
+        } elseif (!empty($data['pid'])) {
+            $targetPids = [(int) $data['pid']];
+        }
+        if (!$targetPids) {
+            $targetPids = array_values(array_filter(array_map(function ($item) {
+                return isset($item['pid']) ? (int) $item['pid'] : null;
+            }, $liveBefore)));
         }
 
-        $statusRaw = @file_get_contents($statusPath);
-        $status = $statusRaw ? json_decode($statusRaw, true) : null;
-        $pid = is_array($status) ? ($status['pid'] ?? null) : null;
-        if (!$pid || !is_numeric($pid)) {
-            return response()->json(['ok' => false, 'message' => 'No ingest process id found.'], 422);
+        $stoppedCount = 0;
+        $stoppedPids = [];
+        foreach ($targetPids as $pid) {
+            $pid = (int) $pid;
+            $stopped = false;
+            if ($pid > 0 && function_exists('posix_kill')) {
+                $stopped = @posix_kill($pid, SIGTERM);
+            }
+            if (!$stopped && $pid > 0) {
+                @exec('kill -TERM ' . $pid, $out, $code);
+                $stopped = ($code === 0);
+            }
+            if ($stopped) {
+                $stoppedCount += 1;
+                $stoppedPids[] = $pid;
+            }
         }
 
-        $pid = (int) $pid;
-        $stopped = false;
-        if (function_exists('posix_kill')) {
-            $stopped = @posix_kill($pid, SIGTERM);
-        }
-        if (!$stopped) {
-            @exec('kill -TERM ' . $pid, $out, $code);
-            $stopped = ($code === 0);
+        if ($stoppedCount === 0) {
+            $stoppedCount = $this->stopByCommandMatch('ingest_crawled.py');
+            $stoppedPids = $stoppedCount > 0 ? $targetPids : [];
         }
 
-        if (!$stopped) {
+        if ($stoppedCount === 0) {
             return response()->json([
                 'ok' => false,
                 'message' => 'Failed to stop ingest process.',
@@ -272,17 +301,98 @@ class IngestController extends Controller
             ], 500);
         }
 
-        if (is_array($status)) {
-            $status['status'] = 'stopped';
-            $status['updated_at'] = now()->toIso8601String();
-            File::put($statusPath, json_encode($status, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+        $entries = $this->loadStatusEntries();
+        $now = now()->toIso8601String();
+        foreach ($entries as &$entry) {
+            if (!is_array($entry)) {
+                continue;
+            }
+            $pid = isset($entry['pid']) ? (int) $entry['pid'] : null;
+            if ($pid && in_array($pid, $stoppedPids, true)) {
+                $entry['status'] = 'stopped';
+                $entry['updated_at'] = $now;
+            }
         }
+        unset($entry);
+        $this->saveStatusEntries($entries);
 
         return response()->json([
             'ok' => true,
-            'pid' => $pid,
+            'stopped_count' => $stoppedCount,
+            'stopped_pids' => $stoppedPids,
             'live_ingestions' => $liveBefore,
         ]);
+    }
+
+    private function stopByCommandMatch(string $needle): int
+    {
+        $count = 0;
+        foreach (glob('/proc/[0-9]*/cmdline') as $cmdlinePath) {
+            $cmdline = @file_get_contents($cmdlinePath);
+            if (!$cmdline) {
+                continue;
+            }
+            $cmdline = str_replace("\0", " ", $cmdline);
+            if (stripos($cmdline, $needle) === false) {
+                continue;
+            }
+            if (preg_match('~/proc/(\\d+)/cmdline$~', $cmdlinePath, $m)) {
+                $pid = (int) $m[1];
+                if ($pid > 0 && function_exists('posix_kill')) {
+                    if (@posix_kill($pid, SIGTERM)) {
+                        $count += 1;
+                    }
+                }
+            }
+        }
+        return $count;
+    }
+
+    private function loadStatusEntries(): array
+    {
+        $statusPath = (string) config('rawki.ingest_status_path', storage_path('logs/ingest_status.json'));
+        if (!is_file($statusPath)) {
+            return [];
+        }
+        $raw = @file_get_contents($statusPath);
+        $data = $raw ? json_decode($raw, true) : null;
+        if (is_array($data) && array_key_exists('ingests', $data) && is_array($data['ingests'])) {
+            return $data['ingests'];
+        }
+        if (is_array($data)) {
+            return [$data];
+        }
+        return [];
+    }
+
+    private function saveStatusEntries(array $entries): void
+    {
+        $statusPath = (string) config('rawki.ingest_status_path', storage_path('logs/ingest_status.json'));
+        File::put($statusPath, json_encode(['ingests' => array_values($entries)], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+    }
+
+    private function collectionExistsInQdrant(string $collection): bool
+    {
+        $collection = trim($collection);
+        if ($collection === '') {
+            return false;
+        }
+        $baseUrl = rtrim((string) env('QDRANT_HTTP_URL', 'http://qdrant:6333'), '/');
+        try {
+            $resp = Http::timeout(3)->get($baseUrl . '/collections');
+            if (!$resp->successful()) {
+                return false;
+            }
+            $data = $resp->json();
+            foreach (($data['result']['collections'] ?? []) as $col) {
+                if (($col['name'] ?? null) === $collection) {
+                    return true;
+                }
+            }
+        } catch (\Throwable $e) {
+            return false;
+        }
+        return false;
     }
 
     public function live(): JsonResponse

@@ -268,29 +268,6 @@
                 <h2>Logs</h2>
                 <div class="panel-body">
                     <div class="subsection">
-                        <h3 style="margin-top:0;">Live Activity</h3>
-                        <p style="margin: 0 0 0.6rem; font-size: 0.9rem; color: #bae6fd;">
-                            Rolling feed of the latest updates from MCP, ingest, and RAG stats.
-                        </p>
-                        <div id="activity-feed" class="activity-feed"></div>
-                        <div style="margin-top: 0.8rem;">
-                            <button type="button" id="activity-clear-btn" style="background: linear-gradient(135deg, #f97316, #ef4444);">Clear activity</button>
-                        </div>
-                    </div>
-
-                    <div class="subsection">
-                        <h3 style="margin-top:0;">MCP Monitor</h3>
-                        <p style="margin: 0 0 0.6rem; font-size: 0.9rem; color: #bae6fd;">
-                            Latest MCP tool call from <code>processRAG_log.txt</code>.
-                        </p>
-                        <div class="badge" id="mcp-latest">No MCP activity yet.</div>
-                        <div id="mcp-log" style="margin-top: 0.9rem; display: grid; gap: 0.5rem;"></div>
-                        <div style="margin-top: 0.8rem;">
-                            <button type="button" id="mcp-clear-btn" style="background: linear-gradient(135deg, #f97316, #ef4444);">Clear MCP logs</button>
-                        </div>
-                    </div>
-
-                    <div class="subsection">
                         <h3 style="margin-top:0;">Ingest Monitor</h3>
                         <p style="margin: 0 0 0.6rem; font-size: 0.9rem; color: #bae6fd;">
                             Live ingest progress (Qdrant/Neo4j) from <code>ingest_status.json</code>.
@@ -310,6 +287,19 @@
                         <div id="ingest-live-status" class="badge">No running ingest process.</div>
                         <div id="ingest-live-list" style="margin-top: 0.8rem; display: grid; gap: 0.5rem;"></div>
                     </div>
+
+                    <div class="subsection">
+                        <h3 style="margin-top:0;">Live Activity</h3>
+                        <p style="margin: 0 0 0.6rem; font-size: 0.9rem; color: #bae6fd;">
+                            Rolling feed of the latest updates from MCP, ingest, and RAG stats.
+                        </p>
+                        <div id="activity-feed" class="activity-feed"></div>
+                        <div style="margin-top: 0.8rem;">
+                            <button type="button" id="activity-clear-btn" style="background: linear-gradient(135deg, #f97316, #ef4444);">Clear activity</button>
+                        </div>
+                    </div>
+
+                    <!-- MCP Monitor removed -->
                 </div>
             </section>
 
@@ -410,6 +400,8 @@
         let activityHistory = [];
         const lastActivityBySource = new Map();
         let lastRagStatsHash = '';
+        let lastIngestStatus = null;
+        let lastLiveIngestions = [];
 
         function badge(text) {
             const span = document.createElement('span');
@@ -704,28 +696,7 @@
         });
 
         async function pollMcpMonitor() {
-            try {
-                const response = await fetch('/api/mcp/monitor', {
-                    headers: { 'Accept': 'application/json' },
-                });
-                if (!response.ok) return;
-                const data = await response.json();
-                if (data && data.latest) {
-                    mcpLatest.textContent = data.latest;
-                    pushActivity('MCP', data.latest);
-                }
-                if (Array.isArray(data.lines) && data.lines.length) {
-                    mcpLog.innerHTML = '';
-                    data.lines.slice(-10).forEach((line) => {
-                        const item = document.createElement('div');
-                        item.className = 'badge';
-                        item.textContent = line;
-                        mcpLog.appendChild(item);
-                    });
-                }
-            } catch (error) {
-                // Ignore polling errors to keep UI responsive.
-            }
+            // MCP monitor removed from UI.
         }
 
         function formatProgress(progress) {
@@ -749,10 +720,14 @@
                 const data = await response.json();
                 const status = data ? data.status : null;
                 if (status) {
+                    lastIngestStatus = status;
                     const state = status.status || 'unknown';
                     const updated = status.updated_at || '';
                     ingestStatus.textContent = `status: ${state}${updated ? ` · ${updated}` : ''}`;
                     pushActivity('Ingest', `status: ${state}${updated ? ` · ${updated}` : ''}`);
+                }
+                if (!status) {
+                    lastIngestStatus = null;
                 }
 
                 ingestProgress.innerHTML = '';
@@ -799,13 +774,24 @@
                 });
                 if (!response.ok) return;
                 const data = await response.json();
-                const live = (data && data.live_ingestions) || [];
+                let live = (data && data.live_ingestions) || [];
+                lastLiveIngestions = Array.isArray(live) ? live : [];
+                if (!live.length && lastIngestStatus && (lastIngestStatus.pid || lastIngestStatus.path)) {
+                    live = [{
+                        pid: lastIngestStatus.pid || null,
+                        path: lastIngestStatus.path || null,
+                        status: lastIngestStatus.status || null,
+                        source: 'status',
+                        alive: lastIngestStatus.status === 'running' ? null : false,
+                    }];
+                }
                 ingestLiveList.innerHTML = '';
                 if (!live.length) {
-                    ingestLiveStatus.textContent = 'No running ingest process.';
+                    ingestLiveStatus.textContent = 'No ingest status available.';
                     return;
                 }
-                ingestLiveStatus.textContent = `running: ${live.length}`;
+                const runningCount = live.filter(item => item.alive === true || (item.alive === null && item.status === 'running')).length;
+                ingestLiveStatus.textContent = `running: ${runningCount} · last seen: ${live.length}`;
                 live.forEach((item) => {
                     const row = document.createElement('div');
                     row.className = 'badge';
@@ -813,7 +799,9 @@
                     const name = path ? path.split('/').filter(Boolean).pop() : 'unknown';
                     const pidLabel = item.pid ? `pid ${item.pid}` : 'pid n/a';
                     const sourceLabel = item.source ? ` · ${item.source}` : '';
-                    row.textContent = `${name} · ${pidLabel}${sourceLabel}`;
+                    const aliveLabel = item.alive === true ? ' · running' : (item.alive === false ? ' · stopped' : '');
+                    const collectionLabel = item.collection ? ` · ${item.collection}` : '';
+                    row.textContent = `${name} · ${pidLabel}${sourceLabel}${collectionLabel}${aliveLabel}`;
                     ingestLiveList.appendChild(row);
                 });
             } catch (error) {
@@ -947,7 +935,23 @@
             ingestStopBtn.disabled = true;
             ingestAction.textContent = 'Stopping ingest…';
             try {
-                const response = await fetch('/api/ingest/stop', { method: 'POST' });
+                const stopPayload = {};
+                const livePids = Array.isArray(lastLiveIngestions)
+                    ? lastLiveIngestions.map(item => item.pid).filter(Boolean)
+                    : [];
+                if (livePids.length) {
+                    stopPayload.pids = livePids;
+                } else if (lastIngestStatus && lastIngestStatus.pid) {
+                    stopPayload.pid = lastIngestStatus.pid;
+                }
+                const response = await fetch('/api/ingest/stop', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                    },
+                    body: JSON.stringify(stopPayload),
+                });
                 const data = await response.json();
                 const liveSummary = summarizeLiveIngestions(data && data.live_ingestions);
                 if (liveSummary) {
@@ -1010,8 +1014,7 @@
             }
         });
 
-        pollMcpMonitor();
-        setInterval(pollMcpMonitor, 4000);
+        // MCP monitor removed from UI.
         pollIngestStatus();
         setInterval(pollIngestStatus, 4000);
         pollIngestLive();
@@ -1022,19 +1025,9 @@
         pollRagStats();
         setInterval(pollRagStats, 7000);
 
-        mcpClearBtn.addEventListener('click', async () => {
-            mcpClearBtn.disabled = true;
-            try {
-                await fetch('/api/mcp/monitor/clear', { method: 'POST' });
-                mcpLatest.textContent = 'No MCP activity yet.';
-                mcpLog.innerHTML = '';
-                pushActivity('MCP', 'MCP logs cleared');
-            } catch (error) {
-                // Ignore failures.
-            } finally {
-                mcpClearBtn.disabled = false;
-            }
-        });
+        if (mcpClearBtn) {
+            mcpClearBtn.addEventListener('click', async () => {});
+        }
 
         ingestClearBtn.addEventListener('click', async () => {
             ingestClearBtn.disabled = true;

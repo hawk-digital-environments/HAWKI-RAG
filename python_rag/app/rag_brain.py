@@ -325,7 +325,7 @@ def ingest_documents(
     if total_chunks == 0:
         raise HTTPException(400, detail="No valid content to ingest")
 
-    batch_size = 64
+    batch_size = max(1, int(body.batch_size or 64))
 
     if dry_run:
         summary: Dict[str, Any] = {

@@ -16,7 +16,15 @@ class IngestStatusController extends Controller
         $status = null;
         if (is_file($statusPath)) {
             $raw = @file_get_contents($statusPath);
-            $status = $raw ? json_decode($raw, true) : null;
+            $decoded = $raw ? json_decode($raw, true) : null;
+            if (is_array($decoded) && array_key_exists('ingests', $decoded) && is_array($decoded['ingests'])) {
+                $ingests = $decoded['ingests'];
+                if ($ingests) {
+                    $status = $ingests[count($ingests) - 1];
+                }
+            } else {
+                $status = $decoded;
+            }
         }
 
         $lines = $this->tailLines($logPath, 40);

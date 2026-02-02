@@ -118,8 +118,8 @@ def _queue_doc(
     doc_id = make_doc_id(source_url if source_url and source_url != page_url else page_url, rel)
 
     payload = {
-        "title": title_list,
-        "page_url": page_url_list,
+        "title": title,
+        "page_url": page_url,
         "url_hash": first_str(meta.get("url_hash")),
         "canonical_url": first_str(meta.get("canonical_url")),
         "meta_img_url": meta_img_list,

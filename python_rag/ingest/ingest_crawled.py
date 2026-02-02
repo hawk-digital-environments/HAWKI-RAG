@@ -35,6 +35,74 @@ def read_text_file(p: Path) -> str:
             return ""
 
 
+def _looks_like_path_list(text: str) -> bool:
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    if len(lines) < 3:
+        return False
+    pathish = 0
+    for line in lines:
+        if line.startswith(("/", "\\\\")) or re.match(r"^[A-Za-z]:\\\\", line):
+            pathish += 1
+            continue
+        lowered = line.lower()
+        if "/app/shared/" in lowered or "/var/www/" in lowered:
+            pathish += 1
+            continue
+        if lowered.endswith((".pdf", ".doc", ".docx", ".ppt", ".pptx")):
+            pathish += 1
+            continue
+    return (pathish / max(len(lines), 1)) >= 0.6
+
+
+def _pick_json_meta(dir_path: Path) -> Tuple[Optional[Path], Dict[str, Any]]:
+    json_files = [f for f in dir_path.iterdir() if f.is_file() and f.suffix.lower() == ".json"]
+    json_files = [f for f in json_files if f.name != "conversion_meta.json"]
+    if not json_files:
+        return None, {}
+
+    preferred_names = ("page.json", "metadata.json", "meta.json", "page_meta.json")
+    for name in preferred_names:
+        for f in json_files:
+            if f.name.lower() == name:
+                data = _read_json_file(f)
+                return f, data if isinstance(data, dict) else {}
+
+    best_file = None
+    best_data: Dict[str, Any] = {}
+    for f in json_files:
+        data = _read_json_file(f)
+        if not isinstance(data, dict):
+            continue
+        if any(key in data for key in ("url", "page_url", "title", "content", "text")):
+            return f, data
+        if best_file is None:
+            best_file = f
+            best_data = data
+    return best_file, best_data
+
+
+def _pick_text_file(dir_path: Path) -> Tuple[Optional[Path], str]:
+    # Only ingest markdown files; ignore .txt to avoid path-list artifacts.
+    candidates = [f for f in dir_path.iterdir() if f.is_file() and f.suffix.lower() == ".md"]
+    if candidates:
+        preferred = ("content.md", "converted.md")
+        candidates_by_name = {f.name.lower(): f for f in candidates}
+        for name in preferred:
+            if name in candidates_by_name:
+                fmt = "markdown" if name == "content.md" else "converted_markdown"
+                return candidates_by_name[name], fmt
+        candidates.sort(key=lambda p: p.name.lower())
+        return candidates[0], "markdown"
+
+    # Look for converted_markdown.md under files/ subfolder tree.
+    files_dir = dir_path / "files"
+    if files_dir.is_dir():
+        for path in files_dir.rglob("converted_markdown.md"):
+            if path.is_file():
+                return path, "converted_markdown"
+    return None, ""
+
+
 def load_page_materials(dir_path: Path) -> Tuple[Dict, Optional[Path], Optional[Path], str, str]:
     """
     Reads optional page.json (or any *.json) and first *.md/*.txt content in a folder.
@@ -47,26 +115,26 @@ def load_page_materials(dir_path: Path) -> Tuple[Dict, Optional[Path], Optional[
     source_format = "txt"
 
     # find JSON
-    for f in dir_path.iterdir():
-        if f.is_file() and f.suffix.lower() == ".json":
-            json_path = f
-            break
-    if json_path is not None:
-        try:
-            meta = json.loads(json_path.read_text(encoding="utf-8", errors="ignore"))
-        except Exception:
-            meta = {}
+    json_path, meta = _pick_json_meta(dir_path)
 
-    # find text (md/txt)
-    for f in dir_path.iterdir():
-        if f.is_file() and f.suffix.lower() in {".md", ".txt"}:
-            md_path = f
-            source_format = "markdown" if f.suffix.lower() == ".md" else "txt"
-            break
+    # find text (md/txt), preferring content.md / converted.md
+    md_path, source_format = _pick_text_file(dir_path)
 
     if md_path is not None:
-        text = read_text_file(md_path).strip()
-    elif meta:
+        candidate = read_text_file(md_path).strip()
+        if candidate and not _looks_like_path_list(candidate):
+            text = candidate
+        else:
+            # try other candidates if the chosen text looks like a file list
+            for f in dir_path.iterdir():
+                if f.is_file() and f.suffix.lower() == ".md" and f != md_path:
+                    candidate = read_text_file(f).strip()
+                    if candidate and not _looks_like_path_list(candidate):
+                        md_path = f
+                        source_format = "markdown" if f.suffix.lower() == ".md" else "txt"
+                        text = candidate
+                        break
+    if not text and meta:
         c = meta.get("content") or meta.get("text") or ""
         text = str(c).strip()
         source_format = "txt"
@@ -459,7 +527,7 @@ def run_local_estimate(
         total_chunks += chunk_count
 
     doc_stats["total_chunks"] = total_chunks
-    batch_size = 64
+    batch_size = args.batch
     summary: Dict[str, Any] = {
         "timestamp": utc_now_iso(),
         "estimate_only": True,
@@ -633,6 +701,7 @@ def main():
         "distance": args.distance,
         "chunk_chars": int(args.chunk_chars),
         "chunk_overlap": int(args.chunk_overlap),
+        "batch_size": int(args.batch),
     }
     if args.embedding_model:
         options["embedding_model"] = args.embedding_model
@@ -690,8 +759,8 @@ def main():
             continue
 
         payload = {
-            "title": title_list,
-            "page_url": page_url_list,
+            "title": title,
+            "page_url": page_url,
             "url_hash": first_str(meta.get("url_hash")),
             "canonical_url": first_str(meta.get("canonical_url")),
             "meta_img_url": meta_img_list,
