@@ -22,11 +22,11 @@ class PythonRagClient
 
     public function __construct()
     {
-        $this->base              = config('lightrag.base_url');
-        $this->healthPath        = config('lightrag.health_path');
-        $this->ingestPath        = config('lightrag.ingest_path');
-        $this->queryPath         = config('lightrag.queryPath');
-        $this->graphFromTextPath = config('lightrag.graphFromTextPath');
+        $this->base              = rtrim(env('HAWKI_RAG_BRIDGE_URL', 'http://hawki_rag_bridge:8000'), '/');
+        $this->healthPath        = '/health';
+        $this->ingestPath        = '/ingest';
+        $this->queryPath         = '/query';
+        $this->graphFromTextPath = '/graph/from-text';
         $this->useMcp            = (bool) config('mcp.enabled', true);
         $this->mcpFallback       = (bool) config('mcp.use_fallback', true);
         $this->mcpToolQuery      = (string) config('mcp.tools.rag_query', 'rag-query-tool');

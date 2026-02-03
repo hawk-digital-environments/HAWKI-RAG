@@ -238,7 +238,7 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     ap.add_argument("--base-url", default="http://localhost:8009", help="LightRAG base URL (default: http://localhost:8009)")
     ap.add_argument("--provider", default="ollama", help="Embedding/LLM provider name.")
     ap.add_argument("--graph", action="store_true", help="Enable KG extraction during ingest.")
-    ap.add_argument("--graph-engine", default="lightrag", help="Graph engine to use when --graph is enabled.")
+    ap.add_argument("--graph-engine", default="raganything", help="Graph engine to use when --graph is enabled.")
     ap.add_argument("--collection", default=None, help="Qdrant collection override.")
     ap.add_argument("--distance", default="Cosine", help="Qdrant distance (Cosine|Dot|Euclid).")
     ap.add_argument("--chunk-chars", type=int, default=3200, help="Chunk target size for LightRAG.")

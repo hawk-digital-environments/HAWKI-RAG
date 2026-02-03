@@ -1,11 +1,9 @@
 import logging
 import os
+from pathlib import Path
 from typing import Any, Dict, List, Optional
-
-from config.settings import load_settings
 from core.providers.ollama_provider import OllamaProvider
 from core.providers.gwdg_provider import GWDGProvider
-from lightrag_ext.lightrag_impl import extract_triplets_fallback, extract_triplets_with_lightrag
 
 logger = logging.getLogger(__name__)
 
@@ -59,8 +57,8 @@ class RAGService:
     """Orchestrates RAG components and shared configuration."""
 
     def __init__(self) -> None:
-        self.settings = load_settings()
-        self.working_dir = self.settings.rag_working_dir
+        # Use env-driven working directory without external settings module.
+        self.working_dir = Path(os.environ.get("RAG_WORKING_DIR", "/app/rag_storage")).expanduser()
         self.working_dir.mkdir(parents=True, exist_ok=True)
         self.raganything = self._init_raganything()
 

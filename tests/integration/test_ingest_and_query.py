@@ -5,7 +5,7 @@ import unittest
 import requests
 
 
-SKIP_REASON = "Integration tests require HAWKI_RAG_BRIDGE_URL (or LIGHTRAG_BRIDGE_URL) and services running"
+SKIP_REASON = "Integration tests require HAWKI_RAG_BRIDGE_URL and services running"
 
 def _env(name: str, default: str | None = None) -> str | None:
     value = os.environ.get(name, default)
@@ -24,7 +24,7 @@ class LightRAGIntegrationTests(unittest.TestCase):
     """End-to-end smoke test covering HAWKI RAG ingestion and retrieval."""
     @classmethod
     def setUpClass(cls) -> None:
-        cls.bridge_url = _first_env(["HAWKI_RAG_BRIDGE_URL", "LIGHTRAG_BRIDGE_URL"])
+        cls.bridge_url = _first_env(["HAWKI_RAG_BRIDGE_URL"])
         if not cls.bridge_url:
             raise unittest.SkipTest(SKIP_REASON)
 

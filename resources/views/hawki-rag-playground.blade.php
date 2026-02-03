@@ -906,7 +906,7 @@
                                 provider: 'ollama',
                                 collection: collectionName,
                                 graph: ingestGraph.checked,
-                                graph_engine: 'lightrag',
+                                graph_engine: 'raganything',
                                 chunk_chars: 3200,
                                 chunk_overlap: 100,
                                 batch: 64,

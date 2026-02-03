@@ -252,8 +252,6 @@ services:
         container_name: hawki_rag_rerank
         networks:
             hawki-network:
-                aliases:
-                    - lightrag_rerank
         restart: unless-stopped
         ports:
             - "8008:8000"

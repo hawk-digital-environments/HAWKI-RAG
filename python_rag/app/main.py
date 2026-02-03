@@ -10,7 +10,9 @@ from pydantic import BaseModel, Field
 from core.rag_service import RAGService
 from vectorstore.qdrant_http import QdrantHTTP
 
-from .rag_brain import ingest_documents, query_documents, graph_from_text, delete_document
+from .ingest import ingest_documents, delete_document
+from pipeline.query_logic import query_documents
+from graph.graph_text import graph_from_text
 
 ########################################### CONFIG #####################################
 

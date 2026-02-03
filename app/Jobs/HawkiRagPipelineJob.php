@@ -43,7 +43,7 @@ class HawkiRagPipelineJob implements ShouldQueue
             '--image-exceptions' => $this->payload['image_exceptions'] ?? null,
             '--date' => $this->payload['date'] ?? null,
             '--provider' => $this->payload['provider'] ?? 'ollama',
-            '--graph-engine' => $this->payload['graph_engine'] ?? 'lightrag',
+            '--graph-engine' => $this->payload['graph_engine'] ?? 'raganything',
             '--distance' => $this->payload['distance'] ?? 'Cosine',
             '--chunk-chars' => $this->payload['chunk_chars'] ?? 3200,
             '--chunk-overlap' => $this->payload['chunk_overlap'] ?? 100,

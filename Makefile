@@ -27,7 +27,7 @@ MCP_BASE ?= http://localhost:8080/mcp/hawki_rag
 MCP_INGEST_ROOT ?= /absolute/path/to/crawled-data
 MCP_INGEST_PROVIDER ?= ollama
 MCP_INGEST_GRAPH ?= true
-MCP_INGEST_GRAPH_ENGINE ?= lightrag
+MCP_INGEST_GRAPH_ENGINE ?= raganything
 MCP_INGEST_CHUNK_CHARS ?= 3200
 MCP_INGEST_CHUNK_OVERLAP ?= 100
 MCP_INGEST_BATCH ?= 64
@@ -39,7 +39,7 @@ PIPELINE_OUTPUT_DIR ?=
 PIPELINE_LABEL ?=
 PIPELINE_COLLECTION ?=
 PIPELINE_GRAPH ?= true
-PIPELINE_GRAPH_ENGINE ?= lightrag
+PIPELINE_GRAPH_ENGINE ?= raganything
 PIPELINE_CHUNK_CHARS ?= 3200
 PIPELINE_CHUNK_OVERLAP ?= 100
 PIPELINE_BATCH ?= 64
@@ -150,6 +150,16 @@ pipeline-async:
 	if [ -n "$(PIPELINE_COLLECTION)" ]; then payload="$$payload,\\\"collection\\\":\\\"$(PIPELINE_COLLECTION)\\\""; fi; \
 	payload="$$payload}"; \
 	curl -fsS http://localhost:8080/api/pipeline/start -H "Content-Type: application/json" -d "$$payload" | python3 -m json.tool
+
+prune-missing:
+	@if [ "$(CRAWLED_ROOT)" = "/abs/path/to/crawled-data" ] || [ -z "$(CRAWLED_ROOT)" ]; then echo "Set CRAWLED_ROOT to your crawl path, e.g.: make prune-missing CRAWLED_ROOT=/data/crawl COLLECTION=embeddings_hawk"; exit 1; fi
+	@if [ -z "$(COLLECTION)" ]; then echo "Set COLLECTION to the Qdrant collection name."; exit 1; fi
+	@python3 python_rag/ingest/prune_missing_docs.py \
+		--root $(CRAWLED_ROOT) \
+		--collection $(COLLECTION) \
+		--base-url $(INGEST_BASE) \
+		--qdrant-url http://localhost:6333 \
+		$(if $(DRY),--dry-run,)
 
 logs-core:
 	@$(COMPOSE_CMD) logs -f qdrant mysql hawki_rag_nginx $(OLLAMA_SERVICE) hawki_rag_app

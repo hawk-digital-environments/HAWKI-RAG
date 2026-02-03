@@ -224,7 +224,7 @@ Run them with:
 ```bash
 PYTHONPATH=python_rag python -m unittest tests/test_qdrant_http.py tests/test_neo4j_graph.py
 
-LIGHTRAG_BRIDGE_URL=http://localhost:8004 \
+HAWKI_RAG_BRIDGE_URL=http://localhost:8004 \
 PYTHONPATH=python_rag python -m unittest tests.integration.test_ingest_and_query
 ```
 
