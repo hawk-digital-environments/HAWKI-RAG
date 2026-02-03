@@ -2,7 +2,7 @@
 
 return [
     'enabled' => env('MCP_ENABLED', true),
-    'server' => env('MCP_SERVER', 'rawki'),
+    'server' => env('MCP_SERVER', 'hawki_rag'),
     'route_enabled' => env('MCP_ROUTE_ENABLED', true),
     'base_url' => env('MCP_BASE_URL', rtrim(env('APP_URL', 'http://localhost'), '/') . '/mcp'),
     'timeout' => env('MCP_TIMEOUT', 30),

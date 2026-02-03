@@ -11,14 +11,14 @@ use Laravel\Mcp\Server\Tools\ToolInputSchema;
 use Laravel\Mcp\Server\Tools\ToolResult;
 
 /**
- * Summary: MCP tool that ingests documents into RAWKI via the FastAPI bridge.
+ * Summary: MCP tool that ingests documents into HAWKI RAG via the FastAPI bridge.
  * Use for small batches; folder ingest is handled by RagFolderIngestTool.
  */
 class RagIngestTool extends Tool
 {
     public function description(): string
     {
-        return 'Ingest documents into RAWKI via the FastAPI bridge.';
+        return 'Ingest documents into HAWKI RAG via the FastAPI bridge.';
     }
 
     public function schema(ToolInputSchema $schema): ToolInputSchema
@@ -70,7 +70,7 @@ class RagIngestTool extends Tool
 
         $payload = array_filter($payload, static fn ($value) => $value !== null);
 
-        $baseUrl = McpToolHelpers::rawkiBridgeBaseUrl();
+        $baseUrl = McpToolHelpers::hawkiRagBridgeBaseUrl();
         $response = Http::timeout(120)->post($baseUrl.'/ingest', $payload);
 
         if (! $response->successful()) {

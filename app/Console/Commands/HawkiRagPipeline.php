@@ -6,9 +6,9 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\File;
 use Symfony\Component\Process\Process;
 
-class RawkiPipeline extends Command
+class HawkiRagPipeline extends Command
 {
-    protected $signature = 'rawki:pipeline
+    protected $signature = 'hawki_rag:pipeline
         {url : The starting URL to crawl}
         {--max-pages=100 : Maximum number of pages to crawl}
         {--output-dir= : Directory to store crawled data (defaults to shared root + label)}
@@ -25,9 +25,9 @@ class RawkiPipeline extends Command
         {--chunk-overlap=100 : Chunk overlap}
         {--batch=64 : Docs per request}
         {--timeout=1800 : HTTP timeout seconds for ingest}
-        {--base-url= : RAWKI bridge base URL (default: RAWKI_BRIDGE_URL)}';
+        {--base-url= : HAWKI RAG bridge base URL (default: HAWKI_RAG_BRIDGE_URL)}';
 
-    protected $description = 'One-click pipeline: crawl -> convert PDFs -> ingest to Qdrant/Neo4j.';
+    protected $description = 'HAWKI RAG pipeline: crawl -> convert PDFs -> ingest to Qdrant/Neo4j.';
 
     public function handle(): int
     {
@@ -37,7 +37,7 @@ class RawkiPipeline extends Command
             $label = $this->slugify(parse_url($url, PHP_URL_HOST) ?: 'crawl');
         }
 
-        $sharedRoot = (string) config('rawki.shared_root', storage_path('app/public'));
+        $sharedRoot = (string) config('hawki_rag.shared_root', storage_path('app/public'));
         $outputDir = (string) ($this->option('output-dir') ?: rtrim($sharedRoot, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . $label);
         $collection = (string) ($this->option('collection') ?: basename($outputDir));
 
@@ -65,9 +65,9 @@ class RawkiPipeline extends Command
             return 1;
         }
 
-        $baseUrl = (string) ($this->option('base-url') ?: env('RAWKI_BRIDGE_URL', 'http://rawki_bridge:8000'));
-        $statusPath = (string) config('rawki.ingest_status_path', storage_path('logs/ingest_status.json'));
-        $logPath = (string) config('rawki.ingest_log_path', storage_path('logs/ingest_progress.log'));
+        $baseUrl = (string) ($this->option('base-url') ?: env('HAWKI_RAG_BRIDGE_URL', 'http://hawki_rag_bridge:8000'));
+        $statusPath = (string) config('hawki_rag.ingest_status_path', storage_path('logs/ingest_status.json'));
+        $logPath = (string) config('hawki_rag.ingest_log_path', storage_path('logs/ingest_progress.log'));
         File::ensureDirectoryExists(dirname($statusPath));
         File::ensureDirectoryExists(dirname($logPath));
 

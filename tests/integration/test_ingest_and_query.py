@@ -5,7 +5,7 @@ import unittest
 import requests
 
 
-SKIP_REASON = "Integration tests require RAWKI_BRIDGE_URL (or LIGHTRAG_BRIDGE_URL) and services running"
+SKIP_REASON = "Integration tests require HAWKI_RAG_BRIDGE_URL (or LIGHTRAG_BRIDGE_URL) and services running"
 
 def _env(name: str, default: str | None = None) -> str | None:
     value = os.environ.get(name, default)
@@ -21,16 +21,16 @@ def _first_env(names: list[str]) -> str | None:
 
 
 class LightRAGIntegrationTests(unittest.TestCase):
-    """End-to-end smoke test covering RAWKI ingestion and retrieval."""
+    """End-to-end smoke test covering HAWKI RAG ingestion and retrieval."""
     @classmethod
     def setUpClass(cls) -> None:
-        cls.bridge_url = _first_env(["RAWKI_BRIDGE_URL", "LIGHTRAG_BRIDGE_URL"])
+        cls.bridge_url = _first_env(["HAWKI_RAG_BRIDGE_URL", "LIGHTRAG_BRIDGE_URL"])
         if not cls.bridge_url:
             raise unittest.SkipTest(SKIP_REASON)
 
     def test_ingest_and_query_roundtrip(self):
         # 1. Ingest a tiny document via the bridge
-        doc_text = "RAWKI integration smoke test document"
+        doc_text = "HAWKI RAG integration smoke test document"
         ingest_payload = {
             "docs": [
                 {"id": "integration-test", "text": doc_text, "payload": {}},

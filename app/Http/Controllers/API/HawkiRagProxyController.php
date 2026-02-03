@@ -7,13 +7,13 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 
-class RawkiProxyController extends Controller
+class HawkiRagProxyController extends Controller
 {
     protected string $baseUrl;
 
     public function __construct()
     {
-        $this->baseUrl = config('rawki.base_url');
+        $this->baseUrl = config('hawki_rag.base_url');
     }
 
     public function query(Request $request): JsonResponse
@@ -49,7 +49,7 @@ class RawkiProxyController extends Controller
         } catch (\Throwable $e) {
             return response()->json([
                 'ok' => false,
-                'message' => 'Failed to reach RAWKI bridge',
+                'message' => 'Failed to reach HAWKI RAG bridge',
                 'error' => $e->getMessage(),
             ], 502);
         }
@@ -60,7 +60,7 @@ class RawkiProxyController extends Controller
         if ($json === null) {
             return response()->json([
                 'ok' => false,
-                'message' => 'RAWKI bridge returned an invalid response',
+                'message' => 'HAWKI RAG bridge returned an invalid response',
                 'status' => $status,
                 'body' => $response->body(),
             ], 502);

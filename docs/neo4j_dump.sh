@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-CONTAINER="${CONTAINER:-rawki_neo4j}"
+CONTAINER="${CONTAINER:-hawki_rag_neo4j}"
 DATABASE="${NEO4J_DATABASE:-neo4j}"
 BACKUP_DIR="${BACKUP_DIR:-storage/app/Neo4j_backup}"
 NEO4J_IMAGE="${NEO4J_IMAGE:-neo4j:5.22}"

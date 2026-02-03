@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>RAWKI Retrieval Playground</title>
+    <title>HAWKI RAG Retrieval Playground</title>
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
@@ -204,8 +204,8 @@
                 <div class="panel-body">
                     <div class="subsection">
                         @php
-                            $embedModels = config('rawki.embedding_models', ['bge-m3']);
-                            $embedDefault = config('rawki.embedding_default', $embedModels[0] ?? null);
+                            $embedModels = config('hawki_rag.embedding_models', ['bge-m3']);
+                            $embedDefault = config('hawki_rag.embedding_default', $embedModels[0] ?? null);
                         @endphp
                         <h3 style="margin-top:0;">Ingest Data</h3>
                         <p style="margin: 0 0 0.8rem; font-size: 0.9rem; color: #bae6fd;">
@@ -309,7 +309,7 @@
                     <div class="subsection">
                         <form id="query-form" class="grid" style="gap: 1.2rem;">
                             <div>
-                                <label for="question">Ask RAWKI anything</label>
+                                <label for="question">Ask HAWKI RAG anything</label>
                                 <textarea id="question" placeholder="e.g. Wer bekommt ein Werk in der Bibliothek, wenn er nur einen Benutzerausweis vorzeigt?" required></textarea>
                             </div>
                             <div class="grid two">
@@ -324,7 +324,7 @@
                                 </div>
                             </div>
                             <div>
-                                <button type="submit" id="run-btn">Run RAWKI retrieval</button>
+                                <button type="submit" id="run-btn">Run HAWKI RAG retrieval</button>
                             </div>
                         </form>
                         <p id="status" style="margin-top: 0.9rem; font-size: 0.95rem; color: #bae6fd;"></p>
@@ -335,7 +335,7 @@
                         <div id="provenance-banner" class="provenance"></div>
                         <div id="meta" style="display:flex; flex-wrap:wrap; gap:0.5rem 0.75rem; margin-bottom: 1rem;"></div>
                         <div id="answer-block" style="display:none; margin-bottom:1.5rem;">
-                            <h4 style="margin-top:0;">RAWKI Answer</h4>
+                            <h4 style="margin-top:0;">HAWKI RAG Answer</h4>
                             <div id="answer" style="white-space: pre-wrap; line-height:1.6;"></div>
                         </div>
                         <div id="hits-block" style="display:none;">
@@ -494,8 +494,8 @@
             const query = document.getElementById('question').value.trim();
             if (!query) return;
 
-            statusEl.textContent = 'Running RAWKI retrieval...';
-            pushActivity('RAWKI', `Query started: "${query.slice(0, 80)}"`);
+            statusEl.textContent = 'Running HAWKI RAG retrieval...';
+            pushActivity('HAWKI RAG', `Query started: "${query.slice(0, 80)}"`);
             runBtn.disabled = true;
             results.style.display = 'none';
             answerBlock.style.display = 'none';
@@ -516,7 +516,7 @@
 
             const startedAt = performance.now();
             try {
-                const response = await fetch('/api/rawki/query', {
+                const response = await fetch('/api/hawki-rag/query', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -531,14 +531,14 @@
                     try {
                         data = JSON.parse(rawBody);
                     } catch (parseErr) {
-                        console.error('RAWKI returned non-JSON response', parseErr, rawBody);
+                        console.error('HAWKI RAG returned non-JSON response', parseErr, rawBody);
                     }
                 }
 
                 if (!response.ok) {
                     const message = data && typeof data === 'object'
                         ? (data.message || JSON.stringify(data))
-                        : `RAWKI request failed (${response.status})`;
+                        : `HAWKI RAG request failed (${response.status})`;
                     if (!data && rawBody) {
                         throw new Error(`${message}. Body excerpt: ${rawBody.slice(0, 200)}`);
                     }
@@ -548,7 +548,7 @@
                 if (!data) {
                     results.style.display = 'block';
                     rawJson.textContent = rawBody || '';
-                    throw new Error('RAWKI bridge returned an invalid JSON payload. Check RAWKI service logs.');
+                    throw new Error('HAWKI RAG bridge returned an invalid JSON payload. Check HAWKI RAG service logs.');
                 }
 
                 results.style.display = 'block';
@@ -683,13 +683,13 @@
                 provenanceBanner.style.display = 'block';
 
                 statusEl.textContent = `Done · ${elapsedMs} ms`;
-                pushActivity('RAWKI', `Query completed · hits: ${hitCount} · ${elapsedMs} ms`);
+                pushActivity('HAWKI RAG', `Query completed · hits: ${hitCount} · ${elapsedMs} ms`);
             } catch (error) {
                 statusEl.textContent = error.message;
                 console.error(error);
-                provenanceBanner.textContent = 'No answer available – RAWKI could not retrieve grounded sources.';
+                provenanceBanner.textContent = 'No answer available – HAWKI RAG could not retrieve grounded sources.';
                 provenanceBanner.style.display = 'block';
-                pushActivity('RAWKI', `Query failed: ${error.message}`);
+                pushActivity('HAWKI RAG', `Query failed: ${error.message}`);
             } finally {
                 runBtn.disabled = false;
             }
@@ -888,7 +888,7 @@
             mcpIngestBtn.disabled = true;
             ingestAction.textContent = 'Starting MCP ingest…';
             try {
-                const response = await fetch('/mcp/rawki', {
+                const response = await fetch('/mcp/hawki_rag', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -902,7 +902,7 @@
                             name: 'rag-folder-ingest-tool',
                             arguments: {
                                 root: path,
-                                base_url: 'http://rawki_bridge:8000',
+                                base_url: 'http://hawki_rag_bridge:8000',
                                 provider: 'ollama',
                                 collection: collectionName,
                                 graph: ingestGraph.checked,

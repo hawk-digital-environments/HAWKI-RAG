@@ -11,14 +11,14 @@ use Laravel\Mcp\Server\Tools\ToolInputSchema;
 use Laravel\Mcp\Server\Tools\ToolResult;
 
 /**
- * Summary: MCP tool that queries RAWKI via the FastAPI bridge.
+ * Summary: MCP tool that queries HAWKI RAG via the FastAPI bridge.
  * Keeps payload minimal; advanced knobs belong to the bridge.
  */
 class RagQueryTool extends Tool
 {
     public function description(): string
     {
-        return 'Query RAWKI via the FastAPI bridge for RAG answers.';
+        return 'Query HAWKI RAG via the FastAPI bridge for RAG answers.';
     }
 
     public function schema(ToolInputSchema $schema): ToolInputSchema
@@ -55,7 +55,7 @@ class RagQueryTool extends Tool
 
         $payload = array_filter($payload, static fn ($value) => $value !== null);
 
-        $baseUrl = McpToolHelpers::rawkiBridgeBaseUrl();
+        $baseUrl = McpToolHelpers::hawkiRagBridgeBaseUrl();
         $response = Http::timeout(60)->post($baseUrl.'/query', $payload);
 
         if (! $response->successful()) {

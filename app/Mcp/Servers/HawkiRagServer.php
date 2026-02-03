@@ -10,15 +10,15 @@ use App\Mcp\Tools\RagFolderIngestTool;
 use App\Mcp\Tools\RagFolderListTool;
 use App\Mcp\Tools\RagIngestTool;
 use App\Mcp\Tools\RagQueryTool;
-use App\Mcp\Tools\RawkiSearchTool;
+use App\Mcp\Tools\HawkiRagSearchTool;
 use App\Mcp\Tools\WebSearchTool;
 use Laravel\Mcp\Server;
 
-class RawkiServer extends Server
+class HawkiRagServer extends Server
 {
     public array $tools = [
         WebSearchTool::class,
-        RawkiSearchTool::class,
+        HawkiRagSearchTool::class,
         RagQueryTool::class,
         RagIngestTool::class,
         RagFolderIngestTool::class,

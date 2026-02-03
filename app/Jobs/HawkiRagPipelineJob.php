@@ -10,7 +10,7 @@ use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\File;
 
-class RawkiPipelineJob implements ShouldQueue
+class HawkiRagPipelineJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
@@ -23,7 +23,7 @@ class RawkiPipelineJob implements ShouldQueue
 
     public function handle(): void
     {
-        $statusPath = (string) config('rawki.pipeline_status_path', storage_path('logs/pipeline_status.json'));
+        $statusPath = (string) config('hawki_rag.pipeline_status_path', storage_path('logs/pipeline_status.json'));
         File::ensureDirectoryExists(dirname($statusPath));
 
         $status = [
@@ -49,7 +49,7 @@ class RawkiPipelineJob implements ShouldQueue
             '--chunk-overlap' => $this->payload['chunk_overlap'] ?? 100,
             '--batch' => $this->payload['batch'] ?? 64,
             '--timeout' => $this->payload['timeout'] ?? 1800,
-            '--base-url' => $this->payload['base_url'] ?? env('RAWKI_BRIDGE_URL', 'http://rawki_bridge:8000'),
+            '--base-url' => $this->payload['base_url'] ?? env('HAWKI_RAG_BRIDGE_URL', 'http://hawki_rag_bridge:8000'),
         ];
         if (!empty($this->payload['skip_images'])) {
             $args['--skip-images'] = true;
@@ -58,7 +58,7 @@ class RawkiPipelineJob implements ShouldQueue
             $args['--graph'] = true;
         }
 
-        $code = Artisan::call('rawki:pipeline', array_filter($args, static fn ($v) => $v !== null));
+        $code = Artisan::call('hawki_rag:pipeline', array_filter($args, static fn ($v) => $v !== null));
 
         $status['status'] = $code === 0 ? 'completed' : 'failed';
         $status['updated_at'] = now()->toIso8601String();

@@ -1,11 +1,11 @@
-# RAWKI – HAWKI’s Retrieval Stack
+# HAWKI RAG – HAWKI’s Retrieval Stack
 
-RAWKI is the customised retrieval deployment used in the HAWKI project. It keeps the
+HAWKI RAG is the customised retrieval deployment used in the HAWKI project. It keeps the
 Laravel application and FastAPI bridge you already know, but rebrands the end-user
 experience and Docker stack, highlighting the combo of **Qdrant** + **Neo4j** + the
-RAWKI pipeline.
+HAWKI RAG pipeline.
 
-RAWKI is designed for fast retrieval over crawled HAWKI content. By default it uses
+HAWKI RAG is designed for fast retrieval over crawled HAWKI content. By default it uses
 `bge-m3` for embeddings and `llama3:8b` / `llama3.1:8b` for grounded answers.
 
 ## Chapter 0 — At a Glance
@@ -24,7 +24,7 @@ docker compose up -d
 ```
 
 Laravel app: `http://localhost:8080`  
-MCP endpoint: `http://localhost:8080/mcp/rawki`  
+MCP endpoint: `http://localhost:8080/mcp/hawki_rag`  
 Python RAG API: `http://localhost:8003`  
 FastAPI bridge (ingest/query): `http://localhost:8009`  
 Crawler API: `http://localhost:8004`  
@@ -46,13 +46,13 @@ ollama pull llama3.1:8b
 ollama pull bge-m3
 ```
 
-RAWKI playground (Laravel UI): `http://127.0.0.1:8080/rawki-playground`
+HAWKI RAG playground (Laravel UI): `http://127.0.0.1:8080/hawki-rag-playground`
 
 ## Chapter 2 — Architecture in One Page
 
 ### High-Level Flow
 
-1. **Laravel (PHP) ➝ FastAPI bridge**: the app calls `rawki_bridge`
+1. **Laravel (PHP) ➝ FastAPI bridge**: the app calls `hawki_rag_bridge`
    (`python_rag/app/main.py`) over HTTP.
    - `POST /ingest` – embeds content, stores vectors in Qdrant and triplets in Neo4j.
    - `POST /query` – retrieves from Qdrant, enriches with Neo4j, reranks, and returns
@@ -60,7 +60,7 @@ RAWKI playground (Laravel UI): `http://127.0.0.1:8080/rawki-playground`
 2. **Qdrant** – collections `hawki_chunks`, `hawki_entities`, and
    `hawki_relationships` are created automatically and hold chunk vectors plus metadata.
 3. **Neo4j** – persists `Entity` nodes and `REL` edges for every triplet.
-4. **Reranker** – a Cohere-compatible reranker service (`rawki_rerank`) improves final
+4. **Reranker** – a Cohere-compatible reranker service (`hawki_rag_rerank`) improves final
    ordering of retrieved chunks.
 
 ### Networking Model
@@ -81,7 +81,7 @@ The rules below are derived from `docker-compose.yml` and the runtime environmen
 - **Healthcheck:** `GET http://localhost:6333/readyz`.
 - **Role:** persists chunk vectors and structured metadata.
 
-**`rawki_neo4j` (Graph DB)**
+**`hawki_rag_neo4j` (Graph DB)**
 - **Image:** `neo4j:5.22`.
 - **Ports:** `7475:7474` (browser), `7688:7687` (bolt).
 - **Volume:** `neo4j_data:/data`.
@@ -90,20 +90,20 @@ The rules below are derived from `docker-compose.yml` and the runtime environmen
 
 ### Ingest and Query Plane
 
-**`rawki_bridge` (FastAPI bridge)**
-- **Image/build:** `rawki-python-rag:local`.
+**`hawki_rag_bridge` (FastAPI bridge)**
+- **Image/build:** `hawki-rag-python:local`.
 - **Port:** `8009:8000`.
 - **Env:** `python_rag/LightRAG.env` plus service overrides.
 - **Role:** `/ingest` and `/query` API for applications and scripts.
 - **Notes:** runs Uvicorn with `--reload` for dev-style iteration.
 
 **`raganything_api` (RAG Anything API)**
-- **Image/build:** `rawki-python-rag:local`.
+- **Image/build:** `hawki-rag-python:local`.
 - **Port:** `8003:8003`.
 - **Profiles:** GPU by default via `make`; CPU fallback is automatic if no GPU is detected.
 - **Role:** FastAPI wrapper used by the Laravel UI and integrations.
 
-**`rawki_rerank` (Reranker)**
+**`hawki_rag_rerank` (Reranker)**
 - **Image/build:** `Dockerfile` target `rerank`.
 - **Port:** `8008:8000`.
 - **Healthcheck:** `curl -fsS http://localhost:8000/health`.
@@ -111,13 +111,13 @@ The rules below are derived from `docker-compose.yml` and the runtime environmen
 
 ### Application Layer
 
-**`hawki_app` (Laravel app)**
+**`hawki_rag_app` (Laravel app)**
 - **Image/build:** `Dockerfile` target `laravel-app`.
 - **Port:** exposed through nginx (see below).
 - **Volumes:** project source mounted into `/var/www`.
-- **Depends on:** `rawki_rabbitmq`, `crawl4ai-service`.
+- **Depends on:** `hawki_rag_rabbitmq`, `crawl4ai-service`.
 
-**`rawki_nginx` (Gateway)**
+**`hawki_rag_nginx` (Gateway)**
 - **Image:** `nginx:1.27-alpine`.
 - **Port:** `8080:80`.
 - **Config:** `docker/nginx.conf` bound to `/etc/nginx/conf.d/default.conf`.
@@ -125,7 +125,7 @@ The rules below are derived from `docker-compose.yml` and the runtime environmen
 
 ### Communication + Models
 
-**`rawki_rabbitmq` (Queue + Management UI)**
+**`hawki_rag_rabbitmq` (Queue + Management UI)**
 - **Image:** `rabbitmq:3.13-management-alpine`.
 - **Ports:** `5672` (AMQP), `15672` (management UI).
 - **Volumes:** `rabbitmq_data`, `rabbitmq_logs`.
@@ -198,16 +198,16 @@ for col in hawki_entities hawki_relationships; do
 done
 
 # Neo4j
-docker exec -it rawki_neo4j cypher-shell -u "${NEO4J_USER:-neo4j}" -p "${NEO4J_PASSWORD:-YOURPASS}" \
+docker exec -it hawki_rag_neo4j cypher-shell -u "${NEO4J_USER:-neo4j}" -p "${NEO4J_PASSWORD:-YOURPASS}" \
   "MATCH (n:Entity) RETURN count(n) AS entity_count"
-docker exec -it rawki_neo4j cypher-shell -u "${NEO4J_USER:-neo4j}" -p "${NEO4J_PASSWORD:-YOURPASS}" \
+docker exec -it hawki_rag_neo4j cypher-shell -u "${NEO4J_USER:-neo4j}" -p "${NEO4J_PASSWORD:-YOURPASS}" \
   "MATCH (:Entity)-[r:REL]->(:Entity) RETURN count(r) AS triplet_count"
 ```
 
 ## Chapter 7 — Makefile Shortcuts
 
 - `make up-core` – start core services (Qdrant, nginx, Ollama, Laravel).
-- `make up-rag` – build & launch the RAWKI stack (Neo4j, reranker, bridge).
+- `make up-rag` – build & launch the HAWKI RAG stack (Neo4j, reranker, bridge).
 - `make ingest CRAWLED_ROOT=/path` – push a crawl into Qdrant/Neo4j.
 - `make test-services` – curl Qdrant/Neo4j/bridge/rerank health endpoints.
 - `make logs-rag`, `make down-rag` – convenience wrappers for compose.
@@ -265,7 +265,7 @@ python3 python_rag/ingest/retry_ingest_docs.py \
   --root storage/app/private/crawled-data/hawk-text \
   --collection embeddings_hawk \
   --base-url http://localhost:8009 \
-  --doc-ids-file /home/ixdlab-admin/Rawki/RAWKI/storage/app/private/failed_doc_ids.txt \
+  --doc-ids-file /home/ixdlab-admin/Hawki/HAWKI_RAG/storage/app/private/failed_doc_ids.txt \
   --batch 16
 ```
 

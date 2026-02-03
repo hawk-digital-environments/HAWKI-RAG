@@ -10,7 +10,7 @@ class RagHealthController extends Controller
 {
     public function show(): JsonResponse
     {
-        $baseUrl = (string) config('rawki.rag_api_url', 'http://raganything_api:8003');
+        $baseUrl = (string) config('hawki_rag.rag_api_url', 'http://raganything_api:8003');
         $url = rtrim($baseUrl, '/') . '/health';
 
         try {

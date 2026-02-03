@@ -24,12 +24,12 @@ services:
     # -------------------------------------------------
     # Laravel Application
     # -------------------------------------------------
-    app:
+    hawki_rag_app:
         build:
             context: .
             dockerfile: Dockerfile
             target: laravel-app
-        container_name: hawki_app
+        container_name: hawki_rag_app
         ulimits:
             nofile:
                 soft: 65535
@@ -45,14 +45,14 @@ services:
             REDIS_CLIENT: phpredis
             REDIS_HOST: redis
             REDIS_PORT: 6379
-            REDIS_PASSWORD: "foobared"
+            REDIS_PASSWORD: ${REDIS_PASSWORD}
             REDIS_DB: 0
             # RabbitMQ Configuration
             RABBITMQ_HOST: rabbitmq
             RABBITMQ_PORT: 5672
-            RABBITMQ_USER: ${RABBITMQ_USER:-admin}
-            RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-admin123}
-            RABBITMQ_VHOST: ${RABBITMQ_VHOST:-/}
+            RABBITMQ_USER: ${RABBITMQ_USER}
+            RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
+            RABBITMQ_VHOST: ${RABBITMQ_VHOST}
             RABBITMQ_EXCHANGE: scrape_events
             RABBITMQ_EXCHANGE_TYPE: topic
             RABBITMQ_SCRAPE_QUEUE: scrape-events
@@ -62,7 +62,7 @@ services:
         networks:
             - hawki-network
         depends_on:
-            rabbitmq:
+            hawki_rag_rabbitmq:
                 condition: service_healthy
             # crawler:
             #     condition: service_healthy
@@ -70,9 +70,9 @@ services:
     # -------------------------------------------------
     # NGINX Reverse Proxy
     # -------------------------------------------------
-    nginx:
+    hawki_rag_nginx:
         image: nginx:1.27-alpine
-        container_name: rawki_nginx
+        container_name: hawki_rag_nginx
         ports:
             - "8080:80"
         volumes:
@@ -82,7 +82,7 @@ services:
             - ./public:/var/www/html/public
             - ./storage/app/public:/var/www/html/storage
         depends_on:
-            - app
+            - hawki_rag_app
         networks:
             - hawki-network
 
@@ -91,7 +91,7 @@ services:
     # -------------------------------------------------
     # redis:
     #     image: redis:7-alpine
-    #     container_name: rawki_redis
+    #     container_name: hawki_rag_redis
     #     ports:
     #         - "6379:6379"
     #     volumes:
@@ -99,9 +99,9 @@ services:
     #     networks:
     #         - hawki-network
     #     restart: unless-stopped
-    #     command: redis-server --appendonly yes --requirepass foobared
+    #     command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
     #     healthcheck:
-    #         test: ["CMD", "redis-cli", "-a", "foobared", "ping"]
+    #         test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
     #         interval: 10s
     #         timeout: 3s
     #         retries: 5
@@ -109,16 +109,16 @@ services:
     # -------------------------------------------------
     # RabbitMQ (Message Queue for Laravel <-> Microservices)
     # -------------------------------------------------
-    rabbitmq:
+    hawki_rag_rabbitmq:
         image: rabbitmq:3.13-management-alpine
-        container_name: rawki_rabbitmq
+        container_name: hawki_rag_rabbitmq
         ports:
             - "5672:5672"   # AMQP protocol port
             - "15672:15672" # Management UI port
         environment:
-            RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-admin}
-            RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-admin123}
-            RABBITMQ_DEFAULT_VHOST: ${RABBITMQ_VHOST:-/}
+            RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
+            RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+            RABBITMQ_DEFAULT_VHOST: ${RABBITMQ_VHOST}
             RABBITMQ_PLUGINS: rabbitmq_management,rabbitmq_prometheus
         volumes:
             - rabbitmq_data:/var/lib/rabbitmq
@@ -143,15 +143,15 @@ services:
     #         - "8004:8000"
     #     environment:
     #         # Optional API security token
-    #         - CRAWL4AI_API_TOKEN=${CRAWL4AI_API_TOKEN:-}
+    #         - CRAWL4AI_API_TOKEN=${CRAWL4AI_API_TOKEN}
     #         # Maximum concurrent crawl tasks
     #         - MAX_CONCURRENT_TASKS=${MAX_CONCURRENT_TASKS:-5}
     #         # Server configuration
     #         - HOST=${HOST:-0.0.0.0}
     #         - PORT=${PORT:-8000}
     #         # Optional LLM Provider Keys (for advanced crawl4ai features)
-    #         - OPENAI_API_KEY=${OPENAI_API_KEY:-}
-    #         - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+    #         - OPENAI_API_KEY=${OPENAI_API_KEY}
+    #         - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
     #         # Communication Configuration
     #         - COMMUNICATION_METHOD=rabbitmq
     #         # Redis Pub/Sub Configuration (disabled)
@@ -159,15 +159,15 @@ services:
     #         - REDIS_HOST=redis
     #         - REDIS_PORT=6379
     #         - REDIS_DB=0
-    #         - REDIS_PASSWORD=foobared
+    #         - REDIS_PASSWORD=${REDIS_PASSWORD}
     #         - REDIS_CHANNEL=scrape-events
     #         # RabbitMQ Configuration (enabled)
     #         - RABBITMQ_ENABLED=true
     #         - RABBITMQ_HOST=rabbitmq
     #         - RABBITMQ_PORT=5672
-    #         - RABBITMQ_USER=${RABBITMQ_USER:-admin}
-    #         - RABBITMQ_PASSWORD=${RABBITMQ_PASSWORD:-admin123}
-    #         - RABBITMQ_VHOST=${RABBITMQ_VHOST:-/}
+    #         - RABBITMQ_USER=${RABBITMQ_USER}
+    #         - RABBITMQ_PASSWORD=${RABBITMQ_PASSWORD}
+    #         - RABBITMQ_VHOST=${RABBITMQ_VHOST}
     #         - RABBITMQ_EXCHANGE=scrape_events
     #         - RABBITMQ_QUEUE=scrape-events
     #         # WebSocket URL for real-time events (legacy, deprecated)
@@ -221,14 +221,14 @@ services:
     # -------------------------------------------------
     # Neo4j Graph DB
     # -------------------------------------------------
-    neo4j:
+    hawki_rag_neo4j:
         image: neo4j:5.22
-        container_name: rawki_neo4j
+        container_name: hawki_rag_neo4j
         ports:
             - "7475:7474"
             - "7688:7687"
         environment:
-            - NEO4J_AUTH=${NEO4J_USER:-neo4j}/${NEO4J_PASSWORD:-ixdlabPass123}
+            - NEO4J_AUTH=${NEO4J_USER}/${NEO4J_PASSWORD}
         volumes:
             - neo4j_data:/data
         networks:
@@ -242,14 +242,14 @@ services:
             start_period: 20s
 
     # -------------------------------------------------
-    # Cohere-compatible reranker (used by RAWKI)
+    # Cohere-compatible reranker (used by HAWKI RAG)
     # -------------------------------------------------
-    rawki_rerank:
+    hawki_rag_rerank:
         build:
             context: .
             dockerfile: Dockerfile
             target: rerank
-        container_name: rawki_rerank
+        container_name: hawki_rag_rerank
         networks:
             hawki-network:
                 aliases:
@@ -272,7 +272,7 @@ services:
             context: .
             dockerfile: Dockerfile
             target: python-rag
-        image: rawki-python-rag:local
+        image: hawki-rag-python:local
         container_name: raganything_api
         profiles: ["cpu"]
         env_file:
@@ -281,9 +281,9 @@ services:
             - RAG_WORKING_DIR=/app/rag_storage
             - OLLAMA_URL=http://ollama:11434
             - QDRANT_URL=http://qdrant:6333
-            - NEO4J_URI=bolt://neo4j:7687
-            - NEO4J_USER=${NEO4J_USER:-neo4j}
-            - NEO4J_PASSWORD=${NEO4J_PASSWORD:-ixdlabPass123}
+            - NEO4J_URI=bolt://hawki_rag_neo4j:7687
+            - NEO4J_USER=${NEO4J_USER}
+            - NEO4J_PASSWORD=${NEO4J_PASSWORD}
         volumes:
             - rag_storage:/app/rag_storage
         networks:
@@ -291,7 +291,7 @@ services:
         depends_on:
             - ollama_cpu
             - qdrant
-            - neo4j
+            - hawki_rag_neo4j
         restart: unless-stopped
         ports:
             - "8003:8003"
@@ -299,25 +299,25 @@ services:
     # -------------------------------------------------
     # FastAPI bridge (Python RAG API)
     # -------------------------------------------------
-    rawki_bridge:
-        image: rawki-python-rag:local
-        container_name: rawki_bridge
+    hawki_rag_bridge:
+        image: hawki-rag-python:local
+        container_name: hawki_rag_bridge
         env_file:
             - ./python_rag/LightRAG.env
         environment:
             - QDRANT_HOST=qdrant
             - QDRANT_PORT=6333
             - QDRANT_COLLECTION=
-            - NEO4J_URI=bolt://neo4j:7687
-            - NEO4J_USER=${NEO4J_USER:-neo4j}
-            - NEO4J_PASSWORD=${NEO4J_PASSWORD:-ixdlabPass123}
+            - NEO4J_URI=bolt://hawki_rag_neo4j:7687
+            - NEO4J_USER=${NEO4J_USER}
+            - NEO4J_PASSWORD=${NEO4J_PASSWORD}
         volumes:
             - ./python_rag:/app
             - ./public:/app/public
         networks:
             - hawki-network
         depends_on:
-            - neo4j
+            - hawki_rag_neo4j
         restart: unless-stopped
         command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
         ports:
@@ -336,7 +336,7 @@ services:
             context: .
             dockerfile: Dockerfile
             target: python-rag
-        image: rawki-python-rag:local
+        image: hawki-rag-python:local
         container_name: raganything_api_gpu
         profiles: ["gpu"]
         env_file:
@@ -345,7 +345,9 @@ services:
             - RAG_WORKING_DIR=/app/rag_storage
             - OLLAMA_URL=http://ollama:11434
             - QDRANT_URL=http://qdrant:6333
-            - NEO4J_URI=bolt://neo4j:7687
+            - NEO4J_URI=bolt://hawki_rag_neo4j:7687
+            - NEO4J_USER=${NEO4J_USER}
+            - NEO4J_PASSWORD=${NEO4J_PASSWORD}
         volumes:
             - rag_storage:/app/rag_storage
         networks:
@@ -353,7 +355,7 @@ services:
         depends_on:
             - ollama_gpu
             - qdrant
-            - neo4j
+            - hawki_rag_neo4j
         restart: unless-stopped
         ports:
             - "8003:8003"
@@ -385,20 +387,18 @@ services:
     #     - "9000:9000"
     #     - "9001:9001"
     #     environment:
-    #         MINIO_ROOT_USER: ${MINIO_ACCESS_KEY}
-    #         MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY}
     #     volumes:
     #     - minio_data:/data
     #     networks:
     #     - hawki-network
     #     command: server --console-address ":9001" /data
     #     restart: always
-    # NOTE: All RAWKI services are defined in this single compose file.
+    # NOTE: All HAWKI RAG services are defined in this single compose file.
 
 volumes:
     shared_storage:
         external: true     # Shared Laravel storage <-> Crawler
-        name: rawki_shared_storage
+        name: hawki_rag_shared_storage
     redis_data:
     rabbitmq_data:      # RabbitMQ persistent data
     rabbitmq_logs:      # RabbitMQ logs

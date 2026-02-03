@@ -1,4 +1,4 @@
-# Simple Makefile to streamline the RAWKI pipeline
+# Simple Makefile to streamline the HAWKI RAG pipeline
 
 SHELL := /bin/bash
 
@@ -23,7 +23,7 @@ OPS_COMPOSE ?= docker-compose.yml
 INGEST_BASE ?= http://localhost:8009
 RERANK_BASE ?= http://localhost:8008
 CRAWLED_ROOT ?= /absolute/path/to/crawled-data
-MCP_BASE ?= http://localhost:8080/mcp/rawki
+MCP_BASE ?= http://localhost:8080/mcp/hawki_rag
 MCP_INGEST_ROOT ?= /absolute/path/to/crawled-data
 MCP_INGEST_PROVIDER ?= ollama
 MCP_INGEST_GRAPH ?= true
@@ -46,7 +46,7 @@ PIPELINE_BATCH ?= 64
 PIPELINE_TIMEOUT ?= 1800
 PIPELINE_PROVIDER ?= ollama
 PIPELINE_DISTANCE ?= Cosine
-PIPELINE_BASE_URL ?= http://rawki_bridge:8000
+PIPELINE_BASE_URL ?= http://hawki_rag_bridge:8000
 PIPELINE_ASYNC ?= true
 
 .PHONY: network pull-core build-app up-core up-rag health pull-models ingest logs-core logs-rag down-core down-rag restart-core restart-rag test-services neo4j-fresh
@@ -73,22 +73,22 @@ up-core: network pull-core build-app
 
 up-rag:
 	@echo $(PROFILE_MESSAGE)
-	@docker compose -f $(OPS_COMPOSE) --env-file $(ENV_FILE) build rawki_rerank rawki_bridge raganything_api raganything_api_gpu || true
+	@docker compose -f $(OPS_COMPOSE) --env-file $(ENV_FILE) build hawki_rag_rerank hawki_rag_bridge raganything_api raganything_api_gpu || true
 	@docker compose -f $(OPS_COMPOSE) --env-file $(ENV_FILE) up -d
 	@docker network connect hawki-network hawki-toolkit-file-converter-file-converter-1 >/dev/null 2>&1 || true
 
 health:
 	@echo "Checking Qdrant..." && curl -fsS http://localhost:6333/readyz && echo " OK" || (echo " FAIL" && exit 1)
 	@echo "Checking Ollama..." && curl -fsS http://localhost:11434/api/tags >/dev/null && echo " OK" || (echo " FAIL" && exit 1)
-	@if docker ps --format '{{.Names}}' | grep -q rawki_rerank; then \
+	@if docker ps --format '{{.Names}}' | grep -q hawki_rag_rerank; then \
 		echo "Checking Local Reranker..." && curl -fsS http://localhost:8008/health && echo " OK" || (echo " WARN (reranker reported unhealthy)" && true); \
 	else \
-		echo "Checking Local Reranker... SKIPPED (rawki_rerank container not running)"; \
+		echo "Checking Local Reranker... SKIPPED (hawki_rag_rerank container not running)"; \
 	fi
-	@if docker ps --format '{{.Names}}' | grep -q rawki_bridge; then \
+	@if docker ps --format '{{.Names}}' | grep -q hawki_rag_bridge; then \
 		echo "Checking Ingestion Bridge..." && curl -fsS $(INGEST_BASE)/health && echo " OK" || (echo " WARN (ingestion reported unhealthy)" && true); \
 	else \
-		echo "Checking Ingestion Bridge... SKIPPED (rawki_bridge container not running)"; \
+		echo "Checking Ingestion Bridge... SKIPPED (hawki_rag_bridge container not running)"; \
 	fi
 
 test-services:
@@ -97,15 +97,15 @@ test-services:
 	code=$$(curl -s -o /dev/null -w "%{http_code}" http://localhost:6333/readyz || echo 000); \
 	if [ "$$code" = "200" ] || [ "$$code" = "204" ] || [ "$$code" = "404" ]; then echo "healthy ($$code)"; else echo "FAIL ($$code)"; exit 1; fi; \
 	printf "neo4j: "; curl -fsS http://localhost:7475/browser >/dev/null && echo "healthy" || (echo "FAIL" && exit 1); \
-	if docker ps --format '{{.Names}}' | grep -q rawki_bridge; then \
-		printf "rawki_bridge: "; curl -fsS $(INGEST_BASE)/health >/dev/null && echo "healthy" || (echo "WARN" && true); \
+	if docker ps --format '{{.Names}}' | grep -q hawki_rag_bridge; then \
+		printf "hawki_rag_bridge: "; curl -fsS $(INGEST_BASE)/health >/dev/null && echo "healthy" || (echo "WARN" && true); \
 	else \
-		printf "rawki_bridge: skipped (container not running)\n"; \
+		printf "hawki_rag_bridge: skipped (container not running)\n"; \
 	fi; \
-	if docker ps --format '{{.Names}}' | grep -q rawki_rerank; then \
-		printf "rawki_rerank: "; curl -fsS $(RERANK_BASE)/health >/dev/null && echo "healthy" || (echo "WARN" && true); \
+	if docker ps --format '{{.Names}}' | grep -q hawki_rag_rerank; then \
+		printf "hawki_rag_rerank: "; curl -fsS $(RERANK_BASE)/health >/dev/null && echo "healthy" || (echo "WARN" && true); \
 	else \
-		printf "rawki_rerank: skipped (container not running)\n"; \
+		printf "hawki_rag_rerank: skipped (container not running)\n"; \
 	fi; \
 	echo "Service checks completed."
 
@@ -125,7 +125,7 @@ ingest-mcp:
 	@if [ "$(MCP_INGEST_ROOT)" = "" ]; then echo "Set MCP_INGEST_ROOT to your crawled root." && exit 1; fi
 	@curl -fsS $(MCP_BASE) \
 		-H "Content-Type: application/json" \
-		-d '{"jsonrpc":"2.0","id":'"$$(date +%s)"',"method":"tools/call","params":{"name":"rag-folder-ingest-tool","arguments":{"root":"$(MCP_INGEST_ROOT)","base_url":"http://rawki_bridge:8000","provider":"$(MCP_INGEST_PROVIDER)","graph":$(MCP_INGEST_GRAPH),"graph_engine":"$(MCP_INGEST_GRAPH_ENGINE)","chunk_chars":$(MCP_INGEST_CHUNK_CHARS),"chunk_overlap":$(MCP_INGEST_CHUNK_OVERLAP),"batch":$(MCP_INGEST_BATCH),"timeout":$(MCP_INGEST_TIMEOUT)}}}' | python3 -m json.tool
+		-d '{"jsonrpc":"2.0","id":'"$$(date +%s)"',"method":"tools/call","params":{"name":"rag-folder-ingest-tool","arguments":{"root":"$(MCP_INGEST_ROOT)","base_url":"http://hawki_rag_bridge:8000","provider":"$(MCP_INGEST_PROVIDER)","graph":$(MCP_INGEST_GRAPH),"graph_engine":"$(MCP_INGEST_GRAPH_ENGINE)","chunk_chars":$(MCP_INGEST_CHUNK_CHARS),"chunk_overlap":$(MCP_INGEST_CHUNK_OVERLAP),"batch":$(MCP_INGEST_BATCH),"timeout":$(MCP_INGEST_TIMEOUT)}}}' | python3 -m json.tool
 
 ingest-mcp-list:
 	@curl -fsS $(MCP_BASE) \
@@ -134,7 +134,7 @@ ingest-mcp-list:
 
 pipeline:
 	@if [ -z "$(PIPELINE_URL)" ]; then echo "Set PIPELINE_URL, e.g.: make pipeline PIPELINE_URL=https://hawk.de"; exit 1; fi
-	@cmd="docker exec -it hawki_app php artisan rawki:pipeline \"$(PIPELINE_URL)\" --max-pages=$(PIPELINE_MAX_PAGES) --provider=$(PIPELINE_PROVIDER) --graph-engine=$(PIPELINE_GRAPH_ENGINE) --distance=$(PIPELINE_DISTANCE) --chunk-chars=$(PIPELINE_CHUNK_CHARS) --chunk-overlap=$(PIPELINE_CHUNK_OVERLAP) --batch=$(PIPELINE_BATCH) --timeout=$(PIPELINE_TIMEOUT) --base-url=$(PIPELINE_BASE_URL)"; \
+	@cmd="docker exec -it hawki_rag_app php artisan hawki_rag:pipeline \"$(PIPELINE_URL)\" --max-pages=$(PIPELINE_MAX_PAGES) --provider=$(PIPELINE_PROVIDER) --graph-engine=$(PIPELINE_GRAPH_ENGINE) --distance=$(PIPELINE_DISTANCE) --chunk-chars=$(PIPELINE_CHUNK_CHARS) --chunk-overlap=$(PIPELINE_CHUNK_OVERLAP) --batch=$(PIPELINE_BATCH) --timeout=$(PIPELINE_TIMEOUT) --base-url=$(PIPELINE_BASE_URL)"; \
 	if [ "$(PIPELINE_GRAPH)" = "true" ] || [ "$(PIPELINE_GRAPH)" = "1" ]; then cmd="$$cmd --graph"; fi; \
 	if [ -n "$(PIPELINE_OUTPUT_DIR)" ]; then cmd="$$cmd --output-dir=$(PIPELINE_OUTPUT_DIR)"; fi; \
 	if [ -n "$(PIPELINE_LABEL)" ]; then cmd="$$cmd --label=$(PIPELINE_LABEL)"; fi; \
@@ -152,7 +152,7 @@ pipeline-async:
 	curl -fsS http://localhost:8080/api/pipeline/start -H "Content-Type: application/json" -d "$$payload" | python3 -m json.tool
 
 logs-core:
-	@$(COMPOSE_CMD) logs -f qdrant mysql nginx $(OLLAMA_SERVICE) app
+	@$(COMPOSE_CMD) logs -f qdrant mysql hawki_rag_nginx $(OLLAMA_SERVICE) hawki_rag_app
 
 logs-rag:
 	@docker compose -f $(OPS_COMPOSE) --env-file $(ENV_FILE) logs -f
@@ -165,7 +165,7 @@ down-rag:
 
 restart-core:
 	@echo $(PROFILE_MESSAGE)
-	@$(COMPOSE_CMD) up -d --force-recreate qdrant mysql nginx $(OLLAMA_SERVICE) app
+	@$(COMPOSE_CMD) up -d --force-recreate qdrant mysql hawki_rag_nginx $(OLLAMA_SERVICE) hawki_rag_app
 
 restart-rag:
 	@echo $(PROFILE_MESSAGE)

@@ -10,8 +10,8 @@ class IngestStatusController extends Controller
 {
     public function show(): JsonResponse
     {
-        $statusPath = (string) config('rawki.ingest_status_path', storage_path('logs/ingest_status.json'));
-        $logPath = (string) config('rawki.ingest_log_path', storage_path('logs/ingest_progress.log'));
+        $statusPath = (string) config('hawki_rag.ingest_status_path', storage_path('logs/ingest_status.json'));
+        $logPath = (string) config('hawki_rag.ingest_log_path', storage_path('logs/ingest_progress.log'));
 
         $status = null;
         if (is_file($statusPath)) {
@@ -51,8 +51,8 @@ class IngestStatusController extends Controller
 
     public function clear(): JsonResponse
     {
-        $statusPath = (string) config('rawki.ingest_status_path', storage_path('logs/ingest_status.json'));
-        $logPath = (string) config('rawki.ingest_log_path', storage_path('logs/ingest_progress.log'));
+        $statusPath = (string) config('hawki_rag.ingest_status_path', storage_path('logs/ingest_status.json'));
+        $logPath = (string) config('hawki_rag.ingest_log_path', storage_path('logs/ingest_progress.log'));
 
         if (is_file($statusPath)) {
             @unlink($statusPath);

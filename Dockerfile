@@ -60,7 +60,7 @@ RUN chown -R www-data:www-data \
 
 # Copy supervisor config
 COPY docker/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
-COPY docker/php-custom.ini /usr/local/etc/php/conf.d/zz-rawki.ini
+COPY docker/php-custom.ini /usr/local/etc/php/conf.d/zz-hawki-rag.ini
 COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 

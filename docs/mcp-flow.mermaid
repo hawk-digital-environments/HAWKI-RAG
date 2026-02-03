@@ -1,12 +1,12 @@
 flowchart LR
-  Client["MCP client\nhttp://localhost:8080/mcp/rawki"]
+  Client["MCP client\nhttp://localhost:8080/mcp/hawki_rag"]
   Laravel["Laravel + MCP server\n:8080"]
 
   subgraph Docker["hawki-network (docker)"]
-    Bridge["rawki_bridge (FastAPI)\n:8009 -> 8000"]
+    Bridge["hawki_rag_bridge (FastAPI)\n:8009 -> 8000"]
     Qdrant["qdrant\n:6333"]
     Neo4j["neo4j\n:7474"]
-    Rerank["rawki_rerank\n:8008"]
+    Rerank["hawki_rag_rerank\n:8008"]
     Ollama["ollama\n:11434"]
   end
 

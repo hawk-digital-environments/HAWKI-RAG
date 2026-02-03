@@ -26,7 +26,7 @@ class RagFolderIngestTool extends Tool
     {
         return $schema
             ->string('root')->description('Root folder containing crawled data')->required()
-            ->string('base_url')->description('RAWKI bridge base URL (default: RAWKI_BRIDGE_URL)')
+            ->string('base_url')->description('HAWKI RAG bridge base URL (default: HAWKI_RAG_BRIDGE_URL)')
             ->string('provider')->description('Embedding provider, e.g. ollama')
             ->boolean('graph')->description('Enable Neo4j triplet extraction')
             ->string('graph_engine')->description('Graph engine: raganything')
@@ -57,7 +57,7 @@ class RagFolderIngestTool extends Tool
             return ToolResult::error('ingest_crawled.py not found');
         }
 
-        $baseUrl = (string) ($arguments['base_url'] ?? env('RAWKI_BRIDGE_URL', 'http://rawki_bridge:8000'));
+        $baseUrl = (string) ($arguments['base_url'] ?? env('HAWKI_RAG_BRIDGE_URL', 'http://hawki_rag_bridge:8000'));
         $resumeDir = storage_path('app/private/ingest-state-mcp/' . uniqid('run_', true));
         File::ensureDirectoryExists($resumeDir);
         $collection = (string) ($arguments['collection'] ?? basename($root));
@@ -99,8 +99,8 @@ class RagFolderIngestTool extends Tool
         $process = new Process($cmd, base_path());
         $process->setTimeout(3600);
 
-        $statusPath = (string) config('rawki.ingest_status_path', storage_path('logs/ingest_status.json'));
-        $logPath = (string) config('rawki.ingest_log_path', storage_path('logs/ingest_progress.log'));
+        $statusPath = (string) config('hawki_rag.ingest_status_path', storage_path('logs/ingest_status.json'));
+        $logPath = (string) config('hawki_rag.ingest_log_path', storage_path('logs/ingest_progress.log'));
         File::ensureDirectoryExists(dirname($statusPath));
 
         $this->logMcpEvent('start', [

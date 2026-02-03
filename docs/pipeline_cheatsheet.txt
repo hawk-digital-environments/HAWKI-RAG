@@ -1,16 +1,16 @@
-RAWKI Pipeline Cheatsheet
-=========================
+HAWKI RAG Pipeline Cheatsheet
+=============================
 
 Queue worker (required for async)
 --------------------------------
 Start a worker (runs in foreground):
-  docker exec -it hawki_app php artisan queue:work
+  docker exec -it hawki_rag_app php artisan queue:work
 
 Stop worker (Ctrl+C). If you need a restart:
-  docker exec -it hawki_app php artisan queue:restart
+  docker exec -it hawki_rag_app php artisan queue:restart
 
 Check failed jobs:
-  docker exec -it hawki_app php artisan queue:failed
+  docker exec -it hawki_rag_app php artisan queue:failed
 
 Pipeline (sync)
 --------------
@@ -48,11 +48,11 @@ Start ingest (MCP tool):
 Neo4j quick checks
 ------------------
 Triplet count:
-  docker exec -it rawki_neo4j cypher-shell -u neo4j -p ixdlabPass123 \
+  docker exec -it hawki_rag_neo4j cypher-shell -u neo4j -p change_me \
     "MATCH (:Entity)-[r:REL]->(:Entity) RETURN count(r) AS triplets"
 
 Nuke graph (careful):
-  docker exec -it rawki_neo4j cypher-shell -u neo4j -p ixdlabPass123 \
+  docker exec -it hawki_rag_neo4j cypher-shell -u neo4j -p change_me \
     "MATCH (n) DETACH DELETE n"
 
 Qdrant quick checks

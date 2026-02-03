@@ -12,18 +12,18 @@ use Laravel\Mcp\Server\Tools\ToolResult;
 use App\Mcp\Tools\McpToolHelpers;
 
 /**
- * Summary: MCP tool that queries the RAWKI bridge with depth-aware search.
+ * Summary: MCP tool that queries the HAWKI RAG bridge with depth-aware search.
  * Depth controls retrieval cost and graph usage.
  */
-#[Title('Rawki Query Search Tool')]
-class RawkiSearchTool extends Tool
+#[Title('HAWKI RAG Query Search Tool')]
+class HawkiRagSearchTool extends Tool
 {
     /**
      * The Tool name
      */
     public function name(): string
     {
-        return "rawki-query-search";
+        return "hawki-rag-query-search";
     }
 
     /**
@@ -87,7 +87,7 @@ class RawkiSearchTool extends Tool
                 'structural_hops' => $fastMode ? 0 : null,
             ];
             $payload = array_filter($payload, static fn ($value) => $value !== null);
-            $baseUrl = McpToolHelpers::rawkiBridgeBaseUrl();
+            $baseUrl = McpToolHelpers::hawkiRagBridgeBaseUrl();
             $response = Http::timeout(60)->post($baseUrl.'/query', $payload);
 
             if (! $response->successful()) {

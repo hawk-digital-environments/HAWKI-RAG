@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\API;
 
 use App\Http\Controllers\Controller;
-use App\Jobs\RawkiPipelineJob;
+use App\Jobs\HawkiRagPipelineJob;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\File;
@@ -32,7 +32,7 @@ class PipelineController extends Controller
             'base_url' => 'sometimes|string',
         ]);
 
-        $statusPath = (string) config('rawki.pipeline_status_path', storage_path('logs/pipeline_status.json'));
+        $statusPath = (string) config('hawki_rag.pipeline_status_path', storage_path('logs/pipeline_status.json'));
         File::ensureDirectoryExists(dirname($statusPath));
         $status = [
             'status' => 'queued',
@@ -42,7 +42,7 @@ class PipelineController extends Controller
         ];
         File::put($statusPath, json_encode($status, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
 
-        RawkiPipelineJob::dispatch($data);
+        HawkiRagPipelineJob::dispatch($data);
 
         return response()->json([
             'ok' => true,
@@ -53,7 +53,7 @@ class PipelineController extends Controller
 
     public function status(): JsonResponse
     {
-        $statusPath = (string) config('rawki.pipeline_status_path', storage_path('logs/pipeline_status.json'));
+        $statusPath = (string) config('hawki_rag.pipeline_status_path', storage_path('logs/pipeline_status.json'));
         if (!is_file($statusPath)) {
             return response()->json(['ok' => false, 'message' => 'No pipeline status found.'], 404);
         }

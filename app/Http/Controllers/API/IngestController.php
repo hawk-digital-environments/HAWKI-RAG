@@ -36,7 +36,7 @@ class IngestController extends Controller
 
     private function resolveSharedRoot(): ?string
     {
-        $root = (string) config('rawki.shared_root', storage_path('app/public'));
+        $root = (string) config('hawki_rag.shared_root', storage_path('app/public'));
         if (is_dir($root)) {
             return $root;
         }
@@ -123,7 +123,7 @@ class IngestController extends Controller
             'timeout' => 'sometimes|integer',
         ]);
 
-        $root = (string) config('rawki.shared_root', '/app/shared');
+        $root = (string) config('hawki_rag.shared_root', '/app/shared');
         $path = $data['path'];
         if (!str_starts_with($path, $root)) {
             return response()->json(['ok' => false, 'message' => 'Path must be within shared root.'], 422);
@@ -137,9 +137,9 @@ class IngestController extends Controller
             return response()->json(['ok' => false, 'message' => 'ingest_crawled.py not found'], 500);
         }
 
-        $baseUrl = (string) env('RAWKI_BRIDGE_URL', 'http://rawki_bridge:8000');
-        $statusPath = (string) config('rawki.ingest_status_path', storage_path('logs/ingest_status.json'));
-        $logPath = (string) config('rawki.ingest_log_path', storage_path('logs/ingest_progress.log'));
+        $baseUrl = (string) env('HAWKI_RAG_BRIDGE_URL', 'http://hawki_rag_bridge:8000');
+        $statusPath = (string) config('hawki_rag.ingest_status_path', storage_path('logs/ingest_status.json'));
+        $logPath = (string) config('hawki_rag.ingest_log_path', storage_path('logs/ingest_progress.log'));
         File::ensureDirectoryExists(dirname($statusPath));
         File::ensureDirectoryExists(dirname($logPath));
 
@@ -350,7 +350,7 @@ class IngestController extends Controller
 
     private function loadStatusEntries(): array
     {
-        $statusPath = (string) config('rawki.ingest_status_path', storage_path('logs/ingest_status.json'));
+        $statusPath = (string) config('hawki_rag.ingest_status_path', storage_path('logs/ingest_status.json'));
         if (!is_file($statusPath)) {
             return [];
         }
@@ -367,7 +367,7 @@ class IngestController extends Controller
 
     private function saveStatusEntries(array $entries): void
     {
-        $statusPath = (string) config('rawki.ingest_status_path', storage_path('logs/ingest_status.json'));
+        $statusPath = (string) config('hawki_rag.ingest_status_path', storage_path('logs/ingest_status.json'));
         File::put($statusPath, json_encode(['ingests' => array_values($entries)], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
     }
 

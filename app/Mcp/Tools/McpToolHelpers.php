@@ -55,11 +55,11 @@ final class McpToolHelpers
     }
 
     /**
-     * Return RAWKI bridge base URL from env (fallback to docker service name).
+     * Return HAWKI RAG bridge base URL from env (fallback to docker service name).
      */
-    public static function rawkiBridgeBaseUrl(): string
+    public static function hawkiRagBridgeBaseUrl(): string
     {
-        return rtrim((string) env('RAWKI_BRIDGE_URL', 'http://rawki_bridge:8000'), '/');
+        return rtrim((string) env('HAWKI_RAG_BRIDGE_URL', 'http://hawki_rag_bridge:8000'), '/');
     }
 
     /**

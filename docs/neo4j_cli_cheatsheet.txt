@@ -3,7 +3,7 @@ my neo4j terminal notes
 
 before running anything
 -----------------------------------
-- the neo4j container is up (`rawki_neo4j` on the hawki network).
+- the neo4j container is up (`hawki_rag_neo4j` on the hawki network).
 - username/password: `neo4j` / `ixdlabPass123` (unless i changed them).
 - either i have `cypher-shell` installed locally or i run it through docker.
 
@@ -15,7 +15,7 @@ before running anything
   ```
 - lazier way (always works):
   ```
-  docker exec -it rawki_neo4j cypher-shell -u neo4j -p ixdlabPass123
+  docker exec -it hawki_rag_neo4j cypher-shell -u neo4j -p change_me
   ```
 
 quick reminders
@@ -65,12 +65,12 @@ script it
 ------------------------
 - one-liner wipe:
   ```
-  docker exec rawki_neo4j \
+  docker exec hawki_rag_neo4j \
     cypher-shell -u neo4j -p ixdlabPass123 "MATCH (n) DETACH DELETE n;"
   ```
 - one-liner counts:
   ```
-  docker exec rawki_neo4j \
+  docker exec hawki_rag_neo4j \
     cypher-shell -u neo4j -p ixdlabPass123 \
     "MATCH (n) RETURN labels(n) AS labels, count(*) AS count ORDER BY count DESC;"
   ```

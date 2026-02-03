@@ -23,13 +23,13 @@ class RagFolderListTool extends Tool
     public function schema(ToolInputSchema $schema): ToolInputSchema
     {
         return $schema
-            ->string('root')->description('Shared root to scan (default: RAWKI_SHARED_ROOT)')
+            ->string('root')->description('Shared root to scan (default: HAWKI_RAG_SHARED_ROOT)')
             ->boolean('include_hidden')->description('Include hidden directories (default: false)');
     }
 
     public function handle(array $arguments): ToolResult
     {
-        $root = (string) ($arguments['root'] ?? config('rawki.shared_root', '/app/shared'));
+        $root = (string) ($arguments['root'] ?? config('hawki_rag.shared_root', '/app/shared'));
         $includeHidden = (bool) ($arguments['include_hidden'] ?? false);
 
         if (!is_dir($root)) {
