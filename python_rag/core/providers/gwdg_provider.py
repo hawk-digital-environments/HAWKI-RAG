@@ -26,14 +26,23 @@ class GWDGProvider:
             raise RuntimeError("GWDG embeddings: unexpected response")
         return [float(x) for x in vec]
 
-    def chat(self, system: str, messages: list) -> str:
+    def chat(self, system: str, messages: list, *, temperature: float | None = None) -> str:
         if not self.base or not self.key:
             return "I apologize, but the chat server is not configured."
         url = f"{self.base}/chat/completions"
+        if temperature is None:
+            env_temp = os.environ.get("GWDG_TEMPERATURE", "").strip()
+            if env_temp:
+                try:
+                    temperature = float(env_temp)
+                except ValueError:
+                    temperature = None
+        if temperature is None:
+            temperature = 0.3
         payload = {
             "model": self.rag_model,
             "messages": [{"role": "system", "content": system}] + messages,
-            "temperature": 0.3,
+            "temperature": temperature,
             "top_p": 0.9,
         }
         r = requests.post(url, headers=self._headers(), json=payload, timeout=90)

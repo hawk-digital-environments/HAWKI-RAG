@@ -8,6 +8,7 @@ import json
 import os
 import time
 import logging
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -19,6 +20,8 @@ from vectorstore.qdrant_http import QdrantHTTP
 from graph.neo4j_graph import Neo4jGraph
 
 logger = logging.getLogger(__name__)
+
+_POINT_NAMESPACE = uuid.NAMESPACE_URL
 
 
 def _delete_document_entries(doc_id: str) -> Dict[str, Any]:
@@ -130,11 +133,15 @@ def ingest_documents(
     points: List[Dict[str, Any]] = []
     vector_size: int | None = None
     qdrant_ms = None
+    qdrant_write_start = None
     start = time.perf_counter()
-    if not getattr(body, "graph_only", False):
+
+    if body.graph or not getattr(body, "graph_only", False):
         provider = get_provider(body.provider)
         if body.embedding_model and hasattr(provider, "embed_model"):
             provider.embed_model = body.embedding_model.strip()
+
+    if not getattr(body, "graph_only", False):
         logger.info("ingest:provider=%s embed_model=%s batch_size=%s", body.provider, getattr(provider, "embed_model", None), batch_size)
         points, vector_size = _build_points(chunk_records, provider)
         logger.info("ingest:qdrant points=%s vector_size=%s", len(points), vector_size)
@@ -143,14 +150,15 @@ def ingest_documents(
         qdrant.upsert_points(points, batch_size=batch_size)
         qdrant_ms = (time.perf_counter() - qdrant_write_start) * 1000
         logger.info("ingest:qdrant upserted=%s ms=%.2f", len(points), qdrant_ms)
-    qdrant_ms = (time.perf_counter() - qdrant_write_start) * 1000
+    if qdrant_write_start is not None:
+        qdrant_ms = (time.perf_counter() - qdrant_write_start) * 1000
 
     neo4j_ms = None
     if body.graph:
         graph = Neo4jGraph()
         try:
             graph_write_start = time.perf_counter()
-            triplets_by_doc = _build_triplets_by_doc(chunk_records, body.graph_engine, rag_service)
+            triplets_by_doc = _build_triplets_by_doc(chunk_records, body.graph_engine, rag_service, provider)
             total_triplets = sum(len(v) for v in triplets_by_doc.values())
             logger.info("ingest:neo4j triplets=%s docs=%s", total_triplets, len(triplets_by_doc))
             for doc_id, triplets in triplets_by_doc.items():
@@ -233,7 +241,9 @@ def _build_points(chunk_records: List[Dict[str, Any]], provider: Any) -> Tuple[L
         except Exception as exc:
             raise HTTPException(status_code=500, detail=f"Embedding failed: {exc}") from exc
         vector_size = vector_size or len(vec)
-        point_id = f"{rec['doc_id']}:{payload.get('chunk_index', 0)}"
+        point_key = f"{rec['doc_id']}:{payload.get('chunk_index', 0)}"
+        # Qdrant point IDs must be UUID or integer; use deterministic UUID per chunk.
+        point_id = str(uuid.uuid5(_POINT_NAMESPACE, point_key))
         points.append({
             "id": point_id,
             "vector": vec,
@@ -247,19 +257,31 @@ def _build_triplets_by_doc(
     chunk_records: List[Dict[str, Any]],
     engine: str,
     rag_service: Any,
+    provider: Any | None,
 ) -> Dict[str, List[tuple[str, str, str]]]:
     if not chunk_records:
         return {}
-    grouped: Dict[str, List[str]] = {}
+    grouped: Dict[str, List[Dict[str, Any]]] = {}
     for rec in chunk_records:
-        grouped.setdefault(rec["doc_id"], []).append(rec["content"])
+        grouped.setdefault(rec["doc_id"], []).append(rec)
     out: Dict[str, List[tuple[str, str, str]]] = {}
     for doc_id, parts in grouped.items():
-        text = "\n\n".join([p for p in parts if isinstance(p, str) and p.strip()])
-        if not text:
+        chunk_texts = [p.get("content") for p in parts if isinstance(p.get("content"), str) and p.get("content").strip()]
+        if not chunk_texts:
             out[doc_id] = []
             continue
-        triplets = rag_service.extract_triplets(text, engine)
+        first_payload = (parts[0] or {}).get("payload") if parts else {}
+        file_path = None
+        if isinstance(first_payload, dict):
+            file_path = first_payload.get("page_url") or first_payload.get("source_url") or first_payload.get("file_path")
+        triplets = rag_service.extract_triplets(
+            "",
+            engine,
+            provider=provider,
+            chunks=chunk_texts,
+            doc_id=doc_id,
+            file_path=file_path,
+        )
         logger.debug("ingest:triplets doc=%s count=%s", doc_id, len(triplets))
         out[doc_id] = triplets
     return out

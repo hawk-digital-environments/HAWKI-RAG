@@ -396,7 +396,7 @@ services:
 volumes:
     shared_storage:
         external: true     # Shared Laravel storage <-> Crawler
-        name: hawki_rag_shared_storage
+        name: rawki_shared_storage
     redis_data:
     rabbitmq_data:      # RabbitMQ persistent data
     rabbitmq_logs:      # RabbitMQ logs

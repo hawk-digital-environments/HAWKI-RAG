@@ -4,16 +4,9 @@ SHELL := /bin/bash
 
 COMPOSE_BIN ?= docker compose
 
-GPU_AVAILABLE := $(shell command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi -L >/dev/null 2>&1 && echo 1 || echo 0)
-ifeq ($(GPU_AVAILABLE),1)
 COMPOSE_PROFILES := gpu
 OLLAMA_SERVICE := ollama_gpu
-PROFILE_MESSAGE := "GPU detected; using gpu profile."
-else
-COMPOSE_PROFILES := cpu
-OLLAMA_SERVICE := ollama_cpu
-PROFILE_MESSAGE := "GPU not detected; falling back to cpu profile."
-endif
+PROFILE_MESSAGE := "GPU profile forced."
 
 COMPOSE_CMD = COMPOSE_PROFILES=$(COMPOSE_PROFILES) $(COMPOSE_BIN)
 
@@ -58,12 +51,12 @@ pull-core:
 	@$(COMPOSE_CMD) pull nginx || true
 
 build-app:
-	@$(COMPOSE_CMD) build app
+	@$(COMPOSE_CMD) build hawki_rag_app
 
 up-core: network pull-core build-app
 	@echo $(PROFILE_MESSAGE)
 	@echo "Launching core stack (profile: $(COMPOSE_PROFILES))..."
-	@$(COMPOSE_CMD) up -d --remove-orphans qdrant nginx $(OLLAMA_SERVICE) app
+	@$(COMPOSE_CMD) up -d --remove-orphans qdrant hawki_rag_nginx $(OLLAMA_SERVICE) hawki_rag_app
 	@echo "Ensuring Ollama has bge-m3 model pulled..."
 	@docker exec hawki_ollama ollama pull bge-m3 >/dev/null 2>&1 || true
 	@echo "Ensuring Ollama has llama3:8b model pulled..."
@@ -73,8 +66,8 @@ up-core: network pull-core build-app
 
 up-rag:
 	@echo $(PROFILE_MESSAGE)
-	@docker compose -f $(OPS_COMPOSE) --env-file $(ENV_FILE) build hawki_rag_rerank hawki_rag_bridge raganything_api raganything_api_gpu || true
-	@docker compose -f $(OPS_COMPOSE) --env-file $(ENV_FILE) up -d
+	@$(COMPOSE_CMD) -f $(OPS_COMPOSE) --env-file $(ENV_FILE) build hawki_rag_rerank hawki_rag_bridge raganything_api raganything_api_gpu || true
+	@$(COMPOSE_CMD) -f $(OPS_COMPOSE) --env-file $(ENV_FILE) up -d
 	@docker network connect hawki-network hawki-toolkit-file-converter-file-converter-1 >/dev/null 2>&1 || true
 
 health:

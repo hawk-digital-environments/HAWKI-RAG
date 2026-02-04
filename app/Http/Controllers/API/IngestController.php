@@ -122,6 +122,7 @@ class IngestController extends Controller
             'chunk_overlap' => 'sometimes|integer',
             'batch' => 'sometimes|integer',
             'timeout' => 'sometimes|integer',
+            'resume_mode' => 'sometimes|string|in:resume,start',
         ]);
 
         $root = (string) config('hawki_rag.shared_root', '/app/shared');
@@ -192,6 +193,12 @@ class IngestController extends Controller
         if (!empty($data['graph_only'])) {
             $cmd[] = '--graph-only';
         }
+        $resumeMode = $data['resume_mode'] ?? 'resume';
+        if ($resumeMode === 'start') {
+            $cmd[] = '--start';
+        } else {
+            $cmd[] = '--resume';
+        }
 
         $summaryPath = storage_path('logs/ingest_summary.json');
         $cmd[] = '--summary-file';
@@ -212,6 +219,7 @@ class IngestController extends Controller
             'collection' => (string) $collection,
             'collection_exists' => $collectionExists,
             'source' => 'api',
+            'resume_mode' => $resumeMode,
         ];
         $entries = $this->loadStatusEntries();
         $entries[] = $entry;

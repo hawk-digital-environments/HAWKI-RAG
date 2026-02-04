@@ -50,13 +50,22 @@ class OllamaProvider:
             raise RuntimeError("Ollama embeddings: unexpected response")
         return [float(x) for x in vec]
 
-    def chat(self, system: str, messages: list) -> str:
+    def chat(self, system: str, messages: list, *, temperature: float | None = None) -> str:
         url = f"{self.base}/chat"
+        if temperature is None:
+            env_temp = os.environ.get("OLLAMA_TEMPERATURE", "").strip()
+            if env_temp:
+                try:
+                    temperature = float(env_temp)
+                except ValueError:
+                    temperature = None
+        if temperature is None:
+            temperature = 0.3
         payload = {
             "model": self.rag_model,
             "messages": [{"role": "system", "content": system}] + messages,
             "stream": False,
-            "options": {"temperature": 0.3, "top_p": 0.9, "num_predict": 900},
+            "options": {"temperature": temperature, "top_p": 0.9, "num_predict": 900},
         }
         r = requests.post(url, json=payload, timeout=120)
         if r.ok:

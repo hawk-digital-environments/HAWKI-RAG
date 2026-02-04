@@ -130,6 +130,8 @@ class QdrantHTTP:
             json={"points": points},
             timeout=float(os.environ.get("QDRANT_UPSERT_TIMEOUT", self.timeout)),
         )
+        if r.status_code >= 400:
+            logger.error("Qdrant upsert failed status=%s body=%s", r.status_code, r.text)
         r.raise_for_status()
 
     def upsert_points(self, points: List[Dict[str, Any]], *, batch_size: int = 64) -> None:

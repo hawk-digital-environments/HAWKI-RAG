@@ -11,7 +11,7 @@ class RagStatsController extends Controller
     public function show(): JsonResponse
     {
         $qdrantUrl = rtrim((string) env('QDRANT_HTTP_URL', 'http://qdrant:6333'), '/');
-        $neo4jUrl = rtrim((string) env('NEO4J_HTTP_URL', 'http://neo4j:7474'), '/');
+        $neo4jUrl = rtrim((string) env('NEO4J_HTTP_URL', 'http://hawki_rag_neo4j:7474'), '/');
         $neo4jUser = (string) env('NEO4J_USER', 'neo4j');
         $neo4jPassword = (string) env('NEO4J_PASSWORD', '');
 

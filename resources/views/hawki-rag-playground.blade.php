@@ -236,6 +236,13 @@
                             </select>
                         </div>
                         <div style="margin-top: 1rem;">
+                            <label for="ingest-resume-mode">Resume mode</label>
+                            <select id="ingest-resume-mode" style="width:100%; border-radius:0.8rem; border:1px solid rgba(148,163,184,0.22); background:rgba(15,23,42,0.78); color:inherit; padding:0.7rem 0.8rem;">
+                                <option value="resume" selected>Resume (skip ingested)</option>
+                                <option value="start">Start fresh</option>
+                            </select>
+                        </div>
+                        <div style="margin-top: 1rem;">
                             <div class="ingest-actions">
                                 <button type="button" id="ingest-btn">Start ingest</button>
                                 <button type="button" id="ingest-graph-only-btn" style="background: linear-gradient(135deg, #22c55e, #16a34a);">Start graph ingest</button>
@@ -261,6 +268,12 @@
                             Qdrant collections and Neo4j triplets (live counts).
                         </p>
                         <div id="rag-stats" style="display:grid; gap:0.6rem;"></div>
+                        <div style="margin-top: 0.8rem;">
+                            <button type="button" id="neo4j-clear-btn" style="background: linear-gradient(135deg, #f43f5e, #be123c);">
+                                Clear Neo4j graph (danger)
+                            </button>
+                            <span id="neo4j-clear-note" class="ingest-action-note"></span>
+                        </div>
                     </div>
                 </div>
             </section>
@@ -387,6 +400,7 @@
         const ingestGraph = document.getElementById('ingest-graph');
         const ingestCollection = document.getElementById('ingest-collection');
         const ingestEmbeddingModel = document.getElementById('ingest-embedding-model');
+        const ingestResumeMode = document.getElementById('ingest-resume-mode');
         const mcpIngestBtn = document.getElementById('mcp-ingest-btn');
         const mcpClearBtn = document.getElementById('mcp-clear-btn');
         const ingestClearBtn = document.getElementById('ingest-clear-btn');
@@ -395,6 +409,8 @@
         const ragStatus = document.getElementById('rag-status');
         const ragDetails = document.getElementById('rag-details');
         const ragStats = document.getElementById('rag-stats');
+        const neo4jClearBtn = document.getElementById('neo4j-clear-btn');
+        const neo4jClearNote = document.getElementById('neo4j-clear-note');
         const ingestLiveStatus = document.getElementById('ingest-live-status');
         const ingestLiveList = document.getElementById('ingest-live-list');
         const activityFeed = document.getElementById('activity-feed');
@@ -862,6 +878,7 @@
                         collection: collectionName,
                         embedding_model: ingestEmbeddingModel ? ingestEmbeddingModel.value : undefined,
                         graph: ingestGraph.checked,
+                        resume_mode: ingestResumeMode ? ingestResumeMode.value : 'resume',
                     }),
                 });
                 const data = await response.json();
@@ -902,6 +919,7 @@
                         embedding_model: ingestEmbeddingModel ? ingestEmbeddingModel.value : undefined,
                         graph: true,
                         graph_only: true,
+                        resume_mode: ingestResumeMode ? ingestResumeMode.value : 'resume',
                     }),
                 });
                 const data = await response.json();
@@ -1065,10 +1083,39 @@
         pollRagHealth();
         setInterval(pollRagHealth, 5000);
         pollRagStats();
-        setInterval(pollRagStats, 7000);
+        setInterval(pollRagStats, 2500);
 
         if (mcpClearBtn) {
             mcpClearBtn.addEventListener('click', async () => {});
+        }
+
+        if (neo4jClearBtn) {
+            neo4jClearBtn.addEventListener('click', async () => {
+                const ok = confirm('This will delete ALL Neo4j graph data. This cannot be undone. Continue?');
+                if (!ok) return;
+                neo4jClearBtn.disabled = true;
+                if (neo4jClearNote) neo4jClearNote.textContent = 'Clearing Neo4j graph…';
+                try {
+                    const response = await fetch('/api/rag/neo4j/clear', {
+                        method: 'POST',
+                        headers: { 'Accept': 'application/json' },
+                    });
+                    const data = await response.json();
+                    if (!response.ok || !data.ok) {
+                        if (neo4jClearNote) neo4jClearNote.textContent = data.message || 'Failed to clear Neo4j graph.';
+                        pushActivity('Graph', 'Neo4j clear failed');
+                    } else {
+                        if (neo4jClearNote) neo4jClearNote.textContent = 'Neo4j graph cleared.';
+                        pushActivity('Graph', 'Neo4j graph cleared');
+                        pollRagStats();
+                    }
+                } catch (error) {
+                    if (neo4jClearNote) neo4jClearNote.textContent = 'Failed to clear Neo4j graph.';
+                    pushActivity('Graph', 'Neo4j clear failed');
+                } finally {
+                    neo4jClearBtn.disabled = false;
+                }
+            });
         }
 
         ingestClearBtn.addEventListener('click', async () => {

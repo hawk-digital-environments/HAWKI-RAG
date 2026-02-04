@@ -10,29 +10,50 @@ class RagHealthController extends Controller
 {
     public function show(): JsonResponse
     {
-        $baseUrl = (string) config('hawki_rag.rag_api_url', 'http://raganything_api:8003');
-        $url = rtrim($baseUrl, '/') . '/health';
+        $primaryBase = (string) (env('HAWKI_RAG_API_URL') ?: config('hawki_rag.rag_api_url', 'http://raganything_api_gpu:8003'));
+        $bridgeBase = (string) (env('HAWKI_RAG_BRIDGE_URL') ?: config('hawki_rag.base_url', 'http://hawki_rag_bridge:8000'));
+        $candidates = array_values(array_unique(array_filter([
+            rtrim($primaryBase, '/') . '/health',
+            rtrim($bridgeBase, '/') . '/health',
+            'http://raganything_api_gpu:8003/health',
+            'http://raganything_api:8003/health',
+        ])));
 
         try {
-            $start = microtime(true);
-            $response = Http::timeout(3)->get($url);
-            $elapsedMs = (int) ((microtime(true) - $start) * 1000);
+            $lastError = null;
+            foreach ($candidates as $url) {
+                $start = microtime(true);
+                $response = Http::timeout(3)->get($url);
+                $elapsedMs = (int) ((microtime(true) - $start) * 1000);
 
-            if (! $response->successful()) {
+                if (! $response->successful()) {
+                    $lastError = [
+                        'status' => $response->status(),
+                        'latency_ms' => $elapsedMs,
+                        'body' => $response->body(),
+                        'endpoint' => $url,
+                    ];
+                    continue;
+                }
+
                 return response()->json([
-                    'ok' => false,
+                    'ok' => true,
                     'status' => $response->status(),
                     'latency_ms' => $elapsedMs,
-                    'body' => $response->body(),
-                ], 502);
+                    'endpoint' => $url,
+                    'data' => $response->json(),
+                ]);
             }
 
-            return response()->json([
-                'ok' => true,
-                'status' => $response->status(),
-                'latency_ms' => $elapsedMs,
-                'data' => $response->json(),
-            ]);
+            if ($lastError) {
+                return response()->json([
+                    'ok' => false,
+                    'status' => $lastError['status'],
+                    'latency_ms' => $lastError['latency_ms'],
+                    'endpoint' => $lastError['endpoint'],
+                    'body' => $lastError['body'],
+                ], 502);
+            }
         } catch (\Throwable $e) {
             return response()->json([
                 'ok' => false,

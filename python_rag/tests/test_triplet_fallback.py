@@ -10,13 +10,25 @@ if ROOT not in sys.path:
 
 
 class TripletFallbackTests(unittest.TestCase):
-    def test_extract_triplets_fallback(self):
+    def test_extract_triplets_raganything_logic(self):
+        from core import rag_service as rag_mod
         from core.rag_service import RAGService
 
-        with mock.patch.object(RAGService, "_init_raganything", return_value=None):
+        async def fake_extract_entities(chunks, global_config, **_):
+            return [({}, {("Alice", "HAWK"): [{"keywords": "works_at"}]})]
+
+        class DummyProvider:
+            def chat(self, system, messages):
+                return "entity<|#|>Alice<|#|>Person<|#|>Student<|#|>...\nrelation<|#|>Alice<|#|>HAWK<|#|>works_at<|#|>...<|COMPLETE|>"
+
+        with mock.patch.object(rag_mod, "extract_entities", fake_extract_entities):
             service = RAGService()
-            trips = service.extract_triplets("Vincent Timm works at HAWK University.", "raganything")
-        self.assertTrue(len(trips) > 0, "Expected fallback triplets when raganything is unavailable")
+            trips = service.extract_triplets(
+                "Alice works at HAWK University.",
+                "raganything",
+                provider=DummyProvider(),
+            )
+        self.assertEqual(trips, [("Alice", "works_at", "HAWK")])
 
 
 if __name__ == "__main__":

@@ -1,9 +1,19 @@
 import logging
 import os
+import re
+import asyncio
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 from core.providers.ollama_provider import OllamaProvider
 from core.providers.gwdg_provider import GWDGProvider
+
+try:
+    from lightrag.operate import extract_entities
+    from lightrag.constants import DEFAULT_ENTITY_TYPES, DEFAULT_SUMMARY_LANGUAGE
+except Exception:  # pragma: no cover - optional dependency in runtime
+    extract_entities = None
+    DEFAULT_ENTITY_TYPES = ["Person", "Organization", "Location", "Event", "Concept"]
+    DEFAULT_SUMMARY_LANGUAGE = "English"
 
 logger = logging.getLogger(__name__)
 
@@ -21,9 +31,90 @@ def _strip_control_chars(text: str | None) -> str:
     return "".join(cleaned_chars)
 
 
+def _normalize_language_setting(raw: str | None) -> str:
+    if not raw:
+        return DEFAULT_SUMMARY_LANGUAGE
+    raw = raw.strip()
+    if not raw:
+        return DEFAULT_SUMMARY_LANGUAGE
+    # Accept comma/semicolon/slash separated language hints.
+    parts = [p.strip() for p in re.split(r"[,/;]+", raw) if p.strip()]
+    if not parts:
+        return DEFAULT_SUMMARY_LANGUAGE
+    # Map common codes to names.
+    map_codes = {
+        "en": "English",
+        "eng": "English",
+        "english": "English",
+        "de": "German",
+        "deu": "German",
+        "ger": "German",
+        "german": "German",
+    }
+    normalized: list[str] = []
+    for part in parts:
+        key = part.lower()
+        normalized.append(map_codes.get(key, part))
+    if len(normalized) == 1:
+        return normalized[0]
+    # Build a natural language list (e.g., "English and German").
+    if len(normalized) == 2:
+        return f"{normalized[0]} and {normalized[1]}"
+    return ", ".join(normalized[:-1]) + f", and {normalized[-1]}"
+
+
+def _clean_graph_text(text: str) -> str:
+    if not text:
+        return ""
+    strip_mode = os.environ.get("GRAPH_STRIP_PIPES", "true").strip().lower()
+    cleaned: list[str] = []
+    for line in str(text).splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if strip_mode in ("1", "true", "yes") and "|" in stripped:
+            continue
+        # Drop markdown table delimiters and separator lines.
+        if re.fullmatch(r"[\|\-\s:]+", stripped):
+            continue
+        if "|" in stripped:
+            pipe_count = stripped.count("|")
+            alpha = sum(1 for ch in stripped if ch.isalnum())
+            ratio = alpha / max(1, len(stripped))
+            # Remove low-signal table rows and headers.
+            if pipe_count >= 2 and (alpha < 6 or ratio < 0.35):
+                continue
+        cleaned.append(stripped)
+    output = "\n".join(cleaned)
+    try:
+        max_lines = int(os.environ.get("GRAPH_MAX_LINES", "40"))
+    except ValueError:
+        max_lines = 40
+    if max_lines > 0:
+        output = "\n".join(output.splitlines()[:max_lines])
+    try:
+        max_chars = int(os.environ.get("GRAPH_MAX_CHARS", "2000"))
+    except ValueError:
+        max_chars = 2000
+    if max_chars > 0:
+        output = output[:max_chars]
+    return output
+
+
 def _normalize_triplets(obj: Any) -> List[tuple[str, str, str]]:
     out: List[tuple[str, str, str]] = []
     if obj is None:
+        return out
+    if hasattr(obj, "to_dict"):
+        try:
+            obj = obj.to_dict()
+        except Exception:
+            pass
+    if isinstance(obj, dict):
+        for key in ("triplets", "relations", "edges", "kg", "data"):
+            val = obj.get(key)
+            if isinstance(val, (list, tuple)):
+                return _normalize_triplets(val)
         return out
     if isinstance(obj, list):
         for item in obj:
@@ -38,6 +129,59 @@ def _normalize_triplets(obj: Any) -> List[tuple[str, str, str]]:
                 if s and r and o:
                     out.append((str(s), str(r), str(o)))
     return out
+
+
+def _dedupe_triplets(triplets: List[tuple[str, str, str]]) -> List[tuple[str, str, str]]:
+    seen = set()
+    out: List[tuple[str, str, str]] = []
+    for s, r, o in triplets:
+        key = (s.strip(), r.strip(), o.strip())
+        if not all(key) or key in seen:
+            continue
+        seen.add(key)
+        out.append((key[0], key[1], key[2]))
+    return out
+
+
+def extract_triplets_with_lightrag(text: str) -> List[tuple[str, str, str]]:
+    """Best-effort LightRAG triplet extraction with a small heuristic fallback."""
+    if not text or not text.strip():
+        return []
+    # Try LightRAG-style imports first (if available).
+    for mod_name, fn_name in (
+        ("lightrag", "extract_triplets"),
+        ("lightrag", "extract_kg"),
+        ("lightrag.graph", "extract_triplets"),
+        ("lightrag.utils", "extract_triplets"),
+    ):
+        try:
+            mod = __import__(mod_name, fromlist=[fn_name])
+            fn = getattr(mod, fn_name, None)
+            if callable(fn):
+                res = fn(text)
+                return _dedupe_triplets(_normalize_triplets(res))
+        except Exception as exc:
+            logger.debug("LightRAG fallback import failed (%s.%s): %s", mod_name, fn_name, exc)
+
+    # Heuristic fallback: extract simple "X is Y" style relations.
+    triplets: List[tuple[str, str, str]] = []
+    patterns = [
+        r"([A-Z][A-Za-z0-9 -]{1,80})\s+(works at|studies at|is|are|was|ist|arbeitet bei)\s+([^\.,;]{1,80})",
+    ]
+    for sentence in re.split(r"[\\.!?\\n]+", text):
+        s = sentence.strip()
+        if not s:
+            continue
+        for pat in patterns:
+            m = re.search(pat, s, flags=re.IGNORECASE)
+            if not m:
+                continue
+            subj, rel, obj = m.group(1).strip(), m.group(2).strip(), m.group(3).strip()
+            if subj and rel and obj:
+                triplets.append((subj, rel, obj))
+        if len(triplets) >= 50:
+            break
+    return _dedupe_triplets(triplets)
 
 
 def _cosine(a: list[float], b: list[float]) -> float:
@@ -106,20 +250,39 @@ class RAGService:
             return GWDGProvider()
         raise ValueError(f"Unknown provider: {name}")
 
-    def extract_triplets(self, text: str, engine: str | None) -> List[tuple[str, str, str]]:
+    def extract_triplets(
+        self,
+        text: str,
+        engine: str | None,
+        *,
+        provider: Any | None = None,
+        chunks: List[str] | None = None,
+        doc_id: str | None = None,
+        file_path: str | None = None,
+    ) -> List[tuple[str, str, str]]:
         mode = (engine or "raganything").strip().lower()
         if mode != "raganything":
             logger.warning("Graph engine '%s' requested; enforcing raganything.", mode)
-        if self.raganything is None:
-            trips = extract_triplets_with_lightrag(text)
-            logger.info("graph:extract_triplets fallback (no raganything) count=%s", len(trips))
-            return trips
-        trips = self._extract_triplets_raganything(text)
-        if not trips:
-            fallback = extract_triplets_with_lightrag(text)
-            logger.info("graph:extract_triplets fallback (empty) count=%s", len(fallback))
-            return fallback
-        logger.info("graph:extract_triplets raganything count=%s", len(trips))
+        if extract_entities is None:
+            logger.warning("graph:extract_triplets missing LightRAG extract_entities; returning 0")
+            return []
+        provider = provider or self.get_provider(os.environ.get("GRAPH_PROVIDER", "ollama"))
+        # Clean table-heavy lines to reduce parser format errors.
+        cleaned_text = _clean_graph_text(text)
+        cleaned_chunks = None
+        if chunks is not None:
+            cleaned_chunks = []
+            for ch in chunks:
+                cleaned = _clean_graph_text(ch)
+                cleaned_chunks.append(cleaned if cleaned.strip() else ch)
+        chunk_map = self._build_chunk_map(
+            cleaned_text if cleaned_text.strip() else text,
+            cleaned_chunks if cleaned_chunks is not None else chunks,
+            doc_id=doc_id,
+            file_path=file_path,
+        )
+        trips = self._extract_triplets_lightrag(chunk_map, provider)
+        logger.info("graph:extract_triplets raganything-logic count=%s", len(trips))
         return trips
 
     def _extract_triplets_raganything(self, text: str) -> List[tuple[str, str, str]]:
@@ -132,9 +295,106 @@ class RAGService:
                 except Exception as exc:
                     logger.info("RAG-Anything %s failed: %s", method, exc)
                     continue
+                if isinstance(res, dict):
+                    logger.debug("RAG-Anything %s response keys=%s", method, list(res.keys()))
+                else:
+                    logger.debug("RAG-Anything %s response type=%s", method, type(res).__name__)
                 trips = _normalize_triplets(res)
                 return trips
         return []
+
+    @staticmethod
+    def _build_chunk_map(
+        text: str,
+        chunks: List[str] | None,
+        *,
+        doc_id: str | None,
+        file_path: str | None,
+    ) -> Dict[str, Dict[str, Any]]:
+        parts = chunks if chunks is not None else [text]
+        doc_key = doc_id or "doc"
+        path = file_path or "unknown_source"
+        out: Dict[str, Dict[str, Any]] = {}
+        for idx, content in enumerate(parts):
+            if not content or not str(content).strip():
+                continue
+            out[f"chunk-{doc_key}-{idx}"] = {
+                "tokens": len(str(content)),
+                "content": str(content),
+                "full_doc_id": doc_key,
+                "chunk_order_index": idx,
+                "file_path": path,
+            }
+        return out
+
+    def _extract_triplets_lightrag(
+        self,
+        chunks: Dict[str, Dict[str, Any]],
+        provider: Any,
+    ) -> List[tuple[str, str, str]]:
+        if not chunks:
+            return []
+        if os.environ.get("GRAPH_SUPPRESS_WARNINGS", "").strip().lower() in ("1", "true", "yes"):
+            logging.getLogger("lightrag").setLevel(logging.ERROR)
+
+        async def llm_func(user_prompt: str, system_prompt: str | None = None, history_messages: list | None = None, max_tokens: int | None = None):
+            messages = list(history_messages or [])
+            messages.append({"role": "user", "content": user_prompt})
+            system = system_prompt or "You are a helpful assistant."
+            graph_temp_env = os.environ.get("GRAPH_TEMPERATURE", "").strip()
+            graph_temp = None
+            if graph_temp_env:
+                try:
+                    graph_temp = float(graph_temp_env)
+                except ValueError:
+                    graph_temp = None
+            else:
+                graph_temp = 0.0
+            return provider.chat(system, messages, temperature=graph_temp)
+
+        entity_types_env = os.environ.get("KG_ENTITY_TYPES", "")
+        entity_types = [t.strip() for t in entity_types_env.split(",") if t.strip()] or list(DEFAULT_ENTITY_TYPES)
+        language = _normalize_language_setting(os.environ.get("KG_LANGUAGE", DEFAULT_SUMMARY_LANGUAGE))
+        gleaning = int(os.environ.get("KG_MAX_GLEANING", "1"))
+
+        global_config = {
+            "llm_model_func": llm_func,
+            "entity_extract_max_gleaning": gleaning,
+            "addon_params": {"language": language, "entity_types": entity_types},
+        }
+
+        try:
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                loop = None
+            if loop and loop.is_running():
+                new_loop = asyncio.new_event_loop()
+                try:
+                    results = new_loop.run_until_complete(extract_entities(chunks, global_config))
+                finally:
+                    new_loop.close()
+            else:
+                results = asyncio.run(extract_entities(chunks, global_config))
+        except Exception as exc:
+            logger.warning("graph:extract_triplets LightRAG extraction failed: %s", exc)
+            return []
+
+        triplets: List[tuple[str, str, str]] = []
+        seen = set()
+        for maybe_nodes, maybe_edges in results or []:
+            for (src, tgt), rels in (maybe_edges or {}).items():
+                for rel in rels or []:
+                    rel_val = rel.get("keywords") or rel.get("description") or "RELATED_TO"
+                    if isinstance(rel_val, str) and "," in rel_val:
+                        rel_val = rel_val.split(",")[0].strip()
+                    rel_val = str(rel_val).strip() if rel_val else "RELATED_TO"
+                    key = (src, rel_val, tgt)
+                    if key in seen or not all(key):
+                        continue
+                    seen.add(key)
+                    triplets.append(key)
+        return triplets
 
     def rerank_hits(
         self,

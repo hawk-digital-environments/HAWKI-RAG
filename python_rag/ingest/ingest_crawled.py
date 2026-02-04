@@ -617,7 +617,12 @@ def main():
     ap.add_argument("--dry-include-graph", action="store_true", help="When used with --dry, also estimate Neo4j entities/relationships")
     ap.add_argument("--estimate-only", action="store_true", help="Estimate chunk/point counts locally without contacting the server")
     ap.add_argument("--resume-state-dir", default="storage/app/private/ingest-state", help="Directory where resume markers are stored")
+    ap.add_argument("--resume", action="store_true", help="Resume by skipping already ingested docs (non-interactive)")
+    ap.add_argument("--start", action="store_true", help="Start fresh and ignore previous state (non-interactive)")
     args = ap.parse_args()
+    if args.resume and args.start:
+        print("Choose only one of --resume or --start.", file=sys.stderr)
+        sys.exit(2)
 
     root = Path(args.root).expanduser().resolve()
     if not root.exists() or not root.is_dir():
@@ -649,11 +654,16 @@ def main():
             print(
                 f"Found previous ingest state for '{resume_key_parts[0]}' with {len(existing_ids)} documents."
             )
-            while True:
-                choice = input("Type 'resume' to skip already-ingested docs or 'start' to process everything again [resume/start]: ").strip().lower()
-                if choice in {"", "resume", "start"}:
-                    break
-                print("Please enter 'resume' or 'start'.")
+            if args.resume:
+                choice = "resume"
+            elif args.start:
+                choice = "start"
+            else:
+                while True:
+                    choice = input("Type 'resume' to skip already-ingested docs or 'start' to process everything again [resume/start]: ").strip().lower()
+                    if choice in {"", "resume", "start"}:
+                        break
+                    print("Please enter 'resume' or 'start'.")
             if choice in {"", "resume"}:
                 resume_mode = True
                 resume_doc_ids = existing_ids
