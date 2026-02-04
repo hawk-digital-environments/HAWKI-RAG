@@ -96,6 +96,7 @@ class DocumentUpsertRequest(BaseModel):
 
 @app.get("/health")
 def health():
+    logger.debug("health:ok")
     return {"ok": True}
 
 
@@ -124,6 +125,7 @@ def config():
     qdrant_collection = q.collection
     vector_size = q.get_vector_size()
 
+    logger.info("config:provider=%s qdrant_collection=%s", provider_name, qdrant_collection)
     return {
         "provider": provider_name,
         "embedding_model": embed_model,
@@ -141,6 +143,7 @@ def config():
 
 @app.post("/ingest")
 def ingest(body: IngestRequest):
+    logger.info("api:ingest docs=%s graph=%s", len(body.docs), body.graph)
     return ingest_documents(
         body,
         rag_service=rag_service,
@@ -151,6 +154,7 @@ def ingest(body: IngestRequest):
 
 @app.delete("/documents/{doc_id}")
 def delete_document_endpoint(doc_id: str):
+    logger.info("api:delete doc_id=%s", doc_id)
     result = delete_document(doc_id)
     return {"ok": True, "doc_id": str(doc_id), "qdrant": result["qdrant"], "neo4j": result["neo4j"]}
 
@@ -184,14 +188,17 @@ def replace_document(doc_id: str, body: DocumentUpsertRequest):
     )
     ingest_response["replaced_doc_id"] = str(doc_id)
     ingest_response["deleted"] = deletion
+    logger.info("api:replace doc_id=%s", doc_id)
     return ingest_response
 
 
 @app.post("/query")
 def query(body: QueryRequest):
+    logger.info("api:query top_k=%s fast=%s smart=%s", body.top_k, body.fast_mode, body.smart_lookup)
     return query_documents(body, rag_service=rag_service, get_provider=get_provider)
 
 
 @app.post("/graph/from-text")
 def graph_from_text_endpoint(body: GraphRequest):
+    logger.info("api:graph_from_text chars=%s", len(body.text or ""))
     return graph_from_text(body, rag_service=rag_service)

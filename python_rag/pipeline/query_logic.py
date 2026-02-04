@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import os
 import time
+import logging
 from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import HTTPException
@@ -31,6 +32,7 @@ from graph.graph_utils import (
 
 MAX_CONTEXT_TOKENS_DEFAULT = 2800
 ITERATIVE_RETRIEVAL_ENV = "RAG_ITERATIVE_RETRIEVAL"
+logger = logging.getLogger(__name__)
 
 
 def query_documents(body: Any, *, rag_service: Any, get_provider) -> Dict[str, Any]:
@@ -49,6 +51,7 @@ def query_documents(body: Any, *, rag_service: Any, get_provider) -> Dict[str, A
 
     provider = get_provider(body.provider)
     qdrant = QdrantHTTP()
+    logger.info("query:start provider=%s top_k=%s fast=%s smart=%s optimized=%s", body.provider, body.top_k, body.fast_mode, body.smart_lookup, body.is_optimized)
 
     t_rewrite_start = time.perf_counter()
     rewrite_enabled = (not body.fast_mode) and _is_multimodal_query(user_query)
@@ -70,7 +73,7 @@ def query_documents(body: Any, *, rag_service: Any, get_provider) -> Dict[str, A
 
     filters = dict(body.filters) if body.filters else None
     t_qdrant_start = time.perf_counter()
-    keyword_fields = ["title_text", "page_url_text", "source_url", "tags", "content", "pdfs"]
+    keyword_fields = ["title", "page_url", "source_url", "tags", "content", "pdfs"]
     hits = run_search(
         qdrant=qdrant,
         vec=vec,
@@ -84,6 +87,7 @@ def query_documents(body: Any, *, rag_service: Any, get_provider) -> Dict[str, A
         preferred_tags=body.preferred_tags,
     )
     timings["qdrant_ms"] = (time.perf_counter() - t_qdrant_start) * 1000
+    logger.info("query:qdrant hits=%s ms=%.2f", len(hits), timings["qdrant_ms"])
 
     struct_hops = structural_hops()
     t_graph_start = time.perf_counter()
@@ -94,6 +98,7 @@ def query_documents(body: Any, *, rag_service: Any, get_provider) -> Dict[str, A
         include_rel_match=body.smart_lookup,
     )
     timings["graph_ms"] = (time.perf_counter() - t_graph_start) * 1000
+    logger.info("query:graph hits=%s ms=%.2f", len(structural_hits), timings["graph_ms"])
 
     sem_weight = float(os.environ.get("RAG_FUSION_SEM_WEIGHT", "0.6"))
     str_weight = float(os.environ.get("RAG_FUSION_STR_WEIGHT", "0.4"))
@@ -111,6 +116,7 @@ def query_documents(body: Any, *, rag_service: Any, get_provider) -> Dict[str, A
         mix_weight=body.mix_weight,
     )
     hits = [h for h in hits if float(h.get("score") or 0.0) >= 0.4]
+    logger.info("query:rerank hits=%s ms=%.2f", len(hits), timings.get("rerank_ms", 0.0))
     timings["rerank_ms"] = (time.perf_counter() - t_rerank_start) * 1000
 
     iterative_enabled = str(os.environ.get(ITERATIVE_RETRIEVAL_ENV, "true")).lower() in ("1", "true", "yes")
@@ -173,6 +179,7 @@ def query_documents(body: Any, *, rag_service: Any, get_provider) -> Dict[str, A
         limited_terms = list(kg_terms)[:30]
         if limited_terms:
             kg_facts = fetch_related_terms(limited_terms, limit=30)
+    logger.info("query:kg facts=%s ms=%.2f", len(kg_facts), timings.get("kg_ms", 0.0))
     timings["kg_ms"] = (time.perf_counter() - t_kg_start) * 1000
 
     answer = ""

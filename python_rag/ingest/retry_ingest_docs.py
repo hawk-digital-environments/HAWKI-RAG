@@ -13,6 +13,7 @@ import argparse
 import json
 import re
 import sys
+import logging
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Set, Tuple
@@ -31,6 +32,7 @@ from ingest_crawled import (
     post_batch,
 )
 
+logger = logging.getLogger(__name__)
 
 def _load_doc_ids_from_file(path: Path) -> Set[str]:
     """
@@ -196,6 +198,7 @@ def run(args: argparse.Namespace) -> int:
             doc_ids_batch = [d["id"] for d in docs]
             ok, _, err = post_batch(args.base_url, docs, options, timeout=args.timeout)
             if ok:
+                logger.info("retry:batch sent=%s docs=%s", batch_index, len(docs))
                 sent += len(docs)
                 status_msg = "Planned" if args.dry else "Sent"
                 print(f"{status_msg} {sent} docs (batch {batch_index})")
@@ -212,6 +215,7 @@ def run(args: argparse.Namespace) -> int:
         doc_ids_batch = [d["id"] for d in docs]
         ok, _, err = post_batch(args.base_url, docs, options, timeout=args.timeout)
         if ok:
+            logger.info("retry:batch sent=%s docs=%s", batch_index, len(docs))
             sent += len(docs)
             status_msg = "Planned" if args.dry else "Sent"
             print(f"{status_msg} {sent} docs (batch {batch_index})")

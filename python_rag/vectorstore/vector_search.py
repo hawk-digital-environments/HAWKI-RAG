@@ -3,6 +3,7 @@ Qdrant search strategies and hit fusion utilities.
 """
 from __future__ import annotations
 
+import logging
 from typing import Any, Dict, List, Optional
 
 from vectorstore.qdrant_http import QdrantHTTP
@@ -13,6 +14,7 @@ from vectorstore.qdrant_strategies import (
     semantic_search_smart,
 )
 
+logger = logging.getLogger(__name__)
 
 def run_search(
     *,
@@ -43,6 +45,7 @@ def run_search(
                 top_k=top_k,
                 filters=filters,
             )
+        logger.info("search:smart hits=%s", len(hits))
     elif is_optimized and not fast_mode:
         hits = optimized_semantic_search(
             qdrant,
@@ -51,6 +54,7 @@ def run_search(
             filters=filters,
             preferred_tags=preferred_tags,
         )
+        logger.info("search:optimized hits=%s", len(hits))
     else:
         hits = semantic_search_basic(
             qdrant,
@@ -58,6 +62,7 @@ def run_search(
             top_k=top_k,
             filters=filters,
         )
+        logger.info("search:basic hits=%s", len(hits))
     return hits
 
 
@@ -83,4 +88,5 @@ def run_high_recall(
             filters=filters,
             preferred_tags=preferred_tags,
         )
+    logger.info("search:high_recall hits=%s", len(hits))
     return hits

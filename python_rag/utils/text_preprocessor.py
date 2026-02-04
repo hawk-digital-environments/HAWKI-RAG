@@ -313,6 +313,7 @@ def ensure_tags(payload: Dict[str, Any], text: str) -> None:
     if not tags:
         tags = _fallback_tags(text)
     payload["tags"] = tags or None
+    logger.debug("tags:ensure count=%s", len(payload["tags"] or []))
 
 ##################################. DOC CHUNKING//PDF SLICING #################################
 
@@ -337,4 +338,5 @@ def split_text(txt: str, target: int, overlap: int) -> List[str]:
         if end >= L:
             break
         start = max(0, end - overlap)
+    logger.debug("split_text chunks=%s target=%s overlap=%s", len(out), target, overlap)
     return out

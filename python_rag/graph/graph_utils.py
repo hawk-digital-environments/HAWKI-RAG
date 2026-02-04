@@ -4,17 +4,21 @@ Graph helpers: structural expansion and Neo4j related utilities.
 from __future__ import annotations
 
 import os
+import logging
 from typing import Any, Dict, List
 
 from graph.neo4j_graph import Neo4jGraph
 
+logger = logging.getLogger(__name__)
 
 def fetch_related_terms(terms: List[str], limit: int = 30) -> List[Dict[str, str]]:
     if not terms:
         return []
     g = Neo4jGraph()
     try:
-        return g.fetch_related(terms, limit=limit)
+        results = g.fetch_related(terms, limit=limit)
+        logger.debug("graph:fetch_related terms=%s results=%s", len(terms), len(results))
+        return results
     except Exception:
         return []
     finally:
@@ -80,4 +84,5 @@ def build_structural_hits(
                 "source": "neo4j",
             }
         )
+    logger.debug("graph:structural_hits terms=%s hits=%s", len(terms), len(hits))
     return hits

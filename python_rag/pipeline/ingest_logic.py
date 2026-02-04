@@ -7,6 +7,7 @@ from __future__ import annotations
 import json
 import os
 import time
+import logging
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -16,6 +17,8 @@ from fastapi import HTTPException
 from utils.text_preprocessor import ensure_tags, split_text
 from vectorstore.qdrant_http import QdrantHTTP
 from graph.neo4j_graph import Neo4jGraph
+
+logger = logging.getLogger(__name__)
 
 
 def _delete_document_entries(doc_id: str) -> Dict[str, Any]:
@@ -40,6 +43,7 @@ def ingest_documents(
     public_dir: Path,
 ) -> Dict[str, Any]:
     dry_run = bool(body.dry_run)
+    logger.info("ingest:start docs=%s dry_run=%s graph=%s collection=%s", len(body.docs), dry_run, bool(body.graph), body.collection)
 
     qdrant = QdrantHTTP()
     if body.collection:
@@ -56,6 +60,7 @@ def ingest_documents(
 
     for d in body.docs:
         chunks = split_text(d.text, body.chunk_chars, body.chunk_overlap) or [d.text]
+        logger.debug("ingest:doc %s chunks=%s", d.id, len(chunks))
         doc_processed = False
         fmt: Optional[str] = None
         chunk_count = 0
@@ -99,6 +104,7 @@ def ingest_documents(
 
     if total_chunks == 0:
         raise HTTPException(400, detail="No valid content to ingest")
+    logger.info("ingest:prepared docs=%s chunks=%s", doc_stats["processed_docs"], total_chunks)
 
     batch_size = max(1, int(body.batch_size or 64))
 
@@ -113,10 +119,18 @@ def ingest_documents(
         )
         return {"ok": True, "dry_run": True, "summary": summary}
 
+    provider = get_provider(body.provider)
+    if body.embedding_model and hasattr(provider, "embed_model"):
+        provider.embed_model = body.embedding_model.strip()
+    logger.info("ingest:provider=%s embed_model=%s batch_size=%s", body.provider, getattr(provider, "embed_model", None), batch_size)
+
     start = time.perf_counter()
-    points = _build_points(chunk_records, body)
+    points, vector_size = _build_points(chunk_records, provider)
+    logger.info("ingest:qdrant points=%s vector_size=%s", len(points), vector_size)
+    qdrant.ensure_collection(vector_size or 1024, distance=body.distance)
     qdrant_write_start = time.perf_counter()
     qdrant.upsert_points(points, batch_size=batch_size)
+    logger.info("ingest:qdrant upserted=%s ms=%.2f", len(points), (time.perf_counter() - qdrant_write_start) * 1000)
     qdrant_ms = (time.perf_counter() - qdrant_write_start) * 1000
 
     neo4j_ms = None
@@ -124,9 +138,12 @@ def ingest_documents(
         graph = Neo4jGraph()
         try:
             graph_write_start = time.perf_counter()
-            triplets = _build_triplets(chunk_records, body.graph_engine)
-            if triplets:
-                graph.upsert_triplets(triplets)
+            triplets_by_doc = _build_triplets_by_doc(chunk_records, body.graph_engine, rag_service)
+            total_triplets = sum(len(v) for v in triplets_by_doc.values())
+            logger.info("ingest:neo4j triplets=%s docs=%s", total_triplets, len(triplets_by_doc))
+            for doc_id, triplets in triplets_by_doc.items():
+                if triplets:
+                    graph.upsert_triplets(triplets, doc_id=doc_id)
             neo4j_ms = (time.perf_counter() - graph_write_start) * 1000
         finally:
             try:
@@ -156,6 +173,7 @@ def ingest_documents(
     except Exception as exc:
         summary["summary_file_error"] = str(exc)
 
+    logger.info("ingest:done points=%s total_ms=%.2f", len(points), total_ms)
     return {"ok": True, "points": len(points), "summary": summary}
 
 
@@ -193,29 +211,46 @@ def _build_summary(
     return summary
 
 
-def _build_points(chunk_records: List[Dict[str, Any]], body: Any) -> List[Dict[str, Any]]:
-    provider = None
-    if not body.dry_run:
-        provider = body.provider
+def _build_points(chunk_records: List[Dict[str, Any]], provider: Any) -> Tuple[List[Dict[str, Any]], int | None]:
     points: List[Dict[str, Any]] = []
+    vector_size: int | None = None
     for rec in chunk_records:
         payload = dict(rec["payload"])
-        vec = None
-        if provider:
-            vec = body.provider_obj.embed(rec["content"]) if hasattr(body, "provider_obj") else None
+        try:
+            vec = provider.embed(rec["content"])
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=f"Embedding failed: {exc}") from exc
+        vector_size = vector_size or len(vec)
+        point_id = f"{rec['doc_id']}:{payload.get('chunk_index', 0)}"
         points.append({
-            "id": rec["doc_id"],
+            "id": point_id,
             "vector": vec,
             "payload": payload,
         })
-    return points
+    logger.debug("ingest:points built=%s", len(points))
+    return points, vector_size
 
 
-def _build_triplets(chunk_records: List[Dict[str, Any]], engine: str) -> List[tuple[str, str, str]]:
-    # Placeholder: actual triplet extraction stays in rag_brain; call through rag_service if needed.
+def _build_triplets_by_doc(
+    chunk_records: List[Dict[str, Any]],
+    engine: str,
+    rag_service: Any,
+) -> Dict[str, List[tuple[str, str, str]]]:
     if not chunk_records:
-        return []
-    return []
+        return {}
+    grouped: Dict[str, List[str]] = {}
+    for rec in chunk_records:
+        grouped.setdefault(rec["doc_id"], []).append(rec["content"])
+    out: Dict[str, List[tuple[str, str, str]]] = {}
+    for doc_id, parts in grouped.items():
+        text = "\n\n".join([p for p in parts if isinstance(p, str) and p.strip()])
+        if not text:
+            out[doc_id] = []
+            continue
+        triplets = rag_service.extract_triplets(text, engine)
+        logger.debug("ingest:triplets doc=%s count=%s", doc_id, len(triplets))
+        out[doc_id] = triplets
+    return out
 
 
 def utc_now_iso() -> str:

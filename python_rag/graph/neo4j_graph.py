@@ -71,9 +71,11 @@ class Neo4jGraph:
         doc_key = str(doc_id) if doc_id is not None else "__legacy__"
         rows = [{"s": s, "r": r, "o": o, "doc_id": doc_key} for s, r, o in triplets if s and r and o]
         if not rows:
+            logger.debug("neo4j:upsert_triplets empty doc_id=%s", doc_key)
             return
         with self._driver.session() as session:
             session.execute_write(lambda tx: tx.run(cypher, rows=rows))
+        logger.info("neo4j:upsert_triplets count=%s doc_id=%s", len(rows), doc_key)
 
     def delete_by_doc_id(self, doc_id: str) -> Dict[str, int]:
         """Remove relationships (and orphaned nodes) belonging to a document."""
@@ -96,6 +98,7 @@ class Neo4jGraph:
 
             nodes_deleted = session.execute_write(_cleanup) if relationships_deleted else 0
 
+        logger.info("neo4j:delete_by_doc_id relationships=%s entities=%s doc_id=%s", relationships_deleted, nodes_deleted, doc_id)
         return {"relationships_deleted": relationships_deleted, "entities_deleted": nodes_deleted}
 
     def fetch_related(self, terms: Iterable[str], limit: int = 25) -> List[Dict[str, str]]:

@@ -76,6 +76,7 @@ class RAGService:
                 break
 
         if candidate is None:
+            logger.info("RAG-Anything client class not found.")
             return None
 
         for builder in ("from_working_dir", "from_env"):
@@ -110,8 +111,16 @@ class RAGService:
         if mode != "raganything":
             logger.warning("Graph engine '%s' requested; enforcing raganything.", mode)
         if self.raganything is None:
-            raise RuntimeError("RAG-Anything is required but not available.")
-        return self._extract_triplets_raganything(text)
+            trips = extract_triplets_with_lightrag(text)
+            logger.info("graph:extract_triplets fallback (no raganything) count=%s", len(trips))
+            return trips
+        trips = self._extract_triplets_raganything(text)
+        if not trips:
+            fallback = extract_triplets_with_lightrag(text)
+            logger.info("graph:extract_triplets fallback (empty) count=%s", len(fallback))
+            return fallback
+        logger.info("graph:extract_triplets raganything count=%s", len(trips))
+        return trips
 
     def _extract_triplets_raganything(self, text: str) -> List[tuple[str, str, str]]:
         if self.raganything is None:

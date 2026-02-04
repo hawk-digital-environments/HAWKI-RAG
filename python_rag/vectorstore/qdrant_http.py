@@ -132,6 +132,15 @@ class QdrantHTTP:
         )
         r.raise_for_status()
 
+    def upsert_points(self, points: List[Dict[str, Any]], *, batch_size: int = 64) -> None:
+        """Upsert points in batches."""
+        if not points:
+            return
+        size = max(1, int(batch_size))
+        logger.info("qdrant:upsert_points total=%s batch_size=%s", len(points), size)
+        for i in range(0, len(points), size):
+            self.upsert(points[i:i + size])
+
     def count_points(self, collection: Optional[str] = None, exact: bool = True) -> Optional[int]:
         """Return the number of points stored in a collection."""
         col = collection or self.collection

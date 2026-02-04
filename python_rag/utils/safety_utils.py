@@ -4,6 +4,7 @@ Prompt/output safety helpers and text normalization.
 from __future__ import annotations
 
 import re
+import logging
 from typing import Dict
 
 from .text_preprocessor import (
@@ -13,9 +14,12 @@ from .text_preprocessor import (
     _strip_control_chars,
 )
 
+logger = logging.getLogger(__name__)
 
 def analyze_prompt(prompt: str) -> Dict[str, str | bool | list]:
-    return _analyze_prompt_safety(prompt)
+    result = _analyze_prompt_safety(prompt)
+    logger.debug("safety:prompt blocked=%s issues=%s", result.get("blocked"), result.get("issues"))
+    return result
 
 
 def sanitize_prompt_text(prompt: str) -> str:
@@ -23,7 +27,9 @@ def sanitize_prompt_text(prompt: str) -> str:
 
 
 def enforce_output_safety(answer: str) -> Dict[str, str | bool | list]:
-    return _enforce_output_safety(answer)
+    result = _enforce_output_safety(answer)
+    logger.debug("safety:output blocked=%s issues=%s", result.get("blocked"), result.get("issues"))
+    return result
 
 
 def clean_snippet(snippet: str) -> str:

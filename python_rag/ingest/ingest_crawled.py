@@ -8,6 +8,7 @@ Notes:
     title/url/date/meta_img_url/tags) and a text file, both are used.
 """
 import argparse
+import logging
 import hashlib
 import json
 import math
@@ -23,6 +24,8 @@ try:
 except ImportError:
     print("This script requires 'requests'. Install with: pip install requests", file=sys.stderr)
     sys.exit(1)
+
+logger = logging.getLogger(__name__)
 
 ############################################# READ .TXT / .MD / .JSON FILE ####################################
 def read_text_file(p: Path) -> str:
@@ -124,6 +127,7 @@ def load_page_materials(dir_path: Path) -> Tuple[Dict, Optional[Path], Optional[
         candidate = read_text_file(md_path).strip()
         if candidate and not _looks_like_path_list(candidate):
             text = candidate
+            logger.debug("ingest:pick_text path=%s format=%s", md_path, source_format)
         else:
             # try other candidates if the chosen text looks like a file list
             for f in dir_path.iterdir():
@@ -133,6 +137,7 @@ def load_page_materials(dir_path: Path) -> Tuple[Dict, Optional[Path], Optional[
                         md_path = f
                         source_format = "markdown" if f.suffix.lower() == ".md" else "txt"
                         text = candidate
+                        logger.debug("ingest:pick_text fallback=%s format=%s", md_path, source_format)
                         break
     if not text and meta:
         c = meta.get("content") or meta.get("text") or ""
@@ -720,10 +725,12 @@ def main():
     skipped_existing = 0
     processed_doc_ids: Set[str] = set(resume_doc_ids)
 
+    logger.info("ingest:scan root=%s", root)
     print(f"Scanning: {root}")
     if args.dry:
         print("Running in dry-run mode; embeddings and database writes are skipped.")
     total_dirs = len(page_dirs)
+    logger.info("ingest:folders total=%s", total_dirs)
     print(f"Discovered {total_dirs} page folders.")
     for idx, d in enumerate(page_dirs, start=1):
         rel_dir = str(d.relative_to(root))
@@ -795,6 +802,7 @@ def main():
             if not ok:
                 print(f"Batch {batch_index} failed; docs={doc_ids_batch} ({err or 'see log'})", file=sys.stderr)
             else:
+                logger.info("ingest:batch sent=%s docs=%s", batch_index, len(docs))
                 sent += len(docs)
                 if args.dry:
                     print(f"Planned {sent}/{total} docs… (batch {batch_index}) [dry-run]")
@@ -812,6 +820,7 @@ def main():
         doc_ids_batch = [doc.get("id") for doc in docs]
         ok, data, err = post_batch(args.base_url, docs, options, timeout=args.timeout)
         if ok:
+            logger.info("ingest:batch sent=%s docs=%s", batch_index, len(docs))
             sent += len(docs)
             if data:
                 last_response = data
