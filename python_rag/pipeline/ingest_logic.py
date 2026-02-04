@@ -43,7 +43,14 @@ def ingest_documents(
     public_dir: Path,
 ) -> Dict[str, Any]:
     dry_run = bool(body.dry_run)
-    logger.info("ingest:start docs=%s dry_run=%s graph=%s collection=%s", len(body.docs), dry_run, bool(body.graph), body.collection)
+    logger.info(
+        "ingest:start docs=%s dry_run=%s graph=%s graph_only=%s collection=%s",
+        len(body.docs),
+        dry_run,
+        bool(body.graph),
+        bool(getattr(body, "graph_only", False)),
+        body.collection,
+    )
 
     qdrant = QdrantHTTP()
     if body.collection:
@@ -119,18 +126,23 @@ def ingest_documents(
         )
         return {"ok": True, "dry_run": True, "summary": summary}
 
-    provider = get_provider(body.provider)
-    if body.embedding_model and hasattr(provider, "embed_model"):
-        provider.embed_model = body.embedding_model.strip()
-    logger.info("ingest:provider=%s embed_model=%s batch_size=%s", body.provider, getattr(provider, "embed_model", None), batch_size)
-
+    provider = None
+    points: List[Dict[str, Any]] = []
+    vector_size: int | None = None
+    qdrant_ms = None
     start = time.perf_counter()
-    points, vector_size = _build_points(chunk_records, provider)
-    logger.info("ingest:qdrant points=%s vector_size=%s", len(points), vector_size)
-    qdrant.ensure_collection(vector_size or 1024, distance=body.distance)
-    qdrant_write_start = time.perf_counter()
-    qdrant.upsert_points(points, batch_size=batch_size)
-    logger.info("ingest:qdrant upserted=%s ms=%.2f", len(points), (time.perf_counter() - qdrant_write_start) * 1000)
+    if not getattr(body, "graph_only", False):
+        provider = get_provider(body.provider)
+        if body.embedding_model and hasattr(provider, "embed_model"):
+            provider.embed_model = body.embedding_model.strip()
+        logger.info("ingest:provider=%s embed_model=%s batch_size=%s", body.provider, getattr(provider, "embed_model", None), batch_size)
+        points, vector_size = _build_points(chunk_records, provider)
+        logger.info("ingest:qdrant points=%s vector_size=%s", len(points), vector_size)
+        qdrant.ensure_collection(vector_size or 1024, distance=body.distance)
+        qdrant_write_start = time.perf_counter()
+        qdrant.upsert_points(points, batch_size=batch_size)
+        qdrant_ms = (time.perf_counter() - qdrant_write_start) * 1000
+        logger.info("ingest:qdrant upserted=%s ms=%.2f", len(points), qdrant_ms)
     qdrant_ms = (time.perf_counter() - qdrant_write_start) * 1000
 
     neo4j_ms = None
@@ -174,7 +186,7 @@ def ingest_documents(
         summary["summary_file_error"] = str(exc)
 
     logger.info("ingest:done points=%s total_ms=%.2f", len(points), total_ms)
-    return {"ok": True, "points": len(points), "summary": summary}
+    return {"ok": True, "points": len(points), "summary": summary, "graph_only": bool(getattr(body, "graph_only", False))}
 
 
 def _build_summary(

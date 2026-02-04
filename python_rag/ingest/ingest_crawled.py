@@ -604,6 +604,7 @@ def main():
     ap.add_argument("--provider", default="ollama", help="Embedding/LLM provider name (beware that gwdg is only for chat completio)")
     ap.add_argument("--embedding-model", default=None, help="Embedding model override (e.g. bge-m3, qwen3-embedding)")
     ap.add_argument("--graph", action="store_true", help="Enable KG extraction during ingest")
+    ap.add_argument("--graph-only", action="store_true", help="Skip Qdrant/embeddings and only write Neo4j triplets")
     ap.add_argument("--graph-engine", default="raganything", help="Graph engine")
     ap.add_argument("--collection", default=None, help="Qdrant collection override")
     ap.add_argument("--distance", default="Cosine", help="Qdrant distance (Cosine|Dot|Euclid)")
@@ -708,6 +709,8 @@ def main():
         "chunk_overlap": int(args.chunk_overlap),
         "batch_size": int(args.batch),
     }
+    if args.graph_only:
+        options["graph_only"] = True
     if args.embedding_model:
         options["embedding_model"] = args.embedding_model
     if args.collection:

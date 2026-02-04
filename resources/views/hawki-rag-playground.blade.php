@@ -238,6 +238,7 @@
                         <div style="margin-top: 1rem;">
                             <div class="ingest-actions">
                                 <button type="button" id="ingest-btn">Start ingest</button>
+                                <button type="button" id="ingest-graph-only-btn" style="background: linear-gradient(135deg, #22c55e, #16a34a);">Start graph ingest</button>
                                 <button type="button" id="ingest-stop-btn" style="background: linear-gradient(135deg, #f97316, #ef4444);">Stop ingest</button>
                                 <button type="button" id="ingest-delete-btn" style="background: linear-gradient(135deg, #f43f5e, #be123c);">Delete folder</button>
                             </div>
@@ -381,6 +382,7 @@
         const ingestProgress = document.getElementById('ingest-progress');
         const ingestFolder = document.getElementById('ingest-folder');
         const ingestBtn = document.getElementById('ingest-btn');
+        const ingestGraphOnlyBtn = document.getElementById('ingest-graph-only-btn');
         const ingestAction = document.getElementById('ingest-action');
         const ingestGraph = document.getElementById('ingest-graph');
         const ingestCollection = document.getElementById('ingest-collection');
@@ -875,6 +877,46 @@
                 pushActivity('Ingest', ingestAction.textContent);
             } finally {
                 ingestBtn.disabled = false;
+            }
+        });
+
+        ingestGraphOnlyBtn.addEventListener('click', async () => {
+            const path = ingestFolder.value;
+            if (!path) {
+                ingestAction.textContent = 'Select a folder first.';
+                return;
+            }
+            const collectionName = ingestCollection.value.trim() || path.split('/').pop();
+            ingestGraphOnlyBtn.disabled = true;
+            ingestAction.textContent = 'Starting graph ingest…';
+            try {
+                const response = await fetch('/api/ingest/start', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        path,
+                        collection: collectionName,
+                        embedding_model: ingestEmbeddingModel ? ingestEmbeddingModel.value : undefined,
+                        graph: true,
+                        graph_only: true,
+                    }),
+                });
+                const data = await response.json();
+                if (!response.ok || !data.ok) {
+                    ingestAction.textContent = data.message || 'Failed to start graph ingest.';
+                    pushActivity('Ingest', ingestAction.textContent);
+                } else {
+                    ingestAction.textContent = 'Graph ingest started. Monitor progress above.';
+                    pushActivity('Ingest', `Started graph ingest for ${collectionName}`);
+                }
+            } catch (error) {
+                ingestAction.textContent = 'Failed to start graph ingest.';
+                pushActivity('Ingest', ingestAction.textContent);
+            } finally {
+                ingestGraphOnlyBtn.disabled = false;
             }
         });
 

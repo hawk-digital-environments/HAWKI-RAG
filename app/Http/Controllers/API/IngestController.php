@@ -117,6 +117,7 @@ class IngestController extends Controller
             'embedding_model' => 'sometimes|string',
             'graph' => 'sometimes|boolean',
             'graph_engine' => 'sometimes|string',
+            'graph_only' => 'sometimes|boolean',
             'chunk_chars' => 'sometimes|integer',
             'chunk_overlap' => 'sometimes|integer',
             'batch' => 'sometimes|integer',
@@ -187,6 +188,9 @@ class IngestController extends Controller
         }
         if (!empty($data['graph'])) {
             $cmd[] = '--graph';
+        }
+        if (!empty($data['graph_only'])) {
+            $cmd[] = '--graph-only';
         }
 
         $summaryPath = storage_path('logs/ingest_summary.json');
