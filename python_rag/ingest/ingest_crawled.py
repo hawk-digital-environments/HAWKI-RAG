@@ -597,6 +597,23 @@ def post_batch(base_url: str, docs: List[Dict], options: Dict, timeout: int) -> 
         sys.stderr.write(f"Ingest error: {err}\n")
         return False, None, err
 
+def should_split_batch(err: Optional[str]) -> bool:
+    if not err:
+        return False
+    lowered = err.lower()
+    retry_markers = [
+        "timed out",
+        "timeout",
+        "read timed out",
+        "502",
+        "503",
+        "504",
+        "bad gateway",
+        "gateway",
+        "service unavailable",
+    ]
+    return any(marker in lowered for marker in retry_markers)
+
 def main():
     ap = argparse.ArgumentParser(description="Ingest local crawled-data into LightRAG via HTTP.")
     ap.add_argument("--root", required=True, help="Path to local crawled-data root")
@@ -745,6 +762,43 @@ def main():
     total_dirs = len(page_dirs)
     logger.info("ingest:folders total=%s", total_dirs)
     print(f"Discovered {total_dirs} page folders.")
+    min_split_batch = int(os.environ.get("INGEST_MIN_BATCH", "4"))
+    max_split_depth = int(os.environ.get("INGEST_MAX_SPLITS", "4"))
+
+    def send_batch(docs_batch: List[Dict], depth: int = 0) -> bool:
+        nonlocal batch_index, sent, last_response, processed_doc_ids
+        if not docs_batch:
+            return True
+        batch_index += 1
+        doc_ids_batch = [doc.get("id") for doc in docs_batch]
+        ok, data, err = post_batch(args.base_url, docs_batch, options, timeout=args.timeout)
+        if ok:
+            logger.info("ingest:batch sent=%s docs=%s", batch_index, len(docs_batch))
+            sent += len(docs_batch)
+            if args.dry:
+                print(f"Planned {sent}/{total} docs… (batch {batch_index}) [dry-run]")
+            else:
+                print(f"Sent {sent}/{total} docs… (batch {batch_index})")
+            if data:
+                last_response = data
+            if not args.dry and resume_state_path is not None:
+                processed_doc_ids.update(str(doc.get("id")) for doc in docs_batch if doc.get("id"))
+                save_resume_state(resume_state_path, processed_doc_ids, resume_metadata)
+            return True
+        if should_split_batch(err) and len(docs_batch) > max(1, min_split_batch) and depth < max_split_depth:
+            mid = max(1, len(docs_batch) // 2)
+            left = docs_batch[:mid]
+            right = docs_batch[mid:]
+            print(
+                f"Batch {batch_index} failed; splitting {len(docs_batch)} into {len(left)} + {len(right)} due to timeout/5xx.",
+                file=sys.stderr,
+            )
+            left_ok = send_batch(left, depth + 1)
+            right_ok = send_batch(right, depth + 1)
+            return left_ok and right_ok
+        print(f"Batch {batch_index} failed; docs={doc_ids_batch} ({err or 'see log'})", file=sys.stderr)
+        return False
+
     for idx, d in enumerate(page_dirs, start=1):
         rel_dir = str(d.relative_to(root))
         print(f"Folder {idx}/{total_dirs}: {rel_dir}")
@@ -809,43 +863,15 @@ def main():
         total += 1
 
         if len(docs) >= args.batch:
-            batch_index += 1
-            doc_ids_batch = [doc.get("id") for doc in docs]
-            ok, data, err = post_batch(args.base_url, docs, options, timeout=args.timeout)
-            if not ok:
-                print(f"Batch {batch_index} failed; docs={doc_ids_batch} ({err or 'see log'})", file=sys.stderr)
-            else:
-                logger.info("ingest:batch sent=%s docs=%s", batch_index, len(docs))
-                sent += len(docs)
-                if args.dry:
-                    print(f"Planned {sent}/{total} docs… (batch {batch_index}) [dry-run]")
-                else:
-                    print(f"Sent {sent}/{total} docs… (batch {batch_index})")
-                if data:
-                    last_response = data
-                if not args.dry and resume_state_path is not None:
-                    processed_doc_ids.update(str(doc.get("id")) for doc in docs if doc.get("id"))
-                    save_resume_state(resume_state_path, processed_doc_ids, resume_metadata)
+            send_batch(docs, depth=0)
             docs = []
 
     if docs:
-        batch_index += 1
-        doc_ids_batch = [doc.get("id") for doc in docs]
-        ok, data, err = post_batch(args.base_url, docs, options, timeout=args.timeout)
-        if ok:
-            logger.info("ingest:batch sent=%s docs=%s", batch_index, len(docs))
-            sent += len(docs)
-            if data:
-                last_response = data
-        else:
-            print(f"Batch {batch_index} failed; docs={doc_ids_batch} ({err or 'see log'})", file=sys.stderr)
+        ok = send_batch(docs, depth=0)
         if args.dry:
             print(f"Planned {sent}/{total} docs. Dry run complete.")
         else:
             print(f"Sent {sent}/{total} docs. Done.")
-        if not args.dry and resume_state_path is not None and ok:
-            processed_doc_ids.update(str(doc.get("id")) for doc in docs if doc.get("id"))
-            save_resume_state(resume_state_path, processed_doc_ids, resume_metadata)
 
     if args.dry and last_response:
         summary = last_response.get("summary") or {}

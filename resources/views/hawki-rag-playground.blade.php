@@ -236,6 +236,10 @@
                             </select>
                         </div>
                         <div style="margin-top: 1rem;">
+                            <label for="ingest-batch-size">Batch size (docs per request)</label>
+                            <input id="ingest-batch-size" type="number" min="1" value="16" style="width:100%; border-radius:0.8rem; border:1px solid rgba(148,163,184,0.22); background:rgba(15,23,42,0.78); color:inherit; padding:0.7rem 0.8rem;" />
+                        </div>
+                        <div style="margin-top: 1rem;">
                             <label for="ingest-resume-mode">Resume mode</label>
                             <select id="ingest-resume-mode" style="width:100%; border-radius:0.8rem; border:1px solid rgba(148,163,184,0.22); background:rgba(15,23,42,0.78); color:inherit; padding:0.7rem 0.8rem;">
                                 <option value="resume" selected>Resume (skip ingested)</option>
@@ -400,6 +404,7 @@
         const ingestGraph = document.getElementById('ingest-graph');
         const ingestCollection = document.getElementById('ingest-collection');
         const ingestEmbeddingModel = document.getElementById('ingest-embedding-model');
+        const ingestBatchSize = document.getElementById('ingest-batch-size');
         const ingestResumeMode = document.getElementById('ingest-resume-mode');
         const mcpIngestBtn = document.getElementById('mcp-ingest-btn');
         const mcpClearBtn = document.getElementById('mcp-clear-btn');
@@ -867,6 +872,7 @@
             ingestBtn.disabled = true;
             ingestAction.textContent = 'Starting ingest…';
             try {
+                const batchValue = ingestBatchSize ? parseInt(ingestBatchSize.value, 10) : null;
                 const response = await fetch('/api/ingest/start', {
                     method: 'POST',
                     headers: {
@@ -877,6 +883,7 @@
                         path,
                         collection: collectionName,
                         embedding_model: ingestEmbeddingModel ? ingestEmbeddingModel.value : undefined,
+                        batch: Number.isFinite(batchValue) && batchValue > 0 ? batchValue : undefined,
                         graph: ingestGraph.checked,
                         resume_mode: ingestResumeMode ? ingestResumeMode.value : 'resume',
                     }),
@@ -907,6 +914,7 @@
             ingestGraphOnlyBtn.disabled = true;
             ingestAction.textContent = 'Starting graph ingest…';
             try {
+                const batchValue = ingestBatchSize ? parseInt(ingestBatchSize.value, 10) : null;
                 const response = await fetch('/api/ingest/start', {
                     method: 'POST',
                     headers: {
@@ -917,6 +925,7 @@
                         path,
                         collection: collectionName,
                         embedding_model: ingestEmbeddingModel ? ingestEmbeddingModel.value : undefined,
+                        batch: Number.isFinite(batchValue) && batchValue > 0 ? batchValue : undefined,
                         graph: true,
                         graph_only: true,
                         resume_mode: ingestResumeMode ? ingestResumeMode.value : 'resume',
