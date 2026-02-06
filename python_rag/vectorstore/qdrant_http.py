@@ -267,6 +267,204 @@ class QdrantHTTP:
         merged.sort(key=lambda h: float(h.get("score") or 0.0), reverse=True)
         return merged[: int(top_k)]
 
+    def search_with_text(
+        self,
+        vector: List[float],
+        *,
+        top_k: int,
+        terms: List[str],
+        fields: List[str],
+    ) -> List[Dict[str, Any]]:
+        terms = [t for t in (terms or []) if t]
+        fields = [f for f in (fields or []) if f]
+        if not terms or not fields:
+            return []
+        collection = self.collection
+        if not collection:
+            collection = self._pick_default_collection() or ""
+            self.collection = collection
+        if not collection:
+            return []
+        filter_body: Dict[str, Any] = {"must": []}
+        max_terms = int(os.environ.get("QDRANT_TEXT_FALLBACK_TERMS", "3"))
+        for term in terms[: max_terms]:
+            should = [{"key": field, "match": {"text": term}} for field in fields]
+            if should:
+                filter_body["must"].append({"should": should})
+        if not filter_body["must"]:
+            return []
+        body = {
+            "vector": vector,
+            "limit": int(top_k),
+            "with_payload": True,
+            "with_vector": False,
+            "filter": filter_body,
+        }
+        r = self._request(
+            "POST",
+            f"/collections/{collection}/points/search",
+            json=body,
+            timeout=float(os.environ.get("QDRANT_SEARCH_TIMEOUT", self.timeout)),
+        )
+        if r.status_code == 404:
+            return []
+        r.raise_for_status()
+        result = r.json().get("result", [])
+        if result:
+            return result
+
+        # Relax to "any term" if strict matching yields nothing.
+        relax_body = {
+            "vector": vector,
+            "limit": int(top_k),
+            "with_payload": True,
+            "with_vector": False,
+            "filter": {
+                "should": [
+                    {"should": [{"key": field, "match": {"text": term}} for field in fields]}
+                    for term in terms[: max_terms]
+                ]
+            },
+        }
+        r2 = self._request(
+            "POST",
+            f"/collections/{collection}/points/search",
+            json=relax_body,
+            timeout=float(os.environ.get("QDRANT_SEARCH_TIMEOUT", self.timeout)),
+        )
+        if r2.status_code == 404:
+            return []
+        r2.raise_for_status()
+        return r2.json().get("result", [])
+
+    def scroll_with_text(
+        self,
+        *,
+        terms: List[str],
+        fields: List[str],
+        limit: int,
+        require_all: bool = True,
+        offset: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        terms = [t for t in (terms or []) if t]
+        fields = [f for f in (fields or []) if f]
+        if not terms or not fields:
+            return []
+        collection = self.collection
+        if not collection:
+            collection = self._pick_default_collection() or ""
+            self.collection = collection
+        if not collection:
+            return []
+        max_terms = int(os.environ.get("QDRANT_TEXT_FALLBACK_TERMS", "3"))
+        if require_all:
+            filter_body: Dict[str, Any] = {"must": []}
+            for term in terms[: max_terms]:
+                should = [{"key": field, "match": {"text": term}} for field in fields]
+                if should:
+                    filter_body["must"].append({"should": should})
+            if not filter_body["must"]:
+                return []
+        else:
+            filter_body = {
+                "should": [
+                    {"should": [{"key": field, "match": {"text": term}} for field in fields]}
+                    for term in terms[: max_terms]
+                ]
+            }
+        body: Dict[str, Any] = {
+            "limit": int(limit),
+            "with_payload": True,
+            "with_vector": False,
+            "filter": filter_body,
+        }
+        if offset:
+            body["offset"] = offset
+        r = self._request(
+            "POST",
+            f"/collections/{collection}/points/scroll",
+            json=body,
+            timeout=float(os.environ.get("QDRANT_SEARCH_TIMEOUT", self.timeout)),
+        )
+        if r.status_code == 404:
+            return []
+        r.raise_for_status()
+        result = r.json().get("result") or {}
+        return result.get("points") or []
+
+    def scroll_with_text_all(
+        self,
+        *,
+        terms: List[str],
+        fields: List[str],
+        limit: int,
+        require_all: bool = True,
+    ) -> List[Dict[str, Any]]:
+        terms = [t for t in (terms or []) if t]
+        fields = [f for f in (fields or []) if f]
+        if not terms or not fields:
+            return []
+        collection = self.collection
+        if not collection:
+            collection = self._pick_default_collection() or ""
+            self.collection = collection
+        if not collection:
+            return []
+        max_terms = int(os.environ.get("QDRANT_TEXT_FALLBACK_TERMS", "3"))
+        if require_all:
+            filter_body: Dict[str, Any] = {"must": []}
+            for term in terms[: max_terms]:
+                should = [{"key": field, "match": {"text": term}} for field in fields]
+                if should:
+                    filter_body["must"].append({"should": should})
+            if not filter_body["must"]:
+                return []
+        else:
+            filter_body = {
+                "should": [
+                    {"should": [{"key": field, "match": {"text": term}} for field in fields]}
+                    for term in terms[: max_terms]
+                ]
+            }
+        hard_cap = int(os.environ.get("QDRANT_TEXT_SCROLL_HARD_CAP", "50000"))
+        cap = int(limit) if limit is not None else 0
+        if cap <= 0:
+            cap = hard_cap
+        else:
+            cap = min(cap, hard_cap)
+        batch_size = int(os.environ.get("QDRANT_TEXT_SCROLL_BATCH", "256"))
+        batch_size = max(1, min(batch_size, cap))
+        collected: List[Dict[str, Any]] = []
+        offset: Optional[str] = None
+        while len(collected) < cap:
+            body: Dict[str, Any] = {
+                "limit": int(min(batch_size, cap - len(collected))),
+                "with_payload": True,
+                "with_vector": False,
+                "filter": filter_body,
+            }
+            if offset:
+                body["offset"] = offset
+            r = self._request(
+                "POST",
+                f"/collections/{collection}/points/scroll",
+                json=body,
+                timeout=float(os.environ.get("QDRANT_SEARCH_TIMEOUT", self.timeout)),
+            )
+            if r.status_code == 404:
+                break
+            r.raise_for_status()
+            result = r.json().get("result") or {}
+            points = result.get("points") or []
+            if not points:
+                break
+            collected.extend(points)
+            next_offset = result.get("next_page_offset")
+            if not next_offset:
+                break
+            offset = next_offset
+        return collected
+
     def delete_by_filter(self, filter_body: Dict[str, Any]) -> Dict[str, Any]:
         """Delete points matching the supplied Qdrant filter."""
         payload = {"filter": filter_body}
