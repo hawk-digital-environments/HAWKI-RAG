@@ -56,37 +56,28 @@ class IngestController extends Controller
         return $code === 0;
     }
 
-    private function listLiveIngestions(): array
+    private function listLiveIngestions(string $mode = 'default'): array
     {
-        $entries = $this->loadStatusEntries();
-        if (!$entries) {
-            return [];
-        }
+        [$statusPath] = $this->resolveStatusPaths($mode);
+        return $this->listLiveIngestionsFrom($statusPath);
+    }
 
-        $live = [];
-        foreach ($entries as $entry) {
-            if (!is_array($entry)) {
-                continue;
-            }
-            $statusValue = $entry['status'] ?? null;
-            if ($statusValue !== 'running') {
-                continue;
-            }
-            $pid = $entry['pid'] ?? null;
-            $pidValue = ($pid && is_numeric($pid)) ? (int) $pid : null;
-            $live[] = [
-                'pid' => $pidValue,
-                'path' => $entry['path'] ?? null,
-                'status' => $statusValue,
-                'started_at' => $entry['started_at'] ?? null,
-                'updated_at' => $entry['updated_at'] ?? null,
-                'source' => $entry['source'] ?? ($pidValue ? 'api' : 'mcp'),
-                'alive' => null,
-                'collection' => $entry['collection'] ?? null,
-            ];
-        }
+    private function resolveStatusModeForRequest(array $data): string
+    {
+        $graphEnabled = !empty($data['graph']) || !empty($data['graph_only']);
+        return $graphEnabled ? 'neo4j' : 'default';
+    }
 
-        return $live;
+    private function resolveStatusPaths(string $mode = 'default'): array
+    {
+        if ($mode === 'neo4j') {
+            $statusPath = (string) config('hawki_rag.ingest_status_path_neo4j', storage_path('logs/ingest_status_neo4j.json'));
+            $logPath = (string) config('hawki_rag.ingest_log_path_neo4j', storage_path('logs/ingest_progress_neo4j.log'));
+            return [$statusPath, $logPath];
+        }
+        $statusPath = (string) config('hawki_rag.ingest_status_path', storage_path('logs/ingest_status.json'));
+        $logPath = (string) config('hawki_rag.ingest_log_path', storage_path('logs/ingest_progress.log'));
+        return [$statusPath, $logPath];
     }
 
     public function folders(): JsonResponse
@@ -140,8 +131,8 @@ class IngestController extends Controller
         }
 
         $baseUrl = (string) env('HAWKI_RAG_BRIDGE_URL', 'http://hawki_rag_bridge:8000');
-        $statusPath = (string) config('hawki_rag.ingest_status_path', storage_path('logs/ingest_status.json'));
-        $logPath = (string) config('hawki_rag.ingest_log_path', storage_path('logs/ingest_progress.log'));
+        $statusMode = $this->resolveStatusModeForRequest($data);
+        [$statusPath, $logPath] = $this->resolveStatusPaths($statusMode);
         File::ensureDirectoryExists(dirname($statusPath));
         File::ensureDirectoryExists(dirname($logPath));
 
@@ -220,10 +211,13 @@ class IngestController extends Controller
             'collection_exists' => $collectionExists,
             'source' => 'api',
             'resume_mode' => $resumeMode,
+            'graph' => !empty($data['graph']),
+            'graph_only' => !empty($data['graph_only']),
+            'status_mode' => $statusMode,
         ];
-        $entries = $this->loadStatusEntries();
+        $entries = $this->loadStatusEntries($statusPath);
         $entries[] = $entry;
-        $this->saveStatusEntries($entries);
+        $this->saveStatusEntries($statusPath, $entries);
         File::append($logPath, 'INGEST_STARTED ' . $path . PHP_EOL);
 
         $escaped = array_map('escapeshellarg', $cmd);
@@ -234,7 +228,7 @@ class IngestController extends Controller
 
         $entry['pid'] = $process->getPid();
         $entry['updated_at'] = now()->toIso8601String();
-        $entries = $this->loadStatusEntries();
+        $entries = $this->loadStatusEntries($statusPath);
         foreach ($entries as &$existing) {
             if (is_array($existing) && ($existing['id'] ?? null) === $entry['id']) {
                 $existing = $entry;
@@ -242,7 +236,7 @@ class IngestController extends Controller
             }
         }
         unset($existing);
-        $this->saveStatusEntries($entries);
+        $this->saveStatusEntries($statusPath, $entries);
 
         return response()->json([
             'ok' => true,
@@ -259,9 +253,12 @@ class IngestController extends Controller
             'pid' => 'sometimes|integer|min:1',
             'pids' => 'sometimes|array',
             'pids.*' => 'integer|min:1',
+            'mode' => 'sometimes|string|in:default,neo4j',
         ]);
 
-        $liveBefore = $this->listLiveIngestions();
+        $mode = $data['mode'] ?? 'default';
+        [$statusPath, $logPath] = $this->resolveStatusPaths($mode);
+        $liveBefore = $this->listLiveIngestionsFrom($statusPath);
         if (!$liveBefore) {
             return response()->json([
                 'ok' => false,
@@ -313,7 +310,7 @@ class IngestController extends Controller
             ], 500);
         }
 
-        $entries = $this->loadStatusEntries();
+        $entries = $this->loadStatusEntries($statusPath);
         $now = now()->toIso8601String();
         foreach ($entries as &$entry) {
             if (!is_array($entry)) {
@@ -326,7 +323,7 @@ class IngestController extends Controller
             }
         }
         unset($entry);
-        $this->saveStatusEntries($entries);
+        $this->saveStatusEntries($statusPath, $entries);
 
         return response()->json([
             'ok' => true,
@@ -360,9 +357,8 @@ class IngestController extends Controller
         return $count;
     }
 
-    private function loadStatusEntries(): array
+    private function loadStatusEntries(string $statusPath): array
     {
-        $statusPath = (string) config('hawki_rag.ingest_status_path', storage_path('logs/ingest_status.json'));
         if (!is_file($statusPath)) {
             return [];
         }
@@ -377,10 +373,42 @@ class IngestController extends Controller
         return [];
     }
 
-    private function saveStatusEntries(array $entries): void
+    private function saveStatusEntries(string $statusPath, array $entries): void
     {
-        $statusPath = (string) config('hawki_rag.ingest_status_path', storage_path('logs/ingest_status.json'));
         File::put($statusPath, json_encode(['ingests' => array_values($entries)], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+    }
+
+    private function listLiveIngestionsFrom(string $statusPath): array
+    {
+        $entries = $this->loadStatusEntries($statusPath);
+        if (!$entries) {
+            return [];
+        }
+
+        $live = [];
+        foreach ($entries as $entry) {
+            if (!is_array($entry)) {
+                continue;
+            }
+            $statusValue = $entry['status'] ?? null;
+            if ($statusValue !== 'running') {
+                continue;
+            }
+            $pid = $entry['pid'] ?? null;
+            $pidValue = ($pid && is_numeric($pid)) ? (int) $pid : null;
+            $live[] = [
+                'pid' => $pidValue,
+                'path' => $entry['path'] ?? null,
+                'status' => $statusValue,
+                'started_at' => $entry['started_at'] ?? null,
+                'updated_at' => $entry['updated_at'] ?? null,
+                'source' => $entry['source'] ?? ($pidValue ? 'api' : 'mcp'),
+                'alive' => null,
+                'collection' => $entry['collection'] ?? null,
+            ];
+        }
+
+        return $live;
     }
 
     private function collectionExistsInQdrant(string $collection): bool
@@ -407,9 +435,13 @@ class IngestController extends Controller
         return false;
     }
 
-    public function live(): JsonResponse
+    public function live(Request $request): JsonResponse
     {
-        $live = $this->listLiveIngestions();
+        $mode = (string) $request->query('mode', 'default');
+        if (!in_array($mode, ['default', 'neo4j'], true)) {
+            $mode = 'default';
+        }
+        $live = $this->listLiveIngestions($mode);
         return response()->json([
             'ok' => true,
             'live_ingestions' => $live,

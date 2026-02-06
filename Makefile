@@ -87,16 +87,25 @@ health:
 test-services:
 	@set -e; \
 	printf "qdrant: "; \
-	code=$$(curl -s -o /dev/null -w "%{http_code}" http://localhost:6333/readyz || echo 000); \
-	if [ "$$code" = "200" ] || [ "$$code" = "204" ] || [ "$$code" = "404" ]; then echo "healthy ($$code)"; else echo "FAIL ($$code)"; exit 1; fi; \
-	printf "neo4j: "; curl -fsS http://localhost:7475/browser >/dev/null && echo "healthy" || (echo "FAIL" && exit 1); \
+	if docker ps --format '{{.Names}}' | grep -q hawki_qdrant; then \
+		code=$$(docker exec hawki_qdrant sh -lc "curl -s -o /dev/null -w \"%{http_code}\" http://localhost:6333/readyz" || echo 000); \
+		if [ "$$code" = "200" ] || [ "$$code" = "204" ] || [ "$$code" = "404" ]; then echo "healthy ($$code)"; else echo "FAIL ($$code)"; exit 1; fi; \
+	else \
+		echo "skipped (container not running)"; \
+	fi; \
+	printf "neo4j: "; \
+	if docker ps --format '{{.Names}}' | grep -q hawki_rag_neo4j; then \
+		docker exec hawki_rag_neo4j sh -lc "wget --spider -q http://localhost:7474/browser" >/dev/null && echo "healthy" || (echo "FAIL" && exit 1); \
+	else \
+		echo "skipped (container not running)"; \
+	fi; \
 	if docker ps --format '{{.Names}}' | grep -q hawki_rag_bridge; then \
-		printf "hawki_rag_bridge: "; curl -fsS $(INGEST_BASE)/health >/dev/null && echo "healthy" || (echo "WARN" && true); \
+		printf "hawki_rag_bridge: "; docker exec hawki_rag_bridge sh -lc "curl -fsS http://localhost:8000/health" >/dev/null && echo "healthy" || (echo "WARN" && true); \
 	else \
 		printf "hawki_rag_bridge: skipped (container not running)\n"; \
 	fi; \
 	if docker ps --format '{{.Names}}' | grep -q hawki_rag_rerank; then \
-		printf "hawki_rag_rerank: "; curl -fsS $(RERANK_BASE)/health >/dev/null && echo "healthy" || (echo "WARN" && true); \
+		printf "hawki_rag_rerank: "; docker exec hawki_rag_rerank sh -lc "curl -fsS http://localhost:8000/health" >/dev/null && echo "healthy" || (echo "WARN" && true); \
 	else \
 		printf "hawki_rag_rerank: skipped (container not running)\n"; \
 	fi; \
@@ -113,46 +122,6 @@ ingest:
 		--provider ollama \
 		--graph \
 		--batch 16
-
-ingest-mcp:
-	@if [ "$(MCP_INGEST_ROOT)" = "" ]; then echo "Set MCP_INGEST_ROOT to your crawled root." && exit 1; fi
-	@curl -fsS $(MCP_BASE) \
-		-H "Content-Type: application/json" \
-		-d '{"jsonrpc":"2.0","id":'"$$(date +%s)"',"method":"tools/call","params":{"name":"rag-folder-ingest-tool","arguments":{"root":"$(MCP_INGEST_ROOT)","base_url":"http://hawki_rag_bridge:8000","provider":"$(MCP_INGEST_PROVIDER)","graph":$(MCP_INGEST_GRAPH),"graph_engine":"$(MCP_INGEST_GRAPH_ENGINE)","chunk_chars":$(MCP_INGEST_CHUNK_CHARS),"chunk_overlap":$(MCP_INGEST_CHUNK_OVERLAP),"batch":$(MCP_INGEST_BATCH),"timeout":$(MCP_INGEST_TIMEOUT)}}}' | python3 -m json.tool
-
-ingest-mcp-list:
-	@curl -fsS $(MCP_BASE) \
-		-H "Content-Type: application/json" \
-		-d '{"jsonrpc":"2.0","id":'"$$(date +%s)"',"method":"tools/call","params":{"name":"rag-folder-list-tool","arguments":{"root":"$(MCP_LIST_ROOT)"}}}' | python3 -m json.tool
-
-pipeline:
-	@if [ -z "$(PIPELINE_URL)" ]; then echo "Set PIPELINE_URL, e.g.: make pipeline PIPELINE_URL=https://hawk.de"; exit 1; fi
-	@cmd="docker exec -it hawki_rag_app php artisan hawki_rag:pipeline \"$(PIPELINE_URL)\" --max-pages=$(PIPELINE_MAX_PAGES) --provider=$(PIPELINE_PROVIDER) --graph-engine=$(PIPELINE_GRAPH_ENGINE) --distance=$(PIPELINE_DISTANCE) --chunk-chars=$(PIPELINE_CHUNK_CHARS) --chunk-overlap=$(PIPELINE_CHUNK_OVERLAP) --batch=$(PIPELINE_BATCH) --timeout=$(PIPELINE_TIMEOUT) --base-url=$(PIPELINE_BASE_URL)"; \
-	if [ "$(PIPELINE_GRAPH)" = "true" ] || [ "$(PIPELINE_GRAPH)" = "1" ]; then cmd="$$cmd --graph"; fi; \
-	if [ -n "$(PIPELINE_OUTPUT_DIR)" ]; then cmd="$$cmd --output-dir=$(PIPELINE_OUTPUT_DIR)"; fi; \
-	if [ -n "$(PIPELINE_LABEL)" ]; then cmd="$$cmd --label=$(PIPELINE_LABEL)"; fi; \
-	if [ -n "$(PIPELINE_COLLECTION)" ]; then cmd="$$cmd --collection=$(PIPELINE_COLLECTION)"; fi; \
-	eval $$cmd
-
-pipeline-async:
-	@if [ -z "$(PIPELINE_URL)" ]; then echo "Set PIPELINE_URL, e.g.: make pipeline-async PIPELINE_URL=https://hawk.de"; exit 1; fi
-	@payload="{\"url\":\"$(PIPELINE_URL)\",\"max_pages\":$(PIPELINE_MAX_PAGES),\"provider\":\"$(PIPELINE_PROVIDER)\",\"graph_engine\":\"$(PIPELINE_GRAPH_ENGINE)\",\"distance\":\"$(PIPELINE_DISTANCE)\",\"chunk_chars\":$(PIPELINE_CHUNK_CHARS),\"chunk_overlap\":$(PIPELINE_CHUNK_OVERLAP),\"batch\":$(PIPELINE_BATCH),\"timeout\":$(PIPELINE_TIMEOUT),\"base_url\":\"$(PIPELINE_BASE_URL)\""; \
-	if [ "$(PIPELINE_GRAPH)" = "true" ] || [ "$(PIPELINE_GRAPH)" = "1" ]; then payload="$$payload,\\\"graph\\\":true"; fi; \
-	if [ -n "$(PIPELINE_OUTPUT_DIR)" ]; then payload="$$payload,\\\"output_dir\\\":\\\"$(PIPELINE_OUTPUT_DIR)\\\""; fi; \
-	if [ -n "$(PIPELINE_LABEL)" ]; then payload="$$payload,\\\"label\\\":\\\"$(PIPELINE_LABEL)\\\""; fi; \
-	if [ -n "$(PIPELINE_COLLECTION)" ]; then payload="$$payload,\\\"collection\\\":\\\"$(PIPELINE_COLLECTION)\\\""; fi; \
-	payload="$$payload}"; \
-	curl -fsS http://localhost:8080/api/pipeline/start -H "Content-Type: application/json" -d "$$payload" | python3 -m json.tool
-
-prune-missing:
-	@if [ "$(CRAWLED_ROOT)" = "/abs/path/to/crawled-data" ] || [ -z "$(CRAWLED_ROOT)" ]; then echo "Set CRAWLED_ROOT to your crawl path, e.g.: make prune-missing CRAWLED_ROOT=/data/crawl COLLECTION=embeddings_hawk"; exit 1; fi
-	@if [ -z "$(COLLECTION)" ]; then echo "Set COLLECTION to the Qdrant collection name."; exit 1; fi
-	@python3 python_rag/ingest/prune_missing_docs.py \
-		--root $(CRAWLED_ROOT) \
-		--collection $(COLLECTION) \
-		--base-url $(INGEST_BASE) \
-		--qdrant-url http://localhost:6333 \
-		$(if $(DRY),--dry-run,)
 
 logs-core:
 	@$(COMPOSE_CMD) logs -f qdrant mysql hawki_rag_nginx $(OLLAMA_SERVICE) hawki_rag_app

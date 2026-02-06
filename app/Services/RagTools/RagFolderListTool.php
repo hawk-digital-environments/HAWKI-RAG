@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Mcp\Tools;
+namespace App\Services\RagTools;
 
 use Illuminate\Support\Facades\File;
 use Laravel\Mcp\Server\Tool;

@@ -658,6 +658,9 @@ def main():
         str(root),
         args.base_url.rstrip("/"),
     ]
+    # Graph-only runs should not reuse the embedding/Qdrant resume state.
+    if args.graph_only:
+        resume_key_parts.append("graph_only")
     resume_key = "::".join(resume_key_parts)
     if not args.dry and not args.estimate_only:
         resume_state_path = state_dir / _safe_state_filename(resume_key)
@@ -666,6 +669,8 @@ def main():
             "collection": args.collection,
             "root": str(root),
             "base_url": args.base_url,
+            "graph_only": bool(args.graph_only),
+            "graph": bool(args.graph),
         }
         if existing_ids:
             print(

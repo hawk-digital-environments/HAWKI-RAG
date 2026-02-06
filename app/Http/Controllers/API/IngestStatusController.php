@@ -4,23 +4,36 @@ namespace App\Http\Controllers\API;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\File;
 
 class IngestStatusController extends Controller
 {
-    public function show(): JsonResponse
+    public function show(Request $request): JsonResponse
     {
-        $statusPath = (string) config('hawki_rag.ingest_status_path', storage_path('logs/ingest_status.json'));
-        $logPath = (string) config('hawki_rag.ingest_log_path', storage_path('logs/ingest_progress.log'));
+        $mode = (string) $request->query('mode', 'default');
+        if (!in_array($mode, ['default', 'neo4j'], true)) {
+            $mode = 'default';
+        }
+        if ($mode === 'neo4j') {
+            $statusPath = (string) config('hawki_rag.ingest_status_path_neo4j', storage_path('logs/ingest_status_neo4j.json'));
+            $logPath = (string) config('hawki_rag.ingest_log_path_neo4j', storage_path('logs/ingest_progress_neo4j.log'));
+        } else {
+            $statusPath = (string) config('hawki_rag.ingest_status_path', storage_path('logs/ingest_status.json'));
+            $logPath = (string) config('hawki_rag.ingest_log_path', storage_path('logs/ingest_progress.log'));
+        }
 
         $status = null;
+        $ingests = null;
+        $statusIndex = null;
         if (is_file($statusPath)) {
             $raw = @file_get_contents($statusPath);
             $decoded = $raw ? json_decode($raw, true) : null;
             if (is_array($decoded) && array_key_exists('ingests', $decoded) && is_array($decoded['ingests'])) {
                 $ingests = $decoded['ingests'];
                 if ($ingests) {
-                    $status = $ingests[count($ingests) - 1];
+                    $statusIndex = count($ingests) - 1;
+                    $status = $ingests[$statusIndex];
                 }
             } else {
                 $status = $decoded;
@@ -30,10 +43,15 @@ class IngestStatusController extends Controller
         $lines = $this->tailLines($logPath, 40);
         if (is_array($status) && $lines) {
             $last = $lines[count($lines) - 1];
-            if ($last === 'INGEST_DONE') {
-                $status['status'] = 'completed';
+            if ($last === 'INGEST_DONE' || $last === 'INGEST_FAILED') {
+                $status['status'] = $last === 'INGEST_DONE' ? 'completed' : 'failed';
                 $status['updated_at'] = now()->toIso8601String();
-                File::put($statusPath, json_encode($status, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+                if (is_array($ingests) && $statusIndex !== null) {
+                    $ingests[$statusIndex] = $status;
+                    File::put($statusPath, json_encode(['ingests' => $ingests], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+                } else {
+                    File::put($statusPath, json_encode($status, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+                }
             }
         }
 
@@ -49,10 +67,19 @@ class IngestStatusController extends Controller
         ]);
     }
 
-    public function clear(): JsonResponse
+    public function clear(Request $request): JsonResponse
     {
-        $statusPath = (string) config('hawki_rag.ingest_status_path', storage_path('logs/ingest_status.json'));
-        $logPath = (string) config('hawki_rag.ingest_log_path', storage_path('logs/ingest_progress.log'));
+        $mode = (string) $request->query('mode', 'default');
+        if (!in_array($mode, ['default', 'neo4j'], true)) {
+            $mode = 'default';
+        }
+        if ($mode === 'neo4j') {
+            $statusPath = (string) config('hawki_rag.ingest_status_path_neo4j', storage_path('logs/ingest_status_neo4j.json'));
+            $logPath = (string) config('hawki_rag.ingest_log_path_neo4j', storage_path('logs/ingest_progress_neo4j.log'));
+        } else {
+            $statusPath = (string) config('hawki_rag.ingest_status_path', storage_path('logs/ingest_status.json'));
+            $logPath = (string) config('hawki_rag.ingest_log_path', storage_path('logs/ingest_progress.log'));
+        }
 
         if (is_file($statusPath)) {
             @unlink($statusPath);

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Mcp\Tools;
+namespace App\Services\RagTools;
 
 use Illuminate\Support\Facades\File;
 use Laravel\Mcp\Server\Tool;
@@ -99,8 +99,14 @@ class RagFolderIngestTool extends Tool
         $process = new Process($cmd, base_path());
         $process->setTimeout(3600);
 
-        $statusPath = (string) config('hawki_rag.ingest_status_path', storage_path('logs/ingest_status.json'));
-        $logPath = (string) config('hawki_rag.ingest_log_path', storage_path('logs/ingest_progress.log'));
+        $graphEnabled = !empty($arguments['graph']) || !empty($arguments['graph_only']);
+        if ($graphEnabled) {
+            $statusPath = (string) config('hawki_rag.ingest_status_path_neo4j', storage_path('logs/ingest_status_neo4j.json'));
+            $logPath = (string) config('hawki_rag.ingest_log_path_neo4j', storage_path('logs/ingest_progress_neo4j.log'));
+        } else {
+            $statusPath = (string) config('hawki_rag.ingest_status_path', storage_path('logs/ingest_status.json'));
+            $logPath = (string) config('hawki_rag.ingest_log_path', storage_path('logs/ingest_progress.log'));
+        }
         File::ensureDirectoryExists(dirname($statusPath));
 
         $this->logMcpEvent('start', [

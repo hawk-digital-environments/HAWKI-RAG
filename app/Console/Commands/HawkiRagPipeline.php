@@ -66,8 +66,14 @@ class HawkiRagPipeline extends Command
         }
 
         $baseUrl = (string) ($this->option('base-url') ?: env('HAWKI_RAG_BRIDGE_URL', 'http://hawki_rag_bridge:8000'));
-        $statusPath = (string) config('hawki_rag.ingest_status_path', storage_path('logs/ingest_status.json'));
-        $logPath = (string) config('hawki_rag.ingest_log_path', storage_path('logs/ingest_progress.log'));
+        $graphEnabled = (bool) $this->option('graph');
+        if ($graphEnabled) {
+            $statusPath = (string) config('hawki_rag.ingest_status_path_neo4j', storage_path('logs/ingest_status_neo4j.json'));
+            $logPath = (string) config('hawki_rag.ingest_log_path_neo4j', storage_path('logs/ingest_progress_neo4j.log'));
+        } else {
+            $statusPath = (string) config('hawki_rag.ingest_status_path', storage_path('logs/ingest_status.json'));
+            $logPath = (string) config('hawki_rag.ingest_log_path', storage_path('logs/ingest_progress.log'));
+        }
         File::ensureDirectoryExists(dirname($statusPath));
         File::ensureDirectoryExists(dirname($logPath));
 
