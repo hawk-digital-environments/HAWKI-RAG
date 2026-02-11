@@ -219,8 +219,8 @@
                                 </select>
                             </div>
                             <div>
-                                <label for="ingest-graph">Graph extraction</label>
-                                <label><input type="checkbox" id="ingest-graph" checked /> Enable Neo4j triplets</label>
+                            <label>Graph extraction</label>
+                            <div class="muted">Use "Start graph ingest" for Neo4j triplets.</div>
                             </div>
                         </div>
                         <div style="margin-top: 1rem;">
@@ -309,7 +309,7 @@
                     <div class="subsection">
                         <h3 style="margin-top:0;">Live Activity</h3>
                         <p style="margin: 0 0 0.6rem; font-size: 0.9rem; color: #bae6fd;">
-                            Rolling feed of the latest updates from MCP, ingest, and RAG stats.
+                            Rolling feed of the latest updates from ingest and RAG stats.
                         </p>
                         <div id="activity-feed" class="activity-feed"></div>
                         <div style="margin-top: 0.8rem;">
@@ -337,8 +337,6 @@
                                 </div>
                                 <div>
                                     <label><input type="checkbox" id="fast-mode" /> Fast mode (skip rewrite + graph)</label>
-                                    <label><input type="checkbox" id="smart-lookup" /> Smart lookup (keyword + graph)</label>
-                                    <label><input type="checkbox" id="optimized" /> Optimized retrieval</label>
                                 </div>
                             </div>
                             <div>
@@ -393,21 +391,19 @@
         const rawJson = document.getElementById('raw-json');
         const metaEl = document.getElementById('meta');
         const provenanceBanner = document.getElementById('provenance-banner');
-        const mcpLatest = document.getElementById('mcp-latest');
-        const mcpLog = document.getElementById('mcp-log');
+        const mcpLatest = null;
+        const mcpLog = null;
         const ingestStatus = document.getElementById('ingest-status');
         const ingestProgress = document.getElementById('ingest-progress');
         const ingestFolder = document.getElementById('ingest-folder');
         const ingestBtn = document.getElementById('ingest-btn');
         const ingestGraphOnlyBtn = document.getElementById('ingest-graph-only-btn');
         const ingestAction = document.getElementById('ingest-action');
-        const ingestGraph = document.getElementById('ingest-graph');
+        const ingestGraph = null;
         const ingestCollection = document.getElementById('ingest-collection');
         const ingestEmbeddingModel = document.getElementById('ingest-embedding-model');
         const ingestBatchSize = document.getElementById('ingest-batch-size');
         const ingestResumeMode = document.getElementById('ingest-resume-mode');
-        const mcpIngestBtn = document.getElementById('mcp-ingest-btn');
-        const mcpClearBtn = document.getElementById('mcp-clear-btn');
         const ingestClearBtn = document.getElementById('ingest-clear-btn');
         const ingestStopBtn = document.getElementById('ingest-stop-btn');
         const ingestDeleteBtn = document.getElementById('ingest-delete-btn');
@@ -425,6 +421,7 @@
         let lastRagStatsHash = '';
         let lastIngestStatus = null;
         let lastLiveIngestions = [];
+        let ingestStatusMode = 'default';
 
         function badge(text) {
             const span = document.createElement('span');
@@ -528,13 +525,13 @@
             provenanceBanner.style.display = 'none';
             provenanceBanner.textContent = '';
 
+                const fastMode = document.getElementById('fast-mode').checked;
                 const payload = {
                     query,
                     top_k: Number(document.getElementById('topk').value) || 5,
                     generate: false,
-                    is_optimized: document.getElementById('optimized').checked,
-                    fast_mode: document.getElementById('fast-mode').checked,
-                    smart_lookup: document.getElementById('smart-lookup').checked,
+                    fast_mode: fastMode,
+                    smart_lookup: !fastMode,
                 };
 
             const startedAt = performance.now();
@@ -734,13 +731,26 @@
             return null;
         }
 
+        async function fetchIngestStatus(mode) {
+            const response = await fetch(`/api/ingest/status?mode=${mode}`, {
+                headers: { 'Accept': 'application/json' },
+            });
+            if (!response.ok) return null;
+            return await response.json();
+        }
+
         async function pollIngestStatus() {
             try {
-                const response = await fetch('/api/ingest/status', {
-                    headers: { 'Accept': 'application/json' },
-                });
-                if (!response.ok) return;
-                const data = await response.json();
+                let data = await fetchIngestStatus(ingestStatusMode);
+                if (!data || (!data.status && !(Array.isArray(data.log_lines) && data.log_lines.length))) {
+                    const fallbackMode = ingestStatusMode === 'neo4j' ? 'default' : 'neo4j';
+                    const fallback = await fetchIngestStatus(fallbackMode);
+                    if (fallback && (fallback.status || (Array.isArray(fallback.log_lines) && fallback.log_lines.length))) {
+                        data = fallback;
+                        ingestStatusMode = fallbackMode;
+                    }
+                }
+                if (!data) return;
                 const status = data ? data.status : null;
                 if (status) {
                     lastIngestStatus = status;
@@ -790,13 +800,26 @@
             }
         }
 
+        async function fetchIngestLive(mode) {
+            const response = await fetch(`/api/ingest/live?mode=${mode}`, {
+                headers: { 'Accept': 'application/json' },
+            });
+            if (!response.ok) return null;
+            return await response.json();
+        }
+
         async function pollIngestLive() {
             try {
-                const response = await fetch('/api/ingest/live', {
-                    headers: { 'Accept': 'application/json' },
-                });
-                if (!response.ok) return;
-                const data = await response.json();
+                let data = await fetchIngestLive(ingestStatusMode);
+                if (!data || !Array.isArray(data.live_ingestions) || !data.live_ingestions.length) {
+                    const fallbackMode = ingestStatusMode === 'neo4j' ? 'default' : 'neo4j';
+                    const fallback = await fetchIngestLive(fallbackMode);
+                    if (fallback && Array.isArray(fallback.live_ingestions) && fallback.live_ingestions.length) {
+                        data = fallback;
+                        ingestStatusMode = fallbackMode;
+                    }
+                }
+                if (!data) return;
                 let live = (data && data.live_ingestions) || [];
                 lastLiveIngestions = Array.isArray(live) ? live : [];
                 if (!live.length && lastIngestStatus && (lastIngestStatus.pid || lastIngestStatus.path)) {
@@ -884,7 +907,7 @@
                         collection: collectionName,
                         embedding_model: ingestEmbeddingModel ? ingestEmbeddingModel.value : undefined,
                         batch: Number.isFinite(batchValue) && batchValue > 0 ? batchValue : undefined,
-                        graph: ingestGraph.checked,
+                        graph: false,
                         resume_mode: ingestResumeMode ? ingestResumeMode.value : 'resume',
                     }),
                 });
@@ -893,6 +916,7 @@
                     ingestAction.textContent = data.message || 'Failed to start ingest.';
                     pushActivity('Ingest', ingestAction.textContent);
                 } else {
+                    ingestStatusMode = 'default';
                     ingestAction.textContent = 'Ingest started. Monitor progress above.';
                     pushActivity('Ingest', `Started ingest for ${collectionName}`);
                 }
@@ -936,6 +960,7 @@
                     ingestAction.textContent = data.message || 'Failed to start graph ingest.';
                     pushActivity('Ingest', ingestAction.textContent);
                 } else {
+                    ingestStatusMode = 'neo4j';
                     ingestAction.textContent = 'Graph ingest started. Monitor progress above.';
                     pushActivity('Ingest', `Started graph ingest for ${collectionName}`);
                 }
@@ -947,64 +972,12 @@
             }
         });
 
-        if (mcpIngestBtn) mcpIngestBtn.addEventListener('click', async () => {
-            const path = ingestFolder.value;
-            if (!path) {
-                ingestAction.textContent = 'Select a folder first.';
-                return;
-            }
-            const collectionName = ingestCollection.value.trim() || path.split('/').pop();
-            mcpIngestBtn.disabled = true;
-            ingestAction.textContent = 'Starting MCP ingest…';
-            try {
-                const response = await fetch('/mcp/hawki_rag', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        jsonrpc: '2.0',
-                        id: Date.now(),
-                        method: 'tools/call',
-                        params: {
-                            name: 'rag-folder-ingest-tool',
-                            arguments: {
-                                root: path,
-                                base_url: 'http://hawki_rag_bridge:8000',
-                                provider: 'ollama',
-                                collection: collectionName,
-                                graph: ingestGraph.checked,
-                                graph_engine: 'raganything',
-                                chunk_chars: 3200,
-                                chunk_overlap: 100,
-                                batch: 64,
-                                timeout: 1800,
-                            },
-                        },
-                    }),
-                });
-                const data = await response.json();
-                if (!response.ok || data.error) {
-                    ingestAction.textContent = (data && data.error && data.error.message) || 'MCP ingest failed.';
-                    pushActivity('MCP', ingestAction.textContent);
-                } else {
-                    ingestAction.textContent = 'MCP ingest started. Monitor MCP logs above.';
-                    pushActivity('MCP', `Started MCP ingest for ${collectionName}`);
-                }
-            } catch (error) {
-                ingestAction.textContent = 'MCP ingest failed.';
-                pushActivity('MCP', ingestAction.textContent);
-            } finally {
-                mcpIngestBtn.disabled = false;
-            }
-        });
 
         ingestStopBtn.addEventListener('click', async () => {
             ingestStopBtn.disabled = true;
             ingestAction.textContent = 'Stopping ingest…';
             try {
-                const stopPayload = {};
+                const stopPayload = { mode: ingestStatusMode };
                 const livePids = Array.isArray(lastLiveIngestions)
                     ? lastLiveIngestions.map(item => item.pid).filter(Boolean)
                     : [];
@@ -1094,9 +1067,7 @@
         pollRagStats();
         setInterval(pollRagStats, 2500);
 
-        if (mcpClearBtn) {
-            mcpClearBtn.addEventListener('click', async () => {});
-        }
+        // MCP controls removed from UI.
 
         if (neo4jClearBtn) {
             neo4jClearBtn.addEventListener('click', async () => {
@@ -1130,7 +1101,7 @@
         ingestClearBtn.addEventListener('click', async () => {
             ingestClearBtn.disabled = true;
             try {
-                await fetch('/api/ingest/status/clear', { method: 'POST' });
+                await fetch(`/api/ingest/status/clear?mode=${ingestStatusMode}`, { method: 'POST' });
                 ingestStatus.textContent = 'No ingest activity yet.';
                 ingestProgress.innerHTML = '';
                 pushActivity('Ingest', 'Ingest logs cleared');

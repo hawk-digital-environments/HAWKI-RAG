@@ -35,6 +35,15 @@ def get_provider(name: str):
 
 ###################################### REQUEST MODELS ###############################
 
+def _int_env(name: str, default: int) -> int:
+    raw = os.environ.get(name)
+    if raw is None or str(raw).strip() == "":
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        return default
+
 class IngestDoc(BaseModel):
     id: str | int
     text: str
@@ -47,9 +56,9 @@ class IngestRequest(BaseModel):
     embedding_model: str | None = None
     collection: str | None = None
     distance: str = Field(default=os.environ.get("QDRANT_DISTANCE", "Cosine"))
-    chunk_chars: int = 3200
-    chunk_overlap: int = 250
-    batch_size: int = Field(default=int(os.environ.get("INGEST_BATCH_SIZE", "64")))
+    chunk_chars: int = Field(default=_int_env("CHUNK_SIZE", 3200))
+    chunk_overlap: int = Field(default=_int_env("CHUNK_OVERLAP_SIZE", 250))
+    batch_size: int = Field(default=_int_env("INGEST_BATCH_SIZE", 64))
     graph: bool = False
     graph_engine: str = Field(default=os.environ.get("GRAPH_ENGINE", "raganything"))
     graph_only: bool = False

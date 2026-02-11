@@ -1,6 +1,7 @@
 import logging
 import os
 import re
+import json
 import asyncio
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -63,6 +64,22 @@ def _normalize_language_setting(raw: str | None) -> str:
     return ", ".join(normalized[:-1]) + f", and {normalized[-1]}"
 
 
+def _parse_env_list(raw: str | None) -> List[str]:
+    if not raw:
+        return []
+    raw = raw.strip()
+    if not raw:
+        return []
+    if raw.startswith("["):
+        try:
+            data = json.loads(raw)
+        except Exception:
+            data = None
+        if isinstance(data, list):
+            return [str(item).strip() for item in data if str(item).strip()]
+    return [t.strip() for t in raw.split(",") if t.strip()]
+
+
 def _clean_graph_text(text: str) -> str:
     if not text:
         return ""
@@ -98,6 +115,14 @@ def _clean_graph_text(text: str) -> str:
         max_chars = 2000
     if max_chars > 0:
         output = output[:max_chars]
+    try:
+        max_tokens = int(os.environ.get("MAX_EXTRACT_INPUT_TOKENS", "0"))
+    except ValueError:
+        max_tokens = 0
+    if max_tokens > 0:
+        tokens = output.split()
+        if len(tokens) > max_tokens:
+            output = " ".join(tokens[:max_tokens])
     return output
 
 
@@ -352,9 +377,14 @@ class RAGService:
                 graph_temp = 0.0
             return provider.chat(system, messages, temperature=graph_temp)
 
-        entity_types_env = os.environ.get("KG_ENTITY_TYPES", "")
-        entity_types = [t.strip() for t in entity_types_env.split(",") if t.strip()] or list(DEFAULT_ENTITY_TYPES)
-        language = _normalize_language_setting(os.environ.get("KG_LANGUAGE", DEFAULT_SUMMARY_LANGUAGE))
+        entity_types_env = os.environ.get("KG_ENTITY_TYPES", "").strip()
+        if not entity_types_env:
+            entity_types_env = os.environ.get("ENTITY_TYPES", "").strip()
+        entity_types = _parse_env_list(entity_types_env) or list(DEFAULT_ENTITY_TYPES)
+        lang_env = os.environ.get("KG_LANGUAGE", "").strip()
+        if not lang_env:
+            lang_env = os.environ.get("SUMMARY_LANGUAGE", "").strip()
+        language = _normalize_language_setting(lang_env or DEFAULT_SUMMARY_LANGUAGE)
         gleaning = int(os.environ.get("KG_MAX_GLEANING", "1"))
 
         global_config = {

@@ -48,7 +48,7 @@ class HawkiRagPipelineJob implements ShouldQueue
             '--chunk-chars' => $this->payload['chunk_chars'] ?? 3200,
             '--chunk-overlap' => $this->payload['chunk_overlap'] ?? 100,
             '--batch' => $this->payload['batch'] ?? 64,
-            '--timeout' => $this->payload['timeout'] ?? 1800,
+            '--timeout' => $this->payload['timeout'] ?? 6000,
             '--base-url' => $this->payload['base_url'] ?? env('HAWKI_RAG_BRIDGE_URL', 'http://hawki_rag_bridge:8000'),
         ];
         if (!empty($this->payload['skip_images'])) {

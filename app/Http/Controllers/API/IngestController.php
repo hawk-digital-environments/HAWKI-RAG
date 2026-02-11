@@ -174,9 +174,10 @@ class IngestController extends Controller
             $cmd[] = '--batch';
             $cmd[] = (string) $data['batch'];
         }
-        if (!empty($data['timeout'])) {
+        $timeout = $data['timeout'] ?? (int) config('hawki_rag.ingest_timeout', 6000);
+        if ($timeout > 0) {
             $cmd[] = '--timeout';
-            $cmd[] = (string) $data['timeout'];
+            $cmd[] = (string) $timeout;
         }
         if (!empty($data['graph'])) {
             $cmd[] = '--graph';
