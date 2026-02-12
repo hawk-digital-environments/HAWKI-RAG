@@ -55,6 +55,54 @@ def _append_graph_failures(path: Path, failures: List[Dict[str, Any]]) -> None:
     except Exception as exc:
         logger.warning("graph:failed to write failures log: %s", exc)
 
+
+def _run_graph_extract_with_timeout(
+    func,
+    timeout_s: float,
+    *,
+    allow_alarm: bool,
+) -> tuple[List[tuple[str, str, str]], str | None]:
+    if timeout_s <= 0:
+        try:
+            return func(), None
+        except Exception as exc:
+            return [], f"{type(exc).__name__}: {exc}"
+
+    if allow_alarm:
+        def _alarm_handler(signum, frame):
+            raise _GraphTimeout("graph extraction timed out")
+        previous_handler = signal.signal(signal.SIGALRM, _alarm_handler)
+        signal.setitimer(signal.ITIMER_REAL, timeout_s)
+        try:
+            return func(), None
+        except _GraphTimeout as exc:
+            return [], str(exc)
+        except Exception as exc:
+            return [], f"{type(exc).__name__}: {exc}"
+        finally:
+            signal.setitimer(signal.ITIMER_REAL, 0)
+            signal.signal(signal.SIGALRM, previous_handler)
+
+    result: Dict[str, Any] = {"done": False, "value": [], "error": None}
+
+    def _target():
+        try:
+            result["value"] = func()
+        except Exception as exc:
+            result["error"] = exc
+        finally:
+            result["done"] = True
+
+    thread = threading.Thread(target=_target, daemon=True)
+    thread.start()
+    thread.join(timeout_s)
+    if not result["done"]:
+        return [], "graph extraction timed out"
+    if result["error"] is not None:
+        exc = result["error"]
+        return [], f"{type(exc).__name__}: {exc}"
+    return result["value"], None
+
 def _delete_document_entries(doc_id: str) -> Dict[str, Any]:
     qdrant = QdrantHTTP()
     qdrant_result = qdrant.delete_by_doc_id(doc_id)
@@ -351,7 +399,7 @@ def _build_triplets_by_doc(
     doc_index = 0
     use_alarm = doc_timeout_s > 0 and threading.current_thread() is threading.main_thread()
     if doc_timeout_s > 0 and not use_alarm:
-        logger.warning("graph:extract doc_timeout requested but not on main thread; timeout disabled")
+        logger.info("graph:extract doc_timeout using thread fallback")
     for doc_id, parts in grouped.items():
         doc_index += 1
         chunk_texts = [p.get("content") for p in parts if isinstance(p.get("content"), str) and p.get("content").strip()]
@@ -373,15 +421,8 @@ def _build_triplets_by_doc(
             file_path or "-",
         )
         doc_start = time.perf_counter()
-        triplets: List[tuple[str, str, str]] = []
-        error: str | None = None
-        if use_alarm:
-            def _alarm_handler(signum, frame):
-                raise _GraphTimeout("graph extraction timed out")
-            previous_handler = signal.signal(signal.SIGALRM, _alarm_handler)
-            signal.setitimer(signal.ITIMER_REAL, doc_timeout_s)
-        try:
-            triplets = rag_service.extract_triplets(
+        def _extract():
+            return rag_service.extract_triplets(
                 "",
                 engine,
                 provider=provider,
@@ -389,14 +430,7 @@ def _build_triplets_by_doc(
                 doc_id=doc_id,
                 file_path=file_path,
             )
-        except _GraphTimeout as exc:
-            error = str(exc)
-        except Exception as exc:
-            error = f"{type(exc).__name__}: {exc}"
-        finally:
-            if use_alarm:
-                signal.setitimer(signal.ITIMER_REAL, 0)
-                signal.signal(signal.SIGALRM, previous_handler)
+        triplets, error = _run_graph_extract_with_timeout(_extract, doc_timeout_s, allow_alarm=use_alarm)
         doc_ms = (time.perf_counter() - doc_start) * 1000
         if error:
             failures.append({
