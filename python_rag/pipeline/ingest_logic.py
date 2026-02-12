@@ -21,6 +21,7 @@ from graph.graph_utils import clean_triplets
 
 logger = logging.getLogger(__name__)
 _POINT_NAMESPACE = uuid.NAMESPACE_URL
+GRAPH_DEBUG = os.environ.get("GRAPH_DEBUG", "").strip().lower() in ("1", "true", "yes")
 
 
 class _GraphTimeout(Exception):
@@ -133,6 +134,16 @@ def ingest_documents(
         bool(getattr(body, "graph_only", False)),
         body.collection,
     )
+    if GRAPH_DEBUG:
+        logger.debug(
+            "ingest:options provider=%s graph_engine=%s chunk_chars=%s chunk_overlap=%s batch_size=%s distance=%s",
+            getattr(body, "provider", None),
+            getattr(body, "graph_engine", None),
+            getattr(body, "chunk_chars", None),
+            getattr(body, "chunk_overlap", None),
+            getattr(body, "batch_size", None),
+            getattr(body, "distance", None),
+        )
 
     qdrant = QdrantHTTP()
     if body.collection:
@@ -150,6 +161,8 @@ def ingest_documents(
     for d in body.docs:
         chunks = split_text(d.text, body.chunk_chars, body.chunk_overlap) or [d.text]
         logger.debug("ingest:doc %s chunks=%s", d.id, len(chunks))
+        if GRAPH_DEBUG:
+            logger.debug("ingest:doc %s text_len=%s", d.id, len(d.text or ""))
         doc_processed = False
         fmt: Optional[str] = None
         chunk_count = 0
@@ -406,11 +419,48 @@ def _build_triplets_by_doc(
         if not chunk_texts:
             out[doc_id] = []
             continue
+        if GRAPH_DEBUG:
+            lens = [len(t) for t in chunk_texts]
+            logger.debug(
+                "graph:extract doc=%s chunk_lens=%s total_chars=%s",
+                doc_id,
+                lens[:10],
+                sum(lens),
+            )
+        orig_chunk_count = len(chunk_texts)
+        orig_chars = sum(len(t) for t in chunk_texts)
+        max_chunks = _int_env("GRAPH_DOC_MAX_CHUNKS", 0)
+        max_chars = _int_env("GRAPH_DOC_MAX_CHARS", 0)
+        if max_chunks > 0 and len(chunk_texts) > max_chunks:
+            chunk_texts = chunk_texts[:max_chunks]
+        if max_chars > 0:
+            trimmed: List[str] = []
+            total = 0
+            for text in chunk_texts:
+                if total >= max_chars:
+                    break
+                remaining = max_chars - total
+                if len(text) > remaining:
+                    trimmed.append(text[:remaining])
+                    total = max_chars
+                    break
+                trimmed.append(text)
+                total += len(text)
+            chunk_texts = trimmed
         first_payload = (parts[0] or {}).get("payload") if parts else {}
         file_path = None
         if isinstance(first_payload, dict):
             file_path = first_payload.get("page_url") or first_payload.get("source_url") or first_payload.get("file_path")
         total_chars = sum(len(t) for t in chunk_texts)
+        if orig_chunk_count != len(chunk_texts) or orig_chars != total_chars:
+            logger.info(
+                "graph:extract doc=%s trimmed chunks=%s/%s chars=%s/%s",
+                doc_id,
+                len(chunk_texts),
+                orig_chunk_count,
+                total_chars,
+                orig_chars,
+            )
         logger.info(
             "graph:extract doc=%s idx=%s/%s chunks=%s chars=%s file=%s",
             doc_id,

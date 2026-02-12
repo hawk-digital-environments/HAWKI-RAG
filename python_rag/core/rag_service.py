@@ -17,6 +17,8 @@ except Exception:  # pragma: no cover - optional dependency in runtime
     DEFAULT_SUMMARY_LANGUAGE = "English"
 
 logger = logging.getLogger(__name__)
+GRAPH_DEBUG = os.environ.get("GRAPH_DEBUG", "").strip().lower() in ("1", "true", "yes")
+GRAPH_DEBUG_LLM = os.environ.get("GRAPH_DEBUG_LLM", "").strip().lower() in ("1", "true", "yes")
 
 
 def _strip_control_chars(text: str | None) -> str:
@@ -80,27 +82,48 @@ def _parse_env_list(raw: str | None) -> List[str]:
     return [t.strip() for t in raw.split(",") if t.strip()]
 
 
+def _trim_system_prompt(system: str) -> str:
+    """Reduce oversized system prompts (notably long examples) for faster graph extraction."""
+    if not system:
+        return system
+    try:
+        max_examples = int(os.environ.get("GRAPH_PROMPT_MAX_EXAMPLES", "1"))
+    except ValueError:
+        max_examples = 1
+    if max_examples <= 0:
+        return system
+    # Prefer trimming at example boundaries if present.
+    marker = "<|COMPLETE|>"
+    if marker in system:
+        parts = system.split(marker)
+        if len(parts) > max_examples:
+            system = marker.join(parts[:max_examples]) + marker
+    return system
+
+
 def _clean_graph_text(text: str) -> str:
     if not text:
         return ""
     strip_mode = os.environ.get("GRAPH_STRIP_PIPES", "true").strip().lower()
+    disable_table_heuristic = os.environ.get("GRAPH_DISABLE_TABLE_HEURISTIC", "").strip().lower() in ("1", "true", "yes")
     cleaned: list[str] = []
     for line in str(text).splitlines():
         stripped = line.strip()
         if not stripped:
             continue
-        if strip_mode in ("1", "true", "yes") and "|" in stripped:
-            continue
-        # Drop markdown table delimiters and separator lines.
-        if re.fullmatch(r"[\|\-\s:]+", stripped):
-            continue
-        if "|" in stripped:
-            pipe_count = stripped.count("|")
-            alpha = sum(1 for ch in stripped if ch.isalnum())
-            ratio = alpha / max(1, len(stripped))
-            # Remove low-signal table rows and headers.
-            if pipe_count >= 2 and (alpha < 6 or ratio < 0.35):
+        if not disable_table_heuristic:
+            if strip_mode in ("1", "true", "yes") and "|" in stripped:
                 continue
+            # Drop markdown table delimiters and separator lines.
+            if re.fullmatch(r"[\|\-\s:]+", stripped):
+                continue
+            if "|" in stripped:
+                pipe_count = stripped.count("|")
+                alpha = sum(1 for ch in stripped if ch.isalnum())
+                ratio = alpha / max(1, len(stripped))
+                # Remove low-signal table rows and headers.
+                if pipe_count >= 2 and (alpha < 6 or ratio < 0.35):
+                    continue
         cleaned.append(stripped)
     output = "\n".join(cleaned)
     try:
@@ -359,13 +382,19 @@ class RAGService:
     ) -> List[tuple[str, str, str]]:
         if not chunks:
             return []
+        if GRAPH_DEBUG:
+            total_chars = sum(len(str(v.get("content") or "")) for v in chunks.values())
+            logger.debug("graph:llm chunks=%s total_chars=%s", len(chunks), total_chars)
         if os.environ.get("GRAPH_SUPPRESS_WARNINGS", "").strip().lower() in ("1", "true", "yes"):
             logging.getLogger("lightrag").setLevel(logging.ERROR)
 
         async def llm_func(user_prompt: str, system_prompt: str | None = None, history_messages: list | None = None, max_tokens: int | None = None):
             messages = list(history_messages or [])
             messages.append({"role": "user", "content": user_prompt})
-            system = system_prompt or "You are a helpful assistant."
+            system = _trim_system_prompt(system_prompt or "You are a helpful assistant.")
+            if GRAPH_DEBUG_LLM:
+                logger.debug("graph:llm system_prompt=%s", system)
+                logger.debug("graph:llm user_prompt=%s", user_prompt)
             graph_temp_env = os.environ.get("GRAPH_TEMPERATURE", "").strip()
             graph_temp = None
             if graph_temp_env:
@@ -375,7 +404,10 @@ class RAGService:
                     graph_temp = None
             else:
                 graph_temp = 0.0
-            return provider.chat(system, messages, temperature=graph_temp)
+            response = provider.chat(system, messages, temperature=graph_temp)
+            if GRAPH_DEBUG_LLM:
+                logger.debug("graph:llm response=%s", response)
+            return response
 
         entity_types_env = os.environ.get("KG_ENTITY_TYPES", "").strip()
         if not entity_types_env:
@@ -409,6 +441,12 @@ class RAGService:
         except Exception as exc:
             logger.warning("graph:extract_triplets LightRAG extraction failed: %s", exc)
             return []
+        if GRAPH_DEBUG:
+            try:
+                res_len = len(results or [])
+            except Exception:
+                res_len = -1
+            logger.debug("graph:llm results_batches=%s", res_len)
 
         triplets: List[tuple[str, str, str]] = []
         seen = set()

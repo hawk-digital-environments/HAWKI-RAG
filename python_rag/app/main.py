@@ -22,6 +22,20 @@ LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO").upper()
 logging.basicConfig(level=LOG_LEVEL, format="%(levelname)s:%(name)s:%(message)s")
 logger = logging.getLogger(__name__)
 logger.setLevel(LOG_LEVEL)
+
+GRAPH_DEBUG = os.environ.get("GRAPH_DEBUG", "").strip().lower() in ("1", "true", "yes")
+GRAPH_DEBUG_LOG = os.environ.get("GRAPH_DEBUG_LOG", "").strip()
+if GRAPH_DEBUG:
+    logging.getLogger("pipeline.ingest_logic").setLevel(logging.DEBUG)
+    logging.getLogger("core.rag_service").setLevel(logging.DEBUG)
+if GRAPH_DEBUG_LOG:
+    log_path = Path(GRAPH_DEBUG_LOG)
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    file_handler = logging.FileHandler(log_path, encoding="utf-8")
+    file_handler.setLevel(logging.DEBUG)
+    file_handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s:%(name)s:%(message)s"))
+    logging.getLogger().addHandler(file_handler)
+    logger.info("graph:debug logging to %s", log_path)
 BASE_DIR = Path(__file__).resolve().parent
 PYTHON_RAG_ROOT = BASE_DIR.parent
 PROJECT_ROOT = PYTHON_RAG_ROOT.parent
