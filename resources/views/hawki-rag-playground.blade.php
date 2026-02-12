@@ -248,10 +248,10 @@
                         </div>
                         <div style="margin-top: 1rem;">
                             <div class="ingest-actions">
-                                <button type="button" id="ingest-btn">Start ingest</button>
-                                <button type="button" id="ingest-graph-only-btn" style="background: linear-gradient(135deg, #22c55e, #16a34a);">Start graph ingest</button>
-                                <button type="button" id="ingest-stop-btn" style="background: linear-gradient(135deg, #f97316, #ef4444);">Stop ingest</button>
-                                <button type="button" id="ingest-delete-btn" style="background: linear-gradient(135deg, #f43f5e, #be123c);">Delete folder</button>
+                                <button type="button" id="ingest-btn">Start Qdrant Ingestion</button>
+                                <button type="button" id="ingest-graph-only-btn" style="background: linear-gradient(135deg, #22c55e, #16a34a);">Start Neo4j Ingestion</button>
+                                <button type="button" id="ingest-stop-btn" style="background: linear-gradient(135deg, #f97316, #ef4444);">Stop Current Ingest</button>
+                                <button type="button" id="ingest-delete-btn" style="background: linear-gradient(135deg, #f43f5e, #be123c);">Delete scraped folder</button>
                             </div>
                             <span id="ingest-action" class="ingest-action-note"></span>
                         </div>

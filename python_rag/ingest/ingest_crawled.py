@@ -633,7 +633,7 @@ def main():
     ap.add_argument("--graph-engine", default="raganything", help="Graph engine")
     ap.add_argument("--collection", default=None, help="Qdrant collection override")
     ap.add_argument("--distance", default="Cosine", help="Qdrant distance (Cosine|Dot|Euclid)")
-    ap.add_argument("--chunk-chars", type=int, default=_int_env("CHUNK_SIZE", 3200), help="Chunk target size for LightRAG")
+    ap.add_argument("--chunk-chars", type=int, default=_int_env("CHUNK_SIZE", 1200), help="Chunk target size for LightRAG")
     ap.add_argument("--chunk-overlap", type=int, default=_int_env("CHUNK_OVERLAP_SIZE", 100), help="Chunk overlap for LightRAG")
     ap.add_argument("--batch", type=int, default=64, help="POST batch size (docs per request)")
     ap.add_argument("--timeout", type=int, default=1800, help="HTTP request timeout in seconds (default: 1800)")

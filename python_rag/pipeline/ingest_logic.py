@@ -3,27 +3,57 @@ Ingestion pipeline: chunk, enrich payload, write to Qdrant + Neo4j, summarize.
 Extracted from rag_brain to keep concerns separated.
 """
 from __future__ import annotations
-
 import json
 import os
 import time
 import logging
+import signal
+import threading
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
-
 from fastapi import HTTPException
-
 from utils.text_preprocessor import ensure_tags, split_text
 from vectorstore.qdrant_http import QdrantHTTP
 from graph.neo4j_graph import Neo4jGraph
 from graph.graph_utils import clean_triplets
 
 logger = logging.getLogger(__name__)
-
 _POINT_NAMESPACE = uuid.NAMESPACE_URL
 
+
+class _GraphTimeout(Exception):
+    pass
+
+
+def _float_env(name: str, default: float) -> float:
+    raw = os.environ.get(name)
+    if raw is None or str(raw).strip() == "":
+        return default
+    try:
+        return float(raw)
+    except ValueError:
+        return default
+
+
+def _graph_failure_log_path(public_dir: Path) -> Path:
+    env_path = os.environ.get("GRAPH_FAILURE_LOG", "").strip()
+    if env_path:
+        return Path(env_path)
+    return public_dir.parent / "storage" / "logs" / "ingest_graph_failures.jsonl"
+
+
+def _append_graph_failures(path: Path, failures: List[Dict[str, Any]]) -> None:
+    if not failures:
+        return
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as handle:
+            for item in failures:
+                handle.write(json.dumps(item, ensure_ascii=False) + "\n")
+    except Exception as exc:
+        logger.warning("graph:failed to write failures log: %s", exc)
 
 def _delete_document_entries(doc_id: str) -> Dict[str, Any]:
     qdrant = QdrantHTTP()
@@ -132,12 +162,17 @@ def ingest_documents(
             provider = get_provider(body.provider)
             if body.embedding_model and hasattr(provider, "embed_model"):
                 provider.embed_model = body.embedding_model.strip()
-            triplets_by_doc = _build_triplets_by_doc(chunk_records, body.graph_engine, rag_service, provider)
+            triplets_by_doc, failures = _build_triplets_by_doc(chunk_records, body.graph_engine, rag_service, provider)
             graph_preview = _build_graph_preview(doc_stats, chunk_records, triplets_by_doc)
             summary["graph_preview"] = graph_preview
             preview_path = _write_graph_preview(graph_preview, public_dir)
             if preview_path:
                 summary["graph_preview_file"] = str(preview_path)
+            if failures:
+                failure_path = _graph_failure_log_path(public_dir)
+                _append_graph_failures(failure_path, failures)
+                summary["graph_failures"] = len(failures)
+                summary["graph_failures_file"] = str(failure_path)
         return {"ok": True, "dry_run": True, "summary": summary}
 
     provider = None
@@ -170,14 +205,27 @@ def ingest_documents(
         graph = Neo4jGraph()
         try:
             graph_write_start = time.perf_counter()
-            triplets_by_doc = _build_triplets_by_doc(chunk_records, body.graph_engine, rag_service, provider)
+            triplet_start = time.perf_counter()
+            triplets_by_doc, failures = _build_triplets_by_doc(chunk_records, body.graph_engine, rag_service, provider)
+            triplet_ms = (time.perf_counter() - triplet_start) * 1000
             total_triplets = sum(len(v) for v in triplets_by_doc.values())
-            logger.info("ingest:neo4j triplets=%s docs=%s", total_triplets, len(triplets_by_doc))
+            logger.info(
+                "graph:extract done engine=%s triplets=%s docs=%s ms=%.2f",
+                body.graph_engine,
+                total_triplets,
+                len(triplets_by_doc),
+                triplet_ms,
+            )
             graph_preview = _build_graph_preview(doc_stats, chunk_records, triplets_by_doc)
             for doc_id, triplets in triplets_by_doc.items():
                 if triplets:
                     graph.upsert_triplets(triplets, doc_id=doc_id)
             neo4j_ms = (time.perf_counter() - graph_write_start) * 1000
+            logger.info("graph:neo4j upsert docs=%s triplets=%s ms=%.2f", len(triplets_by_doc), total_triplets, neo4j_ms)
+            if failures:
+                failure_path = _graph_failure_log_path(public_dir)
+                _append_graph_failures(failure_path, failures)
+                logger.info("graph:failures count=%s file=%s", len(failures), failure_path)
         finally:
             try:
                 graph.close()
@@ -276,14 +324,36 @@ def _build_triplets_by_doc(
     engine: str,
     rag_service: Any,
     provider: Any | None,
-) -> Dict[str, List[tuple[str, str, str]]]:
+) -> tuple[Dict[str, List[tuple[str, str, str]]], List[Dict[str, Any]]]:
     if not chunk_records:
-        return {}
+        return {}, []
     grouped: Dict[str, List[Dict[str, Any]]] = {}
     for rec in chunk_records:
         grouped.setdefault(rec["doc_id"], []).append(rec)
+    provider_name = provider.__class__.__name__ if provider is not None else "none"
+    rag_model = getattr(provider, "rag_model", None)
+    embed_model = getattr(provider, "embed_model", None)
+    doc_timeout_s = _float_env("GRAPH_DOC_TIMEOUT", 0.0)
+    if doc_timeout_s > 0:
+        logger.info("graph:extract doc_timeout=%.2fs", doc_timeout_s)
+    logger.info(
+        "graph:extract start engine=%s docs=%s chunks=%s provider=%s rag_model=%s embed_model=%s",
+        engine,
+        len(grouped),
+        len(chunk_records),
+        provider_name,
+        rag_model,
+        embed_model,
+    )
     out: Dict[str, List[tuple[str, str, str]]] = {}
+    failures: List[Dict[str, Any]] = []
+    total_docs = len(grouped)
+    doc_index = 0
+    use_alarm = doc_timeout_s > 0 and threading.current_thread() is threading.main_thread()
+    if doc_timeout_s > 0 and not use_alarm:
+        logger.warning("graph:extract doc_timeout requested but not on main thread; timeout disabled")
     for doc_id, parts in grouped.items():
+        doc_index += 1
         chunk_texts = [p.get("content") for p in parts if isinstance(p.get("content"), str) and p.get("content").strip()]
         if not chunk_texts:
             out[doc_id] = []
@@ -292,18 +362,58 @@ def _build_triplets_by_doc(
         file_path = None
         if isinstance(first_payload, dict):
             file_path = first_payload.get("page_url") or first_payload.get("source_url") or first_payload.get("file_path")
-        triplets = rag_service.extract_triplets(
-            "",
-            engine,
-            provider=provider,
-            chunks=chunk_texts,
-            doc_id=doc_id,
-            file_path=file_path,
+        total_chars = sum(len(t) for t in chunk_texts)
+        logger.info(
+            "graph:extract doc=%s idx=%s/%s chunks=%s chars=%s file=%s",
+            doc_id,
+            doc_index,
+            total_docs,
+            len(chunk_texts),
+            total_chars,
+            file_path or "-",
         )
-        triplets = clean_triplets(triplets)
-        logger.debug("ingest:triplets doc=%s count=%s", doc_id, len(triplets))
+        doc_start = time.perf_counter()
+        triplets: List[tuple[str, str, str]] = []
+        error: str | None = None
+        if use_alarm:
+            def _alarm_handler(signum, frame):
+                raise _GraphTimeout("graph extraction timed out")
+            previous_handler = signal.signal(signal.SIGALRM, _alarm_handler)
+            signal.setitimer(signal.ITIMER_REAL, doc_timeout_s)
+        try:
+            triplets = rag_service.extract_triplets(
+                "",
+                engine,
+                provider=provider,
+                chunks=chunk_texts,
+                doc_id=doc_id,
+                file_path=file_path,
+            )
+        except _GraphTimeout as exc:
+            error = str(exc)
+        except Exception as exc:
+            error = f"{type(exc).__name__}: {exc}"
+        finally:
+            if use_alarm:
+                signal.setitimer(signal.ITIMER_REAL, 0)
+                signal.signal(signal.SIGALRM, previous_handler)
+        doc_ms = (time.perf_counter() - doc_start) * 1000
+        if error:
+            failures.append({
+                "doc_id": str(doc_id),
+                "file_path": file_path or "",
+                "chunks": len(chunk_texts),
+                "chars": total_chars,
+                "error": error,
+                "timestamp": utc_now_iso(),
+            })
+            logger.warning("graph:extract doc=%s failed=%s ms=%.2f", doc_id, error, doc_ms)
+            triplets = []
+        else:
+            triplets = clean_triplets(triplets)
+            logger.info("graph:extract doc=%s triplets=%s ms=%.2f", doc_id, len(triplets), doc_ms)
         out[doc_id] = triplets
-    return out
+    return out, failures
 
 
 def _build_graph_preview(

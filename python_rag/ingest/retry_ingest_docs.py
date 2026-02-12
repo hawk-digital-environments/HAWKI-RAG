@@ -62,6 +62,33 @@ def _load_doc_ids_from_file(path: Path) -> Set[str]:
     return {doc_id.strip().lower() for doc_id in doc_ids if str(doc_id).strip()}
 
 
+def _load_doc_ids_from_failures(path: Path) -> Set[str]:
+    """
+    Load doc IDs from a JSONL failures log (one JSON object per line).
+
+    Expected keys: doc_id (preferred) or id/docId.
+    """
+    if not path.exists():
+        raise FileNotFoundError(f"Failures file not found: {path}")
+    doc_ids: Set[str] = set()
+    for line in path.read_text(encoding="utf-8").splitlines():
+        raw = line.strip()
+        if not raw:
+            continue
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(data, dict):
+            continue
+        for key in ("doc_id", "id", "docId"):
+            value = data.get(key)
+            if value:
+                doc_ids.add(str(value).strip().lower())
+                break
+    return doc_ids
+
+
 def _normalize_doc_ids(values: Iterable[str]) -> Set[str]:
     out: Set[str] = set()
     for value in values:
@@ -80,6 +107,9 @@ def _build_options(args: argparse.Namespace) -> Dict[str, object]:
         "chunk_chars": int(args.chunk_chars),
         "chunk_overlap": int(args.chunk_overlap),
     }
+    if args.graph_only:
+        options["graph"] = True
+        options["graph_only"] = True
     if args.collection:
         options["collection"] = args.collection
     if args.dry:
@@ -160,9 +190,12 @@ def run(args: argparse.Namespace) -> int:
     if args.doc_ids_file:
         file_ids = _load_doc_ids_from_file(Path(args.doc_ids_file).expanduser().resolve())
         requested_doc_ids.update(file_ids)
+    if args.failures_file:
+        failure_ids = _load_doc_ids_from_failures(Path(args.failures_file).expanduser().resolve())
+        requested_doc_ids.update(failure_ids)
 
     if not requested_doc_ids:
-        print("No doc IDs provided. Use --doc-id or --doc-ids-file.", file=sys.stderr)
+        print("No doc IDs provided. Use --doc-id, --doc-ids-file, or --failures-file.", file=sys.stderr)
         return 2
 
     options = _build_options(args)
@@ -242,6 +275,7 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     ap.add_argument("--base-url", default="http://localhost:8009", help="LightRAG base URL (default: http://localhost:8009)")
     ap.add_argument("--provider", default="ollama", help="Embedding/LLM provider name.")
     ap.add_argument("--graph", action="store_true", help="Enable KG extraction during ingest.")
+    ap.add_argument("--graph-only", action="store_true", help="Skip embeddings and only write Neo4j triplets.")
     ap.add_argument("--graph-engine", default="raganything", help="Graph engine to use when --graph is enabled.")
     ap.add_argument("--collection", default=None, help="Qdrant collection override.")
     ap.add_argument("--distance", default="Cosine", help="Qdrant distance (Cosine|Dot|Euclid).")
@@ -253,6 +287,7 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     ap.add_argument("--dry-include-graph", action="store_true", help="When used with --dry, also estimate Neo4j entities/relationships.")
     ap.add_argument("--doc-id", dest="doc_ids", action="append", default=[], help="Doc ID to re-ingest (can be specified multiple times).")
     ap.add_argument("--doc-ids-file", help="Path to a file containing doc IDs (newline/comma separated or JSON).")
+    ap.add_argument("--failures-file", help="Path to a JSONL failures file (e.g. ingest_graph_failures.jsonl).")
     return ap.parse_args(argv)
 
 

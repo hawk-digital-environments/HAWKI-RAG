@@ -1,6 +1,8 @@
 ########################################### libs and bibz #####################################
 import logging
 import os
+import shutil
+import subprocess
 from pathlib import Path
 from typing import List, Dict, Any
 
@@ -16,7 +18,10 @@ from graph.graph_text import graph_from_text
 
 ########################################### CONFIG #####################################
 
+LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO").upper()
+logging.basicConfig(level=LOG_LEVEL, format="%(levelname)s:%(name)s:%(message)s")
 logger = logging.getLogger(__name__)
+logger.setLevel(LOG_LEVEL)
 BASE_DIR = Path(__file__).resolve().parent
 PYTHON_RAG_ROOT = BASE_DIR.parent
 PROJECT_ROOT = PYTHON_RAG_ROOT.parent
@@ -44,6 +49,46 @@ def _int_env(name: str, default: int) -> int:
     except ValueError:
         return default
 
+
+def _log_gpu_status(context: str) -> None:
+    cuda_visible = os.environ.get("CUDA_VISIBLE_DEVICES", "unset")
+    nvidia_visible = os.environ.get("NVIDIA_VISIBLE_DEVICES", "unset")
+    has_dev = any(Path(p).exists() for p in ("/dev/nvidia0", "/dev/nvidiactl", "/dev/nvidia-uvm"))
+    logger.info(
+        "gpu:%s env CUDA_VISIBLE_DEVICES=%s NVIDIA_VISIBLE_DEVICES=%s dev_nodes=%s",
+        context,
+        cuda_visible,
+        nvidia_visible,
+        "present" if has_dev else "missing",
+    )
+
+    smi = shutil.which("nvidia-smi")
+    if not smi:
+        logger.info("gpu:%s nvidia-smi not found", context)
+        return
+    try:
+        result = subprocess.run(
+            [
+                smi,
+                "--query-gpu=index,name,memory.total,memory.free,utilization.gpu",
+                "--format=csv,noheader,nounits",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=2,
+        )
+    except Exception as exc:
+        logger.info("gpu:%s nvidia-smi failed: %s", context, exc)
+        return
+    if result.returncode != 0:
+        err = result.stderr.strip() or "unknown error"
+        logger.info("gpu:%s nvidia-smi error rc=%s err=%s", context, result.returncode, err)
+        return
+    for line in result.stdout.splitlines():
+        line = line.strip()
+        if line:
+            logger.info("gpu:%s nvidia-smi %s", context, line)
+
 class IngestDoc(BaseModel):
     id: str | int
     text: str
@@ -56,7 +101,7 @@ class IngestRequest(BaseModel):
     embedding_model: str | None = None
     collection: str | None = None
     distance: str = Field(default=os.environ.get("QDRANT_DISTANCE", "Cosine"))
-    chunk_chars: int = Field(default=_int_env("CHUNK_SIZE", 3200))
+    chunk_chars: int = Field(default=_int_env("CHUNK_SIZE", 1200))
     chunk_overlap: int = Field(default=_int_env("CHUNK_OVERLAP_SIZE", 250))
     batch_size: int = Field(default=_int_env("INGEST_BATCH_SIZE", 64))
     graph: bool = False
@@ -154,6 +199,8 @@ def config():
 @app.post("/ingest")
 def ingest(body: IngestRequest):
     logger.info("api:ingest docs=%s graph=%s", len(body.docs), body.graph)
+    if body.graph:
+        _log_gpu_status("ingest_graph")
     return ingest_documents(
         body,
         rag_service=rag_service,
@@ -211,4 +258,5 @@ def query(body: QueryRequest):
 @app.post("/graph/from-text")
 def graph_from_text_endpoint(body: GraphRequest):
     logger.info("api:graph_from_text chars=%s", len(body.text or ""))
+    _log_gpu_status("graph_from_text")
     return graph_from_text(body, rag_service=rag_service)
