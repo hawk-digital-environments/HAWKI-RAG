@@ -14,6 +14,6 @@ class HawkiRagServer extends Server
     public array $tools = [
         WebSearchTool::class,
         HawkiRagSearchTool::class,
-        RagQueryTool::class,
+        // RagQueryTool::class,
     ];
 }

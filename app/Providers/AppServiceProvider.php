@@ -5,10 +5,10 @@ namespace App\Providers;
 use App\Services\AI\Providers\OllamaProvider;
 use App\Services\Mcp\McpClient;
 use App\Services\ScrapeService\ScraperPipelineService;
-use App\Services\WebSearch\WebSearchEngineFactory;
-use App\Services\WebSearch\Interface\WebSearchInterface;
 use App\Services\StorageService\StorageService;
 use App\Services\StorageService\UrlGenerator;
+use App\Services\WebSearchService\Interface\WebSearchInterface;
+use App\Services\WebSearchService\WebSearchEngineFactory;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Contracts\Foundation\Application;
@@ -44,9 +44,9 @@ class AppServiceProvider extends ServiceProvider
 
         $this->app->singleton(
             WebSearchInterface::class, function ($app) {
-            return  WebSearchEngineFactory::make();
-            
-        });
+                return WebSearchEngineFactory::make();
+            }
+        );
     }
 
     /**

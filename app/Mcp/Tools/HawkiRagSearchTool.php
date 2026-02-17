@@ -23,7 +23,7 @@ class HawkiRagSearchTool extends Tool
      */
     public function name(): string
     {
-        return "hawki-rag-query-search";
+        return "query-search";
     }
 
     /**
@@ -41,21 +41,20 @@ class HawkiRagSearchTool extends Tool
     {
         $schema
             ->string('query')
-            ->description('Query for information retrieval. Choose a specific and detailed query for best results.')
-            ->required()
+            ->description('Retrieve relevant information from the knowledge base.
+                Formulate a precise and context-rich search query including specific names, entities, relationships, dates, or domain terminology.
+                Avoid vague or generic wording.
+                The tool returns the most relevant structured results for downstream answer generation, reranking, or reasoning.') ->required()
             ->integer('top_k')
-            ->description('Number of chunks to retrieve')
-            ->integer('depth')
-            ->description('The depth of the search between 1 to 5. Higher depth number will result a more accurate search but will require longer search time. Use lower depth for simple queries and higher depth for more specific results.')
-            ->raw('filters', [
-                'type' => 'object',
-                'description' => '(Optional) A list of keywords for search categories. Specific keywords can result faster and more specific retrieval.',
-            ]);
+            ->description('Number of chunks to retrieve');
+
         return $schema;
     }
 
     public function handle(array $arguments): ToolResult
     {
+        \Log::debug('checkpoint 0');
+        \Log::debug($arguments);
         // Required query input
         $query = McpToolHelpers::trimString($arguments['query'] ?? null);
         if ($query === '') {
@@ -63,38 +62,47 @@ class HawkiRagSearchTool extends Tool
         }
 
         try{
-            $depth = McpToolHelpers::clampInt((int) ($arguments['depth'] ?? 2), 1, 5);
+            \Log::debug('checkpoint 1');
             $topK = McpToolHelpers::clampInt((int) ($arguments['top_k'] ?? 5), 1, 50);
 
             // Depth drives graph usage + retrieval breadth.
             // depth 1-2: fast mode (vector-only)
             // depth 3-5: enable graph traversal + smart lookup
-            $fastMode = $depth <= 2;
-            $smartLookup = $depth >= 3;
-            $topK = $topK + ($depth >= 4 ? 5 : 0);
 
+            \Log::debug('checkpoint 2');
             $payload = [
                 'query' => $query,
-                'top_k' => $topK,
+                'top_k' => 30,
                 'provider' => 'ollama',
-                'filters' => McpToolHelpers::toArray($arguments['filters'] ?? null),
                 'generate' => false,
                 'reranker' => 'external',
                 'rerank_top_n' => 20,
-                'fast_mode' => $fastMode,
-                'smart_lookup' => $smartLookup,
+                'fast_mode' => true,
+                'smart_lookup' => false,
                 // Fast mode explicitly disables graph traversal.
-                'structural_hops' => $fastMode ? 0 : null,
+                'structural_hops' => true ? 0 : null,
             ];
-            $payload = array_filter($payload, static fn ($value) => $value !== null);
-            $baseUrl = McpToolHelpers::hawkiRagBridgeBaseUrl();
-            $response = Http::timeout(60)->post($baseUrl.'/query', $payload);
 
-            if (! $response->successful()) {
-                return ToolResult::error(sprintf('RAG query failed (%s): %s', $response->status(), $response->body()));
+            $baseUrl = config('hawki_rag.base_url');
+            \Log::debug('checkpoint 3');
+            \Log::debug($payload);
+            $payload = array_filter($payload, static fn ($value) => $value !== null);
+            $response = Http::timeout(60)
+                ->post($baseUrl . '/query', $payload);
+
+            if (!$response->successful()) {
+
+                return ToolResult::error(sprintf('RAG query failed (%s): %s',
+                    $response->status(), $response->body()));
             }
 
-            return ToolResult::json($response->json());
+            $resData = [
+                'success' => true,
+                'instructions' => "When using this tool, always rely on the response from the RAG system. The response contains all relevant information and includes any possible links associated with the retrieved documents. Use the content and links comprehensively to answer queries, provide context, or perform reasoning. Prioritize completeness and relevance: incorporate all useful information from the RAG payload, and reference the links where applicable. Do not ignore any parts of the response that may aid in generating accurate and informative outputs.",
+                'response' => $response->json()
+            ];
+            \Log::debug($resData);
+            return ToolResult::json($resData);
 
         }
         catch (Exception $e){
