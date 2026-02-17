@@ -53,8 +53,8 @@ class HawkiRagSearchTool extends Tool
 
     public function handle(array $arguments): ToolResult
     {
-        \Log::debug('checkpoint 0');
-        \Log::debug($arguments);
+        // \Log::debug('checkpoint 0');
+        // \Log::debug($arguments);
         // Required query input
         $query = McpToolHelpers::trimString($arguments['query'] ?? null);
         if ($query === '') {
@@ -62,17 +62,17 @@ class HawkiRagSearchTool extends Tool
         }
 
         try{
-            \Log::debug('checkpoint 1');
+            // \Log::debug('checkpoint 1');
             $topK = McpToolHelpers::clampInt((int) ($arguments['top_k'] ?? 5), 1, 50);
 
             // Depth drives graph usage + retrieval breadth.
             // depth 1-2: fast mode (vector-only)
             // depth 3-5: enable graph traversal + smart lookup
 
-            \Log::debug('checkpoint 2');
+            // \Log::debug('checkpoint 2');
             $payload = [
                 'query' => $query,
-                'top_k' => 30,
+                'top_k' => 15,
                 'provider' => 'ollama',
                 'generate' => false,
                 'reranker' => 'external',
@@ -84,8 +84,8 @@ class HawkiRagSearchTool extends Tool
             ];
 
             $baseUrl = config('hawki_rag.base_url');
-            \Log::debug('checkpoint 3');
-            \Log::debug($payload);
+            // \Log::debug('checkpoint 3');
+            // \Log::debug($payload);
             $payload = array_filter($payload, static fn ($value) => $value !== null);
             $response = Http::timeout(60)
                 ->post($baseUrl . '/query', $payload);

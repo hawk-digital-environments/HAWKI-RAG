@@ -25,14 +25,14 @@ class TavilySearch implements WebSearchInterface
 
     public function search(string $query, int $maxResults = 5): mixed
     {
-        \Log::debug($query);
+        // \Log::debug($query);
         try{
             $response =  Http::timeout(20)->post($this->apiUrl, [
                 'api_key' => $this->apiKey,
                 'query' => $query,
                 'max_results' => $maxResults,
             ]);
-            \Log::debug($response->json() ?? ['raw' => $response->body()]);
+            // \Log::debug($response->json() ?? ['raw' => $response->body()]);
             return [
                 'success' => $response->successful(),
                 'results' => $response->json() ?? ['raw' => $response->body()],
