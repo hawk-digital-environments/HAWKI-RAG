@@ -59,18 +59,65 @@ services:
     <<: *gpu
     image: nginx:1.27-alpine
     container_name: hawki_rag_nginx
-    ports:
-      - "8080:80" # the only public port
+    # ports:
+    #   - "8080:80" # the only public port
     volumes:
       - ./docker/nginx.conf:/etc/nginx/conf.d/default.conf
       - .:/var/www
       - ./public:/var/www/html/public
       - ./storage/app/public:/var/www/html/storage
+    environment:
+        VIRTUAL_HOST: ixdlab.hawk.de
+        VIRTUAL_PATH: /hawki-rag/
+        VIRTUAL_DEST: /
+        # VIRTUAL_PORT: 8080
     depends_on:
       - hawki_rag_app
     networks:
       - hawki-network
+      - hosting_network
+  # -------------------------------------------------
+  # MariaDB Database for Laravel
+  # -------------------------------------------------
+  mariadb:
+    image: mariadb:latest
+    container_name: mariadb
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: 17apples4Vincent
+      MYSQL_DATABASE: rag_db
+      MYSQL_USER: root
+      MYSQL_PASSWORD: root
 
+      TZ: Europe/Berlin
+    ports:
+      - "3306:3306"
+    volumes:
+      - hawki_mariadb_data:/var/lib/mysql
+    networks:
+      - hawki-network
+    logging:
+      options:
+        max-size: "128m"
+        max-file: "3"
+
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin
+    container_name: phpmyadmin
+    restart: always
+    ports:
+      - "8004:80"
+    environment:
+      PMA_HOST: mariadb
+      PMA_PORT: 3306
+      UPLOAD_LIMIT: 1024M
+      TZ: Europe/Berlin
+      VIRTUAL_HOST: ixdlab.hawk.de
+      VIRTUAL_PATH: /phpmyadmin/
+      VIRTUAL_DEST: /
+    networks:
+      - hawki-network
+      - hosting_network
   # -------------------------------------------------
   # RabbitMQ (Message Queue for Laravel <-> Microservices)
   # -------------------------------------------------
@@ -113,9 +160,9 @@ services:
       timeout: 5s
       retries: 10
       start_period: 20s
-    ports:
-      - "6333:6333"
-      - "6334:6334" # Qdrant gRPC port (optional, for advanced use cases)
+    # ports:
+    #   - "6333:6333"
+    #   - "6334:6334" # Qdrant gRPC port (optional, for advanced use cases)
   # -------------------------------------------------
   # Neo4j Graph DB
   # -------------------------------------------------
@@ -256,9 +303,12 @@ volumes:
   rabbitmq_logs:
   qdrant_data:
   neo4j_data:
+  hawki_mariadb_data:
   ollama:
   rag_storage:
 
 networks:
   hawki-network:
     driver: bridge
+  hosting_network:
+    external: true

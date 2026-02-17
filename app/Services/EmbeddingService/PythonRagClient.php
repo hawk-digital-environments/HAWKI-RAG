@@ -27,6 +27,7 @@ class PythonRagClient
         $this->ingestPath        = '/ingest';
         $this->queryPath         = '/query';
         $this->graphFromTextPath = '/graph/from-text';
+        ## Remove these >>> 
         $this->useMcp            = (bool) config('mcp.enabled', true);
         $this->mcpFallback       = (bool) config('mcp.use_fallback', true);
         $this->mcpToolQuery      = (string) config('mcp.tools.rag_query', 'rag-query-tool');
