@@ -65,6 +65,10 @@ class Neo4jGraph:
             "UNWIND $rows AS row "
             "MERGE (s:Entity {name: row.s}) "
             "MERGE (o:Entity {name: row.o}) "
+            "SET s.doc_ids = coalesce(s.doc_ids, []) + "
+            "  CASE WHEN row.doc_id IN coalesce(s.doc_ids, []) THEN [] ELSE [row.doc_id] END "
+            "SET o.doc_ids = coalesce(o.doc_ids, []) + "
+            "  CASE WHEN row.doc_id IN coalesce(o.doc_ids, []) THEN [] ELSE [row.doc_id] END "
             "MERGE (s)-[r:REL {type: row.r, doc_id: row.doc_id}]->(o) "
             "SET r.updated_at = timestamp()"
         )

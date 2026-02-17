@@ -19,6 +19,8 @@ except Exception:  # pragma: no cover - optional dependency in runtime
 logger = logging.getLogger(__name__)
 GRAPH_DEBUG = os.environ.get("GRAPH_DEBUG", "").strip().lower() in ("1", "true", "yes")
 GRAPH_DEBUG_LLM = os.environ.get("GRAPH_DEBUG_LLM", "").strip().lower() in ("1", "true", "yes")
+if not (GRAPH_DEBUG or GRAPH_DEBUG_LLM):
+    logger.setLevel(logging.INFO)
 
 
 def _strip_control_chars(text: str | None) -> str:
@@ -312,8 +314,14 @@ class RAGService:
         if mode != "raganything":
             logger.warning("Graph engine '%s' requested; enforcing raganything.", mode)
         if extract_entities is None:
-            logger.warning("graph:extract_triplets missing LightRAG extract_entities; returning 0")
-            return []
+            logger.warning("graph:extract_triplets missing LightRAG extract_entities; falling back to RAG-Anything")
+            fallback_text = text or ""
+            if not fallback_text and chunks:
+                fallback_text = "\n".join(str(c) for c in chunks if c)
+            trips = self._extract_triplets_raganything(fallback_text)
+            if not trips:
+                logger.warning("graph:extract_triplets RAG-Anything fallback returned 0 triplets (missing LightRAG)")
+            return trips
         provider = provider or self.get_provider(os.environ.get("GRAPH_PROVIDER", "ollama"))
         # Clean table-heavy lines to reduce parser format errors.
         cleaned_text = _clean_graph_text(text)
@@ -330,6 +338,14 @@ class RAGService:
             file_path=file_path,
         )
         trips = self._extract_triplets_lightrag(chunk_map, provider)
+        if trips is None:
+            logger.warning("graph:extract_triplets LightRAG failed; falling back to RAG-Anything")
+            fallback_text = cleaned_text if cleaned_text.strip() else text
+            if (not fallback_text or not fallback_text.strip()) and chunks:
+                fallback_text = "\n".join(str(c) for c in chunks if c)
+            trips = self._extract_triplets_raganything(fallback_text)
+            if not trips:
+                logger.warning("graph:extract_triplets RAG-Anything fallback returned 0 triplets (LightRAG failed)")
         logger.info("graph:extract_triplets raganything-logic count=%s", len(trips))
         return trips
 
@@ -379,7 +395,7 @@ class RAGService:
         self,
         chunks: Dict[str, Dict[str, Any]],
         provider: Any,
-    ) -> List[tuple[str, str, str]]:
+    ) -> List[tuple[str, str, str]] | None:
         if not chunks:
             return []
         if GRAPH_DEBUG:
@@ -440,7 +456,7 @@ class RAGService:
                 results = asyncio.run(extract_entities(chunks, global_config))
         except Exception as exc:
             logger.warning("graph:extract_triplets LightRAG extraction failed: %s", exc)
-            return []
+            return None
         if GRAPH_DEBUG:
             try:
                 res_len = len(results or [])

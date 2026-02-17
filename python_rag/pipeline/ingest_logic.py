@@ -267,7 +267,13 @@ def ingest_documents(
         try:
             graph_write_start = time.perf_counter()
             triplet_start = time.perf_counter()
-            triplets_by_doc, failures = _build_triplets_by_doc(chunk_records, body.graph_engine, rag_service, provider)
+            triplets_by_doc, failures = _build_triplets_by_doc(
+                chunk_records,
+                body.graph_engine,
+                rag_service,
+                provider,
+                graph=graph,
+            )
             triplet_ms = (time.perf_counter() - triplet_start) * 1000
             total_triplets = sum(len(v) for v in triplets_by_doc.values())
             logger.info(
@@ -278,9 +284,6 @@ def ingest_documents(
                 triplet_ms,
             )
             graph_preview = _build_graph_preview(doc_stats, chunk_records, triplets_by_doc)
-            for doc_id, triplets in triplets_by_doc.items():
-                if triplets:
-                    graph.upsert_triplets(triplets, doc_id=doc_id)
             neo4j_ms = (time.perf_counter() - graph_write_start) * 1000
             logger.info("graph:neo4j upsert docs=%s triplets=%s ms=%.2f", len(triplets_by_doc), total_triplets, neo4j_ms)
             if failures:
@@ -385,6 +388,8 @@ def _build_triplets_by_doc(
     engine: str,
     rag_service: Any,
     provider: Any | None,
+    *,
+    graph: Any | None = None,
 ) -> tuple[Dict[str, List[tuple[str, str, str]]], List[Dict[str, Any]]]:
     if not chunk_records:
         return {}, []
@@ -450,7 +455,7 @@ def _build_triplets_by_doc(
         first_payload = (parts[0] or {}).get("payload") if parts else {}
         file_path = None
         if isinstance(first_payload, dict):
-            file_path = first_payload.get("page_url") or first_payload.get("source_url") or first_payload.get("file_path")
+            file_path = first_payload.get("file_path") or first_payload.get("page_url") or first_payload.get("source_url")
         total_chars = sum(len(t) for t in chunk_texts)
         if orig_chunk_count != len(chunk_texts) or orig_chars != total_chars:
             logger.info(
@@ -496,6 +501,9 @@ def _build_triplets_by_doc(
         else:
             triplets = clean_triplets(triplets)
             logger.info("graph:extract doc=%s triplets=%s ms=%.2f", doc_id, len(triplets), doc_ms)
+            if graph is not None and triplets:
+                graph.upsert_triplets(triplets, doc_id=doc_id)
+                logger.info("graph:neo4j upsert doc=%s triplets=%s", doc_id, len(triplets))
         out[doc_id] = triplets
     return out, failures
 

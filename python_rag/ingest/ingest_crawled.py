@@ -865,6 +865,7 @@ def main():
             "meta_img_url_text": meta_img,
             "tags": tags or None,
             "source_format": source_fmt,
+            "file_path": str(md_path) if md_path else None,
             "ingested_at": utc_now_iso(),
         }
 
