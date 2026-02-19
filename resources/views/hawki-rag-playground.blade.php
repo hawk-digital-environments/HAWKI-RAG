@@ -3,6 +3,7 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta content="@csrf" name="csrf-token">
     <title>HAWKI RAG Retrieval Playground</title>
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -536,11 +537,12 @@
 
             const startedAt = performance.now();
             try {
-                const response = await fetch('/api/hawki-rag/query', {
+                const response = await fetch('/hawki-rag/query', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                         'Accept': 'application/json',
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
                     },
                     body: JSON.stringify(payload),
                 });
@@ -732,8 +734,10 @@
         }
 
         async function fetchIngestStatus(mode) {
-            const response = await fetch(`/api/ingest/status?mode=${mode}`, {
-                headers: { 'Accept': 'application/json' },
+            const response = await fetch(`/ingest/status?mode=${mode}`, {
+                headers: {
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')},
             });
             if (!response.ok) return null;
             return await response.json();
@@ -801,8 +805,10 @@
         }
 
         async function fetchIngestLive(mode) {
-            const response = await fetch(`/api/ingest/live?mode=${mode}`, {
-                headers: { 'Accept': 'application/json' },
+            const response = await fetch(`/ingest/live?mode=${mode}`, {
+                headers: {
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')},
             });
             if (!response.ok) return null;
             return await response.json();
@@ -857,8 +863,11 @@
 
         async function loadIngestFolders() {
             try {
-                const response = await fetch('/api/ingest/folders', {
-                    headers: { 'Accept': 'application/json' },
+                const response = await fetch('/ingest/folders', {
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+                    },
                 });
                 if (!response.ok) {
                     ingestFolder.innerHTML = '<option value="">Failed to load folders</option>';
@@ -896,11 +905,12 @@
             ingestAction.textContent = 'Starting ingest…';
             try {
                 const batchValue = ingestBatchSize ? parseInt(ingestBatchSize.value, 10) : null;
-                const response = await fetch('/api/ingest/start', {
+                const response = await fetch('/ingest/start', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                         'Accept': 'application/json',
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
                     },
                     body: JSON.stringify({
                         path,
@@ -939,11 +949,12 @@
             ingestAction.textContent = 'Starting graph ingest…';
             try {
                 const batchValue = ingestBatchSize ? parseInt(ingestBatchSize.value, 10) : null;
-                const response = await fetch('/api/ingest/start', {
+                const response = await fetch('/ingest/start', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                         'Accept': 'application/json',
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
                     },
                     body: JSON.stringify({
                         path,
@@ -986,11 +997,12 @@
                 } else if (lastIngestStatus && lastIngestStatus.pid) {
                     stopPayload.pid = lastIngestStatus.pid;
                 }
-                const response = await fetch('/api/ingest/stop', {
+                const response = await fetch('/ingest/stop', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                         'Accept': 'application/json',
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
                     },
                     body: JSON.stringify(stopPayload),
                 });
@@ -1027,11 +1039,12 @@
             ingestDeleteBtn.disabled = true;
             ingestAction.textContent = 'Deleting folder…';
             try {
-                const response = await fetch('/api/ingest/delete', {
+                const response = await fetch('/ingest/delete', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                         'Accept': 'application/json',
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
                     },
                     body: JSON.stringify({ path }),
                 });
@@ -1076,9 +1089,11 @@
                 neo4jClearBtn.disabled = true;
                 if (neo4jClearNote) neo4jClearNote.textContent = 'Clearing Neo4j graph…';
                 try {
-                    const response = await fetch('/api/rag/neo4j/clear', {
+                    const response = await fetch('/rag/neo4j/clear', {
                         method: 'POST',
-                        headers: { 'Accept': 'application/json' },
+                        headers: {
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content') },
                     });
                     const data = await response.json();
                     if (!response.ok || !data.ok) {
@@ -1101,7 +1116,7 @@
         ingestClearBtn.addEventListener('click', async () => {
             ingestClearBtn.disabled = true;
             try {
-                await fetch(`/api/ingest/status/clear?mode=${ingestStatusMode}`, { method: 'POST' });
+                await fetch(`/ingest/status/clear?mode=${ingestStatusMode}`, { method: 'POST' });
                 ingestStatus.textContent = 'No ingest activity yet.';
                 ingestProgress.innerHTML = '';
                 pushActivity('Ingest', 'Ingest logs cleared');
@@ -1120,8 +1135,10 @@
 
         async function pollRagHealth() {
             try {
-                const response = await fetch('/api/rag/health', {
-                    headers: { 'Accept': 'application/json' },
+                const response = await fetch('/rag/health', {
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')},
                 });
                 const data = await response.json();
                 if (!response.ok || !data.ok) {
@@ -1145,8 +1162,10 @@
 
         async function pollRagStats() {
             try {
-                const response = await fetch('/api/rag/stats', {
-                    headers: { 'Accept': 'application/json' },
+                const response = await fetch('/rag/stats', {
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content') },
                 });
                 const data = await response.json();
                 if (!response.ok || !data.ok) {

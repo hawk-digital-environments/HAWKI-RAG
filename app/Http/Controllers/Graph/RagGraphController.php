@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\Graph;
 
 use App\Http\Controllers\Controller;
-use App\Services\Graph\Neo4jAdmin;
+use App\Services\GraphService\Neo4jAdmin;
 use Illuminate\Http\JsonResponse;
 
 class RagGraphController extends Controller

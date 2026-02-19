@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Services\Graph;
+namespace App\Services\GraphService;
 
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -9,6 +9,7 @@ class Neo4jAdmin
 {
     public function clearAll(): array
     {
+        // todo: all config env below > config.php file
         $neo4jUrl = rtrim((string) env('NEO4J_HTTP_URL', 'http://hawki_rag_neo4j:7474'), '/');
         $neo4jUser = (string) env('NEO4J_USER', 'neo4j');
         $neo4jPassword = (string) env('NEO4J_PASSWORD', '');
