@@ -22,4 +22,4 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/rag/health', [RagHealthController::class, 'show']);
     Route::get('/rag/stats', [RagStatsController::class, 'show']);
     Route::post('/rag/neo4j/clear', [RagGraphController::class, 'clearNeo4j']);
-}
+});
