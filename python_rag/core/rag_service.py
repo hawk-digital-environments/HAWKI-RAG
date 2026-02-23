@@ -19,6 +19,12 @@ except Exception:  # pragma: no cover - optional dependency in runtime
 logger = logging.getLogger(__name__)
 GRAPH_DEBUG = os.environ.get("GRAPH_DEBUG", "").strip().lower() in ("1", "true", "yes")
 GRAPH_DEBUG_LLM = os.environ.get("GRAPH_DEBUG_LLM", "").strip().lower() in ("1", "true", "yes")
+GRAPH_PERF_LOG = os.environ.get("GRAPH_PERF_LOG", "").strip().lower() in ("1", "true", "yes")
+
+
+def _perf_log(msg: str, *args: Any) -> None:
+    if GRAPH_PERF_LOG:
+        logger.info(msg, *args)
 if not (GRAPH_DEBUG or GRAPH_DEBUG_LLM):
     logger.setLevel(logging.INFO)
 
@@ -310,6 +316,16 @@ class RAGService:
         doc_id: str | None = None,
         file_path: str | None = None,
     ) -> List[tuple[str, str, str]]:
+        fn_start = time.perf_counter()
+        result_count = 0
+        path = "unknown"
+        _perf_log(
+            "perf:graph core.rag_service.extract_triplets start engine=%s doc_id=%s chunks=%s text_chars=%s",
+            engine,
+            doc_id or "-",
+            0 if chunks is None else len(chunks),
+            len(text or ""),
+        )
         mode = (engine or "raganything").strip().lower()
         if mode != "raganything":
             logger.warning("Graph engine '%s' requested; enforcing raganything.", mode)
@@ -318,12 +334,27 @@ class RAGService:
             fallback_text = text or ""
             if not fallback_text and chunks:
                 fallback_text = "\n".join(str(c) for c in chunks if c)
+            fb_start = time.perf_counter()
             trips = self._extract_triplets_raganything(fallback_text)
+            path = "raganything_missing_lightrag"
+            _perf_log(
+                "perf:graph core.rag_service.extract_triplets step=raganything_fallback reason=missing_lightrag triplets=%s ms=%.2f",
+                len(trips),
+                (time.perf_counter() - fb_start) * 1000,
+            )
             if not trips:
                 logger.warning("graph:extract_triplets RAG-Anything fallback returned 0 triplets (missing LightRAG)")
+            result_count = len(trips)
+            _perf_log(
+                "perf:graph core.rag_service.extract_triplets done path=%s triplets=%s ms=%.2f",
+                path,
+                result_count,
+                (time.perf_counter() - fn_start) * 1000,
+            )
             return trips
         provider = provider or self.get_provider(os.environ.get("GRAPH_PROVIDER", "ollama"))
         # Clean table-heavy lines to reduce parser format errors.
+        clean_input_start = time.perf_counter()
         cleaned_text = _clean_graph_text(text)
         cleaned_chunks = None
         if chunks is not None:
@@ -331,22 +362,56 @@ class RAGService:
             for ch in chunks:
                 cleaned = _clean_graph_text(ch)
                 cleaned_chunks.append(cleaned if cleaned.strip() else ch)
+        _perf_log(
+            "perf:graph core.rag_service.extract_triplets step=clean_input chunks=%s ms=%.2f",
+            0 if chunks is None else len(chunks),
+            (time.perf_counter() - clean_input_start) * 1000,
+        )
+        chunk_map_start = time.perf_counter()
         chunk_map = self._build_chunk_map(
             cleaned_text if cleaned_text.strip() else text,
             cleaned_chunks if cleaned_chunks is not None else chunks,
             doc_id=doc_id,
             file_path=file_path,
         )
+        _perf_log(
+            "perf:graph core.rag_service.extract_triplets step=build_chunk_map chunk_map=%s ms=%.2f",
+            len(chunk_map),
+            (time.perf_counter() - chunk_map_start) * 1000,
+        )
+        lightrag_start = time.perf_counter()
         trips = self._extract_triplets_lightrag(chunk_map, provider)
+        lightrag_ms = (time.perf_counter() - lightrag_start) * 1000
+        _perf_log(
+            "perf:graph core.rag_service.extract_triplets step=lightrag result=%s ms=%.2f",
+            "none" if trips is None else len(trips),
+            lightrag_ms,
+        )
         if trips is None:
             logger.warning("graph:extract_triplets LightRAG failed; falling back to RAG-Anything")
             fallback_text = cleaned_text if cleaned_text.strip() else text
             if (not fallback_text or not fallback_text.strip()) and chunks:
                 fallback_text = "\n".join(str(c) for c in chunks if c)
+            fb_start = time.perf_counter()
             trips = self._extract_triplets_raganything(fallback_text)
+            _perf_log(
+                "perf:graph core.rag_service.extract_triplets step=raganything_fallback reason=lightrag_failed triplets=%s ms=%.2f",
+                len(trips),
+                (time.perf_counter() - fb_start) * 1000,
+            )
+            path = "raganything_after_lightrag_failure"
             if not trips:
                 logger.warning("graph:extract_triplets RAG-Anything fallback returned 0 triplets (LightRAG failed)")
+        else:
+            path = "lightrag"
         logger.info("graph:extract_triplets raganything-logic count=%s", len(trips))
+        result_count = len(trips)
+        _perf_log(
+            "perf:graph core.rag_service.extract_triplets done path=%s triplets=%s ms=%.2f",
+            path,
+            result_count,
+            (time.perf_counter() - fn_start) * 1000,
+        )
         return trips
 
     def _extract_triplets_raganything(self, text: str) -> List[tuple[str, str, str]]:

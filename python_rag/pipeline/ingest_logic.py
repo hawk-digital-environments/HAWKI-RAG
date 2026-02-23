@@ -22,6 +22,12 @@ from graph.graph_utils import clean_triplets
 logger = logging.getLogger(__name__)
 _POINT_NAMESPACE = uuid.NAMESPACE_URL
 GRAPH_DEBUG = os.environ.get("GRAPH_DEBUG", "").strip().lower() in ("1", "true", "yes")
+GRAPH_PERF_LOG = os.environ.get("GRAPH_PERF_LOG", "").strip().lower() in ("1", "true", "yes")
+
+
+def _perf_log(msg: str, *args: Any) -> None:
+    if GRAPH_PERF_LOG:
+        logger.info(msg, *args)
 
 
 class _GraphTimeout(Exception):
@@ -391,7 +397,14 @@ def _build_triplets_by_doc(
     *,
     graph: Any | None = None,
 ) -> tuple[Dict[str, List[tuple[str, str, str]]], List[Dict[str, Any]]]:
+    fn_start = time.perf_counter()
+    _perf_log(
+        "perf:graph pipeline.ingest_logic._build_triplets_by_doc start engine=%s chunk_records=%s",
+        engine,
+        len(chunk_records),
+    )
     if not chunk_records:
+        _perf_log("perf:graph pipeline.ingest_logic._build_triplets_by_doc done docs=0 chunks=0 ms=0.00")
         return {}, []
     grouped: Dict[str, List[Dict[str, Any]]] = {}
     for rec in chunk_records:
@@ -419,10 +432,17 @@ def _build_triplets_by_doc(
     if doc_timeout_s > 0 and not use_alarm:
         logger.info("graph:extract doc_timeout using thread fallback")
     for doc_id, parts in grouped.items():
+        doc_total_start = time.perf_counter()
         doc_index += 1
+        prep_start = time.perf_counter()
         chunk_texts = [p.get("content") for p in parts if isinstance(p.get("content"), str) and p.get("content").strip()]
         if not chunk_texts:
             out[doc_id] = []
+            _perf_log(
+                "perf:graph pipeline.ingest_logic._build_triplets_by_doc doc=%s step=prepare empty=true ms=%.2f",
+                doc_id,
+                (time.perf_counter() - prep_start) * 1000,
+            )
             continue
         if GRAPH_DEBUG:
             lens = [len(t) for t in chunk_texts]
@@ -466,6 +486,7 @@ def _build_triplets_by_doc(
                 total_chars,
                 orig_chars,
             )
+        prep_ms = (time.perf_counter() - prep_start) * 1000
         logger.info(
             "graph:extract doc=%s idx=%s/%s chunks=%s chars=%s file=%s",
             doc_id,
@@ -475,7 +496,14 @@ def _build_triplets_by_doc(
             total_chars,
             file_path or "-",
         )
-        doc_start = time.perf_counter()
+        _perf_log(
+            "perf:graph pipeline.ingest_logic._build_triplets_by_doc doc=%s step=prepare chunks=%s chars=%s ms=%.2f",
+            doc_id,
+            len(chunk_texts),
+            total_chars,
+            prep_ms,
+        )
+        extract_start = time.perf_counter()
         def _extract():
             return rag_service.extract_triplets(
                 "",
@@ -486,7 +514,7 @@ def _build_triplets_by_doc(
                 file_path=file_path,
             )
         triplets, error = _run_graph_extract_with_timeout(_extract, doc_timeout_s, allow_alarm=use_alarm)
-        doc_ms = (time.perf_counter() - doc_start) * 1000
+        extract_ms = (time.perf_counter() - extract_start) * 1000
         if error:
             failures.append({
                 "doc_id": str(doc_id),
@@ -496,15 +524,55 @@ def _build_triplets_by_doc(
                 "error": error,
                 "timestamp": utc_now_iso(),
             })
-            logger.warning("graph:extract doc=%s failed=%s ms=%.2f", doc_id, error, doc_ms)
+            logger.warning("graph:extract doc=%s failed=%s ms=%.2f", doc_id, error, extract_ms)
+            _perf_log(
+                "perf:graph pipeline.ingest_logic._build_triplets_by_doc doc=%s step=extract status=error ms=%.2f",
+                doc_id,
+                extract_ms,
+            )
             triplets = []
         else:
+            _perf_log(
+                "perf:graph pipeline.ingest_logic._build_triplets_by_doc doc=%s step=extract raw_triplets=%s ms=%.2f",
+                doc_id,
+                len(triplets),
+                extract_ms,
+            )
+            clean_start = time.perf_counter()
             triplets = clean_triplets(triplets)
-            logger.info("graph:extract doc=%s triplets=%s ms=%.2f", doc_id, len(triplets), doc_ms)
+            clean_ms = (time.perf_counter() - clean_start) * 1000
+            _perf_log(
+                "perf:graph pipeline.ingest_logic._build_triplets_by_doc doc=%s step=clean kept_triplets=%s ms=%.2f",
+                doc_id,
+                len(triplets),
+                clean_ms,
+            )
+            logger.info("graph:extract doc=%s triplets=%s ms=%.2f", doc_id, len(triplets), extract_ms)
             if graph is not None and triplets:
+                neo4j_start = time.perf_counter()
                 graph.upsert_triplets(triplets, doc_id=doc_id)
+                neo4j_ms = (time.perf_counter() - neo4j_start) * 1000
+                _perf_log(
+                    "perf:graph pipeline.ingest_logic._build_triplets_by_doc doc=%s step=neo4j_upsert triplets=%s ms=%.2f",
+                    doc_id,
+                    len(triplets),
+                    neo4j_ms,
+                )
                 logger.info("graph:neo4j upsert doc=%s triplets=%s", doc_id, len(triplets))
+        _perf_log(
+            "perf:graph pipeline.ingest_logic._build_triplets_by_doc doc=%s step=total ms=%.2f",
+            doc_id,
+            (time.perf_counter() - doc_total_start) * 1000,
+        )
         out[doc_id] = triplets
+    _perf_log(
+        "perf:graph pipeline.ingest_logic._build_triplets_by_doc done docs=%s chunks=%s total_triplets=%s failures=%s ms=%.2f",
+        len(grouped),
+        len(chunk_records),
+        sum(len(v) for v in out.values()),
+        len(failures),
+        (time.perf_counter() - fn_start) * 1000,
+    )
     return out, failures
 
 

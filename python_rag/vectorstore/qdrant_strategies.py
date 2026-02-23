@@ -1,5 +1,5 @@
-"""Reusable Qdrant search strategies for the FastAPI bridge.
-
+"""
+Reusable Qdrant search strategies for the FastAPI bridge.
 Each function encapsulates one retrieval approach so the caller can
 choose the behaviour that best matches the query. When `is_optimized`
 is enabled we can switch to the `optimized_semantic_search` helper.

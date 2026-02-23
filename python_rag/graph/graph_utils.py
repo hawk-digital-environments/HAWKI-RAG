@@ -6,11 +6,18 @@ from __future__ import annotations
 import os
 import logging
 import re
+import time
 from typing import Any, Dict, List, Iterable, Tuple
 
 from graph.neo4j_graph import Neo4jGraph
 
 logger = logging.getLogger(__name__)
+GRAPH_PERF_LOG = os.environ.get("GRAPH_PERF_LOG", "").strip().lower() in ("1", "true", "yes")
+
+
+def _perf_log(msg: str, *args: Any) -> None:
+    if GRAPH_PERF_LOG:
+        logger.info(msg, *args)
 
 _IMAGE_EXT_RE = re.compile(r"\.(png|jpe?g|gif|webp|svg)(?:\\?|#|$)", re.IGNORECASE)
 _PAGE_MARK_RE = re.compile(r"^(?:p|page)\\s*\\d+$", re.IGNORECASE)
@@ -47,6 +54,15 @@ def _is_noise_entity(value: str) -> bool:
 
 
 def clean_triplets(triplets: Iterable[Tuple[str, str, str]]) -> List[Tuple[str, str, str]]:
+    start = time.perf_counter()
+    try:
+        input_count = len(triplets)  # type: ignore[arg-type]
+    except Exception:
+        input_count = -1
+    _perf_log(
+        "perf:graph graph.graph_utils.clean_triplets start input=%s",
+        input_count if input_count >= 0 else "unknown",
+    )
     cleaned: List[Tuple[str, str, str]] = []
     dropped = 0
     for s, r, o in triplets:
@@ -62,6 +78,13 @@ def clean_triplets(triplets: Iterable[Tuple[str, str, str]]) -> List[Tuple[str, 
         cleaned.append((subj, rel, obj))
     if dropped:
         logger.info("graph:triplets cleanup dropped=%s kept=%s", dropped, len(cleaned))
+    _perf_log(
+        "perf:graph graph.graph_utils.clean_triplets done input=%s kept=%s dropped=%s ms=%.2f",
+        input_count if input_count >= 0 else "unknown",
+        len(cleaned),
+        dropped,
+        (time.perf_counter() - start) * 1000,
+    )
     return cleaned
 
 def fetch_related_terms(terms: List[str], limit: int = 30) -> List[Dict[str, str]]:

@@ -7,6 +7,12 @@ from neo4j import GraphDatabase, exceptions as neo4j_exceptions
 
 
 logger = logging.getLogger(__name__)
+GRAPH_PERF_LOG = os.environ.get("GRAPH_PERF_LOG", "").strip().lower() in ("1", "true", "yes")
+
+
+def _perf_log(msg: str, *args) -> None:
+    if GRAPH_PERF_LOG:
+        logger.info(msg, *args)
 
 
 class Neo4jGraph:
@@ -61,6 +67,8 @@ class Neo4jGraph:
         Each relationship is keyed by both its semantic type and the source doc_id
         so documents can later be rectified or deleted without affecting other facts.
         """
+        fn_start = time.perf_counter()
+        _perf_log("perf:graph graph.neo4j_graph.upsert_triplets start doc_id=%s", doc_id if doc_id is not None else "__legacy__")
         cypher = (
             "UNWIND $rows AS row "
             "MERGE (s:Entity {name: row.s}) "
@@ -73,13 +81,31 @@ class Neo4jGraph:
             "SET r.updated_at = timestamp()"
         )
         doc_key = str(doc_id) if doc_id is not None else "__legacy__"
+        rows_start = time.perf_counter()
         rows = [{"s": s, "r": r, "o": o, "doc_id": doc_key} for s, r, o in triplets if s and r and o]
+        rows_ms = (time.perf_counter() - rows_start) * 1000
         if not rows:
             logger.debug("neo4j:upsert_triplets empty doc_id=%s", doc_key)
+            _perf_log(
+                "perf:graph graph.neo4j_graph.upsert_triplets done doc_id=%s rows=0 build_rows_ms=%.2f execute_ms=0.00 total_ms=%.2f",
+                doc_key,
+                rows_ms,
+                (time.perf_counter() - fn_start) * 1000,
+            )
             return
+        exec_start = time.perf_counter()
         with self._driver.session() as session:
             session.execute_write(lambda tx: tx.run(cypher, rows=rows))
+        exec_ms = (time.perf_counter() - exec_start) * 1000
         logger.info("neo4j:upsert_triplets count=%s doc_id=%s", len(rows), doc_key)
+        _perf_log(
+            "perf:graph graph.neo4j_graph.upsert_triplets done doc_id=%s rows=%s build_rows_ms=%.2f execute_ms=%.2f total_ms=%.2f",
+            doc_key,
+            len(rows),
+            rows_ms,
+            exec_ms,
+            (time.perf_counter() - fn_start) * 1000,
+        )
 
     def delete_by_doc_id(self, doc_id: str) -> Dict[str, int]:
         """Remove relationships (and orphaned nodes) belonging to a document."""
