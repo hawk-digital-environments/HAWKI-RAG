@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 from core.providers.ollama_provider import OllamaProvider
 from core.providers.gwdg_provider import GWDGProvider
+import time
 
 try:
     from lightrag.operate import extract_entities
@@ -282,18 +283,26 @@ class RAGService:
         for builder in ("from_working_dir", "from_env"):
             if hasattr(candidate, builder):
                 try:
-                    return getattr(candidate, builder)(str(self.working_dir))
+                    instance = getattr(candidate, builder)(str(self.working_dir))
+                    logger.info("RAG-Anything initialized via %s with working_dir=%s", builder, self.working_dir)
+                    return instance
                 except TypeError:
                     try:
-                        return getattr(candidate, builder)()
+                        instance = getattr(candidate, builder)()
+                        logger.info("RAG-Anything initialized via %s with default settings", builder)
+                        return instance
                     except Exception:
                         pass
 
         try:
-            return candidate(working_dir=str(self.working_dir))
+            instance = candidate(working_dir=str(self.working_dir))
+            logger.info("RAG-Anything initialized with working_dir=%s", self.working_dir)
+            return instance
         except TypeError:
             try:
-                return candidate()
+                instance = candidate()
+                logger.info("RAG-Anything initialized with default settings")
+                return instance
             except Exception as exc:
                 logger.info("RAG-Anything init failed: %s", exc)
                 return None
@@ -416,10 +425,20 @@ class RAGService:
 
     def _extract_triplets_raganything(self, text: str) -> List[tuple[str, str, str]]:
         if self.raganything is None:
+            logger.warning("RAG-Anything client is not initialized; returning 0 triplets.")
+            return []
+        logger.info("RAG-Anything extract requested text_chars=%s", len(text or ""))
+        available = [m for m in ("extract_triplets", "extract_kg", "build_knowledge_graph") if hasattr(self.raganything, m)]
+        if not available:
+            logger.warning(
+                "RAG-Anything client has no supported extract methods. client_type=%s",
+                type(self.raganything).__name__,
+            )
             return []
         for method in ("extract_triplets", "extract_kg", "build_knowledge_graph"):
             if hasattr(self.raganything, method):
                 try:
+                    logger.info("RAG-Anything using method=%s text_chars=%s", method, len(text or ""))
                     res = getattr(self.raganything, method)(text)
                 except Exception as exc:
                     logger.info("RAG-Anything %s failed: %s", method, exc)
@@ -485,7 +504,17 @@ class RAGService:
                     graph_temp = None
             else:
                 graph_temp = 0.0
-            response = provider.chat(system, messages, temperature=graph_temp)
+            graph_model = os.environ.get("GRAPH_OLLAMA_RAG_MODEL", "").strip()
+            if graph_model and isinstance(provider, OllamaProvider):
+                original_model = provider.rag_model
+                logger.info("graph:llm using ollama_model=%s (override, original=%s)", graph_model, original_model)
+                provider.rag_model = graph_model
+                try:
+                    response = provider.chat(system, messages, temperature=graph_temp)
+                finally:
+                    provider.rag_model = original_model
+            else:
+                response = provider.chat(system, messages, temperature=graph_temp)
             if GRAPH_DEBUG_LLM:
                 logger.debug("graph:llm response=%s", response)
             return response
@@ -499,6 +528,8 @@ class RAGService:
             lang_env = os.environ.get("SUMMARY_LANGUAGE", "").strip()
         language = _normalize_language_setting(lang_env or DEFAULT_SUMMARY_LANGUAGE)
         gleaning = int(os.environ.get("KG_MAX_GLEANING", "1"))
+        if os.environ.get("GRAPH_DISABLE_GLEANING", "").strip().lower() in ("1", "true", "yes"):
+            gleaning = 0
 
         global_config = {
             "llm_model_func": llm_func,
@@ -534,10 +565,8 @@ class RAGService:
         for maybe_nodes, maybe_edges in results or []:
             for (src, tgt), rels in (maybe_edges or {}).items():
                 for rel in rels or []:
-                    rel_val = rel.get("keywords") or rel.get("description") or "RELATED_TO"
-                    if isinstance(rel_val, str) and "," in rel_val:
-                        rel_val = rel_val.split(",")[0].strip()
-                    rel_val = str(rel_val).strip() if rel_val else "RELATED_TO"
+                    # Force a neutral relation label (avoid LLM-defined relation names).
+                    rel_val = os.environ.get("GRAPH_EDGE_RELATION_DEFAULT", "RELATED_TO").strip() or "RELATED_TO"
                     key = (src, rel_val, tgt)
                     if key in seen or not all(key):
                         continue

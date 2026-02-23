@@ -72,12 +72,14 @@ class IngestController extends Controller
     {
         if ($mode === 'neo4j') {
             $statusPath = (string) config('hawki_rag.ingest_status_path_neo4j', storage_path('logs/ingest_status_neo4j.json'));
-            $logPath = (string) config('hawki_rag.ingest_log_path_neo4j', storage_path('logs/ingest_progress_neo4j.log'));
-            return [$statusPath, $logPath];
+            $cacheLogPath = (string) config('hawki_rag.ingest_log_cache_path_neo4j', storage_path('logs/ingest_progress_neo4j_cache.log'));
+            $fullLogPath = (string) config('hawki_rag.ingest_log_path_neo4j', storage_path('logs/ingest_progress_neo4j_full.log'));
+            return [$statusPath, $cacheLogPath, $fullLogPath];
         }
         $statusPath = (string) config('hawki_rag.ingest_status_path', storage_path('logs/ingest_status.json'));
-        $logPath = (string) config('hawki_rag.ingest_log_path', storage_path('logs/ingest_progress.log'));
-        return [$statusPath, $logPath];
+        $cacheLogPath = (string) config('hawki_rag.ingest_log_cache_path', storage_path('logs/ingest_progress_cache.log'));
+        $fullLogPath = (string) config('hawki_rag.ingest_log_path', storage_path('logs/ingest_progress_full.log'));
+        return [$statusPath, $cacheLogPath, $fullLogPath];
     }
 
     public function folders(): JsonResponse
@@ -132,9 +134,10 @@ class IngestController extends Controller
 
         $baseUrl = (string) env('HAWKI_RAG_BRIDGE_URL', 'http://hawki_rag_bridge:8000');
         $statusMode = $this->resolveStatusModeForRequest($data);
-        [$statusPath, $logPath] = $this->resolveStatusPaths($statusMode);
+        [$statusPath, $cacheLogPath, $fullLogPath] = $this->resolveStatusPaths($statusMode);
         File::ensureDirectoryExists(dirname($statusPath));
-        File::ensureDirectoryExists(dirname($logPath));
+        File::ensureDirectoryExists(dirname($cacheLogPath));
+        File::ensureDirectoryExists(dirname($fullLogPath));
 
         $cmd = [
             'python3',
@@ -219,10 +222,15 @@ class IngestController extends Controller
         $entries = $this->loadStatusEntries($statusPath);
         $entries[] = $entry;
         $this->saveStatusEntries($statusPath, $entries);
-        File::append($logPath, 'INGEST_STARTED ' . $path . PHP_EOL);
+        File::append($cacheLogPath, 'INGEST_STARTED ' . $path . PHP_EOL);
+        File::append($fullLogPath, 'INGEST_STARTED ' . $path . PHP_EOL);
 
         $escaped = array_map('escapeshellarg', $cmd);
-        $commandLine = implode(' ', $escaped) . ' >> ' . escapeshellarg($logPath) . ' 2>&1; echo "INGEST_DONE" >> ' . escapeshellarg($logPath);
+        $command = implode(' ', $escaped);
+        $cacheEsc = escapeshellarg($cacheLogPath);
+        $fullEsc = escapeshellarg($fullLogPath);
+        $commandLine = '(' . $command . ') 2>&1 | tee -a ' . $fullEsc . ' >> ' . $cacheEsc
+            . '; echo "INGEST_DONE" | tee -a ' . $fullEsc . ' >> ' . $cacheEsc;
         $process = Process::fromShellCommandline($commandLine, base_path());
         $process->setTimeout(null);
         $process->start();
@@ -243,7 +251,8 @@ class IngestController extends Controller
             'ok' => true,
             'pid' => $process->getPid(),
             'status_path' => $statusPath,
-            'log_path' => $logPath,
+            'log_path' => $cacheLogPath,
+            'full_log_path' => $fullLogPath,
             'collection_exists' => $collectionExists,
         ]);
     }
@@ -258,7 +267,7 @@ class IngestController extends Controller
         ]);
 
         $mode = $data['mode'] ?? 'default';
-        [$statusPath, $logPath] = $this->resolveStatusPaths($mode);
+        [$statusPath] = $this->resolveStatusPaths($mode);
         $liveBefore = $this->listLiveIngestionsFrom($statusPath);
         if (!$liveBefore) {
             return response()->json([
@@ -285,7 +294,9 @@ class IngestController extends Controller
         foreach ($targetPids as $pid) {
             $pid = (int) $pid;
             $stopped = false;
-            if ($pid > 0 && function_exists('posix_kill')) {
+            if ($pid > 0 && !$this->isPidAlive($pid)) {
+                $stopped = true; // already finished
+            } elseif ($pid > 0 && function_exists('posix_kill')) {
                 $stopped = @posix_kill($pid, SIGTERM);
             }
             if (!$stopped && $pid > 0) {

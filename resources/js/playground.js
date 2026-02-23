@@ -22,7 +22,9 @@ const ingestAction = document.getElementById('ingest-action');
 const ingestGraph = null;
 const ingestCollection = document.getElementById('ingest-collection');
 const ingestEmbeddingModel = document.getElementById('ingest-embedding-model');
+const ingestGraphModel = document.getElementById('ingest-graph-model');
 const ingestBatchSize = document.getElementById('ingest-batch-size');
+const ingestChunkChars = document.getElementById('ingest-chunk-chars');
 const ingestResumeMode = document.getElementById('ingest-resume-mode');
 const ingestClearBtn = document.getElementById('ingest-clear-btn');
 const ingestStopBtn = document.getElementById('ingest-stop-btn');
@@ -524,6 +526,7 @@ ingestBtn.addEventListener('click', async () => {
     ingestAction.textContent = 'Starting ingest…';
     try {
         const batchValue = ingestBatchSize ? parseInt(ingestBatchSize.value, 10) : null;
+        const chunkCharsValue = ingestChunkChars ? parseInt(ingestChunkChars.value, 10) : null;
         const response = await fetch('/ingest/start', {
             method: 'POST',
             headers: {
@@ -535,7 +538,9 @@ ingestBtn.addEventListener('click', async () => {
                 path,
                 collection: collectionName,
                 embedding_model: ingestEmbeddingModel ? ingestEmbeddingModel.value : undefined,
+                graph_model: ingestGraphModel ? ingestGraphModel.value : undefined,
                 batch: Number.isFinite(batchValue) && batchValue > 0 ? batchValue : undefined,
+                chunk_chars: Number.isFinite(chunkCharsValue) && chunkCharsValue > 0 ? chunkCharsValue : undefined,
                 graph: false,
                 resume_mode: ingestResumeMode ? ingestResumeMode.value : 'resume',
             }),
@@ -568,6 +573,7 @@ ingestGraphOnlyBtn.addEventListener('click', async () => {
     ingestAction.textContent = 'Starting graph ingest…';
     try {
         const batchValue = ingestBatchSize ? parseInt(ingestBatchSize.value, 10) : null;
+        const chunkCharsValue = ingestChunkChars ? parseInt(ingestChunkChars.value, 10) : null;
         const response = await fetch('/ingest/start', {
             method: 'POST',
             headers: {
@@ -579,7 +585,9 @@ ingestGraphOnlyBtn.addEventListener('click', async () => {
                 path,
                 collection: collectionName,
                 embedding_model: ingestEmbeddingModel ? ingestEmbeddingModel.value : undefined,
+                graph_model: ingestGraphModel ? ingestGraphModel.value : undefined,
                 batch: Number.isFinite(batchValue) && batchValue > 0 ? batchValue : undefined,
+                chunk_chars: Number.isFinite(chunkCharsValue) && chunkCharsValue > 0 ? chunkCharsValue : undefined,
                 graph: true,
                 graph_only: true,
                 resume_mode: ingestResumeMode ? ingestResumeMode.value : 'resume',
@@ -618,6 +626,7 @@ ingestStopBtn.addEventListener('click', async () => {
         }
         const response = await fetch('/ingest/stop', {
             method: 'POST',
+            credentials: 'same-origin',
             headers: {
                 'Content-Type': 'application/json',
                 'Accept': 'application/json',
@@ -735,7 +744,14 @@ if (neo4jClearBtn) {
 ingestClearBtn.addEventListener('click', async () => {
     ingestClearBtn.disabled = true;
     try {
-        await fetch(`/ingest/status/clear?mode=${ingestStatusMode}`, { method: 'POST' });
+        await fetch('/ingest/status/clear?mode=all', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: {
+                'Accept': 'application/json',
+                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+            },
+        });
         ingestStatus.textContent = 'No ingest activity yet.';
         ingestProgress.innerHTML = '';
         pushActivity('Ingest', 'Ingest logs cleared');

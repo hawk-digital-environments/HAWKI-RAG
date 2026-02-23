@@ -6,6 +6,7 @@ COMPOSE_BIN ?= docker compose
 
 COMPOSE_PROFILES := gpu
 OLLAMA_SERVICE := ollama_gpu
+OLLAMA_CONTAINER ?= hawki_ollama_gpu
 PROFILE_MESSAGE := "GPU profile forced."
 
 COMPOSE_CMD = COMPOSE_PROFILES=$(COMPOSE_PROFILES) $(COMPOSE_BIN)
@@ -58,11 +59,11 @@ up-core: network pull-core build-app
 	@echo "Launching core stack (profile: $(COMPOSE_PROFILES))..."
 	@$(COMPOSE_CMD) up -d --remove-orphans qdrant hawki_rag_nginx $(OLLAMA_SERVICE) hawki_rag_app
 	@echo "Ensuring Ollama has bge-m3 model pulled..."
-	@docker exec hawki_ollama ollama pull bge-m3 >/dev/null 2>&1 || true
+	@docker exec $(OLLAMA_CONTAINER) ollama pull bge-m3 >/dev/null 2>&1 || true
 	@echo "Ensuring Ollama has llama3:8b model pulled..."
-	@docker exec hawki_ollama ollama pull llama3:8b >/dev/null 2>&1 || true
+	@docker exec $(OLLAMA_CONTAINER) ollama pull llama3:8b >/dev/null 2>&1 || true
 	@echo "Ensuring Ollama has llama3.1:8b model pulled..."
-	@docker exec hawki_ollama ollama pull llama3.1:8b >/dev/null 2>&1 || true
+	@docker exec $(OLLAMA_CONTAINER) ollama pull llama3.1:8b >/dev/null 2>&1 || true
 
 up-rag:
 	@echo $(PROFILE_MESSAGE)
@@ -112,7 +113,8 @@ test-services:
 	echo "Service checks completed."
 
 pull-models:
-	@docker exec -it hawki_ollama ollama pull bge-m3
+	@docker exec -it $(OLLAMA_CONTAINER) ollama pull bge-m3
+	@docker exec -it $(OLLAMA_CONTAINER) ollama pull llama3.2:3b
 
 ingest:
 	@if [ "$(CRAWLED_ROOT)" = "/absolute/path/to/crawled-data" ]; then echo "Set CRAWLED_ROOT to your local path, e.g.: make ingest CRAWLED_ROOT=/data/crawled" && exit 1; fi

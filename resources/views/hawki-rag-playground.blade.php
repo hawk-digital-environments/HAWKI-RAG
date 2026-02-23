@@ -22,6 +22,8 @@
                         @php
                             $embedModels = config('hawki_rag.embedding_models', ['bge-m3']);
                             $embedDefault = config('hawki_rag.embedding_default', $embedModels[0] ?? null);
+                            $graphModels = config('hawki_rag.graph_models', ['llama3.2:3b']);
+                            $graphDefault = config('hawki_rag.graph_default', $graphModels[0] ?? null);
                         @endphp
                         <h3 style="margin-top:0;">Ingest Data</h3>
                         <p style="margin: 0 0 0.8rem; font-size: 0.9rem; color: #bae6fd;">
@@ -52,8 +54,20 @@
                             </select>
                         </div>
                         <div style="margin-top: 1rem;">
+                            <label for="ingest-graph-model">Graph LLM model</label>
+                            <select id="ingest-graph-model" style="width:100%; border-radius:0.8rem; border:1px solid rgba(148,163,184,0.22); background:rgba(15,23,42,0.78); color:inherit; padding:0.7rem 0.8rem;">
+                                @foreach ($graphModels as $model)
+                                    <option value="{{ $model }}" {{ $model === $graphDefault ? 'selected' : '' }}>{{ $model }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div style="margin-top: 1rem;">
                             <label for="ingest-batch-size">Batch size (docs per request)</label>
                             <input id="ingest-batch-size" type="number" min="1" value="16" style="width:100%; border-radius:0.8rem; border:1px solid rgba(148,163,184,0.22); background:rgba(15,23,42,0.78); color:inherit; padding:0.7rem 0.8rem;" />
+                        </div>
+                        <div style="margin-top: 1rem;">
+                            <label for="ingest-chunk-chars">Chunk size (chars) for graph extraction</label>
+                            <input id="ingest-chunk-chars" type="number" min="200" value="600" style="width:100%; border-radius:0.8rem; border:1px solid rgba(148,163,184,0.22); background:rgba(15,23,42,0.78); color:inherit; padding:0.7rem 0.8rem;" />
                         </div>
                         <div style="margin-top: 1rem;">
                             <label for="ingest-resume-mode">Resume mode</label>

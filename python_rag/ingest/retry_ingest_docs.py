@@ -17,7 +17,7 @@ import logging
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Set, Tuple
-
+import time
 from ingest_crawled import (
     build_url_maps,
     discover_page_dirs,

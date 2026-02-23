@@ -4,14 +4,14 @@ my neo4j terminal notes
 before running anything
 -----------------------------------
 - the neo4j container is up (`hawki_rag_neo4j` on the hawki network).
-- username/password: `neo4j` / `ixdlabPass123` (unless i changed them).
+- username/password: use env vars (e.g., `NEO4J_USER` / `NEO4J_PASSWORD`)
 - either i have `cypher-shell` installed locally or i run it through docker.
 
  cypher-shell
 ---------------------------
 - from my machine:
   ```DD
-  cypher-shell -a bolt://localhost:7688 -u neo4j -p ixdlabPass123
+  cypher-shell -a bolt://localhost:7688 -u "$NEO4J_USER" -p "$NEO4J_PASSWORD"
   ```
 - lazier way (always works):
   ```
@@ -66,11 +66,11 @@ script it
 - one-liner wipe:
   ```
   docker exec hawki_rag_neo4j \
-    cypher-shell -u neo4j -p ixdlabPass123 "MATCH (n) DETACH DELETE n;"
+    cypher-shell -u "$NEO4J_USER" -p "$NEO4J_PASSWORD" "MATCH (n) DETACH DELETE n;"
   ```
 - one-liner counts:
   ```
   docker exec hawki_rag_neo4j \
-    cypher-shell -u neo4j -p ixdlabPass123 \
+    cypher-shell -u "$NEO4J_USER" -p "$NEO4J_PASSWORD" \
     "MATCH (n) RETURN labels(n) AS labels, count(*) AS count ORDER BY count DESC;"
   ```
