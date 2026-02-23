@@ -110,6 +110,7 @@ class IngestController extends Controller
             'embedding_model' => 'sometimes|string',
             'graph' => 'sometimes|boolean',
             'graph_engine' => 'sometimes|string',
+            'graph_model' => 'sometimes|string',
             'graph_only' => 'sometimes|boolean',
             'chunk_chars' => 'sometimes|integer',
             'chunk_overlap' => 'sometimes|integer',
@@ -227,9 +228,11 @@ class IngestController extends Controller
 
         $escaped = array_map('escapeshellarg', $cmd);
         $command = implode(' ', $escaped);
+        $graphModel = isset($data['graph_model']) ? trim((string) $data['graph_model']) : '';
+        $envPrefix = $graphModel !== '' ? ('GRAPH_OLLAMA_RAG_MODEL=' . escapeshellarg($graphModel) . ' ') : '';
         $cacheEsc = escapeshellarg($cacheLogPath);
         $fullEsc = escapeshellarg($fullLogPath);
-        $commandLine = '(' . $command . ') 2>&1 | tee -a ' . $fullEsc . ' >> ' . $cacheEsc
+        $commandLine = $envPrefix . '(' . $command . ') 2>&1 | tee -a ' . $fullEsc . ' >> ' . $cacheEsc
             . '; echo "INGEST_DONE" | tee -a ' . $fullEsc . ' >> ' . $cacheEsc;
         $process = Process::fromShellCommandline($commandLine, base_path());
         $process->setTimeout(null);
