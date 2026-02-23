@@ -28,6 +28,9 @@ GRAPH_DEBUG_LOG = os.environ.get("GRAPH_DEBUG_LOG", "").strip()
 if GRAPH_DEBUG:
     logging.getLogger("pipeline.ingest_logic").setLevel(logging.DEBUG)
     logging.getLogger("core.rag_service").setLevel(logging.DEBUG)
+else:
+    # Keep noisy preprocess logs off unless explicitly debugging.
+    logging.getLogger("utils.text_preprocessor").setLevel(logging.INFO)
 if GRAPH_DEBUG_LOG:
     log_path = Path(GRAPH_DEBUG_LOG)
     log_path.parent.mkdir(parents=True, exist_ok=True)
