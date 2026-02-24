@@ -226,6 +226,7 @@ services:
       GRAPH_PERF_LOG: "1"
     volumes:
       - ./python_rag:/app
+      - shared_storage:/app/shared
     networks:
       - hawki-network
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
@@ -267,7 +268,7 @@ services:
       - ./scripts/gpu_guard.sh:/usr/local/bin/gpu_guard.sh:ro
     networks:
       - hawki-network
-    command: ["/usr/local/bin/gpu_guard.sh", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    command: ["/usr/local/bin/gpu_guard.sh", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8003"]
     depends_on:
       - ollama_gpu
       - qdrant
@@ -305,7 +306,6 @@ services:
 
 volumes:
   shared_storage:
-    external: true
     name: rawki_shared_storage
   redis_data:
   rabbitmq_data:
@@ -320,4 +320,4 @@ networks:
   hawki-network:
     driver: bridge
   hosting_network:
-    external: true
+    driver: bridge

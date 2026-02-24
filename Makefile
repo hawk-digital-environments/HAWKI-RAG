@@ -21,9 +21,9 @@ COMPOSE_CMD = COMPOSE_PROFILES=$(COMPOSE_PROFILES) $(COMPOSE_BIN)
 # Variables (override via `make VAR=value`)
 ENV_FILE ?= .env
 OPS_COMPOSE ?= docker-compose.yml
-INGEST_BASE ?= http://localhost:8009
-RERANK_BASE ?= http://localhost:8008
-CRAWLED_ROOT ?= /absolute/path/to/crawled-data
+INGEST_BASE ?= http://hawki_rag_bridge:8000
+RERANK_BASE ?= http://hawki_rag_rerank:8000
+CRAWLED_ROOT ?= /app/shared
 MCP_BASE ?= http://localhost:8080/mcp/hawki_rag
 MCP_INGEST_ROOT ?= /absolute/path/to/crawled-data
 MCP_INGEST_PROVIDER ?= ollama
@@ -64,15 +64,15 @@ up-rag:
 	@docker network connect hawki-network hawki-toolkit-file-converter-file-converter-1 >/dev/null 2>&1 || true
 
 health:
-	@echo "Checking Qdrant..." && curl -fsS http://localhost:6333/readyz && echo " OK" || (echo " FAIL" && exit 1)
-	@echo "Checking Ollama..." && curl -fsS http://localhost:11434/api/tags >/dev/null && echo " OK" || (echo " FAIL" && exit 1)
+	@echo "Checking Qdrant..." && docker exec hawki_qdrant sh -lc "curl -fsS http://localhost:6333/readyz" >/dev/null && echo " OK" || (echo " FAIL" && exit 1)
+	@echo "Checking Ollama..." && docker exec $(OLLAMA_CONTAINER) sh -lc "curl -fsS http://localhost:11434/api/tags" >/dev/null && echo " OK" || (echo " FAIL" && exit 1)
 	@if docker ps --format '{{.Names}}' | grep -q hawki_rag_rerank; then \
-		echo "Checking Local Reranker..." && curl -fsS http://localhost:8008/health && echo " OK" || (echo " WARN (reranker reported unhealthy)" && true); \
+		echo "Checking Local Reranker..." && docker exec hawki_rag_rerank sh -lc "curl -fsS http://localhost:8000/health" >/dev/null && echo " OK" || (echo " WARN (reranker reported unhealthy)" && true); \
 	else \
 		echo "Checking Local Reranker... SKIPPED (hawki_rag_rerank container not running)"; \
 	fi
 	@if docker ps --format '{{.Names}}' | grep -q hawki_rag_bridge; then \
-		echo "Checking Ingestion Bridge..." && curl -fsS $(INGEST_BASE)/health && echo " OK" || (echo " WARN (ingestion reported unhealthy)" && true); \
+		echo "Checking Ingestion Bridge..." && docker exec hawki_rag_bridge sh -lc "curl -fsS http://localhost:8000/health" >/dev/null && echo " OK" || (echo " WARN (ingestion reported unhealthy)" && true); \
 	else \
 		echo "Checking Ingestion Bridge... SKIPPED (hawki_rag_bridge container not running)"; \
 	fi
@@ -110,13 +110,8 @@ pull-models:
 	@docker exec -it $(OLLAMA_CONTAINER) ollama pull llama3.2:1b
 
 ingest:
-	@if [ "$(CRAWLED_ROOT)" = "/absolute/path/to/crawled-data" ]; then echo "Set CRAWLED_ROOT to your local path, e.g.: make ingest CRAWLED_ROOT=/data/crawled" && exit 1; fi
-	@python3 python_rag/ingest/ingest_crawled.py \
-		--root $(CRAWLED_ROOT) \
-		--base-url $(INGEST_BASE) \
-		--provider ollama \
-		--graph \
-		--batch 16
+	@if [ "$(CRAWLED_ROOT)" = "/absolute/path/to/crawled-data" ]; then echo "Set CRAWLED_ROOT to a path mounted in shared storage (default /app/shared inside hawki_rag_bridge)" && exit 1; fi
+	@docker exec hawki_rag_bridge sh -lc "python /app/ingest/ingest_crawled.py --root $(CRAWLED_ROOT) --base-url http://localhost:8000 --provider ollama --graph --batch 16"
 
 logs-core:
 	@$(COMPOSE_CMD) logs -f qdrant mysql hawki_rag_nginx $(OLLAMA_SERVICE) hawki_rag_app
