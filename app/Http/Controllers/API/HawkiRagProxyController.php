@@ -13,7 +13,7 @@ class HawkiRagProxyController extends Controller
 
     public function __construct()
     {
-        $this->baseUrl = config('hawki_rag.base_url');
+        $this->baseUrl = config('config.base_url');
     }
 
     public function query(Request $request): JsonResponse

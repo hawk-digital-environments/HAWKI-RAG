@@ -16,11 +16,11 @@ class IngestStatusController extends Controller
             $mode = 'default';
         }
         if ($mode === 'neo4j') {
-            $statusPath = (string) config('hawki_rag.ingest_status_path_neo4j', storage_path('logs/ingest_status_neo4j.json'));
-            $logPath = (string) config('hawki_rag.ingest_log_cache_path_neo4j', storage_path('logs/ingest_progress_neo4j_cache.log'));
+            $statusPath = (string) config('config.ingest_status_path_neo4j', storage_path('logs/ingest_status_neo4j.json'));
+            $logPath = (string) config('config.ingest_log_cache_path_neo4j', storage_path('logs/ingest_progress_neo4j_cache.log'));
         } else {
-            $statusPath = (string) config('hawki_rag.ingest_status_path', storage_path('logs/ingest_status.json'));
-            $logPath = (string) config('hawki_rag.ingest_log_cache_path', storage_path('logs/ingest_progress_cache.log'));
+            $statusPath = (string) config('config.ingest_status_path', storage_path('logs/ingest_status.json'));
+            $logPath = (string) config('config.ingest_log_cache_path', storage_path('logs/ingest_progress_cache.log'));
         }
 
         $status = null;
@@ -73,12 +73,12 @@ class IngestStatusController extends Controller
         $targets = [];
         if ($mode === 'all' || $mode === 'both') {
             $targets[] = [
-                (string) config('hawki_rag.ingest_status_path', storage_path('logs/ingest_status.json')),
-                (string) config('hawki_rag.ingest_log_cache_path', storage_path('logs/ingest_progress_cache.log')),
+                (string) config('config.ingest_status_path', storage_path('logs/ingest_status.json')),
+                (string) config('config.ingest_log_cache_path', storage_path('logs/ingest_progress_cache.log')),
             ];
             $targets[] = [
-                (string) config('hawki_rag.ingest_status_path_neo4j', storage_path('logs/ingest_status_neo4j.json')),
-                (string) config('hawki_rag.ingest_log_cache_path_neo4j', storage_path('logs/ingest_progress_neo4j_cache.log')),
+                (string) config('config.ingest_status_path_neo4j', storage_path('logs/ingest_status_neo4j.json')),
+                (string) config('config.ingest_log_cache_path_neo4j', storage_path('logs/ingest_progress_neo4j_cache.log')),
             ];
         } else {
             if (!in_array($mode, ['default', 'neo4j'], true)) {
@@ -86,13 +86,13 @@ class IngestStatusController extends Controller
             }
             if ($mode === 'neo4j') {
                 $targets[] = [
-                    (string) config('hawki_rag.ingest_status_path_neo4j', storage_path('logs/ingest_status_neo4j.json')),
-                    (string) config('hawki_rag.ingest_log_cache_path_neo4j', storage_path('logs/ingest_progress_neo4j_cache.log')),
+                    (string) config('config.ingest_status_path_neo4j', storage_path('logs/ingest_status_neo4j.json')),
+                    (string) config('config.ingest_log_cache_path_neo4j', storage_path('logs/ingest_progress_neo4j_cache.log')),
                 ];
             } else {
                 $targets[] = [
-                    (string) config('hawki_rag.ingest_status_path', storage_path('logs/ingest_status.json')),
-                    (string) config('hawki_rag.ingest_log_cache_path', storage_path('logs/ingest_progress_cache.log')),
+                    (string) config('config.ingest_status_path', storage_path('logs/ingest_status.json')),
+                    (string) config('config.ingest_log_cache_path', storage_path('logs/ingest_progress_cache.log')),
                 ];
             }
         }

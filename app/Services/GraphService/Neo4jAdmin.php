@@ -9,10 +9,9 @@ class Neo4jAdmin
 {
     public function clearAll(): array
     {
-        // todo: all config env below > config.php file
-        $neo4jUrl = rtrim((string) env('NEO4J_HTTP_URL', 'http://hawki_rag_neo4j:7474'), '/');
-        $neo4jUser = (string) env('NEO4J_USER', 'neo4j');
-        $neo4jPassword = (string) env('NEO4J_PASSWORD', '');
+        $neo4jUrl = rtrim((string) config('config.neo4j_http_url', 'http://hawki_rag_neo4j:7474'), '/');
+        $neo4jUser = (string) config('config.neo4j_user', 'neo4j');
+        $neo4jPassword = (string) config('config.neo4j_password', '');
         $endpoint = $neo4jUrl . '/db/neo4j/tx/commit';
 
         try {

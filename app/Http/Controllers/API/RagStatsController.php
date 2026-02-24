@@ -10,10 +10,10 @@ class RagStatsController extends Controller
 {
     public function show(): JsonResponse
     {
-        $qdrantUrl = rtrim((string) env('QDRANT_HTTP_URL', 'http://qdrant:6333'), '/');
-        $neo4jUrl = rtrim((string) env('NEO4J_HTTP_URL', 'http://hawki_rag_neo4j:7474'), '/');
-        $neo4jUser = (string) env('NEO4J_USER', 'neo4j');
-        $neo4jPassword = (string) env('NEO4J_PASSWORD', '');
+        $qdrantUrl = rtrim((string) config('config.qdrant_http_url', 'http://qdrant:6333'), '/');
+        $neo4jUrl = rtrim((string) config('config.neo4j_http_url', 'http://hawki_rag_neo4j:7474'), '/');
+        $neo4jUser = (string) config('config.neo4j_user', 'neo4j');
+        $neo4jPassword = (string) config('config.neo4j_password', '');
 
         $qdrant = $this->fetchQdrantStats($qdrantUrl);
         $neo4j = $this->fetchNeo4jStats($neo4jUrl, $neo4jUser, $neo4jPassword);

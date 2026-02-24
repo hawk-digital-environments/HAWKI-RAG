@@ -36,7 +36,7 @@ class IngestController extends Controller
 
     private function resolveSharedRoot(): ?string
     {
-        $root = (string) config('hawki_rag.shared_root', storage_path('app/public'));
+        $root = (string) config('config.shared_root', storage_path('app/public'));
         if (is_dir($root)) {
             return $root;
         }
@@ -71,14 +71,14 @@ class IngestController extends Controller
     private function resolveStatusPaths(string $mode = 'default'): array
     {
         if ($mode === 'neo4j') {
-            $statusPath = (string) config('hawki_rag.ingest_status_path_neo4j', storage_path('logs/ingest_status_neo4j.json'));
-            $cacheLogPath = (string) config('hawki_rag.ingest_log_cache_path_neo4j', storage_path('logs/ingest_progress_neo4j_cache.log'));
-            $fullLogPath = (string) config('hawki_rag.ingest_log_path_neo4j', storage_path('logs/ingest_progress_neo4j_full.log'));
+            $statusPath = (string) config('config.ingest_status_path_neo4j', storage_path('logs/ingest_status_neo4j.json'));
+            $cacheLogPath = (string) config('config.ingest_log_cache_path_neo4j', storage_path('logs/ingest_progress_neo4j_cache.log'));
+            $fullLogPath = (string) config('config.ingest_log_path_neo4j', storage_path('logs/ingest_progress_neo4j_full.log'));
             return [$statusPath, $cacheLogPath, $fullLogPath];
         }
-        $statusPath = (string) config('hawki_rag.ingest_status_path', storage_path('logs/ingest_status.json'));
-        $cacheLogPath = (string) config('hawki_rag.ingest_log_cache_path', storage_path('logs/ingest_progress_cache.log'));
-        $fullLogPath = (string) config('hawki_rag.ingest_log_path', storage_path('logs/ingest_progress_full.log'));
+        $statusPath = (string) config('config.ingest_status_path', storage_path('logs/ingest_status.json'));
+        $cacheLogPath = (string) config('config.ingest_log_cache_path', storage_path('logs/ingest_progress_cache.log'));
+        $fullLogPath = (string) config('config.ingest_log_path', storage_path('logs/ingest_progress_full.log'));
         return [$statusPath, $cacheLogPath, $fullLogPath];
     }
 
@@ -119,7 +119,7 @@ class IngestController extends Controller
             'resume_mode' => 'sometimes|string|in:resume,start',
         ]);
 
-        $root = (string) config('hawki_rag.shared_root', '/app/shared');
+        $root = (string) config('config.shared_root', '/app/shared');
         $path = $data['path'];
         if (!str_starts_with($path, $root)) {
             return response()->json(['ok' => false, 'message' => 'Path must be within shared root.'], 422);
@@ -133,7 +133,7 @@ class IngestController extends Controller
             return response()->json(['ok' => false, 'message' => 'ingest_crawled.py not found'], 500);
         }
 
-        $baseUrl = (string) env('HAWKI_RAG_BRIDGE_URL', 'http://hawki_rag_bridge:8000');
+        $baseUrl = (string) config('config.hawki_rag_bridge_url', 'http://hawki_rag_bridge:8000');
         $statusMode = $this->resolveStatusModeForRequest($data);
         [$statusPath, $cacheLogPath, $fullLogPath] = $this->resolveStatusPaths($statusMode);
         File::ensureDirectoryExists(dirname($statusPath));
@@ -178,7 +178,7 @@ class IngestController extends Controller
             $cmd[] = '--batch';
             $cmd[] = (string) $data['batch'];
         }
-        $timeout = $data['timeout'] ?? (int) config('hawki_rag.ingest_timeout', 6000);
+        $timeout = $data['timeout'] ?? (int) config('config.ingest_timeout', 6000);
         if ($timeout > 0) {
             $cmd[] = '--timeout';
             $cmd[] = (string) $timeout;
@@ -432,7 +432,7 @@ class IngestController extends Controller
         if ($collection === '') {
             return false;
         }
-        $baseUrl = rtrim((string) env('QDRANT_HTTP_URL', 'http://qdrant:6333'), '/');
+        $baseUrl = rtrim((string) config('config.qdrant_http_url', 'http://qdrant:6333'), '/');
         try {
             $resp = Http::timeout(3)->get($baseUrl . '/collections');
             if (!$resp->successful()) {

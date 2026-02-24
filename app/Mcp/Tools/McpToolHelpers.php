@@ -59,7 +59,7 @@ final class McpToolHelpers
      */
     public static function hawkiRagBridgeBaseUrl(): string
     {
-        return rtrim((string) env('HAWKI_RAG_BRIDGE_URL', 'http://hawki_rag_bridge:8000'), '/');
+        return rtrim((string) config('config.hawki_rag_bridge_url', 'http://hawki_rag_bridge:8000'), '/');
     }
 
     /**
@@ -67,7 +67,7 @@ final class McpToolHelpers
      */
     public static function qdrantBaseUrl(): string
     {
-        return rtrim((string) env('QDRANT_HTTP_URL', 'http://qdrant:6333'), '/');
+        return rtrim((string) config('config.qdrant_http_url', 'http://qdrant:6333'), '/');
     }
 
     /**

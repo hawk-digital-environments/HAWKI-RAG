@@ -20,10 +20,10 @@
                 <div class="panel-body">
                     <div class="subsection">
                         @php
-                            $embedModels = config('hawki_rag.embedding_models', ['bge-m3']);
-                            $embedDefault = config('hawki_rag.embedding_default', $embedModels[0] ?? null);
-                            $graphModels = config('hawki_rag.graph_models', ['llama3.2:3b']);
-                            $graphDefault = config('hawki_rag.graph_default', $graphModels[0] ?? null);
+                            $embedModels = config('config.embedding_models', ['bge-m3']);
+                            $embedDefault = config('config.embedding_default', $embedModels[0] ?? null);
+                            $graphModels = config('config.graph_models', ['llama3.2:3b']);
+                            $graphDefault = config('config.graph_default', $graphModels[0] ?? null);
                         @endphp
                         <h3 style="margin-top:0;">Ingest Data</h3>
                         <p style="margin: 0 0 0.8rem; font-size: 0.9rem; color: #bae6fd;">

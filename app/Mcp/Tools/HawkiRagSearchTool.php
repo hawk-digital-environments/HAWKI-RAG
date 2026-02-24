@@ -83,7 +83,7 @@ class HawkiRagSearchTool extends Tool
                 'structural_hops' => true ? 0 : null,
             ];
 
-            $baseUrl = config('hawki_rag.base_url');
+            $baseUrl = config('config.base_url');
             // \Log::debug('checkpoint 3');
             // \Log::debug($payload);
             $payload = array_filter($payload, static fn ($value) => $value !== null);

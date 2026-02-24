@@ -10,8 +10,8 @@ class RagHealthController extends Controller
 {
     public function show(): JsonResponse
     {
-        $primaryBase = (string) (env('HAWKI_RAG_API_URL') ?: config('hawki_rag.rag_api_url', 'http://raganything_api_gpu:8003'));
-        $bridgeBase = (string) (env('HAWKI_RAG_BRIDGE_URL') ?: config('hawki_rag.base_url', 'http://hawki_rag_bridge:8000'));
+        $primaryBase = (string) config('config.rag_api_url', 'http://raganything_api_gpu:8003');
+        $bridgeBase = (string) config('config.base_url', 'http://hawki_rag_bridge:8000');
         $candidates = array_values(array_unique(array_filter([
             rtrim($primaryBase, '/') . '/health',
             rtrim($bridgeBase, '/') . '/health',

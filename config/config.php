@@ -4,6 +4,10 @@ return [
 
 
     'base_url' => env('HAWKI_RAG_BASE_URL', 'http://hawki_rag_bridge:8000'),
+    'qdrant_http_url' => env('QDRANT_HTTP_URL', 'http://qdrant:6333'),
+    'neo4j_http_url' => env('NEO4J_HTTP_URL', 'http://hawki_rag_neo4j:7474'),
+    'neo4j_user' => env('NEO4J_USER', 'neo4j'),
+    'neo4j_password' => env('NEO4J_PASSWORD', ''),
     'shared_root' => env('HAWKI_RAG_SHARED_ROOT', storage_path('app/public')),
     'ingest_status_path' => env('HAWKI_RAG_INGEST_STATUS_PATH', storage_path('logs/ingest_status.json')),
     // Full ingest log (append-only).
