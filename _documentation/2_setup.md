@@ -20,13 +20,18 @@ make network   # creates shared docker network hawki-network
 ```bash
 make up-core
 ```
-  - Auto-pulls Ollama models `bge-m3`, `llama3:8b`, `llama3.1:8b`.
+  - Auto-pulls Ollama models `bge-m3`, `llama3.1:8b`.
   - Use this to bring up the UI plus vector store/model host; it’s the minimal stack for browsing and basic testing.
 - Full RAG (adds reranker, FastAPI bridge, RAG API):
 ```bash
 make up-rag
 ```
-  - Adds the reranker and FastAPI bridge so you can ingest and query end-to-end; run after (or instead of) `make up-core` when you need full retrieval.
+  - Adds the reranker and FastAPI bridge so you can ingest and query end-to-end; run after (or instead of) `make up-core` when you need full retrieval. Auto-pulls `llama3.2:1b` for fast graph/summarization steps.
+
+## Model pulls (Ollama)
+- Default pulls: `bge-m3` (embeddings), `llama3.1:8b` (chat/answers), `llama3.2:1b` (fast graph/summarization).
+- Optional (not auto-pulled): `llama3.2:3b` for higher-quality graph extraction; pull manually if needed: `docker exec hawki_ollama_gpu ollama pull llama3.2:3b`.
+- Rough VRAM guide: `bge-m3` <4 GB, `llama3.2:1b` ~2 GB, `llama3.1:8b` prefers 12–16 GB. On CPU expect higher latency.
 
 Use these to verify services and inspect runtime output when something feels off:
 ## Health & logs
