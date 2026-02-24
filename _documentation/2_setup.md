@@ -3,10 +3,10 @@
 ## Key variables (override per run)
 - `OPS_COMPOSE` (default `docker-compose.yml`)
 - `ENV_FILE` (default `.env`)
-- `INGEST_BASE` (default `http://localhost:8009`)
-- `RERANK_BASE` (default `http://localhost:8008`)
+- `INGEST_BASE` (default `http://hawki_rag_bridge:8000`)
+- `RERANK_BASE` (default `http://hawki_rag_rerank:8000`)
 - GPU auto-detect: `COMPOSE_PROFILES=gpu` when `nvidia-smi` is present; otherwise `cpu`.
-> Use these knobs without editing files: `OPS_COMPOSE` picks the docker compose file, `ENV_FILE` supplies env vars to the Python stack (defaults to `.env`), `INGEST_BASE`/`RERANK_BASE` are the URLs Make targets call, and `COMPOSE_PROFILES` flips between GPU/CPU automatically (GPU if `nvidia-smi` works).
+> Use these knobs without editing files: `OPS_COMPOSE` picks the docker compose file, `ENV_FILE` supplies env vars to the Python stack (defaults to `.env`), `INGEST_BASE`/`RERANK_BASE` are the internal URLs Make targets call, and `COMPOSE_PROFILES` flips between GPU/CPU automatically (GPU if `nvidia-smi` works).
 > Prereqs: ensure Docker/Compose v2 are installed and running; install Node.js + npm (for Laravel/Vite assets) and Composer (PHP deps). If building locally (not just via containers), run `composer install` and `npm install` first.
 
 ## One-time network
@@ -41,17 +41,16 @@ make logs-core         # follow core services
 make logs-rag          # follow RAG services
 ```
 
-## Ingest content (minimal)
+## Ingest content (inside containers, internal URLs)
 ```bash
-make ingest CRAWLED_ROOT=/abs/path/to/crawled-data
+docker exec hawki_rag_bridge sh -lc "python /app/ingest/ingest_crawled.py \
+  --root /app/shared/<folder> \
+  --base-url http://localhost:8000 \
+  --provider ollama --graph --batch 16"
 ```
-- Sends files to FastAPI bridge → Qdrant + Neo4j. Requires stack running.
-Full workaround (step-by-step):
-1) Prepare data: choose a crawl/output folder containing text/HTML/PDFs (e.g., `storage/app/private/crawled-data/mycrawl`), and note the absolute path.
-2) Start services: run `make up-rag` (or `make up-core` + `make up-rag`) so bridge, reranker, Qdrant, Neo4j, and Ollama are up. Check with `make test-services`.
-3) Run ingest: `make ingest CRAWLED_ROOT=/abs/path/to/crawled-data` (defaults: provider `ollama`, graph on, batch 16). If you need custom collection or chunking, run the Python script directly with flags (see ingest-and-data page).
-4) Verify: check `public/ingest_summary.json` for results; count vectors via Qdrant curl (Chapter 6) and graph nodes via Neo4j cypher; watch logs with `make logs-rag`.
-Common adjustments: increase `MCP_INGEST_BATCH`/`--batch` for speed, raise `--timeout` for large corpora, disable `--graph` if you only need vectors.
+- Place your files on host in `storage/app/public/<folder>`; inside bridge they appear at `/app/shared/<folder>`.
+- Services must be running (`make up-core` + `make up-rag`).
+- Verify: check `storage/logs/ingest_status.json` and `storage/logs/ingest_progress_cache.log` inside app container if needed (`docker exec hawki_rag_app cat ...`).
 
 ## Shut down / reset
 ```bash

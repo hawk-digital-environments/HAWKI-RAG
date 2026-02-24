@@ -7,7 +7,7 @@
 - GPU (optional): NVIDIA with CUDA for faster rerank/model inference; verify with `nvidia-smi`.
 
 ## Network & Ports
-- Ensure these host ports are free: 8080 (nginx/UI), 8003 (RAG API), 8004 (crawler), 8008 (reranker), 8009 (bridge), 11434 (Ollama), 6333/6334 (Qdrant), 7475/7688 (Neo4j).
+- Ensure these host ports are free: 8080 (nginx/UI), 8004 (optional crawler), 11434 (Ollama if exposed), 3306 (MariaDB). RAG services (bridge, reranker, RAG API, Qdrant, Neo4j) stay on the internal Docker network by default and do not bind to host ports.
 - Stable broadband for pulling Docker images and Ollama models.
 
 ## Common Software (all platforms)
