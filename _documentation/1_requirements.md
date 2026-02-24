@@ -35,11 +35,11 @@
 
 ## Environment files
 - App/Laravel: copy `.env.example` → `.env`, fill secrets (DB, queues, keys).
-- Python RAG: `python_rag/LightRAG.env` (model settings, provider URLs).
+- Python RAG: `.env` (shared env for Laravel + Python services).
 - Optional overrides: (deprecated) `Makefile.local` — avoid using; prefer Docker/Make targets above.
 
 ## Checklist before first run
 - Docker running and `docker ps` works.
 - Ports listed above are unused.
-- `.env` and `python_rag/LightRAG.env` exist and are filled.
+- `.env` exists and is filled.
 - If GPU: `nvidia-smi` returns successfully.

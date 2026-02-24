@@ -2,11 +2,11 @@
 
 ## Key variables (override per run)
 - `OPS_COMPOSE` (default `docker-compose.yml`)
-- `ENV_FILE` (default `python_rag/LightRAG.env`)
+- `ENV_FILE` (default `.env`)
 - `INGEST_BASE` (default `http://localhost:8009`)
 - `RERANK_BASE` (default `http://localhost:8008`)
 - GPU auto-detect: `COMPOSE_PROFILES=gpu` when `nvidia-smi` is present; otherwise `cpu`.
-> Use these knobs without editing files: `OPS_COMPOSE` picks the docker compose file, `ENV_FILE` supplies the Python stack env, `INGEST_BASE`/`RERANK_BASE` are the URLs Make targets call, and `COMPOSE_PROFILES` flips between GPU/CPU automatically (GPU if `nvidia-smi` works).
+> Use these knobs without editing files: `OPS_COMPOSE` picks the docker compose file, `ENV_FILE` supplies env vars to the Python stack (defaults to `.env`), `INGEST_BASE`/`RERANK_BASE` are the URLs Make targets call, and `COMPOSE_PROFILES` flips between GPU/CPU automatically (GPU if `nvidia-smi` works).
 > Prereqs: ensure Docker/Compose v2 are installed and running; install Node.js + npm (for Laravel/Vite assets) and Composer (PHP deps). If building locally (not just via containers), run `composer install` and `npm install` first.
 
 ## One-time network
@@ -52,13 +52,6 @@ Full workaround (step-by-step):
 3) Run ingest: `make ingest CRAWLED_ROOT=/abs/path/to/crawled-data` (defaults: provider `ollama`, graph on, batch 16). If you need custom collection or chunking, run the Python script directly with flags (see ingest-and-data page).
 4) Verify: check `public/ingest_summary.json` for results; count vectors via Qdrant curl (Chapter 6) and graph nodes via Neo4j cypher; watch logs with `make logs-rag`.
 Common adjustments: increase `MCP_INGEST_BATCH`/`--batch` for speed, raise `--timeout` for large corpora, disable `--graph` if you only need vectors.
-
-## Laravel pipeline helper
-```bash
-make pipeline PIPELINE_URL=https://example.com \
-  PIPELINE_COLLECTION=embeddings_hawk PIPELINE_GRAPH=true PIPELINE_PROVIDER=ollama
-```
-- Runs `php artisan hawki_rag:pipeline` inside app container; optional flags: `PIPELINE_LABEL`, `PIPELINE_OUTPUT_DIR`, `PIPELINE_DISTANCE`, `PIPELINE_BATCH`, `PIPELINE_CHUNK_CHARS`, `PIPELINE_TIMEOUT`.
 
 ## Shut down / reset
 ```bash

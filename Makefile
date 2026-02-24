@@ -4,15 +4,22 @@ SHELL := /bin/bash
 
 COMPOSE_BIN ?= docker compose
 
-COMPOSE_PROFILES := gpu
-OLLAMA_SERVICE := ollama_gpu
-OLLAMA_CONTAINER ?= hawki_ollama_gpu
-PROFILE_MESSAGE := "GPU profile forced."
+# Auto-detect GPU; allow override via COMPOSE_PROFILES=gpu|cpu
+COMPOSE_PROFILES ?= $(shell if command -v nvidia-smi >/dev/null 2>&1; then echo gpu; else echo cpu; fi)
+ifeq ($(COMPOSE_PROFILES),cpu)
+	OLLAMA_SERVICE := ollama_cpu
+	OLLAMA_CONTAINER ?= hawki_ollama_cpu
+	PROFILE_MESSAGE := "CPU profile selected (no nvidia-smi)."
+else
+	OLLAMA_SERVICE := ollama_gpu
+	OLLAMA_CONTAINER ?= hawki_ollama_gpu
+	PROFILE_MESSAGE := "GPU profile selected."
+endif
 
 COMPOSE_CMD = COMPOSE_PROFILES=$(COMPOSE_PROFILES) $(COMPOSE_BIN)
 
 # Variables (override via `make VAR=value`)
-ENV_FILE ?= python_rag/LightRAG.env
+ENV_FILE ?= .env
 OPS_COMPOSE ?= docker-compose.yml
 INGEST_BASE ?= http://localhost:8009
 RERANK_BASE ?= http://localhost:8008
@@ -27,21 +34,6 @@ MCP_INGEST_CHUNK_OVERLAP ?= 100
 MCP_INGEST_BATCH ?= 64
 MCP_INGEST_TIMEOUT ?= 1800
 MCP_LIST_ROOT ?= /app/shared
-PIPELINE_URL ?=
-PIPELINE_MAX_PAGES ?= 100
-PIPELINE_OUTPUT_DIR ?=
-PIPELINE_LABEL ?=
-PIPELINE_COLLECTION ?=
-PIPELINE_GRAPH ?= true
-PIPELINE_GRAPH_ENGINE ?= raganything
-PIPELINE_CHUNK_CHARS ?= 3200
-PIPELINE_CHUNK_OVERLAP ?= 100
-PIPELINE_BATCH ?= 64
-PIPELINE_TIMEOUT ?= 1800
-PIPELINE_PROVIDER ?= ollama
-PIPELINE_DISTANCE ?= Cosine
-PIPELINE_BASE_URL ?= http://hawki_rag_bridge:8000
-PIPELINE_ASYNC ?= true
 
 .PHONY: network pull-core build-app up-core up-rag health pull-models ingest logs-core logs-rag down-core down-rag restart-core restart-rag test-services neo4j-fresh
 

@@ -1,4 +1,5 @@
 # Makefile.local - helper targets for running the HAWKI stack directly on macOS without Docker.
+# Deprecated/advanced: prefer Docker-based Make targets; keep this for power users with local installs.
 #
 # Assumptions:
 #   • You have installed the required services natively (Ollama, Qdrant, Neo4j, PHP, Node.js, Python).
