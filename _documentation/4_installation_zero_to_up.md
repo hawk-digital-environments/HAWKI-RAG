@@ -14,7 +14,7 @@ Audience: never used terminal, Laravel, or RAG. Follow in order.
 - Windows: install Docker Desktop + WSL2; do all commands inside WSL2 Ubuntu.
 
 ## Step 2 – Get the code
-- Command: `git clone <repo-url> && cd RAWKI`
+- Command: `git clone <repo-url> && cd HAWKI_RAG`
 - What it does: downloads project; enters folder.
 - Success: `ls` shows files like `Makefile`, `docker-compose.yml`.
 - Failure: “permission denied” → fix folder permissions; “git: command not found” → install git.

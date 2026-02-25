@@ -8,7 +8,6 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
-use Symfony\Component\Process\Process;
 
 class IngestController extends Controller
 {
@@ -229,16 +228,39 @@ class IngestController extends Controller
         $escaped = array_map('escapeshellarg', $cmd);
         $command = implode(' ', $escaped);
         $graphModel = isset($data['graph_model']) ? trim((string) $data['graph_model']) : '';
-        $envPrefix = $graphModel !== '' ? ('GRAPH_OLLAMA_RAG_MODEL=' . escapeshellarg($graphModel) . ' ') : '';
+        $envPrefix = $graphModel !== '' ? ('export GRAPH_OLLAMA_RAG_MODEL=' . escapeshellarg($graphModel) . '; ') : '';
         $cacheEsc = escapeshellarg($cacheLogPath);
         $fullEsc = escapeshellarg($fullLogPath);
         $commandLine = $envPrefix . '(' . $command . ') 2>&1 | tee -a ' . $fullEsc . ' >> ' . $cacheEsc
             . '; echo "INGEST_DONE" | tee -a ' . $fullEsc . ' >> ' . $cacheEsc;
-        $process = Process::fromShellCommandline($commandLine, base_path());
-        $process->setTimeout(null);
-        $process->start();
+        // Launch a detached shell process. Symfony Process would be destroyed at the
+        // end of the request and terminate the child before ingest can continue.
+        $launcher = 'cd ' . escapeshellarg(base_path())
+            . ' && nohup sh -lc ' . escapeshellarg($commandLine) . ' >/dev/null 2>&1 & echo $!';
+        $pidOutput = [];
+        $launchCode = 0;
+        @exec($launcher, $pidOutput, $launchCode);
+        $pid = isset($pidOutput[0]) ? (int) trim((string) $pidOutput[0]) : 0;
+        if ($launchCode !== 0 || $pid <= 0) {
+            $entry['status'] = 'failed';
+            $entry['updated_at'] = now()->toIso8601String();
+            $entries = $this->loadStatusEntries($statusPath);
+            foreach ($entries as &$existing) {
+                if (is_array($existing) && ($existing['id'] ?? null) === $entry['id']) {
+                    $existing = $entry;
+                    break;
+                }
+            }
+            unset($existing);
+            $this->saveStatusEntries($statusPath, $entries);
 
-        $entry['pid'] = $process->getPid();
+            return response()->json([
+                'ok' => false,
+                'message' => 'Failed to launch ingest process.',
+            ], 500);
+        }
+
+        $entry['pid'] = $pid;
         $entry['updated_at'] = now()->toIso8601String();
         $entries = $this->loadStatusEntries($statusPath);
         foreach ($entries as &$existing) {
@@ -252,7 +274,7 @@ class IngestController extends Controller
 
         return response()->json([
             'ok' => true,
-            'pid' => $process->getPid(),
+            'pid' => $pid,
             'status_path' => $statusPath,
             'log_path' => $cacheLogPath,
             'full_log_path' => $fullLogPath,

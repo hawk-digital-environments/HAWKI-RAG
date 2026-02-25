@@ -17,6 +17,7 @@ x-ollama-base: &ollama_base
     hawki-network:
       aliases:
         - ollama
+        - hawki_ollama
   restart: unless-stopped
   healthcheck:
     test: ["CMD", "curl", "-fsS", "http://localhost:11434/api/tags"]
@@ -326,6 +327,7 @@ volumes:
 
 networks:
   hawki-network:
+    name: hawki-network
     driver: bridge
   hosting_network:
     driver: bridge
