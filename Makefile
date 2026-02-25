@@ -57,8 +57,7 @@ up-core: network pull-core build-app
 
 up-rag:
 	@echo $(PROFILE_MESSAGE)
-	@$(COMPOSE_CMD) -f $(OPS_COMPOSE) --env-file $(ENV_FILE) build hawki_rag_rerank hawki_rag_bridge raganything_api raganything_api_gpu || true
-	@$(COMPOSE_CMD) -f $(OPS_COMPOSE) --env-file $(ENV_FILE) up -d
+	@$(COMPOSE_CMD) -f $(OPS_COMPOSE) --env-file $(ENV_FILE) up -d --build
 	@echo "Ensuring Ollama has llama3.2:1b model pulled..."
 	@docker exec $(OLLAMA_CONTAINER) ollama pull llama3.2:1b >/dev/null 2>&1 || true
 	@docker network connect hawki-network hawki-toolkit-file-converter-file-converter-1 >/dev/null 2>&1 || true

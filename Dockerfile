@@ -45,12 +45,16 @@ RUN composer install --no-dev --optimize-autoloader --no-interaction
 # Copy only package files for caching
 COPY package.json package-lock.json ./
 
-# Install Node dependencies and build Vite assets
-RUN npm ci
+# Install Node dependencies with more tolerant network settings (CI/build hosts can be slow)
+RUN npm config set fetch-retries 5 \
+ && npm config set fetch-retry-mintimeout 20000 \
+ && npm config set fetch-retry-maxtimeout 120000 \
+ && npm config set fetch-timeout 300000 \
+ && npm ci
 
 # Build frontend assets
 RUN npm run build \
- && if [ -d resources/js/crawler ]; then cd resources/js/crawler && npm ci; fi
+ && if [ -d resources/js/crawler ]; then cd resources/js/crawler && npm ci --fetch-timeout=300000; fi
 
 # Fix Laravel permissions
 RUN chown -R www-data:www-data \
@@ -99,7 +103,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY python_rag/requirements.txt /app/requirements.txt
 RUN python -m pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir -r requirements.txt
+    && pip install --no-cache-dir --retries 10 --timeout 180 -r requirements.txt
 
 COPY python_rag /app
 
@@ -124,7 +128,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     rm -rf /var/lib/apt/lists/*
 
 COPY python_rag/requirements.txt /app/requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --retries 10 --timeout 180 -r requirements.txt
 
 COPY python_rag/rerank/local_reranker/app.py /app/app.py
 

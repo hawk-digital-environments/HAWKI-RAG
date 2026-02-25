@@ -107,7 +107,7 @@ services:
     container_name: phpmyadmin
     restart: always
     ports:
-      - "8004:80"
+      - "${PHPMYADMIN_PORT:-8004}:80"
     environment:
       PMA_HOST: mariadb
       PMA_PORT: 3306
@@ -199,6 +199,7 @@ services:
       dockerfile: Dockerfile
       target: rerank
     image: hawki-rag-rerank:local
+    pull_policy: never
     container_name: hawki_rag_rerank
     networks:
       - hawki-network
@@ -215,7 +216,12 @@ services:
   # -------------------------------------------------
   hawki_rag_bridge:
     <<: *gpu
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: python-rag
     image: hawki-rag-python:local
+    pull_policy: never
     container_name: hawki_rag_bridge
     env_file:
       - ./.env
@@ -250,11 +256,8 @@ services:
   # -------------------------------------------------
   raganything_api_gpu:
     <<: *gpu
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: python-rag
     image: hawki-rag-python:local
+    pull_policy: never
     container_name: raganything_api_gpu
     profiles: ["gpu"]
     env_file:
