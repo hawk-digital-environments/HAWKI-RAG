@@ -28,7 +28,7 @@ Audience: never used terminal, Laravel, or RAG. Follow in order.
 ## Step 4 – Set secrets (do this once)
 Open `.env` in an editor and set:
 - `APP_KEY` → generate with `php -r "echo base64_encode(random_bytes(32));"` (run inside any PHP-capable container later).
-- `DB_PASSWORD`, `DB_ROOT_PASSWORD`, `RABBITMQ_PASSWORD` → choose strong values.
+- `DB_PASSWORD` (and any other password fields present in your `.env`, e.g. `NEO4J_PASSWORD`, `RABBITMQ_PASSWORD` if enabled) → choose strong values.
 - Why: insecure defaults can be abused.
 
 ## Step 5 – Create Docker network
@@ -54,4 +54,3 @@ Open `.env` in an editor and set:
 - What it does: curls Qdrant, Ollama, reranker, bridge from inside containers.
 - Success: lines ending with “OK”.
 - Failure: “FAIL” → run `docker logs <container>` to see why (common: models still downloading, wrong passwords).
-

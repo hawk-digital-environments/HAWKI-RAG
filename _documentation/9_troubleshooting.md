@@ -23,7 +23,7 @@
 ## RAG API health fails (502)
 - Symptom: `make health` warns or UI shows 502.
 - Cause: `raganything_api_gpu` down or wrong URL.
-- Fix: `docker logs raganything_api_gpu`; ensure `.env` `HAWKI_RAG_API_URL` is `http://raganything_api_gpu:8003`; restart container.
+- Fix: `docker logs raganything_api_gpu`; ensure `.env` points to the RAG API with `HAWKI_RAG_API_URL` (commonly `http://raganything_api_gpu:8003` in this repo); restart container.
 
 ## Database auth errors
 - Symptom: SQLSTATE[HY000] during `php artisan migrate`.
@@ -39,4 +39,3 @@
 - Symptom: services exit immediately.
 - Cause: `.env` incomplete.
 - Fix: compare `.env` with `.env.example`; fill required keys; rerun `make up-core up-rag`.
-
