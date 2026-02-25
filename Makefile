@@ -49,7 +49,7 @@ build-app:
 up-core: network pull-core build-app
 	@echo $(PROFILE_MESSAGE)
 	@echo "Launching core stack (profile: $(COMPOSE_PROFILES))..."
-	@$(COMPOSE_CMD) up -d --remove-orphans qdrant mariadb hawki_rag_nginx $(OLLAMA_SERVICE) hawki_rag_app
+	@$(COMPOSE_CMD) up -d --build --remove-orphans qdrant mariadb hawki_rag_nginx $(OLLAMA_SERVICE) hawki_rag_app
 	@echo "Ensuring Ollama has bge-m3 model pulled..."
 	@docker exec $(OLLAMA_CONTAINER) ollama pull bge-m3 >/dev/null 2>&1 || true
 	@echo "Ensuring Ollama has llama3.1:8b model pulled..."

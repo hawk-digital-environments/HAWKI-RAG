@@ -5,6 +5,7 @@ x-ollama-base: &ollama_base
     context: .
     dockerfile: docker/ollama.Dockerfile
   image: hawki-ollama:cuda
+  pull_policy: never
   volumes:
     - ollama:/root/.ollama
     - ./scripts/gpu_guard.sh:/usr/local/bin/gpu_guard.sh:ro
@@ -147,7 +148,11 @@ services:
   # -------------------------------------------------
   qdrant:
     <<: *gpu
+    build:
+      context: .
+      dockerfile: docker/qdrant.Dockerfile
     image: hawki-qdrant:local
+    pull_policy: never
     container_name: hawki_qdrant
     volumes:
       - qdrant_data:/qdrant/storage
