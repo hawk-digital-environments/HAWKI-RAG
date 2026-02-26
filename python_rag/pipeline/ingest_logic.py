@@ -133,12 +133,13 @@ def ingest_documents(
 ) -> Dict[str, Any]:
     dry_run = bool(body.dry_run)
     logger.info(
-        "ingest:start docs=%s dry_run=%s graph=%s graph_only=%s collection=%s",
+        "ingest:start docs=%s dry_run=%s graph=%s graph_only=%s collection=%s neo4j_database=%s",
         len(body.docs),
         dry_run,
         bool(body.graph),
         bool(getattr(body, "graph_only", False)),
         body.collection,
+        getattr(body, "neo4j_database", None),
     )
     if GRAPH_DEBUG:
         logger.debug(
@@ -229,7 +230,13 @@ def ingest_documents(
             provider = get_provider(body.provider)
             if body.embedding_model and hasattr(provider, "embed_model"):
                 provider.embed_model = body.embedding_model.strip()
-            triplets_by_doc, failures = _build_triplets_by_doc(chunk_records, body.graph_engine, rag_service, provider)
+            triplets_by_doc, failures = _build_triplets_by_doc(
+                chunk_records,
+                body.graph_engine,
+                rag_service,
+                provider,
+                neo4j_database=getattr(body, "neo4j_database", None),
+            )
             graph_preview = _build_graph_preview(doc_stats, chunk_records, triplets_by_doc)
             summary["graph_preview"] = graph_preview
             preview_path = _write_graph_preview(graph_preview, public_dir)
@@ -269,7 +276,7 @@ def ingest_documents(
     neo4j_ms = None
     graph_preview = None
     if body.graph:
-        graph = Neo4jGraph()
+        graph = Neo4jGraph(database=getattr(body, "neo4j_database", None))
         try:
             graph_write_start = time.perf_counter()
             triplet_start = time.perf_counter()
@@ -279,6 +286,7 @@ def ingest_documents(
                 rag_service,
                 provider,
                 graph=graph,
+                neo4j_database=getattr(body, "neo4j_database", None),
             )
             triplet_ms = (time.perf_counter() - triplet_start) * 1000
             total_triplets = sum(len(v) for v in triplets_by_doc.values())
@@ -396,6 +404,7 @@ def _build_triplets_by_doc(
     provider: Any | None,
     *,
     graph: Any | None = None,
+    neo4j_database: str | None = None,
 ) -> tuple[Dict[str, List[tuple[str, str, str]]], List[Dict[str, Any]]]:
     fn_start = time.perf_counter()
     _perf_log(
@@ -512,6 +521,7 @@ def _build_triplets_by_doc(
                 chunks=chunk_texts,
                 doc_id=doc_id,
                 file_path=file_path,
+                neo4j_database=neo4j_database,
             )
         triplets, error = _run_graph_extract_with_timeout(_extract, doc_timeout_s, allow_alarm=use_alarm)
         extract_ms = (time.perf_counter() - extract_start) * 1000

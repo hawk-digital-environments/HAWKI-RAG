@@ -30,3 +30,4 @@ yarn-error.log
 /.lightrag-audit
 /.lightrag-audit-env
 resources/js/crawler
+/rag_storage/

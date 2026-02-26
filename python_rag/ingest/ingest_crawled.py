@@ -627,11 +627,12 @@ def main():
             return default
     ap.add_argument("--root", required=True, help="Path to local crawled-data root")
     ap.add_argument("--base-url", default="http://localhost:8009", help="LightRAG base URL (default: http://localhost:8009)")
-    ap.add_argument("--provider", default="ollama", help="Embedding/LLM provider name (beware that gwdg is only for chat completio)")
+    ap.add_argument("--provider", default="ollama", help="Embedding/LLM provider name (currently supported for RAG: ollama)")
     ap.add_argument("--embedding-model", default=None, help="Embedding model override (e.g. bge-m3, qwen3-embedding)")
     ap.add_argument("--graph", action="store_true", help="Enable KG extraction during ingest")
     ap.add_argument("--graph-only", action="store_true", help="Skip Qdrant/embeddings and only write Neo4j triplets")
     ap.add_argument("--graph-engine", default="raganything", help="Graph engine")
+    ap.add_argument("--neo4j-database", default=None, help="Neo4j database name for graph storage (optional; defaults to Neo4j default database)")
     ap.add_argument("--collection", default=None, help="Qdrant collection override")
     ap.add_argument("--distance", default="Cosine", help="Qdrant distance (Cosine|Dot|Euclid)")
     ap.add_argument("--chunk-chars", type=int, default=_int_env("CHUNK_SIZE", 1200), help="Chunk target size for LightRAG")
@@ -670,6 +671,8 @@ def main():
     # Graph-only runs should not reuse the embedding/Qdrant resume state.
     if args.graph_only:
         resume_key_parts.append("graph_only")
+    if args.neo4j_database:
+        resume_key_parts.append(f"neo4j_db={args.neo4j_database}")
     resume_key = "::".join(resume_key_parts)
     if not args.dry and not args.estimate_only:
         resume_state_path = state_dir / _safe_state_filename(resume_key)
@@ -680,6 +683,7 @@ def main():
             "base_url": args.base_url,
             "graph_only": bool(args.graph_only),
             "graph": bool(args.graph),
+            "neo4j_database": args.neo4j_database or None,
         }
         if existing_ids:
             print(
@@ -752,6 +756,8 @@ def main():
     }
     if args.graph_only:
         options["graph_only"] = True
+    if args.neo4j_database:
+        options["neo4j_database"] = args.neo4j_database
     if args.embedding_model:
         options["embedding_model"] = args.embedding_model
     if args.collection:

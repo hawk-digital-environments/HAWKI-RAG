@@ -110,6 +110,7 @@ class IngestController extends Controller
             'graph' => 'sometimes|boolean',
             'graph_engine' => 'sometimes|string',
             'graph_model' => 'sometimes|string',
+            'neo4j_database' => 'sometimes|string',
             'graph_only' => 'sometimes|boolean',
             'chunk_chars' => 'sometimes|integer',
             'chunk_overlap' => 'sometimes|integer',
@@ -165,6 +166,10 @@ class IngestController extends Controller
             $cmd[] = '--graph-engine';
             $cmd[] = (string) $data['graph_engine'];
         }
+        if (!empty($data['neo4j_database'])) {
+            $cmd[] = '--neo4j-database';
+            $cmd[] = (string) $data['neo4j_database'];
+        }
         if (!empty($data['chunk_chars'])) {
             $cmd[] = '--chunk-chars';
             $cmd[] = (string) $data['chunk_chars'];
@@ -217,6 +222,7 @@ class IngestController extends Controller
             'resume_mode' => $resumeMode,
             'graph' => !empty($data['graph']),
             'graph_only' => !empty($data['graph_only']),
+            'neo4j_database' => isset($data['neo4j_database']) ? trim((string) $data['neo4j_database']) : null,
             'status_mode' => $statusMode,
         ];
         $entries = $this->loadStatusEntries($statusPath);

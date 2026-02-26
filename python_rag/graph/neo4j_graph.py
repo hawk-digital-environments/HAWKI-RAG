@@ -17,34 +17,60 @@ def _perf_log(msg: str, *args) -> None:
 
 class Neo4jGraph:
     """Neo4j utility used for inserting and querying LightRAG triplets."""
-    def __init__(self) -> None:
+    def __init__(self, *, database: Optional[str] = None) -> None:
         uri = os.environ.get("NEO4J_URI", "bolt://neo4j:7687")
         user = os.environ.get("NEO4J_USER", "neo4j")
         pwd = os.environ.get("NEO4J_PASSWORD", "password")
         self._driver = GraphDatabase.driver(uri, auth=(user, pwd))
+        self._database = (database or os.environ.get("NEO4J_DATABASE") or "").strip() or None
+        if self._database:
+            try:
+                with self._driver.session(database=self._database) as session:
+                    session.run("RETURN 1").consume()
+            except neo4j_exceptions.Neo4jError as exc:
+                logger.warning(
+                    "neo4j:requested database '%s' is unavailable (%s); falling back to default database",
+                    self._database,
+                    exc,
+                )
+                self._database = None
+
+    def _session(self):
+        if self._database:
+            return self._driver.session(database=self._database)
+        return self._driver.session()
 
     def close(self):
         """Close the underlying driver."""
         self._driver.close()
 
     def count_entities(self) -> int:
-        """Return the count of Entity nodes."""
-        query = "MATCH (n:Entity) RETURN count(n) AS c"
-        with self._driver.session() as session:
+        """Return the count of graph entity-like nodes across supported schemas."""
+        query = (
+            "MATCH (n) "
+            "WHERE coalesce(n.name, n.entity_id) IS NOT NULL "
+            "RETURN count(n) AS c"
+        )
+        with self._session() as session:
             record = session.execute_read(lambda tx: tx.run(query).single())
         return int(record.value() if record else 0)
 
     def count_triplets(self) -> int:
-        """Return the count of triplet relationships between Entity nodes."""
-        query = "MATCH (:Entity)-[r:REL]->(:Entity) RETURN count(r) AS c"
-        with self._driver.session() as session:
+        """Return the count of graph relationships across supported schemas."""
+        query = (
+            "MATCH (s)-[r]->(o) "
+            "WHERE coalesce(s.name, s.entity_id) IS NOT NULL "
+            "  AND coalesce(o.name, o.entity_id) IS NOT NULL "
+            "RETURN count(r) AS c"
+        )
+        with self._session() as session:
             record = session.execute_read(lambda tx: tx.run(query).single())
         return int(record.value() if record else 0)
 
     def count_relationships_by_type(self) -> List[Dict[str, int]]:
         """Return relationship counts grouped by relationship type."""
         query = "MATCH ()-[r]->() RETURN type(r) AS rel_type, count(r) AS count"
-        with self._driver.session() as session:
+        with self._session() as session:
             results = session.execute_read(lambda tx: list(tx.run(query)))
         return [
             {"type": record.get("rel_type"), "count": int(record.get("count", 0))}
@@ -54,7 +80,7 @@ class Neo4jGraph:
     def count_nodes_by_label(self) -> List[Dict[str, Any]]:
         """Return counts of nodes grouped by their label combinations."""
         query = "MATCH (n) RETURN labels(n) AS labels, count(*) AS count"
-        with self._driver.session() as session:
+        with self._session() as session:
             results = session.execute_read(lambda tx: list(tx.run(query)))
         return [
             {"labels": list(record.get("labels", [])), "count": int(record.get("count", 0))}
@@ -94,7 +120,7 @@ class Neo4jGraph:
             )
             return
         exec_start = time.perf_counter()
-        with self._driver.session() as session:
+        with self._session() as session:
             session.execute_write(lambda tx: tx.run(cypher, rows=rows))
         exec_ms = (time.perf_counter() - exec_start) * 1000
         logger.info("neo4j:upsert_triplets count=%s doc_id=%s", len(rows), doc_key)
@@ -110,7 +136,7 @@ class Neo4jGraph:
     def delete_by_doc_id(self, doc_id: str) -> Dict[str, int]:
         """Remove relationships (and orphaned nodes) belonging to a document."""
         doc_key = str(doc_id)
-        with self._driver.session() as session:
+        with self._session() as session:
             def _delete(tx):
                 result = tx.run(
                     "MATCH (s:Entity)-[r:REL {doc_id: $doc_id}]->(o:Entity) DELETE r",
@@ -138,9 +164,18 @@ class Neo4jGraph:
             return []
 
         cypher = (
-            "MATCH (s:Entity)-[r:REL]->(o:Entity) "
-            "WHERE any(term IN $terms WHERE toLower(s.name) CONTAINS term OR toLower(o.name) CONTAINS term) "
-            "RETURN s.name AS subject, r.type AS relation, o.name AS object "
+            "MATCH (s)-[r]->(o) "
+            "WHERE coalesce(s.name, s.entity_id) IS NOT NULL "
+            "  AND coalesce(o.name, o.entity_id) IS NOT NULL "
+            "  AND any(term IN $terms WHERE "
+            "    toLower(coalesce(s.name, s.entity_id, '')) CONTAINS term OR "
+            "    toLower(coalesce(o.name, o.entity_id, '')) CONTAINS term OR "
+            "    toLower(coalesce(r.type, r.keywords, r.description, type(r), '')) CONTAINS term"
+            "  ) "
+            "RETURN "
+            "  coalesce(s.name, s.entity_id) AS subject, "
+            "  coalesce(r.type, r.keywords, r.description, type(r)) AS relation, "
+            "  coalesce(o.name, o.entity_id) AS object "
             "LIMIT $limit"
         )
 
@@ -152,7 +187,7 @@ class Neo4jGraph:
             attempt += 1
             try:
                 start = time.perf_counter()
-                with self._driver.session() as session:
+                with self._session() as session:
                     result = session.execute_read(
                         lambda tx: list(tx.run(cypher, terms=cleaned, limit=int(limit)))
                     )
@@ -193,12 +228,26 @@ class Neo4jGraph:
             return []
 
         safe_hops = max(1, int(hops))
-        rel_clause = " OR any(rel IN r WHERE toLower(rel.type) CONTAINS term)" if include_rel_match else ""
+        rel_clause = (
+            " OR any(rel IN r WHERE toLower(coalesce(rel.type, rel.keywords, rel.description, type(rel), '')) CONTAINS term)"
+            if include_rel_match
+            else ""
+        )
         cypher = (
-            "MATCH p=(s:Entity)-[r:REL*1..%d]->(o:Entity) "
-            "WHERE any(term IN $terms WHERE toLower(s.name) CONTAINS term OR toLower(o.name) CONTAINS term%s) "
+            "MATCH p=(s)-[r*1..%d]->(o) "
+            "WHERE coalesce(s.name, s.entity_id) IS NOT NULL "
+            "  AND coalesce(o.name, o.entity_id) IS NOT NULL "
+            "  AND any(term IN $terms WHERE "
+            "    toLower(coalesce(s.name, s.entity_id, '')) CONTAINS term OR "
+            "    toLower(coalesce(o.name, o.entity_id, '')) CONTAINS term%s"
+            "  ) "
             "WITH s, o, r, size(r) AS hops "
-            "RETURN s.name AS subject, last(r).type AS relation, o.name AS object, last(r).doc_id AS doc_id, hops "
+            "RETURN "
+            "  coalesce(s.name, s.entity_id) AS subject, "
+            "  coalesce(last(r).type, last(r).keywords, last(r).description, type(last(r))) AS relation, "
+            "  coalesce(o.name, o.entity_id) AS object, "
+            "  coalesce(last(r).doc_id, last(r).source_id) AS doc_id, "
+            "  hops "
             "LIMIT $limit"
         ) % (safe_hops, rel_clause)
 
@@ -208,7 +257,7 @@ class Neo4jGraph:
         while True:
             attempt += 1
             try:
-                with self._driver.session() as session:
+                with self._session() as session:
                     result = session.execute_read(
                         lambda tx: list(tx.run(cypher, terms=cleaned, limit=int(limit), hops=int(hops)))
                     )

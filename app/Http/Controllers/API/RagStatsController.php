@@ -76,8 +76,12 @@ class RagStatsController extends Controller
         };
 
         try {
-            $entitiesResp = $query('MATCH (n:Entity) RETURN count(n) AS c');
-            $tripletsResp = $query('MATCH (:Entity)-[r:REL]->(:Entity) RETURN count(r) AS c');
+            // Use total counts for the UI because RAG-Anything/LightRAG may use different
+            // labels/types than the earlier custom graph pipeline (which assumed :Entity / :REL).
+            $entitiesResp = $query('MATCH (n) RETURN count(n) AS c');
+            $tripletsResp = $query('MATCH ()-[r]->() RETURN count(r) AS c');
+            $entityLabelResp = $query('MATCH (n:Entity) RETURN count(n) AS c');
+            $relTypeResp = $query('MATCH ()-[r:REL]->() RETURN count(r) AS c');
             $relsResp = $query('MATCH ()-[r]->() RETURN type(r) AS rel_type, count(r) AS count');
             $labelsResp = $query('MATCH (n) RETURN labels(n) AS labels, count(*) AS count');
 
@@ -87,6 +91,12 @@ class RagStatsController extends Controller
 
             $entities = $entitiesResp->json()['results'][0]['data'][0]['row'][0] ?? 0;
             $triplets = $tripletsResp->json()['results'][0]['data'][0]['row'][0] ?? 0;
+            $entityLabelCount = $entityLabelResp->successful()
+                ? ($entityLabelResp->json()['results'][0]['data'][0]['row'][0] ?? 0)
+                : 0;
+            $relTypeCount = $relTypeResp->successful()
+                ? ($relTypeResp->json()['results'][0]['data'][0]['row'][0] ?? 0)
+                : 0;
 
             $relCounts = [];
             if ($relsResp->successful()) {
@@ -112,6 +122,8 @@ class RagStatsController extends Controller
                 'ok' => true,
                 'entities' => (int) $entities,
                 'triplets' => (int) $triplets,
+                'entity_label_count' => (int) $entityLabelCount,
+                'rel_type_count' => (int) $relTypeCount,
                 'relationship_types' => $relCounts,
                 'labels' => $labelCounts,
             ];

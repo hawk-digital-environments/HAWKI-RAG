@@ -44,12 +44,50 @@ let lastRagStatsHash = '';
 let lastIngestStatus = null;
 let lastLiveIngestions = [];
 let ingestStatusMode = 'default';
+const GRAPH_COLLECTION_NAME = 'graphCol';
 
 function badge(text) {
     const span = document.createElement('span');
     span.className = 'badge';
     span.textContent = text;
     return span;
+}
+
+function appendDetailRow(container, label, value) {
+    if (!container || value === undefined || value === null || value === '') return;
+    const row = document.createElement('div');
+    row.className = 'stat-row';
+    row.innerHTML = `<span class="stat-label">${label}</span><span class="stat-value"></span>`;
+    row.querySelector('.stat-value').textContent = String(value);
+    container.appendChild(row);
+}
+
+function renderRagRuntimeDetails(payload) {
+    if (!ragDetails) return;
+    ragDetails.innerHTML = '';
+    if (!payload) return;
+
+    const runtime = payload.runtime || payload.data?.runtime || null;
+
+    if (!runtime) return;
+    const card = document.createElement('div');
+    card.className = 'stat-card';
+    card.innerHTML = '<h4>Runtime graph/KV setup</h4>';
+    appendDetailRow(card, 'Working dir', runtime.working_dir);
+    appendDetailRow(card, 'Graph backend', runtime.graph_storage);
+    appendDetailRow(card, 'Doc status backend', runtime.doc_status_storage);
+    appendDetailRow(card, 'Neo4j URI', runtime.neo4j?.uri);
+    appendDetailRow(card, 'Neo4j DB', runtime.neo4j?.database);
+    appendDetailRow(card, 'Graph model', runtime.models?.graph_model);
+    appendDetailRow(card, 'Embed model', runtime.models?.embed_model);
+    appendDetailRow(card, 'Graph max chars', runtime.limits?.graph_doc_max_chars);
+    appendDetailRow(card, 'Graph max chunks', runtime.limits?.graph_doc_max_chunks);
+    appendDetailRow(card, 'Chat timeout (s)', runtime.limits?.ollama_chat_timeout);
+    appendDetailRow(card, 'Doc-status chunk files', runtime.doc_status_chunks?.count);
+    if (Array.isArray(runtime.doc_status_chunks?.files) && runtime.doc_status_chunks.files.length) {
+        appendDetailRow(card, 'Chunk file sample', runtime.doc_status_chunks.files.join(', '));
+    }
+    ragDetails.appendChild(card);
 }
 
 function formatTime(date) {
@@ -73,6 +111,7 @@ function summarizeLiveIngestions(items) {
 }
 
 function renderActivity() {
+    if (!activityFeed) return;
     activityFeed.innerHTML = '';
     activityHistory.forEach((entry) => {
         const row = document.createElement('div');
@@ -87,6 +126,7 @@ function renderActivity() {
 }
 
 function pushActivity(source, message) {
+    if (!activityFeed) return;
     if (!message) return;
     if (lastActivityBySource.get(source) === message) return;
     lastActivityBySource.set(source, message);
@@ -365,6 +405,7 @@ async function fetchIngestStatus(mode) {
 }
 
 async function pollIngestStatus() {
+    if (!ingestStatus || !ingestProgress) return;
     try {
         let data = await fetchIngestStatus(ingestStatusMode);
         if (!data || (!data.status && !(Array.isArray(data.log_lines) && data.log_lines.length))) {
@@ -552,7 +593,7 @@ ingestBtn.addEventListener('click', async () => {
         } else {
             ingestStatusMode = 'default';
             ingestAction.textContent = 'Ingest started. Monitor progress above.';
-            pushActivity('Ingest', `Started ingest for ${collectionName}`);
+            pushActivity('Ingest', `Started ingest for ${collectionName} · Graph collection: ${GRAPH_COLLECTION_NAME}`);
         }
     } catch (error) {
         ingestAction.textContent = 'Failed to start ingest.';
@@ -600,7 +641,7 @@ ingestGraphOnlyBtn.addEventListener('click', async () => {
         } else {
             ingestStatusMode = 'neo4j';
             ingestAction.textContent = 'Graph ingest started. Monitor progress above.';
-            pushActivity('Ingest', `Started graph ingest for ${collectionName}`);
+            pushActivity('Ingest', `Started graph ingest for ${collectionName} · Graph collection: ${GRAPH_COLLECTION_NAME}`);
         }
     } catch (error) {
         ingestAction.textContent = 'Failed to start graph ingest.';
@@ -698,13 +739,13 @@ ingestDeleteBtn.addEventListener('click', async () => {
 });
 
 // MCP monitor removed from UI.
-pollIngestStatus();
-setInterval(pollIngestStatus, 4000);
 pollIngestLive();
 setInterval(pollIngestLive, 4000);
 loadIngestFolders();
-pollRagHealth();
-setInterval(pollRagHealth, 5000);
+if (ragDetails) {
+    pollRagHealth();
+    setInterval(pollRagHealth, 5000);
+}
 pollRagStats();
 setInterval(pollRagStats, 2500);
 
@@ -741,34 +782,39 @@ if (neo4jClearBtn) {
     });
 }
 
-ingestClearBtn.addEventListener('click', async () => {
-    ingestClearBtn.disabled = true;
-    try {
-        await fetch('/ingest/status/clear?mode=all', {
-            method: 'POST',
-            credentials: 'same-origin',
-            headers: {
-                'Accept': 'application/json',
-                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
-            },
-        });
-        ingestStatus.textContent = 'No ingest activity yet.';
-        ingestProgress.innerHTML = '';
-        pushActivity('Ingest', 'Ingest logs cleared');
-    } catch (error) {
-        // Ignore failures.
-    } finally {
-        ingestClearBtn.disabled = false;
-    }
-});
+if (ingestClearBtn) {
+    ingestClearBtn.addEventListener('click', async () => {
+        ingestClearBtn.disabled = true;
+        try {
+            await fetch('/ingest/status/clear?mode=all', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+                },
+            });
+            if (ingestStatus) ingestStatus.textContent = 'No ingest activity yet.';
+            if (ingestProgress) ingestProgress.innerHTML = '';
+            pushActivity('Ingest', 'Ingest logs cleared');
+        } catch (error) {
+            // Ignore failures.
+        } finally {
+            ingestClearBtn.disabled = false;
+        }
+    });
+}
 
-activityClearBtn.addEventListener('click', () => {
-    activityHistory = [];
-    lastActivityBySource.clear();
-    renderActivity();
-});
+if (activityClearBtn) {
+    activityClearBtn.addEventListener('click', () => {
+        activityHistory = [];
+        lastActivityBySource.clear();
+        renderActivity();
+    });
+}
 
 async function pollRagHealth() {
+    if (!ragDetails) return;
     try {
         const response = await fetch('/rag/health', {
             headers: {
@@ -777,19 +823,13 @@ async function pollRagHealth() {
         });
         const data = await response.json();
         if (!response.ok || !data.ok) {
-            ragStatus.textContent = `status: offline${data && data.status ? ` (${data.status})` : ''}`;
             ragDetails.innerHTML = '';
             pushActivity('RAG', 'status: offline');
             return;
         }
-        ragStatus.textContent = `status: ok · ${data.latency_ms}ms`;
-        ragDetails.innerHTML = '';
-        if (data.data) {
-            // Suppress raw health payload to keep the UI clean.
-        }
+        renderRagRuntimeDetails(data);
         pushActivity('RAG', `status: ok · ${data.latency_ms}ms`);
     } catch (error) {
-        ragStatus.textContent = 'status: offline';
         ragDetails.innerHTML = '';
         pushActivity('RAG', 'status: offline');
     }

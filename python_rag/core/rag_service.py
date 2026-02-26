@@ -1,21 +1,16 @@
+import asyncio
+from functools import lru_cache
+import hashlib
+import json
 import logging
 import os
 import re
-import json
-import asyncio
+import threading
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-from core.providers.ollama_provider import OllamaProvider
-from core.providers.gwdg_provider import GWDGProvider
-import time
 
-try:
-    from lightrag.operate import extract_entities
-    from lightrag.constants import DEFAULT_ENTITY_TYPES, DEFAULT_SUMMARY_LANGUAGE
-except Exception:  # pragma: no cover - optional dependency in runtime
-    extract_entities = None
-    DEFAULT_ENTITY_TYPES = ["Person", "Organization", "Location", "Event", "Concept"]
-    DEFAULT_SUMMARY_LANGUAGE = "English"
+from core.providers.ollama_provider import OllamaProvider
 
 logger = logging.getLogger(__name__)
 GRAPH_DEBUG = os.environ.get("GRAPH_DEBUG", "").strip().lower() in ("1", "true", "yes")
@@ -41,73 +36,6 @@ def _strip_control_chars(text: str | None) -> str:
         elif code >= 32:
             cleaned_chars.append(ch)
     return "".join(cleaned_chars)
-
-
-def _normalize_language_setting(raw: str | None) -> str:
-    if not raw:
-        return DEFAULT_SUMMARY_LANGUAGE
-    raw = raw.strip()
-    if not raw:
-        return DEFAULT_SUMMARY_LANGUAGE
-    # Accept comma/semicolon/slash separated language hints.
-    parts = [p.strip() for p in re.split(r"[,/;]+", raw) if p.strip()]
-    if not parts:
-        return DEFAULT_SUMMARY_LANGUAGE
-    # Map common codes to names.
-    map_codes = {
-        "en": "English",
-        "eng": "English",
-        "english": "English",
-        "de": "German",
-        "deu": "German",
-        "ger": "German",
-        "german": "German",
-    }
-    normalized: list[str] = []
-    for part in parts:
-        key = part.lower()
-        normalized.append(map_codes.get(key, part))
-    if len(normalized) == 1:
-        return normalized[0]
-    # Build a natural language list (e.g., "English and German").
-    if len(normalized) == 2:
-        return f"{normalized[0]} and {normalized[1]}"
-    return ", ".join(normalized[:-1]) + f", and {normalized[-1]}"
-
-
-def _parse_env_list(raw: str | None) -> List[str]:
-    if not raw:
-        return []
-    raw = raw.strip()
-    if not raw:
-        return []
-    if raw.startswith("["):
-        try:
-            data = json.loads(raw)
-        except Exception:
-            data = None
-        if isinstance(data, list):
-            return [str(item).strip() for item in data if str(item).strip()]
-    return [t.strip() for t in raw.split(",") if t.strip()]
-
-
-def _trim_system_prompt(system: str) -> str:
-    """Reduce oversized system prompts (notably long examples) for faster graph extraction."""
-    if not system:
-        return system
-    try:
-        max_examples = int(os.environ.get("GRAPH_PROMPT_MAX_EXAMPLES", "1"))
-    except ValueError:
-        max_examples = 1
-    if max_examples <= 0:
-        return system
-    # Prefer trimming at example boundaries if present.
-    marker = "<|COMPLETE|>"
-    if marker in system:
-        parts = system.split(marker)
-        if len(parts) > max_examples:
-            system = marker.join(parts[:max_examples]) + marker
-    return system
 
 
 def _clean_graph_text(text: str) -> str:
@@ -158,34 +86,193 @@ def _clean_graph_text(text: str) -> str:
     return output
 
 
-def _normalize_triplets(obj: Any) -> List[tuple[str, str, str]]:
-    out: List[tuple[str, str, str]] = []
-    if obj is None:
-        return out
-    if hasattr(obj, "to_dict"):
-        try:
-            obj = obj.to_dict()
-        except Exception:
-            pass
-    if isinstance(obj, dict):
-        for key in ("triplets", "relations", "edges", "kg", "data"):
-            val = obj.get(key)
-            if isinstance(val, (list, tuple)):
-                return _normalize_triplets(val)
-        return out
-    if isinstance(obj, list):
-        for item in obj:
-            if isinstance(item, (list, tuple)) and len(item) >= 3:
-                s, r, o = item[0], item[1], item[2]
-                if s and r and o:
-                    out.append((str(s), str(r), str(o)))
-            elif isinstance(item, dict):
-                s = item.get("subject") or item.get("s") or item.get("head")
-                r = item.get("relation") or item.get("r") or item.get("type")
-                o = item.get("object") or item.get("o") or item.get("tail")
-                if s and r and o:
-                    out.append((str(s), str(r), str(o)))
-    return out
+def _normalize_graph_embed_text(text: Any) -> str:
+    cleaned = _strip_control_chars(str(text or ""))
+    cleaned = cleaned.encode("utf-8", errors="ignore").decode("utf-8", errors="ignore")
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    return cleaned
+
+
+def _env_truthy(name: str, default: bool = False) -> bool:
+    raw = str(os.environ.get(name, "")).strip().lower()
+    if not raw:
+        return default
+    return raw in ("1", "true", "yes", "on")
+
+
+@lru_cache(maxsize=64)
+def _parse_graph_filter_pattern_list(raw: str) -> tuple[tuple[str, str], ...]:
+    """
+    Parse a semicolon-separated filter list.
+
+    Pattern syntax (case-insensitive by default):
+    - `exact:foo`
+    - `contains:foo`
+    - `re:<regex>`
+    - `foo` (same as `exact:foo`)
+    """
+    text = str(raw or "").strip()
+    if not text:
+        return ()
+
+    # Prefer semicolon so labels containing commas can still be represented.
+    parts = [p.strip() for p in (text.split(";") if ";" in text else text.split(","))]
+    parsed: list[tuple[str, str]] = []
+    for part in parts:
+        if not part:
+            continue
+        lower = part.lower()
+        if lower.startswith("exact:"):
+            parsed.append(("exact", part[6:].strip()))
+        elif lower.startswith("contains:"):
+            parsed.append(("contains", part[9:].strip()))
+        elif lower.startswith("re:"):
+            parsed.append(("regex", part[3:].strip()))
+        else:
+            parsed.append(("exact", part))
+    return tuple((mode, pattern) for mode, pattern in parsed if pattern)
+
+
+def _graph_filter_list_match(text: str, lower: str, raw_list: str) -> bool:
+    patterns = _parse_graph_filter_pattern_list(raw_list)
+    if not patterns:
+        return False
+    for mode, pattern in patterns:
+        if mode == "exact":
+            if lower == pattern.lower():
+                return True
+        elif mode == "contains":
+            if pattern.lower() in lower:
+                return True
+        elif mode == "regex":
+            try:
+                if re.search(pattern, text, flags=re.IGNORECASE):
+                    return True
+            except re.error:
+                continue
+    return False
+
+
+def _graph_embed_junk_reason(text: str) -> str | None:
+    """
+    Identify obviously malformed entity/relation strings before they hit Ollama embeddings.
+
+    This is intentionally conservative: we only skip clear parser leftovers / placeholders.
+    """
+    if not text:
+        return "empty"
+
+    lower = text.lower().strip()
+    if not lower:
+        return "empty"
+
+    allowlist_raw = str(os.environ.get("GRAPH_EMBED_JUNK_ALLOWLIST", "")).strip()
+    if allowlist_raw and _graph_filter_list_match(text, lower, allowlist_raw):
+        return None
+
+    denylist_raw = str(os.environ.get("GRAPH_EMBED_JUNK_DENYLIST", "")).strip()
+    if denylist_raw and _graph_filter_list_match(text, lower, denylist_raw):
+        return "env_denylist"
+
+    placeholder_exact = {
+        "n/a",
+        "na",
+        "none",
+        "null",
+        "unknown",
+        "entity",
+        "relation",
+        "realtion",
+        "target_entity",
+        "source_entity",
+        "complete",
+        "complete|",
+        "skip",
+    }
+    if lower in placeholder_exact:
+        return "placeholder"
+
+    if re.fullmatch(r"[\W_]+", text):
+        return "punctuation_only"
+
+    alnum = sum(1 for ch in text if ch.isalnum())
+    alpha = sum(1 for ch in text if ch.isalpha())
+    if alnum <= 1:
+        return "too_short"
+    if len(text) <= 3 and alpha <= 1:
+        return "too_short"
+
+    # LightRAG delimiter residue or partially parsed record markers.
+    if any(marker in text for marker in ("<|#|>", "<|#", "<|COMPLETE|>", "|#|")):
+        return "delimiter_residue"
+    if lower.startswith(("entity<", "relation<", "realtion<")):
+        return "record_marker_residue"
+
+    # Truncated placeholders / parser debris often end with dangling symbols.
+    if text.endswith(("<", "|", "~", "`")) and alnum < 24:
+        return "truncated_token"
+
+    # Very low-signal strings with many separators (e.g. malformed parser output fragments).
+    separator_count = sum(text.count(ch) for ch in ("<", ">", "|", "~", "`"))
+    if separator_count >= 2 and alnum < 20:
+        return "separator_heavy_fragment"
+
+    # Short N/A-like fragments leaking from parser errors.
+    if "n/a" in lower and alnum < 20:
+        return "na_fragment"
+
+    # Optional stricter filtering for common boilerplate labels extracted from website chrome
+    # and form templates. Allowlist can override these exact values/patterns.
+    if _env_truthy("GRAPH_EMBED_JUNK_STRICT", True):
+        strict_exact = {
+            "main content",
+            "stage",
+            "skip to main content",
+            "skip to main content button",
+            "skip to stage",
+            "main content stage",
+            "target entity",
+            "source entity",
+        }
+        if lower in strict_exact:
+            return "strict_boilerplate_label"
+        if lower.startswith("skip to main content"):
+            return "strict_boilerplate_label"
+        if lower.startswith("skip to stage"):
+            return "strict_boilerplate_label"
+
+        strict_regexes = (
+            r"\bnachname\s*,\s*vorname\b",
+            r"\bname\s*,\s*vorname\b",
+            r"\bstr\.\s*,\s*nr\.\s*,\s*plz(?:\s*,\s*ort)?\b",
+            r"\bplz\s*,\s*ort\b",
+            r"\btelefon(?:nummer)?\s*[:/]\s*fax\b",
+        )
+        for pattern in strict_regexes:
+            if re.search(pattern, lower):
+                return "strict_form_placeholder"
+
+    return None
+
+
+def _junk_embedding_sentinel(text: str, dim: int) -> list[float]:
+    """
+    Return a deterministic non-zero vector for skipped junk strings.
+
+    Non-zero avoids downstream normalization warnings from zero-norm vectors while still
+    keeping these low-quality values isolated from meaningful embeddings.
+    """
+    safe_dim = max(1, int(dim or 1024))
+    vec = [0.0] * safe_dim
+    digest = hashlib.sha1(text.encode("utf-8", errors="ignore")).digest()
+    slot = int.from_bytes(digest[:4], "big") % safe_dim
+    vec[slot] = 1.0
+    return vec
+
+
+def _is_junk_graph_label(value: Any) -> bool:
+    text = _normalize_graph_embed_text(value)
+    return _graph_embed_junk_reason(text) is not None
 
 
 def _dedupe_triplets(triplets: List[tuple[str, str, str]]) -> List[tuple[str, str, str]]:
@@ -198,47 +285,6 @@ def _dedupe_triplets(triplets: List[tuple[str, str, str]]) -> List[tuple[str, st
         seen.add(key)
         out.append((key[0], key[1], key[2]))
     return out
-
-
-def extract_triplets_with_lightrag(text: str) -> List[tuple[str, str, str]]:
-    """Best-effort LightRAG triplet extraction with a small heuristic fallback."""
-    if not text or not text.strip():
-        return []
-    # Try LightRAG-style imports first (if available).
-    for mod_name, fn_name in (
-        ("lightrag", "extract_triplets"),
-        ("lightrag", "extract_kg"),
-        ("lightrag.graph", "extract_triplets"),
-        ("lightrag.utils", "extract_triplets"),
-    ):
-        try:
-            mod = __import__(mod_name, fromlist=[fn_name])
-            fn = getattr(mod, fn_name, None)
-            if callable(fn):
-                res = fn(text)
-                return _dedupe_triplets(_normalize_triplets(res))
-        except Exception as exc:
-            logger.debug("LightRAG fallback import failed (%s.%s): %s", mod_name, fn_name, exc)
-
-    # Heuristic fallback: extract simple "X is Y" style relations.
-    triplets: List[tuple[str, str, str]] = []
-    patterns = [
-        r"([A-Z][A-Za-z0-9 -]{1,80})\s+(works at|studies at|is|are|was|ist|arbeitet bei)\s+([^\.,;]{1,80})",
-    ]
-    for sentence in re.split(r"[\\.!?\\n]+", text):
-        s = sentence.strip()
-        if not s:
-            continue
-        for pat in patterns:
-            m = re.search(pat, s, flags=re.IGNORECASE)
-            if not m:
-                continue
-            subj, rel, obj = m.group(1).strip(), m.group(2).strip(), m.group(3).strip()
-            if subj and rel and obj:
-                triplets.append((subj, rel, obj))
-        if len(triplets) >= 50:
-            break
-    return _dedupe_triplets(triplets)
 
 
 def _cosine(a: list[float], b: list[float]) -> float:
@@ -258,61 +304,664 @@ class RAGService:
     """Orchestrates RAG components and shared configuration."""
 
     def __init__(self) -> None:
-        # Use env-driven working directory without external settings module.
+        # Shared RAG-Anything working directory (env-driven) used for graph/KG storages.
         self.working_dir = Path(os.environ.get("RAG_WORKING_DIR", "/app/rag_storage")).expanduser()
         self.working_dir.mkdir(parents=True, exist_ok=True)
-        self.raganything = self._init_raganything()
+        # Graph extraction uses a provider-backed RAGAnything instance, created lazily.
+        # The instance is stateful (it maintains KG/vector storages), so we guard access.
+        self._rag_graph_lock = threading.RLock()
+        self._rag_graph_cache_key: str | None = None
+        self.raganything: Optional[Any] = None
+        self._rag_graph_loop: Any | None = None
+        self._rag_graph_loop_thread: threading.Thread | None = None
+        self._rag_graph_loop_ready = threading.Event()
+        self._rag_graph_runtime_meta: Dict[str, Any] = {
+            "doc_status_storage": "JsonDocStatusStorage",
+            "graph_storage": "NetworkXStorage(default)",
+            "graph_client_initialized": False,
+        }
+        self._rag_graph_kv_junk_scrub_once_done = False
 
-    def _init_raganything(self) -> Optional[Any]:
-        try:
-            import raganything  # type: ignore
-        except Exception as exc:
-            logger.info("RAG-Anything not available: %s", exc)
-            return None
+    def _ensure_rag_graph_loop(self) -> Any:
+        loop = self._rag_graph_loop
+        if loop is not None and loop.is_running():
+            return loop
 
-        candidate = None
-        for name in ("RAGAnything", "RAGAnythingClient", "RAGAnythingService"):
-            if hasattr(raganything, name):
-                candidate = getattr(raganything, name)
-                break
+        self._rag_graph_loop_ready.clear()
 
-        if candidate is None:
-            logger.info("RAG-Anything client class not found.")
-            return None
-
-        for builder in ("from_working_dir", "from_env"):
-            if hasattr(candidate, builder):
+        def _runner() -> None:
+            loop_obj = asyncio.new_event_loop()
+            try:
+                asyncio.set_event_loop(loop_obj)
+                self._rag_graph_loop = loop_obj
+                self._rag_graph_loop_ready.set()
+                loop_obj.run_forever()
+            finally:
                 try:
-                    instance = getattr(candidate, builder)(str(self.working_dir))
-                    logger.info("RAG-Anything initialized via %s with working_dir=%s", builder, self.working_dir)
-                    return instance
-                except TypeError:
+                    pending = [t for t in asyncio.all_tasks(loop_obj) if not t.done()]
+                except Exception:
+                    pending = []
+                for task in pending:
+                    task.cancel()
+                if pending:
                     try:
-                        instance = getattr(candidate, builder)()
-                        logger.info("RAG-Anything initialized via %s with default settings", builder)
-                        return instance
+                        loop_obj.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
                     except Exception:
                         pass
+                try:
+                    loop_obj.close()
+                finally:
+                    self._rag_graph_loop = None
+                    asyncio.set_event_loop(None)
+
+        t = threading.Thread(target=_runner, daemon=True, name="raganything-graph-loop")
+        self._rag_graph_loop_thread = t
+        t.start()
+        if not self._rag_graph_loop_ready.wait(timeout=5):
+            raise RuntimeError("RAG-Anything graph event loop did not start")
+        if self._rag_graph_loop is None:
+            raise RuntimeError("RAG-Anything graph event loop unavailable")
+        return self._rag_graph_loop
+
+    def _close_raganything_instance(self, client: Any | None) -> None:
+        if client is None:
+            return
+        try:
+            close_fn = getattr(client, "close", None)
+            if callable(close_fn):
+                result = close_fn()
+                # Some versions expose sync close, others async close.
+                if asyncio.iscoroutine(result):
+                    self._run_coro_sync(result)
+        except Exception as exc:
+            logger.debug("RAG-Anything close failed: %s", exc)
+
+    @staticmethod
+    def _graph_model_override(provider: Any) -> str | None:
+        if isinstance(provider, OllamaProvider):
+            val = os.environ.get("GRAPH_OLLAMA_RAG_MODEL", "").strip()
+            return val or None
+        return None
+
+    @staticmethod
+    def _provider_fingerprint(provider: Any) -> str:
+        parts = [
+            provider.__class__.__name__,
+            str(getattr(provider, "base", "")),
+            str(getattr(provider, "rag_model", "")),
+            str(getattr(provider, "embed_model", "")),
+            str(getattr(provider, "key", ""))[:8],  # enough to detect config changes, avoids logging secrets
+        ]
+        return "|".join(parts)
+
+    def _graph_raganything_cache_fingerprint(self, provider: Any, *, neo4j_database: str | None = None) -> str:
+        db_name = (neo4j_database or os.environ.get("NEO4J_DATABASE", "")).strip()
+        return "|".join(
+            [
+                str(self.working_dir),
+                self._provider_fingerprint(provider),
+                str(self._graph_model_override(provider) or ""),
+                str(db_name),
+                str(os.environ.get("GRAPH_TEMPERATURE", "")).strip(),
+                str(os.environ.get("OLLAMA_CHAT_TIMEOUT", "")).strip(),
+            ]
+        )
+
+    def _clone_provider_for_graph(self, provider: Any) -> Any:
+        """
+        Clone the provider so graph extraction can safely apply graph-specific model overrides
+        without mutating the shared request/query provider instance.
+        """
+        try:
+            clone = provider.__class__()  # re-read env-backed config
+        except Exception:
+            clone = provider
+        for attr in ("base", "key", "rag_model", "embed_model"):
+            if hasattr(provider, attr):
+                try:
+                    setattr(clone, attr, getattr(provider, attr))
+                except Exception:
+                    pass
+        graph_model = self._graph_model_override(clone)
+        if graph_model and hasattr(clone, "rag_model"):
+            setattr(clone, "rag_model", graph_model)
+        return clone
+
+    def _run_coro_sync(self, coro: Any) -> Any:
+        loop = self._ensure_rag_graph_loop()
+        future = asyncio.run_coroutine_threadsafe(coro, loop)
+        return future.result()
+
+    def _scrub_raganything_kv_graph_junk(
+        self,
+        *,
+        rag_doc_id: str | None = None,
+        full_scan: bool = False,
+    ) -> Dict[str, int]:
+        """
+        Remove boilerplate/junk entities/relations from persisted LightRAG KV JSON stores.
+
+        The official RAG-Anything/LightRAG pipeline may still transiently create these entries,
+        but this scrub keeps persisted JSON stores clean for downstream inspection and reuse.
+        """
+        stats: Dict[str, int] = {
+            "full_entities_docs": 0,
+            "full_entities_names": 0,
+            "full_relations_docs": 0,
+            "full_relations_pairs": 0,
+            "entity_chunks": 0,
+            "relation_chunks": 0,
+        }
+        if not full_scan and not rag_doc_id:
+            return stats
+
+        def _load_json_dict(path: Path) -> Dict[str, Any]:
+            try:
+                with path.open("r", encoding="utf-8") as fh:
+                    data = json.load(fh)
+                return data if isinstance(data, dict) else {}
+            except FileNotFoundError:
+                return {}
+            except Exception as exc:
+                logger.warning("graph:kv-junk-scrub failed to read %s: %s", path.name, exc)
+                return {}
+
+        def _save_json_dict(path: Path, data: Dict[str, Any]) -> None:
+            try:
+                tmp_path = path.with_suffix(path.suffix + ".tmp")
+                with tmp_path.open("w", encoding="utf-8") as fh:
+                    json.dump(data, fh, ensure_ascii=False, indent=2)
+                    fh.write("\n")
+                tmp_path.replace(path)
+            except Exception as exc:
+                logger.warning("graph:kv-junk-scrub failed to write %s: %s", path.name, exc)
+
+        full_entities_path = self.working_dir / "kv_store_full_entities.json"
+        full_relations_path = self.working_dir / "kv_store_full_relations.json"
+        entity_chunks_path = self.working_dir / "kv_store_entity_chunks.json"
+        relation_chunks_path = self.working_dir / "kv_store_relation_chunks.json"
+
+        removed_entity_names: set[str] = set()
+        removed_relation_pairs: set[tuple[str, str]] = set()
+
+        full_entities = _load_json_dict(full_entities_path)
+        full_entities_changed = False
+        if full_entities:
+            target_keys = list(full_entities.keys()) if full_scan else ([rag_doc_id] if rag_doc_id in full_entities else [])
+            for key in target_keys:
+                rec = full_entities.get(key)
+                if not isinstance(rec, dict):
+                    continue
+                names = rec.get("entity_names")
+                if not isinstance(names, list):
+                    continue
+                kept: list[Any] = []
+                removed_here = 0
+                for name in names:
+                    if _is_junk_graph_label(name):
+                        removed_entity_names.add(str(name))
+                        removed_here += 1
+                    else:
+                        kept.append(name)
+                if not removed_here:
+                    continue
+                full_entities_changed = True
+                stats["full_entities_docs"] += 1
+                stats["full_entities_names"] += removed_here
+                if kept:
+                    rec["entity_names"] = kept
+                    rec["count"] = len(kept)
+                else:
+                    full_entities.pop(key, None)
+        if full_entities_changed:
+            _save_json_dict(full_entities_path, full_entities)
+
+        full_relations = _load_json_dict(full_relations_path)
+        full_relations_changed = False
+        if full_relations:
+            target_keys = list(full_relations.keys()) if full_scan else ([rag_doc_id] if rag_doc_id in full_relations else [])
+            for key in target_keys:
+                rec = full_relations.get(key)
+                if not isinstance(rec, dict):
+                    continue
+                pairs = rec.get("relation_pairs")
+                if not isinstance(pairs, list):
+                    continue
+                kept_pairs: list[Any] = []
+                removed_here = 0
+                for pair in pairs:
+                    if not (isinstance(pair, (list, tuple)) and len(pair) >= 2):
+                        kept_pairs.append(pair)
+                        continue
+                    src = str(pair[0] or "")
+                    tgt = str(pair[1] or "")
+                    if _is_junk_graph_label(src) or _is_junk_graph_label(tgt):
+                        removed_relation_pairs.add((src, tgt))
+                        removed_here += 1
+                        continue
+                    kept_pairs.append(pair)
+                if not removed_here:
+                    continue
+                full_relations_changed = True
+                stats["full_relations_docs"] += 1
+                stats["full_relations_pairs"] += removed_here
+                if kept_pairs:
+                    rec["relation_pairs"] = kept_pairs
+                    rec["count"] = len(kept_pairs)
+                else:
+                    full_relations.pop(key, None)
+        if full_relations_changed:
+            _save_json_dict(full_relations_path, full_relations)
+
+        if not full_scan and not removed_entity_names and not removed_relation_pairs:
+            return stats
+
+        entity_chunks = _load_json_dict(entity_chunks_path)
+        entity_chunks_changed = False
+        if entity_chunks:
+            if full_scan:
+                keys_to_drop = [k for k in list(entity_chunks.keys()) if _is_junk_graph_label(k)]
+            else:
+                keys_to_drop = [k for k in removed_entity_names if k in entity_chunks]
+            if keys_to_drop:
+                entity_chunks_changed = True
+                stats["entity_chunks"] += len(keys_to_drop)
+                for key in keys_to_drop:
+                    entity_chunks.pop(key, None)
+        if entity_chunks_changed:
+            _save_json_dict(entity_chunks_path, entity_chunks)
+
+        relation_chunks = _load_json_dict(relation_chunks_path)
+        relation_chunks_changed = False
+        if relation_chunks:
+            keys_to_drop: list[str] = []
+            if full_scan:
+                for key in list(relation_chunks.keys()):
+                    if not isinstance(key, str) or "<SEP>" not in key:
+                        continue
+                    src, tgt = key.split("<SEP>", 1)
+                    if _is_junk_graph_label(src) or _is_junk_graph_label(tgt):
+                        keys_to_drop.append(key)
+            else:
+                for src, tgt in removed_relation_pairs:
+                    key = f"{src}<SEP>{tgt}"
+                    if key in relation_chunks:
+                        keys_to_drop.append(key)
+                if removed_entity_names:
+                    removed_lower = {x.lower() for x in removed_entity_names}
+                    for key in list(relation_chunks.keys()):
+                        if not isinstance(key, str) or "<SEP>" not in key:
+                            continue
+                        src, tgt = key.split("<SEP>", 1)
+                        if src.lower() in removed_lower or tgt.lower() in removed_lower:
+                            if key not in keys_to_drop:
+                                keys_to_drop.append(key)
+            if keys_to_drop:
+                relation_chunks_changed = True
+                stats["relation_chunks"] += len(keys_to_drop)
+                for key in keys_to_drop:
+                    relation_chunks.pop(key, None)
+        if relation_chunks_changed:
+            _save_json_dict(relation_chunks_path, relation_chunks)
+
+        if sum(stats.values()):
+            logger.info(
+                "graph:kv-junk-scrub stats=%s rag_doc_id=%s full_scan=%s",
+                stats,
+                rag_doc_id or "-",
+                full_scan,
+            )
+        return stats
+
+    @staticmethod
+    def _register_chunked_doc_status_storage() -> bool:
+        """
+        Register a custom LightRAG doc-status backend that writes chunked JSON files.
+
+        We intentionally keep Neo4j as graph storage only. LightRAG's doc-status storage is
+        KV-like operational metadata and is better served by JSON/Redis/Postgres.
+        """
+        storage_name = "ChunkedJsonDocStatusStorage"
+        try:
+            import lightrag.kg as lightrag_kg  # type: ignore
+
+            implementations = lightrag_kg.STORAGE_IMPLEMENTATIONS["DOC_STATUS_STORAGE"]["implementations"]
+            if storage_name not in implementations:
+                implementations.append(storage_name)
+
+            lightrag_kg.STORAGE_ENV_REQUIREMENTS.setdefault(storage_name, [])
+            # Absolute module path so LightRAG can import from this application package.
+            lightrag_kg.STORAGES[storage_name] = "core.lightrag_chunked_doc_status_storage"
+            return True
+        except Exception as exc:
+            logger.warning("Failed to register chunked LightRAG doc status storage: %s", exc)
+            return False
+
+    @staticmethod
+    def _prepare_lightrag_neo4j_env(neo4j_database: str | None = None) -> tuple[bool, dict[str, str]]:
+        """
+        Bridge project env names to LightRAG Neo4j env names.
+
+        Project envs:
+        - NEO4J_HTTP_URL / NEO4J_USER / NEO4J_PASSWORD
+        Optional:
+        - NEO4J_BOLT_URL
+
+        LightRAG Neo4jStorage expects:
+        - NEO4J_URI / NEO4J_USERNAME / NEO4J_PASSWORD
+        """
+        applied: dict[str, str] = {}
+        neo4j_user = os.environ.get("NEO4J_USER", "").strip()
+        neo4j_pwd = os.environ.get("NEO4J_PASSWORD", "").strip()
+        neo4j_uri = os.environ.get("NEO4J_URI", "").strip()
+
+        if not neo4j_uri:
+            neo4j_bolt = os.environ.get("NEO4J_BOLT_URL", "").strip()
+            if neo4j_bolt:
+                neo4j_uri = neo4j_bolt
+            else:
+                http_url = os.environ.get("NEO4J_HTTP_URL", "").strip()
+                if http_url:
+                    # Best-effort derivation from http(s)://host:7474 -> bolt://host:7687
+                    neo4j_uri = re.sub(r"^https?://", "bolt://", http_url)
+                    neo4j_uri = re.sub(r":7474(?=/|$)", ":7687", neo4j_uri)
+                    neo4j_uri = re.sub(r":7473(?=/|$)", ":7687", neo4j_uri)
+            if neo4j_uri:
+                os.environ["NEO4J_URI"] = neo4j_uri
+                applied["NEO4J_URI"] = neo4j_uri
+
+        if neo4j_user and not os.environ.get("NEO4J_USERNAME", "").strip():
+            os.environ["NEO4J_USERNAME"] = neo4j_user
+            applied["NEO4J_USERNAME"] = neo4j_user
+
+        db_name = (neo4j_database or "").strip()
+        if db_name:
+            os.environ["NEO4J_DATABASE"] = db_name
+            applied["NEO4J_DATABASE"] = db_name
+
+        # NEO4J_PASSWORD name already matches LightRAG; only report if present.
+        if neo4j_pwd:
+            applied["NEO4J_PASSWORD"] = "***"
+
+        ready = bool(
+            os.environ.get("NEO4J_URI", "").strip()
+            and os.environ.get("NEO4J_USERNAME", "").strip()
+            and os.environ.get("NEO4J_PASSWORD", "").strip()
+        )
+        return ready, applied
+
+    def graph_runtime_summary(self) -> Dict[str, Any]:
+        """
+        Return a lightweight runtime summary for the UI monitor.
+
+        This intentionally includes only operational metadata (no secrets).
+        """
+        chunk_files = sorted(self.working_dir.glob("kv_store_doc_status_chunk_*.json"))
+
+        def _env_int(name: str) -> int | None:
+            raw = str(os.environ.get(name, "")).strip()
+            if not raw:
+                return None
+            try:
+                return int(raw)
+            except ValueError:
+                return None
+
+        def _env_bool(name: str, default: bool = False) -> bool:
+            raw = str(os.environ.get(name, "")).strip().lower()
+            if not raw:
+                return default
+            return raw in ("1", "true", "yes", "on")
+
+        with self._rag_graph_lock:
+            meta = dict(self._rag_graph_runtime_meta)
+            initialized = bool(self.raganything is not None)
+            cache_key = self._rag_graph_cache_key
+
+        return {
+            "working_dir": str(self.working_dir),
+            "graph_client_initialized": initialized,
+            "graph_client_cache_key": bool(cache_key),
+            "doc_status_storage": meta.get("doc_status_storage", "JsonDocStatusStorage"),
+            "graph_storage": meta.get("graph_storage", "NetworkXStorage(default)"),
+            "neo4j": {
+                "uri": str(os.environ.get("NEO4J_URI", "")).strip()
+                or str(os.environ.get("NEO4J_BOLT_URL", "")).strip()
+                or "",
+                "database": str(os.environ.get("NEO4J_DATABASE", "")).strip() or "neo4j (default)",
+                "user": str(os.environ.get("NEO4J_USERNAME", "")).strip()
+                or str(os.environ.get("NEO4J_USER", "")).strip()
+                or "",
+            },
+            "doc_status_chunks": {
+                "pattern": "kv_store_doc_status_chunk_*.json",
+                "count": len(chunk_files),
+                "files": [p.name for p in chunk_files[:5]],
+            },
+            "models": {
+                "graph_model": str(os.environ.get("GRAPH_OLLAMA_RAG_MODEL", "")).strip()
+                or str(os.environ.get("OLLAMA_RAG_MODEL", "")).strip(),
+                "embed_model": str(os.environ.get("OLLAMA_EMBED_MODEL", "")).strip(),
+            },
+            "limits": {
+                "graph_doc_max_chars": _env_int("GRAPH_DOC_MAX_CHARS"),
+                "graph_doc_max_chunks": _env_int("GRAPH_DOC_MAX_CHUNKS"),
+                "graph_min_chunk_chars": _env_int("GRAPH_MIN_CHUNK_CHARS"),
+                "graph_min_doc_chars": _env_int("GRAPH_MIN_DOC_CHARS"),
+                "ollama_chat_timeout": _env_int("OLLAMA_CHAT_TIMEOUT"),
+            },
+            "resilience": {
+                "embed_nan_zero_fallback": _env_bool("OLLAMA_EMBED_NAN_ZERO_FALLBACK", True),
+                "graph_embed_junk_filter": True,
+                "graph_embed_junk_strict": _env_bool("GRAPH_EMBED_JUNK_STRICT", True),
+                "graph_embed_junk_denylist_configured": bool(
+                    str(os.environ.get("GRAPH_EMBED_JUNK_DENYLIST", "")).strip()
+                ),
+                "graph_embed_junk_allowlist_configured": bool(
+                    str(os.environ.get("GRAPH_EMBED_JUNK_ALLOWLIST", "")).strip()
+                ),
+            },
+        }
+
+    def _init_raganything_graph_client(self, provider: Any, *, neo4j_database: str | None = None) -> Optional[Any]:
+        """
+        Build an official RAG-Anything client using provider-backed LLM and embedding callables.
+
+        This avoids the previous brittle direct LightRAG extraction hook and uses the package's
+        documented content insertion / internal KG pipeline (`insert_content_list`).
+        """
+        try:
+            from raganything import RAGAnything  # type: ignore
+            from raganything.config import RAGAnythingConfig  # type: ignore
+        except Exception as exc:
+            logger.info("RAG-Anything import failed: %s", exc)
+            return None
 
         try:
-            instance = candidate(working_dir=str(self.working_dir))
-            logger.info("RAG-Anything initialized with working_dir=%s", self.working_dir)
-            return instance
-        except TypeError:
-            try:
-                instance = candidate()
-                logger.info("RAG-Anything initialized with default settings")
-                return instance
-            except Exception as exc:
-                logger.info("RAG-Anything init failed: %s", exc)
-                return None
+            from lightrag.utils import EmbeddingFunc  # type: ignore
+            import numpy as np  # type: ignore
+        except Exception as exc:
+            logger.info("LightRAG embedding wrapper import failed: %s", exc)
+            return None
+
+        graph_provider = self._clone_provider_for_graph(provider)
+
+        embed_model_name = str(getattr(graph_provider, "embed_model", "") or "").lower()
+        if "bge-m3" in embed_model_name:
+            embed_dim = 1024
+        elif "text-embedding-3-large" in embed_model_name:
+            embed_dim = 3072
+        elif "text-embedding-3-small" in embed_model_name:
+            embed_dim = 1536
+        else:
+            embed_dim = 1024
+
+        async def llm_model_func(
+            prompt: str,
+            system_prompt: str | None = None,
+            history_messages: list | None = None,
+            max_tokens: int | None = None,
+            **kwargs: Any,
+        ) -> str:
+            del max_tokens, kwargs
+            messages = list(history_messages or [])
+            messages.append({"role": "user", "content": prompt})
+            system = system_prompt or "You are a helpful assistant."
+
+            graph_temp_env = os.environ.get("GRAPH_TEMPERATURE", "").strip()
+            if graph_temp_env:
+                try:
+                    temperature = float(graph_temp_env)
+                except ValueError:
+                    temperature = None
+            else:
+                temperature = 0.0
+
+            if GRAPH_DEBUG_LLM:
+                logger.debug("graph:raganything llm system=%s", system)
+                logger.debug("graph:raganything llm prompt=%s", prompt)
+            response = await asyncio.to_thread(graph_provider.chat, system, messages, temperature=temperature)
+            if GRAPH_DEBUG_LLM:
+                logger.debug("graph:raganything llm response=%s", response)
+            return response
+
+        async def embed_many(texts: Any) -> Any:
+            text_list = [texts] if isinstance(texts, str) else list(texts or [])
+            if not text_list:
+                return np.zeros((0, 0), dtype=float)
+            out_vectors: list[Any] = [None] * len(text_list)
+            embed_jobs: list[Any] = []
+            embed_job_indices: list[int] = []
+            filtered = 0
+            filtered_samples: list[str] = []
+
+            for idx, raw in enumerate(text_list):
+                text_norm = _normalize_graph_embed_text(raw)
+                reason = _graph_embed_junk_reason(text_norm)
+                if reason is not None:
+                    filtered += 1
+                    out_vectors[idx] = _junk_embedding_sentinel(text_norm or str(raw or ""), embed_dim)
+                    if GRAPH_DEBUG and len(filtered_samples) < 3:
+                        sample = text_norm[:80] if text_norm else str(raw or "")[:80]
+                        filtered_samples.append(f"{reason}:{sample}")
+                    continue
+
+                embed_jobs.append(asyncio.to_thread(graph_provider.embed, text_norm))
+                embed_job_indices.append(idx)
+
+            if embed_jobs:
+                vectors = await asyncio.gather(*embed_jobs)
+                for idx, vec in zip(embed_job_indices, vectors):
+                    out_vectors[idx] = vec
+
+            if filtered and GRAPH_DEBUG:
+                logger.debug(
+                    "graph:embed_many junk-filtered=%s/%s samples=%s",
+                    filtered,
+                    len(text_list),
+                    filtered_samples,
+                )
+
+            # Fill any unexpected gaps defensively.
+            for idx, value in enumerate(out_vectors):
+                if value is None:
+                    out_vectors[idx] = _junk_embedding_sentinel(str(text_list[idx] or ""), embed_dim)
+
+            return np.asarray(out_vectors, dtype=float)
+
+        emb_func = EmbeddingFunc(
+            embedding_dim=embed_dim,
+            func=embed_many,
+            max_token_size=8192,
+            model_name=(getattr(graph_provider, "embed_model", None) or None),
+        )
+
+        config = RAGAnythingConfig(
+            working_dir=str(self.working_dir),
+            parser_output_dir=str(self.working_dir / "parser_output"),
+            parse_method="auto",
+            parser="mineru",
+            display_content_stats=GRAPH_DEBUG,
+            max_concurrent_files=1,
+        )
+
+        chunked_doc_status_ok = self._register_chunked_doc_status_storage()
+        neo4j_graph_ok, neo4j_env_applied = self._prepare_lightrag_neo4j_env(neo4j_database)
+        lightrag_kwargs: Dict[str, Any] = {}
+        if chunked_doc_status_ok:
+            lightrag_kwargs["doc_status_storage"] = "ChunkedJsonDocStatusStorage"
+        if neo4j_graph_ok:
+            lightrag_kwargs["graph_storage"] = "Neo4JStorage"
+        else:
+            logger.warning(
+                "LightRAG Neo4JStorage not enabled (missing NEO4J_URI/NEO4J_USERNAME/NEO4J_PASSWORD); using default graph storage"
+            )
+
+        try:
+            client = RAGAnything(
+                llm_model_func=llm_model_func,
+                embedding_func=emb_func,
+                config=config,
+                lightrag_kwargs=lightrag_kwargs,
+            )
+            logger.info(
+                "RAG-Anything graph client initialized (working_dir=%s, provider=%s, rag_model=%s, embed_model=%s, doc_status_storage=%s, graph_storage=%s)",
+                self.working_dir,
+                graph_provider.__class__.__name__,
+                getattr(graph_provider, "rag_model", None),
+                getattr(graph_provider, "embed_model", None),
+                lightrag_kwargs.get("doc_status_storage", "JsonDocStatusStorage"),
+                lightrag_kwargs.get("graph_storage", "NetworkXStorage(default)"),
+            )
+            self._rag_graph_runtime_meta = {
+                "doc_status_storage": lightrag_kwargs.get("doc_status_storage", "JsonDocStatusStorage"),
+                "graph_storage": lightrag_kwargs.get("graph_storage", "NetworkXStorage(default)"),
+                "graph_client_initialized": True,
+            }
+            if neo4j_env_applied:
+                logger.info(
+                    "LightRAG Neo4j env prepared: %s",
+                    {k: v for k, v in neo4j_env_applied.items()},
+                )
+            return client
+        except Exception as exc:
+            self._rag_graph_runtime_meta = {
+                "doc_status_storage": lightrag_kwargs.get("doc_status_storage", "JsonDocStatusStorage"),
+                "graph_storage": lightrag_kwargs.get("graph_storage", "NetworkXStorage(default)"),
+                "graph_client_initialized": False,
+                "init_error": str(exc),
+            }
+            logger.info("RAG-Anything graph client init failed: %s", exc)
+            return None
+
+    def _get_or_create_raganything_graph_client(self, provider: Any, *, neo4j_database: str | None = None) -> Optional[Any]:
+        cache_key = self._graph_raganything_cache_fingerprint(provider, neo4j_database=neo4j_database)
+        with self._rag_graph_lock:
+            if self.raganything is not None and self._rag_graph_cache_key == cache_key:
+                return self.raganything
+
+            if self.raganything is not None and self._rag_graph_cache_key != cache_key:
+                self._close_raganything_instance(self.raganything)
+                self.raganything = None
+                self._rag_graph_cache_key = None
+
+            async def _build_client() -> Optional[Any]:
+                return self._init_raganything_graph_client(provider, neo4j_database=neo4j_database)
+
+            client = self._run_coro_sync(_build_client())
+            self.raganything = client
+            self._rag_graph_cache_key = cache_key if client is not None else None
+            if client is not None and not self._rag_graph_kv_junk_scrub_once_done:
+                try:
+                    self._scrub_raganything_kv_graph_junk(full_scan=True)
+                finally:
+                    self._rag_graph_kv_junk_scrub_once_done = True
+            return self.raganything
 
     def get_provider(self, name: str):
         key = (name or "").strip().lower()
         if key == "ollama":
             return OllamaProvider()
-        if key == "gwdg":
-            return GWDGProvider()
         raise ValueError(f"Unknown provider: {name}")
 
     def extract_triplets(
@@ -324,10 +973,9 @@ class RAGService:
         chunks: List[str] | None = None,
         doc_id: str | None = None,
         file_path: str | None = None,
+        neo4j_database: str | None = None,
     ) -> List[tuple[str, str, str]]:
         fn_start = time.perf_counter()
-        result_count = 0
-        path = "unknown"
         _perf_log(
             "perf:graph core.rag_service.extract_triplets start engine=%s doc_id=%s chunks=%s text_chars=%s",
             engine,
@@ -338,31 +986,10 @@ class RAGService:
         mode = (engine or "raganything").strip().lower()
         if mode != "raganything":
             logger.warning("Graph engine '%s' requested; enforcing raganything.", mode)
-        if extract_entities is None:
-            logger.warning("graph:extract_triplets missing LightRAG extract_entities; falling back to RAG-Anything")
-            fallback_text = text or ""
-            if not fallback_text and chunks:
-                fallback_text = "\n".join(str(c) for c in chunks if c)
-            fb_start = time.perf_counter()
-            trips = self._extract_triplets_raganything(fallback_text)
-            path = "raganything_missing_lightrag"
-            _perf_log(
-                "perf:graph core.rag_service.extract_triplets step=raganything_fallback reason=missing_lightrag triplets=%s ms=%.2f",
-                len(trips),
-                (time.perf_counter() - fb_start) * 1000,
-            )
-            if not trips:
-                logger.warning("graph:extract_triplets RAG-Anything fallback returned 0 triplets (missing LightRAG)")
-            result_count = len(trips)
-            _perf_log(
-                "perf:graph core.rag_service.extract_triplets done path=%s triplets=%s ms=%.2f",
-                path,
-                result_count,
-                (time.perf_counter() - fn_start) * 1000,
-            )
-            return trips
         provider = provider or self.get_provider(os.environ.get("GRAPH_PROVIDER", "ollama"))
-        # Clean table-heavy lines to reduce parser format errors.
+
+        # Keep a lightweight cleanup pass for noisy markdown/table rows before handing text
+        # to the official RAG-Anything content ingestion path.
         clean_input_start = time.perf_counter()
         cleaned_text = _clean_graph_text(text)
         cleaned_chunks = None
@@ -376,203 +1003,209 @@ class RAGService:
             0 if chunks is None else len(chunks),
             (time.perf_counter() - clean_input_start) * 1000,
         )
-        chunk_map_start = time.perf_counter()
-        chunk_map = self._build_chunk_map(
+
+        rag_start = time.perf_counter()
+        trips = self._extract_triplets_raganything(
             cleaned_text if cleaned_text.strip() else text,
-            cleaned_chunks if cleaned_chunks is not None else chunks,
+            provider=provider,
+            chunks=cleaned_chunks if cleaned_chunks is not None else chunks,
             doc_id=doc_id,
             file_path=file_path,
+            neo4j_database=neo4j_database,
         )
         _perf_log(
-            "perf:graph core.rag_service.extract_triplets step=build_chunk_map chunk_map=%s ms=%.2f",
-            len(chunk_map),
-            (time.perf_counter() - chunk_map_start) * 1000,
+            "perf:graph core.rag_service.extract_triplets step=raganything_insert_export triplets=%s ms=%.2f",
+            len(trips),
+            (time.perf_counter() - rag_start) * 1000,
         )
-        lightrag_start = time.perf_counter()
-        trips = self._extract_triplets_lightrag(chunk_map, provider)
-        lightrag_ms = (time.perf_counter() - lightrag_start) * 1000
-        _perf_log(
-            "perf:graph core.rag_service.extract_triplets step=lightrag result=%s ms=%.2f",
-            "none" if trips is None else len(trips),
-            lightrag_ms,
-        )
-        if trips is None:
-            logger.warning("graph:extract_triplets LightRAG failed; falling back to RAG-Anything")
-            fallback_text = cleaned_text if cleaned_text.strip() else text
-            if (not fallback_text or not fallback_text.strip()) and chunks:
-                fallback_text = "\n".join(str(c) for c in chunks if c)
-            fb_start = time.perf_counter()
-            trips = self._extract_triplets_raganything(fallback_text)
-            _perf_log(
-                "perf:graph core.rag_service.extract_triplets step=raganything_fallback reason=lightrag_failed triplets=%s ms=%.2f",
-                len(trips),
-                (time.perf_counter() - fb_start) * 1000,
-            )
-            path = "raganything_after_lightrag_failure"
-            if not trips:
-                logger.warning("graph:extract_triplets RAG-Anything fallback returned 0 triplets (LightRAG failed)")
-        else:
-            path = "lightrag"
-        logger.info("graph:extract_triplets raganything-logic count=%s", len(trips))
-        result_count = len(trips)
+        logger.info("graph:extract_triplets raganything-kg count=%s", len(trips))
         _perf_log(
             "perf:graph core.rag_service.extract_triplets done path=%s triplets=%s ms=%.2f",
-            path,
-            result_count,
+            "raganything_official_kg",
+            len(trips),
             (time.perf_counter() - fn_start) * 1000,
         )
         return trips
 
-    def _extract_triplets_raganything(self, text: str) -> List[tuple[str, str, str]]:
-        if self.raganything is None:
-            logger.warning("RAG-Anything client is not initialized; returning 0 triplets.")
-            return []
-        logger.info("RAG-Anything extract requested text_chars=%s", len(text or ""))
-        available = [m for m in ("extract_triplets", "extract_kg", "build_knowledge_graph") if hasattr(self.raganything, m)]
-        if not available:
-            logger.warning(
-                "RAG-Anything client has no supported extract methods. client_type=%s",
-                type(self.raganything).__name__,
-            )
-            return []
-        for method in ("extract_triplets", "extract_kg", "build_knowledge_graph"):
-            if hasattr(self.raganything, method):
-                try:
-                    logger.info("RAG-Anything using method=%s text_chars=%s", method, len(text or ""))
-                    res = getattr(self.raganything, method)(text)
-                except Exception as exc:
-                    logger.info("RAG-Anything %s failed: %s", method, exc)
-                    continue
-                if isinstance(res, dict):
-                    logger.debug("RAG-Anything %s response keys=%s", method, list(res.keys()))
-                else:
-                    logger.debug("RAG-Anything %s response type=%s", method, type(res).__name__)
-                trips = _normalize_triplets(res)
-                return trips
-        return []
-
     @staticmethod
-    def _build_chunk_map(
-        text: str,
-        chunks: List[str] | None,
-        *,
-        doc_id: str | None,
-        file_path: str | None,
-    ) -> Dict[str, Dict[str, Any]]:
+    def _graph_content_list_from_input(text: str, chunks: List[str] | None) -> List[Dict[str, Any]]:
         parts = chunks if chunks is not None else [text]
-        doc_key = doc_id or "doc"
-        path = file_path or "unknown_source"
-        out: Dict[str, Dict[str, Any]] = {}
-        for idx, content in enumerate(parts):
-            if not content or not str(content).strip():
+        out: List[Dict[str, Any]] = []
+
+        for idx, part in enumerate(parts):
+            if not isinstance(part, str):
                 continue
-            out[f"chunk-{doc_key}-{idx}"] = {
-                "tokens": len(str(content)),
-                "content": str(content),
-                "full_doc_id": doc_key,
-                "chunk_order_index": idx,
-                "file_path": path,
-            }
+            value = part.strip()
+            if not value:
+                continue
+            out.append({"type": "text", "text": value, "page_idx": idx})
         return out
 
-    def _extract_triplets_lightrag(
+    @staticmethod
+    def _stable_raganything_doc_id(doc_id: str | None, file_path: str | None, content_list: List[Dict[str, Any]]) -> str:
+        content_text = "\n".join(str(item.get("text") or "") for item in content_list if isinstance(item, dict))
+        digest = hashlib.sha1(content_text.encode("utf-8", errors="ignore")).hexdigest()[:16]
+        prefix = str(doc_id or file_path or "graph_doc")
+        return f"{prefix}:{digest}"
+
+    @staticmethod
+    def _edge_relation_label(edge: Dict[str, Any]) -> str:
+        raw = edge.get("keywords") or edge.get("description") or "RELATED_TO"
+        if isinstance(raw, (list, tuple)):
+            raw = ", ".join(str(x) for x in raw if str(x).strip())
+        rel = _strip_control_chars(str(raw)).replace("\n", " ").strip()
+        if "," in rel:
+            rel = rel.split(",", 1)[0].strip()
+        rel = re.sub(r"\s+", " ", rel)
+        if len(rel) > 120:
+            rel = rel[:120].rstrip()
+        return rel or "RELATED_TO"
+
+    def _triplets_from_raganything_edges(
         self,
-        chunks: Dict[str, Dict[str, Any]],
-        provider: Any,
-    ) -> List[tuple[str, str, str]] | None:
-        if not chunks:
-            return []
-        if GRAPH_DEBUG:
-            total_chars = sum(len(str(v.get("content") or "")) for v in chunks.values())
-            logger.debug("graph:llm chunks=%s total_chars=%s", len(chunks), total_chars)
-        if os.environ.get("GRAPH_SUPPRESS_WARNINGS", "").strip().lower() in ("1", "true", "yes"):
-            logging.getLogger("lightrag").setLevel(logging.ERROR)
-
-        async def llm_func(user_prompt: str, system_prompt: str | None = None, history_messages: list | None = None, max_tokens: int | None = None):
-            messages = list(history_messages or [])
-            messages.append({"role": "user", "content": user_prompt})
-            system = _trim_system_prompt(system_prompt or "You are a helpful assistant.")
-            if GRAPH_DEBUG_LLM:
-                logger.debug("graph:llm system_prompt=%s", system)
-                logger.debug("graph:llm user_prompt=%s", user_prompt)
-            graph_temp_env = os.environ.get("GRAPH_TEMPERATURE", "").strip()
-            graph_temp = None
-            if graph_temp_env:
-                try:
-                    graph_temp = float(graph_temp_env)
-                except ValueError:
-                    graph_temp = None
-            else:
-                graph_temp = 0.0
-            graph_model = os.environ.get("GRAPH_OLLAMA_RAG_MODEL", "").strip()
-            if graph_model and isinstance(provider, OllamaProvider):
-                original_model = provider.rag_model
-                logger.info("graph:llm using ollama_model=%s (override, original=%s)", graph_model, original_model)
-                provider.rag_model = graph_model
-                try:
-                    response = provider.chat(system, messages, temperature=graph_temp)
-                finally:
-                    provider.rag_model = original_model
-            else:
-                response = provider.chat(system, messages, temperature=graph_temp)
-            if GRAPH_DEBUG_LLM:
-                logger.debug("graph:llm response=%s", response)
-            return response
-
-        entity_types_env = os.environ.get("KG_ENTITY_TYPES", "").strip()
-        if not entity_types_env:
-            entity_types_env = os.environ.get("ENTITY_TYPES", "").strip()
-        entity_types = _parse_env_list(entity_types_env) or list(DEFAULT_ENTITY_TYPES)
-        lang_env = os.environ.get("KG_LANGUAGE", "").strip()
-        if not lang_env:
-            lang_env = os.environ.get("SUMMARY_LANGUAGE", "").strip()
-        language = _normalize_language_setting(lang_env or DEFAULT_SUMMARY_LANGUAGE)
-        gleaning = int(os.environ.get("KG_MAX_GLEANING", "1"))
-        if os.environ.get("GRAPH_DISABLE_GLEANING", "").strip().lower() in ("1", "true", "yes"):
-            gleaning = 0
-
-        global_config = {
-            "llm_model_func": llm_func,
-            "entity_extract_max_gleaning": gleaning,
-            "addon_params": {"language": language, "entity_types": entity_types},
-        }
-
-        try:
+        *,
+        edges: List[Dict[str, Any]],
+        file_ref: str,
+        created_at_floor: int,
+    ) -> List[tuple[str, str, str]]:
+        file_edges: List[Dict[str, Any]] = []
+        recent_file_edges: List[Dict[str, Any]] = []
+        for edge in edges or []:
+            if not isinstance(edge, dict):
+                continue
+            edge_file = str(edge.get("file_path") or "")
+            if edge_file != file_ref:
+                continue
+            file_edges.append(edge)
+            created_raw = edge.get("created_at")
             try:
-                loop = asyncio.get_running_loop()
-            except RuntimeError:
-                loop = None
-            if loop and loop.is_running():
-                new_loop = asyncio.new_event_loop()
-                try:
-                    results = new_loop.run_until_complete(extract_entities(chunks, global_config))
-                finally:
-                    new_loop.close()
-            else:
-                results = asyncio.run(extract_entities(chunks, global_config))
-        except Exception as exc:
-            logger.warning("graph:extract_triplets LightRAG extraction failed: %s", exc)
-            return None
-        if GRAPH_DEBUG:
-            try:
-                res_len = len(results or [])
+                created_at = int(created_raw)
             except Exception:
-                res_len = -1
-            logger.debug("graph:llm results_batches=%s", res_len)
+                created_at = 0
+            if created_at >= max(0, created_at_floor - 1):
+                recent_file_edges.append(edge)
+
+        # Prefer edges produced by the current insert call. If the document was deduplicated by
+        # RAG-Anything, fall back to all edges currently known for the same file reference.
+        selected = recent_file_edges or file_edges
+        if GRAPH_DEBUG:
+            logger.debug(
+                "graph:raganything export edges total=%s file=%s file_edges=%s recent=%s selected=%s",
+                len(edges or []),
+                file_ref,
+                len(file_edges),
+                len(recent_file_edges),
+                len(selected),
+            )
 
         triplets: List[tuple[str, str, str]] = []
-        seen = set()
-        for maybe_nodes, maybe_edges in results or []:
-            for (src, tgt), rels in (maybe_edges or {}).items():
-                for rel in rels or []:
-                    # Force a neutral relation label (avoid LLM-defined relation names).
-                    rel_val = os.environ.get("GRAPH_EDGE_RELATION_DEFAULT", "RELATED_TO").strip() or "RELATED_TO"
-                    key = (src, rel_val, tgt)
-                    if key in seen or not all(key):
-                        continue
-                    seen.add(key)
-                    triplets.append(key)
-        return triplets
+        for edge in selected:
+            src = str(edge.get("source") or "").strip()
+            tgt = str(edge.get("target") or "").strip()
+            if not src or not tgt:
+                continue
+            if _is_junk_graph_label(src) or _is_junk_graph_label(tgt):
+                continue
+            triplets.append((src, self._edge_relation_label(edge), tgt))
+        return _dedupe_triplets(triplets)
+
+    def _extract_triplets_raganything(
+        self,
+        text: str,
+        *,
+        provider: Any,
+        chunks: List[str] | None,
+        doc_id: str | None,
+        file_path: str | None,
+        neo4j_database: str | None,
+    ) -> List[tuple[str, str, str]]:
+        content_list = self._graph_content_list_from_input(text, chunks)
+        if not content_list:
+            logger.info("graph:extract_triplets skipping empty/tiny content doc_id=%s", doc_id or "-")
+            return []
+
+        total_chars = sum(len(str(item.get("text") or "")) for item in content_list)
+
+        client = self._get_or_create_raganything_graph_client(provider, neo4j_database=neo4j_database)
+        if client is None:
+            logger.warning("RAG-Anything graph client is not initialized; returning 0 triplets.")
+            return []
+
+        file_ref = str(file_path or f"inline://{doc_id or 'graph_text'}")
+        rag_doc_id = self._stable_raganything_doc_id(doc_id, file_ref, content_list)
+        logger.info(
+            "RAG-Anything graph insert requested doc_id=%s rag_doc_id=%s file=%s blocks=%s chars=%s",
+            doc_id or "-",
+            rag_doc_id,
+            file_ref,
+            len(content_list),
+            total_chars,
+        )
+        created_floor = int(time.time())
+
+        async def _insert_and_export() -> List[tuple[str, str, str]]:
+            # RAG-Anything currently enforces parser installation inside
+            # `_ensure_lightrag_initialized()` even for direct text-only `content_list` inserts.
+            # Our graph ingest path passes only text blocks, so bypass that parser gate to allow
+            # LightRAG initialization without MinerU/Docling installed.
+            if content_list and all(
+                isinstance(item, dict) and str(item.get("type") or "").lower() == "text"
+                for item in content_list
+            ):
+                try:
+                    if hasattr(client, "_parser_installation_checked"):
+                        setattr(client, "_parser_installation_checked", True)
+                except Exception:
+                    pass
+            try:
+                await client.insert_content_list(
+                    content_list,
+                    file_path=file_ref,
+                    doc_id=rag_doc_id,
+                    display_stats=GRAPH_DEBUG,
+                )
+            except Exception as exc:
+                logger.warning("RAG-Anything insert_content_list failed: %s", exc)
+                return []
+
+            # Remove boilerplate/chrome labels from persisted LightRAG KV stores for this doc
+            # before exporting graph edges or subsequent runs read them again.
+            self._scrub_raganything_kv_graph_junk(rag_doc_id=rag_doc_id)
+
+            lightrag_obj = getattr(client, "lightrag", None)
+            graph_obj = getattr(lightrag_obj, "chunk_entity_relation_graph", None)
+            if graph_obj is None:
+                logger.warning("RAG-Anything graph storage is unavailable after insert.")
+                return []
+
+            try:
+                edges = await graph_obj.get_all_edges()
+            except Exception as exc:
+                logger.warning("RAG-Anything graph edge export failed: %s", exc)
+                return []
+
+            if not isinstance(edges, list):
+                logger.warning(
+                    "RAG-Anything graph edge export returned unexpected type=%s",
+                    type(edges).__name__,
+                )
+                return []
+            triplets = self._triplets_from_raganything_edges(
+                edges=edges,
+                file_ref=file_ref,
+                created_at_floor=created_floor,
+            )
+            logger.info(
+                "RAG-Anything graph export doc_id=%s file=%s edges_total=%s triplets=%s",
+                doc_id or "-",
+                file_ref,
+                len(edges),
+                len(triplets),
+            )
+            return triplets
+
+        with self._rag_graph_lock:
+            return self._run_coro_sync(_insert_and_export())
 
     def rerank_hits(
         self,

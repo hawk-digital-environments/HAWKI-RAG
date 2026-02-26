@@ -1,5 +1,8 @@
 """
-Graph ingestion from raw text via RAGService triplet extraction, then Neo4j upsert.
+Graph ingestion from raw text via the RAGService RAG-Anything KG pipeline, then Neo4j upsert.
+
+The HTTP contract stays the same, but the internals now use RAG-Anything content insertion
+and graph export instead of a direct LightRAG extraction wrapper.
 """
 from __future__ import annotations
 

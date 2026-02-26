@@ -1,6 +1,8 @@
 import logging
+import math
 import os
 import random
+import re
 import time
 import requests
 from requests import HTTPError, RequestException, Timeout
@@ -21,40 +23,129 @@ class OllamaProvider:
             "OLLAMA_RAG_MODEL",
             os.environ.get("OLLAMA_TEXT_MODEL", "llama3:8b"),
         )
+        self._last_embed_dim: int | None = None
+
+    def _infer_embed_dim(self) -> int:
+        name = str(self.embed_model or "").lower()
+        if self._last_embed_dim and self._last_embed_dim > 0:
+            return self._last_embed_dim
+        if "bge-m3" in name:
+            return 1024
+        if "text-embedding-3-large" in name:
+            return 3072
+        if "text-embedding-3-small" in name:
+            return 1536
+        return 1024
+
+    @staticmethod
+    def _clean_embedding_text(text: str) -> str:
+        # Remove control chars that often come from noisy crawled content/UI fragments.
+        cleaned = "".join(
+            ch for ch in str(text or "") if ch in ("\n", "\r", "\t") or ord(ch) >= 32
+        )
+        cleaned = cleaned.encode("utf-8", errors="ignore").decode("utf-8", errors="ignore")
+        cleaned = re.sub(r"[ \t]+", " ", cleaned)
+        cleaned = re.sub(r"\n{3,}", "\n\n", cleaned).strip()
+        max_chars_env = os.environ.get("OLLAMA_EMBED_MAX_CHARS", "").strip()
+        try:
+            max_chars = int(max_chars_env) if max_chars_env else 4000
+        except ValueError:
+            max_chars = 4000
+        if max_chars > 0:
+            cleaned = cleaned[:max_chars]
+        return cleaned or " "
+
+    @staticmethod
+    def _is_ollama_nan_embedding_error(status: int | None, message: str) -> bool:
+        msg = (message or "").lower()
+        if "unsupported value: nan" not in msg:
+            return False
+        return status in (None, 500)
 
     def embed(self, text: str) -> List[float]:
         url = f"{self.base}/embeddings"
+        timeout_env = os.environ.get("OLLAMA_EMBED_TIMEOUT", "").strip()
         try:
-            r = requests.post(url, json={"model": self.embed_model, "prompt": text}, timeout=60)
-            r.raise_for_status()
-        except HTTPError as exc:
-            resp = exc.response
-            status = resp.status_code if resp is not None else None
-            detail = ""
-            if resp is not None:
-                try:
-                    payload = resp.json()
-                except ValueError:
-                    payload = None
-                if isinstance(payload, dict):
-                    detail = payload.get("error") or payload.get("message") or str(payload)
-                else:
-                    detail = resp.text
-            message = detail or str(exc)
-            if status == 404 and "not" in message.lower() and "model" in message.lower():
-                raise RuntimeError(
-                    f"Ollama embeddings model '{self.embed_model}' is not installed. "
-                    f"Run `ollama pull {self.embed_model}` inside the Ollama container or host."
-                ) from exc
-            raise RuntimeError(f"Ollama embeddings HTTP error ({status}): {message}") from exc
-        except RequestException as exc:
-            raise RuntimeError(f"Ollama embeddings request failed: {exc}") from exc
+            timeout = float(timeout_env) if timeout_env else 60.0
+        except ValueError:
+            timeout = 60.0
 
-        data = r.json()
-        vec = data.get("embedding")
-        if not isinstance(vec, list):
-            raise RuntimeError("Ollama embeddings: unexpected response")
-        return [float(x) for x in vec]
+        prompts = [str(text or "")]
+        cleaned_prompt = self._clean_embedding_text(text)
+        if cleaned_prompt != prompts[0]:
+            prompts.append(cleaned_prompt)
+
+        last_error: RuntimeError | None = None
+        for attempt_idx, prompt in enumerate(prompts, start=1):
+            try:
+                r = requests.post(url, json={"model": self.embed_model, "prompt": prompt}, timeout=timeout)
+                r.raise_for_status()
+            except HTTPError as exc:
+                resp = exc.response
+                status = resp.status_code if resp is not None else None
+                detail = ""
+                if resp is not None:
+                    try:
+                        payload = resp.json()
+                    except ValueError:
+                        payload = None
+                    if isinstance(payload, dict):
+                        detail = payload.get("error") or payload.get("message") or str(payload)
+                    else:
+                        detail = resp.text
+                message = detail or str(exc)
+                if status == 404 and "not" in message.lower() and "model" in message.lower():
+                    raise RuntimeError(
+                        f"Ollama embeddings model '{self.embed_model}' is not installed. "
+                        f"Run `ollama pull {self.embed_model}` inside the Ollama container or host."
+                    ) from exc
+                if (
+                    self._is_ollama_nan_embedding_error(status, message)
+                    and attempt_idx < len(prompts)
+                ):
+                    logger.warning(
+                        "Ollama embeddings returned NaN serialization error; retrying with sanitized prompt (attempt %s/%s)",
+                        attempt_idx,
+                        len(prompts),
+                    )
+                    continue
+                last_error = RuntimeError(f"Ollama embeddings HTTP error ({status}): {message}")
+            except RequestException as exc:
+                last_error = RuntimeError(f"Ollama embeddings request failed: {exc}")
+            else:
+                data = r.json()
+                vec = data.get("embedding")
+                if not isinstance(vec, list):
+                    last_error = RuntimeError("Ollama embeddings: unexpected response")
+                    continue
+                out: List[float] = []
+                for x in vec:
+                    try:
+                        fx = float(x)
+                    except Exception:
+                        fx = 0.0
+                    if not math.isfinite(fx):
+                        fx = 0.0
+                    out.append(fx)
+                self._last_embed_dim = len(out) if out else self._last_embed_dim
+                return out
+
+        # Optional resilience mode for Ollama's known NaN bug: return a zero vector
+        # instead of aborting the whole document ingest.
+        if last_error and self._is_ollama_nan_embedding_error(None, str(last_error)):
+            fallback_env = os.environ.get("OLLAMA_EMBED_NAN_ZERO_FALLBACK", "true").strip().lower()
+            if fallback_env in ("1", "true", "yes", "on"):
+                dim = self._infer_embed_dim()
+                logger.warning(
+                    "Ollama embeddings NaN bug encountered; using zero-vector fallback (dim=%s, model=%s)",
+                    dim,
+                    self.embed_model,
+                )
+                return [0.0] * dim
+
+        if last_error is not None:
+            raise last_error
+        raise RuntimeError("Ollama embeddings request failed with no response")
 
     def chat(self, system: str, messages: list, *, temperature: float | None = None) -> str:
         url = f"{self.base}/chat"

@@ -117,6 +117,7 @@ class IngestRequest(BaseModel):
     provider: str = Field(default=os.environ.get("RAG_DEFAULT_PROVIDER", "ollama"))
     embedding_model: str | None = None
     collection: str | None = None
+    neo4j_database: str | None = None
     distance: str = Field(default=os.environ.get("QDRANT_DISTANCE", "Cosine"))
     chunk_chars: int = Field(default=_int_env("CHUNK_SIZE", 1200))
     chunk_overlap: int = Field(default=_int_env("CHUNK_OVERLAP_SIZE", 250))
@@ -169,7 +170,12 @@ class DocumentUpsertRequest(BaseModel):
 @app.get("/health")
 def health():
     logger.debug("health:ok")
-    return {"ok": True}
+    runtime = {}
+    try:
+        runtime = rag_service.graph_runtime_summary()
+    except Exception as exc:
+        runtime = {"error": str(exc)}
+    return {"ok": True, "runtime": runtime}
 
 
 @app.get("/config")
