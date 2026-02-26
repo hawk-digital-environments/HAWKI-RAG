@@ -23,6 +23,7 @@ import os
 import re
 from typing import Any
 
+from lightrag.base import DocProcessingStatus, DocStatus
 from lightrag.exceptions import StorageNotInitializedError
 from lightrag.kg.json_doc_status_impl import JsonDocStatusStorage
 from lightrag.kg.shared_storage import (
@@ -41,6 +42,7 @@ class ChunkedJsonDocStatusStorage(JsonDocStatusStorage):
     """JsonDocStatusStorage variant that persists data in chunked JSON files."""
 
     MAX_ENTRIES_PER_CHUNK = 2000
+    DUPLICATE_SKIPPED_COUNT_KEY = "skipped_duplicates"
 
     def __post_init__(self):
         working_dir = self.global_config["working_dir"]
@@ -85,6 +87,37 @@ class ChunkedJsonDocStatusStorage(JsonDocStatusStorage):
         legacy = load_json(self._file_name) or {}
         return legacy if isinstance(legacy, dict) else {}
 
+    @staticmethod
+    def _is_duplicate_doc_record(doc_id: str, doc: Any) -> bool:
+        if not isinstance(doc, dict):
+            return False
+        metadata = doc.get("metadata")
+        if isinstance(metadata, dict) and metadata.get("is_duplicate") is True:
+            return True
+        if isinstance(doc_id, str) and doc_id.startswith("dup-"):
+            return True
+        if str(doc.get("status") or "") != DocStatus.FAILED.value:
+            return False
+        error_msg = str(doc.get("error_msg") or "")
+        return "Content already exists." in error_msg and "Original doc_id:" in error_msg
+
+    @classmethod
+    def _annotate_duplicate_skip_metadata(cls, doc_id: str, doc: Any) -> Any:
+        if not cls._is_duplicate_doc_record(doc_id, doc):
+            return doc
+        if not isinstance(doc, dict):
+            return doc
+        metadata = doc.get("metadata")
+        if not isinstance(metadata, dict):
+            metadata = {}
+        # LightRAG uses `FAILED` for duplicate attempts. We preserve the raw status for
+        # compatibility, but mark the record so workflow queries can treat it as skipped.
+        metadata.setdefault("is_duplicate", True)
+        metadata.setdefault("effective_status", "skipped")
+        metadata.setdefault("skip_reason", "duplicate")
+        doc["metadata"] = metadata
+        return doc
+
     async def initialize(self):
         """Initialize storage data from chunked files (or legacy single file)."""
         self._storage_lock = get_namespace_lock(self.namespace, workspace=self.workspace)
@@ -95,10 +128,87 @@ class ChunkedJsonDocStatusStorage(JsonDocStatusStorage):
             if need_init:
                 loaded_data = self._load_all_chunk_data()
                 async with self._storage_lock:
+                    for doc_id, doc in loaded_data.items():
+                        self._annotate_duplicate_skip_metadata(str(doc_id), doc)
                     self._data.update(loaded_data)
                     logger.info(
                         f"[{self.workspace}] Process {os.getpid()} doc status load {self.namespace} with {len(loaded_data)} records (chunked)"
                     )
+
+    async def upsert(self, data: dict[str, dict[str, Any]]) -> None:
+        if not data:
+            return
+        normalized: dict[str, dict[str, Any]] = {}
+        dup_count = 0
+        for doc_id, doc_data in data.items():
+            rec = dict(doc_data or {})
+            before_dup = self._is_duplicate_doc_record(doc_id, rec)
+            self._annotate_duplicate_skip_metadata(doc_id, rec)
+            if before_dup:
+                dup_count += 1
+            normalized[doc_id] = rec
+        if dup_count:
+            logger.debug(
+                f"[{self.workspace}] Marked {dup_count} duplicate doc-status record(s) as effective skipped"
+            )
+        await super().upsert(normalized)
+
+    async def get_status_counts(self) -> dict[str, int]:
+        """Get counts of documents in each status, excluding duplicate attempts from FAILED."""
+        counts = {status.value: 0 for status in DocStatus}
+        counts[self.DUPLICATE_SKIPPED_COUNT_KEY] = 0
+        if self._storage_lock is None:
+            raise StorageNotInitializedError("ChunkedJsonDocStatusStorage")
+        async with self._storage_lock:
+            for doc_id, doc in self._data.items():
+                if self._is_duplicate_doc_record(str(doc_id), doc):
+                    counts[self.DUPLICATE_SKIPPED_COUNT_KEY] += 1
+                    continue
+                status_val = str((doc or {}).get("status") or "")
+                if status_val in counts:
+                    counts[status_val] += 1
+                elif status_val:
+                    counts[status_val] = counts.get(status_val, 0) + 1
+        return counts
+
+    async def get_docs_by_status(
+        self, status: DocStatus
+    ) -> dict[str, DocProcessingStatus]:
+        """
+        Return docs for a status, but exclude duplicate-attempt records from FAILED.
+
+        LightRAG writes duplicates as FAILED doc-status records. Treat them as skipped here so
+        the processing pipeline does not repeatedly preserve/revisit them as actionable failures.
+        """
+        result: dict[str, DocProcessingStatus] = {}
+        if self._storage_lock is None:
+            raise StorageNotInitializedError("ChunkedJsonDocStatusStorage")
+        async with self._storage_lock:
+            for doc_id, doc_data in self._data.items():
+                if not isinstance(doc_data, dict):
+                    continue
+                if doc_data.get("status") != status.value:
+                    continue
+                if status == DocStatus.FAILED and self._is_duplicate_doc_record(str(doc_id), doc_data):
+                    continue
+                try:
+                    data = dict(doc_data)
+                    data.pop("content", None)
+                    if "file_path" not in data:
+                        data["file_path"] = "no-file-path"
+                    if "metadata" not in data or not isinstance(data.get("metadata"), dict):
+                        data["metadata"] = {}
+                    else:
+                        self._annotate_duplicate_skip_metadata(str(doc_id), data)
+                    if "error_msg" not in data:
+                        data["error_msg"] = None
+                    result[str(doc_id)] = DocProcessingStatus(**data)
+                except KeyError as exc:
+                    logger.error(
+                        f"[{self.workspace}] Missing required field for document {doc_id}: {exc}"
+                    )
+                    continue
+        return result
 
     async def index_done_callback(self) -> None:
         if self._storage_lock is None:

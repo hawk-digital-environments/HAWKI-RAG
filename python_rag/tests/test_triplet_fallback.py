@@ -97,6 +97,37 @@ class RAGAnythingGraphExtractionTests(unittest.TestCase):
             )
             self.assertEqual(trips, [("Alice", "employment", "HAWK")])
 
+    def test_triplet_export_supports_alt_edge_shape_and_recent_fallback(self):
+        from core.rag_service import RAGService
+
+        with tempfile.TemporaryDirectory() as tmpdir, mock.patch.dict(os.environ, {"RAG_WORKING_DIR": tmpdir}):
+            service = RAGService()
+            edges = [
+                {
+                    # Older edge should be ignored when recent edges exist.
+                    "src_id": "Old",
+                    "tgt_id": "Thing",
+                    "content": "old_relation\tOld\nThing\nOld relation",
+                    "file_path": "content.md",
+                    "__created_at__": 10,
+                },
+                {
+                    # Runtime LightRAG shape: src/tgt ids + __created_at__ + basename-only file_path.
+                    "src_id": "Alice",
+                    "tgt_id": "HAWK",
+                    "content": "employment, university\tAlice\nHAWK\nAlice works at HAWK.",
+                    "file_path": "content.md",
+                    "__created_at__": 200,
+                },
+            ]
+
+            trips = service._triplets_from_raganything_edges(
+                edges=edges,
+                file_ref="/var/www/storage/app/public/x/y/z/content.md",
+                created_at_floor=150,
+            )
+            self.assertEqual(trips, [("Alice", "employment", "HAWK")])
+
 
 if __name__ == "__main__":
     unittest.main()
