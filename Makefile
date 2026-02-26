@@ -38,7 +38,12 @@ MCP_LIST_ROOT ?= /app/shared
 .PHONY: network pull-core build-app up-core up-rag health pull-models ingest logs-core logs-rag down-core down-rag restart-core restart-rag test-services neo4j-fresh
 
 network:
-	@docker network create hawki-network || true
+	@if docker network inspect hawki-network >/dev/null 2>&1; then \
+		echo "hawki-network already exists; skipping create"; \
+	else \
+		echo "Creating hawki-network..."; \
+		docker network create hawki-network; \
+	fi
 
 pull-core:
 	@$(COMPOSE_CMD) pull nginx || true
@@ -55,7 +60,7 @@ up-core: network pull-core build-app
 	@echo "Ensuring Ollama has llama3.1:8b model pulled..."
 	@docker exec $(OLLAMA_CONTAINER) ollama pull llama3.1:8b >/dev/null 2>&1 || true
 
-up-rag:
+up-rag: network
 	@echo $(PROFILE_MESSAGE)
 	@$(COMPOSE_CMD) -f $(OPS_COMPOSE) --env-file $(ENV_FILE) up -d --build
 	@echo "Ensuring Ollama has llama3.2:1b model pulled..."

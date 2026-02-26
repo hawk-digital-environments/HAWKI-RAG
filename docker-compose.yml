@@ -328,6 +328,6 @@ volumes:
 networks:
   hawki-network:
     name: hawki-network
-    driver: bridge
+    external: true
   hosting_network:
     driver: bridge
