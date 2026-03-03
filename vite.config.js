@@ -8,4 +8,5 @@ export default defineConfig({
             refresh: true,
         }),
     ],
+    base: process.env.DOCKER_SERVICE_ABS_PATH + '/'
 });

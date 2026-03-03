@@ -1,7 +1,7 @@
 <?php
 
 use App\Mcp\Servers\HawkiRagServer;
-use Laravel\Mcp\Server\Facades\Mcp;
+use Laravel\Mcp\Facades\Mcp;
 
-Mcp::web(config('mcp.server', 'hawki_rag'), HawkiRagServer::class)
-    ->middleware('auth:sanctum');
+Mcp::web(config('mcp.server', 'mcp/hawki_rag'), HawkiRagServer::class);
+    //->middleware('auth:sanctum');

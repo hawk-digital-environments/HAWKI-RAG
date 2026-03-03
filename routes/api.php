@@ -8,10 +8,11 @@ use App\Http\Controllers\API\RagHealthController;
 use App\Http\Controllers\API\RagStatsController;
 use App\Http\Controllers\Graph\RagGraphController;
 
-Route::middleware('auth:sanctum')->group(function () {
 // Health check
-    Route::get('/ping', fn() => response()->json(['pong' => true]));
-    Route::post('/hawki-rag/query', [HawkiRagProxyController::class, 'query']);
+Route::get('/ping', fn() => response()->json(['pong' => true]));
+
+Route::middleware('auth:sanctum')->group(function () {
+    Route::post('/query', [HawkiRagProxyController::class, 'query']);
     Route::get('/ingest/status', [IngestStatusController::class, 'show']);
     Route::post('/ingest/status/clear', [IngestStatusController::class, 'clear']);
     Route::get('/ingest/folders', [IngestController::class, 'folders']);

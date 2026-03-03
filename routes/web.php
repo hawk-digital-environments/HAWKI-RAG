@@ -30,7 +30,7 @@ Route::post('/getScrapeResult', [ScrapeController::class, 'getScrapeResult']);
 Route::post('/extractPageContent', [ScrapeController::class, 'extractPageContent']);
 // Playground related routes
 
-Route::post('/hawki-rag/query', [HawkiRagProxyController::class, 'query']);
+Route::post('/query', [HawkiRagProxyController::class, 'query']);
 Route::get('/ingest/status', [IngestStatusController::class, 'show']);
 Route::post('/ingest/status/clear', [IngestStatusController::class, 'clear']);
 Route::get('/ingest/folders', [IngestController::class, 'folders']);

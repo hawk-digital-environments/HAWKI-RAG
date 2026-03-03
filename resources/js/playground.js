@@ -45,6 +45,7 @@ let lastIngestStatus = null;
 let lastLiveIngestions = [];
 let ingestStatusMode = 'default';
 const GRAPH_COLLECTION_NAME = 'graphCol';
+const basePath = import.meta.env.BASE_URL ?? '/';
 
 function badge(text) {
     const span = document.createElement('span');
@@ -198,7 +199,7 @@ form.addEventListener('submit', async (event) => {
 
     const startedAt = performance.now();
     try {
-        const response = await fetch('/hawki-rag/query', {
+        const response = await fetch(basePath + 'query', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -467,7 +468,7 @@ async function pollIngestStatus() {
 }
 
 async function fetchIngestLive(mode) {
-    const response = await fetch(`/ingest/live?mode=${mode}`, {
+    const response = await fetch(basePath + `ingest/live?mode=${mode}`, {
         headers: {
             'Accept': 'application/json',
             'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')},
@@ -525,7 +526,7 @@ async function pollIngestLive() {
 
 async function loadIngestFolders() {
     try {
-        const response = await fetch('/ingest/folders', {
+        const response = await fetch(basePath + 'ingest/folders', {
             headers: {
                 'Accept': 'application/json',
                 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
@@ -556,7 +557,7 @@ function renderFolderOptions(folders) {
     });
 }
 
-ingestBtn.addEventListener('click', async () => {
+ingestBtn.addEventListener('click', () => {
     const path = ingestFolder.value;
     if (!path) {
         ingestAction.textContent = 'Select a folder first.';
@@ -565,42 +566,46 @@ ingestBtn.addEventListener('click', async () => {
     const collectionName = ingestCollection.value.trim() || path.split('/').pop();
     ingestBtn.disabled = true;
     ingestAction.textContent = 'Starting ingest…';
-    try {
-        const batchValue = ingestBatchSize ? parseInt(ingestBatchSize.value, 10) : null;
-        const chunkCharsValue = ingestChunkChars ? parseInt(ingestChunkChars.value, 10) : null;
-        const response = await fetch('/ingest/start', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Accept': 'application/json',
-                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
-            },
-            body: JSON.stringify({
-                path,
-                collection: collectionName,
-                embedding_model: ingestEmbeddingModel ? ingestEmbeddingModel.value : undefined,
-                graph_model: ingestGraphModel ? ingestGraphModel.value : undefined,
-                batch: Number.isFinite(batchValue) && batchValue > 0 ? batchValue : undefined,
-                chunk_chars: Number.isFinite(chunkCharsValue) && chunkCharsValue > 0 ? chunkCharsValue : undefined,
-                graph: false,
-                resume_mode: ingestResumeMode ? ingestResumeMode.value : 'resume',
-            }),
-        });
-        const data = await response.json();
-        if (!response.ok || !data.ok) {
-            ingestAction.textContent = data.message || 'Failed to start ingest.';
+    // @yazdan: Event listeners should not be async functions, so we wrap the async work in an IIFE to allow use of await inside.
+    // This is why the browser crashed, you should do that for the other event listeners as well.
+    (async () => {
+         try {
+            const batchValue = ingestBatchSize ? parseInt(ingestBatchSize.value, 10) : null;
+            const chunkCharsValue = ingestChunkChars ? parseInt(ingestChunkChars.value, 10) : null;
+            const response = await fetch(basePath + 'ingest/start', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+                },
+                body: JSON.stringify({
+                    path,
+                    collection: collectionName,
+                    embedding_model: ingestEmbeddingModel ? ingestEmbeddingModel.value : undefined,
+                    graph_model: ingestGraphModel ? ingestGraphModel.value : undefined,
+                    batch: Number.isFinite(batchValue) && batchValue > 0 ? batchValue : undefined,
+                    chunk_chars: Number.isFinite(chunkCharsValue) && chunkCharsValue > 0 ? chunkCharsValue : undefined,
+                    graph: false,
+                    resume_mode: ingestResumeMode ? ingestResumeMode.value : 'resume',
+                }),
+            });
+            const data = await response.json();
+            if (!response.ok || !data.ok) {
+                ingestAction.textContent = data.message || 'Failed to start ingest.';
+                pushActivity('Ingest', ingestAction.textContent);
+            } else {
+                ingestStatusMode = 'default';
+                ingestAction.textContent = 'Ingest started. Monitor progress above.';
+                pushActivity('Ingest', `Started ingest for ${collectionName} · Graph collection: ${GRAPH_COLLECTION_NAME}`);
+            }
+        } catch (error) {
+            ingestAction.textContent = 'Failed to start ingest.';
             pushActivity('Ingest', ingestAction.textContent);
-        } else {
-            ingestStatusMode = 'default';
-            ingestAction.textContent = 'Ingest started. Monitor progress above.';
-            pushActivity('Ingest', `Started ingest for ${collectionName} · Graph collection: ${GRAPH_COLLECTION_NAME}`);
+        } finally {
+            ingestBtn.disabled = false;
         }
-    } catch (error) {
-        ingestAction.textContent = 'Failed to start ingest.';
-        pushActivity('Ingest', ingestAction.textContent);
-    } finally {
-        ingestBtn.disabled = false;
-    }
+    })();
 });
 
 ingestGraphOnlyBtn.addEventListener('click', async () => {
@@ -615,7 +620,7 @@ ingestGraphOnlyBtn.addEventListener('click', async () => {
     try {
         const batchValue = ingestBatchSize ? parseInt(ingestBatchSize.value, 10) : null;
         const chunkCharsValue = ingestChunkChars ? parseInt(ingestChunkChars.value, 10) : null;
-        const response = await fetch('/ingest/start', {
+        const response = await fetch(basePath + 'ingest/start', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -665,7 +670,7 @@ ingestStopBtn.addEventListener('click', async () => {
         } else if (lastIngestStatus && lastIngestStatus.pid) {
             stopPayload.pid = lastIngestStatus.pid;
         }
-        const response = await fetch('/ingest/stop', {
+        const response = await fetch(basePath + 'ingest/stop', {
             method: 'POST',
             credentials: 'same-origin',
             headers: {
@@ -708,7 +713,7 @@ ingestDeleteBtn.addEventListener('click', async () => {
     ingestDeleteBtn.disabled = true;
     ingestAction.textContent = 'Deleting folder…';
     try {
-        const response = await fetch('/ingest/delete', {
+        const response = await fetch(basePath + 'ingest/delete', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -758,7 +763,7 @@ if (neo4jClearBtn) {
         neo4jClearBtn.disabled = true;
         if (neo4jClearNote) neo4jClearNote.textContent = 'Clearing Neo4j graph…';
         try {
-            const response = await fetch('/rag/neo4j/clear', {
+            const response = await fetch(basePath + 'rag/neo4j/clear', {
                 method: 'POST',
                 headers: {
                     'Accept': 'application/json',
@@ -786,7 +791,7 @@ if (ingestClearBtn) {
     ingestClearBtn.addEventListener('click', async () => {
         ingestClearBtn.disabled = true;
         try {
-            await fetch('/ingest/status/clear?mode=all', {
+            await fetch(basePath + 'ingest/status/clear?mode=all', {
                 method: 'POST',
                 credentials: 'same-origin',
                 headers: {
@@ -816,7 +821,7 @@ if (activityClearBtn) {
 async function pollRagHealth() {
     if (!ragDetails) return;
     try {
-        const response = await fetch('/rag/health', {
+        const response = await fetch(basePath + 'rag/health', {
             headers: {
                 'Accept': 'application/json',
                 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')},
@@ -837,7 +842,7 @@ async function pollRagHealth() {
 
 async function pollRagStats() {
     try {
-        const response = await fetch('/rag/stats', {
+        const response = await fetch(basePath + 'rag/stats', {
             headers: {
                 'Accept': 'application/json',
                 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content') },

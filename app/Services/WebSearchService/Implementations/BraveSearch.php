@@ -2,7 +2,9 @@
 
 namespace App\Services\WebSearchService\Implementations;
 
+use App\Services\WebSearchService\Exception\WebSearchFailedException;
 use App\Services\WebSearchService\Interface\WebSearchInterface;
+use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use InvalidArgumentException;
@@ -23,27 +25,23 @@ class BraveSearch implements WebSearchInterface
         }
     }
 
+    public function getResponseSchema(JsonSchema $schema): array
+    {
+        // @todo Needs to be described using: https://api-dashboard.search.brave.com/api-reference/web/search/get
+        return [];
+    }
 
-
-    public function search(string $query, int $maxResults = 5): mixed
+    public function search(string $query, int $maxResults = 5): array
     {
         try{
-            $response = Http::timeout(20)
+            return Http::timeout(20)
                 ->withHeaders(['X-Subscription-Token' => $this->apiKey])
                 ->get($this->apiUrl, [
                     'q' => $query,
                     'count' => $maxResults,
-                ]);
-            return [
-                'success' => $response->successful(),
-                'results' => $response->json() ?? ['raw' => $response->body()],
-            ];
-        }
-        catch(ConnectionException $e){
-            return [
-                'success' => false,
-                'results' => 'Connection error: ' . $e->getMessage(),
-            ];
+                ])->json();
+        } catch(\Throwable $e){
+            throw new WebSearchFailedException('Connection error: ' . $e->getMessage(), $e);
         }
     }
 }

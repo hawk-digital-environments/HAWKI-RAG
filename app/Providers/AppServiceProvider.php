@@ -4,8 +4,9 @@ namespace App\Providers;
 
 use App\Services\StorageService\StorageService;
 use App\Services\StorageService\UrlGenerator;
+use App\Services\WebSearchService\Implementations\BraveSearch;
+use App\Services\WebSearchService\Implementations\TavilySearch;
 use App\Services\WebSearchService\Interface\WebSearchInterface;
-use App\Services\WebSearchService\WebSearchEngineFactory;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\ServiceProvider;
 
@@ -27,8 +28,13 @@ class AppServiceProvider extends ServiceProvider
         });
 
         $this->app->singleton(
-            WebSearchInterface::class, function ($app) {
-                return WebSearchEngineFactory::make();
+            WebSearchInterface::class,
+            fn() => match (config('web_search.default')) {
+                'brave' => new BraveSearch(),
+                'tavily' => new TavilySearch(),
+                default => throw new \InvalidArgumentException(
+                    'Invalid Default WebSearch Engine'
+                )
             }
         );
     }
@@ -38,6 +44,6 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        //
+        $this->app['url']->useOrigin($this->app['config']->get('app.url'));
     }
 }

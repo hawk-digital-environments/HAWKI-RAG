@@ -4,56 +4,61 @@ declare(strict_types=1);
 
 namespace App\Mcp\Tools;
 
+use App\Services\WebSearchService\Exception\WebSearchFailedException;
 use App\Services\WebSearchService\Interface\WebSearchInterface;
-use Illuminate\Support\Facades\Http;
-use Laravel\Mcp\Server\Tool;
-use Laravel\Mcp\Server\Tools\ToolInputSchema;
-use Laravel\Mcp\Server\Tools\ToolResult;
 
+use Illuminate\Contracts\JsonSchema\JsonSchema;
+use Laravel\Mcp\Request;
+use Laravel\Mcp\Response;
+use Laravel\Mcp\ResponseFactory;
+use Laravel\Mcp\Server\Attributes\Description;
+use Laravel\Mcp\Server\Attributes\Name;
+use Laravel\Mcp\Server\Tool;
+use Psr\Log\LoggerInterface;
+
+#[Name('web-search-tool')]
+#[Description('Run a web search via the configured provider (brave or tavily).')]
 class WebSearchTool extends Tool
 {
-
-    protected WebSearchInterface $webSearchService;
     public function __construct(
-        WebSearchInterface $webSearch
+        private readonly WebSearchInterface $webSearch
     )
     {
-        $this->webSearchService = $webSearch;
+
     }
 
-    public function name(): string
+    public function schema(JsonSchema $schema): array
     {
-        return 'web-search-tool';
+        return [
+            'query' => $schema->string()
+                ->description('A query string to search the web with'),
+            'max_results' => $schema->integer()
+                ->description('The maximum number of results to return'),
+        ];
     }
 
-    public function description(): string
+    public function outputSchema(JsonSchema $schema): array
     {
-        return 'Run a web search via the configured provider (brave or tavily).';
+        return $this->webSearch->getResponseSchema($schema);
     }
 
-    public function schema(ToolInputSchema $schema): ToolInputSchema
+    public function handle(Request $request, LoggerInterface $log): Response|ResponseFactory
     {
-        return $schema
-            ->string('query')->description('Search query')->required()
-            ->integer('max_results')->description('Max results to return');
-    }
+        ['query' => $query, 'max_results' => $maxResults] = [
+            'max_results' => 5,
+            ...$request->validate([
+                'query' => 'required|string',
+                'max_results' => 'integer|min:1|max:20'
+            ])
+        ];
 
-    public function handle(array $arguments): ToolResult
-    {
-        $query = trim((string) ($arguments['query'] ?? ''));
-        if ($query === '') {
-            return ToolResult::error('query is required');
+        try {
+            return Response::structured(
+                $this->webSearch->search($query, $maxResults)
+            );
+        } catch (WebSearchFailedException $e){
+            $log->error($e->getMessage(), ['exception' => $e]);
+            return Response::error(sprintf('Web search failed with error: %s', $e->getMessage()));
         }
-
-        $maxResults = (int) ($arguments['max_results'] ?? 5);
-        $maxResults = max(1, min(20, $maxResults));
-
-        $response = $this->webSearchService->search($query, $maxResults);
-
-        if (!$response['success']) {
-            return ToolResult::error(sprintf('Web Search failed (%s): %s', json_encode($response['results'])));
-        }
-
-        return ToolResult::json($response['results']);
     }
 }
