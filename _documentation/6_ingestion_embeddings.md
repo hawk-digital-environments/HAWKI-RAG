@@ -25,7 +25,7 @@ docker exec hawki_rag_bridge sh -lc "python /app/ingest/ingest_crawled.py \
 - Success looks like: bridge logs end with `INGEST_DONE`; Qdrant shows new collection named `<foldername>`.
 - Failure examples:
   - “Path must be within shared root” → ensure path starts with `/app/shared/`.
-  - “Connection refused” → check `hawki_rag_bridge` running (`docker ps`); rerun `make up-rag`.
+  - “Connection refused” → check `hawki_rag_bridge` running (`docker ps`); rerun `make up-core`.
 
 ## Monitoring ingest progress
 - View cached log: `docker exec hawki_rag_bridge tail -n 40 /var/www/storage/logs/ingest_progress_cache.log` (path matches Laravel volume).

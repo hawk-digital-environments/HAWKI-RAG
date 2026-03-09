@@ -13,7 +13,7 @@
 ## GPU not available
 - Symptom: compose complains about GPU devices.
 - Cause: no NVIDIA drivers or running on CPU-only machine.
-- Fix: `COMPOSE_PROFILES=cpu make up-core up-rag` to force CPU profile.
+- Fix: `COMPOSE_PROFILES=cpu make up-core` to force CPU profile.
 
 ## Ingest path rejected
 - Symptom: “Path must be within shared root.”
@@ -38,4 +38,4 @@
 ## Missing env variables
 - Symptom: services exit immediately.
 - Cause: `.env` incomplete.
-- Fix: compare `.env` with `.env.example`; fill required keys; rerun `make up-core up-rag`.
+- Fix: compare `.env` with `.env.example`; fill required keys; rerun `make up-core`.

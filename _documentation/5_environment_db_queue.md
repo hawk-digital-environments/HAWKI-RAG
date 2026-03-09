@@ -12,10 +12,10 @@
 - `OLLAMA_API_URL`: model host (`http://ollama:11434/api` or compose-specific host like `hawki_ollama`).
 - `OLLAMA_EMBED_MODEL`: embedding model used by current config defaults.
 - `GRAPH_OLLAMA_RAG_MODEL`: graph extraction model fallback/default.
-- Secrets to set: `APP_KEY`, DB passwords, RabbitMQ passwords.
+- Secrets to set: `APP_KEY`, DB/Neo4j passwords.
 
 ## Database setup
-1) Start containers (`make up-core up-rag`).
+1) Start containers (`make up-core`).
 2) Run migrations inside app container:
    - Command: `docker exec -it hawki_rag_app php artisan migrate`
    - What it does: creates Laravel tables.
@@ -30,7 +30,7 @@
   - Command: `docker exec -it hawki_rag_app php artisan queue:work`
   - Success: “Processing: …”.
   - Failure: table missing → run `php artisan queue:table && php artisan migrate`.
-- RabbitMQ is available but optional; change `.env` `QUEUE_CONNECTION` to `rabbitmq` only after configuring it.
+- RabbitMQ is not part of the default compose stack in this repository. Use `sync` or `database` queue drivers unless you wire an external RabbitMQ service.
 
 ## Why each command matters
 - `php artisan migrate`: without it, Laravel cannot store jobs/sessions used by the UI.

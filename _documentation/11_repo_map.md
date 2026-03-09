@@ -1,7 +1,7 @@
 # 11. Repository Map (What each folder/file is for)
 
 ## Root
-- `Makefile` — Helper targets (`up-core`, `up-rag`, `health`, ingest helper) using docker compose and container exec.
+- `Makefile` — Helper targets (`network`, `up-core`, `health`, `ingest`, logs/restart helpers) using docker compose and container exec.
 - `docker-compose.yml` — Defines all containers, networks, volumes; internal-only services (bridge, reranker, RAG API, DBs).
 - `Dockerfile` — Builds Laravel app image and Python RAG images (multi-stage).
 - `docker/` — Nginx config, Ollama build Dockerfile, supervisor configs.
@@ -35,7 +35,7 @@
 
 ## Volumes (from compose)
 - `rawki_shared_storage` — Shared files between Laravel and bridge (`storage/app/public` ↔ `/app/shared`).
-- `qdrant_data`, `neo4j_data`, `hawki_mariadb_data`, `rag_storage`, `ollama`, `rabbitmq_*` — Persist DB/model data.
+- `qdrant_data`, `neo4j_data`, `hawki_mariadb_data`, `rag_storage`, `ollama` — Persist DB/model data.
 
 ## Logs & statuses
 - Laravel logs: `storage/logs/laravel.log`.
