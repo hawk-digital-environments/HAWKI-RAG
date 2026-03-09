@@ -4,24 +4,50 @@ SHELL := /bin/bash
 
 COMPOSE_BIN ?= docker compose
 
-# Auto-detect GPU; allow override via COMPOSE_PROFILES=gpu|cpu
-COMPOSE_PROFILES ?= $(shell if command -v nvidia-smi >/dev/null 2>&1; then echo gpu; else echo cpu; fi)
+# Variables (override via `make VAR=value`)
+ENV_FILE ?= .env
+CRAWLED_ROOT ?= /app/shared
+
+HOST_OS := $(shell uname -s)
+
+# Select compose file by host OS; keep fallback to docker-compose.yml for older checkouts.
+ifeq ($(HOST_OS),Darwin)
+	ifneq ($(wildcard docker-compose.yml.mac),)
+		OPS_COMPOSE ?= docker-compose.yml.mac
+	else
+		OPS_COMPOSE ?= docker-compose.yml
+	endif
+	# macOS is CPU-only in this stack.
+	COMPOSE_PROFILES := cpu
+	PROFILE_MESSAGE := "macOS detected: forcing CPU profile."
+else
+	ifneq ($(wildcard docker-compose.yml.linux),)
+		OPS_COMPOSE ?= docker-compose.yml.linux
+	else
+		OPS_COMPOSE ?= docker-compose.yml
+	endif
+	# Auto-detect GPU on Linux; allow override via COMPOSE_PROFILES=gpu|cpu.
+	COMPOSE_PROFILES ?= $(shell if command -v nvidia-smi >/dev/null 2>&1; then echo gpu; else echo cpu; fi)
+endif
+
 ifeq ($(COMPOSE_PROFILES),cpu)
 	OLLAMA_SERVICE := ollama_cpu
 	OLLAMA_CONTAINER ?= hawki_ollama_cpu
-	PROFILE_MESSAGE := "CPU profile selected (no nvidia-smi)."
+	ifneq ($(HOST_OS),Darwin)
+		PROFILE_MESSAGE := "CPU profile selected (no nvidia-smi)."
+	endif
 else
 	OLLAMA_SERVICE := ollama_gpu
 	OLLAMA_CONTAINER ?= hawki_ollama_gpu
 	PROFILE_MESSAGE := "GPU profile selected."
 endif
 
-COMPOSE_CMD = COMPOSE_PROFILES=$(COMPOSE_PROFILES) $(COMPOSE_BIN)
-
-# Variables (override via `make VAR=value`)
-ENV_FILE ?= .env
-OPS_COMPOSE ?= docker-compose.yml
-CRAWLED_ROOT ?= /app/shared
+COMPOSE_ENV_PREFIX :=
+ifeq ($(HOST_OS),Darwin)
+	# Clear forced amd64 platform if inherited from shell; avoids wrong-platform pulls on Apple Silicon.
+	COMPOSE_ENV_PREFIX := DOCKER_DEFAULT_PLATFORM=
+endif
+COMPOSE_CMD = $(COMPOSE_ENV_PREFIX) COMPOSE_PROFILES=$(COMPOSE_PROFILES) $(COMPOSE_BIN) -f $(OPS_COMPOSE) --env-file $(ENV_FILE)
 
 
 .PHONY: network pull-core build-app up-core health pull-models ingest logs-core down-core down-rag restart-core test-services neo4j-fresh
@@ -44,8 +70,8 @@ build-app:
 
 up-core: network
 	@echo $(PROFILE_MESSAGE)
-	@echo "Launching full stack (profile: $(COMPOSE_PROFILES))..."
-	@$(COMPOSE_CMD) -f $(OPS_COMPOSE) --env-file $(ENV_FILE) up -d --build --remove-orphans
+	@echo "Launching full stack (compose: $(OPS_COMPOSE), profile: $(COMPOSE_PROFILES))..."
+	@$(COMPOSE_CMD) up -d --build --remove-orphans
 	@echo "Ensuring Ollama models are pulled..."
 	@for model in bge-m3 llama3.1:8b llama3.2:1b; do \
 		echo "Pulling $$model..."; \
@@ -105,25 +131,25 @@ ingest:
 
 logs-core:
 	@$(COMPOSE_CMD) logs -f qdrant mysql hawki_rag_nginx $(OLLAMA_SERVICE) hawki_rag_app
-	@docker compose -f $(OPS_COMPOSE) --env-file $(ENV_FILE) logs -f
+	@$(COMPOSE_CMD) logs -f
 
 down-core:
 	@$(COMPOSE_CMD) down
 
 down-rag:
-	@docker compose -f $(OPS_COMPOSE) --env-file $(ENV_FILE) down
+	@$(COMPOSE_CMD) down
 
 restart-core:
 	@echo $(PROFILE_MESSAGE)
 	@$(COMPOSE_CMD) up -d --force-recreate qdrant mysql hawki_rag_nginx $(OLLAMA_SERVICE) hawki_rag_app
-	@docker compose -f $(OPS_COMPOSE) --env-file $(ENV_FILE) up -d --force-recreate
+	@$(COMPOSE_CMD) up -d --force-recreate
 
 neo4j-fresh:
 	@echo "Stopping Neo4j service..."
-	@docker compose -f $(OPS_COMPOSE) --env-file $(ENV_FILE) stop neo4j >/dev/null 2>&1 || true
-	@docker compose -f $(OPS_COMPOSE) --env-file $(ENV_FILE) rm -f neo4j >/dev/null 2>&1 || true
+	@$(COMPOSE_CMD) stop neo4j >/dev/null 2>&1 || true
+	@$(COMPOSE_CMD) rm -f neo4j >/dev/null 2>&1 || true
 	@echo "Removing persisted Neo4j data (databases, transactions)..."
-	@docker compose -f $(OPS_COMPOSE) --env-file $(ENV_FILE) run --rm --entrypoint bash neo4j -lc 'rm -rf /data/databases/* /data/transactions/*' >/dev/null
+	@$(COMPOSE_CMD) run --rm --entrypoint bash neo4j -lc 'rm -rf /data/databases/* /data/transactions/*' >/dev/null
 	@echo "Starting Neo4j service..."
-	@docker compose -f $(OPS_COMPOSE) --env-file $(ENV_FILE) up -d neo4j >/dev/null
+	@$(COMPOSE_CMD) up -d neo4j >/dev/null
 	@echo "Neo4j store reset complete."
