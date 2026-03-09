@@ -21,29 +21,20 @@ COMPOSE_CMD = COMPOSE_PROFILES=$(COMPOSE_PROFILES) $(COMPOSE_BIN)
 # Variables (override via `make VAR=value`)
 ENV_FILE ?= .env
 OPS_COMPOSE ?= docker-compose.yml
-INGEST_BASE ?= http://hawki_rag_bridge:8000
-RERANK_BASE ?= http://hawki_rag_rerank:8000
 CRAWLED_ROOT ?= /app/shared
-MCP_BASE ?= http://localhost:8080/mcp/hawki_rag
-MCP_INGEST_ROOT ?= /absolute/path/to/crawled-data
-MCP_INGEST_PROVIDER ?= ollama
-MCP_INGEST_GRAPH ?= true
-MCP_INGEST_GRAPH_ENGINE ?= raganything
-MCP_INGEST_CHUNK_CHARS ?= 3200
-MCP_INGEST_CHUNK_OVERLAP ?= 100
-MCP_INGEST_BATCH ?= 64
-MCP_INGEST_TIMEOUT ?= 1800
-MCP_LIST_ROOT ?= /app/shared
 
-.PHONY: network pull-core build-app up-core up-rag health pull-models ingest logs-core logs-rag down-core down-rag restart-core restart-rag test-services neo4j-fresh
+
+.PHONY: network pull-core build-app up-core health pull-models ingest logs-core down-core down-rag restart-core test-services neo4j-fresh
 
 network:
-	@if docker network inspect hawki-network >/dev/null 2>&1; then \
-		echo "hawki-network already exists; skipping create"; \
-	else \
-		echo "Creating hawki-network..."; \
-		docker network create hawki-network; \
-	fi
+	@for net in hawki-network hosting_network; do \
+		if docker network inspect $$net >/dev/null 2>&1; then \
+			echo "$$net already exists; skipping create"; \
+		else \
+			echo "Creating $$net..."; \
+			docker network create $$net; \
+		fi; \
+	done
 
 pull-core:
 	@$(COMPOSE_CMD) pull nginx || true
@@ -51,20 +42,15 @@ pull-core:
 build-app:
 	@$(COMPOSE_CMD) build hawki_rag_app
 
-up-core: network pull-core build-app
+up-core: network
 	@echo $(PROFILE_MESSAGE)
-	@echo "Launching core stack (profile: $(COMPOSE_PROFILES))..."
-	@$(COMPOSE_CMD) up -d --build --remove-orphans qdrant mariadb hawki_rag_nginx $(OLLAMA_SERVICE) hawki_rag_app
-	@echo "Ensuring Ollama has bge-m3 model pulled..."
-	@docker exec $(OLLAMA_CONTAINER) ollama pull bge-m3 >/dev/null 2>&1 || true
-	@echo "Ensuring Ollama has llama3.1:8b model pulled..."
-	@docker exec $(OLLAMA_CONTAINER) ollama pull llama3.1:8b >/dev/null 2>&1 || true
-
-up-rag: network
-	@echo $(PROFILE_MESSAGE)
-	@$(COMPOSE_CMD) -f $(OPS_COMPOSE) --env-file $(ENV_FILE) up -d --build
-	@echo "Ensuring Ollama has llama3.2:1b model pulled..."
-	@docker exec $(OLLAMA_CONTAINER) ollama pull llama3.2:1b >/dev/null 2>&1 || true
+	@echo "Launching full stack (profile: $(COMPOSE_PROFILES))..."
+	@$(COMPOSE_CMD) -f $(OPS_COMPOSE) --env-file $(ENV_FILE) up -d --build --remove-orphans
+	@echo "Ensuring Ollama models are pulled..."
+	@for model in bge-m3 llama3.1:8b llama3.2:1b; do \
+		echo "Pulling $$model..."; \
+		docker exec $(OLLAMA_CONTAINER) ollama pull $$model >/dev/null 2>&1 || true; \
+	done
 	@docker network connect hawki-network hawki-toolkit-file-converter-file-converter-1 >/dev/null 2>&1 || true
 
 health:
@@ -119,8 +105,6 @@ ingest:
 
 logs-core:
 	@$(COMPOSE_CMD) logs -f qdrant mysql hawki_rag_nginx $(OLLAMA_SERVICE) hawki_rag_app
-
-logs-rag:
 	@docker compose -f $(OPS_COMPOSE) --env-file $(ENV_FILE) logs -f
 
 down-core:
@@ -132,9 +116,6 @@ down-rag:
 restart-core:
 	@echo $(PROFILE_MESSAGE)
 	@$(COMPOSE_CMD) up -d --force-recreate qdrant mysql hawki_rag_nginx $(OLLAMA_SERVICE) hawki_rag_app
-
-restart-rag:
-	@echo $(PROFILE_MESSAGE)
 	@docker compose -f $(OPS_COMPOSE) --env-file $(ENV_FILE) up -d --force-recreate
 
 neo4j-fresh:
