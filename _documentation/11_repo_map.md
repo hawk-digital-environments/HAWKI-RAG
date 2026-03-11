@@ -7,7 +7,8 @@
 - `docker-compose.yml.mac`, `docker-compose.yml.linux` — Legacy variants kept for reference; current Makefile flow uses `docker-compose.yml` + optional override.
 - `Dockerfile` — Multi-stage build for Python services: `python-rag` (bridge/API image) and `rerank` (local reranker).
 - `docker/` — Dockerfiles and runtime assets (`laravel.Dockerfile`, `ollama.Dockerfile`, `qdrant.Dockerfile`, entrypoint/nginx configs).
-- `_documentation/` — All docs (this file plus 1–10).
+- `_documentation/` — All docs (this file plus 1–12).
+- `_documentation/12_ragsearcher_triplets_update.md` — Detailed contract/runtime notes for the triplets-aware RagSearcher update.
 - `.env.example` — Template for runtime configuration.
 - `composer.json`, `package.json` — PHP/JS dependencies.
 
