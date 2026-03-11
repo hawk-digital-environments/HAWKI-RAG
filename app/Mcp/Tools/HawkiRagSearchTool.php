@@ -59,13 +59,14 @@ class HawkiRagSearchTool extends Tool
         LoggerInterface $log
     ): ResponseFactory|Response
     {
-        ['query' => $query, 'top_k' => $topK] = [
-            'top_k' => 5,
-            ...$request->validate([
-                'query' => 'required|string',
-                'top_k' => 'integer|min:1|max:50',
-            ])
-        ];
+        $validated = $request->validate([
+            'query' => 'required|string',
+            'top_k' => 'integer|min:1|max:50',
+        ]);
+
+        $query = $validated['query'];
+        // Validation gives us a numeric string; cast to int to satisfy the strict signature.
+        $topK = isset($validated['top_k']) ? (int) $validated['top_k'] : 5;
 
         try {
             $response = $this->searcher
