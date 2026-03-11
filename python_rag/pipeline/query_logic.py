@@ -99,7 +99,8 @@ def query_documents(body: Any, *, rag_service: Any, get_provider) -> Dict[str, A
     timings["qdrant_ms"] = (time.perf_counter() - t_qdrant_start) * 1000
     logger.info("query:qdrant hits=%s ms=%.2f", len(hits), timings["qdrant_ms"])
 
-    struct_hops = structural_hops()
+    # Prefer client-provided structural_hops when set; otherwise fall back to env default.
+    struct_hops = body.structural_hops if getattr(body, "structural_hops", None) is not None else structural_hops()
     t_graph_start = time.perf_counter()
     structural_hits = [] if body.fast_mode or struct_hops == 0 else build_structural_hits(
         query_terms,
@@ -113,7 +114,8 @@ def query_documents(body: Any, *, rag_service: Any, get_provider) -> Dict[str, A
     sem_weight = float(os.environ.get("RAG_FUSION_SEM_WEIGHT", "0.6"))
     str_weight = float(os.environ.get("RAG_FUSION_STR_WEIGHT", "0.4"))
     hits = _fuse_hits(hits, structural_hits, sem_weight=sem_weight, str_weight=str_weight)
-    hits = [h for h in hits if (h.get("payload") or {}).get("component_type") in (None, "", "chunk")]
+    # Keep graph relation hits (component_type 'relation') so Neo4j triplets can surface when semantic hits are sparse.
+    hits = [h for h in hits if (h.get("payload") or {}).get("component_type") in (None, "", "chunk", "relation")]
     t_rerank_start = time.perf_counter()
     hits = rag_service.rerank_hits(
         hits=hits,
