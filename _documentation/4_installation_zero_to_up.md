@@ -16,7 +16,7 @@ Audience: never used terminal, Laravel, or RAG. Follow in order.
 ## Step 2 - Get the code
 - Command: `git clone <repo-url> && cd RAWKI`
 - What it does: downloads project; enters folder.
-- Success: `ls` shows files like `Makefile`, `docker-compose.yml`.
+- Success: `ls` shows files like `Makefile`, `docker-compose.yml`, `docker-compose-gpu-override.yml`.
 - Failure: "permission denied" -> fix folder permissions; "git: command not found" -> install git.
 
 ## Step 3 - Create env file
@@ -39,9 +39,13 @@ Open `.env` in an editor and set:
 
 ## Step 6 - Start services
 - Command: `make up-core`
-- What it does: starts the full compose stack with auto GPU/CPU profile and pulls required Ollama models.
-- Success: `docker ps` shows containers like `hawki_rag_app`, `hawki_rag_nginx`, `hawki_qdrant`, `hawki_rag_bridge`, `hawki_rag_rerank`, `hawki_rag_neo4j`, `hawki_ollama_*`, `mariadb`.
-- Failure: missing env vars -> recheck `.env`; GPU errors -> set `COMPOSE_PROFILES=cpu make up-core`; port conflict (8080 or 3306) -> stop other services or change ports in compose.
+- What it does:
+  - Uses `docker-compose.yml` as the base file.
+  - Linux: auto-enables `docker-compose-gpu-override.yml` when `nvidia-smi` is available.
+  - macOS/non-Linux: stays in CPU mode by default.
+  - Pulls Ollama models `bge-m3`, `llama3.1:8b`, `llama3.2:1b`.
+- Success: `docker ps` shows containers like `hawki_rag_app`, `hawki_qdrant`, `hawki_rag_bridge`, `hawki_rag_rerank`, `hawki_rag_neo4j`, `hawki_ollama`, `mariadb`, `phpmyadmin`.
+- Failure: missing env vars -> recheck `.env`; GPU errors on Linux -> install NVIDIA runtime or run `USE_OLLAMA_GPU=0 make up-core`; port conflict (3306 or 8004) -> stop other services or change ports in compose.
 
 ## Step 7 - Health check everything
 - Command: `make health`

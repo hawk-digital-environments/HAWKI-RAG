@@ -1,19 +1,21 @@
 # 9. Troubleshooting (Symptoms → Cause → Fix)
 
-## Port already in use (8080, 3306)
+## Port already in use (3306, 8004)
 - Symptom: `bind: address already in use` on `make up-core`.
 - Cause: another service on that port.
-- Fix: stop other service or change port mapping in `docker-compose.yml` and `.env`.
+- Fix: stop other service or change port mapping in `docker-compose.yml` (and `.env` if needed).
 
 ## Models download slowly or fail
 - Symptom: Ollama pulls hang; health check fails for Ollama.
 - Cause: network slow or down.
-- Fix: `docker exec hawki_ollama_gpu ollama pull bge-m3` manually; retry later.
+- Fix: pull manually in the running Ollama container (`hawki_ollama`), e.g. `docker exec hawki_ollama ollama pull bge-m3`; retry later.
 
 ## GPU not available
 - Symptom: compose complains about GPU devices.
 - Cause: no NVIDIA drivers or running on CPU-only machine.
-- Fix: `COMPOSE_PROFILES=cpu make up-core` to force CPU profile.
+- Fix:
+  - macOS: expected (stack is CPU-only by default).
+  - Linux: install NVIDIA driver + `nvidia-container-toolkit`, or force CPU mode: `USE_OLLAMA_GPU=0 make up-core`.
 
 ## Ingest path rejected
 - Symptom: “Path must be within shared root.”
@@ -23,7 +25,7 @@
 ## RAG API health fails (502)
 - Symptom: `make health` warns or UI shows 502.
 - Cause: `raganything_api_gpu` down or wrong URL.
-- Fix: `docker logs raganything_api_gpu`; ensure `.env` points to the RAG API with `HAWKI_RAG_API_URL` (commonly `http://raganything_api_gpu:8003` in this repo); restart container.
+- Fix: `docker logs raganything_api_gpu`; ensure `.env` points to the RAG API with `HAWKI_RAG_API_URL` (commonly `http://raganything_api_gpu:8003`), and ensure GPU profile is enabled when this service is needed.
 
 ## Database auth errors
 - Symptom: SQLSTATE[HY000] during `php artisan migrate`.

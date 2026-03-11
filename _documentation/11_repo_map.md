@@ -2,9 +2,11 @@
 
 ## Root
 - `Makefile` — Helper targets (`network`, `up-core`, `health`, `ingest`, logs/restart helpers) using docker compose and container exec.
-- `docker-compose.yml` — Defines all containers, networks, volumes; internal-only services (bridge, reranker, RAG API, DBs).
-- `Dockerfile` — Builds Laravel app image and Python RAG images (multi-stage).
-- `docker/` — Nginx config, Ollama build Dockerfile, supervisor configs.
+- `docker-compose.yml` — Base compose (CPU-safe default stack, including `ollama`).
+- `docker-compose-gpu-override.yml` — Optional NVIDIA override for `ollama` (used when GPU mode is enabled).
+- `docker-compose.yml.mac`, `docker-compose.yml.linux` — Legacy variants kept for reference; current Makefile flow uses `docker-compose.yml` + optional override.
+- `Dockerfile` — Multi-stage build for Python services: `python-rag` (bridge/API image) and `rerank` (local reranker).
+- `docker/` — Dockerfiles and runtime assets (`laravel.Dockerfile`, `ollama.Dockerfile`, `qdrant.Dockerfile`, entrypoint/nginx configs).
 - `_documentation/` — All docs (this file plus 1–10).
 - `.env.example` — Template for runtime configuration.
 - `composer.json`, `package.json` — PHP/JS dependencies.
@@ -31,7 +33,7 @@
 
 ## Assets and build
 - `resources/` — Laravel views/assets (standard).
-- `public/` — Public web root (served by Nginx).
+- `public/` — Laravel public web root (served by the app web stack / external reverse proxy).
 
 ## Volumes (from compose)
 - `rawki_shared_storage` — Shared files between Laravel and bridge (`storage/app/public` ↔ `/app/shared`).

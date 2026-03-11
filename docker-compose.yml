@@ -1,9 +1,4 @@
 x-ollama-base: &ollama_base
-  build:
-    context: .
-    dockerfile: docker/ollama.Dockerfile
-  image: hawki-ollama:cuda
-  pull_policy: never
   volumes:
     - ollama:/root/.ollama
     - ./scripts/gpu_guard.sh:/usr/local/bin/gpu_guard.sh:ro
@@ -25,15 +20,11 @@ x-ollama-base: &ollama_base
     retries: 10
     start_period: 20s
 
-x-gpu: &gpu
-  gpus: all
-
 services:
   # -------------------------------------------------
   # Laravel Application
   # -------------------------------------------------
   hawki_rag_app:
-    <<: *gpu
     build:
       context: .
       dockerfile: docker/laravel.Dockerfile
@@ -107,7 +98,6 @@ services:
   # Qdrant Vector DB
   # -------------------------------------------------
   qdrant:
-    <<: *gpu
     build:
       context: .
       dockerfile: docker/qdrant.Dockerfile
@@ -130,7 +120,6 @@ services:
   # Neo4j Graph DB
   # -------------------------------------------------
   hawki_rag_neo4j:
-    <<: *gpu
     image: neo4j:5.22
     container_name: hawki_rag_neo4j
     environment:
@@ -149,7 +138,6 @@ services:
   # Cohere-compatible reranker (used by HAWKI RAG)
   # -------------------------------------------------
   hawki_rag_rerank:
-    <<: *gpu
     build:
       context: .
       dockerfile: Dockerfile
@@ -169,7 +157,6 @@ services:
   # FastAPI bridge (Python RAG API)
   # -------------------------------------------------
   hawki_rag_bridge:
-    <<: *gpu
     build:
       context: .
       dockerfile: Dockerfile
@@ -196,18 +183,18 @@ services:
     restart: unless-stopped
 
   # -------------------------------------------------
-  # Ollama (CPU)
+  # Ollama
   # -------------------------------------------------
-  ollama_cpu:
-    <<: [*ollama_base, *gpu]
-    container_name: hawki_ollama_cpu
-    profiles: ["cpu"]
+  ollama:
+    <<: *ollama_base
+    image: ollama/ollama:latest
+    pull_policy: always
+    container_name: hawki_ollama
 
   # -------------------------------------------------
   # RAG-Anything API (GPU)
   # -------------------------------------------------
   raganything_api_gpu:
-    <<: *gpu
     image: hawki-rag-python:local
     pull_policy: never
     container_name: raganything_api_gpu
@@ -216,7 +203,7 @@ services:
       - ./.env
     environment:
       RAG_WORKING_DIR: /app/rag_storage
-      OLLAMA_URL: http://ollama_gpu:11434
+      OLLAMA_URL: http://ollama:11434
       QDRANT_URL: http://qdrant:6333
       NEO4J_URI: bolt://hawki_rag_neo4j:7687
       NEO4J_USER: ${NEO4J_USER}
@@ -228,31 +215,10 @@ services:
       - ./scripts/gpu_guard.sh:/usr/local/bin/gpu_guard.sh:ro
     command: ["/usr/local/bin/gpu_guard.sh", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8003"]
     depends_on:
-      - ollama_gpu
+      - ollama
       - qdrant
       - hawki_rag_neo4j
     restart: unless-stopped
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities:
-                - gpu
-
-  # -------------------------------------------------
-  # Ollama (GPU)
-  # -------------------------------------------------
-  ollama_gpu:
-    <<: [*ollama_base, *gpu]
-    container_name: hawki_ollama_gpu
-    profiles: ["gpu"]
-    environment:
-      OLLAMA_NUM_GPU: ${OLLAMA_NUM_GPU:-1}
-      OLLAMA_GPU_LAYERS: ${OLLAMA_GPU_LAYERS:-999}
-      OLLAMA_LLM_LIBRARY: cuda
-      OLLAMA_MMAP: "false"
     deploy:
       resources:
         reservations:

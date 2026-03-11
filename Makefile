@@ -10,36 +10,31 @@ CRAWLED_ROOT ?= /app/shared
 
 HOST_OS := $(shell uname -s)
 
-# Select compose file by host OS; keep fallback to docker-compose.yml for older checkouts.
-ifeq ($(HOST_OS),Darwin)
-	ifneq ($(wildcard docker-compose.yml.mac),)
-		OPS_COMPOSE ?= docker-compose.yml.mac
+BASE_COMPOSE_FILE ?= docker-compose.yml
+GPU_OVERRIDE_COMPOSE ?= docker-compose-gpu-override.yml
+COMPOSE_FILE_SEP ?= :
+# USE_OLLAMA_GPU: auto (default), 1 (force GPU override), 0 (force CPU mode)
+USE_OLLAMA_GPU ?= auto
+COMPOSE_PROFILES ?=
+
+ifeq ($(USE_OLLAMA_GPU),auto)
+	ifeq ($(HOST_OS),Linux)
+		USE_OLLAMA_GPU := $(shell if command -v nvidia-smi >/dev/null 2>&1; then echo 1; else echo 0; fi)
 	else
-		OPS_COMPOSE ?= docker-compose.yml
+		USE_OLLAMA_GPU := 0
 	endif
-	# macOS is CPU-only in this stack.
-	COMPOSE_PROFILES := cpu
-	PROFILE_MESSAGE := "macOS detected: forcing CPU profile."
-else
-	ifneq ($(wildcard docker-compose.yml.linux),)
-		OPS_COMPOSE ?= docker-compose.yml.linux
-	else
-		OPS_COMPOSE ?= docker-compose.yml
-	endif
-	# Auto-detect GPU on Linux; allow override via COMPOSE_PROFILES=gpu|cpu.
-	COMPOSE_PROFILES ?= $(shell if command -v nvidia-smi >/dev/null 2>&1; then echo gpu; else echo cpu; fi)
 endif
 
-ifeq ($(COMPOSE_PROFILES),cpu)
-	OLLAMA_SERVICE := ollama_cpu
-	OLLAMA_CONTAINER ?= hawki_ollama_cpu
-	ifneq ($(HOST_OS),Darwin)
-		PROFILE_MESSAGE := "CPU profile selected (no nvidia-smi)."
-	endif
+OLLAMA_SERVICE := ollama
+OLLAMA_CONTAINER ?= hawki_ollama
+
+COMPOSE_FILE_LIST := $(BASE_COMPOSE_FILE)
+
+ifeq ($(USE_OLLAMA_GPU),1)
+	COMPOSE_FILE_LIST := $(COMPOSE_FILE_LIST)$(COMPOSE_FILE_SEP)$(GPU_OVERRIDE_COMPOSE)
+	PROFILE_MESSAGE := "Ollama GPU override enabled."
 else
-	OLLAMA_SERVICE := ollama_gpu
-	OLLAMA_CONTAINER ?= hawki_ollama_gpu
-	PROFILE_MESSAGE := "GPU profile selected."
+	PROFILE_MESSAGE := "Ollama CPU mode."
 endif
 
 COMPOSE_ENV_PREFIX :=
@@ -47,7 +42,12 @@ ifeq ($(HOST_OS),Darwin)
 	# Clear forced amd64 platform if inherited from shell; avoids wrong-platform pulls on Apple Silicon.
 	COMPOSE_ENV_PREFIX := DOCKER_DEFAULT_PLATFORM=
 endif
-COMPOSE_CMD = $(COMPOSE_ENV_PREFIX) COMPOSE_PROFILES=$(COMPOSE_PROFILES) $(COMPOSE_BIN) -f $(OPS_COMPOSE) --env-file $(ENV_FILE)
+COMPOSE_PROFILE_PREFIX :=
+ifneq ($(strip $(COMPOSE_PROFILES)),)
+	COMPOSE_PROFILE_PREFIX := COMPOSE_PROFILES=$(COMPOSE_PROFILES)
+endif
+COMPOSE_FILE_PREFIX := COMPOSE_FILE=$(COMPOSE_FILE_LIST)
+COMPOSE_CMD = $(COMPOSE_ENV_PREFIX) $(COMPOSE_FILE_PREFIX) $(COMPOSE_PROFILE_PREFIX) $(COMPOSE_BIN) --env-file $(ENV_FILE)
 
 
 .PHONY: network pull-core build-app up-core health pull-models ingest logs-core down-core down-rag restart-core test-services neo4j-fresh
@@ -70,7 +70,7 @@ build-app:
 
 up-core: network
 	@echo $(PROFILE_MESSAGE)
-	@echo "Launching full stack (compose: $(OPS_COMPOSE), profile: $(COMPOSE_PROFILES))..."
+	@echo "Launching full stack (COMPOSE_FILE=$(COMPOSE_FILE_LIST), profiles: $(if $(strip $(COMPOSE_PROFILES)),$(COMPOSE_PROFILES),none))..."
 	@$(COMPOSE_CMD) up -d --build --remove-orphans
 	@echo "Ensuring Ollama models are pulled..."
 	@for model in bge-m3 llama3.1:8b llama3.2:1b; do \

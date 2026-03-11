@@ -1,0 +1,25 @@
+# ============================================================================
+# NVIDIA GPU OVERRIDE (Adds GPU acceleration to base docker-compose.yml)
+# ============================================================================
+# This override file adds NVIDIA GPU support to the CPU-only base configuration.
+# ============================================================================
+
+services:
+  ollama:
+    build:
+      context: .
+      dockerfile: docker/ollama.Dockerfile
+    image: hawki-ollama:cuda
+    pull_policy: never
+    environment:
+      OLLAMA_NUM_GPU: ${OLLAMA_NUM_GPU:-1}
+      OLLAMA_GPU_LAYERS: ${OLLAMA_GPU_LAYERS:-999}
+      OLLAMA_LLM_LIBRARY: cuda
+      OLLAMA_MMAP: "false"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [ gpu ]

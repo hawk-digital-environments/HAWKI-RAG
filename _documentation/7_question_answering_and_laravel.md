@@ -1,8 +1,8 @@
 # 7. Question Answering Flow & Laravel Internals
 
 ## End-to-end answer flow
-1) User asks a question in the web UI (Nginx → Laravel).
-2) Laravel sends the question to RAG API (`raganything_api_gpu:8003` inside network).
+1) User asks a question in the web UI (request reaches Laravel directly or through an external reverse proxy).
+2) Laravel sends the question to `HAWKI_RAG_API_URL` (commonly `raganything_api_gpu:8003` on GPU profile).
 3) RAG API retrieves top chunks from Qdrant, optionally reranks via `hawki_rag_rerank`.
 4) RAG API calls Ollama model (`llama3.1:8b`) to write an answer using those chunks.
 5) Answer returns to Laravel and is shown to the user.
@@ -30,4 +30,3 @@
 - `php artisan queue:work` — process queued jobs if used.
 - `php artisan config:clear` — reload env after changes.
 - Success: command exits 0 and prints action; Failure: check message, usually missing DB or APP_KEY.
-

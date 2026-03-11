@@ -7,7 +7,8 @@
 - GPU (optional): NVIDIA with CUDA for faster rerank/model inference; verify with `nvidia-smi`.
 
 ## Network & Ports
-- Ensure these host ports are free: 8080 (nginx/UI), 8004 (optional crawler), 11434 (Ollama if exposed), 3306 (MariaDB). RAG services (bridge, reranker, RAG API, Qdrant, Neo4j) stay on the internal Docker network by default and do not bind to host ports.
+- Ensure these host ports are free: 3306 (MariaDB) and 8004 (phpMyAdmin; configurable via `PHPMYADMIN_PORT`).
+- RAG services (bridge, reranker, RAG API, Qdrant, Neo4j, Ollama) stay on the internal Docker network by default and do not bind to host ports.
 - Stable broadband for pulling Docker images and Ollama models.
 
 ## Common Software (all platforms)
@@ -19,11 +20,18 @@
 - Install Docker Engine + Compose plugin; add user to `docker` group.
 - `sudo apt install make curl python3 jq` (or `yum/dnf` equivalents).
 - For GPU: install NVIDIA driver + `nvidia-container-toolkit`; test with `nvidia-smi`.
+- Compose behavior:
+  - Base file is `docker-compose.yml`.
+  - `make up-core` auto-enables `docker-compose-gpu-override.yml` when `nvidia-smi` is available (`USE_OLLAMA_GPU=auto`).
+  - For CPU-only runs, use `USE_OLLAMA_GPU=0 make up-core`.
 
 ## macOS
 - Works on Apple Silicon or Intel.
-- Install: `brew install docker docker-compose make coreutils jq`.
-- Docker Desktop: enable Rosetta for x86 images if using Intel-based images on ARM.
+- Install Docker Desktop plus: `brew install make coreutils jq`.
+- Compose behavior:
+  - Base file is `docker-compose.yml`.
+  - Makefile uses CPU mode by default (`USE_OLLAMA_GPU=0` on non-Linux hosts).
+  - `ollama` uses `ollama/ollama:latest` unless GPU override is explicitly enabled.
 - Start Docker Desktop before running any Make targets.
 
 ## Windows
