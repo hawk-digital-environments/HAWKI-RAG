@@ -25,26 +25,18 @@ The query path is:
 - `query`: required string.
 - `top_k`: optional integer in `[1, 50]`.
 - Missing `top_k` defaults to `5`.
-- `top_k` is explicitly cast to `int` before calling strict service method `withTopK(int)`.
-
-This guarantees type consistency at the PHP service boundary.
-
-### RAG request payload (`RagSearcher::execute`)
-
-Current payload defaults:
-
-- `fast_mode = false`
-- `smart_lookup = true`
-- `structural_hops = null` and then removed by `array_filter` before request dispatch
-
-Operational effect:
-
-- graph traversal is not force-disabled by client defaults,
-- backend structural depth is controlled by service defaults/environment unless explicitly provided.
 
 ## Output contract
 
-`RagSearcher::filterResponse()` returns:
+### Response shape
+
+`RagSearcher::filterResponse()` always returns this top-level structure:
+
+| Key | Type | Purpose |
+|---|---|---|
+| `results` | array | Ranked result items (semantic chunks and/or relation hits). |
+| `kg` | array | Normalized relation triples for graph-aware consumers. |
+| `rewrite_terms` | array | Query rewrite/entity terms derived by backend logic. |
 
 ```json
 {
@@ -58,67 +50,28 @@ Operational effect:
 
 Each item can represent a semantic chunk or a graph relation.
 
-Possible fields:
+| Semantic-oriented fields | Relation-oriented fields | Shared/typing fields |
+|---|---|---|
+| `metadata.language` | `subject` | `component_type` |
+| `metadata.title` | `relation` | `content` |
+| `metadata.url` | `object` | `metadata.collection` |
+| `metadata.timestamp` |  | `metadata.tags` |
 
-- `metadata.language`
-- `metadata.title`
-- `metadata.url`
-- `metadata.timestamp`
-- `metadata.tags`
-- `metadata.collection`
-- `content`
-- `component_type`
-- `subject`
-- `relation`
-- `object`
+!!! note "Interpretation rule"
+    `component_type = relation` indicates a relation/triplet-oriented hit.
 
-Interpretation rule:
+### `kg[]` and `rewrite_terms[]`
 
-- `component_type = relation` indicates relation/triplet-oriented hit.
+Both fields are optional metadata arrays returned with `results[]`.
 
-### `kg[]`
-
-Top-level relation facts, each requiring all three fields:
-
-- `subject`
-- `relation`
-- `object`
-
-Incomplete facts are excluded during normalization.
-
-### `rewrite_terms[]`
-
-Derived from backend query rewrite entity terms.
-Normalization procedure:
-
-- accept string values only,
-- trim empty values,
-- deduplicate,
-- reindex array.
-
-## Backend retrieval semantics (`query_logic.py`)
-
-### Structural hops precedence
-
-Current precedence:
-
-1. use `body.structural_hops` if present,
-2. otherwise use backend default via `structural_hops()`.
-
-### Relation-hit retention rule
-
-Allowed `component_type` values in post-fusion filtering:
-
-- `None`
-- `""`
-- `"chunk"`
-- `"relation"`
-
-This allows graph-derived relation hits to continue into rerank and final output.
+| Field | Structure | Purpose | Empty state |
+|---|---|---|---|
+| `kg[]` | triple items: `subject`, `relation`, `object` | Graph relation facts | `kg: []` when no valid relation facts exist |
+| `rewrite_terms[]` | string items | Query expansion/debug metadata | `rewrite_terms: []` when no terms are produced |
 
 ## Contract delta summary
 
-| Dimension | Previous behavior | Current behavior |
+| Dimension | Only Qdrant | Qdrant + Neo4j |
 | --- | --- | --- |
 | Retrieval mode default | `fast_mode=true` | `fast_mode=false` |
 | Graph lookup default | `smart_lookup=false` | `smart_lookup=true` |
@@ -166,17 +119,3 @@ This allows graph-derived relation hits to continue into rerank and final output
   ]
 }
 ```
-
-## Verification protocol
-
-1. Execute a graph-oriented query through MCP tool.
-2. Confirm `response.results` exists.
-3. Confirm top-level `response.kg` exists.
-4. Confirm at least one relation item can appear with `component_type = relation`.
-5. Confirm `rewrite_terms` contains unique non-empty strings.
-
-## Implementation constraints
-
-- PHP `array_filter` removes null/empty values; field presence in `results` is sparse by design.
-- `kg` includes only complete triples.
-- `rewrite_terms` can be empty when rewrite yields no entity terms.

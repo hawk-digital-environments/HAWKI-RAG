@@ -1,0 +1,110 @@
+:root {
+  --hawki-hero-grad: linear-gradient(135deg, #005f73 0%, #0a9396 48%, #94d2bd 100%);
+  --hawki-card-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+  --hawki-card-shadow-hover: 0 14px 34px rgba(0, 0, 0, 0.16);
+}
+
+[data-md-color-scheme="slate"] {
+  --hawki-hero-grad: linear-gradient(135deg, #0b3d52 0%, #005f73 44%, #0a9396 100%);
+  --hawki-card-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+  --hawki-card-shadow-hover: 0 14px 34px rgba(0, 0, 0, 0.4);
+}
+
+.md-header {
+  background: linear-gradient(90deg, #005f73 0%, #0a9396 100%);
+}
+
+.md-typeset .hero {
+  margin: 0.6rem 0 1.5rem;
+  padding: 1.2rem 1.1rem;
+  border-radius: 0.9rem;
+  background: var(--hawki-hero-grad);
+  color: #f8fafc;
+  box-shadow: var(--hawki-card-shadow);
+}
+
+.md-typeset .hero p {
+  margin-top: 0;
+}
+
+.md-typeset .hero .md-button {
+  margin-right: 0.4rem;
+}
+
+.md-typeset .hero .md-button--primary {
+  background-color: #001219;
+  border-color: #001219;
+}
+
+.md-typeset .grid.cards > ul > li {
+  border-radius: 0.9rem;
+  box-shadow: var(--hawki-card-shadow);
+  transition: transform 160ms ease, box-shadow 160ms ease;
+}
+
+.md-typeset .grid.cards > ul > li:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--hawki-card-shadow-hover);
+}
+
+.md-typeset .highlight pre {
+  border-radius: 0.85rem;
+  border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+}
+
+.md-typeset code {
+  border-radius: 0.35rem;
+}
+
+.md-typeset table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+  border-radius: 0.9rem;
+  overflow: hidden;
+  box-shadow: var(--hawki-card-shadow);
+}
+
+.md-typeset table thead {
+  background: linear-gradient(90deg, #005f73 0%, #0a9396 100%);
+}
+
+[data-md-color-scheme="slate"] .md-typeset table thead {
+  background: linear-gradient(90deg, #0b3d52 0%, #005f73 100%);
+}
+
+.md-typeset table th {
+  color: #f8fafc;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.md-typeset table th,
+.md-typeset table td {
+  padding: 0.72rem 0.85rem;
+  vertical-align: top;
+  border-bottom: 1px solid color-mix(in srgb, currentColor 12%, transparent);
+}
+
+.md-typeset table tr:nth-child(even) td {
+  background-color: color-mix(in srgb, currentColor 3%, transparent);
+}
+
+.md-typeset table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.md-typeset .mermaid {
+  margin: 1rem 0 1.2rem;
+  padding: 0.9rem;
+  font-size: 1rem;
+  border-radius: 0.95rem;
+  border: 1px solid color-mix(in srgb, currentColor 16%, transparent);
+  background: linear-gradient(180deg, rgba(10, 147, 150, 0.05), rgba(0, 18, 25, 0.02));
+  box-shadow: var(--hawki-card-shadow);
+}
+
+[data-md-color-scheme="slate"] .md-typeset .mermaid {
+  background: linear-gradient(180deg, rgba(10, 147, 150, 0.14), rgba(0, 18, 25, 0.22));
+}

@@ -7,18 +7,23 @@
 - GPU (optional): NVIDIA with CUDA for faster rerank/model inference; verify with `nvidia-smi`.
 
 ## Network & Ports
-- Ensure these host ports are free: 3306 (MariaDB) and 8004 (phpMyAdmin; configurable via `PHPMYADMIN_PORT`).
-- RAG services (bridge, reranker, RAG API, Qdrant, Neo4j, Ollama) stay on the internal Docker network by default and do not bind to host ports.
-- Stable broadband for pulling Docker images and Ollama models.
+- Ensure these host ports are free: 3306 (MariaDB) and `PHPMYADMIN_PORT` for phpMyAdmin (default is 8005 in this repo; Compose fallback is 8004 if unset).
+- RAG services (bridge, reranker, RAG API, Qdrant, Neo4j, Ollama) stay on the internal Docker network by default and do not bind host ports.
 
 ## Common Software (all platforms)
 - Docker Engine + Compose v2 (Docker Desktop acceptable).
-- `make`, `curl`, `python3`.
-- Optional: `jq` for pretty JSON; `nvidia-container-toolkit` for GPU.
+- `make`.
+- Optional: `nvidia-container-toolkit` for GPU.
+
+## Install `make` (quick)
+- Linux (Debian/Ubuntu): `sudo apt update && sudo apt install -y make`
+- Linux (RHEL/CentOS/Fedora): `sudo yum install -y make` or `sudo dnf install -y make`
+- macOS: `xcode-select --install` (includes `make`) or `brew install make`
+- Windows (WSL2 Ubuntu): `sudo apt update && sudo apt install -y make`
 
 ## Linux (Debian/Ubuntu/CentOS)
 - Install Docker Engine + Compose plugin; add user to `docker` group.
-- `sudo apt install make curl python3 jq` (or `yum/dnf` equivalents).
+- Install `make` (see commands above).
 - For GPU: install NVIDIA driver + `nvidia-container-toolkit`; test with `nvidia-smi`.
 - Compose behavior:
   - Base file is `docker-compose.yml`.
@@ -27,24 +32,21 @@
 
 ## macOS
 - Works on Apple Silicon or Intel.
-- Install Docker Desktop plus: `brew install make coreutils jq`.
+- Install Docker Desktop and ensure `make` is installed (see commands above).
 - Compose behavior:
-  - Base file is `docker-compose.yml`.
   - Makefile uses CPU mode by default (`USE_OLLAMA_GPU=0` on non-Linux hosts).
   - `ollama` uses `ollama/ollama:latest` unless GPU override is explicitly enabled.
 - Start Docker Desktop before running any Make targets.
 
 ## Windows
 - Use **WSL2 (Ubuntu)** for reliability; native Windows is not supported for Ollama/Make targets.
-- Install: Docker Desktop with WSL2 integration, then inside WSL2 `sudo apt install make curl python3 jq`.
+- Install: Docker Desktop with WSL2 integration, then inside WSL2 install `make` (see commands above).
 - Map project into WSL2 filesystem (`/home/...`), not a mounted Windows drive, for volume performance.
 - Run all commands from WSL2 shell.
 
 
 ## Environment files
 - App/Laravel: copy `.env.example` → `.env`, fill secrets (DB, queues, keys).
-- Python RAG: `.env` (shared env for Laravel + Python services).
-- Optional overrides: (deprecated) `Makefile.local` — avoid using; prefer Docker/Make targets above.
 
 ## Checklist before first run
 - Docker running and `docker ps` works.

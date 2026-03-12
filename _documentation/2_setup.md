@@ -1,15 +1,13 @@
 # Operating HAWKI RAG with Makefile
 
 ## Platform defaults from `Makefile`
-- Base compose is always `docker-compose.yml`.
-- Makefile exports `COMPOSE_FILE` before calling `docker compose`.
-- Linux:
-  - `USE_OLLAMA_GPU=auto` (default) enables `docker-compose-gpu-override.yml` when `nvidia-smi` exists.
-  - Effective `COMPOSE_FILE`: `docker-compose.yml:docker-compose-gpu-override.yml`.
-- macOS/non-Linux:
-  - CPU mode by default (`USE_OLLAMA_GPU=0`).
-  - Effective `COMPOSE_FILE`: `docker-compose.yml`.
-- Ollama container name is unified: `hawki_ollama`.
+Base compose is always `docker-compose.yml`, and `Makefile` exports `COMPOSE_FILE` before calling `docker compose`.
+
+| Linux | macOS |
+| --- | --- |
+| Default `USE_OLLAMA_GPU` is `auto`. | Default `USE_OLLAMA_GPU` is `0`. |
+| If `nvidia-smi` exists, `docker-compose-gpu-override.yml` is added automatically. | Runs in CPU mode by default (no GPU override). |
+| Effective `COMPOSE_FILE`: `docker-compose.yml:docker-compose-gpu-override.yml` (when GPU is detected). | Effective `COMPOSE_FILE`: `docker-compose.yml`. |
 
 ## Key overrides (per run)
 - `USE_OLLAMA_GPU`:
@@ -52,9 +50,14 @@ Run this once per machine (or after pruning Docker networks). Safe to rerun.
 ```bash
 make up-core
 ```
-- Uses computed `COMPOSE_FILE`, plus `ENV_FILE` and optional `COMPOSE_PROFILES`.
-- Prints selected compose files before launch.
-- Pulls Ollama models: `bge-m3`, `llama3.1:8b`, `llama3.2:1b`.
+
+What `make up-core` does:
+
+| Step | What happens |
+| --- | --- |
+| Compose context | Uses computed `COMPOSE_FILE` with `ENV_FILE` and optional `COMPOSE_PROFILES`. |
+| Launch preview | Prints selected compose files before startup. |
+| Model readiness | Pulls Ollama models: `bge-m3`, `llama3.1:8b`, `llama3.2:1b`. |
 
 ## Model pulls (Ollama)
 - Default pulls: `bge-m3`, `llama3.1:8b`, `llama3.2:1b`.
@@ -75,8 +78,8 @@ docker exec hawki_rag_bridge sh -lc "python /app/ingest/ingest_crawled.py \
   --base-url http://localhost:8000 \
   --provider ollama --graph --batch 16"
 ```
-- Host path: `storage/app/public/<folder>` -> bridge path: `/app/shared/<folder>`.
-- Services must be running (`make up-core`).
+### Shared volume path mapping
+Path mapping: `rawki_shared_storage` (Docker volume) -> `/app/shared` (bridge) and `/var/www/storage/app/public` (Laravel app).
 
 ## Shut down / reset
 ```bash

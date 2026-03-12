@@ -1,15 +1,46 @@
 # 6. Ingestion & Embeddings (No Steps Skipped)
 
-## What happens during ingestion
-1) Files are read from the shared volume (host path `storage/app/public`, container path `/app/shared`).
-2) Text is chunked (default 3200 chars, 100 overlap).
-3) Embeddings are created with `bge-m3` via Ollama.
-4) Vectors stored in Qdrant; optional graph extraction with `llama3.2:1b` stored in Neo4j.
-5) Logs and status are written to `storage/logs/ingest_*`.
+## Ingestion flow
+<div style="display:grid;grid-template-columns:1.2fr 1fr;gap:1rem;align-items:start;" markdown>
+<div markdown>
+
+```mermaid
+%%{init: {'themeVariables': {'fontSize': '12px'}}}%%
+flowchart TD
+    A["Shared ingest root"]
+    B["Bridge ingest path"]
+    C["Chunking"]
+    D["Embeddings"]
+    E["Write vectors to Qdrant"]
+    F{"Graph mode enabled?"}
+    G["Extract triplets"]
+    H["Write triplets to Neo4j"]
+    I["Write ingest logs"]
+
+    A --> B --> C --> D --> E --> F
+    F -- Yes --> G --> H --> I
+    F -- No --> I
+```
+
+</div>
+<div markdown>
+
+### How the pipeline moves
+The ingest path starts with raw files and progressively turns them into search-ready knowledge.
+
+1. **Collect**: source files are picked up from the shared ingest location.
+2. **Prepare**: content is split into clean chunks so retrieval can target precise passages.
+3. **Encode**: chunks are transformed into embeddings for semantic matching via Ollama (default embedding model: `bge-m3`).
+4. **Index**: vectors are stored in Qdrant to power fast similarity search.
+5. **Enrich (optional)**: when graph mode is on, triplets are extracted with `GRAPH_OLLAMA_RAG_MODEL` and written to Neo4j.
+6. **Track**: ingest activity is logged so progress and issues are visible in real time.
+
+</div>
+</div>
 
 ## Prepare your data
-- Place your folder under `storage/app/public/<foldername>` on host.
-- Inside bridge container it appears as `/app/shared/<foldername>`.
+- This step is handled by the crawler service.
+- `crawl4ai-service` crawls your website and writes the crawled output into the shared Docker volume, which is available to the bridge at `/app/shared/<foldername>`.
 
 ## Run ingestion (inside container for no exposed ports)
 - Command:
@@ -21,17 +52,23 @@ docker exec hawki_rag_bridge sh -lc "python /app/ingest/ingest_crawled.py \
   --graph \
   --batch 16"
 ```
-- What it does: reads files, chunks, embeds, writes to Qdrant/Neo4j.
-- Success looks like: bridge logs end with `INGEST_DONE`; Qdrant shows new collection named `<foldername>`.
-- Failure examples:
-  - “Path must be within shared root” → ensure path starts with `/app/shared/`.
-  - “Connection refused” → check `hawki_rag_bridge` running (`docker ps`); rerun `make up-core`.
+
+!!! tip "Resume or start fresh"
+    The ingestion pipeline supports resume behavior and fresh-start behavior:
+
+    - `--resume` (skip already ingested docs)
+    - `--start` (ignore previous state and ingest fresh)
+
+!!! tip "Ingestion with `--graph-only`"
+    During ingestion, `--graph-only` skips Qdrant vector indexing and runs only graph extraction with writes to Neo4j.
 
 ## Monitoring ingest progress
-- View cached log: `docker exec hawki_rag_bridge tail -n 40 /var/www/storage/logs/ingest_progress_cache.log` (path matches Laravel volume).
+- View cached log: `docker exec hawki_rag_bridge tail -n 40 /var/www/storage/logs/ingest_progress_cache.log`.
 - Check status JSON: `docker exec hawki_rag_app cat storage/logs/ingest_status.json`.
 
-## Re-running or stopping
-- Stop by killing process ID stored in status file (API supports stop; simplest is restart container if unsure).
-- Re-run with `--resume` (default) or `--start` to force fresh ingest.
+## Stopping ingestion
+Methods to stop an active ingestion job:
 
+- Use the ingestion stop action exposed by the API/controller flow.
+- Kill the running ingest process ID recorded in the status file.
+- Restart the `hawki_rag_bridge` container if you need a hard stop.
