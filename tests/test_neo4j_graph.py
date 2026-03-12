@@ -7,7 +7,7 @@ import sys
 import types
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-MODULE_DIR = ROOT / "python-rag"
+MODULE_DIR = ROOT / "python_rag"
 if MODULE_DIR.exists():
     sys.path.insert(0, str(MODULE_DIR))
 
@@ -34,13 +34,13 @@ except ModuleNotFoundError:  # pragma: no cover - fallback for local testing
     sys.modules["neo4j.exceptions"] = exceptions_module
 
 from neo4j.exceptions import Neo4jError
-from neo4j_graph import Neo4jGraph
+from graph.neo4j_graph import Neo4jGraph
 
 
 class Neo4jGraphTests(unittest.TestCase):
     """Unit tests for the Neo4j helper functions."""
     def setUp(self):
-        driver_patch = patch("neo4j_graph.GraphDatabase.driver", return_value=MagicMock())
+        driver_patch = patch("graph.neo4j_graph.GraphDatabase.driver", return_value=MagicMock())
         self.addCleanup(driver_patch.stop)
         driver_patch.start()
 
@@ -62,7 +62,7 @@ class Neo4jGraphTests(unittest.TestCase):
         session = self.graph._driver.session.return_value.__enter__.return_value
         session.execute_read.side_effect = Neo4jError("neo4j down")
 
-        with patch("neo4j_graph.logger"):
+        with patch("graph.neo4j_graph.logger"):
             facts = self.graph.fetch_related(["HAWK"], limit=5)
 
         self.assertEqual(facts, [])

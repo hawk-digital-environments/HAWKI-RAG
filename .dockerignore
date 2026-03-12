@@ -23,5 +23,7 @@ storage/app/private/crawled-data
 *.local
 
 # Docker and ops
+*.Dockerfile
+Dockerfile
 docker/*.log
 ops/local-reranker/__pycache__

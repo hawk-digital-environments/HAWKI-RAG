@@ -29,3 +29,6 @@ yarn-error.log
 /.zed
 /.lightrag-audit
 /.lightrag-audit-env
+resources/js/crawler
+/rag_storage/
+*.json

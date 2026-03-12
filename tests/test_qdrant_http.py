@@ -6,11 +6,11 @@ import pathlib
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-MODULE_DIR = ROOT / "python-rag"
+MODULE_DIR = ROOT / "python_rag"
 if MODULE_DIR.exists():
     sys.path.insert(0, str(MODULE_DIR))
 
-from qdrant_http import QdrantHTTP
+from vectorstore.qdrant_http import QdrantHTTP
 from requests import RequestException
 
 
@@ -35,7 +35,7 @@ class QdrantHTTPTests(unittest.TestCase):
 
         self.client._session.request.side_effect = side_effect
 
-        with patch("qdrant_http.logger"):
+        with patch("vectorstore.qdrant_http.logger"):
             response = self.client._request("GET", "/collections/test")
 
         self.assertEqual(response.status_code, 200)

@@ -7,22 +7,13 @@ return [
     |   Model Providers
     |--------------------------------------------------------------------------
     |
-    |   List of model providers suggested for the project. 
-    |   Add your API Key and API URL to activate the GWDG provider.
-    |   To include other providers in this list please refer to the
-    |   documentation of the RAG Application
+    |   List of model providers suggested for the project.
+    |   The RAG stack in this project is configured to use local Ollama by
+    |   default. To include other providers, extend this list and the Python
+    |   provider adapters together.
     |
     */
     'providers' => [
-        // Chat generation (remote)
-        'gwdg' => [
-            'api_key' => env('GWDG_API_KEY'),
-            'api_url' => env('GWDG_API_URL'),
-            'models'  => [
-                'multilingual' => 'llama3:8b',
-            ],
-        ],
-
         // Ollama (local)
         'ollama' => [
 

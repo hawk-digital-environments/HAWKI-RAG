@@ -1,66 +1,60 @@
-# Laravel App with PHP-FPM and Vite build
-FROM php:8.2-fpm
+# Python RAG API (FastAPI bridge / RAG-Anything)
+FROM python:3.11-slim AS python-rag
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    git \
-    curl \
-    nodejs \
-    npm \
-    libonig-dev \
-    libxml2-dev \
-    zip \
-    unzip \
-    libpng-dev \
-    libjpeg-dev \
-    libfreetype6-dev \
-    libicu-dev \
-    libmagickwand-dev \
-    libzip-dev \
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    DEBIAN_FRONTEND=noninteractive \
+    RAG_WORKING_DIR=/app/rag_storage \
+    OLLAMA_URL=http://ollama:11434 \
+    QDRANT_URL=http://qdrant:6333 \
+    NEO4J_URI=bolt://neo4j:7687
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
-    bash \
-    supervisor \
- && rm -rf /var/lib/apt/lists/*
+    ca-certificates \
+    curl \
+    git \
+    imagemagick \
+    libreoffice \
+    libgomp1 \
+    poppler-utils \
+    tesseract-ocr \
+    tesseract-ocr-eng \
+    tesseract-ocr-deu \
+    && rm -rf /var/lib/apt/lists/*
 
-# Install PHP extensions
-RUN docker-php-ext-configure gd --with-freetype --with-jpeg \
- && docker-php-ext-install -j$(nproc) gd pdo_mysql opcache bcmath exif pcntl zip intl \
- && rm -rf /tmp/*
+COPY python_rag/requirements.txt /app/requirements.txt
+RUN python -m pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir --retries 10 --timeout 180 -r requirements.txt
 
-# Install Composer
-COPY --from=composer:latest /usr/bin/composer /usr/local/bin/composer
+COPY python_rag /app
 
-WORKDIR /var/www
+RUN mkdir -p /app/rag_storage
 
-# Copy only composer files for caching
-COPY composer.json composer.lock ./
+EXPOSE 8003
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8003"]
 
-# Copy rest of application
-COPY . .
+# Local reranker
+FROM python:3.11-slim AS rerank
 
-# Install PHP dependencies (no dev)
-RUN composer install --no-dev --optimize-autoloader --no-interaction
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
 
-# Copy only package files for caching
-COPY package.json package-lock.json ./
+WORKDIR /app
 
-# Install Node dependencies and build Vite assets
-RUN npm ci
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
+    libgomp1 \
+    ca-certificates \
+    curl && \
+    rm -rf /var/lib/apt/lists/*
 
-# Build frontend assets
-RUN npm run build \
- && cd resources/js/crawler && npm ci
+COPY python_rag/requirements.txt /app/requirements.txt
+RUN pip install --no-cache-dir --retries 10 --timeout 180 -r requirements.txt
 
-# Fix Laravel permissions
-RUN chown -R www-data:www-data \
-    /var/www/storage \
-    /var/www/bootstrap/cache \
-    /var/www/public/build
+COPY python_rag/rerank/local_reranker/app.py /app/app.py
 
-# Copy supervisor config
-COPY docker/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
-
-EXPOSE 9000
-
-# Run supervisor (which will start php-fpm)
-CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
+EXPOSE 8000
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]

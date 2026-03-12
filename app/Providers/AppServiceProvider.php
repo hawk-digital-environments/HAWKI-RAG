@@ -2,11 +2,13 @@
 
 namespace App\Providers;
 
-use App\Services\AI\Providers\OllamaProvider;
-
+use App\Services\StorageService\StorageService;
+use App\Services\StorageService\UrlGenerator;
+use App\Services\WebSearchService\Implementations\BraveSearch;
+use App\Services\WebSearchService\Implementations\TavilySearch;
+use App\Services\WebSearchService\Interface\WebSearchInterface;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\ServiceProvider;
-use App\Http\Middleware\ExternalServerAuth;
-use Illuminate\Support\Facades\Route;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -15,9 +17,26 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        $this->app->bind('ollama.provider', function () {
-            return new OllamaProvider();
+        $this->app->singleton(StorageService::class, function ($app) {
+            $diskName = config('filesystems.file_storage');
+            $disk = Storage::disk($diskName);
+            $urlGenerator = new UrlGenerator(config('filesystems.disks.' . $diskName), $disk);
+            return new StorageService(
+                $disk,
+                $urlGenerator
+            );
         });
+
+        $this->app->singleton(
+            WebSearchInterface::class,
+            fn() => match (config('web_search.default')) {
+                'brave' => new BraveSearch(),
+                'tavily' => new TavilySearch(),
+                default => throw new \InvalidArgumentException(
+                    'Invalid Default WebSearch Engine'
+                )
+            }
+        );
     }
 
     /**
@@ -25,6 +44,6 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        //
+        $this->app['url']->useOrigin($this->app['config']->get('app.url'));
     }
 }
