@@ -1,4 +1,4 @@
-# 11. Repository Map
+# 9. Repository Map
 ## Root
 | File/Path | Description |
 |---|---|

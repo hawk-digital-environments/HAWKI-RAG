@@ -77,23 +77,23 @@ Crawled Markdown files are processed through the RAG-Anything flow, chunked and 
 
   Practical command reference with purpose, expected output, and common fixes.
 
-  [Open chapter](8_commands_catalogue.md)
+  [Open chapter](7_commands_catalogue.md)
 
-- :material-source-repository: __8. Repository Map__
-
-  ---
-
-  Folder-by-folder orientation for Laravel, Python, Docker, volumes, and logs.
-
-  [Open chapter](11_repo_map.md)
-
-- :material-relation-many-to-many: __9. RagSearcher Triplets Update__
+- :material-relation-many-to-many: __8. RagSearcher Triplets Update__
 
   ---
 
   Interface contract and runtime behavior for triplet-aware retrieval in MCP, Laravel, and Python.
 
-  [Open chapter](12_ragsearcher_triplets_update.md)
+  [Open chapter](8_ragsearcher_triplets_update.md)
+
+- :material-source-repository: __9. Repository Map__
+
+  ---
+
+  Folder-by-folder orientation for Laravel, Python, Docker, volumes, and logs.
+
+  [Open chapter](9_repo_map.md)
 
 </div>
 

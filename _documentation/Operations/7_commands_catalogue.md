@@ -1,4 +1,4 @@
-# 8. Commands Catalogue
+# 7. Commands Catalogue
 
 All commands run from project root unless noted. Use `docker ps` to see container names.
 

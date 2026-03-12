@@ -1,4 +1,4 @@
-# 12. RagSearcher Triplets Update (Interface and Runtime Specification)
+# 8. RagSearcher Triplets Update (Interface and Runtime Specification)
 
 ## Scope
 
