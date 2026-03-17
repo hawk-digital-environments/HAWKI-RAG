@@ -46,5 +46,6 @@
 | `DB_USERNAME` | _From `.env`_ | User executing Laravel migrations. |
 | `DB_PASSWORD` | _From `.env`_ | Password for migration user. |
 
-!!! tip "Important"
+:::tip "Important"
     Run migrations with `php artisan migrate`; without it, Laravel cannot store jobs/sessions used by the UI.
+:::

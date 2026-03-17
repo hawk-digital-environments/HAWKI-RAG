@@ -1,4 +1,4 @@
-/node_modules
+node_modules
 /.phpunit.cache
 /public/build
 /public/hot
@@ -8,6 +8,8 @@
 /vendor
 /config/gwdg.php
 /config/ollama.php
+_documentation.build/build
+_documentation.build/.docusaurus
 
 .env
 .env.backup
@@ -32,3 +34,5 @@ yarn-error.log
 resources/js/crawler
 /rag_storage/
 *.json
+!package.json
+!package-lock.json
