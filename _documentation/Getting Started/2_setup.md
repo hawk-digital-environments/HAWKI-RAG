@@ -38,7 +38,6 @@ USE_OLLAMA_GPU=1 COMPOSE_PROFILES=gpu make up-core
   - Overrides only `ollama` to CUDA build + NVIDIA device reservation.
 - `docker/laravel.Dockerfile`: builds `hawki_rag_app`.
 - `Dockerfile`: builds `hawki_rag_bridge` (`python-rag` target) and `hawki_rag_rerank` (`rerank` target).
-- `docker/qdrant.Dockerfile`: extends `qdrant/qdrant` and installs `curl` for health checks.
 
 ## One-time networks
 ```bash

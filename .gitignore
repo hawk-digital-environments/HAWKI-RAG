@@ -1,13 +1,13 @@
 /node_modules
 /.phpunit.cache
-/public/build
-/public/hot
-/public/storage
+/gateway/public/build
+/gateway/public/hot
+/gateway/public/storage
 /storage/*.key
-/storage/pail
+/gateway/storage/pail
 /vendor
-/config/gwdg.php
-/config/ollama.php
+/gateway/config/gwdg.php
+/gateway/config/ollama.php
 
 .env
 .env.backup
@@ -29,6 +29,6 @@ yarn-error.log
 /.zed
 /.lightrag-audit
 /.lightrag-audit-env
-resources/js/crawler
+gateway/resources/js/crawler
 /rag_storage/
 *.json

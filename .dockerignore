@@ -8,14 +8,14 @@ node_modules
 vendor
 
 # Laravel build outputs and caches
-public/build
-storage/logs
-storage/framework/cache
-storage/framework/sessions
-storage/framework/views
+gateway/public/build
+gateway/storage/logs
+gateway/storage/framework/cache
+gateway/storage/framework/sessions
+gateway/storage/framework/views
 
 # Large local data (mounted at runtime)
-storage/app/private/crawled-data
+gateway/storage/app/private/crawled-data
 ../hawki-data/crawled-data
 
 # Environment and local config (provided at runtime)
@@ -24,6 +24,6 @@ storage/app/private/crawled-data
 
 # Docker and ops
 *.Dockerfile
-Dockerfile
+docker/pythonBridge.Dockerfile
 docker/*.log
 ops/local-reranker/__pycache__
