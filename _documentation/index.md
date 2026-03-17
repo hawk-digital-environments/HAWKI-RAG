@@ -1,17 +1,17 @@
 ---
-hide:
-  - toc
+sidebar_position: 1
+slug: /
 ---
 
 # HAWKI-RAG Documentation Portal
 
-<div class="hero" markdown>
+<div className="hero">
 This portal is organized as a guided flow: from prerequisites to deployment, with chapter-by-chapter operational detail.
 
-[Start with Requirements](1_requirements.md){ .md-button .md-button--primary }
+[Start with Requirements](./Getting%20Started/1_requirements.md)
 </div>
 
-![HAWKI RAG Screen](assets/HAWKI_RAG_Screen.png){ width="100%" }
+![HAWKI RAG Screen](assets/HAWKI_RAG_Screen.png)
 
 ## Overview
 
@@ -21,79 +21,43 @@ Crawled Markdown files are processed through the RAG-Anything flow, chunked and 
 
 ## Read in Order
 
-<div class="grid cards" markdown>
+<div className="grid-cards">
 
-- :material-list-status: __1. Requirements__
-
-  ---
-
+- <span className="grid-icon">✔️</span> __1. Requirements__
   Hardware, software, ports, and platform prerequisites before you run anything.
+  [Open chapter](./Getting%20Started/1_requirements.md)
 
-  [Open chapter](1_requirements.md)
-
-- :material-wrench-cog: __2. Setup with Makefile__
-
-  ---
-
+- <span className="grid-icon">🛠️</span> __2. Setup with Makefile__
   The core operational commands for networking, startup, health checks, and logs.
+  [Open chapter](./Getting%20Started/2_setup.md)
 
-  [Open chapter](2_setup.md)
-
-- :material-graph-outline: __3. Architecture__
-
-  ---
-
+- <span className="grid-icon">🏠️</span> __3. Architecture__
   Beginner-friendly explanation of the full RAG system and service interactions.
+  [Open chapter](./Getting%20Started/3_introduction_architecture.md)
 
-  [Open chapter](3_introduction_architecture.md)
-
-- :material-rocket-launch: __4. Installation__
-
-  ---
-
+- <span className="grid-icon">🚀</span> __4. Installation__
   Zero-to-running installation sequence with expected outputs and failure fixes.
+  [Open chapter](./Getting%20Started/4_installation_zero_to_up.md)
 
-  [Open chapter](4_installation_zero_to_up.md)
-
-- :material-database-cog: __5. Environment, DB, Queue__
-
-  ---
-
+- <span className="grid-icon">💾</span> __5. Environment, DB, Queue__
   Complete environment variable map, migrations, and queue setup details.
+  [Open chapter](./Operations/5_environment_db_queue.md)
 
-  [Open chapter](5_environment_db_queue.md)
-
-- :material-file-tree: __6. Ingestion and Embeddings__
-
-  ---
-
+- <span className="grid-icon">👨‍🍳</span> __6. Ingestion and Embeddings__
   End-to-end ingest flow, chunking/embedding behavior, and monitoring.
+  [Open chapter](./Operations/6_ingestion_embeddings.md)
 
-  [Open chapter](6_ingestion_embeddings.md)
-
-- :material-console-line: __7. Commands Catalogue__
-
-  ---
-
+- <span className="grid-icon">👨‍💻</span> __7. Commands Catalogue__
   Practical command reference with purpose, expected output, and common fixes.
+  [Open chapter](./Operations/7_commands_catalogue.md)
 
-  [Open chapter](7_commands_catalogue.md)
-
-- :material-relation-many-to-many: __8. RagSearcher Triplets Update__
-
-  ---
-
+- <span className="grid-icon">📚️</span> __8. RagSearcher Triplets Update__
   Interface contract and runtime behavior for triplet-aware retrieval in MCP, Laravel, and Python.
+  [Open chapter](./Operations/8_ragsearcher_triplets_update.md)
 
-  [Open chapter](8_ragsearcher_triplets_update.md)
-
-- :material-source-repository: __9. Repository Map__
-
-  ---
-
+- <span className="grid-icon">🗺️</span> __9. Repository Map__
   Folder-by-folder orientation for Laravel, Python, Docker, volumes, and logs.
-
-  [Open chapter](9_repo_map.md)
+  [Open chapter](./Reference/9_repo_map.md)
 
 </div>
 

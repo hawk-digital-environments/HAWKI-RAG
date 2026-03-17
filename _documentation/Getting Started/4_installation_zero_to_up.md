@@ -26,14 +26,16 @@ Open `.env` in an editor and set:
 ## Step 3 - Create Docker networks
 - Command: `make network`
 
-!!! tip "Network check"
+:::tip "Network check"
     `make network` can print `created` (first run) or `already exists` (rerun). After this step, Docker networks should include `hawki-network` and `hosting_network`.
+:::
 
 ## Step 4 - Start services
 - Command: `make up-core`
 
-!!! tip "Verification"
+:::tip "Verification"
     `docker ps` should show containers such as `hawki_rag_app`, `hawki_qdrant`, `hawki_rag_bridge`, `hawki_rag_rerank`, `hawki_rag_neo4j`, `hawki_ollama`, `mariadb`, and `phpmyadmin`.
+:::
 
 ## Step 5 - Health check everything
 - Commands: `make health` and `make test-services`

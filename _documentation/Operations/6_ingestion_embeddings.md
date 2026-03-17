@@ -1,11 +1,9 @@
 # 6. Ingestion & Embeddings (No Steps Skipped)
 
 ## Ingestion flow
-<div style="display:grid;grid-template-columns:1.2fr 1fr;gap:1rem;align-items:start;" markdown>
-<div markdown>
+<div className="side-by-side">
 
 ```mermaid
-%%{init: {'themeVariables': {'fontSize': '12px'}}}%%
 flowchart TD
     A["Shared ingest root"]
     B["Bridge ingest path"]
@@ -22,8 +20,7 @@ flowchart TD
     F -- No --> I
 ```
 
-</div>
-<div markdown>
+<div>
 
 ### How the pipeline moves
 The ingest path starts with raw files and progressively turns them into search-ready knowledge.
@@ -53,14 +50,16 @@ docker exec hawki_rag_bridge sh -lc "python /app/ingest/ingest_crawled.py \
   --batch 16"
 ```
 
-!!! tip "Resume or start fresh"
+:::tip "Resume or start fresh"
     The ingestion pipeline supports resume behavior and fresh-start behavior:
 
     - `--resume` (skip already ingested docs)
     - `--start` (ignore previous state and ingest fresh)
+:::
 
-!!! tip "Ingestion with `--graph-only`"
+:::tip "Ingestion with `--graph-only`"
     During ingestion, `--graph-only` skips Qdrant vector indexing and runs only graph extraction with writes to Neo4j.
+:::
 
 ## Monitoring ingest progress
 - View cached log: `docker exec hawki_rag_bridge tail -n 40 /var/www/storage/logs/ingest_progress_cache.log`.

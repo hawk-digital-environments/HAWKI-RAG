@@ -63,7 +63,7 @@ What `make up-core` does:
 - Default pulls: `bge-m3`, `llama3.1:8b`, `llama3.2:1b`.
 - Optional (manual): `llama3.2:3b`
   - `docker exec hawki_ollama ollama pull llama3.2:3b`
-- Rough VRAM guide: `bge-m3` <4 GB, `llama3.2:1b` ~2 GB, `llama3.1:8b` prefers 12-16 GB.
+- Rough VRAM guide: `bge-m3` < 4 GB, `llama3.2:1b` ~2 GB, `llama3.1:8b` prefers 12-16 GB.
 
 ## Health and logs
 ```bash

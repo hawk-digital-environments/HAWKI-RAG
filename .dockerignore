@@ -14,6 +14,10 @@ storage/framework/cache
 storage/framework/sessions
 storage/framework/views
 
+# Documentation
+_documentation
+_documentation.build
+
 # Large local data (mounted at runtime)
 storage/app/private/crawled-data
 ../hawki-data/crawled-data
@@ -27,3 +31,4 @@ storage/app/private/crawled-data
 Dockerfile
 docker/*.log
 ops/local-reranker/__pycache__
+.github
