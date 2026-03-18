@@ -4,6 +4,7 @@ SHELL ["/bin/bash", "-lc"]
 
 ARG OLLAMA_GIT_REF=main
 ARG GO_VERSION=1.24.1
+ARG TARGETARCH
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -13,7 +14,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Build Ollama from source with CUDA support
 WORKDIR /tmp
-RUN curl -fsSLo /tmp/go.tgz https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz \
+RUN GO_ARCH="${TARGETARCH:-}" \
+    && if [[ -z "${GO_ARCH}" ]]; then \
+         case "$(uname -m)" in \
+           x86_64) GO_ARCH="amd64" ;; \
+           aarch64|arm64) GO_ARCH="arm64" ;; \
+           *) echo "Unsupported architecture: $(uname -m)" >&2; exit 1 ;; \
+         esac; \
+       fi \
+    && if [[ "${GO_ARCH}" != "amd64" && "${GO_ARCH}" != "arm64" ]]; then \
+         echo "Unsupported TARGETARCH: ${GO_ARCH}" >&2; \
+         exit 1; \
+       fi \
+    && curl -fsSLo /tmp/go.tgz "https://go.dev/dl/go${GO_VERSION}.linux-${GO_ARCH}.tar.gz" \
     && rm -rf /usr/local/go \
     && tar -C /usr/local -xzf /tmp/go.tgz \
     && rm -f /tmp/go.tgz

@@ -10,7 +10,7 @@
 
 ### Bugfix
 
-- List of bugs that have been fixed in this version.
+- fixed (dockerfile): improved ARM compatibility for the Ollama build and phpMyAdmin image
 
 ### Deprecation
 

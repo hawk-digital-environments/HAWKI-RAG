@@ -77,7 +77,7 @@ services:
         max-file: "3"
 
   phpmyadmin:
-    image: phpmyadmin/phpmyadmin
+    image: ${PHPMYADMIN_IMAGE:-phpmyadmin/phpmyadmin:latest}
     container_name: phpmyadmin
     restart: always
     ports:
