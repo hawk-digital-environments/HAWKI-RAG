@@ -2,9 +2,12 @@ FROM neunerlei/node-nginx:25 AS node-build
 
 ARG DOCKER_PROJECT_HOST
 ARG DOCKER_PROJECT_PATH
+ARG DOCKER_PROJECT_PROTOCOL
+ARG DOCKER_SERVICE_PATH
 ENV DOCKER_PROJECT_HOST=${DOCKER_PROJECT_HOST:-ixdlab.hawk.de} \
-    DOCKER_PROJECT_PATH=${DOCKER_PROJECT_PATH:-/hawki-rag/}
- 
+    DOCKER_PROJECT_PATH=${DOCKER_PROJECT_PATH:-/hawki-rag/} \
+    DOCKER_PROJECT_PROTOCOL=${DOCKER_PROJECT_PROTOCOL:-https}
+
 # Copy only package files for caching
 COPY package.json package-lock.json ./
 
@@ -15,16 +18,15 @@ RUN npm config set fetch-retries 5 \
  && npm config set fetch-timeout 300000 \
  && npm ci --with-dev
 
+# Copy rest of application
+COPY --chown=www-data:www-data . .
+
 # Prepare container for building
 RUN rm -rf /var/www/html/public/build \
-    && /container/entrypoint/entrypoint.sh
-
-# Copy rest of application
-COPY . .
-
-# Build frontend assets
-RUN _npm run build \
- && if [ -d resources/js/crawler ]; then cd resources/js/crawler && npm ci --fetch-timeout=300000; fi
+    && gosu www-data mkdir -p /var/www/html/public/build \
+    && source /container/entrypoint/entrypoint.sh \
+    && npm run build \
+    && if [ -d resources/js/crawler ]; then cd resources/js/crawler && npm ci --fetch-timeout=300000; fi
 
 # =================================================================
 
@@ -32,10 +34,12 @@ FROM neunerlei/php-nginx:8.4 AS laravel-app
 
 ARG DOCKER_PROJECT_HOST
 ARG DOCKER_PROJECT_PATH
+ARG DOCKER_PROJECT_PROTOCOL
 ENV DOCKER_PROJECT_HOST=${DOCKER_PROJECT_HOST:-ixdlab.hawk.de} \
     DOCKER_PROJECT_PATH=${DOCKER_PROJECT_PATH:-/hawki-rag/} \
-    ASSET_URL="https://${DOCKER_PROJECT_HOST}${DOCKER_PROJECT_PATH}" \
-    APP_URL="https://${DOCKER_PROJECT_HOST}${DOCKER_PROJECT_PATH}"
+    DOCKER_PROJECT_PROTOCOL=${DOCKER_PROJECT_PROTOCOL:-https} \
+    ASSET_URL="${DOCKER_PROJECT_PROTOCOL}://${DOCKER_PROJECT_HOST}${DOCKER_PROJECT_PATH}" \
+    APP_URL="${DOCKER_PROJECT_PROTOCOL}://${DOCKER_PROJECT_HOST}${DOCKER_PROJECT_PATH}"
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \

@@ -22,6 +22,7 @@ npm-debug.log
 yarn-error.log
 /auth.json
 .DS_Store
+docker-compose.override.yml
 
 # IDE / Editor directories
 /.fleet
