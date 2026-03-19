@@ -11,7 +11,7 @@
 
 ### Bugfix
 
-[//]: # (- List of bugs that have been fixed in this version.)
+- fixed (dockerfile): improved ARM compatibility for the Ollama build and phpMyAdmin image
 - Fix various issues around the gateway(laravel) container not being able to retrieve the correct url.
 
 ### Internals
