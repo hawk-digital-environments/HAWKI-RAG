@@ -3,6 +3,7 @@
 SHELL := /bin/bash
 
 COMPOSE_BIN ?= docker compose
+UP_CORE_COMPOSE_FILE ?= docker-compose.yml:docker-compose.local.yml
 
 # Variables (override via `make VAR=value`)
 ENV_FILE ?= .env
@@ -69,9 +70,8 @@ build-app:
 	@$(COMPOSE_CMD) build hawki_rag_app
 
 up-core: network
-	@echo $(PROFILE_MESSAGE)
-	@echo "Launching full stack (COMPOSE_FILE=$(COMPOSE_FILE_LIST), profiles: $(if $(strip $(COMPOSE_PROFILES)),$(COMPOSE_PROFILES),none))..."
-	@$(COMPOSE_CMD) up -d --build --remove-orphans
+	@echo "Launching full stack (COMPOSE_FILE=$(UP_CORE_COMPOSE_FILE))..."
+	@COMPOSE_FILE=$(UP_CORE_COMPOSE_FILE) $(COMPOSE_BIN) --env-file $(ENV_FILE) up -d --build --remove-orphans
 	@echo "Ensuring Ollama models are pulled..."
 	@for model in bge-m3 llama3.1:8b llama3.2:1b; do \
 		echo "Pulling $$model..."; \
