@@ -27,13 +27,15 @@ logger = logging.getLogger(__name__)
 class BackendRuntime:
     """Thin adapter that drives the existing python_rag backend from rag_test scripts."""
     config: dict[str, Any]
-    rag_service: RAGService = field(default_factory=RAGService)
+    rag_service: RAGService | None = field(default=None)
 
     def __post_init__(self) -> None:
         """Apply benchmark connection settings to the backend environment on startup."""
         logger.info("backend_runtime.__post_init__ start")
         try:
             self._apply_global_env()
+            if self.rag_service is None:
+                self.rag_service = RAGService()
             logger.info("backend_runtime.__post_init__ success")
         except Exception as exc:
             logger.exception("backend_runtime.__post_init__ failed error=%s", exc)
@@ -61,6 +63,7 @@ class BackendRuntime:
             os.environ["RERANKER_MODE"] = str(reranker.get("mode", "cosine"))
             os.environ["RERANKER_MIX_MODE"] = "true"
             os.environ["RERANKER_MIX_WEIGHT"] = "0.5"
+            os.environ["RAG_WORKING_DIR"] = str((ROOT / "rag_storage").resolve())
             logger.info("backend_runtime._apply_global_env success qdrant=%s neo4j_db=%s", self.config["qdrant"]["url"], neo4j.get("database", "neo4j"))
         except Exception as exc:
             logger.exception("backend_runtime._apply_global_env failed error=%s", exc)
@@ -97,6 +100,8 @@ class BackendRuntime:
         """Resolve the backend embedding/chat provider through the existing RAGService."""
         logger.info("backend_runtime.get_provider start provider=%s", provider_name)
         try:
+            if self.rag_service is None:
+                raise RuntimeError("BackendRuntime not initialized: rag_service is None")
             provider = self.rag_service.get_provider(provider_name)
             logger.info("backend_runtime.get_provider success provider=%s", provider_name)
             return provider
@@ -124,6 +129,8 @@ class BackendRuntime:
             graph_only,
         )
         try:
+            if self.rag_service is None:
+                raise RuntimeError("BackendRuntime not initialized: rag_service is None")
             with self.model_context(model_key) as model:
                 body = SimpleNamespace(
                     docs=docs,
@@ -184,6 +191,8 @@ class BackendRuntime:
             query_text[:120],
         )
         try:
+            if self.rag_service is None:
+                raise RuntimeError("BackendRuntime not initialized: rag_service is None")
             with self.model_context(model_key) as model:
                 body = SimpleNamespace(
                     query=query_text,

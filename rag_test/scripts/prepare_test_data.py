@@ -30,6 +30,52 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _candidate_source_paths(configured_path: Path) -> list[Path]:
+    """Build a de-duplicated ordered list of likely source roots across environments."""
+    candidates = [
+        configured_path,
+        Path("/var/lib/docker/volumes/rawki_shared_storage/_data"),
+        Path("/var/lib/docker/volumes/hawki_shared_storage/_data"),
+        Path.home() / ".local/share/docker/volumes/rawki_shared_storage/_data",
+        Path.home() / ".local/share/docker/volumes/hawki_shared_storage/_data",
+        ROOT / "_documentation",
+        ROOT / "storage" / "app" / "public",
+        ROOT / "python_rag" / "shared",
+        ROOT / "public",
+    ]
+    ordered: list[Path] = []
+    seen: set[str] = set()
+    for path in candidates:
+        normalized = str(path.expanduser().resolve(strict=False))
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        ordered.append(path.expanduser())
+    return ordered
+
+
+def resolve_source_root(cli_source: str | None, configured_source: str) -> tuple[Path, list[Path]]:
+    """Resolve source root from CLI/config/common fallbacks and return attempted candidates."""
+    if cli_source:
+        chosen = Path(cli_source).expanduser()
+        return chosen, [chosen]
+
+    configured = Path(configured_source).expanduser()
+    candidates = _candidate_source_paths(configured)
+    existing = [path for path in candidates if path.is_dir()]
+    if existing:
+        # Prefer a root that already has at least one subfolder to copy.
+        for path in existing:
+            try:
+                if any(child.is_dir() for child in path.iterdir()):
+                    return path, candidates
+            except OSError:
+                continue
+        return existing[0], candidates
+
+    return configured, candidates
+
+
 def main() -> int:
     """Sample folders from the source corpus and materialize a benchmark subset."""
     log_path = ROOT / "rag_test" / "logs" / "prepare_test_data.log"
@@ -38,16 +84,26 @@ def main() -> int:
     try:
         args = build_parser().parse_args()
         config = load_benchmark_config()
-        source_root = Path(args.source_path or config["benchmark"]["source_volume_path"]).expanduser()
+        source_root, attempted_paths = resolve_source_root(args.source_path, config["benchmark"]["source_volume_path"])
         data_test = Path(config["paths"]["data_test"])
 
         count = args.count or int(config["benchmark"]["random_folder_count"])
         seed = args.seed or int(config["benchmark"]["random_seed"])
         ensure_dir(data_test)
-        logger.info("prepare_test_data.main resolved source_root=%s count=%s seed=%s", source_root, count, seed)
+        logger.info(
+            "prepare_test_data.main resolved source_root=%s count=%s seed=%s attempted_paths=%s",
+            source_root,
+            count,
+            seed,
+            [str(path) for path in attempted_paths],
+        )
 
         if not source_root.is_dir():
-            logger.error("Source path does not exist or is not a directory: %s", source_root)
+            logger.error(
+                "Source path does not exist or is not a directory: %s (attempted=%s)",
+                source_root,
+                [str(path) for path in attempted_paths],
+            )
             return 1
 
         folders = [path for path in iter_folder_directories(source_root)]
