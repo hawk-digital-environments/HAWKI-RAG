@@ -7,7 +7,7 @@
 - GPU (optional): NVIDIA with CUDA for faster rerank/model inference; verify with `nvidia-smi`.
 
 ## Network & Ports
-- Ensure these host ports are free: 3306 (MariaDB) and `PHPMYADMIN_PORT` for phpMyAdmin (default is 8005 in this repo; Compose fallback is 8004 if unset).
+- Ensure these host ports are free: 3306 (MariaDB) and `ADMINER_PORT` for Adminer (default is 8005 in this repo).
 - RAG services (bridge, reranker, RAG API, Qdrant, Neo4j, Ollama) stay on the internal Docker network by default and do not bind host ports.
 
 ## Common Software (all platforms)

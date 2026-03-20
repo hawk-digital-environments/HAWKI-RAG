@@ -76,19 +76,17 @@ services:
         max-size: "128m"
         max-file: "3"
 
-  phpmyadmin:
-    image: ${PHPMYADMIN_IMAGE:-phpmyadmin/phpmyadmin:latest}
-    container_name: phpmyadmin
+  adminer:
+    image: ${ADMINER_IMAGE:-adminer:latest}
+    container_name: adminer
     restart: always
     ports:
-      - "${PHPMYADMIN_PORT:-8004}:80"
+      - "${ADMINER_PORT:-8005}:8080"
     environment:
-      PMA_HOST: mariadb
-      PMA_PORT: 3306
-      UPLOAD_LIMIT: 1024M
+      ADMINER_DEFAULT_SERVER: mariadb
       TZ: Europe/Berlin
       VIRTUAL_HOST: ixdlab.hawk.de
-      VIRTUAL_PATH: /phpmyadmin/
+      VIRTUAL_PATH: /adminer/
       VIRTUAL_DEST: /
     networks:
       - hosting_network
