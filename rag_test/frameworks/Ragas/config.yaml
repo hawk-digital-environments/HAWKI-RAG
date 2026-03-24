@@ -1,10 +1,11 @@
 name: Ragas
 version: 1
 metrics:
-  - faithfulness
-  - answer_relevancy
-  - context_precision
-  - context_recall
+  - exact_match
+  - string_present
+  - rouge_score
+  - bleu_score
+mode: keyless
 io:
   input_jsonl: rag_test/frameworks/Ragas/datasets/sample_eval.jsonl
   output_dir: rag_test/results/ragas/latest

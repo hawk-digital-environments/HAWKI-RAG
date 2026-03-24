@@ -1,3 +1,6 @@
 ragas>=0.2.0
 pandas>=2.0.0
 datasets>=2.0.0
+rouge-score>=0.1.2
+sacrebleu>=2.4.0
+rapidfuzz>=3.9.0

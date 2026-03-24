@@ -36,8 +36,26 @@ Each line must include:
 ## Run
 
 ```bash
+python3 rag_test/frameworks/Ragas/run_ragas.py \
+  --input rag_test/frameworks/Ragas/datasets/sample_eval.jsonl \
+  --output rag_test/results/ragas/latest
+```
+
+This runs in `keyless` mode by default when `OPENAI_API_KEY` is not set.
+
+Optional modes:
+
+```bash
+# Force keyless mode
+python3 rag_test/frameworks/Ragas/run_ragas.py \
+  --mode keyless \
+  --input rag_test/frameworks/Ragas/datasets/sample_eval.jsonl \
+  --output rag_test/results/ragas/latest
+
+# LLM-based mode (requires OPENAI_API_KEY)
 export OPENAI_API_KEY=your_key_here
 python3 rag_test/frameworks/Ragas/run_ragas.py \
+  --mode llm \
   --input rag_test/frameworks/Ragas/datasets/sample_eval.jsonl \
   --output rag_test/results/ragas/latest
 ```
@@ -48,5 +66,5 @@ Outputs:
 - `per_case.json`
 
 ## Notes
-- This module is additive and does not replace your existing `rag_test` scripts yet.
-- It is intended as the first framework in a multi-framework evaluation layout.
+- `keyless` mode uses non-LLM Ragas metrics and does not require any API key.
+- `llm` mode uses faithfulness/relevancy/context metrics and needs an LLM API key.
