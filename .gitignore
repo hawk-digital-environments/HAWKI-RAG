@@ -34,7 +34,9 @@ docker-compose.override.yml
 /.lightrag-audit-env
 resources/js/crawler
 /rag_storage/
+/rag_test/data_test/
 *.json
 !package.json
 !package-lock.json
+!rag_test/benchmark/**/*.json
 *.pyc

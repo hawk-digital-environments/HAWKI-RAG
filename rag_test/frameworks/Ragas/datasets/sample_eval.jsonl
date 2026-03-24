@@ -1,0 +1,2 @@
+{"question":"What database is used for vector search?","answer":"Qdrant is used for vector search.","contexts":["The system stores embeddings in Qdrant collections.","Neo4j is used for graph relations."],"ground_truth":"Qdrant"}
+{"question":"Which database stores graph relationships?","answer":"Neo4j stores graph relationships.","contexts":["Qdrant stores vectors.","Neo4j stores nodes and edges."],"ground_truth":"Neo4j"}

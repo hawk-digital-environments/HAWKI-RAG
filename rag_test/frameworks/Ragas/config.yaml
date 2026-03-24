@@ -1,0 +1,10 @@
+name: Ragas
+version: 1
+metrics:
+  - faithfulness
+  - answer_relevancy
+  - context_precision
+  - context_recall
+io:
+  input_jsonl: rag_test/frameworks/Ragas/datasets/sample_eval.jsonl
+  output_dir: rag_test/results/ragas/latest

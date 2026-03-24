@@ -1,2 +1,0 @@
-avg_latency_ms,collection_name,collection_points,distance,mrr_at_10,model_key,ndcg_at_10,query_count,recall_at_10,recall_at_5,reranker_enabled,reranker_mode
-
