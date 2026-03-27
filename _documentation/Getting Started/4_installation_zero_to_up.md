@@ -40,3 +40,7 @@ Open `.env` in an editor and set:
 ## Step 5 - Health check everything
 - Commands: `make health` and `make test-services`
 - You should be able to see `OK` for all components.
+
+## Step 6 - Connect HAWKI-RAG to HAWKI (MCP Tool)
+Plug HAWKI-RAG into HAWKI as an MCP tool by following the [official HAWKI AI Models & Tools guide](https://docs.hawki.info/architecture/10.2-AI%20Models%20and%20Tools).
+
