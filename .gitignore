@@ -36,6 +36,8 @@ resources/js/crawler
 /rag_storage/
 /rag_test/data_test/
 *.json
+*.csv
+*.jsonl
 !package.json
 !package-lock.json
 !rag_test/benchmark/**/*.json

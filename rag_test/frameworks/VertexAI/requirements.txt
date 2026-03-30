@@ -1,0 +1,3 @@
+google-cloud-aiplatform>=1.75.0
+pandas>=2.0.0
+pyyaml>=6.0.0

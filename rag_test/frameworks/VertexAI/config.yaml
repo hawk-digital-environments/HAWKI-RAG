@@ -1,0 +1,14 @@
+name: VertexAI
+version: 1
+mode: prepare
+metrics:
+  - exact_match
+  - rouge_l
+  - bleu
+io:
+  input_jsonl: rag_test/frameworks/VertexAI/datasets/sample_eval.jsonl
+  output_dir: rag_test/frameworks/VertexAI/evaluation/latest
+cloud:
+  project: ""
+  location: us-central1
+  run_cloud: false
