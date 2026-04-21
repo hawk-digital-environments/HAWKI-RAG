@@ -33,14 +33,27 @@ class IngestController extends Controller
         return $folders;
     }
 
-    private function resolveSharedRoot(): ?string
+    private function resolveCrawledDataRoot(): ?string
     {
-        $root = (string) config('config.shared_root', storage_path('app/public'));
+        $root = (string) config('config.crawled_data_root', '/app/shared/crawled-data');
         if (is_dir($root)) {
-            return $root;
+            return realpath($root) ?: $root;
         }
-        $fallback = storage_path('app/public');
-        return is_dir($fallback) ? $fallback : null;
+
+        return null;
+    }
+
+    private function isPathWithinRoot(string $path, string $root): bool
+    {
+        $resolvedPath = realpath($path);
+        $resolvedRoot = realpath($root);
+
+        if ($resolvedPath === false || $resolvedRoot === false) {
+            return false;
+        }
+
+        return $resolvedPath === $resolvedRoot
+            || str_starts_with($resolvedPath, $resolvedRoot . DIRECTORY_SEPARATOR);
     }
 
     private function isPidAlive(int $pid): bool
@@ -83,11 +96,11 @@ class IngestController extends Controller
 
     public function folders(): JsonResponse
     {
-        $root = $this->resolveSharedRoot();
+        $root = $this->resolveCrawledDataRoot();
         if (!$root) {
             return response()->json([
                 'ok' => false,
-                'message' => 'Shared root not found.',
+                'message' => 'Crawled-data root not found.',
             ], 404);
         }
 
@@ -119,13 +132,17 @@ class IngestController extends Controller
             'resume_mode' => 'sometimes|string|in:resume,start',
         ]);
 
-        $root = (string) config('config.shared_root', '/app/shared');
-        $path = $data['path'];
-        if (!str_starts_with($path, $root)) {
-            return response()->json(['ok' => false, 'message' => 'Path must be within shared root.'], 422);
+        $root = $this->resolveCrawledDataRoot();
+        if (!$root) {
+            return response()->json(['ok' => false, 'message' => 'Crawled-data root not found.'], 404);
         }
+
+        $path = $data['path'];
         if (!is_dir($path)) {
             return response()->json(['ok' => false, 'message' => "Path not found: {$path}"], 404);
+        }
+        if (!$this->isPathWithinRoot($path, $root)) {
+            return response()->json(['ok' => false, 'message' => 'Path must be within the crawled-data root.'], 422);
         }
 
         $script = base_path('python_rag/ingest/ingest_crawled.py');
@@ -497,26 +514,24 @@ class IngestController extends Controller
             'path' => 'required|string',
         ]);
 
-        $root = $this->resolveSharedRoot();
+        $root = $this->resolveCrawledDataRoot();
         if (!$root) {
             return response()->json([
                 'ok' => false,
-                'message' => 'Shared root not found.',
+                'message' => 'Crawled-data root not found.',
             ], 404);
         }
         $path = $data['path'];
-        $resolvedRoot = realpath($root);
+        if (!is_dir($path)) {
+            return response()->json(['ok' => false, 'message' => "Folder not found: {$path}"], 404);
+        }
+        if (!$this->isPathWithinRoot($path, $root)) {
+            return response()->json(['ok' => false, 'message' => 'Path must be within the crawled-data root.'], 422);
+        }
+
         $resolvedPath = realpath($path);
-        if (!$resolvedRoot || !$resolvedPath) {
+        if ($resolvedPath === false) {
             return response()->json(['ok' => false, 'message' => 'Unable to resolve folder path.'], 422);
-        }
-        $rootPrefix = rtrim($resolvedRoot, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR;
-        $pathPrefix = rtrim($resolvedPath, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR;
-        if (!str_starts_with($pathPrefix, $rootPrefix)) {
-            return response()->json(['ok' => false, 'message' => 'Path must be within shared root.'], 422);
-        }
-        if (!is_dir($resolvedPath)) {
-            return response()->json(['ok' => false, 'message' => "Folder not found: {$resolvedPath}"], 404);
         }
 
         try {

@@ -85,9 +85,29 @@ def _pick_json_meta(dir_path: Path) -> Tuple[Optional[Path], Dict[str, Any]]:
     return best_file, best_data
 
 
+def _is_excluded_converted_markdown(path: Path) -> bool:
+    """Return True for flat converted artifacts that should not be ingested as page content."""
+    name = path.name.lower()
+    return name.endswith("_converted.md")
+
+
+def _eligible_markdown_files(dir_path: Path) -> List[Path]:
+    """
+    Return markdown files that are valid ingest sources for a page directory.
+
+    Policy:
+      - `content.md` is the primary crawl-page source.
+      - `converted.md` is allowed as an explicit canonical final markdown for the directory.
+      - Flat conversion artifacts like `*_converted.md` are excluded to avoid ingesting
+        attachment conversions as if they were primary page content.
+    """
+    candidates = [f for f in dir_path.iterdir() if f.is_file() and f.suffix.lower() == ".md"]
+    return [f for f in candidates if not _is_excluded_converted_markdown(f)]
+
+
 def _pick_text_file(dir_path: Path) -> Tuple[Optional[Path], str]:
     # Only ingest markdown files; ignore .txt to avoid path-list artifacts.
-    candidates = [f for f in dir_path.iterdir() if f.is_file() and f.suffix.lower() == ".md"]
+    candidates = _eligible_markdown_files(dir_path)
     if candidates:
         preferred = ("content.md", "converted.md")
         candidates_by_name = {f.name.lower(): f for f in candidates}
@@ -131,8 +151,8 @@ def load_page_materials(dir_path: Path) -> Tuple[Dict, Optional[Path], Optional[
             logger.debug("ingest:pick_text path=%s format=%s", md_path, source_format)
         else:
             # try other candidates if the chosen text looks like a file list
-            for f in dir_path.iterdir():
-                if f.is_file() and f.suffix.lower() == ".md" and f != md_path:
+            for f in _eligible_markdown_files(dir_path):
+                if f != md_path:
                     candidate = read_text_file(f).strip()
                     if candidate and not _looks_like_path_list(candidate):
                         md_path = f
@@ -283,7 +303,15 @@ def resolve_url_for_path(mapping: Dict[Path, str], path: Path, root: Path) -> Op
     return None
 ########################################### PAGE DIR DISCOVERY #####################################
 def discover_page_dirs(root: Path) -> List[Path]:
-    """Return folders that look like a 'page' (contains json or md/txt)."""
+    """
+    Return folders that look like a page/document ingest unit.
+
+    Policy:
+      - Skip any directory inside a `converted_*` tree.
+      - Count a directory as ingestable when it has non-conversion JSON metadata,
+        an eligible markdown source (`content.md` or `converted.md`, but not `*_converted.md`),
+        or a `.txt` file for legacy JSON-text fallback detection.
+    """
     out: List[Path] = []
     for dp, dn, fn in os.walk(root):
         p = Path(dp)
@@ -296,8 +324,16 @@ def discover_page_dirs(root: Path) -> List[Path]:
             dn[:] = []
             continue
 
-        files = {Path(dp, f).suffix.lower() for f in fn}
-        if any(s in files for s in (".json", ".md", ".txt")):
+        has_non_conversion_json = any(
+            name.lower().endswith(".json") and name != "conversion_meta.json"
+            for name in fn
+        )
+        has_eligible_markdown = any(
+            name.lower().endswith(".md") and not name.lower().endswith("_converted.md")
+            for name in fn
+        )
+        has_txt = any(name.lower().endswith(".txt") for name in fn)
+        if has_non_conversion_json or has_eligible_markdown or has_txt:
             out.append(p)
     return out
 
@@ -494,6 +530,7 @@ def run_local_estimate(
     chunk_chars: int,
     chunk_overlap: int,
     collection: Optional[str],
+    batch_size: int,
 ) -> Dict[str, Any]:
     doc_stats: Dict[str, Any] = {
         "total_docs": len(page_dirs),
@@ -533,7 +570,6 @@ def run_local_estimate(
         total_chunks += chunk_count
 
     doc_stats["total_chunks"] = total_chunks
-    batch_size = args.batch
     summary: Dict[str, Any] = {
         "timestamp": utc_now_iso(),
         "estimate_only": True,
@@ -732,6 +768,7 @@ def main():
             chunk_chars=args.chunk_chars,
             chunk_overlap=args.chunk_overlap,
             collection=args.collection,
+            batch_size=args.batch,
         )
         preview = json.dumps(summary, indent=2, ensure_ascii=False)
         print(preview)

@@ -1,5 +1,8 @@
 <?php
 
+$pipelineRoot = rtrim((string) env('HAWKI_RAG_PIPELINE_ROOT', '/app/shared'), DIRECTORY_SEPARATOR);
+$crawledDataRoot = rtrim((string) env('HAWKI_RAG_CRAWLED_DATA_ROOT', $pipelineRoot . '/crawled-data'), DIRECTORY_SEPARATOR);
+
 return [
 
 
@@ -8,7 +11,9 @@ return [
     'neo4j_http_url' => env('NEO4J_HTTP_URL', 'http://hawki_rag_neo4j:7474'),
     'neo4j_user' => env('NEO4J_USER', 'neo4j'),
     'neo4j_password' => env('NEO4J_PASSWORD', ''),
-    'shared_root' => env('HAWKI_RAG_SHARED_ROOT', storage_path('app/public')),
+    'pipeline_root' => $pipelineRoot,
+    'shared_root' => $pipelineRoot,
+    'crawled_data_root' => $crawledDataRoot,
     'ingest_status_path' => env('HAWKI_RAG_INGEST_STATUS_PATH', storage_path('logs/ingest_status.json')),
     // Full ingest log (append-only).
     'ingest_log_path' => env('HAWKI_RAG_INGEST_LOG_PATH', storage_path('logs/ingest_progress_full.log')),

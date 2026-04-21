@@ -6,16 +6,17 @@ use App\Services\FileConverter\DocumentConverter;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use SplFileInfo;
 
 class ConvertCrawledPdfs extends Command
 {
     /**
      * Usage:
-     *   php artisan convert:crawled-pdfs storage/app/private/crawled-data/hawk
+     *   php artisan convert:crawled-pdfs /app/shared/crawled-data/hawk
      */
     protected $signature = 'convert:crawled-pdfs
-        {outputDir? : Path to crawler output directory}
+        {outputDir? : Path to crawler output directory (absolute path or path relative to the canonical crawled-data root)}
         {--extensions=pdf,doc,docx : Comma-separated list of extensions to convert}
         {--scan-all : Scan all files under outputDir (not just **/files/)}';
 
@@ -25,7 +26,7 @@ class ConvertCrawledPdfs extends Command
     {
         $outputDirArg = $this->argument('outputDir');
         if ($outputDirArg) {
-            $outputDir = base_path($outputDirArg);
+            $outputDir = $this->resolveOutputDir((string) $outputDirArg);
             if (!is_dir($outputDir)) {
                 $this->error("Output dir not found: $outputDir");
                 return Command::FAILURE;
@@ -100,6 +101,7 @@ class ConvertCrawledPdfs extends Command
 
             try {
                 $docInfo = new SplFileInfo($docPath);
+                $flatPath = dirname($docPath) . '/' . pathinfo($docInfo->getFilename(), PATHINFO_FILENAME) . '_converted.md';
 
                 // Compute converted_id (sha256 of file contents)
                 $convertedId = @hash_file('sha256', $docInfo->getPathname());
@@ -121,7 +123,6 @@ class ConvertCrawledPdfs extends Command
                 if (!$forceReprocess && is_file($metaPath)) {
                     $meta = json_decode(@file_get_contents($metaPath), true);
                     if (is_array($meta) && ($meta['converted_id'] ?? null) === $convertedId) {
-                        $flatPath = dirname($pdfPath) . '/' . pathinfo($pdfInfo->getFilename(), PATHINFO_FILENAME) . '_converted.md';
                         if (!is_file($flatPath)) {
                             $flatContent = $this->loadMarkdownFromMeta($meta, $destDir);
                             if ($flatContent !== null) {
@@ -161,7 +162,6 @@ class ConvertCrawledPdfs extends Command
                 ];
                 File::put($metaPath, json_encode($metaPayload, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
 
-                $flatPath = dirname($docPath) . '/' . pathinfo($docInfo->getFilename(), PATHINFO_FILENAME) . '_converted.md';
                 $flatContent = $this->pickMarkdownContent($files);
                 if ($flatContent !== null) {
                     File::put($flatPath, $flatContent);
@@ -199,7 +199,7 @@ class ConvertCrawledPdfs extends Command
     private function pickOutputDir(): ?string
     {
         $candidates = [
-            '/app/shared',
+            $this->getCrawledDataRoot(),
         ];
 
         $roots = array_values(array_filter($candidates, static fn ($path) => is_dir($path)));
@@ -221,6 +221,25 @@ class ConvertCrawledPdfs extends Command
         $selected = $this->choice('Select a crawl folder', $dirs, 0);
         $this->info("Selected: {$selected}");
         return $selected;
+    }
+
+    private function resolveOutputDir(string $outputDir): string
+    {
+        if ($this->isAbsolutePath($outputDir)) {
+            return $outputDir;
+        }
+
+        return $this->getCrawledDataRoot() . DIRECTORY_SEPARATOR . ltrim($outputDir, DIRECTORY_SEPARATOR);
+    }
+
+    private function getCrawledDataRoot(): string
+    {
+        return rtrim((string) config('config.crawled_data_root', '/app/shared/crawled-data'), DIRECTORY_SEPARATOR);
+    }
+
+    private function isAbsolutePath(string $path): bool
+    {
+        return Str::startsWith($path, ['/','\\']) || preg_match('/^[A-Za-z]:[\/\\\\]/', $path) === 1;
     }
 
     /**

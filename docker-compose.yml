@@ -34,7 +34,7 @@ services:
         - DOCKER_PROJECT_PATH=/hawki-rag/
     container_name: hawki_rag_app
     volumes:
-      - shared_storage:/var/www/storage/app/public
+      - shared_storage:/app/shared
       - ./storage:/var/www/html/storage
       - ./docker/rag_app:/container/custom
       - ./:/var/www/html

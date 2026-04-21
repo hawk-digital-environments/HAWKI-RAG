@@ -63,7 +63,7 @@
 ## Volumes (from compose)
 | Volume | Description |
 |---|---|
-| `rawki_shared_storage` | Shared volume between Laravel and bridge (`/var/www/storage/app/public` ↔ `/app/shared`). |
+| `rawki_shared_storage` | Shared volume between Laravel and bridge (`/app/shared`). |
 | `qdrant_data`, `neo4j_data`, `hawki_mariadb_data`, `rag_storage`, `ollama` | Persistent data volumes for vector DB, graph DB, SQL DB, RAG working data, and model store. |
 
 ## Logs & statuses

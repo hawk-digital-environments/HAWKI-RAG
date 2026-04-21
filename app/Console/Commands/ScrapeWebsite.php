@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Services\ScrapeService\ScrapeService;
 use Illuminate\Console\Command;
+use Illuminate\Support\Str;
 
 class ScrapeWebsite extends Command
 {
@@ -15,10 +16,10 @@ class ScrapeWebsite extends Command
     protected $signature = 'scraper:scrape
                             {url? : The starting URL to crawl}
                             {--max-pages=100 : Maximum number of pages to crawl}
-                            {--output-dir= : Directory to store crawled data}
+                            {--output-dir= : Crawl output directory (absolute path or path relative to the canonical crawled-data root)}
                             {--label= : Label for this crawl job (auto-generated if not provided)}
                             {--skip-images : Skip downloading images to save time and bandwidth}
-                            {--image-exceptions= : Comma-separated list of CSS selectors for elements to exclude from image scraping}
+                            {--image-exceptions= : Comma-separated substrings to exclude from image scraping}
                             {--date= : CSS selector for date elements (e.g., ".date", "#publication-date", "time", "meta[property=\"og:updated_time\"]")}
                             {--max-concurrency=4 : Maximum number of parallel requests running at a time}
                             {--max-rpm=60 : Maximum requests per minute to throttle overall rate}
@@ -56,9 +57,11 @@ class ScrapeWebsite extends Command
 
             // Get label with auto-generated fallback
             $label = $this->option('label');
+            $outputDir = $this->resolveOutputDir($this->option('output-dir'), $label);
 
             // Display the label being used
             $this->info("Using crawl label: {$label}");
+            $this->info("Using output directory: {$outputDir}");
 
             // Parse image exceptions
             $imageExceptions = $this->parseImageExceptions();
@@ -74,7 +77,7 @@ class ScrapeWebsite extends Command
                 'url' => $url,
                 'label' => $label,
                 'maxPages' => (int)$this->option('max-pages'),
-                'outputDir' => $this->option('output-dir') ?: '',
+                'outputDir' => $outputDir,
                 'skipImages' => (bool)$this->option('skip-images'),
                 'imageExceptions' => $imageExceptions,
                 'dateSelector' => $dateSelector,
@@ -119,5 +122,38 @@ class ScrapeWebsite extends Command
         }
 
         return $imageExceptions ?: null;
+    }
+
+    private function resolveOutputDir(?string $outputDir, ?string $label): string
+    {
+        if (filled($outputDir)) {
+            return $this->resolvePath((string) $outputDir);
+        }
+
+        $root = $this->getCrawledDataRoot();
+        if (blank($label)) {
+            return $root;
+        }
+
+        return $root . DIRECTORY_SEPARATOR . Str::slug((string) $label, '-');
+    }
+
+    private function resolvePath(string $path): string
+    {
+        if ($this->isAbsolutePath($path)) {
+            return $path;
+        }
+
+        return $this->getCrawledDataRoot() . DIRECTORY_SEPARATOR . ltrim($path, DIRECTORY_SEPARATOR);
+    }
+
+    private function getCrawledDataRoot(): string
+    {
+        return rtrim((string) config('config.crawled_data_root', '/app/shared/crawled-data'), DIRECTORY_SEPARATOR);
+    }
+
+    private function isAbsolutePath(string $path): bool
+    {
+        return Str::startsWith($path, ['/','\\']) || preg_match('/^[A-Za-z]:[\/\\\\]/', $path) === 1;
     }
 }

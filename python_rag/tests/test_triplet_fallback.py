@@ -123,7 +123,7 @@ class RAGAnythingGraphExtractionTests(unittest.TestCase):
 
             trips = service._triplets_from_raganything_edges(
                 edges=edges,
-                file_ref="/var/www/storage/app/public/x/y/z/content.md",
+                file_ref="/app/shared/x/y/z/content.md",
                 created_at_floor=150,
             )
             self.assertEqual(trips, [("Alice", "employment", "HAWK")])

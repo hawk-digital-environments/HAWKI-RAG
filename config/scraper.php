@@ -1,5 +1,8 @@
 <?php
 
+$pipelineRoot = rtrim((string) env('HAWKI_RAG_PIPELINE_ROOT', '/app/shared'), DIRECTORY_SEPARATOR);
+$crawledDataRoot = rtrim((string) env('HAWKI_RAG_CRAWLED_DATA_ROOT', $pipelineRoot . '/crawled-data'), DIRECTORY_SEPARATOR);
+
 return [
 
     /*
@@ -35,7 +38,7 @@ return [
     |
     */
 
-    'storage_path' => env('SCRAPE_STORAGE_PATH', storage_path('app/scrape-jobs')),
+    'storage_path' => env('SCRAPE_STORAGE_PATH', $crawledDataRoot),
 
     /*
     |--------------------------------------------------------------------------

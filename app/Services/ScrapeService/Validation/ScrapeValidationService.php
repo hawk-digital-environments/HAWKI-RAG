@@ -140,15 +140,20 @@ class ScrapeValidationService
      */
     public function isValidDirectory(string $directory): bool
     {
-        if (!File::exists($directory)) {
+        if (File::exists($directory)) {
+            if (!File::isDirectory($directory)) {
+                return false;
+            }
+
+            return File::isWritable($directory);
+        }
+
+        $parent = dirname($directory);
+        if ($parent === $directory || !File::exists($parent) || !File::isDirectory($parent)) {
             return false;
         }
 
-        if (!File::isDirectory($directory)) {
-            return false;
-        }
-
-        return File::isWritable($directory);
+        return File::isWritable($parent);
     }
 
     /**
