@@ -76,19 +76,43 @@ services:
         max-size: "128m"
         max-file: "3"
 
-  phpmyadmin:
-    image: ${PHPMYADMIN_IMAGE:-phpmyadmin/phpmyadmin:latest}
-    container_name: phpmyadmin
+  # -------------------------------------------------
+  # RabbitMQ Broker (AMQP + management UI)
+  # -------------------------------------------------
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: rabbitmq
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-guest}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-guest}
+      RABBITMQ_DEFAULT_VHOST: ${RABBITMQ_VHOST:-/}
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 15s
+      timeout: 10s
+      retries: 12
+      start_period: 20s
+    networks:
+      - default
+      - hawki-network
+
+  adminer:
+    image: ${ADMINER_IMAGE:-adminer:latest}
+    container_name: adminer
     restart: always
     ports:
-      - "${PHPMYADMIN_PORT:-8004}:80"
+      - "${ADMINER_PORT:-8005}:8080"
     environment:
-      PMA_HOST: mariadb
-      PMA_PORT: 3306
-      UPLOAD_LIMIT: 1024M
+      ADMINER_DEFAULT_SERVER: mariadb
       TZ: Europe/Berlin
       VIRTUAL_HOST: ixdlab.hawk.de
-      VIRTUAL_PATH: /phpmyadmin/
+      VIRTUAL_PATH: /adminer/
       VIRTUAL_DEST: /
     networks:
       - hosting_network
@@ -183,6 +207,100 @@ services:
     restart: unless-stopped
 
   # -------------------------------------------------
+  # RabbitMQ topology initializer (one-shot)
+  # -------------------------------------------------
+  rabbitmq_topology_init:
+    image: hawki-rag-python:local
+    pull_policy: never
+    container_name: rabbitmq_topology_init
+    env_file:
+      - ./.env
+    environment:
+      RABBITMQ_URL: ${RABBITMQ_URL:-amqp://guest:guest@rabbitmq:5672/%2F}
+    command: ["python", "-m", "rabbit_worker.topology_init"]
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    restart: "no"
+    networks:
+      - default
+      - hawki-network
+
+  # -------------------------------------------------
+  # HAWKI RAG RabbitMQ worker consumer
+  # -------------------------------------------------
+  hawki_rag_worker:
+    image: hawki-rag-python:local
+    pull_policy: never
+    container_name: hawki_rag_worker
+    env_file:
+      - ./.env
+    environment:
+      RABBITMQ_URL: ${RABBITMQ_URL:-amqp://guest:guest@rabbitmq:5672/%2F}
+      QDRANT_HOST: qdrant
+      QDRANT_PORT: 6333
+      NEO4J_URI: bolt://hawki_rag_neo4j:7687
+      NEO4J_USER: ${NEO4J_USER}
+      NEO4J_PASSWORD: ${NEO4J_PASSWORD}
+      RABBITMQ_EXCHANGE: ${RABBITMQ_EXCHANGE:-jobs}
+      RABBITMQ_RETRY_EXCHANGE: ${RABBITMQ_RETRY_EXCHANGE:-jobs.retry}
+      RABBITMQ_FAILED_EXCHANGE: ${RABBITMQ_FAILED_EXCHANGE:-jobs.failed}
+      RABBITMQ_MAIN_QUEUE: ${RABBITMQ_MAIN_QUEUE:-crawl_jobs}
+      RABBITMQ_RETRY_QUEUE: ${RABBITMQ_RETRY_QUEUE:-crawl_jobs_retry}
+      RABBITMQ_FAILED_QUEUE: ${RABBITMQ_FAILED_QUEUE:-failed_jobs}
+      RABBITMQ_MAIN_ROUTING_KEY: ${RABBITMQ_MAIN_ROUTING_KEY:-crawl}
+      RABBITMQ_RETRY_ROUTING_KEY: ${RABBITMQ_RETRY_ROUTING_KEY:-crawl.retry}
+      RABBITMQ_FAILED_ROUTING_KEY: ${RABBITMQ_FAILED_ROUTING_KEY:-crawl.failed}
+    volumes:
+      - ./python_rag:/app
+      - ./storage:/app/storage
+      - shared_storage:/app/shared
+    command: ["python", "worker.py"]
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+      hawki_rag_neo4j:
+        condition: service_healthy
+      rabbitmq_topology_init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import rabbit_worker.bootstrap, common.job_schema; print('ok')"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+    networks:
+      - default
+      - hawki-network
+
+  # -------------------------------------------------
+  # Crawler producer (external image/command, profile-based)
+  # -------------------------------------------------
+  crawler_producer:
+    image: ${CRAWLER_PRODUCER_IMAGE:-ghcr.io/example/hawki-crawler-producer:latest}
+    container_name: crawler_producer
+    profiles: ["crawler-producer"]
+    env_file:
+      - ./.env
+    environment:
+      RABBITMQ_URL: ${RABBITMQ_URL:-amqp://guest:guest@rabbitmq:5672/%2F}
+      RABBITMQ_EXCHANGE: ${RABBITMQ_EXCHANGE:-jobs}
+      RABBITMQ_MAIN_ROUTING_KEY: ${RABBITMQ_MAIN_ROUTING_KEY:-crawl}
+    command: ${CRAWLER_PRODUCER_COMMAND:-python -m crawler_producer.main}
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      rabbitmq_topology_init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    networks:
+      - default
+      - hawki-network
+
+  # -------------------------------------------------
   # Ollama
   # -------------------------------------------------
   ollama:
@@ -234,6 +352,7 @@ volumes:
   qdrant_data:
   neo4j_data:
   hawki_mariadb_data:
+  rabbitmq_data:
   ollama:
   rag_storage:
 

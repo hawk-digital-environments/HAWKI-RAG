@@ -34,7 +34,7 @@ Open `.env` in an editor and set:
 - Command: `make up-core`
 
 :::tip "Verification"
-    `docker ps` should show containers such as `hawki_rag_app`, `hawki_qdrant`, `hawki_rag_bridge`, `hawki_rag_rerank`, `hawki_rag_neo4j`, `hawki_ollama`, `mariadb`, and `phpmyadmin`.
+    `docker ps` should show containers such as `hawki_rag_app`, `hawki_qdrant`, `hawki_rag_bridge`, `hawki_rag_rerank`, `hawki_rag_neo4j`, `hawki_ollama`, `mariadb`, and `adminer`.
 :::
 
 ## Step 5 - Health check everything
