@@ -207,26 +207,6 @@ services:
     restart: unless-stopped
 
   # -------------------------------------------------
-  # RabbitMQ topology initializer (one-shot)
-  # -------------------------------------------------
-  rabbitmq_topology_init:
-    image: hawki-rag-python:local
-    pull_policy: never
-    container_name: rabbitmq_topology_init
-    env_file:
-      - ./.env
-    environment:
-      RABBITMQ_URL: ${RABBITMQ_URL:-amqp://guest:guest@rabbitmq:5672/%2F}
-    command: ["python", "-m", "rabbit_worker.topology_init"]
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
-    restart: "no"
-    networks:
-      - default
-      - hawki-network
-
-  # -------------------------------------------------
   # HAWKI RAG RabbitMQ worker consumer
   # -------------------------------------------------
   hawki_rag_worker:
@@ -263,8 +243,6 @@ services:
         condition: service_healthy
       hawki_rag_neo4j:
         condition: service_healthy
-      rabbitmq_topology_init:
-        condition: service_completed_successfully
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c", "import rabbit_worker.bootstrap, common.job_schema; print('ok')"]
@@ -293,8 +271,6 @@ services:
     depends_on:
       rabbitmq:
         condition: service_healthy
-      rabbitmq_topology_init:
-        condition: service_completed_successfully
     restart: unless-stopped
     networks:
       - default

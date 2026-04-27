@@ -31,6 +31,14 @@ except Exception:  # pragma: no cover
 
 logger = logging.getLogger(__name__)
 
+if aio_pika is not None:  # pragma: no cover - import depends on runtime env
+    try:
+        from aio_pika.exceptions import AMQPException
+    except Exception:  # pragma: no cover
+        AMQPException = Exception
+else:  # pragma: no cover
+    AMQPException = Exception
+
 
 class _FallbackMessage:
     def __init__(self, body: bytes):
@@ -78,10 +86,7 @@ class RabbitWorker:
             raise RuntimeError("aio-pika is required for RabbitWorker runtime. Install python_rag requirements.")
 
         self.job_store.setup()
-        self.connection = await aio_pika.connect_robust(self.settings.rabbitmq_url)
-        self.channel = await self.connection.channel(publisher_confirms=True)
-        await self.channel.set_qos(prefetch_count=self.settings.prefetch_count)
-        await self._declare_topology()
+        await self._connect_and_prepare()
 
         self._consumer_tag = await self.main_queue.consume(self.on_message, no_ack=False)
         logger.info(
@@ -92,6 +97,60 @@ class RabbitWorker:
             self.settings.failed_queue,
             self.settings.prefetch_count,
         )
+
+    async def _connect_and_prepare(self) -> None:
+        max_wait_s = int(self.settings.startup_max_wait_seconds)
+        retry_delay_s = int(self.settings.startup_retry_delay_seconds)
+        deadline = asyncio.get_running_loop().time() + max_wait_s
+        attempt = 0
+        last_exc: Exception | None = None
+
+        while asyncio.get_running_loop().time() < deadline:
+            attempt += 1
+            try:
+                self.connection = await aio_pika.connect_robust(self.settings.rabbitmq_url, timeout=10)
+                self.channel = await self.connection.channel(publisher_confirms=True)
+                await self.channel.set_qos(prefetch_count=self.settings.prefetch_count)
+                await self._declare_topology()
+                logger.info(
+                    "worker rabbitmq ready attempt=%s queue=%s exchange=%s",
+                    attempt,
+                    self.settings.main_queue,
+                    self.settings.exchange,
+                )
+                return
+            except (AMQPException, OSError, asyncio.TimeoutError) as exc:
+                last_exc = exc
+                logger.warning(
+                    "worker rabbitmq setup failed attempt=%s retry_in=%ss error=%s",
+                    attempt,
+                    retry_delay_s,
+                    exc,
+                )
+                await self._cleanup_partial_setup()
+                await asyncio.sleep(retry_delay_s)
+
+        if last_exc is not None:
+            raise RuntimeError(
+                f"Unable to initialize RabbitMQ worker after {max_wait_s}s"
+            ) from last_exc
+        raise RuntimeError("Unable to initialize RabbitMQ worker")
+
+    async def _cleanup_partial_setup(self) -> None:
+        if self.channel is not None:
+            try:
+                await self.channel.close()
+            except Exception:
+                pass
+            finally:
+                self.channel = None
+        if self.connection is not None:
+            try:
+                await self.connection.close()
+            except Exception:
+                pass
+            finally:
+                self.connection = None
 
     async def run(self) -> None:
         await self.start()

@@ -15,6 +15,16 @@ def _int_env(name: str, default: int) -> int:
         return default
 
 
+def _int_env_compat(primary: str, legacy: str, default: int) -> int:
+    raw = os.environ.get(primary)
+    if raw is not None and str(raw).strip() != "":
+        return _int_env(primary, default)
+    raw_legacy = os.environ.get(legacy)
+    if raw_legacy is not None and str(raw_legacy).strip() != "":
+        return _int_env(legacy, default)
+    return default
+
+
 @dataclass(frozen=True)
 class WorkerSettings:
     rabbitmq_url: str
@@ -34,6 +44,8 @@ class WorkerSettings:
     max_retries: int
     shutdown_grace_seconds: int
     idempotency_db_path: str
+    startup_max_wait_seconds: int = 90
+    startup_retry_delay_seconds: int = 3
 
     @classmethod
     def from_env(cls) -> "WorkerSettings":
@@ -58,4 +70,20 @@ class WorkerSettings:
             max_retries=max(0, _int_env("RABBITMQ_MAX_RETRIES", 3)),
             shutdown_grace_seconds=max(1, _int_env("RABBITMQ_SHUTDOWN_GRACE_SECONDS", 30)),
             idempotency_db_path=os.environ.get("RABBITMQ_JOB_DB_PATH", str(default_db)),
+            startup_max_wait_seconds=max(
+                1,
+                _int_env_compat(
+                    "RABBITMQ_STARTUP_MAX_WAIT_SECONDS",
+                    "RABBITMQ_TOPOLOGY_INIT_MAX_WAIT_SECONDS",
+                    90,
+                ),
+            ),
+            startup_retry_delay_seconds=max(
+                1,
+                _int_env_compat(
+                    "RABBITMQ_STARTUP_RETRY_DELAY_SECONDS",
+                    "RABBITMQ_TOPOLOGY_INIT_RETRY_DELAY_SECONDS",
+                    3,
+                ),
+            ),
         )
