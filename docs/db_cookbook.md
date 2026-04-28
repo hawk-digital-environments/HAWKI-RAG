@@ -95,6 +95,11 @@ Queue/exchange/binding inspection from container:
 docker exec rabbitmq rabbitmqctl list_exchanges name type durable | rg 'jobs'
 docker exec rabbitmq rabbitmqctl list_queues name durable arguments messages_ready messages_unacknowledged | rg 'crawl_jobs|failed_jobs'
 docker exec rabbitmq rabbitmqctl list_bindings source_name destination_name destination_kind routing_key | rg 'jobs|crawl'
+
+# Converted-document pipeline topology
+docker exec rabbitmq rabbitmqctl list_exchanges name type durable | rg 'pipeline'
+docker exec rabbitmq rabbitmqctl list_queues name durable arguments messages_ready messages_unacknowledged | rg 'rag_ingestion_jobs|failed_jobs'
+docker exec rabbitmq rabbitmqctl list_bindings source_name destination_name destination_kind routing_key | rg 'pipeline|convert.document.completed'
 ```
 
 Expected topology:
@@ -102,6 +107,12 @@ Expected topology:
 - Exchanges: `jobs`, `jobs.retry`, `jobs.failed`
 - Queues: `crawl_jobs`, `crawl_jobs_retry`, `failed_jobs`
 - Routing keys: `crawl`, `crawl.retry`, `crawl.failed`
+
+Converted-document ingestion worker topology:
+
+- Exchanges: `pipeline.events`, `pipeline.retry`, `pipeline.failed`
+- Queues: `rag_ingestion_jobs`, `rag_ingestion_jobs_retry`, `failed_jobs`
+- Routing keys: `convert.document.completed`, `convert.document.completed.retry`, `pipeline.failed`
 
 ## 6) Re-apply topology declaration
 
