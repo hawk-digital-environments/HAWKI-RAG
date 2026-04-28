@@ -7,6 +7,10 @@ COMPOSE_BIN ?= docker compose
 # Variables (override via `make VAR=value`)
 ENV_FILE ?= .env
 CRAWLED_ROOT ?= /app/shared
+GRAPH ?= true
+BATCH ?= 16
+PROVIDER ?= ollama
+BASE_URL ?= http://localhost:8000
 
 HOST_OS := $(shell uname -s)
 
@@ -127,7 +131,8 @@ pull-models:
 
 ingest:
 	@if [ "$(CRAWLED_ROOT)" = "/absolute/path/to/crawled-data" ]; then echo "Set CRAWLED_ROOT to a path mounted in shared storage (default /app/shared inside hawki_rag_bridge)" && exit 1; fi
-	@docker exec hawki_rag_bridge sh -lc "python /app/ingest/ingest_crawled.py --root $(CRAWLED_ROOT) --base-url http://localhost:8000 --provider ollama --graph --batch 16"
+	@if [ "$(GRAPH)" = "true" ]; then GRAPH_FLAG="--graph"; else GRAPH_FLAG=""; fi; \
+	docker exec hawki_rag_bridge sh -lc "python /app/ingest/ingest_crawled.py --root $(CRAWLED_ROOT) --base-url $(BASE_URL) --provider $(PROVIDER) $$GRAPH_FLAG --batch $(BATCH)"
 
 logs-core:
 	@$(COMPOSE_CMD) logs -f qdrant mysql hawki_rag_nginx $(OLLAMA_SERVICE) hawki_rag_app

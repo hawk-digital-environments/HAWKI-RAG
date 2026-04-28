@@ -75,6 +75,25 @@ SELECT * FROM document_chunks WHERE document_id = 'PUT-UUID-HERE';
 
 ## 4) Laravel migration commands
 
+Important hostname note:
+
+- `mariadb` is a Docker-internal hostname.
+- If you run `php artisan` from your host shell, DNS will not resolve `mariadb`.
+
+Use one of these:
+
+```bash
+# Recommended: run Artisan inside app container
+docker exec -it hawki_rag_app php artisan migrate
+
+# Or run from host shell with host DB address
+DB_HOST=127.0.0.1 DB_PORT=3306 php artisan migrate
+```
+
+If you run Artisan from host often, set `DB_HOST=127.0.0.1` and `DB_PORT=3306` in your host `.env` profile for local runs.
+
+Additional migration commands:
+
 ```bash
 docker exec -it hawki_rag_app php artisan migrate:status
 docker exec -it hawki_rag_app php artisan migrate
