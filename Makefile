@@ -31,6 +31,11 @@ endif
 
 OLLAMA_SERVICE := ollama
 OLLAMA_CONTAINER ?= hawki_ollama
+SCHEDULER_DB_HOST ?= 127.0.0.1
+SCHEDULER_DB_PORT ?= 3306
+SCRAPER_REPO_HOST_PATH ?= $(abspath ../CustomCrawler)
+RAG_REPO_HOST_PATH ?= $(CURDIR)
+SCHEDULER_ARTISAN_ENV = DB_HOST=$(SCHEDULER_DB_HOST) DB_PORT=$(SCHEDULER_DB_PORT) SCRAPER_REPO_PATH=$(SCRAPER_REPO_HOST_PATH) RAG_REPO_PATH=$(RAG_REPO_HOST_PATH)
 
 COMPOSE_FILE_LIST := $(BASE_COMPOSE_FILE)
 
@@ -54,7 +59,7 @@ COMPOSE_FILE_PREFIX := COMPOSE_FILE=$(COMPOSE_FILE_LIST)
 COMPOSE_CMD = $(COMPOSE_ENV_PREFIX) $(COMPOSE_FILE_PREFIX) $(COMPOSE_PROFILE_PREFIX) $(COMPOSE_BIN) --env-file $(ENV_FILE)
 
 
-.PHONY: network pull-core build-app up-core health pull-models ingest logs-core down-core down-rag restart-core test-services neo4j-fresh
+.PHONY: network pull-core build-app up-core health pull-models ingest scheduler-run scheduled-crawls logs-core down-core down-rag restart-core test-services neo4j-fresh
 
 network:
 	@for net in hawki-network hosting_network; do \
@@ -133,6 +138,12 @@ ingest:
 	@if [ "$(CRAWLED_ROOT)" = "/absolute/path/to/crawled-data" ]; then echo "Set CRAWLED_ROOT to a path mounted in shared storage (default /app/shared inside hawki_rag_bridge)" && exit 1; fi
 	@if [ "$(GRAPH)" = "true" ]; then GRAPH_FLAG="--graph"; else GRAPH_FLAG=""; fi; \
 	docker exec hawki_rag_bridge sh -lc "python /app/ingest/ingest_crawled.py --root $(CRAWLED_ROOT) --base-url $(BASE_URL) --provider $(PROVIDER) $$GRAPH_FLAG --batch $(BATCH)"
+
+scheduler-run:
+	@$(SCHEDULER_ARTISAN_ENV) php artisan schedule:run
+
+scheduled-crawls:
+	@$(SCHEDULER_ARTISAN_ENV) php artisan rag:run-scheduled-crawls
 
 logs-core:
 	@$(COMPOSE_CMD) logs -f qdrant mysql hawki_rag_nginx $(OLLAMA_SERVICE) hawki_rag_app

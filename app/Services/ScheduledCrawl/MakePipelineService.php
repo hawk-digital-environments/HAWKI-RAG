@@ -84,11 +84,11 @@ class MakePipelineService
             return ['ok' => empty($errors), 'errors' => $errors];
         }
 
-        if (!$this->makeTargetExists($scraperRepoPath, $scraperTarget, $dryTimeout)) {
+        if (!$this->makeTargetExists($scraperRepoPath, $scraperTarget)) {
             $errors[] = "Scraper make target not found: {$scraperTarget}";
         }
 
-        if (!$this->makeTargetExists($ragRepoPath, $ragTarget, $dryTimeout)) {
+        if (!$this->makeTargetExists($ragRepoPath, $ragTarget)) {
             $errors[] = "RAG make target not found: {$ragTarget}";
         }
 
@@ -109,8 +109,14 @@ class MakePipelineService
             $errors[] = 'docker exec hawki_rag_bridge true failed: ' . $this->firstErrorLine($bridgeCheck['stderr']);
         }
 
+        // Note: GNU make still executes recipe lines containing $(MAKE) even under -n.
+        // The crawler Makefile uses recursive $(MAKE), so strict dry-run can produce false failures.
+        // We do an informational dry-check and only fail on obvious target-level errors.
         $scraperDry = $this->runScraper($job, true, $dryTimeout);
-        if (!$scraperDry['successful']) {
+        if (
+            !$scraperDry['successful']
+            && $this->isHardDryCheckFailure($scraperDry['stderr'])
+        ) {
             $errors[] = 'Scraper dry-check failed: ' . $this->firstErrorLine($scraperDry['stderr']);
         }
 
@@ -175,14 +181,53 @@ class MakePipelineService
         return $this->runCommand($command, $repoPath, $timeout);
     }
 
-    private function makeTargetExists(string $repoPath, string $target, int $timeout): bool
+    private function makeTargetExists(string $repoPath, string $target): bool
     {
-        $result = $this->runCommand(['make', '-qp'], $repoPath, $timeout);
-        if (!$result['successful']) {
+        $makefilePath = $repoPath . DIRECTORY_SEPARATOR . 'Makefile';
+        if (!is_file($makefilePath)) {
             return false;
         }
 
-        return preg_match('/^' . preg_quote($target, '/') . ':/m', $result['stdout']) === 1;
+        $content = (string) file_get_contents($makefilePath);
+        if ($content === '') {
+            return false;
+        }
+
+        $targetPattern = '/^\s*' . preg_quote($target, '/') . '\s*:/m';
+        if (preg_match($targetPattern, $content) === 1) {
+            return true;
+        }
+
+        $phonyPattern = '/^\.PHONY:\s.*\b' . preg_quote($target, '/') . '\b/m';
+
+        return preg_match($phonyPattern, $content) === 1;
+    }
+
+    private function isHardDryCheckFailure(string $stderr): bool
+    {
+        $normalized = strtolower($stderr);
+        if ($normalized === '') {
+            return false;
+        }
+
+        $hardMarkers = [
+            'no rule to make target',
+            'missing separator',
+            'syntax error',
+            'recipe commences before first target',
+            'multiple target patterns',
+            'unterminated variable reference',
+        ];
+        foreach ($hardMarkers as $marker) {
+            if (str_contains($normalized, $marker)) {
+                return true;
+            }
+        }
+
+        // Runtime/service errors from dry-check are platform/environment dependent
+        // (GNU make behavior with recursive $(MAKE), Docker daemon/service state, etc.).
+        // They should not block scheduling prechecks as long as target definitions are valid.
+        return false;
     }
 
     private function asMakeBool(bool $value): string

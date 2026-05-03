@@ -46,6 +46,20 @@ Run due jobs:
 php artisan rag:run-scheduled-crawls
 ```
 
+Run through the project Makefile:
+
+```bash
+make scheduled-crawls
+```
+
+The Make target runs Artisan from the host with `DB_HOST=127.0.0.1` and host repo paths so the scheduled pipeline can call Docker/Make.
+
+Cron should call Laravel's scheduler once per minute:
+
+```cron
+* * * * * cd /absolute/path/to/HAWKI-RAG && make scheduler-run >> /dev/null 2>&1
+```
+
 ## Pipeline Modes
 
 - `make-sync`: runs `make crawl`, then `make ingest`.
