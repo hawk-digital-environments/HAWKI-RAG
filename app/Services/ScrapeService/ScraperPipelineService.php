@@ -8,6 +8,7 @@ use App\Services\ScrapeService\Data\ScrapeRequestResult;
 use App\Services\ScrapeService\Pipeline\ScrapeExecutionService;
 use App\Services\ScrapeService\Pipeline\ScrapeContextBuilder;
 use App\Services\ScrapeService\Validation\ScrapeValidationService;
+use App\Services\Pipeline\PipelineLogger;
 use App\Services\StorageService\StorageService;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Cache;
@@ -41,28 +42,69 @@ class ScraperPipelineService
     {
         // Create context to carry state through the pipeline
         $context = ScrapeContextBuilder::buildFromRequest($request);
+        PipelineLogger::started('scrape', [
+            'job_id' => $context->jobId,
+            'source_url' => $request->url,
+            'output_dir' => $request->outputDir,
+            'pipeline_stage' => 'initialized',
+        ]);
 
         try {
             // Stage 1: Validation
             $this->executeValidation($context);
             if ($context->hasErrors()) {
+                PipelineLogger::validationFailed('scrape', [
+                    'job_id' => $context->jobId,
+                    'source_url' => $request->url,
+                    'pipeline_stage' => $context->getStage(),
+                    'error_message' => implode('; ', array_map(
+                        static fn ($error) => is_array($error) ? (string) ($error['message'] ?? json_encode($error)) : (string) $error,
+                        $context->getErrors()
+                    )),
+                    'errors' => $context->getErrors(),
+                    'warnings' => $context->getWarnings(),
+                ]);
                 return $this->buildFailureResult($context);
             }
 
             // Stage 2: Execution
             $this->executeExecution($context, $outputCallback);
             if ($context->hasErrors()) {
+                PipelineLogger::failed('scrape', [
+                    'job_id' => $context->jobId,
+                    'source_url' => $request->url,
+                    'pipeline_stage' => $context->getStage(),
+                    'error_message' => implode('; ', array_map(
+                        static fn ($error) => is_array($error) ? (string) ($error['message'] ?? json_encode($error)) : (string) $error,
+                        $context->getErrors()
+                    )),
+                    'errors' => $context->getErrors(),
+                    'warnings' => $context->getWarnings(),
+                ]);
                 return $this->buildFailureResult($context);
             }
 
             Cache::put("scrape_process:{$context->jobId}", $context->process, now()->addMinutes(10));
+            PipelineLogger::success('scrape', [
+                'job_id' => $context->jobId,
+                'source_url' => $request->url,
+                'output_dir' => $request->outputDir,
+                'pipeline_stage' => $context->getStage(),
+                'warnings' => $context->getWarnings(),
+            ]);
             return ScrapeRequestResult::success(
                 $context->jobId,
                 $context->getStage(),
             );
         } catch (Throwable $e) {
             $context->addError($e->getMessage());
-            Log::error($e->getMessage());
+            PipelineLogger::failed('scrape', [
+                'job_id' => $context->jobId,
+                'source_url' => $request->url,
+                'pipeline_stage' => $context->getStage(),
+                'error_message' => $e->getMessage(),
+                'exception' => $e,
+            ]);
             return $this->buildFailureResult($context);
         }
     }
@@ -90,6 +132,15 @@ class ScraperPipelineService
         foreach ($this->validationService->getWarnings() as $warning) {
             $context->addWarning($warning);
         }
+
+        if ($isValid) {
+            PipelineLogger::success('scrape', [
+                'job_id' => $context->jobId,
+                'source_url' => $context->getRequest()->url,
+                'pipeline_stage' => 'validation',
+                'warnings' => $this->validationService->getWarnings(),
+            ]);
+        }
     }
 
     /**
@@ -108,10 +159,22 @@ class ScraperPipelineService
 
         if($response['success']){
             $context->setStage('process_submitted');
+            PipelineLogger::success('scrape', [
+                'job_id' => $context->jobId,
+                'source_url' => $context->getRequest()->url,
+                'pipeline_stage' => 'execution',
+                'message' => $response['message'] ?? null,
+            ]);
         }
         else {
             $context->setStage('failed');
             $context->addError($response['message']);
+            PipelineLogger::failed('scrape', [
+                'job_id' => $context->jobId,
+                'source_url' => $context->getRequest()->url,
+                'pipeline_stage' => 'execution',
+                'error_message' => $response['message'] ?? 'Scrape execution failed.',
+            ]);
         }
     }
 

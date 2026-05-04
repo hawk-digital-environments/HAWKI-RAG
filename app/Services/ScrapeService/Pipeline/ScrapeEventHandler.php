@@ -2,13 +2,10 @@
 
 namespace App\Services\ScrapeService\Pipeline;
 
-use App\Events\ScrapeEvent;
-use App\Jobs\ScrapeEventJob;
-use App\Models\ScrapeStatistics;
 use App\Services\ScrapeService\Data\ScrapeContext;
 use App\Services\ScrapeService\Data\ScrapeEventPacket;
+use App\Services\Pipeline\PipelineLogger;
 use Exception;
-use Illuminate\Support\Facades\Log;
 
 class ScrapeEventHandler
 {
@@ -17,15 +14,19 @@ class ScrapeEventHandler
     public function __construct(
     )
     {
-        $this->datasetCreator = new ScrapeDatasetCreator();
+        $this->datasetCreator = app(ScrapeDatasetCreator::class);
     }
 
 
     public function handle(array $payload){
         // Validate message structure
         if (!$this->isValidEventPacket($payload)) {
-            Log::warning("Invalid event packet structure in job", [
-                'data' => $payload
+            PipelineLogger::validationFailed('scrape', [
+                'job_id' => $payload['job_id'] ?? null,
+                'pipeline_stage' => 'event_packet',
+                'error_message' => 'Invalid scrape event packet structure.',
+                'event_name' => $payload['event'] ?? null,
+                'payload_keys' => array_keys($payload),
             ]);
             return;
         }
@@ -81,6 +82,12 @@ class ScrapeEventHandler
     {
         // Rebuild context from job ID
         $context = ScrapeContextBuilder::rebuildContext($packet->jobId);
+        PipelineLogger::started('scrape', [
+            'job_id' => $packet->jobId,
+            'pipeline_stage' => 'event',
+            'event_name' => $packet->event,
+        ]);
+
         switch($packet->event){
             case('stage'):
                 $this->processStageChange($packet, $context);
@@ -91,14 +98,48 @@ class ScrapeEventHandler
             case('summary'):
                 $this->processSummary($packet, $context);
                 break;
+            default:
+                PipelineLogger::skipped('scrape', [
+                    'job_id' => $packet->jobId,
+                    'pipeline_stage' => 'event',
+                    'event_name' => $packet->event,
+                    'reason' => 'Unsupported scrape event type.',
+                ]);
         }
     }
 
     protected function processStageChange(ScrapeEventPacket $packet, ScrapeContext $context): void
     {
-        $context->setStage($packet->data['stage']);
-        if($packet->data['stage'] === 'sitemap_detected'){
-            $context->setStats('total_urls', $packet->data['details']['total_urls']);
+        $stage = $packet->data['stage'] ?? null;
+        if (!is_string($stage) || trim($stage) === '') {
+            PipelineLogger::validationFailed('scrape', [
+                'job_id' => $context->jobId,
+                'pipeline_stage' => 'stage_change',
+                'error_message' => 'Stage event is missing a valid stage value.',
+            ]);
+            $context->addError('Stage event is missing a valid stage value.');
+            return;
+        }
+
+        $context->setStage($stage);
+        PipelineLogger::success('scrape', [
+            'job_id' => $context->jobId,
+            'pipeline_stage' => 'stage_change',
+            'crawler_stage' => $stage,
+        ]);
+        if($stage === 'sitemap_detected'){
+            $totalUrls = $packet->data['details']['total_urls'] ?? null;
+            if (is_numeric($totalUrls)) {
+                $context->setStats('total_urls', (int) $totalUrls);
+            } else {
+                PipelineLogger::partial('scrape', [
+                    'job_id' => $context->jobId,
+                    'pipeline_stage' => 'stage_change',
+                    'crawler_stage' => $stage,
+                    'error_message' => 'sitemap_detected stage is missing total_urls.',
+                ]);
+                $context->addWarning('sitemap_detected stage is missing total_urls.');
+            }
         }
     }
 
@@ -114,14 +155,39 @@ class ScrapeEventHandler
         }
         if(array_key_exists('url_completion', $packet->data)){
             $completion = $packet->data['url_completion'];
-            $context->setStats('current_url', $completion['url']);
-            $this->datasetCreator->createElementData($context, $completion['url_hash']);
+            $url = $completion['url'] ?? null;
+            $urlHash = $completion['url_hash'] ?? null;
+            if (!is_string($url) || trim($url) === '' || !is_string($urlHash) || trim($urlHash) === '') {
+                PipelineLogger::validationFailed('scrape', [
+                    'job_id' => $context->jobId,
+                    'doc_id' => is_scalar($urlHash) ? (string) $urlHash : null,
+                    'source_url' => is_scalar($url) ? (string) $url : null,
+                    'pipeline_stage' => 'url_completion',
+                    'error_message' => 'url_completion is missing url or url_hash.',
+                ]);
+                $context->addError('url_completion is missing url or url_hash.');
+                return;
+            }
+
+            $context->setStats('current_url', $url);
+            PipelineLogger::started('scrape', [
+                'job_id' => $context->jobId,
+                'doc_id' => $urlHash,
+                'source_url' => $url,
+                'pipeline_stage' => 'url_completion',
+            ]);
+            $this->datasetCreator->createElementData($context, $urlHash);
         }
     }
     protected function processSummary(ScrapeEventPacket $packet, ScrapeContext $context): void
     {
         $this->datasetCreator->recordScrapeSummary($context, $packet->data);
         $context->setEndProcess(true);
+        PipelineLogger::success('scrape', [
+            'job_id' => $context->jobId,
+            'pipeline_stage' => 'summary',
+            'statistics' => $packet->data['statistics'] ?? [],
+        ]);
     }
 
 

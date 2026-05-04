@@ -85,7 +85,7 @@ class RabbitMQMessageListener implements MessageListenerInterface
             $this->output("Connected to RabbitMQ successfully!");
             $this->output("Setting up queues and consumers...");
 
-            Log::info("Starting RabbitMQ subscriber on queues: " . implode(', ', $channels));
+            Log::channel('communication')->info("Starting RabbitMQ subscriber on queues: " . implode(', ', $channels));
 
             $this->isRunning = true;
 
@@ -113,14 +113,14 @@ class RabbitMQMessageListener implements MessageListenerInterface
 
             $this->isRunning = false;
             $this->output('Subscriber stopped gracefully');
-            Log::info("RabbitMQ subscriber stopped");
+            Log::channel('communication')->info("RabbitMQ subscriber stopped");
 
             return 0;
 
         } catch (Exception $e) {
             $this->isRunning = false;
             $this->output("Fatal error: " . $e->getMessage(), 'error');
-            Log::error("RabbitMQ subscriber fatal error: " . $e->getMessage(), [
+            Log::channel('communication')->error("RabbitMQ subscriber fatal error: " . $e->getMessage(), [
                 'exception' => $e
             ]);
 
@@ -138,7 +138,7 @@ class RabbitMQMessageListener implements MessageListenerInterface
      */
     protected function connectToRabbitMQ(): void
     {
-        Log::debug("Connecting to RabbitMQ: {$this->config['host']}:{$this->config['port']}");
+        Log::channel('communication')->debug("Connecting to RabbitMQ: {$this->config['host']}:{$this->config['port']}");
 
         $this->connection = new AMQPStreamConnection(
             $this->config['host'],
@@ -159,7 +159,7 @@ class RabbitMQMessageListener implements MessageListenerInterface
             false // auto_delete
         );
 
-        Log::debug("Connected to RabbitMQ and declared exchange: {$this->config['exchange']}");
+        Log::channel('communication')->debug("Connected to RabbitMQ and declared exchange: {$this->config['exchange']}");
     }
 
     /**
@@ -193,7 +193,7 @@ class RabbitMQMessageListener implements MessageListenerInterface
                     $this->channel->basic_ack($msg->getDeliveryTag());
                 }
             } catch (Exception $e) {
-                Log::error("Error processing RabbitMQ message: " . $e->getMessage(), [
+                Log::channel('communication')->error("Error processing RabbitMQ message: " . $e->getMessage(), [
                     'exception' => $e,
                     'queue' => $queueName
                 ]);
@@ -215,7 +215,7 @@ class RabbitMQMessageListener implements MessageListenerInterface
             $callback
         );
 
-        Log::debug("Set up consumer for queue: $queueName");
+        Log::channel('communication')->debug("Set up consumer for queue: $queueName");
     }
 
     /**
@@ -236,7 +236,7 @@ class RabbitMQMessageListener implements MessageListenerInterface
                 $this->connection = null;
             }
         } catch (Exception $e) {
-            Log::warning("Error closing RabbitMQ connection: " . $e->getMessage());
+            Log::channel('communication')->warning("Error closing RabbitMQ connection: " . $e->getMessage());
         }
     }
 
@@ -267,7 +267,7 @@ class RabbitMQMessageListener implements MessageListenerInterface
 
             // Validate message
             if (!$incomingMessage->isValid()) {
-                Log::warning("Invalid message received on queue $queue");
+                Log::channel('communication')->warning("Invalid message received on queue $queue");
                 return;
             }
 
@@ -280,13 +280,13 @@ class RabbitMQMessageListener implements MessageListenerInterface
 //            ]);
 
         } catch (JsonException $e) {
-            Log::error("Invalid JSON in RabbitMQ message: " . $e->getMessage(), [
+            Log::channel('communication')->error("Invalid JSON in RabbitMQ message: " . $e->getMessage(), [
                 'queue' => $queue,
                 'message' => substr($message, 0, 500)
             ]);
             throw $e; // Re-throw to trigger nack
         } catch (Exception $e) {
-            Log::error("Error processing RabbitMQ message: " . $e->getMessage(), [
+            Log::channel('communication')->error("Error processing RabbitMQ message: " . $e->getMessage(), [
                 'exception' => $e,
                 'queue' => $queue
             ]);
@@ -314,7 +314,7 @@ class RabbitMQMessageListener implements MessageListenerInterface
     public function stop(): void
     {
         $this->shouldStop = true;
-        Log::info("Stop signal received for RabbitMQ listener");
+        Log::channel('communication')->info("Stop signal received for RabbitMQ listener");
     }
 
     /**

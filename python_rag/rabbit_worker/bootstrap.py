@@ -441,9 +441,20 @@ class RabbitWorker:
         processing_stage: str,
         error_type: str | None = None,
     ) -> None:
+        status_map = {
+            "receive": "started",
+            "processing-start": "started",
+            "success": "success",
+            "skip-duplicate": "skipped",
+            "retry-published": "skipped",
+            "failed-published": "failed",
+        }
         payload = {
             "event": event,
+            "stage": "ingest",
+            "status": status_map.get(event, event),
             "job_id": job_id,
+            "doc_id": job_id,
             "retry_count": int(retry_count),
             "max_retries": int(max_retries),
             "queue": queue,

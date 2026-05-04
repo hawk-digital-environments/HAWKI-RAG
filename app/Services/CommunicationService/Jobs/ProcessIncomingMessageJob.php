@@ -2,18 +2,14 @@
 
 namespace App\Services\CommunicationService\Jobs;
 
-use App\Events\ScrapeEvent;
 use App\Services\CommunicationService\Data\IncomingMessage;
-use App\Services\ScrapeService\Data\ScrapeEventPacket;
-use App\Services\ScrapeService\Pipeline\ScrapeContextBuilder;
+use App\Services\Pipeline\PipelineLogger;
 use App\Services\ScrapeService\Pipeline\ScrapeEventHandler;
-use Exception;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Facades\Log;
 use Throwable;
 
 /**
@@ -45,23 +41,40 @@ class ProcessIncomingMessageJob implements ShouldQueue
      * Sort Package and send to target service.
      *
      * @return void
-     * @throws Exception
+     * @throws Throwable
      */
     public function handle(): void
     {
         try {
-//            Log::debug("Processing incoming message from {$this->message->source}", [
-//                'channel' => $this->message->channel,
-//                'payload_preview' => substr($this->message->rawPayload, 0, 200)
-//            ]);
+            PipelineLogger::started('scrape', [
+                'job_id' => $this->message->decodedPayload['job_id'] ?? null,
+                'pipeline_stage' => 'incoming_message',
+                'channel' => $this->message->channel,
+                'source' => $this->message->source,
+                'event_name' => $this->message->decodedPayload['event'] ?? null,
+            ]);
 
             switch ($this->message->channel){
                 case ('scrape-events'):
                     $handler = new ScrapeEventHandler();
                     $handler->handle($this->message->decodedPayload);
                 break;
+                default:
+                    PipelineLogger::skipped('scrape', [
+                        'job_id' => $this->message->decodedPayload['job_id'] ?? null,
+                        'pipeline_stage' => 'incoming_message',
+                        'channel' => $this->message->channel,
+                        'reason' => 'Unsupported incoming message channel.',
+                    ]);
             }
-        } catch (Exception $e) {
+        } catch (Throwable $e) {
+            PipelineLogger::failed('scrape', [
+                'job_id' => $this->message->decodedPayload['job_id'] ?? null,
+                'pipeline_stage' => 'incoming_message',
+                'channel' => $this->message->channel,
+                'error_message' => $e->getMessage(),
+                'exception' => $e,
+            ]);
             $this->fail($e);
             // Re-throw to allow queue retry mechanism
             throw $e;
@@ -75,10 +88,13 @@ class ProcessIncomingMessageJob implements ShouldQueue
      */
     public function failed(Throwable $exception): void
     {
-        Log::error("ProcessIncomingMessageJob failed permanently", [
-            'exception' => $exception->getMessage(),
-            'message' => $this->message->toArray(),
-            'attempts' => $this->attempts()
+        PipelineLogger::failed('scrape', [
+            'job_id' => $this->message->decodedPayload['job_id'] ?? null,
+            'pipeline_stage' => 'incoming_message',
+            'channel' => $this->message->channel,
+            'error_message' => $exception->getMessage(),
+            'exception' => $exception,
+            'attempts' => $this->attempts(),
         ]);
     }
 }

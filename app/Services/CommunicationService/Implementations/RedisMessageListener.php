@@ -69,7 +69,7 @@ class RedisMessageListener implements MessageListenerInterface
             $this->output("Connected to Redis successfully!", 'info');
             $this->output("Subscribing to channels...", 'info');
 
-            Log::info("Starting Redis subscriber on channels: " . implode(', ', $channels));
+            Log::channel('communication')->info("Starting Redis subscriber on channels: " . implode(', ', $channels));
 
             $this->isRunning = true;
 
@@ -77,14 +77,14 @@ class RedisMessageListener implements MessageListenerInterface
             $this->redis->subscribe($channels, function($redis, $channel, $message) {
                 // Handle subscription confirmation (numeric message)
                 if (is_numeric($message)) {
-                    Log::debug("Subscribed to channel: {$channel}");
+                    Log::channel('communication')->debug("Subscribed to channel: {$channel}");
                     return;
                 }
 
-                Log::debug("Received message on channel {$channel}: " . substr($message, 0, 200));
+                Log::channel('communication')->debug("Received message on channel {$channel}: " . substr($message, 0, 200));
 
                 if ($this->shouldStop) {
-                    Log::info("Stop signal received, unsubscribing...");
+                    Log::channel('communication')->info("Stop signal received, unsubscribing...");
                     $redis->unsubscribe();
                     return;
                 }
@@ -92,7 +92,7 @@ class RedisMessageListener implements MessageListenerInterface
                 try {
                     $this->handleMessage($message, $channel);
                 } catch (\Exception $e) {
-                    Log::error("Error handling message: " . $e->getMessage(), [
+                    Log::channel('communication')->error("Error handling message: " . $e->getMessage(), [
                         'exception' => $e,
                         'channel' => $channel
                     ]);
@@ -101,14 +101,14 @@ class RedisMessageListener implements MessageListenerInterface
 
             $this->isRunning = false;
             $this->output('Subscriber stopped gracefully', 'info');
-            Log::info("Redis subscriber stopped");
+            Log::channel('communication')->info("Redis subscriber stopped");
 
             return 0;
 
         } catch (\Exception $e) {
             $this->isRunning = false;
             $this->output("Fatal error: " . $e->getMessage(), 'error');
-            Log::error("Redis subscriber fatal error: " . $e->getMessage(), [
+            Log::channel('communication')->error("Redis subscriber fatal error: " . $e->getMessage(), [
                 'exception' => $e
             ]);
 
@@ -128,7 +128,7 @@ class RedisMessageListener implements MessageListenerInterface
     {
         $this->redis = new \Redis();
 
-        Log::debug("Connecting to Redis: {$this->config['host']}:{$this->config['port']}");
+        Log::channel('communication')->debug("Connecting to Redis: {$this->config['host']}:{$this->config['port']}");
 
         $this->redis->pconnect(
             $this->config['host'],
@@ -139,7 +139,7 @@ class RedisMessageListener implements MessageListenerInterface
         // Authenticate if password is set
         if (!empty($this->config['password'])) {
             $this->redis->auth($this->config['password']);
-            Log::debug("Authenticated with Redis");
+            Log::channel('communication')->debug("Authenticated with Redis");
         }
     }
 
@@ -154,7 +154,7 @@ class RedisMessageListener implements MessageListenerInterface
             try {
                 $this->redis->close();
             } catch (\Exception $e) {
-                Log::warning("Error closing Redis connection: " . $e->getMessage());
+                Log::channel('communication')->warning("Error closing Redis connection: " . $e->getMessage());
             }
             $this->redis = null;
         }
@@ -183,25 +183,25 @@ class RedisMessageListener implements MessageListenerInterface
 
             // Validate message
             if (!$incomingMessage->isValid()) {
-                Log::warning("Invalid message received on channel {$channel}");
+                Log::channel('communication')->warning("Invalid message received on channel {$channel}");
                 return;
             }
 
             // Dispatch to job queue for asynchronous processing
             ProcessIncomingMessageJob::dispatch($incomingMessage);
 
-            Log::debug("Message dispatched to job queue", [
+            Log::channel('communication')->debug("Message dispatched to job queue", [
                 'channel' => $channel,
                 'source' => 'redis'
             ]);
 
         } catch (\JsonException $e) {
-            Log::error("Invalid JSON in Redis message: " . $e->getMessage(), [
+            Log::channel('communication')->error("Invalid JSON in Redis message: " . $e->getMessage(), [
                 'channel' => $channel,
                 'message' => substr($message, 0, 500)
             ]);
         } catch (\Exception $e) {
-            Log::error("Error processing Redis message: " . $e->getMessage(), [
+            Log::channel('communication')->error("Error processing Redis message: " . $e->getMessage(), [
                 'exception' => $e,
                 'channel' => $channel
             ]);
@@ -228,7 +228,7 @@ class RedisMessageListener implements MessageListenerInterface
     public function stop(): void
     {
         $this->shouldStop = true;
-        Log::info("Stop signal received for Redis listener");
+        Log::channel('communication')->info("Stop signal received for Redis listener");
     }
 
     /**

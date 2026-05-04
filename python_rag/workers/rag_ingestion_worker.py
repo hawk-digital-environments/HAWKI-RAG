@@ -126,6 +126,18 @@ class ConvertedDocumentIngestor:
             raise PermanentIngestionError(f"empty converted document: {path}")
         return text
 
+    @staticmethod
+    def _title_from_event(event: DocumentConvertedEvent, file_path: Path) -> str:
+        payload = event.payload or {}
+        title = payload.get("title") if isinstance(payload, dict) else None
+        if title and str(title).strip():
+            return str(title).strip()
+        if event.original_relative_path:
+            return Path(event.original_relative_path).stem or file_path.stem
+        if event.converted_relative_path:
+            return Path(event.converted_relative_path).stem or file_path.stem
+        return file_path.stem or str(event.job_id)
+
     def _to_ingest_body(self, *, event: DocumentConvertedEvent, file_path: Path) -> Any:
         payload_extra = dict(event.payload or {})
         payload = dict(payload_extra)
@@ -145,6 +157,7 @@ class ConvertedDocumentIngestor:
         payload.setdefault("trace_id", event.trace_id)
         payload.setdefault("job_id", str(event.job_id))
         payload.setdefault("event_id", str(event.event_id))
+        payload.setdefault("title", self._title_from_event(event, file_path))
 
         provider = str(payload_extra.get("provider") or os.environ.get("RAG_DEFAULT_PROVIDER", "ollama")).strip()
         embedding_model = payload_extra.get("embedding_model")
@@ -418,6 +431,7 @@ class RagIngestionWorker:
             queue=self.settings.rag_ingestion_queue,
             exchange=self.settings.failed_exchange,
             error_type=error_name(exc),
+            error_message=str(exc),
             processing_stage="schema-validate",
         )
         await message.ack()
@@ -471,6 +485,7 @@ class RagIngestionWorker:
                     queue=self.settings.rag_ingestion_queue,
                     exchange=self.settings.retry_exchange,
                     error_type=err_type,
+                    error_message=err_text,
                     processing_stage="rag_ingestion",
                 )
                 await message.ack()
@@ -508,6 +523,7 @@ class RagIngestionWorker:
             queue=self.settings.rag_ingestion_queue,
             exchange=self.settings.failed_exchange,
             error_type=failed_payload["error_type"],
+            error_message=failed_payload["error_message"],
             processing_stage="rag_ingestion",
         )
         await message.ack()
@@ -556,17 +572,30 @@ class RagIngestionWorker:
         exchange: str,
         processing_stage: str,
         error_type: str | None = None,
+        error_message: str | None = None,
     ) -> None:
+        status_map = {
+            "receive": "started",
+            "processing-start": "started",
+            "success": "success",
+            "skip-duplicate": "skipped",
+            "retry-published": "skipped",
+            "failed-published": "failed",
+        }
         logger.info(
             json.dumps(
                 {
                     "event": event,
+                    "stage": "ingest",
+                    "status": status_map.get(event, event),
                     "job_id": job_id,
+                    "doc_id": job_id,
                     "retry_count": int(retry_count),
                     "max_retries": int(max_retries),
                     "queue": queue,
                     "exchange": exchange,
                     "error_type": error_type or "",
+                    "error_message": error_message or "",
                     "processing_stage": processing_stage,
                 },
                 ensure_ascii=False,

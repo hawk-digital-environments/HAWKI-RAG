@@ -3,9 +3,10 @@
 namespace App\Console\Commands;
 
 use App\Services\FileConverter\DocumentConverter;
+use App\Services\Pipeline\PipelineDataValidator;
+use App\Services\Pipeline\PipelineLogger;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\File;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use SplFileInfo;
 
@@ -39,6 +40,14 @@ class ConvertCrawledPdfs extends Command
         }
 
         $converter = new DocumentConverter();
+        $validator = app(PipelineDataValidator::class);
+        $jobId = $this->conversionJobId($outputDir);
+        PipelineLogger::started('convert', [
+            'job_id' => $jobId,
+            'output_dir' => $outputDir,
+            'extensions' => $this->option('extensions'),
+            'scan_all' => (bool) $this->option('scan-all'),
+        ]);
 
         // Find documents under outputDir (recursive)
         $extensions = $this->parseExtensions((string) $this->option('extensions'));
@@ -50,6 +59,13 @@ class ConvertCrawledPdfs extends Command
             $scopeLabel = $scanAll ? 'recursive' : '**/files/*';
             $this->warn("No documents found under $outputDir (extensions: {$extLabel}; scope: {$scopeLabel})");
             $this->writeFailedJson([], 0, 0, 0); // write empty report
+            PipelineLogger::skipped('convert', [
+                'job_id' => $jobId,
+                'output_dir' => $outputDir,
+                'reason' => 'No source documents found.',
+                'extensions' => $extensions,
+                'scan_all' => $scanAll,
+            ]);
             return Command::SUCCESS;
         }
 
@@ -98,6 +114,8 @@ class ConvertCrawledPdfs extends Command
 
         foreach ($docPaths as $docPath) {
             $bar->advance();
+            $convertedId = null;
+            $docTitle = pathinfo($docPath, PATHINFO_FILENAME);
 
             try {
                 $docInfo = new SplFileInfo($docPath);
@@ -108,6 +126,14 @@ class ConvertCrawledPdfs extends Command
                 if ($convertedId === false) {
                     throw new \RuntimeException('Unable to hash document (hash_file returned false).');
                 }
+                $docTitle = pathinfo($docInfo->getFilename(), PATHINFO_FILENAME);
+                PipelineLogger::started('convert', [
+                    'job_id' => $jobId,
+                    'doc_id' => $convertedId,
+                    'file_path' => $docPath,
+                    'title' => $docTitle,
+                    'pipeline_stage' => 'document_conversion',
+                ]);
 
                 // Destination folder next to the document
                 $destDir = dirname($docPath) . '/converted_' . pathinfo($docInfo->getFilename(), PATHINFO_FILENAME);
@@ -123,19 +149,75 @@ class ConvertCrawledPdfs extends Command
                 if (!$forceReprocess && is_file($metaPath)) {
                     $meta = json_decode(@file_get_contents($metaPath), true);
                     if (is_array($meta) && ($meta['converted_id'] ?? null) === $convertedId) {
-                        if (!is_file($flatPath)) {
-                            $flatContent = $this->loadMarkdownFromMeta($meta, $destDir);
-                            if ($flatContent !== null) {
+                        $flatContent = is_file($flatPath)
+                            ? (string) file_get_contents($flatPath)
+                            : $this->loadMarkdownFromMeta($meta, $destDir);
+                        $markdownValidation = $validator->validateMarkdownContent($flatContent);
+                        $metadataValidation = $validator->validateConversionMetadata($meta);
+
+                        if ($flatContent !== null && $markdownValidation['errors'] === [] && $metadataValidation['errors'] === []) {
+                            if (!is_file($flatPath)) {
                                 File::put($flatPath, $flatContent);
                             }
+                            $enrichedMeta = $meta;
+                            $enrichedMeta['doc_id'] = $enrichedMeta['doc_id'] ?? $convertedId;
+                            $enrichedMeta['title'] = $enrichedMeta['title'] ?? $docTitle;
+                            if ($enrichedMeta !== $meta) {
+                                File::put($metaPath, json_encode($enrichedMeta, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+                            }
+                            if ($markdownValidation['warnings'] !== [] || $metadataValidation['warnings'] !== []) {
+                                PipelineLogger::partial('convert', [
+                                    'job_id' => $jobId,
+                                    'doc_id' => $convertedId,
+                                    'file_path' => $docPath,
+                                    'title' => $docTitle,
+                                    'pipeline_stage' => 'cached_output',
+                                    'warnings' => array_merge($markdownValidation['warnings'], $metadataValidation['warnings']),
+                                ]);
+                            }
+                            PipelineLogger::skipped('convert', [
+                                'job_id' => $jobId,
+                                'doc_id' => $convertedId,
+                                'file_path' => $docPath,
+                                'title' => $docTitle,
+                                'pipeline_stage' => 'cached_output',
+                                'reason' => 'Existing conversion output matches source checksum.',
+                                'markdown_path' => $flatPath,
+                                'metadata_path' => $metaPath,
+                            ]);
+                            $skipped++;
+                            continue;
                         }
-                        $skipped++;
-                        continue;
+
+                        PipelineLogger::partial('convert', [
+                            'job_id' => $jobId,
+                            'doc_id' => $convertedId,
+                            'file_path' => $docPath,
+                            'title' => $docTitle,
+                            'pipeline_stage' => 'cached_output',
+                            'reason' => 'Existing conversion output is incomplete; reprocessing.',
+                            'errors' => array_merge($markdownValidation['errors'], $metadataValidation['errors']),
+                            'warnings' => array_merge($markdownValidation['warnings'], $metadataValidation['warnings']),
+                        ]);
                     }
                 }
 
                 // Run conversion with retry (returns [relative_path => content])
                 $files = $this->convertWithRetry($converter, $docInfo, $maxRetries, $retryDelayMs);
+                $filesValidation = $validator->validateConvertedFiles($files);
+                if ($filesValidation['errors'] !== []) {
+                    throw new \RuntimeException('Invalid converter output: ' . implode('; ', $filesValidation['errors']));
+                }
+                if ($filesValidation['warnings'] !== []) {
+                    PipelineLogger::partial('convert', [
+                        'job_id' => $jobId,
+                        'doc_id' => $convertedId,
+                        'file_path' => $docPath,
+                        'title' => $docTitle,
+                        'pipeline_stage' => 'converter_output',
+                        'warnings' => $filesValidation['warnings'],
+                    ]);
+                }
 
                 // Write extracted files
                 File::makeDirectory($destDir, 0755, true, true);
@@ -150,6 +232,8 @@ class ConvertCrawledPdfs extends Command
                 // Write / refresh conversion_meta.json
                 $metaPayload = [
                     'converted_id'   => $convertedId,
+                    'doc_id'         => $convertedId,
+                    'title'          => $docTitle,
                     'source_pdf'     => $docPath, // kept for backward compatibility
                     'source_file'    => $docPath,
                     'source_size'    => @filesize($docPath),
@@ -161,12 +245,28 @@ class ConvertCrawledPdfs extends Command
                     'version'        => 1,
                 ];
                 File::put($metaPath, json_encode($metaPayload, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+                $metadataValidation = $validator->validateConversionMetadata($metaPayload);
+                if ($metadataValidation['errors'] !== []) {
+                    throw new \RuntimeException('Invalid conversion metadata: ' . implode('; ', $metadataValidation['errors']));
+                }
 
                 $flatContent = $this->pickMarkdownContent($files);
                 if ($flatContent !== null) {
                     File::put($flatPath, $flatContent);
                 }
 
+                PipelineLogger::success('convert', [
+                    'job_id' => $jobId,
+                    'doc_id' => $convertedId,
+                    'file_path' => $docPath,
+                    'title' => $docTitle,
+                    'pipeline_stage' => 'document_conversion',
+                    'output_dir' => $destDir,
+                    'markdown_path' => $flatPath,
+                    'metadata_path' => $metaPath,
+                    'files_written' => count($written),
+                    'warnings' => $metadataValidation['warnings'],
+                ]);
                 $processed++;
             } catch (\Throwable $e) {
                 $failed[] = [
@@ -174,7 +274,15 @@ class ConvertCrawledPdfs extends Command
                     'file_local_path' => $docPath,
                     'error'          => $e->getMessage(),
                 ];
-                Log::warning("ConvertCrawledPdfs failed: {$docPath} :: {$e->getMessage()}");
+                PipelineLogger::failed('convert', [
+                    'job_id' => $jobId,
+                    'doc_id' => isset($convertedId) && is_string($convertedId) ? $convertedId : null,
+                    'file_path' => $docPath,
+                    'title' => isset($docTitle) ? $docTitle : pathinfo($docPath, PATHINFO_FILENAME),
+                    'pipeline_stage' => 'document_conversion',
+                    'error_message' => $e->getMessage(),
+                    'exception' => $e,
+                ]);
             }
         }
 
@@ -191,6 +299,21 @@ class ConvertCrawledPdfs extends Command
 
         if (!empty($failed)) {
             $this->warn('See storage/logs/failed_conversion.json for details.');
+        }
+
+        $summaryContext = [
+            'job_id' => $jobId,
+            'output_dir' => $outputDir,
+            'processed' => $processed,
+            'skipped' => $skipped,
+            'failed' => count($failed),
+            'total' => count($docPaths),
+            'status_detail' => count($failed) > 0 ? 'partial' : 'complete',
+        ];
+        if (count($failed) > 0) {
+            PipelineLogger::partial('convert', $summaryContext);
+        } else {
+            PipelineLogger::success('convert', $summaryContext);
         }
 
         return Command::SUCCESS;
@@ -240,6 +363,11 @@ class ConvertCrawledPdfs extends Command
     private function isAbsolutePath(string $path): bool
     {
         return Str::startsWith($path, ['/','\\']) || preg_match('/^[A-Za-z]:[\/\\\\]/', $path) === 1;
+    }
+
+    private function conversionJobId(string $outputDir): string
+    {
+        return 'convert:' . substr(hash('sha256', realpath($outputDir) ?: $outputDir), 0, 16);
     }
 
     /**

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\API;
 
 use App\Http\Controllers\Controller;
+use App\Services\Pipeline\PipelineLogger;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\File;
@@ -247,6 +248,14 @@ class IngestController extends Controller
         $this->saveStatusEntries($statusPath, $entries);
         File::append($cacheLogPath, 'INGEST_STARTED ' . $path . PHP_EOL);
         File::append($fullLogPath, 'INGEST_STARTED ' . $path . PHP_EOL);
+        PipelineLogger::started('ingest', [
+            'job_id' => $entry['id'],
+            'file_path' => $path,
+            'collection' => (string) $collection,
+            'pipeline_stage' => 'process_launch',
+            'graph' => !empty($data['graph']),
+            'graph_only' => !empty($data['graph_only']),
+        ]);
 
         $escaped = array_map('escapeshellarg', $cmd);
         $command = implode(' ', $escaped);
@@ -276,6 +285,13 @@ class IngestController extends Controller
             }
             unset($existing);
             $this->saveStatusEntries($statusPath, $entries);
+            PipelineLogger::failed('ingest', [
+                'job_id' => $entry['id'],
+                'file_path' => $path,
+                'collection' => (string) $collection,
+                'pipeline_stage' => 'process_launch',
+                'error_message' => 'Failed to launch ingest process.',
+            ]);
 
             return response()->json([
                 'ok' => false,
@@ -294,6 +310,14 @@ class IngestController extends Controller
         }
         unset($existing);
         $this->saveStatusEntries($statusPath, $entries);
+        PipelineLogger::success('ingest', [
+            'job_id' => $entry['id'],
+            'file_path' => $path,
+            'collection' => (string) $collection,
+            'pipeline_stage' => 'process_launch',
+            'pid' => $pid,
+            'status_path' => $statusPath,
+        ]);
 
         return response()->json([
             'ok' => true,
