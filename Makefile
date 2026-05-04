@@ -90,7 +90,7 @@ up-core: network
 
 health:
 	@echo "Checking Qdrant..." && docker exec hawki_qdrant sh -lc "curl -fsS http://localhost:6333/readyz" >/dev/null && echo " OK" || (echo " FAIL" && exit 1)
-	@echo "Checking Ollama..." && docker exec $(OLLAMA_CONTAINER) sh -lc "curl -fsS http://localhost:11434/api/tags" >/dev/null && echo " OK" || (echo " FAIL" && exit 1)
+	@echo "Checking Ollama..." && docker exec $(OLLAMA_CONTAINER) sh -lc "ollama list" >/dev/null && echo " OK" || (echo " FAIL" && exit 1)
 	@if docker ps --format '{{.Names}}' | grep -q hawki_rag_rerank; then \
 		echo "Checking Local Reranker..." && docker exec hawki_rag_rerank sh -lc "curl -fsS http://localhost:8000/health" >/dev/null && echo " OK" || (echo " WARN (reranker reported unhealthy)" && true); \
 	else \
