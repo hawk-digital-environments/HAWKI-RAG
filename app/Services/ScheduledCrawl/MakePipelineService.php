@@ -36,6 +36,7 @@ class MakePipelineService
         $checkBeforeRun = (bool) config('scheduler_pipeline.check_before_run', true);
         $dryTimeout = max(1, (int) config('scheduler_pipeline.dry_check_timeout_seconds', 30));
         $pipelineMode = $this->normalizePipelineMode((string) ($job['pipeline_mode'] ?? 'make-sync'));
+        $usesLocalRagMakefile = $this->samePath($scraperRepoPath, $ragRepoPath);
 
         if ($scraperRepoPath === '' || !is_dir($scraperRepoPath)) {
             $errors[] = 'SCRAPER_REPO_PATH does not exist: ' . $scraperRepoPath;
@@ -100,7 +101,7 @@ class MakePipelineService
         $servicesPs = $this->runCommand(['docker', 'compose', 'ps', '--services'], $scraperRepoPath, $dryTimeout);
         if (!$servicesPs['successful']) {
             $errors[] = 'docker compose ps --services failed in scraper repo: ' . $this->firstErrorLine($servicesPs['stderr']);
-        } elseif (!preg_match('/crawler/i', $servicesPs['stdout'])) {
+        } elseif (!$usesLocalRagMakefile && !preg_match('/crawler/i', $servicesPs['stdout'])) {
             $errors[] = 'Crawler service was not found in scraper docker compose services';
         }
 
@@ -148,7 +149,11 @@ class MakePipelineService
         $command[] = $target;
         $command[] = 'URL=' . (string) $job['url'];
         $command[] = 'JOB_ID_FULL=' . (string) $job['job_id'];
+        $command[] = 'LABEL=' . (string) $job['job_id'];
+        $command[] = 'CRAWLED_ROOT=' . (string) $job['crawled_root'];
+        $command[] = 'OUTPUT_DIR=' . $this->crawlOutputDir($job);
         $command[] = 'SITEMAP_PAGES=' . (string) $job['sitemap_pages'];
+        $command[] = 'MAX_PAGES=' . (string) (($job['max_pages'] ?? '') !== '' ? $job['max_pages'] : $job['sitemap_pages']);
         $command[] = 'MAX_PAGES_FULL=' . (string) ($job['max_pages'] ?? '');
         $command[] = 'RESCRAPE_FAILED=' . $this->asMakeBool((bool) $job['rescrape_failed']);
         $command[] = 'SKIP_IMAGES=' . $this->asMakeBool((bool) $job['skip_images']);
@@ -172,13 +177,35 @@ class MakePipelineService
             $command[] = '-n';
         }
         $command[] = $target;
-        $command[] = 'CRAWLED_ROOT=' . (string) $job['crawled_root'];
+        $command[] = 'CRAWLED_ROOT=' . $this->crawlOutputDir($job);
         $command[] = 'GRAPH=' . $this->asMakeBool((bool) $job['graph_enabled']);
         $command[] = 'BATCH=16';
         $command[] = 'PROVIDER=ollama';
         $command[] = 'BASE_URL=http://localhost:8000';
+        if (!empty($job['collection'])) {
+            $command[] = 'COLLECTION=' . (string) $job['collection'];
+        }
 
         return $this->runCommand($command, $repoPath, $timeout);
+    }
+
+    /**
+     * @param  array<string, mixed>  $job
+     */
+    private function crawlOutputDir(array $job): string
+    {
+        $root = rtrim((string) $job['crawled_root'], DIRECTORY_SEPARATOR);
+        $jobId = trim((string) $job['job_id']);
+
+        if ($root === '' || $jobId === '') {
+            return $root;
+        }
+
+        if (basename($root) === $jobId) {
+            return $root;
+        }
+
+        return $root . DIRECTORY_SEPARATOR . $jobId;
     }
 
     private function makeTargetExists(string $repoPath, string $target): bool
@@ -201,6 +228,14 @@ class MakePipelineService
         $phonyPattern = '/^\.PHONY:\s.*\b' . preg_quote($target, '/') . '\b/m';
 
         return preg_match($phonyPattern, $content) === 1;
+    }
+
+    private function samePath(string $left, string $right): bool
+    {
+        $leftReal = realpath($left);
+        $rightReal = realpath($right);
+
+        return $leftReal !== false && $rightReal !== false && $leftReal === $rightReal;
     }
 
     private function isHardDryCheckFailure(string $stderr): bool

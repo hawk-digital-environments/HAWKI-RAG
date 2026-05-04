@@ -112,6 +112,7 @@ class RagRunScheduledCrawls extends Command
             'skip_images' => $job->skip_images,
             'graph_enabled' => $job->graph_enabled,
             'pipeline_mode' => $run->pipeline_mode,
+            'collection' => $job->collection,
         ];
 
         try {

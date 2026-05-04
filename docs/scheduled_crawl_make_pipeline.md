@@ -10,8 +10,8 @@ Set in root `.env`:
 ```dotenv
 SCHEDULER_PIPELINE_MODE=make-sync
 
-SCRAPER_REPO_PATH=/absolute/path/to/scraper-repo
-RAG_REPO_PATH=/absolute/path/to/HAWKI-RAG
+SCRAPER_REPO_PATH=/absolute/path/to/RAWKI
+RAG_REPO_PATH=/absolute/path/to/RAWKI
 
 SCRAPER_MAKE_TARGET=crawl
 RAG_MAKE_TARGET=ingest
@@ -62,7 +62,7 @@ Cron should call Laravel's scheduler once per minute:
 
 ## Pipeline Modes
 
-- `make-sync`: runs `make crawl`, then `make ingest`.
+- `make-sync`: runs `make crawl`, then `make ingest` against the crawl output directory.
 - `rabbitmq-event`: runs `make crawl` only. Downstream is event-driven.
 - `make`: alias of `make-sync` for backward compatibility.
 
@@ -70,10 +70,10 @@ Cron should call Laravel's scheduler once per minute:
 
 When `PIPELINE_CHECK_BEFORE_RUN=true`, scheduler validates:
 
-- scraper repo path + Makefile + `crawl` target
+- scraper repo path + Makefile + `crawl` target; this may be the RAWKI repo when using the local Makefile targets
 - RAG repo path + Makefile + `ingest` target
 - `docker compose ps` works in scraper repo
-- crawler service exists in compose services
+- crawler service exists in compose services when the scraper Makefile is external
 - `docker exec hawki_rag_bridge true` works
 - URL, JOB_ID_FULL are non-empty
 - CRAWLED_ROOT is not placeholder path

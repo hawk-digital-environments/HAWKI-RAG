@@ -21,7 +21,8 @@ Converted-document event consumption is available as an additive worker layer:
 
 Scheduler execution is additive and uses Make targets as source-of-truth:
 
-- scraper repo: `make crawl ...`
+- HAWKI RAG repo: `make crawl ...`
+- HAWKI RAG repo: `make convert ...`
 - HAWKI RAG repo: `make ingest ...`
 - Docs: [docs/scheduled_crawl_make_pipeline.md](docs/scheduled_crawl_make_pipeline.md)
 
@@ -45,7 +46,8 @@ php artisan rag:run-scheduled-crawls
 Make examples:
 
 ```bash
-make crawl URL=https://www.hawk.de JOB_ID_FULL=job_date_2026_04_28
-make ingest CRAWLED_ROOT=/app/shared/crawled-data GRAPH=true
-make ingest CRAWLED_ROOT=/app/shared/crawled-data GRAPH=false
+make crawl URL=https://www.hawk.de JOB_ID_FULL=job_date_2026_04_28 CRAWLED_ROOT=/app/shared/crawled-data
+make convert OUTPUT_DIR=/app/shared/crawled-data/job_date_2026_04_28 EXISTING=continue
+make ingest CRAWLED_ROOT=/app/shared/crawled-data/job_date_2026_04_28 GRAPH=true RESUME_MODE=start
+make pipeline URL=https://www.hawk.de JOB_ID_FULL=job_date_2026_04_28 GRAPH=false
 ```

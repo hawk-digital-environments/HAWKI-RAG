@@ -26,7 +26,11 @@ class CrawlAndConvert extends Command
         {--date= : CSS selector for updated_time, e.g. meta[property=\'og:updated_time\']}
         {--max-concurrency=4 : Maximum number of parallel requests running at a time}
         {--max-rpm=60 : Maximum requests per minute to throttle overall rate}
-        {--request-delay= : Delay between requests in milliseconds (overrides RPM throttle when set)}';
+        {--request-delay= : Delay between requests in milliseconds (overrides RPM throttle when set)}
+        {--discovery-mode : Discover URLs inside the given page}
+        {--extensions=pdf,doc,docx : Comma-separated document extensions to convert}
+        {--scan-all : Convert matching files anywhere under output-dir instead of only **/files/}
+        {--existing=continue : Existing conversion output mode: ask, continue, restart, cancel}';
 
     protected $description = 'Pipeline: first crawl a website, then convert all crawled PDFs to Markdown';
 
@@ -34,13 +38,14 @@ class CrawlAndConvert extends Command
     {
         $url             = $this->argument('url');
         $maxPages        = $this->option('max-pages');
-        $label           = $this->option('label');
+        $label           = $this->resolveLabel($this->option('label'), (string) $url);
         $skipImages      = $this->option('skip-images');
         $imageExceptions = $this->option('image-exceptions');
         $date            = $this->option('date');
         $maxConcurrency  = $this->option('max-concurrency');
         $maxRpm          = $this->option('max-rpm');
         $requestDelay    = $this->option('request-delay');
+        $discoveryMode   = (bool) $this->option('discovery-mode');
         $outputDir       = $this->resolveOutputDir($this->option('output-dir'), $label);
 
         // === Step 1: Crawl ===
@@ -57,6 +62,7 @@ class CrawlAndConvert extends Command
             '--max-concurrency'   => $maxConcurrency,
             '--max-rpm'           => $maxRpm,
             '--request-delay'     => $requestDelay,
+            ($discoveryMode ? '--discovery-mode' : null) => $discoveryMode ? true : null,
             ($skipImages ? '--skip-images' : null) => $skipImages ? true : null,
         ], fn($v) => $v !== null);
 
@@ -71,6 +77,9 @@ class CrawlAndConvert extends Command
 
         $code2 = $this->call('convert:crawled-pdfs', [
             'outputDir' => $outputDir,
+            '--extensions' => $this->option('extensions'),
+            '--scan-all' => (bool) $this->option('scan-all'),
+            '--existing' => $this->option('existing'),
         ]);
         if ($code2 !== 0) {
             $this->error("Converter exited with code {$code2}.");
@@ -79,6 +88,18 @@ class CrawlAndConvert extends Command
 
         $this->info('Pipeline completed successfully ✅');
         return 0;
+    }
+
+    private function resolveLabel(?string $label, string $url): string
+    {
+        if (filled($label)) {
+            return (string) $label;
+        }
+
+        $host = parse_url($url, PHP_URL_HOST);
+        $base = is_string($host) && $host !== '' ? $host : 'crawl';
+
+        return Str::slug($base . '-' . now()->format('Ymd-His'), '-');
     }
 
     private function resolveOutputDir(?string $outputDir, ?string $label): string

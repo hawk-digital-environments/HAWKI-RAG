@@ -6,11 +6,41 @@ COMPOSE_BIN ?= docker compose
 
 # Variables (override via `make VAR=value`)
 ENV_FILE ?= .env
-CRAWLED_ROOT ?= /app/shared
+ARTISAN ?= docker exec hawki_rag_app php artisan
+URL ?=
+JOB_ID_FULL ?=
+LABEL ?= $(if $(JOB_ID_FULL),$(JOB_ID_FULL),manual-crawl)
+CRAWLED_ROOT ?= /app/shared/crawled-data
+OUTPUT_DIR ?= $(CRAWLED_ROOT)/$(LABEL)
+MAX_PAGES ?= 100
+SITEMAP_PAGES ?= 100
+MAX_PAGES_FULL ?=
+SKIP_IMAGES ?= true
+IMAGE_EXCEPTIONS ?=
+DATE_SELECTOR ?=
+MAX_CONCURRENCY ?= 4
+MAX_RPM ?= 60
+REQUEST_DELAY ?=
+DISCOVERY_MODE ?= false
+EXTENSIONS ?= pdf,doc,docx
+SCAN_ALL ?= false
+EXISTING ?= continue
 GRAPH ?= true
+GRAPH_ONLY ?= false
+GRAPH_ENGINE ?= raganything
+EMBEDDING_MODEL ?=
+COLLECTION ?=
+NEO4J_DATABASE ?=
+CHUNK_CHARS ?=
+CHUNK_OVERLAP ?=
 BATCH ?= 16
 PROVIDER ?= ollama
 BASE_URL ?= http://localhost:8000
+TIMEOUT ?=
+RESUME_MODE ?= resume
+DRY ?= false
+ESTIMATE_ONLY ?= false
+SUMMARY_FILE ?=
 
 HOST_OS := $(shell uname -s)
 
@@ -33,7 +63,7 @@ OLLAMA_SERVICE := ollama
 OLLAMA_CONTAINER ?= hawki_ollama
 SCHEDULER_DB_HOST ?= 127.0.0.1
 SCHEDULER_DB_PORT ?= 3306
-SCRAPER_REPO_HOST_PATH ?= $(abspath ../CustomCrawler)
+SCRAPER_REPO_HOST_PATH ?= $(CURDIR)
 RAG_REPO_HOST_PATH ?= $(CURDIR)
 SCHEDULER_ARTISAN_ENV = DB_HOST=$(SCHEDULER_DB_HOST) DB_PORT=$(SCHEDULER_DB_PORT) SCRAPER_REPO_PATH=$(SCRAPER_REPO_HOST_PATH) RAG_REPO_PATH=$(RAG_REPO_HOST_PATH)
 
@@ -59,7 +89,7 @@ COMPOSE_FILE_PREFIX := COMPOSE_FILE=$(COMPOSE_FILE_LIST)
 COMPOSE_CMD = $(COMPOSE_ENV_PREFIX) $(COMPOSE_FILE_PREFIX) $(COMPOSE_PROFILE_PREFIX) $(COMPOSE_BIN) --env-file $(ENV_FILE)
 
 
-.PHONY: network pull-core build-app up-core health pull-models ingest scheduler-run scheduled-crawls logs-core down-core down-rag restart-core test-services neo4j-fresh
+.PHONY: network pull-core build-app up-core health pull-models crawl convert crawl-and-convert ingest pipeline scheduler-run scheduled-crawls logs-core down-core down-rag restart-core test-services neo4j-fresh
 
 network:
 	@for net in hawki-network hosting_network; do \
@@ -134,10 +164,53 @@ pull-models:
 	@docker exec -it $(OLLAMA_CONTAINER) ollama pull llama3.1:8b
 	@docker exec -it $(OLLAMA_CONTAINER) ollama pull llama3.2:1b
 
+crawl:
+	@if [ -z "$(URL)" ]; then echo "Set URL, for example: make crawl URL=https://www.hawk.de JOB_ID_FULL=manual_001"; exit 1; fi
+	@EXTRA_FLAGS=""; \
+	if [ "$(SKIP_IMAGES)" = "true" ]; then EXTRA_FLAGS="$$EXTRA_FLAGS --skip-images"; fi; \
+	if [ -n "$(IMAGE_EXCEPTIONS)" ]; then EXTRA_FLAGS="$$EXTRA_FLAGS --image-exceptions='$(IMAGE_EXCEPTIONS)'"; fi; \
+	if [ -n "$(DATE_SELECTOR)" ]; then EXTRA_FLAGS="$$EXTRA_FLAGS --date='$(DATE_SELECTOR)'"; fi; \
+	if [ -n "$(REQUEST_DELAY)" ]; then EXTRA_FLAGS="$$EXTRA_FLAGS --request-delay=$(REQUEST_DELAY)"; fi; \
+	if [ "$(DISCOVERY_MODE)" = "true" ]; then EXTRA_FLAGS="$$EXTRA_FLAGS --discovery-mode"; fi; \
+	$(ARTISAN) scraper:scrape "$(URL)" --max-pages=$(MAX_PAGES) --output-dir="$(OUTPUT_DIR)" --label="$(LABEL)" --max-concurrency=$(MAX_CONCURRENCY) --max-rpm=$(MAX_RPM) $$EXTRA_FLAGS
+
+convert:
+	@if [ "$(OUTPUT_DIR)" = "/absolute/path/to/crawled-data" ]; then echo "Set OUTPUT_DIR to the crawl output directory"; exit 1; fi
+	@EXTRA_FLAGS=""; \
+	if [ "$(SCAN_ALL)" = "true" ]; then EXTRA_FLAGS="$$EXTRA_FLAGS --scan-all"; fi; \
+	$(ARTISAN) convert:crawled-pdfs "$(OUTPUT_DIR)" --extensions="$(EXTENSIONS)" --existing="$(EXISTING)" $$EXTRA_FLAGS
+
+crawl-and-convert:
+	@if [ -z "$(URL)" ]; then echo "Set URL, for example: make crawl-and-convert URL=https://www.hawk.de JOB_ID_FULL=manual_001"; exit 1; fi
+	@EXTRA_FLAGS=""; \
+	if [ "$(SKIP_IMAGES)" = "true" ]; then EXTRA_FLAGS="$$EXTRA_FLAGS --skip-images"; fi; \
+	if [ "$(SCAN_ALL)" = "true" ]; then EXTRA_FLAGS="$$EXTRA_FLAGS --scan-all"; fi; \
+	if [ -n "$(IMAGE_EXCEPTIONS)" ]; then EXTRA_FLAGS="$$EXTRA_FLAGS --image-exceptions='$(IMAGE_EXCEPTIONS)'"; fi; \
+	if [ -n "$(DATE_SELECTOR)" ]; then EXTRA_FLAGS="$$EXTRA_FLAGS --date='$(DATE_SELECTOR)'"; fi; \
+	if [ -n "$(REQUEST_DELAY)" ]; then EXTRA_FLAGS="$$EXTRA_FLAGS --request-delay=$(REQUEST_DELAY)"; fi; \
+	if [ "$(DISCOVERY_MODE)" = "true" ]; then EXTRA_FLAGS="$$EXTRA_FLAGS --discovery-mode"; fi; \
+	$(ARTISAN) crawl:and-convert "$(URL)" --max-pages=$(MAX_PAGES) --output-dir="$(OUTPUT_DIR)" --label="$(LABEL)" --max-concurrency=$(MAX_CONCURRENCY) --max-rpm=$(MAX_RPM) --extensions="$(EXTENSIONS)" --existing="$(EXISTING)" $$EXTRA_FLAGS
+
 ingest:
 	@if [ "$(CRAWLED_ROOT)" = "/absolute/path/to/crawled-data" ]; then echo "Set CRAWLED_ROOT to a path mounted in shared storage (default /app/shared inside hawki_rag_bridge)" && exit 1; fi
-	@if [ "$(GRAPH)" = "true" ]; then GRAPH_FLAG="--graph"; else GRAPH_FLAG=""; fi; \
-	docker exec hawki_rag_bridge sh -lc "python /app/ingest/ingest_crawled.py --root $(CRAWLED_ROOT) --base-url $(BASE_URL) --provider $(PROVIDER) $$GRAPH_FLAG --batch $(BATCH)"
+	@EXTRA_FLAGS=""; \
+	if [ "$(GRAPH)" = "true" ]; then EXTRA_FLAGS="$$EXTRA_FLAGS --graph"; fi; \
+	if [ "$(GRAPH_ONLY)" = "true" ]; then EXTRA_FLAGS="$$EXTRA_FLAGS --graph-only"; fi; \
+	if [ "$(DRY)" = "true" ]; then EXTRA_FLAGS="$$EXTRA_FLAGS --dry"; fi; \
+	if [ "$(ESTIMATE_ONLY)" = "true" ]; then EXTRA_FLAGS="$$EXTRA_FLAGS --estimate-only"; fi; \
+	if [ "$(RESUME_MODE)" = "resume" ]; then EXTRA_FLAGS="$$EXTRA_FLAGS --resume"; fi; \
+	if [ "$(RESUME_MODE)" = "start" ]; then EXTRA_FLAGS="$$EXTRA_FLAGS --start"; fi; \
+	if [ -n "$(EMBEDDING_MODEL)" ]; then EXTRA_FLAGS="$$EXTRA_FLAGS --embedding-model $(EMBEDDING_MODEL)"; fi; \
+	if [ -n "$(COLLECTION)" ]; then EXTRA_FLAGS="$$EXTRA_FLAGS --collection $(COLLECTION)"; fi; \
+	if [ -n "$(NEO4J_DATABASE)" ]; then EXTRA_FLAGS="$$EXTRA_FLAGS --neo4j-database $(NEO4J_DATABASE)"; fi; \
+	if [ -n "$(CHUNK_CHARS)" ]; then EXTRA_FLAGS="$$EXTRA_FLAGS --chunk-chars $(CHUNK_CHARS)"; fi; \
+	if [ -n "$(CHUNK_OVERLAP)" ]; then EXTRA_FLAGS="$$EXTRA_FLAGS --chunk-overlap $(CHUNK_OVERLAP)"; fi; \
+	if [ -n "$(TIMEOUT)" ]; then EXTRA_FLAGS="$$EXTRA_FLAGS --timeout $(TIMEOUT)"; fi; \
+	if [ -n "$(SUMMARY_FILE)" ]; then EXTRA_FLAGS="$$EXTRA_FLAGS --summary-file $(SUMMARY_FILE)"; fi; \
+	docker exec hawki_rag_bridge sh -lc "python /app/ingest/ingest_crawled.py --root $(CRAWLED_ROOT) --base-url $(BASE_URL) --provider $(PROVIDER) --graph-engine $(GRAPH_ENGINE) $$EXTRA_FLAGS --batch $(BATCH)"
+
+pipeline: crawl convert
+	@$(MAKE) ingest CRAWLED_ROOT="$(OUTPUT_DIR)" COLLECTION="$(COLLECTION)" GRAPH="$(GRAPH)" GRAPH_ONLY="$(GRAPH_ONLY)" GRAPH_ENGINE="$(GRAPH_ENGINE)" EMBEDDING_MODEL="$(EMBEDDING_MODEL)" NEO4J_DATABASE="$(NEO4J_DATABASE)" CHUNK_CHARS="$(CHUNK_CHARS)" CHUNK_OVERLAP="$(CHUNK_OVERLAP)" BATCH="$(BATCH)" PROVIDER="$(PROVIDER)" BASE_URL="$(BASE_URL)" TIMEOUT="$(TIMEOUT)" RESUME_MODE="$(RESUME_MODE)" DRY="$(DRY)" ESTIMATE_ONLY="$(ESTIMATE_ONLY)" SUMMARY_FILE="$(SUMMARY_FILE)"
 
 scheduler-run:
 	@$(SCHEDULER_ARTISAN_ENV) php artisan schedule:run

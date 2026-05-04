@@ -24,7 +24,7 @@ class ScrapeWebsite extends Command
                             {--max-concurrency=4 : Maximum number of parallel requests running at a time}
                             {--max-rpm=60 : Maximum requests per minute to throttle overall rate}
                             {--request-delay= : Delay between requests in milliseconds (overrides RPM throttle when set)}
-                            {--discovery-mode : Bool to discover urls inside the given page';
+                            {--discovery-mode : Bool to discover urls inside the given page}';
 
     /**
      * The console command description.
@@ -53,10 +53,11 @@ class ScrapeWebsite extends Command
 
             if (blank($url)) {
                 $this->error('URL is required');
+                return;
             }
 
             // Get label with auto-generated fallback
-            $label = $this->option('label');
+            $label = $this->resolveLabel($this->option('label'), (string) $url);
             $outputDir = $this->resolveOutputDir($this->option('output-dir'), $label);
 
             // Display the label being used
@@ -84,6 +85,7 @@ class ScrapeWebsite extends Command
                 'maxConcurrency' => (int)$this->option('max-concurrency'),
                 'maxRpm' => (int)$this->option('max-rpm'),
                 'requestDelay' => $this->option('request-delay') ? (int)$this->option('request-delay') : null,
+                'discoveryMode' => (bool)$this->option('discovery-mode'),
             ];
 
             $this->scrapeService->startPipeline($request,
@@ -122,6 +124,18 @@ class ScrapeWebsite extends Command
         }
 
         return $imageExceptions ?: null;
+    }
+
+    private function resolveLabel(?string $label, string $url): string
+    {
+        if (filled($label)) {
+            return (string) $label;
+        }
+
+        $host = parse_url($url, PHP_URL_HOST);
+        $base = is_string($host) && $host !== '' ? $host : 'crawl';
+
+        return Str::slug($base . '-' . now()->format('Ymd-His'), '-');
     }
 
     private function resolveOutputDir(?string $outputDir, ?string $label): string
