@@ -19,7 +19,8 @@ class ConvertCrawledPdfs extends Command
     protected $signature = 'convert:crawled-pdfs
         {outputDir? : Path to crawler output directory (absolute path or path relative to the canonical crawled-data root)}
         {--extensions=pdf,doc,docx : Comma-separated list of extensions to convert}
-        {--scan-all : Scan all files under outputDir (not just **/files/)}';
+        {--scan-all : Scan all files under outputDir (not just **/files/)}
+        {--existing=ask : Existing output mode: ask, continue, restart, cancel}';
 
     protected $description = 'Convert documents under OUTPUT_DIR to Markdown using DocumentConverter, skipping already-converted files, and log failures to storage/logs/failed_conversion.json';
 
@@ -82,14 +83,16 @@ class ConvertCrawledPdfs extends Command
         $forceReprocess = false;
         if ($existingMetaCount > 0) {
             $this->line("Detected {$existingMetaCount} previously converted document(s) in this directory.");
-            $choice = $this->choice(
-                'How would you like to proceed?',
-                ['continue', 'restart', 'cancel'],
-                0
-            );
+            $choice = $this->resolveExistingOutputMode((string) $this->option('existing'));
 
             if ($choice === 'cancel') {
                 $this->info('Conversion cancelled by user request.');
+                PipelineLogger::skipped('convert', [
+                    'job_id' => $jobId,
+                    'output_dir' => $outputDir,
+                    'reason' => 'Conversion cancelled because existing outputs were found.',
+                    'existing_outputs' => $existingMetaCount,
+                ]);
                 return Command::SUCCESS;
             }
 
@@ -149,6 +152,7 @@ class ConvertCrawledPdfs extends Command
                 if (!$forceReprocess && is_file($metaPath)) {
                     $meta = json_decode(@file_get_contents($metaPath), true);
                     if (is_array($meta) && ($meta['converted_id'] ?? null) === $convertedId) {
+                        $meta = $this->normalizeCachedMetadata($meta, $docPath, $destDir, $convertedId, $docTitle);
                         $flatContent = is_file($flatPath)
                             ? (string) file_get_contents($flatPath)
                             : $this->loadMarkdownFromMeta($meta, $destDir);
@@ -159,12 +163,7 @@ class ConvertCrawledPdfs extends Command
                             if (!is_file($flatPath)) {
                                 File::put($flatPath, $flatContent);
                             }
-                            $enrichedMeta = $meta;
-                            $enrichedMeta['doc_id'] = $enrichedMeta['doc_id'] ?? $convertedId;
-                            $enrichedMeta['title'] = $enrichedMeta['title'] ?? $docTitle;
-                            if ($enrichedMeta !== $meta) {
-                                File::put($metaPath, json_encode($enrichedMeta, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
-                            }
+                            File::put($metaPath, json_encode($meta, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
                             if ($markdownValidation['warnings'] !== [] || $metadataValidation['warnings'] !== []) {
                                 PipelineLogger::partial('convert', [
                                     'job_id' => $jobId,
@@ -253,6 +252,10 @@ class ConvertCrawledPdfs extends Command
                 $flatContent = $this->pickMarkdownContent($files);
                 if ($flatContent !== null) {
                     File::put($flatPath, $flatContent);
+                }
+                $flatMarkdownValidation = $validator->validateMarkdownContent($flatContent);
+                if ($flatMarkdownValidation['errors'] !== []) {
+                    throw new \RuntimeException('Invalid Markdown output: ' . implode('; ', $flatMarkdownValidation['errors']));
                 }
 
                 PipelineLogger::success('convert', [
@@ -368,6 +371,31 @@ class ConvertCrawledPdfs extends Command
     private function conversionJobId(string $outputDir): string
     {
         return 'convert:' . substr(hash('sha256', realpath($outputDir) ?: $outputDir), 0, 16);
+    }
+
+    private function resolveExistingOutputMode(string $mode): string
+    {
+        $mode = strtolower(trim($mode));
+        $allowed = ['ask', 'continue', 'restart', 'cancel'];
+        if (!in_array($mode, $allowed, true)) {
+            $this->warn('Invalid --existing value. Continuing and validating cached outputs.');
+            return 'continue';
+        }
+
+        if ($mode !== 'ask') {
+            return $mode;
+        }
+
+        if (!$this->input->isInteractive()) {
+            $this->info('Non-interactive run detected; continuing and validating cached outputs.');
+            return 'continue';
+        }
+
+        return $this->choice(
+            'How would you like to proceed?',
+            ['continue', 'restart', 'cancel'],
+            0
+        );
     }
 
     /**
@@ -524,5 +552,48 @@ class ConvertCrawledPdfs extends Command
         }
 
         return null;
+    }
+
+    private function normalizeCachedMetadata(
+        array $meta,
+        string $sourcePath,
+        string $destDir,
+        string $convertedId,
+        string $docTitle
+    ): array {
+        $meta['converted_id'] = $convertedId;
+        $meta['doc_id'] = $meta['doc_id'] ?? $convertedId;
+        $meta['title'] = $meta['title'] ?? $docTitle;
+        $meta['source_file'] = $meta['source_file'] ?? ($meta['source_pdf'] ?? $sourcePath);
+        $meta['source_pdf'] = $meta['source_pdf'] ?? $sourcePath;
+        $meta['output_dir'] = $meta['output_dir'] ?? $destDir;
+        $meta['converted_at'] = $meta['converted_at'] ?? now()->toIso8601String();
+
+        if (!isset($meta['files']) || !is_array($meta['files']) || $meta['files'] === []) {
+            $meta['files'] = $this->collectCachedOutputFiles($destDir);
+        }
+
+        return $meta;
+    }
+
+    /**
+     * @return array<int,string>
+     */
+    private function collectCachedOutputFiles(string $destDir): array
+    {
+        if (!is_dir($destDir)) {
+            return [];
+        }
+
+        $files = [];
+        foreach (File::allFiles($destDir) as $file) {
+            if ($file->getFilename() === 'conversion_meta.json') {
+                continue;
+            }
+            $files[] = $this->makePathRelative($file->getPathname(), $destDir);
+        }
+        sort($files);
+
+        return $files;
     }
 }

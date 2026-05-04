@@ -14,13 +14,18 @@ class DocumentConverter
     function requestDocumentToMarkdown($file)
     {
         if ($file instanceof UploadedFile) {
-            $resource = fopen($file->getRealPath(), 'r');
+            $realPath = $file->getRealPath();
+            $resource = $realPath ? @fopen($realPath, 'r') : false;
             $filename = $file->getClientOriginalName();
         } elseif ($file instanceof \SplFileInfo) {
-            $resource = fopen($file->getPathname(), 'r');
+            $resource = @fopen($file->getPathname(), 'r');
             $filename = $file->getFilename();
         } else {
             throw new \InvalidArgumentException("Invalid file input. Expected UploadedFile or SplFileInfo.");
+        }
+
+        if ($resource === false) {
+            throw new \RuntimeException("Unable to open document for conversion: {$filename}");
         }
 
         $request = Http::timeout((int) config('file_converter.timeout', 300))
@@ -30,12 +35,15 @@ class DocumentConverter
             $request = $request->withToken($token);
         }
 
-        $response = $request->attach(
-            'file',
-            $resource,
-            $filename
-        )->post(config('file_converter.url'));
-        fclose($resource);
+        try {
+            $response = $request->attach(
+                'file',
+                $resource,
+                $filename
+            )->post(config('file_converter.url'));
+        } finally {
+            fclose($resource);
+        }
 
         if (!$response->successful()) {
             throw new \Exception('PDF extraction failed: ' . $response->body());
@@ -48,19 +56,23 @@ class DocumentConverter
             throw new \RuntimeException(sprintf('Directory "%s" was not created', $extractDir));
         }
 
-        $this->unzipContent($zipContent, $extractDir);
+        try {
+            $this->unzipContent($zipContent, $extractDir);
 
-        // Optionally, read all extracted files and return as array [relative_path => file_content]
-        $files = [];
-        $rii = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($extractDir));
-        foreach ($rii as $fileinfo) {
-            if ($fileinfo->isFile()) {
-                $relativePath = substr($fileinfo->getPathname(), strlen($extractDir) + 1);
-                $files[$relativePath] = file_get_contents($fileinfo->getPathname());
+            // Optionally, read all extracted files and return as array [relative_path => file_content]
+            $files = [];
+            $rii = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($extractDir));
+            foreach ($rii as $fileinfo) {
+                if ($fileinfo->isFile()) {
+                    $relativePath = substr($fileinfo->getPathname(), strlen($extractDir) + 1);
+                    $files[$relativePath] = file_get_contents($fileinfo->getPathname());
+                }
             }
-        }
 
-        return $files;
+            return $files;
+        } finally {
+            $this->deleteDirectory($extractDir);
+        }
     }
 
     private function unzipContent($zipContent, $extractToDirectory)
@@ -78,5 +90,27 @@ class DocumentConverter
             unlink($tmpZip);
             throw new \Exception("Failed to open ZIP file.");
         }
+    }
+
+    private function deleteDirectory(string $directory): void
+    {
+        if (!is_dir($directory)) {
+            return;
+        }
+
+        $items = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($directory, \FilesystemIterator::SKIP_DOTS),
+            RecursiveIteratorIterator::CHILD_FIRST
+        );
+
+        foreach ($items as $item) {
+            if ($item->isDir()) {
+                @rmdir($item->getPathname());
+            } else {
+                @unlink($item->getPathname());
+            }
+        }
+
+        @rmdir($directory);
     }
 }

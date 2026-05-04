@@ -118,6 +118,48 @@ class PipelineDataValidator
             $errors[] = 'files must be an array.';
         }
 
+        if (isset($metadata['files']) && is_array($metadata['files'])) {
+            $markdownFiles = 0;
+            $outputDir = isset($metadata['output_dir']) && is_string($metadata['output_dir'])
+                ? rtrim($metadata['output_dir'], DIRECTORY_SEPARATOR)
+                : null;
+
+            foreach ($metadata['files'] as $file) {
+                if (!is_string($file) || trim($file) === '') {
+                    $errors[] = 'files contains an empty or invalid path.';
+                    continue;
+                }
+
+                if ($this->pathLeavesRoot($file)) {
+                    $errors[] = "files contains unsafe relative path: {$file}";
+                    continue;
+                }
+
+                if (str_ends_with(strtolower($file), '.md')) {
+                    $markdownFiles++;
+                    if ($outputDir !== null && is_dir($outputDir)) {
+                        $path = $outputDir . DIRECTORY_SEPARATOR . ltrim($file, DIRECTORY_SEPARATOR);
+                        if (!is_file($path)) {
+                            $errors[] = "Markdown file listed in metadata is missing: {$file}";
+                            continue;
+                        }
+
+                        $markdown = $this->validateMarkdownContent(@file_get_contents($path) ?: null);
+                        foreach ($markdown['errors'] as $error) {
+                            $errors[] = "{$file}: {$error}";
+                        }
+                        foreach ($markdown['warnings'] as $warning) {
+                            $warnings[] = "{$file}: {$warning}";
+                        }
+                    }
+                }
+            }
+
+            if ($markdownFiles === 0) {
+                $errors[] = 'files must include at least one Markdown file.';
+            }
+        }
+
         if (isset($metadata['source_file']) && is_string($metadata['source_file']) && !is_file($metadata['source_file'])) {
             $warnings[] = 'source_file does not exist on disk.';
         }
