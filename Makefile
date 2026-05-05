@@ -11,6 +11,8 @@ URL ?=
 JOB_ID_FULL ?=
 LABEL ?= $(if $(JOB_ID_FULL),$(JOB_ID_FULL),manual-crawl)
 CRAWLED_ROOT ?= /app/shared/crawled-data
+SHARED_ROOT ?= /app/shared
+SCRAPED_FOLDER ?=
 OUTPUT_DIR ?= $(CRAWLED_ROOT)/$(LABEL)
 MAX_PAGES ?= 100
 SITEMAP_PAGES ?= 100
@@ -90,7 +92,7 @@ COMPOSE_FILE_PREFIX := COMPOSE_FILE=$(COMPOSE_FILE_LIST)
 COMPOSE_CMD = $(COMPOSE_ENV_PREFIX) COMPOSE_FILE=$(COMPOSE_FILE_LIST) $(if $(strip $(COMPOSE_PROFILES)),COMPOSE_PROFILES=$(COMPOSE_PROFILES)) $(COMPOSE_BIN) --env-file $(ENV_FILE)
 
 
-.PHONY: network pull-core build-app up-core up-core-local health pull-models crawl convert crawl-and-convert ingest pipeline scheduler-run scheduled-crawls logs-core down-core down-rag restart-core test-services neo4j-fresh
+.PHONY: network pull-core build-app up-core up-core-local up-core-local-rabbitmq health pull-models scraped-folders save-rabbitmq-queues publish-converted-folder crawl convert crawl-and-convert ingest convert-ingest-folder pipeline scheduler-run scheduled-crawls logs-core down-core down-rag restart-core test-services neo4j-fresh
 
 network:
 	@for net in hawki-network hosting_network; do \
@@ -124,6 +126,12 @@ up-core-local: COMPOSE_PROFILES := gpu
 up-core-local: COMPOSE_FILE_LIST := $(BASE_COMPOSE_FILE)$(COMPOSE_FILE_SEP)$(GPU_OVERRIDE_COMPOSE)$(COMPOSE_FILE_SEP)$(LOCAL_OVERRIDE_COMPOSE)
 up-core-local: PROFILE_MESSAGE := "Ollama GPU override enabled for local stack."
 up-core-local: up-core
+
+up-core-local-rabbitmq: USE_OLLAMA_GPU := 1
+up-core-local-rabbitmq: COMPOSE_PROFILES := gpu,rag-ingestion-worker
+up-core-local-rabbitmq: COMPOSE_FILE_LIST := $(BASE_COMPOSE_FILE)$(COMPOSE_FILE_SEP)$(GPU_OVERRIDE_COMPOSE)$(COMPOSE_FILE_SEP)$(LOCAL_OVERRIDE_COMPOSE)
+up-core-local-rabbitmq: PROFILE_MESSAGE := "Ollama GPU override enabled for local stack with RabbitMQ ingestion worker."
+up-core-local-rabbitmq: up-core
 
 health:
 	@echo "Checking Qdrant..." && docker exec hawki_qdrant sh -lc "curl -fsS http://localhost:6333/readyz" >/dev/null && echo " OK" || (echo " FAIL" && exit 1)
@@ -171,6 +179,27 @@ pull-models:
 	@docker exec -it $(OLLAMA_CONTAINER) ollama pull llama3.1:8b
 	@docker exec -it $(OLLAMA_CONTAINER) ollama pull llama3.2:1b
 
+scraped-folders:
+	@docker exec hawki_rag_app sh -lc 'root="$(SHARED_ROOT)"; \
+		folders=$$(find "$$root" -mindepth 2 -maxdepth 2 -name completed_urls.json -exec dirname {} \; 2>/dev/null | sort); \
+		count=$$(printf "%s\n" "$$folders" | sed "/^$$/d" | wc -l | tr -d " "); \
+		echo "Found $$count scraped folder(s) under $$root"; \
+		if [ "$$count" -gt 0 ]; then printf "%s\n" "$$folders" | nl -w1 -s". "; fi; \
+		echo ""; \
+		echo "Convert and ingest one folder with:"; \
+		echo "  make convert-ingest-folder SCRAPED_FOLDER=/app/shared/<folder-name>"'
+
+save-rabbitmq-queues:
+	@$(ARTISAN) rabbitmq:save-queue-state
+
+publish-converted-folder:
+	@if [ -z "$(SCRAPED_FOLDER)" ]; then \
+		echo "Set SCRAPED_FOLDER to one of the folders below:"; \
+		$(MAKE) --no-print-directory scraped-folders; \
+		exit 1; \
+	fi
+	@$(ARTISAN) rag:publish-converted-folder "$(SCRAPED_FOLDER)"
+
 crawl:
 	@if [ -z "$(URL)" ]; then echo "Set URL, for example: make crawl URL=https://www.hawk.de JOB_ID_FULL=manual_001"; exit 1; fi
 	@EXTRA_FLAGS=""; \
@@ -215,6 +244,15 @@ ingest:
 	if [ -n "$(TIMEOUT)" ]; then EXTRA_FLAGS="$$EXTRA_FLAGS --timeout $(TIMEOUT)"; fi; \
 	if [ -n "$(SUMMARY_FILE)" ]; then EXTRA_FLAGS="$$EXTRA_FLAGS --summary-file $(SUMMARY_FILE)"; fi; \
 	docker exec hawki_rag_bridge sh -lc "python /app/ingest/ingest_crawled.py --root $(CRAWLED_ROOT) --base-url $(BASE_URL) --provider $(PROVIDER) --graph-engine $(GRAPH_ENGINE) $$EXTRA_FLAGS --batch $(BATCH)"
+
+convert-ingest-folder:
+	@if [ -z "$(SCRAPED_FOLDER)" ]; then \
+		echo "Set SCRAPED_FOLDER to one of the folders below:"; \
+		$(MAKE) --no-print-directory scraped-folders; \
+		exit 1; \
+	fi
+	@$(MAKE) convert OUTPUT_DIR="$(SCRAPED_FOLDER)" EXTENSIONS="$(EXTENSIONS)" EXISTING="$(EXISTING)" SCAN_ALL="$(SCAN_ALL)"
+	@$(MAKE) ingest CRAWLED_ROOT="$(SCRAPED_FOLDER)" COLLECTION="$(COLLECTION)" GRAPH="$(GRAPH)" GRAPH_ONLY="$(GRAPH_ONLY)" GRAPH_ENGINE="$(GRAPH_ENGINE)" EMBEDDING_MODEL="$(EMBEDDING_MODEL)" NEO4J_DATABASE="$(NEO4J_DATABASE)" CHUNK_CHARS="$(CHUNK_CHARS)" CHUNK_OVERLAP="$(CHUNK_OVERLAP)" BATCH="$(BATCH)" PROVIDER="$(PROVIDER)" BASE_URL="$(BASE_URL)" TIMEOUT="$(TIMEOUT)" RESUME_MODE="$(RESUME_MODE)" DRY="$(DRY)" ESTIMATE_ONLY="$(ESTIMATE_ONLY)" SUMMARY_FILE="$(SUMMARY_FILE)"
 
 pipeline: crawl convert
 	@$(MAKE) ingest CRAWLED_ROOT="$(OUTPUT_DIR)" COLLECTION="$(COLLECTION)" GRAPH="$(GRAPH)" GRAPH_ONLY="$(GRAPH_ONLY)" GRAPH_ENGINE="$(GRAPH_ENGINE)" EMBEDDING_MODEL="$(EMBEDDING_MODEL)" NEO4J_DATABASE="$(NEO4J_DATABASE)" CHUNK_CHARS="$(CHUNK_CHARS)" CHUNK_OVERLAP="$(CHUNK_OVERLAP)" BATCH="$(BATCH)" PROVIDER="$(PROVIDER)" BASE_URL="$(BASE_URL)" TIMEOUT="$(TIMEOUT)" RESUME_MODE="$(RESUME_MODE)" DRY="$(DRY)" ESTIMATE_ONLY="$(ESTIMATE_ONLY)" SUMMARY_FILE="$(SUMMARY_FILE)"

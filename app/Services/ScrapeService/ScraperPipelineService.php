@@ -154,7 +154,7 @@ class ScraperPipelineService
     {
         $context->setStage('execution');
 
-        // Execute the crawler - persistent Redis subscriber is already listening
+        // Execute the crawler and persist progress through the scrape pipeline.
         $response = $this->executionService->execute($context->getRequest(), $outputCallback);
 
         if($response['success']){

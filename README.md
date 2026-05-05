@@ -15,7 +15,8 @@ Converted-document event consumption is available as an additive worker layer:
 
 - Docs: [docs/rag_ingestion_worker_rabbitmq.md](docs/rag_ingestion_worker_rabbitmq.md)
 - DB/ops commands: [docs/db_cookbook.md](docs/db_cookbook.md)
-- Worker entrypoint: `python -m workers.rag_ingestion_worker`
+- Worker entrypoint: `php artisan rag:rabbit-ingestion-worker`
+- Python remains the FastAPI RAG bridge for embeddings, Qdrant, Neo4j, RAG-Anything/LightRAG, and `/ingest`.
 
 ## Scheduled Crawl Pipeline (Make-Based)
 

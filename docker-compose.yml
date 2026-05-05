@@ -62,10 +62,11 @@ services:
     container_name: mariadb
     restart: always
     environment:
-      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
-      MYSQL_DATABASE: ${DB_DATABASE}
-      MYSQL_USER: ${DB_USERNAME}
-      MYSQL_PASSWORD: ${DB_PASSWORD}
+      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+      MARIADB_ROOT_HOST: "%"
+      MARIADB_DATABASE: ${DB_DATABASE}
+      MARIADB_USER: ${DB_APP_USERNAME:-rag_user}
+      MARIADB_PASSWORD: ${DB_APP_PASSWORD:-change_me}
       TZ: Europe/Berlin
     ports:
       - "3306:3306"
@@ -207,70 +208,25 @@ services:
     restart: unless-stopped
 
   # -------------------------------------------------
-  # HAWKI RAG RabbitMQ worker consumer
-  # -------------------------------------------------
-  hawki_rag_worker:
-    image: hawki-rag-python:local
-    pull_policy: never
-    container_name: hawki_rag_worker
-    env_file:
-      - ./.env
-    environment:
-      RABBITMQ_URL: ${RABBITMQ_URL:-amqp://guest:guest@rabbitmq:5672/%2F}
-      QDRANT_HOST: qdrant
-      QDRANT_PORT: 6333
-      NEO4J_URI: bolt://hawki_rag_neo4j:7687
-      NEO4J_USER: ${NEO4J_USER}
-      NEO4J_PASSWORD: ${NEO4J_PASSWORD}
-      RABBITMQ_EXCHANGE: ${RABBITMQ_EXCHANGE:-jobs}
-      RABBITMQ_RETRY_EXCHANGE: ${RABBITMQ_RETRY_EXCHANGE:-jobs.retry}
-      RABBITMQ_FAILED_EXCHANGE: ${RABBITMQ_FAILED_EXCHANGE:-jobs.failed}
-      RABBITMQ_MAIN_QUEUE: ${RABBITMQ_MAIN_QUEUE:-crawl_jobs}
-      RABBITMQ_RETRY_QUEUE: ${RABBITMQ_RETRY_QUEUE:-crawl_jobs_retry}
-      RABBITMQ_FAILED_QUEUE: ${RABBITMQ_FAILED_QUEUE:-failed_jobs}
-      RABBITMQ_MAIN_ROUTING_KEY: ${RABBITMQ_MAIN_ROUTING_KEY:-crawl}
-      RABBITMQ_RETRY_ROUTING_KEY: ${RABBITMQ_RETRY_ROUTING_KEY:-crawl.retry}
-      RABBITMQ_FAILED_ROUTING_KEY: ${RABBITMQ_FAILED_ROUTING_KEY:-crawl.failed}
-    volumes:
-      - ./python_rag:/app
-      - ./storage:/app/storage
-      - shared_storage:/app/shared
-    command: ["python", "worker.py"]
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
-      qdrant:
-        condition: service_healthy
-      hawki_rag_neo4j:
-        condition: service_healthy
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "python", "-c", "import rabbit_worker.bootstrap, common.job_schema; print('ok')"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 20s
-    networks:
-      - default
-      - hawki-network
-
-  # -------------------------------------------------
-  # HAWKI RAG converted-document ingestion worker (RabbitMQ consumer)
+  # Laravel converted-document ingestion worker (RabbitMQ orchestration + DB state)
   # -------------------------------------------------
   hawki-rag-ingestion-worker:
-    image: hawki-rag-python:local
-    pull_policy: never
+    build:
+      context: .
+      dockerfile: docker/laravel.Dockerfile
+      target: laravel-app
+      args:
+        - DOCKER_PROJECT_HOST=ixdlab.hawk.de
+        - DOCKER_PROJECT_PATH=/hawki-rag/
     container_name: hawki_rag_ingestion_worker
     profiles: ["rag-ingestion-worker"]
     env_file:
       - ./.env
     environment:
-      RABBITMQ_URL: ${RABBITMQ_URL:-amqp://guest:guest@rabbitmq:5672/%2F}
-      QDRANT_HOST: qdrant
-      QDRANT_PORT: 6333
-      NEO4J_URI: bolt://hawki_rag_neo4j:7687
-      NEO4J_USER: ${NEO4J_USER}
-      NEO4J_PASSWORD: ${NEO4J_PASSWORD}
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+      ENVIRONMENT: "development"
+      HAWKI_RAG_BRIDGE_URL: ${HAWKI_RAG_BRIDGE_URL:-http://hawki_rag_bridge:8000}
       SHARED_STORAGE_ROOT: ${SHARED_STORAGE_ROOT:-/app/shared}
       RABBITMQ_EVENTS_EXCHANGE: ${RABBITMQ_EVENTS_EXCHANGE:-pipeline.events}
       RABBITMQ_EVENTS_EXCHANGE_TYPE: ${RABBITMQ_EVENTS_EXCHANGE_TYPE:-direct}
@@ -282,7 +238,7 @@ services:
       RABBITMQ_DOCUMENT_CONVERTED_ROUTING_KEY: ${RABBITMQ_DOCUMENT_CONVERTED_ROUTING_KEY:-convert.document.completed}
       RABBITMQ_RAG_INGESTION_RETRY_QUEUE: ${RABBITMQ_RAG_INGESTION_RETRY_QUEUE:-rag_ingestion_jobs_retry}
       RABBITMQ_RAG_INGESTION_RETRY_ROUTING_KEY: ${RABBITMQ_RAG_INGESTION_RETRY_ROUTING_KEY:-convert.document.completed.retry}
-      RABBITMQ_FAILED_QUEUE: ${RABBITMQ_FAILED_QUEUE:-failed_jobs}
+      RABBITMQ_FAILED_QUEUE: ${RABBITMQ_RAG_INGESTION_FAILED_QUEUE:-rag_ingestion_failed_jobs}
       RABBITMQ_FAILED_ROUTING_KEY: ${RABBITMQ_FAILED_ROUTING_KEY:-pipeline.failed}
       RABBITMQ_RETRY_DELAY_MS: ${RABBITMQ_RETRY_DELAY_MS:-5000}
       RABBITMQ_PREFETCH_COUNT: ${RABBITMQ_PREFETCH_COUNT:-1}
@@ -293,20 +249,22 @@ services:
       JOB_SCHEMA_VERSION: ${JOB_SCHEMA_VERSION:-1}
       SERVICE_NAME: ${SERVICE_NAME:-hawki-rag}
     volumes:
-      - ./python_rag:/app
-      - ./storage:/app/storage
       - shared_storage:/app/shared
-    command: ["python", "-m", "workers.rag_ingestion_worker"]
+      - ./storage:/var/www/html/storage
+      - ./docker/rag_app:/container/custom
+      - ./:/var/www/html
+    command: ["php", "artisan", "rag:rabbit-ingestion-worker"]
+    working_dir: /var/www/html
     depends_on:
+      mariadb:
+        condition: service_started
       rabbitmq:
         condition: service_healthy
-      qdrant:
-        condition: service_healthy
-      hawki_rag_neo4j:
-        condition: service_healthy
+      hawki_rag_bridge:
+        condition: service_started
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "python", "-c", "import workers.rag_ingestion_worker, common.pipeline_events; print('ok')"]
+      test: ["CMD", "php", "artisan", "list", "--raw"]
       interval: 30s
       timeout: 10s
       retries: 5

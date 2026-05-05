@@ -7,7 +7,8 @@ existing manual/API ingestion behavior.
 
 - scraper repo publishes `scrape.file.discovered`
 - file-converter repo consumes and publishes `convert.document.completed`
-- HAWKI RAG `workers.rag_ingestion_worker` consumes converted events and ingests into the existing pipeline
+- Laravel `php artisan rag:rabbit-ingestion-worker` consumes converted events, stores lifecycle state in MariaDB, and calls the Python FastAPI bridge `/ingest`
+- Python stays responsible for embeddings, Qdrant writes, Neo4j graph writes, RAG-Anything/LightRAG, and bridge endpoints
 
 ## Required Env Vars
 
@@ -22,6 +23,8 @@ RABBITMQ_PASSWORD=guest
 RABBITMQ_VHOST=/
 RABBITMQ_HEARTBEAT=30
 RABBITMQ_CONNECTION_TIMEOUT=30
+RABBITMQ_READ_WRITE_TIMEOUT=30
+RABBITMQ_MANAGEMENT_URL=http://rabbitmq:15672
 
 RABBITMQ_EVENTS_EXCHANGE=pipeline.events
 RABBITMQ_EVENTS_EXCHANGE_TYPE=direct
@@ -38,7 +41,7 @@ RABBITMQ_DOCUMENT_CONVERTED_ROUTING_KEY=convert.document.completed
 RABBITMQ_RAG_INGESTION_RETRY_QUEUE=rag_ingestion_jobs_retry
 RABBITMQ_RAG_INGESTION_RETRY_ROUTING_KEY=convert.document.completed.retry
 
-RABBITMQ_FAILED_QUEUE=failed_jobs
+RABBITMQ_RAG_INGESTION_FAILED_QUEUE=rag_ingestion_failed_jobs
 RABBITMQ_FAILED_ROUTING_KEY=pipeline.failed
 
 RABBITMQ_RETRY_DELAY_MS=5000
@@ -53,6 +56,9 @@ JOB_SCHEMA_VERSION=1
 SERVICE_NAME=hawki-rag
 
 SHARED_STORAGE_ROOT=/app/shared
+HAWKI_RAG_BRIDGE_URL=http://hawki_rag_bridge:8000
+RAG_INGEST_GRAPH=false
+RAG_INGEST_BRIDGE_TIMEOUT=3600
 ```
 
 ## Run Worker
@@ -67,8 +73,7 @@ docker compose logs -f hawki_rag_ingestion_worker
 Local process:
 
 ```bash
-cd python_rag
-python -m workers.rag_ingestion_worker
+php artisan rag:rabbit-ingestion-worker
 ```
 
 ## Expected `convert.document.completed` Payload
@@ -112,3 +117,22 @@ python -m workers.rag_ingestion_worker
 
 No `basic_nack(..., requeue=True)` retry loop is used.
 
+## Operational State
+
+Laravel owns the MariaDB tables visible in Adminer:
+
+- `job_processing_state`: received/processing/completed/failed lifecycle for each RAG ingestion job.
+- `rabbitmq_queue_state`: snapshots of queue counters from the RabbitMQ management API.
+- `worker_job_tracking`: compatibility table for older operational views.
+
+Snapshot RabbitMQ queue counters:
+
+```bash
+make save-rabbitmq-queues
+```
+
+Publish converted files from a scraped folder into RabbitMQ:
+
+```bash
+make publish-converted-folder SCRAPED_FOLDER=/app/shared/Site_Sample5
+```

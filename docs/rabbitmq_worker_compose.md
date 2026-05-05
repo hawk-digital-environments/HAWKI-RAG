@@ -3,9 +3,9 @@
 This stack now includes:
 
 - `rabbitmq` (`rabbitmq:3-management`) with durable data volume and healthcheck
-- `hawki_rag_worker` consumer (`python worker.py`) that declares topology on startup
-- `hawki-rag-ingestion-worker` consumer (`python -m workers.rag_ingestion_worker`) for `convert.document.completed`
+- `hawki-rag-ingestion-worker` Laravel consumer (`php artisan rag:rabbit-ingestion-worker`) for `convert.document.completed`
 - `crawler_producer` profile service for an external crawler publisher image
+- Python remains the FastAPI RAG bridge and does not own RabbitMQ or MariaDB operational state.
 
 ## Topology
 
@@ -24,8 +24,8 @@ This stack now includes:
 
 ## Run
 
-- Start core worker stack:
-  - `docker compose up -d rabbitmq hawki_rag_worker`
+- Start RabbitMQ:
+  - `docker compose up -d rabbitmq`
 - Start with external producer profile:
   - `docker compose --profile crawler-producer up -d crawler_producer`
 - Start converted-document ingestion worker profile:
@@ -35,3 +35,4 @@ This stack now includes:
 
 - Single source of truth: root `.env` and `.env.example`
 - Worker and crawler producer RabbitMQ variables are both defined there
+- To publish already converted local folders, use `make publish-converted-folder SCRAPED_FOLDER=/app/shared/<folder>`.

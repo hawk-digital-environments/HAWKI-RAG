@@ -51,7 +51,7 @@ class ScrapeContextBuilder
     }
 
     /**
-     * For Updating the context with Redis Events
+     * Rebuild a scrape context from cache or database state.
      *
      * @param string $jobId
      * @return ScrapeContext

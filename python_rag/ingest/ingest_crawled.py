@@ -867,6 +867,7 @@ def main():
     last_response: Optional[Dict] = None
     skipped_existing = 0
     processed_doc_ids: Set[str] = set(resume_doc_ids)
+    failed_batches = 0
 
     logger.info("ingest:scan root=%s", root)
     print(f"Scanning: {root}")
@@ -879,7 +880,7 @@ def main():
     max_split_depth = int(os.environ.get("INGEST_MAX_SPLITS", "4"))
 
     def send_batch(docs_batch: List[Dict], depth: int = 0) -> bool:
-        nonlocal batch_index, sent, last_response, processed_doc_ids
+        nonlocal batch_index, sent, last_response, processed_doc_ids, failed_batches
         if not docs_batch:
             return True
         batch_index += 1
@@ -910,6 +911,7 @@ def main():
             right_ok = send_batch(right, depth + 1)
             return left_ok and right_ok
         print(f"Batch {batch_index} failed; docs={doc_ids_batch} ({err or 'see log'})", file=sys.stderr)
+        failed_batches += 1
         return False
 
     for idx, d in enumerate(page_dirs, start=1):
@@ -1017,6 +1019,10 @@ def main():
             print(f"Resume state stored at {resume_state_path}")
         if resume_mode and skipped_existing:
             print(f"Skipped {skipped_existing} documents already ingested earlier.")
+
+    if not args.dry and not args.estimate_only:
+        if failed_batches:
+            sys.exit(1)
 
 if __name__ == "__main__":
     main()

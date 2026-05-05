@@ -6,7 +6,7 @@ Quick command reference for the RAWKI/HAWKI local stack.
 
 ```bash
 docker compose ps
-docker compose ps mariadb rabbitmq hawki_rag_worker
+docker compose ps mariadb rabbitmq hawki-rag-ingestion-worker
 ```
 
 ## 2) MariaDB access
@@ -130,14 +130,14 @@ Expected topology:
 Converted-document ingestion worker topology:
 
 - Exchanges: `pipeline.events`, `pipeline.retry`, `pipeline.failed`
-- Queues: `rag_ingestion_jobs`, `rag_ingestion_jobs_retry`, `failed_jobs`
+- Queues: `rag_ingestion_jobs`, `rag_ingestion_jobs_retry`, `rag_ingestion_failed_jobs`
 - Routing keys: `convert.document.completed`, `convert.document.completed.retry`, `pipeline.failed`
 
 ## 6) Re-apply topology declaration
 
 ```bash
-docker compose restart hawki_rag_worker
-docker compose logs --tail=120 hawki_rag_worker
+docker compose restart hawki-rag-ingestion-worker
+docker compose logs --tail=120 hawki_rag_ingestion_worker
 ```
 
 ## 7) Publish a test message (HTTP API)
@@ -156,8 +156,8 @@ curl -u guest:guest -H "content-type:application/json" \
 ## 8) Worker logs and consumer health
 
 ```bash
-docker compose logs -f hawki_rag_worker
-docker compose ps hawki_rag_worker
+docker compose logs -f hawki_rag_ingestion_worker
+docker compose ps hawki-rag-ingestion-worker
 ```
 
 You should see structured events like:
