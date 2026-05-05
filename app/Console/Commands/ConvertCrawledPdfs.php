@@ -40,7 +40,7 @@ class ConvertCrawledPdfs extends Command
             }
         }
 
-        $converter = new DocumentConverter();
+        $converter = app(DocumentConverter::class);
         $validator = app(PipelineDataValidator::class);
         $jobId = $this->conversionJobId($outputDir);
         PipelineLogger::started('convert', [
@@ -119,6 +119,7 @@ class ConvertCrawledPdfs extends Command
             $bar->advance();
             $convertedId = null;
             $docTitle = pathinfo($docPath, PATHINFO_FILENAME);
+            $stagingDir = null;
 
             try {
                 $docInfo = new SplFileInfo($docPath);
@@ -142,12 +143,6 @@ class ConvertCrawledPdfs extends Command
                 $destDir = dirname($docPath) . '/converted_' . pathinfo($docInfo->getFilename(), PATHINFO_FILENAME);
                 $metaPath = $destDir . '/conversion_meta.json';
 
-                if ($forceReprocess && File::isDirectory($destDir)) {
-                    if (!File::deleteDirectory($destDir)) {
-                        throw new \RuntimeException("Unable to remove existing conversion output at {$destDir}.");
-                    }
-                }
-
                 // Skip if meta exists and converted_id matches
                 if (!$forceReprocess && is_file($metaPath)) {
                     $meta = json_decode(@file_get_contents($metaPath), true);
@@ -161,9 +156,9 @@ class ConvertCrawledPdfs extends Command
 
                         if ($flatContent !== null && $markdownValidation['errors'] === [] && $metadataValidation['errors'] === []) {
                             if (!is_file($flatPath)) {
-                                File::put($flatPath, $flatContent);
+                                $this->writeFileAtomically($flatPath, $flatContent);
                             }
-                            File::put($metaPath, json_encode($meta, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+                            $this->writeFileAtomically($metaPath, json_encode($meta, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
                             if ($markdownValidation['warnings'] !== [] || $metadataValidation['warnings'] !== []) {
                                 PipelineLogger::partial('convert', [
                                     'job_id' => $jobId,
@@ -218,17 +213,19 @@ class ConvertCrawledPdfs extends Command
                     ]);
                 }
 
-                // Write extracted files
-                File::makeDirectory($destDir, 0755, true, true);
+                // Write extracted files to a staging directory. The published
+                // conversion directory is replaced only after validation passes.
+                $stagingDir = $this->makeStagingDir($destDir);
+                File::makeDirectory($stagingDir, 0755, true, true);
                 $written = [];
                 foreach ($files as $relative => $content) {
-                    $outPath = $destDir . '/' . ltrim($relative, '/');
+                    $outPath = $stagingDir . '/' . ltrim($relative, '/');
                     File::ensureDirectoryExists(dirname($outPath));
                     File::put($outPath, $content);
-                    $written[] = $this->makePathRelative($outPath, $destDir);
+                    $written[] = $this->makePathRelative($outPath, $stagingDir);
                 }
 
-                // Write / refresh conversion_meta.json
+                // Validate metadata against the staged files first.
                 $metaPayload = [
                     'converted_id'   => $convertedId,
                     'doc_id'         => $convertedId,
@@ -237,25 +234,35 @@ class ConvertCrawledPdfs extends Command
                     'source_file'    => $docPath,
                     'source_size'    => @filesize($docPath),
                     'source_mtime'   => @filemtime($docPath) ? date('c', filemtime($docPath)) : null,
-                    'output_dir'     => $destDir,
-                    'files'          => $written,   // relative to $destDir
+                    'output_dir'     => $stagingDir,
+                    'files'          => $written,
                     'converted_at'   => now()->toIso8601String(),
                     'tool'           => 'DocumentConverter::requestDocumentToMarkdown',
                     'version'        => 1,
                 ];
-                File::put($metaPath, json_encode($metaPayload, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
                 $metadataValidation = $validator->validateConversionMetadata($metaPayload);
                 if ($metadataValidation['errors'] !== []) {
                     throw new \RuntimeException('Invalid conversion metadata: ' . implode('; ', $metadataValidation['errors']));
                 }
 
                 $flatContent = $this->pickMarkdownContent($files);
-                if ($flatContent !== null) {
-                    File::put($flatPath, $flatContent);
-                }
                 $flatMarkdownValidation = $validator->validateMarkdownContent($flatContent);
                 if ($flatMarkdownValidation['errors'] !== []) {
                     throw new \RuntimeException('Invalid Markdown output: ' . implode('; ', $flatMarkdownValidation['errors']));
+                }
+
+                $this->replaceDirectory($stagingDir, $destDir);
+                $stagingDir = null;
+
+                $metaPayload['output_dir'] = $destDir;
+                $metadataValidation = $validator->validateConversionMetadata($metaPayload);
+                if ($metadataValidation['errors'] !== []) {
+                    throw new \RuntimeException('Invalid conversion metadata after publish: ' . implode('; ', $metadataValidation['errors']));
+                }
+
+                $this->writeFileAtomically($metaPath, json_encode($metaPayload, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+                if ($flatContent !== null) {
+                    $this->writeFileAtomically($flatPath, $flatContent);
                 }
 
                 PipelineLogger::success('convert', [
@@ -272,6 +279,10 @@ class ConvertCrawledPdfs extends Command
                 ]);
                 $processed++;
             } catch (\Throwable $e) {
+                if (is_string($stagingDir) && File::isDirectory($stagingDir)) {
+                    File::deleteDirectory($stagingDir);
+                }
+
                 $failed[] = [
                     'pdf_local_path' => $docPath,
                     'file_local_path' => $docPath,
@@ -459,6 +470,47 @@ class ConvertCrawledPdfs extends Command
         File::ensureDirectoryExists(dirname($dest));
         File::put($tmp, json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
         @rename($tmp, $dest);
+    }
+
+    private function makeStagingDir(string $destDir): string
+    {
+        return dirname($destDir)
+            . DIRECTORY_SEPARATOR
+            . '.'
+            . basename($destDir)
+            . '.tmp-'
+            . (string) Str::uuid();
+    }
+
+    private function replaceDirectory(string $sourceDir, string $destDir): void
+    {
+        if (!File::isDirectory($sourceDir)) {
+            throw new \RuntimeException("Staging directory not found: {$sourceDir}");
+        }
+
+        if (File::isDirectory($destDir) && !File::deleteDirectory($destDir)) {
+            throw new \RuntimeException("Unable to remove existing conversion output at {$destDir}.");
+        }
+
+        if (File::isFile($destDir) && !File::delete($destDir)) {
+            throw new \RuntimeException("Unable to remove file blocking conversion output at {$destDir}.");
+        }
+
+        if (!@rename($sourceDir, $destDir)) {
+            throw new \RuntimeException("Unable to publish conversion output to {$destDir}.");
+        }
+    }
+
+    private function writeFileAtomically(string $path, string $content): void
+    {
+        File::ensureDirectoryExists(dirname($path));
+        $tmp = $path . '.tmp-' . (string) Str::uuid();
+        File::put($tmp, $content);
+
+        if (!@rename($tmp, $path)) {
+            File::delete($tmp);
+            throw new \RuntimeException("Unable to write file atomically: {$path}");
+        }
     }
 
     private function makePathRelative(string $path, string $baseDir): string

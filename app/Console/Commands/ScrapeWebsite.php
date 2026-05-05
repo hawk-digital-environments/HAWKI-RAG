@@ -42,7 +42,7 @@ class ScrapeWebsite extends Command
     /**
      * Execute the console command.
      */
-    public function handle(): void
+    public function handle(): int
     {
         try {
             // Get URL from argument or prompt
@@ -53,7 +53,7 @@ class ScrapeWebsite extends Command
 
             if (blank($url)) {
                 $this->error('URL is required');
-                return;
+                return Command::FAILURE;
             }
 
             // Get label with auto-generated fallback
@@ -88,7 +88,7 @@ class ScrapeWebsite extends Command
                 'discoveryMode' => (bool)$this->option('discovery-mode'),
             ];
 
-            $this->scrapeService->startPipeline($request,
+            $result = $this->scrapeService->startPipeline($request,
                 outputCallback: function (string $type, string $buffer) {
                     // Stream crawler output to console
                     if ($type === 'out') {
@@ -102,8 +102,19 @@ class ScrapeWebsite extends Command
 
             );
 
+            if (!$result->success) {
+                foreach ($result->errors as $error) {
+                    $this->error(is_array($error) ? json_encode($error) : (string) $error);
+                }
+
+                return Command::FAILURE;
+            }
+
+            return Command::SUCCESS;
+
         } catch (\Throwable $e) {
             $this->error('An error occurred: ' . $e->getMessage());
+            return Command::FAILURE;
         }
     }
 
