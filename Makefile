@@ -92,7 +92,7 @@ COMPOSE_FILE_PREFIX := COMPOSE_FILE=$(COMPOSE_FILE_LIST)
 COMPOSE_CMD = $(COMPOSE_ENV_PREFIX) COMPOSE_FILE=$(COMPOSE_FILE_LIST) $(if $(strip $(COMPOSE_PROFILES)),COMPOSE_PROFILES=$(COMPOSE_PROFILES)) $(COMPOSE_BIN) --env-file $(ENV_FILE)
 
 
-.PHONY: network pull-core build-app up-core up-core-local up-core-local-rabbitmq health pull-models scraped-folders save-rabbitmq-queues publish-converted-folder crawl convert crawl-and-convert ingest convert-ingest-folder pipeline scheduler-run scheduled-crawls logs-core down-core down-rag restart-core test-services neo4j-fresh
+.PHONY: network pull-core build-app up-core up-core-local up-core-local-rabbitmq health pull-models scraped-folders save-rabbitmq-queues publish-converted-folder crawl convert ingest convert-ingest-folder pipeline scheduler-run scheduled-crawls logs-core down-core down-rag restart-core test-services neo4j-fresh
 
 network:
 	@for net in hawki-network hosting_network; do \
@@ -215,17 +215,6 @@ convert:
 	@EXTRA_FLAGS=""; \
 	if [ "$(SCAN_ALL)" = "true" ]; then EXTRA_FLAGS="$$EXTRA_FLAGS --scan-all"; fi; \
 	$(ARTISAN) convert:crawled-pdfs "$(OUTPUT_DIR)" --extensions="$(EXTENSIONS)" --existing="$(EXISTING)" $$EXTRA_FLAGS
-
-crawl-and-convert:
-	@if [ -z "$(URL)" ]; then echo "Set URL, for example: make crawl-and-convert URL=https://www.hawk.de JOB_ID_FULL=manual_001"; exit 1; fi
-	@EXTRA_FLAGS=""; \
-	if [ "$(SKIP_IMAGES)" = "true" ]; then EXTRA_FLAGS="$$EXTRA_FLAGS --skip-images"; fi; \
-	if [ "$(SCAN_ALL)" = "true" ]; then EXTRA_FLAGS="$$EXTRA_FLAGS --scan-all"; fi; \
-	if [ -n "$(IMAGE_EXCEPTIONS)" ]; then EXTRA_FLAGS="$$EXTRA_FLAGS --image-exceptions='$(IMAGE_EXCEPTIONS)'"; fi; \
-	if [ -n "$(DATE_SELECTOR)" ]; then EXTRA_FLAGS="$$EXTRA_FLAGS --date='$(DATE_SELECTOR)'"; fi; \
-	if [ -n "$(REQUEST_DELAY)" ]; then EXTRA_FLAGS="$$EXTRA_FLAGS --request-delay=$(REQUEST_DELAY)"; fi; \
-	if [ "$(DISCOVERY_MODE)" = "true" ]; then EXTRA_FLAGS="$$EXTRA_FLAGS --discovery-mode"; fi; \
-	$(ARTISAN) crawl:and-convert "$(URL)" --max-pages=$(MAX_PAGES) --output-dir="$(OUTPUT_DIR)" --label="$(LABEL)" --max-concurrency=$(MAX_CONCURRENCY) --max-rpm=$(MAX_RPM) --extensions="$(EXTENSIONS)" --existing="$(EXISTING)" $$EXTRA_FLAGS
 
 ingest:
 	@if [ "$(CRAWLED_ROOT)" = "/absolute/path/to/crawled-data" ]; then echo "Set CRAWLED_ROOT to a path mounted in shared storage (default /app/shared inside hawki_rag_bridge)" && exit 1; fi
