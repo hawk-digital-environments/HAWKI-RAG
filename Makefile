@@ -46,6 +46,7 @@ HOST_OS := $(shell uname -s)
 
 BASE_COMPOSE_FILE ?= docker-compose.yml
 GPU_OVERRIDE_COMPOSE ?= docker-compose-gpu-override.yml
+LOCAL_OVERRIDE_COMPOSE ?= docker-compose.local.yml
 COMPOSE_FILE_SEP ?= :
 # USE_OLLAMA_GPU: auto (default), 1 (force GPU override), 0 (force CPU mode)
 USE_OLLAMA_GPU ?= auto
@@ -86,10 +87,10 @@ ifneq ($(strip $(COMPOSE_PROFILES)),)
 	COMPOSE_PROFILE_PREFIX := COMPOSE_PROFILES=$(COMPOSE_PROFILES)
 endif
 COMPOSE_FILE_PREFIX := COMPOSE_FILE=$(COMPOSE_FILE_LIST)
-COMPOSE_CMD = $(COMPOSE_ENV_PREFIX) $(COMPOSE_FILE_PREFIX) $(COMPOSE_PROFILE_PREFIX) $(COMPOSE_BIN) --env-file $(ENV_FILE)
+COMPOSE_CMD = $(COMPOSE_ENV_PREFIX) COMPOSE_FILE=$(COMPOSE_FILE_LIST) $(if $(strip $(COMPOSE_PROFILES)),COMPOSE_PROFILES=$(COMPOSE_PROFILES)) $(COMPOSE_BIN) --env-file $(ENV_FILE)
 
 
-.PHONY: network pull-core build-app up-core health pull-models crawl convert crawl-and-convert ingest pipeline scheduler-run scheduled-crawls logs-core down-core down-rag restart-core test-services neo4j-fresh
+.PHONY: network pull-core build-app up-core up-core-local health pull-models crawl convert crawl-and-convert ingest pipeline scheduler-run scheduled-crawls logs-core down-core down-rag restart-core test-services neo4j-fresh
 
 network:
 	@for net in hawki-network hosting_network; do \
@@ -117,6 +118,12 @@ up-core: network
 		docker exec $(OLLAMA_CONTAINER) ollama pull $$model >/dev/null 2>&1 || true; \
 	done
 	@docker network connect hawki-network hawki-toolkit-file-converter-file-converter-1 >/dev/null 2>&1 || true
+
+up-core-local: USE_OLLAMA_GPU := 1
+up-core-local: COMPOSE_PROFILES := gpu
+up-core-local: COMPOSE_FILE_LIST := $(BASE_COMPOSE_FILE)$(COMPOSE_FILE_SEP)$(GPU_OVERRIDE_COMPOSE)$(COMPOSE_FILE_SEP)$(LOCAL_OVERRIDE_COMPOSE)
+up-core-local: PROFILE_MESSAGE := "Ollama GPU override enabled for local stack."
+up-core-local: up-core
 
 health:
 	@echo "Checking Qdrant..." && docker exec hawki_qdrant sh -lc "curl -fsS http://localhost:6333/readyz" >/dev/null && echo " OK" || (echo " FAIL" && exit 1)
