@@ -42,7 +42,7 @@ if GRAPH_DEBUG_LOG:
 BASE_DIR = Path(__file__).resolve().parent
 PYTHON_RAG_ROOT = BASE_DIR.parent
 PROJECT_ROOT = PYTHON_RAG_ROOT.parent
-PUBLIC_DIR = PROJECT_ROOT / "public"
+PUBLIC_DIR = Path(os.environ.get("HAWKI_RAG_PUBLIC_DIR", str(PROJECT_ROOT / "public")))
 app = FastAPI(title="LightRAG Service", version="0.2.0")
 rag_service = RAGService()
 

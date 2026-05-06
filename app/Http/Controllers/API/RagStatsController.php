@@ -76,14 +76,14 @@ class RagStatsController extends Controller
         };
 
         try {
-            // Use total counts for the UI because RAG-Anything/LightRAG may use different
-            // labels/types than the earlier custom graph pipeline (which assumed :Entity / :REL).
-            $entitiesResp = $query('MATCH (n) RETURN count(n) AS c');
-            $tripletsResp = $query('MATCH ()-[r]->() RETURN count(r) AS c');
+            // Canonical HAWKI graph only. RAG-Anything may maintain its own local
+            // extraction graph, but Neo4j should expose the deduped Entity/REL graph.
+            $entitiesResp = $query('MATCH (n:Entity) RETURN count(n) AS c');
+            $tripletsResp = $query('MATCH (:Entity)-[r:REL]->(:Entity) RETURN count(r) AS c');
             $entityLabelResp = $query('MATCH (n:Entity) RETURN count(n) AS c');
-            $relTypeResp = $query('MATCH ()-[r:REL]->() RETURN count(r) AS c');
-            $relsResp = $query('MATCH ()-[r]->() RETURN type(r) AS rel_type, count(r) AS count');
-            $labelsResp = $query('MATCH (n) RETURN labels(n) AS labels, count(*) AS count');
+            $relTypeResp = $query('MATCH (:Entity)-[r:REL]->(:Entity) RETURN count(r) AS c');
+            $relsResp = $query('MATCH (:Entity)-[r:REL]->(:Entity) RETURN type(r) AS rel_type, count(r) AS count');
+            $labelsResp = $query('MATCH (n:Entity) RETURN labels(n) AS labels, count(*) AS count');
 
             if (! $entitiesResp->successful() || ! $tripletsResp->successful()) {
                 return ['ok' => false, 'error' => 'Neo4j query failed'];

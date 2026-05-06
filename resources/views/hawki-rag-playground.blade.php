@@ -155,7 +155,7 @@
                         <p id="status" style="margin-top: 0.9rem; font-size: 0.95rem; color: #bae6fd;"></p>
                     </div>
 
-                    <div class="subsection" id="results" style="display: none;">
+                    <div class="subsection query-results" id="results" style="display: none;">
                         <h3 style="margin-top:0;">Results</h3>
                         <div id="provenance-banner" class="provenance"></div>
                         <div id="meta" style="display:flex; flex-wrap:wrap; gap:0.5rem 0.75rem; margin-bottom: 1rem;"></div>
@@ -184,6 +184,18 @@
                 </div>
             </section>
         </div>
+
+        <section class="graph-visualization-section">
+            <div class="graph-visualization-header">
+                <div>
+                    <h2>Neo4j Graph</h2>
+                    <p>Latest graph triplets written during document processing.</p>
+                </div>
+                <div id="neo4j-graph-meta" class="badge">Loading graph...</div>
+            </div>
+            <div id="neo4j-graph-empty" class="graph-empty">No graph snapshot has been written yet.</div>
+            <svg id="neo4j-graph-canvas" class="graph-canvas" role="img" aria-label="Neo4j graph visualization"></svg>
+        </section>
     </div>
 
 </body>

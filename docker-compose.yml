@@ -201,8 +201,10 @@ services:
       GRAPH_OLLAMA_RAG_MODEL: ${GRAPH_OLLAMA_RAG_MODEL:-llama3.2:3b}
       OLLAMA_CHAT_TIMEOUT: ${OLLAMA_CHAT_TIMEOUT:-60}
       GRAPH_PERF_LOG: "1"
+      HAWKI_RAG_PUBLIC_DIR: /app/public
     volumes:
       - ./python_rag:/app
+      - ./public:/app/public
       - shared_storage:/app/shared
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
     restart: unless-stopped

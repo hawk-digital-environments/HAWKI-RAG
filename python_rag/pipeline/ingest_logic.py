@@ -17,6 +17,7 @@ from fastapi import HTTPException
 from utils.text_preprocessor import ensure_tags, split_text
 from vectorstore.qdrant_http import QdrantHTTP
 from graph.neo4j_graph import Neo4jGraph
+from graph.graph_visualization import write_graph_visualization
 from graph.graph_utils import clean_triplets
 from pipeline.observability import pipeline_log
 from pipeline.validation import normalize_ingest_metadata, validate_ingest_document
@@ -342,6 +343,7 @@ def ingest_documents(
                 rag_service,
                 provider,
                 neo4j_database=getattr(body, "neo4j_database", None),
+                public_dir=public_dir,
             )
             graph_preview = _build_graph_preview(doc_stats, chunk_records, triplets_by_doc)
             summary["graph_preview"] = graph_preview
@@ -437,6 +439,7 @@ def ingest_documents(
                 provider,
                 graph=graph,
                 neo4j_database=getattr(body, "neo4j_database", None),
+                public_dir=public_dir,
             )
             triplet_ms = (time.perf_counter() - triplet_start) * 1000
             total_triplets = sum(len(v) for v in triplets_by_doc.values())
@@ -591,6 +594,7 @@ def _build_triplets_by_doc(
     *,
     graph: Any | None = None,
     neo4j_database: str | None = None,
+    public_dir: Path | None = None,
 ) -> tuple[Dict[str, List[tuple[str, str, str]]], List[Dict[str, Any]]]:
     fn_start = time.perf_counter()
     _perf_log(
@@ -748,6 +752,11 @@ def _build_triplets_by_doc(
                 neo4j_start = time.perf_counter()
                 graph.upsert_triplets(triplets, doc_id=doc_id)
                 neo4j_ms = (time.perf_counter() - neo4j_start) * 1000
+                if public_dir is not None:
+                    try:
+                        write_graph_visualization(public_dir, database=neo4j_database)
+                    except Exception as exc:
+                        logger.warning("graph-viz:update failed doc=%s: %s", doc_id, exc)
                 _perf_log(
                     "perf:graph pipeline.ingest_logic._build_triplets_by_doc doc=%s step=neo4j_upsert triplets=%s ms=%.2f",
                     doc_id,

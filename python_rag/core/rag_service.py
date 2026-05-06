@@ -886,16 +886,12 @@ class RAGService:
         )
 
         chunked_doc_status_ok = self._register_chunked_doc_status_storage()
-        neo4j_graph_ok, neo4j_env_applied = self._prepare_lightrag_neo4j_env(neo4j_database)
         lightrag_kwargs: Dict[str, Any] = {}
         if chunked_doc_status_ok:
             lightrag_kwargs["doc_status_storage"] = "ChunkedJsonDocStatusStorage"
-        if neo4j_graph_ok:
-            lightrag_kwargs["graph_storage"] = "Neo4JStorage"
-        else:
-            logger.warning(
-                "LightRAG Neo4JStorage not enabled (missing NEO4J_URI/NEO4J_USERNAME/NEO4J_PASSWORD); using default graph storage"
-            )
+        # Keep RAG-Anything's extraction graph local. The canonical Neo4j graph is
+        # written once by Neo4jGraph.upsert_triplets using the deduped Entity/REL schema.
+        neo4j_env_applied: dict[str, str] = {}
 
         try:
             client = RAGAnything(
@@ -918,11 +914,6 @@ class RAGService:
                 "graph_storage": lightrag_kwargs.get("graph_storage", "NetworkXStorage(default)"),
                 "graph_client_initialized": True,
             }
-            if neo4j_env_applied:
-                logger.info(
-                    "LightRAG Neo4j env prepared: %s",
-                    {k: v for k, v in neo4j_env_applied.items()},
-                )
             return client
         except Exception as exc:
             self._rag_graph_runtime_meta = {

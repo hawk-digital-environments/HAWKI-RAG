@@ -343,10 +343,12 @@ class IngestController extends Controller
         $liveBefore = $this->listLiveIngestionsFrom($statusPath);
         if (!$liveBefore) {
             return response()->json([
-                'ok' => false,
+                'ok' => true,
+                'stopped_count' => 0,
+                'stopped_pids' => [],
                 'message' => 'No running ingest process found.',
                 'live_ingestions' => $liveBefore,
-            ], 404);
+            ]);
         }
 
         $targetPids = [];
