@@ -4,7 +4,6 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Document extends Model
 {
@@ -28,10 +27,8 @@ class Document extends Model
 
     protected $fillable = [
         'id',
-        'tenant_id',
-        'application_id',
-        'heap_id',
         'external_id',
+        'collection',
         'source_type',
         'source_url',
         'original_filename',
@@ -53,14 +50,4 @@ class Document extends Model
         'metadata_json' => 'array',
     ];
 
-    public function processingStates(): HasMany
-    {
-        return $this->hasMany(DocumentProcessingState::class, 'document_id');
-    }
-
-    public function chunks(): HasMany
-    {
-        return $this->hasMany(DocumentChunk::class, 'document_id');
-    }
 }
-

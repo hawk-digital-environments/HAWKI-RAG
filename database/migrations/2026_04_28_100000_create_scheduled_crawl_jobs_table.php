@@ -11,7 +11,7 @@ return new class extends Migration
         Schema::create('scheduled_crawl_jobs', function (Blueprint $table) {
             $table->id();
             $table->text('url');
-            $table->enum('period', ['per-day', 'per-week', 'per-month']);
+            $table->string('period', 32);
             $table->string('job_id')->nullable();
             $table->string('collection')->nullable();
             $table->boolean('graph_enabled')->default(true);
@@ -27,6 +27,7 @@ return new class extends Migration
             $table->timestamps();
 
             $table->index(['active', 'period']);
+            $table->index(['active', 'next_run_at']);
         });
     }
 

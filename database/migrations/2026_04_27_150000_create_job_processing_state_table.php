@@ -10,13 +10,13 @@ return new class extends Migration
     {
         Schema::create('job_processing_state', function (Blueprint $table) {
             $table->bigIncrements('id');
-            $table->uuid('job_id');
-            $table->string('stage');
-            $table->string('source');
+            $table->string('job_id', 191);
+            $table->string('stage', 64);
+            $table->string('source', 128);
             $table->text('input_path')->nullable();
             $table->text('output_path')->nullable();
             $table->string('input_checksum')->nullable();
-            $table->string('status');
+            $table->string('status', 64);
             $table->integer('retry_count')->default(0);
             $table->integer('max_retries')->default(3);
             $table->timestamp('first_received_at')->nullable();
@@ -30,8 +30,7 @@ return new class extends Migration
             $table->timestamps();
 
             $table->unique(['job_id', 'stage'], 'job_processing_state_job_stage_unique');
-            $table->index('status');
-            $table->index('stage');
+            $table->index(['stage', 'status']);
             $table->index('input_checksum');
         });
     }
@@ -41,4 +40,3 @@ return new class extends Migration
         Schema::dropIfExists('job_processing_state');
     }
 };
-
