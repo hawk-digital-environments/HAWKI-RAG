@@ -39,7 +39,7 @@ class Neo4jGraphVisualization:
             return self._driver.session(database=self._database)
         return self._driver.session()
 
-    def snapshot(self, *, limit: int = 250) -> Dict[str, Any]:
+    def snapshot(self, *, limit: int = 250, recent_doc_id: Optional[str] = None) -> Dict[str, Any]:
         query = (
             "MATCH (s:Entity)-[r:REL]->(o:Entity) "
             "WITH s, r, o "
@@ -65,6 +65,8 @@ class Neo4jGraphVisualization:
         nodes: Dict[str, Dict[str, Any]] = {}
         links: List[Dict[str, Any]] = []
         doc_ids = set()
+        recent_doc_key = str(recent_doc_id).strip() if recent_doc_id else None
+        recent_relationship_count = 0
 
         for record in records:
             source_id = str(record.get("source_id"))
@@ -74,6 +76,15 @@ class Neo4jGraphVisualization:
                 doc_ids.add(str(doc_id))
             relationship_doc_ids = [str(value) for value in (record.get("doc_ids") or []) if value]
             doc_ids.update(relationship_doc_ids)
+            is_recent = bool(
+                recent_doc_key
+                and (
+                    str(doc_id) == recent_doc_key
+                    or recent_doc_key in relationship_doc_ids
+                )
+            )
+            if is_recent:
+                recent_relationship_count += 1
 
             nodes.setdefault(
                 source_id,
@@ -100,6 +111,7 @@ class Neo4jGraphVisualization:
                     "label": str(record.get("relationship_label") or record.get("relationship_type") or "REL"),
                     "doc_id": str(doc_id) if doc_id else None,
                     "doc_ids": relationship_doc_ids,
+                    "is_recent": is_recent,
                     "updated_at": record.get("updated_at"),
                 }
             )
@@ -110,6 +122,8 @@ class Neo4jGraphVisualization:
             "limit": max(1, int(limit)),
             "node_count": len(nodes),
             "relationship_count": len(links),
+            "recent_doc_id": recent_doc_key,
+            "recent_relationship_count": recent_relationship_count,
             "document_count": len(doc_ids),
             "nodes": list(nodes.values()),
             "links": links,
@@ -121,13 +135,17 @@ def write_graph_visualization(
     *,
     database: Optional[str] = None,
     limit: Optional[int] = None,
+    recent_doc_id: Optional[str] = None,
 ) -> Optional[Path]:
     if os.environ.get("NEO4J_GRAPH_VISUALIZATION", "true").strip().lower() in ("0", "false", "no", "off"):
         return None
 
     exporter = Neo4jGraphVisualization(database=database)
     try:
-        snapshot = exporter.snapshot(limit=limit if limit is not None else _int_env("NEO4J_GRAPH_VISUALIZATION_LIMIT", 250))
+        snapshot = exporter.snapshot(
+            limit=limit if limit is not None else _int_env("NEO4J_GRAPH_VISUALIZATION_LIMIT", 250),
+            recent_doc_id=recent_doc_id,
+        )
     finally:
         exporter.close()
 

@@ -193,6 +193,10 @@
                 </div>
                 <div id="neo4j-graph-meta" class="badge">Loading graph...</div>
             </div>
+            <div class="graph-legend" aria-label="Graph color legend">
+                <span><i class="graph-legend-swatch graph-legend-previous"></i>Previous triplets</span>
+                <span><i class="graph-legend-swatch graph-legend-recent"></i>Recently added triplets</span>
+            </div>
             <div id="neo4j-graph-empty" class="graph-empty">No graph snapshot has been written yet.</div>
             <svg id="neo4j-graph-canvas" class="graph-canvas" role="img" aria-label="Neo4j graph visualization"></svg>
         </section>

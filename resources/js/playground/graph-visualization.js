@@ -43,7 +43,7 @@ function shortGraphLabel(value, max = 28) {
 
 function graphSnapshotHash(data) {
     if (!data || !Array.isArray(data.nodes) || !Array.isArray(data.links)) return '';
-    return `${data.generated_at || ''}|${data.node_count}|${data.relationship_count}|${data.links.map((link) => link.id).join(',')}`;
+    return `${data.generated_at || ''}|${data.node_count}|${data.relationship_count}|${data.recent_doc_id || ''}|${data.links.map((link) => `${link.id}:${link.is_recent ? '1' : '0'}`).join(',')}`;
 }
 
 function svgEl(tag, attrs = {}) {
@@ -250,7 +250,7 @@ function renderNeo4jGraph(data) {
 
     usableLinks.forEach((link) => {
         const path = svgEl('path', {
-            class: 'graph-link',
+            class: `graph-link${link.is_recent ? ' is-recent' : ''}`,
             d: linkPath(link),
             'marker-end': 'url(#graph-arrow)',
         });
@@ -261,7 +261,7 @@ function renderNeo4jGraph(data) {
 
         const edgeLabel = String(link.label || link.type || 'REL');
         const labelWidth = estimateTextWidth(edgeLabel, 9) + 12;
-        const group = svgEl('g', { class: 'graph-edge-label-group' });
+        const group = svgEl('g', { class: `graph-edge-label-group${link.is_recent ? ' is-recent' : ''}` });
         group.appendChild(svgEl('rect', {
             x: -labelWidth / 2,
             y: -9,
@@ -311,7 +311,10 @@ function renderNeo4jGraph(data) {
         const visibleNote = (data.node_count > nodes.length || data.relationship_count > links.length)
             ? ` · showing ${nodes.length}/${data.node_count} nodes`
             : '';
-        neo4jGraphMeta.textContent = `${data.node_count ?? nodes.length} nodes · ${data.relationship_count ?? links.length} relationships · ${time}${visibleNote}`;
+        const recentNote = data.recent_relationship_count
+            ? ` · ${data.recent_relationship_count} recent`
+            : '';
+        neo4jGraphMeta.textContent = `${data.node_count ?? nodes.length} nodes · ${data.relationship_count ?? links.length} relationships${recentNote} · ${time}${visibleNote}`;
     }
 
     function highlightNode(nodeId, { pinned = false } = {}) {

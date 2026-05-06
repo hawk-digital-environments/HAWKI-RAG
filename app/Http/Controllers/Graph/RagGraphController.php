@@ -41,6 +41,8 @@ class RagGraphController extends Controller
             'limit' => 250,
             'node_count' => 0,
             'relationship_count' => 0,
+            'recent_doc_id' => null,
+            'recent_relationship_count' => 0,
             'document_count' => 0,
             'nodes' => [],
             'links' => [],

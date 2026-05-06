@@ -754,7 +754,7 @@ def _build_triplets_by_doc(
                 neo4j_ms = (time.perf_counter() - neo4j_start) * 1000
                 if public_dir is not None:
                     try:
-                        write_graph_visualization(public_dir, database=neo4j_database)
+                        write_graph_visualization(public_dir, database=neo4j_database, recent_doc_id=doc_id)
                     except Exception as exc:
                         logger.warning("graph-viz:update failed doc=%s: %s", doc_id, exc)
                 _perf_log(
