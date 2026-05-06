@@ -77,7 +77,8 @@ def clean_triplets(triplets: Iterable[Tuple[str, str, str]]) -> List[Tuple[str, 
             dropped += 1
             continue
         key = (subj, rel, obj)
-        if key in seen:
+        reverse_key = (obj, rel, subj)
+        if key in seen or reverse_key in seen:
             dropped += 1
             continue
         seen.add(key)
