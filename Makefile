@@ -4,46 +4,8 @@ SHELL := /bin/bash
 
 COMPOSE_BIN ?= docker compose
 
-# Variables (override via `make VAR=value`)
+# Core stack variables (override via `make VAR=value`)
 ENV_FILE ?= .env
-ARTISAN ?= docker exec hawki_rag_app php artisan
-URL ?=
-JOB_ID_FULL ?=
-LABEL ?= $(if $(JOB_ID_FULL),$(JOB_ID_FULL),manual-crawl)
-CRAWLED_ROOT ?= /app/shared/crawled-data
-SHARED_ROOT ?= /app/shared
-SCRAPED_FOLDER ?=
-OUTPUT_DIR ?= $(CRAWLED_ROOT)/$(LABEL)
-MAX_PAGES ?= 100
-SITEMAP_PAGES ?= 100
-MAX_PAGES_FULL ?=
-SKIP_IMAGES ?= true
-IMAGE_EXCEPTIONS ?=
-DATE_SELECTOR ?=
-MAX_CONCURRENCY ?= 4
-MAX_RPM ?= 60
-REQUEST_DELAY ?=
-DISCOVERY_MODE ?= false
-EXTENSIONS ?= pdf,doc,docx
-SCAN_ALL ?= false
-EXISTING ?= continue
-GRAPH ?= true
-GRAPH_ONLY ?= false
-GRAPH_ENGINE ?= raganything
-EMBEDDING_MODEL ?=
-COLLECTION ?=
-NEO4J_DATABASE ?=
-CHUNK_CHARS ?=
-CHUNK_OVERLAP ?=
-BATCH ?= 16
-PROVIDER ?= ollama
-BASE_URL ?= http://localhost:8000
-TIMEOUT ?=
-RESUME_MODE ?= resume
-DRY ?= false
-ESTIMATE_ONLY ?= false
-SUMMARY_FILE ?=
-
 HOST_OS := $(shell uname -s)
 
 BASE_COMPOSE_FILE ?= docker-compose.yml
@@ -52,7 +14,7 @@ LOCAL_OVERRIDE_COMPOSE ?= docker-compose.local.yml
 COMPOSE_FILE_SEP ?= :
 # USE_OLLAMA_GPU: auto (default), 1 (force GPU override), 0 (force CPU mode)
 USE_OLLAMA_GPU ?= auto
-COMPOSE_PROFILES ?=
+CORE_PROFILES_BASE ?= rag-ingestion-worker
 
 ifeq ($(USE_OLLAMA_GPU),auto)
 	ifeq ($(HOST_OS),Linux)
@@ -64,20 +26,23 @@ endif
 
 OLLAMA_SERVICE := ollama
 OLLAMA_CONTAINER ?= hawki_ollama
-SCHEDULER_DB_HOST ?= 127.0.0.1
-SCHEDULER_DB_PORT ?= 3306
-SCRAPER_REPO_HOST_PATH ?= $(CURDIR)
-RAG_REPO_HOST_PATH ?= $(CURDIR)
-SCHEDULER_ARTISAN_ENV = DB_HOST=$(SCHEDULER_DB_HOST) DB_PORT=$(SCHEDULER_DB_PORT) SCRAPER_REPO_PATH=$(SCRAPER_REPO_HOST_PATH) RAG_REPO_PATH=$(RAG_REPO_HOST_PATH)
 
-COMPOSE_FILE_LIST := $(BASE_COMPOSE_FILE)
+CORE_GPU_COMPOSE_SUFFIX :=
+CORE_PROFILES := $(CORE_PROFILES_BASE)
 
 ifeq ($(USE_OLLAMA_GPU),1)
-	COMPOSE_FILE_LIST := $(COMPOSE_FILE_LIST)$(COMPOSE_FILE_SEP)$(GPU_OVERRIDE_COMPOSE)
-	PROFILE_MESSAGE := "Ollama GPU override enabled."
+	CORE_GPU_COMPOSE_SUFFIX := $(COMPOSE_FILE_SEP)$(GPU_OVERRIDE_COMPOSE)
+	CORE_PROFILES := gpu,$(CORE_PROFILES_BASE)
+	GPU_MESSAGE := Ollama GPU override enabled.
 else
-	PROFILE_MESSAGE := "Ollama CPU mode."
+	GPU_MESSAGE := Ollama CPU mode.
 endif
+
+CORE_SERVER_COMPOSE_FILE_LIST := $(BASE_COMPOSE_FILE)$(CORE_GPU_COMPOSE_SUFFIX)
+CORE_LOCAL_COMPOSE_FILE_LIST := $(BASE_COMPOSE_FILE)$(CORE_GPU_COMPOSE_SUFFIX)$(COMPOSE_FILE_SEP)$(LOCAL_OVERRIDE_COMPOSE)
+COMPOSE_FILE_LIST ?= $(CORE_SERVER_COMPOSE_FILE_LIST)
+COMPOSE_PROFILES ?= $(CORE_PROFILES)
+PROFILE_MESSAGE ?= $(GPU_MESSAGE)
 
 COMPOSE_ENV_PREFIX :=
 ifeq ($(HOST_OS),Darwin)
@@ -92,7 +57,7 @@ COMPOSE_FILE_PREFIX := COMPOSE_FILE=$(COMPOSE_FILE_LIST)
 COMPOSE_CMD = $(COMPOSE_ENV_PREFIX) COMPOSE_FILE=$(COMPOSE_FILE_LIST) $(if $(strip $(COMPOSE_PROFILES)),COMPOSE_PROFILES=$(COMPOSE_PROFILES)) $(COMPOSE_BIN) --env-file $(ENV_FILE)
 
 
-.PHONY: network pull-core build-app up-core up-core-local up-core-local-rabbitmq health pull-models scraped-folders save-rabbitmq-queues publish-converted-folder crawl convert ingest convert-ingest-folder pipeline scheduler-run scheduled-crawls logs-core down-core down-rag restart-core test-services neo4j-fresh
+.PHONY: network pull-core build-app _up-core up-core up-core-server health pull-models scraped-folders save-rabbitmq-queues publish-converted-folder crawl convert ingest convert-ingest-folder pipeline scheduler-run scheduled-crawls logs-core down-core down-rag restart-core test-services neo4j-fresh
 
 network:
 	@for net in hawki-network hosting_network; do \
@@ -110,7 +75,7 @@ pull-core:
 build-app:
 	@$(COMPOSE_CMD) build hawki_rag_app
 
-up-core: network
+_up-core: network
 	@echo $(PROFILE_MESSAGE)
 	@echo "Launching full stack (COMPOSE_FILE=$(COMPOSE_FILE_LIST), profiles: $(if $(strip $(COMPOSE_PROFILES)),$(COMPOSE_PROFILES),none))..."
 	@$(COMPOSE_CMD) up -d --build --remove-orphans
@@ -121,17 +86,15 @@ up-core: network
 	done
 	@docker network connect hawki-network hawki-toolkit-file-converter-file-converter-1 >/dev/null 2>&1 || true
 
-up-core-local: USE_OLLAMA_GPU := 1
-up-core-local: COMPOSE_PROFILES := gpu
-up-core-local: COMPOSE_FILE_LIST := $(BASE_COMPOSE_FILE)$(COMPOSE_FILE_SEP)$(GPU_OVERRIDE_COMPOSE)$(COMPOSE_FILE_SEP)$(LOCAL_OVERRIDE_COMPOSE)
-up-core-local: PROFILE_MESSAGE := "Ollama GPU override enabled for local stack."
-up-core-local: up-core
+up-core: COMPOSE_FILE_LIST = $(CORE_LOCAL_COMPOSE_FILE_LIST)
+up-core: COMPOSE_PROFILES = $(CORE_PROFILES)
+up-core: PROFILE_MESSAGE = $(GPU_MESSAGE) Local override enabled and RabbitMQ ingestion worker enabled.
+up-core: _up-core
 
-up-core-local-rabbitmq: USE_OLLAMA_GPU := 1
-up-core-local-rabbitmq: COMPOSE_PROFILES := gpu,rag-ingestion-worker
-up-core-local-rabbitmq: COMPOSE_FILE_LIST := $(BASE_COMPOSE_FILE)$(COMPOSE_FILE_SEP)$(GPU_OVERRIDE_COMPOSE)$(COMPOSE_FILE_SEP)$(LOCAL_OVERRIDE_COMPOSE)
-up-core-local-rabbitmq: PROFILE_MESSAGE := "Ollama GPU override enabled for local stack with RabbitMQ ingestion worker."
-up-core-local-rabbitmq: up-core
+up-core-server: COMPOSE_FILE_LIST = $(CORE_SERVER_COMPOSE_FILE_LIST)
+up-core-server: COMPOSE_PROFILES = $(CORE_PROFILES)
+up-core-server: PROFILE_MESSAGE = $(GPU_MESSAGE) Server mode and RabbitMQ ingestion worker enabled.
+up-core-server: _up-core
 
 health:
 	@echo "Checking Qdrant..." && docker exec hawki_qdrant sh -lc "curl -fsS http://localhost:6333/readyz" >/dev/null && echo " OK" || (echo " FAIL" && exit 1)
@@ -178,6 +141,45 @@ pull-models:
 	@docker exec -it $(OLLAMA_CONTAINER) ollama pull bge-m3
 	@docker exec -it $(OLLAMA_CONTAINER) ollama pull llama3.1:8b
 	@docker exec -it $(OLLAMA_CONTAINER) ollama pull llama3.2:1b
+
+# Pipeline helper variables (override via `make VAR=value`)
+ARTISAN ?= docker exec hawki_rag_app php artisan
+URL ?=
+JOB_ID_FULL ?=
+LABEL ?= $(if $(JOB_ID_FULL),$(JOB_ID_FULL),manual-crawl)
+CRAWLED_ROOT ?= /app/shared/crawled-data
+SHARED_ROOT ?= /app/shared
+SCRAPED_FOLDER ?=
+OUTPUT_DIR ?= $(CRAWLED_ROOT)/$(LABEL)
+MAX_PAGES ?= 100
+SITEMAP_PAGES ?= 100
+MAX_PAGES_FULL ?=
+SKIP_IMAGES ?= true
+IMAGE_EXCEPTIONS ?=
+DATE_SELECTOR ?=
+MAX_CONCURRENCY ?= 4
+MAX_RPM ?= 60
+REQUEST_DELAY ?=
+DISCOVERY_MODE ?= false
+EXTENSIONS ?= pdf,doc,docx
+SCAN_ALL ?= false
+EXISTING ?= continue
+GRAPH ?= true
+GRAPH_ONLY ?= false
+GRAPH_ENGINE ?= raganything
+EMBEDDING_MODEL ?=
+COLLECTION ?=
+NEO4J_DATABASE ?=
+CHUNK_CHARS ?=
+CHUNK_OVERLAP ?=
+BATCH ?= 16
+PROVIDER ?= ollama
+BASE_URL ?= http://localhost:8000
+TIMEOUT ?=
+RESUME_MODE ?= resume
+DRY ?= false
+ESTIMATE_ONLY ?= false
+SUMMARY_FILE ?=
 
 scraped-folders:
 	@docker exec hawki_rag_app sh -lc 'root="$(SHARED_ROOT)"; \
@@ -245,6 +247,13 @@ convert-ingest-folder:
 
 pipeline: crawl convert
 	@$(MAKE) ingest CRAWLED_ROOT="$(OUTPUT_DIR)" COLLECTION="$(COLLECTION)" GRAPH="$(GRAPH)" GRAPH_ONLY="$(GRAPH_ONLY)" GRAPH_ENGINE="$(GRAPH_ENGINE)" EMBEDDING_MODEL="$(EMBEDDING_MODEL)" NEO4J_DATABASE="$(NEO4J_DATABASE)" CHUNK_CHARS="$(CHUNK_CHARS)" CHUNK_OVERLAP="$(CHUNK_OVERLAP)" BATCH="$(BATCH)" PROVIDER="$(PROVIDER)" BASE_URL="$(BASE_URL)" TIMEOUT="$(TIMEOUT)" RESUME_MODE="$(RESUME_MODE)" DRY="$(DRY)" ESTIMATE_ONLY="$(ESTIMATE_ONLY)" SUMMARY_FILE="$(SUMMARY_FILE)"
+
+# Scheduler variables (override via `make VAR=value`)
+SCHEDULER_DB_HOST ?= 127.0.0.1
+SCHEDULER_DB_PORT ?= 3306
+SCRAPER_REPO_HOST_PATH ?= $(CURDIR)
+RAG_REPO_HOST_PATH ?= $(CURDIR)
+SCHEDULER_ARTISAN_ENV = DB_HOST=$(SCHEDULER_DB_HOST) DB_PORT=$(SCHEDULER_DB_PORT) SCRAPER_REPO_PATH=$(SCRAPER_REPO_HOST_PATH) RAG_REPO_PATH=$(RAG_REPO_HOST_PATH)
 
 scheduler-run:
 	@$(SCHEDULER_ARTISAN_ENV) php artisan schedule:run
