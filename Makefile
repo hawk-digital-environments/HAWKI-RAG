@@ -57,7 +57,7 @@ COMPOSE_FILE_PREFIX := COMPOSE_FILE=$(COMPOSE_FILE_LIST)
 COMPOSE_CMD = $(COMPOSE_ENV_PREFIX) COMPOSE_FILE=$(COMPOSE_FILE_LIST) $(if $(strip $(COMPOSE_PROFILES)),COMPOSE_PROFILES=$(COMPOSE_PROFILES)) $(COMPOSE_BIN) --env-file $(ENV_FILE)
 
 
-.PHONY: network pull-core build-app _up-core up-core up-core-server health pull-models scraped-folders save-rabbitmq-queues publish-converted-folder crawl convert ingest convert-ingest-folder pipeline scheduler-run scheduled-crawls logs-core down-core down-rag restart-core test-services neo4j-fresh
+.PHONY: network pull-core build-app _up-core up-core up-core-server health pull-models scraped-folders publish-converted-folder crawl convert ingest convert-ingest-folder pipeline logs-core down-core down-rag restart-core test-services neo4j-fresh
 
 network:
 	@for net in hawki-network hosting_network; do \
@@ -191,9 +191,6 @@ scraped-folders:
 		echo "Convert and ingest one folder with:"; \
 		echo "  make convert-ingest-folder SCRAPED_FOLDER=/app/shared/<folder-name>"'
 
-save-rabbitmq-queues:
-	@$(ARTISAN) rabbitmq:save-queue-state
-
 publish-converted-folder:
 	@if [ -z "$(SCRAPED_FOLDER)" ]; then \
 		echo "Set SCRAPED_FOLDER to one of the folders below:"; \
@@ -247,19 +244,6 @@ convert-ingest-folder:
 
 pipeline: crawl convert
 	@$(MAKE) ingest CRAWLED_ROOT="$(OUTPUT_DIR)" COLLECTION="$(COLLECTION)" GRAPH="$(GRAPH)" GRAPH_ONLY="$(GRAPH_ONLY)" GRAPH_ENGINE="$(GRAPH_ENGINE)" EMBEDDING_MODEL="$(EMBEDDING_MODEL)" NEO4J_DATABASE="$(NEO4J_DATABASE)" CHUNK_CHARS="$(CHUNK_CHARS)" CHUNK_OVERLAP="$(CHUNK_OVERLAP)" BATCH="$(BATCH)" PROVIDER="$(PROVIDER)" BASE_URL="$(BASE_URL)" TIMEOUT="$(TIMEOUT)" RESUME_MODE="$(RESUME_MODE)" DRY="$(DRY)" ESTIMATE_ONLY="$(ESTIMATE_ONLY)" SUMMARY_FILE="$(SUMMARY_FILE)"
-
-# Scheduler variables (override via `make VAR=value`)
-SCHEDULER_DB_HOST ?= 127.0.0.1
-SCHEDULER_DB_PORT ?= 3306
-SCRAPER_REPO_HOST_PATH ?= $(CURDIR)
-RAG_REPO_HOST_PATH ?= $(CURDIR)
-SCHEDULER_ARTISAN_ENV = DB_HOST=$(SCHEDULER_DB_HOST) DB_PORT=$(SCHEDULER_DB_PORT) SCRAPER_REPO_PATH=$(SCRAPER_REPO_HOST_PATH) RAG_REPO_PATH=$(RAG_REPO_HOST_PATH)
-
-scheduler-run:
-	@$(SCHEDULER_ARTISAN_ENV) php artisan schedule:run
-
-scheduled-crawls:
-	@$(SCHEDULER_ARTISAN_ENV) php artisan rag:run-scheduled-crawls
 
 logs-core:
 	@$(COMPOSE_CMD) logs -f qdrant mysql hawki_rag_nginx $(OLLAMA_SERVICE) hawki_rag_app
