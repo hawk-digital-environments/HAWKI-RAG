@@ -3,9 +3,11 @@
 namespace App\Console\Commands\Rag;
 
 use App\Services\Rag\RagRabbitMQ;
+use App\Support\PipelineExitCode;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Str;
+use Throwable;
 
 class PublishConvertedFolderCommand extends Command
 {
@@ -20,42 +22,56 @@ class PublishConvertedFolderCommand extends Command
         $folder = $this->resolveFolder((string) $this->argument('folder'));
         if (!is_dir($folder)) {
             $this->error("Folder not found: {$folder}");
-            return Command::FAILURE;
+            return PipelineExitCode::VALIDATION_FAILURE;
         }
 
-        $rabbit->declareRagIngestionTopology();
-        $limit = max(0, (int) $this->option('limit'));
-        $published = 0;
+        try {
+            $rabbit->declareRagIngestionTopology();
+            $limit = max(0, (int) $this->option('limit'));
+            $published = 0;
+            $skipped = 0;
 
-        foreach (File::allFiles($folder) as $file) {
-            if ($file->getFilename() !== 'conversion_meta.json') {
-                continue;
+            foreach (File::allFiles($folder) as $file) {
+                if ($file->getFilename() !== 'conversion_meta.json') {
+                    continue;
+                }
+
+                $meta = json_decode((string) file_get_contents($file->getPathname()), true);
+                if (!is_array($meta)) {
+                    $this->warn("Skipping invalid metadata: {$file->getPathname()}");
+                    $skipped++;
+                    continue;
+                }
+
+                $markdownPath = $this->markdownPathFromMeta($meta, $file->getPath());
+                if ($markdownPath === null) {
+                    $this->warn("Skipping metadata without Markdown output: {$file->getPathname()}");
+                    $skipped++;
+                    continue;
+                }
+
+                $rabbit->publishConvertedDocument($this->eventFromMeta($meta, $markdownPath));
+                $published++;
+
+                if ($limit > 0 && $published >= $limit) {
+                    break;
+                }
             }
 
-            $meta = json_decode((string) file_get_contents($file->getPathname()), true);
-            if (!is_array($meta)) {
-                $this->warn("Skipping invalid metadata: {$file->getPathname()}");
-                continue;
+            $rabbit->close();
+            $this->info("Published {$published} convert.document.completed event(s).");
+            if ($skipped > 0) {
+                $this->warn("Skipped {$skipped} invalid converted document metadata file(s).");
             }
 
-            $markdownPath = $this->markdownPathFromMeta($meta, $file->getPath());
-            if ($markdownPath === null) {
-                $this->warn("Skipping metadata without Markdown output: {$file->getPathname()}");
-                continue;
-            }
-
-            $rabbit->publishConvertedDocument($this->eventFromMeta($meta, $markdownPath));
-            $published++;
-
-            if ($limit > 0 && $published >= $limit) {
-                break;
-            }
+            return $published > 0 && $skipped === 0
+                ? PipelineExitCode::SUCCESS
+                : PipelineExitCode::PARTIAL_SUCCESS;
+        } catch (Throwable $e) {
+            $rabbit->close();
+            $this->error('Failed to publish converted document events: ' . $e->getMessage());
+            return PipelineExitCode::RUNTIME_FAILURE;
         }
-
-        $rabbit->close();
-        $this->info("Published {$published} convert.document.completed event(s).");
-
-        return Command::SUCCESS;
     }
 
     private function eventFromMeta(array $meta, string $markdownPath): array

@@ -20,11 +20,17 @@ from datetime import datetime, timezone
 import time
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
+
+EXIT_SUCCESS = 0
+EXIT_RUNTIME_FAILURE = 1
+EXIT_VALIDATION_FAILURE = 2
+EXIT_PARTIAL_SUCCESS = 3
+
 try:
     import requests
 except ImportError:
     print("This script requires 'requests'. Install with: pip install requests", file=sys.stderr)
-    sys.exit(1)
+    sys.exit(EXIT_RUNTIME_FAILURE)
 
 logger = logging.getLogger(__name__)
 
@@ -741,12 +747,12 @@ def main():
     args = ap.parse_args()
     if args.resume and args.start:
         print("Choose only one of --resume or --start.", file=sys.stderr)
-        sys.exit(2)
+        sys.exit(EXIT_VALIDATION_FAILURE)
 
     root = Path(args.root).expanduser().resolve()
     if not root.exists() or not root.is_dir():
         print(f"Root not found or not a directory: {root}", file=sys.stderr)
-        sys.exit(2)
+        sys.exit(EXIT_VALIDATION_FAILURE)
     if not args.collection:
         args.collection = root.name
 
@@ -1022,7 +1028,8 @@ def main():
 
     if not args.dry and not args.estimate_only:
         if failed_batches:
-            sys.exit(1)
+            sys.exit(EXIT_RUNTIME_FAILURE)
+    sys.exit(EXIT_SUCCESS)
 
 if __name__ == "__main__":
     main()

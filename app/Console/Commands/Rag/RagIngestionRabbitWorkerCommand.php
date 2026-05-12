@@ -4,6 +4,7 @@ namespace App\Console\Commands\Rag;
 
 use App\Services\Rag\ConvertedDocumentIngestionService;
 use App\Services\Rag\RagRabbitMQ;
+use App\Support\PipelineExitCode;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
 use JsonException;
@@ -20,6 +21,7 @@ class RagIngestionRabbitWorkerCommand extends Command
     protected $description = 'Consume converted-document RabbitMQ events in Laravel and call the Python RAG bridge.';
 
     private bool $shouldStop = false;
+    private int $lastExitCode = PipelineExitCode::SUCCESS;
 
     public function handle(RagRabbitMQ $rabbit, ConvertedDocumentIngestionService $ingestion): int
     {
@@ -43,7 +45,7 @@ class RagIngestionRabbitWorkerCommand extends Command
             false,
             false,
             function (AMQPMessage $message) use ($rabbit, $ingestion, $cfg, &$processed): void {
-                $this->processMessage($message, $rabbit, $ingestion, $cfg);
+                $this->lastExitCode = $this->processMessage($message, $rabbit, $ingestion, $cfg);
                 $processed++;
                 if ($this->option('once')) {
                     $this->shouldStop = true;
@@ -60,6 +62,7 @@ class RagIngestionRabbitWorkerCommand extends Command
                 } catch (AMQPTimeoutException) {
                     if ($this->option('once') && $processed === 0) {
                         $this->line('No message received before timeout.');
+                        $this->lastExitCode = PipelineExitCode::PARTIAL_SUCCESS;
                         break;
                     }
                 }
@@ -68,10 +71,10 @@ class RagIngestionRabbitWorkerCommand extends Command
             $rabbit->close();
         }
 
-        return Command::SUCCESS;
+        return $this->option('once') ? $this->lastExitCode : PipelineExitCode::SUCCESS;
     }
 
-    private function processMessage(AMQPMessage $message, RagRabbitMQ $rabbit, ConvertedDocumentIngestionService $ingestion, array $cfg): void
+    private function processMessage(AMQPMessage $message, RagRabbitMQ $rabbit, ConvertedDocumentIngestionService $ingestion, array $cfg): int
     {
         $retryCount = 0;
         $maxRetries = (int) $cfg['max_retries'];
@@ -86,15 +89,16 @@ class RagIngestionRabbitWorkerCommand extends Command
             if ($state === null) {
                 $this->line("Skipping already completed RAG job {$event['job_id']}.");
                 $message->ack();
-                return;
+                return PipelineExitCode::SUCCESS;
             }
 
             $ingestion->ingest($event);
             $ingestion->markCompleted($event, $retryCount, $maxRetries);
             $message->ack();
             $this->info("Completed RAG job {$event['job_id']}.");
+            return PipelineExitCode::SUCCESS;
         } catch (Throwable $error) {
-            $this->handleFailure($message, $rabbit, $ingestion, $event, $retryCount, $maxRetries, $error);
+            return $this->handleFailure($message, $rabbit, $ingestion, $event, $retryCount, $maxRetries, $error);
         }
     }
 
@@ -106,7 +110,7 @@ class RagIngestionRabbitWorkerCommand extends Command
         int $retryCount,
         int $maxRetries,
         Throwable $error,
-    ): void {
+    ): int {
         $jobId = (string) ($event['job_id'] ?? 'unknown');
         Log::warning('RAG ingestion RabbitMQ job failed', [
             'job_id' => $jobId,
@@ -126,7 +130,7 @@ class RagIngestionRabbitWorkerCommand extends Command
             $ingestion->markReceivedForRetry($event, $nextRetry, $maxRetries, $error);
             $message->ack();
             $this->warn("Retry {$nextRetry}/{$maxRetries} published for RAG job {$jobId}.");
-            return;
+            return PipelineExitCode::RUNTIME_FAILURE;
         }
 
         $failedRetryCount = $ingestion->isPermanent($error) ? $retryCount : $nextRetry;
@@ -139,6 +143,7 @@ class RagIngestionRabbitWorkerCommand extends Command
 
         $message->ack();
         $this->error("Failed RAG job {$jobId}; published pipeline.failed.");
+        return PipelineExitCode::RUNTIME_FAILURE;
     }
 
     /**

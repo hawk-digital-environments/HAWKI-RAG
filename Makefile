@@ -195,12 +195,12 @@ publish-converted-folder:
 	@if [ -z "$(SCRAPED_FOLDER)" ]; then \
 		echo "Set SCRAPED_FOLDER to one of the folders below:"; \
 		$(MAKE) --no-print-directory scraped-folders; \
-		exit 1; \
+		exit 2; \
 	fi
 	@$(ARTISAN) rag:publish-converted-folder "$(SCRAPED_FOLDER)"
 
 crawl:
-	@if [ -z "$(URL)" ]; then echo "Set URL, for example: make crawl URL=https://www.hawk.de JOB_ID_FULL=manual_001"; exit 1; fi
+	@if [ -z "$(URL)" ]; then echo "Set URL, for example: make crawl URL=https://www.hawk.de JOB_ID_FULL=manual_001"; exit 2; fi
 	@EXTRA_FLAGS=""; \
 	if [ "$(SKIP_IMAGES)" = "true" ]; then EXTRA_FLAGS="$$EXTRA_FLAGS --skip-images"; fi; \
 	if [ -n "$(IMAGE_EXCEPTIONS)" ]; then EXTRA_FLAGS="$$EXTRA_FLAGS --image-exceptions='$(IMAGE_EXCEPTIONS)'"; fi; \
@@ -210,13 +210,13 @@ crawl:
 	$(ARTISAN) scraper:scrape "$(URL)" --max-pages=$(MAX_PAGES) --output-dir="$(OUTPUT_DIR)" --label="$(LABEL)" --max-concurrency=$(MAX_CONCURRENCY) --max-rpm=$(MAX_RPM) $$EXTRA_FLAGS
 
 convert:
-	@if [ "$(OUTPUT_DIR)" = "/absolute/path/to/crawled-data" ]; then echo "Set OUTPUT_DIR to the crawl output directory"; exit 1; fi
+	@if [ "$(OUTPUT_DIR)" = "/absolute/path/to/crawled-data" ]; then echo "Set OUTPUT_DIR to the crawl output directory"; exit 2; fi
 	@EXTRA_FLAGS=""; \
 	if [ "$(SCAN_ALL)" = "true" ]; then EXTRA_FLAGS="$$EXTRA_FLAGS --scan-all"; fi; \
 	$(ARTISAN) convert:crawled-pdfs "$(OUTPUT_DIR)" --extensions="$(EXTENSIONS)" --existing="$(EXISTING)" $$EXTRA_FLAGS
 
 ingest:
-	@if [ "$(CRAWLED_ROOT)" = "/absolute/path/to/crawled-data" ]; then echo "Set CRAWLED_ROOT to a path mounted in shared storage (default /app/shared inside hawki_rag_bridge)" && exit 1; fi
+	@if [ "$(CRAWLED_ROOT)" = "/absolute/path/to/crawled-data" ]; then echo "Set CRAWLED_ROOT to a path mounted in shared storage (default /app/shared inside hawki_rag_bridge)" && exit 2; fi
 	@EXTRA_FLAGS=""; \
 	if [ "$(GRAPH)" = "true" ]; then EXTRA_FLAGS="$$EXTRA_FLAGS --graph"; fi; \
 	if [ "$(GRAPH_ONLY)" = "true" ]; then EXTRA_FLAGS="$$EXTRA_FLAGS --graph-only"; fi; \
@@ -237,7 +237,7 @@ convert-ingest-folder:
 	@if [ -z "$(SCRAPED_FOLDER)" ]; then \
 		echo "Set SCRAPED_FOLDER to one of the folders below:"; \
 		$(MAKE) --no-print-directory scraped-folders; \
-		exit 1; \
+		exit 2; \
 	fi
 	@$(MAKE) convert OUTPUT_DIR="$(SCRAPED_FOLDER)" EXTENSIONS="$(EXTENSIONS)" EXISTING="$(EXISTING)" SCAN_ALL="$(SCAN_ALL)"
 	@$(MAKE) ingest CRAWLED_ROOT="$(SCRAPED_FOLDER)" COLLECTION="$(COLLECTION)" GRAPH="$(GRAPH)" GRAPH_ONLY="$(GRAPH_ONLY)" GRAPH_ENGINE="$(GRAPH_ENGINE)" EMBEDDING_MODEL="$(EMBEDDING_MODEL)" NEO4J_DATABASE="$(NEO4J_DATABASE)" CHUNK_CHARS="$(CHUNK_CHARS)" CHUNK_OVERLAP="$(CHUNK_OVERLAP)" BATCH="$(BATCH)" PROVIDER="$(PROVIDER)" BASE_URL="$(BASE_URL)" TIMEOUT="$(TIMEOUT)" RESUME_MODE="$(RESUME_MODE)" DRY="$(DRY)" ESTIMATE_ONLY="$(ESTIMATE_ONLY)" SUMMARY_FILE="$(SUMMARY_FILE)"

@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Services\ScrapeService\ScrapeService;
+use App\Support\PipelineExitCode;
 use Illuminate\Console\Command;
 use Illuminate\Support\Str;
 
@@ -47,13 +48,13 @@ class ScrapeWebsite extends Command
         try {
             // Get URL from argument or prompt
             $url = $this->argument('url');
-            if (blank($url)) {
+            if (blank($url) && $this->input->isInteractive()) {
                 $url = $this->ask('Enter the website URL to crawl (e.g., https://www.hawk.de/en)');
             }
 
             if (blank($url)) {
                 $this->error('URL is required');
-                return Command::FAILURE;
+                return PipelineExitCode::VALIDATION_FAILURE;
             }
 
             // Get label with auto-generated fallback
@@ -107,14 +108,14 @@ class ScrapeWebsite extends Command
                     $this->error(is_array($error) ? json_encode($error) : (string) $error);
                 }
 
-                return Command::FAILURE;
+                return PipelineExitCode::RUNTIME_FAILURE;
             }
 
-            return Command::SUCCESS;
+            return PipelineExitCode::SUCCESS;
 
         } catch (\Throwable $e) {
             $this->error('An error occurred: ' . $e->getMessage());
-            return Command::FAILURE;
+            return PipelineExitCode::RUNTIME_FAILURE;
         }
     }
 

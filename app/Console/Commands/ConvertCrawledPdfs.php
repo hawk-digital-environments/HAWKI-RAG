@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Services\FileConverter\DocumentConverter;
 use App\Services\Pipeline\PipelineDataValidator;
 use App\Services\Pipeline\PipelineLogger;
+use App\Support\PipelineExitCode;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Str;
@@ -31,12 +32,12 @@ class ConvertCrawledPdfs extends Command
             $outputDir = $this->resolveOutputDir((string) $outputDirArg);
             if (!is_dir($outputDir)) {
                 $this->error("Output dir not found: $outputDir");
-                return Command::FAILURE;
+                return PipelineExitCode::VALIDATION_FAILURE;
             }
         } else {
             $outputDir = $this->pickOutputDir();
             if (!$outputDir) {
-                return Command::FAILURE;
+                return PipelineExitCode::VALIDATION_FAILURE;
             }
         }
 
@@ -67,7 +68,7 @@ class ConvertCrawledPdfs extends Command
                 'extensions' => $extensions,
                 'scan_all' => $scanAll,
             ]);
-            return Command::SUCCESS;
+            return PipelineExitCode::PARTIAL_SUCCESS;
         }
 
         $this->info('Found ' . count($docPaths) . ' document(s). Converting…');
@@ -93,7 +94,7 @@ class ConvertCrawledPdfs extends Command
                     'reason' => 'Conversion cancelled because existing outputs were found.',
                     'existing_outputs' => $existingMetaCount,
                 ]);
-                return Command::SUCCESS;
+                return PipelineExitCode::PARTIAL_SUCCESS;
             }
 
             if ($choice === 'restart') {
@@ -330,7 +331,7 @@ class ConvertCrawledPdfs extends Command
             PipelineLogger::success('convert', $summaryContext);
         }
 
-        return Command::SUCCESS;
+        return count($failed) > 0 ? PipelineExitCode::PARTIAL_SUCCESS : PipelineExitCode::SUCCESS;
     }
 
     private function pickOutputDir(): ?string
