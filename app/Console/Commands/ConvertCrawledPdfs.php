@@ -35,6 +35,11 @@ class ConvertCrawledPdfs extends Command
                 return PipelineExitCode::VALIDATION_FAILURE;
             }
         } else {
+            if ($this->automationEnabled() || !$this->input->isInteractive()) {
+                $this->error('Output dir is required in automation or non-interactive mode.');
+                return PipelineExitCode::VALIDATION_FAILURE;
+            }
+
             $outputDir = $this->pickOutputDir();
             if (!$outputDir) {
                 return PipelineExitCode::VALIDATION_FAILURE;
@@ -398,9 +403,10 @@ class ConvertCrawledPdfs extends Command
             return $mode;
         }
 
-        if (!$this->input->isInteractive()) {
-            $this->info('Non-interactive run detected; continuing and validating cached outputs.');
-            return 'continue';
+        if ($this->automationEnabled() || !$this->input->isInteractive()) {
+            $default = $this->configuredExistingOutputMode();
+            $this->info("Automation/non-interactive run detected; using existing output mode '{$default}'.");
+            return $default;
         }
 
         return $this->choice(
@@ -408,6 +414,17 @@ class ConvertCrawledPdfs extends Command
             ['continue', 'restart', 'cancel'],
             0
         );
+    }
+
+    private function automationEnabled(): bool
+    {
+        return (bool) config('config.pipeline_automation', false);
+    }
+
+    private function configuredExistingOutputMode(): string
+    {
+        $mode = strtolower(trim((string) config('config.convert_existing_mode', 'continue')));
+        return in_array($mode, ['continue', 'restart', 'cancel'], true) ? $mode : 'continue';
     }
 
     /**

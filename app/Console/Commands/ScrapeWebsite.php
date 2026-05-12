@@ -48,7 +48,7 @@ class ScrapeWebsite extends Command
         try {
             // Get URL from argument or prompt
             $url = $this->argument('url');
-            if (blank($url) && $this->input->isInteractive()) {
+            if (blank($url) && $this->input->isInteractive() && !$this->automationEnabled()) {
                 $url = $this->ask('Enter the website URL to crawl (e.g., https://www.hawk.de/en)');
             }
 
@@ -117,6 +117,11 @@ class ScrapeWebsite extends Command
             $this->error('An error occurred: ' . $e->getMessage());
             return PipelineExitCode::RUNTIME_FAILURE;
         }
+    }
+
+    private function automationEnabled(): bool
+    {
+        return (bool) config('config.pipeline_automation', false);
     }
 
     private function parseImageExceptions(): ?array

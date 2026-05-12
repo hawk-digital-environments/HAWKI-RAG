@@ -23,6 +23,18 @@ API-launched ingestion runs the Python script as a detached process. When it
 finishes, the ingest log records `INGEST_EXIT_CODE=<code>` and
 `/ingest/status` exposes that value as `status.exit_code`.
 
+## Automation Flags
+
+Pipeline commands can run without prompts by setting environment defaults. CLI
+options still take precedence when provided.
+
+| Variable | Default | Applies To | Behavior |
+|----------|---------|------------|----------|
+| `HAWKI_RAG_PIPELINE_AUTOMATION` | `false` | Scrape, convert, ingest | When truthy, commands bypass manual prompts and use deterministic defaults or validation failures. |
+| `HAWKI_RAG_CONVERT_EXISTING_MODE` | `continue` | Convert | Default existing-output behavior when `--existing=ask` is used in automation or non-interactive mode. Allowed values: `continue`, `restart`, `cancel`. Invalid values fall back to `continue`. |
+| `HAWKI_RAG_INGEST_RESUME_MODE` | `resume` | Ingest CLI | Default resume-state behavior when neither `--resume` nor `--start` is passed. Allowed values: `resume`, `start`, `ask`. In automation/non-interactive mode, `ask` falls back to `resume`. Invalid values exit `2`. |
+| `HAWKI_RAG_INGEST_RESUME_STATE_DIR` | `storage/app/private/ingest-state` | Ingest CLI | Directory used for persisted ingest resume markers. |
+
 ## Fallback Behavior
 
 | Condition | Stage | Behavior | Reported Status |

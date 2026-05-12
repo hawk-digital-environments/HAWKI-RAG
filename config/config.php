@@ -34,4 +34,7 @@ return [
     'graph_default' => env('HAWKI_RAG_GRAPH_MODEL', env('GRAPH_OLLAMA_RAG_MODEL', 'llama3.1:8b')),
     'pipeline_status_path' => env('HAWKI_RAG_PIPELINE_STATUS_PATH', storage_path('logs/pipeline_status.json')),
     'hawki_rag_bridge_url' => env('HAWKI_RAG_BRIDGE_URL', 'http://hawki_rag_bridge:8000'),
+    'pipeline_automation' => filter_var(env('HAWKI_RAG_PIPELINE_AUTOMATION', false), FILTER_VALIDATE_BOOLEAN),
+    'convert_existing_mode' => env('HAWKI_RAG_CONVERT_EXISTING_MODE', 'continue'),
+    'ingest_resume_mode' => env('HAWKI_RAG_INGEST_RESUME_MODE', 'resume'),
 ];

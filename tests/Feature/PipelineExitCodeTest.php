@@ -29,6 +29,50 @@ class PipelineExitCodeTest extends TestCase
         $this->assertSame(PipelineExitCode::VALIDATION_FAILURE, $exitCode);
     }
 
+    public function test_convert_command_uses_env_existing_mode_in_automation_mode(): void
+    {
+        $root = sys_get_temp_dir() . '/hawki-rag-test-convert-env-mode-' . uniqid();
+        $filesDir = $root . '/page/files';
+        File::ensureDirectoryExists($filesDir . '/converted_ok');
+        File::put($filesDir . '/ok.pdf', 'ok document');
+        File::put($filesDir . '/converted_ok/conversion_meta.json', json_encode([
+            'converted_id' => 'cached',
+        ]));
+
+        config([
+            'config.pipeline_automation' => true,
+            'config.convert_existing_mode' => 'cancel',
+        ]);
+
+        try {
+            $exitCode = Artisan::call('convert:crawled-pdfs', [
+                'outputDir' => $root,
+                '--extensions' => 'pdf',
+                '--existing' => 'ask',
+            ]);
+
+            $this->assertSame(PipelineExitCode::PARTIAL_SUCCESS, $exitCode);
+            $this->assertStringContainsString(
+                "using existing output mode 'cancel'",
+                Artisan::output()
+            );
+        } finally {
+            File::deleteDirectory($root);
+        }
+    }
+
+    public function test_convert_command_requires_output_dir_in_automation_mode(): void
+    {
+        config([
+            'config.pipeline_automation' => true,
+        ]);
+
+        $exitCode = Artisan::call('convert:crawled-pdfs');
+
+        $this->assertSame(PipelineExitCode::VALIDATION_FAILURE, $exitCode);
+        $this->assertStringContainsString('Output dir is required', Artisan::output());
+    }
+
     public function test_convert_command_returns_partial_success_with_real_file_converter_when_one_document_fails(): void
     {
         if (!class_exists(\ZipArchive::class)) {
@@ -105,6 +149,23 @@ class PipelineExitCodeTest extends TestCase
         $process->run();
 
         $this->assertSame(PipelineExitCode::VALIDATION_FAILURE, $process->getExitCode(), $process->getErrorOutput());
+    }
+
+    public function test_python_ingest_script_validates_env_resume_mode(): void
+    {
+        $process = new Process([
+            'python3',
+            base_path('python_rag/ingest/ingest_crawled.py'),
+            '--root',
+            '/tmp/hawki-rag-test-missing-ingest-root',
+        ], base_path(), [
+            'HAWKI_RAG_INGEST_RESUME_MODE' => 'invalid',
+        ]);
+
+        $process->run();
+
+        $this->assertSame(PipelineExitCode::VALIDATION_FAILURE, $process->getExitCode(), $process->getErrorOutput());
+        $this->assertStringContainsString('Invalid HAWKI_RAG_INGEST_RESUME_MODE', $process->getErrorOutput());
     }
 
     public function test_python_ingest_script_returns_partial_success_when_no_pages_are_found(): void

@@ -163,7 +163,8 @@ REQUEST_DELAY ?=
 DISCOVERY_MODE ?= false
 EXTENSIONS ?= pdf,doc,docx
 SCAN_ALL ?= false
-EXISTING ?= continue
+AUTOMATION ?= $(or $(HAWKI_RAG_PIPELINE_AUTOMATION),false)
+EXISTING ?= $(or $(HAWKI_RAG_CONVERT_EXISTING_MODE),continue)
 GRAPH ?= true
 GRAPH_ONLY ?= false
 GRAPH_ENGINE ?= raganything
@@ -176,7 +177,7 @@ BATCH ?= 16
 PROVIDER ?= ollama
 BASE_URL ?= http://localhost:8000
 TIMEOUT ?=
-RESUME_MODE ?= resume
+RESUME_MODE ?= $(or $(HAWKI_RAG_INGEST_RESUME_MODE),resume)
 DRY ?= false
 ESTIMATE_ONLY ?= false
 SUMMARY_FILE ?=
@@ -207,13 +208,13 @@ crawl:
 	if [ -n "$(DATE_SELECTOR)" ]; then EXTRA_FLAGS="$$EXTRA_FLAGS --date='$(DATE_SELECTOR)'"; fi; \
 	if [ -n "$(REQUEST_DELAY)" ]; then EXTRA_FLAGS="$$EXTRA_FLAGS --request-delay=$(REQUEST_DELAY)"; fi; \
 	if [ "$(DISCOVERY_MODE)" = "true" ]; then EXTRA_FLAGS="$$EXTRA_FLAGS --discovery-mode"; fi; \
-	$(ARTISAN) scraper:scrape "$(URL)" --max-pages=$(MAX_PAGES) --output-dir="$(OUTPUT_DIR)" --label="$(LABEL)" --max-concurrency=$(MAX_CONCURRENCY) --max-rpm=$(MAX_RPM) $$EXTRA_FLAGS
+		docker exec -e HAWKI_RAG_PIPELINE_AUTOMATION="$(AUTOMATION)" hawki_rag_app php artisan scraper:scrape "$(URL)" --max-pages=$(MAX_PAGES) --output-dir="$(OUTPUT_DIR)" --label="$(LABEL)" --max-concurrency=$(MAX_CONCURRENCY) --max-rpm=$(MAX_RPM) $$EXTRA_FLAGS
 
 convert:
 	@if [ "$(OUTPUT_DIR)" = "/absolute/path/to/crawled-data" ]; then echo "Set OUTPUT_DIR to the crawl output directory"; exit 2; fi
 	@EXTRA_FLAGS=""; \
 	if [ "$(SCAN_ALL)" = "true" ]; then EXTRA_FLAGS="$$EXTRA_FLAGS --scan-all"; fi; \
-	$(ARTISAN) convert:crawled-pdfs "$(OUTPUT_DIR)" --extensions="$(EXTENSIONS)" --existing="$(EXISTING)" $$EXTRA_FLAGS
+		docker exec -e HAWKI_RAG_PIPELINE_AUTOMATION="$(AUTOMATION)" -e HAWKI_RAG_CONVERT_EXISTING_MODE="$(EXISTING)" hawki_rag_app php artisan convert:crawled-pdfs "$(OUTPUT_DIR)" --extensions="$(EXTENSIONS)" --existing="$(EXISTING)" $$EXTRA_FLAGS
 
 ingest:
 	@if [ "$(CRAWLED_ROOT)" = "/absolute/path/to/crawled-data" ]; then echo "Set CRAWLED_ROOT to a path mounted in shared storage (default /app/shared inside hawki_rag_bridge)" && exit 2; fi
@@ -231,7 +232,7 @@ ingest:
 	if [ -n "$(CHUNK_OVERLAP)" ]; then EXTRA_FLAGS="$$EXTRA_FLAGS --chunk-overlap $(CHUNK_OVERLAP)"; fi; \
 	if [ -n "$(TIMEOUT)" ]; then EXTRA_FLAGS="$$EXTRA_FLAGS --timeout $(TIMEOUT)"; fi; \
 	if [ -n "$(SUMMARY_FILE)" ]; then EXTRA_FLAGS="$$EXTRA_FLAGS --summary-file $(SUMMARY_FILE)"; fi; \
-	docker exec hawki_rag_bridge sh -lc "python /app/ingest/ingest_crawled.py --root $(CRAWLED_ROOT) --base-url $(BASE_URL) --provider $(PROVIDER) --graph-engine $(GRAPH_ENGINE) $$EXTRA_FLAGS --batch $(BATCH)"
+		docker exec -e HAWKI_RAG_PIPELINE_AUTOMATION="$(AUTOMATION)" -e HAWKI_RAG_INGEST_RESUME_MODE="$(RESUME_MODE)" hawki_rag_bridge sh -lc "python /app/ingest/ingest_crawled.py --root $(CRAWLED_ROOT) --base-url $(BASE_URL) --provider $(PROVIDER) --graph-engine $(GRAPH_ENGINE) $$EXTRA_FLAGS --batch $(BATCH)"
 
 convert-ingest-folder:
 	@if [ -z "$(SCRAPED_FOLDER)" ]; then \

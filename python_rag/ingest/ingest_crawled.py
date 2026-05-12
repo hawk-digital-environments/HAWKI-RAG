@@ -34,6 +34,31 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+
+def env_bool(name: str, default: bool = False) -> bool:
+    raw = os.environ.get(name)
+    if raw is None or str(raw).strip() == "":
+        return default
+    return str(raw).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def env_choice(name: str, allowed: Set[str], default: str) -> str:
+    raw = os.environ.get(name)
+    if raw is None or str(raw).strip() == "":
+        return default
+    value = str(raw).strip().lower()
+    if value not in allowed:
+        print(
+            f"Invalid {name}={raw!r}; expected one of: {', '.join(sorted(allowed))}.",
+            file=sys.stderr,
+        )
+        sys.exit(EXIT_VALIDATION_FAILURE)
+    return value
+
+
+def env_default_resume_mode() -> str:
+    return env_choice("HAWKI_RAG_INGEST_RESUME_MODE", {"resume", "start", "ask"}, "resume")
+
 ############################################# READ .TXT / .MD / .JSON FILE ####################################
 def read_text_file(p: Path) -> str:
     try:
@@ -754,13 +779,20 @@ def main():
     ap.add_argument("--summary-file", default=None, help="Optional path to save the ingest summary JSON")
     ap.add_argument("--dry-include-graph", action="store_true", help="When used with --dry, also estimate Neo4j entities/relationships")
     ap.add_argument("--estimate-only", action="store_true", help="Estimate chunk/point counts locally without contacting the server")
-    ap.add_argument("--resume-state-dir", default="storage/app/private/ingest-state", help="Directory where resume markers are stored")
+    ap.add_argument(
+        "--resume-state-dir",
+        default=os.environ.get("HAWKI_RAG_INGEST_RESUME_STATE_DIR", "storage/app/private/ingest-state"),
+        help="Directory where resume markers are stored",
+    )
     ap.add_argument("--resume", action="store_true", help="Resume by skipping already ingested docs (non-interactive)")
     ap.add_argument("--start", action="store_true", help="Start fresh and ignore previous state (non-interactive)")
     args = ap.parse_args()
     if args.resume and args.start:
         print("Choose only one of --resume or --start.", file=sys.stderr)
         sys.exit(EXIT_VALIDATION_FAILURE)
+
+    automation_mode = env_bool("HAWKI_RAG_PIPELINE_AUTOMATION", False)
+    configured_resume_mode = env_default_resume_mode()
 
     root = Path(args.root).expanduser().resolve()
     if not root.exists() or not root.is_dir():
@@ -804,6 +836,14 @@ def main():
                 choice = "resume"
             elif args.start:
                 choice = "start"
+            elif automation_mode or not sys.stdin.isatty():
+                choice = configured_resume_mode
+                if choice == "ask":
+                    choice = "resume"
+                print(f"Automation/non-interactive mode selected ingest resume mode: {choice}.")
+            elif configured_resume_mode != "ask":
+                choice = configured_resume_mode
+                print(f"Using environment ingest resume mode: {choice}.")
             else:
                 while True:
                     choice = input("Type 'resume' to skip already-ingested docs or 'start' to process everything again [resume/start]: ").strip().lower()
