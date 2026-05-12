@@ -713,6 +713,19 @@ def should_split_batch(err: Optional[str]) -> bool:
     ]
     return any(marker in lowered for marker in retry_markers)
 
+
+def write_summary_file(summary_file: Optional[str], summary: Dict[str, Any]) -> None:
+    if not summary_file:
+        return
+    out_path = Path(summary_file).expanduser().resolve()
+    try:
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(json.dumps(summary, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        print(f"Saved summary to {out_path}")
+    except Exception as exc:
+        print(f"Failed to write summary to {out_path}: {exc}", file=sys.stderr)
+
+
 def main():
     ap = argparse.ArgumentParser(description="Ingest local crawled-data into LightRAG via HTTP.")
     def _int_env(name: str, default: int) -> int:
@@ -819,7 +832,22 @@ def main():
     page_dirs = discover_page_dirs(root)
     if not page_dirs:
         print("No pages found under root.")
-        return
+        logger.warning("ingest:no_pages root=%s", root)
+        write_summary_file(args.summary_file, {
+            "timestamp": utc_now_iso(),
+            "estimate_only": bool(args.estimate_only),
+            "status": "partial",
+            "reason": "no_pages_found",
+            "documents": {
+                "total_docs": 0,
+                "processed_docs": 0,
+                "skipped_docs": 0,
+                "empty_docs": 0,
+                "doc_ids": [],
+                "total_chunks": 0,
+            },
+        })
+        sys.exit(EXIT_PARTIAL_SUCCESS)
 
     if args.estimate_only:
         print(f"Scanning: {root}")
@@ -872,6 +900,8 @@ def main():
     batch_index = 0
     last_response: Optional[Dict] = None
     skipped_existing = 0
+    skipped_empty = 0
+    skipped_empty_paths: List[str] = []
     processed_doc_ids: Set[str] = set(resume_doc_ids)
     failed_batches = 0
 
@@ -925,6 +955,10 @@ def main():
         print(f"Folder {idx}/{total_dirs}: {rel_dir}")
         meta, md_path, json_path, text, source_fmt = load_page_materials(d)
         if not isinstance(text, str) or text.strip() == "":
+            skipped_empty += 1
+            skipped_empty_paths.append(rel_dir)
+            logger.warning("ingest:skip_empty folder=%s", d)
+            print(f"Skipped empty page folder: {rel_dir}", file=sys.stderr)
             continue
 
         title = first_str(meta.get("title")) or (title_from_markdown(text) or "Untitled")
@@ -995,6 +1029,27 @@ def main():
         else:
             print(f"Sent {sent}/{total} docs. Done.")
 
+    if skipped_empty:
+        print(f"Skipped empty page folders: {skipped_empty}", file=sys.stderr)
+    if total == 0:
+        print("No ingestable documents found after skipping empty page folders.", file=sys.stderr)
+        write_summary_file(args.summary_file, {
+            "timestamp": utc_now_iso(),
+            "estimate_only": bool(args.estimate_only),
+            "status": "partial",
+            "reason": "no_ingestable_documents",
+            "documents": {
+                "total_docs": total_dirs,
+                "processed_docs": 0,
+                "skipped_docs": skipped_empty,
+                "empty_docs": skipped_empty,
+                "empty_paths": skipped_empty_paths,
+                "doc_ids": [],
+                "total_chunks": 0,
+            },
+        })
+        sys.exit(EXIT_PARTIAL_SUCCESS)
+
     if args.dry and last_response:
         summary = last_response.get("summary") or {}
         planned_points = summary.get("planned_points")
@@ -1012,13 +1067,7 @@ def main():
     if args.summary_file and last_response:
         summary = last_response.get("summary")
         if summary:
-            out_path = Path(args.summary_file).expanduser().resolve()
-            try:
-                out_path.parent.mkdir(parents=True, exist_ok=True)
-                out_path.write_text(json.dumps(summary, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-                print(f"Saved summary to {out_path}")
-            except Exception as exc:
-                print(f"Failed to write summary to {out_path}: {exc}", file=sys.stderr)
+            write_summary_file(args.summary_file, summary)
 
     if resume_state_path is not None:
         if not args.dry:
@@ -1029,6 +1078,8 @@ def main():
     if not args.dry and not args.estimate_only:
         if failed_batches:
             sys.exit(EXIT_RUNTIME_FAILURE)
+    if skipped_empty:
+        sys.exit(EXIT_PARTIAL_SUCCESS)
     sys.exit(EXIT_SUCCESS)
 
 if __name__ == "__main__":

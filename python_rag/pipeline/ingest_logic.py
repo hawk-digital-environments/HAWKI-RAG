@@ -394,7 +394,32 @@ def ingest_documents(
 
     if not getattr(body, "graph_only", False):
         logger.info("ingest:provider=%s embed_model=%s batch_size=%s", body.provider, getattr(provider, "embed_model", None), batch_size)
-        points, vector_size = _build_points(chunk_records, provider)
+        points, vector_size, embedding_failures = _build_points(chunk_records, provider)
+        if embedding_failures:
+            _record_embedding_failures(doc_stats, points, embedding_failures)
+            pipeline_log(
+                logger,
+                logging.WARNING,
+                stage="ingest",
+                status="partial",
+                job_id=run_job_id,
+                pipeline_stage="embedding",
+                points=len(points),
+                failed_chunks=len(embedding_failures),
+                failed_docs=doc_stats.get("embedding_failed_docs", 0),
+            )
+        if not points:
+            pipeline_log(
+                logger,
+                logging.ERROR,
+                stage="ingest",
+                status="failed",
+                job_id=run_job_id,
+                pipeline_stage="embedding",
+                error_message="Embedding failed for every prepared chunk.",
+                embedding_failures=embedding_failures,
+            )
+            raise HTTPException(status_code=500, detail="Embedding failed for every prepared chunk")
         pipeline_log(
             logger,
             logging.INFO,
@@ -552,29 +577,41 @@ def _build_summary(
     return summary
 
 
-def _build_points(chunk_records: List[Dict[str, Any]], provider: Any) -> Tuple[List[Dict[str, Any]], int | None]:
+def _build_points(chunk_records: List[Dict[str, Any]], provider: Any) -> Tuple[List[Dict[str, Any]], int | None, List[Dict[str, Any]]]:
     points: List[Dict[str, Any]] = []
+    failures: List[Dict[str, Any]] = []
     vector_size: int | None = None
     for rec in chunk_records:
         payload = dict(rec["payload"])
+        doc_id = str(rec.get("doc_id") or payload.get("doc_id") or "")
+        chunk_index = payload.get("chunk_index", 0)
         try:
             vec = provider.embed(rec["content"])
         except Exception as exc:
+            failure = {
+                "doc_id": doc_id,
+                "chunk_index": chunk_index,
+                "error": str(exc),
+                "source_url": payload.get("source_url") or payload.get("page_url"),
+                "title": payload.get("title"),
+            }
+            failures.append(failure)
             pipeline_log(
                 logger,
                 logging.ERROR,
                 stage="ingest",
-                status="failed",
+                status="skipped",
                 job_id=payload.get("job_id") or payload.get("trace_id"),
-                doc_id=rec.get("doc_id"),
+                doc_id=doc_id,
                 pipeline_stage="embedding",
+                chunk_index=chunk_index,
                 error_message=f"Embedding failed: {exc}",
                 source_url=payload.get("source_url") or payload.get("page_url"),
                 title=payload.get("title"),
             )
-            raise HTTPException(status_code=500, detail=f"Embedding failed: {exc}") from exc
+            continue
         vector_size = vector_size or len(vec)
-        point_key = f"{rec['doc_id']}:{payload.get('chunk_index', 0)}"
+        point_key = f"{rec['doc_id']}:{chunk_index}"
         # Qdrant point IDs must be UUID or integer; use deterministic UUID per chunk.
         point_id = str(uuid.uuid5(_POINT_NAMESPACE, point_key))
         points.append({
@@ -582,8 +619,51 @@ def _build_points(chunk_records: List[Dict[str, Any]], provider: Any) -> Tuple[L
             "vector": vec,
             "payload": payload,
         })
-    logger.debug("ingest:points built=%s", len(points))
-    return points, vector_size
+    logger.debug("ingest:points built=%s failures=%s", len(points), len(failures))
+    return points, vector_size, failures
+
+
+def _record_embedding_failures(
+    doc_stats: Dict[str, Any],
+    points: List[Dict[str, Any]],
+    failures: List[Dict[str, Any]],
+) -> None:
+    if not failures:
+        return
+
+    successful_doc_ids = {
+        str((point.get("payload") or {}).get("doc_id") or "")
+        for point in points
+        if (point.get("payload") or {}).get("doc_id")
+    }
+    failed_doc_ids = {
+        str(failure.get("doc_id") or "")
+        for failure in failures
+        if failure.get("doc_id")
+    }
+    fully_failed_doc_ids = failed_doc_ids - successful_doc_ids
+
+    doc_stats["embedding_failures"] = failures
+    doc_stats["embedding_failed_chunks"] = len(failures)
+    doc_stats["embedding_failed_docs"] = len(failed_doc_ids)
+    doc_stats["embedding_skipped_docs"] = len(fully_failed_doc_ids)
+
+    if fully_failed_doc_ids:
+        doc_stats["skipped_docs"] = int(doc_stats.get("skipped_docs") or 0) + len(fully_failed_doc_ids)
+        doc_stats["processed_docs"] = max(
+            0,
+            int(doc_stats.get("processed_docs") or 0) - len(fully_failed_doc_ids),
+        )
+        doc_ids = doc_stats.get("doc_ids")
+        if isinstance(doc_ids, list):
+            doc_stats["doc_ids"] = [
+                doc_id for doc_id in doc_ids
+                if str(doc_id) not in fully_failed_doc_ids
+            ]
+        chunks_per_doc = doc_stats.get("chunks_per_doc")
+        if isinstance(chunks_per_doc, dict):
+            for doc_id in fully_failed_doc_ids:
+                chunks_per_doc.pop(doc_id, None)
 
 
 def _build_triplets_by_doc(
