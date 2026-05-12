@@ -19,6 +19,10 @@ Automation should use process exit codes instead of parsing logs.
 | `php artisan rag:rabbit-ingestion-worker --once` | One message completed or was already completed | Message failed and was retried or published to failed queue | Not used | No message received before timeout |
 | `python python_rag/ingest/ingest_crawled.py` | Ingest completed | One or more batches failed | Invalid CLI arguments or missing root | Not used |
 
+API-launched ingestion runs the Python script as a detached process. When it
+finishes, the ingest log records `INGEST_EXIT_CODE=<code>` and
+`/ingest/status` exposes that value as `status.exit_code`.
+
 ## Make Targets
 
 Pipeline Make targets preserve the same convention when they perform their own

@@ -263,8 +263,11 @@ class IngestController extends Controller
         $envPrefix = $graphModel !== '' ? ('export GRAPH_OLLAMA_RAG_MODEL=' . escapeshellarg($graphModel) . '; ') : '';
         $cacheEsc = escapeshellarg($cacheLogPath);
         $fullEsc = escapeshellarg($fullLogPath);
-        $commandLine = $envPrefix . '(' . $command . ') 2>&1 | tee -a ' . $fullEsc . ' >> ' . $cacheEsc
-            . '; echo "INGEST_DONE" | tee -a ' . $fullEsc . ' >> ' . $cacheEsc;
+        $commandLine = $envPrefix
+            . '{ ' . $command . ' 2>&1; exit_code=$?; '
+            . 'echo "INGEST_EXIT_CODE=${exit_code}"; '
+            . 'if [ "$exit_code" -eq 0 ]; then echo "INGEST_DONE"; else echo "INGEST_FAILED"; fi; '
+            . '} | tee -a ' . $fullEsc . ' >> ' . $cacheEsc;
         // Launch a detached shell process. Symfony Process would be destroyed at the
         // end of the request and terminate the child before ingest can continue.
         $launcher = 'cd ' . escapeshellarg(base_path())

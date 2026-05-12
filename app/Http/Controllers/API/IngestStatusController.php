@@ -43,8 +43,12 @@ class IngestStatusController extends Controller
         $lines = $this->tailLines($logPath, 40);
         if (is_array($status) && $lines) {
             $last = $lines[count($lines) - 1];
+            $exitCode = $this->extractExitCode($lines);
             if ($last === 'INGEST_DONE' || $last === 'INGEST_FAILED') {
                 $status['status'] = $last === 'INGEST_DONE' ? 'completed' : 'failed';
+                if ($exitCode !== null) {
+                    $status['exit_code'] = $exitCode;
+                }
                 $status['updated_at'] = now()->toIso8601String();
                 if (is_array($ingests) && $statusIndex !== null) {
                     $ingests[$statusIndex] = $status;
@@ -128,6 +132,17 @@ class IngestStatusController extends Controller
             }
         }
         return $lines;
+    }
+
+    private function extractExitCode(array $lines): ?int
+    {
+        foreach (array_reverse($lines) as $line) {
+            if (preg_match('/^INGEST_EXIT_CODE=(\\d+)$/', $line, $m)) {
+                return (int) $m[1];
+            }
+        }
+
+        return null;
     }
 
     private function extractProgress(array $lines): array
