@@ -104,6 +104,7 @@ class Neo4jGraph:
             "  CASE WHEN row.doc_id IN coalesce(s.doc_ids, []) THEN [] ELSE [row.doc_id] END "
             "SET o.doc_ids = coalesce(o.doc_ids, []) + "
             "  CASE WHEN row.doc_id IN coalesce(o.doc_ids, []) THEN [] ELSE [row.doc_id] END "
+            "WITH row, s, o "
             "OPTIONAL MATCH (o)-[reverse:REL {type: row.r}]->(s) "
             "FOREACH (_ IN CASE WHEN reverse IS NULL THEN [1] ELSE [] END | "
             "  MERGE (s)-[r:REL {type: row.r}]->(o) "

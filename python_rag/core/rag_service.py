@@ -376,6 +376,46 @@ class RAGService:
         except Exception as exc:
             logger.debug("RAG-Anything close failed: %s", exc)
 
+    def clear_graph_cache(self) -> Dict[str, Any]:
+        """Clear persisted RAG-Anything graph extraction state.
+
+        Neo4j can be cleared independently from LightRAG/RAG-Anything's document
+        status store. If that store is kept, rebuilding Neo4j with the same
+        document content is treated as a duplicate insert and produces no edges.
+        """
+        with self._rag_graph_lock:
+            self._close_raganything_instance(self.raganything)
+            self.raganything = None
+            self._rag_graph_cache_key = None
+            self._rag_graph_kv_junk_scrub_once_done = False
+
+            removed: list[str] = []
+            failed: dict[str, str] = {}
+            patterns = (
+                "kv_store_doc_status*.json",
+                "kv_store_full_entities*.json",
+                "kv_store_full_relations*.json",
+                "kv_store_entity_chunks*.json",
+                "kv_store_relation_chunks*.json",
+                "vdb_*.json",
+            )
+            for pattern in patterns:
+                for path in self.working_dir.glob(pattern):
+                    if not path.is_file():
+                        continue
+                    try:
+                        path.unlink()
+                        removed.append(str(path))
+                    except Exception as exc:
+                        failed[str(path)] = str(exc)
+
+            return {
+                "ok": not failed,
+                "working_dir": str(self.working_dir),
+                "removed": removed,
+                "failed": failed,
+            }
+
     @staticmethod
     def _graph_model_override(provider: Any) -> str | None:
         if isinstance(provider, OllamaProvider):
@@ -1200,24 +1240,42 @@ class RAGService:
             # `_ensure_lightrag_initialized()` even for direct text-only `content_list` inserts.
             # Our graph ingest path passes only text blocks, so bypass that parser gate to allow
             # LightRAG initialization without MinerU/Docling installed.
-            if content_list and all(
+            text_only = bool(content_list) and all(
                 isinstance(item, dict) and str(item.get("type") or "").lower() == "text"
                 for item in content_list
-            ):
+            )
+            if text_only:
                 try:
                     if hasattr(client, "_parser_installation_checked"):
                         setattr(client, "_parser_installation_checked", True)
                 except Exception:
                     pass
             try:
-                await client.insert_content_list(
-                    content_list,
-                    file_path=file_ref,
-                    doc_id=rag_doc_id,
-                    display_stats=GRAPH_DEBUG,
-                )
+                if text_only:
+                    init_result = await client._ensure_lightrag_initialized()
+                    if not init_result or not init_result.get("success"):
+                        raise RuntimeError(
+                            f"LightRAG initialization failed: {(init_result or {}).get('error', 'unknown error')}"
+                        )
+                    text_content = "\n\n".join(
+                        str(item.get("text") or "").strip()
+                        for item in content_list
+                        if isinstance(item, dict) and str(item.get("text") or "").strip()
+                    )
+                    await client.lightrag.ainsert(
+                        input=text_content,
+                        ids=rag_doc_id,
+                        file_paths=file_ref,
+                    )
+                else:
+                    await client.insert_content_list(
+                        content_list,
+                        file_path=file_ref,
+                        doc_id=rag_doc_id,
+                        display_stats=GRAPH_DEBUG,
+                    )
             except Exception as exc:
-                logger.warning("RAG-Anything insert_content_list failed: %s", exc)
+                logger.warning("RAG-Anything graph insert failed: %s", exc)
                 return []
 
             # Remove boilerplate/chrome labels from persisted LightRAG KV stores for this doc

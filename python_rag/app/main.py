@@ -283,3 +283,9 @@ def graph_from_text_endpoint(body: GraphRequest):
     logger.info("api:graph_from_text chars=%s", len(body.text or ""))
     _log_gpu_status("graph_from_text")
     return graph_from_text(body, rag_service=rag_service)
+
+
+@app.post("/graph/cache/clear")
+def clear_graph_cache_endpoint():
+    logger.info("api:graph_cache_clear")
+    return rag_service.clear_graph_cache()

@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Services\GraphService\Neo4jAdmin;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Http;
 
 class RagGraphController extends Controller
 {
@@ -14,10 +15,37 @@ class RagGraphController extends Controller
         $result = $neo4j->clearAll();
         $status = ($result['ok'] ?? false) ? 200 : 502;
         if (($result['ok'] ?? false)) {
+            $result['graph_cache'] = $this->clearGraphCache();
             $this->writeGraphSnapshot($this->emptyGraphSnapshot());
         }
 
         return response()->json($result, $status);
+    }
+
+    private function clearGraphCache(): array
+    {
+        $baseUrl = rtrim((string) config('config.hawki_rag_bridge_url', 'http://hawki_rag_bridge:8000'), '/');
+
+        try {
+            $response = Http::timeout(30)
+                ->acceptJson()
+                ->post($baseUrl . '/graph/cache/clear');
+
+            if ($response->failed()) {
+                return [
+                    'ok' => false,
+                    'status' => $response->status(),
+                    'message' => 'Python RAG bridge failed to clear graph cache.',
+                ];
+            }
+
+            return $response->json() ?? ['ok' => true];
+        } catch (\Throwable $e) {
+            return [
+                'ok' => false,
+                'message' => $e->getMessage(),
+            ];
+        }
     }
 
     private function writeGraphSnapshot(array $snapshot): void

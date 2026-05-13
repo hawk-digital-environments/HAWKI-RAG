@@ -1118,7 +1118,7 @@ def main():
     if not args.dry and not args.estimate_only:
         if failed_batches:
             sys.exit(EXIT_RUNTIME_FAILURE)
-    if skipped_empty:
+    if skipped_empty and sent == 0:
         sys.exit(EXIT_PARTIAL_SUCCESS)
     sys.exit(EXIT_SUCCESS)
 
