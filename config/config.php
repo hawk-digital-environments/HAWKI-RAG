@@ -1,7 +1,7 @@
 <?php
 
 $pipelineRoot = rtrim((string) env('HAWKI_RAG_PIPELINE_ROOT', '/app/shared'), DIRECTORY_SEPARATOR);
-$crawledDataRoot = rtrim((string) env('HAWKI_RAG_CRAWLED_DATA_ROOT', $pipelineRoot . '/crawled-data'), DIRECTORY_SEPARATOR);
+$crawledDataRoot = rtrim((string) env('HAWKI_RAG_CRAWLED_DATA_ROOT', env('DEFAULT_CRAWLED_ROOT', $pipelineRoot)), DIRECTORY_SEPARATOR);
 
 return [
 

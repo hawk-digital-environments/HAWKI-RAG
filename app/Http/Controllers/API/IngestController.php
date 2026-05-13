@@ -36,7 +36,7 @@ class IngestController extends Controller
 
     private function resolveCrawledDataRoot(): ?string
     {
-        $root = (string) config('config.crawled_data_root', '/app/shared/crawled-data');
+        $root = (string) config('config.crawled_data_root', '/app/shared');
         if (is_dir($root)) {
             return realpath($root) ?: $root;
         }
@@ -268,15 +268,30 @@ class IngestController extends Controller
             . 'echo "INGEST_EXIT_CODE=${exit_code}"; '
             . 'if [ "$exit_code" -eq 0 ]; then echo "INGEST_DONE"; else echo "INGEST_FAILED"; fi; '
             . '} | tee -a ' . $fullEsc . ' >> ' . $cacheEsc;
-        // Launch a detached shell process. Symfony Process would be destroyed at the
-        // end of the request and terminate the child before ingest can continue.
-        $launcher = 'cd ' . escapeshellarg(base_path())
-            . ' && nohup sh -lc ' . escapeshellarg($commandLine) . ' >/dev/null 2>&1 & echo $!';
-        $pidOutput = [];
-        $launchCode = 0;
-        @exec($launcher, $pidOutput, $launchCode);
-        $pid = isset($pidOutput[0]) ? (int) trim((string) $pidOutput[0]) : 0;
-        if ($launchCode !== 0 || $pid <= 0) {
+        // Launch a detached process without PHP exec(), which waits for
+        // backgrounded children and can make nginx time out the request.
+        $process = @proc_open(
+            ['/usr/bin/setsid', '/bin/sh', '-lc', $commandLine],
+            [
+                0 => ['file', '/dev/null', 'r'],
+                1 => ['file', '/dev/null', 'a'],
+                2 => ['file', '/dev/null', 'a'],
+            ],
+            $pipes,
+            base_path(),
+            null,
+            ['bypass_shell' => true],
+        );
+        $status = is_resource($process) ? proc_get_status($process) : [];
+        foreach ($pipes ?? [] as $pipe) {
+            if (is_resource($pipe)) {
+                fclose($pipe);
+            }
+        }
+        $pid = isset($status['pid']) ? (int) $status['pid'] : 0;
+        unset($process);
+
+        if ($pid <= 0) {
             $entry['status'] = 'failed';
             $entry['updated_at'] = now()->toIso8601String();
             $entries = $this->loadStatusEntries($statusPath);

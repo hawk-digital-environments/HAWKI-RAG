@@ -377,7 +377,7 @@ class ConvertCrawledPdfs extends Command
 
     private function getCrawledDataRoot(): string
     {
-        return rtrim((string) config('config.crawled_data_root', '/app/shared/crawled-data'), DIRECTORY_SEPARATOR);
+        return rtrim((string) config('config.crawled_data_root', '/app/shared'), DIRECTORY_SEPARATOR);
     }
 
     private function isAbsolutePath(string $path): bool
