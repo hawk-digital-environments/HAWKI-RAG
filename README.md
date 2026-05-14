@@ -17,3 +17,30 @@ Converted-document event consumption is available as an additive worker layer:
 - DB/ops commands: [docs/db_cookbook.md](docs/db_cookbook.md)
 - Worker entrypoint: `php artisan rag:rabbit-ingestion-worker`
 - Python remains the FastAPI RAG bridge for embeddings, Qdrant, Neo4j, RAG-Anything/LightRAG, and `/ingest`.
+
+## Neo4j Graph Explorer Indexes
+
+The HAWKI playground graph explorer uses Neo4j directly for entity search and graph expansion.
+Create this fulltext index for fast entity lookup:
+
+```cypher
+CREATE FULLTEXT INDEX entity_name_fulltext IF NOT EXISTS
+FOR (n:Entity)
+ON EACH [n.name, n.entity_id];
+```
+
+Semantic graph search uses the existing RAG semantic retrieval as a fallback. If graph nodes
+also carry embedding vectors in Neo4j, add a vector index matching the embedding dimensions,
+for example for `bge-m3`:
+
+```cypher
+CREATE VECTOR INDEX entity_embedding_vector IF NOT EXISTS
+FOR (n:Entity)
+ON (n.embedding)
+OPTIONS {
+  indexConfig: {
+    `vector.dimensions`: 1024,
+    `vector.similarity_function`: 'cosine'
+  }
+};
+```

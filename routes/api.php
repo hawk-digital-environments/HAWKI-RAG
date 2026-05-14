@@ -22,5 +22,15 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/ingest/delete', [IngestController::class, 'deleteFolder']);
     Route::get('/rag/health', [RagHealthController::class, 'show']);
     Route::get('/rag/stats', [RagStatsController::class, 'show']);
+    Route::get('/rag/neo4j/graph/overview', [RagGraphController::class, 'overview']);
+    Route::get('/rag/neo4j/graph/search', [RagGraphController::class, 'search']);
+    Route::get('/rag/neo4j/graph/semantic-search', [RagGraphController::class, 'semanticSearch']);
+    Route::get('/rag/neo4j/graph/node', [RagGraphController::class, 'node']);
+    Route::post('/rag/neo4j/graph/expand', [RagGraphController::class, 'expand']);
+    Route::post('/rag/neo4j/graph/clear-view', [RagGraphController::class, 'clearView']);
+    Route::get('/rag/neo4j/graph/snapshots', [RagGraphController::class, 'snapshots']);
+    Route::post('/rag/neo4j/graph/snapshots', [RagGraphController::class, 'saveSnapshot']);
+    Route::get('/rag/neo4j/graph/snapshots/{id}', [RagGraphController::class, 'loadSnapshot']);
+    Route::delete('/rag/neo4j/graph/snapshots/{id}', [RagGraphController::class, 'deleteSnapshot']);
     Route::post('/rag/neo4j/clear', [RagGraphController::class, 'clearNeo4j']);
 });

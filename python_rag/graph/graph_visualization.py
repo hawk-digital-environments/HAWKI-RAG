@@ -39,12 +39,14 @@ class Neo4jGraphVisualization:
             return self._driver.session(database=self._database)
         return self._driver.session()
 
-    def snapshot(self, *, limit: int = 250, recent_doc_id: Optional[str] = None) -> Dict[str, Any]:
+    def snapshot(self, *, limit: Optional[int] = None, recent_doc_id: Optional[str] = None) -> Dict[str, Any]:
+        effective_limit = int(limit) if limit is not None else 0
+        limit_clause = "LIMIT $limit " if effective_limit > 0 else ""
         query = (
             "MATCH (s:Entity)-[r:REL]->(o:Entity) "
             "WITH s, r, o "
             "ORDER BY coalesce(r.updated_at, 0) DESC "
-            "LIMIT $limit "
+            f"{limit_clause}"
             "RETURN "
             "  elementId(s) AS source_id, "
             "  labels(s) AS source_labels, "
@@ -60,7 +62,7 @@ class Neo4jGraphVisualization:
             "  r.updated_at AS updated_at"
         )
         with self._session() as session:
-            records = session.execute_read(lambda tx: list(tx.run(query, limit=max(1, int(limit)))))
+            records = session.execute_read(lambda tx: list(tx.run(query, limit=effective_limit)))
 
         nodes: Dict[str, Dict[str, Any]] = {}
         links: List[Dict[str, Any]] = []
@@ -119,7 +121,7 @@ class Neo4jGraphVisualization:
         return {
             "ok": True,
             "generated_at": _utc_now_iso(),
-            "limit": max(1, int(limit)),
+            "limit": effective_limit if effective_limit > 0 else None,
             "node_count": len(nodes),
             "relationship_count": len(links),
             "recent_doc_id": recent_doc_key,
@@ -143,7 +145,7 @@ def write_graph_visualization(
     exporter = Neo4jGraphVisualization(database=database)
     try:
         snapshot = exporter.snapshot(
-            limit=limit if limit is not None else _int_env("NEO4J_GRAPH_VISUALIZATION_LIMIT", 250),
+            limit=limit if limit is not None else _int_env("NEO4J_GRAPH_VISUALIZATION_LIMIT", 0),
             recent_doc_id=recent_doc_id,
         )
     finally:
