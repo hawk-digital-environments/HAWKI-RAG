@@ -236,6 +236,85 @@ class PipelineExitCodeTest extends TestCase
         }
     }
 
+    public function test_prune_missing_docs_returns_validation_failure_for_missing_root(): void
+    {
+        $process = new Process([
+            'python3',
+            base_path('python_rag/ingest/prune_missing_docs.py'),
+            '--root',
+            '/tmp/hawki-rag-test-missing-prune-root',
+            '--collection',
+            'test_collection',
+        ], base_path());
+
+        $process->run();
+
+        $this->assertSame(PipelineExitCode::VALIDATION_FAILURE, $process->getExitCode(), $process->getErrorOutput());
+    }
+
+    public function test_prune_missing_docs_counts_delete_failures_as_runtime_failure(): void
+    {
+        $python = <<<'PY'
+import sys
+import types
+
+import prune_missing_docs
+
+class Response:
+    status_code = 500
+    text = "forced failure"
+
+class Session:
+    def delete(self, url, timeout=30):
+        return Response()
+
+prune_missing_docs.requests = types.SimpleNamespace(Session=lambda: Session())
+failures = prune_missing_docs.delete_missing("http://example.invalid", {"doc-1", "doc-2"}, False)
+assert failures == 2
+raise SystemExit(prune_missing_docs.EXIT_RUNTIME_FAILURE if failures else prune_missing_docs.EXIT_SUCCESS)
+PY;
+
+        $process = new Process([
+            'python3',
+            '-c',
+            $python,
+        ], base_path(), [
+            'PYTHONPATH' => base_path('python_rag/ingest'),
+        ]);
+
+        $process->run();
+
+        $this->assertSame(PipelineExitCode::RUNTIME_FAILURE, $process->getExitCode(), $process->getErrorOutput());
+    }
+
+    public function test_retry_ingest_docs_returns_partial_success_for_unmatched_doc_ids(): void
+    {
+        $root = sys_get_temp_dir() . '/hawki-rag-test-retry-unmatched-root-' . uniqid();
+        $pageDir = $root . '/page-one';
+        mkdir($pageDir, 0777, true);
+        file_put_contents($pageDir . '/content.md', "# Page One\n\nRetry fixture content.");
+
+        try {
+            $process = new Process([
+                'python3',
+                base_path('python_rag/ingest/retry_ingest_docs.py'),
+                '--root',
+                $root,
+                '--doc-id',
+                'definitely-not-present',
+            ], base_path());
+
+            $process->run();
+
+            $this->assertSame(PipelineExitCode::PARTIAL_SUCCESS, $process->getExitCode(), $process->getErrorOutput());
+            $this->assertStringContainsString('were not found', $process->getErrorOutput());
+        } finally {
+            @unlink($pageDir . '/content.md');
+            @rmdir($pageDir);
+            @rmdir($root);
+        }
+    }
+
     public function test_python_api_ingest_isolates_embedding_failure_to_one_document(): void
     {
         $publicDir = sys_get_temp_dir() . '/hawki-rag-python-api-isolation-' . uniqid();

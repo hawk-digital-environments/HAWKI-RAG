@@ -34,6 +34,11 @@ from ingest_crawled import (
 
 logger = logging.getLogger(__name__)
 
+EXIT_SUCCESS = 0
+EXIT_RUNTIME_FAILURE = 1
+EXIT_VALIDATION_FAILURE = 2
+EXIT_PARTIAL_SUCCESS = 3
+
 def _load_doc_ids_from_file(path: Path) -> Set[str]:
     """
     Load doc IDs from a text or JSON file.
@@ -184,7 +189,7 @@ def run(args: argparse.Namespace) -> int:
     root = Path(args.root).expanduser().resolve()
     if not root.exists() or not root.is_dir():
         print(f"Root not found or not a directory: {root}", file=sys.stderr)
-        return 2
+        return EXIT_VALIDATION_FAILURE
 
     requested_doc_ids: Set[str] = _normalize_doc_ids(args.doc_ids or [])
     if args.doc_ids_file:
@@ -196,14 +201,14 @@ def run(args: argparse.Namespace) -> int:
 
     if not requested_doc_ids:
         print("No doc IDs provided. Use --doc-id, --doc-ids-file, or --failures-file.", file=sys.stderr)
-        return 2
+        return EXIT_VALIDATION_FAILURE
 
     options = _build_options(args)
     page_url_map, source_url_map = build_url_maps(root)
     page_dirs = discover_page_dirs(root)
     if not page_dirs:
         print("No candidate page directories found under the specified root.", file=sys.stderr)
-        return 1
+        return EXIT_PARTIAL_SUCCESS
 
     remaining = set(requested_doc_ids)
     matched: Dict[str, str] = {}
@@ -265,8 +270,10 @@ def run(args: argparse.Namespace) -> int:
 
     if failures:
         print(f"{failures} batch(es) failed during re-ingest. Check the logs above.", file=sys.stderr)
-        return 1
-    return 0
+        return EXIT_RUNTIME_FAILURE
+    if remaining:
+        return EXIT_PARTIAL_SUCCESS
+    return EXIT_SUCCESS
 
 
 def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:

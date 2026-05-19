@@ -18,6 +18,8 @@ Automation should use process exit codes instead of parsing logs.
 | `php artisan rag:publish-converted-folder` | All discovered converted documents published | RabbitMQ/runtime failure | Missing/invalid folder | No publishable documents or some metadata skipped |
 | `php artisan rag:rabbit-ingestion-worker --once` | One message completed or was already completed | Message failed and was retried or published to failed queue | Not used | No message received before timeout |
 | `python python_rag/ingest/ingest_crawled.py` | Ingest completed | One or more batches failed | Invalid CLI arguments or missing root | No page folders found, all page folders are empty, or one or more empty page folders were skipped |
+| `python python_rag/ingest/retry_ingest_docs.py` | All requested documents found and re-ingested or dry-run planned | One or more re-ingest batches failed | Invalid CLI arguments, missing root, or no doc IDs provided | No candidate page directories or one or more requested doc IDs not found |
+| `python python_rag/ingest/prune_missing_docs.py` | No stale documents found, or dry-run completed with no delete failures | One or more stale document deletes failed, or Qdrant/runtime failure | Missing root or invalid CLI arguments | Stale documents were found and deleted, or dry-run planned deletions |
 
 API-launched ingestion runs the Python script as a detached process. When it
 finishes, the ingest log records `INGEST_EXIT_CODE=<code>` and
@@ -48,6 +50,8 @@ options still take precedence when provided.
 | Failed conversion document | Convert command | Catch the document-level failure, record it in `storage/logs/failed_conversion.json`, and continue converting the rest of the batch. | Exit `3` when one or more documents fail; exit `0` when all discovered documents convert cleanly. |
 | Failed RabbitMQ ingestion job | RabbitMQ ingestion worker | Mark processing state with the error. Transient failures are published to the retry exchange while attempts remain. Permanent failures are sent directly to the failed exchange. | Worker `--once` exits `1` for retry or failed routing; state is stored in `job_processing_state`. |
 | Retry exhausted | RabbitMQ ingestion worker | Publish a `pipeline.failed` event to the failed exchange and mark the job as failed. | Worker `--once` exits `1`; failed event includes retry count, max retries, error type, and original payload. |
+| Requested retry doc ID not found | Retry ingest CLI | Continue matching and re-ingesting any found IDs, then report the unmatched IDs. | Exit `3` when at least one requested ID was not found and no batch failed. |
+| Failed stale-document delete | Prune ingest CLI | Continue attempting remaining deletes and count failures. | Exit `1` when any delete request fails. |
 
 ## Make Targets
 

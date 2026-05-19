@@ -17,6 +17,11 @@ import requests
 # Reuse helpers from ingest_crawled for consistent doc_id generation
 from ingest_crawled import discover_page_dirs, load_page_materials, first_str, make_doc_id  # type: ignore
 
+EXIT_SUCCESS = 0
+EXIT_RUNTIME_FAILURE = 1
+EXIT_VALIDATION_FAILURE = 2
+EXIT_PARTIAL_SUCCESS = 3
+
 
 def collect_doc_ids(root: Path) -> Set[str]:
     ids: Set[str] = set()
@@ -56,7 +61,8 @@ def fetch_existing_ids(qdrant_url: str, collection: str) -> Set[str]:
     return ids
 
 
-def delete_missing(base_url: str, doc_ids: Set[str], dry_run: bool) -> None:
+def delete_missing(base_url: str, doc_ids: Set[str], dry_run: bool) -> int:
+    failures = 0
     session = requests.Session()
     for idx, doc_id in enumerate(sorted(doc_ids), start=1):
         if dry_run:
@@ -65,8 +71,10 @@ def delete_missing(base_url: str, doc_ids: Set[str], dry_run: bool) -> None:
         resp = session.delete(base_url.rstrip("/") + f"/documents/{doc_id}", timeout=30)
         if resp.status_code >= 300:
             print(f"[warn] delete {doc_id} failed ({resp.status_code}): {resp.text}", file=sys.stderr)
+            failures += 1
         else:
             print(f"[{idx}/{len(doc_ids)}] deleted {doc_id}")
+    return failures
 
 
 def main() -> int:
@@ -81,7 +89,7 @@ def main() -> int:
     root = Path(args.root).expanduser().resolve()
     if not root.exists():
         print(f"root not found: {root}", file=sys.stderr)
-        return 1
+        return EXIT_VALIDATION_FAILURE
 
     desired = collect_doc_ids(root)
     print(f"Found {len(desired)} doc_ids in crawl folder")
@@ -92,8 +100,13 @@ def main() -> int:
     to_delete = existing - desired
     print(f"Will delete {len(to_delete)} stale doc_ids")
 
-    delete_missing(args.base_url, to_delete, args.dry_run)
-    return 0
+    failures = delete_missing(args.base_url, to_delete, args.dry_run)
+    if failures:
+        print(f"{failures} stale document delete(s) failed.", file=sys.stderr)
+        return EXIT_RUNTIME_FAILURE
+    if to_delete:
+        return EXIT_PARTIAL_SUCCESS
+    return EXIT_SUCCESS
 
 
 if __name__ == "__main__":
