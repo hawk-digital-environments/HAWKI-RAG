@@ -37,9 +37,9 @@ class ScrapeController extends Controller
         ]);
         $result = $this->scrapeService->startPipeline($validatedData);
         return response()->json([
-            'success' => true,
+            'success' => $result->success,
             'result' => $result->toArray()
-        ]);
+        ], $result->success ? 200 : 502);
     }
 
     public function cancelScrape(Request $request){
@@ -47,10 +47,32 @@ class ScrapeController extends Controller
             'jobId' => 'required|string',
         ]);
         $data = $this->scrapeService->stopPipeline($validatedData['jobId']);
-        return response()->json([
-            'success' => $data['success'],
-            'message' => $data['message']
-        ]);
+        return $this->crawlerResponse($data);
+    }
+
+    public function getCrawlerJobs()
+    {
+        return $this->crawlerResponse($this->scrapeService->listCrawlerJobs());
+    }
+
+    public function getCrawlerStatus(string $jobId)
+    {
+        return $this->crawlerResponse($this->scrapeService->getCrawlerStatus($jobId));
+    }
+
+    public function cancelCrawlerJob(string $jobId)
+    {
+        return $this->crawlerResponse($this->scrapeService->cancelCrawlerJob($jobId));
+    }
+
+    public function pauseCrawlerJob(string $jobId)
+    {
+        return $this->crawlerResponse($this->scrapeService->pauseCrawlerJob($jobId));
+    }
+
+    public function resumeCrawlerJob(string $jobId)
+    {
+        return $this->crawlerResponse($this->scrapeService->resumeCrawlerJob($jobId));
     }
 
     public function getAllScrapes(Request $request){
@@ -108,6 +130,16 @@ class ScrapeController extends Controller
         ]);
         $content = $this->scrapeService->extractPageContent($validatedData['url']);
         return response()->json([$content]);
+    }
+
+    private function crawlerResponse(array $result)
+    {
+        $status = (int) ($result['status'] ?? 502);
+        if ($status < 100 || $status > 599) {
+            $status = ($result['success'] ?? false) ? 200 : 502;
+        }
+
+        return response()->json($result, $status);
     }
 
 }

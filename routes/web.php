@@ -28,6 +28,11 @@ Route::post('/deleteScrapeContent', [ScrapeController::class, 'deleteScrapeConte
 Route::post('/getScrapeInformation', [ScrapeController::class, 'getScrapeInformation']);
 Route::post('/getScrapeResult', [ScrapeController::class, 'getScrapeResult']);
 Route::post('/extractPageContent', [ScrapeController::class, 'extractPageContent']);
+Route::get('/scraper/jobs', [ScrapeController::class, 'getCrawlerJobs']);
+Route::get('/scraper/status/{jobId}', [ScrapeController::class, 'getCrawlerStatus']);
+Route::post('/scraper/jobs/{jobId}/cancel', [ScrapeController::class, 'cancelCrawlerJob']);
+Route::post('/scraper/jobs/{jobId}/pause', [ScrapeController::class, 'pauseCrawlerJob']);
+Route::post('/scraper/jobs/{jobId}/resume', [ScrapeController::class, 'resumeCrawlerJob']);
 // Playground related routes
 
 Route::post('/query', [HawkiRagProxyController::class, 'query']);

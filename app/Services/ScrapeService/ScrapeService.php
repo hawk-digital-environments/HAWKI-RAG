@@ -10,6 +10,7 @@ use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use JsonException;
 
 class ScrapeService
 {
@@ -57,8 +58,38 @@ class ScrapeService
      */
     public function stopPipeline(string $jobId): array
     {
-        $pipeline = app(ScraperPipelineService::class);
-        return $pipeline->stop($jobId);
+        $result = $this->cancelCrawlerJob($jobId);
+
+        if ($result['success'] ?? false) {
+            ScrapeProcess::where('job_id', $jobId)->update(['stage' => 'cancel_requested']);
+        }
+
+        return $result;
+    }
+
+    public function listCrawlerJobs(): array
+    {
+        return $this->crawlerRequest('GET', '/jobs');
+    }
+
+    public function getCrawlerStatus(string $jobId): array
+    {
+        return $this->crawlerRequest('GET', "/status/{$jobId}");
+    }
+
+    public function cancelCrawlerJob(string $jobId): array
+    {
+        return $this->crawlerRequest('POST', "/jobs/{$jobId}/cancel");
+    }
+
+    public function pauseCrawlerJob(string $jobId): array
+    {
+        return $this->crawlerRequest('POST', "/jobs/{$jobId}/pause");
+    }
+
+    public function resumeCrawlerJob(string $jobId): array
+    {
+        return $this->crawlerRequest('POST', "/jobs/{$jobId}/resume");
     }
 
 
@@ -219,5 +250,105 @@ class ScrapeService
         return filter_var($value, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE) ?? false;
     }
 
+    private function crawlerRequest(string $method, string $path): array
+    {
+        try {
+            $url = rtrim((string) config('scraper.api_url'), '/') . '/' . ltrim($path, '/');
+            $response = Http::timeout(30)
+                ->retry(2, 500, throw: false)
+                ->send($method, $url);
+
+            $data = $this->decodeJsonResponse($response->body());
+            $success = $response->successful();
+
+            return [
+                'success' => $success,
+                'status' => $response->status(),
+                'data' => $data,
+                'message' => $success
+                    ? $this->successMessageFromCrawlerData($data)
+                    : $this->errorMessageFromCrawlerData($data, $response->status()),
+            ];
+        } catch (JsonException $exception) {
+            return [
+                'success' => false,
+                'status' => 502,
+                'data' => null,
+                'message' => 'Crawler returned invalid JSON: '.$exception->getMessage(),
+            ];
+        } catch (\Throwable $exception) {
+            return [
+                'success' => false,
+                'status' => 502,
+                'data' => null,
+                'message' => $exception->getMessage(),
+            ];
+        }
+    }
+
+    /**
+     * @throws JsonException
+     */
+    private function decodeJsonResponse(string $body): array
+    {
+        $data = json_decode($body, true, 512, JSON_THROW_ON_ERROR);
+
+        if (!is_array($data)) {
+            throw new JsonException('Expected JSON object response.');
+        }
+
+        return $data;
+    }
+
+    private function successMessageFromCrawlerData(array $data): string
+    {
+        foreach (['message', 'status'] as $key) {
+            if (isset($data[$key]) && is_scalar($data[$key])) {
+                return (string) $data[$key];
+            }
+        }
+
+        return 'Crawler request completed successfully.';
+    }
+
+    private function errorMessageFromCrawlerData(array $data, int $status): string
+    {
+        if (isset($data['detail'])) {
+            return 'Crawler request failed with HTTP '.$status.': '.$this->formatFastApiDetail($data['detail']);
+        }
+
+        if (isset($data['message']) && is_scalar($data['message'])) {
+            return (string) $data['message'];
+        }
+
+        return 'Crawler request failed with HTTP '.$status.'.';
+    }
+
+    private function formatFastApiDetail(mixed $detail): string
+    {
+        if (is_string($detail)) {
+            return $detail;
+        }
+
+        if (!is_array($detail)) {
+            return json_encode($detail, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?: 'unknown error';
+        }
+
+        $messages = [];
+        foreach ($detail as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+
+            $location = $item['loc'] ?? [];
+            $path = is_array($location) ? implode('.', array_map('strval', $location)) : (string) $location;
+            $message = is_scalar($item['msg'] ?? null) ? (string) $item['msg'] : 'validation error';
+            $messages[] = $path !== '' ? "{$path}: {$message}" : $message;
+        }
+
+        return $messages === []
+            ? (json_encode($detail, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?: 'unknown validation error')
+            : implode('; ', $messages);
+    }
 
 }
