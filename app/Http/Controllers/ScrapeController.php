@@ -18,15 +18,22 @@ class ScrapeController extends Controller
         $validatedData = $request->validate([
             'url' => 'required|string',
             'label' => 'required|string',
-            'maxPages' => 'integer',
+            'maxPages' => 'nullable|integer|min:0',
             'outputDir' => 'string|nullable',
-            'skipImages' => 'boolean:',
-            'imageExceptions' => 'boolean|nullable',
+            'skipImages' => 'nullable|boolean',
+            'imageExceptions' => [
+                'nullable',
+                function (string $attribute, mixed $value, \Closure $fail): void {
+                    if (!is_string($value) && !is_array($value)) {
+                        $fail('The '.$attribute.' field must be a string or an array of CSS selectors.');
+                    }
+                },
+            ],
             'dateSelector' => 'string|nullable',
-            'maxConcurrency' => 'integer',
-            'maxRpm' => 'integer',
-            'requestDelay' => 'integer',
-            'discoveryMode'=> 'boolean',
+            'maxConcurrency' => 'nullable|integer|min:1',
+            'maxRpm' => 'nullable|integer|min:1',
+            'requestDelay' => 'nullable|integer|min:0',
+            'discoveryMode'=> 'nullable|boolean',
         ]);
         $result = $this->scrapeService->startPipeline($validatedData);
         return response()->json([
@@ -67,7 +74,7 @@ class ScrapeController extends Controller
         $validatedData = $request->validate([
             'jobId' => 'required|string',
         ]);
-        $success = $this->scrapeService->getScrapeInformation($validatedData['jobId']);
+        $success = $this->scrapeService->deleteScrapeContent($validatedData['jobId']);
         return response()->json([
             'success' => $success,
         ]);

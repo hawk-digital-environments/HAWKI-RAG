@@ -124,7 +124,7 @@ class ScrapeWebsite extends Command
         return (bool) config('config.pipeline_automation', false);
     }
 
-    private function parseImageExceptions(): ?array
+    private function parseImageExceptions(): ?string
     {
         if (!$this->option('image-exceptions')) {
             return null;
@@ -140,7 +140,7 @@ class ScrapeWebsite extends Command
             $this->info("Using image exceptions: " . implode(', ', $imageExceptions));
         }
 
-        return $imageExceptions ?: null;
+        return $imageExceptions === [] ? null : implode(',', $imageExceptions);
     }
 
     private function resolveLabel(?string $label, string $url): string

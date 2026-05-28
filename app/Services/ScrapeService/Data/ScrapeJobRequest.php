@@ -14,7 +14,7 @@ namespace App\Services\ScrapeService\Data;
  * @property-read int $maxPages Maximum number of pages to crawl (0 = unlimited)
  * @property-read string $outputDir Base directory for storing crawled data
  * @property-read bool $skipImages Whether to skip downloading images
- * @property-read array|null $imageExceptions CSS selectors for images to exclude from scraping
+ * @property-read string|null $imageExceptions Comma-separated CSS selectors for images to exclude from scraping
  * @property-read string|null $dateSelector CSS selector for extracting publication dates
  * @property-read int $maxConcurrency Maximum number of parallel requests
  * @property-read int $maxRpm Maximum requests per minute
@@ -29,7 +29,7 @@ class ScrapeJobRequest
         public readonly int $maxPages = 100,
         public readonly string $outputDir = '',
         public readonly bool $skipImages = false,
-        public readonly ?array $imageExceptions = null,
+        public readonly ?string $imageExceptions = null,
         public readonly ?string $dateSelector = null,
         public readonly int $maxConcurrency = 4,
         public readonly int $maxRpm = 60,
@@ -54,7 +54,7 @@ class ScrapeJobRequest
             maxPages: $params['maxPages'] ?? $params['max_pages'] ?? 100,
             outputDir: $params['outputDir'] ?? $params['output_dir'] ?? '',
             skipImages: $params['skipImages'] ?? $params['skip_images'] ?? false,
-            imageExceptions: $params['imageExceptions'] ?? $params['image_exceptions'] ?? null,
+            imageExceptions: self::normalizeImageExceptions($params['imageExceptions'] ?? $params['image_exceptions'] ?? null),
             dateSelector: $params['dateSelector'] ?? $params['date_selector'] ?? null,
             maxConcurrency: $params['maxConcurrency'] ?? $params['max_concurrency'] ?? 4,
             maxRpm: $params['maxRpm'] ?? $params['max_rpm'] ?? 60,
@@ -85,5 +85,28 @@ class ScrapeJobRequest
             'request_delay' => $this->requestDelay,
             'discovery_mode' => $this->discoveryMode,
         ];
+    }
+
+    private static function normalizeImageExceptions(mixed $value): ?string
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        if (is_string($value)) {
+            $value = trim($value);
+            return $value === '' ? null : $value;
+        }
+
+        if (is_array($value)) {
+            $selectors = array_values(array_filter(
+                array_map(static fn ($item) => is_scalar($item) ? trim((string) $item) : '', $value),
+                static fn ($item) => $item !== ''
+            ));
+
+            return $selectors === [] ? null : implode(',', $selectors);
+        }
+
+        throw new \InvalidArgumentException('Image exceptions must be a string or an array of CSS selectors.');
     }
 }

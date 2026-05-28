@@ -7,6 +7,7 @@ use App\Services\ScrapeService\Data\ScrapeJobRequest;
 use App\Services\ScrapeService\Data\ScrapeRequestResult;
 use Exception;
 use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -27,18 +28,20 @@ class ScrapeService
      */
     public function startPipeline(array $request, ?callable $outputCallback = null): ScrapeRequestResult
     {
+        $defaults = config('scraper.defaults', []);
+
         $jobRequest = new ScrapeJobRequest(
             url: $request['url'],
             label: $request['label'],
-            maxPages: $request['maxPages'],
-            outputDir: $request['outputDir'] ?: '',
-            skipImages: $request['skipImages'],
-            imageExceptions: $request['imageExceptions'],
-            dateSelector: $request['dateSelector'],
-            maxConcurrency: $request['maxConcurrency'],
-            maxRpm: $request['maxRpm'],
-            requestDelay: $request['requestDelay'],
-            discoveryMode: $request['discoveryMode'] ?? false,
+            maxPages: (int) ($request['maxPages'] ?? $defaults['max_pages'] ?? 100),
+            outputDir: (string) ($request['outputDir'] ?? ''),
+            skipImages: $this->boolValue($request['skipImages'] ?? $defaults['skip_images'] ?? false),
+            imageExceptions: $this->normalizeImageExceptions($request['imageExceptions'] ?? null),
+            dateSelector: $request['dateSelector'] ?? null,
+            maxConcurrency: (int) ($request['maxConcurrency'] ?? $defaults['max_concurrency'] ?? 4),
+            maxRpm: (int) ($request['maxRpm'] ?? $defaults['max_rpm'] ?? 60),
+            requestDelay: isset($request['requestDelay']) ? (int) $request['requestDelay'] : null,
+            discoveryMode: $this->boolValue($request['discoveryMode'] ?? $defaults['discovery_mode'] ?? false),
         );
         $pipeline = app(ScraperPipelineService::class);
         return $pipeline->execute($jobRequest, $outputCallback);
@@ -84,10 +87,7 @@ class ScrapeService
             foreach ($elements as $element) {
                 $element->delete();
             }
-            $metadata = $process->metadata;
-            foreach ($metadata as $metadataItem) {
-                $metadataItem->delete();
-            }
+            $process->stats()->delete();
             $process->delete();
             return true;
         }
@@ -106,7 +106,35 @@ class ScrapeService
      */
     public function deleteScrapeContent(string $jobId): bool
     {
-        return false;
+        try {
+            $process = ScrapeProcess::where('job_id', $jobId)->firstOrFail();
+            $request = $process->request ?? [];
+            $outputDir = (string) ($request['output_dir'] ?? $request['outputDir'] ?? '');
+
+            if ($outputDir === '') {
+                return true;
+            }
+
+            $storageRoot = realpath((string) config('scraper.storage_path'));
+            $target = realpath($outputDir);
+
+            if ($storageRoot === false || $target === false) {
+                return true;
+            }
+
+            if ($target === $storageRoot || !str_starts_with($target, $storageRoot . DIRECTORY_SEPARATOR)) {
+                Log::warning("refusing to delete scrape content outside storage root for job {$jobId}", [
+                    'storage_root' => $storageRoot,
+                    'target' => $target,
+                ]);
+                return false;
+            }
+
+            return File::deleteDirectory($target);
+        } catch (Exception $exception) {
+            Log::error('failed to delete scrape content '.$jobId.': '.$exception->getMessage());
+            return false;
+        }
     }
 
 
@@ -152,15 +180,43 @@ class ScrapeService
     {
         try{
             $response = Http::timeout(300)
-                ->post(config('scraper.api_url'). '/scrape',
-                    $url);
+                ->post(config('scraper.api_url'). '/scrape', [
+                    'url' => $url,
+                ]);
 
-            return $response->getBody();
+            return $response->body();
         }
         catch (ConnectionException $exception){
             Log::error('failed to extract page content '.$exception->getMessage());
             return '';
         }
+    }
+
+    private function normalizeImageExceptions(mixed $value): ?string
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        if (is_string($value)) {
+            return trim($value) !== '' ? trim($value) : null;
+        }
+
+        if (is_array($value)) {
+            $selectors = array_values(array_filter(
+                array_map(static fn ($item) => is_scalar($item) ? trim((string) $item) : '', $value),
+                static fn ($item) => $item !== ''
+            ));
+
+            return $selectors === [] ? null : implode(',', $selectors);
+        }
+
+        throw new \InvalidArgumentException('Image exceptions must be a string or an array of CSS selectors.');
+    }
+
+    private function boolValue(mixed $value): bool
+    {
+        return filter_var($value, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE) ?? false;
     }
 
 

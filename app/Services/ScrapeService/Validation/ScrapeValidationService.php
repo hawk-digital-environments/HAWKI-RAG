@@ -72,8 +72,8 @@ class ScrapeValidationService
         }
 
         // Validate image exceptions
-        if ($request->imageExceptions !== null && !is_array($request->imageExceptions)) {
-            $this->addError('Image exceptions must be an array of CSS selectors.');
+        if ($request->imageExceptions !== null && !is_string($request->imageExceptions)) {
+            $this->addError('Image exceptions must be a comma-separated string of CSS selectors.');
         }
 
         // Validate date selector
