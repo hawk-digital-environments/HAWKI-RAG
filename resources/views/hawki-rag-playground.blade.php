@@ -19,6 +19,30 @@
                 <h2>Ingestion</h2>
                 <div class="panel-body">
                     <div class="subsection">
+                        <h3 style="margin-top:0;">Pipeline</h3>
+                        <div class="grid">
+                            <div>
+                                <label for="pipeline-url">URL</label>
+                                <input id="pipeline-url" type="url" placeholder="https://www.hawk.de/..." style="width:100%; border-radius:0.8rem; border:1px solid rgba(148,163,184,0.22); background:rgba(15,23,42,0.78); color:inherit; padding:0.7rem 0.8rem;" />
+                            </div>
+                            <div class="grid two">
+                                <div>
+                                    <label for="pipeline-label">Label</label>
+                                    <input id="pipeline-label" type="text" placeholder="pipeline-test" style="width:100%; border-radius:0.8rem; border:1px solid rgba(148,163,184,0.22); background:rgba(15,23,42,0.78); color:inherit; padding:0.7rem 0.8rem;" />
+                                </div>
+                                <div>
+                                    <label for="pipeline-max-pages">Max pages</label>
+                                    <input id="pipeline-max-pages" type="number" min="1" value="2" />
+                                </div>
+                            </div>
+                            <label><input type="checkbox" id="pipeline-skip-images" checked /> Skip images</label>
+                            <button type="button" id="pipeline-start-btn">Start Pipeline</button>
+                            <div id="pipeline-current" class="badge">No pipeline selected.</div>
+                            <div id="pipeline-stages" class="pipeline-stages"></div>
+                        </div>
+                    </div>
+
+                    <div class="subsection">
                         @php
                             $embedModels = config('config.embedding_models', ['bge-m3']);
                             $embedDefault = config('config.embedding_default', $embedModels[0] ?? null);

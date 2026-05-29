@@ -186,6 +186,31 @@ ul { margin: 0.4rem 0 0; padding-left: 1.2rem; }
     font-size: 0.9rem;
     color: #bae6fd;
 }
+.pipeline-stages {
+    display: grid;
+    gap: 0.55rem;
+}
+.pipeline-stage-row {
+    display: grid;
+    grid-template-columns: 72px 92px 1fr;
+    gap: 0.5rem;
+    align-items: center;
+    padding: 0.55rem 0.65rem;
+    border-radius: 0.75rem;
+    border: 1px solid rgba(148, 163, 184, 0.22);
+    background: rgba(15, 23, 42, 0.62);
+    font-size: 0.82rem;
+}
+.pipeline-stage-row strong {
+    color: #e5eefb;
+}
+.pipeline-stage-row span {
+    color: #bae6fd;
+}
+.pipeline-stage-row small {
+    color: #cbd5e1;
+    overflow-wrap: anywhere;
+}
 .graph-visualization-section {
     margin-top: 1.1rem;
     border-radius: 1.1rem;

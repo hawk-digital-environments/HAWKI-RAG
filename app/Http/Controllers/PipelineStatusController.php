@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Jobs\ConvertPipelineDatasetJob;
+use App\Jobs\PublishConvertedDocumentsJob;
 use App\Models\JobProcessingState;
 use App\Models\ScrapeProcess;
 use App\Services\Pipeline\PipelineStateService;
@@ -373,6 +375,10 @@ class PipelineStatusController extends Controller
 
         if ($status === 'completed') {
             $this->pipelineState->completeStage($jobId, PipelineStateService::STAGE_SCRAPE, $payload);
+            $datasetPath = (string) ($stage['datasetPath'] ?? '');
+            if ($datasetPath !== '' && !$this->pipelineState->isStageClaimedOrDone($jobId, PipelineStateService::STAGE_CONVERT)) {
+                ConvertPipelineDatasetJob::dispatch($jobId, $datasetPath);
+            }
             return;
         }
 
@@ -408,7 +414,9 @@ class PipelineStatusController extends Controller
             ],
         ];
 
-        match ((string) ($stage['status'] ?? 'unknown')) {
+        $status = (string) ($stage['status'] ?? 'unknown');
+
+        match ($status) {
             'completed' => $this->pipelineState->completeStage($jobId, PipelineStateService::STAGE_CONVERT, $payload),
             'failed' => $this->pipelineState->failStage($jobId, PipelineStateService::STAGE_CONVERT, $payload),
             'partial' => $this->pipelineState->partialStage($jobId, PipelineStateService::STAGE_CONVERT, $payload),
@@ -416,6 +424,25 @@ class PipelineStatusController extends Controller
             'pending' => $this->pipelineState->updateStage($jobId, PipelineStateService::STAGE_CONVERT, array_merge($payload, ['status' => 'pending'])),
             default => null,
         };
+
+        $datasetPath = (string) ($stage['datasetPath'] ?? '');
+        if ($status === 'skipped'
+            && !$this->pipelineState->isStageClaimedOrDone($jobId, PipelineStateService::STAGE_INGEST)) {
+            $this->pipelineState->skipStage($jobId, PipelineStateService::STAGE_INGEST, [
+                'dataset_path' => $datasetPath !== '' ? $datasetPath : ($stage['datasetPath'] ?? null),
+                'counts' => [],
+                'metadata' => [
+                    'reason' => 'Conversion skipped because no supported source files were found.',
+                    'source' => 'pipeline-status-reconcile',
+                ],
+            ]);
+        }
+
+        if ($status === 'completed'
+            && $datasetPath !== ''
+            && !$this->pipelineState->isStageClaimedOrDone($jobId, PipelineStateService::STAGE_INGEST)) {
+            PublishConvertedDocumentsJob::dispatch($jobId, $datasetPath);
+        }
     }
 
     private function syncIngestStage(string $jobId, ?string $datasetPath, array $stage): void

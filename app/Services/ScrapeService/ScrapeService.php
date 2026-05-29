@@ -32,12 +32,14 @@ class ScrapeService
     public function startPipeline(array $request, ?callable $outputCallback = null): ScrapeRequestResult
     {
         $defaults = config('scraper.defaults', []);
+        $url = $this->normalizeUrl((string) ($request['url'] ?? ''));
+        $label = $this->normalizeLabel((string) ($request['label'] ?? ''), $url);
 
         $jobRequest = new ScrapeJobRequest(
-            url: $request['url'],
-            label: $request['label'],
+            url: $url,
+            label: $label,
             maxPages: (int) ($request['maxPages'] ?? $defaults['max_pages'] ?? 100),
-            outputDir: $this->resolveOutputDir($request['outputDir'] ?? null, $request['label']),
+            outputDir: $this->resolveOutputDir($request['outputDir'] ?? null, $label),
             skipImages: $this->boolValue($request['skipImages'] ?? $defaults['skip_images'] ?? false),
             imageExceptions: $this->normalizeImageExceptions($request['imageExceptions'] ?? null),
             dateSelector: $request['dateSelector'] ?? null,
@@ -262,6 +264,37 @@ class ScrapeService
         return rtrim((string) config('scraper.storage_path'), DIRECTORY_SEPARATOR)
             . DIRECTORY_SEPARATOR
             . Str::slug($label, '-');
+    }
+
+    private function normalizeUrl(string $url): string
+    {
+        $url = trim($url);
+        if ($url === '' || File::exists($url)) {
+            return $url;
+        }
+
+        if (preg_match('/^[a-z][a-z0-9+.-]*:\/\//i', $url) === 1) {
+            return $url;
+        }
+
+        if (str_starts_with($url, '/') || str_starts_with($url, './') || str_starts_with($url, '../')) {
+            return $url;
+        }
+
+        return 'https://'.$url;
+    }
+
+    private function normalizeLabel(string $label, string $url): string
+    {
+        $slug = Str::slug(trim($label), '-');
+        if ($slug !== '') {
+            return $slug;
+        }
+
+        $host = parse_url($url, PHP_URL_HOST);
+        $fallback = is_string($host) && $host !== '' ? $host : 'pipeline-test';
+
+        return Str::slug($fallback, '-') ?: 'pipeline-test';
     }
 
     private function normalizeImageExceptions(mixed $value): ?string

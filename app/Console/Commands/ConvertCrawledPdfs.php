@@ -210,7 +210,7 @@ class ConvertCrawledPdfs extends Command
                 if (!$forceReprocess && is_file($metaPath)) {
                     $meta = json_decode(@file_get_contents($metaPath), true);
                     if (is_array($meta) && ($meta['converted_id'] ?? null) === $convertedId) {
-                        $meta = $this->normalizeCachedMetadata($meta, $docPath, $destDir, $convertedId, $docTitle);
+                        $meta = $this->normalizeCachedMetadata($meta, $docPath, $destDir, $convertedId, $docTitle, $jobId);
                         $flatContent = is_file($flatPath)
                             ? (string) file_get_contents($flatPath)
                             : $this->loadMarkdownFromMeta($meta, $destDir);
@@ -765,8 +765,10 @@ class ConvertCrawledPdfs extends Command
         string $sourcePath,
         string $destDir,
         string $convertedId,
-        string $docTitle
+        string $docTitle,
+        string $jobId
     ): array {
+        $meta['pipeline_job_id'] = $jobId;
         $meta['converted_id'] = $convertedId;
         $meta['doc_id'] = $meta['doc_id'] ?? $convertedId;
         $meta['title'] = $meta['title'] ?? $docTitle;

@@ -5,6 +5,7 @@ namespace App\Services\Pipeline;
 use App\Models\PipelineJob;
 use App\Models\PipelineStageState;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 class PipelineStateService
@@ -121,6 +122,92 @@ class PipelineStateService
         return $this->updateStage($jobId, $stage, array_merge($attributes, [
             'counts' => $counts,
         ]));
+    }
+
+    public function claimStage(
+        string $jobId,
+        string $stage,
+        array $attributes = [],
+        array $requiredCompletedStages = [],
+        bool $force = false
+    ): ?PipelineStageState {
+        if (!$this->tablesAvailable()) {
+            return null;
+        }
+
+        return DB::transaction(function () use ($jobId, $stage, $attributes, $requiredCompletedStages, $force): ?PipelineStageState {
+            $job = PipelineJob::query()->firstOrCreate(
+                ['job_id' => $jobId],
+                [
+                    'status' => PipelineJob::STATUS_PENDING,
+                    'current_stage' => $stage,
+                    'started_at' => Carbon::now(),
+                ],
+            );
+
+            foreach ($requiredCompletedStages as $requiredStage) {
+                $required = PipelineStageState::query()
+                    ->where('job_id', $jobId)
+                    ->where('stage', $requiredStage)
+                    ->lockForUpdate()
+                    ->first();
+
+                if (!$required || $required->status !== PipelineJob::STATUS_COMPLETED) {
+                    return null;
+                }
+            }
+
+            $state = PipelineStageState::query()
+                ->where('job_id', $jobId)
+                ->where('stage', $stage)
+                ->lockForUpdate()
+                ->first();
+
+            if ($state && !$force && in_array($state->status, $this->nonClaimableStatuses(), true)) {
+                return null;
+            }
+
+            $state ??= new PipelineStageState([
+                'job_id' => $jobId,
+                'stage' => $stage,
+            ]);
+
+            $state->pipeline_job_id = $job->id;
+            $state->fill($this->stageAttributes(array_merge($attributes, [
+                'status' => $attributes['status'] ?? PipelineJob::STATUS_RUNNING,
+                'started_at' => $attributes['started_at'] ?? Carbon::now(),
+            ])));
+            $state->last_transition_at = Carbon::now();
+            $state->save();
+
+            $this->refreshJobFromStages($job, $stage, $attributes);
+
+            return $state;
+        });
+    }
+
+    public function stageStatusValue(string $jobId, string $stage): ?string
+    {
+        if (!$this->tablesAvailable()) {
+            return null;
+        }
+
+        return PipelineStageState::query()
+            ->where('job_id', $jobId)
+            ->where('stage', $stage)
+            ->value('status');
+    }
+
+    public function isStageCompleted(string $jobId, string $stage): bool
+    {
+        return $this->stageStatusValue($jobId, $stage) === PipelineJob::STATUS_COMPLETED;
+    }
+
+    public function isStageClaimedOrDone(string $jobId, string $stage): bool
+    {
+        $status = $this->stageStatusValue($jobId, $stage);
+
+        return $status !== null && in_array($status, $this->nonClaimableStatuses(), true);
     }
 
     public function status(string $jobId): ?array
@@ -244,6 +331,20 @@ class PipelineStateService
         }
 
         return $latest;
+    }
+
+    private function nonClaimableStatuses(): array
+    {
+        return [
+            PipelineJob::STATUS_RUNNING,
+            PipelineJob::STATUS_COMPLETED,
+            PipelineJob::STATUS_FAILED,
+            PipelineJob::STATUS_SKIPPED,
+            PipelineJob::STATUS_PARTIAL,
+            'processing',
+            'received',
+            'cancel_requested',
+        ];
     }
 
     private function jobAttributes(array $attributes): array

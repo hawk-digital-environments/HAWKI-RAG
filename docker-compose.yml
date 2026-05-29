@@ -276,6 +276,51 @@ services:
       - hawki-network
 
   # -------------------------------------------------
+  # Laravel pipeline worker (scrape -> convert -> RabbitMQ publish)
+  # -------------------------------------------------
+  hawki-rag-pipeline-worker:
+    image: rawki-hawki_rag_app
+    pull_policy: never
+    build:
+      context: .
+      dockerfile: docker/laravel.Dockerfile
+      target: laravel-app
+      args:
+        - DOCKER_PROJECT_HOST=ixdlab.hawk.de
+        - DOCKER_PROJECT_PATH=/hawki-rag/
+    container_name: hawki_rag_pipeline_worker
+    profiles: ["rag-ingestion-worker"]
+    env_file:
+      - ./.env
+    environment:
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+      ENVIRONMENT: "development"
+      SHARED_STORAGE_ROOT: ${SHARED_STORAGE_ROOT:-/app/shared}
+    volumes:
+      - shared_storage:/app/shared
+      - ./storage:/var/www/html/storage
+      - ./docker/rag_app:/container/custom
+      - ./:/var/www/html
+    command: ["php", "artisan", "queue:work", "database", "--queue=default", "--sleep=2", "--tries=3", "--timeout=7200"]
+    working_dir: /var/www/html
+    depends_on:
+      mariadb:
+        condition: service_started
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "php", "artisan", "list", "--raw"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+    networks:
+      - default
+      - hawki-network
+
+  # -------------------------------------------------
   # Crawler producer (external image/command, profile-based)
   # -------------------------------------------------
   crawler_producer:

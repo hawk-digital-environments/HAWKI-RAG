@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Services\ScrapeService\ScrapeService;
+use App\Services\ScrapeService\Data\ScrapeRequestResult;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
@@ -17,7 +18,7 @@ class ScrapeController extends Controller
     public function requestScrape(Request $request){
         $validatedData = $request->validate([
             'url' => 'required|string',
-            'label' => 'required|string',
+            'label' => 'nullable|string',
             'maxPages' => 'nullable|integer|min:0',
             'outputDir' => 'string|nullable',
             'skipImages' => 'nullable|boolean',
@@ -36,11 +37,17 @@ class ScrapeController extends Controller
             'discoveryMode'=> 'nullable|boolean',
         ]);
         $result = $this->scrapeService->startPipeline($validatedData);
-        return response()->json([
+        $payload = [
             'success' => $result->success,
             'jobId' => $result->jobId,
-            'result' => $result->toArray()
-        ], $result->success ? 200 : 502);
+            'result' => $result->toArray(),
+        ];
+
+        if (!$result->success) {
+            $payload['message'] = $this->scrapeFailureMessage($result);
+        }
+
+        return response()->json($payload, $result->success ? 200 : ($result->stage === 'validation' ? 422 : 502));
     }
 
     public function cancelScrape(Request $request){
@@ -140,6 +147,21 @@ class ScrapeController extends Controller
         }
 
         return response()->json($result, $status);
+    }
+
+    private function scrapeFailureMessage(ScrapeRequestResult $result): string
+    {
+        $firstError = $result->errors[0] ?? null;
+
+        if (is_array($firstError) && isset($firstError['message']) && is_scalar($firstError['message'])) {
+            return (string) $firstError['message'];
+        }
+
+        if (is_scalar($firstError)) {
+            return (string) $firstError;
+        }
+
+        return 'Scrape request failed.';
     }
 
 }
