@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Services\FileConverter\DocumentConverter;
 use App\Services\Pipeline\PipelineDataValidator;
 use App\Services\Pipeline\PipelineLogger;
+use App\Services\Pipeline\PipelineStateService;
 use App\Support\PipelineExitCode;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\File;
@@ -20,6 +21,7 @@ class ConvertCrawledPdfs extends Command
      */
     protected $signature = 'convert:crawled-pdfs
         {outputDir? : Path to crawler output directory (absolute path or path relative to the canonical crawled-data root)}
+        {--job-id= : Pipeline job ID to update; defaults to a deterministic conversion job ID}
         {--extensions= : Comma-separated list of extensions to convert; defaults to file_converter.supported_extensions}
         {--scan-all : Scan all files under outputDir (not just **/files/)}
         {--existing=ask : Existing output mode: ask, continue, restart, cancel}';
@@ -49,7 +51,8 @@ class ConvertCrawledPdfs extends Command
 
         $converter = app(DocumentConverter::class);
         $validator = app(PipelineDataValidator::class);
-        $jobId = $this->conversionJobId($outputDir);
+        $state = app(PipelineStateService::class);
+        $jobId = (string) ($this->option('job-id') ?: $this->conversionJobId($outputDir));
         PipelineLogger::started('convert', [
             'job_id' => $jobId,
             'output_dir' => $outputDir,
@@ -61,6 +64,24 @@ class ConvertCrawledPdfs extends Command
         $extensions = $this->parseExtensions((string) $this->option('extensions'));
         $scanAll = (bool) $this->option('scan-all');
         $docPaths = $this->collectDocumentPaths($outputDir, $extensions, $scanAll);
+        $state->startStage($jobId, PipelineStateService::STAGE_CONVERT, [
+            'dataset_path' => $outputDir,
+            'counts' => [
+                'total' => count($docPaths),
+                'sourceFiles' => count($docPaths),
+                'processed' => 0,
+                'convertedFiles' => 0,
+                'skipped' => 0,
+                'skippedFiles' => 0,
+                'failed' => 0,
+                'failedFiles' => 0,
+            ],
+            'max_retries' => (int) config('file_converter.retries', 3),
+            'metadata' => [
+                'extensions' => $extensions,
+                'scanAll' => $scanAll,
+            ],
+        ]);
 
         if (empty($docPaths)) {
             $extLabel = implode(',', $extensions);
@@ -73,6 +94,24 @@ class ConvertCrawledPdfs extends Command
                 'reason' => 'No supported source files found.',
                 'extensions' => $extensions,
                 'scan_all' => $scanAll,
+            ]);
+            $state->skipStage($jobId, PipelineStateService::STAGE_CONVERT, [
+                'dataset_path' => $outputDir,
+                'counts' => [
+                    'total' => 0,
+                    'sourceFiles' => 0,
+                    'processed' => 0,
+                    'convertedFiles' => 0,
+                    'skipped' => 0,
+                    'skippedFiles' => 0,
+                    'failed' => 0,
+                    'failedFiles' => 0,
+                ],
+                'metadata' => [
+                    'reason' => 'No supported source files found.',
+                    'extensions' => $extensions,
+                    'scanAll' => $scanAll,
+                ],
             ]);
             return PipelineExitCode::PARTIAL_SUCCESS;
         }
@@ -99,6 +138,23 @@ class ConvertCrawledPdfs extends Command
                     'output_dir' => $outputDir,
                     'reason' => 'Conversion cancelled because existing outputs were found.',
                     'existing_outputs' => $existingMetaCount,
+                ]);
+                $state->skipStage($jobId, PipelineStateService::STAGE_CONVERT, [
+                    'dataset_path' => $outputDir,
+                    'counts' => [
+                        'total' => count($docPaths),
+                        'sourceFiles' => count($docPaths),
+                        'processed' => 0,
+                        'convertedFiles' => 0,
+                        'skipped' => $existingMetaCount,
+                        'skippedFiles' => $existingMetaCount,
+                        'failed' => 0,
+                        'failedFiles' => 0,
+                    ],
+                    'metadata' => [
+                        'reason' => 'Conversion cancelled because existing outputs were found.',
+                        'existingOutputs' => $existingMetaCount,
+                    ],
                 ]);
                 return PipelineExitCode::PARTIAL_SUCCESS;
             }
@@ -187,6 +243,7 @@ class ConvertCrawledPdfs extends Command
                                 'metadata_path' => $metaPath,
                             ]);
                             $skipped++;
+                            $this->updateConversionProgress($state, $jobId, $outputDir, count($docPaths), $processed, $skipped, $failed);
                             continue;
                         }
 
@@ -234,6 +291,7 @@ class ConvertCrawledPdfs extends Command
 
                 // Validate metadata against the staged files first.
                 $metaPayload = [
+                    'pipeline_job_id' => $jobId,
                     'converted_id'   => $convertedId,
                     'doc_id'         => $convertedId,
                     'title'          => $docTitle,
@@ -285,6 +343,7 @@ class ConvertCrawledPdfs extends Command
                     'warnings' => $metadataValidation['warnings'],
                 ]);
                 $processed++;
+                $this->updateConversionProgress($state, $jobId, $outputDir, count($docPaths), $processed, $skipped, $failed);
             } catch (\Throwable $e) {
                 if (is_string($stagingDir) && File::isDirectory($stagingDir)) {
                     File::deleteDirectory($stagingDir);
@@ -303,6 +362,7 @@ class ConvertCrawledPdfs extends Command
                     'error_message' => $e->getMessage(),
                     'exception' => $e,
                 ]);
+                $this->updateConversionProgress($state, $jobId, $outputDir, count($docPaths), $processed, $skipped, $failed);
             }
         }
 
@@ -332,11 +392,64 @@ class ConvertCrawledPdfs extends Command
         ];
         if (count($failed) > 0) {
             PipelineLogger::partial('convert', $summaryContext);
+            $state->partialStage($jobId, PipelineStateService::STAGE_CONVERT, [
+                'dataset_path' => $outputDir,
+                'counts' => $this->conversionCounts(count($docPaths), $processed, $skipped, $failed),
+                'errors' => $failed,
+                'max_retries' => $maxRetries,
+                'metadata' => [
+                    'statusDetail' => 'partial',
+                    'extensions' => $extensions,
+                    'scanAll' => $scanAll,
+                ],
+            ]);
         } else {
             PipelineLogger::success('convert', $summaryContext);
+            $state->completeStage($jobId, PipelineStateService::STAGE_CONVERT, [
+                'dataset_path' => $outputDir,
+                'counts' => $this->conversionCounts(count($docPaths), $processed, $skipped, $failed),
+                'max_retries' => $maxRetries,
+                'metadata' => [
+                    'statusDetail' => 'complete',
+                    'extensions' => $extensions,
+                    'scanAll' => $scanAll,
+                ],
+            ]);
         }
 
         return count($failed) > 0 ? PipelineExitCode::PARTIAL_SUCCESS : PipelineExitCode::SUCCESS;
+    }
+
+    private function updateConversionProgress(
+        PipelineStateService $state,
+        string $jobId,
+        string $outputDir,
+        int $total,
+        int $processed,
+        int $skipped,
+        array $failed
+    ): void {
+        $state->updateStage($jobId, PipelineStateService::STAGE_CONVERT, [
+            'status' => 'running',
+            'dataset_path' => $outputDir,
+            'counts' => $this->conversionCounts($total, $processed, $skipped, $failed),
+            'errors' => $failed,
+            'max_retries' => (int) config('file_converter.retries', 3),
+        ]);
+    }
+
+    private function conversionCounts(int $total, int $processed, int $skipped, array $failed): array
+    {
+        return [
+            'total' => $total,
+            'sourceFiles' => $total,
+            'processed' => $processed,
+            'convertedFiles' => $processed,
+            'skipped' => $skipped,
+            'skippedFiles' => $skipped,
+            'failed' => count($failed),
+            'failedFiles' => count($failed),
+        ];
     }
 
     private function pickOutputDir(): ?string

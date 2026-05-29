@@ -3,6 +3,7 @@
 namespace App\Console\Commands\Rag;
 
 use App\Services\Rag\RagRabbitMQ;
+use App\Services\Pipeline\PipelineStateService;
 use App\Support\PipelineExitCode;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\File;
@@ -17,7 +18,7 @@ class PublishConvertedFolderCommand extends Command
 
     protected $description = 'Publish convert.document.completed RabbitMQ events for converted Markdown files in a folder.';
 
-    public function handle(RagRabbitMQ $rabbit): int
+    public function handle(RagRabbitMQ $rabbit, PipelineStateService $pipelineState): int
     {
         $folder = $this->resolveFolder((string) $this->argument('folder'));
         if (!is_dir($folder)) {
@@ -30,6 +31,7 @@ class PublishConvertedFolderCommand extends Command
             $limit = max(0, (int) $this->option('limit'));
             $published = 0;
             $skipped = 0;
+            $pipelineJobCounts = [];
 
             foreach (File::allFiles($folder) as $file) {
                 if ($file->getFilename() !== 'conversion_meta.json') {
@@ -50,7 +52,12 @@ class PublishConvertedFolderCommand extends Command
                     continue;
                 }
 
-                $rabbit->publishConvertedDocument($this->eventFromMeta($meta, $markdownPath));
+                $event = $this->eventFromMeta($meta, $markdownPath);
+                $rabbit->publishConvertedDocument($event);
+                if (!empty($event['pipeline_job_id'])) {
+                    $pipelineJobId = (string) $event['pipeline_job_id'];
+                    $pipelineJobCounts[$pipelineJobId] = ($pipelineJobCounts[$pipelineJobId] ?? 0) + 1;
+                }
                 $published++;
 
                 if ($limit > 0 && $published >= $limit) {
@@ -62,6 +69,25 @@ class PublishConvertedFolderCommand extends Command
             $this->info("Published {$published} convert.document.completed event(s).");
             if ($skipped > 0) {
                 $this->warn("Skipped {$skipped} invalid converted document metadata file(s).");
+            }
+            foreach ($pipelineJobCounts as $pipelineJobId => $pipelinePublished) {
+                if ($pipelinePublished > 0) {
+                    $pipelineState->updateStage($pipelineJobId, PipelineStateService::STAGE_INGEST, [
+                        'status' => 'received',
+                        'dataset_path' => $folder,
+                        'counts' => [
+                            'total' => $pipelinePublished,
+                            'received' => $pipelinePublished,
+                            'processing' => 0,
+                            'completed' => 0,
+                            'failed' => 0,
+                        ],
+                        'metadata' => [
+                            'publisher' => 'rag:publish-converted-folder',
+                            'folder' => $folder,
+                        ],
+                    ]);
+                }
             }
 
             return $published > 0 && $skipped === 0
@@ -78,10 +104,12 @@ class PublishConvertedFolderCommand extends Command
     {
         $sourceFile = (string) ($meta['source_file'] ?? $meta['source_pdf'] ?? '');
         $jobId = (string) ($meta['doc_id'] ?? $meta['converted_id'] ?? hash('sha256', $markdownPath));
+        $pipelineJobId = (string) ($meta['pipeline_job_id'] ?? '');
 
         return [
             'event_id' => (string) Str::uuid(),
             'job_id' => $jobId,
+            'pipeline_job_id' => $pipelineJobId !== '' ? $pipelineJobId : null,
             'parent_event_id' => (string) Str::uuid(),
             'schema_version' => (string) config('communication.rabbitmq.rag_ingestion.schema_version', '1'),
             'event_type' => 'convert.document.completed',
@@ -100,6 +128,7 @@ class PublishConvertedFolderCommand extends Command
             'trace_id' => $jobId,
             'payload' => [
                 'title' => $meta['title'] ?? pathinfo($markdownPath, PATHINFO_FILENAME),
+                'pipeline_job_id' => $pipelineJobId !== '' ? $pipelineJobId : null,
             ],
         ];
     }

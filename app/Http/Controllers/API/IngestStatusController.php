@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\API;
 
 use App\Http\Controllers\Controller;
+use App\Services\Pipeline\PipelineStateService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\File;
@@ -50,6 +51,7 @@ class IngestStatusController extends Controller
                     $status['exit_code'] = $exitCode;
                 }
                 $status['updated_at'] = now()->toIso8601String();
+                $this->syncPipelineIngestStatus($status);
                 if (is_array($ingests) && $statusIndex !== null) {
                     $ingests[$statusIndex] = $status;
                     File::put($statusPath, json_encode(['ingests' => $ingests], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
@@ -69,6 +71,46 @@ class IngestStatusController extends Controller
             'status' => $status,
             'log_lines' => $lines,
         ]);
+    }
+
+    private function syncPipelineIngestStatus(array $status): void
+    {
+        $pipelineJobId = (string) ($status['pipeline_job_id'] ?? '');
+        if ($pipelineJobId === '') {
+            return;
+        }
+
+        $payload = [
+            'dataset_path' => $status['path'] ?? null,
+            'counts' => [
+                'total' => 0,
+                'received' => 0,
+                'processing' => 0,
+                'completed' => ($status['status'] ?? null) === 'completed' ? 1 : 0,
+                'failed' => ($status['status'] ?? null) === 'failed' ? 1 : 0,
+            ],
+            'metadata' => [
+                'mode' => 'direct-ui',
+                'pid' => $status['pid'] ?? null,
+                'collection' => $status['collection'] ?? null,
+                'lastLine' => $status['last_line'] ?? null,
+                'exitCode' => $status['exit_code'] ?? null,
+            ],
+        ];
+
+        if (($status['status'] ?? null) === 'completed') {
+            app(PipelineStateService::class)->completeStage($pipelineJobId, PipelineStateService::STAGE_INGEST, $payload);
+            return;
+        }
+
+        if (($status['status'] ?? null) === 'failed') {
+            app(PipelineStateService::class)->failStage($pipelineJobId, PipelineStateService::STAGE_INGEST, array_merge($payload, [
+                'errors' => [[
+                    'message' => $status['last_line'] ?? 'Ingest process failed.',
+                    'updatedAt' => now()->toIso8601String(),
+                ]],
+            ]));
+        }
     }
 
     public function clear(Request $request): JsonResponse

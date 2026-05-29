@@ -4,6 +4,7 @@ namespace App\Http\Controllers\API;
 
 use App\Http\Controllers\Controller;
 use App\Services\Pipeline\PipelineLogger;
+use App\Services\Pipeline\PipelineStateService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\File;
@@ -131,6 +132,7 @@ class IngestController extends Controller
             'batch' => 'sometimes|integer',
             'timeout' => 'sometimes|integer',
             'resume_mode' => 'sometimes|string|in:resume,start',
+            'job_id' => 'sometimes|string',
         ]);
 
         $root = $this->resolveCrawledDataRoot();
@@ -224,8 +226,13 @@ class IngestController extends Controller
 
         $collectionExists = $this->collectionExistsInQdrant((string) $collection);
         $now = now()->toIso8601String();
+        $pipelineJobId = trim((string) ($data['job_id'] ?? ''));
+        if ($pipelineJobId === '') {
+            $pipelineJobId = (string) Str::uuid();
+        }
         $entry = [
             'id' => (string) Str::uuid(),
+            'pipeline_job_id' => $pipelineJobId,
             'started_at' => $now,
             'updated_at' => $now,
             'status' => 'running',
@@ -249,12 +256,30 @@ class IngestController extends Controller
         File::append($cacheLogPath, 'INGEST_STARTED ' . $path . PHP_EOL);
         File::append($fullLogPath, 'INGEST_STARTED ' . $path . PHP_EOL);
         PipelineLogger::started('ingest', [
-            'job_id' => $entry['id'],
+            'job_id' => $pipelineJobId,
             'file_path' => $path,
             'collection' => (string) $collection,
             'pipeline_stage' => 'process_launch',
             'graph' => !empty($data['graph']),
             'graph_only' => !empty($data['graph_only']),
+        ]);
+        app(PipelineStateService::class)->startStage($pipelineJobId, PipelineStateService::STAGE_INGEST, [
+            'dataset_path' => $path,
+            'counts' => [
+                'total' => 0,
+                'received' => 0,
+                'processing' => 1,
+                'completed' => 0,
+                'failed' => 0,
+            ],
+            'metadata' => [
+                'mode' => 'direct-ui',
+                'statusMode' => $statusMode,
+                'collection' => (string) $collection,
+                'graph' => !empty($data['graph']),
+                'graphOnly' => !empty($data['graph_only']),
+                'resumeMode' => $resumeMode,
+            ],
         ]);
 
         $escaped = array_map('escapeshellarg', $cmd);
@@ -304,11 +329,26 @@ class IngestController extends Controller
             unset($existing);
             $this->saveStatusEntries($statusPath, $entries);
             PipelineLogger::failed('ingest', [
-                'job_id' => $entry['id'],
+                'job_id' => $pipelineJobId,
                 'file_path' => $path,
                 'collection' => (string) $collection,
                 'pipeline_stage' => 'process_launch',
                 'error_message' => 'Failed to launch ingest process.',
+            ]);
+            app(PipelineStateService::class)->failStage($pipelineJobId, PipelineStateService::STAGE_INGEST, [
+                'dataset_path' => $path,
+                'counts' => [
+                    'total' => 0,
+                    'received' => 0,
+                    'processing' => 0,
+                    'completed' => 0,
+                    'failed' => 1,
+                ],
+                'errors' => [[
+                    'message' => 'Failed to launch ingest process.',
+                    'updatedAt' => now()->toIso8601String(),
+                ]],
+                'metadata' => ['mode' => 'direct-ui'],
             ]);
 
             return response()->json([
@@ -329,7 +369,7 @@ class IngestController extends Controller
         unset($existing);
         $this->saveStatusEntries($statusPath, $entries);
         PipelineLogger::success('ingest', [
-            'job_id' => $entry['id'],
+            'job_id' => $pipelineJobId,
             'file_path' => $path,
             'collection' => (string) $collection,
             'pipeline_stage' => 'process_launch',
@@ -339,6 +379,7 @@ class IngestController extends Controller
 
         return response()->json([
             'ok' => true,
+            'job_id' => $pipelineJobId,
             'pid' => $pid,
             'status_path' => $statusPath,
             'log_path' => $cacheLogPath,
@@ -424,6 +465,25 @@ class IngestController extends Controller
             if ($pid && in_array($pid, $stoppedPids, true)) {
                 $entry['status'] = 'stopped';
                 $entry['updated_at'] = $now;
+                $pipelineJobId = (string) ($entry['pipeline_job_id'] ?? '');
+                if ($pipelineJobId !== '') {
+                    app(PipelineStateService::class)->partialStage($pipelineJobId, PipelineStateService::STAGE_INGEST, [
+                        'dataset_path' => $entry['path'] ?? null,
+                        'counts' => [
+                            'total' => 0,
+                            'received' => 0,
+                            'processing' => 0,
+                            'completed' => 0,
+                            'failed' => 0,
+                            'stopped' => 1,
+                        ],
+                        'metadata' => [
+                            'mode' => 'direct-ui',
+                            'message' => 'Ingest process stopped by request.',
+                            'pid' => $pid,
+                        ],
+                    ]);
+                }
             }
         }
         unset($entry);

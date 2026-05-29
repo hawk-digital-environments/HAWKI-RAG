@@ -29,7 +29,7 @@ class ScrapeProcess extends Model
      ---------------------------------- */
     public function elements(): HasMany
     {
-        return $this->hasMany(ScrapedElement::class, 'job_id');
+        return $this->hasMany(ScrapedElement::class, 'job_id', 'job_id');
     }
 
     public function stats(): HasOne

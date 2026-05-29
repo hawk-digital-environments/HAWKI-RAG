@@ -3,6 +3,7 @@
 namespace App\Services\Rag;
 
 use App\Models\JobProcessingState;
+use App\Services\Pipeline\PipelineStateService;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
@@ -12,6 +13,11 @@ use Throwable;
 
 class ConvertedDocumentIngestionService
 {
+    public function __construct(
+        private readonly PipelineStateService $pipelineState,
+    ) {
+    }
+
     public function claim(array $event, int $retryCount, int $maxRetries): ?JobProcessingState
     {
         $jobId = $this->requiredString($event, 'job_id');
@@ -43,6 +49,14 @@ class ConvertedDocumentIngestionService
             'trace_id' => $event['trace_id'] ?? null,
         ]);
         $state->save();
+        $this->updatePipelineIngestCounts($event, [
+            'received' => -1,
+            'processing' => 1,
+        ], [
+            'retry_count' => $retryCount,
+            'max_retries' => $maxRetries,
+            'metadata' => $this->pipelineIngestMetadata($event),
+        ]);
 
         return $state;
     }
@@ -91,6 +105,14 @@ class ConvertedDocumentIngestionService
                 'trace_id' => $event['trace_id'] ?? null,
             ],
         );
+        $this->updatePipelineIngestCounts($event, [
+            'processing' => -1,
+            'completed' => 1,
+        ], [
+            'retry_count' => $retryCount,
+            'max_retries' => $maxRetries,
+            'metadata' => $this->pipelineIngestMetadata($event),
+        ]);
     }
 
     public function markReceivedForRetry(array $event, int $retryCount, int $maxRetries, Throwable $error): void
@@ -114,6 +136,15 @@ class ConvertedDocumentIngestionService
                 'trace_id' => $event['trace_id'] ?? null,
             ],
         );
+        $this->updatePipelineIngestCounts($event, [
+            'processing' => -1,
+            'received' => 1,
+        ], [
+            'retry_count' => $retryCount,
+            'max_retries' => $maxRetries,
+            'errors' => [$this->pipelineError($event, $error)],
+            'metadata' => $this->pipelineIngestMetadata($event),
+        ]);
     }
 
     public function markFailed(array $event, int $retryCount, int $maxRetries, Throwable $error): void
@@ -137,6 +168,15 @@ class ConvertedDocumentIngestionService
                 'trace_id' => $event['trace_id'] ?? null,
             ],
         );
+        $this->updatePipelineIngestCounts($event, [
+            'processing' => -1,
+            'failed' => 1,
+        ], [
+            'retry_count' => $retryCount,
+            'max_retries' => $maxRetries,
+            'errors' => [$this->pipelineError($event, $error)],
+            'metadata' => $this->pipelineIngestMetadata($event),
+        ]);
     }
 
     public function failedEvent(array $event, int $retryCount, int $maxRetries, Throwable $error): array
@@ -178,6 +218,106 @@ class ConvertedDocumentIngestionService
         if ($event['output_format'] !== 'markdown') {
             throw new InvalidArgumentException('Unsupported output_format: ' . (string) $event['output_format']);
         }
+    }
+
+    private function updatePipelineIngestCounts(array $event, array $deltas, array $attributes = []): void
+    {
+        $pipelineJobId = $this->pipelineJobId($event);
+        if ($pipelineJobId === '') {
+            return;
+        }
+
+        $stage = $this->pipelineState->incrementStageCounts(
+            $pipelineJobId,
+            PipelineStateService::STAGE_INGEST,
+            $deltas,
+            array_merge($attributes, [
+                'status' => 'processing',
+                'dataset_path' => $this->datasetPathFromEvent($event),
+            ])
+        );
+
+        $counts = is_array($stage?->counts) ? $stage->counts : [];
+        $this->pipelineState->updateStage($pipelineJobId, PipelineStateService::STAGE_INGEST, [
+            'status' => $this->pipelineIngestStatus($counts),
+            'dataset_path' => $this->datasetPathFromEvent($event),
+            'counts' => $counts,
+            'retry_count' => $attributes['retry_count'] ?? null,
+            'max_retries' => $attributes['max_retries'] ?? null,
+            'errors' => $attributes['errors'] ?? null,
+            'metadata' => $attributes['metadata'] ?? null,
+        ]);
+    }
+
+    private function pipelineIngestStatus(array $counts): string
+    {
+        $received = (int) ($counts['received'] ?? 0);
+        $processing = (int) ($counts['processing'] ?? 0);
+        $completed = (int) ($counts['completed'] ?? 0);
+        $failed = (int) ($counts['failed'] ?? 0);
+        $total = (int) ($counts['total'] ?? 0);
+
+        if ($processing > 0) {
+            return 'processing';
+        }
+        if ($received > 0) {
+            return 'received';
+        }
+        if ($failed > 0 && $completed > 0) {
+            return 'partial';
+        }
+        if ($failed > 0) {
+            return 'failed';
+        }
+        if ($completed > 0 && ($total === 0 || $completed >= $total)) {
+            return 'completed';
+        }
+
+        return 'received';
+    }
+
+    private function pipelineJobId(array $event): string
+    {
+        $payload = is_array($event['payload'] ?? null) ? $event['payload'] : [];
+        return (string) ($event['pipeline_job_id'] ?? $payload['pipeline_job_id'] ?? '');
+    }
+
+    private function datasetPathFromEvent(array $event): ?string
+    {
+        $path = (string) ($event['original_path'] ?? $event['converted_path'] ?? '');
+        if ($path === '') {
+            return null;
+        }
+
+        $root = realpath((string) config('communication.rabbitmq.rag_ingestion.shared_storage_root', '/app/shared'));
+        $resolved = realpath($path) ?: $path;
+        if (!$root || !Str::startsWith($resolved, $root . DIRECTORY_SEPARATOR)) {
+            return dirname($resolved);
+        }
+
+        $relative = ltrim(substr($resolved, strlen($root)), DIRECTORY_SEPARATOR);
+        $topLevel = strtok($relative, DIRECTORY_SEPARATOR);
+        return $topLevel ? $root . DIRECTORY_SEPARATOR . $topLevel : $root;
+    }
+
+    private function pipelineIngestMetadata(array $event): array
+    {
+        return [
+            'latestDocumentJobId' => (string) ($event['job_id'] ?? ''),
+            'latestEventId' => (string) ($event['event_id'] ?? ''),
+            'latestConvertedPath' => $event['converted_path'] ?? null,
+        ];
+    }
+
+    private function pipelineError(array $event, Throwable $error): array
+    {
+        return [
+            'jobId' => (string) ($event['job_id'] ?? ''),
+            'eventId' => (string) ($event['event_id'] ?? ''),
+            'errorType' => class_basename($error),
+            'message' => $error->getMessage(),
+            'updatedAt' => Carbon::now()->toIso8601String(),
+        ];
     }
 
     private function toBridgePayload(array $event, string $markdown, string $markdownPath): array

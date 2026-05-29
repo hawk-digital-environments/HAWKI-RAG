@@ -9,6 +9,7 @@ use App\Services\ScrapeService\Pipeline\ScrapeExecutionService;
 use App\Services\ScrapeService\Pipeline\ScrapeContextBuilder;
 use App\Services\ScrapeService\Validation\ScrapeValidationService;
 use App\Services\Pipeline\PipelineLogger;
+use App\Services\Pipeline\PipelineStateService;
 use App\Services\StorageService\StorageService;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Cache;
@@ -23,6 +24,7 @@ class ScraperPipelineService
         private readonly ScrapeValidationService $validationService,
         private readonly ScrapeExecutionService  $executionService,
         private readonly StorageService $storageService,
+        private readonly PipelineStateService $pipelineState,
     ) {}
 
     /**
@@ -42,6 +44,20 @@ class ScraperPipelineService
     {
         // Create context to carry state through the pipeline
         $context = ScrapeContextBuilder::buildFromRequest($request);
+        $this->pipelineState->startStage($context->jobId, PipelineStateService::STAGE_SCRAPE, [
+            'dataset_path' => $request->outputDir,
+            'source_url' => $request->url,
+            'label' => $request->label,
+            'counts' => [
+                'totalPages' => $request->maxPages,
+                'pagesCrawled' => 0,
+                'failedUrls' => 0,
+            ],
+            'metadata' => [
+                'subStage' => 'initialized',
+                'request' => $request->toArray(),
+            ],
+        ]);
         PipelineLogger::started('scrape', [
             'job_id' => $context->jobId,
             'source_url' => $request->url,
@@ -64,6 +80,14 @@ class ScraperPipelineService
                     'errors' => $context->getErrors(),
                     'warnings' => $context->getWarnings(),
                 ]);
+                $this->pipelineState->failStage($context->jobId, PipelineStateService::STAGE_SCRAPE, [
+                    'dataset_path' => $request->outputDir,
+                    'source_url' => $request->url,
+                    'label' => $request->label,
+                    'errors' => $context->getErrors(),
+                    'warnings' => $context->getWarnings(),
+                    'metadata' => ['subStage' => $context->getStage()],
+                ]);
                 return $this->buildFailureResult($context);
             }
 
@@ -81,6 +105,14 @@ class ScraperPipelineService
                     'errors' => $context->getErrors(),
                     'warnings' => $context->getWarnings(),
                 ]);
+                $this->pipelineState->failStage($context->jobId, PipelineStateService::STAGE_SCRAPE, [
+                    'dataset_path' => $request->outputDir,
+                    'source_url' => $request->url,
+                    'label' => $request->label,
+                    'errors' => $context->getErrors(),
+                    'warnings' => $context->getWarnings(),
+                    'metadata' => ['subStage' => $context->getStage()],
+                ]);
                 return $this->buildFailureResult($context);
             }
 
@@ -91,6 +123,22 @@ class ScraperPipelineService
                 'output_dir' => $request->outputDir,
                 'pipeline_stage' => $context->getStage(),
                 'warnings' => $context->getWarnings(),
+            ]);
+            $this->pipelineState->updateStage($context->jobId, PipelineStateService::STAGE_SCRAPE, [
+                'status' => 'running',
+                'dataset_path' => $request->outputDir,
+                'source_url' => $request->url,
+                'label' => $request->label,
+                'counts' => [
+                    'totalPages' => $request->maxPages,
+                    'pagesCrawled' => 0,
+                    'failedUrls' => 0,
+                ],
+                'warnings' => $context->getWarnings(),
+                'metadata' => [
+                    'subStage' => $context->getStage(),
+                    'message' => 'Crawl submitted to Crawl4AI.',
+                ],
             ]);
             return ScrapeRequestResult::success(
                 $context->jobId,
@@ -104,6 +152,16 @@ class ScraperPipelineService
                 'pipeline_stage' => $context->getStage(),
                 'error_message' => $e->getMessage(),
                 'exception' => $e,
+            ]);
+            $this->pipelineState->failStage($context->jobId, PipelineStateService::STAGE_SCRAPE, [
+                'dataset_path' => $request->outputDir,
+                'source_url' => $request->url,
+                'label' => $request->label,
+                'errors' => $context->getErrors(),
+                'metadata' => [
+                    'subStage' => $context->getStage(),
+                    'exception' => get_class($e),
+                ],
             ]);
             return $this->buildFailureResult($context);
         }
@@ -119,6 +177,10 @@ class ScraperPipelineService
     private function executeValidation(ScrapeContext $context): void
     {
         $context->setStage('validation');
+        $this->pipelineState->updateStage($context->jobId, PipelineStateService::STAGE_SCRAPE, [
+            'status' => 'running',
+            'metadata' => ['subStage' => 'validation'],
+        ]);
 
         // Validate request
         $isValid = $this->validationService->validate($context->getRequest());
@@ -153,6 +215,10 @@ class ScraperPipelineService
     private function executeExecution(ScrapeContext $context, ?callable $outputCallback = null): void
     {
         $context->setStage('execution');
+        $this->pipelineState->updateStage($context->jobId, PipelineStateService::STAGE_SCRAPE, [
+            'status' => 'running',
+            'metadata' => ['subStage' => 'execution'],
+        ]);
 
         // Execute the crawler and persist progress through the scrape pipeline.
         $response = $this->executionService->execute($context->getRequest(), $outputCallback);

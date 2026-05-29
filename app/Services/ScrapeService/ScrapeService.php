@@ -3,6 +3,7 @@
 namespace App\Services\ScrapeService;
 
 use App\Models\ScrapeProcess;
+use App\Services\Pipeline\PipelineStateService;
 use App\Services\ScrapeService\Data\ScrapeJobRequest;
 use App\Services\ScrapeService\Data\ScrapeRequestResult;
 use Exception;
@@ -63,6 +64,10 @@ class ScrapeService
 
         if ($result['success'] ?? false) {
             ScrapeProcess::where('job_id', $jobId)->update(['stage' => 'cancel_requested']);
+            app(PipelineStateService::class)->updateStage($jobId, PipelineStateService::STAGE_SCRAPE, [
+                'status' => 'cancel_requested',
+                'metadata' => ['message' => 'Crawler cancellation requested.'],
+            ]);
         }
 
         return $result;
