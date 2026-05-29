@@ -87,7 +87,7 @@ class ScrapeController extends Controller
         $validatedData = $request->validate([
             'jobId' => 'required|string',
         ]);
-        $success = $this->scrapeService->deleteScrapeJob($request->jobId);
+        $success = $this->scrapeService->deleteScrapeJob($validatedData['jobId']);
         return response()->json([
             'success' => $success,
         ]);
@@ -116,9 +116,9 @@ class ScrapeController extends Controller
     public function getScrapeResult(Request $request){
         $validatedData = $request->validate([
             'jobId' => 'required|string',
-            'elementId' => 'required|string',
+            'elementId' => 'required|integer|min:1',
         ]);
-        $data = $this->scrapeService->getScrapeResult($validatedData['jobId'], $validatedData['elementId']);
+        $data = $this->scrapeService->getScrapeResult($validatedData['jobId'], (int) $validatedData['elementId']);
 
         return response()->json([
             'data' => $data,

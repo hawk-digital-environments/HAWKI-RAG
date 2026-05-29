@@ -7,9 +7,12 @@ use App\Http\Controllers\API\IngestStatusController;
 use App\Http\Controllers\API\RagHealthController;
 use App\Http\Controllers\API\RagStatsController;
 use App\Http\Controllers\Graph\RagGraphController;
+use App\Http\Controllers\PipelineStatusController;
 use App\Http\Controllers\ScrapeController;
 
 use Illuminate\Support\Facades\Route;
+
+Route::redirect('/', '/hawki-rag-playground');
 
 // HAWKI RAG playground helpers
 
@@ -33,6 +36,7 @@ Route::get('/scraper/status/{jobId}', [ScrapeController::class, 'getCrawlerStatu
 Route::post('/scraper/jobs/{jobId}/cancel', [ScrapeController::class, 'cancelCrawlerJob']);
 Route::post('/scraper/jobs/{jobId}/pause', [ScrapeController::class, 'pauseCrawlerJob']);
 Route::post('/scraper/jobs/{jobId}/resume', [ScrapeController::class, 'resumeCrawlerJob']);
+Route::get('/pipeline/status/{jobId}', [PipelineStatusController::class, 'show']);
 // Playground related routes
 
 Route::post('/query', [HawkiRagProxyController::class, 'query']);

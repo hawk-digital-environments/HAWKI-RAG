@@ -4,7 +4,6 @@ namespace App\Services\StorageService;
 
 use Exception;
 use Illuminate\Contracts\Filesystem\Filesystem;
-use Illuminate\Support\Facades\Storage;
 
 
 /**
@@ -139,7 +138,13 @@ class StorageService
     public function fetchImages(string $id, string $urlHash): array
     {
         $folder = $this->buildFolder($id , $urlHash);
-        return $this->filesystem->files($folder. '/images');
+        $path = $folder. '/images';
+
+        if (!$this->filesystem->exists($path)) {
+            return [];
+        }
+
+        return $this->filesystem->files($path);
     }
 
 
@@ -150,7 +155,7 @@ class StorageService
            $folder = $folder . '/' . $type;
         }
 
-        if($this->filesystem->exists($folder. '/' . $name)){
+        if(!$this->filesystem->exists($folder. '/' . $name)){
             return null;
         }
 

@@ -10,6 +10,7 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Str;
 use SplFileInfo;
+use Symfony\Component\Finder\Finder;
 
 class ConvertCrawledPdfs extends Command
 {
@@ -549,7 +550,12 @@ class ConvertCrawledPdfs extends Command
     {
         $paths = [];
         $root = rtrim($outputDir, DIRECTORY_SEPARATOR);
-        foreach (File::allFiles($root) as $file) {
+        $finder = Finder::create()
+            ->files()
+            ->ignoreUnreadableDirs()
+            ->in($root);
+
+        foreach ($finder as $file) {
             if (!in_array(strtolower($file->getExtension()), $extensions, true)) {
                 continue;
             }
@@ -673,7 +679,12 @@ class ConvertCrawledPdfs extends Command
         }
 
         $files = [];
-        foreach (File::allFiles($destDir) as $file) {
+        $finder = Finder::create()
+            ->files()
+            ->ignoreUnreadableDirs()
+            ->in($destDir);
+
+        foreach ($finder as $file) {
             if ($file->getFilename() === 'conversion_meta.json') {
                 continue;
             }

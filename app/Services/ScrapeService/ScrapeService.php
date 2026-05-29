@@ -222,7 +222,7 @@ class ScrapeService
 
             return [
                 'success' => $success,
-                'status' => $response->status(),
+                'status' => $success ? $response->status() : ($response->successful() ? 502 : $response->status()),
                 'data' => $data,
                 'message' => $success
                     ? 'Page content extracted successfully.'
@@ -355,6 +355,10 @@ class ScrapeService
 
         if (isset($data['message']) && is_scalar($data['message'])) {
             return (string) $data['message'];
+        }
+
+        if (isset($data['error']) && is_scalar($data['error']) && trim((string) $data['error']) !== '') {
+            return (string) $data['error'];
         }
 
         return 'Crawler request failed with HTTP '.$status.'.';

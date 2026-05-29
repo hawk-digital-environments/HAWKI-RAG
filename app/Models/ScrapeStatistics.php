@@ -28,9 +28,15 @@ class ScrapeStatistics extends Model
     ];
 
     protected $casts = [
+        'sessions' => 'integer',
+        'requests' => 'integer',
         'total_urls' => 'integer',
+        'target_urls' => 'integer',
         'completed_urls' => 'integer',
         'failed_urls' => 'integer',
+        'pdfs_downloaded' => 'integer',
+        'images_downloaded' => 'integer',
+        'duration_seconds' => 'integer',
         'started_at' => 'datetime',
         'completed_at' => 'datetime',
         'current_url' => 'string',
@@ -47,7 +53,15 @@ class ScrapeStatistics extends Model
 
     public function progressPercentage(): int
     {
-        return ( $this->completed_urls * 100 ) / $this->total_urls;
+        $totalUrls = (int) $this->total_urls;
+
+        if ($totalUrls <= 0) {
+            return 0;
+        }
+
+        $percentage = (int) round(((int) $this->completed_urls * 100) / $totalUrls);
+
+        return max(0, min(100, $percentage));
     }
 
 
