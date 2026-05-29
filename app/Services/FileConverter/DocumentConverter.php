@@ -46,12 +46,12 @@ class DocumentConverter
         }
 
         if (!$response->successful()) {
-            throw new \Exception('PDF extraction failed: ' . $response->body());
+            throw new \Exception('Document extraction failed: ' . $response->body());
         }
 
         // Unzip files from response
         $zipContent = $response->body();
-        $extractDir = sys_get_temp_dir() . '/pdf_extract_' . uniqid();
+        $extractDir = sys_get_temp_dir() . '/document_extract_' . uniqid();
         if (!mkdir($extractDir, 0700, true) && !is_dir($extractDir)) {
             throw new \RuntimeException(sprintf('Directory "%s" was not created', $extractDir));
         }

@@ -38,6 +38,7 @@ class ScrapeController extends Controller
         $result = $this->scrapeService->startPipeline($validatedData);
         return response()->json([
             'success' => $result->success,
+            'jobId' => $result->jobId,
             'result' => $result->toArray()
         ], $result->success ? 200 : 502);
     }
@@ -128,8 +129,7 @@ class ScrapeController extends Controller
         $validatedData = $request->validate([
             'url' => 'required|string',
         ]);
-        $content = $this->scrapeService->extractPageContent($validatedData['url']);
-        return response()->json([$content]);
+        return $this->crawlerResponse($this->scrapeService->extractPageContent($validatedData['url']));
     }
 
     private function crawlerResponse(array $result)

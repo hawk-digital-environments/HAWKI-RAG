@@ -15,15 +15,15 @@ class ConvertCrawledPdfs extends Command
 {
     /**
      * Usage:
-     *   php artisan convert:crawled-pdfs /app/shared/crawled-data/hawk
+     *   php artisan convert:crawled-files /app/shared/crawled-data/hawk
      */
     protected $signature = 'convert:crawled-pdfs
         {outputDir? : Path to crawler output directory (absolute path or path relative to the canonical crawled-data root)}
-        {--extensions=pdf,doc,docx : Comma-separated list of extensions to convert}
+        {--extensions= : Comma-separated list of extensions to convert; defaults to file_converter.supported_extensions}
         {--scan-all : Scan all files under outputDir (not just **/files/)}
         {--existing=ask : Existing output mode: ask, continue, restart, cancel}';
 
-    protected $description = 'Convert documents under OUTPUT_DIR to Markdown using DocumentConverter, skipping already-converted files, and log failures to storage/logs/failed_conversion.json';
+    protected $description = 'Backward-compatible alias for convert:crawled-files.';
 
     public function handle(): int
     {
@@ -56,7 +56,7 @@ class ConvertCrawledPdfs extends Command
             'scan_all' => (bool) $this->option('scan-all'),
         ]);
 
-        // Find documents under outputDir (recursive)
+        // Find supported files under outputDir (recursive)
         $extensions = $this->parseExtensions((string) $this->option('extensions'));
         $scanAll = (bool) $this->option('scan-all');
         $docPaths = $this->collectDocumentPaths($outputDir, $extensions, $scanAll);
@@ -64,19 +64,19 @@ class ConvertCrawledPdfs extends Command
         if (empty($docPaths)) {
             $extLabel = implode(',', $extensions);
             $scopeLabel = $scanAll ? 'recursive' : '**/files/*';
-            $this->warn("No documents found under $outputDir (extensions: {$extLabel}; scope: {$scopeLabel})");
+            $this->warn("No supported files found under $outputDir (extensions: {$extLabel}; scope: {$scopeLabel})");
             $this->writeFailedJson([], 0, 0, 0); // write empty report
             PipelineLogger::skipped('convert', [
                 'job_id' => $jobId,
                 'output_dir' => $outputDir,
-                'reason' => 'No source documents found.',
+                'reason' => 'No supported source files found.',
                 'extensions' => $extensions,
                 'scan_all' => $scanAll,
             ]);
             return PipelineExitCode::PARTIAL_SUCCESS;
         }
 
-        $this->info('Found ' . count($docPaths) . ' document(s). Converting…');
+        $this->info('Found ' . count($docPaths) . ' supported file(s). Converting...');
 
         $existingMetaCount = 0;
         foreach ($docPaths as $docPath) {
@@ -290,7 +290,6 @@ class ConvertCrawledPdfs extends Command
                 }
 
                 $failed[] = [
-                    'pdf_local_path' => $docPath,
                     'file_local_path' => $docPath,
                     'error'          => $e->getMessage(),
                 ];
@@ -428,14 +427,14 @@ class ConvertCrawledPdfs extends Command
     }
 
     /**
-     * Try converting a PDF up to $maxRetries times with a delay.
+     * Try converting a supported file up to $maxRetries times with a delay.
      * Retries only on likely-transient errors (timeouts / 5xx).
      *
      * @return array<string,string> files map [relativePath => content]
      */
     private function convertWithRetry(
         DocumentConverter $converter,
-        SplFileInfo $pdfInfo,
+        SplFileInfo $fileInfo,
         int $maxRetries,
         int $retryDelayMs
     ): array {
@@ -444,7 +443,7 @@ class ConvertCrawledPdfs extends Command
 
         while ($attempt <= $maxRetries) {
             try {
-                return $converter->requestDocumentToMarkdown($pdfInfo);
+                return $converter->requestDocumentToMarkdown($fileInfo);
             } catch (\Throwable $e) {
                 $lastEx = $e;
                 $msg = (string) $e->getMessage();
@@ -478,7 +477,7 @@ class ConvertCrawledPdfs extends Command
             'processed'    => $processed,
             'skipped'      => $skipped,
             'failed'       => count($failed),
-            'failures'     => $failed, // each: { pdf_local_path, error }
+            'failures'     => $failed, // each: { file_local_path, error }
         ];
 
         $dest = storage_path('logs/failed_conversion.json');
@@ -573,12 +572,30 @@ class ConvertCrawledPdfs extends Command
     {
         $raw = trim($raw);
         if ($raw === '') {
-            return ['pdf', 'doc', 'docx'];
+            return $this->configuredExtensions();
         }
         $parts = array_map('trim', explode(',', $raw));
         $parts = array_filter($parts, static fn ($ext) => $ext !== '');
         $parts = array_map(static fn ($ext) => ltrim(strtolower($ext), '.'), $parts);
-        return $parts ?: ['pdf', 'doc', 'docx'];
+        return $parts ?: $this->configuredExtensions();
+    }
+
+    /**
+     * @return array<int,string>
+     */
+    private function configuredExtensions(): array
+    {
+        $extensions = config('file_converter.supported_extensions', ['pdf', 'doc', 'docx']);
+        if (!is_array($extensions)) {
+            return ['pdf', 'doc', 'docx'];
+        }
+
+        $extensions = array_values(array_filter(
+            array_map(static fn ($extension) => is_scalar($extension) ? ltrim(strtolower(trim((string) $extension)), '.') : '', $extensions),
+            static fn ($extension) => $extension !== ''
+        ));
+
+        return $extensions ?: ['pdf', 'doc', 'docx'];
     }
 
     /**

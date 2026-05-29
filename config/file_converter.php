@@ -8,4 +8,8 @@ return [
     'retries'         => (int) env('FILE_CONVERTER_RETRIES', 3),
     'retry_delay_ms'  => (int) env('FILE_CONVERTER_RETRY_DELAY_MS', 1500),
     'token'           => env('FILE_CONVERTER_TOKEN'),
+    'supported_extensions' => array_values(array_filter(array_map(
+        static fn ($extension) => ltrim(strtolower(trim($extension)), '.'),
+        explode(',', env('FILE_CONVERTER_SUPPORTED_EXTENSIONS', 'pdf,doc,docx'))
+    ))),
 ];

@@ -10,6 +10,7 @@ use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use JsonException;
 
 class ScrapeService
@@ -35,7 +36,7 @@ class ScrapeService
             url: $request['url'],
             label: $request['label'],
             maxPages: (int) ($request['maxPages'] ?? $defaults['max_pages'] ?? 100),
-            outputDir: (string) ($request['outputDir'] ?? ''),
+            outputDir: $this->resolveOutputDir($request['outputDir'] ?? null, $request['label']),
             skipImages: $this->boolValue($request['skipImages'] ?? $defaults['skip_images'] ?? false),
             imageExceptions: $this->normalizeImageExceptions($request['imageExceptions'] ?? null),
             dateSelector: $request['dateSelector'] ?? null,
@@ -204,23 +205,58 @@ class ScrapeService
     /**
      * extracts the content of a specific page.
      * @param string $url
-     * @return string
+     * @return array
      * @throws ConnectionException
      */
-    public function extractPageContent(string $url): string
+    public function extractPageContent(string $url): array
     {
         try{
             $response = Http::timeout(300)
+                ->retry(2, 500, throw: false)
                 ->post(config('scraper.api_url'). '/scrape', [
                     'url' => $url,
                 ]);
 
-            return $response->body();
+            $data = $this->decodeJsonResponse($response->body());
+            $success = $response->successful() && (bool) ($data['success'] ?? false);
+
+            return [
+                'success' => $success,
+                'status' => $response->status(),
+                'data' => $data,
+                'message' => $success
+                    ? 'Page content extracted successfully.'
+                    : $this->errorMessageFromCrawlerData($data, $response->status()),
+            ];
         }
-        catch (ConnectionException $exception){
+        catch (JsonException $exception) {
+            return [
+                'success' => false,
+                'status' => 502,
+                'data' => null,
+                'message' => 'Crawler returned invalid JSON: '.$exception->getMessage(),
+            ];
+        }
+        catch (\Throwable $exception){
             Log::error('failed to extract page content '.$exception->getMessage());
-            return '';
+            return [
+                'success' => false,
+                'status' => 502,
+                'data' => null,
+                'message' => $exception->getMessage(),
+            ];
         }
+    }
+
+    private function resolveOutputDir(mixed $outputDir, string $label): string
+    {
+        if (is_string($outputDir) && trim($outputDir) !== '') {
+            return trim($outputDir);
+        }
+
+        return rtrim((string) config('scraper.storage_path'), DIRECTORY_SEPARATOR)
+            . DIRECTORY_SEPARATOR
+            . Str::slug($label, '-');
     }
 
     private function normalizeImageExceptions(mixed $value): ?string
