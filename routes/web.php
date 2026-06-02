@@ -32,6 +32,8 @@ Route::post('/getScrapeInformation', [ScrapeController::class, 'getScrapeInforma
 Route::post('/getScrapeResult', [ScrapeController::class, 'getScrapeResult']);
 Route::post('/extractPageContent', [ScrapeController::class, 'extractPageContent']);
 Route::get('/scraper/jobs', [ScrapeController::class, 'getCrawlerJobs']);
+Route::get('/scraper/tasks', [ScrapeController::class, 'getCrawlerTasks']);
+Route::post('/scraper/tasks/start', [ScrapeController::class, 'startCrawlerTask']);
 Route::get('/scraper/status/{jobId}', [ScrapeController::class, 'getCrawlerStatus']);
 Route::post('/scraper/jobs/{jobId}/cancel', [ScrapeController::class, 'cancelCrawlerJob']);
 Route::post('/scraper/jobs/{jobId}/pause', [ScrapeController::class, 'pauseCrawlerJob']);

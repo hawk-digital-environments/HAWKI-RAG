@@ -63,6 +63,33 @@ class ScrapeController extends Controller
         return $this->crawlerResponse($this->scrapeService->listCrawlerJobs());
     }
 
+    public function getCrawlerTasks()
+    {
+        $result = $this->scrapeService->listCrawlerTasks();
+
+        return response()->json($result, 200);
+    }
+
+    public function startCrawlerTask(Request $request)
+    {
+        $validatedData = $request->validate([
+            'taskId' => 'required|string',
+            'options' => 'nullable|array',
+        ]);
+
+        $result = $this->scrapeService->startCrawlerTask(
+            $validatedData['taskId'],
+            $validatedData['options'] ?? [],
+        );
+
+        $status = (int) ($result['status'] ?? 502);
+        if ($status < 100 || $status > 599) {
+            $status = ($result['success'] ?? false) ? 200 : 502;
+        }
+
+        return response()->json($result, $status);
+    }
+
     public function getCrawlerStatus(string $jobId)
     {
         return $this->crawlerResponse($this->scrapeService->getCrawlerStatus($jobId));

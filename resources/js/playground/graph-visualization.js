@@ -1,11 +1,10 @@
 import cytoscape from 'cytoscape';
 import elk from 'cytoscape-elk';
 import coseBilkent from 'cytoscape-cose-bilkent';
+import { apiUrl } from './urls.js';
 
 cytoscape.use(elk);
 cytoscape.use(coseBilkent);
-
-const basePath = import.meta.env.BASE_URL ?? '/';
 
 const graphCanvas = document.getElementById('neo4j-graph-canvas');
 const graphMeta = document.getElementById('neo4j-graph-meta');
@@ -449,7 +448,7 @@ function formatValue(value) {
 async function loadOverview() {
     setStatus('Loading graph overview...');
     try {
-        const data = await requestJson(`${basePath}rag/neo4j/graph/overview?limit=80`);
+        const data = await requestJson(apiUrl('rag/neo4j/graph/overview?limit=80'));
         cy?.elements().remove();
         recentNodeIds = new Set();
         recentEdgeIds = new Set();
@@ -471,7 +470,7 @@ async function searchEntities(query) {
     }
     searchResults.innerHTML = '<div class="graph-result-muted">Searching...</div>';
     try {
-        const data = await requestJson(`${basePath}rag/neo4j/graph/search?q=${encodeURIComponent(query)}&limit=12`);
+        const data = await requestJson(apiUrl(`rag/neo4j/graph/search?q=${encodeURIComponent(query)}&limit=12`));
         renderSearchResults(searchResults, data.results || [], data.warnings || []);
     } catch (error) {
         searchResults.innerHTML = `<div class="graph-result-error">${escapeHtml(error.message)}</div>`;
@@ -483,7 +482,7 @@ async function semanticSearch(query) {
     if (!query.trim()) return;
     semanticResults.innerHTML = '<div class="graph-result-muted">Searching semantically...</div>';
     try {
-        const data = await requestJson(`${basePath}rag/neo4j/graph/semantic-search?q=${encodeURIComponent(query)}&limit=8`);
+        const data = await requestJson(apiUrl(`rag/neo4j/graph/semantic-search?q=${encodeURIComponent(query)}&limit=8`));
         renderSearchResults(semanticResults, data.results || [], data.warnings || []);
     } catch (error) {
         semanticResults.innerHTML = `<div class="graph-result-error">${escapeHtml(error.message)}</div>`;
@@ -514,7 +513,7 @@ async function loadNode(nodeId) {
     if (!nodeId) return;
     setStatus('Loading entity neighborhood...');
     try {
-        const data = await requestJson(`${basePath}rag/neo4j/graph/node?node_id=${encodeURIComponent(nodeId)}&limit=100`);
+        const data = await requestJson(apiUrl(`rag/neo4j/graph/node?node_id=${encodeURIComponent(nodeId)}&limit=100`));
         searchMatchIds = new Set([nodeId]);
         recentNodeIds = new Set(data.nodes.map((node) => String(node.id)));
         recentEdgeIds = new Set(data.edges.map((edge) => String(edge.id)));
@@ -536,7 +535,7 @@ async function expandSelected() {
     }
     setStatus('Expanding neighbors...');
     try {
-        const data = await requestJson(`${basePath}rag/neo4j/graph/expand`, {
+        const data = await requestJson(apiUrl('rag/neo4j/graph/expand'), {
             method: 'POST',
             body: JSON.stringify({
                 node_id: selectedNodeId,
@@ -574,7 +573,7 @@ async function saveSnapshot() {
     }
     setStatus('Saving snapshot...');
     try {
-        await requestJson(`${basePath}rag/neo4j/graph/snapshots`, {
+        await requestJson(apiUrl('rag/neo4j/graph/snapshots'), {
             method: 'POST',
             body: JSON.stringify({ name: activeSearchQuery ? `Search: ${activeSearchQuery}` : null, scene: sceneSnapshot() }),
         });
@@ -587,7 +586,7 @@ async function saveSnapshot() {
 
 async function loadSnapshotList() {
     if (!snapshotLoad) return;
-    const data = await requestJson(`${basePath}rag/neo4j/graph/snapshots`);
+    const data = await requestJson(apiUrl('rag/neo4j/graph/snapshots'));
     snapshotLoad.innerHTML = '<option value="">Load snapshot...</option>' + (data.snapshots || []).map((snapshot) => (
         `<option value="${escapeHtml(snapshot.id)}">${escapeHtml(snapshot.name)}</option>`
     )).join('');
@@ -597,7 +596,7 @@ async function loadSnapshot(id) {
     if (!id) return;
     setStatus('Loading snapshot...');
     try {
-        const data = await requestJson(`${basePath}rag/neo4j/graph/snapshots/${encodeURIComponent(id)}`);
+        const data = await requestJson(apiUrl(`rag/neo4j/graph/snapshots/${encodeURIComponent(id)}`));
         const scene = data.snapshot?.scene || {};
         cy.elements().remove();
         cy.add([...(scene.nodes || []).map((node) => ({ group: 'nodes', data: node.data, position: node.position })), ...(scene.edges || []).map((edge) => ({ group: 'edges', data: edge.data }))]);
@@ -652,7 +651,7 @@ if (graphCanvas) {
     snapshotLoad?.addEventListener('change', (event) => loadSnapshot(event.target.value));
     snapshotDeleteBtn?.addEventListener('click', async () => {
         if (!snapshotLoad?.value) return;
-        await requestJson(`${basePath}rag/neo4j/graph/snapshots/${encodeURIComponent(snapshotLoad.value)}`, { method: 'DELETE' });
+        await requestJson(apiUrl(`rag/neo4j/graph/snapshots/${encodeURIComponent(snapshotLoad.value)}`), { method: 'DELETE' });
         await loadSnapshotList();
         setStatus('Snapshot deleted.');
     });
@@ -665,7 +664,7 @@ if (clearBtn) {
         clearBtn.disabled = true;
         if (clearNote) clearNote.textContent = 'Clearing Neo4j graph...';
         try {
-            const data = await requestJson(basePath + 'rag/neo4j/clear', { method: 'POST', body: JSON.stringify({}) });
+            const data = await requestJson(apiUrl('rag/neo4j/clear'), { method: 'POST', body: JSON.stringify({}) });
             if (clearNote) clearNote.textContent = data.ok ? 'Neo4j graph cleared.' : 'Failed to clear Neo4j graph.';
             cy?.elements().remove();
             window.playgroundLogs?.pollRagStats?.();

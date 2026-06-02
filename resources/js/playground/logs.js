@@ -1,4 +1,4 @@
-const basePath = import.meta.env.BASE_URL ?? '/';
+import { apiUrl } from './urls.js';
 
 const ingestStatus = document.getElementById('ingest-status');
 const ingestProgress = document.getElementById('ingest-progress');
@@ -101,7 +101,7 @@ function formatProgress(progress) {
 }
 
 async function fetchIngestStatus(mode) {
-    const response = await fetch(`${basePath}ingest/status?mode=${mode}`, {
+    const response = await fetch(apiUrl(`ingest/status?mode=${mode}`), {
         headers: {
             'Accept': 'application/json',
             'X-CSRF-TOKEN': csrfToken(),
@@ -174,7 +174,7 @@ async function pollIngestStatus() {
 }
 
 async function fetchIngestLive(mode) {
-    const response = await fetch(`${basePath}ingest/live?mode=${mode}`, {
+    const response = await fetch(apiUrl(`ingest/live?mode=${mode}`), {
         headers: {
             'Accept': 'application/json',
             'X-CSRF-TOKEN': csrfToken(),
@@ -238,7 +238,7 @@ async function pollIngestLive() {
 async function pollRagHealth() {
     if (!ragDetails) return;
     try {
-        const response = await fetch(basePath + 'rag/health', {
+        const response = await fetch(apiUrl('rag/health'), {
             headers: {
                 'Accept': 'application/json',
                 'X-CSRF-TOKEN': csrfToken(),
@@ -261,7 +261,7 @@ async function pollRagHealth() {
 async function pollRagStats() {
     if (!ragStats) return;
     try {
-        const response = await fetch(basePath + 'rag/stats', {
+        const response = await fetch(apiUrl('rag/stats'), {
             headers: {
                 'Accept': 'application/json',
                 'X-CSRF-TOKEN': csrfToken(),
@@ -342,7 +342,7 @@ if (ingestClearBtn) {
     ingestClearBtn.addEventListener('click', async () => {
         ingestClearBtn.disabled = true;
         try {
-            await fetch(basePath + 'ingest/status/clear?mode=all', {
+            await fetch(apiUrl('ingest/status/clear?mode=all'), {
                 method: 'POST',
                 credentials: 'same-origin',
                 headers: {

@@ -1,4 +1,4 @@
-const basePath = import.meta.env.BASE_URL ?? '/';
+import { apiUrl } from './urls.js';
 
 const form = document.getElementById('query-form');
 const statusEl = document.getElementById('status');
@@ -227,7 +227,7 @@ async function runQuery(event) {
 
     const startedAt = performance.now();
     try {
-        const response = await fetch(basePath + 'query', {
+        const response = await fetch(apiUrl('query'), {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',

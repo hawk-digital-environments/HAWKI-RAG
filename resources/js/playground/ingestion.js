@@ -1,4 +1,5 @@
-const basePath = import.meta.env.BASE_URL ?? '/';
+import { apiUrl } from './urls.js';
+
 const GRAPH_COLLECTION_NAME = 'graphCol';
 
 const ingestFolder = document.getElementById('ingest-folder');
@@ -58,7 +59,7 @@ function ingestPayload(path, collectionName, { graphOnly = false } = {}) {
 async function loadIngestFolders() {
     if (!ingestFolder) return;
     try {
-        const response = await fetch(basePath + 'ingest/folders', {
+        const response = await fetch(apiUrl('ingest/folders'), {
             headers: {
                 'Accept': 'application/json',
                 'X-CSRF-TOKEN': csrfToken(),
@@ -105,7 +106,7 @@ async function startIngest({ graphOnly = false } = {}) {
     ingestAction.textContent = graphOnly ? 'Starting graph ingest…' : 'Starting ingest…';
 
     try {
-        const response = await fetch(basePath + 'ingest/start', {
+        const response = await fetch(apiUrl('ingest/start'), {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -152,7 +153,7 @@ async function stopIngest() {
             stopPayload.pid = lastStatus.pid;
         }
 
-        const response = await fetch(basePath + 'ingest/stop', {
+        const response = await fetch(apiUrl('ingest/stop'), {
             method: 'POST',
             credentials: 'same-origin',
             headers: {
@@ -198,7 +199,7 @@ async function deleteIngestFolder() {
     ingestDeleteBtn.disabled = true;
     ingestAction.textContent = 'Deleting folder…';
     try {
-        const response = await fetch(basePath + 'ingest/delete', {
+        const response = await fetch(apiUrl('ingest/delete'), {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',

@@ -8,6 +8,16 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+    @php
+        $apiBasePath = env('DOCKER_PROJECT_PATH', env('VIRTUAL_PATH', parse_url((string) config('app.url'), PHP_URL_PATH) ?: '/'));
+        $apiBasePath = '/' . trim((string) $apiBasePath, '/') . '/';
+        $apiBasePath = $apiBasePath === '//' ? '/' : $apiBasePath;
+    @endphp
+    <script>
+        window.hawkiPlayground = {
+            apiBasePath: @json($apiBasePath),
+        };
+    </script>
     @vite("resources/css/app.css")
     @vite("resources/js/app.js")
 
@@ -18,30 +28,6 @@
             <section class="card panel">
                 <h2>Ingestion</h2>
                 <div class="panel-body">
-                    <div class="subsection">
-                        <h3 style="margin-top:0;">Pipeline</h3>
-                        <div class="grid">
-                            <div>
-                                <label for="pipeline-url">URL</label>
-                                <input id="pipeline-url" type="url" placeholder="https://www.hawk.de/..." style="width:100%; border-radius:0.8rem; border:1px solid rgba(148,163,184,0.22); background:rgba(15,23,42,0.78); color:inherit; padding:0.7rem 0.8rem;" />
-                            </div>
-                            <div class="grid two">
-                                <div>
-                                    <label for="pipeline-label">Label</label>
-                                    <input id="pipeline-label" type="text" placeholder="pipeline-test" style="width:100%; border-radius:0.8rem; border:1px solid rgba(148,163,184,0.22); background:rgba(15,23,42,0.78); color:inherit; padding:0.7rem 0.8rem;" />
-                                </div>
-                                <div>
-                                    <label for="pipeline-max-pages">Max pages</label>
-                                    <input id="pipeline-max-pages" type="number" min="1" value="2" />
-                                </div>
-                            </div>
-                            <label><input type="checkbox" id="pipeline-skip-images" checked /> Skip images</label>
-                            <button type="button" id="pipeline-start-btn">Start Pipeline</button>
-                            <div id="pipeline-current" class="badge">No pipeline selected.</div>
-                            <div id="pipeline-stages" class="pipeline-stages"></div>
-                        </div>
-                    </div>
-
                     <div class="subsection">
                         @php
                             $embedModels = config('config.embedding_models', ['bge-m3']);
@@ -208,6 +194,67 @@
                 </div>
             </section>
         </div>
+
+        <section class="pipeline-operations-section">
+            <div class="pipeline-hero">
+                <div class="pipeline-heading">
+                    <span class="pipeline-kicker">Scraper Pipeline</span>
+                    <h2>Pipeline Control</h2>
+                </div>
+                <div class="pipeline-current-wrap">
+                    <span id="pipeline-current" class="badge">No pipeline selected.</span>
+                    <span id="pipeline-job-id" class="pipeline-job-id">Job ID: none</span>
+                </div>
+            </div>
+
+            <div class="pipeline-workspace">
+                <aside class="pipeline-task-panel">
+                    <div class="pipeline-panel-head">
+                        <h3>Scraper Tasks</h3>
+                        <button type="button" id="pipeline-task-refresh-btn" class="pipeline-secondary-btn">Refresh</button>
+                    </div>
+                    <label for="pipeline-task-select">Available task</label>
+                    <select id="pipeline-task-select">
+                        <option value="">Loading scraper tasks...</option>
+                    </select>
+                    <div id="pipeline-task-note" class="pipeline-task-note"></div>
+                    <button type="button" id="pipeline-task-start-btn">Start Selected Task</button>
+
+                    <div class="pipeline-manual-block">
+                        <h3>Manual URL</h3>
+                        <div class="grid">
+                            <div>
+                                <label for="pipeline-url">URL</label>
+                                <input id="pipeline-url" type="url" placeholder="https://www.hawk.de/..." />
+                            </div>
+                            <div class="grid two">
+                                <div>
+                                    <label for="pipeline-label">Label</label>
+                                    <input id="pipeline-label" type="text" placeholder="pipeline-test" />
+                                </div>
+                                <div>
+                                    <label for="pipeline-max-pages">Max pages</label>
+                                    <input id="pipeline-max-pages" type="number" min="1" value="2" />
+                                </div>
+                            </div>
+                            <label class="pipeline-checkbox"><input type="checkbox" id="pipeline-skip-images" checked /> Skip images</label>
+                            <button type="button" id="pipeline-start-btn">Start Manual Pipeline</button>
+                        </div>
+                    </div>
+                </aside>
+
+                <main class="pipeline-stage-panel">
+                    <div class="pipeline-stage-header">
+                        <div>
+                            <h3>Stage State</h3>
+                            <p id="pipeline-dataset-path">Dataset path: none</p>
+                        </div>
+                        <div id="pipeline-updated-at" class="pipeline-updated-at"></div>
+                    </div>
+                    <div id="pipeline-stages" class="pipeline-stages pipeline-stages-expanded"></div>
+                </main>
+            </div>
+        </section>
 
         <section class="graph-visualization-section">
             <div class="graph-visualization-header">
