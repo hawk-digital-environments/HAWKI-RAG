@@ -1,5 +1,20 @@
 <?php
 
+/*
+|--------------------------------------------------------------------------
+| Legacy pipeline path
+|--------------------------------------------------------------------------
+|
+| Probably obsolete for the new Prefect + event-driven pipeline flow.
+| This file belongs to the old synchronous handoff:
+| scrape completion -> Laravel queue job -> convert command ->
+| publisher job -> old ingestion queue.
+|
+| Keep only as a manual/backward-compatible fallback until the new
+| task/event-worker pipeline is fully proven in production.
+|
+*/
+
 namespace App\Console\Commands\Rag;
 
 use App\Services\Rag\ConvertedDocumentIngestionService;

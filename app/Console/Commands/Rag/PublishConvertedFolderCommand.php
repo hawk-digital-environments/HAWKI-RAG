@@ -1,7 +1,23 @@
 <?php
 
+/*
+|--------------------------------------------------------------------------
+| Legacy pipeline path
+|--------------------------------------------------------------------------
+|
+| Probably obsolete for the new Prefect + event-driven pipeline flow.
+| This file belongs to the old synchronous handoff:
+| scrape completion -> Laravel queue job -> convert command ->
+| publisher job -> old ingestion queue.
+|
+| Keep only as a manual/backward-compatible fallback until the new
+| task/event-worker pipeline is fully proven in production.
+|
+*/
+
 namespace App\Console\Commands\Rag;
 
+use App\Models\PipelineJob;
 use App\Services\Rag\RagRabbitMQ;
 use App\Services\Pipeline\PipelineStateService;
 use App\Support\PipelineExitCode;
@@ -54,6 +70,7 @@ class PublishConvertedFolderCommand extends Command
 
                 $event = $this->eventFromMeta($meta, $markdownPath);
                 $rabbit->publishConvertedDocument($event);
+                $this->recordIngestionJob($event);
                 if (!empty($event['pipeline_job_id'])) {
                     $pipelineJobId = (string) $event['pipeline_job_id'];
                     $pipelineJobCounts[$pipelineJobId] = ($pipelineJobCounts[$pipelineJobId] ?? 0) + 1;
@@ -131,6 +148,38 @@ class PublishConvertedFolderCommand extends Command
                 'pipeline_job_id' => $pipelineJobId !== '' ? $pipelineJobId : null,
             ],
         ];
+    }
+
+    private function recordIngestionJob(array $event): void
+    {
+        $parentJobId = (string) ($event['pipeline_job_id'] ?? '');
+        if ($parentJobId === '') {
+            return;
+        }
+
+        $parent = PipelineJob::query()->where('job_id', $parentJobId)->first();
+        if (!$parent?->task_id) {
+            return;
+        }
+
+        PipelineJob::query()->updateOrCreate(
+            ['job_id' => (string) $event['job_id']],
+            [
+                'task_id' => $parent->task_id,
+                'parent_job_id' => $parentJobId,
+                'job_type' => PipelineJob::TYPE_INGEST,
+                'source_url' => $event['original_url'] ?? null,
+                'local_path' => $event['converted_path'] ?? null,
+                'content_hash' => $event['output_checksum_sha256'] ?? null,
+                'status' => 'received',
+                'started_at' => now(),
+                'metadata' => [
+                    'source' => 'rag:publish-converted-folder',
+                    'event_id' => $event['event_id'] ?? null,
+                    'routing_key' => config('communication.rabbitmq.rag_ingestion.document_converted_routing_key'),
+                ],
+            ],
+        );
     }
 
     private function markdownPathFromMeta(array $meta, string $metaDir): ?string

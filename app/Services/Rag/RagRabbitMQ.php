@@ -89,6 +89,14 @@ class RagRabbitMQ
         $this->publish($cfg['failed_exchange'], $cfg['failed_routing_key'], $payload);
     }
 
+    public function publishPipelineEvent(string $routingKey, array $payload): void
+    {
+        $cfg = config('communication.rabbitmq.pipeline_events');
+        $channel = $this->channel();
+        $this->declareExchange($channel, (string) $cfg['exchange'], (string) $cfg['exchange_type']);
+        $this->publish((string) $cfg['exchange'], $routingKey, $payload);
+    }
+
     public function close(): void
     {
         if ($this->channel instanceof AMQPChannel) {

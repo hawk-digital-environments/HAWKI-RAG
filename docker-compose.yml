@@ -49,6 +49,11 @@ services:
       VIRTUAL_PATH: /hawki-rag/
       VIRTUAL_DEST: /
       ENVIRONMENT: "development"
+      PREFECT_ENABLED: ${PREFECT_ENABLED:-true}
+      PREFECT_START_MODE: ${PREFECT_START_MODE:-api}
+      PREFECT_API_URL: ${PREFECT_API_URL:-http://prefect-server:4200/api}
+      PREFECT_DEPLOYMENT_NAME: ${PREFECT_DEPLOYMENT_NAME:-rag_task_flow/rag-task-flow}
+      PREFECT_LARAVEL_BASE_URL: ${PREFECT_LARAVEL_BASE_URL:-http://hawki_rag_app}
     networks:
       - hawki-network
       - hosting_network
@@ -321,6 +326,161 @@ services:
       - hawki-network
 
   # -------------------------------------------------
+  # Laravel event-driven pipeline workers (RabbitMQ)
+  # -------------------------------------------------
+  hawki-rag-scraper-event-worker:
+    image: rawki-hawki_rag_app
+    pull_policy: never
+    build:
+      context: .
+      dockerfile: docker/laravel.Dockerfile
+      target: laravel-app
+      args:
+        - DOCKER_PROJECT_HOST=ixdlab.hawk.de
+        - DOCKER_PROJECT_PATH=/hawki-rag/
+    container_name: hawki_rag_scraper_event_worker
+    profiles: ["pipeline-events"]
+    env_file:
+      - ./.env
+    volumes:
+      - shared_storage:/app/shared
+      - ./storage:/var/www/html/storage
+      - ./docker/rag_app:/container/custom
+      - ./:/var/www/html
+    command: ["php", "artisan", "pipeline:scraper-event-worker"]
+    working_dir: /var/www/html
+    depends_on:
+      mariadb:
+        condition: service_started
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - default
+      - hawki-network
+
+  hawki-rag-converter-event-worker:
+    image: rawki-hawki_rag_app
+    pull_policy: never
+    build:
+      context: .
+      dockerfile: docker/laravel.Dockerfile
+      target: laravel-app
+      args:
+        - DOCKER_PROJECT_HOST=ixdlab.hawk.de
+        - DOCKER_PROJECT_PATH=/hawki-rag/
+    container_name: hawki_rag_converter_event_worker
+    profiles: ["pipeline-events"]
+    env_file:
+      - ./.env
+    volumes:
+      - shared_storage:/app/shared
+      - ./storage:/var/www/html/storage
+      - ./docker/rag_app:/container/custom
+      - ./:/var/www/html
+    command: ["php", "artisan", "pipeline:converter-event-worker"]
+    working_dir: /var/www/html
+    depends_on:
+      mariadb:
+        condition: service_started
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - default
+      - hawki-network
+
+  hawki-rag-ingestion-event-worker:
+    image: rawki-hawki_rag_app
+    pull_policy: never
+    build:
+      context: .
+      dockerfile: docker/laravel.Dockerfile
+      target: laravel-app
+      args:
+        - DOCKER_PROJECT_HOST=ixdlab.hawk.de
+        - DOCKER_PROJECT_PATH=/hawki-rag/
+    container_name: hawki_rag_ingestion_event_worker
+    profiles: ["pipeline-events"]
+    env_file:
+      - ./.env
+    volumes:
+      - shared_storage:/app/shared
+      - ./storage:/var/www/html/storage
+      - ./docker/rag_app:/container/custom
+      - ./:/var/www/html
+    command: ["php", "artisan", "pipeline:ingestion-event-worker"]
+    working_dir: /var/www/html
+    depends_on:
+      mariadb:
+        condition: service_started
+      rabbitmq:
+        condition: service_healthy
+      hawki_rag_bridge:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+      - default
+      - hawki-network
+
+  # -------------------------------------------------
+  # Prefect self-hosted UI/API and HAWKI RAG task supervisor
+  # -------------------------------------------------
+  prefect-server:
+    image: prefecthq/prefect:3-python3.12
+    container_name: prefect_server
+    profiles: ["prefect"]
+    command: ["prefect", "server", "start", "--host", "0.0.0.0", "--port", "4200"]
+    environment:
+      PREFECT_HOME: /root/.prefect
+      PREFECT_UI_API_URL: ${PREFECT_UI_API_URL:-http://localhost:4200/api}
+    ports:
+      - "${PREFECT_UI_PORT:-4200}:4200"
+    volumes:
+      - prefect_data:/root/.prefect
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:4200/api/health', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    networks:
+      - default
+
+  prefect-rag-task-runner:
+    image: prefecthq/prefect:3-python3.12
+    container_name: prefect_rag_task_runner
+    profiles: ["prefect"]
+    working_dir: /workspace
+    environment:
+      PREFECT_API_URL: http://prefect-server:4200/api
+      LARAVEL_BASE_URL: ${PREFECT_LARAVEL_BASE_URL:-http://hawki_rag_app}
+      LARAVEL_API_TOKEN: ${PREFECT_LARAVEL_API_TOKEN:-}
+      PREFECT_DEPLOYMENT_SHORT_NAME: ${PREFECT_DEPLOYMENT_SHORT_NAME:-rag-task-flow}
+      PREFECT_TASK_POLL_INTERVAL_SECONDS: ${PREFECT_TASK_POLL_INTERVAL_SECONDS:-10}
+      PREFECT_TASK_MAX_IDLE_SECONDS: ${PREFECT_TASK_MAX_IDLE_SECONDS:-3600}
+    volumes:
+      - ./:/workspace
+    command:
+      - bash
+      - -lc
+      - |
+        until python -c "import urllib.request; urllib.request.urlopen('http://prefect-server:4200/api/health', timeout=3)" >/dev/null 2>&1; do
+          echo "Waiting for Prefect server..."
+          sleep 2
+        done
+        python prefect/serve_rag_task_flow.py
+    depends_on:
+      prefect-server:
+        condition: service_healthy
+      hawki_rag_app:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+      - default
+
+  # -------------------------------------------------
   # Crawler producer (external image/command, profile-based)
   # -------------------------------------------------
   crawler_producer:
@@ -391,6 +551,8 @@ services:
 volumes:
   shared_storage:
     name: rawki_shared_storage
+  prefect_data:
+    name: rawki_prefect_data
   qdrant_data:
   neo4j_data:
   hawki_mariadb_data:

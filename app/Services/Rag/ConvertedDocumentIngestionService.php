@@ -1,8 +1,24 @@
 <?php
 
+/*
+|--------------------------------------------------------------------------
+| Legacy pipeline path
+|--------------------------------------------------------------------------
+|
+| Probably obsolete for the new Prefect + event-driven pipeline flow.
+| This file belongs to the old synchronous handoff:
+| scrape completion -> Laravel queue job -> convert command ->
+| publisher job -> old ingestion queue.
+|
+| Keep only as a manual/backward-compatible fallback until the new
+| task/event-worker pipeline is fully proven in production.
+|
+*/
+
 namespace App\Services\Rag;
 
 use App\Models\JobProcessingState;
+use App\Models\PipelineJob;
 use App\Services\Pipeline\PipelineStateService;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Http;
@@ -49,6 +65,10 @@ class ConvertedDocumentIngestionService
             'trace_id' => $event['trace_id'] ?? null,
         ]);
         $state->save();
+        $this->updateTaskJob($event, 'processing', [
+            'retry_count' => $retryCount,
+            'max_retries' => $maxRetries,
+        ]);
         $this->updatePipelineIngestCounts($event, [
             'received' => -1,
             'processing' => 1,
@@ -105,6 +125,10 @@ class ConvertedDocumentIngestionService
                 'trace_id' => $event['trace_id'] ?? null,
             ],
         );
+        $this->updateTaskJob($event, PipelineJob::STATUS_COMPLETED, [
+            'retry_count' => $retryCount,
+            'max_retries' => $maxRetries,
+        ]);
         $this->updatePipelineIngestCounts($event, [
             'processing' => -1,
             'completed' => 1,
@@ -136,6 +160,12 @@ class ConvertedDocumentIngestionService
                 'trace_id' => $event['trace_id'] ?? null,
             ],
         );
+        $this->updateTaskJob($event, 'received', [
+            'retry_count' => $retryCount,
+            'max_retries' => $maxRetries,
+            'error_type' => class_basename($error),
+            'error_message' => $error->getMessage(),
+        ]);
         $this->updatePipelineIngestCounts($event, [
             'processing' => -1,
             'received' => 1,
@@ -168,6 +198,12 @@ class ConvertedDocumentIngestionService
                 'trace_id' => $event['trace_id'] ?? null,
             ],
         );
+        $this->updateTaskJob($event, PipelineJob::STATUS_FAILED, [
+            'retry_count' => $retryCount,
+            'max_retries' => $maxRetries,
+            'error_type' => class_basename($error),
+            'error_message' => $error->getMessage(),
+        ]);
         $this->updatePipelineIngestCounts($event, [
             'processing' => -1,
             'failed' => 1,
@@ -247,6 +283,36 @@ class ConvertedDocumentIngestionService
             'errors' => $attributes['errors'] ?? null,
             'metadata' => $attributes['metadata'] ?? null,
         ]);
+    }
+
+    private function updateTaskJob(array $event, string $status, array $metadata = []): void
+    {
+        $jobId = (string) ($event['job_id'] ?? '');
+        if ($jobId === '') {
+            return;
+        }
+
+        $job = PipelineJob::query()->where('job_id', $jobId)->first();
+        if (!$job) {
+            return;
+        }
+
+        $terminal = in_array($status, [
+            PipelineJob::STATUS_COMPLETED,
+            PipelineJob::STATUS_FAILED,
+            PipelineJob::STATUS_SKIPPED,
+            PipelineJob::STATUS_PARTIAL,
+            PipelineJob::STATUS_CANCELLED,
+        ], true);
+
+        $job->forceFill([
+            'status' => $status,
+            'completed_at' => $terminal ? Carbon::now() : null,
+            'finished_at' => $terminal ? Carbon::now() : null,
+            'metadata' => array_merge($job->metadata ?? [], $metadata, [
+                'latest_event_id' => $event['event_id'] ?? null,
+            ]),
+        ])->save();
     }
 
     private function pipelineIngestStatus(array $counts): string

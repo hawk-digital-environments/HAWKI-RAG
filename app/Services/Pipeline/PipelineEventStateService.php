@@ -1,0 +1,81 @@
+<?php
+
+namespace App\Services\Pipeline;
+
+use App\Models\PipelineJob;
+use App\Models\PipelineTask;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Log;
+use Throwable;
+
+class PipelineEventStateService
+{
+    public function __construct(
+        private readonly PipelineTaskService $tasks,
+    ) {
+    }
+
+    public function upsertJob(array $event, ?string $status = null, array $metadata = []): PipelineJob
+    {
+        $event = PipelineEvent::normalize((string) $event['event_type'], $event);
+        $status ??= (string) $event['status'];
+        $terminal = PipelineEvent::terminalStatus($status);
+        $existing = PipelineJob::query()->where('job_id', $event['job_id'])->first();
+        $existingMetadata = is_array($existing?->metadata) ? $existing->metadata : [];
+        $events = is_array($existingMetadata['events'] ?? null) ? $existingMetadata['events'] : [];
+        $events[] = [
+            'event_type' => $event['event_type'],
+            'event_id' => $event['event_id'],
+            'status' => $status,
+            'at' => now()->toIso8601String(),
+        ];
+
+        $job = PipelineJob::query()->updateOrCreate(
+            ['job_id' => (string) $event['job_id']],
+            [
+                'task_id' => $event['task_id'],
+                'parent_job_id' => $event['parent_job_id'],
+                'job_type' => $event['job_type'],
+                'source_url' => $event['source_url'],
+                'local_path' => $event['local_path'],
+                'content_hash' => $event['content_hash'],
+                'status' => $status,
+                'started_at' => $existing?->started_at ?? Carbon::now(),
+                'completed_at' => $terminal ? Carbon::now() : null,
+                'finished_at' => $terminal ? Carbon::now() : null,
+                'metadata' => array_merge($existingMetadata, $event['metadata'] ?? [], $metadata, [
+                    'latest_event_type' => $event['event_type'],
+                    'latest_event_id' => $event['event_id'],
+                    'events' => $events,
+                ]),
+            ],
+        );
+
+        $this->refreshTask((string) $event['task_id']);
+        Log::info('pipeline.event.state', [
+            'task_id' => $event['task_id'],
+            'job_id' => $event['job_id'],
+            'event_type' => $event['event_type'],
+            'job_type' => $event['job_type'],
+            'status' => $status,
+        ]);
+
+        return $job;
+    }
+
+    public function markFailed(array $event, Throwable $error, array $metadata = []): PipelineJob
+    {
+        return $this->upsertJob($event, PipelineJob::STATUS_FAILED, array_merge($metadata, [
+            'error_type' => class_basename($error),
+            'error_message' => $error->getMessage(),
+        ]));
+    }
+
+    public function refreshTask(string $taskId): void
+    {
+        $task = PipelineTask::query()->where('task_id', $taskId)->first();
+        if ($task) {
+            $this->tasks->refreshCounters($task);
+        }
+    }
+}

@@ -14,7 +14,7 @@ LOCAL_OVERRIDE_COMPOSE ?= docker-compose.local.yml
 COMPOSE_FILE_SEP ?= :
 # USE_OLLAMA_GPU: auto (default), 1 (force GPU override), 0 (force CPU mode)
 USE_OLLAMA_GPU ?= auto
-CORE_PROFILES_BASE ?= rag-ingestion-worker
+CORE_PROFILES_BASE ?= rag-ingestion-worker,pipeline-events,prefect
 
 ifeq ($(USE_OLLAMA_GPU),auto)
 	ifeq ($(HOST_OS),Linux)
@@ -88,26 +88,99 @@ _up-core: network
 
 up-core: COMPOSE_FILE_LIST = $(CORE_LOCAL_COMPOSE_FILE_LIST)
 up-core: COMPOSE_PROFILES = $(CORE_PROFILES)
-up-core: PROFILE_MESSAGE = $(GPU_MESSAGE) Local override enabled and RabbitMQ ingestion worker enabled.
+up-core: PROFILE_MESSAGE = $(GPU_MESSAGE) Local override enabled, RabbitMQ ingestion worker enabled, pipeline event workers enabled, and Prefect UI enabled.
 up-core: _up-core
 
 up-core-server: COMPOSE_FILE_LIST = $(CORE_SERVER_COMPOSE_FILE_LIST)
 up-core-server: COMPOSE_PROFILES = $(CORE_PROFILES)
-up-core-server: PROFILE_MESSAGE = $(GPU_MESSAGE) Server mode and RabbitMQ ingestion worker enabled.
+up-core-server: PROFILE_MESSAGE = $(GPU_MESSAGE) Server mode, RabbitMQ ingestion worker enabled, pipeline event workers enabled, and Prefect UI enabled.
 up-core-server: _up-core
 
 health:
-	@echo "Checking Qdrant..." && docker exec hawki_qdrant sh -lc "curl -fsS http://localhost:6333/readyz" >/dev/null && echo " OK" || (echo " FAIL" && exit 1)
-	@echo "Checking Ollama..." && docker exec $(OLLAMA_CONTAINER) sh -lc "ollama list" >/dev/null && echo " OK" || (echo " FAIL" && exit 1)
-	@if docker ps --format '{{.Names}}' | grep -q hawki_rag_rerank; then \
-		echo "Checking Local Reranker..." && docker exec hawki_rag_rerank sh -lc "curl -fsS http://localhost:8000/health" >/dev/null && echo " OK" || (echo " WARN (reranker reported unhealthy)" && true); \
+	@set +e; \
+	failed=0; \
+	check_running() { \
+		name="$$1"; required="$${2:-1}"; \
+		printf "%-38s" "$$name:"; \
+		state=$$(docker inspect -f '{{.State.Running}} {{if .State.Health}}{{.State.Health.Status}}{{else}}no-healthcheck{{end}}' "$$name" 2>&1); \
+		inspect_status=$$?; \
+		if [ "$$inspect_status" != "0" ]; then \
+			if printf "%s" "$$state" | grep -qi "permission denied"; then \
+				if [ "$$required" = "1" ]; then echo "FAIL (docker unavailable: permission denied)"; failed=1; else echo "WARN (docker unavailable: permission denied)"; fi; \
+				return; \
+			fi; \
+			if [ "$$required" = "1" ]; then echo "FAIL (container missing)"; failed=1; else echo "SKIPPED (container missing)"; fi; \
+			return; \
+		fi; \
+		running=$$(printf "%s" "$$state" | awk '{print $$1}'); \
+		health=$$(printf "%s" "$$state" | awk '{print $$2}'); \
+		if [ "$$running" != "true" ]; then \
+			if [ "$$required" = "1" ]; then echo "FAIL ($$state)"; failed=1; else echo "WARN ($$state)"; fi; \
+		elif [ "$$health" = "healthy" ] || [ "$$health" = "no-healthcheck" ]; then \
+			echo "OK ($$health)"; \
+		else \
+			echo "WARN ($$state)"; \
+		fi; \
+	}; \
+	check_exec() { \
+		label="$$1"; container="$$2"; command="$$3"; required="$${4:-1}"; \
+		printf "%-38s" "$$label:"; \
+		if docker exec "$$container" sh -lc "$$command" >/dev/null 2>&1; then \
+			echo "OK"; \
+		elif [ "$$required" = "1" ]; then \
+			echo "FAIL"; failed=1; \
+		else \
+			echo "WARN"; \
+		fi; \
+	}; \
+	check_url() { \
+		label="$$1"; url="$$2"; required="$${3:-1}"; \
+		printf "%-38s" "$$label:"; \
+		if curl -fsS -m 5 "$$url" >/dev/null 2>&1; then \
+			echo "OK"; \
+		elif [ "$$required" = "1" ]; then \
+			echo "FAIL"; failed=1; \
+		else \
+			echo "WARN"; \
+		fi; \
+	}; \
+	echo "Container status"; \
+	check_running mariadb 1; \
+	check_running rabbitmq 1; \
+	check_running hawki_rag_app 1; \
+	check_running hawki_qdrant 1; \
+	check_running hawki_rag_neo4j 1; \
+	check_running $(OLLAMA_CONTAINER) 1; \
+	check_running hawki_rag_bridge 0; \
+	check_running hawki_rag_rerank 0; \
+	check_running hawki_rag_pipeline_worker 0; \
+	check_running hawki_rag_ingestion_worker 0; \
+	check_running hawki_rag_scraper_event_worker 0; \
+	check_running hawki_rag_converter_event_worker 0; \
+	check_running hawki_rag_ingestion_event_worker 0; \
+	check_running prefect_server 0; \
+	check_running prefect_rag_task_runner 0; \
+	echo ""; \
+	echo "Service checks"; \
+	check_exec "MariaDB ping" mariadb 'mariadb-admin ping -h 127.0.0.1 -u"$$MARIADB_USER" -p"$$MARIADB_PASSWORD"' 1; \
+	check_exec "RabbitMQ ping" rabbitmq "rabbitmq-diagnostics -q ping" 1; \
+	check_exec "Laravel artisan" hawki_rag_app "php artisan list --raw" 1; \
+	check_exec "Laravel Prefect config" hawki_rag_app "php artisan tinker --execute=\"config('prefect.enabled') || throw new RuntimeException('Prefect disabled');\"" 0; \
+	check_exec "Qdrant readyz" hawki_qdrant "curl -fsS http://localhost:6333/readyz" 1; \
+	check_exec "Neo4j browser" hawki_rag_neo4j "wget --spider -q http://localhost:7474/browser" 1; \
+	check_exec "Ollama models" $(OLLAMA_CONTAINER) "ollama list" 1; \
+	check_exec "Ingestion bridge" hawki_rag_bridge "curl -fsS http://localhost:8000/health" 0; \
+	check_exec "Local reranker" hawki_rag_rerank "curl -fsS http://localhost:8000/health" 0; \
+	check_exec "Prefect API internal" prefect_server "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:4200/api/health', timeout=5)\"" 0; \
+	check_exec "Prefect deployment runner" prefect_rag_task_runner "python -c \"import urllib.request; urllib.request.urlopen('http://prefect-server:4200/api/health', timeout=5)\"" 0; \
+	check_url "Laravel HTTP" "http://127.0.0.1:8080/rag/health" 0; \
+	check_url "Prefect UI/API HTTP" "http://127.0.0.1:4200/api/health" 0; \
+	echo ""; \
+	if [ "$$failed" = "0" ]; then \
+		echo "Health checks completed."; \
 	else \
-		echo "Checking Local Reranker... SKIPPED (hawki_rag_rerank container not running)"; \
-	fi
-	@if docker ps --format '{{.Names}}' | grep -q hawki_rag_bridge; then \
-		echo "Checking Ingestion Bridge..." && docker exec hawki_rag_bridge sh -lc "curl -fsS http://localhost:8000/health" >/dev/null && echo " OK" || (echo " WARN (ingestion reported unhealthy)" && true); \
-	else \
-		echo "Checking Ingestion Bridge... SKIPPED (hawki_rag_bridge container not running)"; \
+		echo "Health checks completed with required failures."; \
+		exit 1; \
 	fi
 
 test-services:
@@ -247,7 +320,7 @@ pipeline: crawl convert
 	@$(MAKE) ingest CRAWLED_ROOT="$(OUTPUT_DIR)" COLLECTION="$(COLLECTION)" GRAPH="$(GRAPH)" GRAPH_ONLY="$(GRAPH_ONLY)" GRAPH_ENGINE="$(GRAPH_ENGINE)" EMBEDDING_MODEL="$(EMBEDDING_MODEL)" NEO4J_DATABASE="$(NEO4J_DATABASE)" CHUNK_CHARS="$(CHUNK_CHARS)" CHUNK_OVERLAP="$(CHUNK_OVERLAP)" BATCH="$(BATCH)" PROVIDER="$(PROVIDER)" BASE_URL="$(BASE_URL)" TIMEOUT="$(TIMEOUT)" RESUME_MODE="$(RESUME_MODE)" DRY="$(DRY)" ESTIMATE_ONLY="$(ESTIMATE_ONLY)" SUMMARY_FILE="$(SUMMARY_FILE)"
 
 logs-core:
-	@$(COMPOSE_CMD) logs -f qdrant mysql hawki_rag_nginx $(OLLAMA_SERVICE) hawki_rag_app hawki-rag-pipeline-worker hawki-rag-ingestion-worker
+	@$(COMPOSE_CMD) logs -f qdrant mariadb rabbitmq $(OLLAMA_SERVICE) hawki_rag_app hawki-rag-pipeline-worker hawki-rag-ingestion-worker hawki-rag-scraper-event-worker hawki-rag-converter-event-worker hawki-rag-ingestion-event-worker prefect-server prefect-rag-task-runner
 	@$(COMPOSE_CMD) logs -f
 
 down-core:

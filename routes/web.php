@@ -8,6 +8,7 @@ use App\Http\Controllers\API\RagHealthController;
 use App\Http\Controllers\API\RagStatsController;
 use App\Http\Controllers\Graph\RagGraphController;
 use App\Http\Controllers\PipelineStatusController;
+use App\Http\Controllers\PipelineTaskController;
 use App\Http\Controllers\ScrapeController;
 
 use Illuminate\Support\Facades\Route;
@@ -39,6 +40,15 @@ Route::post('/scraper/jobs/{jobId}/cancel', [ScrapeController::class, 'cancelCra
 Route::post('/scraper/jobs/{jobId}/pause', [ScrapeController::class, 'pauseCrawlerJob']);
 Route::post('/scraper/jobs/{jobId}/resume', [ScrapeController::class, 'resumeCrawlerJob']);
 Route::get('/pipeline/status/{jobId}', [PipelineStatusController::class, 'show']);
+Route::post('/pipeline/tasks/start', [PipelineTaskController::class, 'start']);
+Route::get('/pipeline/tasks/{taskId}', [PipelineTaskController::class, 'show']);
+Route::get('/pipeline/tasks/{taskId}/jobs', [PipelineTaskController::class, 'jobs']);
+Route::post('/pipeline/tasks/{taskId}/jobs', [PipelineTaskController::class, 'upsertJob']);
+Route::post('/pipeline/tasks/{taskId}/cancel', [PipelineTaskController::class, 'cancel']);
+Route::post('/pipeline/tasks/{taskId}/resume', [PipelineTaskController::class, 'resume']);
+Route::post('/pipeline/tasks/{taskId}/retry', [PipelineTaskController::class, 'retry']);
+Route::post('/pipeline/tasks/{taskId}/complete-if-idle', [PipelineTaskController::class, 'completeIfIdle']);
+Route::post('/pipeline/tasks/{taskId}/status', [PipelineTaskController::class, 'updateStatus']);
 // Playground related routes
 
 Route::post('/query', [HawkiRagProxyController::class, 'query']);

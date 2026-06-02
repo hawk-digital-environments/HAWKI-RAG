@@ -1,7 +1,23 @@
 <?php
 
+/*
+|--------------------------------------------------------------------------
+| Legacy pipeline path
+|--------------------------------------------------------------------------
+|
+| Probably obsolete for the new Prefect + event-driven pipeline flow.
+| This file belongs to the old synchronous handoff:
+| scrape completion -> Laravel queue job -> convert command ->
+| publisher job -> old ingestion queue.
+|
+| Keep only as a manual/backward-compatible fallback until the new
+| task/event-worker pipeline is fully proven in production.
+|
+*/
+
 namespace App\Jobs;
 
+use App\Models\PipelineJob;
 use App\Services\Pipeline\PipelineLogger;
 use App\Services\Pipeline\PipelineStateService;
 use App\Support\PipelineExitCode;
@@ -53,6 +69,8 @@ class ConvertPipelineDatasetJob implements ShouldQueue
             return;
         }
 
+        $taskJob = $this->taskJob(PipelineJob::TYPE_CONVERT, PipelineJob::STATUS_RUNNING);
+
         PipelineLogger::started('pipeline', [
             'job_id' => $this->jobId,
             'pipeline_stage' => 'convert_trigger',
@@ -68,6 +86,8 @@ class ConvertPipelineDatasetJob implements ShouldQueue
 
         $convertStatus = $pipelineState->stageStatusValue($this->jobId, PipelineStateService::STAGE_CONVERT);
         if ($exitCode === PipelineExitCode::SUCCESS) {
+            $this->finishTaskJob($taskJob, PipelineJob::STATUS_COMPLETED, ['exitCode' => $exitCode]);
+
             $pipelineState->completeStage($this->jobId, PipelineStateService::STAGE_CONVERT, [
                 'dataset_path' => $this->datasetPath,
                 'metadata' => [
@@ -87,6 +107,11 @@ class ConvertPipelineDatasetJob implements ShouldQueue
         }
 
         if ($exitCode === PipelineExitCode::PARTIAL_SUCCESS && $convertStatus === 'skipped') {
+            $this->finishTaskJob($taskJob, PipelineJob::STATUS_SKIPPED, [
+                'reason' => 'Conversion skipped because no supported source files were found.',
+                'exitCode' => $exitCode,
+            ]);
+
             $pipelineState->skipStage($this->jobId, PipelineStateService::STAGE_INGEST, [
                 'dataset_path' => $this->datasetPath,
                 'metadata' => [
@@ -98,6 +123,8 @@ class ConvertPipelineDatasetJob implements ShouldQueue
         }
 
         if ($exitCode === PipelineExitCode::PARTIAL_SUCCESS) {
+            $this->finishTaskJob($taskJob, PipelineJob::STATUS_PARTIAL, ['exitCode' => $exitCode]);
+
             $pipelineState->partialStage($this->jobId, PipelineStateService::STAGE_CONVERT, [
                 'dataset_path' => $this->datasetPath,
                 'metadata' => [
@@ -114,6 +141,11 @@ class ConvertPipelineDatasetJob implements ShouldQueue
 
     public function failed(Throwable $exception): void
     {
+        $this->finishTaskJob($this->taskJob(PipelineJob::TYPE_CONVERT, PipelineJob::STATUS_FAILED), PipelineJob::STATUS_FAILED, [
+            'error' => $exception->getMessage(),
+            'type' => class_basename($exception),
+        ]);
+
         app(PipelineStateService::class)->failStage($this->jobId, PipelineStateService::STAGE_CONVERT, [
             'dataset_path' => $this->datasetPath,
             'errors' => [[
@@ -123,5 +155,43 @@ class ConvertPipelineDatasetJob implements ShouldQueue
             ]],
             'metadata' => ['source' => 'ConvertPipelineDatasetJob'],
         ]);
+    }
+
+    private function taskJob(string $type, string $status): ?PipelineJob
+    {
+        $parent = PipelineJob::query()->where('job_id', $this->jobId)->first();
+        if (!$parent?->task_id) {
+            return null;
+        }
+
+        return PipelineJob::query()->updateOrCreate(
+            ['job_id' => $type . '_' . substr(hash('sha256', $this->jobId . '|' . $this->datasetPath), 0, 24)],
+            [
+                'task_id' => $parent->task_id,
+                'parent_job_id' => $this->jobId,
+                'job_type' => $type,
+                'local_path' => $this->datasetPath,
+                'status' => $status,
+                'started_at' => now(),
+                'metadata' => [
+                    'source' => self::class,
+                    'pipeline_job_id' => $this->jobId,
+                ],
+            ],
+        );
+    }
+
+    private function finishTaskJob(?PipelineJob $job, string $status, array $metadata = []): void
+    {
+        if (!$job) {
+            return;
+        }
+
+        $job->forceFill([
+            'status' => $status,
+            'completed_at' => now(),
+            'finished_at' => now(),
+            'metadata' => array_merge($job->metadata ?? [], $metadata),
+        ])->save();
     }
 }

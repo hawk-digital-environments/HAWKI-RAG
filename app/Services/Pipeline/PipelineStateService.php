@@ -351,13 +351,19 @@ class PipelineStateService
     {
         return array_filter([
             'status' => $attributes['job_status'] ?? null,
+            'task_id' => $attributes['task_id'] ?? $attributes['taskId'] ?? null,
+            'parent_job_id' => $attributes['parent_job_id'] ?? $attributes['parentJobId'] ?? null,
+            'job_type' => $attributes['job_type'] ?? $attributes['jobType'] ?? null,
             'current_stage' => $attributes['current_stage'] ?? null,
             'dataset_path' => $attributes['dataset_path'] ?? null,
             'source_url' => $attributes['source_url'] ?? null,
+            'local_path' => $attributes['local_path'] ?? $attributes['localPath'] ?? null,
+            'content_hash' => $attributes['content_hash'] ?? $attributes['contentHash'] ?? null,
             'label' => $attributes['label'] ?? null,
             'metadata' => $attributes['job_metadata'] ?? null,
             'started_at' => $attributes['job_started_at'] ?? $attributes['started_at'] ?? null,
             'completed_at' => $attributes['job_completed_at'] ?? null,
+            'finished_at' => $attributes['job_finished_at'] ?? $attributes['finished_at'] ?? null,
         ], static fn ($value) => $value !== null);
     }
 
