@@ -127,16 +127,6 @@ class PipelineExitCodeTest extends TestCase
         }
     }
 
-    public function test_publish_converted_folder_returns_validation_failure_for_missing_directory(): void
-    {
-        $exitCode = Artisan::call('rag:publish-converted-folder', [
-            'folder' => '/tmp/hawki-rag-test-missing-publish-dir',
-            '--no-interaction' => true,
-        ]);
-
-        $this->assertSame(PipelineExitCode::VALIDATION_FAILURE, $exitCode);
-    }
-
     public function test_python_ingest_script_returns_validation_failure_for_missing_root(): void
     {
         $process = new Process([

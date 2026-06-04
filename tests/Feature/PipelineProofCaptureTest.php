@@ -70,7 +70,7 @@ class PipelineProofCaptureTest extends TestCase
                 'status' => PipelineJob::STATUS_COMPLETED,
                 'counts' => $stage['counts'],
                 'metadata' => $stage['stage'] === 'ingest'
-                    ? ['publisher' => 'rag:publish-converted-folder', 'folder' => $datasetPath]
+                    ? ['publisher' => 'pipeline:ingestion-event-worker', 'folder' => $datasetPath]
                     : [],
                 'started_at' => now()->subMinute(),
                 'completed_at' => now(),

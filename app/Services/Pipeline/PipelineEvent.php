@@ -7,16 +7,11 @@ use Illuminate\Support\Str;
 
 class PipelineEvent
 {
-    public const TASK_STARTED = 'task.started';
-    public const PAGE_DISCOVERED = 'page.discovered';
     public const SCRAPE_REQUESTED = 'scrape.requested';
     public const PAGE_SCRAPED = 'page.scraped';
     public const FILE_DISCOVERED = 'file.discovered';
-    public const CONVERT_REQUESTED = 'convert.requested';
     public const FILE_CONVERTED = 'file.converted';
-    public const INGEST_REQUESTED = 'ingest.requested';
     public const CONTENT_INGESTED = 'content.ingested';
-    public const GRAPH_UPDATED = 'graph.updated';
     public const JOB_FAILED = 'job.failed';
 
     public const REQUIRED_PAYLOAD_FIELDS = [
@@ -57,12 +52,12 @@ class PipelineEvent
             'source_url' => $sourceUrl,
             'local_path' => $localPath,
             'content_hash' => $contentHash,
-            'status' => self::scalar($payload['status'] ?? null) ?? PipelineJob::STATUS_PENDING,
+            'status' => self::scalar($payload['status'] ?? null) ?? PipelineJob::STATUS_QUEUED,
             'created_at' => self::scalar($payload['created_at'] ?? $payload['createdAt'] ?? null) ?? now()->toIso8601String(),
             'metadata' => $metadata,
             'retry_count' => max(0, (int) ($payload['retry_count'] ?? 0)),
             'max_retries' => max(0, (int) ($payload['max_retries'] ?? config('communication.rabbitmq.pipeline_events.max_retries', 3))),
-            'schema_version' => self::scalar($payload['schema_version'] ?? null) ?? (string) config('communication.rabbitmq.rag_ingestion.schema_version', '1'),
+            'schema_version' => self::scalar($payload['schema_version'] ?? null) ?? (string) config('communication.rabbitmq.pipeline_events.schema_version', '1'),
             'source' => self::scalar($payload['source'] ?? null) ?? 'hawki-rag-laravel',
         ];
     }
@@ -70,15 +65,11 @@ class PipelineEvent
     public static function jobTypeFor(string $eventType): ?string
     {
         return match ($eventType) {
-            self::PAGE_DISCOVERED,
             self::SCRAPE_REQUESTED,
             self::PAGE_SCRAPED => PipelineJob::TYPE_SCRAPE,
             self::FILE_DISCOVERED,
-            self::CONVERT_REQUESTED,
             self::FILE_CONVERTED => PipelineJob::TYPE_CONVERT,
-            self::INGEST_REQUESTED,
             self::CONTENT_INGESTED => PipelineJob::TYPE_INGEST,
-            self::GRAPH_UPDATED => PipelineJob::TYPE_GRAPH,
             default => null,
         };
     }
@@ -89,8 +80,6 @@ class PipelineEvent
             PipelineJob::STATUS_COMPLETED,
             PipelineJob::STATUS_FAILED,
             PipelineJob::STATUS_SKIPPED,
-            PipelineJob::STATUS_PARTIAL,
-            PipelineJob::STATUS_CANCELLED,
         ], true);
     }
 

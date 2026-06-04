@@ -283,6 +283,35 @@ ul { margin: 0.4rem 0 0; padding-left: 1.2rem; }
     font-size: 0.82rem;
     white-space: nowrap;
 }
+.pipeline-task-run {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.75rem;
+}
+.pipeline-task-run[hidden] {
+    display: none;
+}
+.pipeline-task-stat {
+    min-width: 0;
+    border-radius: 0.7rem;
+    border: 1px solid rgba(148, 163, 184, 0.17);
+    background: rgba(15, 23, 42, 0.68);
+    padding: 0.65rem 0.75rem;
+}
+.pipeline-task-stat span,
+.pipeline-task-stat strong {
+    display: block;
+    overflow-wrap: anywhere;
+}
+.pipeline-task-stat span {
+    color: #93c5fd;
+    font-size: 0.72rem;
+}
+.pipeline-task-stat strong {
+    margin-top: 0.18rem;
+    color: #f8fafc;
+    font-size: 1.05rem;
+}
 .pipeline-task-panel input,
 .pipeline-task-panel select {
     width: 100%;
@@ -296,6 +325,120 @@ ul { margin: 0.4rem 0 0; padding-left: 1.2rem; }
 .pipeline-task-panel select:focus {
     outline: none;
     border-color: rgba(45, 212, 191, 0.55);
+}
+.pipeline-task-summary {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.55rem;
+}
+.pipeline-task-summary span,
+.pipeline-task-detail {
+    min-width: 0;
+    border-radius: 0.65rem;
+    border: 1px solid rgba(148, 163, 184, 0.16);
+    background: rgba(8, 17, 31, 0.58);
+    color: #cbd5e1;
+}
+.pipeline-task-summary span {
+    padding: 0.48rem 0.6rem;
+    font-size: 0.76rem;
+    overflow-wrap: anywhere;
+}
+.pipeline-task-summary strong {
+    color: #f8fafc;
+}
+.pipeline-task-detail {
+    display: grid;
+    gap: 0.65rem;
+    padding: 0.75rem;
+}
+.pipeline-task-detail[hidden] {
+    display: none;
+}
+.pipeline-task-detail h4 {
+    margin: 0;
+    color: #f8fafc;
+    font-size: 0.95rem;
+}
+.pipeline-task-detail p {
+    margin: 0;
+    color: #bae6fd;
+    font-size: 0.8rem;
+    overflow-wrap: anywhere;
+}
+.pipeline-task-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+}
+.pipeline-task-chips span {
+    border-radius: 999px;
+    background: rgba(14, 165, 233, 0.14);
+    color: #dbeafe;
+    padding: 0.25rem 0.5rem;
+    font-size: 0.72rem;
+    overflow-wrap: anywhere;
+}
+.pipeline-run-list-block {
+    display: grid;
+    gap: 0.7rem;
+    margin-top: 0.35rem;
+    padding-top: 0.9rem;
+    border-top: 1px solid rgba(148, 163, 184, 0.18);
+}
+.pipeline-run-list {
+    display: grid;
+    gap: 0.5rem;
+    max-height: 380px;
+    overflow: auto;
+}
+.pipeline-run-list button {
+    width: 100%;
+    min-width: 0;
+    border-radius: 0.65rem;
+    border: 1px solid rgba(148, 163, 184, 0.16);
+    background: rgba(8, 17, 31, 0.6);
+    color: #dbeafe;
+    padding: 0.65rem 0.7rem;
+    text-align: left;
+}
+.pipeline-run-list button:not(:disabled):hover,
+.pipeline-run-list button.is-selected {
+    border-color: rgba(45, 212, 191, 0.46);
+    background: rgba(20, 184, 166, 0.12);
+}
+.pipeline-run-list button:disabled {
+    cursor: default;
+    color: #94a3b8;
+}
+.pipeline-run-title,
+.pipeline-run-meta {
+    display: flex;
+    gap: 0.55rem;
+    align-items: center;
+    justify-content: space-between;
+}
+.pipeline-run-title strong,
+.pipeline-run-meta span {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+.pipeline-run-title strong {
+    color: #f8fafc;
+    font-size: 0.82rem;
+}
+.pipeline-run-status {
+    flex: 0 0 auto;
+    border-radius: 999px;
+    background: rgba(148, 163, 184, 0.13);
+    color: #e5eefb;
+    padding: 0.22rem 0.5rem;
+    font-size: 0.7rem;
+}
+.pipeline-run-meta {
+    margin-top: 0.35rem;
+    color: #93c5fd;
+    font-size: 0.72rem;
 }
 .pipeline-secondary-btn {
     padding: 0.58rem 0.85rem;
@@ -317,20 +460,6 @@ ul { margin: 0.4rem 0 0; padding-left: 1.2rem; }
 }
 .pipeline-task-note[data-tone="success"] {
     color: #bbf7d0;
-}
-.pipeline-manual-block {
-    margin-top: 0.4rem;
-    padding-top: 1rem;
-    border-top: 1px solid rgba(148, 163, 184, 0.18);
-}
-.pipeline-manual-block .grid {
-    gap: 0.8rem;
-}
-.pipeline-checkbox {
-    display: flex;
-    gap: 0.5rem;
-    align-items: center;
-    margin: 0;
 }
 .pipeline-stages {
     display: grid;
@@ -650,6 +779,10 @@ ul { margin: 0.4rem 0 0; padding-left: 1.2rem; }
     .pipeline-workspace,
     .pipeline-stage-header {
         flex-direction: column;
+    }
+    .pipeline-task-summary,
+    .pipeline-task-run {
+        grid-template-columns: 1fr;
     }
     .pipeline-task-panel {
         width: auto;

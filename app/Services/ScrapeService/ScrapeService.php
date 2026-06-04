@@ -777,6 +777,8 @@ class ScrapeService
                 'profileName' => $profile['name'] ?? $profileId,
                 'schedule' => $this->firstScalar([$item['schedule'] ?? null]),
                 'containerPath' => $profile['containerPath'] ?? null,
+                'entrypoints' => $profile['entrypoints'] ?? [],
+                'settings' => $profile ? $this->taskUiSettings($profile) : [],
                 'raw' => $item,
             ]);
         }
@@ -793,6 +795,8 @@ class ScrapeService
             'profileName' => $profile['name'],
             'schedule' => null,
             'containerPath' => $profile['containerPath'] ?? null,
+            'entrypoints' => $profile['entrypoints'] ?? [],
+            'settings' => $this->taskUiSettings($profile),
             'raw' => $profile['raw'] ?? $profile,
         ]);
     }
@@ -801,6 +805,9 @@ class ScrapeService
     {
         $schedule = $this->firstScalar([$task['schedule'] ?? null]);
         $profileName = $this->firstScalar([$task['profileName'] ?? null, $task['profileId'] ?? null]);
+        $entrypoints = $this->taskUiEntrypoints($task['entrypoints'] ?? []);
+        $firstHost = $this->taskUiFirstEntrypoint(['entrypoints' => $entrypoints], 'host');
+        $firstSitemap = $this->taskUiFirstEntrypoint(['entrypoints' => $entrypoints], 'sitemap');
         $description = trim(implode(' | ', array_filter([
             $profileName ? 'Profile: '.$profileName : null,
             $schedule ? 'Schedule: '.$schedule : 'Manual task',
@@ -816,8 +823,54 @@ class ScrapeService
             'schedule' => $schedule,
             'type' => $schedule ? 'scheduled' : 'manual',
             'source' => 'scraper-task-ui',
+            'primaryUrl' => $firstHost !== null ? 'https://'.$firstHost : $firstSitemap,
+            'sitemapUrl' => $firstSitemap,
+            'containerPath' => $this->firstScalar([$task['containerPath'] ?? null]),
+            'entrypoints' => $entrypoints,
+            'settings' => is_array($task['settings'] ?? null) ? $task['settings'] : [],
             'raw' => $task['raw'] ?? $task,
         ];
+    }
+
+    private function taskUiSettings(array $profile): array
+    {
+        return [
+            'max_pages' => $profile['max_pages'],
+            'max_concurrency' => $profile['max_concurrency'],
+            'max_rpm' => $profile['max_rpm'],
+            'skip_images' => $profile['skip_images'],
+            'discovery_mode' => $profile['discovery_mode'],
+            'rescrape_failed' => $profile['rescrape_failed'],
+            'max_images_per_page' => $profile['max_images_per_page'],
+            'max_link_density' => $profile['max_link_density'],
+        ];
+    }
+
+    private function taskUiEntrypoints(mixed $entrypoints): array
+    {
+        if (!is_array($entrypoints)) {
+            return [];
+        }
+
+        $normalized = [];
+        foreach ($entrypoints as $entrypoint) {
+            if (!is_array($entrypoint)) {
+                continue;
+            }
+
+            $type = $this->firstScalar([$entrypoint['type'] ?? null]);
+            $src = $this->firstScalar([$entrypoint['src'] ?? null]);
+            if ($type === null || $src === null) {
+                continue;
+            }
+
+            $normalized[] = [
+                'type' => $type,
+                'src' => $src,
+            ];
+        }
+
+        return $normalized;
     }
 
     private function taskUiStartPayload(array $task, array $profile, array $options): array
@@ -968,6 +1021,24 @@ class ScrapeService
                 'routingKey' => $this->firstScalar([
                     $item['routing_key'] ?? null,
                     $item['routingKey'] ?? null,
+                ]),
+                'profileId' => $this->firstScalar([
+                    $item['profile_id'] ?? null,
+                    $item['profileId'] ?? null,
+                ]),
+                'schedule' => $this->firstScalar([
+                    $item['schedule'] ?? null,
+                    $item['cron'] ?? null,
+                ]),
+                'type' => $this->firstScalar([
+                    $item['type'] ?? null,
+                    $item['kind'] ?? null,
+                ]) ?? 'legacy',
+                'source' => 'crawler-api',
+                'primaryUrl' => $this->firstScalar([
+                    $item['source_url'] ?? null,
+                    $item['sourceUrl'] ?? null,
+                    $item['url'] ?? null,
                 ]),
                 'raw' => $raw,
             ];

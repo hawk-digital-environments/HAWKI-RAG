@@ -7,21 +7,54 @@ use App\Http\Controllers\API\IngestController;
 use App\Http\Controllers\API\RagHealthController;
 use App\Http\Controllers\API\RagStatsController;
 use App\Http\Controllers\Graph\RagGraphController;
+use App\Http\Controllers\DatasetController;
+use App\Http\Controllers\DocumentBrowserController;
+use App\Http\Controllers\PipelineProfileController;
+use App\Http\Controllers\PipelineRecoveryController;
 use App\Http\Controllers\PipelineTaskController;
 
 // Health check
 Route::get('/ping', fn() => response()->json(['pong' => true]));
 
+Route::prefix('datasets')->group(function () {
+    Route::get('/', [DatasetController::class, 'index']);
+    Route::post('/', [DatasetController::class, 'store']);
+    Route::get('/{datasetId}', [DatasetController::class, 'show']);
+});
+
+Route::prefix('documents')->group(function () {
+    Route::get('/', [DocumentBrowserController::class, 'index']);
+    Route::get('/{documentId}', [DocumentBrowserController::class, 'show']);
+});
+
 Route::prefix('pipeline/tasks')->group(function () {
+    Route::get('/', [PipelineTaskController::class, 'index']);
     Route::post('/start', [PipelineTaskController::class, 'start']);
     Route::get('/{taskId}', [PipelineTaskController::class, 'show']);
     Route::get('/{taskId}/jobs', [PipelineTaskController::class, 'jobs']);
+    Route::get('/{taskId}/failed-jobs', [PipelineTaskController::class, 'failedJobs']);
+    Route::get('/{taskId}/events', [PipelineTaskController::class, 'events']);
     Route::post('/{taskId}/jobs', [PipelineTaskController::class, 'upsertJob']);
-    Route::post('/{taskId}/cancel', [PipelineTaskController::class, 'cancel']);
-    Route::post('/{taskId}/resume', [PipelineTaskController::class, 'resume']);
     Route::post('/{taskId}/retry', [PipelineTaskController::class, 'retry']);
-    Route::post('/{taskId}/complete-if-idle', [PipelineTaskController::class, 'completeIfIdle']);
-    Route::post('/{taskId}/status', [PipelineTaskController::class, 'updateStatus']);
+    Route::post('/{taskId}/retry-failed-jobs', [PipelineTaskController::class, 'retryFailedJobs']);
+});
+
+Route::prefix('pipeline/profiles')->group(function () {
+    Route::get('/', [PipelineProfileController::class, 'index']);
+    Route::post('/', [PipelineProfileController::class, 'store']);
+    Route::get('/{profileId}', [PipelineProfileController::class, 'show']);
+    Route::put('/{profileId}', [PipelineProfileController::class, 'update']);
+    Route::patch('/{profileId}', [PipelineProfileController::class, 'update']);
+    Route::post('/{profileId}/start-task', [PipelineProfileController::class, 'startTask']);
+});
+
+Route::prefix('pipeline/recovery')->group(function () {
+    Route::get('/failed-jobs', [PipelineRecoveryController::class, 'failedJobs']);
+    Route::post('/jobs/retry-selected', [PipelineRecoveryController::class, 'retrySelected']);
+    Route::post('/jobs/{jobId}/retry', [PipelineRecoveryController::class, 'retryJob']);
+    Route::post('/retry-all', [PipelineRecoveryController::class, 'retryAll']);
+    Route::post('/tasks/{taskId}/retry-failed', [PipelineRecoveryController::class, 'retryTask']);
+    Route::post('/datasets/{datasetId}/retry-failed', [PipelineRecoveryController::class, 'retryDataset']);
 });
 
 Route::middleware('auth:sanctum')->group(function () {

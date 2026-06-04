@@ -6,7 +6,7 @@ Quick command reference for the RAWKI/HAWKI local stack.
 
 ```bash
 docker compose ps
-docker compose ps mariadb rabbitmq hawki-rag-ingestion-worker
+docker compose ps mariadb rabbitmq hawki-rag-scrape-monitor-worker hawki-rag-scraper-event-worker hawki-rag-converter-event-worker hawki-rag-ingestion-event-worker
 ```
 
 ## 2) MariaDB access
@@ -115,10 +115,10 @@ docker exec rabbitmq rabbitmqctl list_exchanges name type durable | rg 'jobs'
 docker exec rabbitmq rabbitmqctl list_queues name durable arguments messages_ready messages_unacknowledged | rg 'crawl_jobs|failed_jobs'
 docker exec rabbitmq rabbitmqctl list_bindings source_name destination_name destination_kind routing_key | rg 'jobs|crawl'
 
-# Converted-document pipeline topology
+# MVP pipeline topology
 docker exec rabbitmq rabbitmqctl list_exchanges name type durable | rg 'pipeline'
-docker exec rabbitmq rabbitmqctl list_queues name durable arguments messages_ready messages_unacknowledged | rg 'rag_ingestion_jobs|failed_jobs'
-docker exec rabbitmq rabbitmqctl list_bindings source_name destination_name destination_kind routing_key | rg 'pipeline|convert.document.completed'
+docker exec rabbitmq rabbitmqctl list_queues name durable arguments messages_ready messages_unacknowledged | rg 'pipeline_'
+docker exec rabbitmq rabbitmqctl list_bindings source_name destination_name destination_kind routing_key | rg 'scrape.requested|page.scraped|file.discovered|file.converted|content.ingested|job.failed'
 ```
 
 Expected topology:
@@ -127,17 +127,18 @@ Expected topology:
 - Queues: `crawl_jobs`, `crawl_jobs_retry`, `failed_jobs`
 - Routing keys: `crawl`, `crawl.retry`, `crawl.failed`
 
-Converted-document ingestion worker topology:
+MVP pipeline worker topology:
 
-- Exchanges: `pipeline.events`, `pipeline.retry`, `pipeline.failed`
-- Queues: `rag_ingestion_jobs`, `rag_ingestion_jobs_retry`, `rag_ingestion_failed_jobs`
-- Routing keys: `convert.document.completed`, `convert.document.completed.retry`, `pipeline.failed`
+- Exchanges: `pipeline.events`, `pipeline.retry`, `pipeline.failures`
+- Queues: `pipeline_scraper_events`, `pipeline_converter_events`, `pipeline_ingestion_events`, `pipeline_failed_events`
+- Local Laravel queue: `default`, used only for delayed Crawl4AI status polling by `MonitorScrapeJob`
+- Event routing keys: `scrape.requested`, `page.scraped`, `file.discovered`, `file.converted`, `content.ingested`, `job.failed`
 
 ## 6) Re-apply topology declaration
 
 ```bash
-docker compose restart hawki-rag-ingestion-worker
-docker compose logs --tail=120 hawki_rag_ingestion_worker
+docker compose restart hawki-rag-scrape-monitor-worker hawki-rag-scraper-event-worker hawki-rag-converter-event-worker hawki-rag-ingestion-event-worker
+docker compose logs --tail=120 hawki-rag-scrape-monitor-worker hawki-rag-scraper-event-worker hawki-rag-converter-event-worker hawki-rag-ingestion-event-worker
 ```
 
 ## 7) Publish a test message (HTTP API)
@@ -156,8 +157,8 @@ curl -u guest:guest -H "content-type:application/json" \
 ## 8) Worker logs and consumer health
 
 ```bash
-docker compose logs -f hawki_rag_ingestion_worker
-docker compose ps hawki-rag-ingestion-worker
+docker compose logs -f hawki-rag-scrape-monitor-worker hawki-rag-scraper-event-worker hawki-rag-converter-event-worker hawki-rag-ingestion-event-worker
+docker compose ps hawki-rag-scrape-monitor-worker hawki-rag-scraper-event-worker hawki-rag-converter-event-worker hawki-rag-ingestion-event-worker
 ```
 
 You should see structured events like:
@@ -169,56 +170,31 @@ You should see structured events like:
 - `failed-published`
 - `skip-duplicate`
 
-## 9) Worker idempotency/job-tracking store (SQLite)
+## 9) Worker job-tracking tables
 
-Path used by worker:
-
-- container path: `/app/storage/app/private/rag_worker_jobs.sqlite`
-- host path: `storage/app/private/rag_worker_jobs.sqlite`
-
-Quick check using Python (works even without `sqlite3` CLI):
-
-```bash
-python3 - <<'PY'
-import sqlite3
-db = "storage/app/private/rag_worker_jobs.sqlite"
-con = sqlite3.connect(db)
-cur = con.cursor()
-cur.execute("SELECT name FROM sqlite_master WHERE type='table'")
-print("tables:", cur.fetchall())
-cur.execute("""
-SELECT job_id, status, retry_count, max_retries, processing_stage, updated_at
-FROM worker_job_tracking
+```sql
+SELECT task_id, job_id, job_type, status, source_url, local_path, updated_at
+FROM pipeline_jobs
 ORDER BY updated_at DESC
-LIMIT 20
-""")
-for row in cur.fetchall():
-    print(row)
-con.close()
-PY
+LIMIT 20;
+
+SELECT job_id, stage, status, retry_count, max_retries, updated_at
+FROM job_processing_state
+ORDER BY updated_at DESC
+LIMIT 20;
 ```
 
 ## 10) Failed-job queue triage
 
 ```bash
 # queue depth
-docker exec rabbitmq rabbitmqctl list_queues name messages_ready messages_unacknowledged | rg failed_jobs
+docker exec rabbitmq rabbitmqctl list_queues name messages_ready messages_unacknowledged | rg 'pipeline_failed_events|failed_jobs'
+```
 
-# worker-side failed records
-python3 - <<'PY'
-import sqlite3
-db = "storage/app/private/rag_worker_jobs.sqlite"
-con = sqlite3.connect(db)
-cur = con.cursor()
-cur.execute("""
-SELECT job_id, retry_count, max_retries, error_type, error_message, updated_at
-FROM worker_job_tracking
-WHERE status='failed'
+```sql
+SELECT task_id, job_id, job_type, status, metadata, updated_at
+FROM pipeline_jobs
+WHERE status = 'failed'
 ORDER BY updated_at DESC
-LIMIT 50
-""")
-for row in cur.fetchall():
-    print(row)
-con.close()
-PY
+LIMIT 50;
 ```

@@ -11,10 +11,13 @@ return new class extends Migration
         Schema::create('pipeline_jobs', function (Blueprint $table) {
             $table->bigIncrements('id');
             $table->string('job_id', 191)->unique();
-            $table->string('status', 64)->default('pending');
+            $table->string('status', 64)->default('queued');
             $table->string('current_stage', 64)->nullable();
             $table->text('dataset_path')->nullable();
             $table->text('source_url')->nullable();
+            $table->text('local_path')->nullable();
+            $table->string('content_hash', 191)->nullable()->index();
+            $table->text('error_message')->nullable();
             $table->string('label')->nullable();
             $table->unsignedInteger('total_documents')->default(0);
             $table->unsignedInteger('processed_documents')->default(0);
@@ -23,6 +26,7 @@ return new class extends Migration
             $table->json('metadata')->nullable();
             $table->timestamp('started_at')->nullable();
             $table->timestamp('completed_at')->nullable();
+            $table->timestamp('finished_at')->nullable();
             $table->timestamps();
 
             $table->index(['status', 'current_stage']);

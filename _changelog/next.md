@@ -3,8 +3,8 @@
 ### What's New
 
 [//]: # (- The main new features and changes in this version.)
-- Add RabbitMQ-backed RAG ingestion with a dedicated Laravel worker for `convert.document.completed` events, durable queues, retry routing, failed-job routing, and persisted job state.
-- Add a `hawki-rag-ingestion-worker` Docker Compose profile for running converted-document ingestion as a separate worker service.
+- Simplify the HAWKI RAG pipeline to a Laravel-orchestrated MVP using RabbitMQ event workers for scrape, convert, and ingest.
+- Remove the legacy converted-document ingestion worker path in favor of the MVP event names.
 - Add Neo4j graph visualization to the HAWKI RAG playground, including live graph snapshots, relationship counts, recently added triplet highlighting, and graph clearing controls.
 - Add graph-only ingestion mode for writing Neo4j triplets without running the full vector embedding flow.
 - Add document and pipeline state persistence foundations with new `documents` and `job_processing_state` models and migrations.

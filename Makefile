@@ -14,7 +14,7 @@ LOCAL_OVERRIDE_COMPOSE ?= docker-compose.local.yml
 COMPOSE_FILE_SEP ?= :
 # USE_OLLAMA_GPU: auto (default), 1 (force GPU override), 0 (force CPU mode)
 USE_OLLAMA_GPU ?= auto
-CORE_PROFILES_BASE ?= rag-ingestion-worker,pipeline-events,prefect
+CORE_PROFILES_BASE ?= pipeline-events
 
 ifeq ($(USE_OLLAMA_GPU),auto)
 	ifeq ($(HOST_OS),Linux)
@@ -57,7 +57,7 @@ COMPOSE_FILE_PREFIX := COMPOSE_FILE=$(COMPOSE_FILE_LIST)
 COMPOSE_CMD = $(COMPOSE_ENV_PREFIX) COMPOSE_FILE=$(COMPOSE_FILE_LIST) $(if $(strip $(COMPOSE_PROFILES)),COMPOSE_PROFILES=$(COMPOSE_PROFILES)) $(COMPOSE_BIN) --env-file $(ENV_FILE)
 
 
-.PHONY: network pull-core build-app _up-core up-core up-core-server health pull-models scraped-folders publish-converted-folder crawl convert ingest convert-ingest-folder pipeline logs-core down-core down-rag restart-core test-services neo4j-fresh
+.PHONY: network pull-core build-app _up-core up-core up-core-server health pull-models scraped-folders crawl convert ingest convert-ingest-folder pipeline logs-core down-core down-rag restart-core test-services neo4j-fresh
 
 network:
 	@for net in hawki-network hosting_network; do \
@@ -88,12 +88,12 @@ _up-core: network
 
 up-core: COMPOSE_FILE_LIST = $(CORE_LOCAL_COMPOSE_FILE_LIST)
 up-core: COMPOSE_PROFILES = $(CORE_PROFILES)
-up-core: PROFILE_MESSAGE = $(GPU_MESSAGE) Local override enabled, RabbitMQ ingestion worker enabled, pipeline event workers enabled, and Prefect UI enabled.
+up-core: PROFILE_MESSAGE = $(GPU_MESSAGE) Local override enabled and pipeline event workers enabled.
 up-core: _up-core
 
 up-core-server: COMPOSE_FILE_LIST = $(CORE_SERVER_COMPOSE_FILE_LIST)
 up-core-server: COMPOSE_PROFILES = $(CORE_PROFILES)
-up-core-server: PROFILE_MESSAGE = $(GPU_MESSAGE) Server mode, RabbitMQ ingestion worker enabled, pipeline event workers enabled, and Prefect UI enabled.
+up-core-server: PROFILE_MESSAGE = $(GPU_MESSAGE) Server mode and pipeline event workers enabled.
 up-core-server: _up-core
 
 health:
@@ -153,28 +153,21 @@ health:
 	check_running $(OLLAMA_CONTAINER) 1; \
 	check_running hawki_rag_bridge 0; \
 	check_running hawki_rag_rerank 0; \
-	check_running hawki_rag_pipeline_worker 0; \
-	check_running hawki_rag_ingestion_worker 0; \
+	check_running hawki_rag_scrape_monitor_worker 0; \
 	check_running hawki_rag_scraper_event_worker 0; \
 	check_running hawki_rag_converter_event_worker 0; \
 	check_running hawki_rag_ingestion_event_worker 0; \
-	check_running prefect_server 0; \
-	check_running prefect_rag_task_runner 0; \
 	echo ""; \
 	echo "Service checks"; \
 	check_exec "MariaDB ping" mariadb 'mariadb-admin ping -h 127.0.0.1 -u"$$MARIADB_USER" -p"$$MARIADB_PASSWORD"' 1; \
 	check_exec "RabbitMQ ping" rabbitmq "rabbitmq-diagnostics -q ping" 1; \
 	check_exec "Laravel artisan" hawki_rag_app "php artisan list --raw" 1; \
-	check_exec "Laravel Prefect config" hawki_rag_app "php artisan tinker --execute=\"config('prefect.enabled') || throw new RuntimeException('Prefect disabled');\"" 0; \
 	check_exec "Qdrant readyz" hawki_qdrant "curl -fsS http://localhost:6333/readyz" 1; \
 	check_exec "Neo4j browser" hawki_rag_neo4j "wget --spider -q http://localhost:7474/browser" 1; \
 	check_exec "Ollama models" $(OLLAMA_CONTAINER) "ollama list" 1; \
 	check_exec "Ingestion bridge" hawki_rag_bridge "curl -fsS http://localhost:8000/health" 0; \
 	check_exec "Local reranker" hawki_rag_rerank "curl -fsS http://localhost:8000/health" 0; \
-	check_exec "Prefect API internal" prefect_server "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:4200/api/health', timeout=5)\"" 0; \
-	check_exec "Prefect deployment runner" prefect_rag_task_runner "python -c \"import urllib.request; urllib.request.urlopen('http://prefect-server:4200/api/health', timeout=5)\"" 0; \
 	check_url "Laravel HTTP" "http://127.0.0.1:8080/rag/health" 0; \
-	check_url "Prefect UI/API HTTP" "http://127.0.0.1:4200/api/health" 0; \
 	echo ""; \
 	if [ "$$failed" = "0" ]; then \
 		echo "Health checks completed."; \
@@ -265,14 +258,6 @@ scraped-folders:
 		echo "Convert and ingest one folder with:"; \
 		echo "  make convert-ingest-folder SCRAPED_FOLDER=/app/shared/<folder-name>"'
 
-publish-converted-folder:
-	@if [ -z "$(SCRAPED_FOLDER)" ]; then \
-		echo "Set SCRAPED_FOLDER to one of the folders below:"; \
-		$(MAKE) --no-print-directory scraped-folders; \
-		exit 2; \
-	fi
-	@$(ARTISAN) rag:publish-converted-folder "$(SCRAPED_FOLDER)"
-
 crawl:
 	@if [ -z "$(URL)" ]; then echo "Set URL, for example: make crawl URL=https://www.hawk.de JOB_ID_FULL=manual_001"; exit 2; fi
 	@EXTRA_FLAGS=""; \
@@ -320,7 +305,7 @@ pipeline: crawl convert
 	@$(MAKE) ingest CRAWLED_ROOT="$(OUTPUT_DIR)" COLLECTION="$(COLLECTION)" GRAPH="$(GRAPH)" GRAPH_ONLY="$(GRAPH_ONLY)" GRAPH_ENGINE="$(GRAPH_ENGINE)" EMBEDDING_MODEL="$(EMBEDDING_MODEL)" NEO4J_DATABASE="$(NEO4J_DATABASE)" CHUNK_CHARS="$(CHUNK_CHARS)" CHUNK_OVERLAP="$(CHUNK_OVERLAP)" BATCH="$(BATCH)" PROVIDER="$(PROVIDER)" BASE_URL="$(BASE_URL)" TIMEOUT="$(TIMEOUT)" RESUME_MODE="$(RESUME_MODE)" DRY="$(DRY)" ESTIMATE_ONLY="$(ESTIMATE_ONLY)" SUMMARY_FILE="$(SUMMARY_FILE)"
 
 logs-core:
-	@$(COMPOSE_CMD) logs -f qdrant mariadb rabbitmq $(OLLAMA_SERVICE) hawki_rag_app hawki-rag-pipeline-worker hawki-rag-ingestion-worker hawki-rag-scraper-event-worker hawki-rag-converter-event-worker hawki-rag-ingestion-event-worker prefect-server prefect-rag-task-runner
+	@$(COMPOSE_CMD) logs -f qdrant mariadb rabbitmq $(OLLAMA_SERVICE) hawki_rag_app hawki-rag-scrape-monitor-worker hawki-rag-scraper-event-worker hawki-rag-converter-event-worker hawki-rag-ingestion-event-worker
 	@$(COMPOSE_CMD) logs -f
 
 down-core:

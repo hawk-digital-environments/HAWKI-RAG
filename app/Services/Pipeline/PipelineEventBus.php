@@ -12,12 +12,14 @@ class PipelineEventBus
 {
     public function __construct(
         private readonly RagRabbitMQ $rabbit,
+        private readonly PipelineEventRecorder $recorder,
     ) {
     }
 
     public function publish(string $eventType, array $payload): array
     {
         $event = PipelineEvent::normalize($eventType, $payload);
+        $this->recorder->record($eventType, $event, 'rabbitmq.publish');
         $this->log('publish', $event);
 
         if (! (bool) config('communication.rabbitmq.pipeline_events.enabled', true)) {
@@ -65,7 +67,39 @@ class PipelineEventBus
             $this->retryRoutingKey($eventType),
             $retryEvent,
         );
+        $this->recorder->record($eventType, $retryEvent, 'rabbitmq.retry');
         $this->log('retry', $retryEvent);
+
+        return $retryEvent;
+    }
+
+    public function publishRecoveryRetry(array $event, string $reason = 'operator recovery retry'): array
+    {
+        $eventType = (string) ($event['event_type'] ?? '');
+        if ($eventType === '') {
+            throw new \InvalidArgumentException('Recovery retry requires event_type.');
+        }
+
+        $retryEvent = PipelineEvent::normalize($eventType, array_merge($event, [
+            'metadata' => array_merge(is_array($event['metadata'] ?? null) ? $event['metadata'] : [], [
+                'recovery_reason' => $reason,
+                'recovery_requested_at' => now()->toIso8601String(),
+            ]),
+        ]));
+
+        $this->recorder->record($eventType, $retryEvent, 'rabbitmq.recovery', "Recovery retry queued: {$eventType}");
+        $this->log('recovery_retry', $retryEvent);
+
+        if (! (bool) config('communication.rabbitmq.pipeline_events.enabled', true)) {
+            return $retryEvent;
+        }
+
+        $this->declareExchanges();
+        $this->publishRaw(
+            (string) config('communication.rabbitmq.pipeline_events.retry_exchange'),
+            $this->retryRoutingKey($eventType),
+            $retryEvent,
+        );
 
         return $retryEvent;
     }
@@ -94,6 +128,7 @@ class PipelineEventBus
         ]);
 
         $this->log('failed', $failed);
+        $this->recorder->record(PipelineEvent::JOB_FAILED, $failed, 'rabbitmq.failed');
 
         if ((bool) config('communication.rabbitmq.pipeline_events.enabled', true)) {
             $this->declareExchanges();
@@ -126,7 +161,7 @@ class PipelineEventBus
             $this->declareRetryQueue($queue, $eventType);
         }
 
-        $failedQueue = (string) config('communication.rabbitmq.rag_ingestion.failed_queue', 'rag_ingestion_failed_jobs');
+        $failedQueue = (string) config('communication.rabbitmq.pipeline_events.failed_queue', 'pipeline_failed_events');
         $channel->queue_declare($failedQueue, false, true, false, false, false, $queueArgs);
         $channel->queue_bind(
             $failedQueue,
@@ -210,7 +245,7 @@ class PipelineEventBus
 
     private function retryRoutingKey(string $eventType): string
     {
-        return "{$eventType}.retry";
+        return $eventType;
     }
 
     private function publishRaw(string $exchange, string $routingKey, array $payload): void

@@ -3,7 +3,6 @@
 namespace App\Services\Pipeline\EventHandlers;
 
 use App\Models\PipelineJob;
-use App\Models\PipelineTask;
 use App\Models\ScrapedElement;
 use App\Services\Pipeline\PipelineEvent;
 use App\Services\Pipeline\PipelineEventBus;
@@ -26,20 +25,13 @@ class ScraperEventHandler implements PipelineEventHandler
     public function eventTypes(): array
     {
         return [
-            PipelineEvent::TASK_STARTED,
             PipelineEvent::SCRAPE_REQUESTED,
-            PipelineEvent::PAGE_DISCOVERED,
         ];
     }
 
     public function handle(array $event): void
     {
-        match ((string) $event['event_type']) {
-            PipelineEvent::TASK_STARTED => $this->handleTaskStarted($event),
-            PipelineEvent::SCRAPE_REQUESTED,
-            PipelineEvent::PAGE_DISCOVERED => $this->handleScrapeRequested($event),
-            default => null,
-        };
+        $this->handleScrapeRequested($event);
     }
 
     public function failed(array $event, Throwable $error, int $retryCount, int $maxRetries): void
@@ -52,42 +44,6 @@ class ScraperEventHandler implements PipelineEventHandler
             'error_type' => class_basename($error),
             'error_message' => $error->getMessage(),
         ]);
-    }
-
-    private function handleTaskStarted(array $event): void
-    {
-        $taskId = (string) $event['task_id'];
-        $task = PipelineTask::query()->where('task_id', $taskId)->first();
-        if (!$task) {
-            throw new \RuntimeException("Pipeline task {$taskId} was not found.");
-        }
-
-        $jobs = PipelineJob::query()
-            ->where('task_id', $taskId)
-            ->where('job_type', PipelineJob::TYPE_SCRAPE)
-            ->whereIn('status', [PipelineJob::STATUS_PENDING, PipelineJob::STATUS_RUNNING])
-            ->get();
-
-        foreach ($jobs as $job) {
-            $this->events->publish(PipelineEvent::SCRAPE_REQUESTED, [
-                'task_id' => $taskId,
-                'job_id' => $job->job_id,
-                'parent_job_id' => $job->parent_job_id,
-                'dataset_id' => $task->dataset_id,
-                'profile_id' => $task->profile_id,
-                'job_type' => PipelineJob::TYPE_SCRAPE,
-                'source_url' => $job->source_url,
-                'local_path' => $job->local_path,
-                'content_hash' => $job->content_hash,
-                'status' => $job->status,
-                'metadata' => array_merge($job->metadata ?? [], [
-                    'source' => self::class,
-                    'reason' => 'Task started; scrape job requested.',
-                ]),
-            ]);
-        }
-
-        $this->state->refreshTask($taskId);
     }
 
     private function handleScrapeRequested(array $event): void

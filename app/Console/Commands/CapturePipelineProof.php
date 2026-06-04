@@ -536,8 +536,8 @@ class CapturePipelineProof extends Command
             'publisher' => $metadata['publisher'] ?? null,
             'folder' => $metadata['folder'] ?? ($ingestRow['metadata']['folder'] ?? null),
             'documentsPublished' => $ingestStage['counts']['total'] ?? $ingestRow['counts']['total'] ?? null,
-            'routingKey' => config('communication.rabbitmq.rag_ingestion.document_converted_routing_key', 'convert.document.completed'),
-            'eventsExchange' => config('communication.rabbitmq.rag_ingestion.events_exchange', 'pipeline.events'),
+            'routingKey' => config('communication.rabbitmq.pipeline_events.events.content_ingested', 'content.ingested'),
+            'eventsExchange' => config('communication.rabbitmq.pipeline_events.exchange', 'pipeline.events'),
             'exitCode' => $metadata['exitCode'] ?? null,
             'status' => $ingestStage['status'] ?? $ingestRow['status'] ?? 'unknown',
         ];
@@ -834,7 +834,7 @@ class CapturePipelineProof extends Command
                 ['ingest stage status', $publish['status'] ?? ''],
             ]),
             '',
-            '## 6. RabbitMQ ingestion worker logs/evidence',
+            '## 6. RabbitMQ pipeline worker logs/evidence',
             '',
             $this->markdownTable([
                 ['Field', 'Value'],

@@ -6,7 +6,20 @@ const projectPath = process.env.DOCKER_PROJECT_PATH || '/';
 export default defineConfig({
     plugins: [
         laravel({
-            input: ['resources/css/app.css', 'resources/js/app.js'],
+            input: [
+                'resources/css/app.css',
+                'resources/css/pipeline-dashboard.css',
+                'resources/css/datasets-dashboard.css',
+                'resources/css/documents-dashboard.css',
+                'resources/css/failed-jobs-dashboard.css',
+                'resources/css/pipeline-profiles-dashboard.css',
+                'resources/js/app.js',
+                'resources/js/pipeline-dashboard.js',
+                'resources/js/datasets-dashboard.js',
+                'resources/js/documents-dashboard.js',
+                'resources/js/failed-jobs-dashboard.js',
+                'resources/js/pipeline-profiles-dashboard.js',
+            ],
             refresh: true,
         }),
     ],

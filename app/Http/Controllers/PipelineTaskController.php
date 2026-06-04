@@ -13,6 +13,18 @@ class PipelineTaskController extends Controller
     ) {
     }
 
+    public function index(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'limit' => 'nullable|integer|min:1|max:100',
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'tasks' => $this->tasks->list((int) ($validated['limit'] ?? 30)),
+        ]);
+    }
+
     public function start(Request $request): JsonResponse
     {
         $validated = $request->validate([
@@ -22,6 +34,8 @@ class PipelineTaskController extends Controller
             'datasetId' => 'nullable|string',
             'profile_id' => 'nullable|string',
             'profileId' => 'nullable|string',
+            'pipeline_profile_id' => 'nullable|string',
+            'pipelineProfileId' => 'nullable|string',
             'sitemap_url' => 'nullable|string',
             'sitemapUrl' => 'nullable|string',
             'sitemap_path' => 'nullable|string',
@@ -67,6 +81,37 @@ class PipelineTaskController extends Controller
         ]);
     }
 
+    public function failedJobs(string $taskId): JsonResponse
+    {
+        return response()->json([
+            'success' => true,
+            'taskId' => $taskId,
+            'jobs' => $this->tasks->failedJobs($taskId),
+        ]);
+    }
+
+    public function events(Request $request, string $taskId): JsonResponse
+    {
+        $validated = $request->validate([
+            'limit' => 'nullable|integer|min:1|max:250',
+            'event_type' => 'nullable|string',
+            'eventType' => 'nullable|string',
+            'job_id' => 'nullable|string',
+            'jobId' => 'nullable|string',
+        ]);
+        $filters = [
+            'event_type' => $validated['event_type'] ?? $validated['eventType'] ?? null,
+            'job_id' => $validated['job_id'] ?? $validated['jobId'] ?? null,
+        ];
+
+        return response()->json([
+            'success' => true,
+            'taskId' => $taskId,
+            'events' => $this->tasks->recentEvents($taskId, (int) ($validated['limit'] ?? 100), $filters),
+            'filters' => $this->tasks->eventFilters($taskId),
+        ]);
+    }
+
     public function upsertJob(Request $request, string $taskId): JsonResponse
     {
         $validated = $request->validate([
@@ -83,6 +128,8 @@ class PipelineTaskController extends Controller
             'content_hash' => 'nullable|string',
             'contentHash' => 'nullable|string',
             'status' => 'nullable|string',
+            'error_message' => 'nullable|string',
+            'errorMessage' => 'nullable|string',
             'started_at' => 'nullable|string',
             'startedAt' => 'nullable|string',
             'metadata' => 'nullable|array',
@@ -98,37 +145,14 @@ class PipelineTaskController extends Controller
         ]);
     }
 
-    public function cancel(string $taskId): JsonResponse
-    {
-        return $this->taskActionResponse($taskId, $this->tasks->cancel($taskId));
-    }
-
-    public function resume(string $taskId): JsonResponse
-    {
-        return $this->taskActionResponse($taskId, $this->tasks->resume($taskId));
-    }
-
     public function retry(string $taskId): JsonResponse
     {
-        return $this->taskActionResponse($taskId, $this->tasks->retry($taskId));
+        return $this->taskActionResponse($taskId, $this->tasks->retryFailedJobs($taskId));
     }
 
-    public function completeIfIdle(string $taskId): JsonResponse
+    public function retryFailedJobs(string $taskId): JsonResponse
     {
-        return $this->taskActionResponse($taskId, $this->tasks->completeIfIdle($taskId));
-    }
-
-    public function updateStatus(Request $request, string $taskId): JsonResponse
-    {
-        $validated = $request->validate([
-            'status' => 'required|string',
-            'metadata' => 'nullable|array',
-        ]);
-
-        return $this->taskActionResponse(
-            $taskId,
-            $this->tasks->updateStatus($taskId, $validated['status'], $validated['metadata'] ?? []),
-        );
+        return $this->retry($taskId);
     }
 
     private function taskActionResponse(string $taskId, mixed $task): JsonResponse

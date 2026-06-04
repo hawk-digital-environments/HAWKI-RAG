@@ -97,8 +97,6 @@ class MonitorScrapeJob implements ShouldQueue
                     ])->save();
 
                     $this->publishScrapeCompletedEvents($pipelineJob, $datasetPath);
-                } else {
-                    ConvertPipelineDatasetJob::dispatch($this->jobId, $datasetPath);
                 }
             }
             return;

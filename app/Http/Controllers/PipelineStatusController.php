@@ -2,8 +2,6 @@
 
 namespace App\Http\Controllers;
 
-use App\Jobs\ConvertPipelineDatasetJob;
-use App\Jobs\PublishConvertedDocumentsJob;
 use App\Models\JobProcessingState;
 use App\Models\ScrapeProcess;
 use App\Services\Pipeline\PipelineStateService;
@@ -375,10 +373,6 @@ class PipelineStatusController extends Controller
 
         if ($status === 'completed') {
             $this->pipelineState->completeStage($jobId, PipelineStateService::STAGE_SCRAPE, $payload);
-            $datasetPath = (string) ($stage['datasetPath'] ?? '');
-            if ($datasetPath !== '' && !$this->pipelineState->isStageClaimedOrDone($jobId, PipelineStateService::STAGE_CONVERT)) {
-                ConvertPipelineDatasetJob::dispatch($jobId, $datasetPath);
-            }
             return;
         }
 
@@ -438,11 +432,6 @@ class PipelineStatusController extends Controller
             ]);
         }
 
-        if ($status === 'completed'
-            && $datasetPath !== ''
-            && !$this->pipelineState->isStageClaimedOrDone($jobId, PipelineStateService::STAGE_INGEST)) {
-            PublishConvertedDocumentsJob::dispatch($jobId, $datasetPath);
-        }
     }
 
     private function syncIngestStage(string $jobId, ?string $datasetPath, array $stage): void

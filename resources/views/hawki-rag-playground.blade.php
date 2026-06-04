@@ -206,7 +206,6 @@
                     <span id="pipeline-job-id" class="pipeline-job-id">Job ID: none</span>
                 </div>
             </div>
-
             <div class="pipeline-workspace">
                 <aside class="pipeline-task-panel">
                     <div class="pipeline-panel-head">
@@ -217,28 +216,21 @@
                     <select id="pipeline-task-select">
                         <option value="">Loading scraper tasks...</option>
                     </select>
+                    <div class="pipeline-task-summary">
+                        <span><strong id="pipeline-task-count">0</strong> tasks</span>
+                        <span id="pipeline-task-source">Source: none</span>
+                    </div>
+                    <div id="pipeline-task-detail" class="pipeline-task-detail" hidden></div>
                     <div id="pipeline-task-note" class="pipeline-task-note"></div>
-                    <button type="button" id="pipeline-task-start-btn">Start Selected Task</button>
+                    <button type="button" id="pipeline-task-start-btn">Start Pipeline Task</button>
 
-                    <div class="pipeline-manual-block">
-                        <h3>Manual URL</h3>
-                        <div class="grid">
-                            <div>
-                                <label for="pipeline-url">URL</label>
-                                <input id="pipeline-url" type="url" placeholder="https://www.hawk.de/..." />
-                            </div>
-                            <div class="grid two">
-                                <div>
-                                    <label for="pipeline-label">Label</label>
-                                    <input id="pipeline-label" type="text" placeholder="pipeline-test" />
-                                </div>
-                                <div>
-                                    <label for="pipeline-max-pages">Max pages</label>
-                                    <input id="pipeline-max-pages" type="number" min="1" value="2" />
-                                </div>
-                            </div>
-                            <label class="pipeline-checkbox"><input type="checkbox" id="pipeline-skip-images" checked /> Skip images</label>
-                            <button type="button" id="pipeline-start-btn">Start Manual Pipeline</button>
+                    <div class="pipeline-run-list-block">
+                        <div class="pipeline-panel-head">
+                            <h3>Pipeline Tasks</h3>
+                            <button type="button" id="pipeline-run-refresh-btn" class="pipeline-secondary-btn">Refresh</button>
+                        </div>
+                        <div id="pipeline-run-list" class="pipeline-run-list">
+                            <button type="button" disabled>Loading pipeline tasks...</button>
                         </div>
                     </div>
                 </aside>
@@ -251,6 +243,7 @@
                         </div>
                         <div id="pipeline-updated-at" class="pipeline-updated-at"></div>
                     </div>
+                    <div id="pipeline-task-run" class="pipeline-task-run" hidden></div>
                     <div id="pipeline-stages" class="pipeline-stages pipeline-stages-expanded"></div>
                 </main>
             </div>

@@ -25,7 +25,6 @@ class ConverterEventHandler implements PipelineEventHandler
     {
         return [
             PipelineEvent::FILE_DISCOVERED,
-            PipelineEvent::CONVERT_REQUESTED,
         ];
     }
 

@@ -18,10 +18,11 @@ class PipelineEventStateService
     public function upsertJob(array $event, ?string $status = null, array $metadata = []): PipelineJob
     {
         $event = PipelineEvent::normalize((string) $event['event_type'], $event);
-        $status ??= (string) $event['status'];
+        $status = $this->normalizeStatus($status ?? (string) $event['status']);
         $terminal = PipelineEvent::terminalStatus($status);
         $existing = PipelineJob::query()->where('job_id', $event['job_id'])->first();
         $existingMetadata = is_array($existing?->metadata) ? $existing->metadata : [];
+        $mergedMetadata = array_merge($existingMetadata, $event['metadata'] ?? [], $metadata);
         $events = is_array($existingMetadata['events'] ?? null) ? $existingMetadata['events'] : [];
         $events[] = [
             'event_type' => $event['event_type'],
@@ -43,7 +44,10 @@ class PipelineEventStateService
                 'started_at' => $existing?->started_at ?? Carbon::now(),
                 'completed_at' => $terminal ? Carbon::now() : null,
                 'finished_at' => $terminal ? Carbon::now() : null,
-                'metadata' => array_merge($existingMetadata, $event['metadata'] ?? [], $metadata, [
+                'error_message' => $status === PipelineJob::STATUS_FAILED
+                    ? (string) ($mergedMetadata['error_message'] ?? $mergedMetadata['last_error_message'] ?? '')
+                    : null,
+                'metadata' => array_merge($mergedMetadata, [
                     'latest_event_type' => $event['event_type'],
                     'latest_event_id' => $event['event_id'],
                     'events' => $events,
@@ -75,7 +79,25 @@ class PipelineEventStateService
     {
         $task = PipelineTask::query()->where('task_id', $taskId)->first();
         if ($task) {
-            $this->tasks->refreshCounters($task);
+            $this->tasks->recalculateTaskStatus($task);
         }
+    }
+
+    private function normalizeStatus(string $status): string
+    {
+        return match ($status) {
+            'pending' => PipelineJob::STATUS_QUEUED,
+            'received',
+            'processing' => PipelineJob::STATUS_RUNNING,
+            'partial',
+            'cancel_requested',
+            'cancelled' => PipelineJob::STATUS_FAILED,
+            PipelineJob::STATUS_QUEUED,
+            PipelineJob::STATUS_RUNNING,
+            PipelineJob::STATUS_COMPLETED,
+            PipelineJob::STATUS_SKIPPED,
+            PipelineJob::STATUS_FAILED => $status,
+            default => PipelineJob::STATUS_FAILED,
+        };
     }
 }

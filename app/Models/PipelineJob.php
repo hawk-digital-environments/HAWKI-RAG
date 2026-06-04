@@ -8,14 +8,27 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class PipelineJob extends Model
 {
-    public const STATUS_PENDING = 'pending';
+    public const STATUS_QUEUED = 'queued';
+    public const STATUS_PENDING = self::STATUS_QUEUED;
     public const STATUS_RUNNING = 'running';
     public const STATUS_COMPLETED = 'completed';
     public const STATUS_FAILED = 'failed';
     public const STATUS_SKIPPED = 'skipped';
-    public const STATUS_PARTIAL = 'partial';
-    public const STATUS_CANCEL_REQUESTED = 'cancel_requested';
-    public const STATUS_CANCELLED = 'cancelled';
+
+    public const STATUS_PARTIAL = self::STATUS_FAILED;
+    public const STATUS_CANCEL_REQUESTED = self::STATUS_FAILED;
+    public const STATUS_CANCELLED = self::STATUS_FAILED;
+
+    public const ACTIVE_STATUSES = [
+        self::STATUS_QUEUED,
+        self::STATUS_RUNNING,
+    ];
+
+    public const TERMINAL_STATUSES = [
+        self::STATUS_COMPLETED,
+        self::STATUS_SKIPPED,
+        self::STATUS_FAILED,
+    ];
 
     public const TYPE_SCRAPE = 'scrape';
     public const TYPE_CONVERT = 'convert';
@@ -33,6 +46,7 @@ class PipelineJob extends Model
         'source_url',
         'local_path',
         'content_hash',
+        'error_message',
         'label',
         'total_documents',
         'processed_documents',
@@ -71,8 +85,6 @@ class PipelineJob extends Model
             self::STATUS_COMPLETED,
             self::STATUS_FAILED,
             self::STATUS_SKIPPED,
-            self::STATUS_PARTIAL,
-            self::STATUS_CANCELLED,
         ], true);
     }
 }

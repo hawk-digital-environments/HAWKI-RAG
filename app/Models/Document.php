@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Document extends Model
 {
@@ -28,6 +29,7 @@ class Document extends Model
     protected $fillable = [
         'id',
         'external_id',
+        'dataset_id',
         'collection',
         'source_type',
         'source_url',
@@ -50,4 +52,8 @@ class Document extends Model
         'metadata_json' => 'array',
     ];
 
+    public function dataset(): BelongsTo
+    {
+        return $this->belongsTo(Dataset::class, 'dataset_id', 'dataset_id');
+    }
 }

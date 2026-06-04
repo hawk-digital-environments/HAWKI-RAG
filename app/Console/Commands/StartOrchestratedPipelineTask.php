@@ -16,7 +16,7 @@ class StartOrchestratedPipelineTask extends Command
         {--source-url= : Single source URL}
         {--url=* : Source URL, can be repeated}';
 
-    protected $description = 'Create a Laravel-owned pipeline task and start its Prefect supervisor flow.';
+    protected $description = 'Create a Laravel-owned pipeline task and publish RabbitMQ worker jobs.';
 
     public function handle(PipelineTaskService $tasks): int
     {

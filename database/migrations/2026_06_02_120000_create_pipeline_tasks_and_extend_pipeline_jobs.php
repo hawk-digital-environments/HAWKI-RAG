@@ -14,8 +14,6 @@ return new class extends Migration
                 $table->string('task_id', 191)->unique();
                 $table->string('dataset_id', 191)->nullable();
                 $table->string('profile_id', 191)->nullable();
-                $table->text('sitemap_url')->nullable();
-                $table->text('sitemap_path')->nullable();
                 $table->string('status', 64)->default('pending');
                 $table->timestamp('started_at')->nullable();
                 $table->timestamp('finished_at')->nullable();
@@ -44,6 +42,9 @@ return new class extends Migration
             if (!Schema::hasColumn('pipeline_jobs', 'content_hash')) {
                 $table->string('content_hash', 191)->nullable()->after('local_path')->index();
             }
+            if (!Schema::hasColumn('pipeline_jobs', 'error_message')) {
+                $table->text('error_message')->nullable()->after('status');
+            }
             if (!Schema::hasColumn('pipeline_jobs', 'finished_at')) {
                 $table->timestamp('finished_at')->nullable()->after('completed_at');
             }
@@ -54,13 +55,13 @@ return new class extends Migration
     {
         if (Schema::hasTable('pipeline_jobs')) {
             Schema::table('pipeline_jobs', function (Blueprint $table) {
-                foreach (['task_id', 'parent_job_id', 'job_type', 'content_hash'] as $column) {
+                foreach (['task_id', 'parent_job_id', 'job_type'] as $column) {
                     if (Schema::hasColumn('pipeline_jobs', $column)) {
                         $table->dropIndex([$column]);
                     }
                 }
 
-                foreach (['task_id', 'parent_job_id', 'job_type', 'local_path', 'content_hash', 'finished_at'] as $column) {
+                foreach (['task_id', 'parent_job_id', 'job_type'] as $column) {
                     if (Schema::hasColumn('pipeline_jobs', $column)) {
                         $table->dropColumn($column);
                     }

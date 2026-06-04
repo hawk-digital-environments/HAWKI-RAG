@@ -24,6 +24,26 @@ Route::get('/hawki-rag-playground', function () {
     ]);
 });
 
+Route::get('/pipeline-dashboard', function () {
+    return view('pipeline-dashboard');
+});
+
+Route::get('/datasets', function () {
+    return view('datasets-dashboard');
+});
+
+Route::get('/documents', function () {
+    return view('documents-dashboard');
+});
+
+Route::get('/failed-jobs', function () {
+    return view('failed-jobs-dashboard');
+});
+
+Route::get('/pipeline-profiles', function () {
+    return view('pipeline-profiles-dashboard');
+});
+
 Route::post('/requestScrape', [ScrapeController::class, 'requestScrape']);
 Route::post('/cancelScrape', [ScrapeController::class, 'cancelScrape']);
 Route::post('/getAllScrapes', [ScrapeController::class, 'getAllScrapes']);
@@ -40,15 +60,15 @@ Route::post('/scraper/jobs/{jobId}/cancel', [ScrapeController::class, 'cancelCra
 Route::post('/scraper/jobs/{jobId}/pause', [ScrapeController::class, 'pauseCrawlerJob']);
 Route::post('/scraper/jobs/{jobId}/resume', [ScrapeController::class, 'resumeCrawlerJob']);
 Route::get('/pipeline/status/{jobId}', [PipelineStatusController::class, 'show']);
+Route::get('/pipeline/tasks', [PipelineTaskController::class, 'index']);
 Route::post('/pipeline/tasks/start', [PipelineTaskController::class, 'start']);
 Route::get('/pipeline/tasks/{taskId}', [PipelineTaskController::class, 'show']);
 Route::get('/pipeline/tasks/{taskId}/jobs', [PipelineTaskController::class, 'jobs']);
+Route::get('/pipeline/tasks/{taskId}/failed-jobs', [PipelineTaskController::class, 'failedJobs']);
+Route::get('/pipeline/tasks/{taskId}/events', [PipelineTaskController::class, 'events']);
 Route::post('/pipeline/tasks/{taskId}/jobs', [PipelineTaskController::class, 'upsertJob']);
-Route::post('/pipeline/tasks/{taskId}/cancel', [PipelineTaskController::class, 'cancel']);
-Route::post('/pipeline/tasks/{taskId}/resume', [PipelineTaskController::class, 'resume']);
 Route::post('/pipeline/tasks/{taskId}/retry', [PipelineTaskController::class, 'retry']);
-Route::post('/pipeline/tasks/{taskId}/complete-if-idle', [PipelineTaskController::class, 'completeIfIdle']);
-Route::post('/pipeline/tasks/{taskId}/status', [PipelineTaskController::class, 'updateStatus']);
+Route::post('/pipeline/tasks/{taskId}/retry-failed-jobs', [PipelineTaskController::class, 'retryFailedJobs']);
 // Playground related routes
 
 Route::post('/query', [HawkiRagProxyController::class, 'query']);
