@@ -125,7 +125,6 @@ class IngestionEventHandler implements PipelineEventHandler
             'job_id' => $jobId,
             'parent_job_id' => $event['job_id'],
             'dataset_id' => $datasetId,
-            'profile_id' => $event['profile_id'],
             'job_type' => PipelineJob::TYPE_INGEST,
             'source_url' => $event['source_url'],
             'local_path' => $path,

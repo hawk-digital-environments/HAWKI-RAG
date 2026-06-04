@@ -9,6 +9,7 @@ use App\Services\Pipeline\PipelineEventBus;
 use App\Services\Pipeline\PipelineEventStateService;
 use App\Services\ScrapeService\Data\ScrapeJobRequest;
 use App\Services\ScrapeService\ScraperPipelineService;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Throwable;
@@ -85,11 +86,14 @@ class ScraperEventHandler implements PipelineEventHandler
             'stage' => 'scrape_submitted',
         ]);
 
+        $outputDir = $event['local_path'] ?: $this->outputDirFor($event);
+        File::ensureDirectoryExists($outputDir);
+
         $result = $this->scraper->execute(ScrapeJobRequest::fromArray([
             'job_id' => $event['job_id'],
             'url' => $url,
             'label' => $event['metadata']['label'] ?? $this->labelForUrl($url),
-            'output_dir' => $event['local_path'] ?: $this->outputDirFor($event),
+            'output_dir' => $outputDir,
             'max_pages' => $event['metadata']['max_pages'] ?? 1,
             'skip_images' => $event['metadata']['skip_images'] ?? false,
             'max_concurrency' => $event['metadata']['max_concurrency'] ?? 1,

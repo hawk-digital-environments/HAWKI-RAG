@@ -1,5 +1,7 @@
 function configuredBasePath() {
-    const configured = window.hawkiPlayground?.apiBasePath || '/';
+    const configured = document.querySelector('meta[name="hawki-api-base-path"]')?.content
+        || window.hawkiPlayground?.apiBasePath
+        || '/';
     const text = String(configured || '/').trim();
 
     if (!text || text === '/') {

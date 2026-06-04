@@ -242,7 +242,7 @@ function renderPipelineTask(task) {
     const jobs = Array.isArray(task.jobs) ? task.jobs : [];
     currentEl.textContent = `Task ${task.status || 'unknown'} · ${task.activeJobs || 0} active`;
     if (jobIdEl) jobIdEl.textContent = `Task ID: ${task.taskId || 'none'}`;
-    if (datasetPathEl) datasetPathEl.textContent = `Dataset: ${task.datasetId || task.profileId || 'none'}`;
+    if (datasetPathEl) datasetPathEl.textContent = `Dataset: ${task.datasetId || 'none'}`;
     if (updatedAtEl) updatedAtEl.textContent = task.updatedAt ? `Updated ${formatDate(task.updatedAt)}` : '';
 
     if (taskRunEl) {
@@ -272,7 +272,6 @@ function taskRunLabel(task) {
     const requestMetadata = task?.metadata?.request?.metadata || {};
     return requestMetadata.catalog_task_label
         || requestMetadata.label
-        || task.profileId
         || task.datasetId
         || task.taskId;
 }
@@ -409,7 +408,6 @@ function renderSelectedTaskDetail(task) {
     [
         sourceLabel(task),
         task.type || null,
-        task.profileName || task.profileId || null,
         task.schedule ? `schedule ${task.schedule}` : null,
         settingValue(task.settings, 'max_pages') ? `${settingValue(task.settings, 'max_pages')} pages` : null,
         settingValue(task.settings, 'skip_images') ? `images ${settingValue(task.settings, 'skip_images')}` : null,
@@ -519,7 +517,7 @@ async function selectPipelineTask(taskId) {
 }
 
 function pipelineTaskIdFor(task) {
-    const base = sanitizeLabel(task.profileId || task.id || 'scraper-task') || 'scraper-task';
+    const base = sanitizeLabel(task.id || task.label || 'scraper-task') || 'scraper-task';
     return `task_${base}_${Date.now()}`;
 }
 
@@ -553,14 +551,12 @@ function pipelineTaskPayload(task) {
         catalog_task_id: task.id,
         catalog_task_label: task.label || task.id,
         catalog_task_type: task.type || null,
-        profile_name: task.profileName || null,
         ...settingsMetadata(task),
     };
 
     return {
         taskId: pipelineTaskIdFor(task),
-        datasetId: task.profileId || sanitizeLabel(task.label || task.id),
-        profileId: task.profileId || '',
+        datasetId: sanitizeLabel(task.label || task.id),
         sourceUrl,
         sitemapUrl,
         urls: sourceUrl ? [sourceUrl] : [],

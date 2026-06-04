@@ -13,11 +13,7 @@
         $apiBasePath = '/' . trim((string) $apiBasePath, '/') . '/';
         $apiBasePath = $apiBasePath === '//' ? '/' : $apiBasePath;
     @endphp
-    <script>
-        window.hawkiPlayground = {
-            apiBasePath: @json($apiBasePath),
-        };
-    </script>
+    <meta name="hawki-api-base-path" content="{{ $apiBasePath }}" />
     @vite("resources/css/app.css")
     @vite("resources/js/app.js")
 

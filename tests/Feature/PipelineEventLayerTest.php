@@ -16,6 +16,8 @@ use App\Services\Pipeline\PipelineEvent;
 use App\Services\Pipeline\PipelineEventBus;
 use App\Services\Pipeline\PipelineStateService;
 use App\Services\ScrapeService\ScrapeService;
+use App\Services\ScrapeService\Data\ScrapeJobRequest;
+use App\Services\ScrapeService\Data\ScrapeRequestResult;
 use App\Services\ScrapeService\ScraperPipelineService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\File;
@@ -83,7 +85,6 @@ class PipelineEventLayerTest extends TestCase
             'task_id' => $task->task_id,
             'job_id' => 'scrape-event-skip',
             'dataset_id' => $task->dataset_id,
-            'profile_id' => $task->profile_id,
             'source_url' => $url,
             'status' => PipelineJob::STATUS_PENDING,
         ]));
@@ -99,6 +100,40 @@ class PipelineEventLayerTest extends TestCase
         $task->refresh();
         $this->assertSame(1, $task->counters['scrape_jobs']);
         $this->assertSame(1, $task->counters['skipped']);
+    }
+
+    public function test_scraper_consumer_creates_output_directory_before_submit(): void
+    {
+        config()->set('scraper.storage_path', storage_path('framework/testing/pipeline-events/scrape-output'));
+        $outputDir = null;
+        $this->mock(ScraperPipelineService::class, function (MockInterface $mock) use (&$outputDir): void {
+            $mock->shouldReceive('execute')
+                ->once()
+                ->withArgs(function (ScrapeJobRequest $request) use (&$outputDir): bool {
+                    $outputDir = $request->outputDir;
+                    $this->assertDirectoryExists($request->outputDir);
+                    $this->assertTrue(is_writable($request->outputDir));
+
+                    return true;
+                })
+                ->andReturn(ScrapeRequestResult::success('scrape-event-output-dir', 'submitted'));
+        });
+
+        $task = $this->task('task-event-scrape-output-dir');
+        app(ScraperEventHandler::class)->handle(PipelineEvent::normalize(PipelineEvent::SCRAPE_REQUESTED, [
+            'task_id' => $task->task_id,
+            'job_id' => 'scrape-event-output-dir',
+            'dataset_id' => $task->dataset_id,
+            'source_url' => 'https://example.test/output-dir',
+            'status' => PipelineJob::STATUS_PENDING,
+        ]));
+
+        $this->assertNotNull($outputDir);
+        $this->assertDatabaseHas('pipeline_jobs', [
+            'task_id' => $task->task_id,
+            'job_id' => 'scrape-event-output-dir',
+            'status' => PipelineJob::STATUS_RUNNING,
+        ]);
     }
 
     public function test_converter_consumer_records_cached_conversions_as_skipped_jobs(): void
@@ -127,7 +162,6 @@ class PipelineEventLayerTest extends TestCase
             'job_id' => 'convert-event-skip',
             'parent_job_id' => 'scrape-parent',
             'dataset_id' => $task->dataset_id,
-            'profile_id' => $task->profile_id,
             'source_url' => 'https://example.test/handbook.pdf',
             'local_path' => $sourceFile,
             'content_hash' => $contentHash,
@@ -170,7 +204,6 @@ class PipelineEventLayerTest extends TestCase
             'started_at' => now(),
             'metadata' => [
                 'dataset_id' => $task->dataset_id,
-                'profile_id' => $task->profile_id,
             ],
         ]);
 
@@ -246,7 +279,6 @@ class PipelineEventLayerTest extends TestCase
             'task_id' => $task->task_id,
             'job_id' => 'scrape-event-completed',
             'dataset_id' => $task->dataset_id,
-            'profile_id' => $task->profile_id,
             'job_type' => PipelineJob::TYPE_SCRAPE,
             'source_url' => 'https://example.test/page',
             'local_path' => $markdownPath,
@@ -288,7 +320,6 @@ class PipelineEventLayerTest extends TestCase
             'task_id' => $task->task_id,
             'job_id' => 'scrape-event-source',
             'dataset_id' => $task->dataset_id,
-            'profile_id' => $task->profile_id,
             'job_type' => PipelineJob::TYPE_SCRAPE,
             'source_url' => 'https://example.test/page',
             'local_path' => $markdownPath,
@@ -321,7 +352,6 @@ class PipelineEventLayerTest extends TestCase
             'job_id' => 'convert-event-failed',
             'parent_job_id' => 'scrape-parent',
             'dataset_id' => 'dataset-events',
-            'profile_id' => 'profile-events',
             'job_type' => PipelineJob::TYPE_CONVERT,
             'source_url' => 'https://example.test/file.pdf',
             'local_path' => '/app/shared/file.pdf',
@@ -381,7 +411,6 @@ class PipelineEventLayerTest extends TestCase
         return PipelineTask::query()->create([
             'task_id' => $taskId,
             'dataset_id' => 'dataset-events',
-            'profile_id' => 'profile-events',
             'status' => PipelineTask::STATUS_RUNNING,
             'started_at' => now(),
             'counters' => [],

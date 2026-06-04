@@ -13,11 +13,7 @@
         $apiBasePath = '/' . trim((string) $apiBasePath, '/') . '/';
         $apiBasePath = $apiBasePath === '//' ? '/' : $apiBasePath;
     @endphp
-    <script>
-        window.hawkiPlayground = {
-            apiBasePath: @json($apiBasePath),
-        };
-    </script>
+    <meta name="hawki-api-base-path" content="{{ $apiBasePath }}" />
     @vite(["resources/css/failed-jobs-dashboard.css", "resources/js/failed-jobs-dashboard.js"])
 </head>
 <body>
@@ -30,9 +26,9 @@
             </div>
             <div class="header-actions">
                 <a class="secondary-link" href="{{ url('/pipeline-dashboard') }}">Pipeline Dashboard</a>
+                <a class="secondary-link" href="{{ url('/pipeline-health') }}">Health</a>
                 <a class="secondary-link" href="{{ url('/datasets') }}">Datasets</a>
                 <a class="secondary-link" href="{{ url('/documents') }}">Documents</a>
-                <a class="secondary-link" href="{{ url('/pipeline-profiles') }}">Profiles</a>
                 <button type="button" class="secondary-button" id="failed-jobs-refresh">Refresh</button>
             </div>
         </header>

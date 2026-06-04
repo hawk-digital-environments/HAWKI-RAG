@@ -77,7 +77,6 @@ class DocumentBrowserTest extends TestCase
         PipelineTask::query()->create([
             'task_id' => 'task-browser',
             'dataset_id' => 'browser-dataset',
-            'profile_id' => 'profile-browser',
             'status' => PipelineTask::STATUS_COMPLETED,
             'started_at' => now()->subMinutes(5),
             'finished_at' => now()->subMinute(),

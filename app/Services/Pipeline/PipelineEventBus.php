@@ -111,7 +111,6 @@ class PipelineEventBus
             'job_id' => $event['job_id'] ?? null,
             'parent_job_id' => $event['parent_job_id'] ?? null,
             'dataset_id' => $event['dataset_id'] ?? null,
-            'profile_id' => $event['profile_id'] ?? null,
             'job_type' => $event['job_type'] ?? null,
             'source_url' => $event['source_url'] ?? null,
             'local_path' => $event['local_path'] ?? null,

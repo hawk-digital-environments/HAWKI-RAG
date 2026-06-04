@@ -13,29 +13,24 @@
         $apiBasePath = '/' . trim((string) $apiBasePath, '/') . '/';
         $apiBasePath = $apiBasePath === '//' ? '/' : $apiBasePath;
     @endphp
-    <script>
-        window.hawkiPlayground = {
-            apiBasePath: @json($apiBasePath),
-        };
-    </script>
+    <meta name="hawki-api-base-path" content="{{ $apiBasePath }}" />
     @vite(["resources/css/pipeline-dashboard.css", "resources/js/pipeline-dashboard.js"])
 </head>
 <body>
     <main class="pipeline-dashboard" data-pipeline-dashboard>
         <header class="dashboard-header">
             <div>
-                <p class="eyebrow">Laravel-owned MVP pipeline</p>
+                <p class="eyebrow">Laravel-owned pipeline</p>
                 <h1>HAWKI Pipeline Dashboard</h1>
                 <p class="header-copy">Scrape, convert, and ingest state from Laravel database records.</p>
             </div>
             <div class="header-actions">
+                <a class="secondary-link" href="{{ url('/pipeline-health') }}">Health</a>
                 <a class="secondary-link" href="{{ url('/datasets') }}">Datasets</a>
                 <a class="secondary-link" href="{{ url('/documents') }}">Documents</a>
-                <a class="secondary-link" href="{{ url('/pipeline-profiles') }}">Profiles</a>
                 <a class="secondary-link" href="{{ url('/failed-jobs') }}">Failed Jobs</a>
                 <a class="secondary-link" href="{{ url('/hawki-rag-playground') }}">Playground</a>
                 <button type="button" class="secondary-button" id="pipeline-dashboard-refresh">Refresh</button>
-                <button type="button" class="primary-button" id="pipeline-dashboard-start-demo">Start demo task</button>
             </div>
         </header>
 
@@ -51,7 +46,7 @@
             </aside>
 
             <section class="task-detail" aria-live="polite">
-                <div class="detail-status" id="pipeline-dashboard-status">Select a task or start a demo task.</div>
+                <div class="detail-status" id="pipeline-dashboard-status">Select a task to inspect its current pipeline state.</div>
 
                 <section class="panel">
                     <div class="section-head">

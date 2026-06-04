@@ -35,7 +35,6 @@ class PipelineTaskOrchestrationTest extends TestCase
         $this->postJson('/api/pipeline/tasks/start', [
             'task_id' => 'task-test-1',
             'dataset_id' => 'dataset-hawk',
-            'profile_id' => 'hawk',
             'urls' => [
                 $alreadyScrapedUrl,
                 'https://new.example/page',
@@ -51,7 +50,6 @@ class PipelineTaskOrchestrationTest extends TestCase
         $this->assertDatabaseHas('pipeline_tasks', [
             'task_id' => 'task-test-1',
             'dataset_id' => 'dataset-hawk',
-            'profile_id' => 'hawk',
             'status' => PipelineTask::STATUS_RUNNING,
         ]);
 
@@ -109,7 +107,6 @@ class PipelineTaskOrchestrationTest extends TestCase
         $older = PipelineTask::query()->create([
             'task_id' => 'task-list-old',
             'dataset_id' => 'dataset-old',
-            'profile_id' => 'profile-old',
             'status' => PipelineTask::STATUS_COMPLETED,
             'started_at' => now()->subHour(),
             'finished_at' => now()->subMinutes(50),
@@ -120,7 +117,6 @@ class PipelineTaskOrchestrationTest extends TestCase
         $newer = PipelineTask::query()->create([
             'task_id' => 'task-list-new',
             'dataset_id' => 'dataset-new',
-            'profile_id' => 'profile-new',
             'status' => PipelineTask::STATUS_RUNNING,
             'started_at' => now(),
             'counters' => [],
@@ -160,8 +156,7 @@ class PipelineTaskOrchestrationTest extends TestCase
         config()->set('communication.rabbitmq.pipeline_events.enabled', false);
 
         $this->postJson('/api/pipeline/tasks/start', [
-            'task_id' => 'task-test-profile-options',
-            'profile_id' => 'site-goettingen',
+            'task_id' => 'task-test-metadata-options',
             'urls' => ['https://www.uni-goettingen.de'],
             'metadata' => [
                 'source' => 'scraper-task-ui',
@@ -175,7 +170,7 @@ class PipelineTaskOrchestrationTest extends TestCase
         ])->assertCreated();
 
         $job = PipelineJob::query()
-            ->where('task_id', 'task-test-profile-options')
+            ->where('task_id', 'task-test-metadata-options')
             ->where('job_type', PipelineJob::TYPE_SCRAPE)
             ->firstOrFail();
 
@@ -215,7 +210,6 @@ class PipelineTaskOrchestrationTest extends TestCase
         PipelineTask::query()->create([
             'task_id' => 'task-dashboard',
             'dataset_id' => 'dataset-dashboard',
-            'profile_id' => 'profile-dashboard',
             'status' => PipelineTask::STATUS_FAILED,
             'started_at' => now()->subMinutes(4),
             'finished_at' => now(),
@@ -335,7 +329,6 @@ class PipelineTaskOrchestrationTest extends TestCase
                 ->with(PipelineEvent::SCRAPE_REQUESTED, Mockery::on(
                     fn (array $payload): bool => $payload['task_id'] !== ''
                         && $payload['dataset_id'] === 'demo-test'
-                        && $payload['profile_id'] === 'hawki-demo'
                         && $payload['job_type'] === PipelineJob::TYPE_SCRAPE
                         && $payload['status'] === PipelineJob::STATUS_QUEUED
                         && ($payload['metadata']['graph'] ?? null) === false
@@ -366,7 +359,6 @@ class PipelineTaskOrchestrationTest extends TestCase
         $this->assertDatabaseHas('pipeline_tasks', [
             'task_id' => $task->task_id,
             'dataset_id' => 'demo-test',
-            'profile_id' => 'hawki-demo',
             'status' => PipelineTask::STATUS_RUNNING,
         ]);
 
@@ -387,6 +379,9 @@ class PipelineTaskOrchestrationTest extends TestCase
 
     public function test_demo_pipeline_command_dry_run_does_not_create_jobs_or_publish_events(): void
     {
+        $taskCount = PipelineTask::query()->count();
+        $jobCount = PipelineJob::query()->count();
+
         $this->mock(PipelineEventBus::class, function ($mock): void {
             $mock->shouldNotReceive('publish');
         });
@@ -399,8 +394,36 @@ class PipelineTaskOrchestrationTest extends TestCase
 
         $this->assertSame(0, $exitCode);
         $this->assertStringContainsString('Dry run only.', Artisan::output());
-        $this->assertDatabaseCount('pipeline_tasks', 0);
-        $this->assertDatabaseCount('pipeline_jobs', 0);
+        $this->assertSame($taskCount, PipelineTask::query()->count());
+        $this->assertSame($jobCount, PipelineJob::query()->count());
+    }
+
+    public function test_pipeline_profile_routes_are_removed(): void
+    {
+        $this->get('/pipeline-profiles')->assertNotFound();
+        $this->getJson('/api/pipeline/profiles')->assertNotFound();
+    }
+
+    public function test_demo_pipeline_command_is_disabled_in_production_without_force(): void
+    {
+        $taskCount = PipelineTask::query()->count();
+        $jobCount = PipelineJob::query()->count();
+
+        app()->detectEnvironment(fn (): string => 'production');
+
+        $this->mock(PipelineEventBus::class, function ($mock): void {
+            $mock->shouldNotReceive('publish');
+        });
+
+        $exitCode = Artisan::call('pipeline:demo', [
+            '--dataset' => 'demo-production',
+            '--limit' => '1',
+        ]);
+
+        $this->assertSame(1, $exitCode);
+        $this->assertStringContainsString('pipeline:demo is disabled in production.', Artisan::output());
+        $this->assertSame($taskCount, PipelineTask::query()->count());
+        $this->assertSame($jobCount, PipelineJob::query()->count());
     }
 
     public function test_failed_jobs_can_be_retried_without_requeueing_completed_jobs(): void

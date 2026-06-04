@@ -9,7 +9,7 @@ use App\Http\Controllers\API\RagStatsController;
 use App\Http\Controllers\Graph\RagGraphController;
 use App\Http\Controllers\DatasetController;
 use App\Http\Controllers\DocumentBrowserController;
-use App\Http\Controllers\PipelineProfileController;
+use App\Http\Controllers\PipelineHealthController;
 use App\Http\Controllers\PipelineRecoveryController;
 use App\Http\Controllers\PipelineTaskController;
 
@@ -39,13 +39,8 @@ Route::prefix('pipeline/tasks')->group(function () {
     Route::post('/{taskId}/retry-failed-jobs', [PipelineTaskController::class, 'retryFailedJobs']);
 });
 
-Route::prefix('pipeline/profiles')->group(function () {
-    Route::get('/', [PipelineProfileController::class, 'index']);
-    Route::post('/', [PipelineProfileController::class, 'store']);
-    Route::get('/{profileId}', [PipelineProfileController::class, 'show']);
-    Route::put('/{profileId}', [PipelineProfileController::class, 'update']);
-    Route::patch('/{profileId}', [PipelineProfileController::class, 'update']);
-    Route::post('/{profileId}/start-task', [PipelineProfileController::class, 'startTask']);
+Route::prefix('pipeline/health')->group(function () {
+    Route::get('/queues', [PipelineHealthController::class, 'queues']);
 });
 
 Route::prefix('pipeline/recovery')->group(function () {

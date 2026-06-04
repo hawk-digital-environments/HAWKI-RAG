@@ -25,20 +25,16 @@ class PipelineTaskService
     public function __construct(
         private readonly PipelineEventRecorder $events,
         private readonly DatasetService $datasets,
-        private readonly PipelineProfileService $profiles,
     ) {
     }
 
     public function start(array $input): PipelineTask
     {
-        $input = $this->profiles->applyToTaskInput($input);
-
         $task = DB::transaction(function () use ($input): PipelineTask {
             $dataset = $this->datasets->ensure($input);
             $task = PipelineTask::query()->create([
                 'task_id' => $this->taskId($input),
                 'dataset_id' => $dataset->dataset_id,
-                'profile_id' => $this->nullableString($input['profile_id'] ?? $input['profileId'] ?? null),
                 'status' => PipelineTask::STATUS_RUNNING,
                 'started_at' => Carbon::now(),
                 'counters' => $this->defaultCounters(),
@@ -76,7 +72,6 @@ class PipelineTaskService
         return [
             'taskId' => $task->task_id,
             'datasetId' => $task->dataset_id,
-            'profileId' => $task->profile_id,
             'status' => $task->status,
             'startedAt' => $this->dateValue($task->started_at),
             'finishedAt' => $this->dateValue($task->finished_at),
@@ -105,7 +100,6 @@ class PipelineTaskService
                 return [
                     'taskId' => $task->task_id,
                     'datasetId' => $task->dataset_id,
-                    'profileId' => $task->profile_id,
                     'status' => $task->status,
                     'startedAt' => $this->dateValue($task->started_at),
                     'finishedAt' => $this->dateValue($task->finished_at),
@@ -320,7 +314,6 @@ class PipelineTaskService
             'finished_at' => $alreadyScraped ? $now : null,
             'metadata' => array_merge($this->taskJobMetadata($task), [
                 'reason' => $alreadyScraped ? 'URL was already scraped by Laravel.' : 'Queued for scraper worker through RabbitMQ.',
-                'profile_id' => $task->profile_id,
                 'dataset_id' => $task->dataset_id,
             ]),
         ]);
@@ -377,7 +370,6 @@ class PipelineTaskService
             'job_id' => $jobId,
             'parent_job_id' => $job->parent_job_id,
             'dataset_id' => $task->dataset_id,
-            'profile_id' => $task->profile_id,
             'job_type' => $jobType,
             'source_url' => $job->source_url,
             'local_path' => $job->local_path,

@@ -21,7 +21,6 @@ class PipelineTask extends Model
     protected $fillable = [
         'task_id',
         'dataset_id',
-        'profile_id',
         'status',
         'started_at',
         'finished_at',

@@ -13,7 +13,6 @@ return new class extends Migration
                 $table->bigIncrements('id');
                 $table->string('task_id', 191)->unique();
                 $table->string('dataset_id', 191)->nullable();
-                $table->string('profile_id', 191)->nullable();
                 $table->string('status', 64)->default('pending');
                 $table->timestamp('started_at')->nullable();
                 $table->timestamp('finished_at')->nullable();
@@ -21,7 +20,7 @@ return new class extends Migration
                 $table->json('metadata')->nullable();
                 $table->timestamps();
 
-                $table->index(['status', 'profile_id']);
+                $table->index('status');
                 $table->index('dataset_id');
             });
         }

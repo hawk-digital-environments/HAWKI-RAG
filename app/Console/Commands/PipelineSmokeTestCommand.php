@@ -66,10 +66,9 @@ class PipelineSmokeTestCommand extends Command
             }, fn (string $path): string => "Created DOCX fixture at {$path}.");
 
             $task = $this->stage('Task', function () use ($tasks, $taskId, $datasetId, $sourceUrl, $graph): PipelineTask {
-                return $tasks->start([
+                return $this->withoutRabbitMqPublishing(fn (): PipelineTask => $tasks->start([
                     'task_id' => $taskId,
                     'dataset_id' => $datasetId,
-                    'profile_id' => 'pipeline-smoke',
                     'urls' => [$sourceUrl],
                     'metadata' => [
                         'source' => 'pipeline-smoke-test',
@@ -83,7 +82,7 @@ class PipelineSmokeTestCommand extends Command
                         'graph' => $graph,
                         'rag_ingest_graph' => $graph,
                     ],
-                ]);
+                ]));
             }, fn (PipelineTask $task): string => "Created task {$task->task_id}.");
 
             $scrapeJob = $this->stage('Scrape enqueue', function () use ($task): PipelineJob {
@@ -121,7 +120,7 @@ class PipelineSmokeTestCommand extends Command
                 }
 
                 return (bool) config('communication.rabbitmq.pipeline_events.enabled', true)
-                    ? 'RabbitMQ topology is reachable and scrape.requested was recorded.'
+                    ? 'RabbitMQ topology is reachable and scrape.requested was recorded without sending the synthetic smoke URL to live workers.'
                     : 'RabbitMQ publishing is disabled; Laravel event recording was verified.';
             }, fn (string $message): string => $message);
 
@@ -130,7 +129,6 @@ class PipelineSmokeTestCommand extends Command
                 'task_id' => $task->task_id,
                 'job_id' => $scrapeJob->job_id,
                 'dataset_id' => $task->dataset_id,
-                'profile_id' => $task->profile_id,
                 'job_type' => PipelineJob::TYPE_SCRAPE,
                 'source_url' => $sourceUrl,
                 'local_path' => $fixturePath,
@@ -157,7 +155,6 @@ class PipelineSmokeTestCommand extends Command
                 'job_id' => $convertJobId,
                 'parent_job_id' => $scrapeJob->job_id,
                 'dataset_id' => $task->dataset_id,
-                'profile_id' => $task->profile_id,
                 'job_type' => PipelineJob::TYPE_CONVERT,
                 'source_url' => $sourceUrl,
                 'local_path' => $fixturePath,
@@ -195,7 +192,6 @@ class PipelineSmokeTestCommand extends Command
                 'job_id' => $convertJobId,
                 'parent_job_id' => $scrapeJob->job_id,
                 'dataset_id' => $task->dataset_id,
-                'profile_id' => $task->profile_id,
                 'job_type' => PipelineJob::TYPE_CONVERT,
                 'source_url' => $sourceUrl,
                 'local_path' => $convertedPath,
@@ -295,6 +291,18 @@ class PipelineSmokeTestCommand extends Command
         } catch (Throwable $exception) {
             $this->recordFail($name, $exception->getMessage());
             throw $exception;
+        }
+    }
+
+    private function withoutRabbitMqPublishing(callable $callback): mixed
+    {
+        $enabled = config('communication.rabbitmq.pipeline_events.enabled', true);
+        config()->set('communication.rabbitmq.pipeline_events.enabled', false);
+
+        try {
+            return $callback();
+        } finally {
+            config()->set('communication.rabbitmq.pipeline_events.enabled', $enabled);
         }
     }
 

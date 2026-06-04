@@ -28,6 +28,10 @@ Route::get('/pipeline-dashboard', function () {
     return view('pipeline-dashboard');
 });
 
+Route::get('/pipeline-health', function () {
+    return view('pipeline-health-dashboard');
+});
+
 Route::get('/datasets', function () {
     return view('datasets-dashboard');
 });
@@ -38,10 +42,6 @@ Route::get('/documents', function () {
 
 Route::get('/failed-jobs', function () {
     return view('failed-jobs-dashboard');
-});
-
-Route::get('/pipeline-profiles', function () {
-    return view('pipeline-profiles-dashboard');
 });
 
 Route::post('/requestScrape', [ScrapeController::class, 'requestScrape']);

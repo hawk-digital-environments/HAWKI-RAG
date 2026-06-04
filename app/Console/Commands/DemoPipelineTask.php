@@ -2,7 +2,6 @@
 
 namespace App\Console\Commands;
 
-use App\Services\Pipeline\PipelineProfileService;
 use App\Services\Pipeline\PipelineTaskService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Str;
@@ -11,13 +10,13 @@ class DemoPipelineTask extends Command
 {
     protected $signature = 'pipeline:demo
         {--dataset=demo : Dataset identifier for the demo run}
-        {--profile= : Pipeline profile ID for the demo run}
         {--limit=5 : Number of demo URLs to queue}
         {--graph=true : Include graph ingestion metadata}
         {--dry-run=false : Print the planned demo without creating jobs}
-        {--url=* : Optional demo URL override; can be repeated}';
+        {--url=* : Optional demo URL override; can be repeated}
+        {--force=false : Allow this development command to run in production}';
 
-    protected $description = 'Start a small demo scrape/convert/ingest pipeline task for the dashboard.';
+    protected $description = 'Start a small development/demo scrape/convert/ingest pipeline task.';
 
     private const DEFAULT_URLS = [
         'https://www.hawk.de/de',
@@ -27,14 +26,19 @@ class DemoPipelineTask extends Command
         'https://www.hawk.de/de/weiterbildung',
     ];
 
-    public function handle(PipelineTaskService $tasks, PipelineProfileService $profiles): int
+    public function handle(PipelineTaskService $tasks): int
     {
         $dataset = $this->stringOption('dataset') ?: 'demo';
-        $profileId = $this->stringOption('profile');
         $limit = $this->integerOption('limit', 5);
         $graph = $this->booleanOption('graph', true);
         $dryRun = $this->booleanOption('dry-run', false);
-        $profile = null;
+        $force = $this->booleanOption('force', false);
+
+        if (app()->environment('production') && $force !== true) {
+            $this->error('pipeline:demo is disabled in production. Start production tasks through the pipeline task API.');
+
+            return self::FAILURE;
+        }
 
         if ($limit === null || $limit < 1) {
             $this->error('The --limit option must be an integer greater than zero.');
@@ -54,17 +58,14 @@ class DemoPipelineTask extends Command
             return self::FAILURE;
         }
 
-        if ($profileId !== null) {
-            $profile = $profiles->show($profileId);
-            if (!$profile) {
-                $this->error("Pipeline profile {$profileId} was not found.");
+        if ($force === null) {
+            $this->error('The --force option must be true or false.');
 
-                return self::FAILURE;
-            }
+            return self::FAILURE;
         }
 
-        $urls = $this->demoUrls($profile, $limit);
-        if ($urls === [] && !$profile) {
+        $urls = $this->demoUrls($limit);
+        if ($urls === []) {
             $this->error('No demo URLs are configured.');
 
             return self::FAILURE;
@@ -74,8 +75,6 @@ class DemoPipelineTask extends Command
         $input = [
             'task_id' => $taskId,
             'dataset_id' => $dataset,
-            'pipeline_profile_id' => $profileId,
-            'profile_id' => 'hawki-demo',
             'urls' => $urls,
             'metadata' => [
                 'source' => 'pipeline-demo-command',
@@ -88,18 +87,13 @@ class DemoPipelineTask extends Command
                 'discovery_mode' => false,
             ],
         ];
-        if (!$profile || $this->optionWasProvided('graph')) {
-            $input['metadata']['graph'] = $graph;
-            $input['metadata']['rag_ingest_graph'] = $graph;
-        }
+        $input['metadata']['graph'] = $graph;
+        $input['metadata']['rag_ingest_graph'] = $graph;
 
         $this->line('HAWKI RAG demo pipeline');
         $this->line('Task ID: ' . $taskId);
         $this->line('Dataset: ' . $dataset);
-        if ($profileId !== null) {
-            $this->line('Pipeline profile: ' . $profileId);
-        }
-        $graphLabel = (bool) ($input['metadata']['graph'] ?? ($profile['graphEnabled'] ?? false));
+        $graphLabel = (bool) ($input['metadata']['graph'] ?? false);
         $this->line('URL limit: ' . count($urls));
         $this->line('Graph metadata: ' . ($graphLabel ? 'true' : 'false'));
 
@@ -133,12 +127,12 @@ class DemoPipelineTask extends Command
         return self::SUCCESS;
     }
 
-    private function demoUrls(?array $profile, int $limit): array
+    private function demoUrls(int $limit): array
     {
         $explicit = $this->option('url') ?: [];
-        $urls = $explicit ?: ($profile['startUrls'] ?? $this->configuredDemoUrls());
+        $urls = $explicit ?: $this->configuredDemoUrls();
 
-        if ($urls === [] && $profile === null) {
+        if ($urls === []) {
             $urls = self::DEFAULT_URLS;
         }
 
@@ -251,14 +245,4 @@ class DemoPipelineTask extends Command
         return is_bool($parsed) ? $parsed : null;
     }
 
-    private function optionWasProvided(string $name): bool
-    {
-        foreach ($_SERVER['argv'] ?? [] as $argument) {
-            if ($argument === "--{$name}" || str_starts_with((string) $argument, "--{$name}=")) {
-                return true;
-            }
-        }
-
-        return false;
-    }
 }

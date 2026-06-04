@@ -6,7 +6,6 @@ if (root) {
     const query = new URLSearchParams(window.location.search);
     const els = {
         refresh: document.getElementById('pipeline-dashboard-refresh'),
-        startDemo: document.getElementById('pipeline-dashboard-start-demo'),
         retry: document.getElementById('pipeline-dashboard-retry'),
         status: document.getElementById('pipeline-dashboard-status'),
         taskCount: document.getElementById('pipeline-dashboard-task-count'),
@@ -179,7 +178,6 @@ if (root) {
             meta.className = 'task-list-meta';
             meta.textContent = [
                 task.datasetId ? `dataset ${task.datasetId}` : null,
-                task.profileId ? `profile ${task.profileId}` : null,
                 `${counters.jobs_total || 0} jobs`,
                 counters.failed ? `${counters.failed} failed` : null,
             ].filter(Boolean).join(' | ');
@@ -219,7 +217,6 @@ if (root) {
         [
             ['Task ID', task.taskId],
             ['Dataset ID', task.datasetId],
-            ['Profile ID', task.profileId],
             ['Status', task.status],
             ['Active jobs', task.activeJobs],
             ['Started', formatDate(task.startedAt)],
@@ -477,7 +474,7 @@ if (root) {
     }
 
     function clearTaskDetail() {
-        setStatus('No pipeline tasks found. Start a demo task to create one.');
+        setStatus('No pipeline tasks found.');
         setText(els.taskStatus, 'idle');
         els.taskStatus.className = 'status-pill is-idle';
         setText(els.updated, 'No task loaded.');
@@ -492,40 +489,6 @@ if (root) {
         renderSelectOptions(els.eventTypeFilter, 'All event types', pipelineEventTypes, state.eventTypeFilter);
         renderSelectOptions(els.jobFilter, 'All jobs', [], state.jobFilter);
         els.retry.disabled = true;
-    }
-
-    async function startDemoTask() {
-        els.startDemo.disabled = true;
-        setStatus('Starting demo task...');
-
-        try {
-            const taskId = `demo_${Date.now()}`;
-            const data = await requestJson('api/pipeline/tasks/start', {
-                method: 'POST',
-                body: JSON.stringify({
-                    task_id: taskId,
-                    dataset_id: `demo_${new Date().toISOString().slice(0, 10)}`,
-                    profile_id: 'hawki-demo',
-                    urls: ['https://www.hawk.de/de'],
-                    metadata: {
-                        source: 'pipeline-dashboard-demo',
-                        catalog_task_label: 'Demo pipeline task',
-                        max_pages: 2,
-                        max_concurrency: 1,
-                        max_rpm: 30,
-                        skip_images: true,
-                    },
-                }),
-            });
-
-            state.selectedTaskId = data.taskId || taskId;
-            await loadTasks({ keepSelection: true });
-            setStatus(`Started demo task ${state.selectedTaskId}.`, 'success');
-        } catch (error) {
-            setStatus(error.message || 'Could not start demo task.', 'error');
-        } finally {
-            els.startDemo.disabled = false;
-        }
     }
 
     async function retryFailedJobs() {
@@ -569,7 +532,6 @@ if (root) {
         }
     });
 
-    els.startDemo?.addEventListener('click', startDemoTask);
     els.retry?.addEventListener('click', retryFailedJobs);
     els.eventTypeFilter?.addEventListener('change', () => {
         state.eventTypeFilter = els.eventTypeFilter.value;

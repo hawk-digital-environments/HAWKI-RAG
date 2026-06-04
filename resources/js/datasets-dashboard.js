@@ -206,10 +206,9 @@ if (root) {
 
     function renderTasks(tasks) {
         setText(els.taskCount, `${tasks.length} task${tasks.length === 1 ? '' : 's'}`);
-        renderTable(els.tasks, ['Task', 'Status', 'Profile', 'Jobs', 'Started', 'Finished'], tasks, (task) => [
+        renderTable(els.tasks, ['Task', 'Status', 'Jobs', 'Started', 'Finished'], tasks, (task) => [
             task.taskId,
             statusPill(task.status),
-            task.profileId,
             task.counters?.jobs_total ?? 0,
             formatDate(task.startedAt),
             formatDate(task.finishedAt),

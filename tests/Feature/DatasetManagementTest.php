@@ -45,7 +45,6 @@ class DatasetManagementTest extends TestCase
         PipelineTask::query()->create([
             'task_id' => 'task-dataset-ui',
             'dataset_id' => 'dataset-ui',
-            'profile_id' => 'profile-ui',
             'status' => PipelineTask::STATUS_COMPLETED,
             'started_at' => now()->subMinutes(10),
             'finished_at' => now()->subMinutes(5),
@@ -93,7 +92,6 @@ class DatasetManagementTest extends TestCase
         $this->postJson('/api/pipeline/tasks/start', [
             'task_id' => 'task-dataset-start',
             'dataset_id' => 'dataset-start',
-            'profile_id' => 'profile-start',
             'urls' => ['https://example.test/start'],
         ])
             ->assertCreated()
@@ -133,7 +131,6 @@ class DatasetManagementTest extends TestCase
         PipelineTask::query()->create([
             'task_id' => 'task-dataset-ingest',
             'dataset_id' => 'dataset-ingest',
-            'profile_id' => 'profile-ingest',
             'status' => PipelineTask::STATUS_RUNNING,
             'started_at' => now(),
             'counters' => [],
@@ -153,7 +150,6 @@ class DatasetManagementTest extends TestCase
             'task_id' => 'task-dataset-ingest',
             'job_id' => 'scrape-dataset-ingest',
             'dataset_id' => 'dataset-ingest',
-            'profile_id' => 'profile-ingest',
             'job_type' => PipelineJob::TYPE_SCRAPE,
             'source_url' => 'https://example.test/dataset',
             'local_path' => $markdownPath,

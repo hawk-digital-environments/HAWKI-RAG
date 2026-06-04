@@ -138,7 +138,6 @@ class DatasetService
             ->map(fn (PipelineTask $task): array => [
                 'taskId' => $task->task_id,
                 'datasetId' => $task->dataset_id,
-                'profileId' => $task->profile_id,
                 'status' => $task->status,
                 'counters' => $task->counters ?? [],
                 'startedAt' => $task->started_at?->format(DATE_ATOM),

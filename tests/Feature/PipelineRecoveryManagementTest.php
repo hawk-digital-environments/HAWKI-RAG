@@ -185,7 +185,6 @@ class PipelineRecoveryManagementTest extends TestCase
         return PipelineTask::query()->create([
             'task_id' => $taskId,
             'dataset_id' => $datasetId,
-            'profile_id' => 'profile-recovery',
             'status' => PipelineTask::STATUS_FAILED,
             'started_at' => now()->subMinutes(10),
             'finished_at' => now()->subMinute(),

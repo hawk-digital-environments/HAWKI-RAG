@@ -298,7 +298,6 @@ class PipelineRecoveryService
             'job_id' => $jobId,
             'parent_job_id' => $job->parent_job_id,
             'dataset_id' => $task->dataset_id,
-            'profile_id' => $task->profile_id,
             'job_type' => $jobType,
             'source_url' => $job->source_url,
             'local_path' => $job->local_path,

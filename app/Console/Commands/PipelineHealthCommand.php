@@ -43,7 +43,7 @@ class PipelineHealthCommand extends Command
         $failed = collect($results)->contains(fn (array $result): bool => $result['status'] === 'fail');
         $this->newLine();
         $failed
-            ? $this->error('Pipeline health failed. Fix the red checks above before running a demo.')
+            ? $this->error('Pipeline health failed. Fix the red checks above before starting a pipeline task.')
             : $this->info('Pipeline health passed.');
 
         return $failed ? self::FAILURE : self::SUCCESS;
