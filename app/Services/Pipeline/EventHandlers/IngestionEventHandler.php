@@ -37,7 +37,7 @@ class IngestionEventHandler implements PipelineEventHandler
         $event = PipelineEvent::normalize((string) $event['event_type'], $event);
         $paths = $this->contentPaths($event);
 
-        if ($paths === [] || (string) $event['status'] === PipelineJob::STATUS_SKIPPED) {
+        if ($paths === []) {
             $this->state->upsertJob($this->ingestEventForPath($event, $event['local_path'] ?: $event['source_url'] ?: 'skipped'), PipelineJob::STATUS_SKIPPED, [
                 'reason' => 'No ingestable content path was found.',
             ]);

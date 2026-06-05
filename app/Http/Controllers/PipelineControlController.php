@@ -58,15 +58,59 @@ class PipelineControlController extends Controller
         $datasetId = $this->stringValue($validated['dataset_id'] ?? $validated['datasetId'] ?? null) ?? 'controller-uploads';
         $graph = filter_var($validated['graph'] ?? true, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
         $graph = $graph ?? true;
-        $dataset = $this->datasets->ensure($datasetId);
         $taskId = 'task_controller_upload_' . now()->format('Ymd_His') . '_' . Str::lower(Str::random(6));
         $taskRoot = $this->taskRoot($taskId);
-        File::ensureDirectoryExists($taskRoot);
+
+        try {
+            File::ensureDirectoryExists($taskRoot);
+            if (!is_dir($taskRoot) || !is_writable($taskRoot)) {
+                throw new \RuntimeException("Upload task directory is not writable: {$taskRoot}");
+            }
+        } catch (Throwable $exception) {
+            Log::warning('Pipeline controller could not prepare upload storage.', [
+                'dataset_id' => $datasetId,
+                'task_id' => $taskId,
+                'task_root' => $taskRoot,
+                'error' => $exception->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'The upload storage path is not writable. No dataset, task, or job was created.',
+                'datasetId' => $datasetId,
+                'taskId' => null,
+                'jobId' => null,
+                'error' => $exception->getMessage(),
+            ], 500);
+        }
 
         $originalName = $file->getClientOriginalName() ?: "uploaded.{$extension}";
         $baseName = Str::slug(pathinfo($originalName, PATHINFO_FILENAME)) ?: 'uploaded-document';
         $targetName = $baseName . '-' . Str::lower(Str::random(8)) . '.' . $extension;
-        $file->move($taskRoot, $targetName);
+        try {
+            $file->move($taskRoot, $targetName);
+        } catch (Throwable $exception) {
+            File::deleteDirectory($taskRoot);
+
+            Log::warning('Pipeline controller could not move uploaded file.', [
+                'dataset_id' => $datasetId,
+                'task_id' => $taskId,
+                'task_root' => $taskRoot,
+                'target_name' => $targetName,
+                'error' => $exception->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'The uploaded file could not be stored. No dataset, task, or job was created.',
+                'datasetId' => $datasetId,
+                'taskId' => null,
+                'jobId' => null,
+                'error' => $exception->getMessage(),
+            ], 500);
+        }
+
+        $dataset = $this->datasets->ensure($datasetId);
         $localPath = $taskRoot . DIRECTORY_SEPARATOR . $targetName;
         $contentHash = hash_file('sha256', $localPath) ?: hash('sha256', $localPath);
         $jobId = 'convert_' . substr(hash('sha256', $taskId . '|' . $contentHash . '|' . $localPath), 0, 24);

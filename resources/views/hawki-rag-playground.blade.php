@@ -41,7 +41,7 @@
                             $embedDefault = config('config.embedding_default', $embedModels[0] ?? null);
                             $graphModels = config('config.graph_models', ['llama3.2:3b']);
                             $graphDefault = config('config.graph_default', $graphModels[0] ?? null);
-                            $graphChunkCharsDefault = max(200, (int) env('GRAPH_DOC_MAX_CHARS', 800));
+                            $ragChunkCharsDefault = max(200, (int) env('CHUNK_SIZE', 1200));
                         @endphp
                         <h3 style="margin-top:0;">Ingest Data</h3>
                         <p style="margin: 0 0 0.8rem; font-size: 0.9rem; color: #bae6fd;">
@@ -88,8 +88,8 @@
                             <input id="ingest-batch-size" type="number" min="1" value="16" style="width:100%; border-radius:0.8rem; border:1px solid rgba(148,163,184,0.22); background:rgba(15,23,42,0.78); color:inherit; padding:0.7rem 0.8rem;" />
                         </div>
                         <div style="margin-top: 1rem;">
-                            <label for="ingest-chunk-chars">Chunk size (chars) for graph extraction</label>
-                            <input id="ingest-chunk-chars" type="number" min="200" value="{{ $graphChunkCharsDefault }}" style="width:100%; border-radius:0.8rem; border:1px solid rgba(148,163,184,0.22); background:rgba(15,23,42,0.78); color:inherit; padding:0.7rem 0.8rem;" />
+                            <label for="ingest-chunk-chars">Chunk size (chars) for RAG chunks</label>
+                            <input id="ingest-chunk-chars" type="number" min="200" value="{{ $ragChunkCharsDefault }}" style="width:100%; border-radius:0.8rem; border:1px solid rgba(148,163,184,0.22); background:rgba(15,23,42,0.78); color:inherit; padding:0.7rem 0.8rem;" />
                         </div>
                         <div style="margin-top: 1rem;">
                             <label for="ingest-resume-mode">Resume mode</label>
@@ -115,6 +115,15 @@
             <section class="card panel">
                 <h2>Logs</h2>
                 <div class="panel-body">
+                    <div class="subsection rag-monitor-panel">
+                        <h3 style="margin-top:0;">RAG-Anything Monitor</h3>
+                        <p style="margin: 0 0 0.6rem; font-size: 0.9rem; color: #bae6fd;">
+                            Bridge health, graph extraction limits, and latest ingest graph summary.
+                        </p>
+                        <div id="rag-monitor-status" class="badge">Loading RAG-Anything status...</div>
+                        <div id="rag-details" style="margin-top: 0.8rem; display: grid; gap: 0.5rem;"></div>
+                    </div>
+
                     <div class="subsection">
                         <h3 style="margin-top:0;">Live Ingestions</h3>
                         <p style="margin: 0 0 0.6rem; font-size: 0.9rem; color: #bae6fd;">
@@ -122,11 +131,6 @@
                         </p>
                         <div id="ingest-live-status" class="badge">No running ingest process.</div>
                         <div id="ingest-live-list" style="margin-top: 0.8rem; display: grid; gap: 0.5rem;"></div>
-                    </div>
-
-                    <div class="subsection">
-                        <h3 style="margin-top:0;">RAG Anything Monitor</h3>
-                        <div id="rag-details" style="margin-top: 0.8rem; display: grid; gap: 0.5rem;"></div>
                     </div>
 
                     <div class="subsection">

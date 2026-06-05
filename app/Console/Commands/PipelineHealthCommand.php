@@ -127,7 +127,7 @@ class PipelineHealthCommand extends Command
     private function checkConverter(int $timeout): array
     {
         $worker = $this->workerConfig('converter');
-        $url = (string) config('file_converter.url');
+        $url = (string) config('file_converter.health_url');
         $configError = $this->workerConfigError(ConverterEventWorkerCommand::class, $worker, 'converter');
         if ($configError !== null) {
             return $configError;
@@ -136,12 +136,12 @@ class PipelineHealthCommand extends Command
         if (trim($url) === '') {
             return $this->failureResult(
                 'Converter worker',
-                'FILE_CONVERTER_URL is empty.',
-                'Set FILE_CONVERTER_URL and start php artisan pipeline:converter-event-worker.',
+                'FILE_CONVERTER_HEALTH_URL is empty.',
+                'Set FILE_CONVERTER_URL or FILE_CONVERTER_HEALTH_URL and start php artisan pipeline:converter-event-worker.',
             );
         }
 
-        return $this->httpReachabilityCheck(
+        return $this->httpSuccessCheck(
             'Converter worker',
             $url,
             $timeout,
@@ -274,12 +274,79 @@ class PipelineHealthCommand extends Command
                 return $this->failureResult(
                     'Shared storage',
                     "Path is not writable: {$path}.",
-                    'Fix permissions for SHARED_STORAGE_ROOT, SCRAPE_STORAGE_PATH, and HAWKI_RAG_PIPELINE_ROOT.',
+                    'Fix permissions with chown -R www-data:www-data /app/shared && chmod -R ug+rwX /app/shared, then verify SHARED_STORAGE_ROOT, SCRAPE_STORAGE_PATH, and HAWKI_RAG_PIPELINE_ROOT.',
+                );
+            }
+
+            $probe = $path . DIRECTORY_SEPARATOR . '.pipeline-health-' . bin2hex(random_bytes(6));
+            try {
+                File::put($probe, 'ok');
+                File::delete($probe);
+            } catch (Throwable $exception) {
+                return $this->failureResult(
+                    'Shared storage',
+                    "Could not create a probe file in {$path}: {$exception->getMessage()}",
+                    'Fix permissions with chown -R www-data:www-data /app/shared && chmod -R ug+rwX /app/shared.',
+                );
+            }
+
+            $webUserError = $this->sharedStorageWebUserError($path);
+            if ($webUserError !== null) {
+                return $this->failureResult(
+                    'Shared storage',
+                    $webUserError,
+                    'Fix permissions with chown -R www-data:www-data /app/shared && chmod -R ug+rwX /app/shared, or set PIPELINE_SHARED_STORAGE_WEB_USER to the PHP-FPM user.',
                 );
             }
         }
 
         return $this->ok('Shared storage', 'Writable paths: ' . implode(', ', $paths) . '.');
+    }
+
+    private function sharedStorageWebUserError(string $path): ?string
+    {
+        $webUser = trim((string) config('communication.rabbitmq.pipeline_ingestion.shared_storage_web_user', ''));
+        if ($webUser === '' || app()->environment('testing')) {
+            return null;
+        }
+
+        if (! function_exists('posix_getpwnam')) {
+            return null;
+        }
+
+        $user = posix_getpwnam($webUser);
+        if (! is_array($user)) {
+            return "Configured shared storage web user {$webUser} does not exist in this container.";
+        }
+
+        $owner = fileowner($path);
+        $group = filegroup($path);
+        $mode = fileperms($path);
+        if ($owner === false || $group === false || $mode === false) {
+            return "Could not read ownership for shared storage path {$path}.";
+        }
+
+        $uid = (int) ($user['uid'] ?? -1);
+        $gid = (int) ($user['gid'] ?? -1);
+        $mode = $mode & 0777;
+        $canWriteAsOwner = (int) $owner === $uid && ($mode & 0300) === 0300;
+        $canWriteAsGroup = (int) $group === $gid && ($mode & 0030) === 0030;
+        $canWriteAsOther = ($mode & 0003) === 0003;
+
+        if ($canWriteAsOwner || $canWriteAsGroup || $canWriteAsOther) {
+            return null;
+        }
+
+        return sprintf(
+            'Path %s is writable by the current CLI process, but not by %s (uid %d, gid %d). Current owner/group is %d:%d with mode %s.',
+            $path,
+            $webUser,
+            $uid,
+            $gid,
+            (int) $owner,
+            (int) $group,
+            decoct($mode),
+        );
     }
 
     private function httpReachabilityCheck(string $name, string $url, int $timeout, string $detail, string $fix): array

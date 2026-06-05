@@ -111,7 +111,7 @@ class ConverterEventHandler implements PipelineEventHandler
             throw new RuntimeException('Document converter returned no files.');
         }
 
-        $markdownPath = null;
+        $markdownFiles = [];
         foreach ($files as $relative => $content) {
             if (!is_string($content)) {
                 continue;
@@ -120,14 +120,16 @@ class ConverterEventHandler implements PipelineEventHandler
             File::ensureDirectoryExists(dirname($target));
             File::put($target, $content);
 
-            if ($markdownPath === null && str_ends_with(strtolower($target), '.md')) {
-                $markdownPath = $target;
+            if (str_ends_with(strtolower((string) $relative), '.md')) {
+                $markdownFiles[(string) $relative] = $content;
             }
         }
 
+        $markdownFiles = $this->sortByNaturalPath($markdownFiles);
+        $markdownPath = $this->writeCombinedMarkdown($outputDir, $markdownFiles);
         if ($markdownPath === null) {
             $markdownPath = dirname($path) . DIRECTORY_SEPARATOR . pathinfo($path, PATHINFO_FILENAME) . '_converted.md';
-            File::put($markdownPath, implode("\n\n", array_map('strval', $files)));
+            File::put($markdownPath, $this->fallbackTextContent($files));
         }
 
         $metadata = [
@@ -140,6 +142,8 @@ class ConverterEventHandler implements PipelineEventHandler
             'source_url' => $event['source_url'],
             'output_dir' => $outputDir,
             'files' => array_keys($files),
+            'markdown_files' => array_keys($markdownFiles),
+            'combined_markdown_path' => $markdownPath,
             'tool' => 'DocumentConverter',
             'version' => 'event-worker',
             'converted_at' => now()->toIso8601String(),
@@ -150,6 +154,70 @@ class ConverterEventHandler implements PipelineEventHandler
             'outputDir' => $outputDir,
             'markdownPath' => $markdownPath,
         ];
+    }
+
+    /**
+     * @param array<string,string> $markdownFiles
+     */
+    private function writeCombinedMarkdown(string $outputDir, array $markdownFiles): ?string
+    {
+        if ($markdownFiles === []) {
+            return null;
+        }
+
+        $sections = [];
+        foreach ($markdownFiles as $relative => $content) {
+            if (trim($content) === '') {
+                continue;
+            }
+
+            $sections[] = "<!-- converter-source: {$relative} -->\n\n" . trim($content);
+        }
+
+        if ($sections === []) {
+            return null;
+        }
+
+        $path = $outputDir . DIRECTORY_SEPARATOR . 'content_markdown.md';
+        File::put($path, implode("\n\n---\n\n", $sections) . "\n");
+
+        return $path;
+    }
+
+    /**
+     * @param array<string,string> $files
+     * @return array<string,string>
+     */
+    private function sortByNaturalPath(array $files): array
+    {
+        uksort($files, 'strnatcasecmp');
+
+        return $files;
+    }
+
+    /**
+     * @param array<string,string> $files
+     */
+    private function fallbackTextContent(array $files): string
+    {
+        $textFiles = [];
+        foreach ($files as $relative => $content) {
+            if (!is_string($content) || trim($content) === '') {
+                continue;
+            }
+
+            if (preg_match('/\.(txt|html?|csv|json|ya?ml|xml)$/i', (string) $relative) === 1) {
+                $textFiles[(string) $relative] = $content;
+            }
+        }
+
+        if ($textFiles === []) {
+            return '';
+        }
+
+        uksort($textFiles, 'strnatcasecmp');
+
+        return implode("\n\n---\n\n", array_map('trim', $textFiles)) . "\n";
     }
 
     private function cachedConversion(string $path, string $contentHash): ?string
@@ -163,6 +231,11 @@ class ConverterEventHandler implements PipelineEventHandler
         $meta = json_decode((string) file_get_contents($metaPath), true);
         if (!is_array($meta) || (string) ($meta['converted_id'] ?? '') !== $contentHash) {
             return null;
+        }
+
+        $combined = (string) ($meta['combined_markdown_path'] ?? '');
+        if ($combined !== '' && is_file($combined)) {
+            return $combined;
         }
 
         foreach (($meta['files'] ?? []) as $relative) {

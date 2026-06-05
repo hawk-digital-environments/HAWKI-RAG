@@ -64,6 +64,16 @@ class DatasetManagementTest extends TestCase
             'metadata' => [],
         ]);
 
+        Dataset::query()->create([
+            'dataset_id' => 'orphan-dataset',
+            'name' => 'Orphan Dataset',
+            'description' => 'Should not appear without a task',
+            'status' => Dataset::STATUS_ACTIVE,
+            'qdrant_collection' => 'hawki_orphan_dataset',
+            'neo4j_namespace' => 'hawki_orphan_dataset',
+            'created_at' => now(),
+        ]);
+
         $this->get('/datasets')
             ->assertOk()
             ->assertSee('Datasets');
@@ -75,6 +85,9 @@ class DatasetManagementTest extends TestCase
                 'datasetId' => 'dataset-ui',
                 'documentCount' => 1,
                 'taskCount' => 1,
+            ])
+            ->assertJsonMissing([
+                'datasetId' => 'orphan-dataset',
             ]);
 
         $this->getJson('/api/datasets/dataset-ui')

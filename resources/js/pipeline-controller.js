@@ -37,11 +37,28 @@ function setFileNote(message, tone = 'info') {
     fileNote.dataset.tone = tone;
 }
 
+function supportedFileMessage() {
+    const extensions = String(fileInput?.dataset?.supportedExtensions || '')
+        .split(',')
+        .map((extension) => extension.trim())
+        .filter(Boolean);
+
+    if (extensions.length === 0) {
+        return 'Choose a supported converter file.';
+    }
+
+    if (extensions.length > 8) {
+        return `Choose a supported converter file. Supported examples: ${extensions.slice(0, 8).map((extension) => `.${extension}`).join(', ')}, ...`;
+    }
+
+    return `Choose a supported converter file: ${extensions.map((extension) => `.${extension}`).join(', ')}.`;
+}
+
 fileForm?.addEventListener('submit', async (event) => {
     event.preventDefault();
 
     if (!fileInput?.files?.length) {
-        setFileNote('Choose a PDF, DOC, or DOCX file.', 'warn');
+        setFileNote(supportedFileMessage(), 'warn');
         return;
     }
 

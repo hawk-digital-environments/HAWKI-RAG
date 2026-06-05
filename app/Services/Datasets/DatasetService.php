@@ -16,6 +16,11 @@ class DatasetService
         $limit = max(1, min(250, $limit));
 
         return Dataset::query()
+            ->whereExists(function ($query): void {
+                $query->selectRaw('1')
+                    ->from('pipeline_tasks')
+                    ->whereColumn('pipeline_tasks.dataset_id', 'datasets.dataset_id');
+            })
             ->orderByDesc('created_at')
             ->orderByDesc('id')
             ->limit($limit)
@@ -265,6 +270,12 @@ class DatasetService
         $baseUrl = rtrim((string) config('config.neo4j_http_url', 'http://hawki_rag_neo4j:7474'), '/');
         $database = trim((string) env('NEO4J_DATABASE', 'neo4j')) ?: 'neo4j';
         $endpoint = $baseUrl . '/db/' . rawurlencode($database) . '/tx/commit';
+        $documentJobIds = $this->documentQuery($dataset)
+            ->whereNotNull('external_id')
+            ->pluck('external_id')
+            ->filter()
+            ->values()
+            ->all();
 
         try {
             $response = Http::timeout(4)
@@ -277,17 +288,21 @@ WHERE n.dataset_id = $dataset_id
    OR n.dataset = $dataset_id
    OR n.namespace = $namespace
    OR n.neo4j_namespace = $namespace
+   OR any(doc_id IN $document_job_ids WHERE doc_id IN coalesce(n.doc_ids, []))
 WITH count(n) AS nodes
 MATCH ()-[r]->()
 WHERE r.dataset_id = $dataset_id
    OR r.dataset = $dataset_id
    OR r.namespace = $namespace
    OR r.neo4j_namespace = $namespace
+   OR r.doc_id IN $document_job_ids
+   OR any(doc_id IN $document_job_ids WHERE doc_id IN coalesce(r.doc_ids, []))
 RETURN nodes, count(r) AS relationships
 CYPHER,
                         'parameters' => [
                             'dataset_id' => $dataset->dataset_id,
                             'namespace' => $dataset->neo4j_namespace,
+                            'document_job_ids' => $documentJobIds,
                         ],
                     ]],
                 ]);

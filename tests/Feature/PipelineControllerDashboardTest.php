@@ -94,4 +94,50 @@ class PipelineControllerDashboardTest extends TestCase
 
         File::deleteDirectory($root);
     }
+
+    public function test_failed_upload_storage_does_not_create_dataset_task_or_job(): void
+    {
+        $root = storage_path('framework/testing/pipeline-controller-blocked');
+        File::deleteDirectory($root);
+        File::ensureDirectoryExists(dirname($root));
+        File::put($root, 'not a directory');
+        config()->set('communication.rabbitmq.pipeline_ingestion.shared_storage_root', $root);
+        config()->set('file_converter.supported_extensions', ['pdf']);
+
+        $this->mock(PipelineEventBus::class, function ($mock): void {
+            $mock->shouldNotReceive('publish');
+        });
+
+        $this->post('/api/pipeline/controller/files', [
+            'dataset_id' => 'blocked-controller-dataset',
+            'file' => UploadedFile::fake()->create('blocked.pdf', 12, 'application/pdf'),
+        ], [
+            'Accept' => 'application/json',
+        ])
+            ->assertStatus(500)
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('datasetId', 'blocked-controller-dataset')
+            ->assertJsonPath('taskId', null)
+            ->assertJsonPath('jobId', null);
+
+        $this->assertDatabaseMissing('datasets', [
+            'dataset_id' => 'blocked-controller-dataset',
+        ]);
+        $this->assertDatabaseCount('pipeline_tasks', 0);
+        $this->assertDatabaseCount('pipeline_jobs', 0);
+
+        File::delete($root);
+    }
+
+    public function test_controller_file_input_uses_configured_converter_extensions(): void
+    {
+        $this->withoutVite();
+
+        config()->set('file_converter.supported_extensions', ['pdf', 'txt', 'png', 'webp', 'zip']);
+
+        $this->get('/pipeline-controller')
+            ->assertOk()
+            ->assertSee('accept=".pdf,.txt,.png,.webp,.zip"', false)
+            ->assertSee('data-supported-extensions="pdf,txt,png,webp,zip"', false);
+    }
 }

@@ -29,10 +29,14 @@ class DocumentConverter
         }
 
         $request = Http::timeout((int) config('file_converter.timeout', 300))
-            ->connectTimeout((int) config('file_converter.connect_timeout', 10));
+            ->connectTimeout((int) config('file_converter.connect_timeout', 10))
+            ->accept('application/zip');
 
         if ($token = config('file_converter.token')) {
-            $request = $request->withToken($token);
+            $authHeader = strtolower((string) config('file_converter.auth_header', 'bearer'));
+            $request = in_array($authHeader, ['x-api-key', 'x_api_key', 'api-key', 'apikey'], true)
+                ? $request->withHeaders(['X-API-KEY' => $token])
+                : $request->withToken($token);
         }
 
         try {
@@ -46,7 +50,11 @@ class DocumentConverter
         }
 
         if (!$response->successful()) {
-            throw new \Exception('Document extraction failed: ' . $response->body());
+            throw new \Exception(sprintf(
+                'Document extraction failed with HTTP %s: %s',
+                $response->status(),
+                $response->body(),
+            ));
         }
 
         // Unzip files from response

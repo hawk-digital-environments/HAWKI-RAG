@@ -262,6 +262,11 @@ services:
     profiles: ["pipeline-events"]
     env_file:
       - ./.env
+    environment:
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+      ENVIRONMENT: "development"
+      SHARED_STORAGE_ROOT: ${SHARED_STORAGE_ROOT:-/app/shared}
     volumes:
       - shared_storage:/app/shared
       - ./storage:/var/www/html/storage
@@ -293,6 +298,11 @@ services:
     profiles: ["pipeline-events"]
     env_file:
       - ./.env
+    environment:
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+      ENVIRONMENT: "development"
+      SHARED_STORAGE_ROOT: ${SHARED_STORAGE_ROOT:-/app/shared}
     volumes:
       - shared_storage:/app/shared
       - ./storage:/var/www/html/storage
@@ -324,6 +334,11 @@ services:
     profiles: ["pipeline-events"]
     env_file:
       - ./.env
+    environment:
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+      ENVIRONMENT: "development"
+      SHARED_STORAGE_ROOT: ${SHARED_STORAGE_ROOT:-/app/shared}
     volumes:
       - shared_storage:/app/shared
       - ./storage:/var/www/html/storage

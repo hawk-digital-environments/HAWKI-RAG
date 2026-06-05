@@ -4,6 +4,7 @@ const ingestStatus = document.getElementById('ingest-status');
 const ingestProgress = document.getElementById('ingest-progress');
 const ingestClearBtn = document.getElementById('ingest-clear-btn');
 const ragDetails = document.getElementById('rag-details');
+const ragMonitorStatus = document.getElementById('rag-monitor-status');
 const ragStats = document.getElementById('rag-stats');
 const ingestLiveStatus = document.getElementById('ingest-live-status');
 const ingestLiveList = document.getElementById('ingest-live-list');
@@ -30,32 +31,154 @@ function appendDetailRow(container, label, value) {
     container.appendChild(row);
 }
 
-function renderRagRuntimeDetails(payload) {
-    if (!ragDetails) return;
-    ragDetails.innerHTML = '';
-    if (!payload) return;
-
-    const runtime = payload.runtime || payload.data?.runtime || null;
-    if (!runtime) return;
-
+function createStatCard(title) {
     const card = document.createElement('div');
     card.className = 'stat-card';
-    card.innerHTML = '<h4>Runtime graph/KV setup</h4>';
-    appendDetailRow(card, 'Working dir', runtime.working_dir);
-    appendDetailRow(card, 'Graph backend', runtime.graph_storage);
-    appendDetailRow(card, 'Doc status backend', runtime.doc_status_storage);
-    appendDetailRow(card, 'Neo4j URI', runtime.neo4j?.uri);
-    appendDetailRow(card, 'Neo4j DB', runtime.neo4j?.database);
-    appendDetailRow(card, 'Graph model', runtime.models?.graph_model);
-    appendDetailRow(card, 'Embed model', runtime.models?.embed_model);
-    appendDetailRow(card, 'Graph max chars', runtime.limits?.graph_doc_max_chars);
-    appendDetailRow(card, 'Graph max chunks', runtime.limits?.graph_doc_max_chunks);
-    appendDetailRow(card, 'Chat timeout (s)', runtime.limits?.ollama_chat_timeout);
-    appendDetailRow(card, 'Doc-status chunk files', runtime.doc_status_chunks?.count);
-    if (Array.isArray(runtime.doc_status_chunks?.files) && runtime.doc_status_chunks.files.length) {
-        appendDetailRow(card, 'Chunk file sample', runtime.doc_status_chunks.files.join(', '));
+    const heading = document.createElement('h4');
+    heading.textContent = title;
+    card.appendChild(heading);
+    return card;
+}
+
+function formatFlag(value) {
+    return value ? 'enabled' : 'disabled';
+}
+
+function formatUpdated(value) {
+    if (!value) return null;
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return value;
+    return date.toLocaleString([], {
+        day: '2-digit',
+        month: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+    });
+}
+
+function appendIngestStatusCard(mode, status) {
+    if (!ragDetails || !status) return;
+    const card = createStatCard(`${mode === 'neo4j' ? 'Neo4j' : 'Qdrant'} ingest status`);
+    appendDetailRow(card, 'Status', status.status || 'unknown');
+    appendDetailRow(card, 'Collection', status.collection);
+    appendDetailRow(card, 'Graph', status.graph ? 'enabled' : (status.graph_only ? 'graph-only' : 'disabled'));
+    appendDetailRow(card, 'Resume mode', status.resume_mode);
+    appendDetailRow(card, 'PID', status.pid);
+    appendDetailRow(card, 'Updated', formatUpdated(status.updated_at));
+    if (status.path) {
+        appendDetailRow(card, 'Folder', String(status.path).split('/').filter(Boolean).pop() || status.path);
     }
     ragDetails.appendChild(card);
+}
+
+function renderRagMonitor(payload) {
+    if (!ragDetails) return;
+    ragDetails.innerHTML = '';
+    if (!payload) {
+        if (ragMonitorStatus) {
+            ragMonitorStatus.dataset.state = 'warn';
+            ragMonitorStatus.textContent = 'RAG-Anything monitor unavailable.';
+        }
+        return;
+    }
+
+    const bridge = payload.bridge || {};
+    if (ragMonitorStatus) {
+        ragMonitorStatus.dataset.state = bridge.ok ? 'ok' : 'fail';
+        ragMonitorStatus.textContent = bridge.ok
+            ? `Bridge online · ${bridge.latency_ms ?? 'n/a'}ms`
+            : `Bridge offline · HTTP ${bridge.status ?? 502}`;
+    }
+
+    const config = payload.config || {};
+    const configCard = createStatCard('Active graph extraction settings');
+    appendDetailRow(configCard, 'Engine', config.graph_engine || 'raganything');
+    appendDetailRow(configCard, 'Provider', config.graph_provider || 'ollama');
+    appendDetailRow(configCard, 'Graph model', config.graph_model);
+    appendDetailRow(configCard, 'Embedding model', config.embedding_model);
+    appendDetailRow(configCard, 'RAG chunk size', config.chunk_size);
+    appendDetailRow(configCard, 'RAG chunk overlap', config.chunk_overlap);
+    appendDetailRow(configCard, 'Graph max chars', config.graph_doc_max_chars || 'unlimited');
+    appendDetailRow(configCard, 'Graph max chunks', config.graph_doc_max_chunks || 'unlimited');
+    appendDetailRow(configCard, 'Cache reset per doc', formatFlag(config.graph_reset_cache_per_doc));
+    ragDetails.appendChild(configCard);
+
+    const runtime = payload.runtime || null;
+    if (runtime) {
+        const card = createStatCard('Runtime graph/KV setup');
+        appendDetailRow(card, 'Working dir', runtime.working_dir);
+        appendDetailRow(card, 'Graph backend', runtime.graph_storage);
+        appendDetailRow(card, 'Doc status backend', runtime.doc_status_storage);
+        appendDetailRow(card, 'Neo4j URI', runtime.neo4j?.uri);
+        appendDetailRow(card, 'Neo4j DB', runtime.neo4j?.database);
+        appendDetailRow(card, 'Graph model', runtime.models?.graph_model);
+        appendDetailRow(card, 'Embed model', runtime.models?.embed_model);
+        appendDetailRow(card, 'Graph max chars', runtime.limits?.graph_doc_max_chars);
+        appendDetailRow(card, 'Graph max chunks', runtime.limits?.graph_doc_max_chunks);
+        appendDetailRow(card, 'Chat timeout (s)', runtime.limits?.ollama_chat_timeout);
+        appendDetailRow(card, 'Doc-status chunk files', runtime.doc_status_chunks?.count);
+        if (Array.isArray(runtime.doc_status_chunks?.files) && runtime.doc_status_chunks.files.length) {
+            appendDetailRow(card, 'Chunk file sample', runtime.doc_status_chunks.files.join(', '));
+        }
+        ragDetails.appendChild(card);
+    }
+
+    const latestDocumentGraph = payload.latest_document_graph || null;
+    if (latestDocumentGraph) {
+        const card = createStatCard('Latest indexed document graph');
+        appendDetailRow(card, 'Document', latestDocumentGraph.title || latestDocumentGraph.document_id);
+        appendDetailRow(card, 'Dataset', latestDocumentGraph.dataset_id);
+        appendDetailRow(card, 'Collection', latestDocumentGraph.collection);
+        appendDetailRow(card, 'Qdrant points', latestDocumentGraph.qdrant_points);
+        appendDetailRow(card, 'Graph enabled', formatFlag(latestDocumentGraph.graph_enabled));
+        appendDetailRow(card, 'Graph triplets', latestDocumentGraph.graph_triplets);
+        appendDetailRow(card, 'Docs with triplets', latestDocumentGraph.docs_with_triplets);
+        appendDetailRow(card, 'Updated', formatUpdated(latestDocumentGraph.updated_at));
+        ragDetails.appendChild(card);
+    }
+
+    const summary = payload.summary?.data || null;
+    if (summary) {
+        const graph = summary.graph_preview || null;
+        const card = createStatCard('Latest ingest summary');
+        appendDetailRow(card, 'Updated', formatUpdated(payload.summary?.updated_at));
+        appendDetailRow(card, 'Qdrant collection', summary.qdrant_preview?.collection || summary.collection);
+        appendDetailRow(card, 'Qdrant points', summary.qdrant_preview?.planned_points || summary.planned_points);
+        appendDetailRow(card, 'Documents', summary.documents?.processed_docs);
+        appendDetailRow(card, 'RAG chunks', summary.documents?.total_chunks);
+        appendDetailRow(card, 'Graph enabled', formatFlag(summary.graph?.enabled || graph));
+        appendDetailRow(card, 'Graph triplets', graph?.total_triplets);
+        appendDetailRow(card, 'Docs with triplets', graph?.docs_with_triplets);
+        appendDetailRow(card, 'Total time', summary.total_ms ? `${Math.round(summary.total_ms)}ms` : null);
+        ragDetails.appendChild(card);
+    }
+
+    const preview = payload.graph_preview?.data || summary?.graph_preview || null;
+    if (preview) {
+        const card = createStatCard('Latest graph preview');
+        appendDetailRow(card, 'Updated', formatUpdated(payload.graph_preview?.updated_at || preview.timestamp));
+        appendDetailRow(card, 'Total docs', preview.total_docs);
+        appendDetailRow(card, 'Total chunks', preview.total_chunks);
+        appendDetailRow(card, 'Docs with triplets', preview.docs_with_triplets);
+        appendDetailRow(card, 'Total triplets', preview.total_triplets);
+        Object.entries(preview.per_doc || {}).slice(0, 3).forEach(([docId, item]) => {
+            const title = item.title || item.source_url || docId;
+            appendDetailRow(card, String(title).slice(0, 36), `${item.triplets ?? 0} triplets · ${item.chunks ?? 0} chunks`);
+        });
+        ragDetails.appendChild(card);
+    }
+
+    appendIngestStatusCard('neo4j', payload.latest_ingest?.neo4j);
+    appendIngestStatusCard('default', payload.latest_ingest?.default);
+
+    if (Array.isArray(payload.graph_failures) && payload.graph_failures.length) {
+        const card = createStatCard('Recent graph extraction failures');
+        payload.graph_failures.forEach((failure, index) => {
+            appendDetailRow(card, `Failure ${index + 1}`, failure.error || failure.message || 'unknown');
+        });
+        ragDetails.appendChild(card);
+    }
 }
 
 function formatTime(date) {
@@ -235,10 +358,10 @@ async function pollIngestLive() {
     }
 }
 
-async function pollRagHealth() {
+async function pollRagMonitor() {
     if (!ragDetails) return;
     try {
-        const response = await fetch(apiUrl('rag/health'), {
+        const response = await fetch(apiUrl('rag/monitor'), {
             headers: {
                 'Accept': 'application/json',
                 'X-CSRF-TOKEN': csrfToken(),
@@ -247,13 +370,21 @@ async function pollRagHealth() {
         const data = await response.json();
         if (!response.ok || !data.ok) {
             ragDetails.innerHTML = '';
+            if (ragMonitorStatus) {
+                ragMonitorStatus.dataset.state = 'fail';
+                ragMonitorStatus.textContent = 'RAG-Anything monitor offline.';
+            }
             pushActivity('RAG', 'status: offline');
             return;
         }
-        renderRagRuntimeDetails(data);
-        pushActivity('RAG', `status: ok · ${data.latency_ms}ms`);
+        renderRagMonitor(data);
+        pushActivity('RAG', `status: ${data.bridge?.ok ? 'ok' : 'offline'} · ${data.bridge?.latency_ms ?? 'n/a'}ms`);
     } catch (error) {
         ragDetails.innerHTML = '';
+        if (ragMonitorStatus) {
+            ragMonitorStatus.dataset.state = 'fail';
+            ragMonitorStatus.textContent = 'RAG-Anything monitor offline.';
+        }
         pushActivity('RAG', 'status: offline');
     }
 }
@@ -387,8 +518,8 @@ pollIngestLive();
 setInterval(pollIngestLive, 4000);
 
 if (ragDetails) {
-    pollRagHealth();
-    setInterval(pollRagHealth, 5000);
+    pollRagMonitor();
+    setInterval(pollRagMonitor, 5000);
 }
 
 pollRagStats();

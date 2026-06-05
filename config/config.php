@@ -24,7 +24,7 @@ return [
     'ingest_log_path_neo4j' => env('HAWKI_RAG_INGEST_LOG_PATH_NEO4J', storage_path('logs/ingest_progress_neo4j_full.log')),
     // Cache log used by UI (cleared via "Clear ingest logs").
     'ingest_log_cache_path_neo4j' => env('HAWKI_RAG_INGEST_LOG_CACHE_PATH_NEO4J', storage_path('logs/ingest_progress_neo4j_cache.log')),
-    'rag_api_url' => env('HAWKI_RAG_API_URL', 'http://raganything_api_gpu:8003'),
+    'rag_api_url' => env('HAWKI_RAG_API_URL', env('HAWKI_RAG_BRIDGE_URL', 'http://hawki_rag_bridge:8000')),
     'embedding_models' => array_values(array_filter(array_map('trim', explode(',', env('OLLAMA_EMBED_MODEL', 'bge-m3'))))),
     'embedding_default' => env('OLLAMA_EMBED_MODEL', 'bge-m3'),
     'graph_models' => array_values(array_filter(array_map(

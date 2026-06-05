@@ -10,20 +10,18 @@ class RagHealthController extends Controller
 {
     public function show(): JsonResponse
     {
-        $primaryBase = (string) config('config.rag_api_url', 'http://raganything_api_gpu:8003');
-        $bridgeBase = (string) config('config.base_url', 'http://hawki_rag_bridge:8000');
+        $bridgeBase = (string) config('config.hawki_rag_bridge_url', config('config.base_url', 'http://hawki_rag_bridge:8000'));
+        $primaryBase = (string) config('config.rag_api_url', '');
         $candidates = array_values(array_unique(array_filter([
-            rtrim($primaryBase, '/') . '/health',
             rtrim($bridgeBase, '/') . '/health',
-            'http://raganything_api_gpu:8003/health',
-            'http://raganything_api:8003/health',
+            $primaryBase !== '' ? rtrim($primaryBase, '/') . '/health' : null,
         ])));
 
         $lastError = null;
         foreach ($candidates as $url) {
             try {
                 $start = microtime(true);
-                $response = Http::timeout(3)->get($url);
+                $response = Http::connectTimeout(2)->timeout(10)->get($url);
                 $elapsedMs = (int) ((microtime(true) - $start) * 1000);
 
                 if (! $response->successful()) {

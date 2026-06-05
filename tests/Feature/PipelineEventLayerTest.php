@@ -181,6 +181,79 @@ class PipelineEventLayerTest extends TestCase
         $this->assertSame(1, $task->counters['skipped']);
     }
 
+    public function test_converter_consumer_combines_all_markdown_chunks_for_ingestion(): void
+    {
+        $task = $this->task('task-event-convert-chunks');
+        $root = storage_path('framework/testing/pipeline-events/convert-chunks');
+        $sourceFile = "{$root}/handbook.pdf";
+        File::ensureDirectoryExists($root);
+        File::put($sourceFile, '%PDF-1.4 fake chunked file');
+        $contentHash = hash_file('sha256', $sourceFile);
+
+        $this->mock(DocumentConverter::class, function (MockInterface $mock): void {
+            $mock->shouldReceive('requestDocumentToMarkdown')
+                ->once()
+                ->andReturn([
+                    'output/meta.json' => '{"chunk_count":2}',
+                    'output/chunks/00002.md' => "---\nchunk: 2\n---\n\nSecond chunk.",
+                    'output/chunks/00001.md' => "---\nchunk: 1\n---\n\nFirst chunk.",
+                    'output/assets/image_0.webp' => 'fake-binary-webp',
+                ]);
+        });
+
+        $this->mock(PipelineEventBus::class, function (MockInterface $mock) use ($task, $sourceFile): void {
+            $mock->shouldReceive('publish')
+                ->once()
+                ->with(PipelineEvent::FILE_CONVERTED, \Mockery::on(function (array $event) use ($task, $sourceFile): bool {
+                    $path = (string) ($event['local_path'] ?? '');
+                    $content = is_file($path) ? (string) file_get_contents($path) : '';
+
+                    return $event['task_id'] === $task->task_id
+                        && $event['job_id'] === 'convert-event-chunks'
+                        && ($event['metadata']['original_path'] ?? null) === $sourceFile
+                        && str_ends_with($path, 'converted_handbook/content_markdown.md')
+                        && str_contains($content, 'First chunk.')
+                        && str_contains($content, 'Second chunk.')
+                        && strpos($content, 'First chunk.') < strpos($content, 'Second chunk.');
+                }))
+                ->andReturnUsing(fn (string $eventType, array $payload): array => PipelineEvent::normalize($eventType, $payload));
+        });
+
+        app(ConverterEventHandler::class)->handle(PipelineEvent::normalize(PipelineEvent::FILE_DISCOVERED, [
+            'task_id' => $task->task_id,
+            'job_id' => 'convert-event-chunks',
+            'parent_job_id' => 'scrape-parent',
+            'dataset_id' => $task->dataset_id,
+            'source_url' => 'https://example.test/handbook.pdf',
+            'local_path' => $sourceFile,
+            'content_hash' => $contentHash,
+            'status' => PipelineJob::STATUS_PENDING,
+        ]));
+
+        $outputDir = "{$root}/converted_handbook";
+        $combinedPath = "{$outputDir}/content_markdown.md";
+        $this->assertFileExists($combinedPath);
+        $this->assertFileExists("{$outputDir}/output/meta.json");
+        $this->assertFileExists("{$outputDir}/output/chunks/00001.md");
+        $this->assertFileExists("{$outputDir}/output/chunks/00002.md");
+        $this->assertFileExists("{$outputDir}/output/assets/image_0.webp");
+
+        $meta = json_decode((string) file_get_contents("{$outputDir}/conversion_meta.json"), true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame($combinedPath, $meta['combined_markdown_path']);
+        $this->assertSame([
+            'output/chunks/00001.md',
+            'output/chunks/00002.md',
+        ], $meta['markdown_files']);
+
+        $this->assertDatabaseHas('pipeline_jobs', [
+            'task_id' => $task->task_id,
+            'job_id' => 'convert-event-chunks',
+            'job_type' => PipelineJob::TYPE_CONVERT,
+            'status' => PipelineJob::STATUS_COMPLETED,
+            'local_path' => $sourceFile,
+        ]);
+    }
+
     public function test_monitor_scrape_job_publishes_conversion_event_for_new_file_in_existing_output_folder(): void
     {
         config()->set('file_converter.supported_extensions', ['pdf']);
@@ -306,6 +379,52 @@ class PipelineEventLayerTest extends TestCase
         $task->refresh();
         $this->assertSame(1, $task->counters['ingested']);
         $this->assertSame(0, $task->counters['failed']);
+    }
+
+    public function test_ingestion_consumer_ingests_cached_converter_markdown_even_when_converter_job_was_skipped(): void
+    {
+        Http::fake([
+            '*/ingest' => Http::response(['ok' => true, 'documents' => 1], 200),
+        ]);
+
+        $task = $this->task('task-event-ingest-cached-conversion');
+        $root = storage_path('framework/testing/pipeline-events/ingest-cached-conversion/converted_upload');
+        $markdownPath = "{$root}/content_markdown.md";
+        File::ensureDirectoryExists($root);
+        File::put($markdownPath, "# Cached conversion\n\nMarkdown created by a previous converter run.");
+
+        app(IngestionEventHandler::class)->handle(PipelineEvent::normalize(PipelineEvent::FILE_CONVERTED, [
+            'task_id' => $task->task_id,
+            'job_id' => 'convert-event-cached',
+            'dataset_id' => $task->dataset_id,
+            'job_type' => PipelineJob::TYPE_CONVERT,
+            'source_url' => 'upload://resume.pdf',
+            'local_path' => $markdownPath,
+            'content_hash' => hash_file('sha256', $markdownPath),
+            'status' => PipelineJob::STATUS_SKIPPED,
+            'metadata' => [
+                'reason' => 'File/content_hash was already converted.',
+                'converted_path' => $markdownPath,
+                'graph' => true,
+            ],
+        ]));
+
+        $ingestJob = PipelineJob::query()
+            ->where('task_id', $task->task_id)
+            ->where('job_type', PipelineJob::TYPE_INGEST)
+            ->firstOrFail();
+
+        $this->assertSame(PipelineJob::STATUS_COMPLETED, $ingestJob->status);
+        $this->assertSame('convert-event-cached', $ingestJob->parent_job_id);
+        $this->assertSame($markdownPath, $ingestJob->local_path);
+
+        Http::assertSent(fn ($request) => $request->url() === 'http://hawki_rag_bridge:8000/ingest'
+            && $request['docs'][0]['payload']['converted_path'] === $markdownPath
+            && $request['docs'][0]['payload']['source_type'] === PipelineEvent::FILE_CONVERTED);
+
+        $task->refresh();
+        $this->assertSame(1, $task->counters['ingested']);
+        $this->assertSame(0, $task->counters['skipped']);
     }
 
     public function test_ingestion_failures_are_recorded_on_the_child_ingest_job(): void

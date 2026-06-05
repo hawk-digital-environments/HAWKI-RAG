@@ -24,6 +24,7 @@ return [
         'management_url' => env('RABBITMQ_MANAGEMENT_URL', 'http://rabbitmq:15672'),
         'pipeline_ingestion' => [
             'shared_storage_root' => env('SHARED_STORAGE_ROOT', '/app/shared'),
+            'shared_storage_web_user' => env('PIPELINE_SHARED_STORAGE_WEB_USER', env('PHP_FPM_USER', 'www-data')),
             'schema_version' => env('JOB_SCHEMA_VERSION', '1'),
             'service_name' => env('SERVICE_NAME', 'hawki-rag'),
             'provider' => env('RAG_DEFAULT_PROVIDER', 'ollama'),

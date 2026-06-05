@@ -83,10 +83,12 @@ class PipelineOperationsCommandTest extends TestCase
 
         config()->set('communication.rabbitmq.pipeline_events.enabled', true);
         config()->set('communication.rabbitmq.pipeline_ingestion.shared_storage_root', $sharedPath);
+        config()->set('communication.rabbitmq.pipeline_ingestion.shared_storage_web_user', '');
         config()->set('scraper.storage_path', $sharedPath);
         config()->set('config.shared_root', $sharedPath);
         config()->set('scraper.api_url', 'http://crawler.test');
         config()->set('file_converter.url', 'http://converter.test/extract');
+        config()->set('file_converter.health_url', 'http://converter.test/health');
         config()->set('config.hawki_rag_bridge_url', 'http://bridge.test');
         config()->set('config.qdrant_http_url', 'http://qdrant.test');
         config()->set('config.neo4j_http_url', 'http://neo4j.test');
@@ -96,7 +98,7 @@ class PipelineOperationsCommandTest extends TestCase
         Http::preventStrayRequests();
         Http::fake([
             'http://crawler.test/health' => Http::response(['ok' => true], 200),
-            'http://converter.test/extract' => Http::response('', 405),
+            'http://converter.test/health' => Http::response(['status' => 'OK'], 200),
             'http://bridge.test/health' => Http::response(['ok' => true], 200),
             'http://qdrant.test/collections' => Http::response(['result' => ['collections' => []]], 200),
             'http://neo4j.test/db/neo4j/tx/commit' => Http::response(['results' => [], 'errors' => []], 200),

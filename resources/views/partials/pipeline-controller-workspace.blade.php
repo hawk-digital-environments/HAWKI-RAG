@@ -1,3 +1,12 @@
+@php
+    $converterExtensions = collect(config('file_converter.supported_extensions', ['pdf', 'doc', 'docx']))
+        ->map(fn ($extension) => ltrim(strtolower(trim((string) $extension)), '.'))
+        ->filter()
+        ->unique()
+        ->values();
+    $converterAccept = $converterExtensions->map(fn ($extension) => '.' . $extension)->implode(',');
+@endphp
+
 <section class="controller-file-section" aria-labelledby="pipeline-file-input-title">
     <div class="pipeline-panel-head">
         <div>
@@ -14,7 +23,7 @@
             </div>
             <div>
                 <label for="pipeline-file-input">Document</label>
-                <input id="pipeline-file-input" name="file" type="file" accept=".pdf,.doc,.docx" />
+                <input id="pipeline-file-input" name="file" type="file" accept="{{ $converterAccept }}" data-supported-extensions="{{ $converterExtensions->implode(',') }}" />
             </div>
             <label class="controller-toggle" for="pipeline-file-graph">
                 <input id="pipeline-file-graph" name="graph" type="checkbox" value="true" checked />

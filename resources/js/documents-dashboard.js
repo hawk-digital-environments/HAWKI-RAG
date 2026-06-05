@@ -102,7 +102,7 @@ if (root) {
     }
 
     function statusPill(status) {
-        const pill = document.createElement('span');
+        const pill = window.document.createElement('span');
         pill.className = `status-pill ${statusClass(status)}`;
         pill.textContent = valueOrDash(status);
 
@@ -112,7 +112,7 @@ if (root) {
     function makeLink(href, text) {
         if (!href || !text) return valueOrDash(text);
 
-        const link = document.createElement('a');
+        const link = window.document.createElement('a');
         link.href = href;
         link.textContent = text;
         link.className = 'table-link';
@@ -134,75 +134,75 @@ if (root) {
             return;
         }
 
-        documents.forEach((document) => {
-            const button = document.createElement('button');
+        documents.forEach((doc) => {
+            const button = window.document.createElement('button');
             button.type = 'button';
             button.className = 'document-list-item';
-            if (document.id === state.selectedDocumentId) {
+            if (doc.id === state.selectedDocumentId) {
                 button.classList.add('is-selected');
             }
 
-            const top = document.createElement('span');
+            const top = window.document.createElement('span');
             top.className = 'document-list-top';
-            const title = document.createElement('strong');
-            title.textContent = document.title || document.originalFilename || document.id;
-            top.append(title, statusPill(document.qdrantStatus || document.status));
+            const title = window.document.createElement('strong');
+            title.textContent = doc.title || doc.originalFilename || doc.id;
+            top.append(title, statusPill(doc.qdrantStatus || doc.status));
 
-            const source = document.createElement('span');
+            const source = window.document.createElement('span');
             source.className = 'document-list-source';
-            source.textContent = document.sourceUrl || document.localPath || document.contentHash;
+            source.textContent = doc.sourceUrl || doc.localPath || doc.contentHash;
 
-            const meta = document.createElement('span');
+            const meta = window.document.createElement('span');
             meta.className = 'document-list-meta';
             meta.textContent = [
-                document.datasetId,
-                document.contentType,
-                `Qdrant ${document.qdrantStatus || 'unknown'}`,
-                `Neo4j ${document.neo4jStatus || 'unknown'}`,
+                doc.datasetId,
+                doc.contentType,
+                `Qdrant ${doc.qdrantStatus || 'unknown'}`,
+                `Neo4j ${doc.neo4jStatus || 'unknown'}`,
             ].filter(Boolean).join(' | ');
 
             button.append(top, source, meta);
-            button.addEventListener('click', () => loadDocument(document.id));
+            button.addEventListener('click', () => loadDocument(doc.id));
             els.list.appendChild(button);
         });
     }
 
-    function renderDocument(document) {
-        state.selectedDocumentId = document.id;
-        localStorage.setItem('hawkiDocumentsDashboardDocumentId', document.id);
-        els.state.className = `status-pill ${statusClass(document.status)}`;
-        setText(els.state, document.status || 'unknown');
-        setText(els.updated, `Updated ${formatDate(document.updatedAt || new Date().toISOString())}`);
-        setStatus(`Showing document ${document.id}.`);
+    function renderDocument(doc) {
+        state.selectedDocumentId = doc.id;
+        localStorage.setItem('hawkiDocumentsDashboardDocumentId', doc.id);
+        els.state.className = `status-pill ${statusClass(doc.status)}`;
+        setText(els.state, doc.status || 'unknown');
+        setText(els.updated, `Updated ${formatDate(doc.updatedAt || new Date().toISOString())}`);
+        setStatus(`Showing document ${doc.id}.`);
 
-        renderInfo(document);
-        renderMetrics(document);
-        renderMarkdown(document);
-        renderRelatedJobs(document.relatedJobs || []);
-        setText(els.metadata, JSON.stringify(document.metadata || {}, null, 2));
+        renderInfo(doc);
+        renderMetrics(doc);
+        renderMarkdown(doc);
+        renderRelatedJobs(doc.relatedJobs || []);
+        setText(els.metadata, JSON.stringify(doc.metadata || {}, null, 2));
         renderDocuments(state.documents);
     }
 
-    function renderInfo(document) {
+    function renderInfo(doc) {
         els.info.innerHTML = '';
 
         [
-            ['Dataset ID', makeLink(`/documents?dataset_id=${encodeURIComponent(document.datasetId || '')}`, document.datasetId)],
-            ['Task ID', makeLink(taskLink(document.taskId), document.taskId)],
-            ['Job ID', makeLink(taskLink(document.taskId), document.jobId)],
-            ['Source URL', document.sourceUrl],
-            ['Local path', document.localPath],
-            ['Content type', document.contentType],
-            ['Content hash', document.contentHash],
-            ['Qdrant status', statusPill(document.qdrantStatus)],
-            ['Neo4j status', statusPill(document.neo4jStatus)],
-            ['Ingested at', formatDate(document.ingestedAt)],
-            ['Qdrant collection', document.qdrantCollection || document.collection],
-            ['Neo4j namespace', document.neo4jNamespace],
+            ['Dataset ID', makeLink(`/documents?dataset_id=${encodeURIComponent(doc.datasetId || '')}`, doc.datasetId)],
+            ['Task ID', makeLink(taskLink(doc.taskId), doc.taskId)],
+            ['Job ID', makeLink(taskLink(doc.taskId), doc.jobId)],
+            ['Source URL', doc.sourceUrl],
+            ['Local path', doc.localPath],
+            ['Content type', doc.contentType],
+            ['Content hash', doc.contentHash],
+            ['Qdrant status', statusPill(doc.qdrantStatus)],
+            ['Neo4j status', statusPill(doc.neo4jStatus)],
+            ['Ingested at', formatDate(doc.ingestedAt)],
+            ['Qdrant collection', doc.qdrantCollection || doc.collection],
+            ['Neo4j namespace', doc.neo4jNamespace],
         ].forEach(([label, value]) => {
-            const wrapper = document.createElement('div');
-            const term = document.createElement('dt');
-            const description = document.createElement('dd');
+            const wrapper = window.document.createElement('div');
+            const term = window.document.createElement('dt');
+            const description = window.document.createElement('dd');
             term.textContent = label;
             if (value instanceof HTMLElement) {
                 description.appendChild(value);
@@ -214,43 +214,43 @@ if (root) {
         });
     }
 
-    function renderMetrics(document) {
+    function renderMetrics(doc) {
         els.metrics.innerHTML = '';
         [
-            ['Qdrant points', document.qdrantPointCount ?? '-', document.qdrantCollection || document.collection],
-            ['Neo4j entities', document.neo4jEntityCount ?? '-', document.neo4jNamespace || document.neo4jStatus],
-            ['Neo4j relations', document.neo4jRelationCount ?? '-', document.neo4jNamespace || document.neo4jStatus],
-            ['File size', document.fileSize ? `${document.fileSize} bytes` : '-', document.contentType],
+            ['Qdrant points', doc.qdrantPointCount ?? '-', doc.qdrantCollection || doc.collection],
+            ['Neo4j entities', doc.neo4jEntityCount ?? '-', doc.neo4jNamespace || doc.neo4jStatus],
+            ['Neo4j relations', doc.neo4jRelationCount ?? '-', doc.neo4jNamespace || doc.neo4jStatus],
+            ['File size', doc.fileSize ? `${doc.fileSize} bytes` : '-', doc.contentType],
         ].forEach(([label, value, caption]) => {
-            const item = document.createElement('div');
+            const item = window.document.createElement('div');
             item.className = 'metric-item';
-            const strong = document.createElement('strong');
+            const strong = window.document.createElement('strong');
             strong.textContent = valueOrDash(value);
-            const span = document.createElement('span');
+            const span = window.document.createElement('span');
             span.textContent = label;
-            const small = document.createElement('small');
+            const small = window.document.createElement('small');
             small.textContent = valueOrDash(caption);
             item.append(strong, span, small);
             els.metrics.appendChild(item);
         });
     }
 
-    function renderMarkdown(document) {
-        const preview = document.markdownPreview || '';
+    function renderMarkdown(doc) {
+        const preview = doc.markdownPreview || '';
         if (preview) {
             setText(els.markdownPreview, preview);
             setText(
                 els.previewNote,
-                document.markdownPreviewTruncated
-                    ? `Preview is truncated from ${document.markdownPreviewPath || document.localPath}.`
-                    : `Preview from ${document.markdownPreviewPath || document.localPath}.`,
+                doc.markdownPreviewTruncated
+                    ? `Preview is truncated from ${doc.markdownPreviewPath || doc.localPath}.`
+                    : `Preview from ${doc.markdownPreviewPath || doc.localPath}.`,
             );
             els.markdownPreview.dataset.empty = 'false';
             return;
         }
 
-        setText(els.markdownPreview, document.markdownPreviewError || 'No extracted Markdown preview is available.');
-        setText(els.previewNote, document.markdownPreviewError || 'Preview reads the recorded local path.');
+        setText(els.markdownPreview, doc.markdownPreviewError || 'No extracted Markdown preview is available.');
+        setText(els.previewNote, doc.markdownPreviewError || 'Preview reads the recorded local path.');
         els.markdownPreview.dataset.empty = 'true';
     }
 
@@ -275,24 +275,24 @@ if (root) {
             return;
         }
 
-        const table = document.createElement('table');
+        const table = window.document.createElement('table');
         table.className = 'data-table';
-        const thead = document.createElement('thead');
-        const tr = document.createElement('tr');
+        const thead = window.document.createElement('thead');
+        const tr = window.document.createElement('tr');
         headers.forEach((header) => {
-            const th = document.createElement('th');
+            const th = window.document.createElement('th');
             th.textContent = header;
             tr.appendChild(th);
         });
         thead.appendChild(tr);
         table.appendChild(thead);
 
-        const tbody = document.createElement('tbody');
+        const tbody = window.document.createElement('tbody');
         rows.forEach((row) => {
             const data = mapper(row);
-            const bodyRow = document.createElement('tr');
+            const bodyRow = window.document.createElement('tr');
             data.forEach((value) => {
-                const td = document.createElement('td');
+                const td = window.document.createElement('td');
                 if (value instanceof HTMLElement) {
                     td.appendChild(value);
                 } else {
@@ -307,7 +307,7 @@ if (root) {
     }
 
     function renderEmpty(container, message) {
-        const empty = document.createElement('div');
+        const empty = window.document.createElement('div');
         empty.className = 'empty-state';
         empty.textContent = message;
         container.appendChild(empty);

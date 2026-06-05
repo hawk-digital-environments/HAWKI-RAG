@@ -41,26 +41,11 @@ def _strip_control_chars(text: str | None) -> str:
 def _clean_graph_text(text: str) -> str:
     if not text:
         return ""
-    strip_mode = os.environ.get("GRAPH_STRIP_PIPES", "true").strip().lower()
-    disable_table_heuristic = os.environ.get("GRAPH_DISABLE_TABLE_HEURISTIC", "").strip().lower() in ("1", "true", "yes")
     cleaned: list[str] = []
     for line in str(text).splitlines():
         stripped = line.strip()
         if not stripped:
             continue
-        if not disable_table_heuristic:
-            if strip_mode in ("1", "true", "yes") and "|" in stripped:
-                continue
-            # Drop markdown table delimiters and separator lines.
-            if re.fullmatch(r"[\|\-\s:]+", stripped):
-                continue
-            if "|" in stripped:
-                pipe_count = stripped.count("|")
-                alpha = sum(1 for ch in stripped if ch.isalnum())
-                ratio = alpha / max(1, len(stripped))
-                # Remove low-signal table rows and headers.
-                if pipe_count >= 2 and (alpha < 6 or ratio < 0.35):
-                    continue
         cleaned.append(stripped)
     output = "\n".join(cleaned)
     try:
@@ -1097,6 +1082,21 @@ class RAGService:
         return f"{stable_id}:extract:{time.time_ns()}"
 
     @staticmethod
+    def _raganything_file_ref(doc_id: str | None, file_path: str | None) -> str:
+        if not file_path:
+            return f"inline://{doc_id or 'graph_text'}"
+
+        raw_path = str(file_path)
+        source = Path(raw_path)
+        safe_doc_id = re.sub(r"[^A-Za-z0-9_.-]+", "_", str(doc_id or "graph_doc")).strip("._-") or "graph_doc"
+        unique_name = f"{safe_doc_id}__{source.name or 'content.md'}"
+
+        if source.parent and str(source.parent) not in ("", "."):
+            return str(source.with_name(unique_name))
+
+        return unique_name
+
+    @staticmethod
     def _clear_lightrag_neo4j_temp_graph(neo4j_database: str | None = None) -> None:
         try:
             from neo4j import GraphDatabase  # type: ignore
@@ -1154,38 +1154,29 @@ class RAGService:
 
         file_edges: List[Dict[str, Any]] = []
         recent_file_edges: List[Dict[str, Any]] = []
-        recent_edges_any_file: List[Dict[str, Any]] = []
         file_ref_norm = _norm_path(file_ref)
+        file_ref_name = Path(file_ref_norm).name
         for edge in edges or []:
             if not isinstance(edge, dict):
                 continue
             created_at = _edge_created_at(edge)
-            if created_at >= max(0, created_at_floor - 1):
-                recent_edges_any_file.append(edge)
             edge_file = _norm_path(edge.get("file_path"))
-            if edge_file != file_ref_norm:
+            if edge_file != file_ref_norm and Path(edge_file).name != file_ref_name:
                 continue
             file_edges.append(edge)
             if created_at >= max(0, created_at_floor - 1):
                 recent_file_edges.append(edge)
 
-        # Prefer edges produced by the current insert call. If the document was deduplicated by
-        # RAG-Anything, fall back to all edges currently known for the same file reference.
+        # Prefer edges produced by the current insert call. If RAG-Anything deduplicated the
+        # document, use only edges already tied to the same unique file reference.
         selected = recent_file_edges or file_edges
-        if not selected and recent_edges_any_file:
-            # Some RAG-Anything/LightRAG backends persist only a basename (often `content.md`)
-            # in `file_path`, which prevents exact matching against our absolute `file_ref`.
-            # Graph inserts are serialized under `_rag_graph_lock`, so recent edges are a safe
-            # fallback for recovering the current document's triplets.
-            selected = recent_edges_any_file
         if GRAPH_DEBUG:
             logger.debug(
-                "graph:raganything export edges total=%s file=%s file_edges=%s recent=%s recent_any=%s selected=%s",
+                "graph:raganything export edges total=%s file=%s file_edges=%s recent=%s selected=%s",
                 len(edges or []),
                 file_ref,
                 len(file_edges),
                 len(recent_file_edges),
-                len(recent_edges_any_file),
                 len(selected),
             )
 
@@ -1217,18 +1208,31 @@ class RAGService:
 
         total_chars = sum(len(str(item.get("text") or "")) for item in content_list)
 
+        if _env_truthy("GRAPH_RESET_CACHE_PER_DOC", True):
+            cleared = self.clear_graph_cache()
+            if cleared.get("failed"):
+                logger.warning("RAG-Anything graph cache reset had failures: %s", cleared.get("failed"))
+            else:
+                logger.info(
+                    "RAG-Anything graph cache reset before doc_id=%s removed=%s",
+                    doc_id or "-",
+                    len(cleared.get("removed") or []),
+                )
+
         client = self._get_or_create_raganything_graph_client(provider, neo4j_database=neo4j_database)
         if client is None:
             logger.warning("RAG-Anything graph client is not initialized; returning 0 triplets.")
             return []
 
-        file_ref = str(file_path or f"inline://{doc_id or 'graph_text'}")
+        source_file_ref = str(file_path or f"inline://{doc_id or 'graph_text'}")
+        file_ref = self._raganything_file_ref(doc_id, file_path)
         rag_doc_id = self._raganything_extraction_doc_id(doc_id, file_ref, content_list)
         logger.info(
-            "RAG-Anything graph insert requested doc_id=%s rag_doc_id=%s file=%s blocks=%s chars=%s",
+            "RAG-Anything graph insert requested doc_id=%s rag_doc_id=%s file=%s source_file=%s blocks=%s chars=%s",
             doc_id or "-",
             rag_doc_id,
             file_ref,
+            source_file_ref,
             len(content_list),
             total_chars,
         )
