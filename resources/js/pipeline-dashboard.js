@@ -478,12 +478,20 @@ if (root) {
         setText(els.taskStatus, 'idle');
         els.taskStatus.className = 'status-pill is-idle';
         setText(els.updated, 'No task loaded.');
-        [els.taskInfo, els.counters, els.scrapeJobs, els.convertJobs, els.ingestJobs, els.failedJobs, els.events]
-            .filter(Boolean)
-            .forEach((container) => {
+        [
+            [els.taskInfo, 'Select a task to view its details.'],
+            [els.counters, 'Select a task to view progress totals.'],
+            [els.scrapeJobs, 'Select a task to view scrape jobs.'],
+            [els.convertJobs, 'Select a task to view convert jobs.'],
+            [els.ingestJobs, 'Select a task to view ingest jobs.'],
+            [els.failedJobs, 'Select a task to view failed jobs.'],
+            [els.events, 'Select a task to view its timeline.'],
+        ].forEach(([container, message]) => {
+            if (container) {
                 container.innerHTML = '';
-                renderEmpty(container, 'Nothing to show yet.');
-            });
+                renderEmpty(container, message);
+            }
+        });
         [els.scrapeCount, els.convertCount, els.ingestCount, els.failedCount, els.eventsCount]
             .forEach((el) => setText(el, '0'));
         renderSelectOptions(els.eventTypeFilter, 'All event types', pipelineEventTypes, state.eventTypeFilter);

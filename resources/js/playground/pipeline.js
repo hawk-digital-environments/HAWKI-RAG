@@ -712,6 +712,12 @@ taskRefreshButton?.addEventListener('click', loadScraperTasks);
 taskStartButton?.addEventListener('click', startSelectedTask);
 runRefreshButton?.addEventListener('click', loadPipelineTaskRuns);
 
+window.hawkiPipelineController = {
+    selectTask: selectPipelineTask,
+    refreshRuns: loadPipelineTaskRuns,
+    renderTask: renderPipelineTask,
+};
+
 renderPipeline(null);
 loadScraperTasks();
 loadPipelineTaskRuns();

@@ -14,7 +14,7 @@
         $apiBasePath = $apiBasePath === '//' ? '/' : $apiBasePath;
     @endphp
     <meta name="hawki-api-base-path" content="{{ $apiBasePath }}" />
-    @vite(["resources/css/datasets-dashboard.css", "resources/js/datasets-dashboard.js"])
+    @vite(["resources/css/datasets-dashboard.css", "resources/css/dashboard-dark-theme.css", "resources/js/datasets-dashboard.js"])
 </head>
 <body>
     <main class="datasets-dashboard" data-datasets-dashboard>
@@ -25,12 +25,7 @@
                 <p class="header-copy">Dataset-scoped tasks, documents, ingestion, and graph storage.</p>
             </div>
             <div class="header-actions">
-                <a class="secondary-link" href="{{ url('/pipeline-dashboard') }}">Pipeline Dashboard</a>
-                <a class="secondary-link" href="{{ url('/pipeline-health') }}">Health</a>
-                <a class="secondary-link" href="{{ url('/documents') }}">Documents</a>
-                <a class="secondary-link" href="{{ url('/failed-jobs') }}">Failed Jobs</a>
-                <a class="secondary-link" href="{{ url('/hawki-rag-playground') }}">Playground</a>
-                <button type="button" class="secondary-button" id="datasets-refresh">Refresh</button>
+                @include('partials.pipeline-nav', ['active' => 'datasets', 'refreshId' => 'datasets-refresh'])
             </div>
         </header>
 

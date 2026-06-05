@@ -14,7 +14,7 @@
         $apiBasePath = $apiBasePath === '//' ? '/' : $apiBasePath;
     @endphp
     <meta name="hawki-api-base-path" content="{{ $apiBasePath }}" />
-    @vite(["resources/css/pipeline-health-dashboard.css", "resources/js/pipeline-health-dashboard.js"])
+    @vite(["resources/css/pipeline-health-dashboard.css", "resources/css/dashboard-dark-theme.css", "resources/js/pipeline-health-dashboard.js"])
 </head>
 <body>
     <main class="pipeline-health-dashboard" data-pipeline-health-dashboard>
@@ -25,11 +25,7 @@
                 <p class="header-copy">Pipeline queue depth, consumers, retry queues, and failed events from Laravel.</p>
             </div>
             <div class="header-actions">
-                <a class="secondary-link" href="{{ url('/pipeline-dashboard') }}">Pipeline Dashboard</a>
-                <a class="secondary-link" href="{{ url('/datasets') }}">Datasets</a>
-                <a class="secondary-link" href="{{ url('/documents') }}">Documents</a>
-                <a class="secondary-link" href="{{ url('/failed-jobs') }}">Failed Jobs</a>
-                <button type="button" class="secondary-button" id="pipeline-health-refresh">Refresh</button>
+                @include('partials.pipeline-nav', ['active' => 'health', 'refreshId' => 'pipeline-health-refresh'])
             </div>
         </header>
 

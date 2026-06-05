@@ -132,6 +132,13 @@ dt {
     border-color: var(--line-strong);
 }
 
+.secondary-link.is-active,
+.secondary-link[aria-current="page"] {
+    background: var(--blue-soft);
+    color: var(--blue);
+    border-color: var(--blue);
+}
+
 .danger-button {
     background: var(--red);
     color: #ffffff;

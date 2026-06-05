@@ -57,7 +57,7 @@ COMPOSE_FILE_PREFIX := COMPOSE_FILE=$(COMPOSE_FILE_LIST)
 COMPOSE_CMD = $(COMPOSE_ENV_PREFIX) COMPOSE_FILE=$(COMPOSE_FILE_LIST) $(if $(strip $(COMPOSE_PROFILES)),COMPOSE_PROFILES=$(COMPOSE_PROFILES)) $(COMPOSE_BIN) --env-file $(ENV_FILE)
 
 
-.PHONY: network pull-core build-app _up-core up-core up-core-server health pull-models scraped-folders crawl convert ingest convert-ingest-folder pipeline logs-core down-core down-rag restart-core test-services neo4j-fresh
+.PHONY: network pull-core build-app migrate-core _up-core up-core up-core-server health pull-models scraped-folders crawl convert ingest convert-ingest-folder pipeline logs-core down-core down-rag restart-core test-services neo4j-fresh
 
 network:
 	@for net in hawki-network hosting_network; do \
@@ -75,6 +75,22 @@ pull-core:
 build-app:
 	@$(COMPOSE_CMD) build hawki_rag_app
 
+migrate-core:
+	@echo "Running Laravel migrations..."
+	@attempt=1; \
+	while [ "$$attempt" -le 30 ]; do \
+		if $(COMPOSE_CMD) exec -T hawki_rag_app php artisan migrate --force; then \
+			$(COMPOSE_CMD) exec -T hawki_rag_app php artisan optimize:clear >/dev/null 2>&1 || true; \
+			echo "Laravel migrations are up to date."; \
+			exit 0; \
+		fi; \
+		echo "Migration attempt $$attempt failed; retrying in 2s..."; \
+		attempt=$$((attempt + 1)); \
+		sleep 2; \
+	done; \
+	echo "Laravel migrations failed after 30 attempts."; \
+	exit 1
+
 _up-core: network
 	@echo $(PROFILE_MESSAGE)
 	@echo "Launching full stack (COMPOSE_FILE=$(COMPOSE_FILE_LIST), profiles: $(if $(strip $(COMPOSE_PROFILES)),$(COMPOSE_PROFILES),none))..."
@@ -85,6 +101,7 @@ _up-core: network
 		docker exec $(OLLAMA_CONTAINER) ollama pull $$model >/dev/null 2>&1 || true; \
 	done
 	@docker network connect hawki-network hawki-toolkit-file-converter-file-converter-1 >/dev/null 2>&1 || true
+	@$(MAKE) --no-print-directory migrate-core COMPOSE_FILE_LIST="$(COMPOSE_FILE_LIST)" COMPOSE_PROFILES="$(COMPOSE_PROFILES)" ENV_FILE="$(ENV_FILE)" COMPOSE_BIN="$(COMPOSE_BIN)"
 
 up-core: COMPOSE_FILE_LIST = $(CORE_LOCAL_COMPOSE_FILE_LIST)
 up-core: COMPOSE_PROFILES = $(CORE_PROFILES)

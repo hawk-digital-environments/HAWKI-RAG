@@ -128,6 +128,13 @@ dt,
     color: var(--text);
 }
 
+.secondary-link.is-active,
+.secondary-link[aria-current="page"] {
+    background: var(--blue-soft);
+    color: var(--blue);
+    border-color: var(--blue);
+}
+
 .dashboard-grid {
     display: grid;
     grid-template-columns: 380px minmax(0, 1fr);

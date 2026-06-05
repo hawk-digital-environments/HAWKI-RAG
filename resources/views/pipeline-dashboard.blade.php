@@ -14,7 +14,7 @@
         $apiBasePath = $apiBasePath === '//' ? '/' : $apiBasePath;
     @endphp
     <meta name="hawki-api-base-path" content="{{ $apiBasePath }}" />
-    @vite(["resources/css/pipeline-dashboard.css", "resources/js/pipeline-dashboard.js"])
+    @vite(["resources/css/pipeline-dashboard.css", "resources/css/dashboard-dark-theme.css", "resources/js/pipeline-dashboard.js"])
 </head>
 <body>
     <main class="pipeline-dashboard" data-pipeline-dashboard>
@@ -25,12 +25,7 @@
                 <p class="header-copy">Scrape, convert, and ingest state from Laravel database records.</p>
             </div>
             <div class="header-actions">
-                <a class="secondary-link" href="{{ url('/pipeline-health') }}">Health</a>
-                <a class="secondary-link" href="{{ url('/datasets') }}">Datasets</a>
-                <a class="secondary-link" href="{{ url('/documents') }}">Documents</a>
-                <a class="secondary-link" href="{{ url('/failed-jobs') }}">Failed Jobs</a>
-                <a class="secondary-link" href="{{ url('/hawki-rag-playground') }}">Playground</a>
-                <button type="button" class="secondary-button" id="pipeline-dashboard-refresh">Refresh</button>
+                @include('partials.pipeline-nav', ['active' => 'dashboard', 'refreshId' => 'pipeline-dashboard-refresh'])
             </div>
         </header>
 
@@ -62,8 +57,8 @@
                 <section class="panel">
                     <div class="section-head">
                         <div>
-                            <h2>Counters</h2>
-                            <p>Calculated from pipeline_jobs.</p>
+                            <h2>Progress</h2>
+                            <p>Live totals for the selected task.</p>
                         </div>
                     </div>
                     <div class="counter-grid" id="pipeline-dashboard-counters"></div>

@@ -7,6 +7,7 @@ use App\Http\Controllers\API\IngestStatusController;
 use App\Http\Controllers\API\RagHealthController;
 use App\Http\Controllers\API\RagStatsController;
 use App\Http\Controllers\Graph\RagGraphController;
+use App\Http\Controllers\PipelineControlController;
 use App\Http\Controllers\PipelineStatusController;
 use App\Http\Controllers\PipelineTaskController;
 use App\Http\Controllers\ScrapeController;
@@ -24,8 +25,16 @@ Route::get('/hawki-rag-playground', function () {
     ]);
 });
 
+Route::get('/neo4j-graph-explorer', function () {
+    return view('neo4j-graph-dashboard');
+});
+
 Route::get('/pipeline-dashboard', function () {
     return view('pipeline-dashboard');
+});
+
+Route::get('/pipeline-controller', function () {
+    return view('pipeline-controller-dashboard');
 });
 
 Route::get('/pipeline-health', function () {
@@ -69,6 +78,7 @@ Route::get('/pipeline/tasks/{taskId}/events', [PipelineTaskController::class, 'e
 Route::post('/pipeline/tasks/{taskId}/jobs', [PipelineTaskController::class, 'upsertJob']);
 Route::post('/pipeline/tasks/{taskId}/retry', [PipelineTaskController::class, 'retry']);
 Route::post('/pipeline/tasks/{taskId}/retry-failed-jobs', [PipelineTaskController::class, 'retryFailedJobs']);
+Route::post('/pipeline/controller/files', [PipelineControlController::class, 'uploadFile']);
 // Playground related routes
 
 Route::post('/query', [HawkiRagProxyController::class, 'query']);

@@ -113,6 +113,13 @@ h2 {
     text-decoration: none;
 }
 
+.secondary-link.is-active,
+.secondary-link[aria-current="page"] {
+    background: var(--blue-soft);
+    color: var(--blue);
+    border-color: var(--blue);
+}
+
 .health-status,
 .panel {
     background: var(--panel);

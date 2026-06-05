@@ -14,7 +14,7 @@
         $apiBasePath = $apiBasePath === '//' ? '/' : $apiBasePath;
     @endphp
     <meta name="hawki-api-base-path" content="{{ $apiBasePath }}" />
-    @vite(["resources/css/failed-jobs-dashboard.css", "resources/js/failed-jobs-dashboard.js"])
+    @vite(["resources/css/failed-jobs-dashboard.css", "resources/css/dashboard-dark-theme.css", "resources/js/failed-jobs-dashboard.js"])
 </head>
 <body>
     <main class="failed-jobs-dashboard" data-failed-jobs-dashboard>
@@ -25,11 +25,7 @@
                 <p class="header-copy">Recover failed scrape, convert, and ingest jobs through RabbitMQ retry queues.</p>
             </div>
             <div class="header-actions">
-                <a class="secondary-link" href="{{ url('/pipeline-dashboard') }}">Pipeline Dashboard</a>
-                <a class="secondary-link" href="{{ url('/pipeline-health') }}">Health</a>
-                <a class="secondary-link" href="{{ url('/datasets') }}">Datasets</a>
-                <a class="secondary-link" href="{{ url('/documents') }}">Documents</a>
-                <button type="button" class="secondary-button" id="failed-jobs-refresh">Refresh</button>
+                @include('partials.pipeline-nav', ['active' => 'failed-jobs', 'refreshId' => 'failed-jobs-refresh'])
             </div>
         </header>
 

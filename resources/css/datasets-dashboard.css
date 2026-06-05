@@ -118,6 +118,13 @@ dt,
     text-decoration: none;
 }
 
+.secondary-link.is-active,
+.secondary-link[aria-current="page"] {
+    background: var(--blue-soft);
+    color: var(--blue);
+    border-color: var(--blue);
+}
+
 .dashboard-grid {
     display: grid;
     grid-template-columns: 360px minmax(0, 1fr);
