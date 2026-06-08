@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 
 namespace App\Services\Pipeline;
 
@@ -7,6 +8,8 @@ use App\Models\PipelineJob;
 use App\Models\PipelineTask;
 use App\Models\ScrapedElement;
 use App\Services\Datasets\DatasetService;
+use App\Services\Pipeline\Repositories\PipelineJobRepository;
+use App\Services\Pipeline\Repositories\PipelineTaskRepository;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -25,6 +28,8 @@ class PipelineTaskService
     public function __construct(
         private readonly PipelineEventRecorder $events,
         private readonly DatasetService $datasets,
+        private readonly PipelineTaskRepository $taskRepository,
+        private readonly PipelineJobRepository $jobRepository,
     ) {
     }
 
@@ -58,11 +63,7 @@ class PipelineTaskService
 
     public function show(string $taskId): ?array
     {
-        $task = PipelineTask::query()
-            ->with(['jobs' => fn ($query) => $query->orderBy('id')])
-            ->where('task_id', $taskId)
-            ->first();
-
+        $task = $this->taskRepository->findWithOrderedJobs($taskId);
         if (!$task) {
             return null;
         }
@@ -87,13 +88,7 @@ class PipelineTaskService
 
     public function list(int $limit = 30): array
     {
-        $limit = max(1, min(250, $limit));
-
-        return PipelineTask::query()
-            ->orderByDesc('started_at')
-            ->orderByDesc('id')
-            ->limit($limit)
-            ->get()
+        return $this->taskRepository->recent($limit)
             ->map(function (PipelineTask $task): array {
                 $task = $this->recalculateTaskStatus($task);
 
@@ -114,22 +109,14 @@ class PipelineTaskService
 
     public function jobs(string $taskId): array
     {
-        return PipelineJob::query()
-            ->where('task_id', $taskId)
-            ->orderBy('id')
-            ->get()
+        return $this->jobRepository->forTaskOrdered($taskId)
             ->map(fn (PipelineJob $job) => $this->jobPayload($job))
             ->all();
     }
 
     public function failedJobs(string $taskId): array
     {
-        return PipelineJob::query()
-            ->where('task_id', $taskId)
-            ->where('status', PipelineJob::STATUS_FAILED)
-            ->orderByDesc('updated_at')
-            ->orderByDesc('id')
-            ->get()
+        return $this->jobRepository->failedForTask($taskId)
             ->map(fn (PipelineJob $job) => $this->jobPayload($job))
             ->all();
     }
@@ -482,10 +469,7 @@ class PipelineTaskService
 
     private function activeJobCount(PipelineTask $task): int
     {
-        return PipelineJob::query()
-            ->where('task_id', $task->task_id)
-            ->whereIn('status', self::ACTIVE_JOB_STATUSES)
-            ->count();
+        return $this->jobRepository->countForTaskWithStatuses($task->task_id, self::ACTIVE_JOB_STATUSES);
     }
 
     private function jobPayload(PipelineJob $job): array

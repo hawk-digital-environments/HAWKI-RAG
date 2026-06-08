@@ -17,7 +17,6 @@ use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Str;
 
 #[Singleton]
 class PipelineUploadService
@@ -29,29 +28,24 @@ class PipelineUploadService
         private readonly PipelineTaskRepository $taskRepository,
         private readonly PipelineJobRepository $jobRepository,
         private readonly PipelineUploadStorage $storage,
+        private readonly PipelineUploadPolicy $policy,
+        private readonly PipelineUploadIdentifierFactory $identifiers,
     ) {
     }
 
     public function upload(PipelineUploadInput $input, ?UploadedFile $file): PipelineUploadResult
     {
         if (!$file || !$file->isValid()) {
-            return PipelineUploadResult::fromPayload([
-                'success' => false,
-                'message' => 'Upload a readable document file.',
-            ], 422);
+            return $this->unreadableFileResult();
         }
 
         $extension = $this->storage->extensionFor($file);
-        $supported = $this->supportedExtensions();
 
-        if (!in_array($extension, $supported, true)) {
-            return PipelineUploadResult::fromPayload([
-                'success' => false,
-                'message' => 'Unsupported converter input. Supported file types: ' . implode(', ', $supported) . '.',
-            ], 422);
+        if (!$this->policy->supports($extension)) {
+            return $this->unsupportedFileResult();
         }
 
-        $taskId = 'task_controller_upload_' . now()->format('Ymd_His') . '_' . Str::lower(Str::random(6));
+        $taskId = $this->identifiers->uploadTaskId();
 
         try {
             $storedUpload = $this->storage->store($taskId, $file, $extension);
@@ -62,43 +56,31 @@ class PipelineUploadService
                 'error' => $exception->getMessage(),
             ], $exception->logContext()));
 
-            return PipelineUploadResult::fromPayload([
-                'success' => false,
-                'message' => $exception->responseMessage(),
-                'datasetId' => $input->datasetId,
-                'taskId' => null,
-                'jobId' => null,
-                'error' => $exception->getMessage(),
-            ], 500);
+            return $this->storageFailureResult($input, $exception);
         }
 
         $dataset = $this->datasets->ensure($input->datasetId);
-        $jobId = $this->convertJobId($taskId, $storedUpload);
-        $sourceUrl = $this->sourceUrl($storedUpload);
+        $jobId = $this->identifiers->convertJobId($taskId, $storedUpload);
+        $sourceUrl = $this->identifiers->sourceUrl($storedUpload);
         $now = Carbon::now();
 
-        $task = $this->taskRepository->create([
-            'task_id' => $taskId,
-            'dataset_id' => $dataset->dataset_id,
-            'status' => PipelineTask::STATUS_RUNNING,
-            'started_at' => $now,
-            'counters' => [],
-            'metadata' => $this->taskMetadata($dataset, $input, $storedUpload),
-        ]);
+        $task = $this->taskRepository->createUploadTask(
+            $taskId,
+            $dataset,
+            $now,
+            $this->taskMetadata($dataset, $input, $storedUpload),
+        );
 
         $metadata = $this->jobMetadata($dataset, $input, $storedUpload);
 
-        $job = $this->jobRepository->create([
-            'job_id' => $jobId,
-            'task_id' => $task->task_id,
-            'job_type' => PipelineJob::TYPE_CONVERT,
-            'source_url' => $sourceUrl,
-            'local_path' => $storedUpload->localPath,
-            'content_hash' => $storedUpload->contentHash,
-            'status' => PipelineJob::STATUS_QUEUED,
-            'started_at' => $now,
-            'metadata' => $metadata,
-        ]);
+        $job = $this->jobRepository->createUploadConvertJob(
+            $jobId,
+            $task,
+            $sourceUrl,
+            $storedUpload,
+            $now,
+            $metadata,
+        );
 
         $payload = $this->fileDiscoveredPayload($task, $job, $sourceUrl, $storedUpload, $metadata);
 
@@ -119,17 +101,60 @@ class PipelineUploadService
                 'error' => $exception->getMessage(),
             ]);
 
-            return PipelineUploadResult::fromPayload([
-                'success' => false,
-                'message' => 'The file was stored, but RabbitMQ did not accept the converter job.',
-                'taskId' => $task->task_id,
-                'jobId' => $job->job_id,
-                'datasetId' => $task->dataset_id,
-                'error' => $exception->getMessage(),
-                'dashboardUrl' => url('/pipeline-dashboard?task_id=' . rawurlencode($task->task_id)),
-            ], 502);
+            return $this->publishFailureResult($task, $job, $exception);
         }
 
+        return $this->successResult($task, $job);
+    }
+
+    private function unreadableFileResult(): PipelineUploadResult
+    {
+        return PipelineUploadResult::fromPayload([
+            'success' => false,
+            'message' => 'Upload a readable document file.',
+        ], 422);
+    }
+
+    private function unsupportedFileResult(): PipelineUploadResult
+    {
+        return PipelineUploadResult::fromPayload([
+            'success' => false,
+            'message' => $this->policy->unsupportedMessage(),
+        ], 422);
+    }
+
+    private function storageFailureResult(
+        PipelineUploadInput $input,
+        PipelineUploadStorageException $exception,
+    ): PipelineUploadResult {
+        return PipelineUploadResult::fromPayload([
+            'success' => false,
+            'message' => $exception->responseMessage(),
+            'datasetId' => $input->datasetId,
+            'taskId' => null,
+            'jobId' => null,
+            'error' => $exception->getMessage(),
+        ], 500);
+    }
+
+    private function publishFailureResult(
+        PipelineTask $task,
+        PipelineJob $job,
+        \Throwable $exception,
+    ): PipelineUploadResult {
+        return PipelineUploadResult::fromPayload([
+            'success' => false,
+            'message' => 'The file was stored, but RabbitMQ did not accept the converter job.',
+            'taskId' => $task->task_id,
+            'jobId' => $job->job_id,
+            'datasetId' => $task->dataset_id,
+            'error' => $exception->getMessage(),
+            'dashboardUrl' => url('/pipeline-dashboard?task_id=' . rawurlencode($task->task_id)),
+        ], 502);
+    }
+
+    private function successResult(PipelineTask $task, PipelineJob $job): PipelineUploadResult
+    {
         return PipelineUploadResult::fromPayload([
             'success' => true,
             'taskId' => $task->task_id,
@@ -139,31 +164,6 @@ class PipelineUploadService
             'dashboardUrl' => url('/pipeline-dashboard?task_id=' . rawurlencode($task->task_id)),
             'controllerUrl' => url('/pipeline-controller'),
         ], 201);
-    }
-
-    /**
-     * @return list<string>
-     */
-    private function supportedExtensions(): array
-    {
-        return array_values(array_filter(array_map(
-            static fn (string $value): string => ltrim(strtolower(trim($value)), '.'),
-            config('file_converter.supported_extensions', ['pdf', 'doc', 'docx']),
-        )));
-    }
-
-    private function convertJobId(string $taskId, PipelineStoredUpload $storedUpload): string
-    {
-        return 'convert_' . substr(
-            hash('sha256', $taskId . '|' . $storedUpload->contentHash . '|' . $storedUpload->localPath),
-            0,
-            24,
-        );
-    }
-
-    private function sourceUrl(PipelineStoredUpload $storedUpload): string
-    {
-        return 'upload://' . $storedUpload->originalName;
     }
 
     /**

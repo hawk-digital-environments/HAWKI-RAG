@@ -1057,3 +1057,347 @@ Next recommended slice:
   - put it into `PipelineUploadInput` only if it becomes request-specific
   - put it into `PipelineUploadStorage` if we treat extension handling as part of storage
   - create a small `PipelineUploadRules`/`PipelineUploadPolicy` collaborator if more upload rules are coming
+
+## Step 13: Pipeline Upload Policy
+
+Status: completed.
+
+Production code changed:
+
+- Added `app/Services/Pipeline/PipelineUploadPolicy.php`.
+- Updated `app/Services/Pipeline/PipelineUploadService.php`.
+
+Test code changed:
+
+- Added `tests/Unit/Pipeline/PipelineUploadPolicyTest.php`.
+
+What changed:
+
+- Supported converter extension rules moved out of `PipelineUploadService`.
+- `PipelineUploadPolicy` now owns:
+  - supported extension normalization from config
+  - case-insensitive and dot-insensitive extension checks
+  - unsupported-file response message construction
+- `PipelineUploadService` now asks the policy whether the stored extension is supported instead of building and checking the list itself.
+
+Before:
+
+```php
+$supported = $this->supportedExtensions();
+
+if (!in_array($extension, $supported, true)) {
+    return PipelineUploadResult::fromPayload([
+        'success' => false,
+        'message' => 'Unsupported converter input. Supported file types: ' . implode(', ', $supported) . '.',
+    ], 422);
+}
+```
+
+After:
+
+```php
+if (!$this->policy->supports($extension)) {
+    return PipelineUploadResult::fromPayload([
+        'success' => false,
+        'message' => $this->policy->unsupportedMessage(),
+    ], 422);
+}
+```
+
+Learning note:
+
+This keeps upload rules in one place. The storage collaborator stores files; the policy decides whether an uploaded extension is allowed; the upload service coordinates the use case.
+
+Next recommended slice:
+
+- Extract response payload creation from `PipelineUploadService` into private methods or a small `PipelineUploadResponseFactory`.
+- Start with private methods first, because the response payloads are still local to this one service.
+
+## Step 14: Pipeline Upload Result Builders
+
+Status: completed.
+
+Production code changed:
+
+- Updated `app/Services/Pipeline/PipelineUploadService.php`.
+
+What changed:
+
+- Upload response payload construction moved out of the main `upload()` workflow.
+- The service now uses named private methods for each upload result branch:
+  - unreadable upload file
+  - unsupported file extension
+  - storage failure
+  - RabbitMQ publish failure
+  - successful upload
+- Response payload keys, messages, and status codes stayed unchanged.
+
+Before:
+
+```php
+if (!$file || !$file->isValid()) {
+    return PipelineUploadResult::fromPayload([
+        'success' => false,
+        'message' => 'Upload a readable document file.',
+    ], 422);
+}
+```
+
+After:
+
+```php
+if (!$file || !$file->isValid()) {
+    return $this->unreadableFileResult();
+}
+```
+
+Learning note:
+
+This keeps the use-case method readable without introducing a response factory too early. If more controllers or services need these same response shapes later, these private methods can move into a dedicated factory.
+
+Next recommended slice:
+
+- Extract task/job creation payloads into repository-specific methods.
+- That would let `PipelineUploadService` call methods like:
+  - `$this->taskRepository->createUploadTask(...)`
+  - `$this->jobRepository->createUploadConvertJob(...)`
+- This is more opinionated than generic `create(array $attributes)`, but it hides more persistence shape from the service.
+
+## Step 15: Pipeline Upload Repository Creation Methods
+
+Status: completed.
+
+Production code changed:
+
+- Updated `app/Services/Pipeline/Repositories/PipelineTaskRepository.php`.
+- Updated `app/Services/Pipeline/Repositories/PipelineJobRepository.php`.
+- Updated `app/Services/Pipeline/PipelineUploadService.php`.
+
+What changed:
+
+- The generic repository methods `create(array $attributes)` were replaced with upload-specific creation methods.
+- `PipelineTaskRepository` now owns the persistence shape for creating an upload task.
+- `PipelineJobRepository` now owns the persistence shape for creating an upload convert job.
+- `PipelineUploadService` no longer passes raw database create arrays for task/job creation.
+
+Before:
+
+```php
+$task = $this->taskRepository->create([
+    'task_id' => $taskId,
+    'dataset_id' => $dataset->dataset_id,
+    'status' => PipelineTask::STATUS_RUNNING,
+    'started_at' => $now,
+    'counters' => [],
+    'metadata' => $this->taskMetadata($dataset, $input, $storedUpload),
+]);
+```
+
+After:
+
+```php
+$task = $this->taskRepository->createUploadTask(
+    $taskId,
+    $dataset,
+    $now,
+    $this->taskMetadata($dataset, $input, $storedUpload),
+);
+```
+
+Learning note:
+
+Repositories should hide persistence shape, not just wrap Eloquent with a generic `create()` method. A named repository method says what kind of record is being created and keeps model constants/default fields close to the database write.
+
+Next recommended slice:
+
+- Move upload-specific id generation out of `PipelineUploadService`.
+- Suggested collaborator:
+  - `app/Services/Pipeline/PipelineUploadIdentifierFactory.php`
+- It would own:
+  - upload task id generation
+  - convert job id generation
+  - upload source URL generation
+
+## Step 16: Pipeline Upload Identifier Factory
+
+Status: completed.
+
+Production code changed:
+
+- Added `app/Services/Pipeline/PipelineUploadIdentifierFactory.php`.
+- Updated `app/Services/Pipeline/PipelineUploadService.php`.
+
+Test code changed:
+
+- Added `tests/Unit/Pipeline/PipelineUploadIdentifierFactoryTest.php`.
+
+What changed:
+
+- Upload-specific identifier creation moved out of `PipelineUploadService`.
+- `PipelineUploadIdentifierFactory` now owns:
+  - upload task id generation
+  - convert job id generation
+  - upload source URL generation
+- `PipelineUploadService` now receives generated identifiers from the factory and continues coordinating the workflow.
+- The `Str` dependency was removed from `PipelineUploadService`.
+
+Before:
+
+```php
+$taskId = 'task_controller_upload_' . now()->format('Ymd_His') . '_' . Str::lower(Str::random(6));
+$jobId = 'convert_' . substr(hash('sha256', $taskId . '|' . $hash . '|' . $path), 0, 24);
+$sourceUrl = 'upload://' . $storedUpload->originalName;
+```
+
+After:
+
+```php
+$taskId = $this->identifiers->uploadTaskId();
+$jobId = $this->identifiers->convertJobId($taskId, $storedUpload);
+$sourceUrl = $this->identifiers->sourceUrl($storedUpload);
+```
+
+Learning note:
+
+Identifier generation is small, but it has rules worth naming. Pulling it into a factory makes the upload service less dependent on string formats and gives those formats direct unit coverage.
+
+Next recommended slice:
+
+- Add unit tests for the repository-specific creation methods or move broader pipeline task/job repository extraction into `PipelineTaskService`.
+- For this upload-focused refactor, repository method tests are the smaller next step.
+
+## Step 17: Pipeline Upload Repository Tests
+
+Status: completed.
+
+Test code changed:
+
+- Added `tests/Feature/PipelineUploadRepositoryTest.php`.
+
+What changed:
+
+- Added focused database-backed tests for upload repository creation methods.
+- `PipelineTaskRepository::createUploadTask()` is now covered directly.
+- `PipelineJobRepository::createUploadConvertJob()` is now covered directly.
+
+Covered behavior:
+
+- upload tasks are created with:
+  - the provided task id
+  - the dataset id from the dataset model
+  - `running` status
+  - empty counters
+  - provided metadata
+  - provided start time
+- upload convert jobs are created with:
+  - the provided job id
+  - the parent task id
+  - `convert` job type
+  - `queued` status
+  - upload source URL
+  - stored upload local path
+  - stored upload content hash
+  - provided metadata
+  - provided start time
+
+Learning note:
+
+These are feature tests rather than pure unit tests because repositories intentionally write to the database. They verify the repository boundary directly without going through the HTTP upload endpoint.
+
+Next recommended slice:
+
+- Start extracting repository reads/writes from `PipelineTaskService`.
+- Suggested first target:
+  - replace `PipelineTask::query()->where(...)->first()` and `PipelineJob::query()->where(...)->get()` in simple read methods with repository methods.
+  - keep behavior unchanged and test with `PipelineTaskOrchestrationTest`.
+
+## Step 18: Pipeline Task Read Repositories
+
+Status: completed.
+
+Production code changed:
+
+- Updated `app/Services/Pipeline/PipelineTaskService.php`.
+- Updated `app/Services/Pipeline/Repositories/PipelineTaskRepository.php`.
+- Updated `app/Services/Pipeline/Repositories/PipelineJobRepository.php`.
+
+Test code changed:
+
+- Added `tests/Feature/PipelineRepositoryReadTest.php`.
+
+What changed:
+
+- `PipelineTaskService::show()` now loads the task through `PipelineTaskRepository::findWithOrderedJobs()`.
+- `PipelineTaskService::jobs()` now loads jobs through `PipelineJobRepository::forTaskOrdered()`.
+- `PipelineTaskService::failedJobs()` now loads failed jobs through `PipelineJobRepository::failedForTask()`.
+- active job counting now uses `PipelineJobRepository::countForTaskWithStatuses()`.
+- The service still owns response shaping and task status recalculation.
+
+Covered behavior:
+
+- task repository loads a task with jobs eager-loaded in id order.
+- job repository returns all task jobs in id order.
+- job repository returns failed jobs newest first.
+- job repository counts queued/running jobs for active job totals.
+
+Learning note:
+
+This is the safest way to begin moving `PipelineTaskService` toward the repository rule: first extract read-only queries with exact ordering preserved, then move write paths separately.
+
+Next recommended slice:
+
+- Continue with `PipelineTaskService::list()` by moving the recent-task query into `PipelineTaskRepository`.
+- Keep response shaping and status recalculation in the service for now.
+
+## Step 19: Pipeline Task Recent List Repository
+
+Status: completed.
+
+Production code changed:
+
+- Updated `app/Services/Pipeline/PipelineTaskService.php`.
+- Updated `app/Services/Pipeline/Repositories/PipelineTaskRepository.php`.
+
+Test code changed:
+
+- Updated `tests/Feature/PipelineRepositoryReadTest.php`.
+
+What changed:
+
+- `PipelineTaskService::list()` no longer builds the recent-task query directly.
+- `PipelineTaskRepository::recent()` now owns:
+  - clamping the limit between 1 and 250
+  - sorting by `started_at` descending
+  - sorting tied rows by `id` descending
+  - applying the SQL limit
+- `PipelineTaskService` still owns:
+  - recalculating task status
+  - shaping the API response array
+  - computing active job totals through the job repository
+
+Before:
+
+```php
+return PipelineTask::query()
+    ->orderByDesc('started_at')
+    ->orderByDesc('id')
+    ->limit($limit)
+    ->get()
+    ->map(...);
+```
+
+After:
+
+```php
+return $this->taskRepository->recent($limit)
+    ->map(...);
+```
+
+Learning note:
+
+This keeps query rules together while avoiding a premature resource/DTO split. The service still decides how task models become response payloads.
+
+Next recommended slice:
+
+- Move `PipelineTaskService::recentEvents()` fallback job query into `PipelineJobRepository`.
+- That query is still read-only and low risk, but it has filtering logic in the service that should stay there for now.
