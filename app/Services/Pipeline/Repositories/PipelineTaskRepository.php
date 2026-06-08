@@ -98,6 +98,14 @@ readonly class PipelineTaskRepository
      */
     public function markFailedJobsRetried(PipelineTask $task, array $metadata): PipelineTask
     {
+        return $this->markRecoveryRunning($task, $metadata);
+    }
+
+    /**
+     * @param array<string, mixed> $metadata
+     */
+    public function markRecoveryRunning(PipelineTask $task, array $metadata): PipelineTask
+    {
         $task->forceFill([
             'status' => PipelineTask::STATUS_RUNNING,
             'finished_at' => null,

@@ -1912,3 +1912,99 @@ Next recommended slice:
   - `PipelineRecoveryService`
   - `PipelineEventStateService`
   - `PipelineStateService`
+
+## Step 31: Pipeline Recovery Repository Boundary
+
+Status: completed.
+
+Production code changed:
+
+- Updated `app/Services/Pipeline/PipelineRecoveryService.php`.
+- Updated `app/Services/Pipeline/Repositories/PipelineJobRepository.php`.
+- Updated `app/Services/Pipeline/Repositories/PipelineTaskRepository.php`.
+
+Test code changed:
+
+- Added `tests/Feature/PipelineRecoveryRepositoryTest.php`.
+
+What changed:
+
+- `PipelineRecoveryService` no longer directly queries `PipelineJob` for failed recovery jobs.
+- `PipelineRecoveryService` no longer directly queries `PipelineJob` for selected job ids or single job retry.
+- `PipelineRecoveryService` no longer directly locks a `PipelineJob` row.
+- `PipelineRecoveryService` no longer directly queries `PipelineTask` for the parent task.
+- `PipelineRecoveryService` no longer directly writes recovery-queued job state.
+- `PipelineRecoveryService` no longer directly writes recovery-running task state.
+- `PipelineRecoveryService` no longer directly writes recovery publish-failure state.
+- `PipelineJobRepository` now owns:
+  - `findByJobIds()`
+  - `failedForRecoveryList()`
+  - `failedForRecovery()`
+  - `lockForRecovery()`
+  - `markRecoveryQueued()`
+  - `markRecoveryPublishFailed()`
+- `PipelineTaskRepository` now owns:
+  - `markRecoveryRunning()`
+- `PipelineRecoveryService` still owns:
+  - retry scope decisions
+  - recovery metadata shape
+  - recovery event payload shape
+  - idempotency key generation
+  - deciding whether a job type can be retried
+  - calling RabbitMQ recovery publishing
+  - logging recovery publish results
+  - recalculating task status after recovery writes
+
+Before:
+
+```php
+$jobs = PipelineJob::query()
+    ->whereIn('job_id', $jobIds)
+    ->get();
+
+$locked = PipelineJob::query()
+    ->whereKey($job->getKey())
+    ->lockForUpdate()
+    ->first();
+
+$task = PipelineTask::query()
+    ->where('task_id', $locked->task_id)
+    ->first();
+
+$locked->forceFill([
+    'status' => PipelineJob::STATUS_QUEUED,
+    'error_message' => null,
+    'finished_at' => null,
+    'completed_at' => null,
+    'metadata' => $metadata,
+])->save();
+
+$task->forceFill([
+    'status' => PipelineTask::STATUS_RUNNING,
+    'finished_at' => null,
+    'metadata' => $this->taskRecoveryMetadata($task, $recoveryEvent),
+])->save();
+```
+
+After:
+
+```php
+$jobs = $this->jobs->findByJobIds($jobIds);
+$locked = $this->jobs->lockForRecovery($job);
+$task = $this->taskRepository->findByTaskId((string) $locked->task_id);
+
+$locked = $this->jobs->markRecoveryQueued($locked, $metadata);
+$task = $this->taskRepository->markRecoveryRunning(
+    $task,
+    $this->taskRecoveryMetadata($task, $recoveryEvent),
+);
+```
+
+Learning note:
+
+This follows the same `SKILL.md` boundary: repositories own persistence and row locking, while the recovery service owns the operator recovery workflow. The transaction stays in the service because it coordinates multiple repository writes and the recovery event payload for one workflow.
+
+Next recommended slice:
+
+- Refactor `PipelineEventStateService`.
+- It is the next high-impact pipeline service with direct job persistence, and the methods overlap with event handler behavior.

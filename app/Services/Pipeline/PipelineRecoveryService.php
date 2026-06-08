@@ -4,6 +4,8 @@ namespace App\Services\Pipeline;
 
 use App\Models\PipelineJob;
 use App\Models\PipelineTask;
+use App\Services\Pipeline\Repositories\PipelineJobRepository;
+use App\Services\Pipeline\Repositories\PipelineTaskRepository;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -16,20 +18,19 @@ class PipelineRecoveryService
     public function __construct(
         private readonly PipelineEventBus $events,
         private readonly PipelineTaskService $tasks,
+        private readonly PipelineJobRepository $jobs,
+        private readonly PipelineTaskRepository $taskRepository,
     ) {
     }
 
     public function failedJobs(array $filters = []): array
     {
         $limit = max(1, min(500, (int) ($filters['limit'] ?? 200)));
+        $taskId = $this->stringValue($filters['task_id'] ?? $filters['taskId'] ?? null);
+        $datasetId = $this->stringValue($filters['dataset_id'] ?? $filters['datasetId'] ?? null);
 
-        return $this->failedJobsQuery($filters)
-            ->with('task')
-            ->orderByDesc('finished_at')
-            ->orderByDesc('updated_at')
-            ->orderByDesc('id')
-            ->limit($limit)
-            ->get()
+        return $this->jobs
+            ->failedForRecoveryList($taskId, $datasetId, $limit)
             ->map(fn (PipelineJob $job): array => $this->failedJobPayload($job))
             ->all();
     }
@@ -45,46 +46,31 @@ class PipelineRecoveryService
             return $this->emptyResult('selected');
         }
 
-        $jobs = PipelineJob::query()
-            ->whereIn('job_id', $jobIds)
-            ->get();
+        $jobs = $this->jobs->findByJobIds($jobIds);
 
         return $this->retryJobs($jobs, 'selected');
     }
 
     public function retryJob(string $jobId): array
     {
-        $job = PipelineJob::query()
-            ->where('job_id', $jobId)
-            ->first();
+        $job = $this->jobs->findByJobId($jobId);
 
         return $this->retryJobs($job ? collect([$job]) : collect(), 'job', $jobId);
     }
 
     public function retryAll(): array
     {
-        return $this->retryJobs($this->failedJobsQuery()->get(), 'all');
+        return $this->retryJobs($this->jobs->failedForRecovery(), 'all');
     }
 
     public function retryTask(string $taskId): array
     {
-        return $this->retryJobs($this->failedJobsQuery(['task_id' => $taskId])->get(), 'task', $taskId);
+        return $this->retryJobs($this->jobs->failedForRecovery($taskId), 'task', $taskId);
     }
 
     public function retryDataset(string $datasetId): array
     {
-        return $this->retryJobs($this->failedJobsQuery(['dataset_id' => $datasetId])->get(), 'dataset', $datasetId);
-    }
-
-    private function failedJobsQuery(array $filters = [])
-    {
-        $taskId = $this->stringValue($filters['task_id'] ?? $filters['taskId'] ?? null);
-        $datasetId = $this->stringValue($filters['dataset_id'] ?? $filters['datasetId'] ?? null);
-
-        return PipelineJob::query()
-            ->where('status', PipelineJob::STATUS_FAILED)
-            ->when($taskId, fn ($query) => $query->where('task_id', $taskId))
-            ->when($datasetId, fn ($query) => $query->whereHas('task', fn ($taskQuery) => $taskQuery->where('dataset_id', $datasetId)));
+        return $this->retryJobs($this->jobs->failedForRecovery(null, $datasetId), 'dataset', $datasetId);
     }
 
     private function retryJobs(Collection $jobs, string $scope, ?string $scopeId = null): array
@@ -104,10 +90,7 @@ class PipelineRecoveryService
     private function retryOne(PipelineJob $job, string $scope, ?string $scopeId): array
     {
         $prepared = DB::transaction(function () use ($job, $scope, $scopeId): array {
-            $locked = PipelineJob::query()
-                ->whereKey($job->getKey())
-                ->lockForUpdate()
-                ->first();
+            $locked = $this->jobs->lockForRecovery($job);
 
             if (!$locked) {
                 return [
@@ -126,9 +109,7 @@ class PipelineRecoveryService
                 ];
             }
 
-            $task = PipelineTask::query()
-                ->where('task_id', $locked->task_id)
-                ->first();
+            $task = $this->taskRepository->findByTaskId((string) $locked->task_id);
             if (!$task) {
                 return [
                     'result' => 'failed',
@@ -167,25 +148,17 @@ class PipelineRecoveryService
                 ]],
             );
 
-            $locked->forceFill([
-                'status' => PipelineJob::STATUS_QUEUED,
-                'error_message' => null,
-                'finished_at' => null,
-                'completed_at' => null,
-                'metadata' => $metadata,
-            ])->save();
-
-            $task->forceFill([
-                'status' => PipelineTask::STATUS_RUNNING,
-                'finished_at' => null,
-                'metadata' => $this->taskRecoveryMetadata($task, $recoveryEvent),
-            ])->save();
+            $locked = $this->jobs->markRecoveryQueued($locked, $metadata);
+            $task = $this->taskRepository->markRecoveryRunning(
+                $task,
+                $this->taskRecoveryMetadata($task, $recoveryEvent),
+            );
 
             return [
                 'result' => 'prepared',
-                'job' => $locked->refresh(),
-                'task' => $task->refresh(),
-                'event' => $this->eventPayloadForJob($task->refresh(), $locked->refresh(), $recoveryEvent),
+                'job' => $locked,
+                'task' => $task,
+                'event' => $this->eventPayloadForJob($task, $locked, $recoveryEvent),
                 'recoveryEvent' => $recoveryEvent,
             ];
         });
@@ -211,7 +184,7 @@ class PipelineRecoveryService
                 'retry_count' => $published['retry_count'] ?? null,
             ]);
 
-            return array_merge($this->failedJobPayload($preparedJob->refresh()), [
+            return array_merge($this->failedJobPayload($preparedJob), [
                 'result' => 'retried',
                 'message' => 'Recovery retry queued.',
                 'publishedEventType' => $published['event_type'] ?? null,
@@ -242,22 +215,24 @@ class PipelineRecoveryService
             [$event],
         );
 
-        $job->forceFill([
-            'status' => PipelineJob::STATUS_FAILED,
-            'error_message' => $error->getMessage(),
-            'finished_at' => Carbon::now(),
-            'metadata' => $metadata,
-        ])->save();
+        $job = $this->jobs->markRecoveryPublishFailed(
+            $job,
+            $error->getMessage(),
+            Carbon::now(),
+            $metadata,
+        );
 
         $this->tasks->recalculateTaskStatus((string) $job->task_id);
 
-        return $job->refresh();
+        return $job;
     }
 
     private function failedJobPayload(PipelineJob $job): array
     {
         $metadata = is_array($job->metadata) ? $job->metadata : [];
-        $task = $job->relationLoaded('task') ? $job->task : $job->task()->first();
+        $task = $job->relationLoaded('task')
+            ? $job->task
+            : $this->taskRepository->findByTaskId((string) $job->task_id);
 
         return [
             'taskId' => $job->task_id,

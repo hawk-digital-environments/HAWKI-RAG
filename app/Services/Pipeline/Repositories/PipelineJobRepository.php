@@ -21,6 +21,17 @@ readonly class PipelineJobRepository
     }
 
     /**
+     * @param list<string> $jobIds
+     * @return Collection<int, PipelineJob>
+     */
+    public function findByJobIds(array $jobIds): Collection
+    {
+        return PipelineJob::query()
+            ->whereIn('job_id', $jobIds)
+            ->get();
+    }
+
+    /**
      * @return Collection<int, PipelineJob>
      */
     public function forTask(string $taskId): Collection
@@ -64,6 +75,30 @@ readonly class PipelineJobRepository
             ->where('status', PipelineJob::STATUS_FAILED)
             ->orderBy('id')
             ->get();
+    }
+
+    /**
+     * @return Collection<int, PipelineJob>
+     */
+    public function failedForRecoveryList(?string $taskId, ?string $datasetId, int $limit): Collection
+    {
+        $limit = max(1, min(500, $limit));
+
+        return $this->failedForRecoveryQuery($taskId, $datasetId)
+            ->with('task')
+            ->orderByDesc('finished_at')
+            ->orderByDesc('updated_at')
+            ->orderByDesc('id')
+            ->limit($limit)
+            ->get();
+    }
+
+    /**
+     * @return Collection<int, PipelineJob>
+     */
+    public function failedForRecovery(?string $taskId = null, ?string $datasetId = null): Collection
+    {
+        return $this->failedForRecoveryQuery($taskId, $datasetId)->get();
     }
 
     /**
@@ -177,5 +212,56 @@ readonly class PipelineJobRepository
         ])->save();
 
         return $job->refresh();
+    }
+
+    public function lockForRecovery(PipelineJob $job): ?PipelineJob
+    {
+        return PipelineJob::query()
+            ->whereKey($job->getKey())
+            ->lockForUpdate()
+            ->first();
+    }
+
+    /**
+     * @param array<string, mixed> $metadata
+     */
+    public function markRecoveryQueued(PipelineJob $job, array $metadata): PipelineJob
+    {
+        $job->forceFill([
+            'status' => PipelineJob::STATUS_QUEUED,
+            'error_message' => null,
+            'finished_at' => null,
+            'completed_at' => null,
+            'metadata' => $metadata,
+        ])->save();
+
+        return $job->refresh();
+    }
+
+    /**
+     * @param array<string, mixed> $metadata
+     */
+    public function markRecoveryPublishFailed(
+        PipelineJob $job,
+        string $message,
+        Carbon $failedAt,
+        array $metadata,
+    ): PipelineJob {
+        $job->forceFill([
+            'status' => PipelineJob::STATUS_FAILED,
+            'error_message' => $message,
+            'finished_at' => $failedAt,
+            'metadata' => $metadata,
+        ])->save();
+
+        return $job->refresh();
+    }
+
+    private function failedForRecoveryQuery(?string $taskId, ?string $datasetId)
+    {
+        return PipelineJob::query()
+            ->where('status', PipelineJob::STATUS_FAILED)
+            ->when($taskId, fn ($query) => $query->where('task_id', $taskId))
+            ->when($datasetId, fn ($query) => $query->whereHas('task', fn ($taskQuery) => $taskQuery->where('dataset_id', $datasetId)));
     }
 }
