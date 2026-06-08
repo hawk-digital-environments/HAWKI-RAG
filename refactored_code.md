@@ -1401,3 +1401,514 @@ Next recommended slice:
 
 - Move `PipelineTaskService::recentEvents()` fallback job query into `PipelineJobRepository`.
 - That query is still read-only and low risk, but it has filtering logic in the service that should stay there for now.
+
+## Step 20: Pipeline Recent Event Job Query Repository
+
+Status: completed.
+
+Production code changed:
+
+- Updated `app/Services/Pipeline/PipelineTaskService.php`.
+- Updated `app/Services/Pipeline/Repositories/PipelineJobRepository.php`.
+
+Test code changed:
+
+- Updated `tests/Feature/PipelineRepositoryReadTest.php`.
+
+What changed:
+
+- The fallback job query inside `PipelineTaskService::recentEvents()` moved into `PipelineJobRepository::forTaskByRecentUpdate()`.
+- The repository owns loading task jobs ordered by `updated_at` descending.
+- `PipelineTaskService` still owns:
+  - timeline fallback decision
+  - converting jobs into event payload arrays
+  - filtering by event type
+  - filtering by job id
+  - sorting event payloads by event timestamp
+  - applying the final event limit
+
+Before:
+
+```php
+$events = PipelineJob::query()
+    ->where('task_id', $taskId)
+    ->orderByDesc('updated_at')
+    ->get()
+    ->flatMap(fn (PipelineJob $job) => $this->eventsForJob($job));
+```
+
+After:
+
+```php
+$events = $this->jobRepository
+    ->forTaskByRecentUpdate($taskId)
+    ->flatMap(fn (PipelineJob $job) => $this->eventsForJob($job));
+```
+
+Learning note:
+
+This keeps the query in the repository while leaving event-specific transformation in the service. That separation matters because the repository should not know how pipeline event history is shaped for HTTP.
+
+Next recommended slice:
+
+- Move the simple task lookup in `PipelineTaskService::completeIfIdle()` into `PipelineTaskRepository`.
+- This is another low-risk read query before touching write-heavy methods like `upsertJob()` and `retryFailedJobs()`.
+
+## Step 21: Pipeline Complete-If-Idle Task Lookup
+
+Status: completed.
+
+Production code changed:
+
+- Updated `app/Services/Pipeline/PipelineTaskService.php`.
+- Updated `app/Services/Pipeline/Repositories/PipelineTaskRepository.php`.
+
+Test code changed:
+
+- Updated `tests/Feature/PipelineRepositoryReadTest.php`.
+
+What changed:
+
+- `PipelineTaskService::completeIfIdle()` no longer queries `PipelineTask` directly.
+- `PipelineTaskRepository::findByTaskId()` now owns the simple task lookup.
+- The service still owns the workflow decision:
+  - if a task exists, recalculate its status
+  - if no task exists, return `null`
+
+Before:
+
+```php
+$task = PipelineTask::query()->where('task_id', $taskId)->first();
+```
+
+After:
+
+```php
+$task = $this->taskRepository->findByTaskId($taskId);
+```
+
+Learning note:
+
+This is intentionally small. It continues the `SKILL.md` repository rule without changing the behavior of task completion or status recalculation.
+
+Next recommended slice:
+
+- Move the task lookup inside `PipelineTaskService::recalculateTaskStatus()` into the repository.
+- Use a repository method that throws when missing, for example `findByTaskIdOrFail()`.
+
+## Step 22: Pipeline Recalculate Task Lookup
+
+Status: completed.
+
+Production code changed:
+
+- Updated `app/Services/Pipeline/PipelineTaskService.php`.
+- Updated `app/Services/Pipeline/Repositories/PipelineTaskRepository.php`.
+
+Test code changed:
+
+- Updated `tests/Feature/PipelineRepositoryReadTest.php`.
+
+What changed:
+
+- `PipelineTaskService::recalculateTaskStatus()` no longer directly queries `PipelineTask` when called with a task id string.
+- `PipelineTaskRepository::findByTaskIdOrFail()` now owns the throwing task lookup.
+- Existing behavior is preserved: missing task ids still throw Laravel's model-not-found exception.
+
+Before:
+
+```php
+$task = $task instanceof PipelineTask
+    ? $task
+    : PipelineTask::query()->where('task_id', $task)->firstOrFail();
+```
+
+After:
+
+```php
+$task = $task instanceof PipelineTask
+    ? $task
+    : $this->taskRepository->findByTaskIdOrFail($task);
+```
+
+Learning note:
+
+This is another direct application of the repository rule in `SKILL.md`. The service still owns status calculation, but the database lookup lives in the repository.
+
+Next recommended slice:
+
+- Move the job collection query inside `PipelineTaskService::recalculateTaskStatus()` into `PipelineJobRepository`.
+- Suggested method:
+  - `PipelineJobRepository::forTask(string $taskId): Collection`
+
+## Step 23: Pipeline Recalculate Job Collection Query
+
+Status: completed.
+
+Production code changed:
+
+- Updated `app/Services/Pipeline/PipelineTaskService.php`.
+- Updated `app/Services/Pipeline/Repositories/PipelineJobRepository.php`.
+
+Test code changed:
+
+- Updated `tests/Feature/PipelineRepositoryReadTest.php`.
+
+What changed:
+
+- `PipelineTaskService::recalculateTaskStatus()` no longer queries `PipelineJob` directly for the task job collection.
+- `PipelineJobRepository::forTask()` now owns the unordered task-job lookup used for status recalculation.
+- Ordered query methods remain separate:
+  - `forTaskOrdered()` for response job lists
+  - `forTaskByRecentUpdate()` for recent-event fallback
+  - `failedForTask()` for failed-job views
+
+Before:
+
+```php
+$jobs = PipelineJob::query()->where('task_id', $task->task_id)->get();
+```
+
+After:
+
+```php
+$jobs = $this->jobRepository->forTask($task->task_id);
+```
+
+Learning note:
+
+The repository now owns the query, but the service still owns counter calculation and status transition rules. That keeps persistence and workflow responsibilities separate in the way `SKILL.md` asks for.
+
+Next recommended slice:
+
+- Move write operations inside `PipelineTaskService::recalculateTaskStatus()` into `PipelineTaskRepository`.
+- Suggested method:
+  - `PipelineTaskRepository::updateStatusCounters(PipelineTask $task, string $status, ?Carbon $finishedAt, array $counters): PipelineTask`
+
+## Step 24: Pipeline Recalculate Status Write Repository
+
+Status: completed.
+
+Production code changed:
+
+- Updated `app/Services/Pipeline/PipelineTaskService.php`.
+- Updated `app/Services/Pipeline/Repositories/PipelineTaskRepository.php`.
+
+Test code changed:
+
+- Updated `tests/Feature/PipelineRepositoryReadTest.php`.
+
+What changed:
+
+- `PipelineTaskService::recalculateTaskStatus()` no longer directly writes task status, `finished_at`, or counters.
+- `PipelineTaskRepository::updateStatusCounters()` now owns the persistence write.
+- `PipelineTaskService` still owns:
+  - counter calculation
+  - deciding whether the task is pending/running/failed/completed
+  - deciding whether `finished_at` should be null or set
+
+Before:
+
+```php
+$task->forceFill([
+    'status' => $status,
+    'finished_at' => $finishedAt,
+    'counters' => $counters,
+])->save();
+
+return $task->refresh();
+```
+
+After:
+
+```php
+return $this->taskRepository->updateStatusCounters($task, $status, $finishedAt, $counters);
+```
+
+Learning note:
+
+This completes the repository extraction for `recalculateTaskStatus()`: the service computes the new state, the repositories load/write the models.
+
+Next recommended slice:
+
+- Move the task and existing-job lookups in `PipelineTaskService::upsertJob()` into repositories.
+- Suggested repository methods:
+  - `PipelineTaskRepository::findByTaskIdOrFail()`
+  - already exists
+  - `PipelineJobRepository::findByJobId(string $jobId): ?PipelineJob`
+
+## Step 25: Pipeline Upsert Job Repository Boundary
+
+Status: completed.
+
+Production code changed:
+
+- Updated `app/Services/Pipeline/PipelineTaskService.php`.
+- Updated `app/Services/Pipeline/Repositories/PipelineJobRepository.php`.
+
+Test code changed:
+
+- Updated `tests/Feature/PipelineRepositoryReadTest.php`.
+
+What changed:
+
+- `PipelineTaskService::upsertJob()` no longer directly queries `PipelineTask` to load the owning task.
+- `PipelineTaskService::upsertJob()` no longer directly queries `PipelineJob` to load the existing job record.
+- `PipelineTaskService::upsertJob()` no longer calls `PipelineJob::query()->updateOrCreate()` directly.
+- `PipelineJobRepository` now owns:
+  - `findByJobId()`
+  - `upsertForTask()`
+- `PipelineTaskService` still owns:
+  - request field normalization
+  - default job id generation
+  - job status normalization
+  - metadata merge rules
+  - started/finished timestamp decisions
+  - triggering task status recalculation after the job write
+
+Before:
+
+```php
+$task = PipelineTask::query()->where('task_id', $taskId)->firstOrFail();
+$existing = PipelineJob::query()->where('job_id', $jobId)->first();
+
+$job = PipelineJob::query()->updateOrCreate(
+    ['job_id' => $jobId],
+    [
+        'task_id' => $task->task_id,
+        'status' => $status,
+        'metadata' => $metadata,
+    ],
+);
+```
+
+After:
+
+```php
+$task = $this->taskRepository->findByTaskIdOrFail($taskId);
+$existing = $this->jobRepository->findByJobId($jobId);
+
+$job = $this->jobRepository->upsertForTask(
+    $jobId,
+    $task,
+    [
+        'status' => $status,
+        'metadata' => $metadata,
+    ],
+);
+```
+
+Learning note:
+
+This follows the `SKILL.md` repository standard: the service makes workflow decisions, while the repository owns Eloquent persistence. The important detail is that the service still builds the attributes because those values are business rules, not simple database access.
+
+Next recommended slice:
+
+- Refactor `PipelineTaskService::retryFailedJobs()`.
+- Move the failed-job lookup and task metadata/status write into repositories, while keeping retry-count metadata and RabbitMQ retry publishing in the service.
+
+## Step 26: Pipeline Retry Failed Jobs Repository Boundary
+
+Status: completed.
+
+Production code changed:
+
+- Updated `app/Services/Pipeline/PipelineTaskService.php`.
+- Updated `app/Services/Pipeline/Repositories/PipelineJobRepository.php`.
+- Updated `app/Services/Pipeline/Repositories/PipelineTaskRepository.php`.
+
+Test code changed:
+
+- Updated `tests/Feature/PipelineRepositoryReadTest.php`.
+
+What changed:
+
+- `PipelineTaskService::retryFailedJobs()` no longer directly queries `PipelineTask` to find the task.
+- `PipelineTaskService::retryFailedJobs()` no longer directly queries `PipelineJob` to find failed jobs.
+- `PipelineTaskService::retryFailedJobs()` no longer directly writes job retry state with `forceFill()->save()`.
+- `PipelineTaskService::retryFailedJobs()` no longer directly writes task running state and retry metadata.
+- `PipelineJobRepository` now owns:
+  - `failedForRetry()`
+  - `markQueuedForRetry()`
+- `PipelineTaskRepository` now owns:
+  - `markFailedJobsRetried()`
+- `PipelineTaskService` still owns:
+  - deciding that missing tasks return `null`
+  - incrementing `retry_count`
+  - setting `retried_at`
+  - appending the task metadata event
+  - publishing the RabbitMQ retry event for each retried job
+  - recalculating the task status after retry writes
+
+Before:
+
+```php
+$task = PipelineTask::query()->where('task_id', $taskId)->first();
+
+$jobs = PipelineJob::query()
+    ->where('task_id', $task->task_id)
+    ->where('status', PipelineJob::STATUS_FAILED)
+    ->get();
+
+$job->forceFill([
+    'status' => PipelineJob::STATUS_QUEUED,
+    'error_message' => null,
+    'finished_at' => null,
+    'metadata' => $metadata,
+])->save();
+
+$task->forceFill([
+    'status' => PipelineTask::STATUS_RUNNING,
+    'finished_at' => null,
+    'metadata' => $this->appendMetadataEvent($task, 'failed_jobs_retried'),
+])->save();
+```
+
+After:
+
+```php
+$task = $this->taskRepository->findByTaskId($taskId);
+$jobs = $this->jobRepository->failedForRetry($task);
+
+$job = $this->jobRepository->markQueuedForRetry($job, $metadata);
+
+$task = $this->taskRepository->markFailedJobsRetried(
+    $task,
+    $this->appendMetadataEvent($task, 'failed_jobs_retried'),
+);
+```
+
+Learning note:
+
+This follows the same `SKILL.md` split as the previous steps. The repository owns persistence, while the service owns retry workflow rules and external RabbitMQ publishing. That is important because publishing retry events is orchestration behavior, not database access.
+
+Next recommended slice:
+
+- Refactor `PipelineTaskService::createScrapeJob()`.
+- Move scrape-job creation into `PipelineJobRepository`, while keeping duplicate-scrape detection and RabbitMQ `scrape.requested` publishing in the service.
+
+## Step 27: Pipeline Scrape Job Creation Repository
+
+Status: completed.
+
+Production code changed:
+
+- Updated `app/Services/Pipeline/PipelineTaskService.php`.
+- Updated `app/Services/Pipeline/Repositories/PipelineJobRepository.php`.
+
+Test code changed:
+
+- Updated `tests/Feature/PipelineRepositoryReadTest.php`.
+
+What changed:
+
+- `PipelineTaskService::createScrapeJob()` no longer calls `PipelineJob::query()->create()`.
+- `PipelineJobRepository::createScrapeJob()` now owns the scrape-job insert.
+- `PipelineTaskService` still owns:
+  - scrape job id generation
+  - content hash generation
+  - queued/skipped status decision
+  - scrape-job metadata and reason text
+  - deciding whether to publish `scrape.requested`
+
+Learning note:
+
+This keeps persistence in the repository without moving workflow decisions into the repository. The repository creates the row; the service decides what the row means.
+
+## Step 28: Pipeline Task Start Creation Repository
+
+Status: completed.
+
+Production code changed:
+
+- Updated `app/Services/Pipeline/PipelineTaskService.php`.
+- Updated `app/Services/Pipeline/Repositories/PipelineTaskRepository.php`.
+
+Test code changed:
+
+- Updated `tests/Feature/PipelineRepositoryReadTest.php`.
+
+What changed:
+
+- `PipelineTaskService::start()` no longer calls `PipelineTask::query()->create()`.
+- `PipelineTaskRepository::createRunningTask()` now owns running task creation.
+- `PipelineTaskRepository::createUploadTask()` now delegates to `createRunningTask()` so upload task creation and orchestrated task creation share one persistence method.
+- `PipelineTaskService` still owns:
+  - dataset resolution through `DatasetService`
+  - task id generation
+  - default counters
+  - start metadata shape
+  - transaction boundary around task and child-job creation
+
+Learning note:
+
+The repository owns the insert. The service still owns the orchestration of the start workflow because that includes dataset setup, child jobs, counters, and RabbitMQ side effects.
+
+## Step 29: Pipeline Scrape History Repository
+
+Status: completed.
+
+Production code changed:
+
+- Updated `app/Services/Pipeline/PipelineTaskService.php`.
+- Added `app/Services/Pipeline/Repositories/PipelineScrapeHistoryRepository.php`.
+
+Test code changed:
+
+- Updated `tests/Feature/PipelineRepositoryReadTest.php`.
+
+What changed:
+
+- `PipelineTaskService` no longer queries `ScrapedElement` directly.
+- `PipelineTaskService` no longer queries completed/skipped `PipelineJob` records directly for duplicate-scrape detection.
+- `PipelineScrapeHistoryRepository` now owns:
+  - checking existing `scraped_elements`
+  - checking completed/skipped pipeline jobs for a source URL
+  - combining those checks as `hasCompletedScrape()`
+- `PipelineTaskService` still owns the consequence of that check:
+  - create a skipped scrape job for already-scraped URLs
+  - create a queued scrape job and publish `scrape.requested` for new URLs
+
+Learning note:
+
+This repository is intentionally separate from `PipelineJobRepository` because it reads both scrape history and pipeline jobs. The name describes the read model the service needs: "has this URL already been scraped?"
+
+## Step 30: Pipeline Task Service Persistence Cleanup
+
+Status: completed.
+
+Production code changed:
+
+- Updated `app/Services/Pipeline/PipelineTaskService.php`.
+
+Test code changed:
+
+- Updated `tests/Feature/PipelineRepositoryReadTest.php`.
+- Existing orchestration tests still cover the HTTP workflow.
+
+What changed:
+
+- Final scan shows no direct model queries or writes remain in `PipelineTaskService`.
+- The service now depends on repositories for persistence:
+  - `PipelineTaskRepository`
+  - `PipelineJobRepository`
+  - `PipelineScrapeHistoryRepository`
+- The service still owns orchestration and business rules:
+  - URL resolution
+  - task/job status decisions
+  - counters
+  - retry metadata
+  - event payloads
+  - RabbitMQ publishing
+
+Learning note:
+
+This completes the focused `PipelineTaskService` repository refactor requested in the four remaining steps. The class is still not tiny, but its responsibilities are clearer: it coordinates the pipeline workflow instead of owning Eloquent persistence.
+
+Next recommended slice:
+
+- Move to the next service with direct persistence and high operational impact.
+- Good candidates:
+  - `PipelineRecoveryService`
+  - `PipelineEventStateService`
+  - `PipelineStateService`

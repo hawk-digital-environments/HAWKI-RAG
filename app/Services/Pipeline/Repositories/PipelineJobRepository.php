@@ -13,6 +13,23 @@ use Illuminate\Support\Collection;
 #[Singleton]
 readonly class PipelineJobRepository
 {
+    public function findByJobId(string $jobId): ?PipelineJob
+    {
+        return PipelineJob::query()
+            ->where('job_id', $jobId)
+            ->first();
+    }
+
+    /**
+     * @return Collection<int, PipelineJob>
+     */
+    public function forTask(string $taskId): Collection
+    {
+        return PipelineJob::query()
+            ->where('task_id', $taskId)
+            ->get();
+    }
+
     /**
      * @return Collection<int, PipelineJob>
      */
@@ -34,6 +51,29 @@ readonly class PipelineJobRepository
             ->where('status', PipelineJob::STATUS_FAILED)
             ->orderByDesc('updated_at')
             ->orderByDesc('id')
+            ->get();
+    }
+
+    /**
+     * @return Collection<int, PipelineJob>
+     */
+    public function failedForRetry(PipelineTask $task): Collection
+    {
+        return PipelineJob::query()
+            ->where('task_id', $task->task_id)
+            ->where('status', PipelineJob::STATUS_FAILED)
+            ->orderBy('id')
+            ->get();
+    }
+
+    /**
+     * @return Collection<int, PipelineJob>
+     */
+    public function forTaskByRecentUpdate(string $taskId): Collection
+    {
+        return PipelineJob::query()
+            ->where('task_id', $taskId)
+            ->orderByDesc('updated_at')
             ->get();
     }
 
@@ -73,12 +113,67 @@ readonly class PipelineJobRepository
         ]);
     }
 
+    /**
+     * @param array<string, mixed> $metadata
+     */
+    public function createScrapeJob(
+        string $jobId,
+        PipelineTask $task,
+        string $sourceUrl,
+        string $contentHash,
+        string $status,
+        Carbon $startedAt,
+        ?Carbon $finishedAt,
+        array $metadata,
+    ): PipelineJob
+    {
+        return PipelineJob::query()->create([
+            'job_id' => $jobId,
+            'task_id' => $task->task_id,
+            'job_type' => PipelineJob::TYPE_SCRAPE,
+            'source_url' => $sourceUrl,
+            'content_hash' => $contentHash,
+            'status' => $status,
+            'started_at' => $startedAt,
+            'finished_at' => $finishedAt,
+            'metadata' => $metadata,
+        ]);
+    }
+
+    /**
+     * @param array<string, mixed> $attributes
+     */
+    public function upsertForTask(string $jobId, PipelineTask $task, array $attributes): PipelineJob
+    {
+        return PipelineJob::query()->updateOrCreate(
+            ['job_id' => $jobId],
+            array_merge($attributes, [
+                'task_id' => $task->task_id,
+            ]),
+        );
+    }
+
     public function markFailed(PipelineJob $job, string $message, Carbon $failedAt): PipelineJob
     {
         $job->forceFill([
             'status' => PipelineJob::STATUS_FAILED,
             'error_message' => $message,
             'finished_at' => $failedAt,
+        ])->save();
+
+        return $job->refresh();
+    }
+
+    /**
+     * @param array<string, mixed> $metadata
+     */
+    public function markQueuedForRetry(PipelineJob $job, array $metadata): PipelineJob
+    {
+        $job->forceFill([
+            'status' => PipelineJob::STATUS_QUEUED,
+            'error_message' => null,
+            'finished_at' => null,
+            'metadata' => $metadata,
         ])->save();
 
         return $job->refresh();

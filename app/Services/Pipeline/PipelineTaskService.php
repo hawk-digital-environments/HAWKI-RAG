@@ -6,9 +6,9 @@ namespace App\Services\Pipeline;
 use App\Models\Dataset;
 use App\Models\PipelineJob;
 use App\Models\PipelineTask;
-use App\Models\ScrapedElement;
 use App\Services\Datasets\DatasetService;
 use App\Services\Pipeline\Repositories\PipelineJobRepository;
+use App\Services\Pipeline\Repositories\PipelineScrapeHistoryRepository;
 use App\Services\Pipeline\Repositories\PipelineTaskRepository;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -30,6 +30,7 @@ class PipelineTaskService
         private readonly DatasetService $datasets,
         private readonly PipelineTaskRepository $taskRepository,
         private readonly PipelineJobRepository $jobRepository,
+        private readonly PipelineScrapeHistoryRepository $scrapeHistoryRepository,
     ) {
     }
 
@@ -37,19 +38,18 @@ class PipelineTaskService
     {
         $task = DB::transaction(function () use ($input): PipelineTask {
             $dataset = $this->datasets->ensure($input);
-            $task = PipelineTask::query()->create([
-                'task_id' => $this->taskId($input),
-                'dataset_id' => $dataset->dataset_id,
-                'status' => PipelineTask::STATUS_RUNNING,
-                'started_at' => Carbon::now(),
-                'counters' => $this->defaultCounters(),
-                'metadata' => [
+            $task = $this->taskRepository->createRunningTask(
+                $this->taskId($input),
+                $dataset,
+                Carbon::now(),
+                $this->defaultCounters(),
+                [
                     'request' => $input,
                     'orchestration' => 'laravel',
                     'rabbitmq' => ['event_bus' => true],
                     'dataset' => $this->datasetMetadata($dataset),
                 ],
-            ]);
+            );
 
             foreach ($this->resolveUrls($input) as $url) {
                 $this->createScrapeJob($task, $url);
@@ -130,10 +130,8 @@ class PipelineTaskService
             return $timeline;
         }
 
-        $events = PipelineJob::query()
-            ->where('task_id', $taskId)
-            ->orderByDesc('updated_at')
-            ->get()
+        $events = $this->jobRepository
+            ->forTaskByRecentUpdate($taskId)
             ->flatMap(fn (PipelineJob $job) => $this->eventsForJob($job))
             ->when($this->nullableString($filters['event_type'] ?? $filters['eventType'] ?? null), function (Collection $events, string $eventType): Collection {
                 return $events->filter(fn (array $event): bool => ($event['eventType'] ?? null) === $eventType);
@@ -159,19 +157,19 @@ class PipelineTaskService
 
     public function upsertJob(string $taskId, array $input): PipelineJob
     {
-        $task = PipelineTask::query()->where('task_id', $taskId)->firstOrFail();
+        $task = $this->taskRepository->findByTaskIdOrFail($taskId);
         $jobId = $this->nullableString($input['job_id'] ?? $input['jobId'] ?? null) ?? (string) Str::uuid();
         $status = $this->normalizeJobStatus($input['status'] ?? null);
-        $existing = PipelineJob::query()->where('job_id', $jobId)->first();
+        $existing = $this->jobRepository->findByJobId($jobId);
         $metadata = array_merge(
             is_array($existing?->metadata) ? $existing->metadata : [],
             is_array($input['metadata'] ?? null) ? $input['metadata'] : [],
         );
 
-        $job = PipelineJob::query()->updateOrCreate(
-            ['job_id' => $jobId],
+        $job = $this->jobRepository->upsertForTask(
+            $jobId,
+            $task,
             [
-                'task_id' => $task->task_id,
                 'parent_job_id' => $this->nullableString($input['parent_job_id'] ?? $input['parentJobId'] ?? null) ?? $existing?->parent_job_id,
                 'job_type' => $this->nullableString($input['job_type'] ?? $input['jobType'] ?? null) ?? $existing?->job_type,
                 'source_url' => $this->nullableString($input['source_url'] ?? $input['sourceUrl'] ?? null) ?? $existing?->source_url,
@@ -194,37 +192,27 @@ class PipelineTaskService
 
     public function retryFailedJobs(string $taskId): ?PipelineTask
     {
-        $task = PipelineTask::query()->where('task_id', $taskId)->first();
+        $task = $this->taskRepository->findByTaskId($taskId);
         if (!$task) {
             return null;
         }
 
-        $jobs = PipelineJob::query()
-            ->where('task_id', $task->task_id)
-            ->where('status', PipelineJob::STATUS_FAILED)
-            ->get();
+        $jobs = $this->jobRepository->failedForRetry($task);
 
         foreach ($jobs as $job) {
             $metadata = $job->metadata ?? [];
             $metadata['retry_count'] = (int) ($metadata['retry_count'] ?? 0) + 1;
             $metadata['retried_at'] = now()->toIso8601String();
 
-            $job->forceFill([
-                'status' => PipelineJob::STATUS_QUEUED,
-                'error_message' => null,
-                'finished_at' => null,
-                'metadata' => $metadata,
-            ])->save();
-
-            $this->publishRetryEventForJob($task, $job->refresh());
+            $job = $this->jobRepository->markQueuedForRetry($job, $metadata);
+            $this->publishRetryEventForJob($task, $job);
         }
 
         if ($jobs->isNotEmpty()) {
-            $task->forceFill([
-                'status' => PipelineTask::STATUS_RUNNING,
-                'finished_at' => null,
-                'metadata' => $this->appendMetadataEvent($task, 'failed_jobs_retried'),
-            ])->save();
+            $task = $this->taskRepository->markFailedJobsRetried(
+                $task,
+                $this->appendMetadataEvent($task, 'failed_jobs_retried'),
+            );
         }
 
         return $this->recalculateTaskStatus($task);
@@ -237,7 +225,7 @@ class PipelineTaskService
 
     public function completeIfIdle(string $taskId): ?PipelineTask
     {
-        $task = PipelineTask::query()->where('task_id', $taskId)->first();
+        $task = $this->taskRepository->findByTaskId($taskId);
 
         return $task ? $this->recalculateTaskStatus($task) : null;
     }
@@ -246,9 +234,9 @@ class PipelineTaskService
     {
         $task = $task instanceof PipelineTask
             ? $task
-            : PipelineTask::query()->where('task_id', $task)->firstOrFail();
+            : $this->taskRepository->findByTaskIdOrFail($task);
 
-        $jobs = PipelineJob::query()->where('task_id', $task->task_id)->get();
+        $jobs = $this->jobRepository->forTask($task->task_id);
         $counters = $this->countersFor($jobs);
         $status = $task->status;
         $finishedAt = $task->finished_at;
@@ -269,13 +257,7 @@ class PipelineTaskService
             $finishedAt ??= Carbon::now();
         }
 
-        $task->forceFill([
-            'status' => $status,
-            'finished_at' => $finishedAt,
-            'counters' => $counters,
-        ])->save();
-
-        return $task->refresh();
+        return $this->taskRepository->updateStatusCounters($task, $status, $finishedAt, $counters);
     }
 
     public function refreshCounters(PipelineTask $task): PipelineTask
@@ -286,24 +268,23 @@ class PipelineTaskService
     private function createScrapeJob(PipelineTask $task, string $url): PipelineJob
     {
         $contentHash = hash('sha256', $url);
-        $alreadyScraped = $this->alreadyScraped($url, $contentHash);
+        $alreadyScraped = $this->scrapeHistoryRepository->hasCompletedScrape($url, $contentHash);
         $status = $alreadyScraped ? PipelineJob::STATUS_SKIPPED : PipelineJob::STATUS_QUEUED;
         $now = Carbon::now();
 
-        $job = PipelineJob::query()->create([
-            'job_id' => ($alreadyScraped ? 'skipped_' : 'scrape_') . substr(hash('sha256', $task->task_id . '|' . $url), 0, 24),
-            'task_id' => $task->task_id,
-            'job_type' => PipelineJob::TYPE_SCRAPE,
-            'source_url' => $url,
-            'content_hash' => $contentHash,
-            'status' => $status,
-            'started_at' => $now,
-            'finished_at' => $alreadyScraped ? $now : null,
-            'metadata' => array_merge($this->taskJobMetadata($task), [
+        $job = $this->jobRepository->createScrapeJob(
+            ($alreadyScraped ? 'skipped_' : 'scrape_') . substr(hash('sha256', $task->task_id . '|' . $url), 0, 24),
+            $task,
+            $url,
+            $contentHash,
+            $status,
+            $now,
+            $alreadyScraped ? $now : null,
+            array_merge($this->taskJobMetadata($task), [
                 'reason' => $alreadyScraped ? 'URL was already scraped by Laravel.' : 'Queued for scraper worker through RabbitMQ.',
                 'dataset_id' => $task->dataset_id,
             ]),
-        ]);
+        );
 
         if (!$alreadyScraped) {
             $this->publishScrapeRequested($task, $job);
@@ -627,18 +608,6 @@ class PipelineTaskService
         });
 
         return $urls;
-    }
-
-    private function alreadyScraped(string $url, string $contentHash): bool
-    {
-        return ScrapedElement::query()
-            ->where('page_url_hash', $contentHash)
-            ->orWhere('page_url', $url)
-            ->exists()
-            || PipelineJob::query()
-                ->where('source_url', $url)
-                ->whereIn('status', [PipelineJob::STATUS_COMPLETED, PipelineJob::STATUS_SKIPPED])
-                ->exists();
     }
 
     private function normalizeUrl(string $url): ?string

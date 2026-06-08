@@ -12,6 +12,20 @@ use Illuminate\Support\Collection;
 #[Singleton]
 readonly class PipelineTaskRepository
 {
+    public function findByTaskId(string $taskId): ?PipelineTask
+    {
+        return PipelineTask::query()
+            ->where('task_id', $taskId)
+            ->first();
+    }
+
+    public function findByTaskIdOrFail(string $taskId): PipelineTask
+    {
+        return PipelineTask::query()
+            ->where('task_id', $taskId)
+            ->firstOrFail();
+    }
+
     /**
      * @return Collection<int, PipelineTask>
      */
@@ -35,6 +49,28 @@ readonly class PipelineTaskRepository
     }
 
     /**
+     * @param array<string, int> $counters
+     * @param array<string, mixed> $metadata
+     */
+    public function createRunningTask(
+        string $taskId,
+        Dataset $dataset,
+        Carbon $startedAt,
+        array $counters,
+        array $metadata,
+    ): PipelineTask
+    {
+        return PipelineTask::query()->create([
+            'task_id' => $taskId,
+            'dataset_id' => $dataset->dataset_id,
+            'status' => PipelineTask::STATUS_RUNNING,
+            'started_at' => $startedAt,
+            'counters' => $counters,
+            'metadata' => $metadata,
+        ]);
+    }
+
+    /**
      * @param array<string, mixed> $metadata
      */
     public function createUploadTask(
@@ -44,14 +80,7 @@ readonly class PipelineTaskRepository
         array $metadata,
     ): PipelineTask
     {
-        return PipelineTask::query()->create([
-            'task_id' => $taskId,
-            'dataset_id' => $dataset->dataset_id,
-            'status' => PipelineTask::STATUS_RUNNING,
-            'started_at' => $startedAt,
-            'counters' => [],
-            'metadata' => $metadata,
-        ]);
+        return $this->createRunningTask($taskId, $dataset, $startedAt, [], $metadata);
     }
 
     public function markFailed(PipelineTask $task, Carbon $failedAt): PipelineTask
@@ -59,6 +88,38 @@ readonly class PipelineTaskRepository
         $task->forceFill([
             'status' => PipelineTask::STATUS_FAILED,
             'finished_at' => $failedAt,
+        ])->save();
+
+        return $task->refresh();
+    }
+
+    /**
+     * @param array<string, mixed> $metadata
+     */
+    public function markFailedJobsRetried(PipelineTask $task, array $metadata): PipelineTask
+    {
+        $task->forceFill([
+            'status' => PipelineTask::STATUS_RUNNING,
+            'finished_at' => null,
+            'metadata' => $metadata,
+        ])->save();
+
+        return $task->refresh();
+    }
+
+    /**
+     * @param array<string, int> $counters
+     */
+    public function updateStatusCounters(
+        PipelineTask $task,
+        string $status,
+        ?Carbon $finishedAt,
+        array $counters,
+    ): PipelineTask {
+        $task->forceFill([
+            'status' => $status,
+            'finished_at' => $finishedAt,
+            'counters' => $counters,
         ])->save();
 
         return $task->refresh();
