@@ -5,6 +5,9 @@ namespace Tests\Unit\Pipeline;
 
 use App\Services\Pipeline\EventHandlers\PipelineEventHandler;
 use App\Services\Pipeline\PipelineEventBus;
+use App\Services\Pipeline\PipelineEventDecoder;
+use App\Services\Pipeline\PipelineEventLogger;
+use App\Services\Pipeline\PipelineEventMessageProcessor;
 use App\Services\Pipeline\PipelineEventWorker;
 use App\Services\Rag\RagRabbitMQ;
 use App\Support\PipelineExitCode;
@@ -51,7 +54,9 @@ class PipelineEventWorkerTest extends TestCase
         $handler = Mockery::mock(PipelineEventHandler::class);
         $handler->shouldNotReceive('handle');
 
-        $exitCode = (new PipelineEventWorker($rabbit, $bus))->run($command, 'scraper', $handler);
+        $processor = new PipelineEventMessageProcessor(new PipelineEventDecoder(), $bus, new PipelineEventLogger());
+
+        $exitCode = (new PipelineEventWorker($rabbit, $bus, $processor))->run($command, 'scraper', $handler);
 
         $this->assertSame(PipelineExitCode::PARTIAL_SUCCESS, $exitCode);
     }

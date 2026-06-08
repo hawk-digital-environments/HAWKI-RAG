@@ -16,6 +16,7 @@ class PipelineEventBus
         private readonly PipelineFailedEventFactory $failedEvents,
         private readonly PipelineEventRetryFactory $retryEvents,
         private readonly PipelineEventLogger $logger,
+        private readonly PipelineEventDecoder $decoder,
     ) {
     }
 
@@ -136,12 +137,7 @@ class PipelineEventBus
 
     public function decode(string $body): array
     {
-        $event = json_decode($body, true, 512, JSON_THROW_ON_ERROR);
-        if (!is_array($event)) {
-            throw new \JsonException('Pipeline event payload must be a JSON object.');
-        }
-
-        return PipelineEvent::normalize((string) ($event['event_type'] ?? ''), $event);
+        return $this->decoder->decode($body);
     }
 
     public function log(string $action, array $event): void

@@ -5,6 +5,7 @@ namespace App\Services\Pipeline;
 
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Support\Facades\Log;
+use Throwable;
 
 #[Singleton]
 readonly class PipelineEventLogger
@@ -22,6 +23,19 @@ readonly class PipelineEventLogger
             'source_url' => $event['source_url'] ?? null,
             'local_path' => $event['local_path'] ?? null,
             'retry_count' => $event['retry_count'] ?? 0,
+        ]);
+    }
+
+    public function workerFailed(array $event, int $retryCount, int $maxRetries, Throwable $error): void
+    {
+        Log::warning('Pipeline event worker failed', [
+            'event_type' => $event['event_type'] ?? null,
+            'task_id' => $event['task_id'] ?? null,
+            'job_id' => $event['job_id'] ?? null,
+            'retry_count' => $retryCount,
+            'max_retries' => $maxRetries,
+            'error' => $error->getMessage(),
+            'exception' => $error,
         ]);
     }
 }
