@@ -1,10 +1,12 @@
 <?php
+declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\Dataset\CreateDatasetRequest;
+use App\Http\Requests\Dataset\ListDatasetsRequest;
 use App\Services\Datasets\DatasetService;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
 
 class DatasetController extends Controller
 {
@@ -13,33 +15,17 @@ class DatasetController extends Controller
     ) {
     }
 
-    public function index(Request $request): JsonResponse
+    public function index(ListDatasetsRequest $request): JsonResponse
     {
-        $validated = $request->validate([
-            'limit' => 'nullable|integer|min:1|max:250',
-        ]);
-
         return response()->json([
             'success' => true,
-            'datasets' => $this->datasets->list((int) ($validated['limit'] ?? 50)),
+            'datasets' => $this->datasets->list($request->limit()),
         ]);
     }
 
-    public function store(Request $request): JsonResponse
+    public function store(CreateDatasetRequest $request): JsonResponse
     {
-        $validated = $request->validate([
-            'dataset_id' => 'nullable|string|max:191',
-            'datasetId' => 'nullable|string|max:191',
-            'name' => 'nullable|string|max:255',
-            'description' => 'nullable|string',
-            'status' => 'nullable|string|max:64',
-            'qdrant_collection' => 'nullable|string|max:191',
-            'qdrantCollection' => 'nullable|string|max:191',
-            'neo4j_namespace' => 'nullable|string|max:191',
-            'neo4jNamespace' => 'nullable|string|max:191',
-        ]);
-
-        $dataset = $this->datasets->create($validated);
+        $dataset = $this->datasets->create($request->validated());
 
         return response()->json([
             'success' => true,

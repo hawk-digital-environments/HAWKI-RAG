@@ -1,10 +1,11 @@
 <?php
+declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\Document\ListDocumentsRequest;
 use App\Services\Documents\DocumentBrowserService;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
 
 class DocumentBrowserController extends Controller
 {
@@ -13,19 +14,11 @@ class DocumentBrowserController extends Controller
     ) {
     }
 
-    public function index(Request $request): JsonResponse
+    public function index(ListDocumentsRequest $request): JsonResponse
     {
-        $validated = $request->validate([
-            'dataset_id' => 'nullable|string|max:191',
-            'datasetId' => 'nullable|string|max:191',
-            'q' => 'nullable|string|max:255',
-            'search' => 'nullable|string|max:255',
-            'limit' => 'nullable|integer|min:1|max:250',
-        ]);
-
         return response()->json([
             'success' => true,
-            'documents' => $this->documents->list((int) ($validated['limit'] ?? 100), $validated),
+            'documents' => $this->documents->list($request->limit(), $request->filters()),
         ]);
     }
 
