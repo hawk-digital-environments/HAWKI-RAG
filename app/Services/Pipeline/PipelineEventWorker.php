@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 
 namespace App\Services\Pipeline;
 
@@ -6,16 +7,15 @@ use App\Services\Pipeline\EventHandlers\PipelineEventHandler;
 use App\Services\Rag\RagRabbitMQ;
 use App\Support\PipelineExitCode;
 use Illuminate\Console\Command;
+use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Support\Facades\Log;
 use PhpAmqpLib\Exception\AMQPTimeoutException;
 use PhpAmqpLib\Message\AMQPMessage;
 use Throwable;
 
-class PipelineEventWorker
+#[Singleton]
+readonly class PipelineEventWorker
 {
-    private bool $shouldStop = false;
-    private int $lastExitCode = PipelineExitCode::SUCCESS;
-
     public function __construct(
         private readonly RagRabbitMQ $rabbit,
         private readonly PipelineEventBus $bus,
@@ -27,11 +27,17 @@ class PipelineEventWorker
         $topology = $this->bus->declareWorkerTopology($worker);
         $channel = $this->rabbit->channel();
         $channel->basic_qos(0, (int) config('communication.rabbitmq.pipeline_events.prefetch_count', 1), false);
+        $shouldStop = false;
+        $lastExitCode = PipelineExitCode::SUCCESS;
 
         if (function_exists('pcntl_async_signals')) {
             pcntl_async_signals(true);
-            pcntl_signal(SIGTERM, fn () => $this->shouldStop = true);
-            pcntl_signal(SIGINT, fn () => $this->shouldStop = true);
+            pcntl_signal(SIGTERM, static function () use (&$shouldStop): void {
+                $shouldStop = true;
+            });
+            pcntl_signal(SIGINT, static function () use (&$shouldStop): void {
+                $shouldStop = true;
+            });
         }
 
         $processed = 0;
@@ -42,11 +48,11 @@ class PipelineEventWorker
             false,
             false,
             false,
-            function (AMQPMessage $message) use ($command, $handler, &$processed): void {
-                $this->lastExitCode = $this->processMessage($command, $message, $handler);
+            function (AMQPMessage $message) use ($command, $handler, &$processed, &$shouldStop, &$lastExitCode): void {
+                $lastExitCode = $this->processMessage($command, $message, $handler);
                 $processed++;
                 if ($command->option('once')) {
-                    $this->shouldStop = true;
+                    $shouldStop = true;
                 }
             },
         );
@@ -54,13 +60,13 @@ class PipelineEventWorker
         $command->info("Pipeline {$worker} event worker listening on {$topology['queue']}.");
 
         try {
-            while (!$this->shouldStop && $channel->is_consuming()) {
+            while (!$shouldStop && $channel->is_consuming()) {
                 try {
                     $channel->wait(null, false, (int) $command->option('timeout'));
                 } catch (AMQPTimeoutException) {
                     if ($command->option('once') && $processed === 0) {
                         $command->line('No message received before timeout.');
-                        $this->lastExitCode = PipelineExitCode::PARTIAL_SUCCESS;
+                        $lastExitCode = PipelineExitCode::PARTIAL_SUCCESS;
                         break;
                     }
                 }
@@ -69,7 +75,7 @@ class PipelineEventWorker
             $this->rabbit->close();
         }
 
-        return $command->option('once') ? $this->lastExitCode : PipelineExitCode::SUCCESS;
+        return $command->option('once') ? $lastExitCode : PipelineExitCode::SUCCESS;
     }
 
     private function processMessage(Command $command, AMQPMessage $message, PipelineEventHandler $handler): int
