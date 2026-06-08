@@ -7,6 +7,7 @@ use App\Services\FileConverter\DocumentConverter;
 use App\Services\Pipeline\PipelineEvent;
 use App\Services\Pipeline\PipelineEventBus;
 use App\Services\Pipeline\PipelineEventStateService;
+use App\Services\Pipeline\Repositories\PipelineJobRepository;
 use Illuminate\Support\Facades\File;
 use RuntimeException;
 use SplFileInfo;
@@ -17,6 +18,7 @@ class ConverterEventHandler implements PipelineEventHandler
     public function __construct(
         private readonly PipelineEventBus $events,
         private readonly PipelineEventStateService $state,
+        private readonly PipelineJobRepository $jobs,
         private readonly DocumentConverter $converter,
     ) {
     }
@@ -47,7 +49,7 @@ class ConverterEventHandler implements PipelineEventHandler
         $event['content_hash'] = $contentHash;
         $cached = $this->cachedConversion($path, $contentHash);
 
-        if ($cached !== null || $this->alreadyConverted($path, $contentHash)) {
+        if ($cached !== null || $this->jobs->hasCompletedOrSkippedConversion($path, $contentHash)) {
             $this->state->upsertJob($event, PipelineJob::STATUS_SKIPPED, [
                 'reason' => 'File/content_hash was already converted.',
                 'converted_path' => $cached,
@@ -248,18 +250,6 @@ class ConverterEventHandler implements PipelineEventHandler
         $flat = dirname($path) . DIRECTORY_SEPARATOR . pathinfo($path, PATHINFO_FILENAME) . '_converted.md';
 
         return is_file($flat) ? $flat : null;
-    }
-
-    private function alreadyConverted(string $path, string $contentHash): bool
-    {
-        return PipelineJob::query()
-            ->where('job_type', PipelineJob::TYPE_CONVERT)
-            ->where(function ($query) use ($path, $contentHash): void {
-                $query->where('local_path', $path)
-                    ->orWhere('content_hash', $contentHash);
-            })
-            ->whereIn('status', [PipelineJob::STATUS_COMPLETED, PipelineJob::STATUS_SKIPPED])
-            ->exists();
     }
 
     private function isSupported(string $path): bool

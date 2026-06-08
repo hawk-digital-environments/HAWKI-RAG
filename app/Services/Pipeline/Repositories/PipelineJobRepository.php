@@ -191,6 +191,18 @@ readonly class PipelineJobRepository
         ]);
     }
 
+    public function hasCompletedOrSkippedConversion(string $path, string $contentHash): bool
+    {
+        return PipelineJob::query()
+            ->where('job_type', PipelineJob::TYPE_CONVERT)
+            ->where(function ($query) use ($path, $contentHash): void {
+                $query->where('local_path', $path)
+                    ->orWhere('content_hash', $contentHash);
+            })
+            ->whereIn('status', [PipelineJob::STATUS_COMPLETED, PipelineJob::STATUS_SKIPPED])
+            ->exists();
+    }
+
     /**
      * @param array<string, mixed> $attributes
      */

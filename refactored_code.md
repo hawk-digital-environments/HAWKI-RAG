@@ -196,7 +196,6 @@ The skill requires constructor injection. Current service locator examples:
 - `ScrapeService` calls `app(PipelineStateService::class)` in multiple methods.
 - `ScrapeFinalizerService` resolves `StorageService` and `PipelineDataValidator` inside the constructor with `app(...)`.
 - `ScrapeEventHandler` resolves `ScrapeDatasetCreator` with `app(...)`.
-- `PipelineTaskService` publishes through `app(PipelineEventBus::class)` in one path.
 - `API/IngestController` calls `app(PipelineStateService::class)` directly.
 
 Target: inject dependencies explicitly through constructors.
@@ -2323,3 +2322,452 @@ Next recommended slice:
 - Good next candidates:
   - `ConverterEventHandler`
   - `IngestionEventHandler`
+
+## Step 36: Converter Handler Repository Boundary
+
+Status: completed.
+
+Production code changed:
+
+- Updated `app/Services/Pipeline/EventHandlers/ConverterEventHandler.php`.
+- Updated `app/Services/Pipeline/Repositories/PipelineJobRepository.php`.
+
+Test code changed:
+
+- Updated `tests/Feature/PipelineRepositoryReadTest.php`.
+- Updated `tests/Feature/PipelineEventLayerTest.php`.
+
+What changed:
+
+- `ConverterEventHandler` no longer directly queries `PipelineJob` to detect already-converted files.
+- `PipelineJobRepository` now owns:
+  - `hasCompletedOrSkippedConversion()`
+- The repository test now proves conversion history detection:
+  - matches completed conversions by `local_path`
+  - matches completed conversions by `content_hash`
+  - matches skipped conversions
+  - ignores failed conversions
+  - ignores completed scrape jobs
+- The event-layer test now covers the database duplicate path, not only the filesystem cache path.
+- `ConverterEventHandler` still owns:
+  - validating the discovered local file
+  - checking supported file extensions
+  - reading filesystem conversion cache metadata
+  - writing converter output files
+  - combining markdown chunks
+  - publishing `file.converted`
+
+Before:
+
+```php
+return PipelineJob::query()
+    ->where('job_type', PipelineJob::TYPE_CONVERT)
+    ->where(function ($query) use ($path, $contentHash): void {
+        $query->where('local_path', $path)
+            ->orWhere('content_hash', $contentHash);
+    })
+    ->whereIn('status', [PipelineJob::STATUS_COMPLETED, PipelineJob::STATUS_SKIPPED])
+    ->exists();
+```
+
+After:
+
+```php
+if ($cached !== null || $this->jobs->hasCompletedOrSkippedConversion($path, $contentHash)) {
+    // skip and publish file.converted
+}
+```
+
+Learning note:
+
+This is another `SKILL.md` repository-boundary cleanup. The handler still coordinates conversion workflow and file IO, but it no longer knows the database query for conversion history.
+
+Next recommended slice:
+
+- Refactor `IngestionEventHandler`.
+- It now has the main remaining event-handler persistence concerns:
+  - `JobProcessingState::query()->updateOrCreate()`
+  - `Document::query()->updateOrCreate()`
+
+## Step 37: Ingestion Handler Repository Boundary
+
+Status: completed.
+
+Production code changed:
+
+- Updated `app/Services/Pipeline/EventHandlers/IngestionEventHandler.php`.
+- Added `app/Services/Pipeline/Repositories/PipelineIngestionRepository.php`.
+
+Test code changed:
+
+- Updated `tests/Feature/PipelineRepositoryReadTest.php`.
+
+What changed:
+
+- `IngestionEventHandler` no longer writes `JobProcessingState` directly.
+- `IngestionEventHandler` no longer writes `Document` directly.
+- `PipelineIngestionRepository` now owns:
+  - `upsertProcessingState()`
+  - `upsertFailedProcessingState()`
+  - `upsertIngestedDocument()`
+- The repository test now proves:
+  - processing state rows are created/updated for RAG ingestion
+  - failed processing state stores retry and error details
+  - ingested documents are upserted by collection/checksum
+  - document metadata keeps task/job/event and bridge response details
+- `IngestionEventHandler` still owns:
+  - resolving ingestable content paths
+  - deriving child ingest event IDs
+  - reading markdown/text content
+  - calling the Python RAG bridge
+  - deciding processing state status transitions
+  - publishing `content.ingested`
+
+Before:
+
+```php
+JobProcessingState::query()->updateOrCreate(
+    [
+        'job_id' => (string) $event['job_id'],
+        'stage' => JobProcessingState::STAGE_RAG_INGESTION,
+    ],
+    ['status' => $status],
+);
+
+Document::query()->updateOrCreate(
+    [
+        'collection' => $targets['qdrant_collection'],
+        'checksum_sha256' => $checksum,
+    ],
+    ['status' => Document::STATUS_COMPLETED],
+);
+```
+
+After:
+
+```php
+$this->ingestion->upsertProcessingState(
+    $event,
+    $status,
+    (int) config('communication.rabbitmq.pipeline_events.max_retries', 3),
+);
+
+$this->ingestion->upsertIngestedDocument(
+    $event,
+    $targets,
+    $path,
+    $checksum,
+    $fileSize,
+    $bridgeResponse,
+);
+```
+
+Learning note:
+
+This finishes the event-handler repository-boundary pass. The handlers now coordinate pipeline workflows and event publication, while repositories own database persistence for jobs, scrape/conversion history, ingestion processing state, and ingested documents.
+
+Next recommended slice:
+
+- Scan pipeline services outside event handlers for remaining direct Eloquent access.
+- Good next candidate:
+  - `PipelineTaskService`, especially read/reporting methods that still filter job collections directly after repository loads.
+
+## Step 38: Pipeline Task Counter Service
+
+Status: completed.
+
+Production code changed:
+
+- Updated `app/Services/Pipeline/PipelineTaskService.php`.
+- Added `app/Services/Pipeline/PipelineTaskCounterService.php`.
+
+Test code changed:
+
+- Added `tests/Unit/Pipeline/PipelineTaskCounterServiceTest.php`.
+
+What changed:
+
+- `PipelineTaskService` no longer owns the detailed counter-building logic.
+- `PipelineTaskCounterService` now owns:
+  - default task counter shape
+  - counting queued/running/completed/failed/skipped jobs
+  - counting scrape/convert/ingest jobs
+  - calculating user-facing counters like `scraped`, `converted`, `ingested`, and `files_found`
+- `PipelineTaskService` still owns:
+  - starting pipeline tasks
+  - creating scrape jobs
+  - publishing retry and scrape events
+  - deciding task-level status from counters
+  - formatting task/job payloads for API responses
+
+Before:
+
+```php
+$jobs = $this->jobRepository->forTask($task->task_id);
+$counters = $this->countersFor($jobs);
+
+if ($counters['queued'] > 0 || $this->runningCount($jobs) > 0) {
+    $status = PipelineTask::STATUS_RUNNING;
+}
+```
+
+After:
+
+```php
+$jobs = $this->jobRepository->forTask($task->task_id);
+$counters = $this->counters->forJobs($jobs);
+
+if ($counters['queued'] > 0 || $counters['jobs_running'] > 0) {
+    $status = PipelineTask::STATUS_RUNNING;
+}
+```
+
+Learning note:
+
+This is a service-responsibility refactor, not a repository refactor. The counter service does not access the database. It makes the counter rules testable on their own, so `PipelineTaskService` can stay focused on orchestration and task status decisions.
+
+Next recommended slice:
+
+- Continue shrinking `PipelineTaskService`.
+- Good next candidates:
+  - extract task/job API payload formatting
+  - inject `PipelineEventBus` instead of resolving it through `app()`
+  - move sitemap URL extraction into a small parser service
+
+## Step 39: Pipeline Task Event Bus Dependency Injection
+
+Status: completed.
+
+Production code changed:
+
+- Updated `app/Services/Pipeline/PipelineTaskService.php`.
+
+Test code changed:
+
+- No new test file was needed. Existing task orchestration tests already mock `PipelineEventBus` and cover scrape event publishing through `PipelineTaskService`.
+
+What changed:
+
+- `PipelineTaskService` no longer resolves `PipelineEventBus` through Laravel's `app()` helper.
+- `PipelineTaskService` now receives `PipelineEventBus` through constructor injection.
+- `publishEvent()` now calls the injected event bus dependency directly.
+- This keeps event publishing behavior unchanged, but makes the dependency visible and easier to mock.
+
+Before:
+
+```php
+private function publishEvent(string $routingKey, array $payload): void
+{
+    app(PipelineEventBus::class)->publish($routingKey, $payload);
+}
+```
+
+After:
+
+```php
+public function __construct(
+    private readonly PipelineEventBus $eventBus,
+) {
+}
+
+private function publishEvent(string $routingKey, array $payload): void
+{
+    $this->eventBus->publish($routingKey, $payload);
+}
+```
+
+Learning note:
+
+This follows the `SKILL.md` dependency-injection rule. A service should declare collaborators in the constructor instead of reaching into the container from inside a method. The behavior is the same, but the class contract is clearer.
+
+Next recommended slice:
+
+- Continue shrinking `PipelineTaskService`.
+- Good next candidate:
+  - extract task/job API payload formatting into a small presenter or mapper service.
+
+## Step 40: Pipeline Task Payload Mapper
+
+Status: completed.
+
+Production code changed:
+
+- Updated `app/Services/Pipeline/PipelineTaskService.php`.
+- Added `app/Services/Pipeline/PipelineTaskPayloadService.php`.
+
+Test code changed:
+
+- Added `tests/Unit/Pipeline/PipelineTaskPayloadServiceTest.php`.
+
+What changed:
+
+- `PipelineTaskService` no longer owns task/detail response array formatting.
+- `PipelineTaskService` no longer owns job response array formatting.
+- `PipelineTaskService` no longer owns fallback timeline event array formatting.
+- `PipelineTaskPayloadService` now owns:
+  - `detail()`
+  - `summary()`
+  - `job()`
+  - `eventsForJob()`
+- `PipelineTaskService` still owns:
+  - task orchestration
+  - task status recalculation
+  - retries
+  - publishing RabbitMQ events
+  - sitemap/source URL resolution
+
+Before:
+
+```php
+return [
+    'taskId' => $task->task_id,
+    'datasetId' => $task->dataset_id,
+    'status' => $task->status,
+    'jobs' => $task->jobs
+        ->map(fn (PipelineJob $job) => $this->jobPayload($job))
+        ->all(),
+];
+```
+
+After:
+
+```php
+return $this->payloads->detail(
+    $task,
+    $this->activeJobCount($task),
+    $this->counters->defaults(),
+);
+```
+
+Learning note:
+
+This follows the `SKILL.md` preference for small named collaborators over a large service with mixed responsibilities. Payload formatting is not orchestration, so it now lives in a dedicated mapper service with focused unit tests.
+
+Next recommended slice:
+
+- Continue shrinking `PipelineTaskService`.
+- Good next candidate:
+  - move sitemap/source URL extraction into a small parser service.
+
+## Step 41: Pipeline Task Source Resolver
+
+Status: completed.
+
+Production code changed:
+
+- Updated `app/Services/Pipeline/PipelineTaskService.php`.
+- Added `app/Services/Pipeline/PipelineTaskSourceResolver.php`.
+
+Test code changed:
+
+- Added `tests/Unit/Pipeline/PipelineTaskSourceResolverTest.php`.
+
+What changed:
+
+- `PipelineTaskService` no longer owns source URL parsing.
+- `PipelineTaskService` no longer reads local sitemap files.
+- `PipelineTaskService` no longer fetches remote sitemap URLs.
+- `PipelineTaskService` no longer parses JSON/XML sitemap payloads.
+- `PipelineTaskSourceResolver` now owns:
+  - direct `urls` input parsing
+  - `source_url` / `sourceUrl` fallback
+  - `sitemap_path` / `sitemapPath` file loading
+  - `sitemap_url` / `sitemapUrl` remote loading
+  - JSON sitemap URL extraction
+  - XML `<loc>` URL extraction
+  - URL normalization and de-duplication
+- XML sitemap parsing now accepts one or more `<loc>` entries. The old inline check only accepted exactly one match.
+- `PipelineTaskService` still owns:
+  - creating tasks
+  - creating scrape jobs for resolved URLs
+  - status recalculation
+  - retries
+  - RabbitMQ event publication
+
+Before:
+
+```php
+foreach ($this->resolveUrls($input) as $url) {
+    $this->createScrapeJob($task, $url);
+}
+```
+
+After:
+
+```php
+foreach ($this->sources->resolve($input) as $url) {
+    $this->createScrapeJob($task, $url);
+}
+```
+
+Learning note:
+
+This keeps input parsing out of the task orchestration service. The resolver is still a Pipeline domain service, but it has one purpose: turn user task input into a clean list of crawl URLs.
+
+Next recommended slice:
+
+- Continue shrinking `PipelineTaskService`.
+- Good next candidate:
+  - move retry event payload selection/building into a small collaborator.
+
+## Step 42: Pipeline Task Event Payload Builder
+
+Status: completed.
+
+Production code changed:
+
+- Updated `app/Services/Pipeline/PipelineTaskService.php`.
+- Added `app/Services/Pipeline/PipelineTaskEventPayloadService.php`.
+
+Test code changed:
+
+- Added `tests/Unit/Pipeline/PipelineTaskEventPayloadServiceTest.php`.
+
+What changed:
+
+- `PipelineTaskService` no longer decides retry event type from job type.
+- `PipelineTaskService` no longer builds RabbitMQ event payload arrays from task/job models.
+- `PipelineTaskEventPayloadService` now owns:
+  - selecting retry event type for scrape, convert, and ingest jobs
+  - preserving original source event type for ingest retries
+  - restoring source job identity for ingest retry payloads
+  - building task/job payloads for `scrape.requested`, `file.discovered`, `page.scraped`, and `file.converted`
+- `PipelineTaskService` still owns:
+  - when to publish retry events
+  - when to publish new scrape events
+  - catching/logging publish failures
+
+Before:
+
+```php
+$eventType = match ($job->job_type) {
+    PipelineJob::TYPE_SCRAPE => PipelineEvent::SCRAPE_REQUESTED,
+    PipelineJob::TYPE_CONVERT => PipelineEvent::FILE_DISCOVERED,
+    PipelineJob::TYPE_INGEST => PipelineEvent::FILE_CONVERTED,
+    default => null,
+};
+
+$payload = $this->eventPayloadForJob($task, $job, $eventType);
+```
+
+After:
+
+```php
+$eventType = $this->eventPayloads->retryEventType($job);
+
+$this->publishEvent(
+    $eventType,
+    $this->eventPayloads->forJob($task, $job, $eventType),
+);
+```
+
+Learning note:
+
+This is another service-responsibility refactor. Retry event routing rules and RabbitMQ payload shape now have a named home and focused unit tests, while `PipelineTaskService` remains responsible for orchestration.
+
+Next recommended slice:
+
+- Review whether `PipelineTaskService` is now small enough for this pass.
+- If continuing, the next cleanup should be smaller:
+  - move task job metadata extraction into a collaborator, or
+  - stop here and commit the pipeline service cleanup batch.

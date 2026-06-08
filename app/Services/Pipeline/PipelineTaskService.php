@@ -13,7 +13,6 @@ use App\Services\Pipeline\Repositories\PipelineTaskRepository;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Throwable;
@@ -27,7 +26,12 @@ class PipelineTaskService
 
     public function __construct(
         private readonly PipelineEventRecorder $events,
+        private readonly PipelineEventBus $eventBus,
         private readonly DatasetService $datasets,
+        private readonly PipelineTaskCounterService $counters,
+        private readonly PipelineTaskEventPayloadService $eventPayloads,
+        private readonly PipelineTaskPayloadService $payloads,
+        private readonly PipelineTaskSourceResolver $sources,
         private readonly PipelineTaskRepository $taskRepository,
         private readonly PipelineJobRepository $jobRepository,
         private readonly PipelineScrapeHistoryRepository $scrapeHistoryRepository,
@@ -42,7 +46,7 @@ class PipelineTaskService
                 $this->taskId($input),
                 $dataset,
                 Carbon::now(),
-                $this->defaultCounters(),
+                $this->counters->defaults(),
                 [
                     'request' => $input,
                     'orchestration' => 'laravel',
@@ -51,7 +55,7 @@ class PipelineTaskService
                 ],
             );
 
-            foreach ($this->resolveUrls($input) as $url) {
+            foreach ($this->sources->resolve($input) as $url) {
                 $this->createScrapeJob($task, $url);
             }
 
@@ -70,20 +74,7 @@ class PipelineTaskService
 
         $task = $this->recalculateTaskStatus($task);
 
-        return [
-            'taskId' => $task->task_id,
-            'datasetId' => $task->dataset_id,
-            'status' => $task->status,
-            'startedAt' => $this->dateValue($task->started_at),
-            'finishedAt' => $this->dateValue($task->finished_at),
-            'counters' => $task->counters ?? $this->defaultCounters(),
-            'metadata' => $task->metadata ?? [],
-            'activeJobs' => $this->activeJobCount($task),
-            'jobs' => $task->jobs
-                ->map(fn (PipelineJob $job) => $this->jobPayload($job))
-                ->all(),
-            'updatedAt' => now()->toIso8601String(),
-        ];
+        return $this->payloads->detail($task, $this->activeJobCount($task), $this->counters->defaults());
     }
 
     public function list(int $limit = 30): array
@@ -92,17 +83,7 @@ class PipelineTaskService
             ->map(function (PipelineTask $task): array {
                 $task = $this->recalculateTaskStatus($task);
 
-                return [
-                    'taskId' => $task->task_id,
-                    'datasetId' => $task->dataset_id,
-                    'status' => $task->status,
-                    'startedAt' => $this->dateValue($task->started_at),
-                    'finishedAt' => $this->dateValue($task->finished_at),
-                    'counters' => $task->counters ?? $this->defaultCounters(),
-                    'metadata' => $task->metadata ?? [],
-                    'activeJobs' => $this->activeJobCount($task),
-                    'updatedAt' => now()->toIso8601String(),
-                ];
+                return $this->payloads->summary($task, $this->activeJobCount($task), $this->counters->defaults());
             })
             ->all();
     }
@@ -110,14 +91,14 @@ class PipelineTaskService
     public function jobs(string $taskId): array
     {
         return $this->jobRepository->forTaskOrdered($taskId)
-            ->map(fn (PipelineJob $job) => $this->jobPayload($job))
+            ->map(fn (PipelineJob $job) => $this->payloads->job($job))
             ->all();
     }
 
     public function failedJobs(string $taskId): array
     {
         return $this->jobRepository->failedForTask($taskId)
-            ->map(fn (PipelineJob $job) => $this->jobPayload($job))
+            ->map(fn (PipelineJob $job) => $this->payloads->job($job))
             ->all();
     }
 
@@ -132,7 +113,7 @@ class PipelineTaskService
 
         $events = $this->jobRepository
             ->forTaskByRecentUpdate($taskId)
-            ->flatMap(fn (PipelineJob $job) => $this->eventsForJob($job))
+            ->flatMap(fn (PipelineJob $job) => $this->payloads->eventsForJob($job))
             ->when($this->nullableString($filters['event_type'] ?? $filters['eventType'] ?? null), function (Collection $events, string $eventType): Collection {
                 return $events->filter(fn (array $event): bool => ($event['eventType'] ?? null) === $eventType);
             })
@@ -237,7 +218,7 @@ class PipelineTaskService
             : $this->taskRepository->findByTaskIdOrFail($task);
 
         $jobs = $this->jobRepository->forTask($task->task_id);
-        $counters = $this->countersFor($jobs);
+        $counters = $this->counters->forJobs($jobs);
         $status = $task->status;
         $finishedAt = $task->finished_at;
 
@@ -246,7 +227,7 @@ class PipelineTaskService
                 ? PipelineTask::STATUS_RUNNING
                 : PipelineTask::STATUS_PENDING;
             $finishedAt = null;
-        } elseif ($counters['queued'] > 0 || $this->runningCount($jobs) > 0) {
+        } elseif ($counters['queued'] > 0 || $counters['jobs_running'] > 0) {
             $status = PipelineTask::STATUS_RUNNING;
             $finishedAt = null;
         } elseif ($counters['failed'] > 0) {
@@ -295,56 +276,20 @@ class PipelineTaskService
 
     private function publishRetryEventForJob(PipelineTask $task, PipelineJob $job): void
     {
-        $metadata = $job->metadata ?? [];
-        $eventType = match ($job->job_type) {
-            PipelineJob::TYPE_SCRAPE => PipelineEvent::SCRAPE_REQUESTED,
-            PipelineJob::TYPE_CONVERT => PipelineEvent::FILE_DISCOVERED,
-            PipelineJob::TYPE_INGEST => in_array($metadata['source_event_type'] ?? null, [PipelineEvent::PAGE_SCRAPED, PipelineEvent::FILE_CONVERTED], true)
-                ? (string) $metadata['source_event_type']
-                : PipelineEvent::FILE_CONVERTED,
-            default => null,
-        };
-
+        $eventType = $this->eventPayloads->retryEventType($job);
         if ($eventType === null) {
             return;
         }
 
-        $payload = $this->eventPayloadForJob($task, $job, $eventType);
-        $this->publishEvent($eventType, $payload);
+        $this->publishEvent($eventType, $this->eventPayloads->forJob($task, $job, $eventType));
     }
 
     private function publishScrapeRequested(PipelineTask $task, PipelineJob $job): void
     {
         $this->publishEvent(
             PipelineEvent::SCRAPE_REQUESTED,
-            $this->eventPayloadForJob($task, $job, PipelineEvent::SCRAPE_REQUESTED),
+            $this->eventPayloads->forJob($task, $job, PipelineEvent::SCRAPE_REQUESTED),
         );
-    }
-
-    private function eventPayloadForJob(PipelineTask $task, PipelineJob $job, string $eventType): array
-    {
-        $metadata = $job->metadata ?? [];
-        $sourceJobId = $metadata['source_job_id'] ?? null;
-        $jobId = $job->job_id;
-        $jobType = $job->job_type;
-
-        if ($job->job_type === PipelineJob::TYPE_INGEST && in_array($eventType, [PipelineEvent::PAGE_SCRAPED, PipelineEvent::FILE_CONVERTED], true)) {
-            $jobId = is_string($sourceJobId) && $sourceJobId !== '' ? $sourceJobId : ($job->parent_job_id ?: $job->job_id);
-            $jobType = PipelineEvent::jobTypeFor($eventType);
-        }
-
-        return [
-            'task_id' => $task->task_id,
-            'job_id' => $jobId,
-            'parent_job_id' => $job->parent_job_id,
-            'dataset_id' => $task->dataset_id,
-            'job_type' => $jobType,
-            'source_url' => $job->source_url,
-            'local_path' => $job->local_path,
-            'content_hash' => $job->content_hash,
-            'status' => $job->status,
-            'metadata' => $metadata,
-        ];
     }
 
     private function taskJobMetadata(PipelineTask $task): array
@@ -370,7 +315,7 @@ class PipelineTaskService
     private function publishEvent(string $routingKey, array $payload): void
     {
         try {
-            app(PipelineEventBus::class)->publish($routingKey, $payload);
+            $this->eventBus->publish($routingKey, $payload);
         } catch (Throwable $exception) {
             Log::warning('Pipeline RabbitMQ event publish failed.', [
                 'routing_key' => $routingKey,
@@ -379,131 +324,9 @@ class PipelineTaskService
         }
     }
 
-    private function countersFor(Collection $jobs): array
-    {
-        $byStatus = $jobs->countBy('status');
-
-        $counters = [
-            'queued' => (int) ($byStatus[PipelineJob::STATUS_QUEUED] ?? 0),
-            'scraped' => $jobs
-                ->where('job_type', PipelineJob::TYPE_SCRAPE)
-                ->where('status', PipelineJob::STATUS_COMPLETED)
-                ->count(),
-            'files_found' => $jobs
-                ->where('job_type', PipelineJob::TYPE_CONVERT)
-                ->count(),
-            'converted' => $jobs
-                ->where('job_type', PipelineJob::TYPE_CONVERT)
-                ->where('status', PipelineJob::STATUS_COMPLETED)
-                ->count(),
-            'ingested' => $jobs
-                ->where('job_type', PipelineJob::TYPE_INGEST)
-                ->where('status', PipelineJob::STATUS_COMPLETED)
-                ->count(),
-            'skipped' => (int) ($byStatus[PipelineJob::STATUS_SKIPPED] ?? 0),
-            'failed' => (int) ($byStatus[PipelineJob::STATUS_FAILED] ?? 0),
-        ];
-
-        return array_merge($counters, [
-            'jobs_total' => $jobs->count(),
-            'jobs_active' => $counters['queued'] + $this->runningCount($jobs),
-            'jobs_queued' => $counters['queued'],
-            'jobs_pending' => $counters['queued'],
-            'jobs_running' => $this->runningCount($jobs),
-            'jobs_completed' => (int) ($byStatus[PipelineJob::STATUS_COMPLETED] ?? 0),
-            'jobs_failed' => $counters['failed'],
-            'jobs_skipped' => $counters['skipped'],
-            'scrape_jobs' => $jobs->where('job_type', PipelineJob::TYPE_SCRAPE)->count(),
-            'convert_jobs' => $jobs->where('job_type', PipelineJob::TYPE_CONVERT)->count(),
-            'ingest_jobs' => $jobs->where('job_type', PipelineJob::TYPE_INGEST)->count(),
-        ]);
-    }
-
-    private function defaultCounters(): array
-    {
-        return [
-            'queued' => 0,
-            'scraped' => 0,
-            'files_found' => 0,
-            'converted' => 0,
-            'ingested' => 0,
-            'skipped' => 0,
-            'failed' => 0,
-            'jobs_total' => 0,
-            'jobs_active' => 0,
-            'jobs_queued' => 0,
-            'jobs_pending' => 0,
-            'jobs_running' => 0,
-            'jobs_completed' => 0,
-            'jobs_failed' => 0,
-            'jobs_skipped' => 0,
-            'scrape_jobs' => 0,
-            'convert_jobs' => 0,
-            'ingest_jobs' => 0,
-        ];
-    }
-
-    private function runningCount(Collection $jobs): int
-    {
-        return $jobs->where('status', PipelineJob::STATUS_RUNNING)->count();
-    }
-
     private function activeJobCount(PipelineTask $task): int
     {
         return $this->jobRepository->countForTaskWithStatuses($task->task_id, self::ACTIVE_JOB_STATUSES);
-    }
-
-    private function jobPayload(PipelineJob $job): array
-    {
-        return [
-            'jobId' => $job->job_id,
-            'taskId' => $job->task_id,
-            'parentJobId' => $job->parent_job_id,
-            'jobType' => $job->job_type,
-            'sourceUrl' => $job->source_url,
-            'localPath' => $job->local_path,
-            'contentHash' => $job->content_hash,
-            'status' => $job->status,
-            'errorMessage' => $job->error_message,
-            'startedAt' => $this->dateValue($job->started_at),
-            'finishedAt' => $this->dateValue($job->finished_at),
-            'metadata' => $job->metadata ?? [],
-        ];
-    }
-
-    private function eventsForJob(PipelineJob $job): array
-    {
-        $metadata = is_array($job->metadata) ? $job->metadata : [];
-        $history = is_array($metadata['events'] ?? null) ? $metadata['events'] : [];
-
-        if ($history === []) {
-            $history[] = [
-                'event_type' => $metadata['latest_event_type'] ?? 'job.status',
-                'event_id' => $metadata['latest_event_id'] ?? null,
-                'status' => $job->status,
-                'at' => $this->dateValue($job->updated_at) ?? $this->dateValue($job->started_at),
-            ];
-        }
-
-        return collect($history)
-            ->filter(fn (mixed $event): bool => is_array($event))
-            ->map(function (array $event) use ($job): array {
-                return [
-                    'eventType' => $this->nullableString($event['event_type'] ?? $event['eventType'] ?? $event['event'] ?? null) ?? 'job.status',
-                    'eventId' => $this->nullableString($event['event_id'] ?? $event['eventId'] ?? null),
-                    'taskId' => $job->task_id,
-                    'jobId' => $job->job_id,
-                    'jobType' => $job->job_type,
-                    'status' => $this->nullableString($event['status'] ?? null) ?? $job->status,
-                    'sourceUrl' => $job->source_url,
-                    'localPath' => $job->local_path,
-                    'errorMessage' => $job->error_message,
-                    'at' => $this->nullableString($event['at'] ?? $event['created_at'] ?? $event['createdAt'] ?? null)
-                        ?? $this->dateValue($job->updated_at)
-                        ?? $this->dateValue($job->started_at),
-                ];
-            })
-            ->all();
     }
 
     private function terminalStatus(string $status): bool
@@ -544,86 +367,6 @@ class PipelineTaskService
         return $metadata;
     }
 
-    private function resolveUrls(array $input): array
-    {
-        $urls = $this->stringList($input['urls'] ?? []);
-        if ($urls === []) {
-            $singleUrl = $this->nullableString($input['source_url'] ?? $input['sourceUrl'] ?? null);
-            if ($singleUrl !== null) {
-                $urls[] = $singleUrl;
-            }
-        }
-
-        $path = $this->nullableString($input['sitemap_path'] ?? $input['sitemapPath'] ?? null);
-        if ($path !== null) {
-            $urls = array_merge($urls, $this->urlsFromSitemapText((string) @file_get_contents($path)));
-        }
-
-        $sitemapUrl = $this->nullableString($input['sitemap_url'] ?? $input['sitemapUrl'] ?? null);
-        if ($sitemapUrl !== null && $urls === []) {
-            try {
-                $response = Http::timeout(30)->retry(1, 250, throw: false)->get($sitemapUrl);
-                if ($response->successful()) {
-                    $urls = array_merge($urls, $this->urlsFromSitemapText($response->body()));
-                }
-            } catch (Throwable $exception) {
-                Log::warning('Unable to load remote sitemap for pipeline task.', [
-                    'sitemap_url' => $sitemapUrl,
-                    'error' => $exception->getMessage(),
-                ]);
-            }
-        }
-
-        return array_values(array_unique(array_filter(
-            array_map(fn (string $url) => $this->normalizeUrl($url), $urls),
-            static fn (?string $url) => $url !== null,
-        )));
-    }
-
-    private function urlsFromSitemapText(string $text): array
-    {
-        if (trim($text) === '') {
-            return [];
-        }
-
-        $json = json_decode($text, true);
-        if (is_array($json)) {
-            return $this->urlsFromJson($json);
-        }
-
-        if (preg_match_all('/<loc>\s*([^<]+)\s*<\/loc>/i', $text, $matches) === 1) {
-            return array_map('html_entity_decode', $matches[1]);
-        }
-
-        return [];
-    }
-
-    private function urlsFromJson(array $value): array
-    {
-        $urls = [];
-        array_walk_recursive($value, static function (mixed $item, mixed $key) use (&$urls): void {
-            if (is_string($item) && in_array((string) $key, ['url', 'loc', 'source_url', 'sourceUrl'], true)) {
-                $urls[] = $item;
-            }
-        });
-
-        return $urls;
-    }
-
-    private function normalizeUrl(string $url): ?string
-    {
-        $url = trim($url);
-        if ($url === '') {
-            return null;
-        }
-
-        if (preg_match('/^[a-z][a-z0-9+.-]*:\/\//i', $url) !== 1) {
-            $url = 'https://' . ltrim($url, '/');
-        }
-
-        return $url;
-    }
-
     private function taskId(array $input): string
     {
         $provided = $this->nullableString($input['task_id'] ?? $input['taskId'] ?? null);
@@ -634,22 +377,6 @@ class PipelineTaskService
     private function nullableString(mixed $value): ?string
     {
         return is_scalar($value) && trim((string) $value) !== '' ? trim((string) $value) : null;
-    }
-
-    private function stringList(mixed $value): array
-    {
-        if (is_string($value)) {
-            $value = preg_split('/[\r\n,]+/', $value) ?: [];
-        }
-
-        if (!is_array($value)) {
-            return [];
-        }
-
-        return array_values(array_filter(
-            array_map(fn (mixed $item) => $this->nullableString($item), $value),
-            static fn (?string $item) => $item !== null,
-        ));
     }
 
     private function dateInput(mixed $value): ?Carbon
@@ -667,14 +394,5 @@ class PipelineTaskService
         }
 
         return null;
-    }
-
-    private function dateValue(mixed $value): ?string
-    {
-        if ($value instanceof \DateTimeInterface) {
-            return $value->format(DATE_ATOM);
-        }
-
-        return $value ? (string) $value : null;
     }
 }

@@ -515,6 +515,63 @@ class PipelineEventLayerTest extends TestCase
         $this->assertSame(1, $task->counters['skipped']);
     }
 
+    public function test_converter_consumer_records_database_duplicate_conversions_as_skipped_jobs(): void
+    {
+        $this->mock(DocumentConverter::class, function (MockInterface $mock): void {
+            $mock->shouldNotReceive('requestDocumentToMarkdown');
+        });
+
+        $task = $this->task('task-event-convert-db-skip');
+        $root = storage_path('framework/testing/pipeline-events/convert-db-skip');
+        $sourceFile = "{$root}/handbook.pdf";
+        File::ensureDirectoryExists($root);
+        File::put($sourceFile, '%PDF-1.4 fake test file');
+        $contentHash = hash_file('sha256', $sourceFile);
+
+        PipelineJob::query()->create([
+            'job_id' => 'convert-event-previous',
+            'task_id' => $task->task_id,
+            'job_type' => PipelineJob::TYPE_CONVERT,
+            'source_url' => 'https://example.test/handbook.pdf',
+            'local_path' => $sourceFile,
+            'content_hash' => $contentHash,
+            'status' => PipelineJob::STATUS_COMPLETED,
+            'started_at' => now(),
+            'finished_at' => now(),
+            'metadata' => [],
+        ]);
+
+        app(ConverterEventHandler::class)->handle(PipelineEvent::normalize(PipelineEvent::FILE_DISCOVERED, [
+            'task_id' => $task->task_id,
+            'job_id' => 'convert-event-db-skip',
+            'parent_job_id' => 'scrape-parent',
+            'dataset_id' => $task->dataset_id,
+            'source_url' => 'https://example.test/handbook.pdf',
+            'local_path' => $sourceFile,
+            'content_hash' => $contentHash,
+            'status' => PipelineJob::STATUS_PENDING,
+        ]));
+
+        $this->assertDatabaseHas('pipeline_jobs', [
+            'task_id' => $task->task_id,
+            'job_id' => 'convert-event-db-skip',
+            'job_type' => PipelineJob::TYPE_CONVERT,
+            'local_path' => $sourceFile,
+            'status' => PipelineJob::STATUS_SKIPPED,
+        ]);
+        $this->assertDatabaseHas('pipeline_events', [
+            'task_id' => $task->task_id,
+            'job_id' => 'convert-event-db-skip',
+            'event_type' => PipelineEvent::FILE_CONVERTED,
+            'source' => 'rabbitmq.publish',
+        ]);
+
+        $task->refresh();
+        $this->assertSame(2, $task->counters['convert_jobs']);
+        $this->assertSame(1, $task->counters['converted']);
+        $this->assertSame(1, $task->counters['skipped']);
+    }
+
     public function test_converter_consumer_combines_all_markdown_chunks_for_ingestion(): void
     {
         $task = $this->task('task-event-convert-chunks');

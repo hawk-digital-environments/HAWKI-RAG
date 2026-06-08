@@ -4,9 +4,13 @@ declare(strict_types=1);
 namespace Tests\Feature;
 
 use App\Models\Dataset;
+use App\Models\Document;
+use App\Models\JobProcessingState;
 use App\Models\PipelineJob;
 use App\Models\PipelineTask;
 use App\Models\ScrapedElement;
+use App\Services\Pipeline\PipelineEvent;
+use App\Services\Pipeline\Repositories\PipelineIngestionRepository;
 use App\Services\Pipeline\Repositories\PipelineJobRepository;
 use App\Services\Pipeline\Repositories\PipelineScrapeHistoryRepository;
 use App\Services\Pipeline\Repositories\PipelineTaskRepository;
@@ -336,6 +340,135 @@ class PipelineRepositoryReadTest extends TestCase
         ]);
     }
 
+    public function test_job_repository_detects_completed_or_skipped_conversions(): void
+    {
+        $repository = app(PipelineJobRepository::class);
+        $task = $this->task('task-conversion-history');
+        $completedPath = '/tmp/pipeline-history/completed.pdf';
+        $skippedPath = '/tmp/pipeline-history/skipped.pdf';
+        $failedPath = '/tmp/pipeline-history/failed.pdf';
+        $scrapeOnlyPath = '/tmp/pipeline-history/scrape-only.pdf';
+
+        $this->job(
+            $task,
+            'job-conversion-completed',
+            PipelineJob::STATUS_COMPLETED,
+            null,
+            PipelineJob::TYPE_CONVERT,
+            $completedPath,
+            'hash-conversion-completed',
+        );
+        $this->job(
+            $task,
+            'job-conversion-skipped',
+            PipelineJob::STATUS_SKIPPED,
+            null,
+            PipelineJob::TYPE_CONVERT,
+            $skippedPath,
+            'hash-conversion-skipped',
+        );
+        $this->job(
+            $task,
+            'job-conversion-failed',
+            PipelineJob::STATUS_FAILED,
+            null,
+            PipelineJob::TYPE_CONVERT,
+            $failedPath,
+            'hash-conversion-failed',
+        );
+        $this->job(
+            $task,
+            'job-scrape-completed',
+            PipelineJob::STATUS_COMPLETED,
+            null,
+            PipelineJob::TYPE_SCRAPE,
+            $scrapeOnlyPath,
+            'hash-scrape-completed',
+        );
+
+        $this->assertTrue($repository->hasCompletedOrSkippedConversion($completedPath, 'missing-hash'));
+        $this->assertTrue($repository->hasCompletedOrSkippedConversion(
+            '/tmp/pipeline-history/missing.pdf',
+            'hash-conversion-completed',
+        ));
+        $this->assertTrue($repository->hasCompletedOrSkippedConversion($skippedPath, 'missing-hash'));
+        $this->assertFalse($repository->hasCompletedOrSkippedConversion($failedPath, 'hash-conversion-failed'));
+        $this->assertFalse($repository->hasCompletedOrSkippedConversion($scrapeOnlyPath, 'hash-scrape-completed'));
+        $this->assertFalse($repository->hasCompletedOrSkippedConversion(
+            '/tmp/pipeline-history/missing.pdf',
+            'missing-hash',
+        ));
+    }
+
+    public function test_ingestion_repository_records_processing_state_and_documents(): void
+    {
+        $repository = app(PipelineIngestionRepository::class);
+        $task = $this->task('task-ingestion-repository');
+        $checksum = hash('sha256', 'repository-ingestion-document');
+        $path = '/tmp/pipeline-ingestion/repository.md';
+        $event = PipelineEvent::normalize(PipelineEvent::CONTENT_INGESTED, [
+            'task_id' => $task->task_id,
+            'job_id' => 'ingest-repository-job',
+            'dataset_id' => $task->dataset_id,
+            'job_type' => PipelineJob::TYPE_INGEST,
+            'source_url' => 'https://repository.example/page',
+            'local_path' => $path,
+            'content_hash' => $checksum,
+            'status' => PipelineJob::STATUS_RUNNING,
+        ]);
+
+        $state = $repository->upsertProcessingState($event, JobProcessingState::STATUS_PROCESSING, 5);
+
+        $this->assertSame('ingest-repository-job', $state->job_id);
+        $this->assertSame(JobProcessingState::STATUS_PROCESSING, $state->status);
+        $this->assertSame(3, $state->max_retries);
+        $this->assertDatabaseHas('job_processing_state', [
+            'job_id' => 'ingest-repository-job',
+            'stage' => JobProcessingState::STAGE_RAG_INGESTION,
+            'status' => JobProcessingState::STATUS_PROCESSING,
+            'max_retries' => 3,
+        ]);
+
+        $failed = $repository->upsertFailedProcessingState($event, new \RuntimeException('Bridge failed'), 2, 5);
+
+        $this->assertSame($state->id, $failed->id);
+        $this->assertSame(JobProcessingState::STATUS_FAILED, $failed->status);
+        $this->assertSame('Bridge failed', $failed->error_message);
+        $this->assertDatabaseHas('job_processing_state', [
+            'job_id' => 'ingest-repository-job',
+            'status' => JobProcessingState::STATUS_FAILED,
+            'retry_count' => 2,
+            'max_retries' => 5,
+            'error_message' => 'Bridge failed',
+        ]);
+
+        $document = $repository->upsertIngestedDocument(
+            $event,
+            [
+                'dataset_id' => $task->dataset_id,
+                'qdrant_collection' => 'hawki_repository_read_dataset',
+                'neo4j_namespace' => 'hawki_repository_read_dataset',
+            ],
+            $path,
+            $checksum,
+            123,
+            ['ok' => true, 'documents' => 1],
+        );
+
+        $this->assertSame($task->dataset_id, $document->dataset_id);
+        $this->assertSame('hawki_repository_read_dataset', $document->collection);
+        $this->assertSame($checksum, $document->checksum_sha256);
+        $this->assertSame(Document::STATUS_COMPLETED, $document->status);
+        $this->assertSame('ingest-repository-job', $document->metadata_json['job_id']);
+        $this->assertDatabaseHas('documents', [
+            'id' => $document->id,
+            'dataset_id' => $task->dataset_id,
+            'collection' => 'hawki_repository_read_dataset',
+            'checksum_sha256' => $checksum,
+            'status' => Document::STATUS_COMPLETED,
+        ]);
+    }
+
     public function test_scrape_history_repository_detects_completed_scrapes(): void
     {
         $repository = app(PipelineScrapeHistoryRepository::class);
@@ -397,6 +530,8 @@ class PipelineRepositoryReadTest extends TestCase
         string $status,
         ?string $sourceUrl = null,
         string $jobType = PipelineJob::TYPE_CONVERT,
+        ?string $localPath = null,
+        ?string $contentHash = null,
     ): PipelineJob
     {
         return PipelineJob::query()->create([
@@ -404,6 +539,8 @@ class PipelineRepositoryReadTest extends TestCase
             'task_id' => $task->task_id,
             'job_type' => $jobType,
             'source_url' => $sourceUrl,
+            'local_path' => $localPath,
+            'content_hash' => $contentHash,
             'status' => $status,
             'started_at' => now(),
             'metadata' => [],
