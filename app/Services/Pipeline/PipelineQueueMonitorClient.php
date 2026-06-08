@@ -1,0 +1,54 @@
+<?php
+declare(strict_types=1);
+
+namespace App\Services\Pipeline;
+
+use Illuminate\Container\Attributes\Singleton;
+use Illuminate\Support\Facades\Http;
+
+#[Singleton]
+readonly class PipelineQueueMonitorClient
+{
+    /**
+     * @return array<string, array<string, mixed>>
+     */
+    public function fetchQueues(int $timeout): array
+    {
+        $url = $this->managementUrl();
+        if ($url === '') {
+            throw new \RuntimeException('RABBITMQ_MANAGEMENT_URL is empty.');
+        }
+
+        $response = Http::timeout($timeout)
+            ->connectTimeout($timeout)
+            ->withBasicAuth(
+                (string) config('communication.rabbitmq.user', 'guest'),
+                (string) config('communication.rabbitmq.password', 'guest'),
+            )
+            ->acceptJson()
+            ->get($url . '/api/queues/' . rawurlencode((string) config('communication.rabbitmq.vhost', '/')));
+
+        if (!$response->successful()) {
+            throw new \RuntimeException("HTTP {$response->status()} from {$url}/api/queues.");
+        }
+
+        $queues = $response->json();
+        if (!is_array($queues)) {
+            throw new \RuntimeException('RabbitMQ management API returned an invalid queue payload.');
+        }
+
+        $byName = [];
+        foreach ($queues as $queue) {
+            if (is_array($queue) && is_string($queue['name'] ?? null)) {
+                $byName[$queue['name']] = $queue;
+            }
+        }
+
+        return $byName;
+    }
+
+    public function managementUrl(): string
+    {
+        return rtrim((string) config('communication.rabbitmq.management_url', ''), '/');
+    }
+}
