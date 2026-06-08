@@ -877,3 +877,183 @@ Next recommended slice:
 - Extract upload storage operations into a focused collaborator so `PipelineUploadService` no longer manages directories and file moves directly.
 - Suggested file:
   - `app/Services/Pipeline/PipelineUploadStorage.php`
+
+## Step 10: Pipeline Upload Storage Extraction
+
+Status: completed.
+
+Production code changed:
+
+- Added `app/Services/Pipeline/PipelineUploadStorage.php`.
+- Added `app/Services/Pipeline/Values/PipelineStoredUpload.php`.
+- Added `app/Services/Pipeline/Exceptions/PipelineExceptionInterface.php`.
+- Added `app/Services/Pipeline/Exceptions/PipelineUploadStorageException.php`.
+- Updated `app/Services/Pipeline/PipelineUploadService.php`.
+
+What changed:
+
+- Upload filesystem work moved out of `PipelineUploadService`.
+- `PipelineUploadStorage` now owns:
+  - extracting the upload extension
+  - building the task storage path
+  - creating the task directory
+  - checking the directory is writable
+  - generating the stored filename
+  - moving the uploaded file
+  - deleting the task directory if the move fails
+  - calculating the stored file hash
+- `PipelineStoredUpload` now carries the stored file data:
+  - original filename
+  - target filename
+  - local path
+  - content hash
+  - extension
+- `PipelineUploadStorageException` is a domain exception with static factories for storage failures.
+- `PipelineUploadService` still decides how storage failures become HTTP responses and still owns the pipeline workflow.
+
+Before:
+
+```php
+File::ensureDirectoryExists($taskRoot);
+$targetName = $baseName . '-' . Str::lower(Str::random(8)) . '.' . $extension;
+$file->move($taskRoot, $targetName);
+$localPath = $taskRoot . DIRECTORY_SEPARATOR . $targetName;
+$contentHash = hash_file('sha256', $localPath);
+```
+
+After:
+
+```php
+$extension = $this->storage->extensionFor($file);
+$storedUpload = $this->storage->store($taskId, $file, $extension);
+
+$jobId = 'convert_' . substr(hash(
+    'sha256',
+    $taskId . '|' . $storedUpload->contentHash . '|' . $storedUpload->localPath,
+), 0, 24);
+```
+
+Learning note:
+
+This is a collaborator extraction, not a service split for its own sake. `PipelineUploadService` still coordinates the use case, while `PipelineUploadStorage` owns one technical concern: storing an uploaded file in the shared pipeline storage.
+
+Next recommended slice:
+
+- Extract the repeated task/job metadata arrays into value objects or small private builder methods.
+- Suggested first target:
+  - move upload task metadata construction into a named method on `PipelineUploadService`
+  - move converter job metadata construction into a named method on `PipelineUploadService`
+
+## Step 11: Pipeline Upload Metadata Builders
+
+Status: completed.
+
+Production code changed:
+
+- Updated `app/Services/Pipeline/PipelineUploadService.php`.
+
+What changed:
+
+- The upload service no longer keeps the full task metadata, job metadata, and RabbitMQ payload arrays inline inside `upload()`.
+- The public workflow now reads in clearer steps:
+  - validate the file
+  - store the upload
+  - ensure the dataset
+  - create the task
+  - create the job
+  - publish the event
+  - return the result
+- The repeated dataset metadata shape now lives in one helper method.
+- The convert job id and source URL creation now have names instead of inline expressions.
+
+New private methods:
+
+```php
+private function convertJobId(string $taskId, PipelineStoredUpload $storedUpload): string
+private function sourceUrl(PipelineStoredUpload $storedUpload): string
+private function taskMetadata(Dataset $dataset, PipelineUploadInput $input, PipelineStoredUpload $storedUpload): array
+private function jobMetadata(Dataset $dataset, PipelineUploadInput $input, PipelineStoredUpload $storedUpload): array
+private function fileDiscoveredPayload(PipelineTask $task, PipelineJob $job, string $sourceUrl, PipelineStoredUpload $storedUpload, array $metadata): array
+private function datasetMetadata(Dataset $dataset): array
+```
+
+Before:
+
+```php
+$task = $this->taskRepository->create([
+    'metadata' => [
+        'request' => [...],
+        'dataset' => [...],
+        'upload' => [...],
+    ],
+]);
+
+$metadata = [
+    'source' => 'pipeline-controller',
+    'dataset' => [...],
+];
+
+$payload = [
+    'task_id' => $task->task_id,
+    'metadata' => $metadata,
+];
+```
+
+After:
+
+```php
+$task = $this->taskRepository->create([
+    'metadata' => $this->taskMetadata($dataset, $input, $storedUpload),
+]);
+
+$metadata = $this->jobMetadata($dataset, $input, $storedUpload);
+$payload = $this->fileDiscoveredPayload($task, $job, $sourceUrl, $storedUpload, $metadata);
+```
+
+Learning note:
+
+Private builder methods are a good middle step before creating more value objects. They reduce visual noise and duplication without creating too many classes too early.
+
+Next recommended slice:
+
+- Add focused unit tests around the new value objects and storage collaborator, especially:
+  - `PipelineUploadInput::fromValidated()`
+  - `PipelineUploadStorage::store()`
+  - `PipelineUploadStorageException` failure mapping
+
+## Step 12: Pipeline Upload Value And Storage Tests
+
+Status: completed.
+
+Test code changed:
+
+- Added `tests/Unit/Pipeline/PipelineUploadInputTest.php`.
+- Added `tests/Unit/Pipeline/PipelineUploadStorageTest.php`.
+
+What changed:
+
+- Added direct coverage for `PipelineUploadInput::fromValidated()`.
+- Added direct coverage for `PipelineUploadStorage::store()`.
+- Added direct coverage for storage failure mapping through `PipelineUploadStorageException`.
+
+Covered behavior:
+
+- `dataset_id` is preferred over `datasetId`.
+- `datasetId` is accepted when `dataset_id` is absent.
+- blank dataset values default to `controller-uploads`.
+- `graph=false` normalizes to `false`.
+- missing or invalid graph values default to `true`.
+- stored uploads return original filename, generated target filename, extension, local path, and SHA-256 hash.
+- blocked task storage paths throw a domain exception with the response/log messages the upload service expects.
+
+Learning note:
+
+These tests protect the new class boundaries before the next production refactor. The feature test still verifies the end-to-end HTTP upload behavior, while these unit tests verify the smaller pieces directly.
+
+Next recommended slice:
+
+- Move supported-extension normalization out of `PipelineUploadService`.
+- Good options:
+  - put it into `PipelineUploadInput` only if it becomes request-specific
+  - put it into `PipelineUploadStorage` if we treat extension handling as part of storage
+  - create a small `PipelineUploadRules`/`PipelineUploadPolicy` collaborator if more upload rules are coming

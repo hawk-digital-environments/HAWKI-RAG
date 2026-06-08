@@ -3,17 +3,19 @@ declare(strict_types=1);
 
 namespace App\Services\Pipeline;
 
+use App\Models\Dataset;
 use App\Models\PipelineJob;
 use App\Models\PipelineTask;
 use App\Services\Datasets\DatasetService;
+use App\Services\Pipeline\Exceptions\PipelineUploadStorageException;
 use App\Services\Pipeline\Repositories\PipelineJobRepository;
 use App\Services\Pipeline\Repositories\PipelineTaskRepository;
+use App\Services\Pipeline\Values\PipelineStoredUpload;
 use App\Services\Pipeline\Values\PipelineUploadInput;
 use App\Services\Pipeline\Values\PipelineUploadResult;
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
@@ -26,6 +28,7 @@ class PipelineUploadService
         private readonly PipelineEventBus $events,
         private readonly PipelineTaskRepository $taskRepository,
         private readonly PipelineJobRepository $jobRepository,
+        private readonly PipelineUploadStorage $storage,
     ) {
     }
 
@@ -38,7 +41,7 @@ class PipelineUploadService
             ], 422);
         }
 
-        $extension = strtolower($file->getClientOriginalExtension() ?: $file->extension() ?: '');
+        $extension = $this->storage->extensionFor($file);
         $supported = $this->supportedExtensions();
 
         if (!in_array($extension, $supported, true)) {
@@ -49,51 +52,19 @@ class PipelineUploadService
         }
 
         $taskId = 'task_controller_upload_' . now()->format('Ymd_His') . '_' . Str::lower(Str::random(6));
-        $taskRoot = $this->taskRoot($taskId);
 
         try {
-            File::ensureDirectoryExists($taskRoot);
-            if (!is_dir($taskRoot) || !is_writable($taskRoot)) {
-                throw new \RuntimeException("Upload task directory is not writable: {$taskRoot}");
-            }
-        } catch (\Throwable $exception) {
-            Log::warning('Pipeline controller could not prepare upload storage.', [
+            $storedUpload = $this->storage->store($taskId, $file, $extension);
+        } catch (PipelineUploadStorageException $exception) {
+            Log::warning($exception->logMessage(), array_merge([
                 'dataset_id' => $input->datasetId,
                 'task_id' => $taskId,
-                'task_root' => $taskRoot,
                 'error' => $exception->getMessage(),
-            ]);
+            ], $exception->logContext()));
 
             return PipelineUploadResult::fromPayload([
                 'success' => false,
-                'message' => 'The upload storage path is not writable. No dataset, task, or job was created.',
-                'datasetId' => $input->datasetId,
-                'taskId' => null,
-                'jobId' => null,
-                'error' => $exception->getMessage(),
-            ], 500);
-        }
-
-        $originalName = $file->getClientOriginalName() ?: "uploaded.{$extension}";
-        $baseName = Str::slug(pathinfo($originalName, PATHINFO_FILENAME)) ?: 'uploaded-document';
-        $targetName = $baseName . '-' . Str::lower(Str::random(8)) . '.' . $extension;
-
-        try {
-            $file->move($taskRoot, $targetName);
-        } catch (\Throwable $exception) {
-            File::deleteDirectory($taskRoot);
-
-            Log::warning('Pipeline controller could not move uploaded file.', [
-                'dataset_id' => $input->datasetId,
-                'task_id' => $taskId,
-                'task_root' => $taskRoot,
-                'target_name' => $targetName,
-                'error' => $exception->getMessage(),
-            ]);
-
-            return PipelineUploadResult::fromPayload([
-                'success' => false,
-                'message' => 'The uploaded file could not be stored. No dataset, task, or job was created.',
+                'message' => $exception->responseMessage(),
                 'datasetId' => $input->datasetId,
                 'taskId' => null,
                 'jobId' => null,
@@ -102,10 +73,8 @@ class PipelineUploadService
         }
 
         $dataset = $this->datasets->ensure($input->datasetId);
-        $localPath = $taskRoot . DIRECTORY_SEPARATOR . $targetName;
-        $contentHash = hash_file('sha256', $localPath) ?: hash('sha256', $localPath);
-        $jobId = 'convert_' . substr(hash('sha256', $taskId . '|' . $contentHash . '|' . $localPath), 0, 24);
-        $sourceUrl = 'upload://' . $originalName;
+        $jobId = $this->convertJobId($taskId, $storedUpload);
+        $sourceUrl = $this->sourceUrl($storedUpload);
         $now = Carbon::now();
 
         $task = $this->taskRepository->create([
@@ -114,67 +83,24 @@ class PipelineUploadService
             'status' => PipelineTask::STATUS_RUNNING,
             'started_at' => $now,
             'counters' => [],
-            'metadata' => [
-                'request' => [
-                    'source' => 'pipeline-controller',
-                    'mode' => 'uploaded_file_convert_ingest',
-                    'metadata' => [
-                        'label' => $originalName,
-                        'source' => 'pipeline-controller',
-                        'graph' => $input->graph,
-                    ],
-                ],
-                'orchestration' => 'laravel',
-                'rabbitmq' => ['event_bus' => true],
-                'dataset' => [
-                    'dataset_id' => $dataset->dataset_id,
-                    'qdrant_collection' => $dataset->qdrant_collection,
-                    'neo4j_namespace' => $dataset->neo4j_namespace,
-                ],
-                'upload' => [
-                    'original_filename' => $originalName,
-                    'local_path' => $localPath,
-                    'content_hash' => $contentHash,
-                ],
-            ],
+            'metadata' => $this->taskMetadata($dataset, $input, $storedUpload),
         ]);
 
-        $metadata = [
-            'source' => 'pipeline-controller',
-            'mode' => 'uploaded_file_convert_ingest',
-            'original_filename' => $originalName,
-            'uploaded_path' => $localPath,
-            'graph' => $input->graph,
-            'dataset' => [
-                'dataset_id' => $dataset->dataset_id,
-                'qdrant_collection' => $dataset->qdrant_collection,
-                'neo4j_namespace' => $dataset->neo4j_namespace,
-            ],
-        ];
+        $metadata = $this->jobMetadata($dataset, $input, $storedUpload);
 
         $job = $this->jobRepository->create([
             'job_id' => $jobId,
             'task_id' => $task->task_id,
             'job_type' => PipelineJob::TYPE_CONVERT,
             'source_url' => $sourceUrl,
-            'local_path' => $localPath,
-            'content_hash' => $contentHash,
+            'local_path' => $storedUpload->localPath,
+            'content_hash' => $storedUpload->contentHash,
             'status' => PipelineJob::STATUS_QUEUED,
             'started_at' => $now,
             'metadata' => $metadata,
         ]);
 
-        $payload = [
-            'task_id' => $task->task_id,
-            'job_id' => $job->job_id,
-            'dataset_id' => $task->dataset_id,
-            'job_type' => PipelineJob::TYPE_CONVERT,
-            'source_url' => $sourceUrl,
-            'local_path' => $localPath,
-            'content_hash' => $contentHash,
-            'status' => PipelineJob::STATUS_QUEUED,
-            'metadata' => $metadata,
-        ];
+        $payload = $this->fileDiscoveredPayload($task, $job, $sourceUrl, $storedUpload, $metadata);
 
         try {
             $this->events->publish(PipelineEvent::FILE_DISCOVERED, $payload);
@@ -226,10 +152,101 @@ class PipelineUploadService
         )));
     }
 
-    private function taskRoot(string $taskId): string
+    private function convertJobId(string $taskId, PipelineStoredUpload $storedUpload): string
     {
-        return rtrim((string) config('communication.rabbitmq.pipeline_ingestion.shared_storage_root', '/app/shared'), DIRECTORY_SEPARATOR)
-            . DIRECTORY_SEPARATOR
-            . $taskId;
+        return 'convert_' . substr(
+            hash('sha256', $taskId . '|' . $storedUpload->contentHash . '|' . $storedUpload->localPath),
+            0,
+            24,
+        );
+    }
+
+    private function sourceUrl(PipelineStoredUpload $storedUpload): string
+    {
+        return 'upload://' . $storedUpload->originalName;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function taskMetadata(
+        Dataset $dataset,
+        PipelineUploadInput $input,
+        PipelineStoredUpload $storedUpload,
+    ): array {
+        return [
+            'request' => [
+                'source' => 'pipeline-controller',
+                'mode' => 'uploaded_file_convert_ingest',
+                'metadata' => [
+                    'label' => $storedUpload->originalName,
+                    'source' => 'pipeline-controller',
+                    'graph' => $input->graph,
+                ],
+            ],
+            'orchestration' => 'laravel',
+            'rabbitmq' => ['event_bus' => true],
+            'dataset' => $this->datasetMetadata($dataset),
+            'upload' => [
+                'original_filename' => $storedUpload->originalName,
+                'local_path' => $storedUpload->localPath,
+                'content_hash' => $storedUpload->contentHash,
+            ],
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function jobMetadata(
+        Dataset $dataset,
+        PipelineUploadInput $input,
+        PipelineStoredUpload $storedUpload,
+    ): array {
+        return [
+            'source' => 'pipeline-controller',
+            'mode' => 'uploaded_file_convert_ingest',
+            'original_filename' => $storedUpload->originalName,
+            'uploaded_path' => $storedUpload->localPath,
+            'graph' => $input->graph,
+            'dataset' => $this->datasetMetadata($dataset),
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $metadata
+     *
+     * @return array<string, mixed>
+     */
+    private function fileDiscoveredPayload(
+        PipelineTask $task,
+        PipelineJob $job,
+        string $sourceUrl,
+        PipelineStoredUpload $storedUpload,
+        array $metadata,
+    ): array {
+        return [
+            'task_id' => $task->task_id,
+            'job_id' => $job->job_id,
+            'dataset_id' => $task->dataset_id,
+            'job_type' => PipelineJob::TYPE_CONVERT,
+            'source_url' => $sourceUrl,
+            'local_path' => $storedUpload->localPath,
+            'content_hash' => $storedUpload->contentHash,
+            'status' => PipelineJob::STATUS_QUEUED,
+            'metadata' => $metadata,
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function datasetMetadata(Dataset $dataset): array
+    {
+        return [
+            'dataset_id' => $dataset->dataset_id,
+            'qdrant_collection' => $dataset->qdrant_collection,
+            'neo4j_namespace' => $dataset->neo4j_namespace,
+        ];
     }
 }
