@@ -2771,3 +2771,245 @@ Next recommended slice:
 - If continuing, the next cleanup should be smaller:
   - move task job metadata extraction into a collaborator, or
   - stop here and commit the pipeline service cleanup batch.
+
+## Step 43: Pipeline Task Input Normalizer
+
+Status: completed.
+
+Production code changed:
+
+- Updated `app/Services/Pipeline/PipelineTaskService.php`.
+- Added `app/Services/Pipeline/PipelineTaskInputNormalizer.php`.
+
+Test code changed:
+
+- Added `tests/Unit/Pipeline/PipelineTaskInputNormalizerTest.php`.
+
+What changed:
+
+- `PipelineTaskService` no longer owns task/job ID fallback generation.
+- `PipelineTaskService` no longer owns nullable string normalization.
+- `PipelineTaskService` no longer owns job status alias normalization.
+- `PipelineTaskService` no longer owns terminal job status detection.
+- `PipelineTaskService` no longer owns date input parsing.
+- `PipelineTaskInputNormalizer` now owns:
+  - `taskId()`
+  - `jobId()`
+  - `nullableString()`
+  - `jobStatus()`
+  - `isTerminalStatus()`
+  - `date()`
+- `PipelineTaskService` still owns:
+  - orchestrating task/job changes
+  - deciding task status from counters
+  - publishing events
+  - retrying failed jobs
+
+Before:
+
+```php
+$jobId = $this->nullableString($input['job_id'] ?? $input['jobId'] ?? null) ?? (string) Str::uuid();
+$status = $this->normalizeJobStatus($input['status'] ?? null);
+$finishedAt = $this->terminalStatus($status) ? Carbon::now() : null;
+```
+
+After:
+
+```php
+$jobId = $this->input->jobId($input);
+$status = $this->input->jobStatus($input['status'] ?? null);
+$finishedAt = $this->input->isTerminalStatus($status) ? Carbon::now() : null;
+```
+
+Learning note:
+
+This keeps low-level input parsing out of the orchestration service. The normalizer is intentionally small and stateless, which matches the `SKILL.md` service style and makes status/date edge cases easy to test.
+
+Next recommended slice:
+
+- Stop and commit the `PipelineTaskService` cleanup batch, or make one final small extraction for task job metadata.
+
+## Step 44: Pipeline Task Metadata Service
+
+Status: completed.
+
+Production code changed:
+
+- Updated `app/Services/Pipeline/PipelineTaskService.php`.
+- Added `app/Services/Pipeline/PipelineTaskMetadataService.php`.
+
+Test code changed:
+
+- Added `tests/Unit/Pipeline/PipelineTaskMetadataServiceTest.php`.
+
+What changed:
+
+- `PipelineTaskService` no longer shapes dataset metadata for new tasks.
+- `PipelineTaskService` no longer assembles scrape job metadata from the task request.
+- `PipelineTaskService` no longer appends task-level metadata events when failed jobs are retried.
+- `PipelineTaskMetadataService` now owns:
+  - `dataset()`
+  - `taskJob()`
+  - `appendEvent()`
+
+Before:
+
+```php
+'dataset' => $this->datasetMetadata($dataset),
+
+array_merge($this->taskJobMetadata($task), [
+    'reason' => 'Queued for scraper worker through RabbitMQ.',
+    'dataset_id' => $task->dataset_id,
+]);
+
+$this->appendMetadataEvent($task, 'failed_jobs_retried');
+```
+
+After:
+
+```php
+'dataset' => $this->metadata->dataset($dataset),
+
+array_merge($this->metadata->taskJob($task), [
+    'reason' => 'Queued for scraper worker through RabbitMQ.',
+    'dataset_id' => $task->dataset_id,
+]);
+
+$this->metadata->appendEvent($task, 'failed_jobs_retried');
+```
+
+Learning note:
+
+This is a small collaborator extraction that keeps metadata formatting in one stateless singleton service. It follows the `SKILL.md` service rules while avoiding three separate tiny classes for closely related metadata work.
+
+Next recommended slice:
+
+- Run one cleanup pass over `PipelineTaskService` for readability only.
+- Stop extracting after that unless a real new responsibility appears.
+
+## Step 45: Pipeline Task Status Service
+
+Status: completed.
+
+Production code changed:
+
+- Updated `app/Services/Pipeline/PipelineTaskService.php`.
+- Added `app/Services/Pipeline/PipelineTaskStatusService.php`.
+
+Test code changed:
+
+- Added `tests/Unit/Pipeline/PipelineTaskStatusServiceTest.php`.
+
+What changed:
+
+- `PipelineTaskService` no longer owns the task lifecycle status decision.
+- `PipelineTaskService` no longer owns the list of active job statuses.
+- `PipelineTaskStatusService` now owns:
+  - active job statuses
+  - no-job task state rules
+  - active-job task state rules
+  - failed-job task state rules
+  - completed task state rules
+
+Before:
+
+```php
+if ($jobs->isEmpty()) {
+    $status = $task->status === PipelineTask::STATUS_RUNNING
+        ? PipelineTask::STATUS_RUNNING
+        : PipelineTask::STATUS_PENDING;
+    $finishedAt = null;
+} elseif ($counters['queued'] > 0 || $counters['jobs_running'] > 0) {
+    $status = PipelineTask::STATUS_RUNNING;
+    $finishedAt = null;
+} elseif ($counters['failed'] > 0) {
+    $status = PipelineTask::STATUS_FAILED;
+    $finishedAt ??= Carbon::now();
+} else {
+    $status = PipelineTask::STATUS_COMPLETED;
+    $finishedAt ??= Carbon::now();
+}
+```
+
+After:
+
+```php
+$status = $this->statuses->resolve($task, $counters, $jobs->isNotEmpty());
+
+return $this->taskRepository->updateStatusCounters(
+    $task,
+    $status['status'],
+    $status['finished_at'],
+    $counters,
+);
+```
+
+Learning note:
+
+This keeps lifecycle policy in a named service and leaves `PipelineTaskService` as the orchestration layer. The status service is small, stateless, singleton-bound, and unit-tested, which matches the `SKILL.md` direction for domain service collaborators.
+
+Next recommended slice:
+
+- Stop extracting from `PipelineTaskService` unless a new responsibility appears.
+- The next useful pipeline pass should probably move to `PipelineUploadService`, which still has local metadata and orchestration helpers.
+
+## Step 46: Pipeline Upload Payload Service
+
+Status: completed.
+
+Production code changed:
+
+- Updated `app/Services/Pipeline/PipelineUploadService.php`.
+- Added `app/Services/Pipeline/PipelineUploadPayloadService.php`.
+
+Test code changed:
+
+- Added `tests/Unit/Pipeline/PipelineUploadPayloadServiceTest.php`.
+
+What changed:
+
+- `PipelineUploadService` no longer builds upload task metadata inline.
+- `PipelineUploadService` no longer builds upload convert job metadata inline.
+- `PipelineUploadService` no longer builds the `file.discovered` RabbitMQ payload inline.
+- `PipelineUploadPayloadService` now owns:
+  - `taskMetadata()`
+  - `jobMetadata()`
+  - `fileDiscovered()`
+- Upload dataset target metadata now reuses `PipelineTaskMetadataService::dataset()` instead of duplicating the same array shape.
+
+Before:
+
+```php
+$task = $this->taskRepository->createUploadTask(
+    $taskId,
+    $dataset,
+    $now,
+    $this->taskMetadata($dataset, $input, $storedUpload),
+);
+
+$metadata = $this->jobMetadata($dataset, $input, $storedUpload);
+$payload = $this->fileDiscoveredPayload($task, $job, $sourceUrl, $storedUpload, $metadata);
+```
+
+After:
+
+```php
+$task = $this->taskRepository->createUploadTask(
+    $taskId,
+    $dataset,
+    $now,
+    $this->payloads->taskMetadata($dataset, $input, $storedUpload),
+);
+
+$metadata = $this->payloads->jobMetadata($dataset, $input, $storedUpload);
+$payload = $this->payloads->fileDiscovered($task, $job, $sourceUrl, $storedUpload, $metadata);
+```
+
+Learning note:
+
+This keeps upload orchestration separate from event and metadata shape decisions. The service is stateless, singleton-bound, constructor-injected, and covered with narrow unit tests, matching the `SKILL.md` refactor direction.
+
+Next recommended slice:
+
+- Keep `PipelineUploadService` as the orchestration layer.
+- Next useful upload cleanup: extract upload result response payloads only if they start being reused or grow more complex.

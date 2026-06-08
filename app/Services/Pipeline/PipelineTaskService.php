@@ -3,7 +3,6 @@ declare(strict_types=1);
 
 namespace App\Services\Pipeline;
 
-use App\Models\Dataset;
 use App\Models\PipelineJob;
 use App\Models\PipelineTask;
 use App\Services\Datasets\DatasetService;
@@ -14,24 +13,21 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Str;
 use Throwable;
 
 class PipelineTaskService
 {
-    private const ACTIVE_JOB_STATUSES = [
-        PipelineJob::STATUS_QUEUED,
-        PipelineJob::STATUS_RUNNING,
-    ];
-
     public function __construct(
         private readonly PipelineEventRecorder $events,
         private readonly PipelineEventBus $eventBus,
         private readonly DatasetService $datasets,
         private readonly PipelineTaskCounterService $counters,
         private readonly PipelineTaskEventPayloadService $eventPayloads,
+        private readonly PipelineTaskInputNormalizer $input,
+        private readonly PipelineTaskMetadataService $metadata,
         private readonly PipelineTaskPayloadService $payloads,
         private readonly PipelineTaskSourceResolver $sources,
+        private readonly PipelineTaskStatusService $statuses,
         private readonly PipelineTaskRepository $taskRepository,
         private readonly PipelineJobRepository $jobRepository,
         private readonly PipelineScrapeHistoryRepository $scrapeHistoryRepository,
@@ -43,7 +39,7 @@ class PipelineTaskService
         $task = DB::transaction(function () use ($input): PipelineTask {
             $dataset = $this->datasets->ensure($input);
             $task = $this->taskRepository->createRunningTask(
-                $this->taskId($input),
+                $this->input->taskId($input),
                 $dataset,
                 Carbon::now(),
                 $this->counters->defaults(),
@@ -51,7 +47,7 @@ class PipelineTaskService
                     'request' => $input,
                     'orchestration' => 'laravel',
                     'rabbitmq' => ['event_bus' => true],
-                    'dataset' => $this->datasetMetadata($dataset),
+                    'dataset' => $this->metadata->dataset($dataset),
                 ],
             );
 
@@ -114,10 +110,10 @@ class PipelineTaskService
         $events = $this->jobRepository
             ->forTaskByRecentUpdate($taskId)
             ->flatMap(fn (PipelineJob $job) => $this->payloads->eventsForJob($job))
-            ->when($this->nullableString($filters['event_type'] ?? $filters['eventType'] ?? null), function (Collection $events, string $eventType): Collection {
+            ->when($this->input->nullableString($filters['event_type'] ?? $filters['eventType'] ?? null), function (Collection $events, string $eventType): Collection {
                 return $events->filter(fn (array $event): bool => ($event['eventType'] ?? null) === $eventType);
             })
-            ->when($this->nullableString($filters['job_id'] ?? $filters['jobId'] ?? null), function (Collection $events, string $jobId): Collection {
+            ->when($this->input->nullableString($filters['job_id'] ?? $filters['jobId'] ?? null), function (Collection $events, string $jobId): Collection {
                 return $events->filter(fn (array $event): bool => ($event['jobId'] ?? null) === $jobId);
             })
             ->sortBy(fn (array $event): string => (string) ($event['at'] ?? ''))
@@ -139,8 +135,8 @@ class PipelineTaskService
     public function upsertJob(string $taskId, array $input): PipelineJob
     {
         $task = $this->taskRepository->findByTaskIdOrFail($taskId);
-        $jobId = $this->nullableString($input['job_id'] ?? $input['jobId'] ?? null) ?? (string) Str::uuid();
-        $status = $this->normalizeJobStatus($input['status'] ?? null);
+        $jobId = $this->input->jobId($input);
+        $status = $this->input->jobStatus($input['status'] ?? null);
         $existing = $this->jobRepository->findByJobId($jobId);
         $metadata = array_merge(
             is_array($existing?->metadata) ? $existing->metadata : [],
@@ -151,17 +147,17 @@ class PipelineTaskService
             $jobId,
             $task,
             [
-                'parent_job_id' => $this->nullableString($input['parent_job_id'] ?? $input['parentJobId'] ?? null) ?? $existing?->parent_job_id,
-                'job_type' => $this->nullableString($input['job_type'] ?? $input['jobType'] ?? null) ?? $existing?->job_type,
-                'source_url' => $this->nullableString($input['source_url'] ?? $input['sourceUrl'] ?? null) ?? $existing?->source_url,
-                'local_path' => $this->nullableString($input['local_path'] ?? $input['localPath'] ?? null) ?? $existing?->local_path,
-                'content_hash' => $this->nullableString($input['content_hash'] ?? $input['contentHash'] ?? null) ?? $existing?->content_hash,
+                'parent_job_id' => $this->input->nullableString($input['parent_job_id'] ?? $input['parentJobId'] ?? null) ?? $existing?->parent_job_id,
+                'job_type' => $this->input->nullableString($input['job_type'] ?? $input['jobType'] ?? null) ?? $existing?->job_type,
+                'source_url' => $this->input->nullableString($input['source_url'] ?? $input['sourceUrl'] ?? null) ?? $existing?->source_url,
+                'local_path' => $this->input->nullableString($input['local_path'] ?? $input['localPath'] ?? null) ?? $existing?->local_path,
+                'content_hash' => $this->input->nullableString($input['content_hash'] ?? $input['contentHash'] ?? null) ?? $existing?->content_hash,
                 'status' => $status,
-                'error_message' => $this->nullableString($input['error_message'] ?? $input['errorMessage'] ?? null),
-                'started_at' => $this->dateInput($input['started_at'] ?? $input['startedAt'] ?? null)
+                'error_message' => $this->input->nullableString($input['error_message'] ?? $input['errorMessage'] ?? null),
+                'started_at' => $this->input->date($input['started_at'] ?? $input['startedAt'] ?? null)
                     ?? $existing?->started_at
                     ?? (in_array($status, [PipelineJob::STATUS_RUNNING, PipelineJob::STATUS_QUEUED], true) ? Carbon::now() : null),
-                'finished_at' => $this->terminalStatus($status) ? Carbon::now() : null,
+                'finished_at' => $this->input->isTerminalStatus($status) ? Carbon::now() : null,
                 'metadata' => $metadata,
             ],
         );
@@ -192,7 +188,7 @@ class PipelineTaskService
         if ($jobs->isNotEmpty()) {
             $task = $this->taskRepository->markFailedJobsRetried(
                 $task,
-                $this->appendMetadataEvent($task, 'failed_jobs_retried'),
+                $this->metadata->appendEvent($task, 'failed_jobs_retried'),
             );
         }
 
@@ -219,26 +215,9 @@ class PipelineTaskService
 
         $jobs = $this->jobRepository->forTask($task->task_id);
         $counters = $this->counters->forJobs($jobs);
-        $status = $task->status;
-        $finishedAt = $task->finished_at;
+        $status = $this->statuses->resolve($task, $counters, $jobs->isNotEmpty());
 
-        if ($jobs->isEmpty()) {
-            $status = $task->status === PipelineTask::STATUS_RUNNING
-                ? PipelineTask::STATUS_RUNNING
-                : PipelineTask::STATUS_PENDING;
-            $finishedAt = null;
-        } elseif ($counters['queued'] > 0 || $counters['jobs_running'] > 0) {
-            $status = PipelineTask::STATUS_RUNNING;
-            $finishedAt = null;
-        } elseif ($counters['failed'] > 0) {
-            $status = PipelineTask::STATUS_FAILED;
-            $finishedAt ??= Carbon::now();
-        } else {
-            $status = PipelineTask::STATUS_COMPLETED;
-            $finishedAt ??= Carbon::now();
-        }
-
-        return $this->taskRepository->updateStatusCounters($task, $status, $finishedAt, $counters);
+        return $this->taskRepository->updateStatusCounters($task, $status['status'], $status['finished_at'], $counters);
     }
 
     public function refreshCounters(PipelineTask $task): PipelineTask
@@ -261,7 +240,7 @@ class PipelineTaskService
             $status,
             $now,
             $alreadyScraped ? $now : null,
-            array_merge($this->taskJobMetadata($task), [
+            array_merge($this->metadata->taskJob($task), [
                 'reason' => $alreadyScraped ? 'URL was already scraped by Laravel.' : 'Queued for scraper worker through RabbitMQ.',
                 'dataset_id' => $task->dataset_id,
             ]),
@@ -292,26 +271,6 @@ class PipelineTaskService
         );
     }
 
-    private function taskJobMetadata(PipelineTask $task): array
-    {
-        $metadata = $task->metadata ?? [];
-        $request = is_array($metadata['request'] ?? null) ? $metadata['request'] : [];
-        $requestMetadata = is_array($request['metadata'] ?? null) ? $request['metadata'] : [];
-
-        return array_merge($requestMetadata, [
-            'dataset' => is_array($metadata['dataset'] ?? null) ? $metadata['dataset'] : [],
-        ]);
-    }
-
-    private function datasetMetadata(Dataset $dataset): array
-    {
-        return [
-            'dataset_id' => $dataset->dataset_id,
-            'qdrant_collection' => $dataset->qdrant_collection,
-            'neo4j_namespace' => $dataset->neo4j_namespace,
-        ];
-    }
-
     private function publishEvent(string $routingKey, array $payload): void
     {
         try {
@@ -326,73 +285,6 @@ class PipelineTaskService
 
     private function activeJobCount(PipelineTask $task): int
     {
-        return $this->jobRepository->countForTaskWithStatuses($task->task_id, self::ACTIVE_JOB_STATUSES);
-    }
-
-    private function terminalStatus(string $status): bool
-    {
-        return in_array($status, PipelineJob::TERMINAL_STATUSES, true);
-    }
-
-    private function normalizeJobStatus(mixed $status): string
-    {
-        $status = $this->nullableString($status) ?? PipelineJob::STATUS_QUEUED;
-
-        return match ($status) {
-            'pending' => PipelineJob::STATUS_QUEUED,
-            'received',
-            'processing' => PipelineJob::STATUS_RUNNING,
-            'partial',
-            'cancel_requested',
-            'cancelled' => PipelineJob::STATUS_FAILED,
-            PipelineJob::STATUS_QUEUED,
-            PipelineJob::STATUS_RUNNING,
-            PipelineJob::STATUS_COMPLETED,
-            PipelineJob::STATUS_SKIPPED,
-            PipelineJob::STATUS_FAILED => $status,
-            default => PipelineJob::STATUS_FAILED,
-        };
-    }
-
-    private function appendMetadataEvent(PipelineTask $task, string $event): array
-    {
-        $metadata = $task->metadata ?? [];
-        $events = is_array($metadata['events'] ?? null) ? $metadata['events'] : [];
-        $events[] = [
-            'event' => $event,
-            'at' => now()->toIso8601String(),
-        ];
-        $metadata['events'] = $events;
-
-        return $metadata;
-    }
-
-    private function taskId(array $input): string
-    {
-        $provided = $this->nullableString($input['task_id'] ?? $input['taskId'] ?? null);
-
-        return $provided ?? 'task_' . Str::uuid()->toString();
-    }
-
-    private function nullableString(mixed $value): ?string
-    {
-        return is_scalar($value) && trim((string) $value) !== '' ? trim((string) $value) : null;
-    }
-
-    private function dateInput(mixed $value): ?Carbon
-    {
-        if ($value instanceof Carbon) {
-            return $value;
-        }
-
-        if ($value instanceof \DateTimeInterface) {
-            return Carbon::instance($value);
-        }
-
-        if (is_scalar($value) && trim((string) $value) !== '') {
-            return Carbon::parse((string) $value);
-        }
-
-        return null;
+        return $this->jobRepository->countForTaskWithStatuses($task->task_id, $this->statuses->activeJobStatuses());
     }
 }
