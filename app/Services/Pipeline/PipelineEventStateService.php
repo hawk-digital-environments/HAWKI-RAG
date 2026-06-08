@@ -1,14 +1,17 @@
 <?php
+declare(strict_types=1);
 
 namespace App\Services\Pipeline;
 
 use App\Models\PipelineJob;
 use App\Services\Pipeline\Repositories\PipelineJobRepository;
 use App\Services\Pipeline\Repositories\PipelineTaskRepository;
+use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
+#[Singleton]
 class PipelineEventStateService
 {
     public function __construct(

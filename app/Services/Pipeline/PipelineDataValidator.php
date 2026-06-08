@@ -1,8 +1,12 @@
 <?php
+declare(strict_types=1);
 
 namespace App\Services\Pipeline;
 
-class PipelineDataValidator
+use Illuminate\Container\Attributes\Singleton;
+
+#[Singleton]
+readonly class PipelineDataValidator
 {
     /**
      * @return array{errors: array<int, string>, warnings: array<int, string>}

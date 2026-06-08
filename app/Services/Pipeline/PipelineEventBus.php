@@ -1,13 +1,16 @@
 <?php
+declare(strict_types=1);
 
 namespace App\Services\Pipeline;
 
 use App\Services\Rag\RagRabbitMQ;
+use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Support\Facades\Log;
 use PhpAmqpLib\Message\AMQPMessage;
 use PhpAmqpLib\Wire\AMQPTable;
 use Throwable;
 
+#[Singleton]
 class PipelineEventBus
 {
     public function __construct(

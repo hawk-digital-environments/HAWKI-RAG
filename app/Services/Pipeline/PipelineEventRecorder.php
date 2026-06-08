@@ -1,10 +1,13 @@
 <?php
+declare(strict_types=1);
 
 namespace App\Services\Pipeline;
 
 use App\Models\PipelineEventRecord;
+use Illuminate\Container\Attributes\Singleton;
 
-class PipelineEventRecorder
+#[Singleton]
+readonly class PipelineEventRecorder
 {
     private const RECORDED_EVENT_TYPES = [
         PipelineEvent::SCRAPE_REQUESTED,

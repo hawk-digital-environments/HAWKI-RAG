@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 
 namespace App\Services\Pipeline\EventHandlers;
 
@@ -10,9 +11,11 @@ use App\Services\Pipeline\PipelineLogger;
 use App\Services\Pipeline\PipelineStateService;
 use App\Services\Pipeline\Repositories\PipelineJobRepository;
 use App\Services\ScrapeService\ScrapeService;
+use Illuminate\Container\Attributes\Singleton;
 use RuntimeException;
 use Throwable;
 
+#[Singleton]
 class ScrapeMonitorEventHandler implements PipelineEventHandler
 {
     public function __construct(

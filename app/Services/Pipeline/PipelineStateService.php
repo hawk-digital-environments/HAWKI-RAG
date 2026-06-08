@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 
 namespace App\Services\Pipeline;
 
@@ -6,10 +7,12 @@ use App\Models\PipelineJob;
 use App\Models\PipelineStageState;
 use App\Services\Pipeline\Repositories\PipelineJobRepository;
 use App\Services\Pipeline\Repositories\PipelineStageStateRepository;
+use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
-class PipelineStateService
+#[Singleton]
+readonly class PipelineStateService
 {
     public const STAGE_SCRAPE = 'scrape';
     public const STAGE_CONVERT = 'convert';

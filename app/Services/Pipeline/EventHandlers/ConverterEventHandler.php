@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 
 namespace App\Services\Pipeline\EventHandlers;
 
@@ -8,11 +9,13 @@ use App\Services\Pipeline\PipelineEvent;
 use App\Services\Pipeline\PipelineEventBus;
 use App\Services\Pipeline\PipelineEventStateService;
 use App\Services\Pipeline\Repositories\PipelineJobRepository;
+use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Support\Facades\File;
 use RuntimeException;
 use SplFileInfo;
 use Throwable;
 
+#[Singleton]
 class ConverterEventHandler implements PipelineEventHandler
 {
     public function __construct(

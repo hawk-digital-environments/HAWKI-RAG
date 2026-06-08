@@ -11,10 +11,12 @@ use App\Services\Pipeline\Repositories\PipelineScrapeHistoryRepository;
 use App\Services\Pipeline\Repositories\PipelineTaskRepository;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
+#[Singleton]
 class PipelineTaskService
 {
     public function __construct(
