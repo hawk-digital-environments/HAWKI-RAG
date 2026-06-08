@@ -104,7 +104,7 @@ class PipelineSmokeTestCommand extends Command
 
             $this->stage('RabbitMQ events', function () use ($events, $task, $scrapeJob): string {
                 if ((bool) config('communication.rabbitmq.pipeline_events.enabled', true)) {
-                    foreach (['scraper', 'converter', 'ingestion'] as $worker) {
+                    foreach (['scraper', 'scrape_monitor', 'converter', 'ingestion'] as $worker) {
                         $events->declareWorkerTopology($worker);
                     }
                 }

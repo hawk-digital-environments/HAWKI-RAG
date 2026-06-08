@@ -14,6 +14,7 @@ use App\Services\Pipeline\EventHandlers\ScrapeMonitorEventHandler;
 use App\Services\Pipeline\EventHandlers\ScraperEventHandler;
 use App\Services\Pipeline\PipelineEvent;
 use App\Services\Pipeline\PipelineEventBus;
+use App\Services\Rag\RagRabbitMQ;
 use App\Services\ScrapeService\ScrapeService;
 use App\Services\ScrapeService\Data\ScrapeJobRequest;
 use App\Services\ScrapeService\Data\ScrapeRequestResult;
@@ -23,6 +24,8 @@ use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use Mockery\MockInterface;
+use PhpAmqpLib\Channel\AMQPChannel;
+use PhpAmqpLib\Message\AMQPMessage;
 use RuntimeException;
 use Tests\TestCase;
 
@@ -159,6 +162,47 @@ class PipelineEventLayerTest extends TestCase
             ->where('event_type', PipelineEvent::SCRAPE_MONITOR_REQUESTED)
             ->firstOrFail();
         $this->assertSame('Scrape monitor requested: /app/shared/task-event-monitor-timeline/scrape-event-monitor-timeline', $record->message);
+    }
+
+    public function test_publishing_scrape_monitor_event_declares_worker_topology_before_publish(): void
+    {
+        config()->set('communication.rabbitmq.pipeline_events.enabled', true);
+
+        $channel = \Mockery::mock(AMQPChannel::class);
+        $channel->shouldReceive('exchange_declare')->zeroOrMoreTimes();
+        $channel->shouldReceive('queue_declare')
+            ->once()
+            ->with('pipeline_scrape_monitor_events', false, true, false, false, false, \Mockery::any());
+        $channel->shouldReceive('queue_bind')
+            ->once()
+            ->with('pipeline_scrape_monitor_events', 'pipeline.events', PipelineEvent::SCRAPE_MONITOR_REQUESTED);
+        $channel->shouldReceive('queue_declare')
+            ->once()
+            ->with('pipeline_scrape_monitor_events.retry.scrape_monitor_requested', false, true, false, false, false, \Mockery::any());
+        $channel->shouldReceive('queue_bind')
+            ->once()
+            ->with('pipeline_scrape_monitor_events.retry.scrape_monitor_requested', 'pipeline.retry', PipelineEvent::SCRAPE_MONITOR_REQUESTED);
+        $channel->shouldReceive('queue_declare')
+            ->once()
+            ->with('pipeline_failed_events', false, true, false, false, false, \Mockery::any());
+        $channel->shouldReceive('queue_bind')
+            ->once()
+            ->with('pipeline_failed_events', 'pipeline.failures', PipelineEvent::JOB_FAILED);
+        $channel->shouldReceive('basic_publish')
+            ->once()
+            ->with(\Mockery::type(AMQPMessage::class), 'pipeline.events', PipelineEvent::SCRAPE_MONITOR_REQUESTED);
+
+        $rabbit = \Mockery::mock(RagRabbitMQ::class);
+        $rabbit->shouldReceive('channel')->zeroOrMoreTimes()->andReturn($channel);
+        $this->app->instance(RagRabbitMQ::class, $rabbit);
+
+        app(PipelineEventBus::class)->publish(PipelineEvent::SCRAPE_MONITOR_REQUESTED, [
+            'task_id' => 'task-event-monitor-topology',
+            'job_id' => 'scrape-event-monitor-topology',
+            'source_url' => 'https://example.test/monitor-topology',
+            'local_path' => '/app/shared/task-event-monitor-topology/scrape-event-monitor-topology',
+            'status' => PipelineJob::STATUS_RUNNING,
+        ]);
     }
 
     public function test_scraper_consumer_publishes_initial_rabbitmq_monitor_event_after_submit(): void

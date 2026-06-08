@@ -126,7 +126,7 @@ class PipelineQueueMonitorService
         $warnings = [];
 
         if (!$queue['exists']) {
-            $warnings[] = 'Worker queue is missing. Start the worker or declare RabbitMQ topology.';
+            $warnings[] = 'Worker queue is missing. Start the worker or run php artisan pipeline:declare-event-topology.';
         }
 
         if ($queue['readyMessages'] > 0 && $queue['consumers'] < 1) {
@@ -208,7 +208,7 @@ class PipelineQueueMonitorService
         }
 
         if (!$failedQueue['exists']) {
-            $warnings[] = 'Failed queue is missing. Start a pipeline worker or declare RabbitMQ topology.';
+            $warnings[] = 'Failed queue is missing. Start a pipeline worker or run php artisan pipeline:declare-event-topology.';
         }
 
         $failedCount = $failedQueue['readyMessages'] + $failedQueue['unackedMessages'];

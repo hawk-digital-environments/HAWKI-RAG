@@ -24,6 +24,8 @@ class PipelineQueueMonitorTest extends TestCase
             'http://rabbit.test/api/queues/%2F' => Http::response($this->queuePayload([
                 ['pipeline_scraper_events', 0, 0, 1],
                 ['pipeline_scraper_events.retry.scrape_requested', 0, 0, 0],
+                ['pipeline_scrape_monitor_events', 0, 0, 1],
+                ['pipeline_scrape_monitor_events.retry.scrape_monitor_requested', 0, 0, 0],
                 ['pipeline_converter_events', 0, 0, 1],
                 ['pipeline_converter_events.retry.file_discovered', 0, 0, 0],
                 ['pipeline_ingestion_events', 0, 0, 1],
@@ -44,7 +46,7 @@ class PipelineQueueMonitorTest extends TestCase
             ->assertJsonPath('queueMonitor.workers.0.queueName', 'pipeline_scraper_events')
             ->assertJsonPath('queueMonitor.workers.0.readyMessages', 0)
             ->assertJsonPath('queueMonitor.workers.0.consumers', 1)
-            ->assertJsonPath('queueMonitor.totals.consumers', 3)
+            ->assertJsonPath('queueMonitor.totals.consumers', 4)
             ->assertJsonPath('queueMonitor.totals.failedQueueCount', 0);
     }
 
@@ -54,6 +56,8 @@ class PipelineQueueMonitorTest extends TestCase
             'http://rabbit.test/api/queues/%2F' => Http::response($this->queuePayload([
                 ['pipeline_scraper_events', 4, 0, 0],
                 ['pipeline_scraper_events.retry.scrape_requested', 2, 0, 0],
+                ['pipeline_scrape_monitor_events', 0, 0, 1],
+                ['pipeline_scrape_monitor_events.retry.scrape_monitor_requested', 0, 0, 0],
                 ['pipeline_converter_events', 0, 1, 1],
                 ['pipeline_converter_events.retry.file_discovered', 0, 0, 0],
                 ['pipeline_ingestion_events', 0, 0, 1],

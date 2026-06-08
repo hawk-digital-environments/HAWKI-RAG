@@ -161,7 +161,7 @@ class PipelineSmokeTestCommandTest extends TestCase
                 return $event;
             });
         $bus->shouldReceive('declareWorkerTopology')
-            ->times(3)
+            ->times(4)
             ->andReturn(['queue' => 'pipeline-test', 'listen' => []]);
         $this->app->instance(PipelineEventBus::class, $bus);
 

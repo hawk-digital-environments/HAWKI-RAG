@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Services\Pipeline\PipelineEventBus;
 use App\Services\Rag\RagRabbitMQ;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
@@ -67,6 +68,7 @@ class PipelineOperationsCommandTest extends TestCase
 
         $this->assertSame(0, $exitCode);
         $this->assertStringContainsString('docker compose --profile pipeline-events up -d', $output);
+        $this->assertStringContainsString('php artisan pipeline:declare-event-topology', $output);
         $this->assertStringContainsString('php artisan pipeline:scraper-event-worker', $output);
         $this->assertStringContainsString('php artisan pipeline:scrape-monitor-event-worker', $output);
         $this->assertStringContainsString('php artisan pipeline:converter-event-worker', $output);
@@ -78,6 +80,32 @@ class PipelineOperationsCommandTest extends TestCase
         $this->assertStringContainsString('pipeline_scraper_events.retry.scrape_requested', $output);
         $this->assertStringContainsString('pipeline_failed_events', $output);
         $this->assertStringContainsString('No Prefect. No Redis.', $output);
+    }
+
+    public function test_pipeline_declare_event_topology_declares_requested_worker(): void
+    {
+        $bus = Mockery::mock(PipelineEventBus::class);
+        $bus->shouldReceive('declareWorkerTopology')
+            ->once()
+            ->with('scrape_monitor')
+            ->andReturn([
+                'queue' => 'pipeline_scrape_monitor_events',
+                'listen' => ['scrape.monitor.requested'],
+            ]);
+        $bus->shouldReceive('declareFailedTopology')
+            ->once()
+            ->andReturn([
+                'queue' => 'pipeline_failed_events',
+                'routing_key' => 'job.failed',
+            ]);
+        $this->app->instance(PipelineEventBus::class, $bus);
+
+        $exitCode = Artisan::call('pipeline:declare-event-topology', ['worker' => 'scrape_monitor']);
+        $output = Artisan::output();
+
+        $this->assertSame(0, $exitCode);
+        $this->assertStringContainsString('Declared scrape_monitor: queue pipeline_scrape_monitor_events listens to scrape.monitor.requested.', $output);
+        $this->assertStringContainsString('Declared failed queue pipeline_failed_events for job.failed.', $output);
     }
 
     private function configureHealthyPipeline(): void

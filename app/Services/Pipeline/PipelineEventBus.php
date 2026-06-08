@@ -27,7 +27,7 @@ class PipelineEventBus
         }
 
         $cfg = config('communication.rabbitmq.pipeline_events');
-        $this->declareExchanges();
+        $this->declareRoutableEventTopology($eventType);
         $this->publishRaw((string) $cfg['exchange'], $eventType, $event);
 
         return $event;
@@ -61,7 +61,7 @@ class PipelineEventBus
             ]),
         ]);
 
-        $this->declareExchanges();
+        $this->declareRoutableEventTopology($eventType);
         $this->publishRaw(
             (string) config('communication.rabbitmq.pipeline_events.retry_exchange'),
             $this->retryRoutingKey($eventType),
@@ -94,7 +94,7 @@ class PipelineEventBus
             return $delayedEvent;
         }
 
-        $this->declareExchanges();
+        $this->declareRoutableEventTopology($eventType);
         $this->publishRaw(
             (string) config('communication.rabbitmq.pipeline_events.retry_exchange'),
             $this->retryRoutingKey($eventType),
@@ -125,7 +125,7 @@ class PipelineEventBus
             return $retryEvent;
         }
 
-        $this->declareExchanges();
+        $this->declareRoutableEventTopology($eventType);
         $this->publishRaw(
             (string) config('communication.rabbitmq.pipeline_events.retry_exchange'),
             $this->retryRoutingKey($eventType),
@@ -161,7 +161,7 @@ class PipelineEventBus
         $this->recorder->record(PipelineEvent::JOB_FAILED, $failed, 'rabbitmq.failed');
 
         if ((bool) config('communication.rabbitmq.pipeline_events.enabled', true)) {
-            $this->declareExchanges();
+            $this->declareFailedTopology();
             $this->publishRaw(
                 (string) config('communication.rabbitmq.pipeline_events.failed_exchange'),
                 (string) config('communication.rabbitmq.pipeline_events.failed_routing_key', PipelineEvent::JOB_FAILED),
@@ -191,6 +191,20 @@ class PipelineEventBus
             $this->declareRetryQueue($queue, $eventType);
         }
 
+        $this->declareFailedTopology();
+
+        return [
+            'queue' => $queue,
+            'consumer_tag' => (string) ($cfg['consumer_tag'] ?? "hawki-rag-{$worker}-events"),
+            'listen' => $events,
+        ];
+    }
+
+    public function declareFailedTopology(): array
+    {
+        $this->declareExchanges();
+        $channel = $this->rabbit->channel();
+        $queueArgs = $this->queueArguments();
         $failedQueue = (string) config('communication.rabbitmq.pipeline_events.failed_queue', 'pipeline_failed_events');
         $channel->queue_declare($failedQueue, false, true, false, false, false, $queueArgs);
         $channel->queue_bind(
@@ -200,9 +214,8 @@ class PipelineEventBus
         );
 
         return [
-            'queue' => $queue,
-            'consumer_tag' => (string) ($cfg['consumer_tag'] ?? "hawki-rag-{$worker}-events"),
-            'listen' => $events,
+            'queue' => $failedQueue,
+            'routing_key' => (string) config('communication.rabbitmq.pipeline_events.failed_routing_key', PipelineEvent::JOB_FAILED),
         ];
     }
 
@@ -240,6 +253,22 @@ class PipelineEventBus
         $channel->exchange_declare((string) $cfg['exchange'], (string) $cfg['exchange_type'], false, true, false);
         $channel->exchange_declare((string) $cfg['retry_exchange'], (string) $cfg['retry_exchange_type'], false, true, false);
         $channel->exchange_declare((string) $cfg['failed_exchange'], (string) $cfg['failed_exchange_type'], false, true, false);
+    }
+
+    private function declareRoutableEventTopology(string $eventType): void
+    {
+        $this->declareExchanges();
+
+        foreach ((array) config('communication.rabbitmq.pipeline_events.workers', []) as $worker => $cfg) {
+            if (!is_array($cfg)) {
+                continue;
+            }
+
+            $events = array_values(array_filter(array_map('strval', $cfg['listen'] ?? [])));
+            if (in_array($eventType, $events, true)) {
+                $this->declareWorkerTopology((string) $worker);
+            }
+        }
     }
 
     private function declareRetryQueue(string $workerQueue, string $eventType): void

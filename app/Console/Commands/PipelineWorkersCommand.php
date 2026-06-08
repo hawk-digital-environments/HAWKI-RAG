@@ -23,6 +23,7 @@ class PipelineWorkersCommand extends Command
         $this->newLine();
 
         $this->line('Direct Artisan commands, one terminal per command:');
+        $this->line('  php artisan pipeline:declare-event-topology');
         $this->line('  php artisan pipeline:scraper-event-worker');
         $this->line('  php artisan pipeline:scrape-monitor-event-worker');
         $this->line('  php artisan pipeline:converter-event-worker');

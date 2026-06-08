@@ -15,6 +15,7 @@ Laravel is the only pipeline orchestrator. It starts tasks, publishes RabbitMQ
 events, and tracks task/job status in the database.
 
 - DB/ops commands: [docs/db_cookbook.md](docs/db_cookbook.md)
+- Declare RabbitMQ topology: `php artisan pipeline:declare-event-topology`
 - Scraper worker: `php artisan pipeline:scraper-event-worker`
 - Scrape monitor worker: `php artisan pipeline:scrape-monitor-event-worker`
 - Converter worker: `php artisan pipeline:converter-event-worker`

@@ -137,6 +137,7 @@ MVP pipeline worker topology:
 ## 6) Re-apply topology declaration
 
 ```bash
+php artisan pipeline:declare-event-topology
 docker compose restart hawki-rag-scraper-event-worker hawki-rag-scrape-monitor-event-worker hawki-rag-converter-event-worker hawki-rag-ingestion-event-worker
 docker compose logs --tail=120 hawki-rag-scraper-event-worker hawki-rag-scrape-monitor-event-worker hawki-rag-converter-event-worker hawki-rag-ingestion-event-worker
 ```
