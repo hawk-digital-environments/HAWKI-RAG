@@ -20,6 +20,22 @@ readonly class PipelineJobRepository
             ->first();
     }
 
+    public function findWithOrderedStagesByJobId(string $jobId): ?PipelineJob
+    {
+        return PipelineJob::query()
+            ->with(['stages' => fn ($query) => $query->orderBy('id')])
+            ->where('job_id', $jobId)
+            ->first();
+    }
+
+    public function findWithTaskByJobId(string $jobId): ?PipelineJob
+    {
+        return PipelineJob::query()
+            ->with('task')
+            ->where('job_id', $jobId)
+            ->first();
+    }
+
     /**
      * @param list<string> $jobIds
      * @return Collection<int, PipelineJob>
@@ -178,6 +194,42 @@ readonly class PipelineJobRepository
     /**
      * @param array<string, mixed> $attributes
      */
+    public function ensureStateJob(
+        string $jobId,
+        array $attributes,
+        Carbon $startedAt,
+        string $defaultStatus,
+    ): PipelineJob {
+        $job = PipelineJob::query()->firstOrNew(['job_id' => $jobId]);
+        $job->fill($attributes);
+
+        if (!$job->started_at) {
+            $job->started_at = $startedAt;
+        }
+        if (!$job->status) {
+            $job->status = $defaultStatus;
+        }
+
+        $job->save();
+
+        return $job->refresh();
+    }
+
+    public function firstOrCreateClaimJob(string $jobId, string $stage, Carbon $startedAt): PipelineJob
+    {
+        return PipelineJob::query()->firstOrCreate(
+            ['job_id' => $jobId],
+            [
+                'status' => PipelineJob::STATUS_PENDING,
+                'current_stage' => $stage,
+                'started_at' => $startedAt,
+            ],
+        );
+    }
+
+    /**
+     * @param array<string, mixed> $attributes
+     */
     public function upsertForTask(string $jobId, PipelineTask $task, array $attributes): PipelineJob
     {
         return PipelineJob::query()->updateOrCreate(
@@ -185,6 +237,17 @@ readonly class PipelineJobRepository
             array_merge($attributes, [
                 'task_id' => $task->task_id,
             ]),
+        );
+    }
+
+    /**
+     * @param array<string, mixed> $attributes
+     */
+    public function upsertEventState(string $jobId, array $attributes): PipelineJob
+    {
+        return PipelineJob::query()->updateOrCreate(
+            ['job_id' => $jobId],
+            $attributes,
         );
     }
 
@@ -253,6 +316,62 @@ readonly class PipelineJobRepository
             'finished_at' => $failedAt,
             'metadata' => $metadata,
         ])->save();
+
+        return $job->refresh();
+    }
+
+    /**
+     * @param array<string, mixed> $metadata
+     */
+    public function markScrapeMonitorCompleted(
+        PipelineJob $job,
+        string $datasetPath,
+        Carbon $completedAt,
+        array $metadata,
+    ): PipelineJob {
+        $job->forceFill([
+            'job_type' => PipelineJob::TYPE_SCRAPE,
+            'status' => PipelineJob::STATUS_COMPLETED,
+            'local_path' => $datasetPath,
+            'completed_at' => $completedAt,
+            'finished_at' => $completedAt,
+            'metadata' => $metadata,
+        ])->save();
+
+        return $job->refresh()->loadMissing('task');
+    }
+
+    /**
+     * @param array{total:int,processed:int,failed:int,skipped:int} $counts
+     * @param array<string, mixed> $attributes
+     */
+    public function updateStageRollup(
+        PipelineJob $job,
+        string $currentStage,
+        string $status,
+        array $counts,
+        ?Carbon $completedAt,
+        array $attributes,
+    ): PipelineJob {
+        $job->current_stage = $attributes['current_stage'] ?? $currentStage;
+        $job->status = $status;
+
+        if (isset($attributes['dataset_path'])) {
+            $job->dataset_path = $attributes['dataset_path'];
+        }
+        if (isset($attributes['source_url'])) {
+            $job->source_url = $attributes['source_url'];
+        }
+        if (isset($attributes['label'])) {
+            $job->label = $attributes['label'];
+        }
+
+        $job->total_documents = $counts['total'];
+        $job->processed_documents = $counts['processed'];
+        $job->failed_documents = $counts['failed'];
+        $job->skipped_documents = $counts['skipped'];
+        $job->completed_at = $completedAt;
+        $job->save();
 
         return $job->refresh();
     }

@@ -8,6 +8,7 @@ use App\Services\Pipeline\PipelineEventBus;
 use App\Services\Pipeline\PipelineEventStateService;
 use App\Services\Pipeline\PipelineLogger;
 use App\Services\Pipeline\PipelineStateService;
+use App\Services\Pipeline\Repositories\PipelineJobRepository;
 use App\Services\ScrapeService\ScrapeService;
 use RuntimeException;
 use Throwable;
@@ -18,6 +19,7 @@ class ScrapeMonitorEventHandler implements PipelineEventHandler
         private readonly PipelineEventBus $events,
         private readonly PipelineEventStateService $state,
         private readonly PipelineStateService $pipelineState,
+        private readonly PipelineJobRepository $jobs,
         private readonly ScrapeService $scrapeService,
     ) {
     }
@@ -138,24 +140,22 @@ class ScrapeMonitorEventHandler implements PipelineEventHandler
             return;
         }
 
-        $pipelineJob = PipelineJob::query()->where('job_id', $event['job_id'])->first();
+        $pipelineJob = $this->jobs->findWithTaskByJobId((string) $event['job_id']);
         if (!$pipelineJob?->task_id) {
             return;
         }
 
-        $pipelineJob->forceFill([
-            'job_type' => PipelineJob::TYPE_SCRAPE,
-            'status' => PipelineJob::STATUS_COMPLETED,
-            'local_path' => $datasetPath,
-            'completed_at' => now(),
-            'finished_at' => now(),
-            'metadata' => array_merge($pipelineJob->metadata ?? [], [
+        $pipelineJob = $this->jobs->markScrapeMonitorCompleted(
+            $pipelineJob,
+            $datasetPath,
+            now(),
+            array_merge($pipelineJob->metadata ?? [], [
                 'source' => self::class,
                 'crawlerStatus' => 'completed',
             ]),
-        ])->save();
+        );
 
-        $this->publishScrapeCompletedEvents($pipelineJob->refresh(), $datasetPath);
+        $this->publishScrapeCompletedEvents($pipelineJob, $datasetPath);
     }
 
     private function handleFailedStatus(array $event, string $crawlerStatus, string $datasetPath, array $counts, array $data): void
@@ -286,7 +286,7 @@ class ScrapeMonitorEventHandler implements PipelineEventHandler
 
     private function failPipelineJob(array $event, string $message, array $metadata = [], ?Throwable $exception = null): void
     {
-        $pipelineJob = PipelineJob::query()->where('job_id', $event['job_id'])->first();
+        $pipelineJob = $this->jobs->findWithTaskByJobId((string) $event['job_id']);
         if (!$pipelineJob?->task_id) {
             return;
         }

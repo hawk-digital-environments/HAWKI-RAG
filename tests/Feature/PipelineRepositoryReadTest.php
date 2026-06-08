@@ -341,6 +341,8 @@ class PipelineRepositoryReadTest extends TestCase
         $repository = app(PipelineScrapeHistoryRepository::class);
         $scrapedElementUrl = 'https://history.example/scraped-element';
         $completedJobUrl = 'https://history.example/completed-job';
+        $completedScrapeJobUrl = 'https://history.example/completed-scrape-job';
+        $completedConvertJobUrl = 'https://history.example/completed-convert-job';
         $failedJobUrl = 'https://history.example/failed-job';
 
         $this->assertFalse($repository->hasCompletedScrape($scrapedElementUrl, hash('sha256', $scrapedElementUrl)));
@@ -356,11 +358,18 @@ class PipelineRepositoryReadTest extends TestCase
 
         $task = $this->task('task-scrape-history');
         $this->job($task, 'job-history-completed', PipelineJob::STATUS_COMPLETED, $completedJobUrl);
+        $this->job($task, 'job-history-scrape-completed', PipelineJob::STATUS_COMPLETED, $completedScrapeJobUrl, PipelineJob::TYPE_SCRAPE);
+        $this->job($task, 'job-history-convert-completed', PipelineJob::STATUS_COMPLETED, $completedConvertJobUrl);
         $this->job($task, 'job-history-failed', PipelineJob::STATUS_FAILED, $failedJobUrl);
 
         $this->assertTrue($repository->hasCompletedScrape($scrapedElementUrl, hash('sha256', $scrapedElementUrl)));
+        $this->assertTrue($repository->hasCompletedScraperOutput($scrapedElementUrl, hash('sha256', $scrapedElementUrl)));
         $this->assertTrue($repository->hasScrapedElement($scrapedElementUrl, hash('sha256', $scrapedElementUrl)));
         $this->assertTrue($repository->hasCompletedOrSkippedJob($completedJobUrl));
+        $this->assertTrue($repository->hasCompletedOrSkippedScrapeJob($completedScrapeJobUrl));
+        $this->assertTrue($repository->hasCompletedScraperOutput($completedScrapeJobUrl, 'missing-hash'));
+        $this->assertFalse($repository->hasCompletedOrSkippedScrapeJob($completedConvertJobUrl));
+        $this->assertFalse($repository->hasCompletedScraperOutput($completedConvertJobUrl, 'missing-hash'));
         $this->assertFalse($repository->hasCompletedOrSkippedJob($failedJobUrl));
         $this->assertFalse($repository->hasCompletedScrape('https://history.example/missing', 'missing-hash'));
     }
@@ -387,12 +396,13 @@ class PipelineRepositoryReadTest extends TestCase
         string $jobId,
         string $status,
         ?string $sourceUrl = null,
+        string $jobType = PipelineJob::TYPE_CONVERT,
     ): PipelineJob
     {
         return PipelineJob::query()->create([
             'job_id' => $jobId,
             'task_id' => $task->task_id,
-            'job_type' => PipelineJob::TYPE_CONVERT,
+            'job_type' => $jobType,
             'source_url' => $sourceUrl,
             'status' => $status,
             'started_at' => now(),

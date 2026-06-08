@@ -3,7 +3,8 @@
 namespace App\Services\Pipeline;
 
 use App\Models\PipelineJob;
-use App\Models\PipelineTask;
+use App\Services\Pipeline\Repositories\PipelineJobRepository;
+use App\Services\Pipeline\Repositories\PipelineTaskRepository;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Log;
 use Throwable;
@@ -12,6 +13,8 @@ class PipelineEventStateService
 {
     public function __construct(
         private readonly PipelineTaskService $tasks,
+        private readonly PipelineJobRepository $jobs,
+        private readonly PipelineTaskRepository $taskRepository,
     ) {
     }
 
@@ -20,7 +23,7 @@ class PipelineEventStateService
         $event = PipelineEvent::normalize((string) $event['event_type'], $event);
         $status = $this->normalizeStatus($status ?? (string) $event['status']);
         $terminal = PipelineEvent::terminalStatus($status);
-        $existing = PipelineJob::query()->where('job_id', $event['job_id'])->first();
+        $existing = $this->jobs->findByJobId((string) $event['job_id']);
         $existingMetadata = is_array($existing?->metadata) ? $existing->metadata : [];
         $mergedMetadata = array_merge($existingMetadata, $event['metadata'] ?? [], $metadata);
         $events = is_array($existingMetadata['events'] ?? null) ? $existingMetadata['events'] : [];
@@ -31,8 +34,8 @@ class PipelineEventStateService
             'at' => now()->toIso8601String(),
         ];
 
-        $job = PipelineJob::query()->updateOrCreate(
-            ['job_id' => (string) $event['job_id']],
+        $job = $this->jobs->upsertEventState(
+            (string) $event['job_id'],
             [
                 'task_id' => $event['task_id'],
                 'parent_job_id' => $event['parent_job_id'],
@@ -77,7 +80,7 @@ class PipelineEventStateService
 
     public function refreshTask(string $taskId): void
     {
-        $task = PipelineTask::query()->where('task_id', $taskId)->first();
+        $task = $this->taskRepository->findByTaskId($taskId);
         if ($task) {
             $this->tasks->recalculateTaskStatus($task);
         }

@@ -4,9 +4,10 @@ namespace App\Services\Pipeline;
 
 use App\Models\PipelineJob;
 use App\Models\PipelineStageState;
+use App\Services\Pipeline\Repositories\PipelineJobRepository;
+use App\Services\Pipeline\Repositories\PipelineStageStateRepository;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
 
 class PipelineStateService
 {
@@ -14,23 +15,24 @@ class PipelineStateService
     public const STAGE_CONVERT = 'convert';
     public const STAGE_INGEST = 'ingest';
 
+    public function __construct(
+        private readonly PipelineJobRepository $jobs,
+        private readonly PipelineStageStateRepository $stageStates,
+    ) {
+    }
+
     public function ensureJob(string $jobId, array $attributes = []): ?PipelineJob
     {
         if (!$this->tablesAvailable()) {
             return null;
         }
 
-        $job = PipelineJob::query()->firstOrNew(['job_id' => $jobId]);
-        $job->fill($this->jobAttributes($attributes));
-        if (!$job->started_at) {
-            $job->started_at = Carbon::now();
-        }
-        if (!$job->status) {
-            $job->status = PipelineJob::STATUS_PENDING;
-        }
-        $job->save();
-
-        return $job;
+        return $this->jobs->ensureStateJob(
+            $jobId,
+            $this->jobAttributes($attributes),
+            Carbon::now(),
+            PipelineJob::STATUS_PENDING,
+        );
     }
 
     public function startStage(string $jobId, string $stage, array $attributes = []): ?PipelineStageState
@@ -85,18 +87,14 @@ class PipelineStateService
             return null;
         }
 
-        $state = PipelineStageState::query()->firstOrNew([
-            'job_id' => $jobId,
-            'stage' => $stage,
-        ]);
-
-        $state->pipeline_job_id = $job->id;
-        $state->fill($this->stageAttributes($attributes));
-        if (!$state->started_at && in_array($state->status, [PipelineJob::STATUS_RUNNING, 'processing', 'received'], true)) {
-            $state->started_at = Carbon::now();
-        }
-        $state->last_transition_at = Carbon::now();
-        $state->save();
+        $state = $this->stageStates->upsertForJob(
+            $job,
+            $jobId,
+            $stage,
+            $this->stageAttributes($attributes),
+            $this->startedStatuses(),
+            Carbon::now(),
+        );
 
         $this->refreshJobFromStages($job, $stage, $attributes);
 
@@ -109,10 +107,7 @@ class PipelineStateService
             return null;
         }
 
-        $existing = PipelineStageState::query()
-            ->where('job_id', $jobId)
-            ->where('stage', $stage)
-            ->first();
+        $existing = $this->stageStates->findForJobStage($jobId, $stage);
 
         $counts = is_array($existing?->counts) ? $existing->counts : [];
         foreach ($deltas as $key => $delta) {
@@ -136,49 +131,32 @@ class PipelineStateService
         }
 
         return DB::transaction(function () use ($jobId, $stage, $attributes, $requiredCompletedStages, $force): ?PipelineStageState {
-            $job = PipelineJob::query()->firstOrCreate(
-                ['job_id' => $jobId],
-                [
-                    'status' => PipelineJob::STATUS_PENDING,
-                    'current_stage' => $stage,
-                    'started_at' => Carbon::now(),
-                ],
-            );
+            $job = $this->jobs->firstOrCreateClaimJob($jobId, $stage, Carbon::now());
 
             foreach ($requiredCompletedStages as $requiredStage) {
-                $required = PipelineStageState::query()
-                    ->where('job_id', $jobId)
-                    ->where('stage', $requiredStage)
-                    ->lockForUpdate()
-                    ->first();
+                $required = $this->stageStates->lockForJobStage($jobId, $requiredStage);
 
                 if (!$required || $required->status !== PipelineJob::STATUS_COMPLETED) {
                     return null;
                 }
             }
 
-            $state = PipelineStageState::query()
-                ->where('job_id', $jobId)
-                ->where('stage', $stage)
-                ->lockForUpdate()
-                ->first();
+            $state = $this->stageStates->lockForJobStage($jobId, $stage);
 
             if ($state && !$force && in_array($state->status, $this->nonClaimableStatuses(), true)) {
                 return null;
             }
 
-            $state ??= new PipelineStageState([
-                'job_id' => $jobId,
-                'stage' => $stage,
-            ]);
-
-            $state->pipeline_job_id = $job->id;
-            $state->fill($this->stageAttributes(array_merge($attributes, [
-                'status' => $attributes['status'] ?? PipelineJob::STATUS_RUNNING,
-                'started_at' => $attributes['started_at'] ?? Carbon::now(),
-            ])));
-            $state->last_transition_at = Carbon::now();
-            $state->save();
+            $state = $this->stageStates->saveForJob(
+                $state ?? $this->stageStates->newForJobStage($jobId, $stage),
+                $job,
+                $this->stageAttributes(array_merge($attributes, [
+                    'status' => $attributes['status'] ?? PipelineJob::STATUS_RUNNING,
+                    'started_at' => $attributes['started_at'] ?? Carbon::now(),
+                ])),
+                $this->startedStatuses(),
+                Carbon::now(),
+            );
 
             $this->refreshJobFromStages($job, $stage, $attributes);
 
@@ -192,10 +170,7 @@ class PipelineStateService
             return null;
         }
 
-        return PipelineStageState::query()
-            ->where('job_id', $jobId)
-            ->where('stage', $stage)
-            ->value('status');
+        return $this->stageStates->statusValue($jobId, $stage);
     }
 
     public function isStageCompleted(string $jobId, string $stage): bool
@@ -216,10 +191,7 @@ class PipelineStateService
             return null;
         }
 
-        $job = PipelineJob::query()
-            ->with(['stages' => fn ($query) => $query->orderBy('id')])
-            ->where('job_id', $jobId)
-            ->first();
+        $job = $this->jobs->findWithOrderedStagesByJobId($jobId);
 
         if (!$job) {
             return null;
@@ -249,31 +221,20 @@ class PipelineStateService
 
     private function refreshJobFromStages(PipelineJob $job, string $currentStage, array $attributes): void
     {
-        $stages = PipelineStageState::query()
-            ->where('pipeline_job_id', $job->id)
-            ->get();
+        $stages = $this->stageStates->forPipelineJob($job);
 
         $statuses = $stages->pluck('status')->all();
-        $job->current_stage = $attributes['current_stage'] ?? $currentStage;
-        $job->status = $this->overallStatus($statuses);
-
-        if (isset($attributes['dataset_path'])) {
-            $job->dataset_path = $attributes['dataset_path'];
-        }
-        if (isset($attributes['source_url'])) {
-            $job->source_url = $attributes['source_url'];
-        }
-        if (isset($attributes['label'])) {
-            $job->label = $attributes['label'];
-        }
-
         $counts = $this->rollupCounts($stages);
-        $job->total_documents = $counts['total'];
-        $job->processed_documents = $counts['processed'];
-        $job->failed_documents = $counts['failed'];
-        $job->skipped_documents = $counts['skipped'];
-        $job->completed_at = $job->status === PipelineJob::STATUS_RUNNING ? null : $this->latestCompletedAt($stages);
-        $job->save();
+        $status = $this->overallStatus($statuses);
+
+        $this->jobs->updateStageRollup(
+            $job,
+            $currentStage,
+            $status,
+            $counts,
+            $status === PipelineJob::STATUS_RUNNING ? null : $this->latestCompletedAt($stages),
+            $attributes,
+        );
     }
 
     private function overallStatus(array $statuses): string
@@ -347,6 +308,15 @@ class PipelineStateService
         ];
     }
 
+    private function startedStatuses(): array
+    {
+        return [
+            PipelineJob::STATUS_RUNNING,
+            'processing',
+            'received',
+        ];
+    }
+
     private function jobAttributes(array $attributes): array
     {
         return array_filter([
@@ -404,7 +374,7 @@ class PipelineStateService
 
     private function tablesAvailable(): bool
     {
-        return Schema::hasTable('pipeline_jobs') && Schema::hasTable('pipeline_stage_states');
+        return $this->stageStates->tablesAvailable();
     }
 
     private function dateValue(mixed $value): ?string

@@ -3,10 +3,11 @@
 namespace App\Services\Pipeline\EventHandlers;
 
 use App\Models\PipelineJob;
-use App\Models\ScrapedElement;
 use App\Services\Pipeline\PipelineEvent;
 use App\Services\Pipeline\PipelineEventBus;
 use App\Services\Pipeline\PipelineEventStateService;
+use App\Services\Pipeline\Repositories\PipelineJobRepository;
+use App\Services\Pipeline\Repositories\PipelineScrapeHistoryRepository;
 use App\Services\ScrapeService\Data\ScrapeJobRequest;
 use App\Services\ScrapeService\ScraperPipelineService;
 use Illuminate\Support\Facades\File;
@@ -19,6 +20,8 @@ class ScraperEventHandler implements PipelineEventHandler
     public function __construct(
         private readonly PipelineEventBus $events,
         private readonly PipelineEventStateService $state,
+        private readonly PipelineJobRepository $jobs,
+        private readonly PipelineScrapeHistoryRepository $scrapeHistory,
         private readonly ScraperPipelineService $scraper,
     ) {
     }
@@ -58,7 +61,7 @@ class ScraperEventHandler implements PipelineEventHandler
         $contentHash = (string) ($event['content_hash'] ?: hash('sha256', $url));
         $event['content_hash'] = $contentHash;
 
-        $existing = PipelineJob::query()->where('job_id', $event['job_id'])->first();
+        $existing = $this->jobs->findByJobId((string) $event['job_id']);
         if ($existing && in_array($existing->status, [PipelineJob::STATUS_RUNNING, PipelineJob::STATUS_COMPLETED, PipelineJob::STATUS_SKIPPED], true)) {
             Log::info('pipeline.event.scrape.duplicate_ignored', [
                 'task_id' => $event['task_id'],
@@ -68,7 +71,7 @@ class ScraperEventHandler implements PipelineEventHandler
             return;
         }
 
-        if ($this->alreadyScraped($url, $contentHash)) {
+        if ($this->scrapeHistory->hasCompletedScraperOutput($url, $contentHash)) {
             $this->state->upsertJob($event, PipelineJob::STATUS_SKIPPED, [
                 'reason' => 'URL/content_hash was already scraped.',
             ]);
@@ -120,19 +123,6 @@ class ScraperEventHandler implements PipelineEventHandler
             'job_id' => $event['job_id'],
             'source_url' => $url,
         ]);
-    }
-
-    private function alreadyScraped(string $url, string $contentHash): bool
-    {
-        return ScrapedElement::query()
-            ->where('page_url_hash', $contentHash)
-            ->orWhere('page_url', $url)
-            ->exists()
-            || PipelineJob::query()
-                ->where('source_url', $url)
-                ->where('job_type', PipelineJob::TYPE_SCRAPE)
-                ->whereIn('status', [PipelineJob::STATUS_COMPLETED, PipelineJob::STATUS_SKIPPED])
-                ->exists();
     }
 
     private function outputDirFor(array $event): string

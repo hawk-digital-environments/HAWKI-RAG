@@ -16,6 +16,12 @@ readonly class PipelineScrapeHistoryRepository
             || $this->hasCompletedOrSkippedJob($url);
     }
 
+    public function hasCompletedScraperOutput(string $url, string $contentHash): bool
+    {
+        return $this->hasScrapedElement($url, $contentHash)
+            || $this->hasCompletedOrSkippedScrapeJob($url);
+    }
+
     public function hasScrapedElement(string $url, string $contentHash): bool
     {
         return ScrapedElement::query()
@@ -28,6 +34,15 @@ readonly class PipelineScrapeHistoryRepository
     {
         return PipelineJob::query()
             ->where('source_url', $url)
+            ->whereIn('status', [PipelineJob::STATUS_COMPLETED, PipelineJob::STATUS_SKIPPED])
+            ->exists();
+    }
+
+    public function hasCompletedOrSkippedScrapeJob(string $url): bool
+    {
+        return PipelineJob::query()
+            ->where('source_url', $url)
+            ->where('job_type', PipelineJob::TYPE_SCRAPE)
             ->whereIn('status', [PipelineJob::STATUS_COMPLETED, PipelineJob::STATUS_SKIPPED])
             ->exists();
     }

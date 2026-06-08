@@ -2008,3 +2008,318 @@ Next recommended slice:
 
 - Refactor `PipelineEventStateService`.
 - It is the next high-impact pipeline service with direct job persistence, and the methods overlap with event handler behavior.
+
+## Step 32: Pipeline Event State Repository Boundary
+
+Status: completed.
+
+Production code changed:
+
+- Updated `app/Services/Pipeline/PipelineEventStateService.php`.
+- Updated `app/Services/Pipeline/Repositories/PipelineJobRepository.php`.
+
+Test code changed:
+
+- Added `tests/Feature/PipelineEventStateRepositoryTest.php`.
+
+What changed:
+
+- `PipelineEventStateService` no longer directly queries `PipelineJob` to load existing job state.
+- `PipelineEventStateService` no longer directly calls `PipelineJob::query()->updateOrCreate()`.
+- `PipelineEventStateService` no longer directly queries `PipelineTask` before recalculating task status.
+- `PipelineJobRepository` now owns:
+  - `upsertEventState()`
+- Existing repository methods now support the service:
+  - `PipelineJobRepository::findByJobId()`
+  - `PipelineTaskRepository::findByTaskId()`
+- `PipelineEventStateService` still owns:
+  - event normalization
+  - status normalization
+  - metadata merging
+  - event-history appending
+  - terminal timestamp decisions
+  - failed-job error-message selection
+  - task status recalculation trigger
+  - event-state logging
+
+Before:
+
+```php
+$existing = PipelineJob::query()->where('job_id', $event['job_id'])->first();
+
+$job = PipelineJob::query()->updateOrCreate(
+    ['job_id' => (string) $event['job_id']],
+    [
+        'task_id' => $event['task_id'],
+        'status' => $status,
+        'metadata' => $metadata,
+    ],
+);
+
+$task = PipelineTask::query()->where('task_id', $taskId)->first();
+```
+
+After:
+
+```php
+$existing = $this->jobs->findByJobId((string) $event['job_id']);
+
+$job = $this->jobs->upsertEventState(
+    (string) $event['job_id'],
+    [
+        'task_id' => $event['task_id'],
+        'status' => $status,
+        'metadata' => $metadata,
+    ],
+);
+
+$task = $this->taskRepository->findByTaskId($taskId);
+```
+
+Learning note:
+
+This keeps event-state behavior in the service, because normalization and metadata history are pipeline workflow rules. The repository only owns the database upsert. The new `upsertEventState()` method intentionally does not require a `PipelineTask` model, preserving the previous behavior where event state could be written even if the task row is not present yet.
+
+Next recommended slice:
+
+- Refactor `PipelineStateService`.
+- It has the largest remaining cluster of direct pipeline job/stage state persistence.
+
+## Step 33: Pipeline State Repository Boundary
+
+Status: completed.
+
+Production code changed:
+
+- Updated `app/Services/Pipeline/PipelineStateService.php`.
+- Updated `app/Services/Pipeline/Repositories/PipelineJobRepository.php`.
+- Added `app/Services/Pipeline/Repositories/PipelineStageStateRepository.php`.
+
+Test code changed:
+
+- Added `tests/Feature/PipelineStateRepositoryTest.php`.
+
+What changed:
+
+- `PipelineStateService` no longer directly creates or updates `PipelineJob` rows.
+- `PipelineStateService` no longer directly creates, updates, locks, reads, or status-checks `PipelineStageState` rows.
+- `PipelineStateService` no longer directly reads schema availability.
+- `PipelineJobRepository` now owns:
+  - `ensureStateJob()`
+  - `firstOrCreateClaimJob()`
+  - `findWithOrderedStagesByJobId()`
+  - `updateStageRollup()`
+- `PipelineStageStateRepository` now owns:
+  - table availability checks
+  - stage lookup by job/stage
+  - locked stage lookup for claims
+  - stage status lookup
+  - stage upsert/save
+  - loading stage rows for a pipeline job
+- `PipelineStateService` still owns:
+  - public stage transition API
+  - count increment rules
+  - required-stage claim rules
+  - non-claimable status rules
+  - overall job status rollup rules
+  - count rollup rules
+  - status payload shape
+
+Before:
+
+```php
+$job = PipelineJob::query()->firstOrNew(['job_id' => $jobId]);
+$job->fill($this->jobAttributes($attributes));
+$job->save();
+
+$state = PipelineStageState::query()->firstOrNew([
+    'job_id' => $jobId,
+    'stage' => $stage,
+]);
+$state->pipeline_job_id = $job->id;
+$state->fill($this->stageAttributes($attributes));
+$state->save();
+
+$stages = PipelineStageState::query()
+    ->where('pipeline_job_id', $job->id)
+    ->get();
+
+$job->status = $this->overallStatus($statuses);
+$job->save();
+```
+
+After:
+
+```php
+$job = $this->jobs->ensureStateJob(
+    $jobId,
+    $this->jobAttributes($attributes),
+    Carbon::now(),
+    PipelineJob::STATUS_PENDING,
+);
+
+$state = $this->stageStates->upsertForJob(
+    $job,
+    $jobId,
+    $stage,
+    $this->stageAttributes($attributes),
+    $this->startedStatuses(),
+    Carbon::now(),
+);
+
+$stages = $this->stageStates->forPipelineJob($job);
+
+$this->jobs->updateStageRollup(
+    $job,
+    $currentStage,
+    $status,
+    $counts,
+    $completedAt,
+    $attributes,
+);
+```
+
+Learning note:
+
+This is the same `SKILL.md` pattern applied to the old stage-state tracking layer. The service remains the owner of state-machine behavior, while repositories own Eloquent persistence, locking, and schema/table checks.
+
+Next recommended slice:
+
+- Refactor direct persistence inside pipeline event handlers.
+- Best starting point:
+  - `ScrapeMonitorEventHandler`, because it still writes `PipelineJob` directly in monitor progress/failure paths.
+
+## Step 34: Scrape Monitor Handler Repository Boundary
+
+Status: completed.
+
+Production code changed:
+
+- Updated `app/Services/Pipeline/EventHandlers/ScrapeMonitorEventHandler.php`.
+- Updated `app/Services/Pipeline/Repositories/PipelineJobRepository.php`.
+
+Test code changed:
+
+- Added `tests/Feature/PipelineScrapeMonitorRepositoryTest.php`.
+
+What changed:
+
+- `ScrapeMonitorEventHandler` no longer directly queries `PipelineJob` when a crawl completes.
+- `ScrapeMonitorEventHandler` no longer directly writes scrape completion state with `forceFill()->save()`.
+- `ScrapeMonitorEventHandler` no longer directly queries `PipelineJob` when publishing a failed scrape event.
+- `PipelineJobRepository` now owns:
+  - `findWithTaskByJobId()`
+  - `markScrapeMonitorCompleted()`
+- `ScrapeMonitorEventHandler` still owns:
+  - reading Crawl4AI monitor status
+  - deciding completed/running/failed status paths
+  - updating pipeline stage state through `PipelineStateService`
+  - publishing delayed monitor retry events
+  - publishing `page.scraped`, `file.discovered`, and failed events
+  - discovering supported files from the completed crawl output directory
+
+Before:
+
+```php
+$pipelineJob = PipelineJob::query()->where('job_id', $event['job_id'])->first();
+
+$pipelineJob->forceFill([
+    'job_type' => PipelineJob::TYPE_SCRAPE,
+    'status' => PipelineJob::STATUS_COMPLETED,
+    'local_path' => $datasetPath,
+    'completed_at' => now(),
+    'finished_at' => now(),
+    'metadata' => $metadata,
+])->save();
+
+$this->publishScrapeCompletedEvents($pipelineJob->refresh(), $datasetPath);
+```
+
+After:
+
+```php
+$pipelineJob = $this->jobs->findWithTaskByJobId((string) $event['job_id']);
+
+$pipelineJob = $this->jobs->markScrapeMonitorCompleted(
+    $pipelineJob,
+    $datasetPath,
+    now(),
+    $metadata,
+);
+
+$this->publishScrapeCompletedEvents($pipelineJob, $datasetPath);
+```
+
+Learning note:
+
+This applies the repository boundary to an event handler. The handler still coordinates the monitor workflow and RabbitMQ events, but it no longer owns Eloquent reads or writes for the scrape job row.
+
+Next recommended slice:
+
+- Continue with direct persistence inside other pipeline event handlers.
+- Good candidates:
+  - `ScraperEventHandler`
+  - `ConverterEventHandler`
+  - `IngestionEventHandler`
+
+## Step 35: Scraper Handler Repository Boundary
+
+Status: completed.
+
+Production code changed:
+
+- Updated `app/Services/Pipeline/EventHandlers/ScraperEventHandler.php`.
+- Updated `app/Services/Pipeline/Repositories/PipelineScrapeHistoryRepository.php`.
+
+Test code changed:
+
+- Updated `tests/Feature/PipelineRepositoryReadTest.php`.
+
+What changed:
+
+- `ScraperEventHandler` no longer directly queries `PipelineJob` to detect duplicate running/completed scrape jobs.
+- `ScraperEventHandler` no longer directly queries `ScrapedElement` or `PipelineJob` for already-scraped URL detection.
+- `PipelineScrapeHistoryRepository` now owns the scrape-specific duplicate-output check:
+  - `hasCompletedScraperOutput()`
+  - `hasCompletedOrSkippedScrapeJob()`
+- The repository test now proves that scraper duplicate detection only treats completed/skipped scrape jobs as scraper output. A completed convert job is not enough to skip a new scrape request.
+- `ScraperEventHandler` still owns:
+  - normalizing `scrape.requested` events
+  - validating the source URL
+  - assigning the content hash
+  - deciding whether to ignore duplicate running/completed jobs
+  - marking already-scraped URLs as skipped
+  - submitting the crawl to Crawl4AI through `ScraperPipelineService`
+  - publishing `scrape.monitor.requested`
+
+Before:
+
+```php
+$existing = PipelineJob::query()->where('job_id', $event['job_id'])->first();
+
+$alreadyScraped = ScrapedElement::query()
+    ->where('page_url_hash', $contentHash)
+    ->orWhere('page_url', $url)
+    ->exists();
+```
+
+After:
+
+```php
+$existing = $this->jobs->findByJobId((string) $event['job_id']);
+
+if ($this->scrapeHistory->hasCompletedScraperOutput($url, $contentHash)) {
+    // skip and publish page.scraped
+}
+```
+
+Learning note:
+
+This follows the `SKILL.md` repository rule: handlers and services can make workflow decisions, but model statics and Eloquent query details belong in repositories. The handler is now easier to read because it says what it needs, while the repository owns how that data is found.
+
+Next recommended slice:
+
+- Continue removing direct model persistence from event handlers.
+- Good next candidates:
+  - `ConverterEventHandler`
+  - `IngestionEventHandler`
