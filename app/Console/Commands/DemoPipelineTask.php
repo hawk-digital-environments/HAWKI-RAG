@@ -176,11 +176,11 @@ class DemoPipelineTask extends Command
     {
         $this->newLine();
         $this->line('If the task stays queued, start the pipeline workers:');
-        $this->line('  docker compose --profile pipeline-events up -d hawki-rag-scrape-monitor-worker hawki-rag-scraper-event-worker hawki-rag-converter-event-worker hawki-rag-ingestion-event-worker');
+        $this->line('  docker compose --profile pipeline-events up -d hawki-rag-scraper-event-worker hawki-rag-scrape-monitor-event-worker hawki-rag-converter-event-worker hawki-rag-ingestion-event-worker');
         $this->line('');
         $this->line('Direct Artisan worker commands:');
-        $this->line('  php artisan queue:work database --queue=default --sleep=2 --tries=3 --timeout=180');
         $this->line('  php artisan pipeline:scraper-event-worker');
+        $this->line('  php artisan pipeline:scrape-monitor-event-worker');
         $this->line('  php artisan pipeline:converter-event-worker');
         $this->line('  php artisan pipeline:ingestion-event-worker');
     }

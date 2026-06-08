@@ -16,7 +16,7 @@ events, and tracks task/job status in the database.
 
 - DB/ops commands: [docs/db_cookbook.md](docs/db_cookbook.md)
 - Scraper worker: `php artisan pipeline:scraper-event-worker`
-- Scrape monitor worker: `php artisan queue:work database --queue=default`
+- Scrape monitor worker: `php artisan pipeline:scrape-monitor-event-worker`
 - Converter worker: `php artisan pipeline:converter-event-worker`
 - Ingestion worker: `php artisan pipeline:ingestion-event-worker`
 - Python remains the FastAPI RAG bridge for embeddings, Qdrant, Neo4j, RAG-Anything/LightRAG, and `/ingest`.

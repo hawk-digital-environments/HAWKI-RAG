@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Console\Commands\Pipeline\ConverterEventWorkerCommand;
 use App\Console\Commands\Pipeline\IngestionEventWorkerCommand;
+use App\Console\Commands\Pipeline\ScrapeMonitorEventWorkerCommand;
 use App\Console\Commands\Pipeline\ScraperEventWorkerCommand;
 use App\Services\Rag\RagRabbitMQ;
 use Illuminate\Console\Command;
@@ -26,6 +27,7 @@ class PipelineHealthCommand extends Command
             $this->checkDatabase(),
             $this->checkRabbitMQ(),
             $this->checkScraper($timeout),
+            $this->checkScrapeMonitor(),
             $this->checkConverter($timeout),
             $this->checkIngestion($timeout),
             $this->checkQdrant($timeout),
@@ -121,6 +123,24 @@ class PipelineHealthCommand extends Command
             $timeout,
             sprintf('Worker command registered, queue %s listens to %s.', $worker['queue'], implode(', ', $worker['listen'])),
             'Start the scraper service or set CUSTOM_CRAWLER_URL. Start the consumer with php artisan pipeline:scraper-event-worker.',
+        );
+    }
+
+    private function checkScrapeMonitor(): array
+    {
+        $worker = $this->workerConfig('scrape_monitor');
+        $configError = $this->workerConfigError(ScrapeMonitorEventWorkerCommand::class, $worker, 'scrape_monitor');
+        if ($configError !== null) {
+            return $configError;
+        }
+
+        return $this->ok(
+            'Scrape monitor worker',
+            sprintf(
+                'Worker command registered, queue %s listens to %s. RabbitMQ owns Crawl4AI completion polling.',
+                $worker['queue'],
+                implode(', ', $worker['listen']),
+            ),
         );
     }
 
@@ -386,9 +406,11 @@ class PipelineHealthCommand extends Command
 
     private function workerConfigError(string $commandClass, array $worker, string $name): ?array
     {
+        $displayName = ucfirst(str_replace('_', ' ', $name)) . ' worker';
+
         if (! class_exists($commandClass)) {
             return $this->failureResult(
-                ucfirst($name) . ' worker',
+                $displayName,
                 "Command class {$commandClass} is missing.",
                 'Restore the MVP pipeline worker command class.',
             );
@@ -396,7 +418,7 @@ class PipelineHealthCommand extends Command
 
         if (($worker['queue'] ?? '') === '' || ! is_array($worker['listen'] ?? null) || $worker['listen'] === []) {
             return $this->failureResult(
-                ucfirst($name) . ' worker',
+                $displayName,
                 'RabbitMQ worker queue or listen events are not configured.',
                 "Set communication.rabbitmq.pipeline_events.workers.{$name}.queue and listen events.",
             );

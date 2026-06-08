@@ -8,6 +8,7 @@ use Illuminate\Support\Str;
 class PipelineEvent
 {
     public const SCRAPE_REQUESTED = 'scrape.requested';
+    public const SCRAPE_MONITOR_REQUESTED = 'scrape.monitor.requested';
     public const PAGE_SCRAPED = 'page.scraped';
     public const FILE_DISCOVERED = 'file.discovered';
     public const FILE_CONVERTED = 'file.converted';
@@ -64,6 +65,7 @@ class PipelineEvent
     {
         return match ($eventType) {
             self::SCRAPE_REQUESTED,
+            self::SCRAPE_MONITOR_REQUESTED,
             self::PAGE_SCRAPED => PipelineJob::TYPE_SCRAPE,
             self::FILE_DISCOVERED,
             self::FILE_CONVERTED => PipelineJob::TYPE_CONVERT,

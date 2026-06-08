@@ -44,10 +44,13 @@ return [
             'prefetch_count' => env('RABBITMQ_PIPELINE_PREFETCH_COUNT', env('RABBITMQ_PREFETCH_COUNT', 1)),
             'queue_type' => env('RABBITMQ_PIPELINE_QUEUE_TYPE', env('RABBITMQ_QUEUE_TYPE', 'quorum')),
             'schema_version' => env('JOB_SCHEMA_VERSION', '1'),
+            'scrape_monitor_max_attempts' => env('PIPELINE_SCRAPE_MONITOR_MAX_ATTEMPTS', 240),
+            'scrape_monitor_status_read_retries' => env('PIPELINE_SCRAPE_MONITOR_STATUS_READ_RETRIES', 5),
             'failed_queue' => env('RABBITMQ_PIPELINE_FAILED_QUEUE', 'pipeline_failed_events'),
             'failed_routing_key' => 'job.failed',
             'events' => [
                 'scrape_requested' => 'scrape.requested',
+                'scrape_monitor_requested' => 'scrape.monitor.requested',
                 'page_scraped' => 'page.scraped',
                 'file_discovered' => 'file.discovered',
                 'file_converted' => 'file.converted',
@@ -59,6 +62,11 @@ return [
                     'queue' => env('RABBITMQ_PIPELINE_SCRAPER_QUEUE', 'pipeline_scraper_events'),
                     'consumer_tag' => env('RABBITMQ_PIPELINE_SCRAPER_CONSUMER_TAG', 'hawki-rag-scraper-events'),
                     'listen' => ['scrape.requested'],
+                ],
+                'scrape_monitor' => [
+                    'queue' => env('RABBITMQ_PIPELINE_SCRAPE_MONITOR_QUEUE', 'pipeline_scrape_monitor_events'),
+                    'consumer_tag' => env('RABBITMQ_PIPELINE_SCRAPE_MONITOR_CONSUMER_TAG', 'hawki-rag-scrape-monitor-events'),
+                    'listen' => ['scrape.monitor.requested'],
                 ],
                 'converter' => [
                     'queue' => env('RABBITMQ_PIPELINE_CONVERTER_QUEUE', 'pipeline_converter_events'),

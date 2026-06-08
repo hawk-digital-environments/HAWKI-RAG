@@ -6,7 +6,7 @@ Quick command reference for the RAWKI/HAWKI local stack.
 
 ```bash
 docker compose ps
-docker compose ps mariadb rabbitmq hawki-rag-scrape-monitor-worker hawki-rag-scraper-event-worker hawki-rag-converter-event-worker hawki-rag-ingestion-event-worker
+docker compose ps mariadb rabbitmq hawki-rag-scraper-event-worker hawki-rag-scrape-monitor-event-worker hawki-rag-converter-event-worker hawki-rag-ingestion-event-worker
 ```
 
 ## 2) MariaDB access
@@ -118,7 +118,7 @@ docker exec rabbitmq rabbitmqctl list_bindings source_name destination_name dest
 # MVP pipeline topology
 docker exec rabbitmq rabbitmqctl list_exchanges name type durable | rg 'pipeline'
 docker exec rabbitmq rabbitmqctl list_queues name durable arguments messages_ready messages_unacknowledged | rg 'pipeline_'
-docker exec rabbitmq rabbitmqctl list_bindings source_name destination_name destination_kind routing_key | rg 'scrape.requested|page.scraped|file.discovered|file.converted|content.ingested|job.failed'
+docker exec rabbitmq rabbitmqctl list_bindings source_name destination_name destination_kind routing_key | rg 'scrape.requested|scrape.monitor.requested|page.scraped|file.discovered|file.converted|content.ingested|job.failed'
 ```
 
 Expected topology:
@@ -130,15 +130,15 @@ Expected topology:
 MVP pipeline worker topology:
 
 - Exchanges: `pipeline.events`, `pipeline.retry`, `pipeline.failures`
-- Queues: `pipeline_scraper_events`, `pipeline_converter_events`, `pipeline_ingestion_events`, `pipeline_failed_events`
-- Local Laravel queue: `default`, used only for delayed Crawl4AI status polling by `MonitorScrapeJob`
-- Event routing keys: `scrape.requested`, `page.scraped`, `file.discovered`, `file.converted`, `content.ingested`, `job.failed`
+- Queues: `pipeline_scraper_events`, `pipeline_scrape_monitor_events`, `pipeline_converter_events`, `pipeline_ingestion_events`, `pipeline_failed_events`
+- Scrape monitoring: RabbitMQ owns delayed Crawl4AI status polling through `scrape.monitor.requested`
+- Event routing keys: `scrape.requested`, `scrape.monitor.requested`, `page.scraped`, `file.discovered`, `file.converted`, `content.ingested`, `job.failed`
 
 ## 6) Re-apply topology declaration
 
 ```bash
-docker compose restart hawki-rag-scrape-monitor-worker hawki-rag-scraper-event-worker hawki-rag-converter-event-worker hawki-rag-ingestion-event-worker
-docker compose logs --tail=120 hawki-rag-scrape-monitor-worker hawki-rag-scraper-event-worker hawki-rag-converter-event-worker hawki-rag-ingestion-event-worker
+docker compose restart hawki-rag-scraper-event-worker hawki-rag-scrape-monitor-event-worker hawki-rag-converter-event-worker hawki-rag-ingestion-event-worker
+docker compose logs --tail=120 hawki-rag-scraper-event-worker hawki-rag-scrape-monitor-event-worker hawki-rag-converter-event-worker hawki-rag-ingestion-event-worker
 ```
 
 ## 7) Publish a test message (HTTP API)
@@ -157,8 +157,8 @@ curl -u guest:guest -H "content-type:application/json" \
 ## 8) Worker logs and consumer health
 
 ```bash
-docker compose logs -f hawki-rag-scrape-monitor-worker hawki-rag-scraper-event-worker hawki-rag-converter-event-worker hawki-rag-ingestion-event-worker
-docker compose ps hawki-rag-scrape-monitor-worker hawki-rag-scraper-event-worker hawki-rag-converter-event-worker hawki-rag-ingestion-event-worker
+docker compose logs -f hawki-rag-scraper-event-worker hawki-rag-scrape-monitor-event-worker hawki-rag-converter-event-worker hawki-rag-ingestion-event-worker
+docker compose ps hawki-rag-scraper-event-worker hawki-rag-scrape-monitor-event-worker hawki-rag-converter-event-worker hawki-rag-ingestion-event-worker
 ```
 
 You should see structured events like:

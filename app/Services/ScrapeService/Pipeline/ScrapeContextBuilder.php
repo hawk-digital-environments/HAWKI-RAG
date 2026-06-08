@@ -20,8 +20,7 @@ class ScrapeContextBuilder
     * @return ScrapeContext
     **/
     public static function buildFromRequest(ScrapeJobRequest $request): ScrapeContext{
-        // Generate job_id first
-        $jobId = Str::uuid()->toString();
+        $jobId = $request->jobId ?: Str::uuid()->toString();
 
         // Recreate request with the job_id
         $requestWithJobId = ScrapeJobRequest::fromArray(array_merge(

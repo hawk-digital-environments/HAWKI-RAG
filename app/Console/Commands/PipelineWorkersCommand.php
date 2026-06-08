@@ -13,28 +13,23 @@ class PipelineWorkersCommand extends Command
     public function handle(): int
     {
         $workers = config('communication.rabbitmq.pipeline_events.workers', []);
-        $queueConnection = (string) config('queue.default');
-        $databaseQueue = (string) config('queue.connections.database.queue', 'default');
 
         $this->line('HAWKI RAG MVP pipeline workers');
         $this->line('Laravel owns orchestration. RabbitMQ is the event bus. No Prefect. No Redis.');
         $this->newLine();
 
         $this->line('Start all pipeline workers with Docker:');
-        $this->line('  docker compose --profile pipeline-events up -d hawki-rag-scrape-monitor-worker hawki-rag-scraper-event-worker hawki-rag-converter-event-worker hawki-rag-ingestion-event-worker');
+        $this->line('  docker compose --profile pipeline-events up -d hawki-rag-scraper-event-worker hawki-rag-scrape-monitor-event-worker hawki-rag-converter-event-worker hawki-rag-ingestion-event-worker');
         $this->newLine();
 
         $this->line('Direct Artisan commands, one terminal per command:');
-        $this->line('  php artisan queue:work database --queue=' . $databaseQueue . ' --sleep=2 --tries=3 --timeout=180');
         $this->line('  php artisan pipeline:scraper-event-worker');
+        $this->line('  php artisan pipeline:scrape-monitor-event-worker');
         $this->line('  php artisan pipeline:converter-event-worker');
         $this->line('  php artisan pipeline:ingestion-event-worker');
         $this->newLine();
 
-        $this->line('Laravel queue worker:');
-        $this->line('  connection: ' . $queueConnection);
-        $this->line('  queue: ' . $databaseQueue);
-        $this->line('  table: ' . config('queue.connections.database.table', 'jobs'));
+        $this->line('Scrape monitoring: RabbitMQ owns Crawl4AI status polling through scrape.monitor.requested events.');
         $this->newLine();
 
         $this->line('RabbitMQ exchanges:');
@@ -63,6 +58,7 @@ class PipelineWorkersCommand extends Command
     {
         $commands = [
             'scraper' => 'php artisan pipeline:scraper-event-worker',
+            'scrape_monitor' => 'php artisan pipeline:scrape-monitor-event-worker',
             'converter' => 'php artisan pipeline:converter-event-worker',
             'ingestion' => 'php artisan pipeline:ingestion-event-worker',
         ];

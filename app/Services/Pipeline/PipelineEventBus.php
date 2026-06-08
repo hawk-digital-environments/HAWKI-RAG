@@ -73,6 +73,37 @@ class PipelineEventBus
         return $retryEvent;
     }
 
+    public function publishDelayed(array $event, string $reason = 'delayed event retry'): array
+    {
+        $eventType = (string) ($event['event_type'] ?? '');
+        if ($eventType === '') {
+            throw new \InvalidArgumentException('Delayed publish requires event_type.');
+        }
+
+        $delayedEvent = PipelineEvent::normalize($eventType, array_merge($event, [
+            'metadata' => array_merge(is_array($event['metadata'] ?? null) ? $event['metadata'] : [], [
+                'delay_reason' => $reason,
+                'delay_requested_at' => now()->toIso8601String(),
+            ]),
+        ]));
+
+        $this->recorder->record($eventType, $delayedEvent, 'rabbitmq.delay', "Delayed event queued: {$eventType}");
+        $this->log('delay', $delayedEvent);
+
+        if (! (bool) config('communication.rabbitmq.pipeline_events.enabled', true)) {
+            return $delayedEvent;
+        }
+
+        $this->declareExchanges();
+        $this->publishRaw(
+            (string) config('communication.rabbitmq.pipeline_events.retry_exchange'),
+            $this->retryRoutingKey($eventType),
+            $delayedEvent,
+        );
+
+        return $delayedEvent;
+    }
+
     public function publishRecoveryRetry(array $event, string $reason = 'operator recovery retry'): array
     {
         $eventType = (string) ($event['event_type'] ?? '');

@@ -212,42 +212,6 @@ services:
   # -------------------------------------------------
   # Laravel event-driven pipeline workers (RabbitMQ)
   # -------------------------------------------------
-  hawki-rag-scrape-monitor-worker:
-    image: rawki-hawki_rag_app
-    pull_policy: never
-    build:
-      context: .
-      dockerfile: docker/laravel.Dockerfile
-      target: laravel-app
-      args:
-        - DOCKER_PROJECT_HOST=ixdlab.hawk.de
-        - DOCKER_PROJECT_PATH=/hawki-rag/
-    container_name: hawki_rag_scrape_monitor_worker
-    profiles: ["pipeline-events"]
-    env_file:
-      - ./.env
-    environment:
-      PUID: ${PUID:-1000}
-      PGID: ${PGID:-1000}
-      ENVIRONMENT: "development"
-      SHARED_STORAGE_ROOT: ${SHARED_STORAGE_ROOT:-/app/shared}
-    volumes:
-      - shared_storage:/app/shared
-      - ./storage:/var/www/html/storage
-      - ./docker/rag_app:/container/custom
-      - ./:/var/www/html
-    command: ["php", "artisan", "queue:work", "database", "--queue=default", "--sleep=2", "--tries=3", "--timeout=180"]
-    working_dir: /var/www/html
-    depends_on:
-      mariadb:
-        condition: service_started
-      rabbitmq:
-        condition: service_healthy
-    restart: unless-stopped
-    networks:
-      - default
-      - hawki-network
-
   hawki-rag-scraper-event-worker:
     image: rawki-hawki_rag_app
     pull_policy: never
@@ -273,6 +237,42 @@ services:
       - ./docker/rag_app:/container/custom
       - ./:/var/www/html
     command: ["php", "artisan", "pipeline:scraper-event-worker"]
+    working_dir: /var/www/html
+    depends_on:
+      mariadb:
+        condition: service_started
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - default
+      - hawki-network
+
+  hawki-rag-scrape-monitor-event-worker:
+    image: rawki-hawki_rag_app
+    pull_policy: never
+    build:
+      context: .
+      dockerfile: docker/laravel.Dockerfile
+      target: laravel-app
+      args:
+        - DOCKER_PROJECT_HOST=ixdlab.hawk.de
+        - DOCKER_PROJECT_PATH=/hawki-rag/
+    container_name: hawki_rag_scrape_monitor_event_worker
+    profiles: ["pipeline-events"]
+    env_file:
+      - ./.env
+    environment:
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+      ENVIRONMENT: "development"
+      SHARED_STORAGE_ROOT: ${SHARED_STORAGE_ROOT:-/app/shared}
+    volumes:
+      - shared_storage:/app/shared
+      - ./storage:/var/www/html/storage
+      - ./docker/rag_app:/container/custom
+      - ./:/var/www/html
+    command: ["php", "artisan", "pipeline:scrape-monitor-event-worker"]
     working_dir: /var/www/html
     depends_on:
       mariadb:

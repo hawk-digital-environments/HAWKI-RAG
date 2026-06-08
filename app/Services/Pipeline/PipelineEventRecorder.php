@@ -8,6 +8,7 @@ class PipelineEventRecorder
 {
     private const RECORDED_EVENT_TYPES = [
         PipelineEvent::SCRAPE_REQUESTED,
+        PipelineEvent::SCRAPE_MONITOR_REQUESTED,
         PipelineEvent::PAGE_SCRAPED,
         PipelineEvent::FILE_DISCOVERED,
         PipelineEvent::FILE_CONVERTED,
@@ -112,6 +113,7 @@ class PipelineEventRecorder
 
         return match ((string) $event['event_type']) {
             PipelineEvent::SCRAPE_REQUESTED => $target ? "URL queued: {$target}" : 'URL queued',
+            PipelineEvent::SCRAPE_MONITOR_REQUESTED => $target ? "Scrape monitor requested: {$target}" : 'Scrape monitor requested',
             PipelineEvent::PAGE_SCRAPED => $target ? "Page scraped: {$target}" : 'Page scraped',
             PipelineEvent::FILE_DISCOVERED => $target ? $this->fileLabel($target) . " discovered: {$target}" : 'File discovered',
             PipelineEvent::FILE_CONVERTED => $target ? "File converted: {$target}" : 'File converted',

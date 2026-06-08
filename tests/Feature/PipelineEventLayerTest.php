@@ -2,7 +2,6 @@
 
 namespace Tests\Feature;
 
-use App\Jobs\MonitorScrapeJob;
 use App\Models\JobProcessingState;
 use App\Models\PipelineEventRecord;
 use App\Models\PipelineJob;
@@ -11,10 +10,10 @@ use App\Models\ScrapedElement;
 use App\Services\FileConverter\DocumentConverter;
 use App\Services\Pipeline\EventHandlers\ConverterEventHandler;
 use App\Services\Pipeline\EventHandlers\IngestionEventHandler;
+use App\Services\Pipeline\EventHandlers\ScrapeMonitorEventHandler;
 use App\Services\Pipeline\EventHandlers\ScraperEventHandler;
 use App\Services\Pipeline\PipelineEvent;
 use App\Services\Pipeline\PipelineEventBus;
-use App\Services\Pipeline\PipelineStateService;
 use App\Services\ScrapeService\ScrapeService;
 use App\Services\ScrapeService\Data\ScrapeJobRequest;
 use App\Services\ScrapeService\Data\ScrapeRequestResult;
@@ -136,6 +135,297 @@ class PipelineEventLayerTest extends TestCase
         ]);
     }
 
+    public function test_scrape_monitor_requested_events_are_recorded_for_timeline(): void
+    {
+        $event = app(PipelineEventBus::class)->publish(PipelineEvent::SCRAPE_MONITOR_REQUESTED, [
+            'task_id' => 'task-event-monitor-timeline',
+            'job_id' => 'scrape-event-monitor-timeline',
+            'source_url' => 'https://example.test/monitor',
+            'local_path' => '/app/shared/task-event-monitor-timeline/scrape-event-monitor-timeline',
+            'status' => PipelineJob::STATUS_RUNNING,
+        ]);
+
+        $this->assertSame(PipelineEvent::SCRAPE_MONITOR_REQUESTED, $event['event_type']);
+        $this->assertSame(PipelineJob::TYPE_SCRAPE, $event['job_type']);
+        $this->assertDatabaseHas('pipeline_events', [
+            'task_id' => 'task-event-monitor-timeline',
+            'job_id' => 'scrape-event-monitor-timeline',
+            'event_type' => PipelineEvent::SCRAPE_MONITOR_REQUESTED,
+            'source' => 'rabbitmq.publish',
+        ]);
+
+        $record = PipelineEventRecord::query()
+            ->where('task_id', 'task-event-monitor-timeline')
+            ->where('event_type', PipelineEvent::SCRAPE_MONITOR_REQUESTED)
+            ->firstOrFail();
+        $this->assertSame('Scrape monitor requested: /app/shared/task-event-monitor-timeline/scrape-event-monitor-timeline', $record->message);
+    }
+
+    public function test_scraper_consumer_publishes_initial_rabbitmq_monitor_event_after_submit(): void
+    {
+        config()->set('scraper.storage_path', storage_path('framework/testing/pipeline-events/scrape-monitor-output'));
+
+        $this->mock(ScraperPipelineService::class, function (MockInterface $mock): void {
+            $mock->shouldReceive('execute')
+                ->once()
+                ->andReturn(ScrapeRequestResult::success('scrape-event-monitor-start', 'submitted'));
+        });
+
+        $this->mock(PipelineEventBus::class, function (MockInterface $mock): void {
+            $mock->shouldReceive('publish')
+                ->once()
+                ->with(PipelineEvent::SCRAPE_MONITOR_REQUESTED, \Mockery::on(
+                    fn (array $event): bool => $event['job_id'] === 'scrape-event-monitor-start'
+                        && str_ends_with((string) $event['local_path'], 'task-event-monitor-start/scrape-event-monitor-start')
+                        && $event['status'] === PipelineJob::STATUS_RUNNING
+                        && ($event['metadata']['monitor_mode'] ?? null) === 'rabbitmq'
+                        && ($event['metadata']['monitor_attempt'] ?? null) === 0
+                ))
+                ->andReturnUsing(fn (string $eventType, array $payload): array => PipelineEvent::normalize($eventType, $payload));
+        });
+
+        $task = $this->task('task-event-monitor-start');
+        app(ScraperEventHandler::class)->handle(PipelineEvent::normalize(PipelineEvent::SCRAPE_REQUESTED, [
+            'task_id' => $task->task_id,
+            'job_id' => 'scrape-event-monitor-start',
+            'dataset_id' => $task->dataset_id,
+            'source_url' => 'https://example.test/monitor-start',
+            'status' => PipelineJob::STATUS_PENDING,
+        ]));
+
+        $this->assertDatabaseHas('pipeline_jobs', [
+            'task_id' => $task->task_id,
+            'job_id' => 'scrape-event-monitor-start',
+            'status' => PipelineJob::STATUS_RUNNING,
+        ]);
+    }
+
+    public function test_scrape_monitor_event_handler_reschedules_running_crawls_through_rabbitmq_delay(): void
+    {
+        $task = $this->task('task-event-monitor-probe');
+        $datasetPath = storage_path('framework/testing/pipeline-events/monitor-running');
+        PipelineJob::query()->create([
+            'job_id' => 'scrape-event-monitor-probe',
+            'task_id' => $task->task_id,
+            'job_type' => PipelineJob::TYPE_SCRAPE,
+            'source_url' => 'https://example.test/monitor-probe',
+            'local_path' => $datasetPath,
+            'status' => PipelineJob::STATUS_RUNNING,
+            'started_at' => now(),
+            'metadata' => [
+                'dataset_id' => $task->dataset_id,
+            ],
+        ]);
+
+        $this->mock(ScrapeService::class, function (MockInterface $mock) use ($datasetPath): void {
+            $mock->shouldReceive('getCrawlerStatus')
+                ->once()
+                ->with('scrape-event-monitor-probe')
+                ->andReturn([
+                    'success' => true,
+                    'status' => 200,
+                    'data' => [
+                        'status' => 'running',
+                        'output_directory' => $datasetPath,
+                        'total_pages' => 3,
+                        'pages_crawled' => 1,
+                        'failed_urls' => 0,
+                        'message' => 'Crawler still running.',
+                    ],
+                ]);
+        });
+
+        $this->mock(PipelineEventBus::class, function (MockInterface $mock) use ($task, $datasetPath): void {
+            $mock->shouldReceive('publishDelayed')
+                ->once()
+                ->with(\Mockery::on(
+                    fn (array $event): bool => $event['event_type'] === PipelineEvent::SCRAPE_MONITOR_REQUESTED
+                        && $event['task_id'] === $task->task_id
+                        && $event['job_id'] === 'scrape-event-monitor-probe'
+                        && $event['local_path'] === $datasetPath
+                        && ($event['metadata']['monitor_attempt'] ?? null) === 1
+                ), 'Crawl is still running.')
+                ->andReturnUsing(fn (array $event, string $reason): array => PipelineEvent::normalize((string) $event['event_type'], $event));
+        });
+
+        app(ScrapeMonitorEventHandler::class)->handle(PipelineEvent::normalize(PipelineEvent::SCRAPE_MONITOR_REQUESTED, [
+            'task_id' => $task->task_id,
+            'job_id' => 'scrape-event-monitor-probe',
+            'dataset_id' => $task->dataset_id,
+            'job_type' => PipelineJob::TYPE_SCRAPE,
+            'source_url' => 'https://example.test/monitor-probe',
+            'local_path' => $datasetPath,
+            'status' => PipelineJob::STATUS_RUNNING,
+        ]));
+
+        $this->assertDatabaseHas('pipeline_jobs', [
+            'task_id' => $task->task_id,
+            'job_id' => 'scrape-event-monitor-probe',
+            'job_type' => PipelineJob::TYPE_SCRAPE,
+            'status' => PipelineJob::STATUS_RUNNING,
+        ]);
+
+        $job = PipelineJob::query()->where('job_id', 'scrape-event-monitor-probe')->firstOrFail();
+        $this->assertSame('scrape_monitor_running', $job->metadata['stage'] ?? null);
+        $this->assertSame(1, $job->metadata['monitor_attempt'] ?? null);
+        $this->assertDatabaseMissing('pipeline_events', [
+            'task_id' => $task->task_id,
+            'event_type' => PipelineEvent::PAGE_SCRAPED,
+        ]);
+        $this->assertDatabaseMissing('pipeline_events', [
+            'task_id' => $task->task_id,
+            'event_type' => PipelineEvent::FILE_DISCOVERED,
+        ]);
+    }
+
+    public function test_scrape_monitor_event_handler_publishes_completion_and_file_events(): void
+    {
+        config()->set('file_converter.supported_extensions', ['pdf']);
+
+        $task = $this->task('task-event-monitor-completed');
+        $datasetPath = storage_path('framework/testing/pipeline-events/monitor-completed');
+        File::ensureDirectoryExists($datasetPath);
+        $pdf = "{$datasetPath}/download.pdf";
+        File::put($pdf, '%PDF-1.4 monitor completion file');
+        $contentHash = hash_file('sha256', $pdf);
+        $convertJobId = 'convert_' . substr(hash('sha256', $task->task_id . '|' . $pdf), 0, 24);
+
+        PipelineJob::query()->create([
+            'job_id' => 'scrape-event-monitor-completed',
+            'task_id' => $task->task_id,
+            'job_type' => PipelineJob::TYPE_SCRAPE,
+            'source_url' => 'https://example.test/monitor-completed',
+            'status' => PipelineJob::STATUS_RUNNING,
+            'started_at' => now(),
+            'metadata' => [
+                'dataset_id' => $task->dataset_id,
+            ],
+        ]);
+
+        $this->mock(ScrapeService::class, function (MockInterface $mock) use ($datasetPath): void {
+            $mock->shouldReceive('getCrawlerStatus')
+                ->once()
+                ->with('scrape-event-monitor-completed')
+                ->andReturn([
+                    'success' => true,
+                    'status' => 200,
+                    'data' => [
+                        'status' => 'completed',
+                        'output_directory' => $datasetPath,
+                        'total_pages' => 1,
+                        'pages_crawled' => 1,
+                        'failed_urls' => 0,
+                    ],
+                ]);
+        });
+
+        $this->mock(PipelineEventBus::class, function (MockInterface $mock) use ($task, $datasetPath, $pdf, $contentHash, $convertJobId): void {
+            $mock->shouldReceive('publish')
+                ->once()
+                ->with(PipelineEvent::PAGE_SCRAPED, \Mockery::on(
+                    fn (array $event): bool => $event['task_id'] === $task->task_id
+                        && $event['job_id'] === 'scrape-event-monitor-completed'
+                        && $event['local_path'] === $datasetPath
+                        && $event['status'] === PipelineJob::STATUS_COMPLETED
+                ))
+                ->andReturnUsing(fn (string $eventType, array $payload): array => PipelineEvent::normalize($eventType, $payload));
+
+            $mock->shouldReceive('publish')
+                ->once()
+                ->with(PipelineEvent::FILE_DISCOVERED, \Mockery::on(
+                    fn (array $event): bool => $event['task_id'] === $task->task_id
+                        && $event['job_id'] === $convertJobId
+                        && $event['parent_job_id'] === 'scrape-event-monitor-completed'
+                        && $event['local_path'] === $pdf
+                        && $event['content_hash'] === $contentHash
+                ))
+                ->andReturnUsing(fn (string $eventType, array $payload): array => PipelineEvent::normalize($eventType, $payload));
+        });
+
+        app(ScrapeMonitorEventHandler::class)->handle(PipelineEvent::normalize(PipelineEvent::SCRAPE_MONITOR_REQUESTED, [
+            'task_id' => $task->task_id,
+            'job_id' => 'scrape-event-monitor-completed',
+            'dataset_id' => $task->dataset_id,
+            'job_type' => PipelineJob::TYPE_SCRAPE,
+            'source_url' => 'https://example.test/monitor-completed',
+            'status' => PipelineJob::STATUS_RUNNING,
+        ]));
+
+        $this->assertDatabaseHas('pipeline_jobs', [
+            'task_id' => $task->task_id,
+            'job_id' => 'scrape-event-monitor-completed',
+            'job_type' => PipelineJob::TYPE_SCRAPE,
+            'status' => PipelineJob::STATUS_COMPLETED,
+            'local_path' => $datasetPath,
+        ]);
+    }
+
+    public function test_scrape_monitor_event_handler_publishes_failed_event_for_failed_crawls(): void
+    {
+        $task = $this->task('task-event-monitor-failed');
+        PipelineJob::query()->create([
+            'job_id' => 'scrape-event-monitor-failed',
+            'task_id' => $task->task_id,
+            'job_type' => PipelineJob::TYPE_SCRAPE,
+            'source_url' => 'https://example.test/monitor-failed',
+            'status' => PipelineJob::STATUS_RUNNING,
+            'started_at' => now(),
+            'metadata' => [
+                'dataset_id' => $task->dataset_id,
+            ],
+        ]);
+
+        $this->mock(ScrapeService::class, function (MockInterface $mock): void {
+            $mock->shouldReceive('getCrawlerStatus')
+                ->once()
+                ->with('scrape-event-monitor-failed')
+                ->andReturn([
+                    'success' => true,
+                    'status' => 200,
+                    'data' => [
+                        'status' => 'failed',
+                        'message' => 'Crawler crashed.',
+                        'total_pages' => 2,
+                        'pages_crawled' => 1,
+                        'failed_urls' => 1,
+                    ],
+                ]);
+        });
+
+        $this->mock(PipelineEventBus::class, function (MockInterface $mock) use ($task): void {
+            $mock->shouldReceive('publishFailed')
+                ->once()
+                ->with(\Mockery::on(
+                    fn (array $event): bool => $event['task_id'] === $task->task_id
+                        && $event['job_id'] === 'scrape-event-monitor-failed'
+                        && $event['status'] === PipelineJob::STATUS_FAILED
+                        && ($event['metadata']['error_message'] ?? null) === 'Crawler crashed.'
+                ), \Mockery::type(RuntimeException::class))
+                ->andReturnUsing(fn (array $event, RuntimeException $error): array => PipelineEvent::normalize(PipelineEvent::JOB_FAILED, array_merge($event, [
+                    'metadata' => array_merge($event['metadata'] ?? [], [
+                        'error_message' => $error->getMessage(),
+                    ]),
+                ])));
+        });
+
+        app(ScrapeMonitorEventHandler::class)->handle(PipelineEvent::normalize(PipelineEvent::SCRAPE_MONITOR_REQUESTED, [
+            'task_id' => $task->task_id,
+            'job_id' => 'scrape-event-monitor-failed',
+            'dataset_id' => $task->dataset_id,
+            'job_type' => PipelineJob::TYPE_SCRAPE,
+            'source_url' => 'https://example.test/monitor-failed',
+            'status' => PipelineJob::STATUS_RUNNING,
+        ]));
+
+        $this->assertDatabaseHas('pipeline_jobs', [
+            'task_id' => $task->task_id,
+            'job_id' => 'scrape-event-monitor-failed',
+            'job_type' => PipelineJob::TYPE_SCRAPE,
+            'status' => PipelineJob::STATUS_FAILED,
+            'error_message' => 'Crawler crashed.',
+        ]);
+    }
+
     public function test_converter_consumer_records_cached_conversions_as_skipped_jobs(): void
     {
         $this->mock(DocumentConverter::class, function (MockInterface $mock): void {
@@ -251,88 +541,6 @@ class PipelineEventLayerTest extends TestCase
             'job_type' => PipelineJob::TYPE_CONVERT,
             'status' => PipelineJob::STATUS_COMPLETED,
             'local_path' => $sourceFile,
-        ]);
-    }
-
-    public function test_monitor_scrape_job_publishes_conversion_event_for_new_file_in_existing_output_folder(): void
-    {
-        config()->set('file_converter.supported_extensions', ['pdf']);
-
-        $task = $this->task('task-event-folder-rescan');
-        $datasetPath = storage_path('framework/testing/pipeline-events/existing-folder');
-        File::ensureDirectoryExists($datasetPath);
-        File::put("{$datasetPath}/notes.txt", 'Not a converter input.');
-
-        $lateAddedPdf = "{$datasetPath}/late-added.pdf";
-        File::put($lateAddedPdf, '%PDF-1.4 late file added while scraper was active');
-        $contentHash = hash_file('sha256', $lateAddedPdf);
-        $convertJobId = 'convert_' . substr(hash('sha256', $task->task_id . '|' . $lateAddedPdf), 0, 24);
-
-        PipelineJob::query()->create([
-            'job_id' => 'scrape-event-existing-folder',
-            'task_id' => $task->task_id,
-            'job_type' => PipelineJob::TYPE_SCRAPE,
-            'source_url' => 'https://example.test/source',
-            'status' => PipelineJob::STATUS_RUNNING,
-            'started_at' => now(),
-            'metadata' => [
-                'dataset_id' => $task->dataset_id,
-            ],
-        ]);
-
-        $this->mock(ScrapeService::class, function (MockInterface $mock) use ($datasetPath): void {
-            $mock->shouldReceive('getCrawlerStatus')
-                ->once()
-                ->with('scrape-event-existing-folder')
-                ->andReturn([
-                    'success' => true,
-                    'status' => 200,
-                    'data' => [
-                        'status' => 'completed',
-                        'output_directory' => $datasetPath,
-                        'total_pages' => 1,
-                        'pages_crawled' => 1,
-                        'failed_urls' => 0,
-                    ],
-                ]);
-        });
-
-        $this->mock(PipelineEventBus::class, function (MockInterface $mock) use ($task, $datasetPath, $lateAddedPdf, $contentHash, $convertJobId): void {
-            $mock->shouldReceive('publish')
-                ->once()
-                ->with(PipelineEvent::PAGE_SCRAPED, \Mockery::on(
-                    fn (array $event): bool => $event['task_id'] === $task->task_id
-                        && $event['job_id'] === 'scrape-event-existing-folder'
-                        && $event['local_path'] === $datasetPath
-                        && $event['status'] === PipelineJob::STATUS_COMPLETED
-                ))
-                ->andReturnUsing(fn (string $eventType, array $payload): array => PipelineEvent::normalize($eventType, $payload));
-
-            $mock->shouldReceive('publish')
-                ->once()
-                ->with(PipelineEvent::FILE_DISCOVERED, \Mockery::on(
-                    fn (array $event): bool => $event['task_id'] === $task->task_id
-                        && $event['job_id'] === $convertJobId
-                        && $event['parent_job_id'] === 'scrape-event-existing-folder'
-                        && $event['job_type'] === PipelineJob::TYPE_CONVERT
-                        && $event['local_path'] === $lateAddedPdf
-                        && $event['content_hash'] === $contentHash
-                        && ($event['metadata']['dataset_path'] ?? null) === $datasetPath
-                ))
-                ->andReturnUsing(fn (string $eventType, array $payload): array => PipelineEvent::normalize($eventType, $payload));
-        });
-
-        (new MonitorScrapeJob('scrape-event-existing-folder'))->handle(
-            app(ScrapeService::class),
-            app(PipelineStateService::class),
-        );
-
-        $this->assertDatabaseHas('pipeline_jobs', [
-            'job_id' => 'scrape-event-existing-folder',
-            'task_id' => $task->task_id,
-            'job_type' => PipelineJob::TYPE_SCRAPE,
-            'status' => PipelineJob::STATUS_COMPLETED,
-            'local_path' => $datasetPath,
         ]);
     }
 

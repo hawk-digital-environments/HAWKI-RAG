@@ -2,7 +2,6 @@
 
 namespace App\Services\ScrapeService;
 
-use App\Jobs\MonitorScrapeJob;
 use App\Services\ScrapeService\Data\ScrapeContext;
 use App\Services\ScrapeService\Data\ScrapeJobRequest;
 use App\Services\ScrapeService\Data\ScrapeRequestResult;
@@ -141,7 +140,6 @@ class ScraperPipelineService
                     'message' => 'Crawl submitted to Crawl4AI.',
                 ],
             ]);
-            MonitorScrapeJob::dispatch($context->jobId)->delay(now()->addSeconds(5));
             return ScrapeRequestResult::success(
                 $context->jobId,
                 $context->getStage(),

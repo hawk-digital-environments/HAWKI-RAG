@@ -32,6 +32,7 @@ class PipelineOperationsCommandTest extends TestCase
         $this->assertStringContainsString('[OK] Database', $output);
         $this->assertStringContainsString('[OK] RabbitMQ', $output);
         $this->assertStringContainsString('[OK] Scraper worker', $output);
+        $this->assertStringContainsString('[OK] Scrape monitor worker', $output);
         $this->assertStringContainsString('[OK] Converter worker', $output);
         $this->assertStringContainsString('[OK] Ingestion worker', $output);
         $this->assertStringContainsString('[OK] Qdrant', $output);
@@ -66,11 +67,14 @@ class PipelineOperationsCommandTest extends TestCase
 
         $this->assertSame(0, $exitCode);
         $this->assertStringContainsString('docker compose --profile pipeline-events up -d', $output);
-        $this->assertStringContainsString('php artisan queue:work database --queue=default', $output);
         $this->assertStringContainsString('php artisan pipeline:scraper-event-worker', $output);
+        $this->assertStringContainsString('php artisan pipeline:scrape-monitor-event-worker', $output);
         $this->assertStringContainsString('php artisan pipeline:converter-event-worker', $output);
         $this->assertStringContainsString('php artisan pipeline:ingestion-event-worker', $output);
+        $this->assertStringNotContainsString('php artisan queue:work database --queue=default', $output);
+        $this->assertStringContainsString('RabbitMQ owns Crawl4AI status polling', $output);
         $this->assertStringContainsString('pipeline_scraper_events', $output);
+        $this->assertStringContainsString('pipeline_scrape_monitor_events', $output);
         $this->assertStringContainsString('pipeline_scraper_events.retry.scrape_requested', $output);
         $this->assertStringContainsString('pipeline_failed_events', $output);
         $this->assertStringContainsString('No Prefect. No Redis.', $output);

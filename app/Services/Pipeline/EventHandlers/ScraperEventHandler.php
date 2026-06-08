@@ -105,6 +105,16 @@ class ScraperEventHandler implements PipelineEventHandler
             throw new \RuntimeException($result->errors[0]['message'] ?? $result->errors[0] ?? 'Scraper pipeline failed.');
         }
 
+        $this->events->publish(PipelineEvent::SCRAPE_MONITOR_REQUESTED, array_merge($event, [
+            'local_path' => $outputDir,
+            'status' => PipelineJob::STATUS_RUNNING,
+            'metadata' => array_merge($event['metadata'], [
+                'source' => self::class,
+                'monitor_mode' => 'rabbitmq',
+                'monitor_attempt' => 0,
+            ]),
+        ]));
+
         Log::info('pipeline.event.scrape.submitted', [
             'task_id' => $event['task_id'],
             'job_id' => $event['job_id'],
