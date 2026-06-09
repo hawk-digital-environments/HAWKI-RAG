@@ -5,15 +5,17 @@ namespace App\Services\Pipeline;
 
 use App\Services\Pipeline\Values\DirectIngestLaunchResult;
 use Illuminate\Container\Attributes\Singleton;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 
 #[Singleton]
 readonly class DirectIngestLaunchService
 {
     public function __construct(
+        private DirectIngestCollectionProbe $collections,
+        private DirectIngestCommandBuilder $commands,
         private CrawledDataFolderService $folders,
         private PipelineStageLogger $logger,
+        private DirectIngestProcessLauncher $processes,
         private PipelineStateService $pipelineState,
         private DirectIngestStatusStore $statuses,
     ) {
@@ -44,13 +46,11 @@ readonly class DirectIngestLaunchService
         $statusPaths = $this->statuses->paths($statusMode);
         $this->statuses->ensureDirectories($statusPaths);
 
-        $cmd = $this->command($data, $script, $path, $baseUrl);
         $collection = (string) ($data['collection'] ?? basename($path));
         $summaryPath = storage_path('logs/ingest_summary.json');
-        $cmd[] = '--summary-file';
-        $cmd[] = $summaryPath;
+        $cmd = $this->commands->build($data, $script, $path, $baseUrl, $summaryPath);
 
-        $collectionExists = $this->collectionExistsInQdrant($collection);
+        $collectionExists = $this->collections->exists($collection);
         $pipelineJobId = trim((string) ($data['job_id'] ?? ''));
         if ($pipelineJobId === '') {
             $pipelineJobId = (string) Str::uuid();
@@ -87,7 +87,7 @@ readonly class DirectIngestLaunchService
             ],
         ]);
 
-        $pid = $this->launchProcess($cmd, $data, $statusPaths->cacheLogPath, $statusPaths->fullLogPath);
+        $pid = $this->processes->launch($cmd, $data, $statusPaths);
         if ($pid <= 0) {
             return $this->launchFailure($entry, $statusPaths->statusPath, $path, $collection, $pipelineJobId);
         }
@@ -113,58 +113,6 @@ readonly class DirectIngestLaunchService
             'full_log_path' => $statusPaths->fullLogPath,
             'collection_exists' => $collectionExists,
         ]);
-    }
-
-    private function command(array $data, string $script, string $path, string $baseUrl): array
-    {
-        $cmd = [
-            'python3',
-            '-u',
-            $script,
-            '--root', $path,
-            '--base-url', $baseUrl,
-        ];
-
-        $collection = $data['collection'] ?? basename($path);
-        if ($collection) {
-            $cmd[] = '--collection';
-            $cmd[] = (string) $collection;
-        }
-
-        foreach ([
-            'provider' => '--provider',
-            'embedding_model' => '--embedding-model',
-            'graph_engine' => '--graph-engine',
-            'neo4j_database' => '--neo4j-database',
-            'chunk_chars' => '--chunk-chars',
-            'chunk_overlap' => '--chunk-overlap',
-            'batch' => '--batch',
-        ] as $field => $option) {
-            if (!empty($data[$field])) {
-                $cmd[] = $option;
-                $cmd[] = (string) $data[$field];
-            }
-        }
-
-        $timeout = $data['timeout'] ?? (int) config('config.ingest_timeout', 6000);
-        if ($timeout > 0) {
-            $cmd[] = '--timeout';
-            $cmd[] = (string) $timeout;
-        }
-        if (!empty($data['graph'])) {
-            $cmd[] = '--graph';
-        }
-        if (!empty($data['graph_only'])) {
-            $cmd[] = '--graph-only';
-        }
-
-        if (($data['resume_mode'] ?? 'resume') === 'start') {
-            $cmd[] = '--start';
-        } else {
-            $cmd[] = '--resume';
-        }
-
-        return $cmd;
     }
 
     private function statusEntry(
@@ -201,44 +149,6 @@ readonly class DirectIngestLaunchService
         ];
     }
 
-    private function launchProcess(array $cmd, array $data, string $cacheLogPath, string $fullLogPath): int
-    {
-        $escaped = array_map('escapeshellarg', $cmd);
-        $command = implode(' ', $escaped);
-        $graphModel = isset($data['graph_model']) ? trim((string) $data['graph_model']) : '';
-        $envPrefix = $graphModel !== '' ? ('export GRAPH_OLLAMA_RAG_MODEL=' . escapeshellarg($graphModel) . '; ') : '';
-        $cacheEsc = escapeshellarg($cacheLogPath);
-        $fullEsc = escapeshellarg($fullLogPath);
-        $commandLine = $envPrefix
-            . '{ ' . $command . ' 2>&1; exit_code=$?; '
-            . 'echo "INGEST_EXIT_CODE=${exit_code}"; '
-            . 'if [ "$exit_code" -eq 0 ]; then echo "INGEST_DONE"; else echo "INGEST_FAILED"; fi; '
-            . '} | tee -a ' . $fullEsc . ' >> ' . $cacheEsc;
-
-        $process = @proc_open(
-            ['/usr/bin/setsid', '/bin/sh', '-lc', $commandLine],
-            [
-                0 => ['file', '/dev/null', 'r'],
-                1 => ['file', '/dev/null', 'a'],
-                2 => ['file', '/dev/null', 'a'],
-            ],
-            $pipes,
-            base_path(),
-            null,
-            ['bypass_shell' => true],
-        );
-        $status = is_resource($process) ? proc_get_status($process) : [];
-        foreach ($pipes ?? [] as $pipe) {
-            if (is_resource($pipe)) {
-                fclose($pipe);
-            }
-        }
-        $pid = isset($status['pid']) ? (int) $status['pid'] : 0;
-        unset($process);
-
-        return $pid;
-    }
-
     private function launchFailure(array $entry, string $statusPath, string $path, string $collection, string $pipelineJobId): DirectIngestLaunchResult
     {
         $entry['status'] = 'failed';
@@ -273,27 +183,4 @@ readonly class DirectIngestLaunchService
         ], 500);
     }
 
-    private function collectionExistsInQdrant(string $collection): bool
-    {
-        $collection = trim($collection);
-        if ($collection === '') {
-            return false;
-        }
-        $baseUrl = rtrim((string) config('config.qdrant_http_url', 'http://qdrant:6333'), '/');
-        try {
-            $resp = Http::timeout(3)->get($baseUrl . '/collections');
-            if (!$resp->successful()) {
-                return false;
-            }
-            $data = $resp->json();
-            foreach (($data['result']['collections'] ?? []) as $col) {
-                if (($col['name'] ?? null) === $collection) {
-                    return true;
-                }
-            }
-        } catch (\Throwable) {
-            return false;
-        }
-        return false;
-    }
 }

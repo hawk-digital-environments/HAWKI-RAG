@@ -3,8 +3,10 @@ declare(strict_types=1);
 
 namespace Tests\Unit\Pipeline;
 
+use App\Http\Requests\Pipeline\ClearDirectIngestStatusRequest;
 use App\Http\Requests\Pipeline\DeleteCrawledFolderRequest;
 use App\Http\Requests\Pipeline\ListDirectIngestLiveRequest;
+use App\Http\Requests\Pipeline\ShowDirectIngestStatusRequest;
 use App\Http\Requests\Pipeline\StopDirectIngestRequest;
 use Illuminate\Support\Facades\Validator;
 use Tests\TestCase;
@@ -54,5 +56,17 @@ class DirectIngestControlRequestTest extends TestCase
         $validator = Validator::make(['mode' => 'default'], $request->rules());
 
         $this->assertFalse($validator->fails(), (string) json_encode($validator->errors()->toArray()));
+    }
+
+    public function test_status_requests_accept_mode_as_a_string(): void
+    {
+        $showRequest = new ShowDirectIngestStatusRequest();
+        $clearRequest = new ClearDirectIngestStatusRequest();
+
+        $showValidator = Validator::make(['mode' => 'neo4j'], $showRequest->rules());
+        $clearValidator = Validator::make(['mode' => 'both'], $clearRequest->rules());
+
+        $this->assertFalse($showValidator->fails(), (string) json_encode($showValidator->errors()->toArray()));
+        $this->assertFalse($clearValidator->fails(), (string) json_encode($clearValidator->errors()->toArray()));
     }
 }

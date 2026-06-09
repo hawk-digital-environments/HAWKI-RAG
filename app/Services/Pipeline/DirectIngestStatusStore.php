@@ -71,6 +71,19 @@ readonly class DirectIngestStatusStore
         return [];
     }
 
+    public function latest(string $statusPath): array
+    {
+        $entries = $this->load($statusPath);
+        if (!$entries) {
+            return [null, null];
+        }
+
+        $index = count($entries) - 1;
+        $status = $entries[$index];
+
+        return [is_array($status) ? $status : null, $index];
+    }
+
     public function save(string $statusPath, array $entries): void
     {
         File::put($statusPath, json_encode(['ingests' => array_values($entries)], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
@@ -94,6 +107,14 @@ readonly class DirectIngestStatusStore
             }
         }
         unset($existing);
+
+        $this->save($statusPath, $entries);
+    }
+
+    public function replaceAt(string $statusPath, int $index, array $entry): void
+    {
+        $entries = $this->load($statusPath);
+        $entries[$index] = $entry;
 
         $this->save($statusPath, $entries);
     }
