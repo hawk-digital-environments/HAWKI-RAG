@@ -94,7 +94,7 @@ readonly class ConvertedOutputWriter
      */
     public function collectCachedOutputFiles(string $destDir): array
     {
-        if (! is_dir($destDir)) {
+        if (! $this->files->isDirectory($destDir)) {
             return [];
         }
 

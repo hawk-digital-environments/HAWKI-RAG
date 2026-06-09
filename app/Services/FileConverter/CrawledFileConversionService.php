@@ -8,19 +8,15 @@ use App\Services\Pipeline\Console\ConsoleWorkflowIO;
 use App\Services\Pipeline\State\PipelineStageLogger;
 use App\Services\Pipeline\State\PipelineStateService;
 use App\Services\Pipeline\Validation\PipelineDataValidator;
-use Illuminate\Contracts\Config\Repository as ConfigRepository;
 use Illuminate\Console\Command;
+use Illuminate\Container\Attributes\Singleton;
 use Symfony\Component\Console\Output\OutputInterface;
 
-class CrawledFileConversionService
+#[Singleton]
+readonly class CrawledFileConversionService
 {
     public function __construct(
-        private readonly CrawledFileDiscovery $discovery,
-        private readonly ExistingConversionPolicy $existingConversionPolicy,
-        private readonly ConversionReportWriter $reports,
-        private readonly SingleFileConversionProcessor $fileProcessor,
-        private readonly ConversionProgressTracker $progress,
-        private readonly ConfigRepository $config,
+        private CrawledFileConversionWorkflow $workflow,
     ) {
     }
 
@@ -33,14 +29,7 @@ class CrawledFileConversionService
         PipelineStateService $state,
         PipelineStageLogger $logger,
     ): int {
-        return (new CrawledFileConversionWorkflow(
-            $this->discovery,
-            $this->existingConversionPolicy,
-            $this->reports,
-            $this->fileProcessor,
-            $this->progress,
-            $this->config,
-        ))->run(
+        return $this->workflow->run(
             new ConsoleWorkflowIO($command, $output, $interactive),
             $converter,
             $validator,
