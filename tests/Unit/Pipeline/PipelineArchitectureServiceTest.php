@@ -46,6 +46,7 @@ class PipelineArchitectureServiceTest extends TestCase
 
         $this->assertSame('pipeline.events', $summary['topology']['eventsExchange']);
         $this->assertSame('pipeline.retry', $summary['topology']['retryExchange']);
+        $this->assertSame(PipelineEvent::JOB_FAILED, $summary['topology']['failedRoutingKey']);
         $this->assertContains([PipelineEvent::SCRAPE_REQUESTED, PipelineEvent::SCRAPE_MONITOR_REQUESTED], $summary['flow']);
         $this->assertContains('retry_limit_exhausted', array_column($summary['failureModes'], 'mode'));
         $this->assertContains('ScrapeMonitorEventHandler', array_column($summary['handlers'], 'handler'));

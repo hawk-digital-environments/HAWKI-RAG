@@ -8,6 +8,13 @@ use Illuminate\Container\Attributes\Singleton;
 #[Singleton]
 readonly class PipelineEventDecoder
 {
+    private PipelineEventNormalizer $normalizer;
+
+    public function __construct(?PipelineEventNormalizer $normalizer = null)
+    {
+        $this->normalizer = $normalizer ?? new PipelineEventNormalizer(new PipelineEventTypeRegistry());
+    }
+
     public function decode(string $body): array
     {
         $event = json_decode($body, true, 512, JSON_THROW_ON_ERROR);
@@ -15,6 +22,6 @@ readonly class PipelineEventDecoder
             throw new \JsonException('Pipeline event payload must be a JSON object.');
         }
 
-        return PipelineEvent::normalize((string) ($event['event_type'] ?? ''), $event);
+        return $this->normalizer->normalize((string) ($event['event_type'] ?? ''), $event);
     }
 }

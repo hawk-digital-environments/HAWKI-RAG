@@ -333,7 +333,7 @@ down-rag:
 
 restart-core:
 	@echo $(PROFILE_MESSAGE)
-	@$(COMPOSE_CMD) up -d --force-recreate qdrant mysql hawki_rag_nginx $(OLLAMA_SERVICE) hawki_rag_app
+	@$(COMPOSE_CMD) up -d --force-recreate qdrant mariadb hawki_rag_nginx $(OLLAMA_SERVICE) hawki_rag_app
 	@$(COMPOSE_CMD) up -d --force-recreate
 
 neo4j-fresh:

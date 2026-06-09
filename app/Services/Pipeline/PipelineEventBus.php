@@ -17,12 +17,13 @@ class PipelineEventBus
         private readonly PipelineEventRetryFactory $retryEvents,
         private readonly PipelineEventLogger $logger,
         private readonly PipelineEventDecoder $decoder,
+        private readonly PipelineEventNormalizer $normalizer,
     ) {
     }
 
     public function publish(string $eventType, array $payload): array
     {
-        $event = PipelineEvent::normalize($eventType, $payload);
+        $event = $this->normalizer->normalize($eventType, $payload);
         $this->recorder->record($eventType, $event, 'rabbitmq.publish');
         $this->log('publish', $event);
 

@@ -5,14 +5,16 @@ namespace App\Services\Pipeline\EventHandlers;
 
 use App\Models\PipelineJob;
 use App\Services\Pipeline\PipelineEvent;
+use App\Services\Pipeline\PipelineEventNormalizer;
 use App\Services\Pipeline\PipelineEventBus;
 use App\Services\Pipeline\PipelineEventStateService;
 use App\Services\Pipeline\PipelineStateService;
 use App\Services\Pipeline\PipelineStageLogger;
 use App\Services\Pipeline\Repositories\PipelineJobRepository;
+use App\Services\Pipeline\ScrapeMonitorFailurePublisher;
+use App\Services\Pipeline\ScrapeMonitorOutputPublisher;
 use App\Services\ScrapeService\ScrapeService;
 use Illuminate\Container\Attributes\Singleton;
-use RuntimeException;
 use Throwable;
 
 #[Singleton]
@@ -25,6 +27,9 @@ class ScrapeMonitorEventHandler implements PipelineEventHandler
         private readonly PipelineJobRepository $jobs,
         private readonly ScrapeService $scrapeService,
         private readonly PipelineStageLogger $logger,
+        private readonly PipelineEventNormalizer $normalizer,
+        private readonly ScrapeMonitorOutputPublisher $outputs,
+        private readonly ScrapeMonitorFailurePublisher $failures,
     ) {
     }
 
@@ -37,7 +42,7 @@ class ScrapeMonitorEventHandler implements PipelineEventHandler
 
     public function handle(array $event): void
     {
-        $event = PipelineEvent::normalize(PipelineEvent::SCRAPE_MONITOR_REQUESTED, $event);
+        $event = $this->normalizer->normalize(PipelineEvent::SCRAPE_MONITOR_REQUESTED, $event);
 
         if ($this->pipelineState->isStageCompleted((string) $event['job_id'], PipelineStateService::STAGE_CONVERT)) {
             return;
@@ -116,7 +121,7 @@ class ScrapeMonitorEventHandler implements PipelineEventHandler
             'metadata' => ['source' => self::class],
         ]);
 
-        $this->failPipelineJob($event, $message, [
+        $this->failures->publish($event, $message, [
             'crawlerStatus' => $crawlerStatus ?: 'unknown',
             'status' => $result['status'] ?? null,
             'status_read_failures' => $failures,
@@ -159,7 +164,7 @@ class ScrapeMonitorEventHandler implements PipelineEventHandler
             ]),
         );
 
-        $this->publishScrapeCompletedEvents($pipelineJob, $datasetPath);
+        $this->outputs->publish($pipelineJob, $datasetPath);
     }
 
     private function handleFailedStatus(array $event, string $crawlerStatus, string $datasetPath, array $counts, array $data): void
@@ -176,7 +181,7 @@ class ScrapeMonitorEventHandler implements PipelineEventHandler
             'metadata' => ['source' => self::class],
         ]);
 
-        $this->failPipelineJob($event, $message, [
+        $this->failures->publish($event, $message, [
             'crawlerStatus' => $crawlerStatus,
             'dataset_path' => $datasetPath !== '' ? $datasetPath : null,
             'counts' => $counts,
@@ -199,7 +204,7 @@ class ScrapeMonitorEventHandler implements PipelineEventHandler
                 ]],
                 'metadata' => ['source' => self::class],
             ]);
-            $this->failPipelineJob($event, $message, [
+            $this->failures->publish($event, $message, [
                 'crawlerStatus' => $crawlerStatus ?: 'unknown',
                 'dataset_path' => $datasetPath !== '' ? $datasetPath : null,
                 'counts' => $counts,
@@ -243,95 +248,4 @@ class ScrapeMonitorEventHandler implements PipelineEventHandler
         ]), $reason);
     }
 
-    private function publishScrapeCompletedEvents(PipelineJob $job, string $datasetPath): void
-    {
-        $task = $job->task;
-        $basePayload = [
-            'task_id' => $job->task_id,
-            'job_id' => $job->job_id,
-            'parent_job_id' => $job->parent_job_id,
-            'dataset_id' => $task?->dataset_id ?? ($job->metadata['dataset_id'] ?? null),
-            'job_type' => PipelineJob::TYPE_SCRAPE,
-            'source_url' => $job->source_url,
-            'local_path' => $datasetPath,
-            'content_hash' => $job->content_hash,
-            'status' => PipelineJob::STATUS_COMPLETED,
-            'metadata' => array_merge($job->metadata ?? [], [
-                'dataset_path' => $datasetPath,
-                'source' => self::class,
-            ]),
-        ];
-
-        $scrapedEvent = PipelineEvent::normalize(PipelineEvent::PAGE_SCRAPED, $basePayload);
-        $this->state->upsertJob($scrapedEvent, PipelineJob::STATUS_COMPLETED, [
-            'dataset_path' => $datasetPath,
-        ]);
-        $this->events->publish(PipelineEvent::PAGE_SCRAPED, $scrapedEvent);
-
-        foreach ($this->supportedFiles($datasetPath) as $path) {
-            $hash = @hash_file('sha256', $path) ?: hash('sha256', $path);
-            $this->events->publish(PipelineEvent::FILE_DISCOVERED, [
-                'task_id' => $job->task_id,
-                'job_id' => 'convert_' . substr(hash('sha256', $job->task_id . '|' . $path), 0, 24),
-                'parent_job_id' => $job->job_id,
-                'dataset_id' => $task?->dataset_id ?? ($job->metadata['dataset_id'] ?? null),
-                'job_type' => PipelineJob::TYPE_CONVERT,
-                'source_url' => $job->source_url,
-                'local_path' => $path,
-                'content_hash' => $hash,
-                'status' => PipelineJob::STATUS_PENDING,
-                'metadata' => [
-                    'source' => self::class,
-                    'dataset_path' => $datasetPath,
-                ],
-            ]);
-        }
-    }
-
-    private function failPipelineJob(array $event, string $message, array $metadata = [], ?Throwable $exception = null): void
-    {
-        $pipelineJob = $this->jobs->findWithTaskByJobId((string) $event['job_id']);
-        if (!$pipelineJob?->task_id) {
-            return;
-        }
-
-        $task = $pipelineJob->task;
-        $original = PipelineEvent::normalize(PipelineEvent::SCRAPE_REQUESTED, [
-            'task_id' => $pipelineJob->task_id,
-            'job_id' => $pipelineJob->job_id,
-            'parent_job_id' => $pipelineJob->parent_job_id,
-            'dataset_id' => $task?->dataset_id ?? ($pipelineJob->metadata['dataset_id'] ?? $event['dataset_id'] ?? null),
-            'job_type' => PipelineJob::TYPE_SCRAPE,
-            'source_url' => $pipelineJob->source_url ?: $event['source_url'],
-            'local_path' => $pipelineJob->local_path ?: $event['local_path'],
-            'content_hash' => $pipelineJob->content_hash ?: $event['content_hash'],
-            'status' => PipelineJob::STATUS_FAILED,
-            'metadata' => array_merge($pipelineJob->metadata ?? [], $metadata, [
-                'source' => self::class,
-                'error_message' => $message,
-            ]),
-        ]);
-
-        $failedEvent = PipelineEvent::normalize(PipelineEvent::JOB_FAILED, $original);
-        $this->state->upsertJob($failedEvent, PipelineJob::STATUS_FAILED);
-        $this->events->publishFailed($original, $exception ?? new RuntimeException($message));
-    }
-
-    private function supportedFiles(string $datasetPath): array
-    {
-        $resolved = realpath($datasetPath);
-        if ($resolved === false || !is_dir($resolved)) {
-            return [];
-        }
-
-        $extensions = array_map('strtolower', config('file_converter.supported_extensions', ['pdf', 'doc', 'docx']));
-        $files = [];
-        foreach (new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($resolved, \FilesystemIterator::SKIP_DOTS)) as $file) {
-            if ($file->isFile() && in_array(strtolower($file->getExtension()), $extensions, true)) {
-                $files[] = $file->getPathname();
-            }
-        }
-
-        return $files;
-    }
 }

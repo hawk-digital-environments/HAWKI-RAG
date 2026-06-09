@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 
 namespace App\Console\Commands;
 
@@ -11,7 +12,6 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
-use Throwable;
 
 class PipelineHealthCommand extends Command
 {
@@ -54,19 +54,22 @@ class PipelineHealthCommand extends Command
     private function checkDatabase(): array
     {
         try {
-            DB::connection()->select('select 1 as ok');
+            $connection = DB::connection();
+            $connection->select('select 1 as ok');
+            $connectionName = $connection->getName();
+            $connectionConfig = config("database.connections.{$connectionName}", []);
 
             return $this->ok(
                 'Database',
                 sprintf(
                     'Connected via %s to %s:%s/%s.',
-                    config('database.default'),
-                    config('database.connections.mysql.host'),
-                    config('database.connections.mysql.port'),
-                    config('database.connections.mysql.database'),
+                    $connectionName,
+                    $connectionConfig['host'] ?? 'unknown-host',
+                    $connectionConfig['port'] ?? 'unknown-port',
+                    $connectionConfig['database'] ?? 'unknown-database',
                 ),
             );
-        } catch (Throwable $exception) {
+        } catch (\Throwable $exception) {
             return $this->failureResult(
                 'Database',
                 $exception->getMessage(),
@@ -99,7 +102,7 @@ class PipelineHealthCommand extends Command
                     config('communication.rabbitmq.pipeline_events.exchange'),
                 ),
             );
-        } catch (Throwable $exception) {
+        } catch (\Throwable $exception) {
             return $this->failureResult(
                 'RabbitMQ',
                 $exception->getMessage(),
@@ -226,7 +229,7 @@ class PipelineHealthCommand extends Command
                 "HTTP {$response->status()} from {$url}/collections.",
                 'Start qdrant and verify QDRANT_HTTP_URL, QDRANT_HOST, QDRANT_PORT, and QDRANT_API_KEY.',
             );
-        } catch (Throwable $exception) {
+        } catch (\Throwable $exception) {
             return $this->failureResult(
                 'Qdrant',
                 $exception->getMessage(),
@@ -264,7 +267,7 @@ class PipelineHealthCommand extends Command
                     : "HTTP {$response->status()} from {$url}.",
                 'Start Neo4j and verify NEO4J_HTTP_URL, NEO4J_USER, NEO4J_PASSWORD, and NEO4J_DATABASE.',
             );
-        } catch (Throwable $exception) {
+        } catch (\Throwable $exception) {
             return $this->failureResult(
                 'Neo4j',
                 $exception->getMessage(),
@@ -302,7 +305,7 @@ class PipelineHealthCommand extends Command
             try {
                 File::put($probe, 'ok');
                 File::delete($probe);
-            } catch (Throwable $exception) {
+            } catch (\Throwable $exception) {
                 return $this->failureResult(
                     'Shared storage',
                     "Could not create a probe file in {$path}: {$exception->getMessage()}",
@@ -378,7 +381,7 @@ class PipelineHealthCommand extends Command
             }
 
             return $this->failureResult($name, "HTTP {$response->status()} from {$url}.", $fix);
-        } catch (Throwable $exception) {
+        } catch (\Throwable $exception) {
             return $this->failureResult($name, $exception->getMessage(), $fix);
         }
     }
@@ -392,7 +395,7 @@ class PipelineHealthCommand extends Command
             }
 
             return $this->failureResult($name, "HTTP {$response->status()} from {$url}.", $fix);
-        } catch (Throwable $exception) {
+        } catch (\Throwable $exception) {
             return $this->failureResult($name, $exception->getMessage(), $fix);
         }
     }

@@ -10,6 +10,11 @@ use Illuminate\Container\Attributes\Singleton;
 #[Singleton]
 readonly class PipelineTaskEventPayloadService
 {
+    public function __construct(
+        private PipelineEventTypeRegistry $types,
+    ) {
+    }
+
     public function retryEventType(PipelineJob $job): ?string
     {
         $metadata = $job->metadata ?? [];
@@ -36,7 +41,7 @@ readonly class PipelineTaskEventPayloadService
 
         if ($job->job_type === PipelineJob::TYPE_INGEST && in_array($eventType, [PipelineEvent::PAGE_SCRAPED, PipelineEvent::FILE_CONVERTED], true)) {
             $jobId = is_string($sourceJobId) && $sourceJobId !== '' ? $sourceJobId : ($job->parent_job_id ?: $job->job_id);
-            $jobType = PipelineEvent::jobTypeFor($eventType);
+            $jobType = $this->types->jobTypeFor($eventType);
         }
 
         return [

@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 
 namespace Tests\Feature;
 
@@ -6,11 +7,11 @@ use App\Services\Pipeline\PipelineEventBus;
 use App\Services\Rag\RagRabbitMQ;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Mockery;
 use PhpAmqpLib\Channel\AMQPChannel;
-use RuntimeException;
 use Tests\TestCase;
 
 class PipelineOperationsCommandTest extends TestCase
@@ -47,7 +48,7 @@ class PipelineOperationsCommandTest extends TestCase
         $this->configureHealthyPipeline();
 
         $rabbit = Mockery::mock(RagRabbitMQ::class);
-        $rabbit->shouldReceive('channel')->once()->andThrow(new RuntimeException('rabbit down'));
+        $rabbit->shouldReceive('channel')->once()->andThrow(new \RuntimeException('rabbit down'));
         $rabbit->shouldReceive('close')->never();
         $this->app->instance(RagRabbitMQ::class, $rabbit);
 
@@ -59,6 +60,29 @@ class PipelineOperationsCommandTest extends TestCase
         $this->assertStringContainsString('rabbit down', $output);
         $this->assertStringContainsString('Fix: Start rabbitmq and verify RABBITMQ_HOST', $output);
         $this->assertStringContainsString('Pipeline health failed.', $output);
+    }
+
+    public function test_pipeline_health_reports_the_active_database_connection_config(): void
+    {
+        $this->configureHealthyPipeline();
+        $this->useAlternateDatabaseConnectionName('pipeline_health_test');
+
+        config()->set('database.connections.mysql.host', 'hardcoded-mysql-host');
+        config()->set('database.connections.mysql.port', '9999');
+        config()->set('database.connections.mysql.database', 'hardcoded_mysql_database');
+
+        $rabbit = Mockery::mock(RagRabbitMQ::class);
+        $rabbit->shouldReceive('channel')->once()->andReturn(Mockery::mock(AMQPChannel::class));
+        $rabbit->shouldReceive('close')->once();
+        $this->app->instance(RagRabbitMQ::class, $rabbit);
+
+        $exitCode = Artisan::call('pipeline:health', ['--timeout' => 1]);
+        $output = Artisan::output();
+
+        $this->assertSame(0, $exitCode);
+        $this->assertStringContainsString('Connected via pipeline_health_test', $output);
+        $this->assertStringNotContainsString('hardcoded-mysql-host', $output);
+        $this->assertStringNotContainsString('hardcoded_mysql_database', $output);
     }
 
     public function test_pipeline_workers_prints_start_commands_and_queue_names(): void
@@ -135,5 +159,15 @@ class PipelineOperationsCommandTest extends TestCase
             'http://qdrant.test/collections' => Http::response(['result' => ['collections' => []]], 200),
             'http://neo4j.test/db/neo4j/tx/commit' => Http::response(['results' => [], 'errors' => []], 200),
         ]);
+    }
+
+    private function useAlternateDatabaseConnectionName(string $connectionName): void
+    {
+        $defaultConnection = (string) config('database.default');
+        $defaultConfig = config("database.connections.{$defaultConnection}");
+
+        config()->set("database.connections.{$connectionName}", $defaultConfig);
+        config()->set('database.default', $connectionName);
+        DB::purge($connectionName);
     }
 }

@@ -19,13 +19,18 @@ readonly class PipelineEventRecorder
         PipelineEvent::JOB_FAILED,
     ];
 
+    public function __construct(
+        private PipelineEventNormalizer $normalizer,
+    ) {
+    }
+
     public function record(string $eventType, array $payload, ?string $source = null, ?string $message = null): ?PipelineEventRecord
     {
         if (!in_array($eventType, self::RECORDED_EVENT_TYPES, true)) {
             return null;
         }
 
-        $event = PipelineEvent::normalize($eventType, $payload);
+        $event = $this->normalizer->normalize($eventType, $payload);
         if (!$this->hasIdentity($event)) {
             return null;
         }

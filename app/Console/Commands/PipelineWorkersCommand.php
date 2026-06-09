@@ -1,7 +1,10 @@
 <?php
+declare(strict_types=1);
 
 namespace App\Console\Commands;
 
+use App\Services\Pipeline\PipelineArchitectureService;
+use App\Services\Pipeline\PipelineEvent;
 use Illuminate\Console\Command;
 
 class PipelineWorkersCommand extends Command
@@ -10,9 +13,10 @@ class PipelineWorkersCommand extends Command
 
     protected $description = 'Print MVP pipeline worker startup commands and RabbitMQ queue topology.';
 
-    public function handle(): int
+    public function handle(PipelineArchitectureService $architecture): int
     {
-        $workers = config('communication.rabbitmq.pipeline_events.workers', []);
+        $topology = $architecture->topology();
+        $workerTopology = $topology['queues']['workers'] ?? [];
 
         $this->line('HAWKI RAG MVP pipeline workers');
         $this->line('Laravel owns orchestration. RabbitMQ is the event bus. No Prefect. No Redis.');
@@ -34,23 +38,23 @@ class PipelineWorkersCommand extends Command
         $this->newLine();
 
         $this->line('RabbitMQ exchanges:');
-        $this->line('  events exchange: ' . config('communication.rabbitmq.pipeline_events.exchange'));
-        $this->line('  retry exchange: ' . config('communication.rabbitmq.pipeline_events.retry_exchange'));
-        $this->line('  failed exchange: ' . config('communication.rabbitmq.pipeline_events.failed_exchange'));
-        $this->line('  retry delay ms: ' . config('communication.rabbitmq.pipeline_events.retry_delay_ms'));
-        $this->line('  max retries: ' . config('communication.rabbitmq.pipeline_events.max_retries'));
+        $this->line('  events exchange: ' . $topology['eventsExchange']);
+        $this->line('  retry exchange: ' . $topology['retryExchange']);
+        $this->line('  failed exchange: ' . $topology['failedExchange']);
+        $this->line('  retry delay ms: ' . $topology['retryDelayMs']);
+        $this->line('  max retries: ' . $topology['maxRetries']);
         $this->newLine();
 
         $this->table(
             ['Worker', 'Command', 'Queue', 'Listens to', 'Retry queues', 'Consumer tag'],
-            $this->workerRows(is_array($workers) ? $workers : []),
+            $this->workerRows(is_array($workerTopology) ? $workerTopology : []),
         );
 
         $this->newLine();
         $this->line('Failed event queue:');
-        $this->line('  queue: ' . config('communication.rabbitmq.pipeline_events.failed_queue', 'pipeline_failed_events'));
-        $this->line('  routing key: ' . config('communication.rabbitmq.pipeline_events.failed_routing_key', 'job.failed'));
-        $this->line('  event: job.failed');
+        $this->line('  queue: ' . ($topology['queues']['failedQueue'] ?? 'pipeline_failed_events'));
+        $this->line('  routing key: ' . ($topology['failedRoutingKey'] ?? PipelineEvent::JOB_FAILED));
+        $this->line('  event: ' . PipelineEvent::JOB_FAILED);
 
         return self::SUCCESS;
     }
@@ -65,25 +69,22 @@ class PipelineWorkersCommand extends Command
         ];
 
         return collect($workers)
-            ->map(function (array $config, string $worker) use ($commands): array {
-                $queue = (string) ($config['queue'] ?? '');
-                $events = array_values(array_filter(array_map('strval', $config['listen'] ?? [])));
+            ->map(function (array $workerConfig) use ($commands): array {
+                $worker = (string) ($workerConfig['worker'] ?? '');
+                $queue = (string) ($workerConfig['queueName'] ?? '');
+                $events = array_values(array_filter(array_map('strval', $workerConfig['listen'] ?? [])));
+                $retryQueues = array_values(array_filter(array_map('strval', $workerConfig['retryQueues'] ?? [])));
 
                 return [
                     $worker,
                     $commands[$worker] ?? 'unknown',
                     $queue,
                     implode(', ', $events),
-                    implode(', ', array_map(fn (string $event): string => $this->retryQueueName($queue, $event), $events)),
-                    (string) ($config['consumer_tag'] ?? ''),
+                    implode(', ', $retryQueues),
+                    (string) config("communication.rabbitmq.pipeline_events.workers.{$worker}.consumer_tag", ''),
                 ];
             })
             ->values()
             ->all();
-    }
-
-    private function retryQueueName(string $workerQueue, string $eventType): string
-    {
-        return $workerQueue . '.retry.' . str_replace(['.', ':'], '_', $eventType);
     }
 }

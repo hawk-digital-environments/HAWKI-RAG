@@ -18,14 +18,16 @@ class PipelineEventStateService
         private readonly PipelineTaskService $tasks,
         private readonly PipelineJobRepository $jobs,
         private readonly PipelineTaskRepository $taskRepository,
+        private readonly PipelineEventNormalizer $normalizer,
+        private readonly PipelineEventTypeRegistry $types,
     ) {
     }
 
     public function upsertJob(array $event, ?string $status = null, array $metadata = []): PipelineJob
     {
-        $event = PipelineEvent::normalize((string) $event['event_type'], $event);
+        $event = $this->normalizer->normalize((string) $event['event_type'], $event);
         $status = $this->normalizeStatus($status ?? (string) $event['status']);
-        $terminal = PipelineEvent::terminalStatus($status);
+        $terminal = $this->types->terminalStatus($status);
         $existing = $this->jobs->findByJobId((string) $event['job_id']);
         $existingMetadata = is_array($existing?->metadata) ? $existing->metadata : [];
         $mergedMetadata = array_merge($existingMetadata, $event['metadata'] ?? [], $metadata);

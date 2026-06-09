@@ -9,6 +9,11 @@ use Throwable;
 #[Singleton]
 readonly class PipelineEventRetryFactory
 {
+    public function __construct(
+        private PipelineEventNormalizer $normalizer,
+    ) {
+    }
+
     public function makeRetry(array $event, Throwable $error): ?array
     {
         $eventType = (string) ($event['event_type'] ?? '');
@@ -41,7 +46,7 @@ readonly class PipelineEventRetryFactory
             throw new \InvalidArgumentException('Delayed publish requires event_type.');
         }
 
-        return PipelineEvent::normalize($eventType, array_merge($event, [
+        return $this->normalizer->normalize($eventType, array_merge($event, [
             'metadata' => array_merge($this->metadata($event), [
                 'delay_reason' => $reason,
                 'delay_requested_at' => now()->toIso8601String(),
@@ -56,7 +61,7 @@ readonly class PipelineEventRetryFactory
             throw new \InvalidArgumentException('Recovery retry requires event_type.');
         }
 
-        return PipelineEvent::normalize($eventType, array_merge($event, [
+        return $this->normalizer->normalize($eventType, array_merge($event, [
             'metadata' => array_merge($this->metadata($event), [
                 'recovery_reason' => $reason,
                 'recovery_requested_at' => now()->toIso8601String(),

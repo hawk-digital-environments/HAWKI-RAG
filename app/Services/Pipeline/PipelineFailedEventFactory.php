@@ -9,9 +9,14 @@ use Throwable;
 #[Singleton]
 readonly class PipelineFailedEventFactory
 {
+    public function __construct(
+        private PipelineEventNormalizer $normalizer,
+    ) {
+    }
+
     public function make(array $event, Throwable $error): array
     {
-        return PipelineEvent::normalize(PipelineEvent::JOB_FAILED, [
+        return $this->normalizer->normalize(PipelineEvent::JOB_FAILED, [
             'task_id' => $event['task_id'] ?? null,
             'job_id' => $event['job_id'] ?? null,
             'parent_job_id' => $event['parent_job_id'] ?? null,

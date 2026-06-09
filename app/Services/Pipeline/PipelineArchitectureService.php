@@ -10,6 +10,7 @@ readonly class PipelineArchitectureService
 {
     public function __construct(
         private PipelineQueueTopologyService $queues,
+        private PipelineEventTypeRegistry $types,
     ) {
     }
 
@@ -38,49 +39,49 @@ readonly class PipelineArchitectureService
         ]), [
             [
                 'eventType' => PipelineEvent::SCRAPE_REQUESTED,
-                'jobType' => PipelineEvent::jobTypeFor(PipelineEvent::SCRAPE_REQUESTED),
+                'jobType' => $this->types->jobTypeFor(PipelineEvent::SCRAPE_REQUESTED),
                 'purpose' => 'Request Crawl4AI to scrape a source URL.',
                 'typicalProducer' => 'PipelineTaskService or pipeline API',
                 'typicalNextEvents' => [PipelineEvent::SCRAPE_MONITOR_REQUESTED, PipelineEvent::JOB_FAILED],
             ],
             [
                 'eventType' => PipelineEvent::SCRAPE_MONITOR_REQUESTED,
-                'jobType' => PipelineEvent::jobTypeFor(PipelineEvent::SCRAPE_MONITOR_REQUESTED),
+                'jobType' => $this->types->jobTypeFor(PipelineEvent::SCRAPE_MONITOR_REQUESTED),
                 'purpose' => 'Check Crawl4AI status once and reschedule if the crawl is still running.',
                 'typicalProducer' => 'ScraperEventHandler or ScrapeMonitorEventHandler',
                 'typicalNextEvents' => [PipelineEvent::SCRAPE_MONITOR_REQUESTED, PipelineEvent::PAGE_SCRAPED, PipelineEvent::FILE_DISCOVERED, PipelineEvent::JOB_FAILED],
             ],
             [
                 'eventType' => PipelineEvent::PAGE_SCRAPED,
-                'jobType' => PipelineEvent::jobTypeFor(PipelineEvent::PAGE_SCRAPED),
+                'jobType' => $this->types->jobTypeFor(PipelineEvent::PAGE_SCRAPED),
                 'purpose' => 'Ingest scraped page markdown/content.',
                 'typicalProducer' => 'ScrapeMonitorEventHandler',
                 'typicalNextEvents' => [PipelineEvent::CONTENT_INGESTED, PipelineEvent::JOB_FAILED],
             ],
             [
                 'eventType' => PipelineEvent::FILE_DISCOVERED,
-                'jobType' => PipelineEvent::jobTypeFor(PipelineEvent::FILE_DISCOVERED),
+                'jobType' => $this->types->jobTypeFor(PipelineEvent::FILE_DISCOVERED),
                 'purpose' => 'Convert a discovered supported file such as PDF or DOCX.',
                 'typicalProducer' => 'ScrapeMonitorEventHandler or upload pipeline',
                 'typicalNextEvents' => [PipelineEvent::FILE_CONVERTED, PipelineEvent::JOB_FAILED],
             ],
             [
                 'eventType' => PipelineEvent::FILE_CONVERTED,
-                'jobType' => PipelineEvent::jobTypeFor(PipelineEvent::FILE_CONVERTED),
+                'jobType' => $this->types->jobTypeFor(PipelineEvent::FILE_CONVERTED),
                 'purpose' => 'Ingest converted markdown from a file conversion.',
                 'typicalProducer' => 'ConverterEventHandler',
                 'typicalNextEvents' => [PipelineEvent::CONTENT_INGESTED, PipelineEvent::JOB_FAILED],
             ],
             [
                 'eventType' => PipelineEvent::CONTENT_INGESTED,
-                'jobType' => PipelineEvent::jobTypeFor(PipelineEvent::CONTENT_INGESTED),
+                'jobType' => $this->types->jobTypeFor(PipelineEvent::CONTENT_INGESTED),
                 'purpose' => 'Record that content reached the RAG ingestion bridge.',
                 'typicalProducer' => 'IngestionEventHandler',
                 'typicalNextEvents' => [],
             ],
             [
                 'eventType' => PipelineEvent::JOB_FAILED,
-                'jobType' => PipelineEvent::jobTypeFor(PipelineEvent::JOB_FAILED),
+                'jobType' => $this->types->jobTypeFor(PipelineEvent::JOB_FAILED),
                 'purpose' => 'Record an exhausted or unrecoverable pipeline failure.',
                 'typicalProducer' => 'PipelineEventBus or worker failure path',
                 'typicalNextEvents' => [],
@@ -110,6 +111,7 @@ readonly class PipelineArchitectureService
             'retryDelayMs' => (int) config('communication.rabbitmq.pipeline_events.retry_delay_ms', 5000),
             'maxRetries' => (int) config('communication.rabbitmq.pipeline_events.max_retries', 3),
             'queueType' => (string) config('communication.rabbitmq.pipeline_events.queue_type', 'quorum'),
+            'failedRoutingKey' => (string) config('communication.rabbitmq.pipeline_events.failed_routing_key', PipelineEvent::JOB_FAILED),
             'queues' => $this->queues->expectedQueues(),
         ];
     }
