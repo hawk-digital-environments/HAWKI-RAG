@@ -1,8 +1,8 @@
 <?php
 
-namespace App\Services\ScrapeService\Validation;
+namespace App\Services\Scrape\Validation;
 
-use App\Services\ScrapeService\Data\ScrapeJobRequest;
+use App\Services\Scrape\Data\ScrapeJobRequest;
 use Illuminate\Support\Facades\File;
 
 /**

@@ -2,7 +2,7 @@
 
 namespace App\Console\Commands;
 
-use App\Services\ScrapeService\ScrapeService;
+use App\Services\Scrape\ScrapeService;
 use App\Support\PipelineExitCode;
 use Illuminate\Console\Command;
 use Illuminate\Support\Str;

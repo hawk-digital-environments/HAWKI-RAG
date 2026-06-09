@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Services\Datasets;
+namespace App\Services\Dataset;
 
 use App\Models\Dataset;
 use App\Models\Document;

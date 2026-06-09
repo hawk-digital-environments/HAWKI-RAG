@@ -4,7 +4,7 @@ namespace App\Http\Controllers\API;
 
 use App\Http\Controllers\Controller;
 use App\Models\Document;
-use App\Services\Documents\DocumentRepository;
+use App\Services\Document\DocumentRepository;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Http;
 

@@ -2,16 +2,27 @@
 
 namespace App\Services\FileConverter;
 
+use Illuminate\Contracts\Config\Repository as ConfigRepository;
+use Illuminate\Filesystem\Filesystem;
+use Illuminate\Http\Client\Factory as HttpFactory;
 use Illuminate\Http\UploadedFile;
-use Illuminate\Support\Facades\Http;
-use RecursiveDirectoryIterator;
-use RecursiveIteratorIterator;
+use Illuminate\Support\Str;
+use Symfony\Component\Finder\Finder;
 use ZipArchive;
 
 class DocumentConverter
 {
+    public function __construct(
+        private readonly HttpFactory $http,
+        private readonly ConfigRepository $config,
+        private readonly Filesystem $files,
+    ) {
+    }
 
-    function requestDocumentToMarkdown($file)
+    /**
+     * @return array<string, string>
+     */
+    public function requestDocumentToMarkdown(UploadedFile|\SplFileInfo $file): array
     {
         if ($file instanceof UploadedFile) {
             $realPath = $file->getRealPath();
@@ -28,12 +39,12 @@ class DocumentConverter
             throw new \RuntimeException("Unable to open document for conversion: {$filename}");
         }
 
-        $request = Http::timeout((int) config('file_converter.timeout', 300))
-            ->connectTimeout((int) config('file_converter.connect_timeout', 10))
+        $request = $this->http->timeout((int) $this->config->get('file_converter.timeout', 300))
+            ->connectTimeout((int) $this->config->get('file_converter.connect_timeout', 10))
             ->accept('application/zip');
 
-        if ($token = config('file_converter.token')) {
-            $authHeader = strtolower((string) config('file_converter.auth_header', 'bearer'));
+        if ($token = $this->config->get('file_converter.token')) {
+            $authHeader = strtolower((string) $this->config->get('file_converter.auth_header', 'bearer'));
             $request = in_array($authHeader, ['x-api-key', 'x_api_key', 'api-key', 'apikey'], true)
                 ? $request->withHeaders(['X-API-KEY' => $token])
                 : $request->withToken($token);
@@ -44,7 +55,7 @@ class DocumentConverter
                 'file',
                 $resource,
                 $filename
-            )->post(config('file_converter.url'));
+            )->post($this->config->get('file_converter.url'));
         } finally {
             fclose($resource);
         }
@@ -59,66 +70,64 @@ class DocumentConverter
 
         // Unzip files from response
         $zipContent = $response->body();
-        $extractDir = sys_get_temp_dir() . '/document_extract_' . uniqid();
-        if (!mkdir($extractDir, 0700, true) && !is_dir($extractDir)) {
-            throw new \RuntimeException(sprintf('Directory "%s" was not created', $extractDir));
-        }
+        $extractDir = $this->temporaryExtractDirectory();
+        $this->files->ensureDirectoryExists($extractDir, 0700, true);
 
         try {
             $this->unzipContent($zipContent, $extractDir);
 
             // Optionally, read all extracted files and return as array [relative_path => file_content]
             $files = [];
-            $rii = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($extractDir));
-            foreach ($rii as $fileinfo) {
-                if ($fileinfo->isFile()) {
-                    $relativePath = substr($fileinfo->getPathname(), strlen($extractDir) + 1);
-                    $files[$relativePath] = file_get_contents($fileinfo->getPathname());
-                }
+            $finder = Finder::create()
+                ->files()
+                ->ignoreUnreadableDirs()
+                ->in($extractDir);
+
+            foreach ($finder as $fileinfo) {
+                $relativePath = ltrim(str_replace('\\', '/', substr($fileinfo->getPathname(), strlen($extractDir))), '/');
+                $files[$relativePath] = (string) $this->files->get($fileinfo->getPathname());
             }
 
             return $files;
         } finally {
-            $this->deleteDirectory($extractDir);
+            $this->files->deleteDirectory($extractDir);
         }
     }
 
-    private function unzipContent($zipContent, $extractToDirectory)
+    private function unzipContent(string $zipContent, string $extractToDirectory): bool
     {
-        $tmpZip = tempnam(sys_get_temp_dir(), 'unzipped_') . '.zip';
-        file_put_contents($tmpZip, $zipContent);
+        $tmpZip = $this->temporaryZipPath();
+        $this->files->put($tmpZip, $zipContent);
 
         $zip = new ZipArchive();
         if ($zip->open($tmpZip) === true) {
             $zip->extractTo($extractToDirectory);
             $zip->close();
-            unlink($tmpZip);
+            $this->files->delete($tmpZip);
             return true;
         } else {
-            unlink($tmpZip);
+            $this->files->delete($tmpZip);
             throw new \Exception("Failed to open ZIP file.");
         }
     }
 
-    private function deleteDirectory(string $directory): void
+    private function temporaryExtractDirectory(): string
     {
-        if (!is_dir($directory)) {
-            return;
-        }
+        return $this->temporaryRoot() . DIRECTORY_SEPARATOR . 'document_extract_' . (string) Str::uuid();
+    }
 
-        $items = new RecursiveIteratorIterator(
-            new RecursiveDirectoryIterator($directory, \FilesystemIterator::SKIP_DOTS),
-            RecursiveIteratorIterator::CHILD_FIRST
-        );
+    private function temporaryZipPath(): string
+    {
+        $this->files->ensureDirectoryExists($this->temporaryRoot(), 0700, true);
 
-        foreach ($items as $item) {
-            if ($item->isDir()) {
-                @rmdir($item->getPathname());
-            } else {
-                @unlink($item->getPathname());
-            }
-        }
+        return $this->temporaryRoot() . DIRECTORY_SEPARATOR . 'unzipped_' . (string) Str::uuid() . '.zip';
+    }
 
-        @rmdir($directory);
+    private function temporaryRoot(): string
+    {
+        return rtrim((string) $this->config->get(
+            'file_converter.temp_dir',
+            storage_path('framework/cache/file-converter')
+        ), DIRECTORY_SEPARATOR);
     }
 }

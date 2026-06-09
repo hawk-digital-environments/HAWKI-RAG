@@ -6,7 +6,7 @@ namespace App\Services\Pipeline\EventHandlers;
 
 use App\Models\JobProcessingState;
 use App\Models\PipelineJob;
-use App\Services\Datasets\DatasetService;
+use App\Services\Dataset\DatasetService;
 use App\Services\Pipeline\Events\PipelineEvent;
 use App\Services\Pipeline\Events\PipelineEventBus;
 use App\Services\Pipeline\Events\PipelineEventStateService;

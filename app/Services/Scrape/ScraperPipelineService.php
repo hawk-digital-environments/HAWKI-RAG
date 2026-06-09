@@ -2,17 +2,17 @@
 
 declare(strict_types=1);
 
-namespace App\Services\ScrapeService;
+namespace App\Services\Scrape;
 
 use App\Services\Pipeline\State\PipelineStageLogger;
 use App\Services\Pipeline\State\PipelineStateService;
-use App\Services\ScrapeService\Data\ScrapeContext;
-use App\Services\ScrapeService\Data\ScrapeJobRequest;
-use App\Services\ScrapeService\Data\ScrapeRequestResult;
-use App\Services\ScrapeService\Pipeline\ScrapeContextBuilder;
-use App\Services\ScrapeService\Pipeline\ScrapeExecutionService;
-use App\Services\ScrapeService\Validation\ScrapeValidationService;
-use App\Services\StorageService\StorageService;
+use App\Services\Scrape\Data\ScrapeContext;
+use App\Services\Scrape\Data\ScrapeJobRequest;
+use App\Services\Scrape\Data\ScrapeRequestResult;
+use App\Services\Scrape\Pipeline\ScrapeContextBuilder;
+use App\Services\Scrape\Pipeline\ScrapeExecutionService;
+use App\Services\Scrape\Validation\ScrapeValidationService;
+use App\Services\Storage\StorageService;
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Cache;
@@ -252,7 +252,7 @@ class ScraperPipelineService
     /**
      * @throws \Exception
      */
-    public function readPipelineStatus($jobId): array
+    public function readPipelineStatus(string $jobId): array
     {
         return $this->storageService->fetchJobReport($jobId, 'job_state');
     }
@@ -270,7 +270,7 @@ class ScraperPipelineService
         );
     }
 
-    public function stop($jobId): array
+    public function stop(string $jobId): array
     {
         $context = ScrapeContextBuilder::rebuildContext($jobId);
 

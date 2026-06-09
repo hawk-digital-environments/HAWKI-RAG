@@ -2,7 +2,7 @@
 
 namespace App\Console\Commands;
 
-use App\Services\ScrapeService\ScraperPipelineService;
+use App\Services\Scrape\ScraperPipelineService;
 use Illuminate\Console\Command;
 
 class SignalPipelineUpdate extends Command

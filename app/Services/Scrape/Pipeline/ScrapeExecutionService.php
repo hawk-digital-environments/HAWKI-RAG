@@ -1,8 +1,8 @@
 <?php
 
-namespace App\Services\ScrapeService\Pipeline;
+namespace App\Services\Scrape\Pipeline;
 
-use App\Services\ScrapeService\Data\ScrapeJobRequest;
+use App\Services\Scrape\Data\ScrapeJobRequest;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use JsonException;

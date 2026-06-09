@@ -1,11 +1,11 @@
 <?php
 
-namespace App\Services\ScrapeService\Pipeline;
+namespace App\Services\Scrape\Pipeline;
 
 use App\Models\ScrapeProcess;
 use App\Models\ScrapeStatistics;
-use App\Services\ScrapeService\Data\ScrapeContext;
-use App\Services\ScrapeService\Data\ScrapeJobRequest;
+use App\Services\Scrape\Data\ScrapeContext;
+use App\Services\Scrape\Data\ScrapeJobRequest;
 use Exception;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;

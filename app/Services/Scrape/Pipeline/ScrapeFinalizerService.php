@@ -2,13 +2,13 @@
 
 declare(strict_types=1);
 
-namespace App\Services\ScrapeService\Pipeline;
+namespace App\Services\Scrape\Pipeline;
 
 use App\Models\ScrapedElement;
 use App\Services\Pipeline\State\PipelineStageLogger;
 use App\Services\Pipeline\Validation\PipelineDataValidator;
-use App\Services\ScrapeService\Data\ScrapeContext;
-use App\Services\StorageService\StorageService;
+use App\Services\Scrape\Data\ScrapeContext;
+use App\Services\Storage\StorageService;
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;

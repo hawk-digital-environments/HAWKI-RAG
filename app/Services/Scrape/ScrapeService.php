@@ -1,11 +1,11 @@
 <?php
 
-namespace App\Services\ScrapeService;
+namespace App\Services\Scrape;
 
 use App\Models\ScrapeProcess;
 use App\Services\Pipeline\State\PipelineStateService;
-use App\Services\ScrapeService\Data\ScrapeJobRequest;
-use App\Services\ScrapeService\Data\ScrapeRequestResult;
+use App\Services\Scrape\Data\ScrapeJobRequest;
+use App\Services\Scrape\Data\ScrapeRequestResult;
 use Exception;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\File;
@@ -55,7 +55,7 @@ class ScrapeService
      *
      *  @todo Create a stop mechanism for scrape process
      *
-     * @return void
+     * @return array<string, mixed>
      */
     public function stopPipeline(string $jobId): array
     {
@@ -236,7 +236,7 @@ class ScrapeService
      * Removes scraped files but keeps the database information
      * For after the time when data is already vectorized.
      *
-     * @return void
+     * @return bool
      */
     public function deleteScrapeContent(string $jobId): bool
     {

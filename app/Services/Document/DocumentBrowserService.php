@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Services\Documents;
+namespace App\Services\Document;
 
 use App\Models\Document;
 use App\Models\PipelineJob;

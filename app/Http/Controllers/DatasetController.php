@@ -5,7 +5,7 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\Dataset\CreateDatasetRequest;
 use App\Http\Requests\Dataset\ListDatasetsRequest;
-use App\Services\Datasets\DatasetService;
+use App\Services\Dataset\DatasetService;
 use Illuminate\Http\JsonResponse;
 
 class DatasetController extends Controller

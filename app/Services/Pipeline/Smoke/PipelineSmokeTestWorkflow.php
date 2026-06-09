@@ -5,8 +5,8 @@ namespace App\Services\Pipeline\Smoke;
 use App\Models\Document;
 use App\Models\PipelineJob;
 use App\Models\PipelineTask;
-use App\Services\Datasets\DatasetService;
-use App\Services\Documents\DocumentRepository;
+use App\Services\Dataset\DatasetService;
+use App\Services\Document\DocumentRepository;
 use App\Services\Pipeline\EventHandlers\ConverterEventHandler;
 use App\Services\Pipeline\EventHandlers\IngestionEventHandler;
 use App\Services\Pipeline\Events\PipelineEvent;
@@ -25,10 +25,6 @@ use Throwable;
 
 class PipelineSmokeTestWorkflow
 {
-    private ConsoleWorkflowIO $io;
-
-    private array $results = [];
-
     public function __construct(
         private readonly PipelineSmokeFixtureFactory $fixtures,
         private readonly PipelineSmokeExternalVerifier $externalVerifier,
@@ -50,28 +46,27 @@ class PipelineSmokeTestWorkflow
         PipelineJobRepository $jobs,
         PipelineEventRecordRepository $eventRecords,
     ): int {
-        $this->io = $io;
-        $this->results = [];
-        $datasetId = $this->stringOption('dataset') ?: 'smoke-demo';
-        $graph = $this->graphOption();
-        $timeout = max(1, (int) $this->option('timeout'));
-        $keepFiles = $this->booleanOption('keep-files', false);
+        $runner = new PipelineSmokeStageRunner($io);
+        $datasetId = $this->stringOption($io, 'dataset') ?: 'smoke-demo';
+        $graph = $this->graphOption($io);
+        $timeout = max(1, (int) $io->option('timeout'));
+        $keepFiles = $this->booleanOption($io, 'keep-files', false);
         $taskId = 'smoke_'.$this->clock->now()->format('Ymd_His').'_'.Str::lower(Str::random(6));
-        $sourceUrl = $this->stringOption('url') ?: "https://example.test/hawki-rag-smoke/{$taskId}";
+        $sourceUrl = $this->stringOption($io, 'url') ?: "https://example.test/hawki-rag-smoke/{$taskId}";
         $fixtureDir = storage_path("app/pipeline-smoke/{$taskId}");
 
-        $this->line('HAWKI RAG MVP smoke test');
-        $this->line("Task ID: {$taskId}");
-        $this->line("Dataset: {$datasetId}");
-        $this->line('Graph mode: '.($graph ? 'true' : 'false'));
-        $this->newLine();
+        $io->line('HAWKI RAG MVP smoke test');
+        $io->line("Task ID: {$taskId}");
+        $io->line("Dataset: {$datasetId}");
+        $io->line('Graph mode: '.($graph ? 'true' : 'false'));
+        $io->newLine();
 
         try {
-            $fixturePath = $this->stage('Fixture', function () use ($fixtureDir, $taskId): string {
+            $fixturePath = $runner->stage('Fixture', function () use ($fixtureDir, $taskId): string {
                 return $this->fixtures->createDocx($fixtureDir, $taskId);
             }, fn (string $path): string => "Created DOCX fixture at {$path}.");
 
-            $task = $this->stage('Task', function () use ($tasks, $taskId, $datasetId, $sourceUrl, $graph): PipelineTask {
+            $task = $runner->stage('Task', function () use ($tasks, $taskId, $datasetId, $sourceUrl, $graph): PipelineTask {
                 return $this->withoutRabbitMqPublishing(fn (): PipelineTask => $tasks->start([
                     'task_id' => $taskId,
                     'dataset_id' => $datasetId,
@@ -91,7 +86,7 @@ class PipelineSmokeTestWorkflow
                 ]));
             }, fn (PipelineTask $task): string => "Created task {$task->task_id}.");
 
-            $scrapeJob = $this->stage('Scrape enqueue', function () use ($jobs, $task): PipelineJob {
+            $scrapeJob = $runner->stage('Scrape enqueue', function () use ($jobs, $task): PipelineJob {
                 $job = $jobs->firstForTaskAndType($task->task_id, PipelineJob::TYPE_SCRAPE);
                 if (! $job) {
                     throw new \RuntimeException('No scrape job was created for the smoke task.');
@@ -104,7 +99,7 @@ class PipelineSmokeTestWorkflow
                 return $job;
             }, fn (PipelineJob $job): string => "Created scrape job {$job->job_id} with status {$job->status}.");
 
-            $this->stage('RabbitMQ events', function () use ($eventRecords, $events, $task, $scrapeJob): string {
+            $runner->stage('RabbitMQ events', function () use ($eventRecords, $events, $task, $scrapeJob): string {
                 if ((bool) $this->config->get('communication.rabbitmq.pipeline_events.enabled', true)) {
                     foreach (['scraper', 'scrape_monitor', 'converter', 'ingestion'] as $worker) {
                         $events->declareWorkerTopology($worker);
@@ -140,7 +135,7 @@ class PipelineSmokeTestWorkflow
                 ]),
             ]);
 
-            $this->stage('Scrape artifact', function () use ($state, $pageEvent): PipelineJob {
+            $runner->stage('Scrape artifact', function () use ($state, $pageEvent): PipelineJob {
                 return $state->upsertJob($pageEvent, PipelineJob::STATUS_COMPLETED, [
                     'stage' => 'smoke_scrape_artifact_ready',
                     'reason' => 'Smoke test generated a local scrape artifact.',
@@ -168,7 +163,7 @@ class PipelineSmokeTestWorkflow
                 ],
             ]);
 
-            $convertedPath = $this->stage('Convert', function () use ($converter, $convertJobId, $fileDiscovered, $jobs): string {
+            $convertedPath = $runner->stage('Convert', function () use ($converter, $convertJobId, $fileDiscovered, $jobs): string {
                 $converter->handle($fileDiscovered);
                 $job = $jobs->findByJobId($convertJobId);
                 $path = is_array($job?->metadata) ? (string) ($job->metadata['converted_path'] ?? '') : '';
@@ -206,7 +201,7 @@ class PipelineSmokeTestWorkflow
                 ],
             ]);
 
-            $document = $this->stage('Ingest', function () use ($documents, $ingestion, $task, $convertedPath, $fileConverted): Document {
+            $document = $runner->stage('Ingest', function () use ($documents, $ingestion, $task, $convertedPath, $fileConverted): Document {
                 $ingestion->handle($fileConverted);
 
                 $document = $documents->latestCompletedForDatasetPath((string) $task->dataset_id, $convertedPath);
@@ -217,7 +212,7 @@ class PipelineSmokeTestWorkflow
                 return $document;
             }, fn (Document $document): string => "Created document {$document->id} for ingest job {$document->external_id}.");
 
-            $this->stage('Document record', function () use ($document): Document {
+            $runner->stage('Document record', function () use ($document): Document {
                 $metadata = is_array($document->metadata_json) ? $document->metadata_json : [];
                 $bridge = is_array($metadata['bridge_response'] ?? null) ? $metadata['bridge_response'] : [];
 
@@ -233,7 +228,7 @@ class PipelineSmokeTestWorkflow
             }, fn (Document $document): string => "Document links back to task {$document->metadata_json['task_id']} and job {$document->external_id}.");
 
             $dataset = $datasets->ensure($task->dataset_id);
-            $this->stage('Qdrant write', function () use ($dataset, $document, $task, $timeout): int {
+            $runner->stage('Qdrant write', function () use ($dataset, $document, $task, $timeout): int {
                 return $this->externalVerifier->verifyQdrantPoint(
                     (string) $dataset->qdrant_collection,
                     (string) $document->external_id,
@@ -243,46 +238,32 @@ class PipelineSmokeTestWorkflow
             }, fn (int $points): string => "Found {$points} Qdrant point(s) for the smoke document.");
 
             if ($graph) {
-                $this->stage('Neo4j write', function () use ($document, $task, $timeout): array {
+                $runner->stage('Neo4j write', function () use ($document, $task, $timeout): array {
                     return $this->externalVerifier->verifyNeo4jGraph((string) $document->external_id, (string) $task->task_id, $timeout);
                 }, fn (array $counts): string => "Found {$counts['nodes']} node(s) and {$counts['relationships']} relationship(s).");
             } else {
-                $this->skip('Neo4j write', 'Graph mode is disabled for this smoke run.');
+                $runner->skip('Neo4j write', 'Graph mode is disabled for this smoke run.');
             }
 
             $status = $tasks->show($task->task_id);
-            $this->line('Dashboard URL: '.url('/pipeline-dashboard?task_id='.rawurlencode($task->task_id)));
-            $this->line('Documents URL: '.url('/documents?document_id='.rawurlencode($document->id)));
-            $this->line('Final task status: '.($status['status'] ?? 'unknown'));
-            $this->newLine();
-            $this->printSummary();
-            $this->info('Smoke test PASS.');
+            $io->line('Dashboard URL: '.url('/pipeline-dashboard?task_id='.rawurlencode($task->task_id)));
+            $io->line('Documents URL: '.url('/documents?document_id='.rawurlencode($document->id)));
+            $io->line('Final task status: '.($status['status'] ?? 'unknown'));
+            $io->newLine();
+            $runner->printSummary();
+            $io->info('Smoke test PASS.');
 
             return Command::SUCCESS;
         } catch (Throwable $exception) {
-            $this->newLine();
-            $this->printSummary();
-            $this->line('Smoke test FAIL: '.$exception->getMessage());
+            $io->newLine();
+            $runner->printSummary();
+            $io->line('Smoke test FAIL: '.$exception->getMessage());
 
             return Command::FAILURE;
         } finally {
             if (! $keepFiles && $this->files->isDirectory($fixtureDir)) {
                 $this->files->deleteDirectory($fixtureDir);
             }
-        }
-    }
-
-    private function stage(string $name, callable $callback, callable $message): mixed
-    {
-        try {
-            $value = $callback();
-            $text = $message($value);
-            $this->recordPass($name, $text);
-
-            return $value;
-        } catch (Throwable $exception) {
-            $this->recordFail($name, $exception->getMessage());
-            throw $exception;
         }
     }
 
@@ -298,41 +279,9 @@ class PipelineSmokeTestWorkflow
         }
     }
 
-    private function recordPass(string $stage, string $message): void
+    private function graphOption(ConsoleWorkflowIO $io): bool
     {
-        $this->results[] = ['status' => 'PASS', 'stage' => $stage, 'message' => $message];
-        $this->info("PASS {$stage}: {$message}");
-    }
-
-    private function recordFail(string $stage, string $message): void
-    {
-        $this->results[] = ['status' => 'FAIL', 'stage' => $stage, 'message' => $message];
-        $this->error("FAIL {$stage}: {$message}");
-    }
-
-    private function skip(string $stage, string $message): void
-    {
-        $this->results[] = ['status' => 'SKIP', 'stage' => $stage, 'message' => $message];
-        $this->warn("SKIP {$stage}: {$message}");
-    }
-
-    private function printSummary(): void
-    {
-        $this->line('Smoke summary');
-        foreach ($this->results as $result) {
-            $this->line(sprintf(
-                '  [%s] %s - %s',
-                $result['status'],
-                $result['stage'],
-                $result['message'],
-            ));
-        }
-        $this->newLine();
-    }
-
-    private function graphOption(): bool
-    {
-        $value = $this->stringOption('graph');
+        $value = $this->stringOption($io, 'graph');
         if ($value === null || strtolower($value) === 'auto') {
             return $this->externalVerifier->defaultGraphEnabled();
         }
@@ -345,16 +294,16 @@ class PipelineSmokeTestWorkflow
         return $parsed;
     }
 
-    private function stringOption(string $name): ?string
+    private function stringOption(ConsoleWorkflowIO $io, string $name): ?string
     {
-        $value = $this->option($name);
+        $value = $io->option($name);
 
         return is_scalar($value) && trim((string) $value) !== '' ? trim((string) $value) : null;
     }
 
-    private function booleanOption(string $name, bool $default): bool
+    private function booleanOption(ConsoleWorkflowIO $io, string $name, bool $default): bool
     {
-        $value = $this->option($name);
+        $value = $io->option($name);
         if ($value === null || $value === '') {
             return $default;
         }
@@ -368,33 +317,4 @@ class PipelineSmokeTestWorkflow
         return is_bool($parsed) ? $parsed : $default;
     }
 
-    private function option(string $name): mixed
-    {
-        return $this->io->option($name);
-    }
-
-    private function line(string $message): void
-    {
-        $this->io->line($message);
-    }
-
-    private function info(string $message): void
-    {
-        $this->io->info($message);
-    }
-
-    private function error(string $message): void
-    {
-        $this->io->error($message);
-    }
-
-    private function warn(string $message): void
-    {
-        $this->io->warn($message);
-    }
-
-    private function newLine(): void
-    {
-        $this->io->newLine();
-    }
 }

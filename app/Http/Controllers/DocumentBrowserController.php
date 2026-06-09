@@ -4,7 +4,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers;
 
 use App\Http\Requests\Document\ListDocumentsRequest;
-use App\Services\Documents\DocumentBrowserService;
+use App\Services\Document\DocumentBrowserService;
 use Illuminate\Http\JsonResponse;
 
 class DocumentBrowserController extends Controller

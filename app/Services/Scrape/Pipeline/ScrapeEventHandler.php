@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace App\Services\ScrapeService\Pipeline;
+namespace App\Services\Scrape\Pipeline;
 
 use App\Services\Pipeline\State\PipelineStageLogger;
-use App\Services\ScrapeService\Data\ScrapeContext;
-use App\Services\ScrapeService\Data\ScrapeEventPacket;
+use App\Services\Scrape\Data\ScrapeContext;
+use App\Services\Scrape\Data\ScrapeEventPacket;
 use Exception;
 use Illuminate\Container\Attributes\Singleton;
 

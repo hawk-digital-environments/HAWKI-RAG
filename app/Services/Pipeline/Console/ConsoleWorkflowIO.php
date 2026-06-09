@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Pipeline\Console;
 
 use Illuminate\Console\Command;
+use Symfony\Component\Console\Helper\ProgressBar;
 use Symfony\Component\Console\Output\OutputInterface;
 
 readonly class ConsoleWorkflowIO
@@ -62,6 +63,17 @@ readonly class ConsoleWorkflowIO
     public function output(): OutputInterface
     {
         return $this->output ?? $this->command->getOutput();
+    }
+
+    public function createProgressBar(int $max): ProgressBar
+    {
+        $output = $this->output();
+
+        if (method_exists($output, 'createProgressBar')) {
+            return $output->createProgressBar($max);
+        }
+
+        return new ProgressBar($output, $max);
     }
 
     public function isInteractive(): bool

@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Services\Datasets;
+namespace App\Services\Dataset;
 
 use App\Models\Dataset;
 use App\Models\Document;

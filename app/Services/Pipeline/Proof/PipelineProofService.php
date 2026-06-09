@@ -17,6 +17,7 @@ class PipelineProofService
 {
     public function __construct(
         private readonly PipelineProofMarkdownRenderer $markdown,
+        private readonly PipelineProofLogCollector $logs,
         private readonly Filesystem $files,
         private readonly ConfigRepository $config,
         private readonly ClockInterface $clock = new Clock,
@@ -25,7 +26,7 @@ class PipelineProofService
 
     public function run(Command $command, PipelineProofRepository $proofs, PipelineStatusService $statuses): int
     {
-        return (new PipelineProofWorkflow($this->markdown, $this->files, $this->config, $this->clock))
-            ->run(new ConsoleWorkflowIO($command), $proofs, $statuses);
+        return (new PipelineProofWorkflow($this->markdown, $this->logs, $this->files, $this->config, $this->clock, $statuses))
+            ->run(new ConsoleWorkflowIO($command), $proofs);
     }
 }

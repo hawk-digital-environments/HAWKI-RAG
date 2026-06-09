@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
-use App\Services\Datasets\DatasetService;
-use App\Services\Documents\DocumentRepository;
+use App\Services\Dataset\DatasetService;
+use App\Services\Document\DocumentRepository;
 use App\Services\Pipeline\EventHandlers\ConverterEventHandler;
 use App\Services\Pipeline\EventHandlers\IngestionEventHandler;
 use App\Services\Pipeline\Events\PipelineEventBus;

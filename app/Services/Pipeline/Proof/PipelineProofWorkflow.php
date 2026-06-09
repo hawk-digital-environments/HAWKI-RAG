@@ -16,45 +16,42 @@ use Throwable;
 
 class PipelineProofWorkflow
 {
-    private ConsoleWorkflowIO $io;
-    private PipelineStatusService $statuses;
-
     public function __construct(
         private readonly PipelineProofMarkdownRenderer $markdown,
+        private readonly PipelineProofLogCollector $logCollector,
         private readonly Filesystem $files,
         private readonly ConfigRepository $config,
         private readonly ClockInterface $clock,
+        private readonly PipelineStatusService $statuses,
     ) {
     }
 
-    public function run(ConsoleWorkflowIO $io, PipelineProofRepository $proofs, PipelineStatusService $statuses): int
+    public function run(ConsoleWorkflowIO $io, PipelineProofRepository $proofs): int
     {
-        $this->io = $io;
-        $this->statuses = $statuses;
-        $jobId = trim((string) $this->argument('job_id'));
+        $jobId = trim((string) $io->argument('job_id'));
         if ($jobId === '') {
-            $this->error('job_id is required.');
+            $io->error('job_id is required.');
             return PipelineExitCode::VALIDATION_FAILURE;
         }
 
         $startedAt = Carbon::instance(\DateTimeImmutable::createFromInterface($this->clock->now()));
-        $outputDir = $this->outputDirectory($jobId, $startedAt);
+        $outputDir = $this->outputDirectory($io, $jobId, $startedAt);
         $this->files->ensureDirectoryExists($outputDir);
 
-        $snapshots = $this->captureSnapshots($jobId);
+        $snapshots = $this->captureSnapshots($io, $jobId);
         $finalStatus = $this->latestStatusData($snapshots);
         $datasetPath = $this->datasetPath($proofs, $jobId, $finalStatus);
         $databaseState = $proofs->databaseState($jobId, $datasetPath);
         $conversionEvidence = $this->conversionEvidence($datasetPath, $finalStatus, $databaseState);
         $publishEvidence = $this->publishEvidence($finalStatus, $databaseState);
         $workerEvidence = $this->workerEvidence($databaseState);
-        $logs = $this->collectLogs(
-            $this->logTokens($jobId, $datasetPath, $databaseState, $conversionEvidence),
+        $logs = $this->logCollector->collect(
+            $this->logCollector->tokens($jobId, $datasetPath, $databaseState, $conversionEvidence),
             $jobId,
-            max(1, (int) $this->option('max-log-lines')),
+            max(1, (int) $io->option('max-log-lines')),
         );
 
-        $metadata = $this->jobMetadata($jobId, $datasetPath, $finalStatus, $databaseState, $startedAt);
+        $metadata = $this->jobMetadata($io, $jobId, $datasetPath, $finalStatus, $databaseState, $startedAt);
         $finalProof = $this->finalProof($finalStatus, $databaseState);
 
         $proof = [
@@ -79,19 +76,19 @@ class PipelineProofWorkflow
         $this->writeJsonl($outputDir . DIRECTORY_SEPARATOR . 'related-logs.jsonl', $logs['relatedLogs']);
         $this->files->put($outputDir . DIRECTORY_SEPARATOR . 'proof.md', $this->markdown->report($proof));
 
-        $this->info("Pipeline proof saved to: {$outputDir}");
+        $io->info("Pipeline proof saved to: {$outputDir}");
         if ($finalProof['allCompleted']) {
-            $this->info('Final proof status: scrape, convert, and ingest are completed.');
+            $io->info('Final proof status: scrape, convert, and ingest are completed.');
         } else {
-            $this->warn('Final proof status is not fully completed. Check proof.md for the exact stage states.');
+            $io->warn('Final proof status is not fully completed. Check proof.md for the exact stage states.');
         }
 
         return PipelineExitCode::SUCCESS;
     }
 
-    private function outputDirectory(string $jobId, Carbon $startedAt): string
+    private function outputDirectory(ConsoleWorkflowIO $io, string $jobId, Carbon $startedAt): string
     {
-        $output = trim((string) ($this->option('output') ?? ''));
+        $output = trim((string) ($io->option('output') ?? ''));
         if ($output !== '') {
             return $output;
         }
@@ -107,18 +104,18 @@ class PipelineProofWorkflow
     /**
      * @return array<int, array<string, mixed>>
      */
-    private function captureSnapshots(string $jobId): array
+    private function captureSnapshots(ConsoleWorkflowIO $io, string $jobId): array
     {
         $snapshots = [];
         $latest = $this->statusSnapshot($jobId, 'initial');
         $snapshots[] = $latest;
 
-        if (!$this->option('watch')) {
+        if (!$io->option('watch')) {
             return $snapshots;
         }
 
-        $interval = max(0.5, (float) $this->option('interval'));
-        $timeout = max(1, (int) $this->option('timeout'));
+        $interval = max(0.5, (float) $io->option('interval'));
+        $timeout = max(1, (int) $io->option('timeout'));
         $deadline = microtime(true) + $timeout;
         $lastSignature = $this->statusSignature($latest);
 
@@ -134,7 +131,7 @@ class PipelineProofWorkflow
             if ($nextSignature !== $lastSignature) {
                 $snapshots[] = $next;
                 $lastSignature = $nextSignature;
-                $this->line($this->snapshotLine($next));
+                $io->line($this->snapshotLine($next));
             }
 
             $latest = $next;
@@ -269,6 +266,7 @@ class PipelineProofWorkflow
      * @return array<string, mixed>
      */
     private function jobMetadata(
+        ConsoleWorkflowIO $io,
         string $jobId,
         ?string $datasetPath,
         array $finalStatus,
@@ -282,13 +280,13 @@ class PipelineProofWorkflow
         return [
             'job_id' => $jobId,
             'source_url' => $this->firstString([
-                $this->option('source-url'),
+                $io->option('source-url'),
                 $pipelineJob['source_url'] ?? null,
                 $scrapeProcess['url'] ?? null,
                 $request['url'] ?? null,
             ]),
             'requested_output_dir' => $this->firstString([
-                $this->option('requested-output-dir'),
+                $io->option('requested-output-dir'),
                 $request['output_dir'] ?? null,
                 $request['outputDir'] ?? null,
             ]),
@@ -533,137 +531,6 @@ class PipelineProofWorkflow
     }
 
     /**
-     * @return array<int, string>
-     */
-    private function logTokens(string $jobId, ?string $datasetPath, array $databaseState, array $conversionEvidence): array
-    {
-        $tokens = [$jobId];
-        if ($datasetPath !== null && $datasetPath !== '') {
-            $tokens[] = $datasetPath;
-        }
-
-        foreach (($databaseState['jobProcessingState'] ?? []) as $row) {
-            foreach (['job_id', 'input_path', 'output_path', 'trace_id'] as $key) {
-                if (is_array($row) && is_scalar($row[$key] ?? null) && trim((string) $row[$key]) !== '') {
-                    $tokens[] = trim((string) $row[$key]);
-                }
-            }
-        }
-
-        foreach (($conversionEvidence['convertedMetadataFiles'] ?? []) as $meta) {
-            foreach (['converted_id', 'source_file', 'output_dir'] as $key) {
-                if (is_array($meta) && is_scalar($meta[$key] ?? null) && trim((string) $meta[$key]) !== '') {
-                    $tokens[] = trim((string) $meta[$key]);
-                }
-            }
-        }
-
-        return array_values(array_unique(array_filter($tokens, fn (string $token) => $token !== '')));
-    }
-
-    /**
-     * @return array{pipelineStageLogs:array<int,array<string,mixed>>,relatedLogs:array<int,array<string,mixed>>,filesScanned:array<int,string>}
-     */
-    private function collectLogs(array $tokens, string $jobId, int $maxLines): array
-    {
-        $pipelineStageLogs = [];
-        $relatedLogs = [];
-        $filesScanned = [];
-
-        foreach ($this->logFiles() as $path) {
-            $filesScanned[] = $path;
-            $handle = @fopen($path, 'rb');
-            if ($handle === false) {
-                continue;
-            }
-
-            try {
-                while (($line = fgets($handle)) !== false) {
-                    if (!$this->lineMatchesTokens($line, $tokens)) {
-                        continue;
-                    }
-
-                    $entry = $this->logEntry($path, $line);
-                    if ($this->isPipelineStageLogForJob($entry, $jobId)) {
-                        $pipelineStageLogs[] = $entry;
-                    }
-
-                    if (count($relatedLogs) < $maxLines) {
-                        $relatedLogs[] = $entry;
-                    }
-                }
-            } finally {
-                fclose($handle);
-            }
-        }
-
-        return [
-            'pipelineStageLogs' => $pipelineStageLogs,
-            'relatedLogs' => $relatedLogs,
-            'filesScanned' => $filesScanned,
-        ];
-    }
-
-    /**
-     * @return array<int, string>
-     */
-    private function logFiles(): array
-    {
-        $paths = [];
-        foreach (['comm_logs.json', 'laravel.log'] as $file) {
-            $path = storage_path("logs/{$file}");
-            if (is_file($path)) {
-                $paths[] = $path;
-            }
-        }
-
-        foreach ($this->files->glob(storage_path('logs/laravel-*.log')) ?: [] as $path) {
-            if (is_file($path)) {
-                $paths[] = $path;
-            }
-        }
-
-        return array_values(array_unique($paths));
-    }
-
-    private function lineMatchesTokens(string $line, array $tokens): bool
-    {
-        foreach ($tokens as $token) {
-            if ($token !== '' && str_contains($line, $token)) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    private function logEntry(string $path, string $line): array
-    {
-        $trimmed = rtrim($line, "\r\n");
-        $decoded = json_decode($trimmed, true);
-
-        return [
-            'file' => $path,
-            'decoded' => is_array($decoded) ? $decoded : null,
-            'raw' => $trimmed,
-        ];
-    }
-
-    private function isPipelineStageLogForJob(array $entry, string $jobId): bool
-    {
-        $decoded = is_array($entry['decoded'] ?? null) ? $entry['decoded'] : [];
-        $context = is_array($decoded['context'] ?? null) ? $decoded['context'] : [];
-
-        $isPipelineStage = ($decoded['message'] ?? null) === 'pipeline.stage'
-            || ($context['event'] ?? null) === 'pipeline.stage';
-
-        return $isPipelineStage && (string) ($context['job_id'] ?? '') === $jobId;
-    }
-
-    /**
      * @param array<string, mixed> $data
      */
     private function writeJson(string $path, array $data): void
@@ -697,33 +564,4 @@ class PipelineProofWorkflow
         return trim($safe, '-') ?: 'pipeline-job';
     }
 
-    private function argument(string $name): mixed
-    {
-        return $this->io->argument($name);
-    }
-
-    private function option(string $name): mixed
-    {
-        return $this->io->option($name);
-    }
-
-    private function line(string $message): void
-    {
-        $this->io->line($message);
-    }
-
-    private function info(string $message): void
-    {
-        $this->io->info($message);
-    }
-
-    private function error(string $message): void
-    {
-        $this->io->error($message);
-    }
-
-    private function warn(string $message): void
-    {
-        $this->io->warn($message);
-    }
 }

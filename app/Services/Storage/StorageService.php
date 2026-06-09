@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Services\StorageService;
+namespace App\Services\Storage;
 
 use Exception;
 use Illuminate\Contracts\Filesystem\Filesystem;
@@ -148,7 +148,7 @@ class StorageService
     }
 
 
-    public function getUrl(string $id, string $urlHash, string $name, string $type = null): ?string
+    public function getUrl(string $id, string $urlHash, string $name, ?string $type = null): ?string
     {
         $folder = $this->buildFolder($id , $urlHash);
         if($type){
@@ -163,7 +163,7 @@ class StorageService
         return $this->urlGenerator->generate($path);
     }
 
-    protected function buildFolder(string $id, string $urlHash = null): string{
+    protected function buildFolder(string $id, ?string $urlHash = null): string{
         if($urlHash !== null){
             $subStr = str_split(substr($urlHash, 0, 4), 1);
             $dir = join('/', $subStr);

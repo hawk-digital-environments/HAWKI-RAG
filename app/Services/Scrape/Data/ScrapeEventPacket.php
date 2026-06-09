@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Services\ScrapeService\Data;
+namespace App\Services\Scrape\Data;
 
 /**
  * Data object representing the result of a crawler operation.

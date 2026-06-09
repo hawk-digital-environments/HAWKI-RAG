@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-namespace App\Services\ScrapeService\Data;
+namespace App\Services\Scrape\Data;
 
 use App\Models\ScrapeProcess;
 use App\Models\ScrapeStatistics;
@@ -68,7 +68,6 @@ class ScrapeContext
      * Add an error to the context.
      *
      * @param string $message Error message
-     * @param string|null $stage Stage where error occurred
      * @return void
      */
     public function addError(string $message): void
@@ -101,7 +100,7 @@ class ScrapeContext
     /**
      * @throws Exception
      */
-    public function setEndProcess($success): void{
+    public function setEndProcess(bool $success): void{
         if(!$success){
             $this->setStage('failed');
             return;

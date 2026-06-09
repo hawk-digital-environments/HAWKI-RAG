@@ -14,7 +14,7 @@ use App\Services\Pipeline\ScrapeMonitoring\ScrapeMonitorFailurePublisher;
 use App\Services\Pipeline\ScrapeMonitoring\ScrapeMonitorOutputPublisher;
 use App\Services\Pipeline\State\PipelineStageLogger;
 use App\Services\Pipeline\State\PipelineStateService;
-use App\Services\ScrapeService\ScrapeService;
+use App\Services\Scrape\ScrapeService;
 use Illuminate\Container\Attributes\Singleton;
 
 #[Singleton]

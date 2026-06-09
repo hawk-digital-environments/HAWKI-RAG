@@ -10,19 +10,16 @@ use App\Services\Pipeline\Validation\PipelineDataValidator;
 use App\Support\PipelineExitCode;
 use App\Services\Pipeline\Console\ConsoleWorkflowIO;
 use Illuminate\Contracts\Config\Repository as ConfigRepository;
-use Illuminate\Filesystem\Filesystem;
-use Illuminate\Support\Str;
 use Psr\Clock\ClockInterface;
 use SplFileInfo;
-use Symfony\Component\Finder\Finder;
 
 class CrawledFileConversionWorkflow
 {
-    private ConsoleWorkflowIO $io;
-
     public function __construct(
         private readonly CrawledFileDiscovery $discovery,
-        private readonly Filesystem $files,
+        private readonly ExistingConversionPolicy $existingConversionPolicy,
+        private readonly ConversionReportWriter $reports,
+        private readonly ConvertedOutputWriter $outputs,
         private readonly ConfigRepository $config,
         private readonly ClockInterface $clock,
     ) {
@@ -35,39 +32,38 @@ class CrawledFileConversionWorkflow
         PipelineStateService $state,
         PipelineStageLogger $logger,
     ): int {
-        $this->io = $io;
-        $outputDirArg = $this->argument('outputDir');
+        $outputDirArg = $io->argument('outputDir');
         if ($outputDirArg) {
             $outputDir = $this->discovery->resolveOutputDir((string) $outputDirArg);
             if (! is_dir($outputDir)) {
-                $this->error("Output dir not found: $outputDir");
+                $io->error("Output dir not found: $outputDir");
 
                 return PipelineExitCode::VALIDATION_FAILURE;
             }
         } else {
-            if ($this->automationEnabled() || ! $this->io->isInteractive()) {
-                $this->error('Output dir is required in automation or non-interactive mode.');
+            if ($this->existingConversionPolicy->automationEnabled() || ! $io->isInteractive()) {
+                $io->error('Output dir is required in automation or non-interactive mode.');
 
                 return PipelineExitCode::VALIDATION_FAILURE;
             }
 
-            $outputDir = $this->discovery->pickOutputDir($this->io);
+            $outputDir = $this->discovery->pickOutputDir($io);
             if (! $outputDir) {
                 return PipelineExitCode::VALIDATION_FAILURE;
             }
         }
 
-        $jobId = (string) ($this->option('job-id') ?: $this->conversionJobId($outputDir));
+        $jobId = (string) ($io->option('job-id') ?: $this->conversionJobId($outputDir));
         $logger->started('convert', [
             'job_id' => $jobId,
             'output_dir' => $outputDir,
-            'extensions' => $this->option('extensions'),
-            'scan_all' => (bool) $this->option('scan-all'),
+            'extensions' => $io->option('extensions'),
+            'scan_all' => (bool) $io->option('scan-all'),
         ]);
 
         // Find supported files under outputDir (recursive)
-        $extensions = $this->parseExtensions((string) $this->option('extensions'));
-        $scanAll = (bool) $this->option('scan-all');
+        $extensions = $this->parseExtensions((string) $io->option('extensions'));
+        $scanAll = (bool) $io->option('scan-all');
         $docPaths = $this->discovery->collectDocumentPaths($outputDir, $extensions, $scanAll);
         $state->startStage($jobId, PipelineStateService::STAGE_CONVERT, [
             'dataset_path' => $outputDir,
@@ -91,8 +87,8 @@ class CrawledFileConversionWorkflow
         if (empty($docPaths)) {
             $extLabel = implode(',', $extensions);
             $scopeLabel = $scanAll ? 'recursive' : '**/files/*';
-            $this->warn("No supported files found under $outputDir (extensions: {$extLabel}; scope: {$scopeLabel})");
-            $this->writeFailedJson([], 0, 0, 0); // write empty report
+            $io->warn("No supported files found under $outputDir (extensions: {$extLabel}; scope: {$scopeLabel})");
+            $this->reports->writeFailedJson([], 0, 0, 0);
             $logger->skipped('convert', [
                 'job_id' => $jobId,
                 'output_dir' => $outputDir,
@@ -122,7 +118,7 @@ class CrawledFileConversionWorkflow
             return PipelineExitCode::PARTIAL_SUCCESS;
         }
 
-        $this->info('Found '.count($docPaths).' supported file(s). Converting...');
+        $io->info('Found '.count($docPaths).' supported file(s). Converting...');
 
         $existingMetaCount = 0;
         foreach ($docPaths as $docPath) {
@@ -134,11 +130,11 @@ class CrawledFileConversionWorkflow
 
         $forceReprocess = false;
         if ($existingMetaCount > 0) {
-            $this->line("Detected {$existingMetaCount} previously converted document(s) in this directory.");
-            $choice = $this->resolveExistingOutputMode((string) $this->option('existing'));
+            $io->line("Detected {$existingMetaCount} previously converted document(s) in this directory.");
+            $choice = $this->existingConversionPolicy->resolve((string) $io->option('existing'), $io);
 
             if ($choice === 'cancel') {
-                $this->info('Conversion cancelled by user request.');
+                $io->info('Conversion cancelled by user request.');
                 $logger->skipped('convert', [
                     'job_id' => $jobId,
                     'output_dir' => $outputDir,
@@ -168,9 +164,9 @@ class CrawledFileConversionWorkflow
 
             if ($choice === 'restart') {
                 $forceReprocess = true;
-                $this->warn('Restart selected — existing converted outputs will be re-generated.');
+                $io->warn('Restart selected — existing converted outputs will be re-generated.');
             } else {
-                $this->info('Continuing will skip already converted documents when their hashes match.');
+                $io->info('Continuing will skip already converted documents when their hashes match.');
             }
         }
 
@@ -182,7 +178,7 @@ class CrawledFileConversionWorkflow
         $maxRetries = (int) $this->config->get('file_converter.retries', 3);
         $retryDelayMs = (int) $this->config->get('file_converter.retry_delay_ms', 1500);
 
-        $bar = $this->io->output()->createProgressBar(count($docPaths));
+        $bar = $io->createProgressBar(count($docPaths));
         $bar->start();
 
         foreach ($docPaths as $docPath) {
@@ -215,20 +211,20 @@ class CrawledFileConversionWorkflow
 
                 // Skip if meta exists and converted_id matches
                 if (! $forceReprocess && is_file($metaPath)) {
-                    $meta = json_decode(@file_get_contents($metaPath), true);
+                    $meta = json_decode($this->outputs->readFile($metaPath), true);
                     if (is_array($meta) && ($meta['converted_id'] ?? null) === $convertedId) {
                         $meta = $this->normalizeCachedMetadata($meta, $docPath, $destDir, $convertedId, $docTitle, $jobId);
                         $flatContent = is_file($flatPath)
-                            ? (string) file_get_contents($flatPath)
+                            ? $this->outputs->readFile($flatPath)
                             : $this->loadMarkdownFromMeta($meta, $destDir);
                         $markdownValidation = $validator->validateMarkdownContent($flatContent);
                         $metadataValidation = $validator->validateConversionMetadata($meta);
 
                         if ($flatContent !== null && $markdownValidation['errors'] === [] && $metadataValidation['errors'] === []) {
                             if (! is_file($flatPath)) {
-                                $this->writeFileAtomically($flatPath, $flatContent);
+                                $this->outputs->writeFileAtomically($flatPath, $flatContent);
                             }
-                            $this->writeFileAtomically($metaPath, json_encode($meta, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+                            $this->outputs->writeFileAtomically($metaPath, json_encode($meta, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
                             if ($markdownValidation['warnings'] !== [] || $metadataValidation['warnings'] !== []) {
                                 $logger->partial('convert', [
                                     'job_id' => $jobId,
@@ -287,15 +283,8 @@ class CrawledFileConversionWorkflow
 
                 // Write extracted files to a staging directory. The published
                 // conversion directory is replaced only after validation passes.
-                $stagingDir = $this->makeStagingDir($destDir);
-                $this->files->makeDirectory($stagingDir, 0755, true, true);
-                $written = [];
-                foreach ($files as $relative => $content) {
-                    $outPath = $stagingDir.'/'.ltrim($relative, '/');
-                    $this->files->ensureDirectoryExists(dirname($outPath));
-                    $this->files->put($outPath, $content);
-                    $written[] = $this->discovery->makePathRelative($outPath, $stagingDir);
-                }
+                $stagingDir = $this->outputs->makeStagingDir($destDir);
+                $written = $this->outputs->writeConvertedFiles($stagingDir, $files);
 
                 // Validate metadata against the staged files first.
                 $metaPayload = [
@@ -324,7 +313,7 @@ class CrawledFileConversionWorkflow
                     throw new \RuntimeException('Invalid Markdown output: '.implode('; ', $flatMarkdownValidation['errors']));
                 }
 
-                $this->replaceDirectory($stagingDir, $destDir);
+                $this->outputs->replaceDirectory($stagingDir, $destDir);
                 $stagingDir = null;
 
                 $metaPayload['output_dir'] = $destDir;
@@ -333,9 +322,9 @@ class CrawledFileConversionWorkflow
                     throw new \RuntimeException('Invalid conversion metadata after publish: '.implode('; ', $metadataValidation['errors']));
                 }
 
-                $this->writeFileAtomically($metaPath, json_encode($metaPayload, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+                $this->outputs->writeFileAtomically($metaPath, json_encode($metaPayload, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
                 if ($flatContent !== null) {
-                    $this->writeFileAtomically($flatPath, $flatContent);
+                    $this->outputs->writeFileAtomically($flatPath, $flatContent);
                 }
 
                 $logger->success('convert', [
@@ -353,9 +342,7 @@ class CrawledFileConversionWorkflow
                 $processed++;
                 $this->updateConversionProgress($state, $jobId, $outputDir, count($docPaths), $processed, $skipped, $failed);
             } catch (\Throwable $e) {
-                if (is_string($stagingDir) && $this->files->isDirectory($stagingDir)) {
-                    $this->files->deleteDirectory($stagingDir);
-                }
+                $this->outputs->deleteDirectoryIfExists($stagingDir);
 
                 $failed[] = [
                     'file_local_path' => $docPath,
@@ -375,18 +362,18 @@ class CrawledFileConversionWorkflow
         }
 
         $bar->finish();
-        $this->newLine(2);
+        $io->newLine(2);
 
         // Write failed_conversion.json in public/
-        $this->writeFailedJson($failed, $processed, count($docPaths), $skipped);
+        $this->reports->writeFailedJson($failed, $processed, count($docPaths), $skipped);
 
         // Console summary
-        $this->info("Processed docs : {$processed}");
-        $this->info("Skipped (cached): {$skipped}");
-        $this->info('Failed docs    : '.count($failed));
+        $io->info("Processed docs : {$processed}");
+        $io->info("Skipped (cached): {$skipped}");
+        $io->info('Failed docs    : '.count($failed));
 
         if (! empty($failed)) {
-            $this->warn('See storage/logs/failed_conversion.json for details.');
+            $io->warn('See storage/logs/failed_conversion.json for details.');
         }
 
         $summaryContext = [
@@ -470,46 +457,6 @@ class CrawledFileConversionWorkflow
         return 'convert:'.substr(hash('sha256', realpath($outputDir) ?: $outputDir), 0, 16);
     }
 
-    private function resolveExistingOutputMode(string $mode): string
-    {
-        $mode = strtolower(trim($mode));
-        $allowed = ['ask', 'continue', 'restart', 'cancel'];
-        if (! in_array($mode, $allowed, true)) {
-            $this->warn('Invalid --existing value. Continuing and validating cached outputs.');
-
-            return 'continue';
-        }
-
-        if ($mode !== 'ask') {
-            return $mode;
-        }
-
-        if ($this->automationEnabled() || ! $this->io->isInteractive()) {
-            $default = $this->configuredExistingOutputMode();
-            $this->info("Automation/non-interactive run detected; using existing output mode '{$default}'.");
-
-            return $default;
-        }
-
-        return $this->choice(
-            'How would you like to proceed?',
-            ['continue', 'restart', 'cancel'],
-            0
-        );
-    }
-
-    private function automationEnabled(): bool
-    {
-        return (bool) $this->config->get('config.pipeline_automation', false);
-    }
-
-    private function configuredExistingOutputMode(): string
-    {
-        $mode = strtolower(trim((string) $this->config->get('config.convert_existing_mode', 'continue')));
-
-        return in_array($mode, ['continue', 'restart', 'cancel'], true) ? $mode : 'continue';
-    }
-
     /**
      * Try converting a supported file up to $maxRetries times with a delay.
      * Retries only on likely-transient errors (timeouts / 5xx).
@@ -548,70 +495,6 @@ class CrawledFileConversionWorkflow
 
         // If we get here, all attempts failed
         throw $lastEx ?? new \RuntimeException('Unknown error during conversion.');
-    }
-
-    /**
-     * Write failed_conversion.json into public/ with summary stats.
-     */
-    private function writeFailedJson(array $failed, int $processed, int $total, int $skipped): void
-    {
-        $payload = [
-            'generated_at' => $this->timestamp(),
-            'total' => $total,
-            'processed' => $processed,
-            'skipped' => $skipped,
-            'failed' => count($failed),
-            'failures' => $failed, // each: { file_local_path, error }
-        ];
-
-        $dest = storage_path('logs/failed_conversion.json');
-
-        // Write atomically
-        $tmp = $dest.'.tmp';
-        $this->files->ensureDirectoryExists(dirname($dest));
-        $this->files->put($tmp, json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
-        @rename($tmp, $dest);
-    }
-
-    private function makeStagingDir(string $destDir): string
-    {
-        return dirname($destDir)
-            .DIRECTORY_SEPARATOR
-            .'.'
-            .basename($destDir)
-            .'.tmp-'
-            .(string) Str::uuid();
-    }
-
-    private function replaceDirectory(string $sourceDir, string $destDir): void
-    {
-        if (! $this->files->isDirectory($sourceDir)) {
-            throw new \RuntimeException("Staging directory not found: {$sourceDir}");
-        }
-
-        if ($this->files->isDirectory($destDir) && ! $this->files->deleteDirectory($destDir)) {
-            throw new \RuntimeException("Unable to remove existing conversion output at {$destDir}.");
-        }
-
-        if ($this->files->isFile($destDir) && ! $this->files->delete($destDir)) {
-            throw new \RuntimeException("Unable to remove file blocking conversion output at {$destDir}.");
-        }
-
-        if (! @rename($sourceDir, $destDir)) {
-            throw new \RuntimeException("Unable to publish conversion output to {$destDir}.");
-        }
-    }
-
-    private function writeFileAtomically(string $path, string $content): void
-    {
-        $this->files->ensureDirectoryExists(dirname($path));
-        $tmp = $path.'.tmp-'.(string) Str::uuid();
-        $this->files->put($tmp, $content);
-
-        if (! @rename($tmp, $path)) {
-            $this->files->delete($tmp);
-            throw new \RuntimeException("Unable to write file atomically: {$path}");
-        }
     }
 
     /**
@@ -686,7 +569,7 @@ class CrawledFileConversionWorkflow
             }
             $path = $destDir.'/'.ltrim($relative, '/');
             if (is_file($path)) {
-                return (string) file_get_contents($path);
+                return $this->outputs->readFile($path);
             }
         }
 
@@ -711,75 +594,10 @@ class CrawledFileConversionWorkflow
         $meta['converted_at'] = $meta['converted_at'] ?? $this->timestamp();
 
         if (! isset($meta['files']) || ! is_array($meta['files']) || $meta['files'] === []) {
-            $meta['files'] = $this->collectCachedOutputFiles($destDir);
+            $meta['files'] = $this->outputs->collectCachedOutputFiles($destDir);
         }
 
         return $meta;
     }
 
-    /**
-     * @return array<int,string>
-     */
-    private function collectCachedOutputFiles(string $destDir): array
-    {
-        if (! is_dir($destDir)) {
-            return [];
-        }
-
-        $files = [];
-        $finder = Finder::create()
-            ->files()
-            ->ignoreUnreadableDirs()
-            ->in($destDir);
-
-        foreach ($finder as $file) {
-            if ($file->getFilename() === 'conversion_meta.json') {
-                continue;
-            }
-            $files[] = $this->discovery->makePathRelative($file->getPathname(), $destDir);
-        }
-        sort($files);
-
-        return $files;
-    }
-
-    private function argument(string $name): mixed
-    {
-        return $this->io->argument($name);
-    }
-
-    private function option(string $name): mixed
-    {
-        return $this->io->option($name);
-    }
-
-    private function choice(string $question, array $choices, mixed $default = null): mixed
-    {
-        return $this->io->choice($question, $choices, $default);
-    }
-
-    private function line(string $message): void
-    {
-        $this->io->line($message);
-    }
-
-    private function info(string $message): void
-    {
-        $this->io->info($message);
-    }
-
-    private function error(string $message): void
-    {
-        $this->io->error($message);
-    }
-
-    private function warn(string $message): void
-    {
-        $this->io->warn($message);
-    }
-
-    private function newLine(int $count = 1): void
-    {
-        $this->io->newLine($count);
-    }
 }

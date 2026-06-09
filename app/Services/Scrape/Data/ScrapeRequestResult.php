@@ -1,8 +1,8 @@
 <?php
 
-namespace App\Services\ScrapeService\Data;
+namespace App\Services\Scrape\Data;
 
-use App\Services\ScrapeService\Pipeline\ScrapeContextBuilder;
+use App\Services\Scrape\Pipeline\ScrapeContextBuilder;
 
 /**
  * Result data transfer object returned from the crawler pipeline.

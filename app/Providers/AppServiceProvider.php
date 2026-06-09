@@ -2,8 +2,8 @@
 
 namespace App\Providers;
 
-use App\Services\StorageService\StorageService;
-use App\Services\StorageService\UrlGenerator;
+use App\Services\Storage\StorageService;
+use App\Services\Storage\UrlGenerator;
 use App\Services\WebSearchService\Implementations\BraveSearch;
 use App\Services\WebSearchService\Implementations\TavilySearch;
 use App\Services\WebSearchService\Interface\WebSearchInterface;

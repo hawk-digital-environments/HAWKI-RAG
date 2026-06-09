@@ -2,8 +2,8 @@
 
 namespace App\Http\Controllers;
 
-use App\Services\ScrapeService\ScrapeService;
-use App\Services\ScrapeService\Data\ScrapeRequestResult;
+use App\Services\Scrape\ScrapeService;
+use App\Services\Scrape\Data\ScrapeRequestResult;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 

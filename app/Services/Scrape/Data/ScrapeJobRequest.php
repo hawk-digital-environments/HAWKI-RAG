@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Services\ScrapeService\Data;
+namespace App\Services\Scrape\Data;
 
 /**
  * Input data transfer object for initiating a crawler job.

@@ -7,7 +7,7 @@ namespace App\Services\Pipeline\Status;
 use App\Models\JobProcessingState;
 use App\Services\Pipeline\Repositories\PipelineStatusRepository;
 use App\Services\Pipeline\State\PipelineStateService;
-use App\Services\ScrapeService\ScrapeService;
+use App\Services\Scrape\ScrapeService;
 use Illuminate\Container\Attributes\Config;
 use Illuminate\Container\Attributes\Singleton;
 use Psr\Clock\ClockInterface;
