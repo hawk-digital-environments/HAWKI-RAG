@@ -6,7 +6,6 @@ namespace Tests\Unit\Pipeline;
 use App\Models\PipelineJob;
 use App\Services\Pipeline\PipelineEvent;
 use App\Services\Pipeline\PipelineFailedEventFactory;
-use RuntimeException;
 use Tests\TestCase;
 
 class PipelineFailedEventFactoryTest extends TestCase
@@ -25,7 +24,7 @@ class PipelineFailedEventFactoryTest extends TestCase
             'retry_count' => 2,
         ]);
 
-        $failed = app(PipelineFailedEventFactory::class)->make($original, new RuntimeException('Conversion failed.'));
+        $failed = app(PipelineFailedEventFactory::class)->make($original, new \RuntimeException('Conversion failed.'));
 
         $this->assertSame(PipelineEvent::JOB_FAILED, $failed['event_type']);
         $this->assertSame('failed', $failed['status']);

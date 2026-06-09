@@ -4,9 +4,9 @@ declare(strict_types=1);
 namespace Tests\Unit\Pipeline;
 
 use App\Services\Pipeline\PipelineEvent;
+use App\Services\Pipeline\PipelineEventNormalizer;
 use App\Services\Pipeline\PipelineEventRetryFactory;
-use Illuminate\Support\Carbon;
-use RuntimeException;
+use Symfony\Component\Clock\MockClock;
 use Tests\TestCase;
 
 class PipelineEventRetryFactoryTest extends TestCase
@@ -21,7 +21,7 @@ class PipelineEventRetryFactoryTest extends TestCase
             'job_id' => 'job-retry-factory',
             'retry_count' => 1,
             'metadata' => ['existing' => true],
-        ], new RuntimeException('Worker failed.'));
+        ], new \RuntimeException('Worker failed.'));
 
         $this->assertNotNull($retry);
         $this->assertSame(PipelineEvent::PAGE_SCRAPED, $retry['event_type']);
@@ -40,16 +40,17 @@ class PipelineEventRetryFactoryTest extends TestCase
             'event_type' => PipelineEvent::PAGE_SCRAPED,
             'retry_count' => 3,
             'max_retries' => 3,
-        ], new RuntimeException('Still failing.'));
+        ], new \RuntimeException('Still failing.'));
 
         $this->assertNull($retry);
     }
 
     public function test_it_builds_delayed_and_recovery_retry_events(): void
     {
-        Carbon::setTestNow(Carbon::parse('2026-06-09T12:00:00+00:00'));
-
-        $factory = app(PipelineEventRetryFactory::class);
+        $factory = new PipelineEventRetryFactory(
+            app(PipelineEventNormalizer::class),
+            new MockClock('2026-06-09T12:00:00+00:00'),
+        );
         $event = PipelineEvent::normalize(PipelineEvent::SCRAPE_MONITOR_REQUESTED, [
             'task_id' => 'task-delay-factory',
             'job_id' => 'job-delay-factory',
@@ -64,7 +65,5 @@ class PipelineEventRetryFactoryTest extends TestCase
         $this->assertSame(2, $delayed['metadata']['monitor_attempt']);
         $this->assertSame('operator retry', $recovery['metadata']['recovery_reason']);
         $this->assertSame('2026-06-09T12:00:00+00:00', $recovery['metadata']['recovery_requested_at']);
-
-        Carbon::setTestNow();
     }
 }

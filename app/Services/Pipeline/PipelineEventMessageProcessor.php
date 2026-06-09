@@ -8,7 +8,6 @@ use App\Support\PipelineExitCode;
 use Illuminate\Console\Command;
 use Illuminate\Container\Attributes\Singleton;
 use PhpAmqpLib\Message\AMQPMessage;
-use Throwable;
 
 #[Singleton]
 readonly class PipelineEventMessageProcessor
@@ -42,7 +41,7 @@ readonly class PipelineEventMessageProcessor
             $command->info("Processed {$event['event_type']} for job {$event['job_id']}.");
 
             return PipelineExitCode::SUCCESS;
-        } catch (Throwable $error) {
+        } catch (\Throwable $error) {
             $this->logger->workerFailed($event, $retryCount, $maxRetries, $error);
 
             if ($event !== []) {

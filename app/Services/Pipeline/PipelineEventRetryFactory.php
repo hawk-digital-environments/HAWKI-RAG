@@ -4,17 +4,19 @@ declare(strict_types=1);
 namespace App\Services\Pipeline;
 
 use Illuminate\Container\Attributes\Singleton;
-use Throwable;
+use Psr\Clock\ClockInterface;
+use Symfony\Component\Clock\Clock;
 
 #[Singleton]
 readonly class PipelineEventRetryFactory
 {
     public function __construct(
         private PipelineEventNormalizer $normalizer,
+        private ClockInterface $clock = new Clock(),
     ) {
     }
 
-    public function makeRetry(array $event, Throwable $error): ?array
+    public function makeRetry(array $event, \Throwable $error): ?array
     {
         $eventType = (string) ($event['event_type'] ?? '');
         if ($eventType === '') {
@@ -49,7 +51,7 @@ readonly class PipelineEventRetryFactory
         return $this->normalizer->normalize($eventType, array_merge($event, [
             'metadata' => array_merge($this->metadata($event), [
                 'delay_reason' => $reason,
-                'delay_requested_at' => now()->toIso8601String(),
+                'delay_requested_at' => $this->timestamp(),
             ]),
         ]));
     }
@@ -64,7 +66,7 @@ readonly class PipelineEventRetryFactory
         return $this->normalizer->normalize($eventType, array_merge($event, [
             'metadata' => array_merge($this->metadata($event), [
                 'recovery_reason' => $reason,
-                'recovery_requested_at' => now()->toIso8601String(),
+                'recovery_requested_at' => $this->timestamp(),
             ]),
         ]));
     }
@@ -72,5 +74,10 @@ readonly class PipelineEventRetryFactory
     private function metadata(array $event): array
     {
         return is_array($event['metadata'] ?? null) ? $event['metadata'] : [];
+    }
+
+    private function timestamp(): string
+    {
+        return $this->clock->now()->format(\DateTimeInterface::ATOM);
     }
 }

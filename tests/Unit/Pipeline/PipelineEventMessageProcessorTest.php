@@ -14,7 +14,6 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
 use Mockery;
 use PhpAmqpLib\Message\AMQPMessage;
-use RuntimeException;
 use Tests\TestCase;
 
 class PipelineEventMessageProcessorTest extends TestCase
@@ -71,7 +70,7 @@ class PipelineEventMessageProcessorTest extends TestCase
             'retry_count' => 1,
             'max_retries' => 3,
         ]);
-        $error = new RuntimeException('Handler failed.');
+        $error = new \RuntimeException('Handler failed.');
 
         $message = Mockery::mock(AMQPMessage::class);
         $message->shouldReceive('getBody')->once()->andReturn(json_encode($event, JSON_THROW_ON_ERROR));

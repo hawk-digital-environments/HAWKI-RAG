@@ -6,12 +6,15 @@ namespace App\Services\Pipeline;
 use App\Models\PipelineJob;
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Support\Str;
+use Psr\Clock\ClockInterface;
+use Symfony\Component\Clock\Clock;
 
 #[Singleton]
 readonly class PipelineEventNormalizer
 {
     public function __construct(
         private PipelineEventTypeRegistry $types,
+        private ClockInterface $clock = new Clock(),
     ) {
     }
 
@@ -38,7 +41,7 @@ readonly class PipelineEventNormalizer
             'local_path' => $localPath,
             'content_hash' => $contentHash,
             'status' => $this->scalar($payload['status'] ?? null) ?? PipelineJob::STATUS_QUEUED,
-            'created_at' => $this->scalar($payload['created_at'] ?? $payload['createdAt'] ?? null) ?? now()->toIso8601String(),
+            'created_at' => $this->scalar($payload['created_at'] ?? $payload['createdAt'] ?? null) ?? $this->timestamp(),
             'metadata' => $metadata,
             'retry_count' => max(0, (int) ($payload['retry_count'] ?? 0)),
             'max_retries' => max(0, (int) ($payload['max_retries'] ?? config('communication.rabbitmq.pipeline_events.max_retries', 3))),
@@ -66,5 +69,10 @@ readonly class PipelineEventNormalizer
     private function scalar(mixed $value): ?string
     {
         return is_scalar($value) && trim((string) $value) !== '' ? trim((string) $value) : null;
+    }
+
+    private function timestamp(): string
+    {
+        return $this->clock->now()->format(\DateTimeInterface::ATOM);
     }
 }

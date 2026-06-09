@@ -4,7 +4,6 @@ declare(strict_types=1);
 namespace App\Services\Pipeline;
 
 use Illuminate\Container\Attributes\Singleton;
-use Throwable;
 
 #[Singleton]
 readonly class PipelineFailedEventFactory
@@ -14,7 +13,7 @@ readonly class PipelineFailedEventFactory
     ) {
     }
 
-    public function make(array $event, Throwable $error): array
+    public function make(array $event, \Throwable $error): array
     {
         return $this->normalizer->normalize(PipelineEvent::JOB_FAILED, [
             'task_id' => $event['task_id'] ?? null,

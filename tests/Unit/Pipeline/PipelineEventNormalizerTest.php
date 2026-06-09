@@ -7,13 +7,19 @@ use App\Models\PipelineJob;
 use App\Services\Pipeline\PipelineEvent;
 use App\Services\Pipeline\PipelineEventNormalizer;
 use App\Services\Pipeline\PipelineEventTypeRegistry;
+use Symfony\Component\Clock\MockClock;
 use Tests\TestCase;
 
 class PipelineEventNormalizerTest extends TestCase
 {
     public function test_it_normalizes_payload_aliases_and_generates_deterministic_job_id(): void
     {
-        $event = app(PipelineEventNormalizer::class)->normalize(PipelineEvent::PAGE_SCRAPED, [
+        $normalizer = new PipelineEventNormalizer(
+            app(PipelineEventTypeRegistry::class),
+            new MockClock('2026-06-09T12:00:00+00:00'),
+        );
+
+        $event = $normalizer->normalize(PipelineEvent::PAGE_SCRAPED, [
             'taskId' => 'task-normalizer',
             'sourceUrl' => 'https://example.test/page',
             'localPath' => '/app/shared/page',
@@ -28,6 +34,7 @@ class PipelineEventNormalizerTest extends TestCase
         $this->assertStringStartsWith('scrape_', $event['job_id']);
         $this->assertSame([], $event['metadata']);
         $this->assertSame(0, $event['retry_count']);
+        $this->assertSame('2026-06-09T12:00:00+00:00', $event['created_at']);
         $this->assertArrayHasKey('schema_version', $event);
     }
 
