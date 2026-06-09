@@ -6,6 +6,7 @@ namespace App\Services\Scrape\Pipeline;
 
 use App\Services\Scrape\Data\ScrapeContext;
 use App\Services\Scrape\Data\ScrapeJobRequest;
+use App\Services\Scrape\Exceptions\ScrapeProcessException;
 use App\Services\Scrape\Repositories\ScrapeProcessRepository;
 use App\Services\Scrape\Repositories\ScrapeStatisticsRepository;
 use Illuminate\Contracts\Cache\Repository as CacheRepository;
@@ -67,7 +68,7 @@ class ScrapeContextBuilder
      * @param string $jobId
      * @return ScrapeContext
      *
-     * @throws \RuntimeException
+     * @throws ScrapeProcessException
      */
     public function rebuildContext(string $jobId): ScrapeContext{
 
@@ -78,7 +79,7 @@ class ScrapeContextBuilder
 
         if(!$process) {
             $this->logger->error('Scrape Process is not initialized correctly or could not be found!');
-            throw new \RuntimeException("Scrape process '{$jobId}' not found");
+            throw ScrapeProcessException::notFound($jobId);
         }
 
         return new ScrapeContext($process, $this->clock);

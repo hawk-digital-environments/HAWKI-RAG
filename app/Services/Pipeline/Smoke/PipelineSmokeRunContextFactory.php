@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Pipeline\Smoke;
 
 use App\Services\Pipeline\Console\ConsoleWorkflowIO;
+use App\Services\Pipeline\Exceptions\PipelineSmokeException;
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Support\Str;
@@ -46,7 +47,7 @@ readonly class PipelineSmokeRunContextFactory
 
         $parsed = filter_var($value, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
         if (! is_bool($parsed)) {
-            throw new \InvalidArgumentException('The --graph option must be true, false, or auto.');
+            throw PipelineSmokeException::invalidGraphOption();
         }
 
         return $parsed;

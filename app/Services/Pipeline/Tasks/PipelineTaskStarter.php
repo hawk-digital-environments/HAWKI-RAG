@@ -8,7 +8,7 @@ use App\Models\PipelineJob;
 use App\Models\PipelineTask;
 use App\Services\Dataset\DatasetService;
 use App\Services\Pipeline\Events\PipelineEvent;
-use App\Services\Pipeline\Repositories\PipelineJobRepository;
+use App\Services\Pipeline\Repositories\PipelineJobCreationRepository;
 use App\Services\Pipeline\Repositories\PipelineScrapeHistoryRepository;
 use App\Services\Pipeline\Repositories\PipelineTaskRepository;
 use App\Services\Pipeline\Repositories\PipelineTransactionRepository;
@@ -28,7 +28,7 @@ readonly class PipelineTaskStarter
         private PipelineTaskMetadataService $metadata,
         private PipelineTaskSourceResolver $sources,
         private PipelineTaskRepository $taskRepository,
-        private PipelineJobRepository $jobRepository,
+        private PipelineJobCreationRepository $jobCreation,
         private PipelineScrapeHistoryRepository $scrapeHistoryRepository,
         private PipelineTransactionRepository $transactions,
         private PipelineTaskEventPublisher $publisher,
@@ -74,7 +74,7 @@ readonly class PipelineTaskStarter
         $status = $alreadyScraped ? PipelineJob::STATUS_SKIPPED : PipelineJob::STATUS_QUEUED;
         $now = $this->now();
 
-        $job = $this->jobRepository->createScrapeJob(
+        $job = $this->jobCreation->createScrapeJob(
             ($alreadyScraped ? 'skipped_' : 'scrape_').substr(hash('sha256', $task->task_id.'|'.$url), 0, 24),
             $task,
             $url,

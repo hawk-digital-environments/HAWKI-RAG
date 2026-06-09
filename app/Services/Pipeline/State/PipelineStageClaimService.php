@@ -6,7 +6,7 @@ namespace App\Services\Pipeline\State;
 
 use App\Models\PipelineJob;
 use App\Models\PipelineStageState;
-use App\Services\Pipeline\Repositories\PipelineJobRepository;
+use App\Services\Pipeline\Repositories\PipelineJobCreationRepository;
 use App\Services\Pipeline\Repositories\PipelineStageStateRepository;
 use App\Services\Pipeline\Repositories\PipelineTransactionRepository;
 use Illuminate\Container\Attributes\Singleton;
@@ -18,7 +18,7 @@ use Symfony\Component\Clock\Clock;
 readonly class PipelineStageClaimService
 {
     public function __construct(
-        private PipelineJobRepository $jobs,
+        private PipelineJobCreationRepository $jobCreation,
         private PipelineStageStateRepository $stageStates,
         private PipelineTransactionRepository $transactions,
         private PipelineStageAttributeNormalizer $attributes,
@@ -40,7 +40,7 @@ readonly class PipelineStageClaimService
     ): ?PipelineStageState {
         return $this->transactions->run(function () use ($jobId, $stage, $attributes, $requiredCompletedStages, $force): ?PipelineStageState {
             $transitionedAt = $this->now();
-            $job = $this->jobs->firstOrCreateClaimJob($jobId, $stage, $transitionedAt);
+            $job = $this->jobCreation->firstOrCreateClaimJob($jobId, $stage, $transitionedAt);
 
             foreach ($requiredCompletedStages as $requiredStage) {
                 $required = $this->stageStates->lockForJobStage($jobId, $requiredStage);

@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Storage;
 
-use Exception;
+use App\Services\Storage\Exceptions\StorageReadException;
 use Illuminate\Contracts\Filesystem\Filesystem;
 
 
@@ -29,26 +29,26 @@ class StorageService
      * @param string $id job id
      * @param string $type Type of report: job_state / summary / urls_tracking
      * @return array json to array
-     * @throws Exception
+     * @throws StorageReadException
      */
     public function fetchJobReport(string $id, string $type): array{
         $folder = $this->buildFolder($id);
         $path = $folder. '/' . $type . '.json';
 
         if (!$this->filesystem->exists($path)) {
-            throw new Exception("Job report file not found: {$path}");
+            throw StorageReadException::jobReportNotFound($path);
         }
 
         $json = $this->filesystem->get($path);
 
         if (!$json) {
-            throw new Exception("Failed to read job report: {$path}");
+            throw StorageReadException::jobReportUnreadable($path);
         }
 
         $data = json_decode($json, true);
 
         if (json_last_error() !== JSON_ERROR_NONE) {
-            throw new Exception("Invalid JSON in job report: {$path} - " . json_last_error_msg());
+            throw StorageReadException::invalidJobReportJson($path, json_last_error_msg());
         }
         return $data;
     }
@@ -57,19 +57,19 @@ class StorageService
      * Fetch and combine urls index chunks.
      * @param string $id
      * @return array
-     * @throws Exception
+     * @throws StorageReadException
      */
     public function fetchUrlsList(string $id): array{
         $folder = $this->buildFolder($id) . '/url_chunks';
 
         if (!$this->filesystem->exists($folder)) {
-            throw new Exception("URL chunks folder not found: {$folder}");
+            throw StorageReadException::urlChunksFolderNotFound($folder);
         }
 
         $files = $this->filesystem->files($folder);
 
         if (empty($files)) {
-            throw new Exception("No URL chunk files found in: {$folder}");
+            throw StorageReadException::urlChunksEmpty($folder);
         }
 
         $urls = [];
@@ -78,7 +78,7 @@ class StorageService
             $data = json_decode($json, true);
 
             if (json_last_error() !== JSON_ERROR_NONE) {
-                throw new Exception("Invalid JSON in URL chunk: {$file} - " . json_last_error_msg());
+                throw StorageReadException::invalidUrlChunkJson((string) $file, json_last_error_msg());
             }
 
             // The data is an object with URLs as keys, convert to array of values
@@ -110,7 +110,7 @@ class StorageService
      * @param string $id job id
      * @param string $urlHash url hash
      * @return array text
-     * @throws Exception
+     * @throws StorageReadException
      */
     public function fetchElementData(string $id, string $urlHash): array
     {
@@ -118,14 +118,14 @@ class StorageService
         $path = $folder. '/' . 'data.json';
 
         if (!$this->filesystem->exists($path)) {
-            throw new Exception("Element data file not found: {$path}");
+            throw StorageReadException::elementDataNotFound($path);
         }
 
         $json = $this->filesystem->get($path);
         $data = json_decode($json, true);
 
         if (json_last_error() !== JSON_ERROR_NONE) {
-            throw new Exception("Invalid JSON in element data: {$path} - " . json_last_error_msg());
+            throw StorageReadException::invalidElementDataJson($path, json_last_error_msg());
         }
 
         return $data;

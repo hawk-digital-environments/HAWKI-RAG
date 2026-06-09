@@ -22,6 +22,7 @@ class IngestionEventHandler implements PipelineEventHandler
         private readonly PipelineEventStateService $state,
         private readonly PipelineIngestionRepository $ingestion,
         private readonly IngestionContentResolver $content,
+        private readonly PipelineEventArtifactReader $artifacts,
         private readonly IngestionBridgeClient $bridge,
         private readonly ConfigRepository $config,
     ) {}
@@ -87,7 +88,7 @@ class IngestionEventHandler implements PipelineEventHandler
         ]);
         $this->markProcessingState($event, JobProcessingState::STATUS_PROCESSING);
 
-        $text = (string) file_get_contents($path);
+        $text = $this->artifacts->readText($path);
         if (trim($text) === '') {
             throw PipelineEventHandlerException::ingestContentIsEmpty($path);
         }
@@ -112,7 +113,7 @@ class IngestionEventHandler implements PipelineEventHandler
     private function ingestEventForPath(array $event, string $path): array
     {
         $path = $this->content->resolvePath($path) ?? $path;
-        $hash = is_file($path) ? (hash_file('sha256', $path) ?: hash('sha256', $path)) : hash('sha256', $path);
+        $hash = $this->artifacts->sha256($path);
         $jobId = 'ingest_'.substr(hash('sha256', ($event['task_id'] ?? '').'|'.($event['job_id'] ?? '').'|'.$path), 0, 24);
         $datasetId = (string) ($event['dataset_id'] ?: 'default');
 
@@ -150,14 +151,14 @@ class IngestionEventHandler implements PipelineEventHandler
     private function recordDocument(array $event, string $path, array $bridgeResponse): void
     {
         $targets = $this->bridge->targets((string) ($event['dataset_id'] ?: 'default'));
-        $checksum = is_file($path) ? (hash_file('sha256', $path) ?: $event['content_hash']) : $event['content_hash'];
+        $checksum = $this->artifacts->sha256($path, (string) $event['content_hash']);
 
         $this->ingestion->upsertIngestedDocument(
             $event,
             $targets,
             $path,
             $checksum,
-            is_file($path) ? (filesize($path) ?: null) : null,
+            $this->artifacts->size($path),
             $bridgeResponse,
         );
     }

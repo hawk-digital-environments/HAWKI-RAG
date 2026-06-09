@@ -16,6 +16,7 @@ class ConversionOutputWriter
     public function __construct(
         private readonly DocumentConverter $converter,
         private readonly Filesystem $files,
+        private readonly PipelineEventArtifactReader $artifacts,
         private readonly ClockInterface $clock = new Clock,
     ) {}
 
@@ -64,30 +65,26 @@ class ConversionOutputWriter
     {
         $outputDir = dirname($path).DIRECTORY_SEPARATOR.'converted_'.pathinfo($path, PATHINFO_FILENAME);
         $metaPath = $outputDir.DIRECTORY_SEPARATOR.'conversion_meta.json';
-        if (! is_file($metaPath)) {
-            return null;
-        }
-
-        $meta = json_decode((string) file_get_contents($metaPath), true);
-        if (! is_array($meta) || (string) ($meta['converted_id'] ?? '') !== $contentHash) {
+        $meta = $this->artifacts->readJsonArray($metaPath);
+        if ($meta === null || (string) ($meta['converted_id'] ?? '') !== $contentHash) {
             return null;
         }
 
         $combined = (string) ($meta['combined_markdown_path'] ?? '');
-        if ($combined !== '' && is_file($combined)) {
+        if ($combined !== '' && $this->artifacts->isFile($combined)) {
             return $combined;
         }
 
         foreach (($meta['files'] ?? []) as $relative) {
             $candidate = $outputDir.DIRECTORY_SEPARATOR.ltrim((string) $relative, DIRECTORY_SEPARATOR);
-            if (is_file($candidate) && str_ends_with(strtolower($candidate), '.md')) {
+            if ($this->artifacts->isFile($candidate) && str_ends_with(strtolower($candidate), '.md')) {
                 return $candidate;
             }
         }
 
         $flat = dirname($path).DIRECTORY_SEPARATOR.pathinfo($path, PATHINFO_FILENAME).'_converted.md';
 
-        return is_file($flat) ? $flat : null;
+        return $this->artifacts->isFile($flat) ? $flat : null;
     }
 
     /**

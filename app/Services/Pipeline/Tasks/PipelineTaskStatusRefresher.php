@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace App\Services\Pipeline\Tasks;
 
 use App\Models\PipelineTask;
-use App\Services\Pipeline\Repositories\PipelineJobRepository;
 use App\Services\Pipeline\Repositories\PipelineTaskRepository;
+use App\Services\Pipeline\Repositories\Queries\PipelineTaskJobsQuery;
 use Illuminate\Container\Attributes\Singleton;
 
 #[Singleton]
@@ -16,7 +16,7 @@ readonly class PipelineTaskStatusRefresher
         private PipelineTaskCounterService $counters,
         private PipelineTaskStatusService $statuses,
         private PipelineTaskRepository $taskRepository,
-        private PipelineJobRepository $jobRepository,
+        private PipelineTaskJobsQuery $taskJobs,
     ) {
     }
 
@@ -26,7 +26,7 @@ readonly class PipelineTaskStatusRefresher
             ? $task
             : $this->taskRepository->findByTaskIdOrFail($task);
 
-        $jobs = $this->jobRepository->forTask($task->task_id);
+        $jobs = $this->taskJobs->forTask($task->task_id);
         $counters = $this->counters->forJobs($jobs);
         $status = $this->statuses->resolve($task, $counters, $jobs->isNotEmpty());
 
@@ -35,6 +35,6 @@ readonly class PipelineTaskStatusRefresher
 
     public function activeJobCount(PipelineTask $task): int
     {
-        return $this->jobRepository->countForTaskWithStatuses($task->task_id, $this->statuses->activeJobStatuses());
+        return $this->taskJobs->countForTaskWithStatuses($task->task_id, $this->statuses->activeJobStatuses());
     }
 }

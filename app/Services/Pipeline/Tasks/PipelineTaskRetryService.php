@@ -6,8 +6,9 @@ namespace App\Services\Pipeline\Tasks;
 
 use App\Models\PipelineJob;
 use App\Models\PipelineTask;
-use App\Services\Pipeline\Repositories\PipelineJobRepository;
+use App\Services\Pipeline\Repositories\PipelineJobRecoveryRepository;
 use App\Services\Pipeline\Repositories\PipelineTaskRepository;
+use App\Services\Pipeline\Repositories\Queries\FailedPipelineJobsQuery;
 use Illuminate\Container\Attributes\Singleton;
 use Psr\Clock\ClockInterface;
 use Symfony\Component\Clock\Clock;
@@ -19,7 +20,8 @@ readonly class PipelineTaskRetryService
         private PipelineTaskEventPayloadService $eventPayloads,
         private PipelineTaskMetadataService $metadata,
         private PipelineTaskRepository $taskRepository,
-        private PipelineJobRepository $jobRepository,
+        private FailedPipelineJobsQuery $failedJobs,
+        private PipelineJobRecoveryRepository $jobRecovery,
         private PipelineTaskEventPublisher $publisher,
         private PipelineTaskStatusRefresher $refresher,
         private ClockInterface $clock = new Clock(),
@@ -33,14 +35,14 @@ readonly class PipelineTaskRetryService
             return null;
         }
 
-        $jobs = $this->jobRepository->failedForRetry($task);
+        $jobs = $this->failedJobs->forRetry($task);
 
         foreach ($jobs as $job) {
             $metadata = $job->metadata ?? [];
             $metadata['retry_count'] = (int) ($metadata['retry_count'] ?? 0) + 1;
             $metadata['retried_at'] = $this->timestamp();
 
-            $job = $this->jobRepository->markQueuedForRetry($job, $metadata);
+            $job = $this->jobRecovery->markQueuedForRetry($job, $metadata);
             $this->publishRetryEventForJob($task, $job);
         }
 

@@ -12,7 +12,7 @@ use App\Services\Pipeline\EventHandlers\IngestionEventHandler;
 use App\Services\Pipeline\Events\PipelineEventBus;
 use App\Services\Pipeline\Events\PipelineEventStateService;
 use App\Services\Pipeline\Repositories\PipelineEventRecordRepository;
-use App\Services\Pipeline\Repositories\PipelineJobRepository;
+use App\Services\Pipeline\Repositories\Queries\ActivePipelineJobsQuery;
 use App\Services\Pipeline\Tasks\PipelineTaskService;
 use Illuminate\Console\Command;
 use Illuminate\Container\Attributes\Singleton;
@@ -34,7 +34,7 @@ readonly class PipelineSmokeTestService
         IngestionEventHandler $ingestion,
         DatasetService $datasets,
         DocumentRepository $documents,
-        PipelineJobRepository $jobs,
+        ActivePipelineJobsQuery $jobs,
         PipelineEventRecordRepository $eventRecords,
     ): int {
         return $this->workflow->run(

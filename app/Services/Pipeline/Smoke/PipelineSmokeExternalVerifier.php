@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Pipeline\Smoke;
 
+use App\Services\Pipeline\Exceptions\PipelineSmokeException;
 use Illuminate\Contracts\Config\Repository as ConfigRepository;
 use Illuminate\Http\Client\Factory as HttpFactory;
 
@@ -51,7 +52,7 @@ readonly class PipelineSmokeExternalVerifier
             ]);
 
             if (! $response->successful()) {
-                throw new \RuntimeException("Qdrant returned HTTP {$response->status()} for collection {$collection}.");
+                throw PipelineSmokeException::qdrantHttpFailed($response->status(), $collection);
             }
 
             $points = $response->json('result.points') ?? [];
@@ -60,7 +61,7 @@ readonly class PipelineSmokeExternalVerifier
             }
         }
 
-        throw new \RuntimeException("No Qdrant point found for job {$jobId} or task {$taskId} in collection {$collection}.");
+        throw PipelineSmokeException::qdrantPointMissing($jobId, $taskId, $collection);
     }
 
     /**
@@ -99,19 +100,19 @@ CYPHER,
             ]);
 
         if (! $response->successful()) {
-            throw new \RuntimeException("Neo4j returned HTTP {$response->status()}.");
+            throw PipelineSmokeException::neo4jHttpFailed($response->status());
         }
 
         $errors = $response->json('errors') ?? [];
         if ($errors !== []) {
-            throw new \RuntimeException('Neo4j returned errors: ' . json_encode($errors, JSON_UNESCAPED_SLASHES));
+            throw PipelineSmokeException::neo4jReturnedErrors((string) json_encode($errors, JSON_UNESCAPED_SLASHES));
         }
 
         $row = $response->json('results.0.data.0.row') ?? [0, 0];
         $nodes = (int) ($row[0] ?? 0);
         $relationships = (int) ($row[1] ?? 0);
         if ($nodes < 1 && $relationships < 1) {
-            throw new \RuntimeException("No Neo4j graph records found for smoke document {$documentJobId}.");
+            throw PipelineSmokeException::neo4jRecordsMissing($documentJobId);
         }
 
         return [

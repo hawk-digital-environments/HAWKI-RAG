@@ -10,6 +10,7 @@ use App\Services\Pipeline\Events\PipelineEventBus;
 use App\Services\Pipeline\Events\PipelineEventStateService;
 use App\Services\Pipeline\Uploads\PipelineUploadPolicy;
 use Illuminate\Container\Attributes\Singleton;
+use Illuminate\Filesystem\Filesystem;
 
 #[Singleton]
 readonly class ScrapeMonitorOutputPublisher
@@ -19,6 +20,7 @@ readonly class ScrapeMonitorOutputPublisher
         private PipelineEventStateService $state,
         private ScrapeMonitorPayloadService $payloads,
         private PipelineUploadPolicy $policy,
+        private Filesystem $files,
     ) {}
 
     public function publish(PipelineJob $job, string $datasetPath): void
@@ -40,12 +42,12 @@ readonly class ScrapeMonitorOutputPublisher
     private function supportedFiles(string $datasetPath): array
     {
         $resolved = realpath($datasetPath);
-        if ($resolved === false || ! is_dir($resolved)) {
+        if ($resolved === false || ! $this->files->isDirectory($resolved)) {
             return [];
         }
 
         $files = [];
-        foreach (new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($resolved, \FilesystemIterator::SKIP_DOTS)) as $file) {
+        foreach ($this->files->allFiles($resolved) as $file) {
             if ($file->isFile() && $this->policy->supports($file->getExtension())) {
                 $files[] = $file->getPathname();
             }

@@ -18,6 +18,7 @@ readonly class RagMonitorService
         private ConfigRepository $config,
         private Filesystem $files,
         private HttpFactory $http,
+        private RagLatencyTimer $timer,
     ) {}
 
     /**
@@ -53,13 +54,13 @@ readonly class RagMonitorService
         $endpoint = $baseUrl.'/health';
 
         try {
-            $start = microtime(true);
+            $start = $this->timer->start();
             $response = $this->http->connectTimeout(2)->timeout(10)->get($endpoint);
 
             return [
                 'ok' => $response->successful() && (bool) ($response->json('ok') ?? true),
                 'status' => $response->status(),
-                'latency_ms' => (int) ((microtime(true) - $start) * 1000),
+                'latency_ms' => $this->timer->elapsedMs($start),
                 'endpoint' => $endpoint,
                 'body' => $response->json(),
             ];

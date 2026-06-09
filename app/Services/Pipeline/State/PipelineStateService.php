@@ -6,8 +6,9 @@ namespace App\Services\Pipeline\State;
 
 use App\Models\PipelineJob;
 use App\Models\PipelineStageState;
-use App\Services\Pipeline\Repositories\PipelineJobRepository;
+use App\Services\Pipeline\Repositories\PipelineJobCreationRepository;
 use App\Services\Pipeline\Repositories\PipelineStageStateRepository;
+use App\Services\Pipeline\Repositories\Queries\ActivePipelineJobsQuery;
 use App\Services\Pipeline\Values\PipelineStage;
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Support\Carbon;
@@ -24,7 +25,8 @@ readonly class PipelineStateService
     public const STAGE_INGEST = PipelineStage::Ingest->value;
 
     public function __construct(
-        private readonly PipelineJobRepository $jobs,
+        private readonly ActivePipelineJobsQuery $jobs,
+        private readonly PipelineJobCreationRepository $jobCreation,
         private readonly PipelineStageStateRepository $stageStates,
         private readonly PipelineStageAttributeNormalizer $attributes,
         private readonly PipelineStageClaimService $claims,
@@ -39,7 +41,7 @@ readonly class PipelineStateService
             return null;
         }
 
-        return $this->jobs->ensureStateJob(
+        return $this->jobCreation->ensureStateJob(
             $jobId,
             $this->attributes->jobAttributes($attributes),
             $this->now(),

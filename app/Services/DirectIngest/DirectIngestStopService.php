@@ -16,6 +16,7 @@ readonly class DirectIngestStopService
     public function __construct(
         private DirectIngestStatusStore $statuses,
         private PipelineStateService $pipelineState,
+        private DirectIngestProcessInspector $processes,
         private ClockInterface $clock = new Clock(),
     ) {}
 
@@ -40,14 +41,10 @@ readonly class DirectIngestStopService
         foreach ($targetPids as $pid) {
             $pid = (int) $pid;
             $stopped = false;
-            if ($pid > 0 && ! $this->isPidAlive($pid)) {
+            if ($pid > 0 && ! $this->processes->isPidAlive($pid)) {
                 $stopped = true;
-            } elseif ($pid > 0 && function_exists('posix_kill')) {
-                $stopped = @posix_kill($pid, defined('SIGTERM') ? SIGTERM : 15);
-            }
-            if (! $stopped && $pid > 0) {
-                @exec('kill -TERM '.$pid, $out, $code);
-                $stopped = $code === 0;
+            } elseif ($pid > 0) {
+                $stopped = $this->processes->terminate($pid);
             }
             if ($stopped) {
                 $stoppedCount += 1;
@@ -56,7 +53,7 @@ readonly class DirectIngestStopService
         }
 
         if ($stoppedCount === 0) {
-            $stoppedCount = $this->stopByCommandMatch('ingest_crawled.py');
+            $stoppedCount = $this->processes->stopByCommandMatch('ingest_crawled.py');
             $stoppedPids = $stoppedCount > 0 ? $targetPids : [];
         }
 
@@ -133,41 +130,4 @@ readonly class DirectIngestStopService
         $this->statuses->save($statusPath, $entries);
     }
 
-    private function isPidAlive(int $pid): bool
-    {
-        if ($pid <= 0) {
-            return false;
-        }
-        if (function_exists('posix_kill')) {
-            return @posix_kill($pid, 0);
-        }
-
-        @exec('kill -0 '.$pid, $out, $code);
-
-        return $code === 0;
-    }
-
-    private function stopByCommandMatch(string $needle): int
-    {
-        $count = 0;
-        foreach (glob('/proc/[0-9]*/cmdline') as $cmdlinePath) {
-            $cmdline = @file_get_contents($cmdlinePath);
-            if (! $cmdline) {
-                continue;
-            }
-
-            $cmdline = str_replace("\0", ' ', $cmdline);
-            if (stripos($cmdline, $needle) === false) {
-                continue;
-            }
-            if (preg_match('~/proc/(\\d+)/cmdline$~', $cmdlinePath, $m)) {
-                $pid = (int) $m[1];
-                if ($pid > 0 && function_exists('posix_kill') && @posix_kill($pid, defined('SIGTERM') ? SIGTERM : 15)) {
-                    $count += 1;
-                }
-            }
-        }
-
-        return $count;
-    }
 }

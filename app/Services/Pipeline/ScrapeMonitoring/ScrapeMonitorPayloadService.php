@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Pipeline\ScrapeMonitoring;
 
 use App\Models\PipelineJob;
+use App\Services\Pipeline\EventHandlers\PipelineEventArtifactReader;
 use App\Services\Pipeline\EventHandlers\ScrapeMonitorEventHandler;
 use App\Services\Pipeline\Events\PipelineEvent;
 use App\Services\Pipeline\Events\PipelineEventNormalizer;
@@ -15,6 +16,7 @@ readonly class ScrapeMonitorPayloadService
 {
     public function __construct(
         private PipelineEventNormalizer $normalizer,
+        private PipelineEventArtifactReader $artifacts,
     ) {}
 
     public function pageScrapedEvent(PipelineJob $job, string $datasetPath): array
@@ -25,7 +27,7 @@ readonly class ScrapeMonitorPayloadService
     public function fileDiscoveredPayload(PipelineJob $job, string $datasetPath, string $path): array
     {
         $task = $job->task;
-        $hash = @hash_file('sha256', $path) ?: hash('sha256', $path);
+        $hash = $this->artifacts->sha256($path);
 
         return [
             'task_id' => $job->task_id,

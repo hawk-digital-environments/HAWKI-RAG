@@ -10,9 +10,8 @@ use App\Services\Scrape\Data\ScrapeContext;
 use App\Services\Scrape\Repositories\ScrapedElementRepository;
 use App\Services\Scrape\Repositories\ScrapeStatisticsRepository;
 use App\Services\Storage\StorageService;
-use DateTime;
 use Illuminate\Container\Attributes\Singleton;
-use Illuminate\Support\Str;
+use Throwable;
 
 #[Singleton]
 class ScrapeDatasetCreator
@@ -23,11 +22,10 @@ class ScrapeDatasetCreator
         protected readonly PipelineStageLogger $logger,
         protected readonly ScrapedElementRepository $elements,
         protected readonly ScrapeStatisticsRepository $statistics,
+        private readonly ScrapeElementPayloadBuilder $payloads,
+        private readonly ScrapeElementDateNormalizer $dates,
     ) {}
 
-    /**
-     * @throws \Exception
-     */
     public function createElementData(ScrapeContext $context, string $urlHash): void
     {
         $elementData = $this->storageService->fetchElementData($context->jobId, $urlHash);
@@ -60,55 +58,30 @@ class ScrapeDatasetCreator
                 }
             }
 
-            // Helper function to extract first element if arrayed, otherwise return as-is
-            $extractValue = fn ($value) => $this->validator->firstScalar($value);
+            $dateSource = $this->payloads->publishedDateSource($elementData);
+            $publishedAt = $this->dates->normalize($dateSource);
+            if ($dateSource !== null && $publishedAt === null) {
+                $this->logger->partial('scrape', [
+                    'job_id' => $context->jobId,
+                    'doc_id' => $urlHash,
+                    'pipeline_stage' => 'element_metadata',
+                    'error_message' => "Invalid published_at date: {$dateSource}",
+                ]);
+            }
 
-            // Extract scalar values from arrays
-            $pageUrl = $extractValue($elementData['page_url']);
-            $title = $extractValue($elementData['title'] ?? null) ?? $this->titleFromUrl($pageUrl);
-            $metaImgUrl = $extractValue($elementData['meta_img_url'] ?? null);
-            $publishedAt = $extractValue($elementData['published_at'] ?? $elementData['date'] ?? null);
-            $publishedAt = $this->normalizeDate($publishedAt, $context->jobId, $urlHash);
-
-            $urlParts = $this->explodeUrl($pageUrl);
-
-            // Ensure images and pdfs are arrays before encoding
-            $images = $elementData['images'] ?? [];
-            $pdfs = $elementData['pdfs'] ?? [];
-
-            $this->elements->create([
-                'uuid' => Str::uuid()->toString(),
-                'title' => $title,
-                'page_url' => $pageUrl,
-                'meta_img_url' => $metaImgUrl,
-                'page_url_hash' => $urlHash,
-                'content_hash' => $this->validator->firstScalar($elementData['content_hash'] ?? null) ?? hash('sha256', $pageUrl),
-                'language' => $elementData['lang'] ?? 'en',
-                'images' => is_array($images) ? $images : [],
-                'pdfs' => is_array($pdfs) ? $pdfs : [],
-                'published_at' => $publishedAt,
-                'domain' => $urlParts['domain'],
-                'subdomain' => $urlParts['subdomain'],
-                'canonicalized_path' => $elementData['canonicalized_path'] ?? null,
-                'access_level' => 'internal',
-                'job_id' => $context->jobId,
-                'image_count' => is_array($images) ? count($images) : 0,
-                'pdf_count' => is_array($pdfs) ? count($pdfs) : 0,
-                'content_length' => $elementData['content_length'] ?? null,
-                'fetch_time' => $elementData['fetch_time'] ?? null,
-                'http_status' => $elementData['http_status'] ?? null,
-            ]);
+            $attributes = $this->payloads->build($elementData, $urlHash, $context->jobId, $publishedAt);
+            $this->elements->create($attributes);
 
             $this->logger->success('scrape', [
                 'job_id' => $context->jobId,
                 'doc_id' => $urlHash,
-                'source_url' => $pageUrl,
-                'title' => $title,
+                'source_url' => $attributes['page_url'],
+                'title' => $attributes['title'],
                 'pipeline_stage' => 'element_persisted',
-                'image_count' => is_array($images) ? count($images) : 0,
-                'pdf_count' => is_array($pdfs) ? count($pdfs) : 0,
+                'image_count' => $attributes['image_count'],
+                'pdf_count' => $attributes['pdf_count'],
             ]);
-        } catch (\Exception $exception) {
+        } catch (Throwable $exception) {
             $this->logger->failed('scrape', [
                 'job_id' => $context->jobId,
                 'doc_id' => $urlHash,
@@ -119,29 +92,6 @@ class ScrapeDatasetCreator
             $context->addError($exception->getMessage());
         }
 
-    }
-
-    protected function explodeUrl(string $url): array
-    {
-        $host = parse_url($url, PHP_URL_HOST);
-        if (! $host) {
-            return [
-                'subdomain' => '',
-                'domain' => '',
-                'full_domain' => '',
-            ];
-        }
-
-        $parts = explode('.', $host);
-        $subdomainParts = array_slice($parts, 0, count($parts) - 2);
-        $subdomain = implode('.', $subdomainParts);
-        $domain = implode('.', array_slice($parts, count($subdomainParts)));
-
-        return [
-            'subdomain' => $subdomain,
-            'domain' => $domain,
-            'full_domain' => $host,
-        ];
     }
 
     public function recordScrapeSummary(ScrapeContext $context, array $summary): void
@@ -179,37 +129,4 @@ class ScrapeDatasetCreator
         ]);
     }
 
-    private function normalizeDate(?string $value, string $jobId, string $docId): ?string
-    {
-        if ($value === null) {
-            return null;
-        }
-
-        try {
-            return (new DateTime($value))->format('Y-m-d H:i:s');
-        } catch (\Exception $e) {
-            $this->logger->partial('scrape', [
-                'job_id' => $jobId,
-                'doc_id' => $docId,
-                'pipeline_stage' => 'element_metadata',
-                'error_message' => "Invalid published_at date: {$value}",
-            ]);
-
-            return null;
-        }
-    }
-
-    private function titleFromUrl(?string $url): string
-    {
-        if (! $url) {
-            return 'Untitled document';
-        }
-
-        $path = trim((string) parse_url($url, PHP_URL_PATH), '/');
-        if ($path !== '') {
-            return basename($path);
-        }
-
-        return parse_url($url, PHP_URL_HOST) ?: 'Untitled document';
-    }
 }

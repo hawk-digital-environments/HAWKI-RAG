@@ -5,8 +5,9 @@ declare(strict_types=1);
 namespace App\Services\Pipeline\Events;
 
 use App\Models\PipelineJob;
-use App\Services\Pipeline\Repositories\PipelineJobRepository;
+use App\Services\Pipeline\Repositories\PipelineJobCreationRepository;
 use App\Services\Pipeline\Repositories\PipelineTaskRepository;
+use App\Services\Pipeline\Repositories\Queries\ActivePipelineJobsQuery;
 use App\Services\Pipeline\Tasks\PipelineTaskService;
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Support\Carbon;
@@ -19,7 +20,8 @@ class PipelineEventStateService
 {
     public function __construct(
         private readonly PipelineTaskService $tasks,
-        private readonly PipelineJobRepository $jobs,
+        private readonly ActivePipelineJobsQuery $jobs,
+        private readonly PipelineJobCreationRepository $jobCreation,
         private readonly PipelineTaskRepository $taskRepository,
         private readonly PipelineEventNormalizer $normalizer,
         private readonly PipelineEventTypeRegistry $types,
@@ -44,7 +46,7 @@ class PipelineEventStateService
         ];
         $now = $this->now();
 
-        $job = $this->jobs->upsertEventState(
+        $job = $this->jobCreation->upsertEventState(
             (string) $event['job_id'],
             [
                 'task_id' => $event['task_id'],

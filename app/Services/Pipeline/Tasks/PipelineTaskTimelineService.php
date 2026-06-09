@@ -6,7 +6,7 @@ namespace App\Services\Pipeline\Tasks;
 
 use App\Models\PipelineJob;
 use App\Services\Pipeline\Events\PipelineEventRecorder;
-use App\Services\Pipeline\Repositories\PipelineJobRepository;
+use App\Services\Pipeline\Repositories\Queries\PipelineTaskJobsQuery;
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Support\Collection;
 
@@ -17,7 +17,7 @@ readonly class PipelineTaskTimelineService
         private PipelineEventRecorder $events,
         private PipelineTaskInputNormalizer $input,
         private PipelineTaskPayloadService $payloads,
-        private PipelineJobRepository $jobRepository,
+        private PipelineTaskJobsQuery $taskJobs,
     ) {
     }
 
@@ -34,7 +34,7 @@ readonly class PipelineTaskTimelineService
             return $timeline;
         }
 
-        return $this->jobRepository
+        return $this->taskJobs
             ->forTaskByRecentUpdate($taskId)
             ->flatMap(fn (PipelineJob $job) => $this->payloads->eventsForJob($job))
             ->when($this->input->nullableString($filters['event_type'] ?? $filters['eventType'] ?? null), function (Collection $events, string $eventType): Collection {

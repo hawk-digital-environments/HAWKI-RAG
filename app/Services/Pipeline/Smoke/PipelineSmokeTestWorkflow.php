@@ -10,13 +10,14 @@ use App\Models\PipelineTask;
 use App\Services\Dataset\DatasetService;
 use App\Services\Document\DocumentRepository;
 use App\Services\Pipeline\Console\ConsoleWorkflowIO;
+use App\Services\Pipeline\Exceptions\PipelineSmokeException;
 use App\Services\Pipeline\EventHandlers\ConverterEventHandler;
 use App\Services\Pipeline\EventHandlers\IngestionEventHandler;
 use App\Services\Pipeline\Events\PipelineEvent;
 use App\Services\Pipeline\Events\PipelineEventBus;
 use App\Services\Pipeline\Events\PipelineEventStateService;
 use App\Services\Pipeline\Repositories\PipelineEventRecordRepository;
-use App\Services\Pipeline\Repositories\PipelineJobRepository;
+use App\Services\Pipeline\Repositories\Queries\ActivePipelineJobsQuery;
 use App\Services\Pipeline\Tasks\PipelineTaskService;
 use Illuminate\Console\Command;
 use Illuminate\Container\Attributes\Singleton;
@@ -46,7 +47,7 @@ readonly class PipelineSmokeTestWorkflow
         IngestionEventHandler $ingestion,
         DatasetService $datasets,
         DocumentRepository $documents,
-        PipelineJobRepository $jobs,
+        ActivePipelineJobsQuery $jobs,
         PipelineEventRecordRepository $eventRecords,
     ): int {
         $runner = new PipelineSmokeStageRunner($io);
@@ -86,11 +87,11 @@ readonly class PipelineSmokeTestWorkflow
             $scrapeJob = $runner->stage('Scrape enqueue', function () use ($jobs, $task): PipelineJob {
                 $job = $jobs->firstForTaskAndType($task->task_id, PipelineJob::TYPE_SCRAPE);
                 if (! $job) {
-                    throw new \RuntimeException('No scrape job was created for the smoke task.');
+                    throw PipelineSmokeException::missingScrapeJob();
                 }
 
                 if (! in_array($job->status, [PipelineJob::STATUS_QUEUED, PipelineJob::STATUS_SKIPPED], true)) {
-                    throw new \RuntimeException("Scrape job {$job->job_id} has unexpected status {$job->status}.");
+                    throw PipelineSmokeException::unexpectedScrapeJobStatus($job->job_id, $job->status);
                 }
 
                 return $job;
@@ -106,7 +107,7 @@ readonly class PipelineSmokeTestWorkflow
                 $recorded = $eventRecords->existsForJobEvent($task->task_id, $scrapeJob->job_id, PipelineEvent::SCRAPE_REQUESTED);
 
                 if (! $recorded) {
-                    throw new \RuntimeException('No scrape.requested pipeline event was recorded for the scrape job.');
+                    throw PipelineSmokeException::missingScrapeRequestedEvent();
                 }
 
                 return $this->publishingGate->enabled()
@@ -138,11 +139,11 @@ readonly class PipelineSmokeTestWorkflow
                 $path = is_array($job?->metadata) ? (string) ($job->metadata['converted_path'] ?? '') : '';
 
                 if (! $job || $job->status !== PipelineJob::STATUS_COMPLETED) {
-                    throw new \RuntimeException("Convert job {$convertJobId} did not complete.");
+                    throw PipelineSmokeException::convertDidNotComplete($convertJobId);
                 }
 
                 if ($path === '' || ! $this->files->isFile($path) || trim($this->files->get($path)) === '') {
-                    throw new \RuntimeException("Convert job {$convertJobId} did not produce readable Markdown.");
+                    throw PipelineSmokeException::convertMarkdownMissing($convertJobId);
                 }
 
                 return $path;
@@ -163,7 +164,7 @@ readonly class PipelineSmokeTestWorkflow
 
                 $document = $documents->latestCompletedForDatasetPath((string) $task->dataset_id, $convertedPath);
                 if (! $document) {
-                    throw new \RuntimeException('Ingestion completed without creating a completed document record.');
+                    throw PipelineSmokeException::ingestionMissingDocument();
                 }
 
                 return $document;
@@ -174,11 +175,11 @@ readonly class PipelineSmokeTestWorkflow
                 $bridge = is_array($metadata['bridge_response'] ?? null) ? $metadata['bridge_response'] : [];
 
                 if (($bridge['ok'] ?? true) !== true) {
-                    throw new \RuntimeException('Document bridge_response is not ok.');
+                    throw PipelineSmokeException::bridgeResponseNotOk();
                 }
 
                 if (! $document->external_id) {
-                    throw new \RuntimeException('Document is missing the related ingestion job id.');
+                    throw PipelineSmokeException::documentMissingIngestJob();
                 }
 
                 return $document;

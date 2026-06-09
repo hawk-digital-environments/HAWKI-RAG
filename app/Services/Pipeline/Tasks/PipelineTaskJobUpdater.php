@@ -5,8 +5,9 @@ declare(strict_types=1);
 namespace App\Services\Pipeline\Tasks;
 
 use App\Models\PipelineJob;
-use App\Services\Pipeline\Repositories\PipelineJobRepository;
+use App\Services\Pipeline\Repositories\PipelineJobCreationRepository;
 use App\Services\Pipeline\Repositories\PipelineTaskRepository;
+use App\Services\Pipeline\Repositories\Queries\ActivePipelineJobsQuery;
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Support\Carbon;
 use Psr\Clock\ClockInterface;
@@ -18,7 +19,8 @@ readonly class PipelineTaskJobUpdater
     public function __construct(
         private PipelineTaskInputNormalizer $input,
         private PipelineTaskRepository $taskRepository,
-        private PipelineJobRepository $jobRepository,
+        private ActivePipelineJobsQuery $jobs,
+        private PipelineJobCreationRepository $jobCreation,
         private PipelineTaskStatusRefresher $refresher,
         private ClockInterface $clock = new Clock(),
     ) {
@@ -32,13 +34,13 @@ readonly class PipelineTaskJobUpdater
         $task = $this->taskRepository->findByTaskIdOrFail($taskId);
         $jobId = $this->input->jobId($input);
         $status = $this->input->jobStatus($input['status'] ?? null);
-        $existing = $this->jobRepository->findByJobId($jobId);
+        $existing = $this->jobs->findByJobId($jobId);
         $metadata = array_merge(
             is_array($existing?->metadata) ? $existing->metadata : [],
             is_array($input['metadata'] ?? null) ? $input['metadata'] : [],
         );
 
-        $job = $this->jobRepository->upsertForTask(
+        $job = $this->jobCreation->upsertForTask(
             $jobId,
             $task,
             [

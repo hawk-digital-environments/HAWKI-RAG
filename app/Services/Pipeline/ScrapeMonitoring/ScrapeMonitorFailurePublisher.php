@@ -10,7 +10,7 @@ use App\Services\Pipeline\Events\PipelineEventBus;
 use App\Services\Pipeline\Events\PipelineEventNormalizer;
 use App\Services\Pipeline\Events\PipelineEventStateService;
 use App\Services\Pipeline\Exceptions\PipelineEventHandlerException;
-use App\Services\Pipeline\Repositories\PipelineJobRepository;
+use App\Services\Pipeline\Repositories\Queries\ActivePipelineJobsQuery;
 use Illuminate\Container\Attributes\Singleton;
 
 #[Singleton]
@@ -19,7 +19,7 @@ readonly class ScrapeMonitorFailurePublisher
     public function __construct(
         private PipelineEventBus $events,
         private PipelineEventStateService $state,
-        private PipelineJobRepository $jobs,
+        private ActivePipelineJobsQuery $jobs,
         private PipelineEventNormalizer $normalizer,
         private ScrapeMonitorPayloadService $payloads,
     ) {}

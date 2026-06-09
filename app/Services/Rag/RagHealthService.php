@@ -14,6 +14,7 @@ readonly class RagHealthService
     public function __construct(
         private ConfigRepository $config,
         private HttpFactory $http,
+        private RagLatencyTimer $timer,
     ) {}
 
     /**
@@ -24,9 +25,9 @@ readonly class RagHealthService
         $lastError = null;
         foreach ($this->candidateEndpoints() as $url) {
             try {
-                $start = microtime(true);
+                $start = $this->timer->start();
                 $response = $this->http->connectTimeout(2)->timeout(10)->get($url);
-                $elapsedMs = (int) ((microtime(true) - $start) * 1000);
+                $elapsedMs = $this->timer->elapsedMs($start);
 
                 if (! $response->successful()) {
                     $lastError = [

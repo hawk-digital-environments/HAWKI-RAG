@@ -10,7 +10,8 @@ use App\Services\Dataset\DatasetService;
 use App\Services\Pipeline\Events\PipelineEvent;
 use App\Services\Pipeline\Events\PipelineEventBus;
 use App\Services\Pipeline\Exceptions\PipelineUploadStorageException;
-use App\Services\Pipeline\Repositories\PipelineJobRepository;
+use App\Services\Pipeline\Repositories\PipelineJobCreationRepository;
+use App\Services\Pipeline\Repositories\PipelineJobStateMutationRepository;
 use App\Services\Pipeline\Repositories\PipelineTaskRepository;
 use App\Services\Pipeline\Tasks\PipelineTaskService;
 use App\Services\Pipeline\Values\PipelineUploadInput;
@@ -31,7 +32,8 @@ class PipelineUploadService
         private readonly PipelineTaskService $tasks,
         private readonly PipelineEventBus $events,
         private readonly PipelineTaskRepository $taskRepository,
-        private readonly PipelineJobRepository $jobRepository,
+        private readonly PipelineJobCreationRepository $jobCreation,
+        private readonly PipelineJobStateMutationRepository $jobStates,
         private readonly PipelineUploadStorage $storage,
         private readonly PipelineUploadPolicy $policy,
         private readonly PipelineUploadIdentifierFactory $identifiers,
@@ -81,7 +83,7 @@ class PipelineUploadService
 
         $metadata = $this->payloads->jobMetadata($dataset, $input, $storedUpload);
 
-        $job = $this->jobRepository->createUploadConvertJob(
+        $job = $this->jobCreation->createUploadConvertJob(
             $jobId,
             $task,
             $sourceUrl,
@@ -96,7 +98,7 @@ class PipelineUploadService
             $this->events->publish(PipelineEvent::FILE_DISCOVERED, $payload);
         } catch (\Throwable $exception) {
             $failedAt = $this->now();
-            $job = $this->jobRepository->markFailed(
+            $job = $this->jobStates->markFailed(
                 $job,
                 'Unable to publish file.discovered event: '.$exception->getMessage(),
                 $failedAt,

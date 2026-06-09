@@ -6,8 +6,9 @@ namespace App\Services\Pipeline\Tasks;
 
 use App\Models\PipelineJob;
 use App\Models\PipelineTask;
-use App\Services\Pipeline\Repositories\PipelineJobRepository;
 use App\Services\Pipeline\Repositories\PipelineTaskRepository;
+use App\Services\Pipeline\Repositories\Queries\FailedPipelineJobsQuery;
+use App\Services\Pipeline\Repositories\Queries\PipelineTaskJobsQuery;
 use Illuminate\Container\Attributes\Singleton;
 
 #[Singleton]
@@ -22,7 +23,8 @@ class PipelineTaskService
         private readonly PipelineTaskTimelineService $timeline,
         private readonly PipelineTaskStatusRefresher $refresher,
         private readonly PipelineTaskRepository $taskRepository,
-        private readonly PipelineJobRepository $jobRepository,
+        private readonly PipelineTaskJobsQuery $taskJobs,
+        private readonly FailedPipelineJobsQuery $failedJobs,
     ) {}
 
     public function start(array $input): PipelineTask
@@ -55,14 +57,14 @@ class PipelineTaskService
 
     public function jobs(string $taskId): array
     {
-        return $this->jobRepository->forTaskOrdered($taskId)
+        return $this->taskJobs->forTaskOrdered($taskId)
             ->map(fn (PipelineJob $job) => $this->payloads->job($job))
             ->all();
     }
 
     public function failedJobs(string $taskId): array
     {
-        return $this->jobRepository->failedForTask($taskId)
+        return $this->failedJobs->forTask($taskId)
             ->map(fn (PipelineJob $job) => $this->payloads->job($job))
             ->all();
     }

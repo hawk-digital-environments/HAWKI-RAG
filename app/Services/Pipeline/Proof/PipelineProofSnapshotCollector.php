@@ -34,10 +34,10 @@ readonly class PipelineProofSnapshotCollector
 
         $interval = max(0.5, (float) $io->option('interval'));
         $timeout = max(1, (int) $io->option('timeout'));
-        $deadline = microtime(true) + $timeout;
+        $deadline = $this->clock->now()->modify("+{$timeout} seconds");
         $lastSignature = $this->statusSignature($latest);
 
-        while (microtime(true) < $deadline) {
+        while ($this->clock->now() < $deadline) {
             if ($this->watchIsTerminal($latest['data'] ?? null)) {
                 return $snapshots;
             }

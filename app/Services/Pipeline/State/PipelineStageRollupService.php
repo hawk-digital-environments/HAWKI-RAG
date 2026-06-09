@@ -6,7 +6,7 @@ namespace App\Services\Pipeline\State;
 
 use App\Models\PipelineJob;
 use App\Models\PipelineStageState;
-use App\Services\Pipeline\Repositories\PipelineJobRepository;
+use App\Services\Pipeline\Repositories\PipelineJobRollupRepository;
 use App\Services\Pipeline\Repositories\PipelineStageStateRepository;
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Support\Carbon;
@@ -15,7 +15,7 @@ use Illuminate\Support\Carbon;
 readonly class PipelineStageRollupService
 {
     public function __construct(
-        private PipelineJobRepository $jobs,
+        private PipelineJobRollupRepository $jobs,
         private PipelineStageStateRepository $stageStates,
     ) {
     }

@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Services\DirectIngest;
 
-use App\Services\Pipeline\State\PipelineStateService;
 use App\Services\DirectIngest\Values\DirectIngestActionResult;
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Filesystem\Filesystem;
@@ -16,7 +15,8 @@ readonly class DirectIngestStatusService
 {
     public function __construct(
         private DirectIngestStatusStore $statuses,
-        private PipelineStateService $pipelineState,
+        private DirectIngestLogReader $logs,
+        private DirectIngestPipelineStatusSyncer $pipelineStatus,
         private Filesystem $files,
         private ClockInterface $clock = new Clock(),
     ) {}
@@ -25,13 +25,13 @@ readonly class DirectIngestStatusService
     {
         $paths = $this->statuses->paths($mode);
         [$status, $statusIndex] = $this->statuses->latest($paths->statusPath);
-        $lines = $this->tailLines($paths->cacheLogPath, 40);
+        $lines = $this->logs->tailLines($paths->cacheLogPath, 40);
 
         if (is_array($status) && $lines) {
             $status = $this->syncTerminalStatus($paths->statusPath, $status, $statusIndex, $lines);
         }
 
-        $progress = $this->extractProgress($lines);
+        $progress = $this->logs->progress($lines);
         if (is_array($status) && $progress) {
             $status['progress'] = array_merge($status['progress'] ?? [], $progress);
         }
@@ -64,60 +64,19 @@ readonly class DirectIngestStatusService
             return $status;
         }
 
-        $exitCode = $this->extractExitCode($lines);
+        $exitCode = $this->logs->exitCode($lines);
         $status['status'] = $last === 'INGEST_DONE' ? 'completed' : 'failed';
         if ($exitCode !== null) {
             $status['exit_code'] = $exitCode;
         }
         $status['updated_at'] = $this->timestamp();
 
-        $this->syncPipelineIngestStatus($status);
+        $this->pipelineStatus->sync($status);
         if ($statusIndex !== null) {
             $this->statuses->replaceAt($statusPath, $statusIndex, $status);
         }
 
         return $status;
-    }
-
-    private function syncPipelineIngestStatus(array $status): void
-    {
-        $pipelineJobId = (string) ($status['pipeline_job_id'] ?? '');
-        if ($pipelineJobId === '') {
-            return;
-        }
-
-        $payload = [
-            'dataset_path' => $status['path'] ?? null,
-            'counts' => [
-                'total' => 0,
-                'received' => 0,
-                'processing' => 0,
-                'completed' => ($status['status'] ?? null) === 'completed' ? 1 : 0,
-                'failed' => ($status['status'] ?? null) === 'failed' ? 1 : 0,
-            ],
-            'metadata' => [
-                'mode' => 'direct-ui',
-                'pid' => $status['pid'] ?? null,
-                'collection' => $status['collection'] ?? null,
-                'lastLine' => $status['last_line'] ?? null,
-                'exitCode' => $status['exit_code'] ?? null,
-            ],
-        ];
-
-        if (($status['status'] ?? null) === 'completed') {
-            $this->pipelineState->completeStage($pipelineJobId, PipelineStateService::STAGE_INGEST, $payload);
-
-            return;
-        }
-
-        if (($status['status'] ?? null) === 'failed') {
-            $this->pipelineState->failStage($pipelineJobId, PipelineStateService::STAGE_INGEST, array_merge($payload, [
-                'errors' => [[
-                    'message' => $status['last_line'] ?? 'Ingest process failed.',
-                    'updatedAt' => $this->timestamp(),
-                ]],
-            ]));
-        }
     }
 
     private function clearTargets(string $mode): array
@@ -130,71 +89,6 @@ readonly class DirectIngestStatusService
         }
 
         return [$this->statuses->paths($mode)];
-    }
-
-    private function tailLines(string $path, int $count): array
-    {
-        if (! $this->files->isFile($path)) {
-            return [];
-        }
-
-        $count = max(1, $count);
-        $file = new \SplFileObject($path, 'r');
-        $file->seek(PHP_INT_MAX);
-        $lastLine = $file->key();
-        $start = max(0, $lastLine - $count);
-        $lines = [];
-        for ($i = $start; $i <= $lastLine; $i++) {
-            $file->seek($i);
-            $line = trim((string) $file->current());
-            if ($line !== '') {
-                $lines[] = $line;
-            }
-        }
-
-        return $lines;
-    }
-
-    private function extractExitCode(array $lines): ?int
-    {
-        foreach (array_reverse($lines) as $line) {
-            if (preg_match('/^INGEST_EXIT_CODE=(\\d+)$/', $line, $m)) {
-                return (int) $m[1];
-            }
-        }
-
-        return null;
-    }
-
-    private function extractProgress(array $lines): array
-    {
-        $progress = [];
-        foreach (array_reverse($lines) as $line) {
-            if (! isset($progress['folders']) && preg_match('/Folder\\s+(\\d+)[\\/](\\d+)/', $line, $m)) {
-                $progress['folders'] = [
-                    'current' => (int) $m[1],
-                    'total' => (int) $m[2],
-                ];
-            }
-            if (! isset($progress['docs']) && preg_match('/Sent\\s+(\\d+)[\\/](\\d+)\\s+docs/i', $line, $m)) {
-                $progress['docs'] = [
-                    'sent' => (int) $m[1],
-                    'total' => (int) $m[2],
-                ];
-            }
-            if (! isset($progress['docs']) && preg_match('/Planned\\s+(\\d+)[\\/](\\d+)\\s+docs/i', $line, $m)) {
-                $progress['docs'] = [
-                    'sent' => (int) $m[1],
-                    'total' => (int) $m[2],
-                    'mode' => 'dry',
-                ];
-            }
-            if (count($progress) >= 2) {
-                break;
-            }
-        }
-
-        return $progress;
     }
 
     private function timestamp(): string

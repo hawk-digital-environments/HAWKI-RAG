@@ -13,16 +13,17 @@ class IngestionContentResolver
     public function __construct(
         private readonly ConfigRepository $config,
         private readonly Filesystem $files,
+        private readonly PipelineEventArtifactReader $artifacts,
     ) {}
 
     public function contentPaths(array $event): array
     {
         $path = $this->resolvePath((string) ($event['local_path'] ?? ''));
-        if ($path && is_file($path) && $this->isTextLike($path)) {
+        if ($path && $this->artifacts->isFile($path) && $this->isTextLike($path)) {
             return [$path];
         }
 
-        if ($path && is_dir($path)) {
+        if ($path && $this->artifacts->isDirectory($path)) {
             $paths = [];
             foreach ($this->files->allFiles($path) as $file) {
                 if ($this->isTextLike($file->getPathname())) {

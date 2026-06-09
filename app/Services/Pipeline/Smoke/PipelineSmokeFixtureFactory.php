@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Pipeline\Smoke;
 
+use App\Services\Pipeline\Exceptions\PipelineSmokeException;
 use Illuminate\Filesystem\Filesystem;
 use ZipArchive;
 
@@ -19,12 +20,12 @@ readonly class PipelineSmokeFixtureFactory
         $path = $fixtureDir . DIRECTORY_SEPARATOR . 'hawki-smoke.docx';
 
         if (! class_exists(ZipArchive::class)) {
-            throw new \RuntimeException('PHP ZipArchive extension is required to create the smoke DOCX fixture.');
+            throw PipelineSmokeException::zipArchiveMissing();
         }
 
         $zip = new ZipArchive;
         if ($zip->open($path, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
-            throw new \RuntimeException("Could not create DOCX fixture at {$path}.");
+            throw PipelineSmokeException::fixtureCreationFailed($path);
         }
 
         $text = 'HAWKI RAG smoke test document. Laravel orchestrates RabbitMQ jobs. '

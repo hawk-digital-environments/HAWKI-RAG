@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Scrape;
 
+use App\Services\Scrape\Exceptions\ScrapeResponseException;
 use Illuminate\Contracts\Config\Repository as ConfigRepository;
 use Illuminate\Http\Client\Factory as HttpFactory;
 use Illuminate\Http\Client\Response;
@@ -55,7 +56,7 @@ class ScrapeTaskUiClient
                 : $request->send($method, $baseUrl.'/'.ltrim($path, '/'), ['json' => $payload]);
 
             return $this->responseResult($response);
-        } catch (\JsonException $exception) {
+        } catch (\JsonException|ScrapeResponseException $exception) {
             return [
                 'success' => false,
                 'status' => 502,
@@ -76,7 +77,7 @@ class ScrapeTaskUiClient
     {
         $data = json_decode($response->body(), true, 512, JSON_THROW_ON_ERROR);
         if (! is_array($data)) {
-            throw new \JsonException('Expected JSON object response.');
+            throw ScrapeResponseException::expectedJsonObject('scraper task UI');
         }
 
         return [

@@ -10,6 +10,11 @@ use Illuminate\Container\Attributes\Singleton;
 #[Singleton]
 readonly class DirectIngestProcessLauncher
 {
+    public function __construct(
+        private DirectIngestPathResolver $paths,
+    ) {
+    }
+
     public function launch(array $cmd, array $data, DirectIngestStatusPaths $paths): int
     {
         $process = @proc_open(
@@ -20,7 +25,7 @@ readonly class DirectIngestProcessLauncher
                 2 => ['file', '/dev/null', 'a'],
             ],
             $pipes,
-            base_path(),
+            $this->paths->basePath(),
             null,
             ['bypass_shell' => true],
         );

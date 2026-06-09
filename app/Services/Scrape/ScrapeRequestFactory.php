@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Scrape;
 
 use App\Services\Scrape\Data\ScrapeJobRequest;
+use App\Services\Scrape\Exceptions\ScrapeInputException;
 use Illuminate\Contracts\Config\Repository as ConfigRepository;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Str;
@@ -98,7 +99,7 @@ class ScrapeRequestFactory
             return $selectors === [] ? null : implode(',', $selectors);
         }
 
-        throw new \InvalidArgumentException('Image exceptions must be a string or an array of CSS selectors.');
+        throw ScrapeInputException::invalidImageExceptions();
     }
 
     private function boolValue(mixed $value): bool

@@ -25,12 +25,11 @@ class SignalPipelineUpdate extends Command
     /**
      * Execute the console command.
      */
-    public function handle(): void
+    public function handle(ScraperPipelineService $pipeline): void
     {
-        $jobId = $this->argument('job_id');
-        $pipeline = app(ScraperPipelineService::class);
+        $jobId = (string) $this->argument('job_id');
         $status = $pipeline->readPipelineStatus($jobId);
 
-        $this->info($status);
+        $this->info(json_encode($status, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) ?: '');
     }
 }

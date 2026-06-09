@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Scrape\Pipeline;
 
 use App\Services\Scrape\Data\ScrapeJobRequest;
+use App\Services\Scrape\Exceptions\ScrapeResponseException;
 use Illuminate\Contracts\Config\Repository as ConfigRepository;
 use Illuminate\Http\Client\Factory as HttpFactory;
 
@@ -59,7 +60,7 @@ class ScrapeExecutionService
                 'success' => true,
                 'message' => $data['data']['message'] ?? 'Crawl job submitted successfully',
             ];
-        } catch (\JsonException $e) {
+        } catch (\JsonException|ScrapeResponseException $e) {
             return [
                 'success' => false,
                 'message' => 'Crawler returned invalid JSON: ' . $e->getMessage(),
@@ -74,13 +75,14 @@ class ScrapeExecutionService
 
     /**
      * @throws \JsonException
+     * @throws ScrapeResponseException
      */
     private function decodeJsonResponse(string $body): array
     {
         $data = json_decode($body, true, 512, JSON_THROW_ON_ERROR);
 
         if (!is_array($data)) {
-            throw new \JsonException('Expected JSON object response.');
+            throw ScrapeResponseException::expectedJsonObject('crawler');
         }
 
         return $data;

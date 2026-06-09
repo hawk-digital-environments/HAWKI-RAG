@@ -9,8 +9,8 @@ use App\Services\Pipeline\Events\PipelineEvent;
 use App\Services\Pipeline\Events\PipelineEventBus;
 use App\Services\Pipeline\Events\PipelineEventStateService;
 use App\Services\Pipeline\Exceptions\PipelineEventHandlerException;
-use App\Services\Pipeline\Repositories\PipelineJobRepository;
 use App\Services\Pipeline\Repositories\PipelineScrapeHistoryRepository;
+use App\Services\Pipeline\Repositories\Queries\ActivePipelineJobsQuery;
 use App\Services\Scrape\Data\ScrapeJobRequest;
 use App\Services\Scrape\ScraperPipelineService;
 use Illuminate\Contracts\Config\Repository as ConfigRepository;
@@ -25,7 +25,7 @@ class ScraperEventHandler implements PipelineEventHandler
     public function __construct(
         private readonly PipelineEventBus $events,
         private readonly PipelineEventStateService $state,
-        private readonly PipelineJobRepository $jobs,
+        private readonly ActivePipelineJobsQuery $jobs,
         private readonly PipelineScrapeHistoryRepository $scrapeHistory,
         private readonly ScraperPipelineService $scraper,
         private readonly Filesystem $files,

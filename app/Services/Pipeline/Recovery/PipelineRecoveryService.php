@@ -6,9 +6,11 @@ namespace App\Services\Pipeline\Recovery;
 
 use App\Models\PipelineJob;
 use App\Services\Pipeline\Events\PipelineEventBus;
-use App\Services\Pipeline\Repositories\PipelineJobRepository;
+use App\Services\Pipeline\Repositories\PipelineJobRecoveryRepository;
 use App\Services\Pipeline\Repositories\PipelineTaskRepository;
 use App\Services\Pipeline\Repositories\PipelineTransactionRepository;
+use App\Services\Pipeline\Repositories\Queries\ActivePipelineJobsQuery;
+use App\Services\Pipeline\Repositories\Queries\FailedPipelineJobsQuery;
 use App\Services\Pipeline\Tasks\PipelineTaskService;
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Support\Carbon;
@@ -26,7 +28,9 @@ readonly class PipelineRecoveryService
         private readonly PipelineRecoveryInputNormalizer $input,
         private readonly PipelineRecoveryMetadataService $metadata,
         private readonly PipelineRecoveryPayloadService $payloads,
-        private readonly PipelineJobRepository $jobs,
+        private readonly ActivePipelineJobsQuery $activeJobs,
+        private readonly FailedPipelineJobsQuery $failedJobs,
+        private readonly PipelineJobRecoveryRepository $jobRecovery,
         private readonly PipelineTaskRepository $taskRepository,
         private readonly PipelineTransactionRepository $transactions,
         private readonly LoggerInterface $logger,
@@ -37,8 +41,8 @@ readonly class PipelineRecoveryService
     {
         $filters = $this->input->filters($filters);
 
-        return $this->jobs
-            ->failedForRecoveryList($filters['task_id'], $filters['dataset_id'], $filters['limit'])
+        return $this->failedJobs
+            ->forRecoveryList($filters['task_id'], $filters['dataset_id'], $filters['limit'])
             ->map(fn (PipelineJob $job): array => $this->failedJobPayload($job))
             ->all();
     }
@@ -51,31 +55,31 @@ readonly class PipelineRecoveryService
             return $this->emptyResult('selected');
         }
 
-        $jobs = $this->jobs->findByJobIds($jobIds);
+        $jobs = $this->activeJobs->findByJobIds($jobIds);
 
         return $this->retryJobs($jobs, 'selected');
     }
 
     public function retryJob(string $jobId): array
     {
-        $job = $this->jobs->findByJobId($jobId);
+        $job = $this->activeJobs->findByJobId($jobId);
 
         return $this->retryJobs($job ? collect([$job]) : collect(), 'job', $jobId);
     }
 
     public function retryAll(): array
     {
-        return $this->retryJobs($this->jobs->failedForRecovery(), 'all');
+        return $this->retryJobs($this->failedJobs->forRecovery(), 'all');
     }
 
     public function retryTask(string $taskId): array
     {
-        return $this->retryJobs($this->jobs->failedForRecovery($taskId), 'task', $taskId);
+        return $this->retryJobs($this->failedJobs->forRecovery($taskId), 'task', $taskId);
     }
 
     public function retryDataset(string $datasetId): array
     {
-        return $this->retryJobs($this->jobs->failedForRecovery(null, $datasetId), 'dataset', $datasetId);
+        return $this->retryJobs($this->failedJobs->forRecovery(null, $datasetId), 'dataset', $datasetId);
     }
 
     private function retryJobs(Collection $jobs, string $scope, ?string $scopeId = null): array
@@ -95,7 +99,7 @@ readonly class PipelineRecoveryService
     private function retryOne(PipelineJob $job, string $scope, ?string $scopeId): array
     {
         $prepared = $this->transactions->run(function () use ($job, $scope, $scopeId): array {
-            $locked = $this->jobs->lockForRecovery($job);
+            $locked = $this->jobRecovery->lockForRecovery($job);
 
             if (! $locked) {
                 return [
@@ -138,7 +142,7 @@ readonly class PipelineRecoveryService
             $retryCount = (int) ($metadata['retry_count'] ?? 0) + 1;
             $recoveryEvent = $this->metadata->recoveryEvent($locked, $scope, $scopeId, $retryCount);
 
-            $locked = $this->jobs->markRecoveryQueued($locked, $this->metadata->queuedJobMetadata($metadata, $recoveryEvent));
+            $locked = $this->jobRecovery->markRecoveryQueued($locked, $this->metadata->queuedJobMetadata($metadata, $recoveryEvent));
             $task = $this->taskRepository->markRecoveryRunning(
                 $task,
                 $this->metadata->taskRecoveryMetadata($task, $recoveryEvent),
@@ -191,7 +195,7 @@ readonly class PipelineRecoveryService
 
     private function markPublishFailed(PipelineJob $job, \Throwable $error): PipelineJob
     {
-        $job = $this->jobs->markRecoveryPublishFailed(
+        $job = $this->jobRecovery->markRecoveryPublishFailed(
             $job,
             $error->getMessage(),
             $this->now(),

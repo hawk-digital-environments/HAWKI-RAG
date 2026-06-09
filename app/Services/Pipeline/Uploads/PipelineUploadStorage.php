@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Pipeline\Uploads;
 
 use App\Services\Pipeline\Exceptions\PipelineUploadStorageException;
+use App\Services\Pipeline\PipelineFileHasher;
 use App\Services\Pipeline\Values\PipelineStoredUpload;
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Contracts\Config\Repository as ConfigRepository;
@@ -18,6 +19,7 @@ class PipelineUploadStorage
     public function __construct(
         private readonly ConfigRepository $config,
         private readonly Filesystem $files,
+        private readonly PipelineFileHasher $hasher,
     ) {}
 
     public function extensionFor(UploadedFile $file): string
@@ -43,7 +45,7 @@ class PipelineUploadStorage
         }
 
         $localPath = $taskRoot.DIRECTORY_SEPARATOR.$targetName;
-        $contentHash = hash_file('sha256', $localPath) ?: hash('sha256', $localPath);
+        $contentHash = $this->hasher->sha256($localPath);
 
         return PipelineStoredUpload::fromStoredFile(
             $originalName,

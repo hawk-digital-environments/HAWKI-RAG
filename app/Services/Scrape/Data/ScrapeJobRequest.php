@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Services\Scrape\Data;
 
+use App\Services\Scrape\Exceptions\ScrapeInputException;
+
 /**
  * Input data transfer object for initiating a crawler job.
  *
@@ -109,6 +111,6 @@ class ScrapeJobRequest
             return $selectors === [] ? null : implode(',', $selectors);
         }
 
-        throw new \InvalidArgumentException('Image exceptions must be a string or an array of CSS selectors.');
+        throw ScrapeInputException::invalidImageExceptions();
     }
 }

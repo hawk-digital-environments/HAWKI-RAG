@@ -7,11 +7,16 @@ namespace App\Services\Pipeline\Smoke;
 use App\Models\PipelineJob;
 use App\Models\PipelineTask;
 use App\Services\Pipeline\Events\PipelineEvent;
+use App\Services\Pipeline\PipelineFileHasher;
 use Illuminate\Container\Attributes\Singleton;
 
 #[Singleton]
 readonly class PipelineSmokeEventFactory
 {
+    public function __construct(private PipelineFileHasher $hasher)
+    {
+    }
+
     public function pageScraped(
         PipelineTask $task,
         PipelineJob $scrapeJob,
@@ -19,7 +24,7 @@ readonly class PipelineSmokeEventFactory
         string $fixturePath,
         bool $graph,
     ): array {
-        $contentHash = hash_file('sha256', $fixturePath) ?: hash('sha256', $fixturePath);
+        $contentHash = $this->hasher->sha256($fixturePath);
 
         return PipelineEvent::normalize(PipelineEvent::PAGE_SCRAPED, [
             'task_id' => $task->task_id,
@@ -52,7 +57,7 @@ readonly class PipelineSmokeEventFactory
         string $fixturePath,
         bool $graph,
     ): array {
-        $contentHash = hash_file('sha256', $fixturePath) ?: hash('sha256', $fixturePath);
+        $contentHash = $this->hasher->sha256($fixturePath);
 
         return PipelineEvent::normalize(PipelineEvent::FILE_DISCOVERED, [
             'task_id' => $task->task_id,
@@ -84,7 +89,7 @@ readonly class PipelineSmokeEventFactory
         string $convertedPath,
         bool $graph,
     ): array {
-        $convertedHash = hash_file('sha256', $convertedPath) ?: hash('sha256', $convertedPath);
+        $convertedHash = $this->hasher->sha256($convertedPath);
 
         return PipelineEvent::normalize(PipelineEvent::FILE_CONVERTED, [
             'task_id' => $task->task_id,

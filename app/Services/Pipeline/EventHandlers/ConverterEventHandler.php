@@ -9,7 +9,7 @@ use App\Services\Pipeline\Events\PipelineEvent;
 use App\Services\Pipeline\Events\PipelineEventBus;
 use App\Services\Pipeline\Events\PipelineEventStateService;
 use App\Services\Pipeline\Exceptions\PipelineEventHandlerException;
-use App\Services\Pipeline\Repositories\PipelineJobRepository;
+use App\Services\Pipeline\Repositories\Queries\ActivePipelineJobsQuery;
 use Illuminate\Contracts\Config\Repository as ConfigRepository;
 use Illuminate\Container\Attributes\Singleton;
 
@@ -19,8 +19,9 @@ class ConverterEventHandler implements PipelineEventHandler
     public function __construct(
         private readonly PipelineEventBus $events,
         private readonly PipelineEventStateService $state,
-        private readonly PipelineJobRepository $jobs,
+        private readonly ActivePipelineJobsQuery $jobs,
         private readonly ConversionOutputWriter $outputs,
+        private readonly PipelineEventArtifactReader $artifacts,
         private readonly ConfigRepository $config,
     ) {}
 
@@ -35,7 +36,7 @@ class ConverterEventHandler implements PipelineEventHandler
     {
         $event = PipelineEvent::normalize((string) $event['event_type'], $event);
         $path = (string) $event['local_path'];
-        if ($path === '' || ! is_file($path)) {
+        if ($path === '' || ! $this->artifacts->isFile($path)) {
             throw PipelineEventHandlerException::conversionRequiresExistingLocalPath($path);
         }
 
@@ -47,7 +48,7 @@ class ConverterEventHandler implements PipelineEventHandler
             return;
         }
 
-        $contentHash = (string) ($event['content_hash'] ?: hash_file('sha256', $path));
+        $contentHash = (string) ($event['content_hash'] ?: $this->artifacts->sha256($path));
         $event['content_hash'] = $contentHash;
         $cached = $this->outputs->cachedConversion($path, $contentHash);
 

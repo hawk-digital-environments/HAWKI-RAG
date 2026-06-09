@@ -11,7 +11,7 @@ use App\Services\Pipeline\EventHandlers\IngestionEventHandler;
 use App\Services\Pipeline\Events\PipelineEventBus;
 use App\Services\Pipeline\Events\PipelineEventStateService;
 use App\Services\Pipeline\Repositories\PipelineEventRecordRepository;
-use App\Services\Pipeline\Repositories\PipelineJobRepository;
+use App\Services\Pipeline\Repositories\Queries\ActivePipelineJobsQuery;
 use App\Services\Pipeline\Smoke\PipelineSmokeTestService;
 use App\Services\Pipeline\Tasks\PipelineTaskService;
 use Illuminate\Console\Command;
@@ -36,7 +36,7 @@ class PipelineSmokeTestCommand extends Command
         IngestionEventHandler $ingestion,
         DatasetService $datasets,
         DocumentRepository $documents,
-        PipelineJobRepository $jobs,
+        ActivePipelineJobsQuery $jobs,
         PipelineEventRecordRepository $eventRecords,
     ): int {
         return $smoke->run(
