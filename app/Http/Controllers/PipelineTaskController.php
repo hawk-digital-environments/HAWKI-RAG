@@ -8,27 +8,27 @@ use App\Http\Requests\Pipeline\ListPipelineTaskEventsRequest;
 use App\Http\Requests\Pipeline\ListPipelineTasksRequest;
 use App\Http\Requests\Pipeline\StartPipelineTaskRequest;
 use App\Http\Requests\Pipeline\UpsertPipelineJobRequest;
-use App\Services\Pipeline\Tasks\PipelineTaskService;
+use App\Services\Pipeline\PipelineService;
 use Illuminate\Http\JsonResponse;
 
 class PipelineTaskController extends Controller
 {
     public function __construct(
-        private readonly PipelineTaskService $tasks,
+        private readonly PipelineService $pipeline,
     ) {}
 
     public function index(ListPipelineTasksRequest $request): JsonResponse
     {
         return response()->json([
             'success' => true,
-            'tasks' => $this->tasks->list($request->limit()),
+            'tasks' => $this->pipeline->tasks->list($request->limit()),
         ]);
     }
 
     public function start(StartPipelineTaskRequest $request): JsonResponse
     {
-        $task = $this->tasks->start($request->validated());
-        $payload = $this->tasks->show($task->task_id);
+        $task = $this->pipeline->tasks->start($request->validated());
+        $payload = $this->pipeline->tasks->show($task->task_id);
 
         return response()->json([
             'success' => true,
@@ -39,7 +39,7 @@ class PipelineTaskController extends Controller
 
     public function show(string $taskId): JsonResponse
     {
-        $task = $this->tasks->show($taskId);
+        $task = $this->pipeline->tasks->show($taskId);
         if (! $task) {
             return response()->json([
                 'success' => false,
@@ -58,7 +58,7 @@ class PipelineTaskController extends Controller
         return response()->json([
             'success' => true,
             'taskId' => $taskId,
-            'jobs' => $this->tasks->jobs($taskId),
+            'jobs' => $this->pipeline->tasks->jobs($taskId),
         ]);
     }
 
@@ -67,7 +67,7 @@ class PipelineTaskController extends Controller
         return response()->json([
             'success' => true,
             'taskId' => $taskId,
-            'jobs' => $this->tasks->failedJobs($taskId),
+            'jobs' => $this->pipeline->tasks->failedJobs($taskId),
         ]);
     }
 
@@ -76,14 +76,14 @@ class PipelineTaskController extends Controller
         return response()->json([
             'success' => true,
             'taskId' => $taskId,
-            'events' => $this->tasks->recentEvents($taskId, $request->limit(), $request->filters()),
-            'filters' => $this->tasks->eventFilters($taskId),
+            'events' => $this->pipeline->tasks->recentEvents($taskId, $request->limit(), $request->filters()),
+            'filters' => $this->pipeline->tasks->eventFilters($taskId),
         ]);
     }
 
     public function upsertJob(UpsertPipelineJobRequest $request, string $taskId): JsonResponse
     {
-        $job = $this->tasks->upsertJob($taskId, $request->validated());
+        $job = $this->pipeline->tasks->upsertJob($taskId, $request->validated());
 
         return response()->json([
             'success' => true,
@@ -95,7 +95,7 @@ class PipelineTaskController extends Controller
 
     public function retry(string $taskId): JsonResponse
     {
-        return $this->taskActionResponse($taskId, $this->tasks->retryFailedJobs($taskId));
+        return $this->taskActionResponse($taskId, $this->pipeline->tasks->retryFailedJobs($taskId));
     }
 
     public function retryFailedJobs(string $taskId): JsonResponse
@@ -115,7 +115,7 @@ class PipelineTaskController extends Controller
         return response()->json([
             'success' => true,
             'taskId' => $taskId,
-            'task' => $this->tasks->show($taskId),
+            'task' => $this->pipeline->tasks->show($taskId),
         ]);
     }
 }

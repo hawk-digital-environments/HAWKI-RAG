@@ -3,7 +3,6 @@
 namespace App\Console\Commands;
 
 use App\Models\Document;
-use App\Models\PipelineEventRecord;
 use App\Models\PipelineJob;
 use App\Models\PipelineTask;
 use App\Services\Datasets\DatasetService;
@@ -12,6 +11,8 @@ use App\Services\Pipeline\EventHandlers\IngestionEventHandler;
 use App\Services\Pipeline\Events\PipelineEvent;
 use App\Services\Pipeline\Events\PipelineEventBus;
 use App\Services\Pipeline\Events\PipelineEventStateService;
+use App\Services\Pipeline\Repositories\PipelineEventRecordRepository;
+use App\Services\Pipeline\Repositories\PipelineJobRepository;
 use App\Services\Pipeline\Tasks\PipelineTaskService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\File;
@@ -40,6 +41,8 @@ class PipelineSmokeTestCommand extends Command
         ConverterEventHandler $converter,
         IngestionEventHandler $ingestion,
         DatasetService $datasets,
+        PipelineJobRepository $jobs,
+        PipelineEventRecordRepository $eventRecords,
     ): int {
         $this->results = [];
         $datasetId = $this->stringOption('dataset') ?: 'smoke-demo';
@@ -85,12 +88,8 @@ class PipelineSmokeTestCommand extends Command
                 ]));
             }, fn (PipelineTask $task): string => "Created task {$task->task_id}.");
 
-            $scrapeJob = $this->stage('Scrape enqueue', function () use ($task): PipelineJob {
-                $job = PipelineJob::query()
-                    ->where('task_id', $task->task_id)
-                    ->where('job_type', PipelineJob::TYPE_SCRAPE)
-                    ->first();
-
+            $scrapeJob = $this->stage('Scrape enqueue', function () use ($jobs, $task): PipelineJob {
+                $job = $jobs->firstForTaskAndType($task->task_id, PipelineJob::TYPE_SCRAPE);
                 if (! $job) {
                     throw new \RuntimeException('No scrape job was created for the smoke task.');
                 }
@@ -102,18 +101,14 @@ class PipelineSmokeTestCommand extends Command
                 return $job;
             }, fn (PipelineJob $job): string => "Created scrape job {$job->job_id} with status {$job->status}.");
 
-            $this->stage('RabbitMQ events', function () use ($events, $task, $scrapeJob): string {
+            $this->stage('RabbitMQ events', function () use ($eventRecords, $events, $task, $scrapeJob): string {
                 if ((bool) config('communication.rabbitmq.pipeline_events.enabled', true)) {
                     foreach (['scraper', 'scrape_monitor', 'converter', 'ingestion'] as $worker) {
                         $events->declareWorkerTopology($worker);
                     }
                 }
 
-                $recorded = PipelineEventRecord::query()
-                    ->where('task_id', $task->task_id)
-                    ->where('job_id', $scrapeJob->job_id)
-                    ->where('event_type', PipelineEvent::SCRAPE_REQUESTED)
-                    ->exists();
+                $recorded = $eventRecords->existsForJobEvent($task->task_id, $scrapeJob->job_id, PipelineEvent::SCRAPE_REQUESTED);
 
                 if (! $recorded) {
                     throw new \RuntimeException('No scrape.requested pipeline event was recorded for the scrape job.');
@@ -170,9 +165,9 @@ class PipelineSmokeTestCommand extends Command
                 ],
             ]);
 
-            $convertedPath = $this->stage('Convert', function () use ($converter, $convertJobId, $fileDiscovered): string {
+            $convertedPath = $this->stage('Convert', function () use ($converter, $convertJobId, $fileDiscovered, $jobs): string {
                 $converter->handle($fileDiscovered);
-                $job = PipelineJob::query()->where('job_id', $convertJobId)->first();
+                $job = $jobs->findByJobId($convertJobId);
                 $path = is_array($job?->metadata) ? (string) ($job->metadata['converted_path'] ?? '') : '';
 
                 if (! $job || $job->status !== PipelineJob::STATUS_COMPLETED) {

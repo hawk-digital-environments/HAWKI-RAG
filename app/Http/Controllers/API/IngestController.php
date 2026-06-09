@@ -9,46 +9,47 @@ use App\Http\Requests\Pipeline\DeleteCrawledFolderRequest;
 use App\Http\Requests\Pipeline\ListDirectIngestLiveRequest;
 use App\Http\Requests\Pipeline\StartDirectIngestRequest;
 use App\Http\Requests\Pipeline\StopDirectIngestRequest;
-use App\Services\Pipeline\DirectIngest\CrawledDataFolderService;
-use App\Services\Pipeline\DirectIngest\DirectIngestLaunchService;
-use App\Services\Pipeline\DirectIngest\DirectIngestStatusStore;
-use App\Services\Pipeline\DirectIngest\DirectIngestStopService;
-use App\Services\Pipeline\Values\DirectIngestActionResult;
+use App\Services\Pipeline\PipelineService;
+use App\Services\DirectIngest\Values\DirectIngestActionResult;
 use Illuminate\Http\JsonResponse;
 
 class IngestController extends Controller
 {
-    public function folders(CrawledDataFolderService $folders): JsonResponse
+    public function __construct(
+        private readonly PipelineService $pipeline,
+    ) {}
+
+    public function folders(): JsonResponse
     {
-        return $this->respond($folders->list());
+        return $this->respond($this->pipeline->crawledFolders->list());
     }
 
-    public function start(StartDirectIngestRequest $request, DirectIngestLaunchService $launches): JsonResponse
+    public function start(StartDirectIngestRequest $request): JsonResponse
     {
-        $result = $launches->launch($request->validated());
+        $result = $this->pipeline->directIngestLaunches->launch($request->validated());
 
         return response()->json($result->payload, $result->status);
     }
 
-    public function stop(StopDirectIngestRequest $request, DirectIngestStopService $stops): JsonResponse
+    public function stop(StopDirectIngestRequest $request): JsonResponse
     {
-        return $this->respond($stops->stop($request->validated()));
+        return $this->respond($this->pipeline->directIngestStops->stop($request->validated()));
     }
 
-    public function live(ListDirectIngestLiveRequest $request, DirectIngestStatusStore $statuses): JsonResponse
+    public function live(ListDirectIngestLiveRequest $request): JsonResponse
     {
         $data = $request->validated();
-        $mode = $statuses->normalizeMode(isset($data['mode']) ? (string) $data['mode'] : 'default');
+        $mode = $this->pipeline->directIngestStatusStore->normalizeMode(isset($data['mode']) ? (string) $data['mode'] : 'default');
 
         return response()->json([
             'ok' => true,
-            'live_ingestions' => $statuses->live($mode),
+            'live_ingestions' => $this->pipeline->directIngestStatusStore->live($mode),
         ]);
     }
 
-    public function deleteFolder(DeleteCrawledFolderRequest $request, CrawledDataFolderService $folders): JsonResponse
+    public function deleteFolder(DeleteCrawledFolderRequest $request): JsonResponse
     {
-        return $this->respond($folders->delete((string) $request->validated('path')));
+        return $this->respond($this->pipeline->crawledFolders->delete((string) $request->validated('path')));
     }
 
     private function respond(DirectIngestActionResult $result): JsonResponse

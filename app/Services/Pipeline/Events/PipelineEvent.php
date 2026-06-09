@@ -4,21 +4,23 @@ declare(strict_types=1);
 
 namespace App\Services\Pipeline\Events;
 
+use App\Services\Pipeline\Values\PipelineEventType;
+
 class PipelineEvent
 {
-    public const SCRAPE_REQUESTED = 'scrape.requested';
+    public const SCRAPE_REQUESTED = PipelineEventType::ScrapeRequested->value;
 
-    public const SCRAPE_MONITOR_REQUESTED = 'scrape.monitor.requested';
+    public const SCRAPE_MONITOR_REQUESTED = PipelineEventType::ScrapeMonitorRequested->value;
 
-    public const PAGE_SCRAPED = 'page.scraped';
+    public const PAGE_SCRAPED = PipelineEventType::PageScraped->value;
 
-    public const FILE_DISCOVERED = 'file.discovered';
+    public const FILE_DISCOVERED = PipelineEventType::FileDiscovered->value;
 
-    public const FILE_CONVERTED = 'file.converted';
+    public const FILE_CONVERTED = PipelineEventType::FileConverted->value;
 
-    public const CONTENT_INGESTED = 'content.ingested';
+    public const CONTENT_INGESTED = PipelineEventType::ContentIngested->value;
 
-    public const JOB_FAILED = 'job.failed';
+    public const JOB_FAILED = PipelineEventType::JobFailed->value;
 
     public const REQUIRED_PAYLOAD_FIELDS = [
         'task_id',

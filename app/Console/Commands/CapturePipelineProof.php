@@ -3,15 +3,11 @@
 namespace App\Console\Commands;
 
 use App\Http\Controllers\PipelineStatusController;
-use App\Models\JobProcessingState;
-use App\Models\PipelineJob;
-use App\Models\PipelineStageState;
-use App\Models\ScrapeProcess;
+use App\Services\Pipeline\Repositories\PipelineProofRepository;
 use App\Support\PipelineExitCode;
 use Illuminate\Console\Command;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\File;
-use Illuminate\Support\Facades\Schema;
 use Symfony\Component\Finder\Finder;
 use Throwable;
 
@@ -29,7 +25,7 @@ class CapturePipelineProof extends Command
 
     protected $description = 'Capture detailed evidence for an end-to-end scrape/convert/ingest pipeline run.';
 
-    public function handle(): int
+    public function handle(PipelineProofRepository $proofs): int
     {
         $jobId = trim((string) $this->argument('job_id'));
         if ($jobId === '') {
@@ -43,8 +39,8 @@ class CapturePipelineProof extends Command
 
         $snapshots = $this->captureSnapshots($jobId);
         $finalStatus = $this->latestStatusData($snapshots);
-        $datasetPath = $this->datasetPath($jobId, $finalStatus);
-        $databaseState = $this->databaseState($jobId, $datasetPath);
+        $datasetPath = $this->datasetPath($proofs, $jobId, $finalStatus);
+        $databaseState = $proofs->databaseState($jobId, $datasetPath);
         $conversionEvidence = $this->conversionEvidence($datasetPath, $finalStatus, $databaseState);
         $publishEvidence = $this->publishEvidence($finalStatus, $databaseState);
         $workerEvidence = $this->workerEvidence($databaseState);
@@ -312,7 +308,7 @@ class CapturePipelineProof extends Command
         return null;
     }
 
-    private function datasetPath(string $jobId, array $finalStatus): ?string
+    private function datasetPath(PipelineProofRepository $proofs, string $jobId, array $finalStatus): ?string
     {
         $fromStatus = $this->firstString([
             $finalStatus['datasetPath'] ?? null,
@@ -323,100 +319,12 @@ class CapturePipelineProof extends Command
             return $fromStatus;
         }
 
-        if (Schema::hasTable('pipeline_jobs')) {
-            $fromJob = PipelineJob::query()->where('job_id', $jobId)->value('dataset_path');
-            if (is_scalar($fromJob) && trim((string) $fromJob) !== '') {
-                return trim((string) $fromJob);
-            }
+        $fromJob = $proofs->datasetPathForJob($jobId);
+        if ($fromJob !== null) {
+            return $fromJob;
         }
 
         return null;
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    private function databaseState(string $jobId, ?string $datasetPath): array
-    {
-        $state = [
-            'pipelineJob' => null,
-            'pipelineStageStates' => [],
-            'jobProcessingState' => [],
-            'scrapeProcess' => null,
-            'tables' => [
-                'pipeline_jobs' => Schema::hasTable('pipeline_jobs'),
-                'pipeline_stage_states' => Schema::hasTable('pipeline_stage_states'),
-                'job_processing_state' => Schema::hasTable('job_processing_state'),
-                'scrape_jobs' => Schema::hasTable('scrape_jobs'),
-            ],
-        ];
-
-        if (Schema::hasTable('pipeline_jobs')) {
-            $state['pipelineJob'] = PipelineJob::query()
-                ->where('job_id', $jobId)
-                ->first()
-                ?->toArray();
-        }
-
-        if (Schema::hasTable('pipeline_stage_states')) {
-            $state['pipelineStageStates'] = PipelineStageState::query()
-                ->where('job_id', $jobId)
-                ->orderBy('id')
-                ->get()
-                ->map(fn (PipelineStageState $row) => $row->toArray())
-                ->all();
-        }
-
-        if (Schema::hasTable('job_processing_state')) {
-            $paths = $this->pathVariants($datasetPath);
-            $state['jobProcessingState'] = JobProcessingState::query()
-                ->where(function ($query) use ($jobId, $paths): void {
-                    $query->where('job_id', $jobId);
-                    foreach ($paths as $path) {
-                        $like = $this->escapeLike($path) . '%';
-                        $query->orWhere('input_path', 'like', $like)
-                            ->orWhere('output_path', 'like', $like);
-                    }
-                })
-                ->orderBy('updated_at')
-                ->get()
-                ->map(fn (JobProcessingState $row) => $row->toArray())
-                ->all();
-        }
-
-        if (Schema::hasTable('scrape_jobs')) {
-            $query = ScrapeProcess::query()->where('job_id', $jobId);
-            if (Schema::hasTable('scrape_statistics')) {
-                $query->with('stats');
-            }
-
-            $state['scrapeProcess'] = $query->first()?->toArray();
-        }
-
-        return $state;
-    }
-
-    /**
-     * @return array<int, string>
-     */
-    private function pathVariants(?string $path): array
-    {
-        if ($path === null || trim($path) === '') {
-            return [];
-        }
-
-        $paths = [trim($path)];
-        $real = realpath($path);
-        if (is_string($real) && $real !== $paths[0]) {
-            $paths[] = $real;
-        }
-
-        return array_values(array_unique($paths));
-    }
-
-    private function escapeLike(string $value): string
-    {
-        return addcslashes($value, '\\%_');
     }
 
     /**

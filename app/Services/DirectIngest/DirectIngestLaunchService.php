@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace App\Services\Pipeline\DirectIngest;
+namespace App\Services\DirectIngest;
 
 use App\Services\Pipeline\State\PipelineStageLogger;
 use App\Services\Pipeline\State\PipelineStateService;
-use App\Services\Pipeline\Values\DirectIngestLaunchResult;
+use App\Services\DirectIngest\Values\DirectIngestLaunchResult;
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Support\Str;
 

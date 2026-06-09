@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Unit\Pipeline;
 
-use App\Services\Pipeline\DirectIngest\DirectIngestStatusService;
+use App\Services\DirectIngest\DirectIngestStatusService;
 use App\Support\PipelineExitCode;
 use Illuminate\Support\Facades\File;
 use Tests\TestCase;

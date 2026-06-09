@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace App\Services\Pipeline\DirectIngest;
+namespace App\Services\DirectIngest;
 
-use App\Services\Pipeline\Values\DirectIngestStatusPaths;
+use App\Services\DirectIngest\Values\DirectIngestStatusPaths;
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Support\Facades\File;
 

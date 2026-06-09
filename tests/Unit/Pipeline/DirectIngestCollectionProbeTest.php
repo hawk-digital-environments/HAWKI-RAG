@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Unit\Pipeline;
 
-use App\Services\Pipeline\DirectIngest\DirectIngestCollectionProbe;
+use App\Services\DirectIngest\DirectIngestCollectionProbe;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 

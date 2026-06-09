@@ -36,6 +36,14 @@ readonly class PipelineJobRepository
             ->first();
     }
 
+    public function firstForTaskAndType(string $taskId, string $jobType): ?PipelineJob
+    {
+        return PipelineJob::query()
+            ->where('task_id', $taskId)
+            ->where('job_type', $jobType)
+            ->first();
+    }
+
     /**
      * @param list<string> $jobIds
      * @return Collection<int, PipelineJob>

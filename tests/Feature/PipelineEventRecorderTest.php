@@ -8,6 +8,7 @@ use App\Services\Pipeline\Events\PipelineEvent;
 use App\Services\Pipeline\Events\PipelineEventNormalizer;
 use App\Services\Pipeline\Events\PipelineEventRecorder;
 use App\Services\Pipeline\Events\PipelineEventTypeRegistry;
+use App\Services\Pipeline\Repositories\PipelineEventRecordRepository;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Symfony\Component\Clock\MockClock;
 use Tests\TestCase;
@@ -20,6 +21,7 @@ class PipelineEventRecorderTest extends TestCase
     {
         $recorder = new PipelineEventRecorder(
             new PipelineEventNormalizer(app(PipelineEventTypeRegistry::class)),
+            app(PipelineEventRecordRepository::class),
             new MockClock('2026-06-09T12:00:00+00:00'),
         );
 

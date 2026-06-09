@@ -8,6 +8,7 @@ use App\Models\PipelineJob;
 use App\Models\PipelineStageState;
 use App\Services\Pipeline\Repositories\PipelineJobRepository;
 use App\Services\Pipeline\Repositories\PipelineStageStateRepository;
+use App\Services\Pipeline\Values\PipelineStage;
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -15,11 +16,11 @@ use Illuminate\Support\Facades\DB;
 #[Singleton]
 readonly class PipelineStateService
 {
-    public const STAGE_SCRAPE = 'scrape';
+    public const STAGE_SCRAPE = PipelineStage::Scrape->value;
 
-    public const STAGE_CONVERT = 'convert';
+    public const STAGE_CONVERT = PipelineStage::Convert->value;
 
-    public const STAGE_INGEST = 'ingest';
+    public const STAGE_INGEST = PipelineStage::Ingest->value;
 
     public function __construct(
         private readonly PipelineJobRepository $jobs,

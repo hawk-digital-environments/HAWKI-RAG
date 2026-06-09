@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace App\Services\Pipeline\DirectIngest;
+namespace App\Services\DirectIngest;
 
 use App\Services\Pipeline\State\PipelineStateService;
-use App\Services\Pipeline\Values\DirectIngestActionResult;
+use App\Services\DirectIngest\Values\DirectIngestActionResult;
 use Illuminate\Container\Attributes\Singleton;
 
 #[Singleton]

@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-namespace App\Services\Pipeline\Values;
+namespace App\Services\DirectIngest\Values;
 
 readonly class DirectIngestActionResult
 {

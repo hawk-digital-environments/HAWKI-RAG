@@ -7,20 +7,24 @@ namespace App\Http\Controllers\API;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Pipeline\ClearDirectIngestStatusRequest;
 use App\Http\Requests\Pipeline\ShowDirectIngestStatusRequest;
-use App\Services\Pipeline\DirectIngest\DirectIngestStatusService;
-use App\Services\Pipeline\Values\DirectIngestActionResult;
+use App\Services\Pipeline\PipelineService;
+use App\Services\DirectIngest\Values\DirectIngestActionResult;
 use Illuminate\Http\JsonResponse;
 
 class IngestStatusController extends Controller
 {
-    public function show(ShowDirectIngestStatusRequest $request, DirectIngestStatusService $statuses): JsonResponse
+    public function __construct(
+        private readonly PipelineService $pipeline,
+    ) {}
+
+    public function show(ShowDirectIngestStatusRequest $request): JsonResponse
     {
-        return $this->respond($statuses->show($request->mode()));
+        return $this->respond($this->pipeline->directIngestStatuses->show($request->mode()));
     }
 
-    public function clear(ClearDirectIngestStatusRequest $request, DirectIngestStatusService $statuses): JsonResponse
+    public function clear(ClearDirectIngestStatusRequest $request): JsonResponse
     {
-        return $this->respond($statuses->clear($request->mode()));
+        return $this->respond($this->pipeline->directIngestStatuses->clear($request->mode()));
     }
 
     private function respond(DirectIngestActionResult $result): JsonResponse

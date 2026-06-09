@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Services\Pipeline\DirectIngest;
+namespace App\Services\DirectIngest;
 
 use Illuminate\Container\Attributes\Singleton;
 

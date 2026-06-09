@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Unit\Pipeline;
 
-use App\Services\Pipeline\DirectIngest\CrawledDataFolderService;
+use App\Services\DirectIngest\CrawledDataFolderService;
 use Illuminate\Support\Facades\File;
 use Tests\TestCase;
 

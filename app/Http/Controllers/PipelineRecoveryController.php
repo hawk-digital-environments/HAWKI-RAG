@@ -6,20 +6,20 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\Pipeline\ListFailedPipelineJobsRequest;
 use App\Http\Requests\Pipeline\RetrySelectedPipelineJobsRequest;
-use App\Services\Pipeline\Recovery\PipelineRecoveryService;
+use App\Services\Pipeline\PipelineService;
 use Illuminate\Http\JsonResponse;
 
 class PipelineRecoveryController extends Controller
 {
     public function __construct(
-        private readonly PipelineRecoveryService $recovery,
+        private readonly PipelineService $pipeline,
     ) {}
 
     public function failedJobs(ListFailedPipelineJobsRequest $request): JsonResponse
     {
         return response()->json([
             'success' => true,
-            'jobs' => $this->recovery->failedJobs($request->filters()),
+            'jobs' => $this->pipeline->recovery->failedJobs($request->filters()),
         ]);
     }
 
@@ -27,7 +27,7 @@ class PipelineRecoveryController extends Controller
     {
         return response()->json([
             'success' => true,
-            'recovery' => $this->recovery->retryJob($jobId),
+            'recovery' => $this->pipeline->recovery->retryJob($jobId),
         ]);
     }
 
@@ -35,7 +35,7 @@ class PipelineRecoveryController extends Controller
     {
         return response()->json([
             'success' => true,
-            'recovery' => $this->recovery->retrySelected($request->jobIds()),
+            'recovery' => $this->pipeline->recovery->retrySelected($request->jobIds()),
         ]);
     }
 
@@ -43,7 +43,7 @@ class PipelineRecoveryController extends Controller
     {
         return response()->json([
             'success' => true,
-            'recovery' => $this->recovery->retryAll(),
+            'recovery' => $this->pipeline->recovery->retryAll(),
         ]);
     }
 
@@ -51,7 +51,7 @@ class PipelineRecoveryController extends Controller
     {
         return response()->json([
             'success' => true,
-            'recovery' => $this->recovery->retryTask($taskId),
+            'recovery' => $this->pipeline->recovery->retryTask($taskId),
         ]);
     }
 
@@ -59,7 +59,7 @@ class PipelineRecoveryController extends Controller
     {
         return response()->json([
             'success' => true,
-            'recovery' => $this->recovery->retryDataset($datasetId),
+            'recovery' => $this->pipeline->recovery->retryDataset($datasetId),
         ]);
     }
 }

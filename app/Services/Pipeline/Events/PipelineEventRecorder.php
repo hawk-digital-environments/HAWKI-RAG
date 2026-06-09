@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Pipeline\Events;
 
 use App\Models\PipelineEventRecord;
+use App\Services\Pipeline\Repositories\PipelineEventRecordRepository;
 use Illuminate\Container\Attributes\Singleton;
 use Psr\Clock\ClockInterface;
 use Symfony\Component\Clock\Clock;
@@ -24,6 +25,7 @@ readonly class PipelineEventRecorder
 
     public function __construct(
         private PipelineEventNormalizer $normalizer,
+        private PipelineEventRecordRepository $records,
         private ClockInterface $clock = new Clock,
     ) {}
 
@@ -38,7 +40,7 @@ readonly class PipelineEventRecorder
             return null;
         }
 
-        return PipelineEventRecord::query()->create([
+        return $this->records->create([
             'task_id' => (string) $event['task_id'],
             'job_id' => (string) $event['job_id'],
             'event_type' => (string) $event['event_type'],
@@ -55,39 +57,19 @@ readonly class PipelineEventRecorder
         $eventType = $this->nullableString($filters['event_type'] ?? $filters['eventType'] ?? null);
         $jobId = $this->nullableString($filters['job_id'] ?? $filters['jobId'] ?? null);
 
-        $query = PipelineEventRecord::query()
-            ->where('task_id', $taskId)
-            ->when($eventType, fn ($query) => $query->where('event_type', $eventType))
-            ->when($jobId, fn ($query) => $query->where('job_id', $jobId))
-            ->orderBy('created_at')
-            ->orderBy('id')
-            ->limit($limit);
-
-        return $query->get()
+        return $this->records->timeline($taskId, $eventType, $jobId, $limit)
             ->map(fn (PipelineEventRecord $event): array => $this->payload($event))
             ->all();
     }
 
     public function eventTypes(string $taskId): array
     {
-        return PipelineEventRecord::query()
-            ->where('task_id', $taskId)
-            ->distinct()
-            ->orderBy('event_type')
-            ->pluck('event_type')
-            ->values()
-            ->all();
+        return $this->records->eventTypes($taskId);
     }
 
     public function jobIds(string $taskId): array
     {
-        return PipelineEventRecord::query()
-            ->where('task_id', $taskId)
-            ->distinct()
-            ->orderBy('job_id')
-            ->pluck('job_id')
-            ->values()
-            ->all();
+        return $this->records->jobIds($taskId);
     }
 
     public function payload(PipelineEventRecord $record): array

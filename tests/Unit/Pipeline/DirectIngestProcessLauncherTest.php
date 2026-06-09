@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Tests\Unit\Pipeline;
 
-use App\Services\Pipeline\DirectIngest\DirectIngestProcessLauncher;
-use App\Services\Pipeline\Values\DirectIngestStatusPaths;
+use App\Services\DirectIngest\DirectIngestProcessLauncher;
+use App\Services\DirectIngest\Values\DirectIngestStatusPaths;
 use Tests\TestCase;
 
 class DirectIngestProcessLauncherTest extends TestCase
