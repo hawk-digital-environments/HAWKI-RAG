@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Services\Scrape\Pipeline;
 
 use App\Services\Scrape\Data\ScrapeJobRequest;

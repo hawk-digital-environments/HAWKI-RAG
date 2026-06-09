@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Services\Scrape\Data;
 
 use App\Services\Scrape\Pipeline\ScrapeContextBuilder;

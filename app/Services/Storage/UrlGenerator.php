@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Services\Storage;
 
 use Illuminate\Contracts\Filesystem\Filesystem;

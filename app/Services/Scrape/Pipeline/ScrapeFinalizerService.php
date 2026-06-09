@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace App\Services\Scrape\Pipeline;
 
-use App\Models\ScrapedElement;
 use App\Services\Pipeline\State\PipelineStageLogger;
 use App\Services\Pipeline\Validation\PipelineDataValidator;
 use App\Services\Scrape\Data\ScrapeContext;
+use App\Services\Scrape\Repositories\ScrapedElementRepository;
 use App\Services\Storage\StorageService;
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Support\Facades\Cache;
@@ -20,6 +20,7 @@ class ScrapeFinalizerService
         protected readonly StorageService $storageService,
         protected readonly PipelineDataValidator $validator,
         protected readonly PipelineStageLogger $logger,
+        protected readonly ScrapedElementRepository $elements,
     ) {}
 
     public function executeFinalization(ScrapeContext $context): void
@@ -62,9 +63,7 @@ class ScrapeFinalizerService
         // Log::info("Found {$totalUrls} completed URLs on disk for job: {$context->jobId}");
 
         // Get existing elements from database for this job
-        $existingElements = ScrapedElement::where('job_id', $context->jobId)
-            ->pluck('page_url_hash')
-            ->toArray();
+        $existingElements = $this->elements->pageUrlHashesForJob($context->jobId);
 
         $existingCount = count($existingElements);
         $syncedCount = 0;
@@ -209,7 +208,7 @@ class ScrapeFinalizerService
         $pdfs = $elementData['pdfs'] ?? [];
 
         // Create the ScrapedElement
-        ScrapedElement::create([
+        $this->elements->create([
             'uuid' => Str::uuid()->toString(),
             'title' => $title,
             'page_url' => $pageUrl,

@@ -33,6 +33,11 @@ return [
         explode(',', env('HAWKI_RAG_GRAPH_MODELS', env('GRAPH_OLLAMA_RAG_MODEL', 'llama3.1:8b')))
     ))),
     'graph_default' => env('HAWKI_RAG_GRAPH_MODEL', env('GRAPH_OLLAMA_RAG_MODEL', 'llama3.1:8b')),
+    'qdrant_distance' => env('QDRANT_DISTANCE', 'Cosine'),
+    'chunk_size' => (int) env('CHUNK_SIZE', 1200),
+    'chunk_overlap_size' => (int) env('CHUNK_OVERLAP_SIZE', 250),
+    'ingest_batch_size' => (int) env('INGEST_BATCH_SIZE', 64),
+    'graph_engine' => env('GRAPH_ENGINE', 'raganything'),
     'pipeline_status_path' => env('HAWKI_RAG_PIPELINE_STATUS_PATH', storage_path('logs/pipeline_status.json')),
     'hawki_rag_bridge_url' => env('HAWKI_RAG_BRIDGE_URL', 'http://hawki_rag_bridge:8000'),
     'pipeline_automation' => filter_var(env('HAWKI_RAG_PIPELINE_AUTOMATION', false), FILTER_VALIDATE_BOOLEAN),

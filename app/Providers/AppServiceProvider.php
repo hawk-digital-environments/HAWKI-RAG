@@ -4,9 +4,9 @@ namespace App\Providers;
 
 use App\Services\Storage\StorageService;
 use App\Services\Storage\UrlGenerator;
-use App\Services\WebSearchService\Implementations\BraveSearch;
-use App\Services\WebSearchService\Implementations\TavilySearch;
-use App\Services\WebSearchService\Interface\WebSearchInterface;
+use App\Services\WebSearch\Implementations\BraveSearch;
+use App\Services\WebSearch\Implementations\TavilySearch;
+use App\Services\WebSearch\Contracts\WebSearchInterface;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\ServiceProvider;
 

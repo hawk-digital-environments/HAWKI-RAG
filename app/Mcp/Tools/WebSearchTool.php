@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace App\Mcp\Tools;
 
-use App\Services\WebSearchService\Exception\WebSearchFailedException;
-use App\Services\WebSearchService\Interface\WebSearchInterface;
+use App\Services\WebSearch\Exceptions\WebSearchFailedException;
+use App\Services\WebSearch\Contracts\WebSearchInterface;
 
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Laravel\Mcp\Request;

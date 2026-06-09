@@ -26,6 +26,7 @@ class ScraperPipelineService
     public function __construct(
         private readonly ScrapeValidationService $validationService,
         private readonly ScrapeExecutionService $executionService,
+        private readonly ScrapeContextBuilder $contexts,
         private readonly StorageService $storageService,
         private readonly PipelineStateService $pipelineState,
         private readonly PipelineStageLogger $logger,
@@ -46,7 +47,7 @@ class ScraperPipelineService
         ?callable $outputCallback = null
     ): ScrapeRequestResult {
         // Create context to carry state through the pipeline
-        $context = ScrapeContextBuilder::buildFromRequest($request);
+        $context = $this->contexts->buildFromRequest($request);
         $this->pipelineState->startStage($context->jobId, PipelineStateService::STAGE_SCRAPE, [
             'dataset_path' => $request->outputDir,
             'source_url' => $request->url,
@@ -272,7 +273,7 @@ class ScraperPipelineService
 
     public function stop(string $jobId): array
     {
-        $context = ScrapeContextBuilder::rebuildContext($jobId);
+        $context = $this->contexts->rebuildContext($jobId);
 
         $response = Http::timeout(300)
             ->retry(3, 1000)

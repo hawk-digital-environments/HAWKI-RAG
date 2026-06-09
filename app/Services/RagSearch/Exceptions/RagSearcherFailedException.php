@@ -1,6 +1,8 @@
 <?php
 
-namespace App\Services\RagSearch\Exception;
+declare(strict_types=1);
+
+namespace App\Services\RagSearch\Exceptions;
 
 class RagSearcherFailedException extends \RuntimeException
 {

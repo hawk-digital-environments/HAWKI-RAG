@@ -1,9 +1,11 @@
 <?php
 
-namespace App\Services\WebSearchService\Implementations;
+declare(strict_types=1);
 
-use App\Services\WebSearchService\Exception\WebSearchFailedException;
-use App\Services\WebSearchService\Interface\WebSearchInterface;
+namespace App\Services\WebSearch\Implementations;
+
+use App\Services\WebSearch\Exceptions\WebSearchFailedException;
+use App\Services\WebSearch\Contracts\WebSearchInterface;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;

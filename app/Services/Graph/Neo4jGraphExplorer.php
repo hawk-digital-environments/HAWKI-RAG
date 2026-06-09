@@ -1,6 +1,8 @@
 <?php
 
-namespace App\Services\GraphService;
+declare(strict_types=1);
+
+namespace App\Services\Graph;
 
 use App\Services\RagSearch\RagSearcher;
 use Illuminate\Support\Facades\File;

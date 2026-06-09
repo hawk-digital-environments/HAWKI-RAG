@@ -1,6 +1,8 @@
 <?php
 
-namespace App\Services\WebSearchService\Interface;
+declare(strict_types=1);
+
+namespace App\Services\WebSearch\Contracts;
 
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 

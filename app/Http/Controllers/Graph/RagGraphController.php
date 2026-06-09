@@ -3,8 +3,8 @@
 namespace App\Http\Controllers\Graph;
 
 use App\Http\Controllers\Controller;
-use App\Services\GraphService\Neo4jAdmin;
-use App\Services\GraphService\Neo4jGraphExplorer;
+use App\Services\Graph\Neo4jAdmin;
+use App\Services\Graph\Neo4jGraphExplorer;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\File;

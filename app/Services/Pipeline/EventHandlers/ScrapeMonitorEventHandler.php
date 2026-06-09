@@ -12,6 +12,7 @@ use App\Services\Pipeline\Events\PipelineEventStateService;
 use App\Services\Pipeline\Repositories\PipelineJobRepository;
 use App\Services\Pipeline\ScrapeMonitoring\ScrapeMonitorFailurePublisher;
 use App\Services\Pipeline\ScrapeMonitoring\ScrapeMonitorOutputPublisher;
+use App\Services\Pipeline\ScrapeMonitoring\ScrapeMonitorPolicy;
 use App\Services\Pipeline\State\PipelineStageLogger;
 use App\Services\Pipeline\State\PipelineStateService;
 use App\Services\Scrape\ScrapeService;
@@ -30,6 +31,7 @@ class ScrapeMonitorEventHandler implements PipelineEventHandler
         private readonly PipelineEventNormalizer $normalizer,
         private readonly ScrapeMonitorOutputPublisher $outputs,
         private readonly ScrapeMonitorFailurePublisher $failures,
+        private readonly ScrapeMonitorPolicy $policy,
     ) {}
 
     public function eventTypes(): array
@@ -93,7 +95,7 @@ class ScrapeMonitorEventHandler implements PipelineEventHandler
     private function handleStatusReadFailure(array $event, array $result, string $crawlerStatus): void
     {
         $failures = (int) ($event['metadata']['status_read_failures'] ?? 0) + 1;
-        $maxFailures = max(1, (int) config('communication.rabbitmq.pipeline_events.scrape_monitor_status_read_retries', 5));
+        $maxFailures = $this->policy->maxStatusReadFailures();
         $message = (string) ($result['message'] ?? 'Unable to read Crawl4AI status.');
 
         if ($failures < $maxFailures) {
@@ -119,7 +121,7 @@ class ScrapeMonitorEventHandler implements PipelineEventHandler
             'errors' => [[
                 'message' => $message,
                 'status' => $result['status'] ?? null,
-                'updatedAt' => now()->toIso8601String(),
+                'updatedAt' => $this->policy->timestamp(),
             ]],
             'metadata' => ['source' => self::class],
         ]);
@@ -160,7 +162,7 @@ class ScrapeMonitorEventHandler implements PipelineEventHandler
         $pipelineJob = $this->jobs->markScrapeMonitorCompleted(
             $pipelineJob,
             $datasetPath,
-            now(),
+            $this->policy->carbonNow(),
             array_merge($pipelineJob->metadata ?? [], [
                 'source' => self::class,
                 'crawlerStatus' => 'completed',
@@ -179,7 +181,7 @@ class ScrapeMonitorEventHandler implements PipelineEventHandler
             'counts' => $counts,
             'errors' => [[
                 'message' => $message,
-                'updatedAt' => now()->toIso8601String(),
+                'updatedAt' => $this->policy->timestamp(),
             ]],
             'metadata' => ['source' => self::class],
         ]);
@@ -194,7 +196,7 @@ class ScrapeMonitorEventHandler implements PipelineEventHandler
     private function handleStillRunning(array $event, string $crawlerStatus, string $datasetPath, array $counts, array $data): void
     {
         $attempt = (int) ($event['metadata']['monitor_attempt'] ?? 0) + 1;
-        $maxAttempts = max(1, (int) config('communication.rabbitmq.pipeline_events.scrape_monitor_max_attempts', 240));
+        $maxAttempts = $this->policy->maxMonitorAttempts();
 
         if ($attempt > $maxAttempts) {
             $message = "Crawl monitor exceeded {$maxAttempts} attempts.";
@@ -203,7 +205,7 @@ class ScrapeMonitorEventHandler implements PipelineEventHandler
                 'counts' => $counts,
                 'errors' => [[
                     'message' => $message,
-                    'updatedAt' => now()->toIso8601String(),
+                    'updatedAt' => $this->policy->timestamp(),
                 ]],
                 'metadata' => ['source' => self::class],
             ]);

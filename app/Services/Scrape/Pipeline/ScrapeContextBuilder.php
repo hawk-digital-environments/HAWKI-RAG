@@ -1,11 +1,13 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Services\Scrape\Pipeline;
 
-use App\Models\ScrapeProcess;
-use App\Models\ScrapeStatistics;
 use App\Services\Scrape\Data\ScrapeContext;
 use App\Services\Scrape\Data\ScrapeJobRequest;
+use App\Services\Scrape\Repositories\ScrapeProcessRepository;
+use App\Services\Scrape\Repositories\ScrapeStatisticsRepository;
 use Exception;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
@@ -13,13 +15,19 @@ use Illuminate\Support\Str;
 
 class ScrapeContextBuilder
 {
+    public function __construct(
+        private readonly ScrapeProcessRepository $processes,
+        private readonly ScrapeStatisticsRepository $statistics,
+    ) {
+    }
+
     /**
     * For initializing a new process from the pipeline
     *
     * @param ScrapeJobRequest $request
     * @return ScrapeContext
     **/
-    public static function buildFromRequest(ScrapeJobRequest $request): ScrapeContext{
+    public function buildFromRequest(ScrapeJobRequest $request): ScrapeContext{
         $jobId = $request->jobId ?: Str::uuid()->toString();
 
         // Recreate request with the job_id
@@ -27,7 +35,7 @@ class ScrapeContextBuilder
             $request->toArray(),
             ['job_id' => $jobId]
         ));
-        $process = ScrapeProcess::create(
+        $process = $this->processes->create(
             [
             'job_id' => $jobId,
             'url' => $request->url,
@@ -35,7 +43,7 @@ class ScrapeContextBuilder
             'stage' => 'initialized',
             'request' => $requestWithJobId->toArray(),
         ]);
-        ScrapeStatistics::create(
+        $this->statistics->create(
             [
                 'job_id' => $process->job_id,
                 'started_at'=> now(),
@@ -57,11 +65,11 @@ class ScrapeContextBuilder
      *
      * @throws Exception
      */
-    public static function rebuildContext(string $jobId): ScrapeContext{
+    public function rebuildContext(string $jobId): ScrapeContext{
 
         $process = Cache::get("scrape_process:{$jobId}");
         if(!$process){
-            $process = ScrapeProcess::where('job_id', $jobId)->first();
+            $process = $this->processes->findByJobId($jobId);
         }
 
         if(!$process) {

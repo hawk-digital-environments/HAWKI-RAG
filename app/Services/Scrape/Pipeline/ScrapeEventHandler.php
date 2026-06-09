@@ -14,6 +14,7 @@ use Illuminate\Container\Attributes\Singleton;
 class ScrapeEventHandler
 {
     public function __construct(
+        private readonly ScrapeContextBuilder $contexts,
         private readonly ScrapeDatasetCreator $datasetCreator,
         private readonly ScrapeFinalizerService $finalizer,
         private readonly PipelineStageLogger $logger,
@@ -76,7 +77,7 @@ class ScrapeEventHandler
     protected function processEvent(ScrapeEventPacket $packet): void
     {
         // Rebuild context from job ID
-        $context = ScrapeContextBuilder::rebuildContext($packet->jobId);
+        $context = $this->contexts->rebuildContext($packet->jobId);
         $this->logger->started('scrape', [
             'job_id' => $packet->jobId,
             'pipeline_stage' => 'event',

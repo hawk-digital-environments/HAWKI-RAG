@@ -4,11 +4,11 @@ declare(strict_types=1);
 
 namespace App\Services\Scrape\Pipeline;
 
-use App\Models\ScrapedElement;
-use App\Models\ScrapeStatistics;
 use App\Services\Pipeline\State\PipelineStageLogger;
 use App\Services\Pipeline\Validation\PipelineDataValidator;
 use App\Services\Scrape\Data\ScrapeContext;
+use App\Services\Scrape\Repositories\ScrapedElementRepository;
+use App\Services\Scrape\Repositories\ScrapeStatisticsRepository;
 use App\Services\Storage\StorageService;
 use DateTime;
 use Illuminate\Container\Attributes\Singleton;
@@ -21,6 +21,8 @@ class ScrapeDatasetCreator
         protected readonly StorageService $storageService,
         protected readonly PipelineDataValidator $validator,
         protected readonly PipelineStageLogger $logger,
+        protected readonly ScrapedElementRepository $elements,
+        protected readonly ScrapeStatisticsRepository $statistics,
     ) {}
 
     /**
@@ -74,7 +76,7 @@ class ScrapeDatasetCreator
             $images = $elementData['images'] ?? [];
             $pdfs = $elementData['pdfs'] ?? [];
 
-            ScrapedElement::create([
+            $this->elements->create([
                 'uuid' => Str::uuid()->toString(),
                 'title' => $title,
                 'page_url' => $pageUrl,
@@ -157,18 +159,16 @@ class ScrapeDatasetCreator
             $timing = [];
         }
 
-        ScrapeStatistics::updateOrCreate(
-            ['job_id' => $context->jobId],
-            [
-                'sessions' => $statistics['sessions'] ?? 0,
-                'requests' => $statistics['requests'] ?? 0,
-                'errors' => array_merge($context->getErrors(), is_array($statistics['errors'] ?? null) ? $statistics['errors'] : []),
-                'warnings' => array_merge($context->getWarnings(), is_array($statistics['warnings'] ?? null) ? $statistics['warnings'] : []),
-                'pdfs_downloaded' => $statistics['pdfs_downloaded'] ?? 0,
-                'images_downloaded' => $statistics['images_downloaded'] ?? 0,
-                'started_at' => $timing['started_at'] ?? null,
-                'completed_at' => $timing['completed_at'] ?? null,
-            ]);
+        $this->statistics->updateOrCreateForJob($context->jobId, [
+            'sessions' => $statistics['sessions'] ?? 0,
+            'requests' => $statistics['requests'] ?? 0,
+            'errors' => array_merge($context->getErrors(), is_array($statistics['errors'] ?? null) ? $statistics['errors'] : []),
+            'warnings' => array_merge($context->getWarnings(), is_array($statistics['warnings'] ?? null) ? $statistics['warnings'] : []),
+            'pdfs_downloaded' => $statistics['pdfs_downloaded'] ?? 0,
+            'images_downloaded' => $statistics['images_downloaded'] ?? 0,
+            'started_at' => $timing['started_at'] ?? null,
+            'completed_at' => $timing['completed_at'] ?? null,
+        ]);
 
         $this->logger->success('scrape', [
             'job_id' => $context->jobId,

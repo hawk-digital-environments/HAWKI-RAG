@@ -2,7 +2,7 @@
 
 namespace App\Services\RagSearch;
 
-use App\Services\RagSearch\Exception\RagSearcherFailedException;
+use App\Services\RagSearch\Exceptions\RagSearcherFailedException;
 use Illuminate\Container\Attributes\Config;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Illuminate\Support\Facades\Http;

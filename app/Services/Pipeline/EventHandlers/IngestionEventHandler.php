@@ -6,16 +6,13 @@ namespace App\Services\Pipeline\EventHandlers;
 
 use App\Models\JobProcessingState;
 use App\Models\PipelineJob;
-use App\Services\Dataset\DatasetService;
 use App\Services\Pipeline\Events\PipelineEvent;
 use App\Services\Pipeline\Events\PipelineEventBus;
 use App\Services\Pipeline\Events\PipelineEventStateService;
 use App\Services\Pipeline\Exceptions\PipelineEventHandlerException;
 use App\Services\Pipeline\Repositories\PipelineIngestionRepository;
+use Illuminate\Contracts\Config\Repository as ConfigRepository;
 use Illuminate\Container\Attributes\Singleton;
-use Illuminate\Support\Facades\File;
-use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Str;
 
 #[Singleton]
 class IngestionEventHandler implements PipelineEventHandler
@@ -23,8 +20,10 @@ class IngestionEventHandler implements PipelineEventHandler
     public function __construct(
         private readonly PipelineEventBus $events,
         private readonly PipelineEventStateService $state,
-        private readonly DatasetService $datasets,
         private readonly PipelineIngestionRepository $ingestion,
+        private readonly IngestionContentResolver $content,
+        private readonly IngestionBridgeClient $bridge,
+        private readonly ConfigRepository $config,
     ) {}
 
     public function eventTypes(): array
@@ -38,7 +37,7 @@ class IngestionEventHandler implements PipelineEventHandler
     public function handle(array $event): void
     {
         $event = PipelineEvent::normalize((string) $event['event_type'], $event);
-        $paths = $this->contentPaths($event);
+        $paths = $this->content->contentPaths($event);
 
         if ($paths === []) {
             $this->state->upsertJob($this->ingestEventForPath($event, $event['local_path'] ?: $event['source_url'] ?: 'skipped'), PipelineJob::STATUS_SKIPPED, [
@@ -57,7 +56,7 @@ class IngestionEventHandler implements PipelineEventHandler
     {
         $event = PipelineEvent::normalize((string) ($event['event_type'] ?? PipelineEvent::CONTENT_INGESTED), $event);
         $retryable = $retryCount < $maxRetries;
-        $paths = $this->contentPaths($event);
+        $paths = $this->content->contentPaths($event);
         if ($paths === []) {
             $paths = [$event['local_path'] ?: $event['source_url'] ?: 'failed-ingestion-event'];
         }
@@ -93,25 +92,18 @@ class IngestionEventHandler implements PipelineEventHandler
             throw PipelineEventHandlerException::ingestContentIsEmpty($path);
         }
 
-        $response = Http::timeout((int) config('communication.rabbitmq.pipeline_ingestion.bridge_timeout', 3600))
-            ->acceptJson()
-            ->asJson()
-            ->post($this->bridgeUrl().'/ingest', $this->bridgePayload($event, $text, $path));
-
-        if ($response->failed()) {
-            throw PipelineEventHandlerException::bridgeReturnedHttpFailure($response->status(), Str::limit($response->body(), 1000));
-        }
+        $bridgeResponse = $this->bridge->ingest($event, $text, $path);
 
         $this->state->upsertJob($event, PipelineJob::STATUS_COMPLETED, [
-            'bridge_response' => $response->json() ?? ['ok' => true],
+            'bridge_response' => $bridgeResponse,
         ]);
         $this->markProcessingState($event, JobProcessingState::STATUS_COMPLETED);
-        $this->recordDocument($event, $path, $response->json() ?? ['ok' => true]);
+        $this->recordDocument($event, $path, $bridgeResponse);
 
         $this->events->publish(PipelineEvent::CONTENT_INGESTED, array_merge($event, [
             'status' => PipelineJob::STATUS_COMPLETED,
             'metadata' => array_merge($event['metadata'], [
-                'bridge_response' => $response->json() ?? ['ok' => true],
+                'bridge_response' => $bridgeResponse,
             ]),
         ]));
 
@@ -119,7 +111,7 @@ class IngestionEventHandler implements PipelineEventHandler
 
     private function ingestEventForPath(array $event, string $path): array
     {
-        $path = $this->resolvePath($path) ?? $path;
+        $path = $this->content->resolvePath($path) ?? $path;
         $hash = is_file($path) ? (hash_file('sha256', $path) ?: hash('sha256', $path)) : hash('sha256', $path);
         $jobId = 'ingest_'.substr(hash('sha256', ($event['task_id'] ?? '').'|'.($event['job_id'] ?? '').'|'.$path), 0, 24);
         $datasetId = (string) ($event['dataset_id'] ?: 'default');
@@ -141,55 +133,12 @@ class IngestionEventHandler implements PipelineEventHandler
         ]);
     }
 
-    private function contentPaths(array $event): array
-    {
-        $path = $this->resolvePath((string) ($event['local_path'] ?? ''));
-        if ($path && is_file($path) && $this->isTextLike($path)) {
-            return [$path];
-        }
-
-        if ($path && is_dir($path)) {
-            $paths = [];
-            foreach (File::allFiles($path) as $file) {
-                if ($this->isTextLike($file->getPathname())) {
-                    $paths[] = $file->getPathname();
-                }
-            }
-
-            return $paths;
-        }
-
-        return [];
-    }
-
-    private function isTextLike(string $path): bool
-    {
-        return in_array(strtolower(pathinfo($path, PATHINFO_EXTENSION)), ['md', 'txt', 'html'], true);
-    }
-
-    private function resolvePath(string $path): ?string
-    {
-        if ($path === '') {
-            return null;
-        }
-
-        if (Str::startsWith($path, ['/', '\\'])) {
-            return realpath($path) ?: $path;
-        }
-
-        $candidate = rtrim((string) config('communication.rabbitmq.pipeline_ingestion.shared_storage_root', '/app/shared'), DIRECTORY_SEPARATOR)
-            .DIRECTORY_SEPARATOR
-            .ltrim($path, DIRECTORY_SEPARATOR);
-
-        return realpath($candidate) ?: $candidate;
-    }
-
     private function markProcessingState(array $event, string $status): void
     {
         $this->ingestion->upsertProcessingState(
             $event,
             $status,
-            (int) config('communication.rabbitmq.pipeline_events.max_retries', 3),
+            (int) $this->config->get('communication.rabbitmq.pipeline_events.max_retries', 3),
         );
     }
 
@@ -198,60 +147,9 @@ class IngestionEventHandler implements PipelineEventHandler
         $this->ingestion->upsertFailedProcessingState($event, $error, $retryCount, $maxRetries);
     }
 
-    private function bridgePayload(array $event, string $text, string $path): array
-    {
-        $targets = $this->datasets->bridgeTargets((string) ($event['dataset_id'] ?: 'default'));
-        $payload = [
-            'source_format' => 'markdown',
-            'source_type' => $event['metadata']['source_event_type'] ?? $event['event_type'],
-            'dataset_id' => $targets['dataset_id'],
-            'qdrant_collection' => $targets['qdrant_collection'],
-            'neo4j_namespace' => $targets['neo4j_namespace'],
-            'file_path' => $path,
-            'source_url' => $event['source_url'],
-            'page_url' => $event['source_url'],
-            'original_path' => $event['metadata']['original_path'] ?? $path,
-            'converted_path' => $path,
-            'input_checksum_sha256' => $event['content_hash'],
-            'output_checksum_sha256' => $event['content_hash'],
-            'trace_id' => $event['event_id'],
-            'job_id' => $event['job_id'],
-            'event_id' => $event['event_id'],
-            'task_id' => $event['task_id'],
-            'title' => pathinfo($path, PATHINFO_FILENAME),
-        ];
-
-        return [
-            'docs' => [[
-                'id' => (string) $event['job_id'],
-                'text' => $text,
-                'payload' => $payload,
-            ]],
-            'provider' => (string) config('communication.rabbitmq.pipeline_ingestion.provider', 'ollama'),
-            'embedding_model' => null,
-            'collection' => $targets['qdrant_collection'],
-            'neo4j_database' => null,
-            'neo4j_namespace' => $targets['neo4j_namespace'],
-            'distance' => (string) env('QDRANT_DISTANCE', 'Cosine'),
-            'chunk_chars' => (int) env('CHUNK_SIZE', 1200),
-            'chunk_overlap' => (int) env('CHUNK_OVERLAP_SIZE', 250),
-            'batch_size' => (int) env('INGEST_BATCH_SIZE', 64),
-            'graph' => filter_var($event['metadata']['graph'] ?? config('communication.rabbitmq.pipeline_ingestion.graph', false), FILTER_VALIDATE_BOOLEAN),
-            'graph_engine' => (string) env('GRAPH_ENGINE', 'raganything'),
-            'graph_only' => false,
-            'dry_run' => false,
-            'dry_include_graph' => false,
-        ];
-    }
-
-    private function bridgeUrl(): string
-    {
-        return rtrim((string) env('HAWKI_RAG_BRIDGE_URL', 'http://hawki_rag_bridge:8000'), '/');
-    }
-
     private function recordDocument(array $event, string $path, array $bridgeResponse): void
     {
-        $targets = $this->datasets->bridgeTargets((string) ($event['dataset_id'] ?: 'default'));
+        $targets = $this->bridge->targets((string) ($event['dataset_id'] ?: 'default'));
         $checksum = is_file($path) ? (hash_file('sha256', $path) ?: $event['content_hash']) : $event['content_hash'];
 
         $this->ingestion->upsertIngestedDocument(
