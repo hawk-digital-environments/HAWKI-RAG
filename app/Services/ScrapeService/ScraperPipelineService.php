@@ -1,22 +1,25 @@
 <?php
+declare(strict_types=1);
 
 namespace App\Services\ScrapeService;
 
+use App\Services\Pipeline\PipelineStageLogger;
+use App\Services\Pipeline\PipelineStateService;
 use App\Services\ScrapeService\Data\ScrapeContext;
 use App\Services\ScrapeService\Data\ScrapeJobRequest;
 use App\Services\ScrapeService\Data\ScrapeRequestResult;
-use App\Services\ScrapeService\Pipeline\ScrapeExecutionService;
 use App\Services\ScrapeService\Pipeline\ScrapeContextBuilder;
+use App\Services\ScrapeService\Pipeline\ScrapeExecutionService;
 use App\Services\ScrapeService\Validation\ScrapeValidationService;
-use App\Services\Pipeline\PipelineLogger;
-use App\Services\Pipeline\PipelineStateService;
 use App\Services\StorageService\StorageService;
 use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
+#[Singleton]
 class ScraperPipelineService
 {
 
@@ -25,6 +28,7 @@ class ScraperPipelineService
         private readonly ScrapeExecutionService  $executionService,
         private readonly StorageService $storageService,
         private readonly PipelineStateService $pipelineState,
+        private readonly PipelineStageLogger $logger,
     ) {}
 
     /**
@@ -58,7 +62,7 @@ class ScraperPipelineService
                 'request' => $request->toArray(),
             ],
         ]);
-        PipelineLogger::started('scrape', [
+        $this->logger->started('scrape', [
             'job_id' => $context->jobId,
             'source_url' => $request->url,
             'output_dir' => $request->outputDir,
@@ -69,7 +73,7 @@ class ScraperPipelineService
             // Stage 1: Validation
             $this->executeValidation($context);
             if ($context->hasErrors()) {
-                PipelineLogger::validationFailed('scrape', [
+                $this->logger->validationFailed('scrape', [
                     'job_id' => $context->jobId,
                     'source_url' => $request->url,
                     'pipeline_stage' => $context->getStage(),
@@ -94,7 +98,7 @@ class ScraperPipelineService
             // Stage 2: Execution
             $this->executeExecution($context, $outputCallback);
             if ($context->hasErrors()) {
-                PipelineLogger::failed('scrape', [
+                $this->logger->failed('scrape', [
                     'job_id' => $context->jobId,
                     'source_url' => $request->url,
                     'pipeline_stage' => $context->getStage(),
@@ -117,7 +121,7 @@ class ScraperPipelineService
             }
 
             Cache::put("scrape_process:{$context->jobId}", $context->process, now()->addMinutes(10));
-            PipelineLogger::success('scrape', [
+            $this->logger->success('scrape', [
                 'job_id' => $context->jobId,
                 'source_url' => $request->url,
                 'output_dir' => $request->outputDir,
@@ -146,7 +150,7 @@ class ScraperPipelineService
             );
         } catch (Throwable $e) {
             $context->addError($e->getMessage());
-            PipelineLogger::failed('scrape', [
+            $this->logger->failed('scrape', [
                 'job_id' => $context->jobId,
                 'source_url' => $request->url,
                 'pipeline_stage' => $context->getStage(),
@@ -196,7 +200,7 @@ class ScraperPipelineService
         }
 
         if ($isValid) {
-            PipelineLogger::success('scrape', [
+            $this->logger->success('scrape', [
                 'job_id' => $context->jobId,
                 'source_url' => $context->getRequest()->url,
                 'pipeline_stage' => 'validation',
@@ -225,7 +229,7 @@ class ScraperPipelineService
 
         if($response['success']){
             $context->setStage('process_submitted');
-            PipelineLogger::success('scrape', [
+            $this->logger->success('scrape', [
                 'job_id' => $context->jobId,
                 'source_url' => $context->getRequest()->url,
                 'pipeline_stage' => 'execution',
@@ -235,7 +239,7 @@ class ScraperPipelineService
         else {
             $context->setStage('failed');
             $context->addError($response['message']);
-            PipelineLogger::failed('scrape', [
+            $this->logger->failed('scrape', [
                 'job_id' => $context->jobId,
                 'source_url' => $context->getRequest()->url,
                 'pipeline_stage' => 'execution',

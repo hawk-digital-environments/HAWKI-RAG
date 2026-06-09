@@ -7,8 +7,8 @@ use App\Models\PipelineJob;
 use App\Services\Pipeline\PipelineEvent;
 use App\Services\Pipeline\PipelineEventBus;
 use App\Services\Pipeline\PipelineEventStateService;
-use App\Services\Pipeline\PipelineLogger;
 use App\Services\Pipeline\PipelineStateService;
+use App\Services\Pipeline\PipelineStageLogger;
 use App\Services\Pipeline\Repositories\PipelineJobRepository;
 use App\Services\ScrapeService\ScrapeService;
 use Illuminate\Container\Attributes\Singleton;
@@ -24,6 +24,7 @@ class ScrapeMonitorEventHandler implements PipelineEventHandler
         private readonly PipelineStateService $pipelineState,
         private readonly PipelineJobRepository $jobs,
         private readonly ScrapeService $scrapeService,
+        private readonly PipelineStageLogger $logger,
     ) {
     }
 
@@ -133,7 +134,7 @@ class ScrapeMonitorEventHandler implements PipelineEventHandler
             ],
         ]);
 
-        PipelineLogger::success('pipeline', [
+        $this->logger->success('pipeline', [
             'job_id' => $event['job_id'],
             'pipeline_stage' => 'scrape_to_convert_trigger',
             'output_dir' => $datasetPath,

@@ -1,27 +1,29 @@
 <?php
+declare(strict_types=1);
 
 namespace App\Services\ScrapeService\Pipeline;
 
+use App\Services\Pipeline\PipelineStageLogger;
 use App\Services\ScrapeService\Data\ScrapeContext;
 use App\Services\ScrapeService\Data\ScrapeEventPacket;
-use App\Services\Pipeline\PipelineLogger;
 use Exception;
+use Illuminate\Container\Attributes\Singleton;
 
+#[Singleton]
 class ScrapeEventHandler
 {
-
-    private ScrapeDatasetCreator $datasetCreator;
     public function __construct(
-    )
-    {
-        $this->datasetCreator = app(ScrapeDatasetCreator::class);
+        private readonly ScrapeDatasetCreator $datasetCreator,
+        private readonly ScrapeFinalizerService $finalizer,
+        private readonly PipelineStageLogger $logger,
+    ) {
     }
 
 
     public function handle(array $payload){
         // Validate message structure
         if (!$this->isValidEventPacket($payload)) {
-            PipelineLogger::validationFailed('scrape', [
+            $this->logger->validationFailed('scrape', [
                 'job_id' => $payload['job_id'] ?? null,
                 'pipeline_stage' => 'event_packet',
                 'error_message' => 'Invalid scrape event packet structure.',
@@ -82,7 +84,7 @@ class ScrapeEventHandler
     {
         // Rebuild context from job ID
         $context = ScrapeContextBuilder::rebuildContext($packet->jobId);
-        PipelineLogger::started('scrape', [
+        $this->logger->started('scrape', [
             'job_id' => $packet->jobId,
             'pipeline_stage' => 'event',
             'event_name' => $packet->event,
@@ -99,7 +101,7 @@ class ScrapeEventHandler
                 $this->processSummary($packet, $context);
                 break;
             default:
-                PipelineLogger::skipped('scrape', [
+                $this->logger->skipped('scrape', [
                     'job_id' => $packet->jobId,
                     'pipeline_stage' => 'event',
                     'event_name' => $packet->event,
@@ -112,7 +114,7 @@ class ScrapeEventHandler
     {
         $stage = $packet->data['stage'] ?? null;
         if (!is_string($stage) || trim($stage) === '') {
-            PipelineLogger::validationFailed('scrape', [
+            $this->logger->validationFailed('scrape', [
                 'job_id' => $context->jobId,
                 'pipeline_stage' => 'stage_change',
                 'error_message' => 'Stage event is missing a valid stage value.',
@@ -122,7 +124,7 @@ class ScrapeEventHandler
         }
 
         $context->setStage($stage);
-        PipelineLogger::success('scrape', [
+        $this->logger->success('scrape', [
             'job_id' => $context->jobId,
             'pipeline_stage' => 'stage_change',
             'crawler_stage' => $stage,
@@ -132,7 +134,7 @@ class ScrapeEventHandler
             if (is_numeric($totalUrls)) {
                 $context->setStats('total_urls', (int) $totalUrls);
             } else {
-                PipelineLogger::partial('scrape', [
+                $this->logger->partial('scrape', [
                     'job_id' => $context->jobId,
                     'pipeline_stage' => 'stage_change',
                     'crawler_stage' => $stage,
@@ -158,7 +160,7 @@ class ScrapeEventHandler
             $url = $completion['url'] ?? null;
             $urlHash = $completion['url_hash'] ?? null;
             if (!is_string($url) || trim($url) === '' || !is_string($urlHash) || trim($urlHash) === '') {
-                PipelineLogger::validationFailed('scrape', [
+                $this->logger->validationFailed('scrape', [
                     'job_id' => $context->jobId,
                     'doc_id' => is_scalar($urlHash) ? (string) $urlHash : null,
                     'source_url' => is_scalar($url) ? (string) $url : null,
@@ -170,7 +172,7 @@ class ScrapeEventHandler
             }
 
             $context->setStats('current_url', $url);
-            PipelineLogger::started('scrape', [
+            $this->logger->started('scrape', [
                 'job_id' => $context->jobId,
                 'doc_id' => $urlHash,
                 'source_url' => $url,
@@ -183,7 +185,8 @@ class ScrapeEventHandler
     {
         $this->datasetCreator->recordScrapeSummary($context, $packet->data);
         $context->setEndProcess(true);
-        PipelineLogger::success('scrape', [
+        $this->finalizer->executeFinalization($context);
+        $this->logger->success('scrape', [
             'job_id' => $context->jobId,
             'pipeline_stage' => 'summary',
             'statistics' => $packet->data['statistics'] ?? [],

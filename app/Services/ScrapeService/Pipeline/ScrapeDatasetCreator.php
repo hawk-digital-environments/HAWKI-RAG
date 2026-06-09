@@ -1,21 +1,25 @@
 <?php
+declare(strict_types=1);
 
 namespace App\Services\ScrapeService\Pipeline;
 
 use App\Models\ScrapedElement;
 use App\Models\ScrapeStatistics;
 use App\Services\Pipeline\PipelineDataValidator;
-use App\Services\Pipeline\PipelineLogger;
+use App\Services\Pipeline\PipelineStageLogger;
 use App\Services\ScrapeService\Data\ScrapeContext;
 use App\Services\StorageService\StorageService;
 use DateTime;
+use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Support\Str;
 
+#[Singleton]
 class ScrapeDatasetCreator
 {
     public function __construct(
-        protected StorageService $storageService,
-        protected PipelineDataValidator $validator,
+        protected readonly StorageService $storageService,
+        protected readonly PipelineDataValidator $validator,
+        protected readonly PipelineStageLogger $logger,
     ) {
     }
 
@@ -29,7 +33,7 @@ class ScrapeDatasetCreator
             $validation = $this->validator->validateScrapeElement($elementData);
             if ($validation['errors'] !== []) {
                 $message = implode('; ', $validation['errors']);
-                PipelineLogger::validationFailed('scrape', [
+                $this->logger->validationFailed('scrape', [
                     'job_id' => $context->jobId,
                     'doc_id' => $urlHash,
                     'pipeline_stage' => 'element_metadata',
@@ -42,7 +46,7 @@ class ScrapeDatasetCreator
             }
 
             if ($validation['warnings'] !== []) {
-                PipelineLogger::partial('scrape', [
+                $this->logger->partial('scrape', [
                     'job_id' => $context->jobId,
                     'doc_id' => $urlHash,
                     'pipeline_stage' => 'element_metadata',
@@ -92,7 +96,7 @@ class ScrapeDatasetCreator
                 'http_status' => $elementData['http_status'] ?? null,
             ]);
 
-            PipelineLogger::success('scrape', [
+            $this->logger->success('scrape', [
                 'job_id' => $context->jobId,
                 'doc_id' => $urlHash,
                 'source_url' => $pageUrl,
@@ -103,7 +107,7 @@ class ScrapeDatasetCreator
             ]);
         }
         catch (\Exception $exception){
-            PipelineLogger::failed('scrape', [
+            $this->logger->failed('scrape', [
                 'job_id' => $context->jobId,
                 'doc_id' => $urlHash,
                 'pipeline_stage' => 'element_persisted',
@@ -142,7 +146,7 @@ class ScrapeDatasetCreator
         $statistics = $summary['statistics'] ?? [];
         $timing = $summary['timing'] ?? [];
         if (!is_array($statistics) || !is_array($timing)) {
-            PipelineLogger::validationFailed('scrape', [
+            $this->logger->validationFailed('scrape', [
                 'job_id' => $context->jobId,
                 'pipeline_stage' => 'summary',
                 'error_message' => 'Scrape summary statistics or timing block is invalid.',
@@ -165,7 +169,7 @@ class ScrapeDatasetCreator
             'completed_at'=> $timing['completed_at'] ?? null,
         ]);
 
-        PipelineLogger::success('scrape', [
+        $this->logger->success('scrape', [
             'job_id' => $context->jobId,
             'pipeline_stage' => 'summary_recorded',
             'requests' => $statistics['requests'] ?? 0,
@@ -183,7 +187,7 @@ class ScrapeDatasetCreator
         try {
             return (new DateTime($value))->format('Y-m-d H:i:s');
         } catch (\Exception $e) {
-            PipelineLogger::partial('scrape', [
+            $this->logger->partial('scrape', [
                 'job_id' => $jobId,
                 'doc_id' => $docId,
                 'pipeline_stage' => 'element_metadata',

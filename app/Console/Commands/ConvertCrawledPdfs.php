@@ -1,10 +1,11 @@
 <?php
+declare(strict_types=1);
 
 namespace App\Console\Commands;
 
 use App\Services\FileConverter\DocumentConverter;
 use App\Services\Pipeline\PipelineDataValidator;
-use App\Services\Pipeline\PipelineLogger;
+use App\Services\Pipeline\PipelineStageLogger;
 use App\Services\Pipeline\PipelineStateService;
 use App\Support\PipelineExitCode;
 use Illuminate\Console\Command;
@@ -28,7 +29,12 @@ class ConvertCrawledPdfs extends Command
 
     protected $description = 'Backward-compatible alias for convert:crawled-files.';
 
-    public function handle(): int
+    public function handle(
+        DocumentConverter $converter,
+        PipelineDataValidator $validator,
+        PipelineStateService $state,
+        PipelineStageLogger $logger,
+    ): int
     {
         $outputDirArg = $this->argument('outputDir');
         if ($outputDirArg) {
@@ -49,11 +55,8 @@ class ConvertCrawledPdfs extends Command
             }
         }
 
-        $converter = app(DocumentConverter::class);
-        $validator = app(PipelineDataValidator::class);
-        $state = app(PipelineStateService::class);
         $jobId = (string) ($this->option('job-id') ?: $this->conversionJobId($outputDir));
-        PipelineLogger::started('convert', [
+        $logger->started('convert', [
             'job_id' => $jobId,
             'output_dir' => $outputDir,
             'extensions' => $this->option('extensions'),
@@ -88,7 +91,7 @@ class ConvertCrawledPdfs extends Command
             $scopeLabel = $scanAll ? 'recursive' : '**/files/*';
             $this->warn("No supported files found under $outputDir (extensions: {$extLabel}; scope: {$scopeLabel})");
             $this->writeFailedJson([], 0, 0, 0); // write empty report
-            PipelineLogger::skipped('convert', [
+            $logger->skipped('convert', [
                 'job_id' => $jobId,
                 'output_dir' => $outputDir,
                 'reason' => 'No supported source files found.',
@@ -133,7 +136,7 @@ class ConvertCrawledPdfs extends Command
 
             if ($choice === 'cancel') {
                 $this->info('Conversion cancelled by user request.');
-                PipelineLogger::skipped('convert', [
+                $logger->skipped('convert', [
                     'job_id' => $jobId,
                     'output_dir' => $outputDir,
                     'reason' => 'Conversion cancelled because existing outputs were found.',
@@ -194,7 +197,7 @@ class ConvertCrawledPdfs extends Command
                     throw new \RuntimeException('Unable to hash document (hash_file returned false).');
                 }
                 $docTitle = pathinfo($docInfo->getFilename(), PATHINFO_FILENAME);
-                PipelineLogger::started('convert', [
+                $logger->started('convert', [
                     'job_id' => $jobId,
                     'doc_id' => $convertedId,
                     'file_path' => $docPath,
@@ -223,7 +226,7 @@ class ConvertCrawledPdfs extends Command
                             }
                             $this->writeFileAtomically($metaPath, json_encode($meta, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
                             if ($markdownValidation['warnings'] !== [] || $metadataValidation['warnings'] !== []) {
-                                PipelineLogger::partial('convert', [
+                                $logger->partial('convert', [
                                     'job_id' => $jobId,
                                     'doc_id' => $convertedId,
                                     'file_path' => $docPath,
@@ -232,7 +235,7 @@ class ConvertCrawledPdfs extends Command
                                     'warnings' => array_merge($markdownValidation['warnings'], $metadataValidation['warnings']),
                                 ]);
                             }
-                            PipelineLogger::skipped('convert', [
+                            $logger->skipped('convert', [
                                 'job_id' => $jobId,
                                 'doc_id' => $convertedId,
                                 'file_path' => $docPath,
@@ -247,7 +250,7 @@ class ConvertCrawledPdfs extends Command
                             continue;
                         }
 
-                        PipelineLogger::partial('convert', [
+                        $logger->partial('convert', [
                             'job_id' => $jobId,
                             'doc_id' => $convertedId,
                             'file_path' => $docPath,
@@ -267,7 +270,7 @@ class ConvertCrawledPdfs extends Command
                     throw new \RuntimeException('Invalid converter output: ' . implode('; ', $filesValidation['errors']));
                 }
                 if ($filesValidation['warnings'] !== []) {
-                    PipelineLogger::partial('convert', [
+                    $logger->partial('convert', [
                         'job_id' => $jobId,
                         'doc_id' => $convertedId,
                         'file_path' => $docPath,
@@ -330,7 +333,7 @@ class ConvertCrawledPdfs extends Command
                     $this->writeFileAtomically($flatPath, $flatContent);
                 }
 
-                PipelineLogger::success('convert', [
+                $logger->success('convert', [
                     'job_id' => $jobId,
                     'doc_id' => $convertedId,
                     'file_path' => $docPath,
@@ -353,7 +356,7 @@ class ConvertCrawledPdfs extends Command
                     'file_local_path' => $docPath,
                     'error'          => $e->getMessage(),
                 ];
-                PipelineLogger::failed('convert', [
+                $logger->failed('convert', [
                     'job_id' => $jobId,
                     'doc_id' => isset($convertedId) && is_string($convertedId) ? $convertedId : null,
                     'file_path' => $docPath,
@@ -391,7 +394,7 @@ class ConvertCrawledPdfs extends Command
             'status_detail' => count($failed) > 0 ? 'partial' : 'complete',
         ];
         if (count($failed) > 0) {
-            PipelineLogger::partial('convert', $summaryContext);
+            $logger->partial('convert', $summaryContext);
             $state->partialStage($jobId, PipelineStateService::STAGE_CONVERT, [
                 'dataset_path' => $outputDir,
                 'counts' => $this->conversionCounts(count($docPaths), $processed, $skipped, $failed),
@@ -404,7 +407,7 @@ class ConvertCrawledPdfs extends Command
                 ],
             ]);
         } else {
-            PipelineLogger::success('convert', $summaryContext);
+            $logger->success('convert', $summaryContext);
             $state->completeStage($jobId, PipelineStateService::STAGE_CONVERT, [
                 'dataset_path' => $outputDir,
                 'counts' => $this->conversionCounts(count($docPaths), $processed, $skipped, $failed),

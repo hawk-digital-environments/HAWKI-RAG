@@ -1,10 +1,10 @@
 <?php
+declare(strict_types=1);
 
 namespace App\Services\ScrapeService\Data;
 
 use App\Models\ScrapeProcess;
 use App\Models\ScrapeStatistics;
-use App\Services\ScrapeService\Pipeline\ScrapeFinalizerService;
 use Exception;
 
 /**
@@ -107,8 +107,6 @@ class ScrapeContext
             return;
         }
         $this->setStage('finalization');
-        $finalizer = new ScrapeFinalizerService();
-        $finalizer->executeFinalization($this);
     }
 
 
