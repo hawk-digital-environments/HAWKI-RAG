@@ -1,9 +1,10 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Tests\Unit\Pipeline;
 
-use App\Services\Pipeline\PipelineDataValidator;
+use App\Services\Pipeline\Validation\PipelineDataValidator;
 use Tests\TestCase;
 
 class PipelineDataValidatorTest extends TestCase
@@ -37,7 +38,7 @@ class PipelineDataValidatorTest extends TestCase
         $validator = app(PipelineDataValidator::class);
 
         $valid = $validator->validateConvertedFiles([
-            'page.md' => '# Page Title' . PHP_EOL . PHP_EOL . 'Long enough markdown content.',
+            'page.md' => '# Page Title'.PHP_EOL.PHP_EOL.'Long enough markdown content.',
         ]);
 
         $this->assertSame([], $valid['errors']);

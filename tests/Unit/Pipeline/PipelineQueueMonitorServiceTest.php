@@ -1,12 +1,13 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Tests\Unit\Pipeline;
 
-use App\Services\Pipeline\PipelineQueueHealthPayloadService;
-use App\Services\Pipeline\PipelineQueueMonitorClient;
-use App\Services\Pipeline\PipelineQueueMonitorService;
-use App\Services\Pipeline\PipelineQueueTopologyService;
+use App\Services\Pipeline\Queues\PipelineQueueHealthPayloadService;
+use App\Services\Pipeline\Queues\PipelineQueueMonitorClient;
+use App\Services\Pipeline\Queues\PipelineQueueMonitorService;
+use App\Services\Pipeline\Queues\PipelineQueueTopologyService;
 use Illuminate\Support\Facades\Http;
 use Symfony\Component\Clock\MockClock;
 use Tests\TestCase;

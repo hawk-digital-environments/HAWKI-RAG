@@ -1,10 +1,11 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Tests\Unit\Pipeline;
 
 use App\Models\PipelineJob;
-use App\Services\Pipeline\PipelineTaskCounterService;
+use App\Services\Pipeline\Tasks\PipelineTaskCounterService;
 use Tests\TestCase;
 
 class PipelineTaskCounterServiceTest extends TestCase

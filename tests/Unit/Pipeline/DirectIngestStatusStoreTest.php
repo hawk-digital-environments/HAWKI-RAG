@@ -1,9 +1,10 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Tests\Unit\Pipeline;
 
-use App\Services\Pipeline\DirectIngestStatusStore;
+use App\Services\Pipeline\DirectIngest\DirectIngestStatusStore;
 use Illuminate\Support\Facades\File;
 use Tests\TestCase;
 
@@ -11,9 +12,9 @@ class DirectIngestStatusStoreTest extends TestCase
 {
     public function test_it_resolves_paths_modes_and_live_ingestions(): void
     {
-        $statusPath = sys_get_temp_dir() . '/hawki-ingest-status-' . uniqid() . '.json';
-        $cacheLogPath = sys_get_temp_dir() . '/hawki-ingest-cache-' . uniqid() . '.log';
-        $fullLogPath = sys_get_temp_dir() . '/hawki-ingest-full-' . uniqid() . '.log';
+        $statusPath = sys_get_temp_dir().'/hawki-ingest-status-'.uniqid().'.json';
+        $cacheLogPath = sys_get_temp_dir().'/hawki-ingest-cache-'.uniqid().'.log';
+        $fullLogPath = sys_get_temp_dir().'/hawki-ingest-full-'.uniqid().'.log';
         config()->set('config.ingest_status_path', $statusPath);
         config()->set('config.ingest_log_cache_path', $cacheLogPath);
         config()->set('config.ingest_log_path', $fullLogPath);
@@ -60,7 +61,7 @@ class DirectIngestStatusStoreTest extends TestCase
 
     public function test_it_loads_legacy_single_status_shape(): void
     {
-        $statusPath = sys_get_temp_dir() . '/hawki-ingest-status-legacy-' . uniqid() . '.json';
+        $statusPath = sys_get_temp_dir().'/hawki-ingest-status-legacy-'.uniqid().'.json';
         File::put($statusPath, json_encode([
             'pid' => 123,
             'status' => 'running',

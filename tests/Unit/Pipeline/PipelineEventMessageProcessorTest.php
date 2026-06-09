@@ -1,14 +1,15 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Tests\Unit\Pipeline;
 
 use App\Services\Pipeline\EventHandlers\PipelineEventHandler;
-use App\Services\Pipeline\PipelineEvent;
-use App\Services\Pipeline\PipelineEventBus;
-use App\Services\Pipeline\PipelineEventDecoder;
-use App\Services\Pipeline\PipelineEventLogger;
-use App\Services\Pipeline\PipelineEventMessageProcessor;
+use App\Services\Pipeline\Events\PipelineEvent;
+use App\Services\Pipeline\Events\PipelineEventBus;
+use App\Services\Pipeline\Events\PipelineEventDecoder;
+use App\Services\Pipeline\Events\PipelineEventLogger;
+use App\Services\Pipeline\Events\PipelineEventMessageProcessor;
 use App\Support\PipelineExitCode;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
@@ -54,7 +55,7 @@ class PipelineEventMessageProcessorTest extends TestCase
                 return true;
             }));
 
-        $exitCode = (new PipelineEventMessageProcessor(new PipelineEventDecoder(), $bus, new PipelineEventLogger()))
+        $exitCode = (new PipelineEventMessageProcessor(new PipelineEventDecoder, $bus, new PipelineEventLogger))
             ->process($command, $message, $handler);
 
         $this->assertSame(PipelineExitCode::SUCCESS, $exitCode);
@@ -109,7 +110,7 @@ class PipelineEventMessageProcessorTest extends TestCase
                 return true;
             }));
 
-        $exitCode = (new PipelineEventMessageProcessor(new PipelineEventDecoder(), $bus, new PipelineEventLogger()))
+        $exitCode = (new PipelineEventMessageProcessor(new PipelineEventDecoder, $bus, new PipelineEventLogger))
             ->process($command, $message, $handler);
 
         $this->assertSame(PipelineExitCode::RUNTIME_FAILURE, $exitCode);

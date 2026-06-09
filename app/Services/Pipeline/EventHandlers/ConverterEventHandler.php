@@ -1,14 +1,15 @@
 <?php
+
 declare(strict_types=1);
 
 namespace App\Services\Pipeline\EventHandlers;
 
 use App\Models\PipelineJob;
 use App\Services\FileConverter\DocumentConverter;
+use App\Services\Pipeline\Events\PipelineEvent;
+use App\Services\Pipeline\Events\PipelineEventBus;
+use App\Services\Pipeline\Events\PipelineEventStateService;
 use App\Services\Pipeline\Exceptions\PipelineEventHandlerException;
-use App\Services\Pipeline\PipelineEvent;
-use App\Services\Pipeline\PipelineEventBus;
-use App\Services\Pipeline\PipelineEventStateService;
 use App\Services\Pipeline\Repositories\PipelineJobRepository;
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Support\Facades\File;
@@ -22,8 +23,7 @@ class ConverterEventHandler implements PipelineEventHandler
         private readonly PipelineEventStateService $state,
         private readonly PipelineJobRepository $jobs,
         private readonly DocumentConverter $converter,
-    ) {
-    }
+    ) {}
 
     public function eventTypes(): array
     {
@@ -36,14 +36,15 @@ class ConverterEventHandler implements PipelineEventHandler
     {
         $event = PipelineEvent::normalize((string) $event['event_type'], $event);
         $path = (string) $event['local_path'];
-        if ($path === '' || !is_file($path)) {
+        if ($path === '' || ! is_file($path)) {
             throw PipelineEventHandlerException::conversionRequiresExistingLocalPath($path);
         }
 
-        if (!$this->isSupported($path)) {
+        if (! $this->isSupported($path)) {
             $this->state->upsertJob($event, PipelineJob::STATUS_SKIPPED, [
                 'reason' => 'Unsupported file extension.',
             ]);
+
             return;
         }
 
@@ -65,6 +66,7 @@ class ConverterEventHandler implements PipelineEventHandler
                     'converted_path' => $cached,
                 ]),
             ]));
+
             return;
         }
 
@@ -107,20 +109,20 @@ class ConverterEventHandler implements PipelineEventHandler
     private function convert(array $event, string $path, string $contentHash): array
     {
         $file = new SplFileInfo($path);
-        $outputDir = dirname($path) . DIRECTORY_SEPARATOR . 'converted_' . pathinfo($path, PATHINFO_FILENAME);
+        $outputDir = dirname($path).DIRECTORY_SEPARATOR.'converted_'.pathinfo($path, PATHINFO_FILENAME);
         File::ensureDirectoryExists($outputDir);
 
         $files = $this->converter->requestDocumentToMarkdown($file);
-        if (!is_array($files) || $files === []) {
+        if (! is_array($files) || $files === []) {
             throw PipelineEventHandlerException::converterReturnedNoFiles();
         }
 
         $markdownFiles = [];
         foreach ($files as $relative => $content) {
-            if (!is_string($content)) {
+            if (! is_string($content)) {
                 continue;
             }
-            $target = $outputDir . DIRECTORY_SEPARATOR . ltrim((string) $relative, DIRECTORY_SEPARATOR);
+            $target = $outputDir.DIRECTORY_SEPARATOR.ltrim((string) $relative, DIRECTORY_SEPARATOR);
             File::ensureDirectoryExists(dirname($target));
             File::put($target, $content);
 
@@ -132,7 +134,7 @@ class ConverterEventHandler implements PipelineEventHandler
         $markdownFiles = $this->sortByNaturalPath($markdownFiles);
         $markdownPath = $this->writeCombinedMarkdown($outputDir, $markdownFiles);
         if ($markdownPath === null) {
-            $markdownPath = dirname($path) . DIRECTORY_SEPARATOR . pathinfo($path, PATHINFO_FILENAME) . '_converted.md';
+            $markdownPath = dirname($path).DIRECTORY_SEPARATOR.pathinfo($path, PATHINFO_FILENAME).'_converted.md';
             File::put($markdownPath, $this->fallbackTextContent($files));
         }
 
@@ -152,7 +154,7 @@ class ConverterEventHandler implements PipelineEventHandler
             'version' => 'event-worker',
             'converted_at' => now()->toIso8601String(),
         ];
-        File::put($outputDir . DIRECTORY_SEPARATOR . 'conversion_meta.json', json_encode($metadata, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+        File::put($outputDir.DIRECTORY_SEPARATOR.'conversion_meta.json', json_encode($metadata, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
 
         return [
             'outputDir' => $outputDir,
@@ -161,7 +163,7 @@ class ConverterEventHandler implements PipelineEventHandler
     }
 
     /**
-     * @param array<string,string> $markdownFiles
+     * @param  array<string,string>  $markdownFiles
      */
     private function writeCombinedMarkdown(string $outputDir, array $markdownFiles): ?string
     {
@@ -175,21 +177,21 @@ class ConverterEventHandler implements PipelineEventHandler
                 continue;
             }
 
-            $sections[] = "<!-- converter-source: {$relative} -->\n\n" . trim($content);
+            $sections[] = "<!-- converter-source: {$relative} -->\n\n".trim($content);
         }
 
         if ($sections === []) {
             return null;
         }
 
-        $path = $outputDir . DIRECTORY_SEPARATOR . 'content_markdown.md';
-        File::put($path, implode("\n\n---\n\n", $sections) . "\n");
+        $path = $outputDir.DIRECTORY_SEPARATOR.'content_markdown.md';
+        File::put($path, implode("\n\n---\n\n", $sections)."\n");
 
         return $path;
     }
 
     /**
-     * @param array<string,string> $files
+     * @param  array<string,string>  $files
      * @return array<string,string>
      */
     private function sortByNaturalPath(array $files): array
@@ -200,13 +202,13 @@ class ConverterEventHandler implements PipelineEventHandler
     }
 
     /**
-     * @param array<string,string> $files
+     * @param  array<string,string>  $files
      */
     private function fallbackTextContent(array $files): string
     {
         $textFiles = [];
         foreach ($files as $relative => $content) {
-            if (!is_string($content) || trim($content) === '') {
+            if (! is_string($content) || trim($content) === '') {
                 continue;
             }
 
@@ -221,19 +223,19 @@ class ConverterEventHandler implements PipelineEventHandler
 
         uksort($textFiles, 'strnatcasecmp');
 
-        return implode("\n\n---\n\n", array_map('trim', $textFiles)) . "\n";
+        return implode("\n\n---\n\n", array_map('trim', $textFiles))."\n";
     }
 
     private function cachedConversion(string $path, string $contentHash): ?string
     {
-        $outputDir = dirname($path) . DIRECTORY_SEPARATOR . 'converted_' . pathinfo($path, PATHINFO_FILENAME);
-        $metaPath = $outputDir . DIRECTORY_SEPARATOR . 'conversion_meta.json';
-        if (!is_file($metaPath)) {
+        $outputDir = dirname($path).DIRECTORY_SEPARATOR.'converted_'.pathinfo($path, PATHINFO_FILENAME);
+        $metaPath = $outputDir.DIRECTORY_SEPARATOR.'conversion_meta.json';
+        if (! is_file($metaPath)) {
             return null;
         }
 
         $meta = json_decode((string) file_get_contents($metaPath), true);
-        if (!is_array($meta) || (string) ($meta['converted_id'] ?? '') !== $contentHash) {
+        if (! is_array($meta) || (string) ($meta['converted_id'] ?? '') !== $contentHash) {
             return null;
         }
 
@@ -243,13 +245,13 @@ class ConverterEventHandler implements PipelineEventHandler
         }
 
         foreach (($meta['files'] ?? []) as $relative) {
-            $candidate = $outputDir . DIRECTORY_SEPARATOR . ltrim((string) $relative, DIRECTORY_SEPARATOR);
+            $candidate = $outputDir.DIRECTORY_SEPARATOR.ltrim((string) $relative, DIRECTORY_SEPARATOR);
             if (is_file($candidate) && str_ends_with(strtolower($candidate), '.md')) {
                 return $candidate;
             }
         }
 
-        $flat = dirname($path) . DIRECTORY_SEPARATOR . pathinfo($path, PATHINFO_FILENAME) . '_converted.md';
+        $flat = dirname($path).DIRECTORY_SEPARATOR.pathinfo($path, PATHINFO_FILENAME).'_converted.md';
 
         return is_file($flat) ? $flat : null;
     }

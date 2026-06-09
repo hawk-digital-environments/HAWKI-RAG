@@ -3,7 +3,7 @@
 namespace App\Services\ScrapeService;
 
 use App\Models\ScrapeProcess;
-use App\Services\Pipeline\PipelineStateService;
+use App\Services\Pipeline\State\PipelineStateService;
 use App\Services\ScrapeService\Data\ScrapeJobRequest;
 use App\Services\ScrapeService\Data\ScrapeRequestResult;
 use Exception;
@@ -18,17 +18,12 @@ class ScrapeService
 {
     private const TASKS_UNAVAILABLE_MESSAGE = 'Please build the HAWKI-Scraper for getting available tasks.';
 
-
     /** ----------------
      *  PIPELINE CONTROLS
      --------------- **/
 
     /**
      * Start the scraping pipeline
-     *
-     * @param array $request
-     * @param callable|null $outputCallback
-     * @return ScrapeRequestResult
      */
     public function startPipeline(array $request, ?callable $outputCallback = null): ScrapeRequestResult
     {
@@ -50,15 +45,16 @@ class ScrapeService
             discoveryMode: $this->boolValue($request['discoveryMode'] ?? $defaults['discovery_mode'] ?? false),
         );
         $pipeline = app(ScraperPipelineService::class);
+
         return $pipeline->execute($jobRequest, $outputCallback);
     }
 
     /**
      *  STOP the scraping pipeline
      *  NOT IMPLIMENTED YET
+     *
      *  @todo Create a stop mechanism for scrape process
      *
-     * @param string $jobId
      * @return void
      */
     public function stopPipeline(string $jobId): array
@@ -91,7 +87,7 @@ class ScrapeService
         $path = (string) config('scraper.tasks_path', '/tasks');
         $result = $this->crawlerRequest('GET', $path);
 
-        if (!($result['success'] ?? false)) {
+        if (! ($result['success'] ?? false)) {
             return $this->tasksUnavailable(($taskUiResult['data'] ?? null) !== null ? $taskUiResult : $result);
         }
 
@@ -137,7 +133,7 @@ class ScrapeService
         ]);
 
         $result = $this->crawlerRequest($method, $path, $payload);
-        if (!($result['success'] ?? false)) {
+        if (! ($result['success'] ?? false)) {
             if ($taskUiResult !== null && ($taskUiResult['status'] ?? 502) !== 502) {
                 return $taskUiResult;
             }
@@ -200,27 +196,26 @@ class ScrapeService
         return $this->crawlerRequest('POST', "/jobs/{$jobId}/resume");
     }
 
-
     /** ------------------
      *  SCRAPE INFORMATION
     ------------------- **/
 
     /**
      * List all scrape processes
-     * @return array
      */
-    public function listScrapeJobs(): array{
+    public function listScrapeJobs(): array
+    {
         return ScrapeProcess::all()->toArray();
     }
 
     /**
      * Delete scraped Data
-     * @param string $jobId
+     *
      * @throws Exception
      */
     public function deleteScrapeJob(string $jobId): bool
     {
-        try{
+        try {
             $process = ScrapeProcess::where('job_id', $jobId)->firstOrFail();
             $elements = $process->elements;
             foreach ($elements as $element) {
@@ -228,10 +223,11 @@ class ScrapeService
             }
             $process->stats()->delete();
             $process->delete();
+
             return true;
-        }
-        catch (Exception $exception){
+        } catch (Exception $exception) {
             Log::error('failed to delete scrape job '.$jobId.': '.$exception->getMessage());
+
             return false;
         }
     }
@@ -240,7 +236,6 @@ class ScrapeService
      * Removes scraped files but keeps the database information
      * For after the time when data is already vectorized.
      *
-     * @param string $jobId
      * @return void
      */
     public function deleteScrapeContent(string $jobId): bool
@@ -261,49 +256,46 @@ class ScrapeService
                 return true;
             }
 
-            if ($target === $storageRoot || !str_starts_with($target, $storageRoot . DIRECTORY_SEPARATOR)) {
+            if ($target === $storageRoot || ! str_starts_with($target, $storageRoot.DIRECTORY_SEPARATOR)) {
                 Log::warning("refusing to delete scrape content outside storage root for job {$jobId}", [
                     'storage_root' => $storageRoot,
                     'target' => $target,
                 ]);
+
                 return false;
             }
 
             return File::deleteDirectory($target);
         } catch (Exception $exception) {
             Log::error('failed to delete scrape content '.$jobId.': '.$exception->getMessage());
+
             return false;
         }
     }
 
-
     /**
      * Get Specific Scrape Process information.
-     * @param string $jobId
-     * @return array
      */
-    public function getScrapeInformation(string $jobId): array{
+    public function getScrapeInformation(string $jobId): array
+    {
         $process = ScrapeProcess::where('job_id', $jobId)->firstOrFail();
         $data = $process->toArray();
         $data['stats'] = $process->stats;
+
         return $data;
     }
 
     /**
      * Get Specific ScrapedElement
+     *
      * @todo extract the file from the storage
-     * @param string $jobId
-     * @param int $elementId
-     * @return array
      */
     public function getScrapeResult(string $jobId, int $elementId): array
     {
         $process = ScrapeProcess::where('job_id', $jobId)->firstOrFail();
+
         return $process->elements()->findOrFail($elementId);
     }
-
-
-
 
     /** ------------------
      *  Extract Page Content
@@ -311,16 +303,15 @@ class ScrapeService
 
     /**
      * extracts the content of a specific page.
-     * @param string $url
-     * @return array
+     *
      * @throws ConnectionException
      */
     public function extractPageContent(string $url): array
     {
-        try{
+        try {
             $response = Http::timeout(300)
                 ->retry(2, 500, throw: false)
-                ->post(config('scraper.api_url'). '/scrape', [
+                ->post(config('scraper.api_url').'/scrape', [
                     'url' => $url,
                 ]);
 
@@ -335,17 +326,16 @@ class ScrapeService
                     ? 'Page content extracted successfully.'
                     : $this->errorMessageFromCrawlerData($data, $response->status()),
             ];
-        }
-        catch (JsonException $exception) {
+        } catch (JsonException $exception) {
             return [
                 'success' => false,
                 'status' => 502,
                 'data' => null,
                 'message' => 'Crawler returned invalid JSON: '.$exception->getMessage(),
             ];
-        }
-        catch (\Throwable $exception){
+        } catch (\Throwable $exception) {
             Log::error('failed to extract page content '.$exception->getMessage());
+
             return [
                 'success' => false,
                 'status' => 502,
@@ -362,8 +352,8 @@ class ScrapeService
         }
 
         return rtrim((string) config('scraper.storage_path'), DIRECTORY_SEPARATOR)
-            . DIRECTORY_SEPARATOR
-            . Str::slug($label, '-');
+            .DIRECTORY_SEPARATOR
+            .Str::slug($label, '-');
     }
 
     private function normalizeUrl(string $url): string
@@ -427,7 +417,7 @@ class ScrapeService
     private function crawlerRequest(string $method, string $path, array $payload = []): array
     {
         try {
-            $url = rtrim((string) config('scraper.api_url'), '/') . '/' . ltrim($path, '/');
+            $url = rtrim((string) config('scraper.api_url'), '/').'/'.ltrim($path, '/');
             $request = Http::timeout(30)
                 ->withHeaders($this->crawlerHeaders())
                 ->retry(2, 500, throw: false);
@@ -468,12 +458,12 @@ class ScrapeService
     private function listTaskUiTasks(): array
     {
         $profilesResult = $this->taskUiRequest('GET', (string) config('scraper.task_ui_profiles_path', '/api/profiles'));
-        if (!($profilesResult['success'] ?? false)) {
+        if (! ($profilesResult['success'] ?? false)) {
             return $profilesResult;
         }
 
         $tasksResult = $this->taskUiRequest('GET', (string) config('scraper.task_ui_tasks_path', '/api/tasks'));
-        if (!($tasksResult['success'] ?? false) && (int) ($tasksResult['status'] ?? 0) !== 404) {
+        if (! ($tasksResult['success'] ?? false) && (int) ($tasksResult['status'] ?? 0) !== 404) {
             return $tasksResult;
         }
 
@@ -494,7 +484,7 @@ class ScrapeService
         $defaultTasks = [];
         foreach ($profiles as $profile) {
             $task = $this->taskUiTaskForProfile($profile);
-            if (!isset($storedIds[$task['id']])) {
+            if (! isset($storedIds[$task['id']])) {
                 $defaultTasks[] = $task;
             }
         }
@@ -520,7 +510,7 @@ class ScrapeService
     private function startTaskUiJob(string $taskId, array $options = []): array
     {
         $tasksResult = $this->listTaskUiTasks();
-        if (!($tasksResult['success'] ?? false)) {
+        if (! ($tasksResult['success'] ?? false)) {
             return [
                 'success' => false,
                 'status' => $tasksResult['status'] ?? 502,
@@ -560,7 +550,7 @@ class ScrapeService
         }
 
         $profileResult = $this->taskUiRequest('GET', $this->taskUiProfilePath($profileId));
-        if (!($profileResult['success'] ?? false)) {
+        if (! ($profileResult['success'] ?? false)) {
             return [
                 'success' => false,
                 'status' => $profileResult['status'] ?? 502,
@@ -585,7 +575,7 @@ class ScrapeService
         $start = $this->taskUiStartPayload($task, $profile, $options);
         $result = $this->taskUiRequest('POST', (string) config('scraper.task_ui_submit_path', '/api/crawler/submit'), $start['payload']);
 
-        if (!($result['success'] ?? false)) {
+        if (! ($result['success'] ?? false)) {
             return [
                 'success' => false,
                 'status' => $result['status'] ?? 502,
@@ -638,7 +628,7 @@ class ScrapeService
         }
 
         try {
-            $url = $baseUrl . '/' . ltrim($path, '/');
+            $url = $baseUrl.'/'.ltrim($path, '/');
             $request = Http::timeout(10)
                 ->acceptJson()
                 ->retry(1, 250, throw: false);
@@ -689,13 +679,13 @@ class ScrapeService
     private function taskUiProfilePath(string $profileId): string
     {
         return rtrim((string) config('scraper.task_ui_profiles_path', '/api/profiles'), '/')
-            . '/'
-            . rawurlencode($profileId);
+            .'/'
+            .rawurlencode($profileId);
     }
 
     private function taskUiProfileEntries(mixed $data): array
     {
-        if (!is_array($data)) {
+        if (! is_array($data)) {
             return [];
         }
 
@@ -706,7 +696,7 @@ class ScrapeService
 
     private function taskUiProfileToUi(mixed $entry): ?array
     {
-        if (!is_array($entry)) {
+        if (! is_array($entry)) {
             return null;
         }
 
@@ -719,7 +709,7 @@ class ScrapeService
         $sitemap = is_array($profile['sitemap'] ?? null) ? $profile['sitemap'] : [];
         $hostEntrypoints = [];
         foreach ($this->stringList($entry['match_hosts'] ?? []) as $host) {
-            if (!str_starts_with($host, '*.')) {
+            if (! str_starts_with($host, '*.')) {
                 $hostEntrypoints[] = [
                     'type' => 'host',
                     'src' => $host,
@@ -759,7 +749,7 @@ class ScrapeService
         $tasks = [];
 
         foreach ($items as $item) {
-            if (!is_array($item)) {
+            if (! is_array($item)) {
                 continue;
             }
 
@@ -848,13 +838,13 @@ class ScrapeService
 
     private function taskUiEntrypoints(mixed $entrypoints): array
     {
-        if (!is_array($entrypoints)) {
+        if (! is_array($entrypoints)) {
             return [];
         }
 
         $normalized = [];
         foreach ($entrypoints as $entrypoint) {
-            if (!is_array($entrypoint)) {
+            if (! is_array($entrypoint)) {
                 continue;
             }
 
@@ -933,7 +923,7 @@ class ScrapeService
 
     private function stringList(mixed $value): array
     {
-        if (!is_array($value)) {
+        if (! is_array($value)) {
             return [];
         }
 
@@ -984,7 +974,7 @@ class ScrapeService
                 $item = ['id' => (string) $item, 'label' => (string) $item];
             }
 
-            if (!is_array($item)) {
+            if (! is_array($item)) {
                 continue;
             }
 
@@ -1049,7 +1039,7 @@ class ScrapeService
 
     private function taskItems(mixed $data): array
     {
-        if (!is_array($data)) {
+        if (! is_array($data)) {
             return [];
         }
 
@@ -1088,7 +1078,7 @@ class ScrapeService
 
     private function extractJobId(mixed $data): ?string
     {
-        if (!is_array($data)) {
+        if (! is_array($data)) {
             return null;
         }
 
@@ -1117,7 +1107,7 @@ class ScrapeService
     {
         $data = json_decode($body, true, 512, JSON_THROW_ON_ERROR);
 
-        if (!is_array($data)) {
+        if (! is_array($data)) {
             throw new JsonException('Expected JSON object response.');
         }
 
@@ -1158,13 +1148,13 @@ class ScrapeService
             return $detail;
         }
 
-        if (!is_array($detail)) {
+        if (! is_array($detail)) {
             return json_encode($detail, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?: 'unknown error';
         }
 
         $messages = [];
         foreach ($detail as $item) {
-            if (!is_array($item)) {
+            if (! is_array($item)) {
                 continue;
             }
 
@@ -1178,5 +1168,4 @@ class ScrapeService
             ? (json_encode($detail, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?: 'unknown validation error')
             : implode('; ', $messages);
     }
-
 }

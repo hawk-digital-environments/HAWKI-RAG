@@ -7,7 +7,7 @@ use App\Models\Document;
 use App\Models\PipelineJob;
 use App\Models\PipelineTask;
 use App\Services\Pipeline\EventHandlers\IngestionEventHandler;
-use App\Services\Pipeline\PipelineEvent;
+use App\Services\Pipeline\Events\PipelineEvent;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;

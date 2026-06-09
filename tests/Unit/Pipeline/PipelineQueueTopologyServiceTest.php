@@ -1,9 +1,10 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Tests\Unit\Pipeline;
 
-use App\Services\Pipeline\PipelineQueueTopologyService;
+use App\Services\Pipeline\Queues\PipelineQueueTopologyService;
 use Tests\TestCase;
 
 class PipelineQueueTopologyServiceTest extends TestCase

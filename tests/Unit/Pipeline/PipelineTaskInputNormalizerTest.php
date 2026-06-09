@@ -1,10 +1,11 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Tests\Unit\Pipeline;
 
 use App\Models\PipelineJob;
-use App\Services\Pipeline\PipelineTaskInputNormalizer;
+use App\Services\Pipeline\Tasks\PipelineTaskInputNormalizer;
 use Illuminate\Support\Carbon;
 use Tests\TestCase;
 

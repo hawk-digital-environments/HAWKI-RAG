@@ -2,12 +2,12 @@
 
 namespace Tests\Feature;
 
-use App\Models\PipelineJob;
 use App\Models\PipelineEventRecord;
+use App\Models\PipelineJob;
 use App\Models\PipelineTask;
 use App\Models\ScrapedElement;
-use App\Services\Pipeline\PipelineEvent;
-use App\Services\Pipeline\PipelineEventBus;
+use App\Services\Pipeline\Events\PipelineEvent;
+use App\Services\Pipeline\Events\PipelineEventBus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Str;
@@ -310,7 +310,7 @@ class PipelineTaskOrchestrationTest extends TestCase
                 'errorMessage' => 'Converter failed',
             ]);
 
-        $this->getJson('/api/pipeline/tasks/task-dashboard/events?event_type=' . PipelineEvent::JOB_FAILED)
+        $this->getJson('/api/pipeline/tasks/task-dashboard/events?event_type='.PipelineEvent::JOB_FAILED)
             ->assertOk()
             ->assertJsonCount(1, 'events')
             ->assertJsonPath('events.0.eventType', PipelineEvent::JOB_FAILED);

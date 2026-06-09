@@ -1,9 +1,10 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Tests\Unit\Pipeline;
 
-use App\Services\Pipeline\PipelineUploadIdentifierFactory;
+use App\Services\Pipeline\Uploads\PipelineUploadIdentifierFactory;
 use App\Services\Pipeline\Values\PipelineStoredUpload;
 use Illuminate\Support\Carbon;
 use Tests\TestCase;
@@ -42,7 +43,7 @@ class PipelineUploadIdentifierFactoryTest extends TestCase
         $jobId = app(PipelineUploadIdentifierFactory::class)->convertJobId('task-1', $storedUpload);
 
         $this->assertSame(
-            'convert_' . substr(hash('sha256', 'task-1|content-hash|/shared/task/sample-abc123.pdf'), 0, 24),
+            'convert_'.substr(hash('sha256', 'task-1|content-hash|/shared/task/sample-abc123.pdf'), 0, 24),
             $jobId,
         );
     }

@@ -1,10 +1,11 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Tests\Unit\Pipeline;
 
-use App\Services\Pipeline\PipelineArchitectureService;
-use App\Services\Pipeline\PipelineEvent;
+use App\Services\Pipeline\Architecture\PipelineArchitectureService;
+use App\Services\Pipeline\Events\PipelineEvent;
 use Tests\TestCase;
 
 class PipelineArchitectureServiceTest extends TestCase

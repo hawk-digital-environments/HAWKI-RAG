@@ -1,9 +1,10 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Tests\Unit\Pipeline;
 
-use App\Services\Pipeline\DirectIngestStopService;
+use App\Services\Pipeline\DirectIngest\DirectIngestStopService;
 use Illuminate\Support\Facades\File;
 use Tests\TestCase;
 
@@ -11,7 +12,7 @@ class DirectIngestStopServiceTest extends TestCase
 {
     public function test_it_returns_noop_when_no_ingests_are_running(): void
     {
-        $statusPath = sys_get_temp_dir() . '/hawki-ingest-stop-empty-' . uniqid() . '.json';
+        $statusPath = sys_get_temp_dir().'/hawki-ingest-stop-empty-'.uniqid().'.json';
         config()->set('config.ingest_status_path', $statusPath);
 
         try {
@@ -28,7 +29,7 @@ class DirectIngestStopServiceTest extends TestCase
 
     public function test_it_marks_stale_running_pid_as_stopped(): void
     {
-        $statusPath = sys_get_temp_dir() . '/hawki-ingest-stop-' . uniqid() . '.json';
+        $statusPath = sys_get_temp_dir().'/hawki-ingest-stop-'.uniqid().'.json';
         $pid = 2147483647;
         config()->set('config.ingest_status_path', $statusPath);
         File::put($statusPath, json_encode([

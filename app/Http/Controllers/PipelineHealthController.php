@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers;
 
-use App\Services\Pipeline\PipelineQueueMonitorService;
+use App\Services\Pipeline\Queues\PipelineQueueMonitorService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -10,8 +10,7 @@ class PipelineHealthController extends Controller
 {
     public function __construct(
         private readonly PipelineQueueMonitorService $queues,
-    ) {
-    }
+    ) {}
 
     public function queues(Request $request): JsonResponse
     {

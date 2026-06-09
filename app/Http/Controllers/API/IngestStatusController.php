@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace App\Http\Controllers\API;
@@ -6,7 +7,7 @@ namespace App\Http\Controllers\API;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Pipeline\ClearDirectIngestStatusRequest;
 use App\Http\Requests\Pipeline\ShowDirectIngestStatusRequest;
-use App\Services\Pipeline\DirectIngestStatusService;
+use App\Services\Pipeline\DirectIngest\DirectIngestStatusService;
 use App\Services\Pipeline\Values\DirectIngestActionResult;
 use Illuminate\Http\JsonResponse;
 

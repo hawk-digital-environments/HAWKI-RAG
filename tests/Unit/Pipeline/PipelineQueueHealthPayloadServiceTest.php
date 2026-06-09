@@ -1,9 +1,10 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Tests\Unit\Pipeline;
 
-use App\Services\Pipeline\PipelineQueueHealthPayloadService;
+use App\Services\Pipeline\Queues\PipelineQueueHealthPayloadService;
 use Tests\TestCase;
 
 class PipelineQueueHealthPayloadServiceTest extends TestCase

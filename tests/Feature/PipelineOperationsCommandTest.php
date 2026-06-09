@@ -1,9 +1,10 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Tests\Feature;
 
-use App\Services\Pipeline\PipelineEventBus;
+use App\Services\Pipeline\Events\PipelineEventBus;
 use App\Services\Rag\RagRabbitMQ;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;

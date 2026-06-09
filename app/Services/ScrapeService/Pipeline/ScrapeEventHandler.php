@@ -1,9 +1,10 @@
 <?php
+
 declare(strict_types=1);
 
 namespace App\Services\ScrapeService\Pipeline;
 
-use App\Services\Pipeline\PipelineStageLogger;
+use App\Services\Pipeline\State\PipelineStageLogger;
 use App\Services\ScrapeService\Data\ScrapeContext;
 use App\Services\ScrapeService\Data\ScrapeEventPacket;
 use Exception;
@@ -16,13 +17,12 @@ class ScrapeEventHandler
         private readonly ScrapeDatasetCreator $datasetCreator,
         private readonly ScrapeFinalizerService $finalizer,
         private readonly PipelineStageLogger $logger,
-    ) {
-    }
+    ) {}
 
-
-    public function handle(array $payload){
+    public function handle(array $payload)
+    {
         // Validate message structure
-        if (!$this->isValidEventPacket($payload)) {
+        if (! $this->isValidEventPacket($payload)) {
             $this->logger->validationFailed('scrape', [
                 'job_id' => $payload['job_id'] ?? null,
                 'pipeline_stage' => 'event_packet',
@@ -30,6 +30,7 @@ class ScrapeEventHandler
                 'event_name' => $payload['event'] ?? null,
                 'payload_keys' => array_keys($payload),
             ]);
+
             return;
         }
         // Create ScrapeEventPacket from the incoming message
@@ -41,9 +42,6 @@ class ScrapeEventHandler
 
     /**
      * Validate event packet structure.
-     *
-     * @param array $data
-     * @return bool
      */
     protected function isValidEventPacket(array $data): bool
     {
@@ -59,9 +57,6 @@ class ScrapeEventHandler
 
     /**
      * Create a ScrapeEventPacket from decoded payload.
-     *
-     * @param array $data
-     * @return ScrapeEventPacket
      */
     protected function createScrapeEventPacket(array $data): ScrapeEventPacket
     {
@@ -76,8 +71,6 @@ class ScrapeEventHandler
     /**
      * Process a validated event packet.
      *
-     * @param ScrapeEventPacket $packet
-     * @return void
      * @throws Exception
      */
     protected function processEvent(ScrapeEventPacket $packet): void
@@ -90,14 +83,14 @@ class ScrapeEventHandler
             'event_name' => $packet->event,
         ]);
 
-        switch($packet->event){
-            case('stage'):
+        switch ($packet->event) {
+            case 'stage':
                 $this->processStageChange($packet, $context);
                 break;
-            case('report'):
+            case 'report':
                 $this->processJobReport($packet, $context);
                 break;
-            case('summary'):
+            case 'summary':
                 $this->processSummary($packet, $context);
                 break;
             default:
@@ -113,13 +106,14 @@ class ScrapeEventHandler
     protected function processStageChange(ScrapeEventPacket $packet, ScrapeContext $context): void
     {
         $stage = $packet->data['stage'] ?? null;
-        if (!is_string($stage) || trim($stage) === '') {
+        if (! is_string($stage) || trim($stage) === '') {
             $this->logger->validationFailed('scrape', [
                 'job_id' => $context->jobId,
                 'pipeline_stage' => 'stage_change',
                 'error_message' => 'Stage event is missing a valid stage value.',
             ]);
             $context->addError('Stage event is missing a valid stage value.');
+
             return;
         }
 
@@ -129,7 +123,7 @@ class ScrapeEventHandler
             'pipeline_stage' => 'stage_change',
             'crawler_stage' => $stage,
         ]);
-        if($stage === 'sitemap_detected'){
+        if ($stage === 'sitemap_detected') {
             $totalUrls = $packet->data['details']['total_urls'] ?? null;
             if (is_numeric($totalUrls)) {
                 $context->setStats('total_urls', (int) $totalUrls);
@@ -150,16 +144,16 @@ class ScrapeEventHandler
      */
     protected function processJobReport(ScrapeEventPacket $packet, ScrapeContext $context): void
     {
-        if(array_key_exists('stats', $packet->data)){
-            foreach($packet->data['stats'] as $name => $value){
+        if (array_key_exists('stats', $packet->data)) {
+            foreach ($packet->data['stats'] as $name => $value) {
                 $context->setStats($name, $value);
             }
         }
-        if(array_key_exists('url_completion', $packet->data)){
+        if (array_key_exists('url_completion', $packet->data)) {
             $completion = $packet->data['url_completion'];
             $url = $completion['url'] ?? null;
             $urlHash = $completion['url_hash'] ?? null;
-            if (!is_string($url) || trim($url) === '' || !is_string($urlHash) || trim($urlHash) === '') {
+            if (! is_string($url) || trim($url) === '' || ! is_string($urlHash) || trim($urlHash) === '') {
                 $this->logger->validationFailed('scrape', [
                     'job_id' => $context->jobId,
                     'doc_id' => is_scalar($urlHash) ? (string) $urlHash : null,
@@ -168,6 +162,7 @@ class ScrapeEventHandler
                     'error_message' => 'url_completion is missing url or url_hash.',
                 ]);
                 $context->addError('url_completion is missing url or url_hash.');
+
                 return;
             }
 
@@ -181,6 +176,7 @@ class ScrapeEventHandler
             $this->datasetCreator->createElementData($context, $urlHash);
         }
     }
+
     protected function processSummary(ScrapeEventPacket $packet, ScrapeContext $context): void
     {
         $this->datasetCreator->recordScrapeSummary($context, $packet->data);
@@ -192,6 +188,4 @@ class ScrapeEventHandler
             'statistics' => $packet->data['statistics'] ?? [],
         ]);
     }
-
-
 }

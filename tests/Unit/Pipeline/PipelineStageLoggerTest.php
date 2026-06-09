@@ -1,9 +1,10 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Tests\Unit\Pipeline;
 
-use App\Services\Pipeline\PipelineStageLogger;
+use App\Services\Pipeline\State\PipelineStageLogger;
 use Illuminate\Support\Facades\Log;
 use Mockery;
 use Tests\TestCase;
@@ -22,7 +23,7 @@ class PipelineStageLoggerTest extends TestCase
 
         $channel->shouldReceive('log')
             ->once()
-            ->with('error', PipelineStageLogger::EVENT, Mockery::on(function (array $context) use ($exception): bool {
+            ->with('error', PipelineStageLogger::EVENT, Mockery::on(function (array $context): bool {
                 $this->assertSame(PipelineStageLogger::EVENT, $context['event']);
                 $this->assertSame('scrape', $context['stage']);
                 $this->assertSame('failed', $context['status']);

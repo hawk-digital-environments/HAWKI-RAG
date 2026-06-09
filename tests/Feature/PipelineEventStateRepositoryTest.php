@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Tests\Feature;
@@ -6,8 +7,8 @@ namespace Tests\Feature;
 use App\Models\Dataset;
 use App\Models\PipelineJob;
 use App\Models\PipelineTask;
-use App\Services\Pipeline\PipelineEvent;
-use App\Services\Pipeline\PipelineEventStateService;
+use App\Services\Pipeline\Events\PipelineEvent;
+use App\Services\Pipeline\Events\PipelineEventStateService;
 use App\Services\Pipeline\Repositories\PipelineJobRepository;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
@@ -115,12 +116,12 @@ class PipelineEventStateRepositoryTest extends TestCase
     private function task(string $taskId): PipelineTask
     {
         $dataset = Dataset::query()->create([
-            'dataset_id' => $taskId . '-dataset',
-            'name' => $taskId . ' Dataset',
+            'dataset_id' => $taskId.'-dataset',
+            'name' => $taskId.' Dataset',
             'description' => null,
             'status' => Dataset::STATUS_ACTIVE,
-            'qdrant_collection' => 'hawki_' . str_replace('-', '_', $taskId),
-            'neo4j_namespace' => 'hawki_' . str_replace('-', '_', $taskId),
+            'qdrant_collection' => 'hawki_'.str_replace('-', '_', $taskId),
+            'neo4j_namespace' => 'hawki_'.str_replace('-', '_', $taskId),
             'created_at' => now(),
         ]);
 

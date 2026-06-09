@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Tests\Feature;
@@ -9,7 +10,7 @@ use App\Models\JobProcessingState;
 use App\Models\PipelineJob;
 use App\Models\PipelineTask;
 use App\Models\ScrapedElement;
-use App\Services\Pipeline\PipelineEvent;
+use App\Services\Pipeline\Events\PipelineEvent;
 use App\Services\Pipeline\Repositories\PipelineIngestionRepository;
 use App\Services\Pipeline\Repositories\PipelineJobRepository;
 use App\Services\Pipeline\Repositories\PipelineScrapeHistoryRepository;
@@ -510,8 +511,7 @@ class PipelineRepositoryReadTest extends TestCase
     private function task(
         string $taskId = 'task_repository_read',
         ?Carbon $startedAt = null,
-    ): PipelineTask
-    {
+    ): PipelineTask {
         $dataset = $this->dataset('repository-read-dataset');
 
         return PipelineTask::query()->create([
@@ -532,8 +532,7 @@ class PipelineRepositoryReadTest extends TestCase
         string $jobType = PipelineJob::TYPE_CONVERT,
         ?string $localPath = null,
         ?string $contentHash = null,
-    ): PipelineJob
-    {
+    ): PipelineJob {
         return PipelineJob::query()->create([
             'job_id' => $jobId,
             'task_id' => $task->task_id,
@@ -557,8 +556,8 @@ class PipelineRepositoryReadTest extends TestCase
                 'name' => 'Repository Read Dataset',
                 'description' => null,
                 'status' => Dataset::STATUS_ACTIVE,
-                'qdrant_collection' => 'hawki_' . strtolower($safeDatasetId),
-                'neo4j_namespace' => 'hawki_' . strtolower($safeDatasetId),
+                'qdrant_collection' => 'hawki_'.strtolower($safeDatasetId),
+                'neo4j_namespace' => 'hawki_'.strtolower($safeDatasetId),
                 'created_at' => now(),
             ],
         );

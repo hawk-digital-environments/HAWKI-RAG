@@ -1,11 +1,12 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Tests\Unit\Pipeline;
 
 use App\Models\Dataset;
 use App\Models\PipelineTask;
-use App\Services\Pipeline\PipelineTaskMetadataService;
+use App\Services\Pipeline\Tasks\PipelineTaskMetadataService;
 use Symfony\Component\Clock\MockClock;
 use Tests\TestCase;
 

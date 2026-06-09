@@ -2,7 +2,7 @@
 
 namespace App\Console\Commands;
 
-use App\Services\Pipeline\PipelineTaskService;
+use App\Services\Pipeline\Tasks\PipelineTaskService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Str;
 
@@ -71,7 +71,7 @@ class DemoPipelineTask extends Command
             return self::FAILURE;
         }
 
-        $taskId = 'demo_' . now()->format('Ymd_His') . '_' . Str::lower(Str::random(6));
+        $taskId = 'demo_'.now()->format('Ymd_His').'_'.Str::lower(Str::random(6));
         $input = [
             'task_id' => $taskId,
             'dataset_id' => $dataset,
@@ -91,11 +91,11 @@ class DemoPipelineTask extends Command
         $input['metadata']['rag_ingest_graph'] = $graph;
 
         $this->line('HAWKI RAG demo pipeline');
-        $this->line('Task ID: ' . $taskId);
-        $this->line('Dataset: ' . $dataset);
+        $this->line('Task ID: '.$taskId);
+        $this->line('Dataset: '.$dataset);
         $graphLabel = (bool) ($input['metadata']['graph'] ?? false);
-        $this->line('URL limit: ' . count($urls));
-        $this->line('Graph metadata: ' . ($graphLabel ? 'true' : 'false'));
+        $this->line('URL limit: '.count($urls));
+        $this->line('Graph metadata: '.($graphLabel ? 'true' : 'false'));
 
         if ($dryRun) {
             $this->warn('Dry run only. No task, jobs, or RabbitMQ events were created.');
@@ -114,12 +114,12 @@ class DemoPipelineTask extends Command
 
         $this->newLine();
         $this->info('Created demo pipeline task.');
-        $this->line('Task ID: ' . $task->task_id);
-        $this->line('Status: ' . ($status['status'] ?? $task->status));
+        $this->line('Task ID: '.$task->task_id);
+        $this->line('Status: '.($status['status'] ?? $task->status));
         $this->line("Jobs created: {$jobsTotal}");
         $this->line("Queued scrape jobs: {$queued}");
         $this->line("Skipped scrape jobs: {$skipped}");
-        $this->line('RabbitMQ events requested: ' . $queued . ' scrape.requested event(s).');
+        $this->line('RabbitMQ events requested: '.$queued.' scrape.requested event(s).');
         $this->printUrls($urls);
         $this->printDashboardUrls();
         $this->printWorkerCommands();
@@ -145,7 +145,7 @@ class DemoPipelineTask extends Command
     private function configuredDemoUrls(): array
     {
         $configured = env('PIPELINE_DEMO_URLS');
-        if (!is_string($configured) || trim($configured) === '') {
+        if (! is_string($configured) || trim($configured) === '') {
             return [];
         }
 
@@ -157,18 +157,18 @@ class DemoPipelineTask extends Command
         $this->newLine();
         $this->line('Seed URLs:');
         foreach ($urls as $url) {
-            $this->line('  - ' . $url);
+            $this->line('  - '.$url);
         }
     }
 
     private function printDashboardUrls(): void
     {
         $this->newLine();
-        $this->line('Dashboard URL: ' . url('/pipeline-dashboard'));
+        $this->line('Dashboard URL: '.url('/pipeline-dashboard'));
 
         $mountedUrl = $this->mountedDashboardUrl();
         if ($mountedUrl !== null && $mountedUrl !== url('/pipeline-dashboard')) {
-            $this->line('Mounted dashboard URL: ' . $mountedUrl);
+            $this->line('Mounted dashboard URL: '.$mountedUrl);
         }
     }
 
@@ -193,11 +193,11 @@ class DemoPipelineTask extends Command
         }
 
         $parts = parse_url($appUrl);
-        if (!is_array($parts) || !isset($parts['scheme'], $parts['host'])) {
+        if (! is_array($parts) || ! isset($parts['scheme'], $parts['host'])) {
             return null;
         }
 
-        $origin = $parts['scheme'] . '://' . $parts['host'] . (isset($parts['port']) ? ':' . $parts['port'] : '');
+        $origin = $parts['scheme'].'://'.$parts['host'].(isset($parts['port']) ? ':'.$parts['port'] : '');
         $path = trim((string) ($parts['path'] ?? ''), '/');
 
         if ($path === '') {
@@ -209,7 +209,7 @@ class DemoPipelineTask extends Command
             return null;
         }
 
-        return $origin . '/' . trim($path . '/pipeline-dashboard', '/');
+        return $origin.'/'.trim($path.'/pipeline-dashboard', '/');
     }
 
     private function stringOption(string $name): ?string
@@ -244,5 +244,4 @@ class DemoPipelineTask extends Command
 
         return is_bool($parsed) ? $parsed : null;
     }
-
 }

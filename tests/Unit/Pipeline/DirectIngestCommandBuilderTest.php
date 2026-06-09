@@ -1,9 +1,10 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Tests\Unit\Pipeline;
 
-use App\Services\Pipeline\DirectIngestCommandBuilder;
+use App\Services\Pipeline\DirectIngest\DirectIngestCommandBuilder;
 use Tests\TestCase;
 
 class DirectIngestCommandBuilderTest extends TestCase

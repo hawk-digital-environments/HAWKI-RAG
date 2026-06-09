@@ -2,7 +2,7 @@
 
 namespace App\Console\Commands\Pipeline;
 
-use App\Services\Pipeline\PipelineEventBus;
+use App\Services\Pipeline\Events\PipelineEventBus;
 use Illuminate\Console\Command;
 
 class DeclareEventTopologyCommand extends Command
@@ -21,7 +21,7 @@ class DeclareEventTopologyCommand extends Command
             : array_keys($configuredWorkers);
 
         foreach ($workers as $name) {
-            if (!array_key_exists((string) $name, $configuredWorkers)) {
+            if (! array_key_exists((string) $name, $configuredWorkers)) {
                 $this->error("Unknown pipeline event worker: {$name}");
 
                 return self::FAILURE;

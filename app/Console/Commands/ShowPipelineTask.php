@@ -2,7 +2,7 @@
 
 namespace App\Console\Commands;
 
-use App\Services\Pipeline\PipelineTaskService;
+use App\Services\Pipeline\Tasks\PipelineTaskService;
 use Illuminate\Console\Command;
 
 class ShowPipelineTask extends Command
@@ -15,7 +15,7 @@ class ShowPipelineTask extends Command
     public function handle(PipelineTaskService $tasks): int
     {
         $task = $tasks->show((string) $this->argument('task_id'));
-        if (!$task) {
+        if (! $task) {
             $this->error('Pipeline task was not found.');
 
             return self::FAILURE;

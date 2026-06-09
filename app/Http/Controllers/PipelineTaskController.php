@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace App\Http\Controllers;
@@ -7,15 +8,14 @@ use App\Http\Requests\Pipeline\ListPipelineTaskEventsRequest;
 use App\Http\Requests\Pipeline\ListPipelineTasksRequest;
 use App\Http\Requests\Pipeline\StartPipelineTaskRequest;
 use App\Http\Requests\Pipeline\UpsertPipelineJobRequest;
-use App\Services\Pipeline\PipelineTaskService;
+use App\Services\Pipeline\Tasks\PipelineTaskService;
 use Illuminate\Http\JsonResponse;
 
 class PipelineTaskController extends Controller
 {
     public function __construct(
         private readonly PipelineTaskService $tasks,
-    ) {
-    }
+    ) {}
 
     public function index(ListPipelineTasksRequest $request): JsonResponse
     {
@@ -40,7 +40,7 @@ class PipelineTaskController extends Controller
     public function show(string $taskId): JsonResponse
     {
         $task = $this->tasks->show($taskId);
-        if (!$task) {
+        if (! $task) {
             return response()->json([
                 'success' => false,
                 'message' => "Pipeline task {$taskId} was not found.",
@@ -105,7 +105,7 @@ class PipelineTaskController extends Controller
 
     private function taskActionResponse(string $taskId, mixed $task): JsonResponse
     {
-        if (!$task) {
+        if (! $task) {
             return response()->json([
                 'success' => false,
                 'message' => "Pipeline task {$taskId} was not found.",

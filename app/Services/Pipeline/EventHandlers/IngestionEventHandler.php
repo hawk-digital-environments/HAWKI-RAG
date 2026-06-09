@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace App\Services\Pipeline\EventHandlers;
@@ -6,10 +7,10 @@ namespace App\Services\Pipeline\EventHandlers;
 use App\Models\JobProcessingState;
 use App\Models\PipelineJob;
 use App\Services\Datasets\DatasetService;
+use App\Services\Pipeline\Events\PipelineEvent;
+use App\Services\Pipeline\Events\PipelineEventBus;
+use App\Services\Pipeline\Events\PipelineEventStateService;
 use App\Services\Pipeline\Exceptions\PipelineEventHandlerException;
-use App\Services\Pipeline\PipelineEvent;
-use App\Services\Pipeline\PipelineEventBus;
-use App\Services\Pipeline\PipelineEventStateService;
 use App\Services\Pipeline\Repositories\PipelineIngestionRepository;
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Support\Facades\File;
@@ -24,8 +25,7 @@ class IngestionEventHandler implements PipelineEventHandler
         private readonly PipelineEventStateService $state,
         private readonly DatasetService $datasets,
         private readonly PipelineIngestionRepository $ingestion,
-    ) {
-    }
+    ) {}
 
     public function eventTypes(): array
     {
@@ -44,6 +44,7 @@ class IngestionEventHandler implements PipelineEventHandler
             $this->state->upsertJob($this->ingestEventForPath($event, $event['local_path'] ?: $event['source_url'] ?: 'skipped'), PipelineJob::STATUS_SKIPPED, [
                 'reason' => 'No ingestable content path was found.',
             ]);
+
             return;
         }
 
@@ -95,7 +96,7 @@ class IngestionEventHandler implements PipelineEventHandler
         $response = Http::timeout((int) config('communication.rabbitmq.pipeline_ingestion.bridge_timeout', 3600))
             ->acceptJson()
             ->asJson()
-            ->post($this->bridgeUrl() . '/ingest', $this->bridgePayload($event, $text, $path));
+            ->post($this->bridgeUrl().'/ingest', $this->bridgePayload($event, $text, $path));
 
         if ($response->failed()) {
             throw PipelineEventHandlerException::bridgeReturnedHttpFailure($response->status(), Str::limit($response->body(), 1000));
@@ -120,7 +121,7 @@ class IngestionEventHandler implements PipelineEventHandler
     {
         $path = $this->resolvePath($path) ?? $path;
         $hash = is_file($path) ? (hash_file('sha256', $path) ?: hash('sha256', $path)) : hash('sha256', $path);
-        $jobId = 'ingest_' . substr(hash('sha256', ($event['task_id'] ?? '') . '|' . ($event['job_id'] ?? '') . '|' . $path), 0, 24);
+        $jobId = 'ingest_'.substr(hash('sha256', ($event['task_id'] ?? '').'|'.($event['job_id'] ?? '').'|'.$path), 0, 24);
         $datasetId = (string) ($event['dataset_id'] ?: 'default');
 
         return PipelineEvent::normalize(PipelineEvent::CONTENT_INGESTED, [
@@ -172,13 +173,13 @@ class IngestionEventHandler implements PipelineEventHandler
             return null;
         }
 
-        if (Str::startsWith($path, ['/','\\'])) {
+        if (Str::startsWith($path, ['/', '\\'])) {
             return realpath($path) ?: $path;
         }
 
         $candidate = rtrim((string) config('communication.rabbitmq.pipeline_ingestion.shared_storage_root', '/app/shared'), DIRECTORY_SEPARATOR)
-            . DIRECTORY_SEPARATOR
-            . ltrim($path, DIRECTORY_SEPARATOR);
+            .DIRECTORY_SEPARATOR
+            .ltrim($path, DIRECTORY_SEPARATOR);
 
         return realpath($candidate) ?: $candidate;
     }

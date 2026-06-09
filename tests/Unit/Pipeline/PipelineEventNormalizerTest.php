@@ -1,12 +1,13 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Tests\Unit\Pipeline;
 
 use App\Models\PipelineJob;
-use App\Services\Pipeline\PipelineEvent;
-use App\Services\Pipeline\PipelineEventNormalizer;
-use App\Services\Pipeline\PipelineEventTypeRegistry;
+use App\Services\Pipeline\Events\PipelineEvent;
+use App\Services\Pipeline\Events\PipelineEventNormalizer;
+use App\Services\Pipeline\Events\PipelineEventTypeRegistry;
 use Symfony\Component\Clock\MockClock;
 use Tests\TestCase;
 

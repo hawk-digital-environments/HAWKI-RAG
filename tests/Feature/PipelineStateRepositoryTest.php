@@ -1,12 +1,13 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Tests\Feature;
 
 use App\Models\PipelineJob;
-use App\Services\Pipeline\PipelineStateService;
 use App\Services\Pipeline\Repositories\PipelineJobRepository;
 use App\Services\Pipeline\Repositories\PipelineStageStateRepository;
+use App\Services\Pipeline\State\PipelineStateService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Tests\TestCase;

@@ -1,12 +1,13 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Tests\Unit\Pipeline;
 
 use App\Models\PipelineJob;
 use App\Models\PipelineTask;
-use App\Services\Pipeline\PipelineEvent;
-use App\Services\Pipeline\PipelineTaskEventPayloadService;
+use App\Services\Pipeline\Events\PipelineEvent;
+use App\Services\Pipeline\Tasks\PipelineTaskEventPayloadService;
 use Tests\TestCase;
 
 class PipelineTaskEventPayloadServiceTest extends TestCase

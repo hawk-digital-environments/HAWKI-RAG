@@ -1,14 +1,15 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Tests\Unit\Pipeline;
 
 use App\Services\Pipeline\EventHandlers\PipelineEventHandler;
-use App\Services\Pipeline\PipelineEventBus;
-use App\Services\Pipeline\PipelineEventDecoder;
-use App\Services\Pipeline\PipelineEventLogger;
-use App\Services\Pipeline\PipelineEventMessageProcessor;
-use App\Services\Pipeline\PipelineEventWorker;
+use App\Services\Pipeline\Events\PipelineEventBus;
+use App\Services\Pipeline\Events\PipelineEventDecoder;
+use App\Services\Pipeline\Events\PipelineEventLogger;
+use App\Services\Pipeline\Events\PipelineEventMessageProcessor;
+use App\Services\Pipeline\Events\PipelineEventWorker;
 use App\Services\Rag\RagRabbitMQ;
 use App\Support\PipelineExitCode;
 use Illuminate\Console\Command;
@@ -54,7 +55,7 @@ class PipelineEventWorkerTest extends TestCase
         $handler = Mockery::mock(PipelineEventHandler::class);
         $handler->shouldNotReceive('handle');
 
-        $processor = new PipelineEventMessageProcessor(new PipelineEventDecoder(), $bus, new PipelineEventLogger());
+        $processor = new PipelineEventMessageProcessor(new PipelineEventDecoder, $bus, new PipelineEventLogger);
 
         $exitCode = (new PipelineEventWorker($rabbit, $bus, $processor))->run($command, 'scraper', $handler);
 

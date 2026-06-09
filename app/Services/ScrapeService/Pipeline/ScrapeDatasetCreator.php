@@ -1,12 +1,13 @@
 <?php
+
 declare(strict_types=1);
 
 namespace App\Services\ScrapeService\Pipeline;
 
 use App\Models\ScrapedElement;
 use App\Models\ScrapeStatistics;
-use App\Services\Pipeline\PipelineDataValidator;
-use App\Services\Pipeline\PipelineStageLogger;
+use App\Services\Pipeline\State\PipelineStageLogger;
+use App\Services\Pipeline\Validation\PipelineDataValidator;
 use App\Services\ScrapeService\Data\ScrapeContext;
 use App\Services\StorageService\StorageService;
 use DateTime;
@@ -20,8 +21,7 @@ class ScrapeDatasetCreator
         protected readonly StorageService $storageService,
         protected readonly PipelineDataValidator $validator,
         protected readonly PipelineStageLogger $logger,
-    ) {
-    }
+    ) {}
 
     /**
      * @throws \Exception
@@ -29,7 +29,7 @@ class ScrapeDatasetCreator
     public function createElementData(ScrapeContext $context, string $urlHash): void
     {
         $elementData = $this->storageService->fetchElementData($context->jobId, $urlHash);
-        try{
+        try {
             $validation = $this->validator->validateScrapeElement($elementData);
             if ($validation['errors'] !== []) {
                 $message = implode('; ', $validation['errors']);
@@ -42,6 +42,7 @@ class ScrapeDatasetCreator
                     'warnings' => $validation['warnings'],
                 ]);
                 $context->addError("Invalid scraped element {$urlHash}: {$message}");
+
                 return;
             }
 
@@ -58,7 +59,7 @@ class ScrapeDatasetCreator
             }
 
             // Helper function to extract first element if arrayed, otherwise return as-is
-            $extractValue = fn($value) => $this->validator->firstScalar($value);
+            $extractValue = fn ($value) => $this->validator->firstScalar($value);
 
             // Extract scalar values from arrays
             $pageUrl = $extractValue($elementData['page_url']);
@@ -105,8 +106,7 @@ class ScrapeDatasetCreator
                 'image_count' => is_array($images) ? count($images) : 0,
                 'pdf_count' => is_array($pdfs) ? count($pdfs) : 0,
             ]);
-        }
-        catch (\Exception $exception){
+        } catch (\Exception $exception) {
             $this->logger->failed('scrape', [
                 'job_id' => $context->jobId,
                 'doc_id' => $urlHash,
@@ -122,7 +122,7 @@ class ScrapeDatasetCreator
     protected function explodeUrl(string $url): array
     {
         $host = parse_url($url, PHP_URL_HOST);
-        if (!$host) {
+        if (! $host) {
             return [
                 'subdomain' => '',
                 'domain' => '',
@@ -133,7 +133,8 @@ class ScrapeDatasetCreator
         $parts = explode('.', $host);
         $subdomainParts = array_slice($parts, 0, count($parts) - 2);
         $subdomain = implode('.', $subdomainParts);
-        $domain = implode( '.', array_slice($parts, count($subdomainParts)));
+        $domain = implode('.', array_slice($parts, count($subdomainParts)));
+
         return [
             'subdomain' => $subdomain,
             'domain' => $domain,
@@ -141,11 +142,11 @@ class ScrapeDatasetCreator
         ];
     }
 
-
-    public function recordScrapeSummary(ScrapeContext $context, array $summary): void {
+    public function recordScrapeSummary(ScrapeContext $context, array $summary): void
+    {
         $statistics = $summary['statistics'] ?? [];
         $timing = $summary['timing'] ?? [];
-        if (!is_array($statistics) || !is_array($timing)) {
+        if (! is_array($statistics) || ! is_array($timing)) {
             $this->logger->validationFailed('scrape', [
                 'job_id' => $context->jobId,
                 'pipeline_stage' => 'summary',
@@ -159,15 +160,15 @@ class ScrapeDatasetCreator
         ScrapeStatistics::updateOrCreate(
             ['job_id' => $context->jobId],
             [
-            'sessions'=> $statistics['sessions'] ?? 0,
-            'requests'=> $statistics['requests'] ?? 0,
-            'errors'=> array_merge($context->getErrors(), is_array($statistics['errors'] ?? null) ? $statistics['errors'] : []),
-            'warnings'=> array_merge($context->getWarnings(), is_array($statistics['warnings'] ?? null) ? $statistics['warnings'] : []),
-            'pdfs_downloaded'=> $statistics['pdfs_downloaded'] ?? 0,
-            'images_downloaded'=> $statistics['images_downloaded'] ?? 0,
-            'started_at'=> $timing['started_at'] ?? null,
-            'completed_at'=> $timing['completed_at'] ?? null,
-        ]);
+                'sessions' => $statistics['sessions'] ?? 0,
+                'requests' => $statistics['requests'] ?? 0,
+                'errors' => array_merge($context->getErrors(), is_array($statistics['errors'] ?? null) ? $statistics['errors'] : []),
+                'warnings' => array_merge($context->getWarnings(), is_array($statistics['warnings'] ?? null) ? $statistics['warnings'] : []),
+                'pdfs_downloaded' => $statistics['pdfs_downloaded'] ?? 0,
+                'images_downloaded' => $statistics['images_downloaded'] ?? 0,
+                'started_at' => $timing['started_at'] ?? null,
+                'completed_at' => $timing['completed_at'] ?? null,
+            ]);
 
         $this->logger->success('scrape', [
             'job_id' => $context->jobId,
@@ -193,13 +194,14 @@ class ScrapeDatasetCreator
                 'pipeline_stage' => 'element_metadata',
                 'error_message' => "Invalid published_at date: {$value}",
             ]);
+
             return null;
         }
     }
 
     private function titleFromUrl(?string $url): string
     {
-        if (!$url) {
+        if (! $url) {
             return 'Untitled document';
         }
 
@@ -210,5 +212,4 @@ class ScrapeDatasetCreator
 
         return parse_url($url, PHP_URL_HOST) ?: 'Untitled document';
     }
-
 }

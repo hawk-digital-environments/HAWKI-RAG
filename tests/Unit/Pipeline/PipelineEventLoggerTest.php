@@ -1,10 +1,11 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Tests\Unit\Pipeline;
 
-use App\Services\Pipeline\PipelineEvent;
-use App\Services\Pipeline\PipelineEventLogger;
+use App\Services\Pipeline\Events\PipelineEvent;
+use App\Services\Pipeline\Events\PipelineEventLogger;
 use Illuminate\Support\Facades\Log;
 use Mockery;
 use Tests\TestCase;

@@ -1,10 +1,11 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Tests\Unit\Pipeline;
 
 use App\Services\Pipeline\Exceptions\PipelineUploadStorageException;
-use App\Services\Pipeline\PipelineUploadStorage;
+use App\Services\Pipeline\Uploads\PipelineUploadStorage;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\File;
 use Tests\TestCase;
@@ -41,7 +42,7 @@ class PipelineUploadStorageTest extends TestCase
         $this->assertStringStartsWith('my-upload-', $stored->targetName);
         $this->assertStringEndsWith('.pdf', $stored->targetName);
         $this->assertSame(
-            $this->root . DIRECTORY_SEPARATOR . 'task_test_upload' . DIRECTORY_SEPARATOR . $stored->targetName,
+            $this->root.DIRECTORY_SEPARATOR.'task_test_upload'.DIRECTORY_SEPARATOR.$stored->targetName,
             $stored->localPath,
         );
         $this->assertFileExists($stored->localPath);
@@ -52,7 +53,7 @@ class PipelineUploadStorageTest extends TestCase
     {
         $taskId = 'task_blocked_upload';
         File::ensureDirectoryExists($this->root);
-        File::put($this->root . DIRECTORY_SEPARATOR . $taskId, 'not a directory');
+        File::put($this->root.DIRECTORY_SEPARATOR.$taskId, 'not a directory');
 
         $storage = app(PipelineUploadStorage::class);
         $file = UploadedFile::fake()->createWithContent('blocked.pdf', 'blocked body');
@@ -67,7 +68,7 @@ class PipelineUploadStorageTest extends TestCase
             );
             $this->assertSame('Pipeline controller could not prepare upload storage.', $exception->logMessage());
             $this->assertSame(
-                $this->root . DIRECTORY_SEPARATOR . $taskId,
+                $this->root.DIRECTORY_SEPARATOR.$taskId,
                 $exception->logContext()['task_root'] ?? null,
             );
         }

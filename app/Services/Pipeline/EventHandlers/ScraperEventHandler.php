@@ -1,13 +1,14 @@
 <?php
+
 declare(strict_types=1);
 
 namespace App\Services\Pipeline\EventHandlers;
 
 use App\Models\PipelineJob;
+use App\Services\Pipeline\Events\PipelineEvent;
+use App\Services\Pipeline\Events\PipelineEventBus;
+use App\Services\Pipeline\Events\PipelineEventStateService;
 use App\Services\Pipeline\Exceptions\PipelineEventHandlerException;
-use App\Services\Pipeline\PipelineEvent;
-use App\Services\Pipeline\PipelineEventBus;
-use App\Services\Pipeline\PipelineEventStateService;
 use App\Services\Pipeline\Repositories\PipelineJobRepository;
 use App\Services\Pipeline\Repositories\PipelineScrapeHistoryRepository;
 use App\Services\ScrapeService\Data\ScrapeJobRequest;
@@ -26,8 +27,7 @@ class ScraperEventHandler implements PipelineEventHandler
         private readonly PipelineJobRepository $jobs,
         private readonly PipelineScrapeHistoryRepository $scrapeHistory,
         private readonly ScraperPipelineService $scraper,
-    ) {
-    }
+    ) {}
 
     public function eventTypes(): array
     {
@@ -71,6 +71,7 @@ class ScraperEventHandler implements PipelineEventHandler
                 'job_id' => $event['job_id'],
                 'status' => $existing->status,
             ]);
+
             return;
         }
 
@@ -84,6 +85,7 @@ class ScraperEventHandler implements PipelineEventHandler
                     'reason' => 'URL/content_hash was already scraped.',
                 ]),
             ]));
+
             return;
         }
 
@@ -107,7 +109,7 @@ class ScraperEventHandler implements PipelineEventHandler
             'discoveryMode' => $event['metadata']['discovery_mode'] ?? false,
         ]));
 
-        if (!$result->success) {
+        if (! $result->success) {
             throw PipelineEventHandlerException::scraperFailed((string) ($result->errors[0]['message'] ?? $result->errors[0] ?? 'Unknown scraper failure.'));
         }
 
@@ -131,10 +133,10 @@ class ScraperEventHandler implements PipelineEventHandler
     private function outputDirFor(array $event): string
     {
         return rtrim((string) config('scraper.storage_path'), DIRECTORY_SEPARATOR)
-            . DIRECTORY_SEPARATOR
-            . (string) $event['task_id']
-            . DIRECTORY_SEPARATOR
-            . (string) $event['job_id'];
+            .DIRECTORY_SEPARATOR
+            .(string) $event['task_id']
+            .DIRECTORY_SEPARATOR
+            .(string) $event['job_id'];
     }
 
     private function labelForUrl(string $url): string

@@ -1,11 +1,12 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Tests\Unit\Pipeline;
 
+use App\Services\Pipeline\Events\PipelineEvent;
+use App\Services\Pipeline\Events\PipelineEventTopologyService;
 use App\Services\Pipeline\Exceptions\PipelineEventException;
-use App\Services\Pipeline\PipelineEvent;
-use App\Services\Pipeline\PipelineEventTopologyService;
 use App\Services\Rag\RagRabbitMQ;
 use Mockery;
 use PhpAmqpLib\Channel\AMQPChannel;

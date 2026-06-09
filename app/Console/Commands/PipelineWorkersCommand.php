@@ -1,10 +1,11 @@
 <?php
+
 declare(strict_types=1);
 
 namespace App\Console\Commands;
 
-use App\Services\Pipeline\PipelineArchitectureService;
-use App\Services\Pipeline\PipelineEvent;
+use App\Services\Pipeline\Architecture\PipelineArchitectureService;
+use App\Services\Pipeline\Events\PipelineEvent;
 use Illuminate\Console\Command;
 
 class PipelineWorkersCommand extends Command
@@ -38,11 +39,11 @@ class PipelineWorkersCommand extends Command
         $this->newLine();
 
         $this->line('RabbitMQ exchanges:');
-        $this->line('  events exchange: ' . $topology['eventsExchange']);
-        $this->line('  retry exchange: ' . $topology['retryExchange']);
-        $this->line('  failed exchange: ' . $topology['failedExchange']);
-        $this->line('  retry delay ms: ' . $topology['retryDelayMs']);
-        $this->line('  max retries: ' . $topology['maxRetries']);
+        $this->line('  events exchange: '.$topology['eventsExchange']);
+        $this->line('  retry exchange: '.$topology['retryExchange']);
+        $this->line('  failed exchange: '.$topology['failedExchange']);
+        $this->line('  retry delay ms: '.$topology['retryDelayMs']);
+        $this->line('  max retries: '.$topology['maxRetries']);
         $this->newLine();
 
         $this->table(
@@ -52,9 +53,9 @@ class PipelineWorkersCommand extends Command
 
         $this->newLine();
         $this->line('Failed event queue:');
-        $this->line('  queue: ' . ($topology['queues']['failedQueue'] ?? 'pipeline_failed_events'));
-        $this->line('  routing key: ' . ($topology['failedRoutingKey'] ?? PipelineEvent::JOB_FAILED));
-        $this->line('  event: ' . PipelineEvent::JOB_FAILED);
+        $this->line('  queue: '.($topology['queues']['failedQueue'] ?? 'pipeline_failed_events'));
+        $this->line('  routing key: '.($topology['failedRoutingKey'] ?? PipelineEvent::JOB_FAILED));
+        $this->line('  event: '.PipelineEvent::JOB_FAILED);
 
         return self::SUCCESS;
     }

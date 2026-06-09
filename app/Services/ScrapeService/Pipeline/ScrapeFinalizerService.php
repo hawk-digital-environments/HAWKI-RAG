@@ -1,17 +1,17 @@
 <?php
+
 declare(strict_types=1);
 
 namespace App\Services\ScrapeService\Pipeline;
 
 use App\Models\ScrapedElement;
-use App\Services\Pipeline\PipelineDataValidator;
-use App\Services\Pipeline\PipelineStageLogger;
+use App\Services\Pipeline\State\PipelineStageLogger;
+use App\Services\Pipeline\Validation\PipelineDataValidator;
 use App\Services\ScrapeService\Data\ScrapeContext;
 use App\Services\StorageService\StorageService;
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
-
 
 #[Singleton]
 class ScrapeFinalizerService
@@ -20,8 +20,7 @@ class ScrapeFinalizerService
         protected readonly StorageService $storageService,
         protected readonly PipelineDataValidator $validator,
         protected readonly PipelineStageLogger $logger,
-    ) {
-    }
+    ) {}
 
     public function executeFinalization(ScrapeContext $context): void
     {
@@ -47,24 +46,20 @@ class ScrapeFinalizerService
                 'error_message' => $e->getMessage(),
                 'exception' => $e,
             ]);
-            $context->addError("Finalization failed: " . $e->getMessage());
+            $context->addError('Finalization failed: '.$e->getMessage());
             throw $e;
         }
     }
 
-
-
-
-
     protected function checkupElements(ScrapeContext $context): void
     {
-        //Log::info("Starting element checkup for job: {$context->jobId}");
+        // Log::info("Starting element checkup for job: {$context->jobId}");
 
         // Get completed URLs from disk
         $diskUrls = $this->getListOfCompletedUrls($context->jobId);
         $totalUrls = count($diskUrls);
 
-        //Log::info("Found {$totalUrls} completed URLs on disk for job: {$context->jobId}");
+        // Log::info("Found {$totalUrls} completed URLs on disk for job: {$context->jobId}");
 
         // Get existing elements from database for this job
         $existingElements = ScrapedElement::where('job_id', $context->jobId)
@@ -80,7 +75,7 @@ class ScrapeFinalizerService
             try {
                 $urlHash = $urlData['url_hash'] ?? null;
 
-                if (!$urlHash) {
+                if (! $urlHash) {
                     $errorCount++;
                     $this->logger->validationFailed('scrape', [
                         'job_id' => $context->jobId,
@@ -88,6 +83,7 @@ class ScrapeFinalizerService
                         'error_message' => 'Missing url_hash in disk data.',
                         'url_data' => $urlData,
                     ]);
+
                     continue;
                 }
 
@@ -100,11 +96,12 @@ class ScrapeFinalizerService
                         'pipeline_stage' => 'finalization',
                         'reason' => 'Scraped element already exists.',
                     ]);
+
                     continue;
                 }
 
                 // Element is missing from database - create it
-                //Log::info("Creating missing element in database: {$urlHash}");
+                // Log::info("Creating missing element in database: {$urlHash}");
                 $this->createMissingElement($context, $urlHash);
                 $createdCount++;
 
@@ -117,7 +114,7 @@ class ScrapeFinalizerService
                     'error_message' => $e->getMessage(),
                     'exception' => $e,
                 ]);
-                $context->addWarning("Failed to sync element: " . $e->getMessage());
+                $context->addWarning('Failed to sync element: '.$e->getMessage());
             }
         }
 
@@ -147,15 +144,13 @@ class ScrapeFinalizerService
                 $completedUrls[] = $urlData;
             }
         }
+
         return $completedUrls;
     }
 
     /**
      * Create a missing ScrapedElement from disk data.
      *
-     * @param ScrapeContext $context
-     * @param string $urlHash
-     * @return void
      * @throws \Exception
      */
     protected function createMissingElement(ScrapeContext $context, string $urlHash): void
@@ -164,7 +159,7 @@ class ScrapeFinalizerService
         $elementData = $this->storageService->fetchElementData($context->jobId, $urlHash);
         $validation = $this->validator->validateScrapeElement($elementData);
         if ($validation['errors'] !== []) {
-            throw new \Exception("Invalid scraped element {$urlHash}: " . implode('; ', $validation['errors']));
+            throw new \Exception("Invalid scraped element {$urlHash}: ".implode('; ', $validation['errors']));
         }
         if ($validation['warnings'] !== []) {
             $this->logger->partial('scrape', [
@@ -179,7 +174,7 @@ class ScrapeFinalizerService
         }
 
         // Helper function to extract first element if arrayed, otherwise return as-is
-        $extractValue = fn($value) => $this->validator->firstScalar($value);
+        $extractValue = fn ($value) => $this->validator->firstScalar($value);
 
         // Extract scalar values from arrays
         $pageUrl = $extractValue($elementData['page_url'] ?? null);
@@ -187,7 +182,7 @@ class ScrapeFinalizerService
         $metaImgUrl = $extractValue($elementData['meta_img_url'] ?? null);
         $publishedAt = $extractValue($elementData['published_at'] ?? $elementData['date'] ?? null);
 
-        if (!$pageUrl) {
+        if (! $pageUrl) {
             throw new \Exception("page_url is missing or empty in disk data for url_hash: {$urlHash}");
         }
 
@@ -245,24 +240,21 @@ class ScrapeFinalizerService
             'pipeline_stage' => 'finalization_element_persisted',
         ]);
 
-        //Log::info("Successfully created missing element", [
-//            'job_id' => $context->jobId,
-//            'url_hash' => $urlHash,
-//            'page_url' => $pageUrl
-//        ]);
+        // Log::info("Successfully created missing element", [
+        //            'job_id' => $context->jobId,
+        //            'url_hash' => $urlHash,
+        //            'page_url' => $pageUrl
+        //        ]);
     }
 
     /**
      * Parse URL to extract domain and subdomain.
-     *
-     * @param string $url
-     * @return array
      */
     protected function explodeUrl(string $url): array
     {
         $host = parse_url($url, PHP_URL_HOST);
 
-        if (!$host) {
+        if (! $host) {
             return [
                 'subdomain' => '',
                 'domain' => '',
@@ -292,7 +284,7 @@ class ScrapeFinalizerService
 
     private function titleFromUrl(?string $url): string
     {
-        if (!$url) {
+        if (! $url) {
             return 'Untitled document';
         }
 
@@ -303,7 +295,4 @@ class ScrapeFinalizerService
 
         return parse_url($url, PHP_URL_HOST) ?: 'Untitled document';
     }
-
-
-
 }

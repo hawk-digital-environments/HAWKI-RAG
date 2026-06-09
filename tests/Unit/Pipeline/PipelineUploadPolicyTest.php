@@ -1,9 +1,10 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Tests\Unit\Pipeline;
 
-use App\Services\Pipeline\PipelineUploadPolicy;
+use App\Services\Pipeline\Uploads\PipelineUploadPolicy;
 use Tests\TestCase;
 
 class PipelineUploadPolicyTest extends TestCase

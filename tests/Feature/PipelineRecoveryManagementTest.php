@@ -6,8 +6,8 @@ use App\Models\Dataset;
 use App\Models\PipelineEventRecord;
 use App\Models\PipelineJob;
 use App\Models\PipelineTask;
-use App\Services\Pipeline\PipelineEvent;
-use App\Services\Pipeline\PipelineEventBus;
+use App\Services\Pipeline\Events\PipelineEvent;
+use App\Services\Pipeline\Events\PipelineEventBus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Mockery;
 use Tests\TestCase;
@@ -150,7 +150,7 @@ class PipelineRecoveryManagementTest extends TestCase
                         && $event['status'] === PipelineJob::STATUS_QUEUED
                         && $event['content_hash'] === 'hash-ingest-rabbit-retry'
                         && ($event['metadata']['source_job_id'] ?? null) === 'scrape-rabbit-source'
-                        && !empty($event['metadata']['idempotency_key']);
+                        && ! empty($event['metadata']['idempotency_key']);
                 }), Mockery::type('string'))
                 ->andReturnUsing(fn (array $event, string $reason): array => PipelineEvent::normalize($event['event_type'], $event));
         });
@@ -174,8 +174,8 @@ class PipelineRecoveryManagementTest extends TestCase
             'name' => $datasetId,
             'description' => null,
             'status' => Dataset::STATUS_ACTIVE,
-            'qdrant_collection' => 'hawki_' . str_replace('-', '_', $datasetId),
-            'neo4j_namespace' => 'hawki_' . str_replace('-', '_', $datasetId),
+            'qdrant_collection' => 'hawki_'.str_replace('-', '_', $datasetId),
+            'neo4j_namespace' => 'hawki_'.str_replace('-', '_', $datasetId),
             'created_at' => now(),
         ]);
     }
@@ -200,9 +200,9 @@ class PipelineRecoveryManagementTest extends TestCase
             'task_id' => $taskId,
             'parent_job_id' => $metadata['source_job_id'] ?? null,
             'job_type' => $jobType,
-            'source_url' => 'https://example.test/' . $jobId,
-            'local_path' => '/app/shared/' . $jobId . '.md',
-            'content_hash' => 'hash-' . $jobId,
+            'source_url' => 'https://example.test/'.$jobId,
+            'local_path' => '/app/shared/'.$jobId.'.md',
+            'content_hash' => 'hash-'.$jobId,
             'status' => PipelineJob::STATUS_FAILED,
             'error_message' => 'Worker failed',
             'started_at' => now()->subMinutes(5),

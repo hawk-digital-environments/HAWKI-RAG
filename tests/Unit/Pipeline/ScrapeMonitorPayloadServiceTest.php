@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Tests\Unit\Pipeline;
@@ -6,8 +7,8 @@ namespace Tests\Unit\Pipeline;
 use App\Models\PipelineJob;
 use App\Models\PipelineTask;
 use App\Services\Pipeline\EventHandlers\ScrapeMonitorEventHandler;
-use App\Services\Pipeline\PipelineEvent;
-use App\Services\Pipeline\ScrapeMonitorPayloadService;
+use App\Services\Pipeline\Events\PipelineEvent;
+use App\Services\Pipeline\ScrapeMonitoring\ScrapeMonitorPayloadService;
 use Illuminate\Support\Facades\File;
 use Tests\TestCase;
 
@@ -29,8 +30,8 @@ class ScrapeMonitorPayloadServiceTest extends TestCase
 
     public function test_it_builds_file_discovered_payload_with_hash_and_convert_job_id(): void
     {
-        $root = sys_get_temp_dir() . '/hawki-monitor-payload-' . uniqid();
-        $path = $root . '/download.pdf';
+        $root = sys_get_temp_dir().'/hawki-monitor-payload-'.uniqid();
+        $path = $root.'/download.pdf';
         File::ensureDirectoryExists($root);
         File::put($path, '%PDF monitor payload');
         $job = $this->scrapeJob();
@@ -39,7 +40,7 @@ class ScrapeMonitorPayloadServiceTest extends TestCase
             $payload = app(ScrapeMonitorPayloadService::class)->fileDiscoveredPayload($job, $root, $path);
 
             $this->assertSame('task-monitor-payload', $payload['task_id']);
-            $this->assertSame('convert_' . substr(hash('sha256', 'task-monitor-payload|' . $path), 0, 24), $payload['job_id']);
+            $this->assertSame('convert_'.substr(hash('sha256', 'task-monitor-payload|'.$path), 0, 24), $payload['job_id']);
             $this->assertSame('scrape-monitor-payload', $payload['parent_job_id']);
             $this->assertSame($path, $payload['local_path']);
             $this->assertSame(hash_file('sha256', $path), $payload['content_hash']);

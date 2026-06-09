@@ -3,7 +3,7 @@
 namespace App\Console\Commands\Pipeline;
 
 use App\Services\Pipeline\EventHandlers\ScraperEventHandler;
-use App\Services\Pipeline\PipelineEventWorker;
+use App\Services\Pipeline\Events\PipelineEventWorker;
 use Illuminate\Console\Command;
 
 class ScraperEventWorkerCommand extends Command

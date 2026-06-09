@@ -1,9 +1,10 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Tests\Unit\Pipeline;
 
-use App\Services\Pipeline\PipelineRecoveryInputNormalizer;
+use App\Services\Pipeline\Recovery\PipelineRecoveryInputNormalizer;
 use Tests\TestCase;
 
 class PipelineRecoveryInputNormalizerTest extends TestCase

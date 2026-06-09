@@ -1,12 +1,13 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Tests\Unit\Pipeline;
 
 use App\Models\PipelineJob;
 use App\Models\PipelineTask;
-use App\Services\Pipeline\PipelineEvent;
-use App\Services\Pipeline\PipelineRecoveryPayloadService;
+use App\Services\Pipeline\Events\PipelineEvent;
+use App\Services\Pipeline\Recovery\PipelineRecoveryPayloadService;
 use Illuminate\Support\Carbon;
 use Tests\TestCase;
 

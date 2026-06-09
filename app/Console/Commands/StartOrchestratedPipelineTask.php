@@ -2,7 +2,7 @@
 
 namespace App\Console\Commands;
 
-use App\Services\Pipeline\PipelineTaskService;
+use App\Services\Pipeline\Tasks\PipelineTaskService;
 use Illuminate\Console\Command;
 
 class StartOrchestratedPipelineTask extends Command

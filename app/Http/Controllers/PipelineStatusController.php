@@ -4,7 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\JobProcessingState;
 use App\Models\ScrapeProcess;
-use App\Services\Pipeline\PipelineStateService;
+use App\Services\Pipeline\State\PipelineStateService;
 use App\Services\ScrapeService\ScrapeService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Schema;
@@ -15,8 +15,7 @@ class PipelineStatusController extends Controller
     public function __construct(
         private readonly ScrapeService $scrapeService,
         private readonly PipelineStateService $pipelineState,
-    ) {
-    }
+    ) {}
 
     public function show(string $jobId): JsonResponse
     {
@@ -109,12 +108,12 @@ class PipelineStatusController extends Controller
 
     private function convertStage(string $jobId, ?string $datasetPath): array
     {
-        if (!$datasetPath) {
+        if (! $datasetPath) {
             return $this->emptyStage('unknown', 'No dataset path available yet.');
         }
 
         $resolvedPath = realpath($datasetPath);
-        if ($resolvedPath === false || !is_dir($resolvedPath)) {
+        if ($resolvedPath === false || ! is_dir($resolvedPath)) {
             return $this->emptyStage('unknown', 'Dataset path does not exist yet.', [
                 'datasetPath' => $datasetPath,
             ]);
@@ -131,10 +130,11 @@ class PipelineStatusController extends Controller
                 if ($file->getFilename() === 'conversion_meta.json') {
                     $convertedCount++;
                     $meta = json_decode((string) @file_get_contents($path), true);
-                    if (is_array($meta) && !empty($meta['converted_at'])) {
+                    if (is_array($meta) && ! empty($meta['converted_at'])) {
                         $convertedAt[] = (string) $meta['converted_at'];
                     }
                 }
+
                 continue;
             }
 
@@ -171,7 +171,7 @@ class PipelineStatusController extends Controller
 
     private function ingestStage(string $jobId, ?string $datasetPath): array
     {
-        if (!Schema::hasTable('job_processing_state')) {
+        if (! Schema::hasTable('job_processing_state')) {
             return $this->emptyStage('unknown', 'Ingest state table is not available.');
         }
 
@@ -187,7 +187,7 @@ class PipelineStatusController extends Controller
                 ]));
 
                 foreach ($paths as $path) {
-                    $like = $this->escapeLike($path) . '%';
+                    $like = $this->escapeLike($path).'%';
                     $query->orWhere('input_path', 'like', $like)
                         ->orWhere('output_path', 'like', $like);
                 }
@@ -246,13 +246,13 @@ class PipelineStatusController extends Controller
 
     private function currentStage(array $scrape, array $convert, array $ingest): string
     {
-        if (!in_array($ingest['status'], ['unknown', 'pending', 'skipped', 'completed'], true)) {
+        if (! in_array($ingest['status'], ['unknown', 'pending', 'skipped', 'completed'], true)) {
             return 'ingest';
         }
-        if (!in_array($convert['status'], ['unknown', 'pending', 'skipped', 'completed'], true)) {
+        if (! in_array($convert['status'], ['unknown', 'pending', 'skipped', 'completed'], true)) {
             return 'convert';
         }
-        if (!in_array($scrape['status'], ['unknown', 'completed'], true)) {
+        if (! in_array($scrape['status'], ['unknown', 'completed'], true)) {
             return 'scrape';
         }
         if ($ingest['status'] === 'completed') {
@@ -373,15 +373,17 @@ class PipelineStatusController extends Controller
 
         if ($status === 'completed') {
             $this->pipelineState->completeStage($jobId, PipelineStateService::STAGE_SCRAPE, $payload);
+
             return;
         }
 
         if ($status === 'failed') {
             $this->pipelineState->failStage($jobId, PipelineStateService::STAGE_SCRAPE, $payload);
+
             return;
         }
 
-        if (!in_array($status, ['unknown', 'pending'], true)) {
+        if (! in_array($status, ['unknown', 'pending'], true)) {
             $this->pipelineState->updateStage($jobId, PipelineStateService::STAGE_SCRAPE, array_merge($payload, [
                 'status' => in_array($status, ['running', 'processing', 'received'], true) ? $status : 'running',
             ]));
@@ -421,7 +423,7 @@ class PipelineStatusController extends Controller
 
         $datasetPath = (string) ($stage['datasetPath'] ?? '');
         if ($status === 'skipped'
-            && !$this->pipelineState->isStageClaimedOrDone($jobId, PipelineStateService::STAGE_INGEST)) {
+            && ! $this->pipelineState->isStageClaimedOrDone($jobId, PipelineStateService::STAGE_INGEST)) {
             $this->pipelineState->skipStage($jobId, PipelineStateService::STAGE_INGEST, [
                 'dataset_path' => $datasetPath !== '' ? $datasetPath : ($stage['datasetPath'] ?? null),
                 'counts' => [],
@@ -461,7 +463,7 @@ class PipelineStatusController extends Controller
 
     private function mergeTrackedStage(array $computed, ?array $tracked): array
     {
-        if (!$tracked) {
+        if (! $tracked) {
             return $computed;
         }
 
@@ -479,7 +481,7 @@ class PipelineStatusController extends Controller
     private function supportedExtensions(): array
     {
         $extensions = config('file_converter.supported_extensions', ['pdf', 'doc', 'docx']);
-        if (!is_array($extensions)) {
+        if (! is_array($extensions)) {
             return ['pdf', 'doc', 'docx'];
         }
 
@@ -507,18 +509,19 @@ class PipelineStatusController extends Controller
     private function conversionFailuresFor(string $datasetPath): array
     {
         $reportPath = storage_path('logs/failed_conversion.json');
-        if (!is_file($reportPath)) {
+        if (! is_file($reportPath)) {
             return [];
         }
 
         $report = json_decode((string) @file_get_contents($reportPath), true);
-        if (!is_array($report) || !is_array($report['failures'] ?? null)) {
+        if (! is_array($report) || ! is_array($report['failures'] ?? null)) {
             return [];
         }
 
         return array_values(array_filter($report['failures'], function ($failure) use ($datasetPath): bool {
             $path = is_array($failure) ? (string) ($failure['file_local_path'] ?? $failure['pdf_local_path'] ?? '') : '';
-            return $path !== '' && str_starts_with($path, $datasetPath . DIRECTORY_SEPARATOR);
+
+            return $path !== '' && str_starts_with($path, $datasetPath.DIRECTORY_SEPARATOR);
         }));
     }
 

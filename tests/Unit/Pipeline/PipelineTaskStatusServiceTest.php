@@ -1,11 +1,12 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Tests\Unit\Pipeline;
 
 use App\Models\PipelineJob;
 use App\Models\PipelineTask;
-use App\Services\Pipeline\PipelineTaskStatusService;
+use App\Services\Pipeline\Tasks\PipelineTaskStatusService;
 use Illuminate\Support\Carbon;
 use Tests\TestCase;
 

@@ -1,10 +1,11 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Tests\Unit\Pipeline;
 
 use App\Services\Pipeline\Exceptions\PipelineQueueMonitorException;
-use App\Services\Pipeline\PipelineQueueMonitorClient;
+use App\Services\Pipeline\Queues\PipelineQueueMonitorClient;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 

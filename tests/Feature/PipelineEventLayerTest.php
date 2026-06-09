@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Tests\Feature;
@@ -9,18 +10,18 @@ use App\Models\PipelineJob;
 use App\Models\PipelineTask;
 use App\Models\ScrapedElement;
 use App\Services\FileConverter\DocumentConverter;
-use App\Services\Pipeline\Exceptions\PipelineEventHandlerException;
 use App\Services\Pipeline\EventHandlers\ConverterEventHandler;
 use App\Services\Pipeline\EventHandlers\IngestionEventHandler;
 use App\Services\Pipeline\EventHandlers\ScrapeMonitorEventHandler;
 use App\Services\Pipeline\EventHandlers\ScraperEventHandler;
-use App\Services\Pipeline\PipelineEvent;
-use App\Services\Pipeline\PipelineEventBus;
+use App\Services\Pipeline\Events\PipelineEvent;
+use App\Services\Pipeline\Events\PipelineEventBus;
+use App\Services\Pipeline\Exceptions\PipelineEventHandlerException;
 use App\Services\Rag\RagRabbitMQ;
-use App\Services\ScrapeService\ScrapeService;
 use App\Services\ScrapeService\Data\ScrapeJobRequest;
 use App\Services\ScrapeService\Data\ScrapeRequestResult;
 use App\Services\ScrapeService\ScraperPipelineService;
+use App\Services\ScrapeService\ScrapeService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
@@ -333,7 +334,7 @@ class PipelineEventLayerTest extends TestCase
         $pdf = "{$datasetPath}/download.pdf";
         File::put($pdf, '%PDF-1.4 monitor completion file');
         $contentHash = hash_file('sha256', $pdf);
-        $convertJobId = 'convert_' . substr(hash('sha256', $task->task_id . '|' . $pdf), 0, 24);
+        $convertJobId = 'convert_'.substr(hash('sha256', $task->task_id.'|'.$pdf), 0, 24);
 
         PipelineJob::query()->create([
             'job_id' => 'scrape-event-monitor-completed',

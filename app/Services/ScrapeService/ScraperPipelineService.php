@@ -1,10 +1,11 @@
 <?php
+
 declare(strict_types=1);
 
 namespace App\Services\ScrapeService;
 
-use App\Services\Pipeline\PipelineStageLogger;
-use App\Services\Pipeline\PipelineStateService;
+use App\Services\Pipeline\State\PipelineStageLogger;
+use App\Services\Pipeline\State\PipelineStateService;
 use App\Services\ScrapeService\Data\ScrapeContext;
 use App\Services\ScrapeService\Data\ScrapeJobRequest;
 use App\Services\ScrapeService\Data\ScrapeRequestResult;
@@ -12,8 +13,8 @@ use App\Services\ScrapeService\Pipeline\ScrapeContextBuilder;
 use App\Services\ScrapeService\Pipeline\ScrapeExecutionService;
 use App\Services\ScrapeService\Validation\ScrapeValidationService;
 use App\Services\StorageService\StorageService;
-use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Container\Attributes\Singleton;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -22,10 +23,9 @@ use Throwable;
 #[Singleton]
 class ScraperPipelineService
 {
-
     public function __construct(
         private readonly ScrapeValidationService $validationService,
-        private readonly ScrapeExecutionService  $executionService,
+        private readonly ScrapeExecutionService $executionService,
         private readonly StorageService $storageService,
         private readonly PipelineStateService $pipelineState,
         private readonly PipelineStageLogger $logger,
@@ -37,15 +37,14 @@ class ScraperPipelineService
      * This is the main entry point for all crawler operations. It processes
      * the job request through all pipeline stages and returns a structured result.
      *
-     * @param ScrapeJobRequest $request Job request with all parameters
-     * @param callable|null $outputCallback Optional callback for streaming crawler output
+     * @param  ScrapeJobRequest  $request  Job request with all parameters
+     * @param  callable|null  $outputCallback  Optional callback for streaming crawler output
      * @return ScrapeRequestResult Complete job result
      */
     public function execute(
         ScrapeJobRequest $request,
-        ?callable        $outputCallback = null
-    ): ScrapeRequestResult
-    {
+        ?callable $outputCallback = null
+    ): ScrapeRequestResult {
         // Create context to carry state through the pipeline
         $context = ScrapeContextBuilder::buildFromRequest($request);
         $this->pipelineState->startStage($context->jobId, PipelineStateService::STAGE_SCRAPE, [
@@ -92,6 +91,7 @@ class ScraperPipelineService
                     'warnings' => $context->getWarnings(),
                     'metadata' => ['subStage' => $context->getStage()],
                 ]);
+
                 return $this->buildFailureResult($context);
             }
 
@@ -117,6 +117,7 @@ class ScraperPipelineService
                     'warnings' => $context->getWarnings(),
                     'metadata' => ['subStage' => $context->getStage()],
                 ]);
+
                 return $this->buildFailureResult($context);
             }
 
@@ -144,6 +145,7 @@ class ScraperPipelineService
                     'message' => 'Crawl submitted to Crawl4AI.',
                 ],
             ]);
+
             return ScrapeRequestResult::success(
                 $context->jobId,
                 $context->getStage(),
@@ -167,6 +169,7 @@ class ScraperPipelineService
                     'exception' => get_class($e),
                 ],
             ]);
+
             return $this->buildFailureResult($context);
         }
     }
@@ -175,8 +178,6 @@ class ScraperPipelineService
      * Stage 1: Validation
      *
      * Validates the job request and checks business rules.
-     * @param ScrapeContext $context
-     * @return void
      */
     private function executeValidation(ScrapeContext $context): void
     {
@@ -189,7 +190,7 @@ class ScraperPipelineService
         // Validate request
         $isValid = $this->validationService->validate($context->getRequest());
 
-        if (!$isValid) {
+        if (! $isValid) {
             foreach ($this->validationService->getErrors() as $error) {
                 $context->addError($error);
             }
@@ -214,6 +215,7 @@ class ScraperPipelineService
      *
      * Executes the crawler with the built configuration.
      * Returns the job_id from the crawler if successful, null otherwise.
+     *
      * @throws ConnectionException
      */
     private function executeExecution(ScrapeContext $context, ?callable $outputCallback = null): void
@@ -227,7 +229,7 @@ class ScraperPipelineService
         // Execute the crawler and persist progress through the scrape pipeline.
         $response = $this->executionService->execute($context->getRequest(), $outputCallback);
 
-        if($response['success']){
+        if ($response['success']) {
             $context->setStage('process_submitted');
             $this->logger->success('scrape', [
                 'job_id' => $context->jobId,
@@ -235,8 +237,7 @@ class ScraperPipelineService
                 'pipeline_stage' => 'execution',
                 'message' => $response['message'] ?? null,
             ]);
-        }
-        else {
+        } else {
             $context->setStage('failed');
             $context->addError($response['message']);
             $this->logger->failed('scrape', [
@@ -251,10 +252,10 @@ class ScraperPipelineService
     /**
      * @throws \Exception
      */
-    public function readPipelineStatus($jobId): array{
+    public function readPipelineStatus($jobId): array
+    {
         return $this->storageService->fetchJobReport($jobId, 'job_state');
     }
-
 
     /**
      * Build a failure result from context.
@@ -269,20 +270,19 @@ class ScraperPipelineService
         );
     }
 
-
     public function stop($jobId): array
     {
         $context = ScrapeContextBuilder::rebuildContext($jobId);
 
         $response = Http::timeout(300)
             ->retry(3, 1000)
-            ->post(config('scraper.api_url') . "/jobs/$jobId/cancel");
+            ->post(config('scraper.api_url')."/jobs/$jobId/cancel");
 
         $data = $response->json();
         Log::debug($data);
-        if($data['success']){
+        if ($data['success']) {
             $context->setStage('stopped');
-            $context->addWarning("Process canceled at " . now()->format('Y-m-d H:i:s'));
+            $context->addWarning('Process canceled at '.now()->format('Y-m-d H:i:s'));
         }
 
         return [

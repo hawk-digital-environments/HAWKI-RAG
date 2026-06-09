@@ -9,10 +9,10 @@ use App\Models\PipelineTask;
 use App\Services\Datasets\DatasetService;
 use App\Services\Pipeline\EventHandlers\ConverterEventHandler;
 use App\Services\Pipeline\EventHandlers\IngestionEventHandler;
-use App\Services\Pipeline\PipelineEvent;
-use App\Services\Pipeline\PipelineEventBus;
-use App\Services\Pipeline\PipelineEventStateService;
-use App\Services\Pipeline\PipelineTaskService;
+use App\Services\Pipeline\Events\PipelineEvent;
+use App\Services\Pipeline\Events\PipelineEventBus;
+use App\Services\Pipeline\Events\PipelineEventStateService;
+use App\Services\Pipeline\Tasks\PipelineTaskService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
@@ -46,20 +46,20 @@ class PipelineSmokeTestCommand extends Command
         $graph = $this->graphOption();
         $timeout = max(1, (int) $this->option('timeout'));
         $keepFiles = $this->booleanOption('keep-files', false);
-        $taskId = 'smoke_' . now()->format('Ymd_His') . '_' . Str::lower(Str::random(6));
+        $taskId = 'smoke_'.now()->format('Ymd_His').'_'.Str::lower(Str::random(6));
         $sourceUrl = $this->stringOption('url') ?: "https://example.test/hawki-rag-smoke/{$taskId}";
         $fixtureDir = storage_path("app/pipeline-smoke/{$taskId}");
 
         $this->line('HAWKI RAG MVP smoke test');
         $this->line("Task ID: {$taskId}");
         $this->line("Dataset: {$datasetId}");
-        $this->line('Graph mode: ' . ($graph ? 'true' : 'false'));
+        $this->line('Graph mode: '.($graph ? 'true' : 'false'));
         $this->newLine();
 
         try {
             $fixturePath = $this->stage('Fixture', function () use ($fixtureDir, $taskId): string {
                 File::ensureDirectoryExists($fixtureDir);
-                $path = $fixtureDir . DIRECTORY_SEPARATOR . 'hawki-smoke.docx';
+                $path = $fixtureDir.DIRECTORY_SEPARATOR.'hawki-smoke.docx';
                 $this->writeSmokeDocx($path, $taskId);
 
                 return $path;
@@ -91,11 +91,11 @@ class PipelineSmokeTestCommand extends Command
                     ->where('job_type', PipelineJob::TYPE_SCRAPE)
                     ->first();
 
-                if (!$job) {
+                if (! $job) {
                     throw new \RuntimeException('No scrape job was created for the smoke task.');
                 }
 
-                if (!in_array($job->status, [PipelineJob::STATUS_QUEUED, PipelineJob::STATUS_SKIPPED], true)) {
+                if (! in_array($job->status, [PipelineJob::STATUS_QUEUED, PipelineJob::STATUS_SKIPPED], true)) {
                     throw new \RuntimeException("Scrape job {$job->job_id} has unexpected status {$job->status}.");
                 }
 
@@ -115,7 +115,7 @@ class PipelineSmokeTestCommand extends Command
                     ->where('event_type', PipelineEvent::SCRAPE_REQUESTED)
                     ->exists();
 
-                if (!$recorded) {
+                if (! $recorded) {
                     throw new \RuntimeException('No scrape.requested pipeline event was recorded for the scrape job.');
                 }
 
@@ -149,7 +149,7 @@ class PipelineSmokeTestCommand extends Command
                 ]);
             }, fn (PipelineJob $job): string => "Marked scrape job {$job->job_id} completed with local artifact.");
 
-            $convertJobId = 'convert_' . substr(hash('sha256', $task->task_id . '|' . $fixturePath), 0, 24);
+            $convertJobId = 'convert_'.substr(hash('sha256', $task->task_id.'|'.$fixturePath), 0, 24);
             $fileDiscovered = PipelineEvent::normalize(PipelineEvent::FILE_DISCOVERED, [
                 'task_id' => $task->task_id,
                 'job_id' => $convertJobId,
@@ -175,11 +175,11 @@ class PipelineSmokeTestCommand extends Command
                 $job = PipelineJob::query()->where('job_id', $convertJobId)->first();
                 $path = is_array($job?->metadata) ? (string) ($job->metadata['converted_path'] ?? '') : '';
 
-                if (!$job || $job->status !== PipelineJob::STATUS_COMPLETED) {
+                if (! $job || $job->status !== PipelineJob::STATUS_COMPLETED) {
                     throw new \RuntimeException("Convert job {$convertJobId} did not complete.");
                 }
 
-                if ($path === '' || !is_file($path) || trim((string) file_get_contents($path)) === '') {
+                if ($path === '' || ! is_file($path) || trim((string) file_get_contents($path)) === '') {
                     throw new \RuntimeException("Convert job {$convertJobId} did not produce readable Markdown.");
                 }
 
@@ -218,7 +218,7 @@ class PipelineSmokeTestCommand extends Command
                     ->latest('updated_at')
                     ->first();
 
-                if (!$document) {
+                if (! $document) {
                     throw new \RuntimeException('Ingestion completed without creating a completed document record.');
                 }
 
@@ -233,7 +233,7 @@ class PipelineSmokeTestCommand extends Command
                     throw new \RuntimeException('Document bridge_response is not ok.');
                 }
 
-                if (!$document->external_id) {
+                if (! $document->external_id) {
                     throw new \RuntimeException('Document is missing the related ingestion job id.');
                 }
 
@@ -259,9 +259,9 @@ class PipelineSmokeTestCommand extends Command
             }
 
             $status = $tasks->show($task->task_id);
-            $this->line('Dashboard URL: ' . url('/pipeline-dashboard?task_id=' . rawurlencode($task->task_id)));
-            $this->line('Documents URL: ' . url('/documents?document_id=' . rawurlencode($document->id)));
-            $this->line('Final task status: ' . ($status['status'] ?? 'unknown'));
+            $this->line('Dashboard URL: '.url('/pipeline-dashboard?task_id='.rawurlencode($task->task_id)));
+            $this->line('Documents URL: '.url('/documents?document_id='.rawurlencode($document->id)));
+            $this->line('Final task status: '.($status['status'] ?? 'unknown'));
             $this->newLine();
             $this->printSummary();
             $this->info('Smoke test PASS.');
@@ -270,11 +270,11 @@ class PipelineSmokeTestCommand extends Command
         } catch (Throwable $exception) {
             $this->newLine();
             $this->printSummary();
-            $this->line('Smoke test FAIL: ' . $exception->getMessage());
+            $this->line('Smoke test FAIL: '.$exception->getMessage());
 
             return self::FAILURE;
         } finally {
-            if (!$keepFiles && File::isDirectory($fixtureDir)) {
+            if (! $keepFiles && File::isDirectory($fixtureDir)) {
                 File::deleteDirectory($fixtureDir);
             }
         }
@@ -340,18 +340,18 @@ class PipelineSmokeTestCommand extends Command
 
     private function writeSmokeDocx(string $path, string $taskId): void
     {
-        if (!class_exists(ZipArchive::class)) {
+        if (! class_exists(ZipArchive::class)) {
             throw new \RuntimeException('PHP ZipArchive extension is required to create the smoke DOCX fixture.');
         }
 
-        $zip = new ZipArchive();
+        $zip = new ZipArchive;
         if ($zip->open($path, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
             throw new \RuntimeException("Could not create DOCX fixture at {$path}.");
         }
 
         $text = 'HAWKI RAG smoke test document. Laravel orchestrates RabbitMQ jobs. '
-            . 'The scraper discovers a document, the converter extracts Markdown, and ingestion writes Qdrant points. '
-            . "Smoke task {$taskId}.";
+            .'The scraper discovers a document, the converter extracts Markdown, and ingestion writes Qdrant points. '
+            ."Smoke task {$taskId}.";
         $escaped = htmlspecialchars($text, ENT_XML1 | ENT_COMPAT, 'UTF-8');
 
         $zip->addFromString('[Content_Types].xml', <<<'XML'
@@ -397,7 +397,7 @@ XML);
                 $request = $request->withHeader('api-key', (string) $apiKey);
             }
 
-            $response = $request->post($url . '/collections/' . rawurlencode($collection) . '/points/scroll', [
+            $response = $request->post($url.'/collections/'.rawurlencode($collection).'/points/scroll', [
                 'limit' => 3,
                 'with_payload' => true,
                 'with_vector' => false,
@@ -409,7 +409,7 @@ XML);
                 ],
             ]);
 
-            if (!$response->successful()) {
+            if (! $response->successful()) {
                 throw new \RuntimeException("Qdrant returned HTTP {$response->status()} for collection {$collection}.");
             }
 
@@ -431,7 +431,7 @@ XML);
             ->withBasicAuth((string) config('config.neo4j_user'), (string) config('config.neo4j_password'))
             ->acceptJson()
             ->asJson()
-            ->post($url . '/db/' . rawurlencode($database) . '/tx/commit', [
+            ->post($url.'/db/'.rawurlencode($database).'/tx/commit', [
                 'statements' => [[
                     'statement' => <<<'CYPHER'
 MATCH (n)
@@ -454,13 +454,13 @@ CYPHER,
                 ]],
             ]);
 
-        if (!$response->successful()) {
+        if (! $response->successful()) {
             throw new \RuntimeException("Neo4j returned HTTP {$response->status()}.");
         }
 
         $errors = $response->json('errors') ?? [];
         if ($errors !== []) {
-            throw new \RuntimeException('Neo4j returned errors: ' . json_encode($errors, JSON_UNESCAPED_SLASHES));
+            throw new \RuntimeException('Neo4j returned errors: '.json_encode($errors, JSON_UNESCAPED_SLASHES));
         }
 
         $row = $response->json('results.0.data.0.row') ?? [0, 0];
@@ -484,7 +484,7 @@ CYPHER,
         }
 
         $parsed = filter_var($value, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
-        if (!is_bool($parsed)) {
+        if (! is_bool($parsed)) {
             throw new \InvalidArgumentException('The --graph option must be true, false, or auto.');
         }
 

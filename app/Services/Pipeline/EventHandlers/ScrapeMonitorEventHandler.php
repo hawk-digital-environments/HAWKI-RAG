@@ -1,18 +1,19 @@
 <?php
+
 declare(strict_types=1);
 
 namespace App\Services\Pipeline\EventHandlers;
 
 use App\Models\PipelineJob;
-use App\Services\Pipeline\PipelineEvent;
-use App\Services\Pipeline\PipelineEventNormalizer;
-use App\Services\Pipeline\PipelineEventBus;
-use App\Services\Pipeline\PipelineEventStateService;
-use App\Services\Pipeline\PipelineStateService;
-use App\Services\Pipeline\PipelineStageLogger;
+use App\Services\Pipeline\Events\PipelineEvent;
+use App\Services\Pipeline\Events\PipelineEventBus;
+use App\Services\Pipeline\Events\PipelineEventNormalizer;
+use App\Services\Pipeline\Events\PipelineEventStateService;
 use App\Services\Pipeline\Repositories\PipelineJobRepository;
-use App\Services\Pipeline\ScrapeMonitorFailurePublisher;
-use App\Services\Pipeline\ScrapeMonitorOutputPublisher;
+use App\Services\Pipeline\ScrapeMonitoring\ScrapeMonitorFailurePublisher;
+use App\Services\Pipeline\ScrapeMonitoring\ScrapeMonitorOutputPublisher;
+use App\Services\Pipeline\State\PipelineStageLogger;
+use App\Services\Pipeline\State\PipelineStateService;
 use App\Services\ScrapeService\ScrapeService;
 use Illuminate\Container\Attributes\Singleton;
 
@@ -29,8 +30,7 @@ class ScrapeMonitorEventHandler implements PipelineEventHandler
         private readonly PipelineEventNormalizer $normalizer,
         private readonly ScrapeMonitorOutputPublisher $outputs,
         private readonly ScrapeMonitorFailurePublisher $failures,
-    ) {
-    }
+    ) {}
 
     public function eventTypes(): array
     {
@@ -57,18 +57,21 @@ class ScrapeMonitorEventHandler implements PipelineEventHandler
             'failedUrls' => (int) ($data['failed_urls'] ?? 0),
         ];
 
-        if (!($result['success'] ?? false)) {
+        if (! ($result['success'] ?? false)) {
             $this->handleStatusReadFailure($event, $result, $crawlerStatus);
+
             return;
         }
 
         if ($crawlerStatus === 'completed') {
             $this->handleCompleted($event, $datasetPath, $counts, $data);
+
             return;
         }
 
         if (in_array($crawlerStatus, ['failed', 'cancelled', 'canceled', 'stopped'], true)) {
             $this->handleFailedStatus($event, $crawlerStatus, $datasetPath, $counts, $data);
+
             return;
         }
 
@@ -108,6 +111,7 @@ class ScrapeMonitorEventHandler implements PipelineEventHandler
                 'status_read_failures' => $failures,
                 'last_status_read_error' => $message,
             ], 'Crawl4AI status was not readable.');
+
             return;
         }
 
@@ -149,7 +153,7 @@ class ScrapeMonitorEventHandler implements PipelineEventHandler
         }
 
         $pipelineJob = $this->jobs->findWithTaskByJobId((string) $event['job_id']);
-        if (!$pipelineJob?->task_id) {
+        if (! $pipelineJob?->task_id) {
             return;
         }
 
@@ -209,6 +213,7 @@ class ScrapeMonitorEventHandler implements PipelineEventHandler
                 'counts' => $counts,
                 'monitor_attempt' => $attempt,
             ]);
+
             return;
         }
 
@@ -246,5 +251,4 @@ class ScrapeMonitorEventHandler implements PipelineEventHandler
             ]),
         ]), $reason);
     }
-
 }

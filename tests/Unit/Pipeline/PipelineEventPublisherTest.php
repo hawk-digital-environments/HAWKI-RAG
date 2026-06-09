@@ -1,9 +1,10 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Tests\Unit\Pipeline;
 
-use App\Services\Pipeline\PipelineEventPublisher;
+use App\Services\Pipeline\Events\PipelineEventPublisher;
 use App\Services\Rag\RagRabbitMQ;
 use Mockery;
 use PhpAmqpLib\Channel\AMQPChannel;

@@ -1,12 +1,13 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Tests\Feature;
 
-use App\Services\Pipeline\PipelineEvent;
-use App\Services\Pipeline\PipelineEventNormalizer;
-use App\Services\Pipeline\PipelineEventRecorder;
-use App\Services\Pipeline\PipelineEventTypeRegistry;
+use App\Services\Pipeline\Events\PipelineEvent;
+use App\Services\Pipeline\Events\PipelineEventNormalizer;
+use App\Services\Pipeline\Events\PipelineEventRecorder;
+use App\Services\Pipeline\Events\PipelineEventTypeRegistry;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Symfony\Component\Clock\MockClock;
 use Tests\TestCase;

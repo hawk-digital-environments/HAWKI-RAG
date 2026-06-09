@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Tests\Unit\Pipeline;
@@ -6,7 +7,7 @@ namespace Tests\Unit\Pipeline;
 use App\Models\Dataset;
 use App\Models\PipelineJob;
 use App\Models\PipelineTask;
-use App\Services\Pipeline\PipelineUploadPayloadService;
+use App\Services\Pipeline\Uploads\PipelineUploadPayloadService;
 use App\Services\Pipeline\Values\PipelineStoredUpload;
 use App\Services\Pipeline\Values\PipelineUploadInput;
 use Tests\TestCase;

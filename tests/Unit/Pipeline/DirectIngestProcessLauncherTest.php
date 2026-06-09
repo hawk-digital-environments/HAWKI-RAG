@@ -1,9 +1,10 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Tests\Unit\Pipeline;
 
-use App\Services\Pipeline\DirectIngestProcessLauncher;
+use App\Services\Pipeline\DirectIngest\DirectIngestProcessLauncher;
 use App\Services\Pipeline\Values\DirectIngestStatusPaths;
 use Tests\TestCase;
 

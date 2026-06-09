@@ -1,19 +1,19 @@
 <?php
+
 declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
 use App\Http\Requests\Pipeline\ListFailedPipelineJobsRequest;
 use App\Http\Requests\Pipeline\RetrySelectedPipelineJobsRequest;
-use App\Services\Pipeline\PipelineRecoveryService;
+use App\Services\Pipeline\Recovery\PipelineRecoveryService;
 use Illuminate\Http\JsonResponse;
 
 class PipelineRecoveryController extends Controller
 {
     public function __construct(
         private readonly PipelineRecoveryService $recovery,
-    ) {
-    }
+    ) {}
 
     public function failedJobs(ListFailedPipelineJobsRequest $request): JsonResponse
     {

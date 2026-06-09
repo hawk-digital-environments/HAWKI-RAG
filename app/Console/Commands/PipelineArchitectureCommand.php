@@ -1,9 +1,10 @@
 <?php
+
 declare(strict_types=1);
 
 namespace App\Console\Commands;
 
-use App\Services\Pipeline\PipelineArchitectureService;
+use App\Services\Pipeline\Architecture\PipelineArchitectureService;
 use Illuminate\Console\Command;
 
 class PipelineArchitectureCommand extends Command
@@ -30,11 +31,11 @@ class PipelineArchitectureCommand extends Command
         $topology = $summary['topology'];
         $this->newLine();
         $this->line('RabbitMQ topology');
-        $this->line('events exchange: ' . $topology['eventsExchange']);
-        $this->line('retry exchange: ' . $topology['retryExchange']);
-        $this->line('failed exchange: ' . $topology['failedExchange']);
-        $this->line('retry delay ms: ' . $topology['retryDelayMs']);
-        $this->line('max retries: ' . $topology['maxRetries']);
+        $this->line('events exchange: '.$topology['eventsExchange']);
+        $this->line('retry exchange: '.$topology['retryExchange']);
+        $this->line('failed exchange: '.$topology['failedExchange']);
+        $this->line('retry delay ms: '.$topology['retryDelayMs']);
+        $this->line('max retries: '.$topology['maxRetries']);
 
         $this->newLine();
         $this->line('Failure modes');
@@ -76,7 +77,7 @@ class PipelineArchitectureCommand extends Command
         $this->newLine();
         $this->line('Mental model');
         foreach ($summary['mentalModel'] as $index => $step) {
-            $this->line(($index + 1) . '. ' . $step);
+            $this->line(($index + 1).'. '.$step);
         }
 
         return self::SUCCESS;

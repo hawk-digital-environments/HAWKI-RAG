@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace App\Http\Controllers\API;
@@ -8,10 +9,10 @@ use App\Http\Requests\Pipeline\DeleteCrawledFolderRequest;
 use App\Http\Requests\Pipeline\ListDirectIngestLiveRequest;
 use App\Http\Requests\Pipeline\StartDirectIngestRequest;
 use App\Http\Requests\Pipeline\StopDirectIngestRequest;
-use App\Services\Pipeline\CrawledDataFolderService;
-use App\Services\Pipeline\DirectIngestLaunchService;
-use App\Services\Pipeline\DirectIngestStatusStore;
-use App\Services\Pipeline\DirectIngestStopService;
+use App\Services\Pipeline\DirectIngest\CrawledDataFolderService;
+use App\Services\Pipeline\DirectIngest\DirectIngestLaunchService;
+use App\Services\Pipeline\DirectIngest\DirectIngestStatusStore;
+use App\Services\Pipeline\DirectIngest\DirectIngestStopService;
 use App\Services\Pipeline\Values\DirectIngestActionResult;
 use Illuminate\Http\JsonResponse;
 
