@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Graph;
 
+use App\Services\Graph\Exceptions\GraphCacheException;
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Contracts\Config\Repository as ConfigRepository;
 use Illuminate\Filesystem\Filesystem;
@@ -34,18 +35,24 @@ readonly class GraphCacheService
                 ->post($baseUrl.'/graph/cache/clear');
 
             if ($response->failed()) {
+                $exception = GraphCacheException::bridgeClearFailed($response->status());
+
                 return [
                     'ok' => false,
                     'status' => $response->status(),
-                    'message' => 'Python RAG bridge failed to clear graph cache.',
+                    'message' => $exception->getMessage(),
                 ];
             }
 
             return $response->json() ?? ['ok' => true];
         } catch (\Throwable $exception) {
+            $graphException = $exception instanceof GraphCacheException
+                ? $exception
+                : GraphCacheException::bridgeClearRequestFailed($exception);
+
             return [
                 'ok' => false,
-                'message' => $exception->getMessage(),
+                'message' => $graphException->getMessage(),
             ];
         }
     }
@@ -72,13 +79,22 @@ readonly class GraphCacheService
     private function writeVisualizationSnapshot(array $snapshot): void
     {
         $path = (string) $this->config->get('config.graph_visualization_path');
-        $payload = json_encode($snapshot, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES).PHP_EOL;
-
-        if ($this->files->exists($path) && ! is_writable($path)) {
-            $this->files->delete($path);
+        $payload = json_encode($snapshot, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+        if (! is_string($payload)) {
+            throw GraphCacheException::snapshotEncodingFailed($path);
         }
 
-        $this->files->put($path, $payload);
-        @chmod($path, 0666);
+        try {
+            $this->files->ensureDirectoryExists(dirname($path));
+
+            if ($this->files->exists($path) && ! is_writable($path)) {
+                $this->files->delete($path);
+            }
+
+            $this->files->put($path, $payload.PHP_EOL);
+            @chmod($path, 0666);
+        } catch (\Throwable $exception) {
+            throw GraphCacheException::snapshotWriteFailed($path, $exception);
+        }
     }
 }

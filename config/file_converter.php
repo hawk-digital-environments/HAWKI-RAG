@@ -43,6 +43,7 @@ return [
     'connect_timeout' => (int) env('FILE_CONVERTER_CONNECT_TIMEOUT', 20),
     'retries'         => (int) env('FILE_CONVERTER_RETRIES', 3),
     'retry_delay_ms'  => (int) env('FILE_CONVERTER_RETRY_DELAY_MS', 1500),
+    'temp_dir'        => env('FILE_CONVERTER_TEMP_DIR', storage_path('framework/cache/file-converter')),
     'token'           => env('FILE_CONVERTER_TOKEN'),
     'auth_header'     => env('FILE_CONVERTER_AUTH_HEADER', 'bearer'),
     'failed_report_path' => env('FILE_CONVERTER_FAILED_REPORT_PATH', storage_path('logs/failed_conversion.json')),

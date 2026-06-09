@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\FileConverter;
 
+use App\Services\FileConverter\Exceptions\ConversionOutputException;
 use Illuminate\Container\Attributes\Singleton;
 use SplFileInfo;
 
@@ -41,6 +42,6 @@ readonly class ConversionRetryClient
             }
         }
 
-        throw $lastException ?? new \RuntimeException('Unknown error during conversion.');
+        throw $lastException ?? ConversionOutputException::unknownConversionError();
     }
 }

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\FileConverter;
 
 use Illuminate\Container\Attributes\Singleton;
+use Illuminate\Filesystem\Filesystem;
 use Psr\Clock\ClockInterface;
 use Symfony\Component\Clock\Clock;
 
@@ -13,6 +14,7 @@ readonly class ConversionOutputContent
 {
     public function __construct(
         private ConvertedOutputWriter $outputs,
+        private Filesystem $files,
         private ClockInterface $clock = new Clock,
     ) {
     }
@@ -51,7 +53,7 @@ readonly class ConversionOutputContent
             }
 
             $path = $destDir.'/'.ltrim($relative, '/');
-            if (is_file($path)) {
+            if ($this->files->isFile($path)) {
                 return $this->outputs->readFile($path);
             }
         }

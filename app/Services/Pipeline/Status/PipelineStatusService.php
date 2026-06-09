@@ -4,10 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Pipeline\Status;
 
-use App\Models\JobProcessingState;
-use App\Services\Pipeline\Repositories\PipelineStatusRepository;
 use App\Services\Pipeline\State\PipelineStateService;
-use App\Services\Scrape\ScrapeService;
 use Illuminate\Container\Attributes\Singleton;
 use Psr\Clock\ClockInterface;
 use Symfony\Component\Clock\Clock;
@@ -16,33 +13,38 @@ use Symfony\Component\Clock\Clock;
 readonly class PipelineStatusService
 {
     public function __construct(
-        private ScrapeService $scrapeService,
-        private PipelineStatusRepository $statuses,
+        private PipelineScrapeStatusService $scrapeStatuses,
+        private PipelineConversionStatusService $conversionStatuses,
+        private PipelineIngestStatusService $ingestStatuses,
+        private PipelineStageStatusMerger $stageMerger,
         private PipelineStateService $pipelineState,
-        private PipelineConversionStatusService $conversions,
         private ClockInterface $clock = new Clock,
-    ) {}
+    ) {
+    }
 
+    /**
+     * @return array<string, mixed>
+     */
     public function show(string $jobId): array
     {
         $tracked = $this->pipelineState->status($jobId);
-        $scrape = $this->scrapeStage($jobId);
+        $scrape = $this->scrapeStatuses->stage($jobId);
         $datasetPath = $tracked['datasetPath'] ?? $scrape['datasetPath'] ?? null;
         $convert = $this->convertStage($jobId, $datasetPath);
-        $ingest = $this->ingestStage($jobId, $datasetPath);
+        $ingest = $this->ingestStatuses->stage($jobId, $datasetPath);
         $tracked = $this->pipelineState->status($jobId);
 
         return [
             'success' => true,
             'jobId' => $jobId,
             'datasetPath' => $datasetPath,
-            'currentStage' => $tracked['currentStage'] ?? $this->currentStage($scrape, $convert, $ingest),
-            'status' => $tracked['status'] ?? $this->overallStatus($scrape, $convert, $ingest),
+            'currentStage' => $tracked['currentStage'] ?? $this->stageMerger->currentStage($scrape, $convert, $ingest),
+            'status' => $tracked['status'] ?? $this->stageMerger->overallStatus($scrape, $convert, $ingest),
             'documentCounts' => $tracked['documentCounts'] ?? null,
             'stages' => [
-                'scrape' => $this->mergeTrackedStage($scrape, $tracked['stages']['scrape'] ?? null),
-                'convert' => $this->mergeTrackedStage($convert, $tracked['stages']['convert'] ?? null),
-                'ingest' => $this->mergeTrackedStage($ingest, $tracked['stages']['ingest'] ?? null),
+                'scrape' => $this->stageMerger->mergeTrackedStage($scrape, $tracked['stages']['scrape'] ?? null),
+                'convert' => $this->stageMerger->mergeTrackedStage($convert, $tracked['stages']['convert'] ?? null),
+                'ingest' => $this->stageMerger->mergeTrackedStage($ingest, $tracked['stages']['ingest'] ?? null),
             ],
             'tracked' => [
                 'found' => $tracked !== null,
@@ -54,248 +56,20 @@ readonly class PipelineStatusService
         ];
     }
 
-    private function scrapeStage(string $jobId): array
-    {
-        $process = $this->statuses->findScrapeProcess($jobId);
-
-        $live = $this->scrapeService->getCrawlerStatus($jobId);
-        $liveData = ($live['success'] ?? false) && is_array($live['data'] ?? null)
-            ? $live['data']
-            : [];
-
-        $request = is_array($process?->request) ? $process->request : [];
-        $stats = ($process && $this->statuses->hasScrapeStatisticsTable()) ? $process->stats : null;
-        $datasetPath = $liveData['output_directory']
-            ?? $request['output_dir']
-            ?? $request['outputDir']
-            ?? null;
-
-        $errors = $this->arrayValue($stats?->errors);
-        $warnings = $this->arrayValue($stats?->warnings);
-
-        $stage = [
-            'status' => $liveData['status'] ?? $process?->stage ?? 'unknown',
-            'message' => $liveData['message'] ?? null,
-            'datasetPath' => $datasetPath,
-            'startedAt' => $this->dateValue($liveData['started_at'] ?? null) ?? $this->dateValue($stats?->started_at),
-            'completedAt' => $this->dateValue($liveData['completed_at'] ?? null) ?? $this->dateValue($stats?->completed_at),
-            'counts' => [
-                'pagesCrawled' => (int) ($liveData['pages_crawled'] ?? $stats?->completed_urls ?? 0),
-                'totalPages' => (int) ($liveData['total_pages'] ?? $stats?->total_urls ?? $stats?->target_urls ?? 0),
-                'completedUrls' => (int) ($stats?->completed_urls ?? 0),
-                'failedUrls' => (int) ($stats?->failed_urls ?? 0),
-                'elements' => ($process && $this->statuses->hasScrapedElementsTable()) ? $process->elements()->count() : 0,
-                'filesDownloaded' => (int) ($stats?->pdfs_downloaded ?? 0),
-                'imagesDownloaded' => (int) ($stats?->images_downloaded ?? 0),
-            ],
-            'errors' => $errors,
-            'warnings' => $warnings,
-            'source' => [
-                'laravelFound' => $process !== null,
-                'laravelTableAvailable' => $this->statuses->hasScrapeJobsTable(),
-                'statisticsTableAvailable' => $this->statuses->hasScrapeStatisticsTable(),
-                'elementsTableAvailable' => $this->statuses->hasScrapedElementsTable(),
-                'crawlerFound' => (bool) ($live['success'] ?? false),
-                'crawlerStatus' => $live['status'] ?? null,
-            ],
-        ];
-
-        $this->syncScrapeStage($jobId, $stage);
-
-        return $stage;
-    }
-
+    /**
+     * @return array<string, mixed>
+     */
     private function convertStage(string $jobId, ?string $datasetPath): array
     {
-        $stage = $this->conversions->stage($datasetPath);
-
+        $stage = $this->conversionStatuses->stage($datasetPath);
         $this->syncConvertStage($jobId, $stage);
 
         return $stage;
     }
 
-    private function ingestStage(string $jobId, ?string $datasetPath): array
-    {
-        if (! $this->statuses->hasIngestStateTable()) {
-            return $this->emptyStage('unknown', 'Ingest state table is not available.');
-        }
-
-        $states = $this->statuses->ingestStatesForJobOrDataset($jobId, $datasetPath);
-        if ($states->isEmpty()) {
-            return $this->emptyStage('unknown', 'No ingest state found yet.');
-        }
-
-        $counts = $states->countBy('status')->all();
-        $latest = $states->first();
-        $errors = $states
-            ->filter(fn (JobProcessingState $state) => filled($state->error_message))
-            ->map(fn (JobProcessingState $state) => [
-                'jobId' => $state->job_id,
-                'status' => $state->status,
-                'errorType' => $state->error_type,
-                'message' => $state->error_message,
-                'retryCount' => $state->retry_count,
-                'maxRetries' => $state->max_retries,
-                'updatedAt' => $this->dateValue($state->updated_at),
-            ])
-            ->values()
-            ->all();
-
-        $stage = [
-            'status' => $this->ingestStatus($counts),
-            'startedAt' => $this->dateValue($states->min('processing_started_at') ?? $states->min('first_received_at')),
-            'completedAt' => $this->dateValue($states->max('completed_at')),
-            'counts' => [
-                'total' => $states->count(),
-                'received' => (int) ($counts[JobProcessingState::STATUS_RECEIVED] ?? 0),
-                'processing' => (int) ($counts[JobProcessingState::STATUS_PROCESSING] ?? 0),
-                'completed' => (int) ($counts[JobProcessingState::STATUS_COMPLETED] ?? 0),
-                'failed' => (int) ($counts[JobProcessingState::STATUS_FAILED] ?? 0),
-            ],
-            'retry' => [
-                'retryCount' => (int) ($latest?->retry_count ?? 0),
-                'maxRetries' => (int) ($latest?->max_retries ?? 0),
-            ],
-            'errors' => $errors,
-            'latest' => $latest ? [
-                'jobId' => $latest->job_id,
-                'status' => $latest->status,
-                'inputPath' => $latest->input_path,
-                'outputPath' => $latest->output_path,
-                'updatedAt' => $this->dateValue($latest->updated_at),
-            ] : null,
-        ];
-
-        $this->syncIngestStage($jobId, $datasetPath, $stage);
-
-        return $stage;
-    }
-
-    private function currentStage(array $scrape, array $convert, array $ingest): string
-    {
-        if (! in_array($ingest['status'], ['unknown', 'pending', 'skipped', 'completed'], true)) {
-            return 'ingest';
-        }
-        if (! in_array($convert['status'], ['unknown', 'pending', 'skipped', 'completed'], true)) {
-            return 'convert';
-        }
-        if (! in_array($scrape['status'], ['unknown', 'completed'], true)) {
-            return 'scrape';
-        }
-        if ($ingest['status'] === 'completed') {
-            return 'ingest';
-        }
-        if (in_array($convert['status'], ['completed', 'skipped'], true) && in_array($ingest['status'], ['unknown', 'pending'], true)) {
-            return 'ingest';
-        }
-        if ($scrape['status'] === 'completed' && in_array($convert['status'], ['unknown', 'pending', 'skipped'], true)) {
-            return 'convert';
-        }
-        if ($convert['status'] === 'completed') {
-            return 'convert';
-        }
-
-        return 'scrape';
-    }
-
-    private function overallStatus(array $scrape, array $convert, array $ingest): string
-    {
-        $statuses = [$scrape['status'], $convert['status'], $ingest['status']];
-        if (in_array('failed', $statuses, true)) {
-            return 'failed';
-        }
-        if (in_array('partial', $statuses, true)) {
-            return 'partial';
-        }
-        if (in_array('running', $statuses, true) || in_array('processing', $statuses, true) || in_array('received', $statuses, true)) {
-            return 'running';
-        }
-        if ($scrape['status'] === 'completed' && $convert['status'] === 'completed' && $ingest['status'] === 'completed') {
-            return 'completed';
-        }
-
-        return 'partial';
-    }
-
-    private function ingestStatus(array $counts): string
-    {
-        $received = (int) ($counts[JobProcessingState::STATUS_RECEIVED] ?? 0);
-        $processing = (int) ($counts[JobProcessingState::STATUS_PROCESSING] ?? 0);
-        $completed = (int) ($counts[JobProcessingState::STATUS_COMPLETED] ?? 0);
-        $failed = (int) ($counts[JobProcessingState::STATUS_FAILED] ?? 0);
-
-        if ($processing > 0) {
-            return 'processing';
-        }
-        if ($received > 0) {
-            return 'received';
-        }
-        if ($failed > 0 && $completed > 0) {
-            return 'partial';
-        }
-        if ($failed > 0) {
-            return 'failed';
-        }
-        if ($completed > 0) {
-            return 'completed';
-        }
-
-        return 'unknown';
-    }
-
-    private function emptyStage(string $status, string $message, array $extra = []): array
-    {
-        return array_merge([
-            'status' => $status,
-            'message' => $message,
-            'startedAt' => null,
-            'completedAt' => null,
-            'counts' => [],
-            'errors' => [],
-            'retry' => [
-                'retryCount' => null,
-                'maxRetries' => null,
-            ],
-        ], $extra);
-    }
-
-    private function syncScrapeStage(string $jobId, array $stage): void
-    {
-        $status = (string) ($stage['status'] ?? 'unknown');
-        $payload = [
-            'dataset_path' => $stage['datasetPath'] ?? null,
-            'counts' => [
-                'totalPages' => (int) ($stage['counts']['totalPages'] ?? 0),
-                'pagesCrawled' => (int) ($stage['counts']['pagesCrawled'] ?? 0),
-                'failedUrls' => (int) ($stage['counts']['failedUrls'] ?? 0),
-            ],
-            'errors' => $stage['errors'] ?? [],
-            'warnings' => $stage['warnings'] ?? [],
-            'metadata' => [
-                'message' => $stage['message'] ?? null,
-                'source' => $stage['source'] ?? [],
-            ],
-        ];
-
-        if ($status === 'completed') {
-            $this->pipelineState->completeStage($jobId, PipelineStateService::STAGE_SCRAPE, $payload);
-
-            return;
-        }
-
-        if ($status === 'failed') {
-            $this->pipelineState->failStage($jobId, PipelineStateService::STAGE_SCRAPE, $payload);
-
-            return;
-        }
-
-        if (! in_array($status, ['unknown', 'pending'], true)) {
-            $this->pipelineState->updateStage($jobId, PipelineStateService::STAGE_SCRAPE, array_merge($payload, [
-                'status' => in_array($status, ['running', 'processing', 'received'], true) ? $status : 'running',
-            ]));
-        }
-    }
-
+    /**
+     * @param array<string, mixed> $stage
+     */
     private function syncConvertStage(string $jobId, array $stage): void
     {
         $payload = [
@@ -327,11 +101,11 @@ readonly class PipelineStatusService
             default => null,
         };
 
-        $datasetPath = (string) ($stage['datasetPath'] ?? '');
+        $resolvedDatasetPath = (string) ($stage['datasetPath'] ?? '');
         if ($status === 'skipped'
             && ! $this->pipelineState->isStageClaimedOrDone($jobId, PipelineStateService::STAGE_INGEST)) {
             $this->pipelineState->skipStage($jobId, PipelineStateService::STAGE_INGEST, [
-                'dataset_path' => $datasetPath !== '' ? $datasetPath : ($stage['datasetPath'] ?? null),
+                'dataset_path' => $resolvedDatasetPath !== '' ? $resolvedDatasetPath : ($stage['datasetPath'] ?? null),
                 'counts' => [],
                 'metadata' => [
                     'reason' => 'Conversion skipped because no supported source files were found.',
@@ -340,64 +114,4 @@ readonly class PipelineStatusService
             ]);
         }
     }
-
-    private function syncIngestStage(string $jobId, ?string $datasetPath, array $stage): void
-    {
-        $payload = [
-            'dataset_path' => $datasetPath,
-            'counts' => $stage['counts'] ?? [],
-            'errors' => $stage['errors'] ?? [],
-            'retry_count' => (int) ($stage['retry']['retryCount'] ?? 0),
-            'max_retries' => (int) ($stage['retry']['maxRetries'] ?? 0),
-            'metadata' => [
-                'latest' => $stage['latest'] ?? null,
-                'source' => 'pipeline-status-reconcile',
-            ],
-        ];
-
-        match ((string) ($stage['status'] ?? 'unknown')) {
-            'completed' => $this->pipelineState->completeStage($jobId, PipelineStateService::STAGE_INGEST, $payload),
-            'failed' => $this->pipelineState->failStage($jobId, PipelineStateService::STAGE_INGEST, $payload),
-            'partial' => $this->pipelineState->partialStage($jobId, PipelineStateService::STAGE_INGEST, $payload),
-            'processing', 'received' => $this->pipelineState->updateStage($jobId, PipelineStateService::STAGE_INGEST, array_merge($payload, [
-                'status' => (string) $stage['status'],
-            ])),
-            default => null,
-        };
-    }
-
-    private function mergeTrackedStage(array $computed, ?array $tracked): array
-    {
-        if (! $tracked) {
-            return $computed;
-        }
-
-        $merged = array_merge($tracked, array_filter($computed, static fn ($value) => $value !== null && $value !== []));
-        if (($computed['status'] ?? 'unknown') === 'unknown' && isset($tracked['status'])) {
-            $merged['status'] = $tracked['status'];
-        }
-        $merged['counts'] = array_merge($tracked['counts'] ?? [], $computed['counts'] ?? []);
-        $merged['errors'] = array_values(array_filter(array_merge($tracked['errors'] ?? [], $computed['errors'] ?? [])));
-        $merged['warnings'] = array_values(array_filter(array_merge($tracked['warnings'] ?? [], $computed['warnings'] ?? [])));
-
-        return $merged;
-    }
-
-    private function arrayValue(mixed $value): array
-    {
-        return is_array($value) ? $value : [];
-    }
-
-    private function dateValue(mixed $value): ?string
-    {
-        if ($value === null || $value === '') {
-            return null;
-        }
-        if ($value instanceof \DateTimeInterface) {
-            return $value->format(DATE_ATOM);
-        }
-
-        return (string) $value;
-    }
-
 }

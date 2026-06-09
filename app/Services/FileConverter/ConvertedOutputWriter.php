@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\FileConverter;
 
+use App\Services\FileConverter\Exceptions\ConversionOutputException;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Str;
 use Symfony\Component\Finder\Finder;
@@ -48,19 +49,19 @@ readonly class ConvertedOutputWriter
     public function replaceDirectory(string $sourceDir, string $destDir): void
     {
         if (! $this->files->isDirectory($sourceDir)) {
-            throw new \RuntimeException("Staging directory not found: {$sourceDir}");
+            throw ConversionOutputException::missingStagingDirectory($sourceDir);
         }
 
         if ($this->files->isDirectory($destDir) && ! $this->files->deleteDirectory($destDir)) {
-            throw new \RuntimeException("Unable to remove existing conversion output at {$destDir}.");
+            throw ConversionOutputException::removeExistingOutputFailed($destDir);
         }
 
         if ($this->files->isFile($destDir) && ! $this->files->delete($destDir)) {
-            throw new \RuntimeException("Unable to remove file blocking conversion output at {$destDir}.");
+            throw ConversionOutputException::removeBlockingFileFailed($destDir);
         }
 
         if (! @rename($sourceDir, $destDir)) {
-            throw new \RuntimeException("Unable to publish conversion output to {$destDir}.");
+            throw ConversionOutputException::publishFailed($sourceDir, $destDir);
         }
     }
 
@@ -72,7 +73,7 @@ readonly class ConvertedOutputWriter
 
         if (! @rename($tmp, $path)) {
             $this->files->delete($tmp);
-            throw new \RuntimeException("Unable to write file atomically: {$path}");
+            throw ConversionOutputException::atomicWriteFailed($path);
         }
     }
 

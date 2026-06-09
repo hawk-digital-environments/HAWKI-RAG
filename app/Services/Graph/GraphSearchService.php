@@ -11,6 +11,8 @@ class GraphSearchService
     public function __construct(
         private readonly Neo4jClient $neo4j,
         private readonly RagSearcher $ragSearcher,
+        private readonly GraphResultNormalizer $normalizer,
+        private readonly GraphCypherSearch $cypherSearch,
     ) {}
 
     public function searchEntities(string $query, int $limit = 12): array
@@ -23,7 +25,7 @@ class GraphSearchService
 
         $warnings = [];
         try {
-            $index = $this->fulltextIndexName();
+            $index = $this->cypherSearch->fulltextIndexName();
             if ($index) {
                 $records = $this->neo4j->run(
                     "CALL db.index.fulltext.queryNodes(\$index, \$query) YIELD node, score
@@ -31,12 +33,12 @@ class GraphSearchService
                      RETURN node, score
                      ORDER BY score DESC
                      LIMIT \$limit",
-                    ['index' => $index, 'query' => $this->fulltextQuery($query), 'limit' => $limit]
+                    ['index' => $index, 'query' => $this->cypherSearch->fulltextQuery($query), 'limit' => $limit]
                 );
 
                 return [
                     'ok' => true,
-                    'results' => $this->nodeSearchResults($records),
+                    'results' => $this->normalizer->nodeSearchResults($records),
                     'search_mode' => 'fulltext',
                     'index' => $index,
                     'warnings' => [],
@@ -65,7 +67,7 @@ class GraphSearchService
 
         return [
             'ok' => true,
-            'results' => $this->nodeSearchResults($records),
+            'results' => $this->normalizer->nodeSearchResults($records),
             'search_mode' => 'contains',
             'warnings' => $warnings,
         ];
@@ -81,7 +83,7 @@ class GraphSearchService
 
         $warnings = [];
         try {
-            $vectorIndexes = $this->vectorIndexes();
+            $vectorIndexes = $this->cypherSearch->vectorIndexes();
             $warnings[] = empty($vectorIndexes)
                 ? 'No Neo4j vector index was found; using the existing RAG semantic retrieval as a graph entry-point fallback.'
                 : 'Neo4j vector indexes exist, but this Laravel app does not own an embedding endpoint for query vectors; using RAG semantic retrieval fallback.';
@@ -113,7 +115,7 @@ class GraphSearchService
 
             return [
                 'ok' => true,
-                'results' => $this->nodeSearchResults($records),
+                'results' => $this->normalizer->nodeSearchResults($records),
                 'search_mode' => 'semantic-rag-fallback',
                 'warnings' => $warnings,
             ];
@@ -126,85 +128,6 @@ class GraphSearchService
                 'warnings' => $warnings,
             ];
         }
-    }
-
-    private function nodeSearchResults(array $records): array
-    {
-        return array_values(array_filter(array_map(function (array $record): ?array {
-            $graphNodes = $record['_graph']['nodes'] ?? [];
-            $node = $this->normalizeNodes($graphNodes)[0] ?? null;
-            if ($node) {
-                $node['score'] = $record['score'] ?? null;
-                $node['highlighted'] = true;
-            }
-
-            return $node;
-        }, $records)));
-    }
-
-    private function normalizeNodes(array $nodes): array
-    {
-        $normalized = [];
-        foreach ($nodes as $node) {
-            if (! is_array($node)) {
-                continue;
-            }
-            $id = (string) ($node['elementId'] ?? $node['id'] ?? '');
-            if ($id === '') {
-                continue;
-            }
-            $properties = is_array($node['properties'] ?? null) ? $node['properties'] : [];
-            unset($properties['embedding'], $properties['vector']);
-            $labels = array_values($node['labels'] ?? []);
-            $docIds = $this->stringList($properties['doc_ids'] ?? $properties['doc_id'] ?? []);
-            $normalized[$id] = [
-                'id' => $id,
-                'label' => (string) ($properties['name'] ?? $properties['entity_id'] ?? $id),
-                'type' => (string) ($labels[0] ?? 'Entity'),
-                'properties' => $properties,
-                'score' => $node['score'] ?? null,
-                'source_document_ids' => $docIds,
-                'highlighted' => false,
-            ];
-        }
-
-        return array_values($normalized);
-    }
-
-    private function fulltextIndexName(): ?string
-    {
-        $records = $this->neo4j->run('SHOW INDEXES YIELD name, type, entityType, labelsOrTypes, properties RETURN name, type, entityType, labelsOrTypes, properties', [], false);
-        foreach ($records as $record) {
-            if (($record['type'] ?? null) !== 'FULLTEXT' || ($record['entityType'] ?? null) !== 'NODE') {
-                continue;
-            }
-            $labels = $record['labelsOrTypes'] ?? [];
-            $properties = $record['properties'] ?? [];
-            if (in_array('Entity', $labels, true) && (in_array('name', $properties, true) || in_array('entity_id', $properties, true))) {
-                return (string) $record['name'];
-            }
-        }
-
-        return null;
-    }
-
-    private function vectorIndexes(): array
-    {
-        return array_values(array_filter(
-            $this->neo4j->run('SHOW INDEXES YIELD name, type, entityType, labelsOrTypes, properties RETURN name, type, entityType, labelsOrTypes, properties', [], false),
-            static fn (array $record): bool => ($record['type'] ?? null) === 'VECTOR' && ($record['entityType'] ?? null) === 'NODE'
-        ));
-    }
-
-    private function fulltextQuery(string $query): string
-    {
-        $terms = preg_split('/\s+/', trim($query)) ?: [];
-        $terms = array_values(array_filter(array_map(
-            static fn (string $term): string => preg_replace('/[^[:alnum:]_\-]+/u', '', $term) ?? '',
-            $terms
-        )));
-
-        return $terms === [] ? $query : implode(' AND ', array_map(static fn (string $term): string => $term.'*', $terms));
     }
 
     private function semanticNames(array $rag): array
@@ -231,15 +154,4 @@ class GraphSearchService
         return array_values(array_unique(array_filter(array_map('trim', $names))));
     }
 
-    private function stringList(mixed $value): array
-    {
-        if (is_array($value)) {
-            return array_values(array_filter(array_map('strval', $value)));
-        }
-        if ($value === null || $value === '') {
-            return [];
-        }
-
-        return [(string) $value];
-    }
 }

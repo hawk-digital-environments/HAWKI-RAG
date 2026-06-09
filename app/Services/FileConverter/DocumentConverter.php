@@ -1,7 +1,10 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Services\FileConverter;
 
+use App\Services\FileConverter\Exceptions\ConversionOutputException;
 use Illuminate\Contracts\Config\Repository as ConfigRepository;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Http\Client\Factory as HttpFactory;
@@ -32,11 +35,11 @@ class DocumentConverter
             $resource = @fopen($file->getPathname(), 'r');
             $filename = $file->getFilename();
         } else {
-            throw new \InvalidArgumentException("Invalid file input. Expected UploadedFile or SplFileInfo.");
+            throw ConversionOutputException::invalidFileInput();
         }
 
         if ($resource === false) {
-            throw new \RuntimeException("Unable to open document for conversion: {$filename}");
+            throw ConversionOutputException::openDocumentFailed($filename);
         }
 
         $request = $this->http->timeout((int) $this->config->get('file_converter.timeout', 300))
@@ -61,11 +64,7 @@ class DocumentConverter
         }
 
         if (!$response->successful()) {
-            throw new \Exception(sprintf(
-                'Document extraction failed with HTTP %s: %s',
-                $response->status(),
-                $response->body(),
-            ));
+            throw ConversionOutputException::documentExtractionFailed($response->status(), $response->body());
         }
 
         // Unzip files from response
@@ -107,7 +106,7 @@ class DocumentConverter
             return true;
         } else {
             $this->files->delete($tmpZip);
-            throw new \Exception("Failed to open ZIP file.");
+            throw ConversionOutputException::zipOpenFailed();
         }
     }
 
@@ -125,9 +124,6 @@ class DocumentConverter
 
     private function temporaryRoot(): string
     {
-        return rtrim((string) $this->config->get(
-            'file_converter.temp_dir',
-            storage_path('framework/cache/file-converter')
-        ), DIRECTORY_SEPARATOR);
+        return rtrim((string) $this->config->get('file_converter.temp_dir'), DIRECTORY_SEPARATOR);
     }
 }
