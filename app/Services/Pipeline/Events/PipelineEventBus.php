@@ -18,6 +18,7 @@ class PipelineEventBus
         private readonly PipelineEventLogger $logger,
         private readonly PipelineEventDecoder $decoder,
         private readonly PipelineEventNormalizer $normalizer,
+        private readonly PipelineEventConfig $config,
     ) {}
 
     public function publish(string $eventType, array $payload): array
@@ -26,20 +27,19 @@ class PipelineEventBus
         $this->recorder->record($eventType, $event, 'rabbitmq.publish');
         $this->log('publish', $event);
 
-        if (! (bool) config('communication.rabbitmq.pipeline_events.enabled', true)) {
+        if (! $this->config->enabled()) {
             return $event;
         }
 
-        $cfg = config('communication.rabbitmq.pipeline_events');
         $this->topology->declareForEvent($eventType);
-        $this->publisher->publish((string) $cfg['exchange'], $eventType, $event);
+        $this->publisher->publish($this->config->exchange(), $eventType, $event);
 
         return $event;
     }
 
     public function publishRetry(array $event, \Throwable $error): ?array
     {
-        if (! (bool) config('communication.rabbitmq.pipeline_events.enabled', true)) {
+        if (! $this->config->enabled()) {
             return null;
         }
 
@@ -52,7 +52,7 @@ class PipelineEventBus
 
         $this->topology->declareForEvent($eventType);
         $this->publisher->publish(
-            (string) config('communication.rabbitmq.pipeline_events.retry_exchange'),
+            $this->config->retryExchange(),
             $this->retryRoutingKey($eventType),
             $retryEvent,
         );
@@ -70,13 +70,13 @@ class PipelineEventBus
         $this->recorder->record($eventType, $delayedEvent, 'rabbitmq.delay', "Delayed event queued: {$eventType}");
         $this->log('delay', $delayedEvent);
 
-        if (! (bool) config('communication.rabbitmq.pipeline_events.enabled', true)) {
+        if (! $this->config->enabled()) {
             return $delayedEvent;
         }
 
         $this->topology->declareForEvent($eventType);
         $this->publisher->publish(
-            (string) config('communication.rabbitmq.pipeline_events.retry_exchange'),
+            $this->config->retryExchange(),
             $this->retryRoutingKey($eventType),
             $delayedEvent,
         );
@@ -92,13 +92,13 @@ class PipelineEventBus
         $this->recorder->record($eventType, $retryEvent, 'rabbitmq.recovery', "Recovery retry queued: {$eventType}");
         $this->log('recovery_retry', $retryEvent);
 
-        if (! (bool) config('communication.rabbitmq.pipeline_events.enabled', true)) {
+        if (! $this->config->enabled()) {
             return $retryEvent;
         }
 
         $this->topology->declareForEvent($eventType);
         $this->publisher->publish(
-            (string) config('communication.rabbitmq.pipeline_events.retry_exchange'),
+            $this->config->retryExchange(),
             $this->retryRoutingKey($eventType),
             $retryEvent,
         );
@@ -113,11 +113,11 @@ class PipelineEventBus
         $this->log('failed', $failed);
         $this->recorder->record(PipelineEvent::JOB_FAILED, $failed, 'rabbitmq.failed');
 
-        if ((bool) config('communication.rabbitmq.pipeline_events.enabled', true)) {
+        if ($this->config->enabled()) {
             $this->declareFailedTopology();
             $this->publisher->publish(
-                (string) config('communication.rabbitmq.pipeline_events.failed_exchange'),
-                (string) config('communication.rabbitmq.pipeline_events.failed_routing_key', PipelineEvent::JOB_FAILED),
+                $this->config->failedExchange(),
+                $this->config->failedRoutingKey(),
                 $failed,
             );
         }

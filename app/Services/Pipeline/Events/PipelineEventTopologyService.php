@@ -16,6 +16,7 @@ readonly class PipelineEventTopologyService
     public function __construct(
         private RagRabbitMQ $rabbit,
         private PipelineQueueTopologyService $queues,
+        private PipelineEventConfig $config,
     ) {}
 
     /**
@@ -23,8 +24,8 @@ readonly class PipelineEventTopologyService
      */
     public function declareWorker(string $worker): array
     {
-        $cfg = config("communication.rabbitmq.pipeline_events.workers.{$worker}");
-        if (! is_array($cfg)) {
+        $cfg = $this->config->worker($worker);
+        if ($cfg === null) {
             throw PipelineEventException::unknownWorker($worker);
         }
 
@@ -36,7 +37,7 @@ readonly class PipelineEventTopologyService
 
         $channel->queue_declare($queue, false, true, false, false, false, $queueArgs);
         foreach ($events as $eventType) {
-            $channel->queue_bind($queue, (string) config('communication.rabbitmq.pipeline_events.exchange'), $eventType);
+            $channel->queue_bind($queue, $this->config->exchange(), $eventType);
             $this->declareRetryQueue($queue, $eventType);
         }
 
@@ -57,17 +58,17 @@ readonly class PipelineEventTopologyService
         $this->declareExchanges();
         $channel = $this->rabbit->channel();
         $queueArgs = $this->queueArguments();
-        $failedQueue = (string) config('communication.rabbitmq.pipeline_events.failed_queue', 'pipeline_failed_events');
+        $failedQueue = $this->config->failedQueue();
         $channel->queue_declare($failedQueue, false, true, false, false, false, $queueArgs);
         $channel->queue_bind(
             $failedQueue,
-            (string) config('communication.rabbitmq.pipeline_events.failed_exchange'),
-            (string) config('communication.rabbitmq.pipeline_events.failed_routing_key', PipelineEvent::JOB_FAILED),
+            $this->config->failedExchange(),
+            $this->config->failedRoutingKey(),
         );
 
         return [
             'queue' => $failedQueue,
-            'routing_key' => (string) config('communication.rabbitmq.pipeline_events.failed_routing_key', PipelineEvent::JOB_FAILED),
+            'routing_key' => $this->config->failedRoutingKey(),
         ];
     }
 
@@ -75,7 +76,7 @@ readonly class PipelineEventTopologyService
     {
         $this->declareExchanges();
 
-        foreach ((array) config('communication.rabbitmq.pipeline_events.workers', []) as $worker => $cfg) {
+        foreach ($this->config->workers() as $worker => $cfg) {
             if (! is_array($cfg)) {
                 continue;
             }
@@ -90,22 +91,21 @@ readonly class PipelineEventTopologyService
     private function declareExchanges(): void
     {
         $channel = $this->rabbit->channel();
-        $cfg = config('communication.rabbitmq.pipeline_events');
 
-        $channel->exchange_declare((string) $cfg['exchange'], (string) $cfg['exchange_type'], false, true, false);
-        $channel->exchange_declare((string) $cfg['retry_exchange'], (string) $cfg['retry_exchange_type'], false, true, false);
-        $channel->exchange_declare((string) $cfg['failed_exchange'], (string) $cfg['failed_exchange_type'], false, true, false);
+        $channel->exchange_declare($this->config->exchange(), $this->config->exchangeType(), false, true, false);
+        $channel->exchange_declare($this->config->retryExchange(), $this->config->retryExchangeType(), false, true, false);
+        $channel->exchange_declare($this->config->failedExchange(), $this->config->failedExchangeType(), false, true, false);
     }
 
     private function declareRetryQueue(string $workerQueue, string $eventType): void
     {
         $arguments = [
-            'x-message-ttl' => (int) config('communication.rabbitmq.pipeline_events.retry_delay_ms', 5000),
-            'x-dead-letter-exchange' => (string) config('communication.rabbitmq.pipeline_events.exchange'),
+            'x-message-ttl' => $this->config->retryDelayMs(),
+            'x-dead-letter-exchange' => $this->config->exchange(),
             'x-dead-letter-routing-key' => $eventType,
         ];
 
-        if ((string) config('communication.rabbitmq.pipeline_events.queue_type', 'quorum') === 'quorum') {
+        if ($this->config->usesQuorumQueues()) {
             $arguments['x-queue-type'] = 'quorum';
         }
 
@@ -114,14 +114,14 @@ readonly class PipelineEventTopologyService
         $channel->queue_declare($retryQueue, false, true, false, false, false, new AMQPTable($arguments));
         $channel->queue_bind(
             $retryQueue,
-            (string) config('communication.rabbitmq.pipeline_events.retry_exchange'),
+            $this->config->retryExchange(),
             $this->retryRoutingKey($eventType),
         );
     }
 
     private function queueArguments(): ?AMQPTable
     {
-        if ((string) config('communication.rabbitmq.pipeline_events.queue_type', 'quorum') !== 'quorum') {
+        if (! $this->config->usesQuorumQueues()) {
             return null;
         }
 

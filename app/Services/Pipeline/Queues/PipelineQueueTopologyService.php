@@ -5,17 +5,22 @@ declare(strict_types=1);
 namespace App\Services\Pipeline\Queues;
 
 use Illuminate\Container\Attributes\Singleton;
+use App\Services\Pipeline\Events\PipelineEventConfig;
 
 #[Singleton]
 readonly class PipelineQueueTopologyService
 {
+    public function __construct(private PipelineEventConfig $config)
+    {
+    }
+
     /**
      * @return array{workers: list<array{worker: string, queueName: string, listen: list<string>, retryQueues: list<string>}>, failedQueue: string}
      */
     public function expectedQueues(): array
     {
         $workers = [];
-        foreach ((array) config('communication.rabbitmq.pipeline_events.workers', []) as $name => $config) {
+        foreach ($this->config->workers() as $name => $config) {
             if (! is_array($config)) {
                 continue;
             }
@@ -39,7 +44,7 @@ readonly class PipelineQueueTopologyService
 
         return [
             'workers' => $workers,
-            'failedQueue' => (string) config('communication.rabbitmq.pipeline_events.failed_queue', 'pipeline_failed_events'),
+            'failedQueue' => $this->config->failedQueue(),
         ];
     }
 

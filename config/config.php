@@ -12,6 +12,7 @@ return [
     'neo4j_user' => env('NEO4J_USER', 'neo4j'),
     'neo4j_password' => env('NEO4J_PASSWORD', ''),
     'neo4j_database' => env('NEO4J_DATABASE', 'neo4j'),
+    'graph_snapshot_path' => env('HAWKI_RAG_GRAPH_SNAPSHOT_PATH', storage_path('app/graph_snapshots')),
     'pipeline_root' => $pipelineRoot,
     'shared_root' => $pipelineRoot,
     'crawled_data_root' => $crawledDataRoot,

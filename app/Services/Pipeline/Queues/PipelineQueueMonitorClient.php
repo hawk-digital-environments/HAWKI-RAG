@@ -5,12 +5,19 @@ declare(strict_types=1);
 namespace App\Services\Pipeline\Queues;
 
 use App\Services\Pipeline\Exceptions\PipelineQueueMonitorException;
+use App\Services\Pipeline\Events\PipelineEventConfig;
 use Illuminate\Container\Attributes\Singleton;
-use Illuminate\Support\Facades\Http;
+use Illuminate\Http\Client\Factory as HttpFactory;
 
 #[Singleton]
 readonly class PipelineQueueMonitorClient
 {
+    public function __construct(
+        private HttpFactory $http,
+        private PipelineEventConfig $config,
+    ) {
+    }
+
     /**
      * @return array<string, array<string, mixed>>
      */
@@ -21,14 +28,14 @@ readonly class PipelineQueueMonitorClient
             throw PipelineQueueMonitorException::missingManagementUrl();
         }
 
-        $response = Http::timeout($timeout)
+        $response = $this->http->timeout($timeout)
             ->connectTimeout($timeout)
             ->withBasicAuth(
-                (string) config('communication.rabbitmq.user', 'guest'),
-                (string) config('communication.rabbitmq.password', 'guest'),
+                $this->config->rabbitUser(),
+                $this->config->rabbitPassword(),
             )
             ->acceptJson()
-            ->get($url.'/api/queues/'.rawurlencode((string) config('communication.rabbitmq.vhost', '/')));
+            ->get($url.'/api/queues/'.rawurlencode($this->config->rabbitVhost()));
 
         if (! $response->successful()) {
             throw PipelineQueueMonitorException::unsuccessfulResponse($url, $response->status());
@@ -51,6 +58,6 @@ readonly class PipelineQueueMonitorClient
 
     public function managementUrl(): string
     {
-        return rtrim((string) config('communication.rabbitmq.management_url', ''), '/');
+        return $this->config->rabbitManagementUrl();
     }
 }
