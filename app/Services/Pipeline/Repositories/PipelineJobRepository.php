@@ -20,6 +20,10 @@ readonly class PipelineJobRepository
         private ActivePipelineJobsQuery $activeJobs,
         private FailedPipelineJobsQuery $failedJobs,
         private PipelineTaskJobsQuery $taskJobs,
+        private PipelineJobCreationRepository $creation,
+        private PipelineJobRecoveryRepository $recovery,
+        private PipelineJobStateMutationRepository $states,
+        private PipelineJobRollupRepository $rollups,
     ) {
     }
 
@@ -128,17 +132,7 @@ readonly class PipelineJobRepository
         array $metadata,
     ): PipelineJob
     {
-        return PipelineJob::query()->create([
-            'job_id' => $jobId,
-            'task_id' => $task->task_id,
-            'job_type' => PipelineJob::TYPE_CONVERT,
-            'source_url' => $sourceUrl,
-            'local_path' => $storedUpload->localPath,
-            'content_hash' => $storedUpload->contentHash,
-            'status' => PipelineJob::STATUS_QUEUED,
-            'started_at' => $startedAt,
-            'metadata' => $metadata,
-        ]);
+        return $this->creation->createUploadConvertJob($jobId, $task, $sourceUrl, $storedUpload, $startedAt, $metadata);
     }
 
     /**
@@ -155,17 +149,7 @@ readonly class PipelineJobRepository
         array $metadata,
     ): PipelineJob
     {
-        return PipelineJob::query()->create([
-            'job_id' => $jobId,
-            'task_id' => $task->task_id,
-            'job_type' => PipelineJob::TYPE_SCRAPE,
-            'source_url' => $sourceUrl,
-            'content_hash' => $contentHash,
-            'status' => $status,
-            'started_at' => $startedAt,
-            'finished_at' => $finishedAt,
-            'metadata' => $metadata,
-        ]);
+        return $this->creation->createScrapeJob($jobId, $task, $sourceUrl, $contentHash, $status, $startedAt, $finishedAt, $metadata);
     }
 
     public function hasCompletedOrSkippedConversion(string $path, string $contentHash): bool
@@ -182,31 +166,12 @@ readonly class PipelineJobRepository
         Carbon $startedAt,
         string $defaultStatus,
     ): PipelineJob {
-        $job = PipelineJob::query()->firstOrNew(['job_id' => $jobId]);
-        $job->fill($attributes);
-
-        if (!$job->started_at) {
-            $job->started_at = $startedAt;
-        }
-        if (!$job->status) {
-            $job->status = $defaultStatus;
-        }
-
-        $job->save();
-
-        return $job->refresh();
+        return $this->creation->ensureStateJob($jobId, $attributes, $startedAt, $defaultStatus);
     }
 
     public function firstOrCreateClaimJob(string $jobId, string $stage, Carbon $startedAt): PipelineJob
     {
-        return PipelineJob::query()->firstOrCreate(
-            ['job_id' => $jobId],
-            [
-                'status' => PipelineJob::STATUS_PENDING,
-                'current_stage' => $stage,
-                'started_at' => $startedAt,
-            ],
-        );
+        return $this->creation->firstOrCreateClaimJob($jobId, $stage, $startedAt);
     }
 
     /**
@@ -214,12 +179,7 @@ readonly class PipelineJobRepository
      */
     public function upsertForTask(string $jobId, PipelineTask $task, array $attributes): PipelineJob
     {
-        return PipelineJob::query()->updateOrCreate(
-            ['job_id' => $jobId],
-            array_merge($attributes, [
-                'task_id' => $task->task_id,
-            ]),
-        );
+        return $this->creation->upsertForTask($jobId, $task, $attributes);
     }
 
     /**
@@ -227,21 +187,12 @@ readonly class PipelineJobRepository
      */
     public function upsertEventState(string $jobId, array $attributes): PipelineJob
     {
-        return PipelineJob::query()->updateOrCreate(
-            ['job_id' => $jobId],
-            $attributes,
-        );
+        return $this->creation->upsertEventState($jobId, $attributes);
     }
 
     public function markFailed(PipelineJob $job, string $message, Carbon $failedAt): PipelineJob
     {
-        $job->forceFill([
-            'status' => PipelineJob::STATUS_FAILED,
-            'error_message' => $message,
-            'finished_at' => $failedAt,
-        ])->save();
-
-        return $job->refresh();
+        return $this->states->markFailed($job, $message, $failedAt);
     }
 
     /**
@@ -249,22 +200,12 @@ readonly class PipelineJobRepository
      */
     public function markQueuedForRetry(PipelineJob $job, array $metadata): PipelineJob
     {
-        $job->forceFill([
-            'status' => PipelineJob::STATUS_QUEUED,
-            'error_message' => null,
-            'finished_at' => null,
-            'metadata' => $metadata,
-        ])->save();
-
-        return $job->refresh();
+        return $this->recovery->markQueuedForRetry($job, $metadata);
     }
 
     public function lockForRecovery(PipelineJob $job): ?PipelineJob
     {
-        return PipelineJob::query()
-            ->whereKey($job->getKey())
-            ->lockForUpdate()
-            ->first();
+        return $this->recovery->lockForRecovery($job);
     }
 
     /**
@@ -272,15 +213,7 @@ readonly class PipelineJobRepository
      */
     public function markRecoveryQueued(PipelineJob $job, array $metadata): PipelineJob
     {
-        $job->forceFill([
-            'status' => PipelineJob::STATUS_QUEUED,
-            'error_message' => null,
-            'finished_at' => null,
-            'completed_at' => null,
-            'metadata' => $metadata,
-        ])->save();
-
-        return $job->refresh();
+        return $this->recovery->markRecoveryQueued($job, $metadata);
     }
 
     /**
@@ -292,14 +225,7 @@ readonly class PipelineJobRepository
         Carbon $failedAt,
         array $metadata,
     ): PipelineJob {
-        $job->forceFill([
-            'status' => PipelineJob::STATUS_FAILED,
-            'error_message' => $message,
-            'finished_at' => $failedAt,
-            'metadata' => $metadata,
-        ])->save();
-
-        return $job->refresh();
+        return $this->recovery->markRecoveryPublishFailed($job, $message, $failedAt, $metadata);
     }
 
     /**
@@ -311,16 +237,7 @@ readonly class PipelineJobRepository
         Carbon $completedAt,
         array $metadata,
     ): PipelineJob {
-        $job->forceFill([
-            'job_type' => PipelineJob::TYPE_SCRAPE,
-            'status' => PipelineJob::STATUS_COMPLETED,
-            'local_path' => $datasetPath,
-            'completed_at' => $completedAt,
-            'finished_at' => $completedAt,
-            'metadata' => $metadata,
-        ])->save();
-
-        return $job->refresh()->loadMissing('task');
+        return $this->states->markScrapeMonitorCompleted($job, $datasetPath, $completedAt, $metadata);
     }
 
     /**
@@ -335,26 +252,6 @@ readonly class PipelineJobRepository
         ?Carbon $completedAt,
         array $attributes,
     ): PipelineJob {
-        $job->current_stage = $attributes['current_stage'] ?? $currentStage;
-        $job->status = $status;
-
-        if (isset($attributes['dataset_path'])) {
-            $job->dataset_path = $attributes['dataset_path'];
-        }
-        if (isset($attributes['source_url'])) {
-            $job->source_url = $attributes['source_url'];
-        }
-        if (isset($attributes['label'])) {
-            $job->label = $attributes['label'];
-        }
-
-        $job->total_documents = $counts['total'];
-        $job->processed_documents = $counts['processed'];
-        $job->failed_documents = $counts['failed'];
-        $job->skipped_documents = $counts['skipped'];
-        $job->completed_at = $completedAt;
-        $job->save();
-
-        return $job->refresh();
+        return $this->rollups->updateStageRollup($job, $currentStage, $status, $counts, $completedAt, $attributes);
     }
 }
