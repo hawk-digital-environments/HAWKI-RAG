@@ -8,13 +8,13 @@ use App\Console\Commands\Pipeline\ConverterEventWorkerCommand;
 use App\Console\Commands\Pipeline\IngestionEventWorkerCommand;
 use App\Console\Commands\Pipeline\ScrapeMonitorEventWorkerCommand;
 use App\Console\Commands\Pipeline\ScraperEventWorkerCommand;
+use App\Services\Pipeline\Events\PipelineEventConfig;
 use App\Services\Rag\RagRabbitMQ;
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Contracts\Config\Repository as ConfigRepository;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Database\DatabaseManager;
 use Illuminate\Filesystem\Filesystem;
-use Illuminate\Http\Client\Factory as HttpFactory;
 
 #[Singleton]
 readonly class PipelineHealthService
@@ -24,7 +24,8 @@ readonly class PipelineHealthService
         private ConfigRepository $config,
         private DatabaseManager $database,
         private Filesystem $files,
-        private HttpFactory $http,
+        private PipelineHealthHttpChecker $httpChecks,
+        private PipelineEventConfig $events,
         private RagRabbitMQ $rabbit,
     ) {}
 
@@ -77,7 +78,7 @@ readonly class PipelineHealthService
 
     private function checkRabbitMQ(): array
     {
-        if (! (bool) $this->config->get('communication.rabbitmq.pipeline_events.enabled', true)) {
+        if (! $this->events->enabled()) {
             return $this->failureResult(
                 'RabbitMQ',
                 'Pipeline events are disabled.',
@@ -95,7 +96,7 @@ readonly class PipelineHealthService
                     'Connected to %s:%s, exchange %s.',
                     $this->config->get('communication.rabbitmq.host'),
                     $this->config->get('communication.rabbitmq.port'),
-                    $this->config->get('communication.rabbitmq.pipeline_events.exchange'),
+                    $this->events->exchange(),
                 ),
             );
         } catch (\Throwable $exception) {
@@ -116,7 +117,7 @@ readonly class PipelineHealthService
             return $configError;
         }
 
-        return $this->httpReachabilityCheck(
+        return $this->httpChecks->reachabilityCheck(
             'Scraper worker',
             $url,
             $timeout,
@@ -160,7 +161,7 @@ readonly class PipelineHealthService
             );
         }
 
-        return $this->httpSuccessCheck(
+        return $this->httpChecks->successCheck(
             'Converter worker',
             $url,
             $timeout,
@@ -186,7 +187,7 @@ readonly class PipelineHealthService
             );
         }
 
-        return $this->httpSuccessCheck(
+        return $this->httpChecks->successCheck(
             'Ingestion worker',
             $bridge.'/health',
             $timeout,
@@ -203,73 +204,12 @@ readonly class PipelineHealthService
 
     private function checkQdrant(int $timeout): array
     {
-        $url = rtrim((string) $this->config->get('config.qdrant_http_url'), '/');
-        if ($url === '') {
-            $qdrant = $this->config->get('model_providers.vector_stores.qdrant', []);
-            $url = sprintf('%s://%s:%s', $qdrant['scheme'] ?? 'http', $qdrant['host'] ?? 'qdrant', $qdrant['port'] ?? 6333);
-        }
-
-        try {
-            $request = $this->http->timeout($timeout)->connectTimeout($timeout)->acceptJson();
-            if ($apiKey = $this->config->get('model_providers.vector_stores.qdrant.api_key')) {
-                $request = $request->withHeader('api-key', (string) $apiKey);
-            }
-
-            $response = $request->get($url.'/collections');
-            if ($response->successful()) {
-                return $this->ok('Qdrant', 'Connected to '.$url.'.');
-            }
-
-            return $this->failureResult(
-                'Qdrant',
-                "HTTP {$response->status()} from {$url}/collections.",
-                'Start qdrant and verify QDRANT_HTTP_URL, QDRANT_HOST, QDRANT_PORT, and QDRANT_API_KEY.',
-            );
-        } catch (\Throwable $exception) {
-            return $this->failureResult(
-                'Qdrant',
-                $exception->getMessage(),
-                'Start qdrant and verify QDRANT_HTTP_URL, QDRANT_HOST, QDRANT_PORT, and QDRANT_API_KEY.',
-            );
-        }
+        return $this->httpChecks->qdrant($timeout);
     }
 
     private function checkNeo4j(int $timeout): array
     {
-        $url = rtrim((string) $this->config->get('config.neo4j_http_url'), '/');
-        $database = trim((string) $this->config->get('config.neo4j_database', 'neo4j')) ?: 'neo4j';
-
-        try {
-            $response = $this->http->timeout($timeout)
-                ->connectTimeout($timeout)
-                ->withBasicAuth((string) $this->config->get('config.neo4j_user'), (string) $this->config->get('config.neo4j_password'))
-                ->acceptJson()
-                ->asJson()
-                ->post($url."/db/{$database}/tx/commit", [
-                    'statements' => [[
-                        'statement' => 'RETURN 1 AS ok',
-                    ]],
-                ]);
-
-            $errors = $response->json('errors') ?? [];
-            if ($response->successful() && $errors === []) {
-                return $this->ok('Neo4j', "Connected to {$url}, database {$database}.");
-            }
-
-            return $this->failureResult(
-                'Neo4j',
-                $response->successful()
-                    ? 'Neo4j returned errors: '.json_encode($errors, JSON_UNESCAPED_SLASHES)
-                    : "HTTP {$response->status()} from {$url}.",
-                'Start Neo4j and verify NEO4J_HTTP_URL, NEO4J_USER, NEO4J_PASSWORD, and NEO4J_DATABASE.',
-            );
-        } catch (\Throwable $exception) {
-            return $this->failureResult(
-                'Neo4j',
-                $exception->getMessage(),
-                'Start Neo4j and verify NEO4J_HTTP_URL, NEO4J_USER, NEO4J_PASSWORD, and NEO4J_DATABASE.',
-            );
-        }
+        return $this->httpChecks->neo4j($timeout);
     }
 
     private function checkSharedStorage(): array
@@ -368,39 +308,9 @@ readonly class PipelineHealthService
         );
     }
 
-    private function httpReachabilityCheck(string $name, string $url, int $timeout, string $detail, string $fix): array
-    {
-        try {
-            $response = $this->http->timeout($timeout)->connectTimeout($timeout)->acceptJson()->get($url);
-            if ($response->status() < 500) {
-                return $this->ok($name, "{$detail} Service reachable at {$url} with HTTP {$response->status()}.");
-            }
-
-            return $this->failureResult($name, "HTTP {$response->status()} from {$url}.", $fix);
-        } catch (\Throwable $exception) {
-            return $this->failureResult($name, $exception->getMessage(), $fix);
-        }
-    }
-
-    private function httpSuccessCheck(string $name, string $url, int $timeout, string $detail, string $fix): array
-    {
-        try {
-            $response = $this->http->timeout($timeout)->connectTimeout($timeout)->acceptJson()->get($url);
-            if ($response->successful()) {
-                return $this->ok($name, "{$detail} Service healthy at {$url}.");
-            }
-
-            return $this->failureResult($name, "HTTP {$response->status()} from {$url}.", $fix);
-        } catch (\Throwable $exception) {
-            return $this->failureResult($name, $exception->getMessage(), $fix);
-        }
-    }
-
     private function workerConfig(string $worker): array
     {
-        $config = $this->config->get("communication.rabbitmq.pipeline_events.workers.{$worker}");
-
-        return is_array($config) ? $config : [];
+        return $this->events->worker($worker) ?? [];
     }
 
     private function workerConfigError(string $commandClass, array $worker, string $name): ?array

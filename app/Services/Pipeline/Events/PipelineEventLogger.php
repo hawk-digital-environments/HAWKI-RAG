@@ -5,14 +5,18 @@ declare(strict_types=1);
 namespace App\Services\Pipeline\Events;
 
 use Illuminate\Container\Attributes\Singleton;
-use Illuminate\Support\Facades\Log;
+use Psr\Log\LoggerInterface;
 
 #[Singleton]
 readonly class PipelineEventLogger
 {
+    public function __construct(private LoggerInterface $logger)
+    {
+    }
+
     public function log(string $action, array $event): void
     {
-        Log::info('pipeline.event', [
+        $this->logger->info('pipeline.event', [
             'action' => $action,
             'event_type' => $event['event_type'] ?? null,
             'task_id' => $event['task_id'] ?? null,
@@ -28,7 +32,7 @@ readonly class PipelineEventLogger
 
     public function workerFailed(array $event, int $retryCount, int $maxRetries, \Throwable $error): void
     {
-        Log::warning('Pipeline event worker failed', [
+        $this->logger->warning('Pipeline event worker failed', [
             'event_type' => $event['event_type'] ?? null,
             'task_id' => $event['task_id'] ?? null,
             'job_id' => $event['job_id'] ?? null,

@@ -21,6 +21,9 @@ class CrawledFileConversionService
         private readonly ExistingConversionPolicy $existingConversionPolicy,
         private readonly ConversionReportWriter $reports,
         private readonly ConvertedOutputWriter $outputs,
+        private readonly ConversionRetryClient $retryClient,
+        private readonly ConversionOutputContent $content,
+        private readonly ConversionProgressTracker $progress,
         private readonly ConfigRepository $config,
         private readonly ClockInterface $clock = new Clock,
     ) {
@@ -40,6 +43,9 @@ class CrawledFileConversionService
             $this->existingConversionPolicy,
             $this->reports,
             $this->outputs,
+            $this->retryClient,
+            $this->content,
+            $this->progress,
             $this->config,
             $this->clock,
         ))->run(

@@ -8,29 +8,32 @@ use App\Models\JobProcessingState;
 use App\Models\ScrapeProcess;
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\Schema;
 
 #[Singleton]
 readonly class PipelineStatusRepository
 {
+    public function __construct(private PipelineSchemaInspector $schema)
+    {
+    }
+
     public function hasScrapeJobsTable(): bool
     {
-        return Schema::hasTable('scrape_jobs');
+        return $this->schema->hasTable('scrape_jobs');
     }
 
     public function hasScrapeStatisticsTable(): bool
     {
-        return Schema::hasTable('scrape_statistics');
+        return $this->schema->hasTable('scrape_statistics');
     }
 
     public function hasScrapedElementsTable(): bool
     {
-        return Schema::hasTable('scraped_elements');
+        return $this->schema->hasTable('scraped_elements');
     }
 
     public function hasIngestStateTable(): bool
     {
-        return Schema::hasTable('job_processing_state');
+        return $this->schema->hasTable('job_processing_state');
     }
 
     public function findScrapeProcess(string $jobId): ?ScrapeProcess

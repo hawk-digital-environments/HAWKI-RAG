@@ -7,10 +7,16 @@ namespace App\Services\Pipeline\Tasks;
 use App\Models\PipelineJob;
 use App\Models\PipelineTask;
 use Illuminate\Container\Attributes\Singleton;
+use Psr\Clock\ClockInterface;
+use Symfony\Component\Clock\Clock;
 
 #[Singleton]
 readonly class PipelineTaskPayloadService
 {
+    public function __construct(private ClockInterface $clock = new Clock())
+    {
+    }
+
     /**
      * @param  array<string, int>  $defaultCounters
      * @return array<string, mixed>
@@ -39,7 +45,7 @@ readonly class PipelineTaskPayloadService
             'counters' => $task->counters ?? $defaultCounters,
             'metadata' => $task->metadata ?? [],
             'activeJobs' => $activeJobs,
-            'updatedAt' => now()->toIso8601String(),
+            'updatedAt' => $this->clock->now()->format(\DateTimeInterface::ATOM),
         ];
     }
 

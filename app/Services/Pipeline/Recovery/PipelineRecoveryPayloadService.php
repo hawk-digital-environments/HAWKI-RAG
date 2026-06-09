@@ -6,6 +6,7 @@ namespace App\Services\Pipeline\Recovery;
 
 use App\Models\PipelineJob;
 use App\Models\PipelineTask;
+use App\Services\Pipeline\Events\PipelineEventConfig;
 use App\Services\Pipeline\Tasks\PipelineTaskEventPayloadService;
 use Illuminate\Container\Attributes\Singleton;
 
@@ -15,6 +16,7 @@ readonly class PipelineRecoveryPayloadService
     public function __construct(
         private PipelineRecoveryMetadataService $metadata,
         private PipelineTaskEventPayloadService $eventPayloads,
+        private PipelineEventConfig $config,
     ) {}
 
     /**
@@ -62,7 +64,7 @@ readonly class PipelineRecoveryPayloadService
             'event_type' => $eventType,
             'status' => PipelineJob::STATUS_QUEUED,
             'retry_count' => (int) ($metadata['retry_count'] ?? 0),
-            'max_retries' => (int) ($metadata['max_retries'] ?? config('communication.rabbitmq.pipeline_events.max_retries', 3)),
+            'max_retries' => (int) ($metadata['max_retries'] ?? $this->config->maxRetries()),
             'metadata' => array_merge($metadata, [
                 'recovery_event' => $recoveryEvent,
                 'idempotency_key' => $this->metadata->idempotencyKey($job),

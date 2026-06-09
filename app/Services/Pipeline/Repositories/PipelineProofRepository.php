@@ -9,14 +9,17 @@ use App\Models\PipelineJob;
 use App\Models\PipelineStageState;
 use App\Models\ScrapeProcess;
 use Illuminate\Container\Attributes\Singleton;
-use Illuminate\Support\Facades\Schema;
 
 #[Singleton]
 readonly class PipelineProofRepository
 {
+    public function __construct(private PipelineSchemaInspector $schema)
+    {
+    }
+
     public function datasetPathForJob(string $jobId): ?string
     {
-        if (! Schema::hasTable('pipeline_jobs')) {
+        if (! $this->schema->hasTable('pipeline_jobs')) {
             return null;
         }
 
@@ -36,21 +39,21 @@ readonly class PipelineProofRepository
             'jobProcessingState' => [],
             'scrapeProcess' => null,
             'tables' => [
-                'pipeline_jobs' => Schema::hasTable('pipeline_jobs'),
-                'pipeline_stage_states' => Schema::hasTable('pipeline_stage_states'),
-                'job_processing_state' => Schema::hasTable('job_processing_state'),
-                'scrape_jobs' => Schema::hasTable('scrape_jobs'),
+                'pipeline_jobs' => $this->schema->hasTable('pipeline_jobs'),
+                'pipeline_stage_states' => $this->schema->hasTable('pipeline_stage_states'),
+                'job_processing_state' => $this->schema->hasTable('job_processing_state'),
+                'scrape_jobs' => $this->schema->hasTable('scrape_jobs'),
             ],
         ];
 
-        if (Schema::hasTable('pipeline_jobs')) {
+        if ($this->schema->hasTable('pipeline_jobs')) {
             $state['pipelineJob'] = PipelineJob::query()
                 ->where('job_id', $jobId)
                 ->first()
                 ?->toArray();
         }
 
-        if (Schema::hasTable('pipeline_stage_states')) {
+        if ($this->schema->hasTable('pipeline_stage_states')) {
             $state['pipelineStageStates'] = PipelineStageState::query()
                 ->where('job_id', $jobId)
                 ->orderBy('id')
@@ -59,7 +62,7 @@ readonly class PipelineProofRepository
                 ->all();
         }
 
-        if (Schema::hasTable('job_processing_state')) {
+        if ($this->schema->hasTable('job_processing_state')) {
             $paths = $this->pathVariants($datasetPath);
             $state['jobProcessingState'] = JobProcessingState::query()
                 ->where(function ($query) use ($jobId, $paths): void {
@@ -76,9 +79,9 @@ readonly class PipelineProofRepository
                 ->all();
         }
 
-        if (Schema::hasTable('scrape_jobs')) {
+        if ($this->schema->hasTable('scrape_jobs')) {
             $query = ScrapeProcess::query()->where('job_id', $jobId);
-            if (Schema::hasTable('scrape_statistics')) {
+            if ($this->schema->hasTable('scrape_statistics')) {
                 $query->with('stats');
             }
 

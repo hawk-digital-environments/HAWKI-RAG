@@ -2,10 +2,10 @@
 
 namespace App\Console\Commands;
 
+use App\Services\Scrape\ScrapeCommandInputBuilder;
 use App\Services\Scrape\ScrapeService;
 use App\Support\PipelineExitCode;
 use Illuminate\Console\Command;
-use Illuminate\Support\Str;
 
 class ScrapeWebsite extends Command
 {
@@ -35,7 +35,8 @@ class ScrapeWebsite extends Command
     protected $description = 'Scrape websites';
 
     public function __construct(
-        private ScrapeService $scrapeService
+        private ScrapeService $scrapeService,
+        private ScrapeCommandInputBuilder $inputBuilder,
     ) {
         parent::__construct();
     }
@@ -48,7 +49,7 @@ class ScrapeWebsite extends Command
         try {
             // Get URL from argument or prompt
             $url = $this->argument('url');
-            if (blank($url) && $this->input->isInteractive() && !$this->automationEnabled()) {
+            if (blank($url) && $this->input->isInteractive() && ! $this->inputBuilder->automationEnabled()) {
                 $url = $this->ask('Enter the website URL to crawl (e.g., https://www.hawk.de/en)');
             }
 
@@ -57,37 +58,19 @@ class ScrapeWebsite extends Command
                 return PipelineExitCode::VALIDATION_FAILURE;
             }
 
-            // Get label with auto-generated fallback
-            $label = $this->resolveLabel($this->option('label'), (string) $url);
-            $outputDir = $this->resolveOutputDir($this->option('output-dir'), $label);
+            $request = $this->inputBuilder->request((string) $url, $this->options());
 
             // Display the label being used
-            $this->info("Using crawl label: {$label}");
-            $this->info("Using output directory: {$outputDir}");
+            $this->info("Using crawl label: {$request['label']}");
+            $this->info("Using output directory: {$request['outputDir']}");
 
-            // Parse image exceptions
-            $imageExceptions = $this->parseImageExceptions();
-
-            // Parse date selector
-            $dateSelector = $this->option('date');
-            if ($dateSelector) {
-                $this->info("Using date selector: {$dateSelector}");
+            if ($request['imageExceptions']) {
+                $this->info('Using image exceptions: '.$request['imageExceptions']);
             }
 
-            // Create job request
-            $request = [
-                'url' => $url,
-                'label' => $label,
-                'maxPages' => (int)$this->option('max-pages'),
-                'outputDir' => $outputDir,
-                'skipImages' => (bool)$this->option('skip-images'),
-                'imageExceptions' => $imageExceptions,
-                'dateSelector' => $dateSelector,
-                'maxConcurrency' => (int)$this->option('max-concurrency'),
-                'maxRpm' => (int)$this->option('max-rpm'),
-                'requestDelay' => $this->option('request-delay') ? (int)$this->option('request-delay') : null,
-                'discoveryMode' => (bool)$this->option('discovery-mode'),
-            ];
+            if ($request['dateSelector']) {
+                $this->info("Using date selector: {$request['dateSelector']}");
+            }
 
             $result = $this->scrapeService->startPipeline($request,
                 outputCallback: function (string $type, string $buffer) {
@@ -117,74 +100,5 @@ class ScrapeWebsite extends Command
             $this->error('An error occurred: ' . $e->getMessage());
             return PipelineExitCode::RUNTIME_FAILURE;
         }
-    }
-
-    private function automationEnabled(): bool
-    {
-        return (bool) config('config.pipeline_automation', false);
-    }
-
-    private function parseImageExceptions(): ?string
-    {
-        if (!$this->option('image-exceptions')) {
-            return null;
-        }
-
-        $imageExceptions = collect(explode(',', $this->option('image-exceptions')))
-            ->map(fn($item) => trim($item))
-            ->filter(fn($item) => filled($item))
-            ->values()
-            ->toArray();
-
-        if (!empty($imageExceptions)) {
-            $this->info("Using image exceptions: " . implode(', ', $imageExceptions));
-        }
-
-        return $imageExceptions === [] ? null : implode(',', $imageExceptions);
-    }
-
-    private function resolveLabel(?string $label, string $url): string
-    {
-        if (filled($label)) {
-            return (string) $label;
-        }
-
-        $host = parse_url($url, PHP_URL_HOST);
-        $base = is_string($host) && $host !== '' ? $host : 'crawl';
-
-        return Str::slug($base . '-' . now()->format('Ymd-His'), '-');
-    }
-
-    private function resolveOutputDir(?string $outputDir, ?string $label): string
-    {
-        if (filled($outputDir)) {
-            return $this->resolvePath((string) $outputDir);
-        }
-
-        $root = $this->getCrawledDataRoot();
-        if (blank($label)) {
-            return $root;
-        }
-
-        return $root . DIRECTORY_SEPARATOR . Str::slug((string) $label, '-');
-    }
-
-    private function resolvePath(string $path): string
-    {
-        if ($this->isAbsolutePath($path)) {
-            return $path;
-        }
-
-        return $this->getCrawledDataRoot() . DIRECTORY_SEPARATOR . ltrim($path, DIRECTORY_SEPARATOR);
-    }
-
-    private function getCrawledDataRoot(): string
-    {
-        return rtrim((string) config('config.crawled_data_root', '/app/shared'), DIRECTORY_SEPARATOR);
-    }
-
-    private function isAbsolutePath(string $path): bool
-    {
-        return Str::startsWith($path, ['/','\\']) || preg_match('/^[A-Za-z]:[\/\\\\]/', $path) === 1;
     }
 }

@@ -55,7 +55,7 @@ class PipelineEventWorkerTest extends TestCase
         $handler = Mockery::mock(PipelineEventHandler::class);
         $handler->shouldNotReceive('handle');
 
-        $processor = new PipelineEventMessageProcessor(new PipelineEventDecoder, $bus, new PipelineEventLogger);
+        $processor = new PipelineEventMessageProcessor(new PipelineEventDecoder, $bus, app(PipelineEventLogger::class));
 
         $exitCode = (new PipelineEventWorker($rabbit, $bus, $processor))->run($command, 'scraper', $handler);
 

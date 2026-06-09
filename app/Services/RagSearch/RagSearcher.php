@@ -1,11 +1,13 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Services\RagSearch;
 
 use App\Services\RagSearch\Exceptions\RagSearcherFailedException;
 use Illuminate\Container\Attributes\Config;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
-use Illuminate\Support\Facades\Http;
+use Illuminate\Http\Client\Factory as HttpFactory;
 
 class RagSearcher
 {
@@ -13,11 +15,10 @@ class RagSearcher
     private int $topK = 15;
 
     public function __construct(
+        private readonly HttpFactory $http,
         #[Config('config.base_url')]
         private readonly string $baseUrl
-    )
-    {
-    }
+    ) {}
 
     public function getBaseUrl(): string
     {
@@ -38,7 +39,7 @@ class RagSearcher
     public function withTopK(int $topK): static
     {
         if($topK < 1){
-            throw new \InvalidArgumentException("TopK must be a positive integer");
+            throw RagSearcherFailedException::invalidTopK($topK);
         }
         $clone = clone $this;
         $clone->topK = $topK;
@@ -84,7 +85,7 @@ class RagSearcher
     public function execute(): array
     {
         if(empty($this->query)){
-            throw new RagSearcherFailedException("No query provided");
+            throw RagSearcherFailedException::missingQuery();
         }
 
         $payload = [
@@ -101,20 +102,22 @@ class RagSearcher
             'structural_hops' => null,
         ];
 
-        $baseUrl = config('config.base_url');
+        $baseUrl = rtrim($this->baseUrl, '/');
 
         try {
             $payload = array_filter($payload, static fn($value) => $value !== null);
-            $response = Http::timeout(60)
+            $response = $this->http->timeout(60)
                 ->post($baseUrl . '/query', $payload);
 
             if(!$response->successful()){
-                throw new RagSearcherFailedException($this->query, new \Exception('The request to the RAG backend was not successful!'));
+                throw RagSearcherFailedException::backendRequestFailed($this->query, $baseUrl);
             }
 
             return $this->filterResponse($response->json());
+        } catch (RagSearcherFailedException $exception) {
+            throw $exception;
         } catch (\Throwable $exception){
-            throw new RagSearcherFailedException($this->query, $exception);
+            throw RagSearcherFailedException::connectionFailed($this->query, $exception);
         }
     }
 

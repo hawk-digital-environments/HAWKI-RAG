@@ -6,6 +6,7 @@ namespace App\Console\Commands;
 
 use App\Services\Pipeline\Architecture\PipelineArchitectureService;
 use App\Services\Pipeline\Events\PipelineEvent;
+use App\Services\Pipeline\Events\PipelineEventConfig;
 use Illuminate\Console\Command;
 
 class PipelineWorkersCommand extends Command
@@ -14,7 +15,7 @@ class PipelineWorkersCommand extends Command
 
     protected $description = 'Print MVP pipeline worker startup commands and RabbitMQ queue topology.';
 
-    public function handle(PipelineArchitectureService $architecture): int
+    public function handle(PipelineArchitectureService $architecture, PipelineEventConfig $events): int
     {
         $topology = $architecture->topology();
         $workerTopology = $topology['queues']['workers'] ?? [];
@@ -48,7 +49,7 @@ class PipelineWorkersCommand extends Command
 
         $this->table(
             ['Worker', 'Command', 'Queue', 'Listens to', 'Retry queues', 'Consumer tag'],
-            $this->workerRows(is_array($workerTopology) ? $workerTopology : []),
+            $this->workerRows(is_array($workerTopology) ? $workerTopology : [], $events),
         );
 
         $this->newLine();
@@ -60,7 +61,7 @@ class PipelineWorkersCommand extends Command
         return self::SUCCESS;
     }
 
-    private function workerRows(array $workers): array
+    private function workerRows(array $workers, PipelineEventConfig $events): array
     {
         $commands = [
             'scraper' => 'php artisan pipeline:scraper-event-worker',
@@ -70,8 +71,9 @@ class PipelineWorkersCommand extends Command
         ];
 
         return collect($workers)
-            ->map(function (array $workerConfig) use ($commands): array {
+            ->map(function (array $workerConfig) use ($commands, $events): array {
                 $worker = (string) ($workerConfig['worker'] ?? '');
+                $configuredWorker = $events->worker($worker) ?? [];
                 $queue = (string) ($workerConfig['queueName'] ?? '');
                 $events = array_values(array_filter(array_map('strval', $workerConfig['listen'] ?? [])));
                 $retryQueues = array_values(array_filter(array_map('strval', $workerConfig['retryQueues'] ?? [])));
@@ -82,7 +84,7 @@ class PipelineWorkersCommand extends Command
                     $queue,
                     implode(', ', $events),
                     implode(', ', $retryQueues),
-                    (string) config("communication.rabbitmq.pipeline_events.workers.{$worker}.consumer_tag", ''),
+                    (string) ($configuredWorker['consumer_tag'] ?? ''),
                 ];
             })
             ->values()

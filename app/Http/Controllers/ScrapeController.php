@@ -1,18 +1,17 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Http\Controllers;
 
 use App\Services\Scrape\ScrapeService;
 use App\Services\Scrape\Data\ScrapeRequestResult;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Log;
 
 class ScrapeController extends Controller
 {
-    protected $scrapeService;
-
-    public function __construct(ScrapeService $scrapeService){
-        $this->scrapeService = $scrapeService;
+    public function __construct(protected readonly ScrapeService $scrapeService)
+    {
     }
 
     public function requestScrape(Request $request){

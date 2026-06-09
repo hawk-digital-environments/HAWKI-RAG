@@ -20,6 +20,9 @@ class CrawledFileConversionWorkflow
         private readonly ExistingConversionPolicy $existingConversionPolicy,
         private readonly ConversionReportWriter $reports,
         private readonly ConvertedOutputWriter $outputs,
+        private readonly ConversionRetryClient $retryClient,
+        private readonly ConversionOutputContent $content,
+        private readonly ConversionProgressTracker $progress,
         private readonly ConfigRepository $config,
         private readonly ClockInterface $clock,
     ) {
@@ -213,10 +216,10 @@ class CrawledFileConversionWorkflow
                 if (! $forceReprocess && is_file($metaPath)) {
                     $meta = json_decode($this->outputs->readFile($metaPath), true);
                     if (is_array($meta) && ($meta['converted_id'] ?? null) === $convertedId) {
-                        $meta = $this->normalizeCachedMetadata($meta, $docPath, $destDir, $convertedId, $docTitle, $jobId);
+                        $meta = $this->content->normalizeCachedMetadata($meta, $docPath, $destDir, $convertedId, $docTitle, $jobId);
                         $flatContent = is_file($flatPath)
                             ? $this->outputs->readFile($flatPath)
-                            : $this->loadMarkdownFromMeta($meta, $destDir);
+                            : $this->content->loadMarkdownFromMeta($meta, $destDir);
                         $markdownValidation = $validator->validateMarkdownContent($flatContent);
                         $metadataValidation = $validator->validateConversionMetadata($meta);
 
@@ -246,7 +249,7 @@ class CrawledFileConversionWorkflow
                                 'metadata_path' => $metaPath,
                             ]);
                             $skipped++;
-                            $this->updateConversionProgress($state, $jobId, $outputDir, count($docPaths), $processed, $skipped, $failed);
+                            $this->progress->update($state, $jobId, $outputDir, count($docPaths), $processed, $skipped, $failed);
 
                             continue;
                         }
@@ -265,7 +268,7 @@ class CrawledFileConversionWorkflow
                 }
 
                 // Run conversion with retry (returns [relative_path => content])
-                $files = $this->convertWithRetry($converter, $docInfo, $maxRetries, $retryDelayMs);
+                $files = $this->retryClient->convert($converter, $docInfo, $maxRetries, $retryDelayMs);
                 $filesValidation = $validator->validateConvertedFiles($files);
                 if ($filesValidation['errors'] !== []) {
                     throw new \RuntimeException('Invalid converter output: '.implode('; ', $filesValidation['errors']));
@@ -307,7 +310,7 @@ class CrawledFileConversionWorkflow
                     throw new \RuntimeException('Invalid conversion metadata: '.implode('; ', $metadataValidation['errors']));
                 }
 
-                $flatContent = $this->pickMarkdownContent($files);
+                $flatContent = $this->content->pickMarkdownContent($files);
                 $flatMarkdownValidation = $validator->validateMarkdownContent($flatContent);
                 if ($flatMarkdownValidation['errors'] !== []) {
                     throw new \RuntimeException('Invalid Markdown output: '.implode('; ', $flatMarkdownValidation['errors']));
@@ -340,7 +343,7 @@ class CrawledFileConversionWorkflow
                     'warnings' => $metadataValidation['warnings'],
                 ]);
                 $processed++;
-                $this->updateConversionProgress($state, $jobId, $outputDir, count($docPaths), $processed, $skipped, $failed);
+                $this->progress->update($state, $jobId, $outputDir, count($docPaths), $processed, $skipped, $failed);
             } catch (\Throwable $e) {
                 $this->outputs->deleteDirectoryIfExists($stagingDir);
 
@@ -357,7 +360,7 @@ class CrawledFileConversionWorkflow
                     'error_message' => $e->getMessage(),
                     'exception' => $e,
                 ]);
-                $this->updateConversionProgress($state, $jobId, $outputDir, count($docPaths), $processed, $skipped, $failed);
+                $this->progress->update($state, $jobId, $outputDir, count($docPaths), $processed, $skipped, $failed);
             }
         }
 
@@ -389,7 +392,7 @@ class CrawledFileConversionWorkflow
             $logger->partial('convert', $summaryContext);
             $state->partialStage($jobId, PipelineStateService::STAGE_CONVERT, [
                 'dataset_path' => $outputDir,
-                'counts' => $this->conversionCounts(count($docPaths), $processed, $skipped, $failed),
+                'counts' => $this->progress->counts(count($docPaths), $processed, $skipped, $failed),
                 'errors' => $failed,
                 'max_retries' => $maxRetries,
                 'metadata' => [
@@ -402,7 +405,7 @@ class CrawledFileConversionWorkflow
             $logger->success('convert', $summaryContext);
             $state->completeStage($jobId, PipelineStateService::STAGE_CONVERT, [
                 'dataset_path' => $outputDir,
-                'counts' => $this->conversionCounts(count($docPaths), $processed, $skipped, $failed),
+                'counts' => $this->progress->counts(count($docPaths), $processed, $skipped, $failed),
                 'max_retries' => $maxRetries,
                 'metadata' => [
                     'statusDetail' => 'complete',
@@ -415,38 +418,6 @@ class CrawledFileConversionWorkflow
         return count($failed) > 0 ? PipelineExitCode::PARTIAL_SUCCESS : PipelineExitCode::SUCCESS;
     }
 
-    private function updateConversionProgress(
-        PipelineStateService $state,
-        string $jobId,
-        string $outputDir,
-        int $total,
-        int $processed,
-        int $skipped,
-        array $failed
-    ): void {
-        $state->updateStage($jobId, PipelineStateService::STAGE_CONVERT, [
-            'status' => 'running',
-            'dataset_path' => $outputDir,
-            'counts' => $this->conversionCounts($total, $processed, $skipped, $failed),
-            'errors' => $failed,
-            'max_retries' => (int) $this->config->get('file_converter.retries', 3),
-        ]);
-    }
-
-    private function conversionCounts(int $total, int $processed, int $skipped, array $failed): array
-    {
-        return [
-            'total' => $total,
-            'sourceFiles' => $total,
-            'processed' => $processed,
-            'convertedFiles' => $processed,
-            'skipped' => $skipped,
-            'skippedFiles' => $skipped,
-            'failed' => count($failed),
-            'failedFiles' => count($failed),
-        ];
-    }
-
     private function timestamp(): string
     {
         return $this->clock->now()->format(\DateTimeInterface::ATOM);
@@ -455,46 +426,6 @@ class CrawledFileConversionWorkflow
     private function conversionJobId(string $outputDir): string
     {
         return 'convert:'.substr(hash('sha256', realpath($outputDir) ?: $outputDir), 0, 16);
-    }
-
-    /**
-     * Try converting a supported file up to $maxRetries times with a delay.
-     * Retries only on likely-transient errors (timeouts / 5xx).
-     *
-     * @return array<string,string> files map [relativePath => content]
-     */
-    private function convertWithRetry(
-        DocumentConverter $converter,
-        SplFileInfo $fileInfo,
-        int $maxRetries,
-        int $retryDelayMs
-    ): array {
-        $attempt = 0;
-        $lastEx = null;
-
-        while ($attempt <= $maxRetries) {
-            try {
-                return $converter->requestDocumentToMarkdown($fileInfo);
-            } catch (\Throwable $e) {
-                $lastEx = $e;
-                $msg = (string) $e->getMessage();
-
-                // Decide if this is worth retrying
-                $isTimeout = str_contains($msg, 'cURL error 28') || str_contains($msg, 'Operation timed out');
-                $is5xx = preg_match('/\bHTTP\/?1\.[01]\s+5\d{2}\b/i', $msg) === 1 || str_contains($msg, ' 5');
-
-                if ($attempt === $maxRetries || (! ($isTimeout || $is5xx))) {
-                    break; // give up
-                }
-
-                // Backoff
-                usleep($retryDelayMs * 1000);
-                $attempt++;
-            }
-        }
-
-        // If we get here, all attempts failed
-        throw $lastEx ?? new \RuntimeException('Unknown error during conversion.');
     }
 
     /**
@@ -531,73 +462,6 @@ class CrawledFileConversionWorkflow
         ));
 
         return $extensions ?: ['pdf', 'doc', 'docx'];
-    }
-
-    /**
-     * Pick a reasonable markdown payload from the converter output.
-     *
-     * @param  array<string,string>  $files
-     */
-    private function pickMarkdownContent(array $files): ?string
-    {
-        foreach ($files as $relative => $content) {
-            if (str_ends_with(strtolower($relative), '.md')) {
-                return $content;
-            }
-        }
-
-        if ($files === []) {
-            return null;
-        }
-
-        return implode("\n\n", array_values($files));
-    }
-
-    private function loadMarkdownFromMeta(array $meta, string $destDir): ?string
-    {
-        $files = $meta['files'] ?? [];
-        if (! is_array($files)) {
-            return null;
-        }
-
-        foreach ($files as $relative) {
-            if (! is_string($relative)) {
-                continue;
-            }
-            if (! str_ends_with(strtolower($relative), '.md')) {
-                continue;
-            }
-            $path = $destDir.'/'.ltrim($relative, '/');
-            if (is_file($path)) {
-                return $this->outputs->readFile($path);
-            }
-        }
-
-        return null;
-    }
-
-    private function normalizeCachedMetadata(
-        array $meta,
-        string $sourcePath,
-        string $destDir,
-        string $convertedId,
-        string $docTitle,
-        string $jobId
-    ): array {
-        $meta['pipeline_job_id'] = $jobId;
-        $meta['converted_id'] = $convertedId;
-        $meta['doc_id'] = $meta['doc_id'] ?? $convertedId;
-        $meta['title'] = $meta['title'] ?? $docTitle;
-        $meta['source_file'] = $meta['source_file'] ?? ($meta['source_pdf'] ?? $sourcePath);
-        $meta['source_pdf'] = $meta['source_pdf'] ?? $sourcePath;
-        $meta['output_dir'] = $meta['output_dir'] ?? $destDir;
-        $meta['converted_at'] = $meta['converted_at'] ?? $this->timestamp();
-
-        if (! isset($meta['files']) || ! is_array($meta['files']) || $meta['files'] === []) {
-            $meta['files'] = $this->outputs->collectCachedOutputFiles($destDir);
-        }
-
-        return $meta;
     }
 
 }

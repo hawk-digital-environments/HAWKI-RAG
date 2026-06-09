@@ -8,14 +8,17 @@ use App\Models\PipelineStageState;
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\Schema;
 
 #[Singleton]
 readonly class PipelineStageStateRepository
 {
+    public function __construct(private PipelineSchemaInspector $schema)
+    {
+    }
+
     public function tablesAvailable(): bool
     {
-        return Schema::hasTable('pipeline_jobs') && Schema::hasTable('pipeline_stage_states');
+        return $this->schema->hasTables(['pipeline_jobs', 'pipeline_stage_states']);
     }
 
     public function findForJobStage(string $jobId, string $stage): ?PipelineStageState

@@ -45,6 +45,7 @@ return [
     'retry_delay_ms'  => (int) env('FILE_CONVERTER_RETRY_DELAY_MS', 1500),
     'token'           => env('FILE_CONVERTER_TOKEN'),
     'auth_header'     => env('FILE_CONVERTER_AUTH_HEADER', 'bearer'),
+    'failed_report_path' => env('FILE_CONVERTER_FAILED_REPORT_PATH', storage_path('logs/failed_conversion.json')),
     'supported_extensions' => array_values(array_filter(array_map(
         static fn ($extension) => ltrim(strtolower(trim($extension)), '.'),
         explode(',', env('FILE_CONVERTER_SUPPORTED_EXTENSIONS', implode(',', $defaultSupportedExtensions)))

@@ -8,6 +8,7 @@ use App\Models\PipelineJob;
 use App\Services\Pipeline\Events\PipelineEvent;
 use App\Services\Pipeline\Events\PipelineEventBus;
 use App\Services\Pipeline\Events\PipelineEventStateService;
+use App\Services\Pipeline\Uploads\PipelineUploadPolicy;
 use Illuminate\Container\Attributes\Singleton;
 
 #[Singleton]
@@ -17,6 +18,7 @@ readonly class ScrapeMonitorOutputPublisher
         private PipelineEventBus $events,
         private PipelineEventStateService $state,
         private ScrapeMonitorPayloadService $payloads,
+        private PipelineUploadPolicy $policy,
     ) {}
 
     public function publish(PipelineJob $job, string $datasetPath): void
@@ -42,10 +44,9 @@ readonly class ScrapeMonitorOutputPublisher
             return [];
         }
 
-        $extensions = array_map('strtolower', config('file_converter.supported_extensions', ['pdf', 'doc', 'docx']));
         $files = [];
         foreach (new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($resolved, \FilesystemIterator::SKIP_DOTS)) as $file) {
-            if ($file->isFile() && in_array(strtolower($file->getExtension()), $extensions, true)) {
+            if ($file->isFile() && $this->policy->supports($file->getExtension())) {
                 $files[] = $file->getPathname();
             }
         }

@@ -4,12 +4,15 @@ declare(strict_types=1);
 
 namespace App\Services\Pipeline\Proof;
 
+use Illuminate\Contracts\Config\Repository as ConfigRepository;
 use Illuminate\Filesystem\Filesystem;
 
 readonly class PipelineProofLogCollector
 {
-    public function __construct(private Filesystem $files)
-    {
+    public function __construct(
+        private ConfigRepository $config,
+        private Filesystem $files,
+    ) {
     }
 
     /**
@@ -93,20 +96,33 @@ readonly class PipelineProofLogCollector
     private function logFiles(): array
     {
         $paths = [];
-        foreach (['comm_logs.json', 'laravel.log'] as $file) {
-            $path = storage_path("logs/{$file}");
-            if (is_file($path)) {
+        foreach ($this->configList('config.pipeline_proof_log_files') as $path) {
+            if ($this->files->isFile($path)) {
                 $paths[] = $path;
             }
         }
 
-        foreach ($this->files->glob(storage_path('logs/laravel-*.log')) ?: [] as $path) {
-            if (is_file($path)) {
-                $paths[] = $path;
+        foreach ($this->configList('config.pipeline_proof_log_globs') as $glob) {
+            foreach ($this->files->glob($glob) ?: [] as $path) {
+                if ($this->files->isFile($path)) {
+                    $paths[] = $path;
+                }
             }
         }
 
         return array_values(array_unique($paths));
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function configList(string $key): array
+    {
+        $value = $this->config->get($key, []);
+
+        return is_array($value)
+            ? array_values(array_filter(array_map('strval', $value)))
+            : [];
     }
 
     /**

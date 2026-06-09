@@ -11,6 +11,7 @@ readonly class PipelineFailedEventFactory
 {
     public function __construct(
         private PipelineEventNormalizer $normalizer,
+        private PipelineEventConfig $config,
     ) {}
 
     public function make(array $event, \Throwable $error): array
@@ -31,7 +32,7 @@ readonly class PipelineFailedEventFactory
                 'original_event_type' => $event['event_type'] ?? null,
                 'original_event_payload' => $event,
                 'retry_count' => (int) ($event['retry_count'] ?? 0),
-                'max_retries' => (int) ($event['max_retries'] ?? config('communication.rabbitmq.pipeline_events.max_retries', 3)),
+                'max_retries' => $this->config->maxRetries(),
             ],
         ]);
     }

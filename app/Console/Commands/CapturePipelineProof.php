@@ -6,7 +6,6 @@ namespace App\Console\Commands;
 
 use App\Services\Pipeline\Proof\PipelineProofService;
 use App\Services\Pipeline\Repositories\PipelineProofRepository;
-use App\Services\Pipeline\Status\PipelineStatusService;
 use Illuminate\Console\Command;
 
 class CapturePipelineProof extends Command
@@ -26,8 +25,7 @@ class CapturePipelineProof extends Command
     public function handle(
         PipelineProofService $proof,
         PipelineProofRepository $proofs,
-        PipelineStatusService $statuses,
     ): int {
-        return $proof->run($this, $proofs, $statuses);
+        return $proof->run($this, $proofs);
     }
 }

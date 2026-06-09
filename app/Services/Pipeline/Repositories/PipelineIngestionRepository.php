@@ -8,13 +8,19 @@ use App\Models\JobProcessingState;
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
+use Psr\Clock\ClockInterface;
+use Symfony\Component\Clock\Clock;
 
 #[Singleton]
 readonly class PipelineIngestionRepository
 {
+    public function __construct(private ClockInterface $clock = new Clock)
+    {
+    }
+
     public function upsertProcessingState(array $event, string $status, int $defaultMaxRetries): JobProcessingState
     {
-        $now = Carbon::now();
+        $now = $this->now();
 
         return JobProcessingState::query()->updateOrCreate(
             [
@@ -58,7 +64,7 @@ readonly class PipelineIngestionRepository
                 'status' => JobProcessingState::STATUS_FAILED,
                 'retry_count' => $retryCount,
                 'max_retries' => $maxRetries,
-                'failed_at' => Carbon::now(),
+                'failed_at' => $this->now(),
                 'error_type' => class_basename($error),
                 'error_message' => $error->getMessage(),
                 'trace_id' => $event['event_id'] ?? null,
@@ -104,5 +110,10 @@ readonly class PipelineIngestionRepository
                 'status' => Document::STATUS_COMPLETED,
             ],
         );
+    }
+
+    private function now(): Carbon
+    {
+        return Carbon::instance(\DateTimeImmutable::createFromInterface($this->clock->now()));
     }
 }

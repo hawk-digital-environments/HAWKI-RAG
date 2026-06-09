@@ -3,6 +3,7 @@
 namespace App\Console\Commands\Pipeline;
 
 use App\Services\Pipeline\Events\PipelineEventBus;
+use App\Services\Pipeline\Events\PipelineEventConfig;
 use Illuminate\Console\Command;
 
 class DeclareEventTopologyCommand extends Command
@@ -12,10 +13,10 @@ class DeclareEventTopologyCommand extends Command
 
     protected $description = 'Declare RabbitMQ queues and bindings for pipeline event workers without consuming messages.';
 
-    public function handle(PipelineEventBus $events): int
+    public function handle(PipelineEventBus $events, PipelineEventConfig $config): int
     {
         $worker = $this->argument('worker');
-        $configuredWorkers = (array) config('communication.rabbitmq.pipeline_events.workers', []);
+        $configuredWorkers = $config->workers();
         $workers = is_string($worker) && trim($worker) !== ''
             ? [trim($worker)]
             : array_keys($configuredWorkers);

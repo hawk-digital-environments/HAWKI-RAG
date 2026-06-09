@@ -8,10 +8,8 @@ use App\Models\JobProcessingState;
 use App\Services\Pipeline\Repositories\PipelineStatusRepository;
 use App\Services\Pipeline\State\PipelineStateService;
 use App\Services\Scrape\ScrapeService;
-use Illuminate\Container\Attributes\Config;
 use Illuminate\Container\Attributes\Singleton;
 use Psr\Clock\ClockInterface;
-use Symfony\Component\Finder\Finder;
 use Symfony\Component\Clock\Clock;
 
 #[Singleton]
@@ -21,10 +19,7 @@ readonly class PipelineStatusService
         private ScrapeService $scrapeService,
         private PipelineStatusRepository $statuses,
         private PipelineStateService $pipelineState,
-        #[Config('file_converter.retries')]
-        private int $converterRetries = 3,
-        #[Config('file_converter.supported_extensions')]
-        private array $converterExtensions = ['pdf', 'doc', 'docx'],
+        private PipelineConversionStatusService $conversions,
         private ClockInterface $clock = new Clock,
     ) {}
 
@@ -112,61 +107,7 @@ readonly class PipelineStatusService
 
     private function convertStage(string $jobId, ?string $datasetPath): array
     {
-        if (! $datasetPath) {
-            return $this->emptyStage('unknown', 'No dataset path available yet.');
-        }
-
-        $resolvedPath = realpath($datasetPath);
-        if ($resolvedPath === false || ! is_dir($resolvedPath)) {
-            return $this->emptyStage('unknown', 'Dataset path does not exist yet.', [
-                'datasetPath' => $datasetPath,
-            ]);
-        }
-
-        $extensions = $this->supportedExtensions();
-        $sourceCount = 0;
-        $convertedCount = 0;
-        $convertedAt = [];
-
-        foreach ($this->filesUnder($resolvedPath) as $file) {
-            $path = $file->getPathname();
-            if ($this->isConvertedOutputPath($path)) {
-                if ($file->getFilename() === 'conversion_meta.json') {
-                    $convertedCount++;
-                    $meta = json_decode((string) @file_get_contents($path), true);
-                    if (is_array($meta) && ! empty($meta['converted_at'])) {
-                        $convertedAt[] = (string) $meta['converted_at'];
-                    }
-                }
-
-                continue;
-            }
-
-            if (in_array(strtolower($file->getExtension()), $extensions, true)) {
-                $sourceCount++;
-            }
-        }
-
-        $failures = $this->conversionFailuresFor($resolvedPath);
-        $failedCount = count($failures);
-
-        $stage = [
-            'status' => $this->convertStatus($sourceCount, $convertedCount, $failedCount),
-            'datasetPath' => $resolvedPath,
-            'startedAt' => $convertedAt === [] ? null : min($convertedAt),
-            'completedAt' => $convertedAt === [] ? null : max($convertedAt),
-            'counts' => [
-                'sourceFiles' => $sourceCount,
-                'convertedFiles' => $convertedCount,
-                'failedFiles' => $failedCount,
-            ],
-            'supportedExtensions' => $extensions,
-            'errors' => $failures,
-            'retry' => [
-                'retryCount' => null,
-                'maxRetries' => $this->converterRetries,
-            ],
-        ];
+        $stage = $this->conversions->stage($datasetPath);
 
         $this->syncConvertStage($jobId, $stage);
 
@@ -274,27 +215,6 @@ readonly class PipelineStatusService
         }
 
         return 'partial';
-    }
-
-    private function convertStatus(int $sourceCount, int $convertedCount, int $failedCount): string
-    {
-        if ($sourceCount === 0) {
-            return 'skipped';
-        }
-        if ($failedCount > 0 && $convertedCount > 0) {
-            return 'partial';
-        }
-        if ($failedCount > 0) {
-            return 'failed';
-        }
-        if ($convertedCount >= $sourceCount) {
-            return 'completed';
-        }
-        if ($convertedCount > 0) {
-            return 'partial';
-        }
-
-        return 'pending';
     }
 
     private function ingestStatus(array $counts): string
@@ -461,53 +381,6 @@ readonly class PipelineStatusService
         $merged['warnings'] = array_values(array_filter(array_merge($tracked['warnings'] ?? [], $computed['warnings'] ?? [])));
 
         return $merged;
-    }
-
-    private function supportedExtensions(): array
-    {
-        $extensions = $this->converterExtensions;
-        if (! is_array($extensions)) {
-            return ['pdf', 'doc', 'docx'];
-        }
-
-        $extensions = array_values(array_filter(
-            array_map(static fn ($extension) => is_scalar($extension) ? ltrim(strtolower(trim((string) $extension)), '.') : '', $extensions),
-            static fn ($extension) => $extension !== ''
-        ));
-
-        return $extensions ?: ['pdf', 'doc', 'docx'];
-    }
-
-    private function filesUnder(string $path): Finder
-    {
-        return Finder::create()
-            ->files()
-            ->ignoreUnreadableDirs()
-            ->in($path);
-    }
-
-    private function isConvertedOutputPath(string $path): bool
-    {
-        return str_contains(str_replace('\\', '/', $path), '/converted_');
-    }
-
-    private function conversionFailuresFor(string $datasetPath): array
-    {
-        $reportPath = storage_path('logs/failed_conversion.json');
-        if (! is_file($reportPath)) {
-            return [];
-        }
-
-        $report = json_decode((string) @file_get_contents($reportPath), true);
-        if (! is_array($report) || ! is_array($report['failures'] ?? null)) {
-            return [];
-        }
-
-        return array_values(array_filter($report['failures'], function ($failure) use ($datasetPath): bool {
-            $path = is_array($failure) ? (string) ($failure['file_local_path'] ?? $failure['pdf_local_path'] ?? '') : '';
-
-            return $path !== '' && str_starts_with($path, $datasetPath.DIRECTORY_SEPARATOR);
-        }));
     }
 
     private function arrayValue(mixed $value): array

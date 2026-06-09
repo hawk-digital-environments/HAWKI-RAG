@@ -5,84 +5,82 @@ declare(strict_types=1);
 namespace App\Services\Storage;
 
 use Illuminate\Contracts\Filesystem\Filesystem;
-use Illuminate\Support\Facades\URL;
+use Illuminate\Contracts\Routing\UrlGenerator as RoutingUrlGenerator;
+use Psr\Clock\ClockInterface;
+use Symfony\Component\Clock\Clock;
 
 class UrlGenerator
 {
-    private string $path;
-    private string $visibility;
-
-
     public function __construct(
         protected array $config,
-        protected Filesystem $disk
-    )
-    {
-    }
+        protected Filesystem $disk,
+        protected RoutingUrlGenerator $urls,
+        protected ClockInterface $clock = new Clock(),
+    ) {}
 
     public function generate(string $path): string
     {
-        $this->path = $path;
-        $this->visibility = $this->config['visibility'];
-
         return match ($this->config['driver']) {
-            's3', 'webdav' => $this->generateTemporaryUrl(),
-            'local' => $this->generateLocalUrl(),
-            'sftp' => $this->generateSftpUrl(),
-            default => $this->generateDefaultUrl(),
+            's3', 'webdav' => $this->generateTemporaryUrl($path),
+            'local' => $this->generateLocalUrl($path),
+            'sftp' => $this->generateSftpUrl($path),
+            default => $this->generateDefaultUrl($path),
         };
     }
 
-    private function generateLocalUrl(): string{
-        // Local "public" disk can return direct URLs
-        if ($this->visibility === 'public' && method_exists($this->disk, 'url')) {
-            return (string) call_user_func([$this->disk, 'url'], $this->path);
+    private function generateLocalUrl(string $path): string
+    {
+        if (($this->config['visibility'] ?? null) === 'public' && method_exists($this->disk, 'url')) {
+            return (string) call_user_func([$this->disk, 'url'], $path);
         }
 
-        // Local private disk → fallback to signed route
-        return URL::temporarySignedRoute(
+        return $this->urls->temporarySignedRoute(
             "files.download",
-            now()->addHours(24),
+            $this->expiresAt(),
             [
-                'disk' => $this->disk, // pass disk explicitly
+                'disk' => $this->disk,
             ]
         );
     }
 
-    private function generateSftpUrl(): string{
-        // No direct URL, always proxy through Laravel
-        return URL::temporarySignedRoute(
+    private function generateSftpUrl(string $path): string
+    {
+        return $this->urls->temporarySignedRoute(
             "files.download",
-            now()->addHours(24),
+            $this->expiresAt(),
             [
-                'path'=> base64_encode($this->path),
+                'path'=> base64_encode($path),
                 'disk'=> $this->disk,
             ]
         );
     }
 
-    private function generateTemporaryUrl(): string{
-        // Prefer native temporaryUrl if supported
+    private function generateTemporaryUrl(string $path): string
+    {
         if (method_exists($this->disk, 'temporaryUrl')) {
-            return (string) call_user_func([$this->disk, 'temporaryUrl'], $this->path, now()->addHours(24));
+            return (string) call_user_func([$this->disk, 'temporaryUrl'], $path, $this->expiresAt());
         }
-        return $this->generateDefaultUrl();
+        return $this->generateDefaultUrl($path);
     }
 
-    private function generateDefaultUrl(): string{
-        // Fallback: try native url() if available
+    private function generateDefaultUrl(string $path): string
+    {
         if (method_exists($this->disk, 'url')) {
-            return (string) call_user_func([$this->disk, 'url'], $this->path);
+            return (string) call_user_func([$this->disk, 'url'], $path);
         }
 
-        // As a last resort → proxy route
-        return URL::temporarySignedRoute(
+        return $this->urls->temporarySignedRoute(
             "files.download",
-            now()->addHours(24),
+            $this->expiresAt(),
             [
-                'path'     => base64_encode($this->path),
+                'path'     => base64_encode($path),
                 'disk'     => $this->disk,
             ]
         );
+    }
+
+    private function expiresAt(): \DateTimeImmutable
+    {
+        return $this->clock->now()->modify('+24 hours');
     }
 }

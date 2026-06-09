@@ -55,7 +55,7 @@ class PipelineEventMessageProcessorTest extends TestCase
                 return true;
             }));
 
-        $exitCode = (new PipelineEventMessageProcessor(new PipelineEventDecoder, $bus, new PipelineEventLogger))
+        $exitCode = (new PipelineEventMessageProcessor(new PipelineEventDecoder, $bus, app(PipelineEventLogger::class)))
             ->process($command, $message, $handler);
 
         $this->assertSame(PipelineExitCode::SUCCESS, $exitCode);
@@ -110,7 +110,7 @@ class PipelineEventMessageProcessorTest extends TestCase
                 return true;
             }));
 
-        $exitCode = (new PipelineEventMessageProcessor(new PipelineEventDecoder, $bus, new PipelineEventLogger))
+        $exitCode = (new PipelineEventMessageProcessor(new PipelineEventDecoder, $bus, app(PipelineEventLogger::class)))
             ->process($command, $message, $handler);
 
         $this->assertSame(PipelineExitCode::RUNTIME_FAILURE, $exitCode);

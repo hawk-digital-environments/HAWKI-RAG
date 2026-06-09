@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Services\Rag;
 
 use PhpAmqpLib\Channel\AMQPChannel;
@@ -10,6 +12,10 @@ class RagRabbitMQ
     private ?AMQPStreamConnection $connection = null;
     private ?AMQPChannel $channel = null;
 
+    public function __construct(private readonly RagRabbitMQConfig $config)
+    {
+    }
+
     public function channel(): AMQPChannel
     {
         if ($this->channel instanceof AMQPChannel) {
@@ -17,20 +23,20 @@ class RagRabbitMQ
         }
 
         $this->connection = new AMQPStreamConnection(
-            (string) config('communication.rabbitmq.host', 'rabbitmq'),
-            (int) config('communication.rabbitmq.port', 5672),
-            (string) config('communication.rabbitmq.user', 'guest'),
-            (string) config('communication.rabbitmq.password', 'guest'),
-            (string) config('communication.rabbitmq.vhost', '/'),
+            $this->config->host(),
+            $this->config->port(),
+            $this->config->user(),
+            $this->config->password(),
+            $this->config->vhost(),
             false,
             'AMQPLAIN',
             null,
             'en_US',
-            (float) config('communication.rabbitmq.connection_timeout', 30),
-            (float) config('communication.rabbitmq.read_write_timeout', 30),
+            $this->config->connectionTimeout(),
+            $this->config->readWriteTimeout(),
             null,
             false,
-            (int) config('communication.rabbitmq.heartbeat', 30),
+            $this->config->heartbeat(),
         );
 
         $this->channel = $this->connection->channel();

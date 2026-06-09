@@ -2,9 +2,9 @@
 
 namespace App\Console\Commands;
 
+use App\Services\Pipeline\Commands\PipelineDemoCommandSupport;
 use App\Services\Pipeline\Tasks\PipelineTaskService;
 use Illuminate\Console\Command;
-use Illuminate\Support\Str;
 
 class DemoPipelineTask extends Command
 {
@@ -18,15 +18,7 @@ class DemoPipelineTask extends Command
 
     protected $description = 'Start a small development/demo scrape/convert/ingest pipeline task.';
 
-    private const DEFAULT_URLS = [
-        'https://www.hawk.de/de',
-        'https://www.hawk.de/de/studium',
-        'https://www.hawk.de/de/hochschule',
-        'https://www.hawk.de/de/forschung',
-        'https://www.hawk.de/de/weiterbildung',
-    ];
-
-    public function handle(PipelineTaskService $tasks): int
+    public function handle(PipelineTaskService $tasks, PipelineDemoCommandSupport $support): int
     {
         $dataset = $this->stringOption('dataset') ?: 'demo';
         $limit = $this->integerOption('limit', 5);
@@ -34,7 +26,7 @@ class DemoPipelineTask extends Command
         $dryRun = $this->booleanOption('dry-run', false);
         $force = $this->booleanOption('force', false);
 
-        if (app()->environment('production') && $force !== true) {
+        if ($support->productionLocked($force === true)) {
             $this->error('pipeline:demo is disabled in production. Start production tasks through the pipeline task API.');
 
             return self::FAILURE;
@@ -64,14 +56,14 @@ class DemoPipelineTask extends Command
             return self::FAILURE;
         }
 
-        $urls = $this->demoUrls($limit);
+        $urls = $support->demoUrls($this->explicitUrls(), $limit);
         if ($urls === []) {
             $this->error('No demo URLs are configured.');
 
             return self::FAILURE;
         }
 
-        $taskId = 'demo_'.now()->format('Ymd_His').'_'.Str::lower(Str::random(6));
+        $taskId = $support->taskId();
         $input = [
             'task_id' => $taskId,
             'dataset_id' => $dataset,
@@ -100,7 +92,7 @@ class DemoPipelineTask extends Command
         if ($dryRun) {
             $this->warn('Dry run only. No task, jobs, or RabbitMQ events were created.');
             $this->printUrls($urls);
-            $this->printDashboardUrls();
+            $this->printDashboardUrls($support->dashboardUrls());
             $this->printWorkerCommands();
 
             return self::SUCCESS;
@@ -121,35 +113,20 @@ class DemoPipelineTask extends Command
         $this->line("Skipped scrape jobs: {$skipped}");
         $this->line('RabbitMQ events requested: '.$queued.' scrape.requested event(s).');
         $this->printUrls($urls);
-        $this->printDashboardUrls();
+        $this->printDashboardUrls($support->dashboardUrls());
         $this->printWorkerCommands();
 
         return self::SUCCESS;
     }
 
-    private function demoUrls(int $limit): array
+    /**
+     * @return list<string>
+     */
+    private function explicitUrls(): array
     {
-        $explicit = $this->option('url') ?: [];
-        $urls = $explicit ?: $this->configuredDemoUrls();
+        $urls = $this->option('url') ?: [];
 
-        if ($urls === []) {
-            $urls = self::DEFAULT_URLS;
-        }
-
-        return array_slice(array_values(array_unique(array_filter(array_map(
-            fn (mixed $url): ?string => is_scalar($url) && trim((string) $url) !== '' ? trim((string) $url) : null,
-            $urls,
-        )))), 0, $limit);
-    }
-
-    private function configuredDemoUrls(): array
-    {
-        $configured = env('PIPELINE_DEMO_URLS');
-        if (! is_string($configured) || trim($configured) === '') {
-            return [];
-        }
-
-        return preg_split('/[\r\n,]+/', $configured) ?: [];
+        return array_values(array_filter(array_map('strval', (array) $urls)));
     }
 
     private function printUrls(array $urls): void
@@ -161,14 +138,14 @@ class DemoPipelineTask extends Command
         }
     }
 
-    private function printDashboardUrls(): void
+    /**
+     * @param list<string> $urls
+     */
+    private function printDashboardUrls(array $urls): void
     {
         $this->newLine();
-        $this->line('Dashboard URL: '.url('/pipeline-dashboard'));
-
-        $mountedUrl = $this->mountedDashboardUrl();
-        if ($mountedUrl !== null && $mountedUrl !== url('/pipeline-dashboard')) {
-            $this->line('Mounted dashboard URL: '.$mountedUrl);
+        foreach ($urls as $index => $url) {
+            $this->line(($index === 0 ? 'Dashboard URL: ' : 'Mounted dashboard URL: ').$url);
         }
     }
 
@@ -183,33 +160,6 @@ class DemoPipelineTask extends Command
         $this->line('  php artisan pipeline:scrape-monitor-event-worker');
         $this->line('  php artisan pipeline:converter-event-worker');
         $this->line('  php artisan pipeline:ingestion-event-worker');
-    }
-
-    private function mountedDashboardUrl(): ?string
-    {
-        $appUrl = rtrim((string) config('app.url'), '/');
-        if ($appUrl === '') {
-            return null;
-        }
-
-        $parts = parse_url($appUrl);
-        if (! is_array($parts) || ! isset($parts['scheme'], $parts['host'])) {
-            return null;
-        }
-
-        $origin = $parts['scheme'].'://'.$parts['host'].(isset($parts['port']) ? ':'.$parts['port'] : '');
-        $path = trim((string) ($parts['path'] ?? ''), '/');
-
-        if ($path === '') {
-            $mount = env('DOCKER_PROJECT_PATH', env('VIRTUAL_PATH', ''));
-            $path = trim((string) $mount, '/');
-        }
-
-        if ($path === '') {
-            return null;
-        }
-
-        return $origin.'/'.trim($path.'/pipeline-dashboard', '/');
     }
 
     private function stringOption(string $name): ?string

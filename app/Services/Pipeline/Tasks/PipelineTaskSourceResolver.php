@@ -5,12 +5,19 @@ declare(strict_types=1);
 namespace App\Services\Pipeline\Tasks;
 
 use Illuminate\Container\Attributes\Singleton;
-use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Log;
+use Illuminate\Filesystem\Filesystem;
+use Illuminate\Http\Client\Factory as HttpFactory;
+use Psr\Log\LoggerInterface;
 
 #[Singleton]
 readonly class PipelineTaskSourceResolver
 {
+    public function __construct(
+        private HttpFactory $http,
+        private Filesystem $files,
+        private LoggerInterface $logger,
+    ) {}
+
     /**
      * @return list<string>
      */
@@ -26,20 +33,21 @@ readonly class PipelineTaskSourceResolver
 
         $path = $this->nullableString($input['sitemap_path'] ?? $input['sitemapPath'] ?? null);
         if ($path !== null) {
-            $urls = array_merge($urls, $this->urlsFromSitemapText((string) @file_get_contents($path)));
+            $urls = array_merge($urls, $this->urlsFromSitemapText($this->sitemapText($path)));
         }
 
         $sitemapUrl = $this->nullableString($input['sitemap_url'] ?? $input['sitemapUrl'] ?? null);
         if ($sitemapUrl !== null && $urls === []) {
             try {
-                $response = Http::timeout(30)->retry(1, 250, throw: false)->get($sitemapUrl);
+                $response = $this->http->timeout(30)->retry(1, 250, throw: false)->get($sitemapUrl);
                 if ($response->successful()) {
                     $urls = array_merge($urls, $this->urlsFromSitemapText($response->body()));
                 }
             } catch (\Throwable $exception) {
-                Log::warning('Unable to load remote sitemap for pipeline task.', [
+                $this->logger->warning('Unable to load remote sitemap for pipeline task.', [
                     'sitemap_url' => $sitemapUrl,
                     'error' => $exception->getMessage(),
+                    'exception' => $exception,
                 ]);
             }
         }
@@ -98,6 +106,15 @@ readonly class PipelineTaskSourceResolver
         }
 
         return $url;
+    }
+
+    private function sitemapText(string $path): string
+    {
+        if (! $this->files->isFile($path)) {
+            return '';
+        }
+
+        return $this->files->get($path);
     }
 
     private function nullableString(mixed $value): ?string

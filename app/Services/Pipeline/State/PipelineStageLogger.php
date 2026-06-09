@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Pipeline\State;
 
 use Illuminate\Container\Attributes\Singleton;
-use Illuminate\Support\Facades\Log;
+use Illuminate\Log\LogManager;
 
 #[Singleton]
 readonly class PipelineStageLogger
@@ -13,6 +13,10 @@ readonly class PipelineStageLogger
     public const EVENT = 'pipeline.stage';
 
     public const CHANNEL = 'communication';
+
+    public function __construct(private LogManager $logs)
+    {
+    }
 
     public function started(string $stage, array $context = []): void
     {
@@ -63,7 +67,7 @@ readonly class PipelineStageLogger
             $base['error_message'] = $base['error_message'] ?: $exception->getMessage();
         }
 
-        Log::channel(self::CHANNEL)->log($level, self::EVENT, array_merge($base, $context));
+        $this->logs->channel(self::CHANNEL)->log($level, self::EVENT, array_merge($base, $context));
     }
 
     private function nullableString(mixed $value): ?string
