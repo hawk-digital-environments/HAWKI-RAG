@@ -16,9 +16,12 @@ use App\Services\Pipeline\Tasks\PipelineTaskService;
 use App\Services\Pipeline\Values\PipelineUploadInput;
 use App\Services\Pipeline\Values\PipelineUploadResult;
 use Illuminate\Container\Attributes\Singleton;
+use Illuminate\Contracts\Routing\UrlGenerator;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\Log;
+use Psr\Clock\ClockInterface;
+use Psr\Log\LoggerInterface;
+use Symfony\Component\Clock\Clock;
 
 #[Singleton]
 class PipelineUploadService
@@ -33,6 +36,9 @@ class PipelineUploadService
         private readonly PipelineUploadPolicy $policy,
         private readonly PipelineUploadIdentifierFactory $identifiers,
         private readonly PipelineUploadPayloadService $payloads,
+        private readonly LoggerInterface $logger,
+        private readonly UrlGenerator $urls,
+        private readonly ClockInterface $clock = new Clock(),
     ) {}
 
     public function upload(PipelineUploadInput $input, ?UploadedFile $file): PipelineUploadResult
@@ -52,7 +58,7 @@ class PipelineUploadService
         try {
             $storedUpload = $this->storage->store($taskId, $file, $extension);
         } catch (PipelineUploadStorageException $exception) {
-            Log::warning($exception->logMessage(), array_merge([
+            $this->logger->warning($exception->logMessage(), array_merge([
                 'dataset_id' => $input->datasetId,
                 'task_id' => $taskId,
                 'error' => $exception->getMessage(),
@@ -64,7 +70,7 @@ class PipelineUploadService
         $dataset = $this->datasets->ensure($input->datasetId);
         $jobId = $this->identifiers->convertJobId($taskId, $storedUpload);
         $sourceUrl = $this->identifiers->sourceUrl($storedUpload);
-        $now = Carbon::now();
+        $now = $this->now();
 
         $task = $this->taskRepository->createUploadTask(
             $taskId,
@@ -89,7 +95,7 @@ class PipelineUploadService
         try {
             $this->events->publish(PipelineEvent::FILE_DISCOVERED, $payload);
         } catch (\Throwable $exception) {
-            $failedAt = Carbon::now();
+            $failedAt = $this->now();
             $job = $this->jobRepository->markFailed(
                 $job,
                 'Unable to publish file.discovered event: '.$exception->getMessage(),
@@ -97,10 +103,11 @@ class PipelineUploadService
             );
             $task = $this->taskRepository->markFailed($task, $failedAt);
 
-            Log::warning('Pipeline controller file upload event publish failed.', [
+            $this->logger->warning('Pipeline controller file upload event publish failed.', [
                 'task_id' => $task->task_id,
                 'job_id' => $job->job_id,
                 'error' => $exception->getMessage(),
+                'exception' => $exception,
             ]);
 
             return $this->publishFailureResult($task, $job, $exception);
@@ -151,7 +158,7 @@ class PipelineUploadService
             'jobId' => $job->job_id,
             'datasetId' => $task->dataset_id,
             'error' => $exception->getMessage(),
-            'dashboardUrl' => url('/pipeline-dashboard?task_id='.rawurlencode($task->task_id)),
+            'dashboardUrl' => $this->dashboardUrl($task),
         ], 502);
     }
 
@@ -163,8 +170,18 @@ class PipelineUploadService
             'jobId' => $job->job_id,
             'datasetId' => $task->dataset_id,
             'task' => $this->tasks->show($task->task_id),
-            'dashboardUrl' => url('/pipeline-dashboard?task_id='.rawurlencode($task->task_id)),
-            'controllerUrl' => url('/pipeline-controller'),
+            'dashboardUrl' => $this->dashboardUrl($task),
+            'controllerUrl' => $this->urls->to('/pipeline-controller'),
         ], 201);
+    }
+
+    private function dashboardUrl(PipelineTask $task): string
+    {
+        return $this->urls->to('/pipeline-dashboard?task_id='.rawurlencode($task->task_id));
+    }
+
+    private function now(): Carbon
+    {
+        return Carbon::instance(\DateTimeImmutable::createFromInterface($this->clock->now()));
     }
 }

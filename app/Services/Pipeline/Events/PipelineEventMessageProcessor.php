@@ -17,13 +17,14 @@ readonly class PipelineEventMessageProcessor
         private PipelineEventDecoder $decoder,
         private PipelineEventBus $bus,
         private PipelineEventLogger $logger,
+        private ?PipelineEventConfig $config = null,
     ) {}
 
     public function process(Command $command, AMQPMessage $message, PipelineEventHandler $handler): int
     {
         $event = [];
         $retryCount = 0;
-        $maxRetries = (int) config('communication.rabbitmq.pipeline_events.max_retries', 3);
+        $maxRetries = $this->maxRetries();
 
         try {
             $event = $this->decoder->decode($message->getBody());
@@ -64,5 +65,10 @@ readonly class PipelineEventMessageProcessor
 
             return PipelineExitCode::RUNTIME_FAILURE;
         }
+    }
+
+    private function maxRetries(): int
+    {
+        return $this->config?->maxRetries() ?? 3;
     }
 }

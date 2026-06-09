@@ -7,6 +7,9 @@ namespace App\Services\DirectIngest;
 use App\Services\Pipeline\State\PipelineStateService;
 use App\Services\DirectIngest\Values\DirectIngestActionResult;
 use Illuminate\Container\Attributes\Singleton;
+use Illuminate\Filesystem\Filesystem;
+use Psr\Clock\ClockInterface;
+use Symfony\Component\Clock\Clock;
 
 #[Singleton]
 readonly class DirectIngestStatusService
@@ -14,6 +17,8 @@ readonly class DirectIngestStatusService
     public function __construct(
         private DirectIngestStatusStore $statuses,
         private PipelineStateService $pipelineState,
+        private Filesystem $files,
+        private ClockInterface $clock = new Clock(),
     ) {}
 
     public function show(string $mode): DirectIngestActionResult
@@ -41,11 +46,11 @@ readonly class DirectIngestStatusService
     public function clear(string $mode): DirectIngestActionResult
     {
         foreach ($this->clearTargets($mode) as $paths) {
-            if (is_file($paths->statusPath)) {
-                @unlink($paths->statusPath);
+            if ($this->files->isFile($paths->statusPath)) {
+                $this->files->delete($paths->statusPath);
             }
-            if (is_file($paths->cacheLogPath)) {
-                @unlink($paths->cacheLogPath);
+            if ($this->files->isFile($paths->cacheLogPath)) {
+                $this->files->delete($paths->cacheLogPath);
             }
         }
 
@@ -64,7 +69,7 @@ readonly class DirectIngestStatusService
         if ($exitCode !== null) {
             $status['exit_code'] = $exitCode;
         }
-        $status['updated_at'] = now()->toIso8601String();
+        $status['updated_at'] = $this->timestamp();
 
         $this->syncPipelineIngestStatus($status);
         if ($statusIndex !== null) {
@@ -109,7 +114,7 @@ readonly class DirectIngestStatusService
             $this->pipelineState->failStage($pipelineJobId, PipelineStateService::STAGE_INGEST, array_merge($payload, [
                 'errors' => [[
                     'message' => $status['last_line'] ?? 'Ingest process failed.',
-                    'updatedAt' => now()->toIso8601String(),
+                    'updatedAt' => $this->timestamp(),
                 ]],
             ]));
         }
@@ -129,7 +134,7 @@ readonly class DirectIngestStatusService
 
     private function tailLines(string $path, int $count): array
     {
-        if (! is_file($path)) {
+        if (! $this->files->isFile($path)) {
             return [];
         }
 
@@ -190,5 +195,10 @@ readonly class DirectIngestStatusService
         }
 
         return $progress;
+    }
+
+    private function timestamp(): string
+    {
+        return $this->clock->now()->format(\DateTimeInterface::ATOM);
     }
 }

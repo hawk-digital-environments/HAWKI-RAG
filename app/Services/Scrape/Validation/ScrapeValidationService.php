@@ -5,7 +5,8 @@ declare(strict_types=1);
 namespace App\Services\Scrape\Validation;
 
 use App\Services\Scrape\Data\ScrapeJobRequest;
-use Illuminate\Support\Facades\File;
+use App\Services\Scrape\Data\ScrapeValidationResult;
+use Illuminate\Filesystem\Filesystem;
 
 /**
  * Service for validating crawler inputs and configurations.
@@ -17,19 +18,9 @@ use Illuminate\Support\Facades\File;
  */
 class ScrapeValidationService
 {
-    /**
-     * Validation errors accumulated during validation.
-     *
-     * @var array
-     */
-    private array $errors = [];
-
-    /**
-     * Validation warnings accumulated during validation.
-     *
-     * @var array
-     */
-    private array $warnings = [];
+    public function __construct(private readonly Filesystem $files)
+    {
+    }
 
     /**
      * Validate a crawler job request.
@@ -43,63 +34,69 @@ class ScrapeValidationService
      */
     public function validate(ScrapeJobRequest $request): bool
     {
-        $this->clearErrors();
+        return $this->validateResult($request)->valid();
+    }
+
+    public function validateResult(ScrapeJobRequest $request): ScrapeValidationResult
+    {
+        $errors = [];
+        $warnings = [];
 
         // Validate URL
         if (blank($request->url)) {
-            $this->addError('URL is required.');
+            $errors[] = 'URL is required.';
         } elseif (!$this->isValidUrlOrFile($request->url)) {
-            $this->addError('Invalid URL provided or file not found/readable.');
+            $errors[] = 'Invalid URL provided or file not found/readable.';
         }
 
         // Validate label
         if (blank($request->label)) {
-            $this->addError('Label is required.');
+            $errors[] = 'Label is required.';
         } elseif (!$this->isValidLabel($request->label)) {
-            $this->addError('Label must contain only alphanumeric characters, dashes, and underscores.');
+            $errors[] = 'Label must contain only alphanumeric characters, dashes, and underscores.';
         }
 
         // Validate maxPages
         if ($request->maxPages < 0) {
-            $this->addError('Maximum pages must be a non-negative integer.');
+            $errors[] = 'Maximum pages must be a non-negative integer.';
         }
 
         if ($request->maxPages > 10000) {
-            $this->addWarning('Maximum pages is very high (>10000). This may take a long time.');
+            $warnings[] = 'Maximum pages is very high (>10000). This may take a long time.';
         }
 
         // Validate output directory
         if (!blank($request->outputDir) && !$this->isValidDirectory($request->outputDir)) {
-            $this->addError('Output directory does not exist or is not writable.');
+            $errors[] = 'Output directory does not exist or is not writable.';
         }
 
         // Validate image exceptions
         if ($request->imageExceptions !== null && !is_string($request->imageExceptions)) {
-            $this->addError('Image exceptions must be a comma-separated string of CSS selectors.');
+            $errors[] = 'Image exceptions must be a comma-separated string of CSS selectors.';
         }
 
         // Validate date selector
         if ($request->dateSelector !== null && blank($request->dateSelector)) {
-            $this->addWarning('Date selector is empty and will be ignored.');
+            $warnings[] = 'Date selector is empty and will be ignored.';
         }
 
         // Validate concurrency settings
         if ($request->maxConcurrency <= 0) {
-            $this->addError('Maximum concurrency must be a positive integer.');
+            $errors[] = 'Maximum concurrency must be a positive integer.';
         } elseif ($request->maxConcurrency > 20) {
-            $this->addWarning('Maximum concurrency is very high (>20). This may cause rate limiting issues.');
+            $warnings[] = 'Maximum concurrency is very high (>20). This may cause rate limiting issues.';
         }
 
         // Validate rate limiting
         if ($request->maxRpm <= 0) {
-            $this->addError('Maximum RPM must be a positive integer.');
+            $errors[] = 'Maximum RPM must be a positive integer.';
         }
 
         if ($request->requestDelay !== null && $request->requestDelay < 0) {
-            $this->addError('Request delay must be a non-negative integer.');
+            $errors[] = 'Request delay must be a non-negative integer.';
         }
 
-        return !$this->hasErrors();
+        return new ScrapeValidationResult($errors, $warnings);
     }
 
     /**
@@ -113,7 +110,7 @@ class ScrapeValidationService
     public function isValidUrlOrFile(string $urlOrPath): bool
     {
         // Check if it's a local file
-        if (File::exists($urlOrPath) && File::isReadable($urlOrPath)) {
+        if ($this->files->exists($urlOrPath) && $this->files->isReadable($urlOrPath)) {
             return true;
         }
 
@@ -142,20 +139,20 @@ class ScrapeValidationService
      */
     public function isValidDirectory(string $directory): bool
     {
-        if (File::exists($directory)) {
-            if (!File::isDirectory($directory)) {
+        if ($this->files->exists($directory)) {
+            if (!$this->files->isDirectory($directory)) {
                 return false;
             }
 
-            return File::isWritable($directory);
+            return $this->files->isWritable($directory);
         }
 
         $parent = dirname($directory);
-        if ($parent === $directory || !File::exists($parent) || !File::isDirectory($parent)) {
+        if ($parent === $directory || !$this->files->exists($parent) || !$this->files->isDirectory($parent)) {
             return false;
         }
 
-        return File::isWritable($parent);
+        return $this->files->isWritable($parent);
     }
 
     /**
@@ -166,11 +163,11 @@ class ScrapeValidationService
      */
     public function isValidUrlListFile(string $filePath): bool
     {
-        if (!File::exists($filePath) || !File::isReadable($filePath)) {
+        if (!$this->files->exists($filePath) || !$this->files->isReadable($filePath)) {
             return false;
         }
 
-        $content = File::get($filePath);
+        $content = $this->files->get($filePath);
         $lines = explode("\n", $content);
 
         $validUrlCount = 0;
@@ -188,90 +185,4 @@ class ScrapeValidationService
         return $validUrlCount > 0;
     }
 
-    /**
-     * Add a validation error.
-     *
-     * @param string $message Error message
-     * @return void
-     */
-    private function addError(string $message): void
-    {
-        $this->errors[] = $message;
-    }
-
-    /**
-     * Add a validation warning.
-     *
-     * @param string $message Warning message
-     * @return void
-     */
-    private function addWarning(string $message): void
-    {
-        $this->warnings[] = $message;
-    }
-
-    /**
-     * Clear all errors and warnings.
-     *
-     * @return void
-     */
-    private function clearErrors(): void
-    {
-        $this->errors = [];
-        $this->warnings = [];
-    }
-
-    /**
-     * Get all validation errors.
-     *
-     * @return array
-     */
-    public function getErrors(): array
-    {
-        return $this->errors;
-    }
-
-    /**
-     * Get all validation warnings.
-     *
-     * @return array
-     */
-    public function getWarnings(): array
-    {
-        return $this->warnings;
-    }
-
-    /**
-     * Check if there are any validation errors.
-     *
-     * @return bool
-     */
-    public function hasErrors(): bool
-    {
-        return count($this->errors) > 0;
-    }
-
-    /**
-     * Check if there are any validation warnings.
-     *
-     * @return bool
-     */
-    public function hasWarnings(): bool
-    {
-        return count($this->warnings) > 0;
-    }
-
-    /**
-     * Get a formatted error message.
-     *
-     * @return string
-     */
-    public function getErrorMessage(): string
-    {
-        if (!$this->hasErrors()) {
-            return '';
-        }
-
-        return 'Validation failed: ' . implode('; ', $this->errors);
-    }
 }

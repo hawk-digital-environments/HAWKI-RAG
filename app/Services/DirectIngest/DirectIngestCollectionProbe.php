@@ -5,11 +5,16 @@ declare(strict_types=1);
 namespace App\Services\DirectIngest;
 
 use Illuminate\Container\Attributes\Singleton;
-use Illuminate\Support\Facades\Http;
+use Illuminate\Http\Client\Factory as HttpFactory;
 
 #[Singleton]
 readonly class DirectIngestCollectionProbe
 {
+    public function __construct(
+        private HttpFactory $http,
+        private DirectIngestConfig $config,
+    ) {}
+
     public function exists(string $collection): bool
     {
         $collection = trim($collection);
@@ -17,9 +22,8 @@ readonly class DirectIngestCollectionProbe
             return false;
         }
 
-        $baseUrl = rtrim((string) config('config.qdrant_http_url', 'http://qdrant:6333'), '/');
         try {
-            $response = Http::timeout(3)->get($baseUrl.'/collections');
+            $response = $this->http->timeout(3)->get($this->config->qdrantHttpUrl().'/collections');
             if (! $response->successful()) {
                 return false;
             }

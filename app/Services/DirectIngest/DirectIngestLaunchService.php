@@ -8,7 +8,10 @@ use App\Services\Pipeline\State\PipelineStageLogger;
 use App\Services\Pipeline\State\PipelineStateService;
 use App\Services\DirectIngest\Values\DirectIngestLaunchResult;
 use Illuminate\Container\Attributes\Singleton;
+use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Str;
+use Psr\Clock\ClockInterface;
+use Symfony\Component\Clock\Clock;
 
 #[Singleton]
 readonly class DirectIngestLaunchService
@@ -21,6 +24,9 @@ readonly class DirectIngestLaunchService
         private DirectIngestProcessLauncher $processes,
         private PipelineStateService $pipelineState,
         private DirectIngestStatusStore $statuses,
+        private DirectIngestConfig $config,
+        private Filesystem $files,
+        private ClockInterface $clock = new Clock(),
     ) {}
 
     public function launch(array $data): DirectIngestLaunchResult
@@ -31,26 +37,25 @@ readonly class DirectIngestLaunchService
         }
 
         $path = (string) $data['path'];
-        if (! is_dir($path)) {
+        if (! $this->files->isDirectory($path)) {
             return DirectIngestLaunchResult::fromPayload(['ok' => false, 'message' => "Path not found: {$path}"], 404);
         }
         if (! $this->folders->isPathWithinRoot($path, $root)) {
             return DirectIngestLaunchResult::fromPayload(['ok' => false, 'message' => 'Path must be within the crawled-data root.'], 422);
         }
 
-        $script = base_path('python_rag/ingest/ingest_crawled.py');
-        if (! is_file($script)) {
+        $script = $this->config->ingestScriptPath();
+        if (! $this->files->isFile($script)) {
             return DirectIngestLaunchResult::fromPayload(['ok' => false, 'message' => 'ingest_crawled.py not found'], 500);
         }
 
-        $baseUrl = (string) config('config.hawki_rag_bridge_url', 'http://hawki_rag_bridge:8000');
         $statusMode = $this->statuses->modeForPayload($data);
         $statusPaths = $this->statuses->paths($statusMode);
         $this->statuses->ensureDirectories($statusPaths);
 
         $collection = (string) ($data['collection'] ?? basename($path));
-        $summaryPath = storage_path('logs/ingest_summary.json');
-        $cmd = $this->commands->build($data, $script, $path, $baseUrl, $summaryPath);
+        $summaryPath = $this->config->ingestSummaryPath();
+        $cmd = $this->commands->build($data, $script, $path, $this->config->hawkiRagBridgeUrl(), $summaryPath);
 
         $collectionExists = $this->collections->exists($collection);
         $pipelineJobId = trim((string) ($data['job_id'] ?? ''));
@@ -95,7 +100,7 @@ readonly class DirectIngestLaunchService
         }
 
         $entry['pid'] = $pid;
-        $entry['updated_at'] = now()->toIso8601String();
+        $entry['updated_at'] = $this->timestamp();
         $this->statuses->replaceById($statusPaths->statusPath, (string) $entry['id'], $entry);
         $this->logger->success('ingest', [
             'job_id' => $pipelineJobId,
@@ -127,7 +132,7 @@ readonly class DirectIngestLaunchService
         string $summaryPath,
         string $statusMode,
     ): array {
-        $now = now()->toIso8601String();
+        $now = $this->timestamp();
 
         return [
             'id' => (string) Str::uuid(),
@@ -154,7 +159,7 @@ readonly class DirectIngestLaunchService
     private function launchFailure(array $entry, string $statusPath, string $path, string $collection, string $pipelineJobId): DirectIngestLaunchResult
     {
         $entry['status'] = 'failed';
-        $entry['updated_at'] = now()->toIso8601String();
+        $entry['updated_at'] = $this->timestamp();
         $this->statuses->replaceById($statusPath, (string) $entry['id'], $entry);
         $this->logger->failed('ingest', [
             'job_id' => $pipelineJobId,
@@ -174,7 +179,7 @@ readonly class DirectIngestLaunchService
             ],
             'errors' => [[
                 'message' => 'Failed to launch ingest process.',
-                'updatedAt' => now()->toIso8601String(),
+                'updatedAt' => $this->timestamp(),
             ]],
             'metadata' => ['mode' => 'direct-ui'],
         ]);
@@ -183,5 +188,10 @@ readonly class DirectIngestLaunchService
             'ok' => false,
             'message' => 'Failed to launch ingest process.',
         ], 500);
+    }
+
+    private function timestamp(): string
+    {
+        return $this->clock->now()->format(\DateTimeInterface::ATOM);
     }
 }

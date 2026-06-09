@@ -4,9 +4,12 @@ namespace App\Providers;
 
 use App\Services\Storage\StorageService;
 use App\Services\Storage\UrlGenerator;
+use App\Services\Pipeline\Events\PipelineEventConfig;
+use App\Services\WebSearch\Exceptions\WebSearchFailedException;
 use App\Services\WebSearch\Implementations\BraveSearch;
 use App\Services\WebSearch\Implementations\TavilySearch;
 use App\Services\WebSearch\Contracts\WebSearchInterface;
+use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\ServiceProvider;
 
@@ -17,6 +20,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
+        $this->app->singleton(PipelineEventConfig::class);
+
         $this->app->singleton(StorageService::class, function ($app) {
             $diskName = config('filesystems.file_storage');
             $disk = Storage::disk($diskName);
@@ -29,12 +34,10 @@ class AppServiceProvider extends ServiceProvider
 
         $this->app->singleton(
             WebSearchInterface::class,
-            fn() => match (config('web_search.default')) {
-                'brave' => new BraveSearch(),
-                'tavily' => new TavilySearch(),
-                default => throw new \InvalidArgumentException(
-                    'Invalid Default WebSearch Engine'
-                )
+            fn (Application $app) => match ((string) $app['config']->get('web_search.default')) {
+                'brave' => $app->make(BraveSearch::class),
+                'tavily' => $app->make(TavilySearch::class),
+                default => throw WebSearchFailedException::invalidDefaultProvider((string) $app['config']->get('web_search.default')),
             }
         );
     }

@@ -9,6 +9,10 @@ use Illuminate\Container\Attributes\Singleton;
 #[Singleton]
 readonly class DirectIngestCommandBuilder
 {
+    public function __construct(private DirectIngestConfig $config)
+    {
+    }
+
     public function build(array $data, string $script, string $path, string $baseUrl, string $summaryPath): array
     {
         $cmd = [
@@ -40,7 +44,7 @@ readonly class DirectIngestCommandBuilder
             }
         }
 
-        $timeout = $data['timeout'] ?? (int) config('config.ingest_timeout', 6000);
+        $timeout = $data['timeout'] ?? $this->config->ingestTimeout();
         if ($timeout > 0) {
             $cmd[] = '--timeout';
             $cmd[] = (string) $timeout;

@@ -13,10 +13,11 @@ use App\Services\Pipeline\Repositories\PipelineJobRepository;
 use App\Services\Pipeline\Repositories\PipelineScrapeHistoryRepository;
 use App\Services\Scrape\Data\ScrapeJobRequest;
 use App\Services\Scrape\ScraperPipelineService;
+use Illuminate\Contracts\Config\Repository as ConfigRepository;
 use Illuminate\Container\Attributes\Singleton;
-use Illuminate\Support\Facades\File;
-use Illuminate\Support\Facades\Log;
+use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Str;
+use Psr\Log\LoggerInterface;
 
 #[Singleton]
 class ScraperEventHandler implements PipelineEventHandler
@@ -27,6 +28,9 @@ class ScraperEventHandler implements PipelineEventHandler
         private readonly PipelineJobRepository $jobs,
         private readonly PipelineScrapeHistoryRepository $scrapeHistory,
         private readonly ScraperPipelineService $scraper,
+        private readonly Filesystem $files,
+        private readonly ConfigRepository $config,
+        private readonly LoggerInterface $logger,
     ) {}
 
     public function eventTypes(): array
@@ -66,7 +70,7 @@ class ScraperEventHandler implements PipelineEventHandler
 
         $existing = $this->jobs->findByJobId((string) $event['job_id']);
         if ($existing && in_array($existing->status, [PipelineJob::STATUS_RUNNING, PipelineJob::STATUS_COMPLETED, PipelineJob::STATUS_SKIPPED], true)) {
-            Log::info('pipeline.event.scrape.duplicate_ignored', [
+            $this->logger->info('pipeline.event.scrape.duplicate_ignored', [
                 'task_id' => $event['task_id'],
                 'job_id' => $event['job_id'],
                 'status' => $existing->status,
@@ -95,7 +99,7 @@ class ScraperEventHandler implements PipelineEventHandler
         ]);
 
         $outputDir = $event['local_path'] ?: $this->outputDirFor($event);
-        File::ensureDirectoryExists($outputDir);
+        $this->files->ensureDirectoryExists($outputDir);
 
         $result = $this->scraper->execute(ScrapeJobRequest::fromArray([
             'job_id' => $event['job_id'],
@@ -123,7 +127,7 @@ class ScraperEventHandler implements PipelineEventHandler
             ]),
         ]));
 
-        Log::info('pipeline.event.scrape.submitted', [
+        $this->logger->info('pipeline.event.scrape.submitted', [
             'task_id' => $event['task_id'],
             'job_id' => $event['job_id'],
             'source_url' => $url,
@@ -132,7 +136,7 @@ class ScraperEventHandler implements PipelineEventHandler
 
     private function outputDirFor(array $event): string
     {
-        return rtrim((string) config('scraper.storage_path'), DIRECTORY_SEPARATOR)
+        return rtrim((string) $this->config->get('scraper.storage_path'), DIRECTORY_SEPARATOR)
             .DIRECTORY_SEPARATOR
             .(string) $event['task_id']
             .DIRECTORY_SEPARATOR

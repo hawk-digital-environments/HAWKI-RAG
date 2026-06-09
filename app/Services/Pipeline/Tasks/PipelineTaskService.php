@@ -13,11 +13,13 @@ use App\Services\Pipeline\Events\PipelineEventRecorder;
 use App\Services\Pipeline\Repositories\PipelineJobRepository;
 use App\Services\Pipeline\Repositories\PipelineScrapeHistoryRepository;
 use App\Services\Pipeline\Repositories\PipelineTaskRepository;
+use App\Services\Pipeline\Repositories\PipelineTransactionRepository;
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
+use Psr\Clock\ClockInterface;
+use Psr\Log\LoggerInterface;
+use Symfony\Component\Clock\Clock;
 
 #[Singleton]
 class PipelineTaskService
@@ -36,16 +38,19 @@ class PipelineTaskService
         private readonly PipelineTaskRepository $taskRepository,
         private readonly PipelineJobRepository $jobRepository,
         private readonly PipelineScrapeHistoryRepository $scrapeHistoryRepository,
+        private readonly PipelineTransactionRepository $transactions,
+        private readonly LoggerInterface $logger,
+        private readonly ClockInterface $clock = new Clock(),
     ) {}
 
     public function start(array $input): PipelineTask
     {
-        $task = DB::transaction(function () use ($input): PipelineTask {
+        $task = $this->transactions->run(function () use ($input): PipelineTask {
             $dataset = $this->datasets->ensure($input);
             $task = $this->taskRepository->createRunningTask(
                 $this->input->taskId($input),
                 $dataset,
-                Carbon::now(),
+                $this->now(),
                 $this->counters->defaults(),
                 [
                     'request' => $input,
@@ -160,8 +165,8 @@ class PipelineTaskService
                 'error_message' => $this->input->nullableString($input['error_message'] ?? $input['errorMessage'] ?? null),
                 'started_at' => $this->input->date($input['started_at'] ?? $input['startedAt'] ?? null)
                     ?? $existing?->started_at
-                    ?? (in_array($status, [PipelineJob::STATUS_RUNNING, PipelineJob::STATUS_QUEUED], true) ? Carbon::now() : null),
-                'finished_at' => $this->input->isTerminalStatus($status) ? Carbon::now() : null,
+                    ?? (in_array($status, [PipelineJob::STATUS_RUNNING, PipelineJob::STATUS_QUEUED], true) ? $this->now() : null),
+                'finished_at' => $this->input->isTerminalStatus($status) ? $this->now() : null,
                 'metadata' => $metadata,
             ],
         );
@@ -183,7 +188,7 @@ class PipelineTaskService
         foreach ($jobs as $job) {
             $metadata = $job->metadata ?? [];
             $metadata['retry_count'] = (int) ($metadata['retry_count'] ?? 0) + 1;
-            $metadata['retried_at'] = now()->toIso8601String();
+            $metadata['retried_at'] = $this->timestamp();
 
             $job = $this->jobRepository->markQueuedForRetry($job, $metadata);
             $this->publishRetryEventForJob($task, $job);
@@ -234,7 +239,7 @@ class PipelineTaskService
         $contentHash = hash('sha256', $url);
         $alreadyScraped = $this->scrapeHistoryRepository->hasCompletedScrape($url, $contentHash);
         $status = $alreadyScraped ? PipelineJob::STATUS_SKIPPED : PipelineJob::STATUS_QUEUED;
-        $now = Carbon::now();
+        $now = $this->now();
 
         $job = $this->jobRepository->createScrapeJob(
             ($alreadyScraped ? 'skipped_' : 'scrape_').substr(hash('sha256', $task->task_id.'|'.$url), 0, 24),
@@ -280,9 +285,10 @@ class PipelineTaskService
         try {
             $this->eventBus->publish($routingKey, $payload);
         } catch (\Throwable $exception) {
-            Log::warning('Pipeline RabbitMQ event publish failed.', [
+            $this->logger->warning('Pipeline RabbitMQ event publish failed.', [
                 'routing_key' => $routingKey,
                 'error' => $exception->getMessage(),
+                'exception' => $exception,
             ]);
         }
     }
@@ -290,5 +296,15 @@ class PipelineTaskService
     private function activeJobCount(PipelineTask $task): int
     {
         return $this->jobRepository->countForTaskWithStatuses($task->task_id, $this->statuses->activeJobStatuses());
+    }
+
+    private function now(): Carbon
+    {
+        return Carbon::instance(\DateTimeImmutable::createFromInterface($this->clock->now()));
+    }
+
+    private function timestamp(): string
+    {
+        return $this->clock->now()->format(\DateTimeInterface::ATOM);
     }
 }

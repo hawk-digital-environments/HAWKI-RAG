@@ -8,10 +8,12 @@ use App\Models\PipelineJob;
 use App\Models\PipelineStageState;
 use App\Services\Pipeline\Repositories\PipelineJobRepository;
 use App\Services\Pipeline\Repositories\PipelineStageStateRepository;
+use App\Services\Pipeline\Repositories\PipelineTransactionRepository;
 use App\Services\Pipeline\Values\PipelineStage;
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\DB;
+use Psr\Clock\ClockInterface;
+use Symfony\Component\Clock\Clock;
 
 #[Singleton]
 readonly class PipelineStateService
@@ -25,6 +27,8 @@ readonly class PipelineStateService
     public function __construct(
         private readonly PipelineJobRepository $jobs,
         private readonly PipelineStageStateRepository $stageStates,
+        private readonly PipelineTransactionRepository $transactions,
+        private readonly ClockInterface $clock = new Clock(),
     ) {}
 
     public function ensureJob(string $jobId, array $attributes = []): ?PipelineJob
@@ -36,7 +40,7 @@ readonly class PipelineStateService
         return $this->jobs->ensureStateJob(
             $jobId,
             $this->jobAttributes($attributes),
-            Carbon::now(),
+            $this->now(),
             PipelineJob::STATUS_PENDING,
         );
     }
@@ -45,7 +49,7 @@ readonly class PipelineStateService
     {
         return $this->updateStage($jobId, $stage, array_merge($attributes, [
             'status' => $attributes['status'] ?? PipelineJob::STATUS_RUNNING,
-            'started_at' => $attributes['started_at'] ?? Carbon::now(),
+            'started_at' => $attributes['started_at'] ?? $this->now(),
         ]));
     }
 
@@ -53,7 +57,7 @@ readonly class PipelineStateService
     {
         return $this->updateStage($jobId, $stage, array_merge($attributes, [
             'status' => PipelineJob::STATUS_COMPLETED,
-            'completed_at' => $attributes['completed_at'] ?? Carbon::now(),
+            'completed_at' => $attributes['completed_at'] ?? $this->now(),
         ]));
     }
 
@@ -61,7 +65,7 @@ readonly class PipelineStateService
     {
         return $this->updateStage($jobId, $stage, array_merge($attributes, [
             'status' => PipelineJob::STATUS_SKIPPED,
-            'completed_at' => $attributes['completed_at'] ?? Carbon::now(),
+            'completed_at' => $attributes['completed_at'] ?? $this->now(),
         ]));
     }
 
@@ -69,7 +73,7 @@ readonly class PipelineStateService
     {
         return $this->updateStage($jobId, $stage, array_merge($attributes, [
             'status' => PipelineJob::STATUS_PARTIAL,
-            'completed_at' => $attributes['completed_at'] ?? Carbon::now(),
+            'completed_at' => $attributes['completed_at'] ?? $this->now(),
         ]));
     }
 
@@ -77,8 +81,8 @@ readonly class PipelineStateService
     {
         return $this->updateStage($jobId, $stage, array_merge($attributes, [
             'status' => PipelineJob::STATUS_FAILED,
-            'failed_at' => $attributes['failed_at'] ?? Carbon::now(),
-            'completed_at' => $attributes['completed_at'] ?? Carbon::now(),
+            'failed_at' => $attributes['failed_at'] ?? $this->now(),
+            'completed_at' => $attributes['completed_at'] ?? $this->now(),
         ]));
     }
 
@@ -93,13 +97,14 @@ readonly class PipelineStateService
             return null;
         }
 
+        $transitionedAt = $this->now();
         $state = $this->stageStates->upsertForJob(
             $job,
             $jobId,
             $stage,
             $this->stageAttributes($attributes),
             $this->startedStatuses(),
-            Carbon::now(),
+            $transitionedAt,
         );
 
         $this->refreshJobFromStages($job, $stage, $attributes);
@@ -136,8 +141,9 @@ readonly class PipelineStateService
             return null;
         }
 
-        return DB::transaction(function () use ($jobId, $stage, $attributes, $requiredCompletedStages, $force): ?PipelineStageState {
-            $job = $this->jobs->firstOrCreateClaimJob($jobId, $stage, Carbon::now());
+        return $this->transactions->run(function () use ($jobId, $stage, $attributes, $requiredCompletedStages, $force): ?PipelineStageState {
+            $transitionedAt = $this->now();
+            $job = $this->jobs->firstOrCreateClaimJob($jobId, $stage, $transitionedAt);
 
             foreach ($requiredCompletedStages as $requiredStage) {
                 $required = $this->stageStates->lockForJobStage($jobId, $requiredStage);
@@ -158,10 +164,10 @@ readonly class PipelineStateService
                 $job,
                 $this->stageAttributes(array_merge($attributes, [
                     'status' => $attributes['status'] ?? PipelineJob::STATUS_RUNNING,
-                    'started_at' => $attributes['started_at'] ?? Carbon::now(),
+                    'started_at' => $attributes['started_at'] ?? $transitionedAt,
                 ])),
                 $this->startedStatuses(),
-                Carbon::now(),
+                $transitionedAt,
             );
 
             $this->refreshJobFromStages($job, $stage, $attributes);
@@ -390,5 +396,10 @@ readonly class PipelineStateService
         }
 
         return $value ? (string) $value : null;
+    }
+
+    private function now(): Carbon
+    {
+        return Carbon::instance(\DateTimeImmutable::createFromInterface($this->clock->now()));
     }
 }

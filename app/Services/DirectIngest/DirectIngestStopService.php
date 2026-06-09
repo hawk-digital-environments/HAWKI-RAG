@@ -7,6 +7,8 @@ namespace App\Services\DirectIngest;
 use App\Services\Pipeline\State\PipelineStateService;
 use App\Services\DirectIngest\Values\DirectIngestActionResult;
 use Illuminate\Container\Attributes\Singleton;
+use Psr\Clock\ClockInterface;
+use Symfony\Component\Clock\Clock;
 
 #[Singleton]
 readonly class DirectIngestStopService
@@ -14,6 +16,7 @@ readonly class DirectIngestStopService
     public function __construct(
         private DirectIngestStatusStore $statuses,
         private PipelineStateService $pipelineState,
+        private ClockInterface $clock = new Clock(),
     ) {}
 
     public function stop(array $data): DirectIngestActionResult
@@ -92,7 +95,7 @@ readonly class DirectIngestStopService
     private function markEntriesStopped(string $statusPath, array $stoppedPids): void
     {
         $entries = $this->statuses->load($statusPath);
-        $now = now()->toIso8601String();
+        $now = $this->clock->now()->format(\DateTimeInterface::ATOM);
         foreach ($entries as &$entry) {
             if (! is_array($entry)) {
                 continue;

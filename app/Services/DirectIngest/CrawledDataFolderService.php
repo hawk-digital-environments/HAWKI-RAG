@@ -6,11 +6,16 @@ namespace App\Services\DirectIngest;
 
 use App\Services\DirectIngest\Values\DirectIngestActionResult;
 use Illuminate\Container\Attributes\Singleton;
-use Illuminate\Support\Facades\File;
+use Illuminate\Filesystem\Filesystem;
 
 #[Singleton]
 readonly class CrawledDataFolderService
 {
+    public function __construct(
+        private DirectIngestConfig $config,
+        private Filesystem $files,
+    ) {}
+
     public function list(): DirectIngestActionResult
     {
         $root = $this->root();
@@ -38,7 +43,7 @@ readonly class CrawledDataFolderService
             ], 404);
         }
 
-        if (! is_dir($path)) {
+        if (! $this->files->isDirectory($path)) {
             return DirectIngestActionResult::fromPayload(['ok' => false, 'message' => "Folder not found: {$path}"], 404);
         }
         if (! $this->isPathWithinRoot($path, $root)) {
@@ -51,12 +56,12 @@ readonly class CrawledDataFolderService
         }
 
         try {
-            $deleted = File::deleteDirectory($resolvedPath);
+            $deleted = $this->files->deleteDirectory($resolvedPath);
         } catch (\Throwable) {
             return DirectIngestActionResult::fromPayload(['ok' => false, 'message' => 'Failed to delete folder.'], 500);
         }
 
-        if (! $deleted || is_dir($resolvedPath)) {
+        if (! $deleted || $this->files->isDirectory($resolvedPath)) {
             $perms = @fileperms($resolvedPath);
             $permText = $perms ? substr(sprintf('%o', $perms), -4) : 'unknown';
 
@@ -79,8 +84,8 @@ readonly class CrawledDataFolderService
 
     public function root(): ?string
     {
-        $root = (string) config('config.crawled_data_root', '/app/shared');
-        if (is_dir($root)) {
+        $root = $this->config->crawledDataRoot();
+        if ($this->files->isDirectory($root)) {
             return realpath($root) ?: $root;
         }
 
@@ -102,7 +107,7 @@ readonly class CrawledDataFolderService
 
     private function folderList(string $root): array
     {
-        $dirs = File::directories($root);
+        $dirs = $this->files->directories($root);
         $folders = [];
         foreach ($dirs as $dir) {
             $name = basename($dir);

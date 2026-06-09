@@ -15,6 +15,7 @@ readonly class PipelineEventRetryFactory
     public function __construct(
         private PipelineEventNormalizer $normalizer,
         private ClockInterface $clock = new Clock,
+        private ?PipelineEventConfig $config = null,
     ) {}
 
     public function makeRetry(array $event, \Throwable $error): ?array
@@ -25,7 +26,7 @@ readonly class PipelineEventRetryFactory
         }
 
         $retryCount = max(0, (int) ($event['retry_count'] ?? 0)) + 1;
-        $maxRetries = max(0, (int) ($event['max_retries'] ?? config('communication.rabbitmq.pipeline_events.max_retries', 3)));
+        $maxRetries = max(0, (int) ($event['max_retries'] ?? $this->maxRetries()));
         if ($retryCount > $maxRetries) {
             return null;
         }
@@ -80,5 +81,10 @@ readonly class PipelineEventRetryFactory
     private function timestamp(): string
     {
         return $this->clock->now()->format(\DateTimeInterface::ATOM);
+    }
+
+    private function maxRetries(): int
+    {
+        return $this->config?->maxRetries() ?? 3;
     }
 }

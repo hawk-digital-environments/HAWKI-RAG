@@ -16,6 +16,7 @@ readonly class PipelineEventNormalizer
     public function __construct(
         private PipelineEventTypeRegistry $types,
         private ClockInterface $clock = new Clock,
+        private ?PipelineEventConfig $config = null,
     ) {}
 
     public function normalize(string $eventType, array $payload): array
@@ -44,8 +45,8 @@ readonly class PipelineEventNormalizer
             'created_at' => $this->scalar($payload['created_at'] ?? $payload['createdAt'] ?? null) ?? $this->timestamp(),
             'metadata' => $metadata,
             'retry_count' => max(0, (int) ($payload['retry_count'] ?? 0)),
-            'max_retries' => max(0, (int) ($payload['max_retries'] ?? config('communication.rabbitmq.pipeline_events.max_retries', 3))),
-            'schema_version' => $this->scalar($payload['schema_version'] ?? null) ?? (string) config('communication.rabbitmq.pipeline_events.schema_version', '1'),
+            'max_retries' => max(0, (int) ($payload['max_retries'] ?? $this->maxRetries())),
+            'schema_version' => $this->scalar($payload['schema_version'] ?? null) ?? $this->schemaVersion(),
             'source' => $this->scalar($payload['source'] ?? null) ?? 'hawki-rag-laravel',
         ];
     }
@@ -74,5 +75,15 @@ readonly class PipelineEventNormalizer
     private function timestamp(): string
     {
         return $this->clock->now()->format(\DateTimeInterface::ATOM);
+    }
+
+    private function maxRetries(): int
+    {
+        return $this->config?->maxRetries() ?? 3;
+    }
+
+    private function schemaVersion(): string
+    {
+        return $this->config?->schemaVersion() ?? '1';
     }
 }

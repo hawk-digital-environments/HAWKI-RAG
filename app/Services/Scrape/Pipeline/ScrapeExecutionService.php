@@ -5,24 +5,27 @@ declare(strict_types=1);
 namespace App\Services\Scrape\Pipeline;
 
 use App\Services\Scrape\Data\ScrapeJobRequest;
-use Illuminate\Http\Client\ConnectionException;
-use Illuminate\Support\Facades\Http;
-use JsonException;
+use Illuminate\Contracts\Config\Repository as ConfigRepository;
+use Illuminate\Http\Client\Factory as HttpFactory;
 
 class ScrapeExecutionService
 {
+    public function __construct(
+        private readonly HttpFactory $http,
+        private readonly ConfigRepository $config,
+    ) {}
+
     /**
      *
      * @param callable|null $outputCallback Optional callback for streaming output (callable(string $type, string $buffer))
      * @return array success and message
-     * @throws ConnectionException
      */
     public function execute(ScrapeJobRequest $requestConfig, ?callable $outputCallback = null): array
     {
-        try{
-            $response = Http::timeout(300)
+        try {
+            $response = $this->http->timeout(300)
                 ->retry(3, 1000, throw: false)
-                ->post(config('scraper.api_url') . '/crawl',
+                ->post($this->apiUrl().'/crawl',
                     $requestConfig->toArray());
 
             $data = $this->decodeJsonResponse($response->body());
@@ -56,12 +59,12 @@ class ScrapeExecutionService
                 'success' => true,
                 'message' => $data['data']['message'] ?? 'Crawl job submitted successfully',
             ];
-        } catch (JsonException $e) {
+        } catch (\JsonException $e) {
             return [
                 'success' => false,
                 'message' => 'Crawler returned invalid JSON: ' . $e->getMessage(),
             ];
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             return [
                 'success' => false,
                 'message' => $e->getMessage(),
@@ -70,14 +73,14 @@ class ScrapeExecutionService
     }
 
     /**
-     * @throws JsonException
+     * @throws \JsonException
      */
     private function decodeJsonResponse(string $body): array
     {
         $data = json_decode($body, true, 512, JSON_THROW_ON_ERROR);
 
         if (!is_array($data)) {
-            throw new JsonException('Expected JSON object response.');
+            throw new \JsonException('Expected JSON object response.');
         }
 
         return $data;
@@ -125,5 +128,10 @@ class ScrapeExecutionService
         return $messages === []
             ? (json_encode($detail, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?: 'unknown validation error')
             : implode('; ', $messages);
+    }
+
+    private function apiUrl(): string
+    {
+        return rtrim((string) $this->config->get('scraper.api_url'), '/');
     }
 }

@@ -5,10 +5,15 @@ declare(strict_types=1);
 namespace App\Services\Pipeline\Uploads;
 
 use Illuminate\Container\Attributes\Singleton;
+use Illuminate\Contracts\Config\Repository as ConfigRepository;
 
 #[Singleton]
 class PipelineUploadPolicy
 {
+    public function __construct(private readonly ConfigRepository $config)
+    {
+    }
+
     /**
      * @return list<string>
      */
@@ -16,7 +21,7 @@ class PipelineUploadPolicy
     {
         return array_values(array_filter(array_map(
             static fn (mixed $value): string => ltrim(strtolower(trim((string) $value)), '.'),
-            config('file_converter.supported_extensions', ['pdf', 'doc', 'docx']),
+            $this->config->get('file_converter.supported_extensions', ['pdf', 'doc', 'docx']),
         )));
     }
 

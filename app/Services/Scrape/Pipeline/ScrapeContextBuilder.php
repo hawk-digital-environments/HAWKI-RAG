@@ -8,16 +8,20 @@ use App\Services\Scrape\Data\ScrapeContext;
 use App\Services\Scrape\Data\ScrapeJobRequest;
 use App\Services\Scrape\Repositories\ScrapeProcessRepository;
 use App\Services\Scrape\Repositories\ScrapeStatisticsRepository;
-use Exception;
-use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Log;
+use Illuminate\Contracts\Cache\Repository as CacheRepository;
 use Illuminate\Support\Str;
+use Psr\Clock\ClockInterface;
+use Psr\Log\LoggerInterface;
+use Symfony\Component\Clock\Clock;
 
 class ScrapeContextBuilder
 {
     public function __construct(
         private readonly ScrapeProcessRepository $processes,
         private readonly ScrapeStatisticsRepository $statistics,
+        private readonly CacheRepository $cache,
+        private readonly LoggerInterface $logger,
+        private readonly ClockInterface $clock = new Clock,
     ) {
     }
 
@@ -46,7 +50,7 @@ class ScrapeContextBuilder
         $this->statistics->create(
             [
                 'job_id' => $process->job_id,
-                'started_at'=> now(),
+                'started_at'=> $this->clock->now(),
                 'completed_at'=> null,
                 'target_urls' => $request->maxPages,
                 'errors'=> [],
@@ -54,7 +58,7 @@ class ScrapeContextBuilder
             ] // The attributes to update/create
         );
 
-        return new ScrapeContext($process);
+        return new ScrapeContext($process, $this->clock);
     }
 
     /**
@@ -63,20 +67,20 @@ class ScrapeContextBuilder
      * @param string $jobId
      * @return ScrapeContext
      *
-     * @throws Exception
+     * @throws \RuntimeException
      */
     public function rebuildContext(string $jobId): ScrapeContext{
 
-        $process = Cache::get("scrape_process:{$jobId}");
+        $process = $this->cache->get("scrape_process:{$jobId}");
         if(!$process){
             $process = $this->processes->findByJobId($jobId);
         }
 
         if(!$process) {
-            Log::error('Scrape Process is not initialized correctly or could not be found!');
-            throw new Exception("Scrape process '{$jobId}' not found");
+            $this->logger->error('Scrape Process is not initialized correctly or could not be found!');
+            throw new \RuntimeException("Scrape process '{$jobId}' not found");
         }
 
-        return new ScrapeContext($process);
+        return new ScrapeContext($process, $this->clock);
     }
 }

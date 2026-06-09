@@ -6,26 +6,16 @@ namespace App\Services\WebSearch\Implementations;
 
 use App\Services\WebSearch\Exceptions\WebSearchFailedException;
 use App\Services\WebSearch\Contracts\WebSearchInterface;
+use Illuminate\Contracts\Config\Repository as ConfigRepository;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
-use Illuminate\Http\Client\ConnectionException;
-use Illuminate\Support\Facades\Http;
-use InvalidArgumentException;
+use Illuminate\Http\Client\Factory as HttpFactory;
 
 class BraveSearch implements WebSearchInterface
 {
-    protected string $apiKey;
-    protected string $apiUrl;
-
-    public function __construct()
-    {
-        $this->apiKey = config('web_search.services.brave.api_key');
-        $this->apiUrl = config('web_search.services.brave.api_url');
-        if ($this->apiKey === '' || $this->apiUrl === '') {
-            throw new InvalidArgumentException(
-                'Brave web search configuration is missing.'
-            );
-        }
-    }
+    public function __construct(
+        private readonly HttpFactory $http,
+        private readonly ConfigRepository $config,
+    ) {}
 
     public function getResponseSchema(JsonSchema $schema): array
     {
@@ -35,15 +25,42 @@ class BraveSearch implements WebSearchInterface
 
     public function search(string $query, int $maxResults = 5): array
     {
-        try{
-            return Http::timeout(20)
-                ->withHeaders(['X-Subscription-Token' => $this->apiKey])
-                ->get($this->apiUrl, [
+        $apiKey = $this->apiKey();
+        $apiUrl = $this->apiUrl();
+
+        try {
+            $response = $this->http->timeout(20)
+                ->withHeaders(['X-Subscription-Token' => $apiKey])
+                ->get($apiUrl, [
                     'q' => $query,
                     'count' => $maxResults,
-                ])->json();
-        } catch(\Throwable $e){
-            throw new WebSearchFailedException('Connection error: ' . $e->getMessage(), $e);
+                ]);
+
+            $data = $response->json();
+
+            return is_array($data) ? $data : [];
+        } catch (\Throwable $exception) {
+            throw WebSearchFailedException::connectionFailed('Brave', $exception);
         }
+    }
+
+    private function apiKey(): string
+    {
+        $apiKey = trim((string) $this->config->get('web_search.services.brave.api_key', ''));
+        if ($apiKey === '') {
+            throw WebSearchFailedException::missingConfiguration('Brave');
+        }
+
+        return $apiKey;
+    }
+
+    private function apiUrl(): string
+    {
+        $apiUrl = trim((string) $this->config->get('web_search.services.brave.api_url', ''));
+        if ($apiUrl === '') {
+            throw WebSearchFailedException::missingConfiguration('Brave');
+        }
+
+        return $apiUrl;
     }
 }

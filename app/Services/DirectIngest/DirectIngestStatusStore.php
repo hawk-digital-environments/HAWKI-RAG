@@ -6,11 +6,16 @@ namespace App\Services\DirectIngest;
 
 use App\Services\DirectIngest\Values\DirectIngestStatusPaths;
 use Illuminate\Container\Attributes\Singleton;
-use Illuminate\Support\Facades\File;
+use Illuminate\Filesystem\Filesystem;
 
 #[Singleton]
 readonly class DirectIngestStatusStore
 {
+    public function __construct(
+        private DirectIngestConfig $config,
+        private Filesystem $files,
+    ) {}
+
     public function modeForPayload(array $data): string
     {
         $graphEnabled = ! empty($data['graph']) || ! empty($data['graph_only']);
@@ -25,42 +30,29 @@ readonly class DirectIngestStatusStore
 
     public function paths(string $mode = 'default'): DirectIngestStatusPaths
     {
-        $mode = $this->normalizeMode($mode);
-        if ($mode === 'neo4j') {
-            return new DirectIngestStatusPaths(
-                (string) config('config.ingest_status_path_neo4j', storage_path('logs/ingest_status_neo4j.json')),
-                (string) config('config.ingest_log_cache_path_neo4j', storage_path('logs/ingest_progress_neo4j_cache.log')),
-                (string) config('config.ingest_log_path_neo4j', storage_path('logs/ingest_progress_neo4j_full.log')),
-            );
-        }
-
-        return new DirectIngestStatusPaths(
-            (string) config('config.ingest_status_path', storage_path('logs/ingest_status.json')),
-            (string) config('config.ingest_log_cache_path', storage_path('logs/ingest_progress_cache.log')),
-            (string) config('config.ingest_log_path', storage_path('logs/ingest_progress_full.log')),
-        );
+        return $this->config->statusPaths($this->normalizeMode($mode));
     }
 
     public function ensureDirectories(DirectIngestStatusPaths $paths): void
     {
-        File::ensureDirectoryExists(dirname($paths->statusPath));
-        File::ensureDirectoryExists(dirname($paths->cacheLogPath));
-        File::ensureDirectoryExists(dirname($paths->fullLogPath));
+        $this->files->ensureDirectoryExists(dirname($paths->statusPath));
+        $this->files->ensureDirectoryExists(dirname($paths->cacheLogPath));
+        $this->files->ensureDirectoryExists(dirname($paths->fullLogPath));
     }
 
     public function appendStartedLines(DirectIngestStatusPaths $paths, string $path): void
     {
-        File::append($paths->cacheLogPath, 'INGEST_STARTED '.$path.PHP_EOL);
-        File::append($paths->fullLogPath, 'INGEST_STARTED '.$path.PHP_EOL);
+        $this->files->append($paths->cacheLogPath, 'INGEST_STARTED '.$path.PHP_EOL);
+        $this->files->append($paths->fullLogPath, 'INGEST_STARTED '.$path.PHP_EOL);
     }
 
     public function load(string $statusPath): array
     {
-        if (! is_file($statusPath)) {
+        if (! $this->files->isFile($statusPath)) {
             return [];
         }
 
-        $raw = @file_get_contents($statusPath);
+        $raw = $this->files->get($statusPath);
         $data = $raw ? json_decode($raw, true) : null;
         if (is_array($data) && array_key_exists('ingests', $data) && is_array($data['ingests'])) {
             return $data['ingests'];
@@ -87,7 +79,7 @@ readonly class DirectIngestStatusStore
 
     public function save(string $statusPath, array $entries): void
     {
-        File::put($statusPath, json_encode(['ingests' => array_values($entries)], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+        $this->files->put($statusPath, json_encode(['ingests' => array_values($entries)], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
     }
 
     public function append(string $statusPath, array $entry): void

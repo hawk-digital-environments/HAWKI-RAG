@@ -6,26 +6,16 @@ namespace App\Services\WebSearch\Implementations;
 
 use App\Services\WebSearch\Exceptions\WebSearchFailedException;
 use App\Services\WebSearch\Contracts\WebSearchInterface;
+use Illuminate\Contracts\Config\Repository as ConfigRepository;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
-use Illuminate\Http\Client\ConnectionException;
-use Illuminate\Support\Facades\Http;
-use InvalidArgumentException;
+use Illuminate\Http\Client\Factory as HttpFactory;
 
 class TavilySearch implements WebSearchInterface
 {
-    protected string $apiKey;
-    protected string $apiUrl;
-
-    public function __construct()
-    {
-        $this->apiKey = config('web_search.services.tavily.api_key');
-        $this->apiUrl = config('web_search.services.tavily.api_url');
-        if ($this->apiKey === '' || $this->apiUrl === '') {
-            throw new InvalidArgumentException(
-                'Tavily web search configuration is missing.'
-            );
-        }
-    }
+    public function __construct(
+        private readonly HttpFactory $http,
+        private readonly ConfigRepository $config,
+    ) {}
 
     public function getResponseSchema(JsonSchema $schema): array
     {
@@ -96,17 +86,44 @@ class TavilySearch implements WebSearchInterface
 
     public function search(string $query, int $maxResults = 5): array
     {
+        $apiKey = $this->apiKey();
+        $apiUrl = $this->apiUrl();
+
         try {
-            return Http::timeout(20)
-                ->post($this->apiUrl, [
-                    'api_key' => $this->apiKey,
+            $response = $this->http->timeout(20)
+                ->post($apiUrl, [
+                    'api_key' => $apiKey,
                     'query' => $query,
                     'max_results' => $maxResults,
                     'include_answer' => true,
                     'search_depth' => 'advanced'
-                ])->json();
-        } catch (\Throwable $e) {
-            throw new WebSearchFailedException('Connection error: ' . $e->getMessage(), $e);
+                ]);
+
+            $data = $response->json();
+
+            return is_array($data) ? $data : [];
+        } catch (\Throwable $exception) {
+            throw WebSearchFailedException::connectionFailed('Tavily', $exception);
         }
+    }
+
+    private function apiKey(): string
+    {
+        $apiKey = trim((string) $this->config->get('web_search.services.tavily.api_key', ''));
+        if ($apiKey === '') {
+            throw WebSearchFailedException::missingConfiguration('Tavily');
+        }
+
+        return $apiKey;
+    }
+
+    private function apiUrl(): string
+    {
+        $apiUrl = trim((string) $this->config->get('web_search.services.tavily.api_url', ''));
+        if ($apiUrl === '') {
+            throw WebSearchFailedException::missingConfiguration('Tavily');
+        }
+
+        return $apiUrl;
     }
 }

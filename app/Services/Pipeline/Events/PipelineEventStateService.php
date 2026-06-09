@@ -10,7 +10,9 @@ use App\Services\Pipeline\Repositories\PipelineTaskRepository;
 use App\Services\Pipeline\Tasks\PipelineTaskService;
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\Log;
+use Psr\Clock\ClockInterface;
+use Psr\Log\LoggerInterface;
+use Symfony\Component\Clock\Clock;
 
 #[Singleton]
 class PipelineEventStateService
@@ -21,6 +23,8 @@ class PipelineEventStateService
         private readonly PipelineTaskRepository $taskRepository,
         private readonly PipelineEventNormalizer $normalizer,
         private readonly PipelineEventTypeRegistry $types,
+        private readonly LoggerInterface $logger,
+        private readonly ClockInterface $clock = new Clock(),
     ) {}
 
     public function upsertJob(array $event, ?string $status = null, array $metadata = []): PipelineJob
@@ -36,8 +40,9 @@ class PipelineEventStateService
             'event_type' => $event['event_type'],
             'event_id' => $event['event_id'],
             'status' => $status,
-            'at' => now()->toIso8601String(),
+            'at' => $this->timestamp(),
         ];
+        $now = $this->now();
 
         $job = $this->jobs->upsertEventState(
             (string) $event['job_id'],
@@ -49,9 +54,9 @@ class PipelineEventStateService
                 'local_path' => $event['local_path'],
                 'content_hash' => $event['content_hash'],
                 'status' => $status,
-                'started_at' => $existing?->started_at ?? Carbon::now(),
-                'completed_at' => $terminal ? Carbon::now() : null,
-                'finished_at' => $terminal ? Carbon::now() : null,
+                'started_at' => $existing?->started_at ?? $now,
+                'completed_at' => $terminal ? $now : null,
+                'finished_at' => $terminal ? $now : null,
                 'error_message' => $status === PipelineJob::STATUS_FAILED
                     ? (string) ($mergedMetadata['error_message'] ?? $mergedMetadata['last_error_message'] ?? '')
                     : null,
@@ -64,7 +69,7 @@ class PipelineEventStateService
         );
 
         $this->refreshTask((string) $event['task_id']);
-        Log::info('pipeline.event.state', [
+        $this->logger->info('pipeline.event.state', [
             'task_id' => $event['task_id'],
             'job_id' => $event['job_id'],
             'event_type' => $event['event_type'],
@@ -107,5 +112,15 @@ class PipelineEventStateService
             PipelineJob::STATUS_FAILED => $status,
             default => PipelineJob::STATUS_FAILED,
         };
+    }
+
+    private function now(): Carbon
+    {
+        return Carbon::instance(\DateTimeImmutable::createFromInterface($this->clock->now()));
+    }
+
+    private function timestamp(): string
+    {
+        return $this->clock->now()->format(\DateTimeInterface::ATOM);
     }
 }

@@ -19,13 +19,14 @@ readonly class PipelineEventWorker
         private readonly RagRabbitMQ $rabbit,
         private readonly PipelineEventBus $bus,
         private readonly PipelineEventMessageProcessor $processor,
+        private readonly ?PipelineEventConfig $config = null,
     ) {}
 
     public function run(Command $command, string $worker, PipelineEventHandler $handler): int
     {
         $topology = $this->bus->declareWorkerTopology($worker);
         $channel = $this->rabbit->channel();
-        $channel->basic_qos(0, (int) config('communication.rabbitmq.pipeline_events.prefetch_count', 1), false);
+        $channel->basic_qos(0, $this->prefetchCount(), false);
         $shouldStop = false;
         $lastExitCode = PipelineExitCode::SUCCESS;
 
@@ -75,5 +76,10 @@ readonly class PipelineEventWorker
         }
 
         return $command->option('once') ? $lastExitCode : PipelineExitCode::SUCCESS;
+    }
+
+    private function prefetchCount(): int
+    {
+        return $this->config?->prefetchCount() ?? 1;
     }
 }

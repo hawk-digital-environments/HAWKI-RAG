@@ -62,6 +62,21 @@ class PipelineEventConfig
         return (int) $this->config->get('communication.rabbitmq.pipeline_events.retry_delay_ms', 5000);
     }
 
+    public function maxRetries(): int
+    {
+        return (int) $this->config->get('communication.rabbitmq.pipeline_events.max_retries', 3);
+    }
+
+    public function prefetchCount(): int
+    {
+        return (int) $this->config->get('communication.rabbitmq.pipeline_events.prefetch_count', 1);
+    }
+
+    public function schemaVersion(): string
+    {
+        return (string) $this->config->get('communication.rabbitmq.pipeline_events.schema_version', '1');
+    }
+
     public function queueType(): string
     {
         return (string) $this->config->get('communication.rabbitmq.pipeline_events.queue_type', 'quorum');

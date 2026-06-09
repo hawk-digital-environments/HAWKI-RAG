@@ -8,12 +8,14 @@ use App\Models\PipelineJob;
 use App\Services\Pipeline\Events\PipelineEventBus;
 use App\Services\Pipeline\Repositories\PipelineJobRepository;
 use App\Services\Pipeline\Repositories\PipelineTaskRepository;
+use App\Services\Pipeline\Repositories\PipelineTransactionRepository;
 use App\Services\Pipeline\Tasks\PipelineTaskService;
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
+use Psr\Clock\ClockInterface;
+use Psr\Log\LoggerInterface;
+use Symfony\Component\Clock\Clock;
 
 #[Singleton]
 readonly class PipelineRecoveryService
@@ -26,6 +28,9 @@ readonly class PipelineRecoveryService
         private readonly PipelineRecoveryPayloadService $payloads,
         private readonly PipelineJobRepository $jobs,
         private readonly PipelineTaskRepository $taskRepository,
+        private readonly PipelineTransactionRepository $transactions,
+        private readonly LoggerInterface $logger,
+        private readonly ClockInterface $clock = new Clock(),
     ) {}
 
     public function failedJobs(array $filters = []): array
@@ -89,7 +94,7 @@ readonly class PipelineRecoveryService
 
     private function retryOne(PipelineJob $job, string $scope, ?string $scopeId): array
     {
-        $prepared = DB::transaction(function () use ($job, $scope, $scopeId): array {
+        $prepared = $this->transactions->run(function () use ($job, $scope, $scopeId): array {
             $locked = $this->jobs->lockForRecovery($job);
 
             if (! $locked) {
@@ -160,7 +165,7 @@ readonly class PipelineRecoveryService
                 sprintf('operator %s recovery%s', $scope, $scopeId ? " {$scopeId}" : ''),
             );
             $this->tasks->recalculateTaskStatus((string) $preparedJob->task_id);
-            Log::info('pipeline.recovery.retry_queued', [
+            $this->logger->info('pipeline.recovery.retry_queued', [
                 'scope' => $scope,
                 'scope_id' => $scopeId,
                 'task_id' => $preparedJob->task_id,
@@ -189,7 +194,7 @@ readonly class PipelineRecoveryService
         $job = $this->jobs->markRecoveryPublishFailed(
             $job,
             $error->getMessage(),
-            Carbon::now(),
+            $this->now(),
             $this->metadata->publishFailedJobMetadata($job, $error),
         );
 
@@ -218,5 +223,10 @@ readonly class PipelineRecoveryService
             'failed' => 0,
             'jobs' => [],
         ];
+    }
+
+    private function now(): Carbon
+    {
+        return Carbon::instance(\DateTimeImmutable::createFromInterface($this->clock->now()));
     }
 }

@@ -14,10 +14,12 @@ use App\Services\Scrape\Pipeline\ScrapeExecutionService;
 use App\Services\Scrape\Validation\ScrapeValidationService;
 use App\Services\Storage\StorageService;
 use Illuminate\Container\Attributes\Singleton;
-use Illuminate\Http\Client\ConnectionException;
-use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Log;
+use Illuminate\Contracts\Cache\Repository as CacheRepository;
+use Illuminate\Contracts\Config\Repository as ConfigRepository;
+use Illuminate\Http\Client\Factory as HttpFactory;
+use Psr\Clock\ClockInterface;
+use Psr\Log\LoggerInterface;
+use Symfony\Component\Clock\Clock;
 use Throwable;
 
 #[Singleton]
@@ -30,6 +32,11 @@ class ScraperPipelineService
         private readonly StorageService $storageService,
         private readonly PipelineStateService $pipelineState,
         private readonly PipelineStageLogger $logger,
+        private readonly HttpFactory $http,
+        private readonly ConfigRepository $config,
+        private readonly CacheRepository $cache,
+        private readonly LoggerInterface $systemLogger,
+        private readonly ClockInterface $clock = new Clock,
     ) {}
 
     /**
@@ -122,7 +129,7 @@ class ScraperPipelineService
                 return $this->buildFailureResult($context);
             }
 
-            Cache::put("scrape_process:{$context->jobId}", $context->process, now()->addMinutes(10));
+            $this->cache->put("scrape_process:{$context->jobId}", $context->process, $this->clock->now()->modify('+10 minutes'));
             $this->logger->success('scrape', [
                 'job_id' => $context->jobId,
                 'source_url' => $request->url,
@@ -188,25 +195,24 @@ class ScraperPipelineService
             'metadata' => ['subStage' => 'validation'],
         ]);
 
-        // Validate request
-        $isValid = $this->validationService->validate($context->getRequest());
+        $validation = $this->validationService->validateResult($context->getRequest());
 
-        if (! $isValid) {
-            foreach ($this->validationService->getErrors() as $error) {
+        if (! $validation->valid()) {
+            foreach ($validation->errors as $error) {
                 $context->addError($error);
             }
         }
 
-        foreach ($this->validationService->getWarnings() as $warning) {
+        foreach ($validation->warnings as $warning) {
             $context->addWarning($warning);
         }
 
-        if ($isValid) {
+        if ($validation->valid()) {
             $this->logger->success('scrape', [
                 'job_id' => $context->jobId,
                 'source_url' => $context->getRequest()->url,
                 'pipeline_stage' => 'validation',
-                'warnings' => $this->validationService->getWarnings(),
+                'warnings' => $validation->warnings,
             ]);
         }
     }
@@ -217,7 +223,6 @@ class ScraperPipelineService
      * Executes the crawler with the built configuration.
      * Returns the job_id from the crawler if successful, null otherwise.
      *
-     * @throws ConnectionException
      */
     private function executeExecution(ScrapeContext $context, ?callable $outputCallback = null): void
     {
@@ -275,20 +280,25 @@ class ScraperPipelineService
     {
         $context = $this->contexts->rebuildContext($jobId);
 
-        $response = Http::timeout(300)
+        $response = $this->http->timeout(300)
             ->retry(3, 1000)
-            ->post(config('scraper.api_url')."/jobs/$jobId/cancel");
+            ->post($this->apiUrl()."/jobs/$jobId/cancel");
 
         $data = $response->json();
-        Log::debug($data);
+        $this->systemLogger->debug('scrape.pipeline.stop_response', ['response' => $data]);
         if ($data['success']) {
             $context->setStage('stopped');
-            $context->addWarning('Process canceled at '.now()->format('Y-m-d H:i:s'));
+            $context->addWarning('Process canceled at '.$this->clock->now()->format('Y-m-d H:i:s'));
         }
 
         return [
             'success' => $data['success'],
             'message' => $data['message'] ?? 'No message provided',
         ];
+    }
+
+    private function apiUrl(): string
+    {
+        return rtrim((string) $this->config->get('scraper.api_url'), '/');
     }
 }

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Pipeline\Architecture;
 
 use App\Services\Pipeline\Events\PipelineEvent;
+use App\Services\Pipeline\Events\PipelineEventConfig;
 use App\Services\Pipeline\Events\PipelineEventTypeRegistry;
 use App\Services\Pipeline\Queues\PipelineQueueTopologyService;
 use Illuminate\Container\Attributes\Singleton;
@@ -15,6 +16,7 @@ readonly class PipelineArchitectureService
     public function __construct(
         private PipelineQueueTopologyService $queues,
         private PipelineEventTypeRegistry $types,
+        private PipelineEventConfig $config,
     ) {}
 
     public function summary(): array
@@ -108,13 +110,13 @@ readonly class PipelineArchitectureService
     public function topology(): array
     {
         return [
-            'eventsExchange' => (string) config('communication.rabbitmq.pipeline_events.exchange', 'pipeline.events'),
-            'retryExchange' => (string) config('communication.rabbitmq.pipeline_events.retry_exchange', 'pipeline.retry'),
-            'failedExchange' => (string) config('communication.rabbitmq.pipeline_events.failed_exchange', 'pipeline.failures'),
-            'retryDelayMs' => (int) config('communication.rabbitmq.pipeline_events.retry_delay_ms', 5000),
-            'maxRetries' => (int) config('communication.rabbitmq.pipeline_events.max_retries', 3),
-            'queueType' => (string) config('communication.rabbitmq.pipeline_events.queue_type', 'quorum'),
-            'failedRoutingKey' => (string) config('communication.rabbitmq.pipeline_events.failed_routing_key', PipelineEvent::JOB_FAILED),
+            'eventsExchange' => $this->config->exchange(),
+            'retryExchange' => $this->config->retryExchange(),
+            'failedExchange' => $this->config->failedExchange(),
+            'retryDelayMs' => $this->config->retryDelayMs(),
+            'maxRetries' => $this->config->maxRetries(),
+            'queueType' => $this->config->queueType(),
+            'failedRoutingKey' => $this->config->failedRoutingKey(),
             'queues' => $this->queues->expectedQueues(),
         ];
     }
@@ -333,7 +335,7 @@ readonly class PipelineArchitectureService
     private function consumersFor(string $eventType): array
     {
         $consumers = [];
-        foreach ((array) config('communication.rabbitmq.pipeline_events.workers', []) as $worker => $config) {
+        foreach ($this->config->workers() as $worker => $config) {
             if (! is_array($config)) {
                 continue;
             }

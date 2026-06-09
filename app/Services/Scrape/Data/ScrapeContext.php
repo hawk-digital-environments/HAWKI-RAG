@@ -6,6 +6,8 @@ namespace App\Services\Scrape\Data;
 use App\Models\ScrapeProcess;
 use App\Models\ScrapeStatistics;
 use Exception;
+use Psr\Clock\ClockInterface;
+use Symfony\Component\Clock\Clock;
 
 /**
  * Context object that travels through the crawler pipeline stages.
@@ -31,7 +33,8 @@ class ScrapeContext
     public int $progress = 0;
 
     public function __construct(
-        ScrapeProcess $process
+        ScrapeProcess $process,
+        private readonly ClockInterface $clock = new Clock,
     ) {
         $this->jobId = $process->job_id;
         $this->process = $process;
@@ -75,7 +78,7 @@ class ScrapeContext
         $this->jobStats->addError([
             'message' => $message,
             'stage' => $this->process->stage,
-            'timestamp' => now()->toIso8601String(),
+            'timestamp' => $this->timestamp(),
         ]);
         $this->jobStats->save();
     }
@@ -92,7 +95,7 @@ class ScrapeContext
         $this->jobStats->addWarning([
             'message' => $message,
             'stage' => $stage ?? $this->getStage(),
-            'timestamp' => now()->toIso8601String(),
+            'timestamp' => $this->timestamp(),
         ]);
         $this->jobStats->save();
     }
@@ -167,6 +170,11 @@ class ScrapeContext
             'errors' => $this->getErrors(),
             'warnings' => $this->getWarnings(),
         ];
+    }
+
+    private function timestamp(): string
+    {
+        return $this->clock->now()->format(\DateTimeInterface::ATOM);
     }
 
 }
