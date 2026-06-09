@@ -4,7 +4,6 @@ declare(strict_types=1);
 namespace App\Services\Pipeline;
 
 use Illuminate\Container\Attributes\Singleton;
-use Throwable;
 
 #[Singleton]
 class PipelineEventBus
@@ -38,7 +37,7 @@ class PipelineEventBus
         return $event;
     }
 
-    public function publishRetry(array $event, Throwable $error): ?array
+    public function publishRetry(array $event, \Throwable $error): ?array
     {
         if (! (bool) config('communication.rabbitmq.pipeline_events.enabled', true)) {
             return null;
@@ -107,7 +106,7 @@ class PipelineEventBus
         return $retryEvent;
     }
 
-    public function publishFailed(array $event, Throwable $error): array
+    public function publishFailed(array $event, \Throwable $error): array
     {
         $failed = $this->failedEvents->make($event, $error);
 

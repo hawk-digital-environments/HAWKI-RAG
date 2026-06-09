@@ -6,18 +6,11 @@ namespace Tests\Unit\Pipeline;
 use App\Models\Dataset;
 use App\Models\PipelineTask;
 use App\Services\Pipeline\PipelineTaskMetadataService;
-use Illuminate\Support\Carbon;
+use Symfony\Component\Clock\MockClock;
 use Tests\TestCase;
 
 class PipelineTaskMetadataServiceTest extends TestCase
 {
-    protected function tearDown(): void
-    {
-        Carbon::setTestNow();
-
-        parent::tearDown();
-    }
-
     public function test_it_shapes_dataset_metadata(): void
     {
         $metadata = app(PipelineTaskMetadataService::class)->dataset(new Dataset([
@@ -58,8 +51,6 @@ class PipelineTaskMetadataServiceTest extends TestCase
 
     public function test_it_appends_task_metadata_events(): void
     {
-        Carbon::setTestNow(Carbon::parse('2026-06-08 12:00:00'));
-
         $task = new PipelineTask([
             'metadata' => [
                 'events' => [
@@ -71,7 +62,9 @@ class PipelineTaskMetadataServiceTest extends TestCase
             ],
         ]);
 
-        $metadata = app(PipelineTaskMetadataService::class)->appendEvent($task, 'failed_jobs_retried');
+        $service = new PipelineTaskMetadataService(new MockClock('2026-06-08T12:00:00+00:00'));
+
+        $metadata = $service->appendEvent($task, 'failed_jobs_retried');
 
         $this->assertCount(2, $metadata['events']);
         $this->assertSame('failed_jobs_retried', $metadata['events'][1]['event']);

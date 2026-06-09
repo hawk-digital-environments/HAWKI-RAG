@@ -5,6 +5,8 @@ namespace App\Services\Pipeline;
 
 use App\Models\PipelineEventRecord;
 use Illuminate\Container\Attributes\Singleton;
+use Psr\Clock\ClockInterface;
+use Symfony\Component\Clock\Clock;
 
 #[Singleton]
 readonly class PipelineEventRecorder
@@ -21,6 +23,7 @@ readonly class PipelineEventRecorder
 
     public function __construct(
         private PipelineEventNormalizer $normalizer,
+        private ClockInterface $clock = new Clock(),
     ) {
     }
 
@@ -42,7 +45,7 @@ readonly class PipelineEventRecorder
             'source' => $source ?: (string) ($event['source'] ?? 'hawki-rag-laravel'),
             'message' => $message ?: $this->messageFor($event),
             'payload' => $event,
-            'created_at' => now(),
+            'created_at' => $this->clock->now(),
         ]);
     }
 

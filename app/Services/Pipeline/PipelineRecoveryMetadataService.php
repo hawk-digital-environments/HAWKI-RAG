@@ -7,10 +7,17 @@ use App\Models\PipelineJob;
 use App\Models\PipelineTask;
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Support\Str;
+use Psr\Clock\ClockInterface;
+use Symfony\Component\Clock\Clock;
 
 #[Singleton]
 readonly class PipelineRecoveryMetadataService
 {
+    public function __construct(
+        private ClockInterface $clock = new Clock(),
+    ) {
+    }
+
     /**
      * @return array<string, mixed>
      */
@@ -25,7 +32,7 @@ readonly class PipelineRecoveryMetadataService
             'job_id' => $job->job_id,
             'retry_count' => $retryCount,
             'idempotency_key' => $this->idempotencyKey($job),
-            'at' => now()->toIso8601String(),
+            'at' => $this->timestamp(),
         ];
     }
 
@@ -37,7 +44,7 @@ readonly class PipelineRecoveryMetadataService
     public function queuedJobMetadata(array $metadata, array $recoveryEvent): array
     {
         $metadata['retry_count'] = (int) ($recoveryEvent['retry_count'] ?? 0);
-        $metadata['retried_at'] = $recoveryEvent['at'] ?? now()->toIso8601String();
+        $metadata['retried_at'] = $recoveryEvent['at'] ?? $this->timestamp();
         $metadata['last_recovery_event'] = $recoveryEvent;
         $metadata['recovery_events'] = array_merge(
             is_array($metadata['recovery_events'] ?? null) ? $metadata['recovery_events'] : [],
@@ -81,7 +88,7 @@ readonly class PipelineRecoveryMetadataService
         $event = [
             'event_id' => 'recovery_' . Str::uuid()->toString(),
             'event' => 'recovery_publish_failed',
-            'at' => now()->toIso8601String(),
+            'at' => $this->timestamp(),
             'error_type' => class_basename($error),
             'error_message' => $error->getMessage(),
         ];
@@ -103,5 +110,10 @@ readonly class PipelineRecoveryMetadataService
             $job->local_path,
             $job->source_url,
         ]));
+    }
+
+    private function timestamp(): string
+    {
+        return $this->clock->now()->format(\DateTimeInterface::ATOM);
     }
 }

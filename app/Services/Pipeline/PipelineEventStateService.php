@@ -9,7 +9,6 @@ use App\Services\Pipeline\Repositories\PipelineTaskRepository;
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Log;
-use Throwable;
 
 #[Singleton]
 class PipelineEventStateService
@@ -75,7 +74,7 @@ class PipelineEventStateService
         return $job;
     }
 
-    public function markFailed(array $event, Throwable $error, array $metadata = []): PipelineJob
+    public function markFailed(array $event, \Throwable $error, array $metadata = []): PipelineJob
     {
         return $this->upsertJob($event, PipelineJob::STATUS_FAILED, array_merge($metadata, [
             'error_type' => class_basename($error),

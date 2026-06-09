@@ -6,7 +6,6 @@ namespace App\Services\Pipeline;
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
-use Throwable;
 
 #[Singleton]
 readonly class PipelineTaskSourceResolver
@@ -36,7 +35,7 @@ readonly class PipelineTaskSourceResolver
                 if ($response->successful()) {
                     $urls = array_merge($urls, $this->urlsFromSitemapText($response->body()));
                 }
-            } catch (Throwable $exception) {
+            } catch (\Throwable $exception) {
                 Log::warning('Unable to load remote sitemap for pipeline task.', [
                     'sitemap_url' => $sitemapUrl,
                     'error' => $exception->getMessage(),

@@ -7,7 +7,6 @@ use App\Services\Pipeline\PipelineEvent;
 use App\Services\Pipeline\PipelineEventLogger;
 use Illuminate\Support\Facades\Log;
 use Mockery;
-use RuntimeException;
 use Tests\TestCase;
 
 class PipelineEventLoggerTest extends TestCase
@@ -35,7 +34,7 @@ class PipelineEventLoggerTest extends TestCase
 
     public function test_it_logs_worker_failures_with_retry_context(): void
     {
-        $error = new RuntimeException('Worker failed.');
+        $error = new \RuntimeException('Worker failed.');
 
         Log::shouldReceive('warning')
             ->once()

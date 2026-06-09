@@ -11,9 +11,7 @@ use App\Services\Pipeline\PipelineEventStateService;
 use App\Services\Pipeline\Repositories\PipelineJobRepository;
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Support\Facades\File;
-use RuntimeException;
 use SplFileInfo;
-use Throwable;
 
 #[Singleton]
 class ConverterEventHandler implements PipelineEventHandler
@@ -93,7 +91,7 @@ class ConverterEventHandler implements PipelineEventHandler
         ]));
     }
 
-    public function failed(array $event, Throwable $error, int $retryCount, int $maxRetries): void
+    public function failed(array $event, \Throwable $error, int $retryCount, int $maxRetries): void
     {
         $retryable = $retryCount < $maxRetries;
         $this->state->upsertJob($event, $retryable ? PipelineJob::STATUS_PENDING : PipelineJob::STATUS_FAILED, [
@@ -113,7 +111,7 @@ class ConverterEventHandler implements PipelineEventHandler
 
         $files = $this->converter->requestDocumentToMarkdown($file);
         if (!is_array($files) || $files === []) {
-            throw new RuntimeException('Document converter returned no files.');
+            throw new \RuntimeException('Document converter returned no files.');
         }
 
         $markdownFiles = [];

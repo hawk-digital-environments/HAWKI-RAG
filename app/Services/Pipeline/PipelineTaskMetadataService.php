@@ -6,10 +6,17 @@ namespace App\Services\Pipeline;
 use App\Models\Dataset;
 use App\Models\PipelineTask;
 use Illuminate\Container\Attributes\Singleton;
+use Psr\Clock\ClockInterface;
+use Symfony\Component\Clock\Clock;
 
 #[Singleton]
 readonly class PipelineTaskMetadataService
 {
+    public function __construct(
+        private ClockInterface $clock = new Clock(),
+    ) {
+    }
+
     /**
      * @return array<string, string>
      */
@@ -45,10 +52,15 @@ readonly class PipelineTaskMetadataService
         $events = is_array($metadata['events'] ?? null) ? $metadata['events'] : [];
         $events[] = [
             'event' => $event,
-            'at' => now()->toIso8601String(),
+            'at' => $this->timestamp(),
         ];
         $metadata['events'] = $events;
 
         return $metadata;
+    }
+
+    private function timestamp(): string
+    {
+        return $this->clock->now()->format(\DateTimeInterface::ATOM);
     }
 }

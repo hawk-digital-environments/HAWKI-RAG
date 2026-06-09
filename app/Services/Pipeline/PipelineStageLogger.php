@@ -5,7 +5,6 @@ namespace App\Services\Pipeline;
 
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Support\Facades\Log;
-use Throwable;
 
 #[Singleton]
 readonly class PipelineStageLogger
@@ -57,7 +56,7 @@ readonly class PipelineStageLogger
             'error_message' => $this->nullableString($context['error_message'] ?? null),
         ];
 
-        if ($exception instanceof Throwable) {
+        if ($exception instanceof \Throwable) {
             $base['error_type'] = $exception::class;
             $base['error_message'] = $base['error_message'] ?: $exception->getMessage();
         }

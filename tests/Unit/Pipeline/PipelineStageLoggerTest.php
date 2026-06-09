@@ -6,14 +6,13 @@ namespace Tests\Unit\Pipeline;
 use App\Services\Pipeline\PipelineStageLogger;
 use Illuminate\Support\Facades\Log;
 use Mockery;
-use RuntimeException;
 use Tests\TestCase;
 
 class PipelineStageLoggerTest extends TestCase
 {
     public function test_it_logs_stage_context_to_the_communication_channel(): void
     {
-        $exception = new RuntimeException('Scrape failed.');
+        $exception = new \RuntimeException('Scrape failed.');
         $channel = Mockery::mock();
 
         Log::shouldReceive('channel')
@@ -29,7 +28,7 @@ class PipelineStageLoggerTest extends TestCase
                 $this->assertSame('failed', $context['status']);
                 $this->assertSame('job-stage-log', $context['job_id']);
                 $this->assertSame('doc-stage-log', $context['doc_id']);
-                $this->assertSame(RuntimeException::class, $context['error_type']);
+                $this->assertSame(\RuntimeException::class, $context['error_type']);
                 $this->assertSame('Scrape failed.', $context['error_message']);
                 $this->assertArrayNotHasKey('exception', $context);
 

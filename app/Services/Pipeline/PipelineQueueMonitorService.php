@@ -4,6 +4,8 @@ declare(strict_types=1);
 namespace App\Services\Pipeline;
 
 use Illuminate\Container\Attributes\Singleton;
+use Psr\Clock\ClockInterface;
+use Symfony\Component\Clock\Clock;
 
 #[Singleton]
 readonly class PipelineQueueMonitorService
@@ -12,6 +14,7 @@ readonly class PipelineQueueMonitorService
         private PipelineQueueMonitorClient $client,
         private PipelineQueueTopologyService $topology,
         private PipelineQueueHealthPayloadService $payloads,
+        private ClockInterface $clock = new Clock(),
     ) {
     }
 
@@ -25,7 +28,7 @@ readonly class PipelineQueueMonitorService
         } catch (\Throwable $exception) {
             return [
                 'status' => 'fail',
-                'checkedAt' => now()->toIso8601String(),
+                'checkedAt' => $this->timestamp(),
                 'managementUrl' => $this->client->managementUrl(),
                 'message' => 'RabbitMQ management API is not reachable.',
                 'fix' => 'Start rabbitmq management and verify RABBITMQ_MANAGEMENT_URL, RABBITMQ_USER, RABBITMQ_PASSWORD, and RABBITMQ_VHOST.',
@@ -46,7 +49,7 @@ readonly class PipelineQueueMonitorService
 
         return [
             'status' => $warnings === [] ? 'ok' : 'warn',
-            'checkedAt' => now()->toIso8601String(),
+            'checkedAt' => $this->timestamp(),
             'managementUrl' => $this->client->managementUrl(),
             'message' => $warnings === [] ? 'Pipeline queues are healthy.' : 'Pipeline queues need attention.',
             'workers' => $workers,
@@ -54,5 +57,10 @@ readonly class PipelineQueueMonitorService
             'totals' => $this->payloads->totals($workers, $failedQueue),
             'warnings' => $warnings,
         ];
+    }
+
+    private function timestamp(): string
+    {
+        return $this->clock->now()->format(\DateTimeInterface::ATOM);
     }
 }

@@ -15,7 +15,6 @@ use App\Services\Pipeline\ScrapeMonitorFailurePublisher;
 use App\Services\Pipeline\ScrapeMonitorOutputPublisher;
 use App\Services\ScrapeService\ScrapeService;
 use Illuminate\Container\Attributes\Singleton;
-use Throwable;
 
 #[Singleton]
 class ScrapeMonitorEventHandler implements PipelineEventHandler
@@ -76,7 +75,7 @@ class ScrapeMonitorEventHandler implements PipelineEventHandler
         $this->handleStillRunning($event, $crawlerStatus, $datasetPath, $counts, $data);
     }
 
-    public function failed(array $event, Throwable $error, int $retryCount, int $maxRetries): void
+    public function failed(array $event, \Throwable $error, int $retryCount, int $maxRetries): void
     {
         $retryable = $retryCount < $maxRetries;
         $this->state->upsertJob($event, $retryable ? PipelineJob::STATUS_RUNNING : PipelineJob::STATUS_FAILED, [

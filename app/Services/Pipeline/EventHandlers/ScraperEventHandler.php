@@ -15,7 +15,6 @@ use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
-use Throwable;
 
 #[Singleton]
 class ScraperEventHandler implements PipelineEventHandler
@@ -41,7 +40,7 @@ class ScraperEventHandler implements PipelineEventHandler
         $this->handleScrapeRequested($event);
     }
 
-    public function failed(array $event, Throwable $error, int $retryCount, int $maxRetries): void
+    public function failed(array $event, \Throwable $error, int $retryCount, int $maxRetries): void
     {
         $retryable = $retryCount < $maxRetries;
         $this->state->upsertJob($event, $retryable ? PipelineJob::STATUS_PENDING : PipelineJob::STATUS_FAILED, [

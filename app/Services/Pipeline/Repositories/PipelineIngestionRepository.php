@@ -8,7 +8,6 @@ use App\Models\JobProcessingState;
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
-use Throwable;
 
 #[Singleton]
 readonly class PipelineIngestionRepository
@@ -42,7 +41,7 @@ readonly class PipelineIngestionRepository
 
     public function upsertFailedProcessingState(
         array $event,
-        Throwable $error,
+        \Throwable $error,
         int $retryCount,
         int $maxRetries,
     ): JobProcessingState {

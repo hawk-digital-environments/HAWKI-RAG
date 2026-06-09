@@ -14,7 +14,6 @@ use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
-use Throwable;
 
 #[Singleton]
 class IngestionEventHandler implements PipelineEventHandler
@@ -52,7 +51,7 @@ class IngestionEventHandler implements PipelineEventHandler
         }
     }
 
-    public function failed(array $event, Throwable $error, int $retryCount, int $maxRetries): void
+    public function failed(array $event, \Throwable $error, int $retryCount, int $maxRetries): void
     {
         $event = PipelineEvent::normalize((string) ($event['event_type'] ?? PipelineEvent::CONTENT_INGESTED), $event);
         $retryable = $retryCount < $maxRetries;
@@ -192,7 +191,7 @@ class IngestionEventHandler implements PipelineEventHandler
         );
     }
 
-    private function markProcessingStateFailed(array $event, Throwable $error, int $retryCount, int $maxRetries): void
+    private function markProcessingStateFailed(array $event, \Throwable $error, int $retryCount, int $maxRetries): void
     {
         $this->ingestion->upsertFailedProcessingState($event, $error, $retryCount, $maxRetries);
     }

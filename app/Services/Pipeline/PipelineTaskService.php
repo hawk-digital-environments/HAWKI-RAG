@@ -14,7 +14,6 @@ use Illuminate\Support\Collection;
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Throwable;
 
 #[Singleton]
 class PipelineTaskService
@@ -277,7 +276,7 @@ class PipelineTaskService
     {
         try {
             $this->eventBus->publish($routingKey, $payload);
-        } catch (Throwable $exception) {
+        } catch (\Throwable $exception) {
             Log::warning('Pipeline RabbitMQ event publish failed.', [
                 'routing_key' => $routingKey,
                 'error' => $exception->getMessage(),

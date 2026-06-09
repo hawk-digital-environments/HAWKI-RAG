@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 
 namespace Tests\Feature;
 
@@ -26,7 +27,6 @@ use Illuminate\Support\Str;
 use Mockery\MockInterface;
 use PhpAmqpLib\Channel\AMQPChannel;
 use PhpAmqpLib\Message\AMQPMessage;
-use RuntimeException;
 use Tests\TestCase;
 
 class PipelineEventLayerTest extends TestCase
@@ -444,8 +444,8 @@ class PipelineEventLayerTest extends TestCase
                         && $event['job_id'] === 'scrape-event-monitor-failed'
                         && $event['status'] === PipelineJob::STATUS_FAILED
                         && ($event['metadata']['error_message'] ?? null) === 'Crawler crashed.'
-                ), \Mockery::type(RuntimeException::class))
-                ->andReturnUsing(fn (array $event, RuntimeException $error): array => PipelineEvent::normalize(PipelineEvent::JOB_FAILED, array_merge($event, [
+                ), \Mockery::type(\RuntimeException::class))
+                ->andReturnUsing(fn (array $event, \RuntimeException $error): array => PipelineEvent::normalize(PipelineEvent::JOB_FAILED, array_merge($event, [
                     'metadata' => array_merge($event['metadata'] ?? [], [
                         'error_message' => $error->getMessage(),
                     ]),
@@ -753,7 +753,7 @@ class PipelineEventLayerTest extends TestCase
             'local_path' => $markdownPath,
             'content_hash' => hash_file('sha256', $markdownPath),
             'status' => PipelineJob::STATUS_COMPLETED,
-        ]), new RuntimeException('Bridge unavailable'), 3, 3);
+        ]), new \RuntimeException('Bridge unavailable'), 3, 3);
 
         $ingestJob = PipelineJob::query()
             ->where('task_id', $task->task_id)
@@ -784,7 +784,7 @@ class PipelineEventLayerTest extends TestCase
             'source_url' => 'https://example.test/file.pdf',
             'local_path' => '/app/shared/file.pdf',
             'content_hash' => 'sha256-file',
-        ]), new RuntimeException('Conversion failed'));
+        ]), new \RuntimeException('Conversion failed'));
 
         foreach (PipelineEvent::REQUIRED_PAYLOAD_FIELDS as $field) {
             $this->assertArrayHasKey($field, $failed);

@@ -6,23 +6,16 @@ namespace Tests\Unit\Pipeline;
 use App\Models\PipelineJob;
 use App\Models\PipelineTask;
 use App\Services\Pipeline\PipelineRecoveryMetadataService;
-use Illuminate\Support\Carbon;
+use Symfony\Component\Clock\MockClock;
 use Tests\TestCase;
 
 class PipelineRecoveryMetadataServiceTest extends TestCase
 {
-    protected function tearDown(): void
-    {
-        Carbon::setTestNow();
-
-        parent::tearDown();
-    }
-
     public function test_it_builds_recovery_events_with_idempotency_key(): void
     {
-        Carbon::setTestNow(Carbon::parse('2026-06-08 12:00:00'));
+        $service = new PipelineRecoveryMetadataService(new MockClock('2026-06-08T12:00:00+00:00'));
 
-        $event = app(PipelineRecoveryMetadataService::class)->recoveryEvent(
+        $event = $service->recoveryEvent(
             $this->job(),
             'task',
             'task-recovery',
@@ -37,7 +30,7 @@ class PipelineRecoveryMetadataServiceTest extends TestCase
         $this->assertSame(2, $event['retry_count']);
         $this->assertSame('2026-06-08T12:00:00+00:00', $event['at']);
         $this->assertSame(
-            app(PipelineRecoveryMetadataService::class)->idempotencyKey($this->job()),
+            $service->idempotencyKey($this->job()),
             $event['idempotency_key'],
         );
     }
@@ -74,9 +67,9 @@ class PipelineRecoveryMetadataServiceTest extends TestCase
 
     public function test_it_builds_publish_failed_metadata(): void
     {
-        Carbon::setTestNow(Carbon::parse('2026-06-08 13:00:00'));
+        $service = new PipelineRecoveryMetadataService(new MockClock('2026-06-08T13:00:00+00:00'));
 
-        $metadata = app(PipelineRecoveryMetadataService::class)->publishFailedJobMetadata(
+        $metadata = $service->publishFailedJobMetadata(
             new PipelineJob(['metadata' => ['recovery_events' => [['event_id' => 'recovery-0']]]]),
             new \RuntimeException('RabbitMQ unavailable'),
         );
