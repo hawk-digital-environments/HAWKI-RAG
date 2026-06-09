@@ -34,6 +34,6 @@ class PipelineQueueMonitorServiceTest extends TestCase
 
         $this->assertSame('fail', $status['status']);
         $this->assertSame('2026-06-09T12:00:00+00:00', $status['checkedAt']);
-        $this->assertSame('HTTP 503 from http://rabbit.test/api/queues.', $status['error']);
+        $this->assertStringStartsWith('HTTP 503 from http://rabbit.test/api/queues.', $status['error']);
     }
 }

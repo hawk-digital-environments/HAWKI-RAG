@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 namespace Tests\Unit\Pipeline;
 
+use App\Services\Pipeline\Exceptions\PipelineEventException;
 use App\Services\Pipeline\PipelineEvent;
 use App\Services\Pipeline\PipelineEventNormalizer;
 use App\Services\Pipeline\PipelineEventRetryFactory;
@@ -65,5 +66,21 @@ class PipelineEventRetryFactoryTest extends TestCase
         $this->assertSame(2, $delayed['metadata']['monitor_attempt']);
         $this->assertSame('operator retry', $recovery['metadata']['recovery_reason']);
         $this->assertSame('2026-06-09T12:00:00+00:00', $recovery['metadata']['recovery_requested_at']);
+    }
+
+    public function test_it_rejects_delayed_events_without_event_type(): void
+    {
+        $this->expectException(PipelineEventException::class);
+        $this->expectExceptionMessage('Delayed pipeline event publish requires event_type.');
+
+        app(PipelineEventRetryFactory::class)->makeDelayed([], 'missing type');
+    }
+
+    public function test_it_rejects_recovery_retries_without_event_type(): void
+    {
+        $this->expectException(PipelineEventException::class);
+        $this->expectExceptionMessage('Pipeline recovery retry requires event_type.');
+
+        app(PipelineEventRetryFactory::class)->makeRecoveryRetry([], 'missing type');
     }
 }

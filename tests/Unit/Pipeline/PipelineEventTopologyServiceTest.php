@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 namespace Tests\Unit\Pipeline;
 
+use App\Services\Pipeline\Exceptions\PipelineEventException;
 use App\Services\Pipeline\PipelineEvent;
 use App\Services\Pipeline\PipelineEventTopologyService;
 use App\Services\Rag\RagRabbitMQ;
@@ -55,5 +56,15 @@ class PipelineEventTopologyServiceTest extends TestCase
         $this->assertSame('pipeline_scrape_monitor_events', $topology['queue']);
         $this->assertSame('hawki-rag-scrape-monitor-events', $topology['consumer_tag']);
         $this->assertSame([PipelineEvent::SCRAPE_MONITOR_REQUESTED], $topology['listen']);
+    }
+
+    public function test_it_rejects_unknown_workers_with_a_pipeline_exception(): void
+    {
+        config()->set('communication.rabbitmq.pipeline_events.workers', []);
+
+        $this->expectException(PipelineEventException::class);
+        $this->expectExceptionMessage('Unknown pipeline event worker [missing_worker].');
+
+        app(PipelineEventTopologyService::class)->declareWorker('missing_worker');
     }
 }

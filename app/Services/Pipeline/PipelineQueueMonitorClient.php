@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 namespace App\Services\Pipeline;
 
+use App\Services\Pipeline\Exceptions\PipelineQueueMonitorException;
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Support\Facades\Http;
 
@@ -16,7 +17,7 @@ readonly class PipelineQueueMonitorClient
     {
         $url = $this->managementUrl();
         if ($url === '') {
-            throw new \RuntimeException('RABBITMQ_MANAGEMENT_URL is empty.');
+            throw PipelineQueueMonitorException::missingManagementUrl();
         }
 
         $response = Http::timeout($timeout)
@@ -29,12 +30,12 @@ readonly class PipelineQueueMonitorClient
             ->get($url . '/api/queues/' . rawurlencode((string) config('communication.rabbitmq.vhost', '/')));
 
         if (!$response->successful()) {
-            throw new \RuntimeException("HTTP {$response->status()} from {$url}/api/queues.");
+            throw PipelineQueueMonitorException::unsuccessfulResponse($url, $response->status());
         }
 
         $queues = $response->json();
         if (!is_array($queues)) {
-            throw new \RuntimeException('RabbitMQ management API returned an invalid queue payload.');
+            throw PipelineQueueMonitorException::invalidQueuePayload();
         }
 
         $byName = [];

@@ -6,6 +6,7 @@ namespace App\Services\Pipeline\EventHandlers;
 use App\Models\JobProcessingState;
 use App\Models\PipelineJob;
 use App\Services\Datasets\DatasetService;
+use App\Services\Pipeline\Exceptions\PipelineEventHandlerException;
 use App\Services\Pipeline\PipelineEvent;
 use App\Services\Pipeline\PipelineEventBus;
 use App\Services\Pipeline\PipelineEventStateService;
@@ -88,7 +89,7 @@ class IngestionEventHandler implements PipelineEventHandler
 
         $text = (string) file_get_contents($path);
         if (trim($text) === '') {
-            throw new \InvalidArgumentException("Ingest content is empty: {$path}");
+            throw PipelineEventHandlerException::ingestContentIsEmpty($path);
         }
 
         $response = Http::timeout((int) config('communication.rabbitmq.pipeline_ingestion.bridge_timeout', 3600))
@@ -97,7 +98,7 @@ class IngestionEventHandler implements PipelineEventHandler
             ->post($this->bridgeUrl() . '/ingest', $this->bridgePayload($event, $text, $path));
 
         if ($response->failed()) {
-            throw new \RuntimeException("Python RAG bridge returned HTTP {$response->status()}: " . Str::limit($response->body(), 1000));
+            throw PipelineEventHandlerException::bridgeReturnedHttpFailure($response->status(), Str::limit($response->body(), 1000));
         }
 
         $this->state->upsertJob($event, PipelineJob::STATUS_COMPLETED, [

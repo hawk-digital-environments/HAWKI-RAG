@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 namespace App\Services\Pipeline;
 
+use App\Services\Pipeline\Exceptions\PipelineEventException;
 use Illuminate\Container\Attributes\Singleton;
 use Psr\Clock\ClockInterface;
 use Symfony\Component\Clock\Clock;
@@ -45,7 +46,7 @@ readonly class PipelineEventRetryFactory
     {
         $eventType = (string) ($event['event_type'] ?? '');
         if ($eventType === '') {
-            throw new \InvalidArgumentException('Delayed publish requires event_type.');
+            throw PipelineEventException::delayedPublishRequiresEventType();
         }
 
         return $this->normalizer->normalize($eventType, array_merge($event, [
@@ -60,7 +61,7 @@ readonly class PipelineEventRetryFactory
     {
         $eventType = (string) ($event['event_type'] ?? '');
         if ($eventType === '') {
-            throw new \InvalidArgumentException('Recovery retry requires event_type.');
+            throw PipelineEventException::recoveryRetryRequiresEventType();
         }
 
         return $this->normalizer->normalize($eventType, array_merge($event, [

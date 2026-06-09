@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace App\Services\Pipeline\EventHandlers;
 
 use App\Models\PipelineJob;
+use App\Services\Pipeline\Exceptions\PipelineEventHandlerException;
 use App\Services\Pipeline\PipelineEvent;
 use App\Services\Pipeline\PipelineEventBus;
 use App\Services\Pipeline\PipelineEventStateService;
@@ -57,7 +58,7 @@ class ScraperEventHandler implements PipelineEventHandler
         $event = PipelineEvent::normalize(PipelineEvent::SCRAPE_REQUESTED, $event);
         $url = (string) $event['source_url'];
         if ($url === '') {
-            throw new \InvalidArgumentException('Scrape event requires source_url.');
+            throw PipelineEventHandlerException::scrapeRequiresSourceUrl();
         }
 
         $contentHash = (string) ($event['content_hash'] ?: hash('sha256', $url));
@@ -107,7 +108,7 @@ class ScraperEventHandler implements PipelineEventHandler
         ]));
 
         if (!$result->success) {
-            throw new \RuntimeException($result->errors[0]['message'] ?? $result->errors[0] ?? 'Scraper pipeline failed.');
+            throw PipelineEventHandlerException::scraperFailed((string) ($result->errors[0]['message'] ?? $result->errors[0] ?? 'Unknown scraper failure.'));
         }
 
         $this->events->publish(PipelineEvent::SCRAPE_MONITOR_REQUESTED, array_merge($event, [

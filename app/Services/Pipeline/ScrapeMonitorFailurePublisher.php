@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace App\Services\Pipeline;
 
 use App\Models\PipelineJob;
+use App\Services\Pipeline\Exceptions\PipelineEventHandlerException;
 use App\Services\Pipeline\Repositories\PipelineJobRepository;
 use Illuminate\Container\Attributes\Singleton;
 
@@ -29,6 +30,6 @@ readonly class ScrapeMonitorFailurePublisher
         $original = $this->payloads->failedSourceEvent($pipelineJob, $event, $message, $metadata);
         $failedEvent = $this->normalizer->normalize(PipelineEvent::JOB_FAILED, $original);
         $this->state->upsertJob($failedEvent, PipelineJob::STATUS_FAILED);
-        $this->events->publishFailed($original, $exception ?? new \RuntimeException($message));
+        $this->events->publishFailed($original, $exception ?? PipelineEventHandlerException::scrapeMonitorFailure($message));
     }
 }

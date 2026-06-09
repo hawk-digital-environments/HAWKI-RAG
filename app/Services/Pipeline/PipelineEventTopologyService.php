@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 namespace App\Services\Pipeline;
 
+use App\Services\Pipeline\Exceptions\PipelineEventException;
 use App\Services\Rag\RagRabbitMQ;
 use Illuminate\Container\Attributes\Singleton;
 use PhpAmqpLib\Wire\AMQPTable;
@@ -23,7 +24,7 @@ readonly class PipelineEventTopologyService
     {
         $cfg = config("communication.rabbitmq.pipeline_events.workers.{$worker}");
         if (!is_array($cfg)) {
-            throw new \InvalidArgumentException("Unknown pipeline event worker: {$worker}");
+            throw PipelineEventException::unknownWorker($worker);
         }
 
         $this->declareExchanges();

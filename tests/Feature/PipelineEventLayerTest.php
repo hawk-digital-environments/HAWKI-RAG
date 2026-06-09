@@ -9,6 +9,7 @@ use App\Models\PipelineJob;
 use App\Models\PipelineTask;
 use App\Models\ScrapedElement;
 use App\Services\FileConverter\DocumentConverter;
+use App\Services\Pipeline\Exceptions\PipelineEventHandlerException;
 use App\Services\Pipeline\EventHandlers\ConverterEventHandler;
 use App\Services\Pipeline\EventHandlers\IngestionEventHandler;
 use App\Services\Pipeline\EventHandlers\ScrapeMonitorEventHandler;
@@ -444,8 +445,8 @@ class PipelineEventLayerTest extends TestCase
                         && $event['job_id'] === 'scrape-event-monitor-failed'
                         && $event['status'] === PipelineJob::STATUS_FAILED
                         && ($event['metadata']['error_message'] ?? null) === 'Crawler crashed.'
-                ), \Mockery::type(\RuntimeException::class))
-                ->andReturnUsing(fn (array $event, \RuntimeException $error): array => PipelineEvent::normalize(PipelineEvent::JOB_FAILED, array_merge($event, [
+                ), \Mockery::type(PipelineEventHandlerException::class))
+                ->andReturnUsing(fn (array $event, PipelineEventHandlerException $error): array => PipelineEvent::normalize(PipelineEvent::JOB_FAILED, array_merge($event, [
                     'metadata' => array_merge($event['metadata'] ?? [], [
                         'error_message' => $error->getMessage(),
                     ]),

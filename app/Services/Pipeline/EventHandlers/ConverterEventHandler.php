@@ -5,6 +5,7 @@ namespace App\Services\Pipeline\EventHandlers;
 
 use App\Models\PipelineJob;
 use App\Services\FileConverter\DocumentConverter;
+use App\Services\Pipeline\Exceptions\PipelineEventHandlerException;
 use App\Services\Pipeline\PipelineEvent;
 use App\Services\Pipeline\PipelineEventBus;
 use App\Services\Pipeline\PipelineEventStateService;
@@ -36,7 +37,7 @@ class ConverterEventHandler implements PipelineEventHandler
         $event = PipelineEvent::normalize((string) $event['event_type'], $event);
         $path = (string) $event['local_path'];
         if ($path === '' || !is_file($path)) {
-            throw new \InvalidArgumentException("Conversion event requires an existing local_path file: {$path}");
+            throw PipelineEventHandlerException::conversionRequiresExistingLocalPath($path);
         }
 
         if (!$this->isSupported($path)) {
@@ -111,7 +112,7 @@ class ConverterEventHandler implements PipelineEventHandler
 
         $files = $this->converter->requestDocumentToMarkdown($file);
         if (!is_array($files) || $files === []) {
-            throw new \RuntimeException('Document converter returned no files.');
+            throw PipelineEventHandlerException::converterReturnedNoFiles();
         }
 
         $markdownFiles = [];
