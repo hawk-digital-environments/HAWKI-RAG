@@ -4,55 +4,29 @@ namespace App\Services\Documents;
 
 use App\Models\Document;
 use App\Models\PipelineJob;
-use Illuminate\Database\Eloquent\Builder;
 
 class DocumentBrowserService
 {
     private const PREVIEW_BYTES = 24000;
 
+    public function __construct(
+        private readonly DocumentRepository $documents,
+    ) {}
+
     public function list(int $limit = 100, array $filters = []): array
     {
         $limit = max(1, min(250, $limit));
 
-        return $this->query($filters)
-            ->orderByDesc('updated_at')
-            ->orderByDesc('created_at')
-            ->limit($limit)
-            ->get()
+        return $this->documents->list($filters, $limit)
             ->map(fn (Document $document): array => $this->payload($document, includeDetails: false))
             ->all();
     }
 
     public function show(string $documentId): ?array
     {
-        $document = Document::query()->where('id', $documentId)->first();
+        $document = $this->documents->findById($documentId);
 
         return $document ? $this->payload($document, includeDetails: true) : null;
-    }
-
-    private function query(array $filters): Builder
-    {
-        $query = Document::query();
-        $datasetId = $this->stringValue($filters['dataset_id'] ?? $filters['datasetId'] ?? null);
-        $search = $this->stringValue($filters['q'] ?? $filters['search'] ?? null);
-
-        if ($datasetId) {
-            $query->where('dataset_id', $datasetId);
-        }
-
-        if ($search) {
-            $query->where(function (Builder $inner) use ($search): void {
-                $like = '%' . str_replace(['%', '_'], ['\%', '\_'], $search) . '%';
-                $inner
-                    ->where('source_url', 'like', $like)
-                    ->orWhere('storage_path', 'like', $like)
-                    ->orWhere('title', 'like', $like)
-                    ->orWhere('original_filename', 'like', $like)
-                    ->orWhere('checksum_sha256', 'like', $like);
-            });
-        }
-
-        return $query;
     }
 
     private function payload(Document $document, bool $includeDetails): array
@@ -159,29 +133,7 @@ class DocumentBrowserService
 
     private function relatedJobs(Document $document, ?string $taskId, ?string $jobId): array
     {
-        $query = PipelineJob::query()->where(function (Builder $inner) use ($document, $taskId, $jobId): void {
-            if ($taskId) {
-                $inner->orWhere('task_id', $taskId);
-            }
-
-            if ($jobId) {
-                $inner->orWhere('job_id', $jobId)
-                    ->orWhere('parent_job_id', $jobId);
-            }
-
-            if ($document->checksum_sha256) {
-                $inner->orWhere('content_hash', $document->checksum_sha256);
-            }
-
-            if ($document->storage_path) {
-                $inner->orWhere('local_path', $document->storage_path);
-            }
-        });
-
-        return $query
-            ->orderBy('id')
-            ->limit(50)
-            ->get()
+        return $this->documents->relatedJobs($document, $taskId, $jobId)
             ->map(fn (PipelineJob $job): array => [
                 'jobId' => $job->job_id,
                 'taskId' => $job->task_id,

@@ -4,11 +4,16 @@ namespace App\Http\Controllers\API;
 
 use App\Http\Controllers\Controller;
 use App\Models\Document;
+use App\Services\Documents\DocumentRepository;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Http;
 
 class RagMonitorController extends Controller
 {
+    public function __construct(
+        private readonly DocumentRepository $documents,
+    ) {}
+
     public function show(): JsonResponse
     {
         $bridge = $this->bridgeHealth();
@@ -108,10 +113,7 @@ class RagMonitorController extends Controller
 
     private function latestDocumentGraph(): ?array
     {
-        $document = Document::query()
-            ->where('status', Document::STATUS_COMPLETED)
-            ->orderByDesc('updated_at')
-            ->first();
+        $document = $this->documents->latestCompleted();
 
         if (! $document) {
             return null;

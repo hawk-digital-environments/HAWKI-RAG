@@ -2,33 +2,37 @@
 
 declare(strict_types=1);
 
-namespace App\Console\Commands;
+namespace App\Services\Pipeline\Smoke;
 
 use App\Services\Datasets\DatasetService;
 use App\Services\Documents\DocumentRepository;
+use App\Services\Pipeline\Console\ConsoleWorkflowIO;
 use App\Services\Pipeline\EventHandlers\ConverterEventHandler;
 use App\Services\Pipeline\EventHandlers\IngestionEventHandler;
 use App\Services\Pipeline\Events\PipelineEventBus;
 use App\Services\Pipeline\Events\PipelineEventStateService;
 use App\Services\Pipeline\Repositories\PipelineEventRecordRepository;
 use App\Services\Pipeline\Repositories\PipelineJobRepository;
-use App\Services\Pipeline\Smoke\PipelineSmokeTestService;
 use App\Services\Pipeline\Tasks\PipelineTaskService;
+use Illuminate\Contracts\Config\Repository as ConfigRepository;
 use Illuminate\Console\Command;
+use Illuminate\Filesystem\Filesystem;
+use Psr\Clock\ClockInterface;
+use Symfony\Component\Clock\Clock;
 
-class PipelineSmokeTestCommand extends Command
+class PipelineSmokeTestService
 {
-    protected $signature = 'pipeline:smoke-test
-        {--dataset=smoke-demo : Dataset identifier for the smoke run}
-        {--graph=auto : true, false, or auto; auto uses RAG_INGEST_GRAPH}
-        {--url= : Optional source URL label for the smoke run}
-        {--timeout=15 : HTTP timeout in seconds for Qdrant and Neo4j checks}
-        {--keep-files=false : Keep generated fixture files after the run}';
+    public function __construct(
+        private readonly PipelineSmokeFixtureFactory $fixtures,
+        private readonly PipelineSmokeExternalVerifier $externalVerifier,
+        private readonly Filesystem $files,
+        private readonly ConfigRepository $config,
+        private readonly ClockInterface $clock = new Clock,
+    ) {
+    }
 
-    protected $description = 'Run an end-to-end MVP pipeline smoke test for scrape, convert, ingest, Qdrant, and optional Neo4j.';
-
-    public function handle(
-        PipelineSmokeTestService $smoke,
+    public function run(
+        Command $command,
         PipelineTaskService $tasks,
         PipelineEventBus $events,
         PipelineEventStateService $state,
@@ -39,8 +43,14 @@ class PipelineSmokeTestCommand extends Command
         PipelineJobRepository $jobs,
         PipelineEventRecordRepository $eventRecords,
     ): int {
-        return $smoke->run(
-            $this,
+        return (new PipelineSmokeTestWorkflow(
+            $this->fixtures,
+            $this->externalVerifier,
+            $this->files,
+            $this->config,
+            $this->clock,
+        ))->run(
+            new ConsoleWorkflowIO($command),
             $tasks,
             $events,
             $state,

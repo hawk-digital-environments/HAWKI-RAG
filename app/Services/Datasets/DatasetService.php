@@ -6,34 +6,35 @@ use App\Models\Dataset;
 use App\Models\Document;
 use App\Models\PipelineJob;
 use App\Models\PipelineTask;
-use Illuminate\Support\Facades\Http;
+use Illuminate\Container\Attributes\Singleton;
+use Illuminate\Contracts\Config\Repository as ConfigRepository;
+use Illuminate\Http\Client\Factory as HttpFactory;
 use Illuminate\Support\Str;
+use Psr\Clock\ClockInterface;
+use Symfony\Component\Clock\Clock;
 
+#[Singleton]
 class DatasetService
 {
+    public function __construct(
+        private readonly DatasetRepository $datasets,
+        private readonly ConfigRepository $config,
+        private readonly HttpFactory $http,
+        private readonly ClockInterface $clock = new Clock,
+    ) {}
+
     public function list(int $limit = 50): array
     {
         $limit = max(1, min(250, $limit));
 
-        return Dataset::query()
-            ->whereExists(function ($query): void {
-                $query->selectRaw('1')
-                    ->from('pipeline_tasks')
-                    ->whereColumn('pipeline_tasks.dataset_id', 'datasets.dataset_id');
-            })
-            ->orderByDesc('created_at')
-            ->orderByDesc('id')
-            ->limit($limit)
-            ->get()
+        return $this->datasets->recentWithTasks($limit)
             ->map(fn (Dataset $dataset): array => $this->payload($dataset, includeDetails: false))
             ->all();
     }
 
     public function show(string $datasetId): ?array
     {
-        $dataset = Dataset::query()
-            ->where('dataset_id', $datasetId)
-            ->first();
+        $dataset = $this->datasets->findByDatasetId($datasetId);
 
         return $dataset ? $this->payload($dataset, includeDetails: true) : null;
     }
@@ -43,7 +44,7 @@ class DatasetService
         $datasetId = $this->datasetId($input['dataset_id'] ?? $input['datasetId'] ?? null);
         $safe = $this->safeName($datasetId);
 
-        return Dataset::query()->create([
+        return $this->datasets->create([
             'dataset_id' => $datasetId,
             'name' => $this->stringValue($input['name'] ?? null) ?? Str::headline(str_replace(['_', '-'], ' ', $datasetId)),
             'description' => $this->stringValue($input['description'] ?? null),
@@ -52,7 +53,7 @@ class DatasetService
                 ?? $this->qdrantCollectionFor($safe),
             'neo4j_namespace' => $this->stringValue($input['neo4j_namespace'] ?? $input['neo4jNamespace'] ?? null)
                 ?? $this->neo4jNamespaceFor($safe),
-            'created_at' => now(),
+            'created_at' => $this->clock->now(),
         ]);
     }
 
@@ -66,19 +67,16 @@ class DatasetService
         $datasetId = $this->datasetId($dataset ?? $input['dataset_id'] ?? $input['datasetId'] ?? null);
         $safe = $this->safeName($datasetId);
 
-        return Dataset::query()->firstOrCreate(
-            ['dataset_id' => $datasetId],
-            [
-                'name' => $this->stringValue($input['name'] ?? null) ?? Str::headline(str_replace(['_', '-'], ' ', $datasetId)),
-                'description' => $this->stringValue($input['description'] ?? null),
-                'status' => Dataset::STATUS_ACTIVE,
-                'qdrant_collection' => $this->stringValue($input['qdrant_collection'] ?? $input['qdrantCollection'] ?? null)
-                    ?? $this->qdrantCollectionFor($safe),
-                'neo4j_namespace' => $this->stringValue($input['neo4j_namespace'] ?? $input['neo4jNamespace'] ?? null)
-                    ?? $this->neo4jNamespaceFor($safe),
-                'created_at' => now(),
-            ],
-        );
+        return $this->datasets->firstOrCreate($datasetId, [
+            'name' => $this->stringValue($input['name'] ?? null) ?? Str::headline(str_replace(['_', '-'], ' ', $datasetId)),
+            'description' => $this->stringValue($input['description'] ?? null),
+            'status' => Dataset::STATUS_ACTIVE,
+            'qdrant_collection' => $this->stringValue($input['qdrant_collection'] ?? $input['qdrantCollection'] ?? null)
+                ?? $this->qdrantCollectionFor($safe),
+            'neo4j_namespace' => $this->stringValue($input['neo4j_namespace'] ?? $input['neo4jNamespace'] ?? null)
+                ?? $this->neo4jNamespaceFor($safe),
+            'created_at' => $this->clock->now(),
+        ]);
     }
 
     public function bridgeTargets(string $datasetId): array
@@ -122,8 +120,8 @@ class DatasetService
     private function stats(Dataset $dataset): array
     {
         return [
-            'documents' => $this->documentQuery($dataset)->count(),
-            'tasks' => PipelineTask::query()->where('dataset_id', $dataset->dataset_id)->count(),
+            'documents' => $this->datasets->documentCount($dataset),
+            'tasks' => $this->datasets->taskCount($dataset),
             'lastIngestion' => $this->lastIngestion($dataset),
             'graph' => [
                 'qdrant' => $this->qdrantStats($dataset),
@@ -134,12 +132,7 @@ class DatasetService
 
     private function tasks(Dataset $dataset): array
     {
-        return PipelineTask::query()
-            ->where('dataset_id', $dataset->dataset_id)
-            ->orderByDesc('started_at')
-            ->orderByDesc('id')
-            ->limit(100)
-            ->get()
+        return $this->datasets->recentTasks($dataset)
             ->map(fn (PipelineTask $task): array => [
                 'taskId' => $task->task_id,
                 'datasetId' => $task->dataset_id,
@@ -153,11 +146,7 @@ class DatasetService
 
     private function documents(Dataset $dataset): array
     {
-        return $this->documentQuery($dataset)
-            ->orderByDesc('updated_at')
-            ->orderByDesc('created_at')
-            ->limit(100)
-            ->get()
+        return $this->datasets->recentDocuments($dataset)
             ->map(fn (Document $document): array => [
                 'id' => $document->id,
                 'datasetId' => $document->dataset_id,
@@ -177,15 +166,7 @@ class DatasetService
 
     private function ingestionHistory(Dataset $dataset): array
     {
-        return PipelineJob::query()
-            ->whereIn('task_id', PipelineTask::query()
-                ->select('task_id')
-                ->where('dataset_id', $dataset->dataset_id))
-            ->where('job_type', PipelineJob::TYPE_INGEST)
-            ->orderByDesc('finished_at')
-            ->orderByDesc('updated_at')
-            ->limit(100)
-            ->get()
+        return $this->datasets->recentIngestionJobs($dataset)
             ->map(fn (PipelineJob $job): array => [
                 'jobId' => $job->job_id,
                 'taskId' => $job->task_id,
@@ -199,26 +180,9 @@ class DatasetService
             ->all();
     }
 
-    private function documentQuery(Dataset $dataset)
-    {
-        return Document::query()
-            ->where(function ($query) use ($dataset): void {
-                $query->where('dataset_id', $dataset->dataset_id)
-                    ->orWhere('collection', $dataset->qdrant_collection);
-            });
-    }
-
     private function lastIngestion(Dataset $dataset): ?array
     {
-        $job = PipelineJob::query()
-            ->whereIn('task_id', PipelineTask::query()
-                ->select('task_id')
-                ->where('dataset_id', $dataset->dataset_id))
-            ->where('job_type', PipelineJob::TYPE_INGEST)
-            ->whereIn('status', [PipelineJob::STATUS_COMPLETED, PipelineJob::STATUS_FAILED, PipelineJob::STATUS_SKIPPED])
-            ->orderByDesc('finished_at')
-            ->orderByDesc('updated_at')
-            ->first();
+        $job = $this->datasets->lastTerminalIngestionJob($dataset);
 
         if (!$job) {
             return null;
@@ -234,10 +198,10 @@ class DatasetService
 
     private function qdrantStats(Dataset $dataset): array
     {
-        $baseUrl = rtrim((string) config('config.qdrant_http_url', 'http://qdrant:6333'), '/');
+        $baseUrl = rtrim((string) $this->config->get('config.qdrant_http_url', 'http://qdrant:6333'), '/');
 
         try {
-            $response = Http::timeout(3)->post($baseUrl . '/collections/' . rawurlencode($dataset->qdrant_collection) . '/points/count', [
+            $response = $this->http->timeout(3)->post($baseUrl . '/collections/' . rawurlencode($dataset->qdrant_collection) . '/points/count', [
                 'exact' => true,
             ]);
 
@@ -267,19 +231,14 @@ class DatasetService
 
     private function neo4jStats(Dataset $dataset): array
     {
-        $baseUrl = rtrim((string) config('config.neo4j_http_url', 'http://hawki_rag_neo4j:7474'), '/');
-        $database = trim((string) env('NEO4J_DATABASE', 'neo4j')) ?: 'neo4j';
+        $baseUrl = rtrim((string) $this->config->get('config.neo4j_http_url', 'http://hawki_rag_neo4j:7474'), '/');
+        $database = trim((string) $this->config->get('config.neo4j_database', 'neo4j')) ?: 'neo4j';
         $endpoint = $baseUrl . '/db/' . rawurlencode($database) . '/tx/commit';
-        $documentJobIds = $this->documentQuery($dataset)
-            ->whereNotNull('external_id')
-            ->pluck('external_id')
-            ->filter()
-            ->values()
-            ->all();
+        $documentJobIds = $this->datasets->documentExternalIds($dataset);
 
         try {
-            $response = Http::timeout(4)
-                ->withBasicAuth((string) config('config.neo4j_user', 'neo4j'), (string) config('config.neo4j_password', ''))
+            $response = $this->http->timeout(4)
+                ->withBasicAuth((string) $this->config->get('config.neo4j_user', 'neo4j'), (string) $this->config->get('config.neo4j_password', ''))
                 ->post($endpoint, [
                     'statements' => [[
                         'statement' => <<<'CYPHER'

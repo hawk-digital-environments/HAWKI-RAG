@@ -11,6 +11,7 @@ return [
     'neo4j_http_url' => env('NEO4J_HTTP_URL', 'http://hawki_rag_neo4j:7474'),
     'neo4j_user' => env('NEO4J_USER', 'neo4j'),
     'neo4j_password' => env('NEO4J_PASSWORD', ''),
+    'neo4j_database' => env('NEO4J_DATABASE', 'neo4j'),
     'pipeline_root' => $pipelineRoot,
     'shared_root' => $pipelineRoot,
     'crawled_data_root' => $crawledDataRoot,
