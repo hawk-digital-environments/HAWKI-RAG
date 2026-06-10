@@ -5,6 +5,9 @@ declare(strict_types=1);
 namespace App\Providers;
 
 use App\Services\Storage\StorageService;
+use App\Services\Storage\StorageElementReader;
+use App\Services\Storage\StorageJobReportReader;
+use App\Services\Storage\StoragePathBuilder;
 use App\Services\Storage\UrlGenerator;
 use App\Services\Pipeline\Events\PipelineEventConfig;
 use App\Services\WebSearch\Exceptions\WebSearchFailedException;
@@ -39,9 +42,11 @@ class AppServiceProvider extends ServiceProvider
                 $disk,
                 $app->make(RoutingUrlGenerator::class),
             );
+            $paths = new StoragePathBuilder();
+
             return new StorageService(
-                $disk,
-                $urlGenerator
+                new StorageJobReportReader($disk, $paths),
+                new StorageElementReader($disk, $paths, $urlGenerator),
             );
         });
 

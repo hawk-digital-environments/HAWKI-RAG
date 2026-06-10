@@ -6,14 +6,10 @@ namespace App\Services\Pipeline\State;
 
 use App\Models\PipelineJob;
 use App\Models\PipelineStageState;
-use App\Services\Pipeline\Repositories\PipelineJobCreationRepository;
 use App\Services\Pipeline\Repositories\PipelineStageStateRepository;
 use App\Services\Pipeline\Repositories\Queries\ActivePipelineJobsQuery;
 use App\Services\Pipeline\Values\PipelineStage;
 use Illuminate\Container\Attributes\Singleton;
-use Illuminate\Support\Carbon;
-use Psr\Clock\ClockInterface;
-use Symfony\Component\Clock\Clock;
 
 #[Singleton]
 readonly class PipelineStateService
@@ -26,112 +22,51 @@ readonly class PipelineStateService
 
     public function __construct(
         private readonly ActivePipelineJobsQuery $jobs,
-        private readonly PipelineJobCreationRepository $jobCreation,
         private readonly PipelineStageStateRepository $stageStates,
         private readonly PipelineStageAttributeNormalizer $attributes,
         private readonly PipelineStageClaimService $claims,
-        private readonly PipelineStageRollupService $rollups,
         private readonly PipelineStageStatusPayloadBuilder $payloads,
-        private readonly ClockInterface $clock = new Clock(),
+        private readonly PipelineStageTransitionService $transitions,
     ) {}
 
     public function ensureJob(string $jobId, array $attributes = []): ?PipelineJob
     {
-        if (! $this->tablesAvailable()) {
-            return null;
-        }
-
-        return $this->jobCreation->ensureStateJob(
-            $jobId,
-            $this->attributes->jobAttributes($attributes),
-            $this->now(),
-            PipelineJob::STATUS_PENDING,
-        );
+        return $this->transitions->ensureJob($jobId, $attributes);
     }
 
     public function startStage(string $jobId, string $stage, array $attributes = []): ?PipelineStageState
     {
-        return $this->updateStage($jobId, $stage, array_merge($attributes, [
-            'status' => $attributes['status'] ?? PipelineJob::STATUS_RUNNING,
-            'started_at' => $attributes['started_at'] ?? $this->now(),
-        ]));
+        return $this->transitions->start($jobId, $stage, $attributes);
     }
 
     public function completeStage(string $jobId, string $stage, array $attributes = []): ?PipelineStageState
     {
-        return $this->updateStage($jobId, $stage, array_merge($attributes, [
-            'status' => PipelineJob::STATUS_COMPLETED,
-            'completed_at' => $attributes['completed_at'] ?? $this->now(),
-        ]));
+        return $this->transitions->complete($jobId, $stage, $attributes);
     }
 
     public function skipStage(string $jobId, string $stage, array $attributes = []): ?PipelineStageState
     {
-        return $this->updateStage($jobId, $stage, array_merge($attributes, [
-            'status' => PipelineJob::STATUS_SKIPPED,
-            'completed_at' => $attributes['completed_at'] ?? $this->now(),
-        ]));
+        return $this->transitions->skip($jobId, $stage, $attributes);
     }
 
     public function partialStage(string $jobId, string $stage, array $attributes = []): ?PipelineStageState
     {
-        return $this->updateStage($jobId, $stage, array_merge($attributes, [
-            'status' => PipelineJob::STATUS_PARTIAL,
-            'completed_at' => $attributes['completed_at'] ?? $this->now(),
-        ]));
+        return $this->transitions->partial($jobId, $stage, $attributes);
     }
 
     public function failStage(string $jobId, string $stage, array $attributes = []): ?PipelineStageState
     {
-        return $this->updateStage($jobId, $stage, array_merge($attributes, [
-            'status' => PipelineJob::STATUS_FAILED,
-            'failed_at' => $attributes['failed_at'] ?? $this->now(),
-            'completed_at' => $attributes['completed_at'] ?? $this->now(),
-        ]));
+        return $this->transitions->fail($jobId, $stage, $attributes);
     }
 
     public function updateStage(string $jobId, string $stage, array $attributes = []): ?PipelineStageState
     {
-        if (! $this->tablesAvailable()) {
-            return null;
-        }
-
-        $job = $this->ensureJob($jobId, $attributes);
-        if (! $job) {
-            return null;
-        }
-
-        $transitionedAt = $this->now();
-        $state = $this->stageStates->upsertForJob(
-            $job,
-            $jobId,
-            $stage,
-            $this->attributes->stageAttributes($attributes),
-            $this->attributes->startedStatuses(),
-            $transitionedAt,
-        );
-
-        $this->rollups->refresh($job, $stage, $attributes);
-
-        return $state;
+        return $this->transitions->update($jobId, $stage, $attributes);
     }
 
     public function incrementStageCounts(string $jobId, string $stage, array $deltas, array $attributes = []): ?PipelineStageState
     {
-        if (! $this->tablesAvailable()) {
-            return null;
-        }
-
-        $existing = $this->stageStates->findForJobStage($jobId, $stage);
-
-        $counts = is_array($existing?->counts) ? $existing->counts : [];
-        foreach ($deltas as $key => $delta) {
-            $counts[$key] = max(0, (int) ($counts[$key] ?? 0) + (int) $delta);
-        }
-
-        return $this->updateStage($jobId, $stage, array_merge($attributes, [
-            'counts' => $counts,
-        ]));
+        return $this->transitions->incrementCounts($jobId, $stage, $deltas, $attributes);
     }
 
     public function claimStage(
@@ -187,10 +122,5 @@ readonly class PipelineStateService
     private function tablesAvailable(): bool
     {
         return $this->stageStates->tablesAvailable();
-    }
-
-    private function now(): Carbon
-    {
-        return Carbon::instance(\DateTimeImmutable::createFromInterface($this->clock->now()));
     }
 }
