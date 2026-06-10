@@ -12,9 +12,13 @@ use App\Models\PipelineTask;
 use App\Models\ScrapedElement;
 use App\Services\Pipeline\Events\PipelineEvent;
 use App\Services\Pipeline\Repositories\PipelineIngestionRepository;
-use App\Services\Pipeline\Repositories\PipelineJobRepository;
+use App\Services\Pipeline\Repositories\PipelineJobCreationRepository;
+use App\Services\Pipeline\Repositories\PipelineJobRecoveryRepository;
 use App\Services\Pipeline\Repositories\PipelineScrapeHistoryRepository;
 use App\Services\Pipeline\Repositories\PipelineTaskRepository;
+use App\Services\Pipeline\Repositories\Queries\ActivePipelineJobsQuery;
+use App\Services\Pipeline\Repositories\Queries\FailedPipelineJobsQuery;
+use App\Services\Pipeline\Repositories\Queries\PipelineTaskJobsQuery;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
@@ -173,23 +177,24 @@ class PipelineRepositoryReadTest extends TestCase
         $olderFailed->forceFill(['updated_at' => Carbon::parse('2026-06-08 12:00:00')])->save();
         $newerFailed->forceFill(['updated_at' => Carbon::parse('2026-06-08 12:05:00')])->save();
 
-        $repository = app(PipelineJobRepository::class);
+        $taskJobs = app(PipelineTaskJobsQuery::class);
+        $failedJobs = app(FailedPipelineJobsQuery::class);
 
         $this->assertEqualsCanonicalizing(
             ['job-queued', 'job-running', 'job-failed-old', 'job-failed-new', 'job-completed'],
-            $repository->forTask($task->task_id)->pluck('job_id')->all(),
+            $taskJobs->forTask($task->task_id)->pluck('job_id')->all(),
         );
         $this->assertSame(
             ['job-queued', 'job-running', 'job-failed-old', 'job-failed-new', 'job-completed'],
-            $repository->forTaskOrdered($task->task_id)->pluck('job_id')->all(),
+            $taskJobs->forTaskOrdered($task->task_id)->pluck('job_id')->all(),
         );
         $this->assertSame(
             ['job-failed-new', 'job-failed-old'],
-            $repository->failedForTask($task->task_id)->pluck('job_id')->all(),
+            $failedJobs->forTask($task->task_id)->pluck('job_id')->all(),
         );
         $this->assertSame(
             2,
-            $repository->countForTaskWithStatuses($task->task_id, [
+            $taskJobs->countForTaskWithStatuses($task->task_id, [
                 PipelineJob::STATUS_QUEUED,
                 PipelineJob::STATUS_RUNNING,
             ]),
@@ -210,7 +215,7 @@ class PipelineRepositoryReadTest extends TestCase
         $newest->forceFill(['updated_at' => Carbon::parse('2026-06-08 12:10:00')])->save();
         $middle->forceFill(['updated_at' => Carbon::parse('2026-06-08 12:05:00')])->save();
 
-        $jobs = app(PipelineJobRepository::class)->forTaskByRecentUpdate($task->task_id);
+        $jobs = app(PipelineTaskJobsQuery::class)->forTaskByRecentUpdate($task->task_id);
 
         $this->assertSame(
             ['job-update-newest', 'job-update-middle', 'job-update-oldest'],
@@ -221,9 +226,10 @@ class PipelineRepositoryReadTest extends TestCase
     public function test_job_repository_finds_and_upserts_task_jobs(): void
     {
         $task = $this->task('task-job-upsert');
-        $repository = app(PipelineJobRepository::class);
+        $creation = app(PipelineJobCreationRepository::class);
+        $activeJobs = app(ActivePipelineJobsQuery::class);
 
-        $job = $repository->upsertForTask('job-upsert', $task, [
+        $job = $creation->upsertForTask('job-upsert', $task, [
             'job_type' => PipelineJob::TYPE_CONVERT,
             'source_url' => 'upload://source.pdf',
             'status' => PipelineJob::STATUS_QUEUED,
@@ -233,10 +239,10 @@ class PipelineRepositoryReadTest extends TestCase
 
         $this->assertSame($task->task_id, $job->task_id);
         $this->assertSame(PipelineJob::STATUS_QUEUED, $job->status);
-        $this->assertSame($job->id, $repository->findByJobId('job-upsert')?->id);
-        $this->assertNull($repository->findByJobId('missing-job'));
+        $this->assertSame($job->id, $activeJobs->findByJobId('job-upsert')?->id);
+        $this->assertNull($activeJobs->findByJobId('missing-job'));
 
-        $updated = $repository->upsertForTask('job-upsert', $task, [
+        $updated = $creation->upsertForTask('job-upsert', $task, [
             'job_type' => PipelineJob::TYPE_CONVERT,
             'source_url' => 'upload://source.pdf',
             'status' => PipelineJob::STATUS_FAILED,
@@ -276,15 +282,16 @@ class PipelineRepositoryReadTest extends TestCase
             'finished_at' => Carbon::parse('2026-06-08 14:35:00'),
         ])->save();
 
-        $repository = app(PipelineJobRepository::class);
-        $jobs = $repository->failedForRetry($task);
+        $failedJobs = app(FailedPipelineJobsQuery::class);
+        $recovery = app(PipelineJobRecoveryRepository::class);
+        $jobs = $failedJobs->forRetry($task);
 
         $this->assertSame(
             ['job-retry-first', 'job-retry-second'],
             $jobs->pluck('job_id')->all(),
         );
 
-        $updated = $repository->markQueuedForRetry($firstFailed, [
+        $updated = $recovery->markQueuedForRetry($firstFailed, [
             'retry_count' => 3,
             'retried_at' => '2026-06-08T15:00:00+00:00',
         ]);
@@ -312,7 +319,7 @@ class PipelineRepositoryReadTest extends TestCase
             'dataset_id' => $task->dataset_id,
         ];
 
-        $job = app(PipelineJobRepository::class)->createScrapeJob(
+        $job = app(PipelineJobCreationRepository::class)->createScrapeJob(
             'scrape-create-job',
             $task,
             'https://example.test/scrape',
@@ -343,7 +350,7 @@ class PipelineRepositoryReadTest extends TestCase
 
     public function test_job_repository_detects_completed_or_skipped_conversions(): void
     {
-        $repository = app(PipelineJobRepository::class);
+        $repository = app(ActivePipelineJobsQuery::class);
         $task = $this->task('task-conversion-history');
         $completedPath = '/tmp/pipeline-history/completed.pdf';
         $skippedPath = '/tmp/pipeline-history/skipped.pdf';

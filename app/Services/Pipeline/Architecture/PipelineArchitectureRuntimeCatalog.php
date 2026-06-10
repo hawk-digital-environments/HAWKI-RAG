@@ -54,7 +54,7 @@ readonly class PipelineArchitectureRuntimeCatalog
             ],
             [
                 'table' => 'pipeline_jobs',
-                'repository' => 'PipelineJobRepository',
+                'repository' => 'ActivePipelineJobsQuery, PipelineTaskJobsQuery, FailedPipelineJobsQuery, PipelineJobCreationRepository, PipelineJobStateMutationRepository, PipelineJobRecoveryRepository, PipelineJobRollupRepository',
                 'purpose' => 'Individual scrape, convert, ingest, upload, and recovery jobs.',
             ],
             [

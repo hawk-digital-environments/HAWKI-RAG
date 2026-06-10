@@ -6,7 +6,8 @@ namespace Tests\Feature;
 use App\Models\Dataset;
 use App\Models\PipelineJob;
 use App\Models\PipelineTask;
-use App\Services\Pipeline\Repositories\PipelineJobRepository;
+use App\Services\Pipeline\Repositories\PipelineJobStateMutationRepository;
+use App\Services\Pipeline\Repositories\Queries\ActivePipelineJobsQuery;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Tests\TestCase;
@@ -30,14 +31,15 @@ class PipelineScrapeMonitorRepositoryTest extends TestCase
         ]);
         $completedAt = Carbon::parse('2026-06-08 17:05:00');
 
-        $repository = app(PipelineJobRepository::class);
-        $loaded = $repository->findWithTaskByJobId('scrape-monitor-repository-job');
+        $activeJobs = app(ActivePipelineJobsQuery::class);
+        $jobStates = app(PipelineJobStateMutationRepository::class);
+        $loaded = $activeJobs->findWithTaskByJobId('scrape-monitor-repository-job');
 
         $this->assertNotNull($loaded);
         $this->assertTrue($loaded->relationLoaded('task'));
         $this->assertSame($task->dataset_id, $loaded->task?->dataset_id);
 
-        $completed = $repository->markScrapeMonitorCompleted(
+        $completed = $jobStates->markScrapeMonitorCompleted(
             $job,
             '/app/shared/scrape-monitor-repository-job',
             $completedAt,

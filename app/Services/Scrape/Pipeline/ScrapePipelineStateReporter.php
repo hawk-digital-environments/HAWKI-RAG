@@ -19,6 +19,7 @@ readonly class ScrapePipelineStateReporter
     public function __construct(
         private PipelineStateService $pipelineState,
         private PipelineStageLogger $logger,
+        private ScrapePipelineStatePayloadBuilder $payloads,
         private CacheRepository $cache,
         private ClockInterface $clock = new Clock,
     ) {
@@ -27,20 +28,7 @@ readonly class ScrapePipelineStateReporter
     public function started(ScrapeContext $context): void
     {
         $request = $context->getRequest();
-        $this->pipelineState->startStage($context->jobId, PipelineStateService::STAGE_SCRAPE, [
-            'dataset_path' => $request->outputDir,
-            'source_url' => $request->url,
-            'label' => $request->label,
-            'counts' => [
-                'totalPages' => $request->maxPages,
-                'pagesCrawled' => 0,
-                'failedUrls' => 0,
-            ],
-            'metadata' => [
-                'subStage' => 'initialized',
-                'request' => $request->toArray(),
-            ],
-        ]);
+        $this->pipelineState->startStage($context->jobId, PipelineStateService::STAGE_SCRAPE, $this->payloads->initialized($context));
         $this->logger->started('scrape', [
             'job_id' => $context->jobId,
             'source_url' => $request->url,
@@ -52,10 +40,7 @@ readonly class ScrapePipelineStateReporter
     public function validationStarted(ScrapeContext $context): void
     {
         $context->setStage('validation');
-        $this->pipelineState->updateStage($context->jobId, PipelineStateService::STAGE_SCRAPE, [
-            'status' => 'running',
-            'metadata' => ['subStage' => 'validation'],
-        ]);
+        $this->pipelineState->updateStage($context->jobId, PipelineStateService::STAGE_SCRAPE, $this->payloads->runningSubStage('validation'));
     }
 
     public function validationSucceeded(ScrapeContext $context, array $warnings): void
@@ -75,27 +60,17 @@ readonly class ScrapePipelineStateReporter
             'job_id' => $context->jobId,
             'source_url' => $request->url,
             'pipeline_stage' => $context->getStage(),
-            'error_message' => $this->errorSummary($context),
+            'error_message' => $this->payloads->errorSummary($context),
             'errors' => $context->getErrors(),
             'warnings' => $context->getWarnings(),
         ]);
-        $this->pipelineState->failStage($context->jobId, PipelineStateService::STAGE_SCRAPE, [
-            'dataset_path' => $request->outputDir,
-            'source_url' => $request->url,
-            'label' => $request->label,
-            'errors' => $context->getErrors(),
-            'warnings' => $context->getWarnings(),
-            'metadata' => ['subStage' => $context->getStage()],
-        ]);
+        $this->pipelineState->failStage($context->jobId, PipelineStateService::STAGE_SCRAPE, $this->payloads->failed($context));
     }
 
     public function executionStarted(ScrapeContext $context): void
     {
         $context->setStage('execution');
-        $this->pipelineState->updateStage($context->jobId, PipelineStateService::STAGE_SCRAPE, [
-            'status' => 'running',
-            'metadata' => ['subStage' => 'execution'],
-        ]);
+        $this->pipelineState->updateStage($context->jobId, PipelineStateService::STAGE_SCRAPE, $this->payloads->runningSubStage('execution'));
     }
 
     public function executionSucceeded(ScrapeContext $context, ?string $message): void
@@ -128,18 +103,11 @@ readonly class ScrapePipelineStateReporter
             'job_id' => $context->jobId,
             'source_url' => $request->url,
             'pipeline_stage' => $context->getStage(),
-            'error_message' => $this->errorSummary($context),
+            'error_message' => $this->payloads->errorSummary($context),
             'errors' => $context->getErrors(),
             'warnings' => $context->getWarnings(),
         ]);
-        $this->pipelineState->failStage($context->jobId, PipelineStateService::STAGE_SCRAPE, [
-            'dataset_path' => $request->outputDir,
-            'source_url' => $request->url,
-            'label' => $request->label,
-            'errors' => $context->getErrors(),
-            'warnings' => $context->getWarnings(),
-            'metadata' => ['subStage' => $context->getStage()],
-        ]);
+        $this->pipelineState->failStage($context->jobId, PipelineStateService::STAGE_SCRAPE, $this->payloads->failed($context));
     }
 
     public function submitted(ScrapeContext $context): void
@@ -153,22 +121,7 @@ readonly class ScrapePipelineStateReporter
             'pipeline_stage' => $context->getStage(),
             'warnings' => $context->getWarnings(),
         ]);
-        $this->pipelineState->updateStage($context->jobId, PipelineStateService::STAGE_SCRAPE, [
-            'status' => 'running',
-            'dataset_path' => $request->outputDir,
-            'source_url' => $request->url,
-            'label' => $request->label,
-            'counts' => [
-                'totalPages' => $request->maxPages,
-                'pagesCrawled' => 0,
-                'failedUrls' => 0,
-            ],
-            'warnings' => $context->getWarnings(),
-            'metadata' => [
-                'subStage' => $context->getStage(),
-                'message' => 'Crawl submitted to Crawl4AI.',
-            ],
-        ]);
+        $this->pipelineState->updateStage($context->jobId, PipelineStateService::STAGE_SCRAPE, $this->payloads->submitted($context));
     }
 
     public function unexpectedFailure(ScrapeContext $context, Throwable $exception): void
@@ -181,23 +134,6 @@ readonly class ScrapePipelineStateReporter
             'error_message' => $exception->getMessage(),
             'exception' => $exception,
         ]);
-        $this->pipelineState->failStage($context->jobId, PipelineStateService::STAGE_SCRAPE, [
-            'dataset_path' => $request->outputDir,
-            'source_url' => $request->url,
-            'label' => $request->label,
-            'errors' => $context->getErrors(),
-            'metadata' => [
-                'subStage' => $context->getStage(),
-                'exception' => get_class($exception),
-            ],
-        ]);
-    }
-
-    private function errorSummary(ScrapeContext $context): string
-    {
-        return implode('; ', array_map(
-            static fn ($error) => is_array($error) ? (string) ($error['message'] ?? json_encode($error)) : (string) $error,
-            $context->getErrors()
-        ));
+        $this->pipelineState->failStage($context->jobId, PipelineStateService::STAGE_SCRAPE, $this->payloads->unexpectedFailure($context, $exception));
     }
 }

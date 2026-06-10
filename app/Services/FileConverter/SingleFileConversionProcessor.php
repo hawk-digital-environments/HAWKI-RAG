@@ -19,6 +19,7 @@ readonly class SingleFileConversionProcessor
         private ConversionOutputContent $content,
         private CachedConversionValidator $cachedConversions,
         private ConversionMetadataFactory $metadata,
+        private DocumentContentHasher $hasher,
     ) {
     }
 
@@ -39,10 +40,7 @@ readonly class SingleFileConversionProcessor
         try {
             $docInfo = new SplFileInfo($docPath);
             $flatPath = dirname($docPath).'/'.pathinfo($docInfo->getFilename(), PATHINFO_FILENAME).'_converted.md';
-            $convertedId = hash_file('sha256', $docInfo->getPathname());
-            if ($convertedId === false) {
-                throw ConversionOutputException::unableToHash($docInfo->getPathname());
-            }
+            $convertedId = $this->hasher->sha256($docInfo->getPathname());
 
             $docTitle = pathinfo($docInfo->getFilename(), PATHINFO_FILENAME);
             $destDir = dirname($docPath).'/converted_'.pathinfo($docInfo->getFilename(), PATHINFO_FILENAME);

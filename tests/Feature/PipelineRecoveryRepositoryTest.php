@@ -6,8 +6,10 @@ namespace Tests\Feature;
 use App\Models\Dataset;
 use App\Models\PipelineJob;
 use App\Models\PipelineTask;
-use App\Services\Pipeline\Repositories\PipelineJobRepository;
+use App\Services\Pipeline\Repositories\PipelineJobRecoveryRepository;
 use App\Services\Pipeline\Repositories\PipelineTaskRepository;
+use App\Services\Pipeline\Repositories\Queries\ActivePipelineJobsQuery;
+use App\Services\Pipeline\Repositories\Queries\FailedPipelineJobsQuery;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -41,23 +43,24 @@ class PipelineRecoveryRepositoryTest extends TestCase
             'updated_at' => Carbon::parse('2026-06-08 13:00:00'),
         ])->save();
 
-        $repository = app(PipelineJobRepository::class);
+        $failedJobs = app(FailedPipelineJobsQuery::class);
+        $activeJobs = app(ActivePipelineJobsQuery::class);
 
         $this->assertSame(
             ['job-recovery-other-dataset', 'job-recovery-newer'],
-            $repository->failedForRecoveryList(null, null, 2)->pluck('job_id')->all(),
+            $failedJobs->forRecoveryList(null, null, 2)->pluck('job_id')->all(),
         );
         $this->assertSame(
             ['job-recovery-newer', 'job-recovery-older'],
-            $repository->failedForRecoveryList('task-recovery-a', null, 10)->pluck('job_id')->all(),
+            $failedJobs->forRecoveryList('task-recovery-a', null, 10)->pluck('job_id')->all(),
         );
         $this->assertSame(
             ['job-recovery-other-dataset'],
-            $repository->failedForRecovery(null, 'dataset-recovery-b')->pluck('job_id')->all(),
+            $failedJobs->forRecovery(null, 'dataset-recovery-b')->pluck('job_id')->all(),
         );
         $this->assertEqualsCanonicalizing(
             ['job-recovery-newer', 'job-recovery-other-dataset'],
-            $repository->findByJobIds(['job-recovery-newer', 'missing-job', 'job-recovery-other-dataset'])
+            $activeJobs->findByJobIds(['job-recovery-newer', 'missing-job', 'job-recovery-other-dataset'])
                 ->pluck('job_id')
                 ->all(),
         );
@@ -75,7 +78,7 @@ class PipelineRecoveryRepositoryTest extends TestCase
             'metadata' => ['retry_count' => 1],
         ])->save();
 
-        $jobRepository = app(PipelineJobRepository::class);
+        $jobRepository = app(PipelineJobRecoveryRepository::class);
         $taskRepository = app(PipelineTaskRepository::class);
 
         $locked = DB::transaction(fn (): ?PipelineJob => $jobRepository->lockForRecovery($job));
@@ -110,7 +113,7 @@ class PipelineRecoveryRepositoryTest extends TestCase
         $job = $this->job($task, 'job-recovery-publish-failed', PipelineJob::STATUS_QUEUED);
         $failedAt = Carbon::parse('2026-06-08 14:00:00');
 
-        $failed = app(PipelineJobRepository::class)->markRecoveryPublishFailed(
+        $failed = app(PipelineJobRecoveryRepository::class)->markRecoveryPublishFailed(
             $job,
             'RabbitMQ unavailable',
             $failedAt,

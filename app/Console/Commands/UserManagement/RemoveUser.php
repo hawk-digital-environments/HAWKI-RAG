@@ -2,10 +2,8 @@
 
 namespace App\Console\Commands\UserManagement;
 
-use App\Services\Profile\ProfileService;
 use Illuminate\Console\Command;
-use App\Http\Controllers\ProfileController;
-use App\Models\User;
+use App\Services\User\Repositories\UserRepository;
 
 class RemoveUser extends Command
 {
@@ -26,7 +24,7 @@ class RemoveUser extends Command
     /**
      * Execute the console command.
      */
-    public function handle()
+    public function handle(UserRepository $users): void
     {
         // Ask for confirmation
         if ($this->confirm('The user and all the related messages will be permanently removed. Do you want to continue?', true)) {
@@ -38,34 +36,33 @@ class RemoveUser extends Command
             );
 
             // Ask for the respective value
-            $value = $this->ask("Please enter the $choice");
+            $value = (string) $this->ask("Please enter the $choice");
+            $user = $this->findUser($users, $choice, $value);
 
-            switch($choice){
-                case('Username'):
-                    $user = User::where('username', $value)->first();
-                break;
-                case('Email Address'):
-                    $user = User::where('email', $value)->first();
-                break;
-                case('UserID'):
-                    $user = User::find($value);
-                break;
-            }
-
-            if(!$user){
+            if (! $user) {
                 $this->error('User not found!');
                 return;
             }
-            if($user->isRemoved === 1){
+            if ((bool) $user->isRemoved) {
                 $this->error('User is already removed!');
                 return;
             }
-            $user->remove();
+            $users->markRemoved($user);
 
             $this->info('Profile Reset Successfull!');
 
         } else {
             $this->info('Command operation cancelled.');
         }
+    }
+
+    private function findUser(UserRepository $users, string $choice, string $value)
+    {
+        return match ($choice) {
+            'Username' => $users->findByUsername($value),
+            'Email Address' => $users->findByEmail($value),
+            'UserID' => $users->findById($value),
+            default => null,
+        };
     }
 }

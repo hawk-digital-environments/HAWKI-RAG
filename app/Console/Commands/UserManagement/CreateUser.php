@@ -2,7 +2,7 @@
 
 namespace App\Console\Commands\UserManagement;
 
-use App\Models\User;
+use App\Services\User\Repositories\UserRepository;
 use Illuminate\Console\Command;
 
 class CreateUser extends Command
@@ -24,17 +24,13 @@ class CreateUser extends Command
     /**
      * Execute the console command.
      */
-    public function handle()
+    public function handle(UserRepository $users): void
     {
-        $username = $this->ask('Enter the username?');
-        $email = $this->ask('Enter the email?');
-        $ip = $this->ask('Enter the server ip address?');
+        $username = (string) $this->ask('Enter the username?');
+        $email = (string) $this->ask('Enter the email?');
+        $ip = (string) $this->ask('Enter the server ip address?');
 
-        User::create([
-            'username' => $username,
-            'email' => $email,
-            'ip' => $ip,
-        ]);
+        $users->create($username, $email, $ip);
 
         $this->info('User created successfully!');
     }

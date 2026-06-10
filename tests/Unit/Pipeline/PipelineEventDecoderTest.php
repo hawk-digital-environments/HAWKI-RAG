@@ -6,6 +6,7 @@ namespace Tests\Unit\Pipeline;
 
 use App\Services\Pipeline\Events\PipelineEvent;
 use App\Services\Pipeline\Events\PipelineEventDecoder;
+use App\Services\Pipeline\Exceptions\PipelineEventException;
 use JsonException;
 use Tests\TestCase;
 
@@ -28,9 +29,16 @@ class PipelineEventDecoderTest extends TestCase
 
     public function test_it_rejects_non_object_payloads(): void
     {
-        $this->expectException(JsonException::class);
+        $this->expectException(PipelineEventException::class);
         $this->expectExceptionMessage('Pipeline event payload must be a JSON object.');
 
         app(PipelineEventDecoder::class)->decode('"not an object"');
+    }
+
+    public function test_it_rejects_invalid_json_payloads(): void
+    {
+        $this->expectException(JsonException::class);
+
+        app(PipelineEventDecoder::class)->decode('{not-json');
     }
 }

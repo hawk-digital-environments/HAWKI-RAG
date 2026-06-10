@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature;
 
 use App\Models\PipelineJob;
-use App\Services\Pipeline\Repositories\PipelineJobRepository;
+use App\Services\Pipeline\Repositories\PipelineJobCreationRepository;
 use App\Services\Pipeline\Repositories\PipelineStageStateRepository;
 use App\Services\Pipeline\State\PipelineStateService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -18,7 +18,7 @@ class PipelineStateRepositoryTest extends TestCase
 
     public function test_repositories_ensure_jobs_and_upsert_stage_states(): void
     {
-        $jobs = app(PipelineJobRepository::class);
+        $jobs = app(PipelineJobCreationRepository::class);
         $stages = app(PipelineStageStateRepository::class);
         $startedAt = Carbon::parse('2026-06-08 16:00:00');
         $transitionedAt = Carbon::parse('2026-06-08 16:01:00');

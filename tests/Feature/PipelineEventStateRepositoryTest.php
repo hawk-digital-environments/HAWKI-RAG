@@ -9,7 +9,7 @@ use App\Models\PipelineJob;
 use App\Models\PipelineTask;
 use App\Services\Pipeline\Events\PipelineEvent;
 use App\Services\Pipeline\Events\PipelineEventStateService;
-use App\Services\Pipeline\Repositories\PipelineJobRepository;
+use App\Services\Pipeline\Repositories\PipelineJobCreationRepository;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Tests\TestCase;
@@ -20,7 +20,7 @@ class PipelineEventStateRepositoryTest extends TestCase
 
     public function test_job_repository_upserts_event_state_jobs(): void
     {
-        $repository = app(PipelineJobRepository::class);
+        $repository = app(PipelineJobCreationRepository::class);
         $startedAt = Carbon::parse('2026-06-08 15:00:00');
 
         $job = $repository->upsertEventState('event-state-job', [

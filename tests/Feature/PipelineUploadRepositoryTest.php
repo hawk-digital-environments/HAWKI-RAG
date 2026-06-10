@@ -6,7 +6,7 @@ namespace Tests\Feature;
 use App\Models\Dataset;
 use App\Models\PipelineJob;
 use App\Models\PipelineTask;
-use App\Services\Pipeline\Repositories\PipelineJobRepository;
+use App\Services\Pipeline\Repositories\PipelineJobCreationRepository;
 use App\Services\Pipeline\Repositories\PipelineTaskRepository;
 use App\Services\Pipeline\Values\PipelineStoredUpload;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -74,7 +74,7 @@ class PipelineUploadRepositoryTest extends TestCase
             'graph' => true,
         ];
 
-        $job = app(PipelineJobRepository::class)->createUploadConvertJob(
+        $job = app(PipelineJobCreationRepository::class)->createUploadConvertJob(
             'convert_repository_job',
             $task,
             'upload://sample.pdf',

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Pipeline\Events;
 
+use App\Services\Pipeline\Exceptions\PipelineEventException;
 use Illuminate\Container\Attributes\Singleton;
 
 #[Singleton]
@@ -20,7 +21,7 @@ readonly class PipelineEventDecoder
     {
         $event = json_decode($body, true, 512, JSON_THROW_ON_ERROR);
         if (! is_array($event)) {
-            throw new \JsonException('Pipeline event payload must be a JSON object.');
+            throw PipelineEventException::payloadMustBeJsonObject();
         }
 
         return $this->normalizer->normalize((string) ($event['event_type'] ?? ''), $event);

@@ -2,10 +2,10 @@
 
 namespace App\Console\Commands\UserManagement;
 
-use App\Models\User;
 use App\Services\Profile\ApiTokenService;
-use Exception;
+use App\Services\User\Repositories\UserRepository;
 use Illuminate\Console\Command;
+use Throwable;
 
 class CreateSanctumTokenForUser extends Command
 {
@@ -27,9 +27,9 @@ class CreateSanctumTokenForUser extends Command
      * @inheritDoc
      */
     public function __construct(
-        private ApiTokenService $apiTokenService
-    )
-    {
+        private ApiTokenService $apiTokenService,
+        private UserRepository $users,
+    ) {
         parent::__construct();
     }
 
@@ -52,28 +52,15 @@ class CreateSanctumTokenForUser extends Command
         );
 
         // Ask for the respective value
-        $value = $this->ask("Please enter the $choice");
-
-        // Find the user
-        $user = null;
-        switch($choice) {
-            case 'Username':
-                $user = User::where('username', $value)->first();
-                break;
-            case 'Email Address':
-                $user = User::where('email', $value)->first();
-                break;
-            case 'UserID':
-                $user = User::find($value);
-                break;
-        }
+        $value = (string) $this->ask("Please enter the $choice");
+        $user = $this->findUser($choice, $value);
 
         if (!$user) {
             $this->error('User not found!');
             return;
         }
 
-        if ($user->isRemoved === 1) {
+        if ((bool) $user->isRemoved) {
             $this->error('User account is suspended!');
             return;
         }
@@ -86,13 +73,12 @@ class CreateSanctumTokenForUser extends Command
             $this->listUserTokens();
 
             $tokenId = $this->ask('Enter the token ID to revoke');
-            try{
+            try {
                 // Call the revoke method
-                $this->apiTokenService->revokeToken($tokenId);
+                $this->apiTokenService->revokeToken((int) $tokenId);
                 $this->info('Token successfully revoked.');
-            }
-            catch(Exception $e){
-                $this->error('Failed to revoke token.' . $e);
+            } catch (Throwable $e) {
+                $this->error('Failed to revoke token. '.$e->getMessage());
             }
 
         } else {
@@ -140,5 +126,15 @@ class CreateSanctumTokenForUser extends Command
         }
 
         $this->table($headers, $rows);
+    }
+
+    private function findUser(string $choice, string $value)
+    {
+        return match ($choice) {
+            'Username' => $this->users->findByUsername($value),
+            'Email Address' => $this->users->findByEmail($value),
+            'UserID' => $this->users->findById($value),
+            default => null,
+        };
     }
 }
