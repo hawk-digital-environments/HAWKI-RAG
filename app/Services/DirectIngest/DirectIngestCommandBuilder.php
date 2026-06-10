@@ -33,6 +33,7 @@ readonly class DirectIngestCommandBuilder
             'provider' => '--provider',
             'embedding_model' => '--embedding-model',
             'graph_engine' => '--graph-engine',
+            'graph_model' => '--graph-model',
             'neo4j_database' => '--neo4j-database',
             'chunk_chars' => '--chunk-chars',
             'chunk_overlap' => '--chunk-overlap',

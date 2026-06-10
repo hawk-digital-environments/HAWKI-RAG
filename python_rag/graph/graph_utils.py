@@ -7,6 +7,7 @@ import os
 import logging
 import re
 import time
+import unicodedata
 from typing import Any, Dict, List, Iterable, Tuple
 
 from graph.neo4j_graph import Neo4jGraph
@@ -21,12 +22,47 @@ def _perf_log(msg: str, *args: Any) -> None:
 
 _IMAGE_EXT_RE = re.compile(r"\.(png|jpe?g|gif|webp|svg)(?:\\?|#|$)", re.IGNORECASE)
 _PAGE_MARK_RE = re.compile(r"^(?:p|page)\\s*\\d+$", re.IGNORECASE)
+_KNOWN_PROMPT_EXAMPLE_TERMS = {
+    "evolutionary search",
+    "gradient based search",
+    "gpu hours",
+    "nasbench 360",
+}
 
 
 def _normalize_text(value: Any) -> str:
     if value is None:
         return ""
     return " ".join(str(value).split())
+
+
+def _normalize_match_text(value: Any) -> str:
+    if value is None:
+        return ""
+    text = unicodedata.normalize("NFKD", str(value))
+    text = "".join(ch for ch in text if not unicodedata.combining(ch))
+    text = text.lower()
+    text = re.sub(r"[^a-z0-9]+", " ", text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _source_contains_label(source_norm: str, label: str) -> bool:
+    label_norm = _normalize_match_text(label)
+    if not label_norm:
+        return False
+    if label_norm in source_norm:
+        return True
+    tokens = [token for token in label_norm.split() if len(token) >= 3]
+    if len(tokens) >= 2:
+        return all(re.search(rf"\b{re.escape(token)}\b", source_norm) for token in tokens)
+    return bool(tokens and re.search(rf"\b{re.escape(tokens[0])}\b", source_norm))
+
+
+def _is_known_prompt_example_triplet(subj: str, obj: str) -> bool:
+    return (
+        _normalize_match_text(subj) in _KNOWN_PROMPT_EXAMPLE_TERMS
+        or _normalize_match_text(obj) in _KNOWN_PROMPT_EXAMPLE_TERMS
+    )
 
 
 def _looks_like_image_ref(value: str) -> bool:
@@ -93,6 +129,38 @@ def clean_triplets(triplets: Iterable[Tuple[str, str, str]]) -> List[Tuple[str, 
         (time.perf_counter() - start) * 1000,
     )
     return cleaned
+
+
+def filter_triplets_to_source(
+    triplets: Iterable[Tuple[str, str, str]],
+    source_text: str,
+) -> List[Tuple[str, str, str]]:
+    source_norm = _normalize_match_text(source_text)
+    if not source_norm:
+        return clean_triplets(triplets)
+
+    filtered: List[Tuple[str, str, str]] = []
+    dropped_prompt_examples = 0
+    dropped_ungrounded = 0
+
+    for s, r, o in clean_triplets(triplets):
+        if _is_known_prompt_example_triplet(s, o):
+            dropped_prompt_examples += 1
+            continue
+        if not (_source_contains_label(source_norm, s) or _source_contains_label(source_norm, o)):
+            dropped_ungrounded += 1
+            continue
+        filtered.append((s, r, o))
+
+    if dropped_prompt_examples or dropped_ungrounded:
+        logger.info(
+            "graph:triplets source filter dropped_prompt_examples=%s dropped_ungrounded=%s kept=%s",
+            dropped_prompt_examples,
+            dropped_ungrounded,
+            len(filtered),
+        )
+
+    return filtered
 
 def fetch_related_terms(terms: List[str], limit: int = 30) -> List[Dict[str, str]]:
     if not terms:

@@ -21,6 +21,9 @@ class PipelineEventPublisherTest extends TestCase
         ];
 
         $channel = Mockery::mock(AMQPChannel::class);
+        $channel->shouldReceive('confirm_select')->once();
+        $channel->shouldReceive('set_return_listener')->once()->with(Mockery::type('callable'));
+        $channel->shouldReceive('set_nack_handler')->once()->with(Mockery::type('callable'));
         $channel->shouldReceive('basic_publish')
             ->once()
             ->with(
@@ -33,10 +36,13 @@ class PipelineEventPublisherTest extends TestCase
                 }),
                 'pipeline.events',
                 'page.scraped',
+                true,
             );
+        $channel->shouldReceive('wait_for_pending_acks_returns')->once()->with(5.0);
+        $channel->shouldReceive('close')->once();
 
         $rabbit = Mockery::mock(RagRabbitMQ::class);
-        $rabbit->shouldReceive('channel')->once()->andReturn($channel);
+        $rabbit->shouldReceive('publisherChannel')->once()->andReturn($channel);
         $this->app->instance(RagRabbitMQ::class, $rabbit);
 
         app(PipelineEventPublisher::class)->publish('pipeline.events', 'page.scraped', $payload);

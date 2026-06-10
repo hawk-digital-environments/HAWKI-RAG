@@ -99,6 +99,22 @@ class PipelineEventConfig
         return is_array($config) ? $config : null;
     }
 
+    public function hasWorkerListeningTo(string $eventType): bool
+    {
+        foreach ($this->workers() as $worker) {
+            if (! is_array($worker)) {
+                continue;
+            }
+
+            $events = array_values(array_filter(array_map('strval', $worker['listen'] ?? [])));
+            if (in_array($eventType, $events, true)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     public function rabbitUser(): string
     {
         return (string) $this->config->get('communication.rabbitmq.user', 'guest');

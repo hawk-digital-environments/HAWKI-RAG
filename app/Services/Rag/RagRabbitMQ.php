@@ -22,6 +22,22 @@ class RagRabbitMQ
             return $this->channel;
         }
 
+        $this->channel = $this->connection()->channel();
+
+        return $this->channel;
+    }
+
+    public function publisherChannel(): AMQPChannel
+    {
+        return $this->connection()->channel();
+    }
+
+    private function connection(): AMQPStreamConnection
+    {
+        if ($this->connection instanceof AMQPStreamConnection) {
+            return $this->connection;
+        }
+
         $this->connection = new AMQPStreamConnection(
             $this->config->host(),
             $this->config->port(),
@@ -39,9 +55,7 @@ class RagRabbitMQ
             $this->config->heartbeat(),
         );
 
-        $this->channel = $this->connection->channel();
-
-        return $this->channel;
+        return $this->connection;
     }
 
     public function close(): void

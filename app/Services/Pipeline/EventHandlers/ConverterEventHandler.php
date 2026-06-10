@@ -48,6 +48,11 @@ class ConverterEventHandler implements PipelineEventHandler
             return;
         }
 
+        $existing = $this->jobs->findByJobId((string) $event['job_id']);
+        if ($existing && in_array($existing->status, [PipelineJob::STATUS_COMPLETED, PipelineJob::STATUS_SKIPPED], true)) {
+            return;
+        }
+
         $contentHash = (string) ($event['content_hash'] ?: $this->artifacts->sha256($path));
         $event['content_hash'] = $contentHash;
         $cached = $this->outputs->cachedConversion($path, $contentHash);

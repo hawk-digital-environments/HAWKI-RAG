@@ -517,6 +517,52 @@ class PipelineEventLayerTest extends TestCase
         $this->assertSame(1, $task->counters['skipped']);
     }
 
+    public function test_converter_consumer_ignores_redelivered_terminal_conversion_jobs(): void
+    {
+        config()->set('file_converter.supported_extensions', ['docx']);
+
+        $task = $this->task('task-event-convert-redelivery');
+        $root = storage_path('framework/testing/pipeline-events/convert-redelivery');
+        $sourceFile = "{$root}/handbook.docx";
+        File::ensureDirectoryExists($root);
+        File::put($sourceFile, 'fake docx content');
+
+        $this->mock(DocumentConverter::class, function (MockInterface $mock): void {
+            $mock->shouldReceive('requestDocumentToMarkdown')
+                ->once()
+                ->andReturn([
+                    'content_markdown.md' => '# Converted handbook',
+                ]);
+        });
+
+        $event = PipelineEvent::normalize(PipelineEvent::FILE_DISCOVERED, [
+            'task_id' => $task->task_id,
+            'job_id' => 'convert-event-redelivery',
+            'parent_job_id' => 'upload-parent',
+            'dataset_id' => $task->dataset_id,
+            'source_url' => 'upload://handbook.docx',
+            'local_path' => $sourceFile,
+            'content_hash' => hash_file('sha256', $sourceFile),
+            'status' => PipelineJob::STATUS_PENDING,
+        ]);
+
+        app(ConverterEventHandler::class)->handle($event);
+        app(ConverterEventHandler::class)->handle($event);
+
+        $this->assertSame(1, PipelineEventRecord::query()
+            ->where('task_id', $task->task_id)
+            ->where('job_id', 'convert-event-redelivery')
+            ->where('event_type', PipelineEvent::FILE_CONVERTED)
+            ->count());
+
+        $this->assertDatabaseHas('pipeline_jobs', [
+            'task_id' => $task->task_id,
+            'job_id' => 'convert-event-redelivery',
+            'job_type' => PipelineJob::TYPE_CONVERT,
+            'status' => PipelineJob::STATUS_COMPLETED,
+        ]);
+    }
+
     public function test_converter_consumer_records_database_duplicate_conversions_as_skipped_jobs(): void
     {
         $this->mock(DocumentConverter::class, function (MockInterface $mock): void {
@@ -694,6 +740,8 @@ class PipelineEventLayerTest extends TestCase
 
     public function test_ingestion_consumer_ingests_cached_converter_markdown_even_when_converter_job_was_skipped(): void
     {
+        config()->set('config.graph_default', 'llama3.2:3b');
+
         Http::fake([
             '*/ingest' => Http::response(['ok' => true, 'documents' => 1], 200),
         ]);
@@ -731,7 +779,8 @@ class PipelineEventLayerTest extends TestCase
 
         Http::assertSent(fn ($request) => $request->url() === 'http://hawki_rag_bridge:8000/ingest'
             && $request['docs'][0]['payload']['converted_path'] === $markdownPath
-            && $request['docs'][0]['payload']['source_type'] === PipelineEvent::FILE_CONVERTED);
+            && $request['docs'][0]['payload']['source_type'] === PipelineEvent::FILE_CONVERTED
+            && $request['graph_model'] === 'llama3.2:3b');
 
         $task->refresh();
         $this->assertSame(1, $task->counters['ingested']);

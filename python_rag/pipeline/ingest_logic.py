@@ -18,7 +18,7 @@ from utils.text_preprocessor import ensure_tags, split_text
 from vectorstore.qdrant_http import QdrantHTTP
 from graph.neo4j_graph import Neo4jGraph
 from graph.graph_visualization import write_graph_visualization
-from graph.graph_utils import clean_triplets
+from graph.graph_utils import clean_triplets, filter_triplets_to_source
 from pipeline.observability import pipeline_log
 from pipeline.validation import normalize_ingest_metadata, validate_ingest_document
 
@@ -51,6 +51,22 @@ def _doc_job_id(default_job_id: str | None, doc: Any) -> str | None:
     if isinstance(payload, dict):
         return str(payload.get("job_id") or payload.get("trace_id") or default_job_id or "") or None
     return default_job_id
+
+
+def _apply_provider_overrides(provider: Any, body: Any) -> None:
+    if provider is None:
+        return
+    embedding_model = getattr(body, "embedding_model", None)
+    if embedding_model and hasattr(provider, "embed_model"):
+        provider.embed_model = str(embedding_model).strip()
+    graph_model = getattr(body, "graph_model", None)
+    if graph_model and hasattr(provider, "rag_model"):
+        graph_model_value = str(graph_model).strip()
+        provider.rag_model = graph_model_value
+        try:
+            provider._explicit_graph_model = graph_model_value
+        except Exception:
+            pass
 
 
 class _GraphTimeout(Exception):
@@ -335,8 +351,7 @@ def ingest_documents(
         )
         if body.graph and getattr(body, "dry_include_graph", False):
             provider = get_provider(body.provider)
-            if body.embedding_model and hasattr(provider, "embed_model"):
-                provider.embed_model = body.embedding_model.strip()
+            _apply_provider_overrides(provider, body)
             triplets_by_doc, failures = _build_triplets_by_doc(
                 chunk_records,
                 body.graph_engine,
@@ -389,8 +404,7 @@ def ingest_documents(
 
     if body.graph or not getattr(body, "graph_only", False):
         provider = get_provider(body.provider)
-        if body.embedding_model and hasattr(provider, "embed_model"):
-            provider.embed_model = body.embedding_model.strip()
+        _apply_provider_overrides(provider, body)
 
     if not getattr(body, "graph_only", False):
         logger.info("ingest:provider=%s embed_model=%s batch_size=%s", body.provider, getattr(provider, "embed_model", None), batch_size)
@@ -819,7 +833,7 @@ def _build_triplets_by_doc(
                 extract_ms,
             )
             clean_start = time.perf_counter()
-            triplets = clean_triplets(triplets)
+            triplets = filter_triplets_to_source(triplets, "\n\n".join(chunk_texts))
             clean_ms = (time.perf_counter() - clean_start) * 1000
             _perf_log(
                 "perf:graph pipeline.ingest_logic._build_triplets_by_doc doc=%s step=clean kept_triplets=%s ms=%.2f",

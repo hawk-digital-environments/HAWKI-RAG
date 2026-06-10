@@ -24,15 +24,23 @@ class PipelineEventBus
     public function publish(string $eventType, array $payload): array
     {
         $event = $this->normalizer->normalize($eventType, $payload);
-        $this->recorder->record($eventType, $event, 'rabbitmq.publish');
-        $this->log('publish', $event);
 
         if (! $this->config->enabled()) {
+            $this->recorder->record($eventType, $event, 'rabbitmq.publish');
+            $this->log('publish', $event);
+
             return $event;
         }
 
         $this->topology->declareForEvent($eventType);
-        $this->publisher->publish($this->config->exchange(), $eventType, $event);
+        $this->publisher->publish(
+            $this->config->exchange(),
+            $eventType,
+            $event,
+            $this->config->hasWorkerListeningTo($eventType),
+        );
+        $this->recorder->record($eventType, $event, 'rabbitmq.publish');
+        $this->log('publish', $event);
 
         return $event;
     }

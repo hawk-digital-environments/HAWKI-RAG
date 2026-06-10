@@ -20,6 +20,7 @@ class DirectIngestCommandBuilderTest extends TestCase
             'graph' => true,
             'graph_only' => false,
             'graph_engine' => 'neo4j',
+            'graph_model' => 'llama3.2:3b',
             'neo4j_database' => 'neo4j',
             'chunk_chars' => 1200,
             'chunk_overlap' => 120,
@@ -34,6 +35,8 @@ class DirectIngestCommandBuilderTest extends TestCase
         $this->assertContains('--collection', $command);
         $this->assertContains('hawki_docs', $command);
         $this->assertContains('--graph', $command);
+        $this->assertContains('--graph-model', $command);
+        $this->assertContains('llama3.2:3b', $command);
         $this->assertContains('--start', $command);
         $this->assertContains('--summary-file', $command);
         $this->assertContains('/tmp/summary.json', $command);

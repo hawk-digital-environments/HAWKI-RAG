@@ -79,6 +79,7 @@ class IngestionBridgeClient
             'batch_size' => (int) $this->config->get('config.ingest_batch_size', 64),
             'graph' => filter_var($event['metadata']['graph'] ?? $this->config->get('communication.rabbitmq.pipeline_ingestion.graph', false), FILTER_VALIDATE_BOOLEAN),
             'graph_engine' => (string) $this->config->get('config.graph_engine', 'raganything'),
+            'graph_model' => (string) $this->config->get('config.graph_default', ''),
             'graph_only' => false,
             'dry_run' => false,
             'dry_include_graph' => false,

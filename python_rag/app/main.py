@@ -124,6 +124,7 @@ class IngestRequest(BaseModel):
     batch_size: int = Field(default=_int_env("INGEST_BATCH_SIZE", 64))
     graph: bool = False
     graph_engine: str = Field(default=os.environ.get("GRAPH_ENGINE", "raganything"))
+    graph_model: str | None = None
     graph_only: bool = False
     dry_run: bool = False
     dry_include_graph: bool = False

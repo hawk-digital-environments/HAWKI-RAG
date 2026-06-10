@@ -768,6 +768,7 @@ def main():
     ap.add_argument("--graph", action="store_true", help="Enable KG extraction during ingest")
     ap.add_argument("--graph-only", action="store_true", help="Skip Qdrant/embeddings and only write Neo4j triplets")
     ap.add_argument("--graph-engine", default="raganything", help="Graph engine")
+    ap.add_argument("--graph-model", default=None, help="Graph LLM model override")
     ap.add_argument("--neo4j-database", default=None, help="Neo4j database name for graph storage (optional; defaults to Neo4j default database)")
     ap.add_argument("--collection", default=None, help="Qdrant collection override")
     ap.add_argument("--distance", default="Cosine", help="Qdrant distance (Cosine|Dot|Euclid)")
@@ -921,6 +922,8 @@ def main():
         "chunk_overlap": int(args.chunk_overlap),
         "batch_size": int(args.batch),
     }
+    if args.graph_model:
+        options["graph_model"] = args.graph_model
     if args.graph_only:
         options["graph_only"] = True
     if args.neo4j_database:

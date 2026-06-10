@@ -378,6 +378,10 @@ class RAGService:
             failed: dict[str, str] = {}
             patterns = (
                 "kv_store_doc_status*.json",
+                "kv_store_doc_status_chunk_*.json",
+                "kv_store_full_docs*.json",
+                "kv_store_text_chunks*.json",
+                "kv_store_llm_response_cache*.json",
                 "kv_store_full_entities*.json",
                 "kv_store_full_relations*.json",
                 "kv_store_entity_chunks*.json",
@@ -403,6 +407,9 @@ class RAGService:
 
     @staticmethod
     def _graph_model_override(provider: Any) -> str | None:
+        explicit = str(getattr(provider, "_explicit_graph_model", "") or "").strip()
+        if explicit:
+            return explicit
         if isinstance(provider, OllamaProvider):
             val = os.environ.get("GRAPH_OLLAMA_RAG_MODEL", "").strip()
             return val or None
@@ -441,7 +448,7 @@ class RAGService:
             clone = provider.__class__()  # re-read env-backed config
         except Exception:
             clone = provider
-        for attr in ("base", "key", "rag_model", "embed_model"):
+        for attr in ("base", "key", "rag_model", "embed_model", "_explicit_graph_model"):
             if hasattr(provider, attr):
                 try:
                     setattr(clone, attr, getattr(provider, attr))
@@ -1191,6 +1198,83 @@ class RAGService:
             triplets.append((src, self._edge_relation_label(edge), tgt))
         return _dedupe_triplets(triplets)
 
+    @staticmethod
+    def _relation_label_from_text(raw: str) -> str:
+        rel = _strip_control_chars(str(raw or "")).replace("\n", " ").strip()
+        rel = re.sub(r"\s+", " ", rel)
+        if len(rel) > 120:
+            rel = rel[:120].rstrip()
+        return rel or "RELATED_TO"
+
+    def _triplets_from_raganything_llm_cache(self) -> List[tuple[str, str, str]]:
+        """Recover relations from LightRAG extraction outputs it failed to parse.
+
+        Smaller local models sometimes answer the LightRAG extraction prompt with a
+        markdown table instead of the expected delimiter format. LightRAG then logs
+        relations in the LLM cache but does not persist them into graph edges.
+        """
+        cache_path = self.working_dir / "kv_store_llm_response_cache.json"
+        if not cache_path.is_file():
+            return []
+
+        try:
+            payload = json.loads(cache_path.read_text(encoding="utf-8"))
+        except Exception as exc:
+            logger.debug("RAG-Anything LLM cache fallback skipped: %s", exc)
+            return []
+
+        if not isinstance(payload, dict):
+            return []
+
+        triplets: List[tuple[str, str, str]] = []
+        for rec in payload.values():
+            if not isinstance(rec, dict):
+                continue
+            text = str(rec.get("return") or "")
+            if not text.strip():
+                continue
+
+            for match in re.finditer(
+                r"relation<\|#\|>(.*?)<\|#\|>(.*?)<\|#\|>(.*?)(?:<\|#\|>(.*?))?(?:\n|$)",
+                text,
+                flags=re.IGNORECASE | re.DOTALL,
+            ):
+                src = match.group(1).strip()
+                tgt = match.group(2).strip()
+                rel = self._relation_label_from_text(match.group(3).strip())
+                if src and tgt and not _is_junk_graph_label(src) and not _is_junk_graph_label(tgt):
+                    triplets.append((src, rel, tgt))
+
+            in_relationship_table = False
+            for line in text.splitlines():
+                row = line.strip()
+                if not row:
+                    continue
+                lowered = row.lower()
+                if lowered.startswith("relationship|") or lowered.startswith("relationship |"):
+                    in_relationship_table = True
+                    continue
+                if not in_relationship_table:
+                    continue
+                if set(row.replace("|", "").strip()) <= {"-"}:
+                    continue
+                if "|" not in row:
+                    continue
+                parts = [part.strip() for part in row.strip("|").split("|")]
+                if len(parts) < 3:
+                    continue
+                rel, src, tgt = parts[0], parts[1], parts[2]
+                if not src or not tgt:
+                    continue
+                if _is_junk_graph_label(src) or _is_junk_graph_label(tgt):
+                    continue
+                triplets.append((src, self._relation_label_from_text(rel), tgt))
+
+        recovered = _dedupe_triplets(triplets)
+        if recovered:
+            logger.info("RAG-Anything LLM cache fallback recovered triplets=%s", len(recovered))
+        return recovered
+
     def _extract_triplets_raganything(
         self,
         text: str,
@@ -1311,6 +1395,9 @@ class RAGService:
                 file_ref=file_ref,
                 created_at_floor=created_floor,
             )
+            fallback_triplets = self._triplets_from_raganything_llm_cache()
+            if fallback_triplets:
+                triplets = _dedupe_triplets([*triplets, *fallback_triplets])
             self._clear_lightrag_neo4j_temp_graph(neo4j_database)
             logger.info(
                 "RAG-Anything graph export doc_id=%s file=%s edges_total=%s triplets=%s",
