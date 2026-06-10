@@ -7,24 +7,18 @@ namespace App\Services\Pipeline\EventHandlers;
 use App\Models\JobProcessingState;
 use App\Models\PipelineJob;
 use App\Services\Pipeline\Events\PipelineEvent;
-use App\Services\Pipeline\Events\PipelineEventBus;
 use App\Services\Pipeline\Events\PipelineEventStateService;
-use App\Services\Pipeline\Exceptions\PipelineEventHandlerException;
-use App\Services\Pipeline\Repositories\PipelineIngestionRepository;
-use Illuminate\Contracts\Config\Repository as ConfigRepository;
 use Illuminate\Container\Attributes\Singleton;
 
 #[Singleton]
 class IngestionEventHandler implements PipelineEventHandler
 {
     public function __construct(
-        private readonly PipelineEventBus $events,
         private readonly PipelineEventStateService $state,
-        private readonly PipelineIngestionRepository $ingestion,
         private readonly IngestionContentResolver $content,
-        private readonly PipelineEventArtifactReader $artifacts,
-        private readonly IngestionBridgeClient $bridge,
-        private readonly ConfigRepository $config,
+        private readonly IngestionEventFactory $eventsForIngestion,
+        private readonly IngestionPathProcessor $paths,
+        private readonly IngestionProcessingStateWriter $processingStates,
     ) {}
 
     public function eventTypes(): array
@@ -49,7 +43,7 @@ class IngestionEventHandler implements PipelineEventHandler
         }
 
         foreach ($paths as $path) {
-            $this->ingestPath($event, $path);
+            $this->paths->ingest($event, $path);
         }
     }
 
@@ -63,7 +57,7 @@ class IngestionEventHandler implements PipelineEventHandler
         }
 
         foreach ($paths as $path) {
-            $ingestEvent = $this->ingestEventForPath($event, $path);
+            $ingestEvent = $this->eventsForIngestion->forPath($event, $path);
             $this->state->upsertJob($ingestEvent, $retryable ? PipelineJob::STATUS_PENDING : PipelineJob::STATUS_FAILED, [
                 'retry_count' => $retryCount,
                 'max_retries' => $maxRetries,
@@ -73,93 +67,10 @@ class IngestionEventHandler implements PipelineEventHandler
             ]);
 
             if ($retryable) {
-                $this->markProcessingState($ingestEvent, JobProcessingState::STATUS_RECEIVED);
+                $this->processingStates->mark($ingestEvent, JobProcessingState::STATUS_RECEIVED);
             } else {
-                $this->markProcessingStateFailed($ingestEvent, $error, $retryCount, $maxRetries);
+                $this->processingStates->failed($ingestEvent, $error, $retryCount, $maxRetries);
             }
         }
-    }
-
-    private function ingestPath(array $sourceEvent, string $path): void
-    {
-        $event = $this->ingestEventForPath($sourceEvent, $path);
-        $this->state->upsertJob($event, PipelineJob::STATUS_RUNNING, [
-            'source_event_type' => $sourceEvent['event_type'],
-        ]);
-        $this->markProcessingState($event, JobProcessingState::STATUS_PROCESSING);
-
-        $text = $this->artifacts->readText($path);
-        if (trim($text) === '') {
-            throw PipelineEventHandlerException::ingestContentIsEmpty($path);
-        }
-
-        $bridgeResponse = $this->bridge->ingest($event, $text, $path);
-
-        $this->state->upsertJob($event, PipelineJob::STATUS_COMPLETED, [
-            'bridge_response' => $bridgeResponse,
-        ]);
-        $this->markProcessingState($event, JobProcessingState::STATUS_COMPLETED);
-        $this->recordDocument($event, $path, $bridgeResponse);
-
-        $this->events->publish(PipelineEvent::CONTENT_INGESTED, array_merge($event, [
-            'status' => PipelineJob::STATUS_COMPLETED,
-            'metadata' => array_merge($event['metadata'], [
-                'bridge_response' => $bridgeResponse,
-            ]),
-        ]));
-
-    }
-
-    private function ingestEventForPath(array $event, string $path): array
-    {
-        $path = $this->content->resolvePath($path) ?? $path;
-        $hash = $this->artifacts->sha256($path);
-        $jobId = 'ingest_'.substr(hash('sha256', ($event['task_id'] ?? '').'|'.($event['job_id'] ?? '').'|'.$path), 0, 24);
-        $datasetId = (string) ($event['dataset_id'] ?: 'default');
-
-        return PipelineEvent::normalize(PipelineEvent::CONTENT_INGESTED, [
-            'task_id' => $event['task_id'],
-            'job_id' => $jobId,
-            'parent_job_id' => $event['job_id'],
-            'dataset_id' => $datasetId,
-            'job_type' => PipelineJob::TYPE_INGEST,
-            'source_url' => $event['source_url'],
-            'local_path' => $path,
-            'content_hash' => $hash,
-            'status' => PipelineJob::STATUS_RUNNING,
-            'metadata' => array_merge($event['metadata'] ?? [], [
-                'source_event_type' => $event['event_type'],
-                'source_job_id' => $event['job_id'],
-            ]),
-        ]);
-    }
-
-    private function markProcessingState(array $event, string $status): void
-    {
-        $this->ingestion->upsertProcessingState(
-            $event,
-            $status,
-            (int) $this->config->get('communication.rabbitmq.pipeline_events.max_retries', 3),
-        );
-    }
-
-    private function markProcessingStateFailed(array $event, \Throwable $error, int $retryCount, int $maxRetries): void
-    {
-        $this->ingestion->upsertFailedProcessingState($event, $error, $retryCount, $maxRetries);
-    }
-
-    private function recordDocument(array $event, string $path, array $bridgeResponse): void
-    {
-        $targets = $this->bridge->targets((string) ($event['dataset_id'] ?: 'default'));
-        $checksum = $this->artifacts->sha256($path, (string) $event['content_hash']);
-
-        $this->ingestion->upsertIngestedDocument(
-            $event,
-            $targets,
-            $path,
-            $checksum,
-            $this->artifacts->size($path),
-            $bridgeResponse,
-        );
     }
 }

@@ -1,0 +1,98 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Services\Pipeline\Commands;
+
+use App\Models\PipelineTask;
+use Illuminate\Console\Command;
+use Illuminate\Container\Attributes\Singleton;
+
+#[Singleton]
+readonly class PipelineDemoCommandRenderer
+{
+    /**
+     * @param list<string> $urls
+     * @param array<string, mixed> $input
+     */
+    public function planned(Command $command, string $taskId, string $dataset, array $urls, array $input): void
+    {
+        $command->line('HAWKI RAG demo pipeline');
+        $command->line('Task ID: '.$taskId);
+        $command->line('Dataset: '.$dataset);
+        $command->line('URL limit: '.count($urls));
+        $command->line('Graph metadata: '.((bool) ($input['metadata']['graph'] ?? false) ? 'true' : 'false'));
+    }
+
+    /**
+     * @param list<string> $urls
+     * @param list<string> $dashboardUrls
+     */
+    public function dryRun(Command $command, array $urls, array $dashboardUrls): void
+    {
+        $command->warn('Dry run only. No task, jobs, or RabbitMQ events were created.');
+        $this->printUrls($command, $urls);
+        $this->printDashboardUrls($command, $dashboardUrls);
+        $this->printWorkerCommands($command);
+    }
+
+    /**
+     * @param array<string, mixed> $status
+     * @param list<string> $urls
+     * @param list<string> $dashboardUrls
+     */
+    public function created(Command $command, PipelineTask $task, array $status, array $urls, array $dashboardUrls): void
+    {
+        $jobsTotal = (int) ($status['counters']['jobs_total'] ?? count($urls));
+        $queued = (int) ($status['counters']['queued'] ?? 0);
+        $skipped = (int) ($status['counters']['skipped'] ?? 0);
+
+        $command->newLine();
+        $command->info('Created demo pipeline task.');
+        $command->line('Task ID: '.$task->task_id);
+        $command->line('Status: '.($status['status'] ?? $task->status));
+        $command->line("Jobs created: {$jobsTotal}");
+        $command->line("Queued scrape jobs: {$queued}");
+        $command->line("Skipped scrape jobs: {$skipped}");
+        $command->line('RabbitMQ events requested: '.$queued.' scrape.requested event(s).');
+        $this->printUrls($command, $urls);
+        $this->printDashboardUrls($command, $dashboardUrls);
+        $this->printWorkerCommands($command);
+    }
+
+    /**
+     * @param list<string> $urls
+     */
+    private function printUrls(Command $command, array $urls): void
+    {
+        $command->newLine();
+        $command->line('Seed URLs:');
+        foreach ($urls as $url) {
+            $command->line('  - '.$url);
+        }
+    }
+
+    /**
+     * @param list<string> $urls
+     */
+    private function printDashboardUrls(Command $command, array $urls): void
+    {
+        $command->newLine();
+        foreach ($urls as $index => $url) {
+            $command->line(($index === 0 ? 'Dashboard URL: ' : 'Mounted dashboard URL: ').$url);
+        }
+    }
+
+    private function printWorkerCommands(Command $command): void
+    {
+        $command->newLine();
+        $command->line('If the task stays queued, start the pipeline workers:');
+        $command->line('  docker compose --profile pipeline-events up -d hawki-rag-scraper-event-worker hawki-rag-scrape-monitor-event-worker hawki-rag-converter-event-worker hawki-rag-ingestion-event-worker');
+        $command->line('');
+        $command->line('Direct Artisan worker commands:');
+        $command->line('  php artisan pipeline:scraper-event-worker');
+        $command->line('  php artisan pipeline:scrape-monitor-event-worker');
+        $command->line('  php artisan pipeline:converter-event-worker');
+        $command->line('  php artisan pipeline:ingestion-event-worker');
+    }
+}

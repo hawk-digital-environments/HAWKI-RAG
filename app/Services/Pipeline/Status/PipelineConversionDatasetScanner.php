@@ -1,0 +1,102 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Services\Pipeline\Status;
+
+use App\Services\FileConverter\ConversionFailureReportReader;
+use Illuminate\Container\Attributes\Config;
+use Illuminate\Container\Attributes\Singleton;
+use Illuminate\Filesystem\Filesystem;
+use Symfony\Component\Finder\Finder;
+
+#[Singleton]
+readonly class PipelineConversionDatasetScanner
+{
+    public function __construct(
+        private ConversionFailureReportReader $failures,
+        private Filesystem $files,
+        #[Config('file_converter.supported_extensions')]
+        private array $converterExtensions = ['pdf', 'doc', 'docx'],
+    ) {
+    }
+
+    /**
+     * @return array{
+     *     sourceCount: int,
+     *     convertedCount: int,
+     *     failedCount: int,
+     *     convertedAt: list<string>,
+     *     supportedExtensions: list<string>,
+     *     failures: list<array<string, mixed>>
+     * }
+     */
+    public function scan(string $resolvedPath): array
+    {
+        $extensions = $this->supportedExtensions();
+        $sourceCount = 0;
+        $convertedCount = 0;
+        $convertedAt = [];
+
+        foreach ($this->filesUnder($resolvedPath) as $file) {
+            $path = $file->getPathname();
+            if ($this->isConvertedOutputPath($path)) {
+                if ($file->getFilename() === 'conversion_meta.json') {
+                    $convertedCount++;
+                    $meta = json_decode($this->files->get($path), true);
+                    if (is_array($meta) && ! empty($meta['converted_at'])) {
+                        $convertedAt[] = (string) $meta['converted_at'];
+                    }
+                }
+
+                continue;
+            }
+
+            if (in_array(strtolower($file->getExtension()), $extensions, true)) {
+                $sourceCount++;
+            }
+        }
+
+        $failures = $this->failures->failuresFor($resolvedPath);
+
+        return [
+            'sourceCount' => $sourceCount,
+            'convertedCount' => $convertedCount,
+            'failedCount' => count($failures),
+            'convertedAt' => $convertedAt,
+            'supportedExtensions' => $extensions,
+            'failures' => $failures,
+        ];
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function supportedExtensions(): array
+    {
+        $extensions = $this->converterExtensions;
+        if (! is_array($extensions)) {
+            return ['pdf', 'doc', 'docx'];
+        }
+
+        $extensions = array_values(array_filter(
+            array_map(static fn ($extension) => is_scalar($extension) ? ltrim(strtolower(trim((string) $extension)), '.') : '', $extensions),
+            static fn ($extension) => $extension !== ''
+        ));
+
+        return $extensions ?: ['pdf', 'doc', 'docx'];
+    }
+
+    private function filesUnder(string $path): Finder
+    {
+        return Finder::create()
+            ->files()
+            ->ignoreUnreadableDirs()
+            ->in($path);
+    }
+
+    private function isConvertedOutputPath(string $path): bool
+    {
+        return str_contains(str_replace('\\', '/', $path), '/converted_');
+    }
+}

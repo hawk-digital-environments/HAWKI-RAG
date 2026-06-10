@@ -4,62 +4,38 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Http\Controllers\Scrape\ScrapeControllerResponseFactory;
+use App\Http\Controllers\Scrape\ScrapeRequestRules;
 use App\Services\Scrape\ScrapeService;
-use App\Services\Scrape\Data\ScrapeRequestResult;
 use Illuminate\Http\Request;
 
 class ScrapeController extends Controller
 {
-    public function __construct(protected readonly ScrapeService $scrapeService)
+    public function __construct(
+        protected readonly ScrapeService $scrapeService,
+        private readonly ScrapeRequestRules $rules,
+        private readonly ScrapeControllerResponseFactory $responses,
+    ) {}
+
+    public function requestScrape(Request $request)
     {
-    }
-
-    public function requestScrape(Request $request){
-        $validatedData = $request->validate([
-            'url' => 'required|string',
-            'label' => 'nullable|string',
-            'maxPages' => 'nullable|integer|min:0',
-            'outputDir' => 'string|nullable',
-            'skipImages' => 'nullable|boolean',
-            'imageExceptions' => [
-                'nullable',
-                function (string $attribute, mixed $value, \Closure $fail): void {
-                    if (!is_string($value) && !is_array($value)) {
-                        $fail('The '.$attribute.' field must be a string or an array of CSS selectors.');
-                    }
-                },
-            ],
-            'dateSelector' => 'string|nullable',
-            'maxConcurrency' => 'nullable|integer|min:1',
-            'maxRpm' => 'nullable|integer|min:1',
-            'requestDelay' => 'nullable|integer|min:0',
-            'discoveryMode'=> 'nullable|boolean',
-        ]);
+        $validatedData = $request->validate($this->rules->scrape());
         $result = $this->scrapeService->startPipeline($validatedData);
-        $payload = [
-            'success' => $result->success,
-            'jobId' => $result->jobId,
-            'result' => $result->toArray(),
-        ];
 
-        if (!$result->success) {
-            $payload['message'] = $this->scrapeFailureMessage($result);
-        }
-
-        return response()->json($payload, $result->success ? 200 : ($result->stage === 'validation' ? 422 : 502));
+        return $this->responses->scrapeRequest($result);
     }
 
-    public function cancelScrape(Request $request){
-        $validatedData = $request->validate([
-            'jobId' => 'required|string',
-        ]);
+    public function cancelScrape(Request $request)
+    {
+        $validatedData = $request->validate($this->rules->jobId());
         $data = $this->scrapeService->stopPipeline($validatedData['jobId']);
-        return $this->crawlerResponse($data);
+
+        return $this->responses->crawler($data);
     }
 
     public function getCrawlerJobs()
     {
-        return $this->crawlerResponse($this->scrapeService->listCrawlerJobs());
+        return $this->responses->crawler($this->scrapeService->listCrawlerJobs());
     }
 
     public function getCrawlerTasks()
@@ -71,123 +47,79 @@ class ScrapeController extends Controller
 
     public function startCrawlerTask(Request $request)
     {
-        $validatedData = $request->validate([
-            'taskId' => 'required|string',
-            'options' => 'nullable|array',
-        ]);
+        $validatedData = $request->validate($this->rules->crawlerTask());
 
         $result = $this->scrapeService->startCrawlerTask(
             $validatedData['taskId'],
             $validatedData['options'] ?? [],
         );
 
-        $status = (int) ($result['status'] ?? 502);
-        if ($status < 100 || $status > 599) {
-            $status = ($result['success'] ?? false) ? 200 : 502;
-        }
-
-        return response()->json($result, $status);
+        return $this->responses->crawler($result);
     }
 
     public function getCrawlerStatus(string $jobId)
     {
-        return $this->crawlerResponse($this->scrapeService->getCrawlerStatus($jobId));
+        return $this->responses->crawler($this->scrapeService->getCrawlerStatus($jobId));
     }
 
     public function cancelCrawlerJob(string $jobId)
     {
-        return $this->crawlerResponse($this->scrapeService->cancelCrawlerJob($jobId));
+        return $this->responses->crawler($this->scrapeService->cancelCrawlerJob($jobId));
     }
 
     public function pauseCrawlerJob(string $jobId)
     {
-        return $this->crawlerResponse($this->scrapeService->pauseCrawlerJob($jobId));
+        return $this->responses->crawler($this->scrapeService->pauseCrawlerJob($jobId));
     }
 
     public function resumeCrawlerJob(string $jobId)
     {
-        return $this->crawlerResponse($this->scrapeService->resumeCrawlerJob($jobId));
+        return $this->responses->crawler($this->scrapeService->resumeCrawlerJob($jobId));
     }
 
-    public function getAllScrapes(Request $request){
+    public function getAllScrapes(Request $request)
+    {
         $data = $this->scrapeService->listScrapeJobs();
-        return response()->json([
-            'data' => $data
-        ]);
+
+        return $this->responses->data($data);
     }
 
-    public function deleteScrapeJob(Request $request){
-        $validatedData = $request->validate([
-            'jobId' => 'required|string',
-        ]);
+    public function deleteScrapeJob(Request $request)
+    {
+        $validatedData = $request->validate($this->rules->jobId());
         $success = $this->scrapeService->deleteScrapeJob($validatedData['jobId']);
-        return response()->json([
-            'success' => $success,
-        ]);
+
+        return $this->responses->success($success);
     }
 
-    public function deleteScrapeContent(Request $request){
-        $validatedData = $request->validate([
-            'jobId' => 'required|string',
-        ]);
+    public function deleteScrapeContent(Request $request)
+    {
+        $validatedData = $request->validate($this->rules->jobId());
         $success = $this->scrapeService->deleteScrapeContent($validatedData['jobId']);
-        return response()->json([
-            'success' => $success,
-        ]);
+
+        return $this->responses->success($success);
     }
 
-    public function getScrapeInformation(Request $request){
-        $validatedData = $request->validate([
-            'jobId' => 'required|string',
-        ]);
+    public function getScrapeInformation(Request $request)
+    {
+        $validatedData = $request->validate($this->rules->jobId());
         $data = $this->scrapeService->getScrapeInformation($validatedData['jobId']);
-        return response()->json([
-            'data' => $data,
-        ]);
+
+        return $this->responses->data($data);
     }
 
-    public function getScrapeResult(Request $request){
-        $validatedData = $request->validate([
-            'jobId' => 'required|string',
-            'elementId' => 'required|integer|min:1',
-        ]);
+    public function getScrapeResult(Request $request)
+    {
+        $validatedData = $request->validate($this->rules->scrapeResult());
         $data = $this->scrapeService->getScrapeResult($validatedData['jobId'], (int) $validatedData['elementId']);
 
-        return response()->json([
-            'data' => $data,
-        ]);
+        return $this->responses->data($data);
     }
 
-    public function extractPageContent(Request $request){
-        $validatedData = $request->validate([
-            'url' => 'required|string',
-        ]);
-        return $this->crawlerResponse($this->scrapeService->extractPageContent($validatedData['url']));
-    }
-
-    private function crawlerResponse(array $result)
+    public function extractPageContent(Request $request)
     {
-        $status = (int) ($result['status'] ?? 502);
-        if ($status < 100 || $status > 599) {
-            $status = ($result['success'] ?? false) ? 200 : 502;
-        }
+        $validatedData = $request->validate($this->rules->url());
 
-        return response()->json($result, $status);
+        return $this->responses->crawler($this->scrapeService->extractPageContent($validatedData['url']));
     }
-
-    private function scrapeFailureMessage(ScrapeRequestResult $result): string
-    {
-        $firstError = $result->errors[0] ?? null;
-
-        if (is_array($firstError) && isset($firstError['message']) && is_scalar($firstError['message'])) {
-            return (string) $firstError['message'];
-        }
-
-        if (is_scalar($firstError)) {
-            return (string) $firstError;
-        }
-
-        return 'Scrape request failed.';
-    }
-
 }
