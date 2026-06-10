@@ -57,7 +57,7 @@ COMPOSE_FILE_PREFIX := COMPOSE_FILE=$(COMPOSE_FILE_LIST)
 COMPOSE_CMD = $(COMPOSE_ENV_PREFIX) COMPOSE_FILE=$(COMPOSE_FILE_LIST) $(if $(strip $(COMPOSE_PROFILES)),COMPOSE_PROFILES=$(COMPOSE_PROFILES)) $(COMPOSE_BIN) --env-file $(ENV_FILE)
 
 
-.PHONY: network pull-core build-app migrate-core _up-core up-core up-core-server health pull-models scraped-folders crawl convert ingest convert-ingest-folder pipeline logs-core down-core down-rag restart-core test-services neo4j-fresh
+.PHONY: network pull-core build-app migrate-core _up-core up-core up-core-server health pull-models scraped-folders crawl convert ingest convert-ingest-folder pipeline logs-core down-core down-rag restart-core test-services neo4j-fresh python-test
 
 network:
 	@for net in hawki-network hosting_network; do \
@@ -219,6 +219,9 @@ test-services:
 		printf "hawki_rag_rerank: skipped (container not running)\n"; \
 	fi; \
 	echo "Service checks completed."
+
+python-test:
+	@PYTHONPATH=python_rag python -m unittest discover -s python_rag/tests -p 'test_*.py'
 
 pull-models:
 	@docker exec -it $(OLLAMA_CONTAINER) ollama pull bge-m3

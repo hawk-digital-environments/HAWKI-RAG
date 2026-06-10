@@ -9,7 +9,6 @@ Notes:
 """
 import argparse
 import logging
-import hashlib
 import json
 import math
 import os
@@ -20,6 +19,55 @@ from datetime import datetime, timezone
 import time
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
+
+try:
+    from ingest.discovery import discover_page_dirs as _discover_page_dirs
+    from ingest.links import extract_pdf_links as _extract_pdf_links
+    from ingest.metadata import (
+        first_str as _first_str,
+        make_doc_id as _make_doc_id,
+        resolve_date as _resolve_date,
+        title_from_markdown as _title_from_markdown,
+        to_array_list as _to_array_list,
+    )
+    from ingest.payloads import build_bridge_doc, build_payload
+    from ingest.resume import (
+        batched as _batched,
+        load_resume_state as _load_resume_state,
+        safe_state_filename as _resume_safe_state_filename,
+        save_resume_state_payload,
+        should_split_batch as _should_split_batch,
+    )
+    from ingest.url_maps import (
+        build_url_maps as _build_url_maps,
+        normalize_path as _normalize_path,
+        read_json_file as _read_json_file,
+        resolve_url_for_path as _resolve_url_for_path,
+    )
+except ImportError:
+    from discovery import discover_page_dirs as _discover_page_dirs
+    from links import extract_pdf_links as _extract_pdf_links
+    from metadata import (
+        first_str as _first_str,
+        make_doc_id as _make_doc_id,
+        resolve_date as _resolve_date,
+        title_from_markdown as _title_from_markdown,
+        to_array_list as _to_array_list,
+    )
+    from payloads import build_bridge_doc, build_payload
+    from resume import (
+        batched as _batched,
+        load_resume_state as _load_resume_state,
+        safe_state_filename as _resume_safe_state_filename,
+        save_resume_state_payload,
+        should_split_batch as _should_split_batch,
+    )
+    from url_maps import (
+        build_url_maps as _build_url_maps,
+        normalize_path as _normalize_path,
+        read_json_file as _read_json_file,
+        resolve_url_for_path as _resolve_url_for_path,
+    )
 
 EXIT_SUCCESS = 0
 EXIT_RUNTIME_FAILURE = 1
@@ -246,220 +294,31 @@ def load_page_materials(dir_path: Path) -> Tuple[Dict, Optional[Path], Optional[
 
 
 def normalize_path(path_like: Any) -> Optional[Path]:
-    if path_like is None:
-        return None
-    try:
-        path = Path(str(path_like)).expanduser()
-        return path.resolve(strict=False)
-    except Exception:
-        return None
+    return _normalize_path(path_like)
 
 
 def _read_json_file(path: Path) -> Dict[str, Any]:
-    try:
-        return json.loads(path.read_text(encoding="utf-8", errors="ignore"))
-    except Exception:
-        try:
-            return json.loads(path.read_text(errors="ignore"))
-        except Exception:
-            return {}
+    return _read_json_file(path)
 
 
 def build_url_maps(root: Path) -> Tuple[Dict[Path, str], Dict[Path, str]]:
-    """
-    Build lookup maps so directories can resolve their page/source URLs.
-    Returns: (page_url_map, source_url_map)
-    """
-    page_url_map: Dict[Path, str] = {}
-    source_url_map: Dict[Path, str] = {}
-    pdf_lookup: Dict[Path, Dict[str, str]] = {}
-    root_resolved = root.resolve(strict=False)
-
-    # Pass 1: collect page URLs and PDF mappings from primary JSON metadata.
-    for dirpath, _, filenames in os.walk(root):
-        dir_path = Path(dirpath)
-        dir_resolved = dir_path.resolve(strict=False)
-        json_files = [fn for fn in filenames if fn.lower().endswith(".json")]
-        if not json_files:
-            continue
-        for fname in json_files:
-            if fname == "conversion_meta.json":
-                continue
-            data = _read_json_file(dir_path / fname)
-            if not isinstance(data, dict):
-                continue
-            page_url = first_str(data.get("url") or data.get("page_url"))
-            if page_url:
-                page_url_map.setdefault(dir_resolved, page_url)
-            pdfs = data.get("pdfs")
-            if isinstance(pdfs, list):
-                for pdf_entry in pdfs:
-                    if not isinstance(pdf_entry, dict):
-                        continue
-                    local_path = normalize_path(pdf_entry.get("local_path"))
-                    pdf_url = first_str(pdf_entry.get("url"))
-                    if not local_path or not pdf_url:
-                        continue
-                    pdf_lookup[local_path] = {
-                        "page_url": page_url,
-                        "source_url": pdf_url,
-                    }
-
-    # Pass 2: link converted PDF output directories back to their source/page URLs.
-    for dirpath, _, filenames in os.walk(root):
-        if "conversion_meta.json" not in filenames:
-            continue
-        dir_path = Path(dirpath)
-        conv_meta = _read_json_file(dir_path / "conversion_meta.json")
-        if not isinstance(conv_meta, dict):
-            continue
-        source_pdf = normalize_path(conv_meta.get("source_pdf") or conv_meta.get("source_file"))
-        explicit_page_url = first_str(conv_meta.get("page_url") or conv_meta.get("url") or conv_meta.get("original_url"))
-        explicit_source_url = first_str(conv_meta.get("source_url") or conv_meta.get("original_url"))
-        if not source_pdf:
-            info = {}
-        else:
-            info = pdf_lookup.get(source_pdf, {})
-        target_dirs: Set[Path] = set()
-        dir_resolved = dir_path.resolve(strict=False)
-        target_dirs.add(dir_resolved)
-        output_dir = normalize_path(conv_meta.get("output_dir"))
-        if output_dir:
-            target_dirs.add(output_dir)
-        for base in list(target_dirs):
-            output_path = normalize_path(base / "output")
-            if output_path:
-                target_dirs.add(output_path)
-        for tdir in target_dirs:
-            if not tdir:
-                continue
-            page_url = explicit_page_url or info.get("page_url")
-            source_url = explicit_source_url or info.get("source_url") or page_url
-            if page_url:
-                page_url_map.setdefault(tdir, page_url)
-            if source_url:
-                source_url_map.setdefault(tdir, source_url)
-
-    # Default source_url to page_url where specific overrides do not exist.
-    for dir_path, page_url in page_url_map.items():
-        source_url_map.setdefault(dir_path, page_url)
-
-    # Ensure root always resolves within the maps to avoid lookups failing at top-level.
-    if root_resolved in page_url_map and root_resolved not in source_url_map:
-        source_url_map[root_resolved] = page_url_map[root_resolved]
-
-    return page_url_map, source_url_map
+    return _build_url_maps(root)
 
 
 def resolve_url_for_path(mapping: Dict[Path, str], path: Path, root: Path) -> Optional[str]:
-    """
-    Walk up from path towards root to locate the closest mapped URL.
-    """
-    try:
-        current = path.resolve(strict=False)
-        root_resolved = root.resolve(strict=False)
-    except Exception:
-        return None
-
-    while True:
-        if current in mapping:
-            return mapping[current]
-        if current == root_resolved:
-            break
-        parent = current.parent
-        if parent == current:
-            break
-        try:
-            if not current.is_relative_to(root_resolved):
-                break
-        except AttributeError:
-            # Python < 3.9 fallback
-            cur_str = str(current)
-            root_str = str(root_resolved)
-            if not cur_str.startswith(root_str.rstrip(os.sep) + os.sep):
-                break
-        current = parent
-
-    return None
+    return _resolve_url_for_path(mapping, path, root)
 ########################################### PAGE DIR DISCOVERY #####################################
 def discover_page_dirs(root: Path) -> List[Path]:
-    """
-    Return folders that look like a page/document ingest unit.
-
-    Policy:
-      - Treat `converted_*` directories with `conversion_meta.json` as document units.
-      - Skip children of those converted trees to avoid duplicate ingestion.
-      - Count a directory as ingestable when it has non-conversion JSON metadata,
-        an eligible markdown source (`content.md` or `converted.md`, but not `*_converted.md`),
-        or a `.txt` file for legacy JSON-text fallback detection.
-    """
-    out: List[Path] = []
-    for dp, dn, fn in os.walk(root):
-        p = Path(dp)
-        # Converted output folders are their own document units when they have
-        # conversion metadata; skip their children to avoid duplicate ingestion.
-        try:
-            relative_parts = p.relative_to(root).parts
-        except ValueError:
-            relative_parts = p.parts
-        parts = [part.lower() for part in relative_parts]
-        in_converted_tree = any(part.startswith("converted_") for part in parts)
-        has_conversion_meta = "conversion_meta.json" in fn
-        if in_converted_tree:
-            if has_conversion_meta:
-                out.append(p)
-            dn[:] = []
-            continue
-
-        has_non_conversion_json = any(
-            name.lower().endswith(".json") and name != "conversion_meta.json"
-            for name in fn
-        )
-        has_eligible_markdown = any(
-            name.lower().endswith(".md") and not name.lower().endswith("_converted.md")
-            for name in fn
-        )
-        has_txt = any(name.lower().endswith(".txt") for name in fn)
-        if has_non_conversion_json or has_eligible_markdown or has_txt:
-            out.append(p)
-    return out
+    return _discover_page_dirs(root)
 
 def first_str(v) -> Optional[str]:
-    if isinstance(v, list) and v:
-        v = v[0]
-    if v is None:
-        return None
-    s = str(v).strip()
-    if not s:
-        return None
-    lowered = s.lower()
-    if lowered in {"null", "none", "n/a", "undefined"}:
-        return None
-    return s
+    return _first_str(v)
 
 def resolve_date(meta: Dict[str, Any], fallback_path: Optional[Path]) -> Optional[str]:
-    date = first_str(meta.get("date"))
-    if not date:
-        date = first_str(meta.get("published_at") or meta.get("updated_at") or meta.get("modified_at"))
-    if not date:
-        try:
-            if fallback_path and fallback_path.exists():
-                date = datetime.fromtimestamp(fallback_path.stat().st_mtime, tz=timezone.utc).isoformat()
-        except Exception:
-            date = None
-    return date
+    return _resolve_date(meta, fallback_path)
 
 def to_array_list(v) -> List[str]:
-    if isinstance(v, str):
-        return [v]
-    if not isinstance(v, list):
-        return []
-    out: List[str] = []
-    for x in v:
-        s = first_str(x)
-        if s:
-            out.append(s)
-    return out
+    return _to_array_list(v)
 ########################################### PREPROCESSING LOGICS #####################################
 
 def load_stopwords() -> set[str]:
@@ -550,29 +409,13 @@ def resolve_tags(meta: Dict, text: str) -> List[str]:
 
 
 def extract_pdf_links(text: str) -> List[str]:
-    if not text:
-        return []
-    pattern = re.compile(r"https?://[^\s)>\"]+?\.pdf", re.IGNORECASE)
-    links = pattern.findall(text)
-    seen = set()
-    out: List[str] = []
-    for link in links:
-        clean = link.rstrip(").,;\"'")
-        if clean not in seen:
-            seen.add(clean)
-            out.append(clean)
-    return out
+    return _extract_pdf_links(text)
 ########################################### TITLES AND DOC IDS PROCESSING #####################################
 
 def title_from_markdown(md: str) -> Optional[str]:
-    for line in md.splitlines():
-        t = line.strip().lstrip("# ").strip()
-        if t:
-            return t[:200]
-    return None
+    return _title_from_markdown(md)
 def make_doc_id(page_url: Optional[str], rel_path: str) -> str:
-    base = page_url or rel_path
-    return hashlib.sha1(base.encode("utf-8", errors="ignore")).hexdigest()
+    return _make_doc_id(page_url, rel_path)
 
 ########################################### BATCH PROCESSING #####################################
 
@@ -600,14 +443,7 @@ def split_text_local(txt: str, target: int, overlap: int) -> List[str]:
     return out
 
 def batch(iterable, size: int):
-    buf = []
-    for item in iterable:
-        buf.append(item)
-        if len(buf) >= size:
-            yield buf
-            buf = []
-    if buf:
-        yield buf
+    yield from _batched(iterable, size)
 
 
 def run_local_estimate(
@@ -674,30 +510,16 @@ def run_local_estimate(
 
 
 def _safe_state_filename(key: str) -> str:
-    digest = hashlib.sha1(key.encode("utf-8", errors="ignore")).hexdigest()
-    return f"{digest}.json"
+    return _resume_safe_state_filename(key)
 
 
 def load_resume_state(path: Path) -> Set[str]:
-    if not path.exists():
-        return set()
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
-        return set()
-    doc_ids = data.get("doc_ids", [])
-    return {str(doc_id) for doc_id in doc_ids if isinstance(doc_id, (str, int))}
+    return _load_resume_state(path)
 
 
 def save_resume_state(path: Path, doc_ids: Set[str], metadata: Dict[str, Any]) -> None:
     try:
-        payload = {
-            "doc_ids": sorted(doc_ids),
-            "updated_at": utc_now_iso(),
-        }
-        payload.update(metadata)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        save_resume_state_payload(path, doc_ids=doc_ids, metadata=metadata, updated_at=utc_now_iso())
     except Exception as exc:
         print(f"Warning: failed to persist resume state to {path}: {exc}", file=sys.stderr)
 
@@ -722,21 +544,7 @@ def post_batch(base_url: str, docs: List[Dict], options: Dict, timeout: int) -> 
         return False, None, err
 
 def should_split_batch(err: Optional[str]) -> bool:
-    if not err:
-        return False
-    lowered = err.lower()
-    retry_markers = [
-        "timed out",
-        "timeout",
-        "read timed out",
-        "502",
-        "503",
-        "504",
-        "bad gateway",
-        "gateway",
-        "service unavailable",
-    ]
-    return any(marker in lowered for marker in retry_markers)
+    return _should_split_batch(err)
 
 
 def write_summary_file(summary_file: Optional[str], summary: Dict[str, Any]) -> None:
@@ -1010,8 +818,6 @@ def main():
         source_path = md_path or json_path or d
         date = resolve_date(meta, source_path)
         meta_img = first_str(meta.get("metaImageUrl") or meta.get("meta_img_url"))
-        updated_at = first_str(meta.get("updated_at") or meta.get("updatedAt"))
-        fetch_time = first_str(meta.get("fetch_time") or meta.get("fetchTime"))
         title_list = to_array_list(meta.get("title")) or ([title] if title else [])
         page_url_list = to_array_list(meta.get("page_url") or meta.get("url")) or ([page_url] if page_url else [])
         meta_img_list = to_array_list(meta.get("meta_img_url") or meta.get("metaImageUrl"))
@@ -1030,35 +836,24 @@ def main():
             skipped_existing += 1
             continue
 
-        payload = {
-            "title": title,
-            "page_url": page_url,
-            "url_hash": first_str(meta.get("url_hash")),
-            "canonical_url": first_str(meta.get("canonical_url")),
-            "meta_img_url": meta_img_list,
-            "images": images_list,
-            "lang": first_str(meta.get("lang")),
-            "published_at": first_str(meta.get("published_at")),
-            "updated_at": updated_at,
-            "http_status": meta.get("http_status"),
-            "content_length": meta.get("content_length"),
-            "fetch_time": fetch_time,
-            "content_hash": first_str(meta.get("content_hash")),
-            "pdfs": pdfs_list,
-            "source_url": source_url or page_url or rel,
-            "date": date,
-            "meta_img_url_text": meta_img,
-            "tags": tags or None,
-            "source_format": source_fmt,
-            "file_path": str(md_path) if md_path else None,
-            "ingested_at": utc_now_iso(),
-        }
+        payload = build_payload(
+            meta=meta,
+            title=title,
+            page_url=page_url,
+            source_url=source_url,
+            rel_path=rel,
+            date=date,
+            meta_img=meta_img,
+            meta_img_list=meta_img_list,
+            images_list=images_list,
+            pdfs_list=pdfs_list,
+            tags=tags,
+            source_format=source_fmt,
+            md_path=md_path,
+            ingested_at=utc_now_iso(),
+        )
 
-        docs.append({
-            "id": doc_id,
-            "text": text,
-            "payload": payload,
-        })
+        docs.append(build_bridge_doc(doc_id=doc_id, text=text, payload=payload))
         total += 1
 
         if len(docs) >= args.batch:

@@ -1,44 +1,25 @@
 ########################################### libs and bibz #####################################
-import logging
 import os
-import shutil
-import subprocess
 from pathlib import Path
-from typing import List, Dict, Any
 
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, Field
+from fastapi import FastAPI
 
 from core.rag_service import RAGService
 from vectorstore.qdrant_http import QdrantHTTP
 
+from .config_response import build_config_response
+from .documents import build_replacement_ingest_request
 from .ingest import ingest_documents, delete_document
+from .dependencies import get_provider_or_400
+from .logging_config import configure_app_logging
+from .runtime import log_gpu_status
+from .schemas import DocumentUpsertRequest, GraphRequest, IngestRequest, QueryRequest
 from pipeline.query_logic import query_documents
 from graph.graph_text import graph_from_text
 
 ########################################### CONFIG #####################################
 
-LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO").upper()
-logging.basicConfig(level=LOG_LEVEL, format="%(levelname)s:%(name)s:%(message)s")
-logger = logging.getLogger(__name__)
-logger.setLevel(LOG_LEVEL)
-
-GRAPH_DEBUG = os.environ.get("GRAPH_DEBUG", "").strip().lower() in ("1", "true", "yes")
-GRAPH_DEBUG_LOG = os.environ.get("GRAPH_DEBUG_LOG", "").strip()
-if GRAPH_DEBUG:
-    logging.getLogger("pipeline.ingest_logic").setLevel(logging.DEBUG)
-    logging.getLogger("core.rag_service").setLevel(logging.DEBUG)
-else:
-    # Keep noisy preprocess logs off unless explicitly debugging.
-    logging.getLogger("utils.text_preprocessor").setLevel(logging.INFO)
-if GRAPH_DEBUG_LOG:
-    log_path = Path(GRAPH_DEBUG_LOG)
-    log_path.parent.mkdir(parents=True, exist_ok=True)
-    file_handler = logging.FileHandler(log_path, encoding="utf-8")
-    file_handler.setLevel(logging.DEBUG)
-    file_handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s:%(name)s:%(message)s"))
-    logging.getLogger().addHandler(file_handler)
-    logger.info("graph:debug logging to %s", log_path)
+logger, GRAPH_DEBUG, GRAPH_DEBUG_LOG = configure_app_logging(os.environ, logger_name=__name__)
 BASE_DIR = Path(__file__).resolve().parent
 PYTHON_RAG_ROOT = BASE_DIR.parent
 PROJECT_ROOT = PYTHON_RAG_ROOT.parent
@@ -49,122 +30,11 @@ rag_service = RAGService()
 ###################################### PROVIDER CONFIG ###############################
 
 def get_provider(name: str):
-    try:
-        return rag_service.get_provider(name)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-
-###################################### REQUEST MODELS ###############################
-
-def _int_env(name: str, default: int) -> int:
-    raw = os.environ.get(name)
-    if raw is None or str(raw).strip() == "":
-        return default
-    try:
-        return int(raw)
-    except ValueError:
-        return default
+    return get_provider_or_400(rag_service, name)
 
 
 def _log_gpu_status(context: str) -> None:
-    cuda_visible = os.environ.get("CUDA_VISIBLE_DEVICES", "unset")
-    nvidia_visible = os.environ.get("NVIDIA_VISIBLE_DEVICES", "unset")
-    has_dev = any(Path(p).exists() for p in ("/dev/nvidia0", "/dev/nvidiactl", "/dev/nvidia-uvm"))
-    logger.info(
-        "gpu:%s env CUDA_VISIBLE_DEVICES=%s NVIDIA_VISIBLE_DEVICES=%s dev_nodes=%s",
-        context,
-        cuda_visible,
-        nvidia_visible,
-        "present" if has_dev else "missing",
-    )
-
-    smi = shutil.which("nvidia-smi")
-    if not smi:
-        logger.info("gpu:%s nvidia-smi not found", context)
-        return
-    try:
-        result = subprocess.run(
-            [
-                smi,
-                "--query-gpu=index,name,memory.total,memory.free,utilization.gpu",
-                "--format=csv,noheader,nounits",
-            ],
-            capture_output=True,
-            text=True,
-            timeout=2,
-        )
-    except Exception as exc:
-        logger.info("gpu:%s nvidia-smi failed: %s", context, exc)
-        return
-    if result.returncode != 0:
-        err = result.stderr.strip() or "unknown error"
-        logger.info("gpu:%s nvidia-smi error rc=%s err=%s", context, result.returncode, err)
-        return
-    for line in result.stdout.splitlines():
-        line = line.strip()
-        if line:
-            logger.info("gpu:%s nvidia-smi %s", context, line)
-
-class IngestDoc(BaseModel):
-    id: str | int
-    text: str
-    payload: Dict[str, Any] = Field(default_factory=dict)
-
-
-class IngestRequest(BaseModel):
-    docs: List[IngestDoc]
-    provider: str = Field(default=os.environ.get("RAG_DEFAULT_PROVIDER", "ollama"))
-    embedding_model: str | None = None
-    collection: str | None = None
-    neo4j_database: str | None = None
-    distance: str = Field(default=os.environ.get("QDRANT_DISTANCE", "Cosine"))
-    chunk_chars: int = Field(default=_int_env("CHUNK_SIZE", 1200))
-    chunk_overlap: int = Field(default=_int_env("CHUNK_OVERLAP_SIZE", 250))
-    batch_size: int = Field(default=_int_env("INGEST_BATCH_SIZE", 64))
-    graph: bool = False
-    graph_engine: str = Field(default=os.environ.get("GRAPH_ENGINE", "raganything"))
-    graph_model: str | None = None
-    graph_only: bool = False
-    dry_run: bool = False
-    dry_include_graph: bool = False
-
-
-class QueryRequest(BaseModel):
-    query: str
-    top_k: int = 5
-    provider: str = Field(default=os.environ.get("RAG_DEFAULT_PROVIDER", "ollama"))
-    filters: Dict[str, Any] = Field(default_factory=dict)
-    generate: bool = True
-    is_optimized: bool = False
-    fast_mode: bool = False
-    smart_lookup: bool = False
-    structural_hops: int | None = None
-    preferred_tags: List[str] | None = None
-    # Reranker options: none | cosine | external | jina
-    reranker: str = Field(default=os.environ.get("RERANKER_MODE", "none"))
-    rerank_top_n: int = 20
-    # Mix mode: blend original vector score with reranker score
-    mix_mode: bool = Field(default=bool(os.environ.get("RERANKER_MIX_MODE", "true").lower() in ("1", "true", "yes")))
-    mix_weight: float = Field(default=float(os.environ.get("RERANKER_MIX_WEIGHT", 0.5)))  # 0..1, weight on original score
-
-
-class GraphRequest(BaseModel):
-    text: str
-    engine: str = Field(default=os.environ.get("GRAPH_ENGINE", "raganything"))
-
-
-class DocumentUpsertRequest(BaseModel):
-    text: str
-    payload: Dict[str, Any] = Field(default_factory=dict)
-    provider: str | None = None
-    collection: str | None = None
-    distance: str | None = None
-    chunk_chars: int | None = None
-    chunk_overlap: int | None = None
-    graph: bool = False
-    graph_engine: str | None = None
-
+    log_gpu_status(logger, context)
 
 ################################## ENDPOINTS #################################
 
@@ -181,43 +51,9 @@ def health():
 
 @app.get("/config")
 def config():
-    # Active provider and embedding model
-    provider_name = os.environ.get("RAG_DEFAULT_PROVIDER", "ollama").strip()
-    try:
-        provider = get_provider(provider_name)
-        embed_model = getattr(provider, "embed_model", None)
-    except Exception:
-        embed_model = None
-
-    # Reranker settings
-    reranker_mode = os.environ.get("RERANKER_MODE", "none")
-    mix_mode = str(os.environ.get("RERANKER_MIX_MODE", "true")).lower() in ("1", "true", "yes")
-    try:
-        mix_weight = float(os.environ.get("RERANKER_MIX_WEIGHT", 0.5))
-    except Exception:
-        mix_weight = 0.5
-    jina_model = os.environ.get("JINA_RERANKER_MODEL", "jina-reranker-v2-base-multilingual")
-    external_url = os.environ.get("RERANKER_API_URL", "")
-
-    # Qdrant collection and vector size
-    q = QdrantHTTP()
-    qdrant_collection = q.collection
-    vector_size = q.get_vector_size()
-
-    logger.info("config:provider=%s qdrant_collection=%s", provider_name, qdrant_collection)
-    return {
-        "provider": provider_name,
-        "embedding_model": embed_model,
-        "qdrant_collection": qdrant_collection,
-        "qdrant_vector_size": vector_size,
-        "reranker": {
-            "mode": reranker_mode,
-            "mix_mode": mix_mode,
-            "mix_weight": mix_weight,
-            "jina_model": jina_model,
-            "external_url": external_url,
-        },
-    }
+    response = build_config_response(get_provider=get_provider, qdrant_factory=QdrantHTTP)
+    logger.info("config:provider=%s qdrant_collection=%s", response["provider"], response["qdrant_collection"])
+    return response
 
 
 @app.post("/ingest")
@@ -242,24 +78,8 @@ def delete_document_endpoint(doc_id: str):
 
 @app.put("/documents/{doc_id}")
 def replace_document(doc_id: str, body: DocumentUpsertRequest):
-    if not doc_id:
-        raise HTTPException(status_code=400, detail="doc_id is required")
-    if not (body.text and body.text.strip()):
-        raise HTTPException(status_code=400, detail="text is required to replace a document")
-
     deletion = delete_document(doc_id)
-
-    ingest_doc = IngestDoc(id=doc_id, text=body.text, payload=body.payload)
-    ingest_request = IngestRequest(
-        docs=[ingest_doc],
-        provider=body.provider or os.environ.get("RAG_DEFAULT_PROVIDER", "ollama"),
-        collection=body.collection,
-        distance=body.distance or os.environ.get("QDRANT_DISTANCE", "Cosine"),
-        chunk_chars=body.chunk_chars or 3200,
-        chunk_overlap=body.chunk_overlap or 250,
-        graph=body.graph,
-        graph_engine=body.graph_engine or os.environ.get("GRAPH_ENGINE", "fallback"),
-    )
+    ingest_request = build_replacement_ingest_request(doc_id, body)
 
     ingest_response = ingest_documents(
         ingest_request,

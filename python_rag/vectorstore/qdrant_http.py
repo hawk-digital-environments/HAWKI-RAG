@@ -5,6 +5,16 @@ from typing import List, Dict, Any, Optional
 
 import requests
 from requests import RequestException, Response
+from vectorstore.collections import collection_names, pick_most_populated_collection, vector_size_from_config
+from vectorstore.payloads import (
+    build_delete_filter,
+    build_scroll_body,
+    build_search_body,
+    build_text_filter,
+    build_vector_search_body,
+    iter_batches,
+)
+from vectorstore.settings import qdrant_settings_from_env
 
 logger = logging.getLogger(__name__)
 
@@ -12,15 +22,13 @@ logger = logging.getLogger(__name__)
 class QdrantHTTP:
     """Lightweight client used by the FastAPI bridge to talk to Qdrant."""
     def __init__(self) -> None:
-        scheme = os.environ.get("QDRANT_SCHEME", "http")
-        host = os.environ.get("QDRANT_HOST", "qdrant")
-        port = int(os.environ.get("QDRANT_PORT", "6333"))
-        self.collection = os.environ.get("QDRANT_COLLECTION", "").strip()
-        self.base = f"{scheme}://{host}:{port}"
-        self.api_key = os.environ.get("QDRANT_API_KEY")
-        self.timeout = float(os.environ.get("QDRANT_TIMEOUT", "30"))
+        settings = qdrant_settings_from_env()
+        self.collection = settings.collection
+        self.base = settings.base_url
+        self.api_key = settings.api_key
+        self.timeout = settings.timeout
         self._session = requests.Session()
-        self.max_attempts = int(os.environ.get("QDRANT_RETRY_ATTEMPTS", "3"))
+        self.max_attempts = settings.max_attempts
 
     def _headers(self) -> Dict[str, str]:
         """Return default headers including an optional API key."""
@@ -77,13 +85,7 @@ class QdrantHTTP:
         """Return all collection names available in Qdrant."""
         r = self._request("GET", "/collections")
         r.raise_for_status()
-        data = r.json().get("result", {}) or {}
-        names = []
-        for col in data.get("collections", []) or []:
-            name = col.get("name")
-            if name:
-                names.append(str(name))
-        return names
+        return collection_names(r.json())
 
     def _pick_default_collection(self) -> Optional[str]:
         """Pick the most populated collection when no default is configured."""
@@ -92,16 +94,7 @@ class QdrantHTTP:
         except Exception as exc:
             logger.warning("Qdrant default selection failed to list collections: %s", exc)
             return None
-        best_name = None
-        best_count = -1
-        for name in names:
-            count = self.count_points(name)
-            if count is None:
-                continue
-            if count > best_count:
-                best_name = name
-                best_count = count
-        return best_name
+        return pick_most_populated_collection((name, self.count_points(name)) for name in names)
 
     def _search_collection(
         self,
@@ -140,8 +133,8 @@ class QdrantHTTP:
             return
         size = max(1, int(batch_size))
         logger.info("qdrant:upsert_points total=%s batch_size=%s", len(points), size)
-        for i in range(0, len(points), size):
-            self.upsert(points[i:i + size])
+        for batch in iter_batches(points, size):
+            self.upsert(batch)
 
     def count_points(self, collection: Optional[str] = None, exact: bool = True) -> Optional[int]:
         """Return the number of points stored in a collection."""
@@ -182,29 +175,18 @@ class QdrantHTTP:
         """Execute a vector search and return payload-rich results."""
         timeout = float(os.environ.get("QDRANT_SEARCH_TIMEOUT", self.timeout))
         search_all = os.environ.get("QDRANT_SEARCH_ALL", "false").lower() in ("1", "true", "yes")
-        body: Dict[str, Any] = {
-            "vector": vector,
-            "limit": int(top_k),
-            "with_payload": with_payload,
-            "with_vector": with_vector,
-        }
-        if filters:
-            body["filter"] = {"must": [{"key": k, "match": {"value": v}} for k, v in filters.items()]}
-        if keyword_terms and keyword_fields:
-            should = []
-            for term in keyword_terms[:6]:
-                for field in keyword_fields:
-                    should.append({"key": field, "match": {"value": term}})
-            if should:
-                body.setdefault("filter", {})
-                body["filter"].setdefault("should", [])
-                body["filter"]["should"].extend(should)
-        if score_threshold is not None:
-            body["score_threshold"] = float(score_threshold)
-        if params:
-            body["params"] = params
-        if payload_projection:
-            body["with_payload"] = {"include": payload_projection}
+        body = build_search_body(
+            vector,
+            top_k=top_k,
+            filters=filters,
+            score_threshold=score_threshold,
+            params=params,
+            with_payload=with_payload,
+            with_vector=with_vector,
+            payload_projection=payload_projection,
+            keyword_terms=keyword_terms,
+            keyword_fields=keyword_fields,
+        )
 
         if search_all:
             try:
@@ -285,21 +267,11 @@ class QdrantHTTP:
             self.collection = collection
         if not collection:
             return []
-        filter_body: Dict[str, Any] = {"must": []}
         max_terms = int(os.environ.get("QDRANT_TEXT_FALLBACK_TERMS", "3"))
-        for term in terms[: max_terms]:
-            should = [{"key": field, "match": {"text": term}} for field in fields]
-            if should:
-                filter_body["must"].append({"should": should})
-        if not filter_body["must"]:
+        filter_body = build_text_filter(terms, fields, max_terms=max_terms, require_all=True)
+        if not filter_body:
             return []
-        body = {
-            "vector": vector,
-            "limit": int(top_k),
-            "with_payload": True,
-            "with_vector": False,
-            "filter": filter_body,
-        }
+        body = build_vector_search_body(vector, top_k=top_k, filter_body=filter_body)
         r = self._request(
             "POST",
             f"/collections/{collection}/points/search",
@@ -314,18 +286,11 @@ class QdrantHTTP:
             return result
 
         # Relax to "any term" if strict matching yields nothing.
-        relax_body = {
-            "vector": vector,
-            "limit": int(top_k),
-            "with_payload": True,
-            "with_vector": False,
-            "filter": {
-                "should": [
-                    {"should": [{"key": field, "match": {"text": term}} for field in fields]}
-                    for term in terms[: max_terms]
-                ]
-            },
-        }
+        relax_body = build_vector_search_body(
+            vector,
+            top_k=top_k,
+            filter_body=build_text_filter(terms, fields, max_terms=max_terms, require_all=False),
+        )
         r2 = self._request(
             "POST",
             f"/collections/{collection}/points/search",
@@ -357,29 +322,10 @@ class QdrantHTTP:
         if not collection:
             return []
         max_terms = int(os.environ.get("QDRANT_TEXT_FALLBACK_TERMS", "3"))
-        if require_all:
-            filter_body: Dict[str, Any] = {"must": []}
-            for term in terms[: max_terms]:
-                should = [{"key": field, "match": {"text": term}} for field in fields]
-                if should:
-                    filter_body["must"].append({"should": should})
-            if not filter_body["must"]:
-                return []
-        else:
-            filter_body = {
-                "should": [
-                    {"should": [{"key": field, "match": {"text": term}} for field in fields]}
-                    for term in terms[: max_terms]
-                ]
-            }
-        body: Dict[str, Any] = {
-            "limit": int(limit),
-            "with_payload": True,
-            "with_vector": False,
-            "filter": filter_body,
-        }
-        if offset:
-            body["offset"] = offset
+        filter_body = build_text_filter(terms, fields, max_terms=max_terms, require_all=require_all)
+        if not filter_body:
+            return []
+        body = build_scroll_body(limit=limit, filter_body=filter_body, offset=offset)
         r = self._request(
             "POST",
             f"/collections/{collection}/points/scroll",
@@ -411,21 +357,9 @@ class QdrantHTTP:
         if not collection:
             return []
         max_terms = int(os.environ.get("QDRANT_TEXT_FALLBACK_TERMS", "3"))
-        if require_all:
-            filter_body: Dict[str, Any] = {"must": []}
-            for term in terms[: max_terms]:
-                should = [{"key": field, "match": {"text": term}} for field in fields]
-                if should:
-                    filter_body["must"].append({"should": should})
-            if not filter_body["must"]:
-                return []
-        else:
-            filter_body = {
-                "should": [
-                    {"should": [{"key": field, "match": {"text": term}} for field in fields]}
-                    for term in terms[: max_terms]
-                ]
-            }
+        filter_body = build_text_filter(terms, fields, max_terms=max_terms, require_all=require_all)
+        if not filter_body:
+            return []
         hard_cap = int(os.environ.get("QDRANT_TEXT_SCROLL_HARD_CAP", "50000"))
         cap = int(limit) if limit is not None else 0
         if cap <= 0:
@@ -437,14 +371,11 @@ class QdrantHTTP:
         collected: List[Dict[str, Any]] = []
         offset: Optional[str] = None
         while len(collected) < cap:
-            body: Dict[str, Any] = {
-                "limit": int(min(batch_size, cap - len(collected))),
-                "with_payload": True,
-                "with_vector": False,
-                "filter": filter_body,
-            }
-            if offset:
-                body["offset"] = offset
+            body = build_scroll_body(
+                limit=int(min(batch_size, cap - len(collected))),
+                filter_body=filter_body,
+                offset=offset,
+            )
             r = self._request(
                 "POST",
                 f"/collections/{collection}/points/scroll",
@@ -479,8 +410,7 @@ class QdrantHTTP:
 
     def delete_by_doc_id(self, doc_id: str) -> Dict[str, Any]:
         """Delete all points that belong to the provided document id."""
-        filt = {"must": [{"key": "doc_id", "match": {"value": str(doc_id)}}]}
-        return self.delete_by_filter(filt)
+        return self.delete_by_filter(build_delete_filter(doc_id))
 
     def get_collection_config(self) -> Dict[str, Any]:
         """Fetch the collection configuration from Qdrant."""
@@ -492,16 +422,6 @@ class QdrantHTTP:
         """Read the configured vector size; return None if it cannot be derived."""
         try:
             cfg = self.get_collection_config()
-            params = (cfg.get("config") or {}).get("params") or {}
-            vectors = params.get("vectors") or {}
-            # single-vector schema
-            if isinstance(vectors, dict) and "size" in vectors:
-                return int(vectors.get("size"))
-            # named multi-vector schema
-            if isinstance(vectors, dict) and isinstance(vectors.get("params"), dict):
-                first = next(iter(vectors["params"].values()), None)
-                if isinstance(first, dict) and "size" in first:
-                    return int(first["size"])
+            return vector_size_from_config(cfg)
         except Exception:
             return None
-        return None

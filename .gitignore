@@ -39,3 +39,10 @@ resources/js/crawler
 !package-lock.json
 *.pyc
 **/__pycache__/
+/python_rag/public/
+/python_rag/rag_storage/
+/python_rag/shared/
+/python_rag/storage/
+/python_rag/rabbit_worker/
+/python_rag/rabbitmq/
+/python_rag/workers/
