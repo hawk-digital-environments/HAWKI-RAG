@@ -9,7 +9,9 @@ ARG TARGETARCH
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    git ca-certificates curl build-essential cmake pkg-config \
+    git ca-certificates curl build-essential pkg-config \
+    && CMAKE_VERSION=4.3.3 \
+    && curl -sSL https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}-linux-x86_64.tar.gz | tar -xzC /usr/local --strip-components=1 \
     && rm -rf /var/lib/apt/lists/*
 
 # Build Ollama from source with CUDA support
