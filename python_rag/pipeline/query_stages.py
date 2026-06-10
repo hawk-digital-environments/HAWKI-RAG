@@ -5,6 +5,7 @@ from typing import Any, Dict, List
 
 from vectorstore.qdrant_http import QdrantHTTP
 from pipeline.query_context import prepare_context_summaries
+from pipeline import query_ranking, query_rewrite
 from pipeline.query_fallback import keyword_fallback_search
 from pipeline.query_hits import (
     dedupe_hits_by_title_or_url,
@@ -22,42 +23,106 @@ from pipeline.query_lexical import (
     fuzzy_term_in_words,
     tokenize_words,
 )
-from utils.text_preprocessor import _is_multimodal_query, _extract_terms
+from utils.text_preprocessor import (
+    _extract_terms,
+    _is_multimodal_query,
+    _normalize_list,
+    _rewrite_query,
+)
 
 
 def normalize_int_env(name: str, default: int) -> int:
-    from pipeline.query_settings import int_env
+    return query_rewrite.normalize_int_env(name, default)
 
-    return int_env(name, default)
+
+def build_query_rewrite(
+    provider: Any,
+    query: str,
+    *,
+    fast_mode: bool,
+) -> Dict[str, Any]:
+    return query_rewrite.build_query_rewrite(
+        provider,
+        query,
+        fast_mode=fast_mode,
+        is_multimodal_query=_is_multimodal_query,
+        rewrite_query=_rewrite_query,
+        normalize_list=_normalize_list,
+    )
+
+
+def build_query_terms(
+    rewritten_query: str,
+    high_level_keys: List[str],
+    low_level_keys: List[str],
+    entity_terms: List[str],
+) -> List[str]:
+    return query_rewrite.build_query_terms(
+        rewritten_query,
+        high_level_keys,
+        low_level_keys,
+        entity_terms,
+        extract_terms=_extract_terms,
+    )
 
 
 def should_iterate(query: str, hits: List[Dict[str, Any]], top_k: int) -> bool:
-    if not hits:
-        return True
-    lowered = query.lower()
-    connectors = any(
-        word in lowered
-        for word in ["first", "second", "then", "anschließend", "compare", "contrast", "schritt", "workflow"]
+    return query_ranking.should_iterate(query, hits, top_k)
+
+
+def rerank_and_filter_hits(
+    hits: List[Dict[str, Any]],
+    *,
+    user_query: str,
+    provider: Any,
+    query_vector: List[float],
+    rag_service,
+    mode: str,
+    top_n: int,
+    mix_mode: bool,
+    mix_weight: float,
+    min_score: float,
+    fallback_min: float,
+    top_k: int,
+) -> List[Dict[str, Any]]:
+    return query_ranking.rerank_and_filter_hits(
+        hits,
+        user_query=user_query,
+        provider=provider,
+        query_vector=query_vector,
+        rag_service=rag_service,
+        mode=mode,
+        top_n=top_n,
+        mix_mode=mix_mode,
+        mix_weight=mix_weight,
+        min_score=min_score,
+        fallback_min=fallback_min,
+        top_k=top_k,
+        filter_hits=filter_hits_by_score,
     )
-    scores = [float(h.get("score") or 0.0) for h in hits]
-    max_score = max(scores) if scores else 0.0
-    low_density = len(hits) < max(3, top_k)
-    weak_scores = max_score < 0.42
-    return connectors or low_density or weak_scores
+
+
+def filter_hits_by_score(
+    hits: List[Dict[str, Any]],
+    *,
+    query: str,
+    min_score: float,
+    fallback_min: float,
+    top_k: int,
+) -> List[Dict[str, Any]]:
+    return query_ranking.filter_hits_by_score(
+        hits,
+        query=query,
+        min_score=min_score,
+        fallback_min=fallback_min,
+        top_k=top_k,
+        apply_lexical_boost=apply_lexical_boost,
+        dedupe_hits=dedupe_hits,
+    )
 
 
 def collect_expansion_terms(hits: List[Dict[str, Any]], limit: int = 8) -> List[str]:
-    seen: set[str] = set()
-    terms: List[str] = []
-    for h in hits:
-        payload = h.get("payload") or {}
-        for term in _extract_terms(payload.get("content") or ""):
-            if term not in seen:
-                seen.add(term)
-                terms.append(term)
-            if len(terms) >= limit:
-                return terms
-    return terms
+    return query_ranking.collect_expansion_terms(hits, limit=limit, extract_terms=_extract_terms)
 
 
 def build_fused_hits(sem_hits: List[Dict[str, Any]], struct_hits: List[Dict[str, Any]], *, sem_weight: float, str_weight: float) -> List[Dict[str, Any]]:

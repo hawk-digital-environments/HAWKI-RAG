@@ -1,22 +1,26 @@
 """Runtime diagnostics for the RAG API."""
 from __future__ import annotations
 
-import os
 import shutil
 import subprocess
 from pathlib import Path
 from typing import Any
 
 
-def log_gpu_status(logger: Any, context: str) -> None:
-    cuda_visible = os.environ.get("CUDA_VISIBLE_DEVICES", "unset")
-    nvidia_visible = os.environ.get("NVIDIA_VISIBLE_DEVICES", "unset")
+def log_gpu_status(
+    logger: Any,
+    context: str,
+    *,
+    cuda_visible_devices: str,
+    nvidia_visible_devices: str,
+) -> None:
+    """Log GPU visibility state with explicitly injected runtime settings."""
     has_dev = any(Path(p).exists() for p in ("/dev/nvidia0", "/dev/nvidiactl", "/dev/nvidia-uvm"))
     logger.info(
         "gpu:%s env CUDA_VISIBLE_DEVICES=%s NVIDIA_VISIBLE_DEVICES=%s dev_nodes=%s",
         context,
-        cuda_visible,
-        nvidia_visible,
+        cuda_visible_devices,
+        nvidia_visible_devices,
         "present" if has_dev else "missing",
     )
 

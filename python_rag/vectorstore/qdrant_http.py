@@ -4,7 +4,7 @@ import logging
 from typing import Any, Dict, List, Optional
 
 import requests
-from requests import RequestException, Response
+from requests import RequestException
 
 from vectorstore.collections import pick_most_populated_collection, vector_size_from_config
 from vectorstore.payloads import (
@@ -21,29 +21,22 @@ from vectorstore.settings import (
     qdrant_http_settings_from_env,
     qdrant_settings_from_env,
 )
-from vectorstore.qdrant_requests import (
-    QdrantRequest,
-    build_count_points_request,
-    build_create_collection_request,
-    build_delete_by_filter_request,
-    build_get_collection_request,
-    build_list_collections_request,
-    build_scroll_request,
-    build_search_request,
-    build_upsert_points_request,
-)
+from vectorstore.qdrant_gateway import QdrantHTTPGateway
 from vectorstore.qdrant_responses import (
-    SearchResultList,
     parse_collection_config,
     parse_collection_names,
     parse_count,
-    parse_scroll_points,
-    parse_search_result,
 )
 from vectorstore.qdrant_search import (
     normalize_query_inputs,
     resolve_collection_with_default,
     search_with_fallback_collections,
+)
+from vectorstore.qdrant_interpretation import (
+    attach_collection,
+    parse_search_payload,
+    parse_scroll_payload,
+    sort_hits_by_score,
 )
 from vectorstore.qdrant_transport import QdrantHTTPTransport
 
@@ -80,28 +73,22 @@ class QdrantHTTP:
             log_latency=self._http_settings.log_latency,
             session=requests.Session(),
         )
-
-    def _request(self, request: QdrantRequest) -> Response:
-        """Execute one request through the transport adapter."""
-        return self._transport.send(request)
+        self._gateway = QdrantHTTPGateway(
+            transport=self._transport,
+            collection=self.collection,
+        )
 
     def ensure_collection(self, vector_size: int, distance: str = "Cosine") -> None:
         """Create the collection if it does not already exist."""
-        r = self._request(build_get_collection_request(self.collection))
+        r = self._gateway.get_collection()
         if r.status_code == 200:
             return
-        rc = self._request(
-            build_create_collection_request(
-                self.collection,
-                vector_size=vector_size,
-                distance=distance,
-            )
-        )
+        rc = self._gateway.ensure_collection(vector_size=vector_size, distance=distance)
         rc.raise_for_status()
 
     def list_collections(self) -> List[str]:
         """Return all collection names available in Qdrant."""
-        r = self._request(build_list_collections_request())
+        r = self._gateway.list_collections()
         r.raise_for_status()
         return parse_collection_names(r.json())
 
@@ -119,30 +106,15 @@ class QdrantHTTP:
         collection: str,
         body: Dict[str, Any],
         timeout: float,
-    ) -> SearchResultList:
-        r = self._request(
-            build_search_request(
-                collection,
-                body,
-                timeout=timeout,
-            )
-        )
-        if r.status_code == 404:
-            return []
-        r.raise_for_status()
-        return parse_search_result(r.json())
+    ) -> List[Dict[str, Any]]:
+        response = self._gateway.search(collection, body, timeout=timeout)
+        return parse_search_payload(response, empty_on_not_found=True)
 
     def upsert(self, points: List[Dict[str, Any]]) -> None:
         """Upsert batches of points into the chosen collection."""
         if not points:
             return
-        r = self._request(
-            build_upsert_points_request(
-                self.collection,
-                points,
-                timeout=self._http_settings.upsert_timeout,
-            )
-        )
+        r = self._gateway.upsert(points, timeout=self._http_settings.upsert_timeout)
         if r.status_code >= 400:
             logger.error("Qdrant upsert failed status=%s body=%s", r.status_code, r.text)
         r.raise_for_status()
@@ -160,13 +132,7 @@ class QdrantHTTP:
         """Return the number of points stored in a collection."""
         col = collection or self.collection
         try:
-            r = self._request(
-                build_count_points_request(
-                    col,
-                    exact=exact,
-                    timeout=self._http_settings.count_timeout,
-                )
-            )
+            r = self._gateway.count_points(col, exact=exact, timeout=self._http_settings.count_timeout)
             r.raise_for_status()
             return parse_count(r.json())
         except RequestException as exc:
@@ -232,16 +198,9 @@ class QdrantHTTP:
         )
         collection = self.collection
 
-        r = self._request(
-            build_search_request(
-                collection,
-                body,
-                timeout=timeout,
-            )
-        )
+        r = self._gateway.search(collection, body, timeout=timeout)
         if r.status_code != 404:
-            r.raise_for_status()
-            return parse_search_result(r.json())
+            return parse_search_payload(r)
 
         fallback_enabled = self._http_settings.fallback_all
         if not fallback_enabled:
@@ -263,13 +222,9 @@ class QdrantHTTP:
         for name in collections:
             body["limit"] = int(max_per_collection)
             results = self._search_collection(name, body, timeout)
-            for hit in results:
-                if isinstance(hit, dict) and "collection" not in hit:
-                    hit["collection"] = name
-            merged.extend(results)
+            merged.extend(attach_collection(results, name))
 
-        merged.sort(key=lambda h: float(h.get("score") or 0.0), reverse=True)
-        return merged[: int(top_k)]
+        return sort_hits_by_score(merged, limit=top_k)
 
     def search_with_text(
         self,
@@ -297,17 +252,8 @@ class QdrantHTTP:
         if not filter_body:
             return []
         body = build_vector_search_body(vector, top_k=top_k, filter_body=filter_body)
-        r = self._request(
-            build_search_request(
-                collection,
-                body,
-                timeout=self._http_settings.text_timeout,
-            )
-        )
-        if r.status_code == 404:
-            return []
-        r.raise_for_status()
-        result = parse_search_result(r.json())
+        r = self._gateway.search(collection, body, timeout=self._http_settings.text_timeout)
+        result = parse_search_payload(r, empty_on_not_found=True)
         if result:
             return result
 
@@ -317,17 +263,12 @@ class QdrantHTTP:
             top_k=top_k,
             filter_body=build_text_filter(terms, fields, max_terms=max_terms, require_all=False),
         )
-        r2 = self._request(
-            build_search_request(
-                collection,
-                relax_body,
-                timeout=self._http_settings.text_timeout,
-            )
+        r2 = self._gateway.search(
+            collection,
+            relax_body,
+            timeout=self._http_settings.text_timeout,
         )
-        if r2.status_code == 404:
-            return []
-        r2.raise_for_status()
-        return parse_search_result(r2.json())
+        return parse_search_payload(r2, empty_on_not_found=True)
 
     def scroll_with_text(
         self,
@@ -354,17 +295,10 @@ class QdrantHTTP:
         if not filter_body:
             return []
         body = build_scroll_body(limit=limit, filter_body=filter_body, offset=offset)
-        r = self._request(
-            build_scroll_request(
-                collection,
-                body,
-                timeout=self._http_settings.text_timeout,
-            )
-        )
+        r = self._gateway.scroll(collection, body, timeout=self._http_settings.text_timeout)
         if r.status_code == 404:
             return []
-        r.raise_for_status()
-        points, _ = parse_scroll_points(r.json())
+        points, _ = parse_scroll_payload(r, empty_on_not_found=True)
         return points
 
     def scroll_with_text_all(
@@ -407,17 +341,14 @@ class QdrantHTTP:
                 filter_body=filter_body,
                 offset=offset,
             )
-            r = self._request(
-                build_scroll_request(
-                    collection,
-                    body,
-                    timeout=self._http_settings.text_timeout,
-                )
+            r = self._gateway.scroll(
+                collection,
+                body,
+                timeout=self._http_settings.text_timeout,
             )
             if r.status_code == 404:
                 break
-            r.raise_for_status()
-            points, next_offset = parse_scroll_points(r.json())
+            points, next_offset = parse_scroll_payload(r)
             if not points:
                 break
             collected.extend(points)
@@ -428,12 +359,9 @@ class QdrantHTTP:
 
     def delete_by_filter(self, filter_body: Dict[str, Any]) -> Dict[str, Any]:
         """Delete points matching the supplied Qdrant filter."""
-        r = self._request(
-            build_delete_by_filter_request(
-                self.collection,
-                filter_body,
-                timeout=self._http_settings.delete_timeout,
-            )
+        r = self._gateway.delete_by_filter(
+            filter_body,
+            timeout=self._http_settings.delete_timeout,
         )
         r.raise_for_status()
         return r.json()
@@ -444,7 +372,7 @@ class QdrantHTTP:
 
     def get_collection_config(self) -> Dict[str, Any]:
         """Fetch the collection configuration from Qdrant."""
-        r = self._request(build_get_collection_request(self.collection))
+        r = self._gateway.get_collection()
         r.raise_for_status()
         return parse_collection_config(r.json())
 

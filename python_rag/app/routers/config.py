@@ -6,11 +6,12 @@ import logging
 
 from fastapi import APIRouter
 
+from app.settings import AppSettings
 from app.config_response import build_config_response
 
 
 def build_config_router(
-    *, logger: logging.Logger, get_provider, qdrant_factory
+    *, logger: logging.Logger, get_provider, qdrant_factory, app_settings: AppSettings
 ) -> APIRouter:
     """Build the /config route."""
 
@@ -21,6 +22,7 @@ def build_config_router(
         response = build_config_response(
             get_provider=get_provider,
             qdrant_factory=qdrant_factory,
+            app_settings=app_settings,
         )
         logger.info(
             "config:provider=%s qdrant_collection=%s",

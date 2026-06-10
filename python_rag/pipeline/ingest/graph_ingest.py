@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import signal
 import threading
 import time
@@ -12,44 +11,34 @@ from typing import Any
 
 from graph.graph_utils import filter_triplets_to_source
 from graph.graph_visualization import write_graph_visualization
+from pipeline.ingest.settings import GraphIngestSettings, load_graph_ingest_settings
 
 logger = logging.getLogger(__name__)
-GRAPH_DEBUG = os.environ.get("GRAPH_DEBUG", "").strip().lower() in ("1", "true", "yes")
-GRAPH_PERF_LOG = os.environ.get("GRAPH_PERF_LOG", "").strip().lower() in ("1", "true", "yes")
 
 
 class GraphTimeout(Exception):
     pass
 
 
-def perf_log(msg: str, *args: Any) -> None:
-    if GRAPH_PERF_LOG:
+def perf_log(
+    msg: str,
+    *args: Any,
+    graph_perf_log: bool | None = None,
+    settings: GraphIngestSettings | None = None,
+) -> None:
+    if graph_perf_log is None:
+        graph_perf_log = (settings or load_graph_ingest_settings()).graph_perf_log
+    if graph_perf_log:
         logger.info(msg, *args)
-
-
-def float_env(name: str, default: float) -> float:
-    raw = os.environ.get(name)
-    if raw is None or str(raw).strip() == "":
-        return default
-    try:
-        return float(raw)
-    except ValueError:
-        return default
-
-
-def int_env(name: str, default: int) -> int:
-    try:
-        return int(os.environ.get(name, default))
-    except Exception:
-        return default
 
 
 def utc_now_iso() -> str:
     return datetime.now(tz=timezone.utc).isoformat()
 
 
-def graph_failure_log_path(public_dir: Path) -> Path:
-    env_path = os.environ.get("GRAPH_FAILURE_LOG", "").strip()
+def graph_failure_log_path(public_dir: Path, *, failure_log_path: str | Path | None = None) -> Path:
+    settings = load_graph_ingest_settings()
+    env_path = str(failure_log_path).strip() if failure_log_path is not None else settings.graph_failure_log
     if env_path:
         return Path(env_path)
     return public_dir.parent / "storage" / "logs" / "ingest_graph_failures.jsonl"
@@ -124,15 +113,39 @@ def build_triplets_by_doc(
     graph: Any | None = None,
     neo4j_database: str | None = None,
     public_dir: Path | None = None,
+    graph_debug: bool | None = None,
+    graph_perf_log: bool | None = None,
+    graph_doc_timeout_s: float | None = None,
+    graph_doc_max_chunks: int | None = None,
+    graph_doc_max_chars: int | None = None,
+    failure_log_path: str | Path | None = None,
+    graph_settings: GraphIngestSettings | None = None,
 ) -> tuple[dict[str, list[tuple[str, str, str]]], list[dict[str, Any]]]:
+    resolved_settings = graph_settings or load_graph_ingest_settings()
+    if graph_debug is None:
+        graph_debug = resolved_settings.graph_debug
+    if graph_perf_log is None:
+        graph_perf_log = resolved_settings.graph_perf_log
+    if graph_doc_timeout_s is None:
+        graph_doc_timeout_s = resolved_settings.graph_doc_timeout_s
+    if graph_doc_max_chars is None:
+        graph_doc_max_chars = resolved_settings.graph_doc_max_chars
+    if graph_doc_max_chunks is None:
+        graph_doc_max_chunks = resolved_settings.graph_doc_max_chunks
     fn_start = time.perf_counter()
     perf_log(
         "perf:graph pipeline.ingest_logic._build_triplets_by_doc start engine=%s chunk_records=%s",
         engine,
         len(chunk_records),
+        graph_perf_log=graph_perf_log,
+        settings=resolved_settings,
     )
     if not chunk_records:
-        perf_log("perf:graph pipeline.ingest_logic._build_triplets_by_doc done docs=0 chunks=0 ms=0.00")
+        perf_log(
+            "perf:graph pipeline.ingest_logic._build_triplets_by_doc done docs=0 chunks=0 ms=0.00",
+            graph_perf_log=graph_perf_log,
+            settings=resolved_settings,
+        )
         return {}, []
     grouped: dict[str, list[dict[str, Any]]] = {}
     for rec in chunk_records:
@@ -140,9 +153,8 @@ def build_triplets_by_doc(
     provider_name = provider.__class__.__name__ if provider is not None else "none"
     rag_model = getattr(provider, "rag_model", None)
     embed_model = getattr(provider, "embed_model", None)
-    doc_timeout_s = float_env("GRAPH_DOC_TIMEOUT", 0.0)
-    if doc_timeout_s > 0:
-        logger.info("graph:extract doc_timeout=%.2fs", doc_timeout_s)
+    if graph_doc_timeout_s > 0:
+        logger.info("graph:extract doc_timeout=%.2fs", graph_doc_timeout_s)
     logger.info(
         "graph:extract start engine=%s docs=%s chunks=%s provider=%s rag_model=%s embed_model=%s",
         engine,
@@ -156,8 +168,8 @@ def build_triplets_by_doc(
     failures: list[dict[str, Any]] = []
     total_docs = len(grouped)
     doc_index = 0
-    use_alarm = doc_timeout_s > 0 and threading.current_thread() is threading.main_thread()
-    if doc_timeout_s > 0 and not use_alarm:
+    use_alarm = graph_doc_timeout_s > 0 and threading.current_thread() is threading.main_thread()
+    if graph_doc_timeout_s > 0 and not use_alarm:
         logger.info("graph:extract doc_timeout using thread fallback")
     for doc_id, parts in grouped.items():
         doc_total_start = time.perf_counter()
@@ -170,9 +182,11 @@ def build_triplets_by_doc(
                 "perf:graph pipeline.ingest_logic._build_triplets_by_doc doc=%s step=prepare empty=true ms=%.2f",
                 doc_id,
                 (time.perf_counter() - prep_start) * 1000,
+                graph_perf_log=graph_perf_log,
+                settings=resolved_settings,
             )
             continue
-        if GRAPH_DEBUG:
+        if graph_debug:
             lens = [len(t) for t in chunk_texts]
             logger.debug(
                 "graph:extract doc=%s chunk_lens=%s total_chars=%s",
@@ -182,8 +196,8 @@ def build_triplets_by_doc(
             )
         orig_chunk_count = len(chunk_texts)
         orig_chars = sum(len(t) for t in chunk_texts)
-        max_chunks = int_env("GRAPH_DOC_MAX_CHUNKS", 0)
-        max_chars = int_env("GRAPH_DOC_MAX_CHARS", 0)
+        max_chunks = graph_doc_max_chunks
+        max_chars = graph_doc_max_chars
         if max_chunks > 0 and len(chunk_texts) > max_chunks:
             chunk_texts = chunk_texts[:max_chunks]
         if max_chars > 0:
@@ -230,8 +244,11 @@ def build_triplets_by_doc(
             len(chunk_texts),
             total_chars,
             prep_ms,
+            graph_perf_log=graph_perf_log,
+            settings=resolved_settings,
         )
         extract_start = time.perf_counter()
+
         def _extract():
             return rag_service.extract_triplets(
                 "",
@@ -242,7 +259,7 @@ def build_triplets_by_doc(
                 file_path=file_path,
                 neo4j_database=neo4j_database,
             )
-        triplets, error = run_graph_extract_with_timeout(_extract, doc_timeout_s, allow_alarm=use_alarm)
+        triplets, error = run_graph_extract_with_timeout(_extract, graph_doc_timeout_s, allow_alarm=use_alarm)
         extract_ms = (time.perf_counter() - extract_start) * 1000
         if error:
             failures.append({
@@ -258,6 +275,8 @@ def build_triplets_by_doc(
                 "perf:graph pipeline.ingest_logic._build_triplets_by_doc doc=%s step=extract status=error ms=%.2f",
                 doc_id,
                 extract_ms,
+                graph_perf_log=graph_perf_log,
+                settings=resolved_settings,
             )
             triplets = []
         else:
@@ -266,15 +285,23 @@ def build_triplets_by_doc(
                 doc_id,
                 len(triplets),
                 extract_ms,
+                graph_perf_log=graph_perf_log,
+                settings=resolved_settings,
             )
             clean_start = time.perf_counter()
-            triplets = filter_triplets_to_source(triplets, "\n\n".join(chunk_texts))
+            triplets = filter_triplets_to_source(
+                triplets,
+                "\n\n".join(chunk_texts),
+                graph_perf_log=graph_perf_log,
+            )
             clean_ms = (time.perf_counter() - clean_start) * 1000
             perf_log(
                 "perf:graph pipeline.ingest_logic._build_triplets_by_doc doc=%s step=clean kept_triplets=%s ms=%.2f",
                 doc_id,
                 len(triplets),
                 clean_ms,
+                graph_perf_log=graph_perf_log,
+                settings=resolved_settings,
             )
             logger.info("graph:extract doc=%s triplets=%s ms=%.2f", doc_id, len(triplets), extract_ms)
             if graph is not None and triplets:
@@ -291,13 +318,17 @@ def build_triplets_by_doc(
                     doc_id,
                     len(triplets),
                     neo4j_ms,
+                    graph_perf_log=graph_perf_log,
+                    settings=resolved_settings,
                 )
                 logger.info("graph:neo4j upsert doc=%s triplets=%s", doc_id, len(triplets))
-        perf_log(
-            "perf:graph pipeline.ingest_logic._build_triplets_by_doc doc=%s step=total ms=%.2f",
-            doc_id,
-            (time.perf_counter() - doc_total_start) * 1000,
-        )
+            perf_log(
+                "perf:graph pipeline.ingest_logic._build_triplets_by_doc doc=%s step=total ms=%.2f",
+                doc_id,
+                (time.perf_counter() - doc_total_start) * 1000,
+                graph_perf_log=graph_perf_log,
+                settings=resolved_settings,
+            )
         out[doc_id] = triplets
     perf_log(
         "perf:graph pipeline.ingest_logic._build_triplets_by_doc done docs=%s chunks=%s total_triplets=%s failures=%s ms=%.2f",
@@ -306,5 +337,7 @@ def build_triplets_by_doc(
         sum(len(v) for v in out.values()),
         len(failures),
         (time.perf_counter() - fn_start) * 1000,
+        graph_perf_log=graph_perf_log,
+        settings=resolved_settings,
     )
     return out, failures

@@ -7,6 +7,8 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
 from neo4j import GraphDatabase, exceptions as neo4j_exceptions
 
+from graph.neo4j_transport import Neo4jQueryExecutor, Neo4jQueryExecutorProtocol
+
 from graph.neo4j_requests import (
     Neo4jQueryRequest,
     clean_query_terms,
@@ -46,24 +48,35 @@ class Neo4jGraph:
         *,
         database: Optional[str] = None,
         settings: Optional[Neo4jSettings] = None,
+        query_executor: Neo4jQueryExecutorProtocol | None = None,
     ) -> None:
         self._settings = settings or load_neo4j_settings(database=database)
-        self._driver = GraphDatabase.driver(
-            self._settings.uri,
-            auth=(self._settings.user, self._settings.password),
-        )
         self._database = self._settings.database
-        if self._database:
-            try:
-                with self._driver.session(database=self._database) as session:
-                    session.run("RETURN 1").consume()
-            except neo4j_exceptions.Neo4jError as exc:
-                logger.warning(
-                    "neo4j:requested database '%s' is unavailable (%s); falling back to default database",
-                    self._database,
-                    exc,
-                )
-                self._database = None
+        self._query_executor: Neo4jQueryExecutorProtocol
+        if query_executor is None:
+            self._driver = GraphDatabase.driver(
+                self._settings.uri,
+                auth=(self._settings.user, self._settings.password),
+            )
+            if self._database:
+                try:
+                    with self._driver.session(database=self._database) as session:
+                        session.run("RETURN 1").consume()
+                except neo4j_exceptions.Neo4jError as exc:
+                    logger.warning(
+                        "neo4j:requested database '%s' is unavailable (%s); falling back to default database",
+                        self._database,
+                        exc,
+                    )
+                    self._database = None
+            self._query_executor = Neo4jQueryExecutor(
+                self._session,
+                retry_attempts=getattr(self._settings, "retry_attempts", 3),
+                log_latency=getattr(self._settings, "log_latency", False),
+            )
+        else:
+            self._driver = None
+            self._query_executor = query_executor
 
     def _session(self):
         if self._database:
@@ -72,61 +85,28 @@ class Neo4jGraph:
 
     def close(self) -> None:
         """Close the underlying driver."""
-        self._driver.close()
+        if getattr(self, "_driver", None) is not None:
+            self._driver.close()
 
     def _run_read(self, query: Neo4jQueryRequest, *, callback: Callable[[Any], Any]) -> Any:
-        settings = getattr(self, "_settings", None)
-        retry_attempts = max(1, int(getattr(settings, "retry_attempts", 1)))
-        attempt = 0
-        backoff = 0.5
-        while True:
-            attempt += 1
-            try:
-                start = time.perf_counter()
-                with self._session() as session:
-                    result = session.execute_read(callback)
-                if getattr(settings, "log_latency", False):
-                    elapsed = time.perf_counter() - start
-                    logger.info(
-                        "Neo4j query in %.3fs: %s",
-                        elapsed,
-                        query.statement,
-                    )
-                return result
-            except neo4j_exceptions.Neo4jError as exc:
-                if attempt >= retry_attempts:
-                    logger.warning("Neo4j query failed: %s", exc)
-                    raise
-                logger.warning("Neo4j error (%s). Retrying...", exc)
-                time.sleep(backoff)
-                backoff = min(backoff * 2, 5.0)
+        if getattr(self, "_query_executor", None) is None:
+            settings = getattr(self, "_settings", None)
+            self._query_executor = Neo4jQueryExecutor(
+                self._session,
+                retry_attempts=max(1, int(getattr(settings, "retry_attempts", 1))),
+                log_latency=bool(getattr(settings, "log_latency", False)),
+            )
+        return self._query_executor.run_read(query, callback=callback)
 
     def _run_write(self, query: Neo4jQueryRequest, *, callback: Callable[[Any], Any]) -> Any:
-        settings = getattr(self, "_settings", None)
-        retry_attempts = max(1, int(getattr(settings, "retry_attempts", 1)))
-        attempt = 0
-        backoff = 0.5
-        while True:
-            attempt += 1
-            try:
-                start = time.perf_counter()
-                with self._session() as session:
-                    result = session.execute_write(callback)
-                if getattr(settings, "log_latency", False):
-                    elapsed = time.perf_counter() - start
-                    logger.info(
-                        "Neo4j write in %.3fs: %s",
-                        elapsed,
-                        query.statement,
-                    )
-                return result
-            except neo4j_exceptions.Neo4jError as exc:
-                if attempt >= retry_attempts:
-                    logger.warning("Neo4j write failed: %s", exc)
-                    raise
-                logger.warning("Neo4j error (%s). Retrying...", exc)
-                time.sleep(backoff)
-                backoff = min(backoff * 2, 5.0)
+        if getattr(self, "_query_executor", None) is None:
+            settings = getattr(self, "_settings", None)
+            self._query_executor = Neo4jQueryExecutor(
+                self._session,
+                retry_attempts=max(1, int(getattr(settings, "retry_attempts", 1))),
+                log_latency=bool(getattr(settings, "log_latency", False)),
+            )
+        return self._query_executor.run_write(query, callback=callback)
 
     def count_entities(self) -> int:
         """Return the count of graph entity-like nodes across supported schemas."""
@@ -298,6 +278,4 @@ class Neo4jGraph:
             )
         except neo4j_exceptions.Neo4jError:
             return []
-
-        out: List[Dict[str, Any]] = []
         return parse_structural_rows(result)

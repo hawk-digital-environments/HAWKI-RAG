@@ -3,21 +3,21 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Mapping
+from app.settings import AppSettings
 
 
 def env_flag(value: str | None) -> bool:
     return str(value or "").strip().lower() in ("1", "true", "yes")
 
 
-def configure_app_logging(env: Mapping[str, str], *, logger_name: str) -> tuple[logging.Logger, bool, str]:
-    log_level = env.get("LOG_LEVEL", "INFO").upper()
+def configure_app_logging(settings: AppSettings, *, logger_name: str) -> tuple[logging.Logger, bool, str]:
+    log_level = settings.log_level
     logging.basicConfig(level=log_level, format="%(levelname)s:%(name)s:%(message)s")
     logger = logging.getLogger(logger_name)
     logger.setLevel(log_level)
 
-    graph_debug = env_flag(env.get("GRAPH_DEBUG"))
-    graph_debug_log = str(env.get("GRAPH_DEBUG_LOG", "")).strip()
+    graph_debug = settings.graph_debug
+    graph_debug_log = settings.graph_debug_log
     if graph_debug:
         logging.getLogger("pipeline.ingest_logic").setLevel(logging.DEBUG)
         logging.getLogger("core.rag_service").setLevel(logging.DEBUG)

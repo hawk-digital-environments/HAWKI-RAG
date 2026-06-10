@@ -8,10 +8,11 @@ from typing import Any
 from fastapi import APIRouter
 
 from app.dependencies import get_provider_or_400
-from app.schemas import QueryRequest
+from app.schemas import QueryRequest, apply_query_request_settings
+from app.settings import AppSettings
 
 
-def build_query_router(*, logger: logging.Logger, rag_service: Any) -> APIRouter:
+def build_query_router(*, logger: logging.Logger, rag_service: Any, app_settings: AppSettings) -> APIRouter:
     """Build query routes."""
 
     router = APIRouter()
@@ -22,6 +23,7 @@ def build_query_router(*, logger: logging.Logger, rag_service: Any) -> APIRouter
     @router.post("/query")
     def query(body: QueryRequest) -> dict[str, Any]:
         from app.query import query_documents
+        body = apply_query_request_settings(body, app_settings)
 
         logger.info(
             "api:query top_k=%s fast=%s smart=%s",

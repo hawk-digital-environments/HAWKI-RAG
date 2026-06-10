@@ -1,8 +1,10 @@
 import json
 import logging
-import os
 from pathlib import Path
+from dataclasses import replace
 from typing import Any, Dict, List, Optional
+
+from graph.visualization_settings import GraphVisualizationSettings, load_graph_visualization_settings
 
 from neo4j import GraphDatabase, exceptions as neo4j_exceptions
 
@@ -13,12 +15,20 @@ logger = logging.getLogger(__name__)
 class Neo4jGraphVisualization:
     """Export a compact Neo4j graph snapshot for the HAWKI playground UI."""
 
-    def __init__(self, *, database: Optional[str] = None) -> None:
-        uri = os.environ.get("NEO4J_URI", "bolt://neo4j:7687")
-        user = os.environ.get("NEO4J_USER", "neo4j")
-        password = os.environ.get("NEO4J_PASSWORD", "password")
-        self._driver = GraphDatabase.driver(uri, auth=(user, password))
-        self._database = (database or os.environ.get("NEO4J_DATABASE") or "").strip() or None
+    def __init__(
+        self,
+        *,
+        database: Optional[str] = None,
+        settings: GraphVisualizationSettings | None = None,
+        driver_factory=GraphDatabase.driver,
+    ) -> None:
+        config = settings or load_graph_visualization_settings(database=database)
+        self._settings = replace(
+            config,
+            database=(database or "").strip() or config.database,
+        )
+        self._driver = driver_factory(self._settings.uri, auth=(self._settings.user, self._settings.password))
+        self._database = self._settings.database
         if self._database:
             try:
                 with self._driver.session(database=self._database) as session:
@@ -137,15 +147,20 @@ def write_graph_visualization(
     *,
     database: Optional[str] = None,
     limit: Optional[int] = None,
+    settings: GraphVisualizationSettings | None = None,
     recent_doc_id: Optional[str] = None,
 ) -> Optional[Path]:
-    if os.environ.get("NEO4J_GRAPH_VISUALIZATION", "true").strip().lower() in ("0", "false", "no", "off"):
+    config = settings or load_graph_visualization_settings(database=database)
+    if database is not None and database.strip() and database.strip() != (config.database or ""):
+        config = replace(config, database=(database or "").strip())
+    if not config.enabled:
         return None
 
-    exporter = Neo4jGraphVisualization(database=database)
+    effective_limit = int(limit if limit is not None else config.limit)
+    exporter = Neo4jGraphVisualization(database=config.database, settings=config)
     try:
         snapshot = exporter.snapshot(
-            limit=limit if limit is not None else _int_env("NEO4J_GRAPH_VISUALIZATION_LIMIT", 0),
+            limit=effective_limit,
             recent_doc_id=recent_doc_id,
         )
     finally:
@@ -164,13 +179,6 @@ def write_graph_visualization(
         path,
     )
     return path
-
-
-def _int_env(name: str, default: int) -> int:
-    try:
-        return int(os.environ.get(name, default))
-    except Exception:
-        return default
 
 
 def _utc_now_iso() -> str:

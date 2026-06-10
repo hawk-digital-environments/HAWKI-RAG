@@ -10,6 +10,7 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
+from fastapi.testclient import TestClient
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -193,6 +194,382 @@ class GraphFallbackCharacterizationTests(unittest.TestCase):
                 "a b",
             )
 
+    def test_graph_from_text_uses_graph_perf_log_injection(self) -> None:
+        from graph.graph_text import graph_from_text
+
+        class FakeGraph:
+            def __init__(self):
+                self.triplets: list[tuple[str, str, str]] = []
+                self.closed = False
+
+            def upsert_triplets(self, triplets: list[tuple[str, str, str]]) -> None:
+                self.triplets = triplets
+
+            def close(self) -> None:
+                self.closed = True
+
+        class FakeService:
+            def extract_triplets(self, text: str, engine: str) -> list[tuple[str, str, str]]:
+                return [("A", "R", "B"), ("B", "S", "C")]
+
+        fake_graph = FakeGraph()
+        with patch("graph.graph_text.Neo4jGraph", return_value=fake_graph):
+            result = graph_from_text(
+                SimpleNamespace(text="sample", engine="engine-a"),
+                rag_service=FakeService(),
+                graph_perf_log=True,
+            )
+
+        self.assertEqual(result["ok"], True)
+        self.assertEqual(result["triplets"], 2)
+        self.assertEqual(fake_graph.triplets, [("A", "R", "B"), ("B", "S", "C")])
+        self.assertTrue(fake_graph.closed)
+
+    def test_graph_visualization_write_can_be_disabled_with_injected_settings(self) -> None:
+        from graph.graph_visualization import write_graph_visualization
+        from graph.visualization_settings import GraphVisualizationSettings
+
+        settings = GraphVisualizationSettings(
+            enabled=False,
+            uri="bolt://neo4j:7687",
+            user="neo4j",
+            password="password",
+            database=None,
+            limit=10,
+        )
+
+        with tempfile.TemporaryDirectory() as tmp, patch("graph.graph_visualization.Neo4jGraphVisualization") as mocked_vis:
+            result = write_graph_visualization(Path(tmp), settings=settings)
+            self.assertIsNone(result)
+            mocked_vis.assert_not_called()
+
+    def test_graph_visualization_writer_uses_injected_settings(self) -> None:
+        from graph.graph_visualization import write_graph_visualization
+        from graph.visualization_settings import GraphVisualizationSettings
+        from unittest.mock import MagicMock
+
+        snapshot_payload = {
+            "ok": True,
+            "generated_at": "2026-06-10T00:00:00+00:00",
+            "limit": 3,
+            "node_count": 1,
+            "relationship_count": 0,
+            "recent_doc_id": "toy-1",
+            "recent_relationship_count": 0,
+            "document_count": 0,
+            "nodes": [{"id": "a", "label": "A", "labels": []}],
+            "links": [],
+        }
+        fake_visualizer = SimpleNamespace(
+            snapshot=MagicMock(return_value=snapshot_payload),
+            close=MagicMock(),
+        )
+        settings = GraphVisualizationSettings(
+            enabled=True,
+            uri="bolt://neo4j:7687",
+            user="neo4j",
+            password="password",
+            database="neo4j_graph_db",
+            limit=7,
+        )
+
+        with tempfile.TemporaryDirectory() as tmp, patch(
+            "graph.graph_visualization.Neo4jGraphVisualization",
+            return_value=fake_visualizer,
+        ) as mocked_vis:
+            out = write_graph_visualization(
+                Path(tmp),
+                database="db-from-arg",
+                settings=settings,
+                limit=3,
+                recent_doc_id="toy-1",
+            )
+
+            self.assertIsNotNone(out)
+            out_path = out
+            assert out_path is not None
+            self.assertTrue(out_path.exists())
+            self.assertEqual(fake_visualizer.snapshot.call_args.kwargs["limit"], 3)
+            self.assertIn("db-from-arg", mocked_vis.call_args.kwargs["database"])
+
+            written = json.loads((Path(tmp) / "neo4j_graph_visualization.json").read_text(encoding="utf-8"))
+            self.assertEqual(written["ok"], True)
+            self.assertEqual(written["nodes"], snapshot_payload["nodes"])
+
+
+class RagAnythingGraphSettingsCharacterizationTests(unittest.TestCase):
+    def test_raganything_graph_settings_parse_and_injected_runtime_summary(self) -> None:
+        from core.graph.raganything_client import RagAnythingGraphService
+        from core.graph.raganything_settings import load_raganything_graph_settings
+
+        with patch.dict(
+            os.environ,
+            {
+                "NEO4J_URI": "",
+                "NEO4J_BOLT_URL": "bolt://127.0.0.1:7687",
+                "NEO4J_HTTP_URL": "https://127.0.0.1:7474",
+                "NEO4J_USER": "graph-user",
+                "NEO4J_PASSWORD": "graph-pass",
+                "NEO4J_DATABASE": "rag-db",
+                "GRAPH_TEMPERATURE": "0.2",
+                "OLLAMA_CHAT_TIMEOUT": "77",
+                "GRAPH_RESET_CACHE_PER_DOC": "no",
+                "GRAPH_EMBED_JUNK_STRICT": "false",
+                "GRAPH_EMBED_JUNK_DENYLIST": "nonsense",
+                "GRAPH_EMBED_JUNK_ALLOWLIST": "kept",
+                "OLLAMA_EMBED_NAN_ZERO_FALLBACK": "true",
+                "GRAPH_DOC_MAX_CHARS": "2500",
+                "GRAPH_DOC_MAX_CHUNKS": "2",
+                "GRAPH_MIN_CHUNK_CHARS": "40",
+                "GRAPH_MIN_DOC_CHARS": "120",
+                "GRAPH_OLLAMA_RAG_MODEL": "graph-model-v1",
+                "OLLAMA_EMBED_MODEL": "embed-model-v1",
+            },
+            clear=False,
+        ):
+            settings = load_raganything_graph_settings()
+
+        self.assertEqual(settings.neo4j_uri, "bolt://127.0.0.1:7687")
+        self.assertEqual(settings.neo4j_user, "graph-user")
+        self.assertFalse(settings.graph_reset_cache_per_doc)
+        self.assertFalse(settings.graph_embed_junk_strict)
+        self.assertEqual(settings.graph_embed_junk_denylist, "nonsense")
+        self.assertEqual(settings.graph_doc_max_chars, 2500)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            service = RagAnythingGraphService(
+                Path(tmp),
+                settings=settings,
+                logger_obj=None,
+            )
+            summary = service.graph_runtime_summary()
+
+        self.assertEqual(summary["neo4j"]["uri"], "bolt://127.0.0.1:7687")
+        self.assertEqual(summary["neo4j"]["database"], "rag-db")
+        self.assertEqual(summary["models"]["graph_model"], "graph-model-v1")
+        self.assertEqual(summary["models"]["embed_model"], "embed-model-v1")
+        self.assertEqual(summary["limits"]["graph_doc_max_chars"], 2500)
+        self.assertFalse(summary["resilience"]["graph_embed_junk_strict"])
+
+
+class RagAnythingUtilsCharacterizationTests(unittest.TestCase):
+    def test_graph_utils_normalization_and_dedupe(self) -> None:
+        from core.graph.raganything_utils import dedupe_triplets, normalize_graph_embed_text
+
+        self.assertEqual(normalize_graph_embed_text("  hello\n\tworld  "), "hello world")
+
+        triplets = [
+            (" a ", "USES", " B "),
+            ("a", "USES", "B"),
+            ("a", "IS", "C"),
+            ("", "EMPTY", "D"),
+            ("a", "USES", "  "),
+            ("A", "USES", "B"),
+        ]
+
+        self.assertEqual(
+            dedupe_triplets(triplets),
+            [("a", "USES", "B"), ("a", "IS", "C"), ("A", "USES", "B")],
+        )
+
+    def test_graph_utils_junk_reasoning(self) -> None:
+        from core.graph.raganything_utils import graph_embed_junk_reason, is_junk_graph_label
+
+        self.assertEqual(graph_embed_junk_reason(""), "empty")
+        self.assertTrue(is_junk_graph_label("N/A", strict=False))
+        self.assertFalse(
+            is_junk_graph_label(
+                "GraphNode",
+                allowlist_raw="exact:GraphNode",
+                strict=False,
+            )
+        )
+        self.assertTrue(
+            is_junk_graph_label(
+                "noise item",
+                denylist_raw="contains:noise",
+                strict=False,
+            )
+        )
+        self.assertEqual(graph_embed_junk_reason("Skip to main content"), "strict_boilerplate_label")
+
+
+class RagAnythingClientModuleCharacterizationTests(unittest.TestCase):
+    def test_graph_cache_key_changes_with_db_name(self) -> None:
+        from core.graph.raganything_client_config import graph_runtime_cache_key
+        from core.graph.raganything_settings import load_raganything_graph_settings
+
+        class Provider:
+            def __init__(self) -> None:
+                self.base = "http://ollama"
+                self.rag_model = "rag"
+                self.embed_model = "emb"
+                self._explicit_graph_model = ""
+
+        with tempfile.TemporaryDirectory() as tmp:
+            settings = load_raganything_graph_settings()
+            provider = Provider()
+
+            key_default = graph_runtime_cache_key(
+                Path(tmp),
+                provider,
+                settings,
+                neo4j_database="db-a",
+            )
+            key_alt = graph_runtime_cache_key(
+                Path(tmp),
+                provider,
+                settings,
+                neo4j_database="db-b",
+            )
+
+            self.assertNotEqual(key_default, key_alt)
+            self.assertIn("db-a", key_default)
+            self.assertIn("db-b", key_alt)
+
+    def test_graph_extract_helpers_produce_stable_ids(self) -> None:
+        from core.graph.raganything_extract import (
+            graph_content_list_from_input,
+            raganything_file_ref,
+            stable_raganything_doc_id,
+        )
+
+        content = graph_content_list_from_input(
+            "line1\nline2",
+            [" chunk ", "", "  keep  "],
+        )
+        self.assertEqual(
+            content,
+            [
+                {"type": "text", "text": "chunk", "page_idx": 0},
+                {"type": "text", "text": "keep", "page_idx": 2},
+            ],
+        )
+
+        doc_id = stable_raganything_doc_id("doc", "source.txt", content)
+        self.assertTrue(doc_id.startswith("doc:"))
+
+        file_ref = raganything_file_ref("doc", "/tmp/source.txt")
+        self.assertIn("doc__source.txt", file_ref)
+
+    def test_graph_cache_scrub_can_cleanup_full_or_doc_scope(self) -> None:
+        from core.graph.raganything_cache import scrub_raganything_kv_graph_junk
+        from core.graph.raganything_utils import is_junk_graph_label
+
+        with tempfile.TemporaryDirectory() as tmp:
+            working_dir = Path(tmp)
+            (working_dir / "kv_store_full_entities.json").write_text(
+                json.dumps(
+                    {
+                        "doc-1": {"entity_names": ["HAWKI", "keep me", "N/A"]},
+                        "doc-2": {"entity_names": ["keep", "noise"]},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (working_dir / "kv_store_full_relations.json").write_text(
+                json.dumps(
+                    {
+                        "doc-1": {"relation_pairs": [["HAWKI", "connects", "RAG"], ["N/A", "links", "Tool"], ["ok", "is", "good"]]},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (working_dir / "kv_store_entity_chunks.json").write_text(
+                json.dumps({"HAWKI": 1, "N/A": 1, "keep": 1}, ensure_ascii=False),
+                encoding="utf-8",
+            )
+            (working_dir / "kv_store_relation_chunks.json").write_text(
+                json.dumps({"HAWKI<SEP>RAG": 1, "N/A<SEP>Tool": 1}, ensure_ascii=False),
+                encoding="utf-8",
+            )
+
+            result = scrub_raganything_kv_graph_junk(
+                working_dir=working_dir,
+                is_junk_graph_label=lambda value: is_junk_graph_label(value, strict=False),
+                rag_doc_id="doc-1",
+                full_scan=False,
+            )
+
+            self.assertEqual(result["full_entities_docs"], 1)
+            self.assertGreaterEqual(result["full_entities_names"], 1)
+            self.assertEqual(result["full_relations_pairs"], 1)
+            self.assertEqual(result["entity_chunks"], 1)
+            self.assertEqual(result["relation_chunks"], 1)
+
+
+class RagAnythingSummaryCharacterizationTests(unittest.TestCase):
+    def test_graph_runtime_summary_builder_returns_expected_shape(self) -> None:
+        from core.graph.raganything_summary import build_graph_runtime_summary
+        from core.graph.raganything_settings import load_raganything_graph_settings
+
+        with tempfile.TemporaryDirectory() as tmp:
+            working_dir = Path(tmp)
+            for i in range(2):
+                (working_dir / f"kv_store_doc_status_chunk_{i}.json").write_text("{}", encoding="utf-8")
+
+            with patch.dict(
+                os.environ,
+                {
+                    "NEO4J_URI": "bolt://from-env:7687",
+                    "NEO4J_USER": "neo-user",
+                    "NEO4J_DATABASE": "env-db",
+                },
+                clear=False,
+            ):
+                settings = load_raganything_graph_settings()
+
+            summary = build_graph_runtime_summary(
+                working_dir=working_dir,
+                settings=settings,
+                runtime_meta={"doc_status_storage": "ChunkedJsonDocStatusStorage", "graph_storage": "Neo4JStorage"},
+                graph_client_initialized=True,
+            )
+
+        self.assertEqual(summary["doc_status_chunks"]["count"], 2)
+        self.assertEqual(summary["doc_status_storage"], "ChunkedJsonDocStatusStorage")
+        self.assertEqual(summary["graph_storage"], "Neo4JStorage")
+        self.assertEqual(summary["graph_client_initialized"], True)
+
+
+class RagAnythingLoopCharacterizationTests(unittest.TestCase):
+    def test_graph_loop_runs_sync_coro(self) -> None:
+        from core.graph.raganything_loop import RagAnythingGraphLoop
+
+        async def _value() -> str:
+            return "ok"
+
+        loop = RagAnythingGraphLoop()
+        self.assertEqual(loop.run_sync(_value()), "ok")
+
+
+class RagAnythingRuntimeCharacterizationTests(unittest.TestCase):
+    def test_prepare_lightrag_neo4j_env_sets_runtime_variables(self) -> None:
+        from core.graph.raganything_runtime import prepare_lightrag_neo4j_env
+        from core.graph.raganything_settings import load_raganything_graph_settings
+
+        with patch.dict(
+            os.environ,
+            {
+                "NEO4J_URI": "bolt://existing-db:7687",
+                "NEO4J_BOLT_URL": "bolt://lightrag:7687",
+                "NEO4J_HTTP_URL": "",
+                "NEO4J_USER": "neo4j-user",
+                "NEO4J_PASSWORD": "neo4j-pass",
+                "NEO4J_DATABASE": "base-db",
+            },
+            clear=False,
+        ):
+            settings = load_raganything_graph_settings()
+
+            ready, applied = prepare_lightrag_neo4j_env(settings)
+
+        self.assertTrue(ready)
+        self.assertIn("NEO4J_USERNAME", applied)
+        self.assertEqual(applied["NEO4J_DATABASE"], "base-db")
+        self.assertEqual(applied["NEO4J_USERNAME"], "neo4j-user")
+        self.assertNotIn("NEO4J_URI", applied)
+
 
 class IngestCharacterizationTests(unittest.TestCase):
     def test_validate_ingest_document_reports_invalid_shape_and_metadata_warnings(self) -> None:
@@ -345,6 +722,31 @@ class IngestCharacterizationTests(unittest.TestCase):
         self.assertEqual(points[0]["payload"]["doc_id"], "doc-1")
         self.assertEqual(points[0]["payload"]["chunk_index"], 0)
         self.assertRegex(points[0]["id"], r"^[0-9a-f-]{36}$")
+
+    def test_graph_ingest_settings_load_from_env(self) -> None:
+        from pipeline.ingest.settings import load_graph_ingest_settings
+        from pipeline.ingest.graph_ingest import graph_failure_log_path
+
+        with patch.dict(
+            os.environ,
+            {
+                "GRAPH_DEBUG": "true",
+                "GRAPH_PERF_LOG": "1",
+                "GRAPH_DOC_TIMEOUT": "12",
+                "GRAPH_DOC_MAX_CHARS": "777",
+                "GRAPH_DOC_MAX_CHUNKS": "5",
+                "GRAPH_FAILURE_LOG": "/tmp/custom_graph_failures.log",
+            },
+            clear=False,
+        ):
+            settings = load_graph_ingest_settings()
+            self.assertEqual(str(graph_failure_log_path(Path(tempfile.gettempdir()))), "/tmp/custom_graph_failures.log")
+
+        self.assertTrue(settings.graph_debug)
+        self.assertTrue(settings.graph_perf_log)
+        self.assertEqual(settings.graph_doc_timeout_s, 12.0)
+        self.assertEqual(settings.graph_doc_max_chars, 777)
+        self.assertEqual(settings.graph_doc_max_chunks, 5)
 
 
 class IngestRunnerCharacterizationTests(unittest.TestCase):
@@ -505,6 +907,87 @@ class Neo4jCharacterizationTests(unittest.TestCase):
             ],
         )
 
+    def test_neo4j_query_executor_retries_transient_errors(self) -> None:
+        from graph.neo4j_requests import Neo4jQueryRequest
+        from graph.neo4j_transport import Neo4jQueryExecutor
+        from neo4j import exceptions as neo4j_exceptions
+
+        attempts: list[int] = []
+
+        class Session:
+            def __init__(self) -> None:
+                attempts.append(1)
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def execute_read(self, callback):
+                if len(attempts) < 2:
+                    raise neo4j_exceptions.Neo4jError("retry now")
+                return callback(self)
+
+        executed: list[bool] = []
+        executor = Neo4jQueryExecutor(
+            session_factory=Session,
+            retry_attempts=3,
+            log_latency=False,
+            backoff_seconds=0.0,
+        )
+        result = executor.run_read(
+            Neo4jQueryRequest("RETURN 1", {}),
+            callback=lambda tx: executed.append(True) or "ok",
+        )
+
+        self.assertEqual(result, "ok")
+        self.assertEqual(len(attempts), 2)
+        self.assertEqual(executed, [True])
+
+    def test_neo4j_graph_accepts_injected_query_executor(self) -> None:
+        from graph.neo4j_graph import Neo4jGraph
+        from types import SimpleNamespace
+
+        class FakeExecutor:
+            def __init__(self) -> None:
+                self.read_calls = 0
+                self.write_calls = 0
+                self.statements: list[str] = []
+
+            def run_read(self, request, callback):
+                self.read_calls += 1
+                self.statements.append(request.statement)
+
+                class Tx:
+                    def run(self, _statement: str, **_params: str) -> list[dict[str, str]]:
+                        return [{"subject": "A", "relation": "R", "object": "B"}]
+
+                return callback(Tx())
+
+            def run_write(self, request, callback):
+                self.write_calls += 1
+                self.statements.append(request.statement)
+
+                class Tx:
+                    def run(self, statement: str, **_params: str):
+                        return {"statement": statement}
+
+                return callback(Tx())
+
+        executor = FakeExecutor()
+        graph = Neo4jGraph(
+            settings=SimpleNamespace(database=None, retry_attempts=1, log_latency=False, perf_log=False),
+            query_executor=executor,  # type: ignore[arg-type]
+        )
+        fetch_result = graph.fetch_related(["toy"])
+        graph.upsert_triplets([("A", "R", "B")], doc_id="doc-1")
+
+        self.assertEqual(fetch_result, [{"subject": "A", "relation": "R", "object": "B"}])
+        self.assertEqual(executor.read_calls, 1)
+        self.assertEqual(executor.write_calls, 1)
+        self.assertTrue(any("UNWIND $rows" in statement for statement in executor.statements))
+
 
 class QueryCharacterizationTests(unittest.TestCase):
     def test_query_lexical_helpers_fold_fuzzy_match_and_boost_scores(self) -> None:
@@ -594,6 +1077,36 @@ class QueryCharacterizationTests(unittest.TestCase):
 
         self.assertEqual([hit["payload"]["doc_id"] for hit in hits], ["doc-b", "doc-a"])
         self.assertEqual(calls, [("search", None), ("scroll", True), ("scroll", False)])
+
+    def test_query_fallback_uses_injected_scroll_controls(self) -> None:
+        from pipeline.query_fallback import keyword_fallback_search
+
+        calls: list[tuple[str, int | bool | None]] = []
+
+        class Qdrant:
+            def search_with_text(self, vector, *, top_k, terms, fields):
+                calls.append(("search", top_k))
+                return []
+
+            def scroll_with_text_all(self, *, terms, fields, limit, require_all):
+                calls.append(("scroll_all", limit))
+                return [{"id": "a", "score": 0.4, "payload": {"doc_id": "doc-a"}}]
+
+            def scroll_with_text(self, *, terms, fields, limit, require_all):
+                calls.append(("scroll", limit))
+                return []
+
+        hits = keyword_fallback_search(
+            Qdrant(),
+            [0.1],
+            "wooden toys",
+            3,
+            text_scroll_limit_fn=lambda top_k: 7,
+            exhaustive_text_fn=lambda: True,
+        )
+
+        self.assertEqual([hit["payload"]["doc_id"] for hit in hits], ["doc-a"])
+        self.assertEqual(calls, [("search", 3), ("scroll_all", 7)])
 
     def test_query_hit_helpers_merge_dedupe_and_limit_by_doc_identity(self) -> None:
         from pipeline import query_logic
@@ -717,6 +1230,324 @@ class QueryCharacterizationTests(unittest.TestCase):
         self.assertTrue(result["ok"])
         self.assertEqual([hit["payload"]["title"] for hit in result["hits"]], ["Graph", "Vector"])
         self.assertEqual(result["retrieval"]["context_docs"], 2)
+
+    def test_query_execution_module_injection_and_flow(self) -> None:
+        from pipeline import query_execution
+
+        calls: list[str] = []
+        fast_mode_calls: list[bool] = []
+
+        class Provider:
+            embed_model = "provider-embed"
+            rag_model = "provider-rag"
+
+            def embed(self, text: str) -> list[float]:
+                calls.append("embed")
+                return [0.1, 0.2, 0.3]
+
+        body = SimpleNamespace(
+            query="toy train",
+            top_k=2,
+            provider="fake",
+            filters={"source_format": "markdown"},
+            generate=False,
+            is_optimized=False,
+            fast_mode=False,
+            smart_lookup=False,
+            structural_hops=1,
+            preferred_tags=None,
+            reranker="none",
+            rerank_top_n=4,
+            mix_mode=False,
+            mix_weight=0.25,
+        )
+
+        result = query_execution.run_query_documents(
+            body,
+            rag_service=SimpleNamespace(rerank_hits=lambda **kwargs: [{"id": "fallback", "score": 0.1, "payload": {"title": "Fallback", "content": "", "doc_id": "z"}}]),
+            get_provider=lambda name: Provider(),
+            qdrant_ctor=object,
+            analyze_prompt_fn=lambda query: {"blocked": False, "issues": [], "sanitized": query},
+            enforce_output_safety_fn=lambda answer: {"blocked": False, "issues": [], "answer": answer},
+            sanitize_prompt_text_fn=lambda query: query,
+            build_query_rewrite_fn=lambda provider, query, **kwargs: {
+                "enabled": True,
+                "rewritten_query": "rewritten",
+                "high_level_keys": ["toys"],
+                "low_level_keys": ["trains"],
+                "entity_terms": ["train"],
+                "modality_hints": [],
+            },
+            build_query_terms_fn=lambda rewritten_query, high_level_keys, low_level_keys, entity_terms: ["train", "toy"],
+            run_search_fn=lambda **kwargs: [
+                {"id": "a", "score": 0.6, "payload": {"title": "A", "component_type": "chunk", "content": "train", "doc_id": "a"}},
+                {"id": "b", "score": 0.4, "payload": {"title": "B", "component_type": "chunk", "content": "toy", "doc_id": "b"}},
+            ],
+            keyword_fallback_fn=lambda *args, **kwargs: [],
+            build_structural_hits_fn=lambda *args, **kwargs: [{"id": "s", "payload": {"component_type": "relation", "title": "s"}}],
+            structural_hops_fn=lambda: 1,
+            structural_limit_fn=lambda top_k: top_k,
+            fusion_weights_fn=lambda: (1.0, 0.5),
+            rerank_and_filter_hits_fn=lambda hits, **kwargs: hits,
+            should_iterate_fn=lambda query, hits, top_k: False,
+            collect_expansion_terms_fn=lambda hits: ["x"],
+            merge_hits_fn=lambda primary, secondary, limit: secondary + primary,
+            build_fused_hits_fn=lambda sem_hits, struct_hits, sem_weight=0.0, str_weight=0.0: sem_hits + struct_hits,
+            prepare_context_fn=lambda hits, max_docs, max_tokens: (hits, [], 0),
+            run_high_recall_fn=lambda **kwargs: [],
+            fetch_related_terms_fn=lambda terms, limit: [{"subject": "HAWKI", "predicate": "related", "object": "RAG"}],
+            context_limits_fn=lambda: (400, 10),
+            score_thresholds_fn=lambda: (0.0, 0.0),
+            iterative_retrieval_enabled_fn=lambda: False,
+            generation_enabled_fn=lambda: False,
+            configured_search_top_k_fn=lambda top_k: top_k,
+            extract_terms_fn=lambda text: text.lower().split(),
+            terms_from_payload_fn=lambda payload: ["kg"],
+            set_fast_mode_fn=lambda enabled: fast_mode_calls.append(enabled),
+        )
+
+        self.assertEqual(result["ok"], True)
+        self.assertEqual(len(result["hits"]), 3)
+        self.assertEqual(result["count"], 3)
+        self.assertTrue(any(h["id"] == "a" for h in result["hits"]))
+        self.assertEqual(result["retrieval"]["iterative_pass"], False)
+        self.assertIn("embed", calls)
+        self.assertEqual(fast_mode_calls, [False])
+
+    def test_query_execution_fast_mode_setter_is_injected(self) -> None:
+        from pipeline import query_execution
+
+        body = SimpleNamespace(
+            query="fast mode",
+            top_k=2,
+            provider="fake",
+            filters={},
+            generate=False,
+            is_optimized=False,
+            fast_mode=True,
+            smart_lookup=False,
+            structural_hops=0,
+            preferred_tags=None,
+            reranker="none",
+            rerank_top_n=4,
+            mix_mode=False,
+            mix_weight=0.25,
+        )
+
+        fast_mode_calls: list[bool] = []
+        query_execution.run_query_documents(
+            body,
+            rag_service=SimpleNamespace(rerank_hits=lambda **kwargs: []),
+            get_provider=lambda name: SimpleNamespace(
+                embed=lambda text: [0.1, 0.2, 0.3],
+                embed_model="embed-model",
+                rag_model="rag-model",
+            ),
+            qdrant_ctor=object,
+            analyze_prompt_fn=lambda query: {"blocked": False, "issues": [], "sanitized": query},
+            enforce_output_safety_fn=lambda answer: {"blocked": False, "issues": [], "answer": answer},
+            sanitize_prompt_text_fn=lambda query: query,
+            build_query_rewrite_fn=lambda provider, query, **kwargs: {
+                "enabled": False,
+                "rewritten_query": query,
+                "high_level_keys": [],
+                "low_level_keys": [],
+                "entity_terms": [],
+                "modality_hints": [],
+            },
+            build_query_terms_fn=lambda rewritten_query, high_level_keys, low_level_keys, entity_terms: [],
+            run_search_fn=lambda **kwargs: [],
+            keyword_fallback_fn=lambda *args, **kwargs: [],
+            build_structural_hits_fn=lambda *args, **kwargs: [],
+            structural_hops_fn=lambda: 0,
+            structural_limit_fn=lambda top_k: top_k,
+            rerank_and_filter_hits_fn=lambda hits, **kwargs: hits,
+            run_high_recall_fn=lambda **kwargs: [],
+            fetch_related_terms_fn=lambda terms, limit: [],
+            set_fast_mode_fn=lambda enabled: fast_mode_calls.append(enabled),
+        )
+
+        self.assertEqual(fast_mode_calls, [True])
+
+    def test_query_stages_rewrite_contract_is_multimodal_and_dedupe_terms(self) -> None:
+        from pipeline import query_stages
+
+        with patch.object(
+            query_stages,
+            "_is_multimodal_query",
+            return_value=True,
+        ) as multimodal_check, patch.object(
+            query_stages,
+            "_rewrite_query",
+            return_value={
+                "rewritten_query": "Compare wooden blocks and toy trains",
+                "high_level_keys": ["toys", "toys"],
+                "low_level_keys": ["blocks", ""],
+                "modality_hints": ["image", None],
+                "entity_terms": ["train", "train"],
+            },
+        ):
+            rewrite = query_stages.build_query_rewrite(
+                SimpleNamespace(chat=lambda system, messages: "{}"),
+                "How to show toy train figure?",
+                fast_mode=False,
+            )
+
+        self.assertEqual(rewrite["enabled"], True)
+        self.assertEqual(rewrite["high_level_keys"], ["toys", "toys"])
+        self.assertEqual(rewrite["low_level_keys"], ["blocks"])
+        self.assertEqual(rewrite["modality_hints"], ["image"])
+        self.assertEqual(rewrite["entity_terms"], ["train", "train"])
+
+        with patch.object(query_stages, "_extract_terms", return_value=["compare"]):
+            query_terms = query_stages.build_query_terms(
+                "Compare wooden blocks and toy trains",
+                rewrite["high_level_keys"],
+                rewrite["low_level_keys"],
+                rewrite["entity_terms"],
+            )
+
+        self.assertEqual(query_terms, ["train", "blocks", "toys", "compare"])
+        multimodal_check.assert_called_once()
+
+    def test_query_stages_rerank_and_filter_preserves_best_path_and_fallback(self) -> None:
+        from pipeline import query_stages
+
+        class RerankService:
+            def __init__(self) -> None:
+                self.calls = 0
+
+            def rerank_hits(self, **kwargs) -> list[dict[str, object]]:
+                self.calls += 1
+                return [
+                    {"id": "a", "score": 0.2, "payload": {"title": "Alpha"}},
+                    {"id": "b", "score": 0.6, "payload": {"title": "Beta"}},
+                    {"id": "a", "score": 0.2, "payload": {"title": "Alpha"}},
+                ]
+
+        rerank_service = RerankService()
+        hits = [
+            {"id": "a", "score": 0.2, "payload": {"title": "Alpha"}},
+            {"id": "b", "score": 0.6, "payload": {"title": "Beta"}},
+            {"id": "c", "score": 0.4, "payload": {"title": "Gamma"}},
+        ]
+        provider = SimpleNamespace(embed_model="toy", rag_model="rag")
+
+        with patch.object(query_stages, "apply_lexical_boost", return_value=[]):
+            no_match = query_stages.rerank_and_filter_hits(
+                hits,
+                user_query="unrelated",
+                provider=provider,
+                query_vector=[0.1],
+                rag_service=rerank_service,
+                mode="none",
+                top_n=12,
+                mix_mode=False,
+                mix_weight=0.4,
+                min_score=0.5,
+                fallback_min=0.3,
+                top_k=2,
+            )
+
+        self.assertEqual([item["id"] for item in no_match], ["b"])
+        self.assertEqual(rerank_service.calls, 1)
+
+        with patch.object(query_stages, "apply_lexical_boost", return_value=[]), patch.object(
+            query_stages,
+            "_extract_terms",
+            return_value=["compare"],
+        ):
+            fallback = query_stages.filter_hits_by_score(
+                hits,
+                query="unrelated",
+                min_score=0.9,
+                fallback_min=0.9,
+                top_k=2,
+            )
+
+        self.assertEqual([item["id"] for item in fallback], ["a", "b"])
+
+
+    def test_query_rewrite_module_handles_injected_policy_dependencies(self) -> None:
+        from pipeline import query_rewrite
+
+        rewrite = query_rewrite.build_query_rewrite(
+            SimpleNamespace(chat=lambda system, messages: "{}"),
+            "Show toy planes and trains",
+            fast_mode=False,
+            is_multimodal_query=lambda text: True,
+            rewrite_query=lambda provider, text: {
+                "rewritten_query": "visual toy planes",
+                "high_level_keys": ["toys", "", None, "toys"],
+                "low_level_keys": ["planes", None],
+                "modality_hints": [None, "image"],
+                "entity_terms": ["train", "train"],
+            },
+            normalize_list=lambda values: [v for v in (values or []) if v],
+        )
+
+        self.assertEqual(
+            rewrite["high_level_keys"],
+            ["toys", "toys"],
+        )
+        self.assertEqual(rewrite["low_level_keys"], ["planes"])
+        self.assertEqual(rewrite["modality_hints"], ["image"])
+        self.assertEqual(rewrite["entity_terms"], ["train", "train"])
+
+        terms = query_rewrite.build_query_terms(
+            "Visual toy planes",
+            rewrite["high_level_keys"],
+            rewrite["low_level_keys"],
+            rewrite["entity_terms"],
+            extract_terms=lambda query: ["visual", "train", "train"],
+        )
+        self.assertEqual(terms, ["train", "planes", "toys", "visual"])
+
+    def test_query_ranking_module_iterate_and_expansion_terms(self) -> None:
+        from pipeline import query_ranking
+
+        class RerankService:
+            def rerank_hits(self, **kwargs) -> list[dict[str, object]]:
+                return [
+                    {"id": "b", "score": 0.8, "payload": {"title": "Beta"}},
+                    {"id": "a", "score": 0.2, "payload": {"title": "Alpha"}},
+                ]
+
+        reranked = query_ranking.rerank_and_filter_hits(
+            [{"id": "x", "score": 0.5}],
+            user_query="toy train",
+            provider=SimpleNamespace(),
+            query_vector=[0.1],
+            rag_service=RerankService(),
+            mode="none",
+            top_n=5,
+            mix_mode=False,
+            mix_weight=0.5,
+            min_score=0.7,
+            fallback_min=0.7,
+            top_k=1,
+            filter_hits=lambda hits, **kwargs: hits,
+        )
+        self.assertEqual(
+            reranked,
+            [
+                {"id": "b", "score": 0.8, "payload": {"title": "Beta"}},
+                {"id": "a", "score": 0.2, "payload": {"title": "Alpha"}},
+            ],
+        )
+
+        self.assertTrue(query_ranking.should_iterate("then compare toy trains", [{"score": 0.8}], top_k=3))
+        self.assertFalse(query_ranking.should_iterate("toy blocks", [{"score": 0.9}, {"score": 0.8}, {"score": 0.7}], top_k=3))
+
+        expansion = query_ranking.collect_expansion_terms(
+            [
+                {"payload": {"content": "blocks for kids"}},
+                {"payload": {"content": "builds and more"}},
+            ],
+            limit=2,
+            extract_terms=lambda text: ["blocks", "blocks", "toys", ""],
+        )
+        self.assertEqual(expansion, ["blocks", "toys"])
 
 
 class CliIngestHelperCharacterizationTests(unittest.TestCase):
@@ -905,17 +1736,72 @@ class ApiAndVectorValidationTests(unittest.TestCase):
         from fastapi import HTTPException
 
         from app.dependencies import get_provider_or_400
-        from app.schemas import IngestDoc, IngestRequest, QueryRequest
+        from app.schemas import IngestDoc, IngestRequest, QueryRequest, apply_ingest_request_settings, apply_query_request_settings
+        from app.settings import load_app_settings
 
         ingest = IngestRequest(
             docs=[IngestDoc(id="doc-1", text="Toy catalog", payload={"title": "Toys"})],
         )
         query = QueryRequest(query="Which toys are wooden?")
+        settings = load_app_settings()
 
-        self.assertEqual(ingest.provider, os.environ.get("RAG_DEFAULT_PROVIDER", "ollama"))
-        self.assertEqual(ingest.distance, os.environ.get("QDRANT_DISTANCE", "Cosine"))
+        self.assertEqual(ingest.provider, settings.rag_default_provider)
+        self.assertEqual(ingest.distance, settings.qdrant_distance)
         self.assertEqual(query.top_k, 5)
         self.assertEqual(query.filters, {})
+        self.assertEqual(apply_ingest_request_settings(ingest, settings), ingest)
+
+        patched_query = apply_query_request_settings(query, settings)
+        self.assertEqual(patched_query.provider, settings.rag_default_provider)
+        self.assertEqual(patched_query.reranker, settings.reranker_mode)
+        self.assertEqual(patched_query.mix_mode, settings.reranker_mix_mode)
+        self.assertEqual(patched_query.mix_weight, settings.reranker_mix_weight)
+
+        custom_query = QueryRequest(
+            query="Which toys are wooden?",
+            provider="query-provider",
+            reranker="cosine",
+            mix_mode=False,
+        )
+        patched = apply_query_request_settings(custom_query, settings)
+        self.assertEqual(patched.provider, "query-provider")
+        self.assertEqual(patched.reranker, "cosine")
+        self.assertFalse(patched.mix_mode)
+
+        custom_ingest = IngestRequest(
+            docs=[IngestDoc(id="doc-1", text="x", payload={})],
+            provider="ingest-provider",
+            distance="L2",
+            chunk_chars=999,
+            chunk_overlap=88,
+            batch_size=12,
+            graph_engine="custom-graph",
+        )
+        patched_ingest = apply_ingest_request_settings(custom_ingest, settings)
+        self.assertEqual(patched_ingest.provider, "ingest-provider")
+        self.assertEqual(patched_ingest.distance, "L2")
+        self.assertEqual(patched_ingest.chunk_chars, 999)
+        self.assertEqual(patched_ingest.batch_size, 12)
+        self.assertEqual(patched_ingest.graph_engine, "custom-graph")
+
+    def test_app_settings_includes_runtime_env_overrides(self) -> None:
+        from fastapi import HTTPException
+
+        from app.dependencies import get_provider_or_400
+        from app.settings import load_app_settings
+
+        with patch.dict(
+            os.environ,
+            {
+                "CUDA_VISIBLE_DEVICES": "0,1",
+                "NVIDIA_VISIBLE_DEVICES": "GPU-7",
+            },
+            clear=False,
+        ):
+            settings = load_app_settings()
+
+        self.assertEqual(settings.cuda_visible_devices, "0,1")
+        self.assertEqual(settings.nvidia_visible_devices, "GPU-7")
 
         class Service:
             def get_provider(self, name: str):
@@ -932,20 +1818,26 @@ class ApiAndVectorValidationTests(unittest.TestCase):
 
         from app.documents import build_replacement_ingest_request
         from app.schemas import DocumentUpsertRequest
+        from app.settings import load_app_settings
 
         with self.assertRaises(HTTPException) as raised:
-            build_replacement_ingest_request("doc-1", DocumentUpsertRequest(text=" "))
+            build_replacement_ingest_request(
+                doc_id="doc-1",
+                body=DocumentUpsertRequest(text=" "),
+                app_settings=load_app_settings(),
+            )
         self.assertEqual(raised.exception.status_code, 400)
 
         request = build_replacement_ingest_request(
-            "doc-1",
-            DocumentUpsertRequest(
+            doc_id="doc-1",
+            body=DocumentUpsertRequest(
                 text="Toy blocks",
                 payload={"title": "Toys"},
                 provider="fake",
                 collection="toy_docs",
                 graph=True,
             ),
+            app_settings=load_app_settings(),
         )
 
         self.assertEqual(request.docs[0].id, "doc-1")
@@ -958,6 +1850,7 @@ class ApiAndVectorValidationTests(unittest.TestCase):
 
     def test_config_response_uses_provider_and_qdrant_boundaries(self) -> None:
         from app.config_response import build_config_response
+        from app.settings import AppSettings
 
         class Provider:
             embed_model = "embed-toys"
@@ -981,6 +1874,25 @@ class ApiAndVectorValidationTests(unittest.TestCase):
             response = build_config_response(
                 get_provider=lambda name: Provider(),
                 qdrant_factory=Qdrant,
+                app_settings=AppSettings(
+                    rag_default_provider="fake",
+                    qdrant_distance="Cosine",
+                    graph_engine="raganything",
+                    reranker_mode="none",
+                    reranker_mix_mode=True,
+                    reranker_mix_weight=0.7,
+                    reranker_jina_model="jina-reranker-v2-base-multilingual",
+                    reranker_api_url="",
+                    chunk_size=1200,
+                    chunk_overlap_size=250,
+                    ingest_batch_size=64,
+                    cuda_visible_devices="unset",
+                    nvidia_visible_devices="unset",
+                    log_level="INFO",
+                    graph_debug=False,
+                    graph_debug_log="",
+                    public_dir=Path("/tmp"),
+                ),
             )
 
         self.assertEqual(response["provider"], "fake")
@@ -993,6 +1905,7 @@ class ApiAndVectorValidationTests(unittest.TestCase):
         import logging
 
         from app.logging_config import configure_app_logging, env_flag
+        from app.settings import AppSettings
 
         app_logger = logging.getLogger("tests.logging_config")
         ingest_logger = logging.getLogger("pipeline.ingest_logic")
@@ -1000,7 +1913,25 @@ class ApiAndVectorValidationTests(unittest.TestCase):
         old_levels = (app_logger.level, ingest_logger.level, rag_logger.level)
         try:
             logger, graph_debug, graph_debug_log = configure_app_logging(
-                {"LOG_LEVEL": "WARNING", "GRAPH_DEBUG": "true", "GRAPH_DEBUG_LOG": ""},
+                AppSettings(
+                    rag_default_provider="ollama",
+                    qdrant_distance="Cosine",
+                    graph_engine="raganything",
+                    reranker_mode="none",
+                    reranker_mix_mode=False,
+                    reranker_mix_weight=0.5,
+                    reranker_jina_model="jina-reranker-v2-base-multilingual",
+                    reranker_api_url="",
+                    chunk_size=1200,
+                    chunk_overlap_size=250,
+                    ingest_batch_size=64,
+                    cuda_visible_devices="unset",
+                    nvidia_visible_devices="unset",
+                    log_level="WARNING",
+                    graph_debug=True,
+                    graph_debug_log="",
+                    public_dir=Path("/tmp"),
+                ),
                 logger_name="tests.logging_config",
             )
 
@@ -1041,6 +1972,255 @@ class ApiAndVectorValidationTests(unittest.TestCase):
         self.assertIn("/query", paths)
         self.assertIn("/graph/from-text", paths)
         self.assertIn("/graph/cache/clear", paths)
+
+    def test_app_factory_builds_routes_with_injected_dependencies(self) -> None:
+        from app.factory import build_app
+        from app.settings import load_app_settings
+
+        class FakeService:
+            def __init__(self) -> None:
+                self.runtime_calls = 0
+                self.clear_calls = 0
+                self.provider_calls = 0
+
+            def graph_runtime_summary(self) -> dict[str, object]:
+                self.runtime_calls += 1
+                return {"mode": "test"}
+
+            def clear_graph_cache(self) -> dict[str, object]:
+                self.clear_calls += 1
+                return {"ok": True}
+
+            def get_provider(self, name: str) -> object:
+                self.provider_calls += 1
+                return SimpleNamespace(embed_model="test-embed")
+
+        class FakeQdrant:
+            collection = "app_test"
+
+            def get_vector_size(self) -> int:
+                return 128
+
+        with tempfile.TemporaryDirectory() as tmp:
+            app_settings = load_app_settings()
+            service = FakeService()
+            app = build_app(
+                rag_service=service,
+                public_dir=Path(tmp),
+                qdrant_factory=FakeQdrant,
+                logger_name="app_test_factory",
+                app_settings=app_settings,
+            )
+
+            with TestClient(app) as client:
+                health = client.get("/health").json()
+                config = client.get("/config").json()
+                cache = client.post("/graph/cache/clear").json()
+
+        self.assertEqual(health["ok"], True)
+        self.assertEqual(health["runtime"], {"mode": "test"})
+        self.assertEqual(config["provider"], app_settings.rag_default_provider)
+        self.assertEqual(config["qdrant_collection"], "app_test")
+        self.assertEqual(config["qdrant_vector_size"], 128)
+        self.assertEqual(cache["ok"], True)
+        self.assertEqual(service.runtime_calls, 1)
+        self.assertEqual(service.provider_calls, 1)
+        self.assertEqual(service.clear_calls, 1)
+
+    def test_app_query_route_uses_injected_dependencies(self) -> None:
+        from app.factory import build_app
+        from app.schemas import QueryRequest
+
+        class FakeService:
+            def __init__(self) -> None:
+                self.provider_calls: list[str] = []
+
+            def get_provider(self, name: str) -> object:
+                self.provider_calls.append(name)
+                return SimpleNamespace(embed_model="query-embed", rag_model="query-rag")
+
+        query_body = QueryRequest(
+            query="Why wooden toys are safe?",
+            top_k=4,
+            provider="query-provider",
+            filters={"source_format": "markdown"},
+            generate=False,
+            is_optimized=True,
+            fast_mode=True,
+            smart_lookup=True,
+            structural_hops=2,
+            preferred_tags=["kids", "safety"],
+            reranker="cosine",
+            rerank_top_n=12,
+            mix_mode=False,
+            mix_weight=0.4,
+        )
+        captured: dict[str, object] = {}
+
+        def fake_query_documents(
+            body: QueryRequest,
+            rag_service: object,
+            get_provider,
+        ) -> dict[str, object]:
+            captured["body_type"] = type(body).__name__
+            captured["body_provider"] = body.provider
+            captured["body_top_k"] = body.top_k
+            captured["service_is_injected"] = rag_service is service
+            captured["provider_fn_called"] = callable(get_provider)
+            captured["provider_value"] = get_provider(body.provider)
+            return {
+                "ok": True,
+                "query": body.query,
+                "top_k": body.top_k,
+            }
+
+        with tempfile.TemporaryDirectory() as tmp:
+            service = FakeService()
+            app = build_app(
+                rag_service=service,
+                public_dir=Path(tmp),
+                qdrant_factory=object,
+                logger_name="app_test_query_route",
+            )
+
+            with patch("app.query.query_documents", side_effect=fake_query_documents):
+                with TestClient(app) as client:
+                    response = client.post(
+                        "/query",
+                        json=query_body.model_dump(),
+                    )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"ok": True, "query": query_body.query, "top_k": 4})
+        self.assertEqual(captured["body_type"], "QueryRequest")
+        self.assertEqual(captured["body_provider"], query_body.provider)
+        self.assertEqual(captured["body_top_k"], 4)
+        self.assertEqual(captured["provider_fn_called"], True)
+        self.assertEqual(captured["service_is_injected"], True)
+        self.assertEqual(captured["provider_value"].embed_model, "query-embed")
+        self.assertEqual(service.provider_calls, [query_body.provider])
+
+    def test_app_ingest_route_delegates_with_injected_dependencies(self) -> None:
+        from app.factory import build_app
+        from app.schemas import IngestDoc, IngestRequest
+
+        class FakeService:
+            def __init__(self) -> None:
+                self.provider_calls: list[str] = []
+
+            def get_provider(self, name: str) -> object:
+                self.provider_calls.append(name)
+                return SimpleNamespace(embed_model="ingest-embed", rag_model="graph-rag")
+
+        ingest_body = IngestRequest(
+            docs=[IngestDoc(id="doc-toy-1", text="Wooden trains and blocks.", payload={"title": "Toys"})],
+            provider="ingest-provider",
+            collection="toy_docs",
+            graph=True,
+        )
+        captured: dict[str, object] = {}
+
+        def fake_ingest_documents(
+            body: IngestRequest,
+            rag_service: object,
+            get_provider,
+            public_dir,
+            **kwargs: object,
+        ) -> dict[str, object]:
+            captured["docs_len"] = len(body.docs)
+            captured["provider_arg"] = body.provider
+            captured["service_is_injected"] = rag_service is service
+            captured["public_dir_path"] = str(public_dir)
+            captured["provider_fn_called"] = callable(get_provider)
+            captured["provider_fn_value"] = get_provider(body.provider)
+            return {
+                "ok": True,
+                "collection": body.collection,
+                "count": len(body.docs),
+            }
+
+        with tempfile.TemporaryDirectory() as tmp:
+            service = FakeService()
+            app = build_app(
+                rag_service=service,
+                public_dir=Path(tmp),
+                qdrant_factory=object,
+                logger_name="app_test_ingest_route",
+            )
+
+            with patch("app.ingest.ingest_documents", side_effect=fake_ingest_documents):
+                with TestClient(app) as client:
+                    response = client.post(
+                        "/ingest",
+                        json=ingest_body.model_dump(),
+                    )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"ok": True, "collection": "toy_docs", "count": 1})
+        self.assertEqual(captured["docs_len"], 1)
+        self.assertEqual(captured["provider_arg"], "ingest-provider")
+        self.assertEqual(captured["service_is_injected"], True)
+        self.assertEqual(captured["public_dir_path"], tmp)
+        self.assertEqual(captured["provider_fn_called"], True)
+        self.assertEqual(captured["provider_fn_value"].embed_model, "ingest-embed")
+        self.assertEqual(service.provider_calls, [ingest_body.provider])
+
+    def test_app_document_routes_replace_and_delete_contract(self) -> None:
+        from app.factory import build_app
+
+        class FakeService:
+            def get_provider(self, name: str) -> object:
+                return SimpleNamespace(embed_model="ingest-embed")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            app = build_app(
+                rag_service=FakeService(),
+                public_dir=Path(tmp),
+                qdrant_factory=object,
+                logger_name="app_test_documents_routes",
+            )
+
+            with patch(
+                "app.documents.build_replacement_ingest_request",
+                return_value=SimpleNamespace(
+                    docs=[SimpleNamespace(id="doc-replace-1", text="replacement", payload={})],
+                    provider="fake",
+                    collection="toy_docs",
+                    graph=False,
+                    graph_engine="raganything",
+                    chunk_chars=1200,
+                    chunk_overlap=250,
+                    dry_run=False,
+                    dry_include_graph=False,
+                ),
+            ) as replacement_builder, patch(
+                "app.ingest.delete_document",
+                return_value={"qdrant": {"ok": True}, "neo4j": {"ok": True}},
+            ) as delete_mock, patch(
+                "app.ingest.ingest_documents",
+                return_value={"ok": True},
+            ) as ingest_mock:
+                with TestClient(app) as client:
+                    delete_response = client.delete("/documents/doc-replace-1")
+                    put_response = client.put(
+                        "/documents/doc-replace-1",
+                        json={"text": "updated"},
+                    )
+
+        self.assertEqual(delete_response.status_code, 200)
+        self.assertEqual(
+            delete_response.json(),
+            {"ok": True, "doc_id": "doc-replace-1", "qdrant": {"ok": True}, "neo4j": {"ok": True}},
+        )
+        self.assertEqual(put_response.status_code, 200)
+        self.assertEqual(put_response.json()["ok"], True)
+        self.assertEqual(put_response.json()["replaced_doc_id"], "doc-replace-1")
+        self.assertEqual(put_response.json()["deleted"], {"qdrant": {"ok": True}, "neo4j": {"ok": True}})
+        self.assertEqual(put_response.json(), {"ok": True, "replaced_doc_id": "doc-replace-1", "deleted": {"qdrant": {"ok": True}, "neo4j": {"ok": True}}})
+        self.assertEqual(delete_mock.call_count, 2)
+        delete_mock.assert_any_call("doc-replace-1")
+        replacement_builder.assert_called_once()
+        ingest_mock.assert_called_once()
 
     def test_qdrant_payload_helpers_build_expected_filters_and_batches(self) -> None:
         from vectorstore.payloads import (
@@ -1205,6 +2385,98 @@ class ApiAndVectorValidationTests(unittest.TestCase):
         self.assertEqual(url, "http://qdrant-host:6333/collections/toy_collection/points")
         self.assertEqual(kwargs["timeout"], 9.0)
 
+    def test_qdrant_http_delegates_requests_to_primitive_gateway(self) -> None:
+        from vectorstore.qdrant_http import QdrantHTTP
+        from vectorstore.settings import QdrantHTTPSettings, QdrantSettings
+
+        calls: list[tuple[str, object]] = []
+
+        class FakeResponse:
+            status_code = 200
+
+            def __init__(self, payload: object) -> None:
+                self._payload = payload
+                self.text = ""
+
+            def raise_for_status(self) -> None:
+                return None
+
+            def json(self):
+                return self._payload
+
+        class FakeGateway:
+            def get_collection(self):
+                calls.append(("get_collection", self))
+                return FakeResponse({"result": {"status": "ok"}})
+
+            def list_collections(self):
+                calls.append(("list_collections", self))
+                return FakeResponse({"result": {"collections": []}})
+
+            def search(self, collection, body, timeout):
+                calls.append(("search", collection, timeout))
+                return FakeResponse({"result": [{"id": "1", "score": 0.4}]})
+
+            def upsert(self, points, timeout):
+                calls.append(("upsert", len(points), timeout))
+                return FakeResponse({})
+
+            def count_points(self, collection, exact, timeout):
+                calls.append(("count", collection, exact, timeout))
+                return FakeResponse({"result": {"count": 42}})
+
+            def delete_by_filter(self, filter_body, timeout):
+                calls.append(("delete_by_filter", timeout))
+                return FakeResponse({})
+
+            def scroll(self, collection, body, timeout):
+                calls.append(("scroll", collection, timeout))
+                return FakeResponse({"result": {"points": [], "next_page_offset": None}})
+
+            def ensure_collection(self, **kwargs):
+                calls.append(("ensure_collection", kwargs))
+                return FakeResponse({})
+
+        fake_gateway = FakeGateway()
+
+        with patch("vectorstore.qdrant_http.QdrantHTTPGateway", return_value=fake_gateway):
+            client = QdrantHTTP(
+                settings=QdrantSettings(
+                    scheme="http",
+                    host="qdrant-host",
+                    port=6333,
+                    collection="toy_collection",
+                    api_key=None,
+                    timeout=1.0,
+                    max_attempts=1,
+                ),
+                http_settings=QdrantHTTPSettings(
+                    log_latency=False,
+                    search_all=False,
+                    search_all_per_collection=0,
+                    fallback_all=False,
+                    fallback_per_collection=0,
+                    upsert_timeout=2.0,
+                    search_timeout=2.0,
+                    count_timeout=2.0,
+                    delete_timeout=2.0,
+                    text_timeout=2.0,
+                    text_fallback_terms=3,
+                    text_scroll_hard_cap=500,
+                    text_scroll_batch=32,
+                ),
+            )
+
+            self.assertEqual(client.search([0.1, 0.2], top_k=2), [{"id": "1", "score": 0.4}])
+            client.upsert([{"id": "a", "vector": [1, 2], "payload": {}}])
+            self.assertEqual(client.count_points(), 42)
+            client.delete_by_filter({"must": []})
+
+        self.assertIn(("search", "toy_collection", 2.0), calls)
+        self.assertIn(("upsert", 1, 2.0), calls)
+        self.assertIn(("count", "toy_collection", True, 2.0), calls)
+        self.assertIn(("delete_by_filter", 2.0), calls)
+
     def test_qdrant_http_defaults_search_all_limit_to_top_k_when_not_configured(self) -> None:
         from vectorstore.qdrant_http import QdrantHTTP
         from vectorstore.settings import QdrantHTTPSettings, QdrantSettings
@@ -1302,6 +2574,55 @@ class ApiAndVectorValidationTests(unittest.TestCase):
         self.assertEqual(points, [{"id": "a"}])
         self.assertEqual(next_offset, "abc")
         self.assertEqual(parse_collection_config({"result": {"config": 1}}), {"config": 1})
+
+    def test_qdrant_interpretation_helpers_handle_404_and_missing_scores(self) -> None:
+        from vectorstore.qdrant_interpretation import (
+            attach_collection,
+            parse_scroll_payload,
+            parse_search_payload,
+            sort_hits_by_score,
+        )
+        from requests import HTTPError
+
+        class FakeResponse:
+            def __init__(self, status_code: int, payload: dict[str, object] | None = None) -> None:
+                self.status_code = status_code
+                self._payload = payload or {}
+
+            def json(self) -> dict[str, object]:
+                return self._payload
+
+            def raise_for_status(self) -> None:
+                if self.status_code >= 400:
+                    raise HTTPError(f"status={self.status_code}")
+
+        no_rows = FakeResponse(404, {"result": []})
+        self.assertEqual(parse_search_payload(no_rows, empty_on_not_found=True), [])
+        self.assertEqual(parse_scroll_payload(no_rows, empty_on_not_found=True), ([], None))
+
+        with self.assertRaises(HTTPError):
+            parse_search_payload(no_rows, empty_on_not_found=False)
+
+        hits = [
+            {"id": "1", "score": 0.12},
+            {"id": "2", "score": 0.87},
+            {"id": "3"},
+            {"id": "4", "score": 0.5},
+        ]
+        self.assertEqual(sort_hits_by_score(hits)[:2], [{"id": "2", "score": 0.87}, {"id": "4", "score": 0.5}])
+        self.assertEqual(
+            sort_hits_by_score(hits, limit=2),
+            [{"id": "2", "score": 0.87}, {"id": "4", "score": 0.5}],
+        )
+
+        with_collection = attach_collection([{"id": "x"}, {"id": "y", "collection": "custom"}], "default")
+        self.assertEqual(with_collection[0]["collection"], "default")
+        self.assertEqual(with_collection[1]["collection"], "custom")
+
+        missing_payload = FakeResponse(200, {})
+        points, next_offset = parse_scroll_payload(missing_payload, empty_on_not_found=True)
+        self.assertEqual(points, [])
+        self.assertIsNone(next_offset)
 
     def test_qdrant_search_helpers_normalize_and_merge_results(self) -> None:
         from vectorstore.qdrant_search import (

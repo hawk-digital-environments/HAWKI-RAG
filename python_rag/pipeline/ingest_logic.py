@@ -29,7 +29,13 @@ from pipeline.ingest.vector_ingest import build_points, record_embedding_failure
 from vectorstore.qdrant_http import QdrantHTTP
 
 logger = logging.getLogger(__name__)
-GRAPH_DEBUG = os.environ.get("GRAPH_DEBUG", "").strip().lower() in ("1", "true", "yes")
+
+
+def _env_bool(name: str, default: bool = False) -> bool:
+    raw = os.environ.get(name, "")
+    if not raw.strip():
+        return default
+    return raw.strip().lower() in ("1", "true", "yes", "on")
 
 
 def ingest_documents(
@@ -38,7 +44,12 @@ def ingest_documents(
     rag_service: Any,
     get_provider,
     public_dir: Path,
+    graph_debug: bool | None = None,
 ) -> Dict[str, Any]:
+    resolved_graph_debug = graph_debug
+    if resolved_graph_debug is None:
+        resolved_graph_debug = _env_bool("GRAPH_DEBUG")
+
     dry_run = bool(body.dry_run)
     docs = list(getattr(body, "docs", []) or [])
     run_job_id = infer_job_id(body, docs)
@@ -64,7 +75,7 @@ def ingest_documents(
         body.collection,
         getattr(body, "neo4j_database", None),
     )
-    if GRAPH_DEBUG:
+    if resolved_graph_debug:
         logger.debug(
             "ingest:options provider=%s graph_engine=%s chunk_chars=%s chunk_overlap=%s batch_size=%s distance=%s",
             getattr(body, "provider", None),
@@ -84,7 +95,7 @@ def ingest_documents(
         chunk_chars=body.chunk_chars,
         chunk_overlap=body.chunk_overlap,
         default_job_id=run_job_id,
-        graph_debug=GRAPH_DEBUG,
+        graph_debug=resolved_graph_debug,
     )
     total_chunks = len(chunk_records)
 
@@ -241,6 +252,7 @@ def ingest_documents(
                 graph_engine=body.graph_engine,
                 rag_service=rag_service,
                 provider=provider,
+                graph_debug=resolved_graph_debug,
                 neo4j_database=getattr(body, "neo4j_database", None),
                 public_dir=public_dir,
                 graph=graph,
@@ -327,6 +339,7 @@ def _extract_triplets_from_chunks(
     provider: Any | None,
     neo4j_database: str | None,
     public_dir: Path,
+    graph_debug: bool,
     graph: Any | None = None,
 ) -> tuple[Dict[str, List[tuple[str, str, str]]], List[Dict[str, Any]]]:
     return build_triplets_by_doc(
@@ -334,6 +347,7 @@ def _extract_triplets_from_chunks(
         graph_engine,
         rag_service,
         provider,
+        graph_debug=graph_debug,
         graph=graph,
         neo4j_database=neo4j_database,
         public_dir=public_dir,

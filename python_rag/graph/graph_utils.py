@@ -3,8 +3,8 @@ Graph helpers: structural expansion and Neo4j related utilities.
 """
 from __future__ import annotations
 
-import os
 import logging
+import os
 import re
 import time
 import unicodedata
@@ -13,11 +13,26 @@ from typing import Any, Dict, List, Iterable, Tuple
 from graph.neo4j_graph import Neo4jGraph
 
 logger = logging.getLogger(__name__)
-GRAPH_PERF_LOG = os.environ.get("GRAPH_PERF_LOG", "").strip().lower() in ("1", "true", "yes")
 
 
-def _perf_log(msg: str, *args: Any) -> None:
-    if GRAPH_PERF_LOG:
+def _env_bool(name: str, default: bool = False) -> bool:
+    raw = os.environ.get(name, "")
+    if not raw.strip():
+        return default
+    return raw.strip().lower() in ("1", "true", "yes", "on")
+
+
+def _env_int(name: str, default: int) -> int:
+    try:
+        return int(os.environ.get(name, str(default)))
+    except Exception:
+        return default
+
+
+def _perf_log(msg: str, *args: Any, graph_perf_log: bool | None = None) -> None:
+    if graph_perf_log is None:
+        graph_perf_log = _env_bool("GRAPH_PERF_LOG")
+    if graph_perf_log:
         logger.info(msg, *args)
 
 _IMAGE_EXT_RE = re.compile(r"\.(png|jpe?g|gif|webp|svg)(?:\\?|#|$)", re.IGNORECASE)
@@ -89,7 +104,11 @@ def _is_noise_entity(value: str) -> bool:
     return False
 
 
-def clean_triplets(triplets: Iterable[Tuple[str, str, str]]) -> List[Tuple[str, str, str]]:
+def clean_triplets(
+    triplets: Iterable[Tuple[str, str, str]],
+    *,
+    graph_perf_log: bool | None = None,
+) -> List[Tuple[str, str, str]]:
     start = time.perf_counter()
     try:
         input_count = len(triplets)  # type: ignore[arg-type]
@@ -98,6 +117,7 @@ def clean_triplets(triplets: Iterable[Tuple[str, str, str]]) -> List[Tuple[str, 
     _perf_log(
         "perf:graph graph.graph_utils.clean_triplets start input=%s",
         input_count if input_count >= 0 else "unknown",
+        graph_perf_log=graph_perf_log,
     )
     cleaned: List[Tuple[str, str, str]] = []
     seen = set()
@@ -127,6 +147,7 @@ def clean_triplets(triplets: Iterable[Tuple[str, str, str]]) -> List[Tuple[str, 
         len(cleaned),
         dropped,
         (time.perf_counter() - start) * 1000,
+        graph_perf_log=graph_perf_log,
     )
     return cleaned
 
@@ -134,16 +155,18 @@ def clean_triplets(triplets: Iterable[Tuple[str, str, str]]) -> List[Tuple[str, 
 def filter_triplets_to_source(
     triplets: Iterable[Tuple[str, str, str]],
     source_text: str,
+    *,
+    graph_perf_log: bool | None = None,
 ) -> List[Tuple[str, str, str]]:
     source_norm = _normalize_match_text(source_text)
     if not source_norm:
-        return clean_triplets(triplets)
+        return clean_triplets(triplets, graph_perf_log=graph_perf_log)
 
     filtered: List[Tuple[str, str, str]] = []
     dropped_prompt_examples = 0
     dropped_ungrounded = 0
 
-    for s, r, o in clean_triplets(triplets):
+    for s, r, o in clean_triplets(triplets, graph_perf_log=graph_perf_log):
         if _is_known_prompt_example_triplet(s, o):
             dropped_prompt_examples += 1
             continue
@@ -180,14 +203,11 @@ def fetch_related_terms(terms: List[str], limit: int = 30) -> List[Dict[str, str
 
 
 def structural_limit(top_k: int) -> int:
-    return int(os.environ.get("RAG_STRUCTURAL_LIMIT", max(top_k * 2, 12)))
+    return _env_int("RAG_STRUCTURAL_LIMIT", max(top_k * 2, 12))
 
 
 def structural_hops(default_hops: int = 2) -> int:
-    try:
-        return int(os.environ.get("RAG_STRUCTURAL_HOPS", str(default_hops)))
-    except Exception:
-        return default_hops
+    return _env_int("RAG_STRUCTURAL_HOPS", default_hops)
 
 
 def build_structural_hits(
@@ -196,6 +216,7 @@ def build_structural_hits(
     limit: int,
     hops: int,
     include_rel_match: bool = False,
+    graph_perf_log: bool | None = None,
 ) -> List[Dict[str, Any]]:
     if not terms:
         return []
