@@ -1,0 +1,162 @@
+"""Typed Neo4j query requests and reusable Cypher fragments."""
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Any, Dict, List, Tuple, TypedDict
+
+from collections.abc import Iterable
+
+Triplet = Tuple[str, str, str]
+
+
+class UpsertRow(TypedDict):
+    s: str
+    r: str
+    o: str
+    doc_id: str
+
+
+@dataclass(frozen=True)
+class Neo4jQueryRequest:
+    """Concrete, testable representation for one query dispatch."""
+
+    statement: str
+    params: Dict[str, Any]
+
+
+def build_upsert_triplets_query() -> str:
+    return (
+        "UNWIND $rows AS row "
+        "MERGE (s:Entity {name: row.s}) "
+        "MERGE (o:Entity {name: row.o}) "
+        "SET s.doc_ids = coalesce(s.doc_ids, []) + "
+        "  CASE WHEN row.doc_id IN coalesce(s.doc_ids, []) THEN [] ELSE [row.doc_id] END "
+        "SET o.doc_ids = coalesce(o.doc_ids, []) + "
+        "  CASE WHEN row.doc_id IN coalesce(o.doc_ids, []) THEN [] ELSE [row.doc_id] END "
+        "WITH row, s, o "
+        "OPTIONAL MATCH (o)-[reverse:REL {type: row.r}]->(s) "
+        "FOREACH (_ IN CASE WHEN reverse IS NULL THEN [1] ELSE [] END | "
+        "  MERGE (s)-[r:REL {type: row.r}]->(o) "
+        "  SET r.doc_ids = coalesce(r.doc_ids, []) + "
+        "    CASE WHEN row.doc_id IN coalesce(r.doc_ids, []) THEN [] ELSE [row.doc_id] END, "
+        "    r.doc_id = coalesce(r.doc_id, row.doc_id), "
+        "    r.updated_at = timestamp() "
+        ") "
+        "FOREACH (_ IN CASE WHEN reverse IS NULL THEN [] ELSE [1] END | "
+        "  SET reverse.doc_ids = coalesce(reverse.doc_ids, []) + "
+        "    CASE WHEN row.doc_id IN coalesce(reverse.doc_ids, []) THEN [] ELSE [row.doc_id] END, "
+        "    reverse.doc_id = coalesce(reverse.doc_id, row.doc_id), "
+        "    reverse.updated_at = timestamp() "
+        ")"
+    )
+
+
+def build_fetch_related_query() -> str:
+    return (
+        "MATCH (s)-[r]->(o) "
+        "WHERE coalesce(s.name, s.entity_id) IS NOT NULL "
+        "  AND coalesce(o.name, o.entity_id) IS NOT NULL "
+        "  AND any(term IN $terms WHERE "
+        "    toLower(coalesce(s.name, s.entity_id, '')) CONTAINS term OR "
+        "    toLower(coalesce(o.name, o.entity_id, '')) CONTAINS term OR "
+        "    toLower(coalesce(r.type, r.keywords, r.description, type(r), '')) CONTAINS term"
+        "  ) "
+        "RETURN "
+        "  coalesce(s.name, s.entity_id) AS subject, "
+        "  coalesce(r.type, r.keywords, r.description, type(r)) AS relation, "
+        "  coalesce(o.name, o.entity_id) AS object "
+        "LIMIT $limit"
+    )
+
+
+def build_search_structural_query(safe_hops: int, *, include_rel_match: bool) -> str:
+    rel_clause = (
+        " OR any(rel IN r WHERE toLower(coalesce(rel.type, rel.keywords, rel.description, type(rel), '')) CONTAINS term)"
+        if include_rel_match
+        else ""
+    )
+    return (
+        "MATCH p=(s)-[r*1..%d]->(o) "
+        "WHERE coalesce(s.name, s.entity_id) IS NOT NULL "
+        "  AND coalesce(o.name, o.entity_id) IS NOT NULL "
+        "  AND any(term IN $terms WHERE "
+        "    toLower(coalesce(s.name, s.entity_id, '')) CONTAINS term OR "
+        "    toLower(coalesce(o.name, o.entity_id, '')) CONTAINS term%s"
+        "  ) "
+        "WITH s, o, r, size(r) AS hops "
+        "RETURN "
+        "  coalesce(s.name, s.entity_id) AS subject, "
+        "  coalesce(last(r).type, last(r).keywords, last(r).description, type(last(r))) AS relation, "
+        "  coalesce(o.name, o.entity_id) AS object, "
+        "  coalesce(last(r).doc_id, head(last(r).doc_ids), last(r).source_id) AS doc_id, "
+        "  hops "
+        "LIMIT $limit"
+    ) % (safe_hops, rel_clause)
+
+
+def build_delete_doc_edges_query() -> str:
+    return (
+        "MATCH (:Entity)-[r:REL]->(:Entity) "
+        "WHERE r.doc_id = $doc_id OR $doc_id IN coalesce(r.doc_ids, []) "
+        "SET r.doc_ids = [id IN coalesce(r.doc_ids, []) WHERE id <> $doc_id] "
+        "SET r.doc_id = CASE "
+        "  WHEN r.doc_id = $doc_id THEN head([id IN coalesce(r.doc_ids, []) WHERE id <> $doc_id]) "
+        "  ELSE r.doc_id "
+        "END "
+        "RETURN count(r) AS c"
+    )
+
+
+def build_cleanup_orphaned_relationships_query() -> str:
+    return (
+        "MATCH (:Entity)-[r:REL]->(:Entity) "
+        "WHERE coalesce(size(r.doc_ids), 0) = 0 "
+        "DELETE r"
+    )
+
+
+def build_cleanup_isolated_nodes_query() -> str:
+    return (
+        "MATCH (n:Entity) "
+        "SET n.doc_ids = [id IN coalesce(n.doc_ids, []) WHERE id <> $doc_id] "
+        "WITH n "
+        "WHERE NOT (n)--() DELETE n"
+    )
+
+
+def build_count_query(kind: str) -> str:
+    match kind:
+        case "entities":
+            return (
+                "MATCH (n) "
+                "WHERE coalesce(n.name, n.entity_id) IS NOT NULL "
+                "RETURN count(n) AS c"
+            )
+        case "triplets":
+            return (
+                "MATCH (s)-[r]->(o) "
+                "WHERE coalesce(s.name, s.entity_id) IS NOT NULL "
+                "  AND coalesce(o.name, o.entity_id) IS NOT NULL "
+                "RETURN count(r) AS c"
+            )
+    raise ValueError(f"unsupported count kind: {kind}")
+
+
+def build_row_grouped_query(kind: str) -> str:
+    if kind == "relations":
+        return "MATCH ()-[r]->() RETURN type(r) AS rel_type, count(r) AS count"
+    if kind == "labels":
+        return "MATCH (n) RETURN labels(n) AS labels, count(*) AS count"
+    raise ValueError(f"unsupported grouped query kind: {kind}")
+
+
+def build_triplet_rows(triplets: Iterable[Triplet], doc_id: str) -> list[UpsertRow]:
+    return [
+        {"s": s, "r": r, "o": o, "doc_id": doc_id}
+        for s, r, o in triplets
+        if s and r and o
+    ]
+
+
+def clean_query_terms(terms: Iterable[str]) -> list[str]:
+    return [t.strip().lower() for t in terms if t and len(t.strip()) > 2]

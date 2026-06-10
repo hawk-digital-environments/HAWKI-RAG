@@ -6,7 +6,10 @@ import os
 from pathlib import Path
 from typing import Any, Dict, Optional, Set, Tuple
 
-from ingest.metadata import first_str
+try:
+    from ingest.metadata import first_str
+except ImportError:
+    from metadata import first_str
 
 
 def normalize_path(path_like: Any) -> Optional[Path]:

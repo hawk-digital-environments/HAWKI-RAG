@@ -46,3 +46,6 @@ resources/js/crawler
 /python_rag/rabbit_worker/
 /python_rag/rabbitmq/
 /python_rag/workers/
+refactor_code_python.md
+refactor_code*.md
+refacor_code*.md

@@ -6,7 +6,7 @@ from __future__ import annotations
 import os
 import time
 import logging
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Tuple
 
 from fastapi import HTTPException
 
@@ -15,33 +15,14 @@ from utils.safety_utils import analyze_prompt, enforce_output_safety, sanitize_p
 from utils.text_preprocessor import (
     _extract_terms,
     _normalize_list,
-    _normalize_scores,
     _terms_from_payload,
     _rewrite_query,
 )
-from pipeline.query_context import prepare_context_summaries
-from pipeline.query_fallback import keyword_fallback_search
-from pipeline.query_hits import (
-    dedupe_hits_by_title_or_url,
-    fuse_hits,
-    merge_hits,
-    normalize_title,
-    normalize_url,
-)
-from pipeline.query_lexical import (
-    extract_query_terms_for_lexical,
-    fold_text,
-    fuzzy_term_in_words,
-    levenshtein_with_limit,
-    lexical_boost_hits,
-    min_lexical_match_count,
-    tokenize_words,
-)
+from pipeline import query_stages
 from pipeline.query_settings import (
     context_limits,
     fusion_weights,
     generation_enabled,
-    int_env,
     iterative_retrieval_enabled,
     score_thresholds,
     search_top_k as configured_search_top_k,
@@ -77,7 +58,7 @@ def query_documents(body: Any, *, rag_service: Any, get_provider) -> Dict[str, A
     logger.info("query:start provider=%s top_k=%s fast=%s smart=%s optimized=%s", body.provider, body.top_k, body.fast_mode, body.smart_lookup, body.is_optimized)
 
     t_rewrite_start = time.perf_counter()
-    rewrite_enabled = (not body.fast_mode) and _is_multimodal_query(user_query)
+    rewrite_enabled = (not body.fast_mode) and query_stages.is_multimodal_query(user_query)
     rewrite = {} if not rewrite_enabled else _rewrite_query(provider, user_query)
     timings["rewrite_ms"] = (time.perf_counter() - t_rewrite_start) * 1000
     rewritten_query = sanitize_prompt_text(rewrite.get("rewritten_query") or user_query)
@@ -110,10 +91,10 @@ def query_documents(body: Any, *, rag_service: Any, get_provider) -> Dict[str, A
         is_optimized=body.is_optimized,
         preferred_tags=body.preferred_tags,
     )
-    keyword_hits = _keyword_fallback_search(qdrant, vec, rewritten_query, search_top_k)
+    keyword_hits = query_stages.keyword_fallback(qdrant, vec, rewritten_query, search_top_k)
     if keyword_hits:
         text_fallback_used = True
-        hits = _merge_hits(hits, keyword_hits, max(search_top_k * 2, len(hits) + len(keyword_hits)))
+        hits = query_stages.merge_hits_with_limit(hits, keyword_hits, max(search_top_k * 2, len(hits) + len(keyword_hits)))
     timings["qdrant_ms"] = (time.perf_counter() - t_qdrant_start) * 1000
     logger.info("query:qdrant hits=%s ms=%.2f", len(hits), timings["qdrant_ms"])
 
@@ -130,7 +111,7 @@ def query_documents(body: Any, *, rag_service: Any, get_provider) -> Dict[str, A
     logger.info("query:graph hits=%s ms=%.2f", len(structural_hits), timings["graph_ms"])
 
     sem_weight, str_weight = fusion_weights()
-    hits = _fuse_hits(hits, structural_hits, sem_weight=sem_weight, str_weight=str_weight)
+    hits = query_stages.build_fused_hits(hits, structural_hits, sem_weight=sem_weight, str_weight=str_weight)
     # Keep graph relation hits (component_type 'relation') so Neo4j triplets can surface when semantic hits are sparse.
     hits = [h for h in hits if (h.get("payload") or {}).get("component_type") in (None, "", "chunk", "relation")]
     t_rerank_start = time.perf_counter()
@@ -146,7 +127,7 @@ def query_documents(body: Any, *, rag_service: Any, get_provider) -> Dict[str, A
     )
     min_score, fallback_min = score_thresholds()
     hits_all = list(hits)
-    hits_lex = _lexical_boost_hits(hits_all, rewritten_query)
+    hits_lex = query_stages.apply_lexical_boost(hits_all, rewritten_query)
     if hits_lex:
         hits = hits_lex
     else:
@@ -193,7 +174,7 @@ def query_documents(body: Any, *, rag_service: Any, get_provider) -> Dict[str, A
                 mix_weight=body.mix_weight,
             )
             hits_all = list(hits)
-            hits_lex = _lexical_boost_hits(hits_all, rewritten_query)
+            hits_lex = query_stages.apply_lexical_boost(hits_all, rewritten_query)
             if hits_lex:
                 hits = hits_lex
             else:
@@ -272,37 +253,19 @@ def query_documents(body: Any, *, rag_service: Any, get_provider) -> Dict[str, A
 
 
 def _should_iterate(query: str, hits: List[Dict[str, Any]], top_k: int) -> bool:
-    if not hits:
-        return True
-    lowered = query.lower()
-    connectors = any(word in lowered for word in ["first", "second", "then", "anschließend", "compare", "contrast", "schritt", "workflow"])
-    scores = [float(h.get("score") or 0.0) for h in hits]
-    max_score = max(scores) if scores else 0.0
-    low_density = len(hits) < max(3, top_k)
-    weak_scores = max_score < 0.42
-    return connectors or low_density or weak_scores
+    return query_stages.should_iterate(query, hits, top_k)
 
 
 def _collect_expansion_terms(hits: List[Dict[str, Any]], limit: int = 8) -> List[str]:
-    seen: set[str] = set()
-    terms: List[str] = []
-    for h in hits:
-        payload = h.get("payload") or {}
-        for term in _extract_terms(payload.get("content") or ""):
-            if term not in seen:
-                seen.add(term)
-                terms.append(term)
-            if len(terms) >= limit:
-                return terms
-    return terms
+    return query_stages.collect_expansion_terms(hits, limit=limit)
 
 
 def _fuse_hits(sem_hits: List[Dict[str, Any]], struct_hits: List[Dict[str, Any]], *, sem_weight: float, str_weight: float) -> List[Dict[str, Any]]:
-    return fuse_hits(sem_hits, struct_hits, sem_weight=sem_weight, str_weight=str_weight)
+    return query_stages.build_fused_hits(sem_hits, struct_hits, sem_weight=sem_weight, str_weight=str_weight)
 
 
 def _merge_hits(primary: List[Dict[str, Any]], secondary: List[Dict[str, Any]], limit: int) -> List[Dict[str, Any]]:
-    return merge_hits(primary, secondary, limit)
+    return query_stages.merge_hits_with_limit(primary, secondary, limit=limit)
 
 
 def _prepare_context_summaries(
@@ -311,57 +274,56 @@ def _prepare_context_summaries(
     max_docs: int,
     max_tokens: int,
 ) -> Tuple[List[Dict[str, Any]], List[int], int]:
-    return prepare_context_summaries(hits, max_docs=max_docs, max_tokens=max_tokens)
+    return query_stages.prepare_context(hits, max_docs=max_docs, max_tokens=max_tokens)
 
 
 def _int_env(name: str, default: int) -> int:
-    return int_env(name, default)
+    return query_stages.normalize_int_env(name, default)
 
 
 def _normalize_title(value: Any) -> str:
-    return normalize_title(value)
+    return query_stages.normalize_title(value)
 
 
 def _normalize_url(value: Any) -> str:
-    return normalize_url(value)
+    return query_stages.normalize_url(value)
 
 
 def _dedupe_hits_by_title_or_url(hits: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    return dedupe_hits_by_title_or_url(hits)
+    return query_stages.dedupe_hits(hits)
 
 
 def _fold_text(value: Any) -> str:
-    return fold_text(value)
+    return query_stages.text_fold(value)
 
 
 def _extract_query_terms_for_lexical(query: str) -> List[str]:
-    return extract_query_terms_for_lexical(query)
+    return query_stages.sanitize_query_terms_for_lexical(query)
 
 
 def _lexical_boost_hits(hits: List[Dict[str, Any]], query: str) -> List[Dict[str, Any]]:
-    return lexical_boost_hits(hits, query)
+    return query_stages.apply_lexical_boost(hits, query)
 
 
 def _min_lexical_match_count(terms: List[str]) -> int:
-    return min_lexical_match_count(terms)
+    return query_stages.lexical_min_match_count(terms)
 
 
 def _tokenize_words(text: str) -> List[str]:
-    return tokenize_words(text)
+    return query_stages.split_lexical_words(text)
 
 
 def _levenshtein_with_limit(a: str, b: str, limit: int = 1) -> int:
-    return levenshtein_with_limit(a, b, limit)
+    return query_stages.levenshtein_limit(a, b, limit=limit)
 
 
 def _fuzzy_term_in_words(term: str, words: List[str]) -> bool:
-    return fuzzy_term_in_words(term, words)
+    return query_stages.apply_fuzzy_term_match(term, words)
 
 
 def _keyword_fallback_search(qdrant: QdrantHTTP, vec: List[float], query: str, top_k: int) -> List[Dict[str, Any]]:
-    return keyword_fallback_search(qdrant, vec, query, top_k)
+    return query_stages.keyword_fallback(qdrant, vec, query, top_k)
 
 
 def _is_multimodal_query(text: str) -> bool:
-    lowered = text.lower()
-    return any(word in lowered for word in ["image", "bild", "diagram", "table", "chart", "photo", "fig"])
+    return query_stages.is_multimodal_query(text)

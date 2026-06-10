@@ -20,6 +20,23 @@ class QdrantSettings:
         return f"{self.scheme}://{self.host}:{self.port}"
 
 
+@dataclass(frozen=True)
+class QdrantHTTPSettings:
+    log_latency: bool
+    search_all: bool
+    search_all_per_collection: int
+    fallback_all: bool
+    fallback_per_collection: int
+    upsert_timeout: float
+    search_timeout: float
+    count_timeout: float
+    delete_timeout: float
+    text_timeout: float
+    text_fallback_terms: int
+    text_scroll_hard_cap: int
+    text_scroll_batch: int
+
+
 def qdrant_settings_from_env() -> QdrantSettings:
     return QdrantSettings(
         scheme=os.environ.get("QDRANT_SCHEME", "http"),
@@ -30,6 +47,33 @@ def qdrant_settings_from_env() -> QdrantSettings:
         timeout=_float_env("QDRANT_TIMEOUT", 30.0),
         max_attempts=_int_env("QDRANT_RETRY_ATTEMPTS", 3),
     )
+
+
+def qdrant_http_settings_from_env(base_timeout: float | None = None) -> QdrantHTTPSettings:
+    fallback_timeout = 30.0 if base_timeout is None else float(base_timeout)
+    return QdrantHTTPSettings(
+        log_latency=_bool_env("QDRANT_LOG_LATENCY"),
+        search_all=_bool_env("QDRANT_SEARCH_ALL"),
+        search_all_per_collection=_int_env("QDRANT_SEARCH_ALL_PER_COLLECTION", 0),
+        fallback_all=_bool_env("QDRANT_FALLBACK_ALL", True),
+        fallback_per_collection=_int_env("QDRANT_FALLBACK_PER_COLLECTION", 0),
+        upsert_timeout=_float_env("QDRANT_UPSERT_TIMEOUT", fallback_timeout),
+        search_timeout=_float_env("QDRANT_SEARCH_TIMEOUT", fallback_timeout),
+        count_timeout=_float_env("QDRANT_COUNT_TIMEOUT", fallback_timeout),
+        delete_timeout=_float_env("QDRANT_DELETE_TIMEOUT", fallback_timeout),
+        text_timeout=_float_env("QDRANT_SEARCH_TIMEOUT", fallback_timeout),
+        text_fallback_terms=_int_env("QDRANT_TEXT_FALLBACK_TERMS", 3),
+        text_scroll_hard_cap=_int_env("QDRANT_TEXT_SCROLL_HARD_CAP", 50000),
+        text_scroll_batch=_int_env("QDRANT_TEXT_SCROLL_BATCH", 256),
+    )
+
+
+def _bool_env(name: str, default: bool = False) -> bool:
+    """Parse common truthy env values with a fallback default."""
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return value.lower() in ("1", "true", "yes", "on")
 
 
 def _int_env(name: str, default: int) -> int:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib
 import json
 import os
 import sys
@@ -175,6 +176,23 @@ class GraphFallbackCharacterizationTests(unittest.TestCase):
             [("HAWKI", "uses", "Qdrant")],
         )
 
+    def test_graph_text_cleaner_normalizes_with_env_limits(self) -> None:
+        from core.graph.text import clean_graph_text
+
+        with patch.dict(
+            os.environ,
+            {
+                "GRAPH_MAX_LINES": "3",
+                "GRAPH_MAX_CHARS": "2000",
+                "MAX_EXTRACT_INPUT_TOKENS": "2",
+            },
+            clear=False,
+        ):
+            self.assertEqual(
+                clean_graph_text("  a  \n\n  b  \n ccc ddd eee fff ggg "),
+                "a b",
+            )
+
 
 class IngestCharacterizationTests(unittest.TestCase):
     def test_validate_ingest_document_reports_invalid_shape_and_metadata_warnings(self) -> None:
@@ -297,7 +315,7 @@ class IngestCharacterizationTests(unittest.TestCase):
         self.assertEqual(summary["documents"]["by_format"], {"markdown": 1})
 
     def test_build_points_creates_deterministic_qdrant_point_payload(self) -> None:
-        from pipeline.ingest_logic import _build_points
+        from pipeline.ingest.vector_ingest import build_points
 
         class Provider:
             def embed(self, text: str) -> list[float]:
@@ -318,7 +336,7 @@ class IngestCharacterizationTests(unittest.TestCase):
             }
         ]
 
-        points, vector_size, failures = _build_points(chunk_records, Provider())
+        points, vector_size, failures = build_points(chunk_records, Provider())
 
         self.assertEqual(vector_size, 3)
         self.assertEqual(failures, [])
@@ -329,7 +347,125 @@ class IngestCharacterizationTests(unittest.TestCase):
         self.assertRegex(points[0]["id"], r"^[0-9a-f-]{36}$")
 
 
+class IngestRunnerCharacterizationTests(unittest.TestCase):
+    def test_ingest_crawled_main_delegates_to_runner(self) -> None:
+        from ingest import ingest_crawled
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "crawl"
+            root.mkdir()
+            with patch("ingest.ingest_crawled.run_ingest", return_value=123) as run_mock:
+                exit_code = ingest_crawled.main(["--root", str(root)])
+
+            run_mock.assert_called_once()
+            self.assertEqual(exit_code, 123)
+
+    def test_runner_no_pages_returns_partial_and_writes_summary(self) -> None:
+        from ingest import ingest_crawled
+        from ingest.runner import run_ingest, EXIT_PARTIAL_SUCCESS
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "crawl"
+            root.mkdir()
+            summary_payload: dict[str, object] = {}
+
+            def fake_write_summary(path: str | None, payload: dict[str, object]) -> None:
+                summary_payload["path"] = path
+                summary_payload["payload"] = payload
+
+            args = ingest_crawled.parse_args(["--root", str(root), "--summary-file", str(Path(tmp) / "summary.json")])
+
+            with patch("ingest.runner.discover_page_dirs", return_value=[]), patch(
+                "ingest.submit.write_summary_file",
+                side_effect=fake_write_summary,
+            ), patch("ingest.runner.build_url_maps", return_value=({}, {})):
+                exit_code = run_ingest(args)
+
+            self.assertEqual(exit_code, EXIT_PARTIAL_SUCCESS)
+            payload = summary_payload.get("payload")
+            self.assertIsInstance(payload, dict)
+            self.assertEqual(payload.get("reason"), "no_pages_found")
+            self.assertIsNotNone(summary_payload.get("path"))
+
+    def test_runner_estimate_only_returns_success(self) -> None:
+        from ingest import ingest_crawled
+        from ingest.runner import run_ingest
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "crawl"
+            page = root / "page"
+            page.mkdir(parents=True)
+            (page / "content.md").write_text("This is a toy catalog.", encoding="utf-8")
+
+            args = ingest_crawled.parse_args(["--root", str(root), "--estimate-only"])
+
+            with patch("ingest.runner.discover_page_dirs", return_value=[page]), patch(
+                "ingest.runner.run_local_estimate"
+            ) as estimate_mock:
+                estimate_mock.return_value = {
+                    "timestamp": "2026-06-10T00:00:00Z",
+                    "estimate_only": True,
+                    "documents": {"total_docs": 1},
+                    "qdrant_preview": {"planned_batches": 1},
+                }
+                exit_code = run_ingest(args)
+
+            estimate_mock.assert_called_once()
+            self.assertEqual(exit_code, 0)
+
+
 class Neo4jCharacterizationTests(unittest.TestCase):
+    def test_neo4j_response_parsing_is_robust(self) -> None:
+        from graph.neo4j_responses import (
+            parse_count,
+            parse_fact_rows,
+            parse_label_counts,
+            parse_relation_counts,
+            parse_structural_rows,
+        )
+
+        class Row:
+            def __init__(self, values: dict[str, object]):
+                self._values = values
+
+            def get(self, key: str, default: object | None = None) -> object:
+                return self._values.get(key, default)
+
+        self.assertEqual(parse_count(None), 0)
+        self.assertEqual(
+            parse_count(Row({"c": "7"})),
+            7,
+        )
+        self.assertEqual(
+            parse_relation_counts([Row({"rel_type": "USES", "count": "2"}), Row({"rel_type": "WROTE", "count": 1})]),
+            [{"type": "USES", "count": 2}, {"type": "WROTE", "count": 1}],
+        )
+        self.assertEqual(
+            parse_label_counts([Row({"labels": ("A", "B"), "count": 1}), Row({"labels": [], "count": 0})]),
+            [{"labels": ["A", "B"], "count": 1}, {"labels": [], "count": 0}],
+        )
+        self.assertEqual(
+            parse_fact_rows(
+                [
+                    Row({"subject": "S", "relation": "R", "object": "O"}),
+                    Row({"subject": "bad", "relation": "R"}),
+                ]
+            ),
+            [{"subject": "S", "relation": "R", "object": "O"}],
+        )
+        self.assertEqual(
+            parse_structural_rows(
+                [
+                    Row({"subject": "S", "relation": "R", "object": "O", "doc_id": "d", "hops": "3"}),
+                    Row({"subject": "S2", "relation": "R2", "object": "O2", "hops": None}),
+                ]
+            ),
+            [
+                {"subject": "S", "relation": "R", "object": "O", "doc_id": "d", "hops": 3},
+                {"subject": "S2", "relation": "R2", "object": "O2", "doc_id": None, "hops": 1},
+            ],
+        )
+
     def test_upsert_triplets_builds_doc_scoped_rows_for_neo4j(self) -> None:
         from graph.neo4j_graph import Neo4jGraph
 
@@ -879,6 +1015,33 @@ class ApiAndVectorValidationTests(unittest.TestCase):
             ingest_logger.setLevel(old_levels[1])
             rag_logger.setLevel(old_levels[2])
 
+    def test_app_router_builder_surface_exists_and_routes_are_available(self) -> None:
+        import sys
+
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch.dict(os.environ, {"RAG_WORKING_DIR": tmp}, clear=False):
+                for mod_name in [
+                    "app.main",
+                    "app.routers",
+                    "app.routers.health",
+                    "app.routers.config",
+                    "app.routers.ingest",
+                    "app.routers.query",
+                    "app.routers.graph",
+                ]:
+                    sys.modules.pop(mod_name, None)
+
+                app_main = importlib.import_module("app.main")
+                paths = {route.path for route in app_main.app.router.routes}
+
+        self.assertIn("/health", paths)
+        self.assertIn("/config", paths)
+        self.assertIn("/ingest", paths)
+        self.assertIn("/documents/{doc_id}", paths)
+        self.assertIn("/query", paths)
+        self.assertIn("/graph/from-text", paths)
+        self.assertIn("/graph/cache/clear", paths)
+
     def test_qdrant_payload_helpers_build_expected_filters_and_batches(self) -> None:
         from vectorstore.payloads import (
             build_delete_filter,
@@ -958,6 +1121,144 @@ class ApiAndVectorValidationTests(unittest.TestCase):
         self.assertEqual(settings.timeout, 30.0)
         self.assertEqual(settings.max_attempts, 5)
 
+    def test_qdrant_http_settings_parse_and_defaults(self) -> None:
+        from vectorstore.settings import qdrant_http_settings_from_env
+
+        with patch.dict(
+            os.environ,
+            {
+                "QDRANT_LOG_LATENCY": "yes",
+                "QDRANT_SEARCH_ALL": "1",
+                "QDRANT_FALLBACK_ALL": "0",
+                "QDRANT_UPSERT_TIMEOUT": "bad",
+                "QDRANT_SEARCH_TIMEOUT": "bad",
+                "QDRANT_TEXT_FALLBACK_TERMS": "7",
+                "QDRANT_TEXT_SCROLL_HARD_CAP": "bad",
+            },
+            clear=False,
+        ):
+            settings = qdrant_http_settings_from_env(base_timeout=12.5)
+
+        self.assertTrue(settings.log_latency)
+        self.assertTrue(settings.search_all)
+        self.assertFalse(settings.fallback_all)
+        self.assertEqual(settings.search_all_per_collection, 0)
+        self.assertEqual(settings.fallback_per_collection, 0)
+        self.assertEqual(settings.upsert_timeout, 12.5)
+        self.assertEqual(settings.search_timeout, 12.5)
+        self.assertEqual(settings.text_fallback_terms, 7)
+        self.assertEqual(settings.text_scroll_hard_cap, 50000)
+
+    def test_qdrant_http_uses_injected_http_settings_for_timeouts(self) -> None:
+        from vectorstore.qdrant_http import QdrantHTTP
+        from vectorstore.settings import QdrantHTTPSettings, QdrantSettings
+
+        requests: list[tuple[str, str, dict[str, object]]] = []
+
+        class FakeResponse:
+            status_code = 200
+
+            def raise_for_status(self) -> None:
+                return None
+
+            def json(self):
+                return {"result": [{"id": "sample", "score": 0.9}]}
+
+        class FakeSession:
+            def request(self, method: str, url: str, **kwargs: object) -> FakeResponse:
+                requests.append((method, url, dict(kwargs)))
+                return FakeResponse()
+
+        with patch("vectorstore.qdrant_http.requests.Session", return_value=FakeSession()):
+            client = QdrantHTTP(
+                settings=QdrantSettings(
+                    scheme="http",
+                    host="qdrant-host",
+                    port=6333,
+                    collection="toy_collection",
+                    api_key="",
+                    timeout=3.0,
+                    max_attempts=1,
+                ),
+                http_settings=QdrantHTTPSettings(
+                    log_latency=False,
+                    search_all=False,
+                    search_all_per_collection=0,
+                    fallback_all=True,
+                    fallback_per_collection=0,
+                    upsert_timeout=9.0,
+                    search_timeout=8.0,
+                    count_timeout=7.0,
+                    delete_timeout=6.0,
+                    text_timeout=5.0,
+                    text_fallback_terms=2,
+                    text_scroll_hard_cap=500,
+                    text_scroll_batch=32,
+                ),
+            )
+
+            self.assertEqual(client.upsert([{"id": "1", "vector": [1.0], "payload": {}}]), None)
+
+        self.assertEqual(len(requests), 1)
+        method, url, kwargs = requests[0]
+        self.assertEqual(method, "PUT")
+        self.assertEqual(url, "http://qdrant-host:6333/collections/toy_collection/points")
+        self.assertEqual(kwargs["timeout"], 9.0)
+
+    def test_qdrant_http_defaults_search_all_limit_to_top_k_when_not_configured(self) -> None:
+        from vectorstore.qdrant_http import QdrantHTTP
+        from vectorstore.settings import QdrantHTTPSettings, QdrantSettings
+
+        limits: list[int] = []
+
+        class FakeSession:
+            def request(self, *args: object, **kwargs: object):
+                raise AssertionError("network must not be used in this test")
+
+        client = QdrantHTTP(
+            settings=QdrantSettings(
+                scheme="http",
+                host="qdrant-host",
+                port=6333,
+                collection="toy_collection",
+                api_key=None,
+                timeout=2.0,
+                max_attempts=1,
+            ),
+            http_settings=QdrantHTTPSettings(
+                log_latency=False,
+                search_all=True,
+                search_all_per_collection=0,
+                fallback_all=False,
+                fallback_per_collection=0,
+                upsert_timeout=2.0,
+                search_timeout=2.0,
+                count_timeout=2.0,
+                delete_timeout=2.0,
+                text_timeout=2.0,
+                text_fallback_terms=1,
+                text_scroll_hard_cap=100,
+                text_scroll_batch=16,
+            ),
+        )
+
+        def fake_search_collection(collection: str, body: dict[str, object], timeout: float) -> list[dict[str, object]]:
+            limits.append(int(body["limit"]))
+            return []
+
+        with patch("vectorstore.qdrant_http.requests.Session", return_value=FakeSession()), patch.object(
+            client,
+            "list_collections",
+            return_value=["a", "b"],
+        ), patch.object(
+            client,
+            "_search_collection",
+            side_effect=fake_search_collection,
+        ):
+            client.search([0.1], top_k=7, with_vector=False, with_payload=True)
+
+        self.assertEqual(limits, [7, 7])
+
     def test_qdrant_collection_helpers_parse_names_counts_and_vector_size(self) -> None:
         from vectorstore.collections import (
             collection_names,
@@ -981,6 +1282,70 @@ class ApiAndVectorValidationTests(unittest.TestCase):
             vector_size_from_config({"config": {"params": {"vectors": {"params": {"text": {"size": 768}}}}}}),
             768,
         )
+
+    def test_qdrant_response_parsers_are_fault_tolerant(self) -> None:
+        from vectorstore.qdrant_responses import (
+            parse_collection_config,
+            parse_collection_names,
+            parse_count,
+            parse_scroll_points,
+            parse_search_result,
+        )
+
+        self.assertEqual(parse_collection_names({"result": {"collections": [{"name": "a"}, {}]}}), ["a"])
+        self.assertEqual(parse_search_result({"result": [{"id": "x", "score": 0.9}]}), [{"id": "x", "score": 0.9}])
+        self.assertEqual(parse_search_result({"other": []}), [])
+        self.assertEqual(parse_count({"result": {"count": "9"}}), 9)
+        self.assertIsNone(parse_count({"result": {"count": None}}))
+        self.assertIsNone(parse_count({"result": {}}))
+        points, next_offset = parse_scroll_points({"result": {"points": [{"id": "a"}], "next_page_offset": "abc"}})
+        self.assertEqual(points, [{"id": "a"}])
+        self.assertEqual(next_offset, "abc")
+        self.assertEqual(parse_collection_config({"result": {"config": 1}}), {"config": 1})
+
+    def test_qdrant_search_helpers_normalize_and_merge_results(self) -> None:
+        from vectorstore.qdrant_search import (
+            merge_search_results,
+            normalize_query_inputs,
+            search_with_fallback_collections,
+        )
+
+        self.assertEqual(normalize_query_inputs(["", "toy", None, "graph"], ["", "title"]), (["toy", "graph"], ["title"]))
+
+        merged = merge_search_results(
+            [
+                ("a", [{"id": "1", "score": 0.2}, {"id": "2", "score": 0.7}]),
+                ("b", [{"id": "3", "score": 0.9}]),
+            ],
+            top_k=2,
+        )
+        self.assertEqual(
+            merged,
+            [
+                {"id": "3", "score": 0.9, "collection": "b"},
+                {"id": "2", "score": 0.7, "collection": "a"},
+            ],
+        )
+
+        calls: list[tuple[str, dict, float]] = []
+
+        def execute(collection: str, body: dict, timeout: float):
+            calls.append((collection, dict(body), timeout))
+            return [{"id": f"{collection}-1", "score": 0.1}]
+
+        merged_all = search_with_fallback_collections(
+            ["alpha", "beta"],
+            {"vector": [0.1], "limit": 9},
+            timeout=8.0,
+            top_k=2,
+            per_collection_limit=3,
+            execute=execute,
+        )
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(calls[0][0], "alpha")
+        self.assertEqual(calls[0][1]["limit"], 3)
+        self.assertEqual(merged_all[0]["id"], "alpha-1")
+        self.assertEqual(merged_all[0]["collection"], "alpha")
 
 
 if __name__ == "__main__":
