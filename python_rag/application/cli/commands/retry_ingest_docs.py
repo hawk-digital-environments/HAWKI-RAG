@@ -18,19 +18,34 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Set, Tuple
 import time
-from ingest_crawled import (
-    build_url_maps,
-    discover_page_dirs,
-    load_page_materials,
-    resolve_url_for_path,
-    make_doc_id,
-    first_str,
-    resolve_date,
-    to_array_list,
-    resolve_tags,
-    title_from_markdown,
-    post_batch,
-)
+try:
+    from application.cli.commands.ingest_crawled import (
+        build_url_maps,
+        discover_page_dirs,
+        load_page_materials,
+        resolve_url_for_path,
+        make_doc_id,
+        first_str,
+        resolve_date,
+        to_array_list,
+        resolve_tags,
+        title_from_markdown,
+        post_batch,
+    )
+except ModuleNotFoundError:  # pragma: no cover - legacy direct script execution
+    from ingest_crawled import (
+        build_url_maps,
+        discover_page_dirs,
+        load_page_materials,
+        resolve_url_for_path,
+        make_doc_id,
+        first_str,
+        resolve_date,
+        to_array_list,
+        resolve_tags,
+        title_from_markdown,
+        post_batch,
+    )
 
 logger = logging.getLogger(__name__)
 

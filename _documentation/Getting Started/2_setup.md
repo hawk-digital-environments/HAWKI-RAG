@@ -82,7 +82,7 @@ This clears `__pycache__`, `*.py[cod]`, `*.log`, `.pytest_cache`, `.ruff_cache`,
 
 ## Ingest content (inside containers, internal URLs)
 ```bash
-docker exec hawki_rag_bridge sh -lc "python /app/ingest/ingest_crawled.py \
+docker exec hawki_rag_bridge sh -lc "python -m application.cli.commands.ingest_crawled \
   --root /app/shared/<folder> \
   --base-url http://localhost:8000 \
   --provider ollama --graph --batch 16"

@@ -751,20 +751,20 @@ class IngestCharacterizationTests(unittest.TestCase):
 
 class IngestRunnerCharacterizationTests(unittest.TestCase):
     def test_ingest_crawled_main_delegates_to_runner(self) -> None:
-        from application.cli.ingest.ingest_crawled import ingest_crawled
+        from application.cli.commands.ingest_crawled import ingest_crawled
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp) / "crawl"
             root.mkdir()
-            with patch("application.cli.ingest.ingest_crawled.run_ingest", return_value=123) as run_mock:
+            with patch("application.cli.commands.ingest_crawled.run_ingest", return_value=123) as run_mock:
                 exit_code = ingest_crawled.main(["--root", str(root)])
 
             run_mock.assert_called_once()
             self.assertEqual(exit_code, 123)
 
     def test_runner_no_pages_returns_partial_and_writes_summary(self) -> None:
-        from application.cli.ingest.ingest_crawled import ingest_crawled
-        from application.cli.ingest.runner import run_ingest, EXIT_PARTIAL_SUCCESS
+        from application.cli.commands.ingest_crawled import ingest_crawled
+        from application.cli.commands.runner import run_ingest, EXIT_PARTIAL_SUCCESS
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp) / "crawl"
@@ -777,10 +777,10 @@ class IngestRunnerCharacterizationTests(unittest.TestCase):
 
             args = ingest_crawled.parse_args(["--root", str(root), "--summary-file", str(Path(tmp) / "summary.json")])
 
-            with patch("application.cli.ingest.runner.discover_page_dirs", return_value=[]), patch(
-                "application.cli.ingest.submit.write_summary_file",
+            with patch("application.cli.commands.runner.discover_page_dirs", return_value=[]), patch(
+                "application.cli.commands.submit.write_summary_file",
                 side_effect=fake_write_summary,
-            ), patch("application.cli.ingest.runner.build_url_maps", return_value=({}, {})):
+            ), patch("application.cli.commands.runner.build_url_maps", return_value=({}, {})):
                 exit_code = run_ingest(args)
 
             self.assertEqual(exit_code, EXIT_PARTIAL_SUCCESS)
@@ -790,8 +790,8 @@ class IngestRunnerCharacterizationTests(unittest.TestCase):
             self.assertIsNotNone(summary_payload.get("path"))
 
     def test_runner_estimate_only_returns_success(self) -> None:
-        from application.cli.ingest.ingest_crawled import ingest_crawled
-        from application.cli.ingest.runner import run_ingest
+        from application.cli.commands.ingest_crawled import ingest_crawled
+        from application.cli.commands.runner import run_ingest
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp) / "crawl"
@@ -801,8 +801,8 @@ class IngestRunnerCharacterizationTests(unittest.TestCase):
 
             args = ingest_crawled.parse_args(["--root", str(root), "--estimate-only"])
 
-            with patch("application.cli.ingest.runner.discover_page_dirs", return_value=[page]), patch(
-                "application.cli.ingest.runner.run_local_estimate"
+            with patch("application.cli.commands.runner.discover_page_dirs", return_value=[page]), patch(
+                "application.cli.commands.runner.run_local_estimate"
             ) as estimate_mock:
                 estimate_mock.return_value = {
                     "timestamp": "2026-06-10T00:00:00Z",
@@ -1552,7 +1552,7 @@ class QueryCharacterizationTests(unittest.TestCase):
 
 class CliIngestHelperCharacterizationTests(unittest.TestCase):
     def test_ingest_metadata_helpers_normalize_values_and_make_stable_doc_ids(self) -> None:
-        from application.cli.ingest.metadata import (
+        from application.cli.commands.metadata import (
             first_str,
             make_doc_id,
             resolve_date,
@@ -1573,7 +1573,7 @@ class CliIngestHelperCharacterizationTests(unittest.TestCase):
         self.assertEqual(make_doc_id("upload://toys.md", "toys/content.md"), make_doc_id("upload://toys.md", "other"))
 
     def test_ingest_payload_builder_preserves_bridge_document_contract(self) -> None:
-        from application.cli.ingest.payloads import build_bridge_doc, build_payload
+        from application.cli.commands.payloads import build_bridge_doc, build_payload
 
         payload = build_payload(
             meta={
@@ -1607,7 +1607,7 @@ class CliIngestHelperCharacterizationTests(unittest.TestCase):
         self.assertEqual(doc, {"id": "doc-1", "text": "Toy content", "payload": payload})
 
     def test_ingest_resume_helpers_batch_retry_and_persist_state(self) -> None:
-        from application.cli.ingest.resume import (
+        from application.cli.commands.resume import (
             batched,
             load_resume_state,
             safe_state_filename,
@@ -1635,7 +1635,7 @@ class CliIngestHelperCharacterizationTests(unittest.TestCase):
         self.assertFalse(should_split_batch("HTTP 400 bad request"))
 
     def test_ingest_url_maps_link_converted_outputs_to_source_pdf_urls(self) -> None:
-        from application.cli.ingest.url_maps import build_url_maps, resolve_url_for_path
+        from application.cli.commands.url_maps import build_url_maps, resolve_url_for_path
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -1666,7 +1666,7 @@ class CliIngestHelperCharacterizationTests(unittest.TestCase):
             self.assertEqual(resolve_url_for_path(source_map, output, root), "https://example.test/manual.pdf")
 
     def test_pdf_link_extraction_dedupes_and_strips_trailing_punctuation(self) -> None:
-        from application.cli.ingest.links import extract_pdf_links
+        from application.cli.commands.links import extract_pdf_links
 
         text = (
             "Read https://example.test/a.pdf, then "
@@ -1679,7 +1679,7 @@ class CliIngestHelperCharacterizationTests(unittest.TestCase):
         )
 
     def test_discover_page_dirs_treats_converted_folders_as_document_units(self) -> None:
-        from application.cli.ingest.discovery import discover_page_dirs
+        from application.cli.commands.discovery import discover_page_dirs
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

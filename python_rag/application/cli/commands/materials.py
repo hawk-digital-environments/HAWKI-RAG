@@ -6,7 +6,7 @@ import re
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
-from application.cli.ingest.url_maps import read_json_file
+from application.cli.commands.url_maps import read_json_file
 
 import logging
 

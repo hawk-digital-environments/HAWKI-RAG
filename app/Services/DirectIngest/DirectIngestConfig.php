@@ -56,7 +56,7 @@ readonly class DirectIngestConfig
 
     public function ingestScriptPath(): string
     {
-        return $this->paths->basePath('python_rag/application/cli/ingest/ingest_crawled.py');
+        return $this->paths->basePath('python_rag/application/cli/commands/ingest_crawled.py');
     }
 
     public function ingestSummaryPath(): string

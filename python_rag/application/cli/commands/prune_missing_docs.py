@@ -14,8 +14,11 @@ from typing import Set
 
 import requests
 
-# Reuse helpers from ingest_crawled for consistent doc_id generation
-from ingest_crawled import discover_page_dirs, load_page_materials, first_str, make_doc_id  # type: ignore
+# Reuse helpers from ingest_crawled for consistent doc_id generation.
+try:
+    from application.cli.commands.ingest_crawled import discover_page_dirs, load_page_materials, first_str, make_doc_id
+except ModuleNotFoundError:  # pragma: no cover - legacy direct script execution
+    from ingest_crawled import discover_page_dirs, load_page_materials, first_str, make_doc_id
 
 EXIT_SUCCESS = 0
 EXIT_RUNTIME_FAILURE = 1

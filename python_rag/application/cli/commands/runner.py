@@ -7,9 +7,9 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 
-from application.cli.ingest.discovery import discover_page_dirs
-from application.cli.ingest.estimation import run_local_estimate, utc_now_iso
-from application.cli.ingest.metadata import (
+from application.cli.commands.discovery import discover_page_dirs
+from application.cli.commands.estimation import run_local_estimate, utc_now_iso
+from application.cli.commands.metadata import (
     first_str,
     make_doc_id,
     resolve_date,
@@ -17,16 +17,16 @@ from application.cli.ingest.metadata import (
     title_from_markdown,
     to_array_list,
 )
-from application.cli.ingest.materials import load_page_materials
-from application.cli.ingest.payloads import build_bridge_doc, build_payload
-from application.cli.ingest.resume import (
+from application.cli.commands.materials import load_page_materials
+from application.cli.commands.payloads import build_bridge_doc, build_payload
+from application.cli.commands.resume import (
     load_resume_state,
     safe_state_filename,
     save_resume_state_payload,
     should_split_batch,
 )
-from application.cli.ingest.url_maps import build_url_maps, resolve_url_for_path
-from application.cli.ingest.links import extract_pdf_links
+from application.cli.commands.url_maps import build_url_maps, resolve_url_for_path
+from application.cli.commands.links import extract_pdf_links
 
 EXIT_RUNTIME_FAILURE = 1
 EXIT_VALIDATION_FAILURE = 2
@@ -124,7 +124,7 @@ def _build_no_ingestable_summary(total_dirs: int, skipped_empty: int, skipped_em
 
 
 def run_ingest(args: Any) -> int:
-    from application.cli.ingest.submit import post_batch, write_summary_file
+    from application.cli.commands.submit import post_batch, write_summary_file
 
     if args.resume and args.start:
         print("Choose only one of --resume or --start.", file=sys.stderr)

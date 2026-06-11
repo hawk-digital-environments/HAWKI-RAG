@@ -12,7 +12,7 @@ import argparse
 import os
 import sys
 
-from application.cli.ingest.runner import run_ingest
+from application.cli.commands.runner import run_ingest
 
 EXIT_SUCCESS = 0
 EXIT_RUNTIME_FAILURE = 1
@@ -76,9 +76,9 @@ def main(argv: list[str] | None = None) -> int:
 def _reexport_metadata_helpers() -> None:
     """Expose helper imports used by CLI-adjacent call sites."""
 
-    from application.cli.ingest.discovery import discover_page_dirs
-    from application.cli.ingest.materials import load_page_materials
-    from application.cli.ingest.metadata import (
+    from application.cli.commands.discovery import discover_page_dirs
+    from application.cli.commands.materials import load_page_materials
+    from application.cli.commands.metadata import (
         first_str,
         make_doc_id,
         resolve_date,
@@ -86,9 +86,9 @@ def _reexport_metadata_helpers() -> None:
         title_from_markdown,
         to_array_list,
     )
-    from application.cli.ingest.payloads import build_bridge_doc, build_payload
-    from application.cli.ingest.url_maps import build_url_maps, resolve_url_for_path
-    from application.cli.ingest.submit import post_batch, write_summary_file
+    from application.cli.commands.payloads import build_bridge_doc, build_payload
+    from application.cli.commands.url_maps import build_url_maps, resolve_url_for_path
+    from application.cli.commands.submit import post_batch, write_summary_file
 
     globals().update(
         {

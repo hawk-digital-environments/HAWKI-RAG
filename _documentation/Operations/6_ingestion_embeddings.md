@@ -42,7 +42,7 @@ The ingest path starts with raw files and progressively turns them into search-r
 ## Run ingestion (inside container for no exposed ports)
 - Command:
 ```
-docker exec hawki_rag_bridge sh -lc "python /app/ingest/ingest_crawled.py \
+docker exec hawki_rag_bridge sh -lc "python -m application.cli.commands.ingest_crawled \
   --root /app/shared/<foldername> \
   --base-url http://localhost:8000 \
   --provider ollama \

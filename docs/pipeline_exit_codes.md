@@ -15,9 +15,9 @@ Automation should use process exit codes instead of parsing logs.
 |---------|-----|-----|-----|-----|
 | `php artisan scraper:scrape` | Crawl completed | Crawler/runtime failure | Missing or invalid input | Not used |
 | `php artisan convert:crawled-pdfs` | All discovered documents converted | Unhandled runtime failure | Missing/invalid crawl directory | No source documents, user-cancelled conversion, or one or more documents failed |
-| `python python_rag/application/cli/ingest/ingest_crawled.py` | Ingest completed | One or more batches failed | Invalid CLI arguments or missing root | No page folders found, all page folders are empty, or one or more empty page folders were skipped |
-| `python python_rag/application/cli/ingest/retry_ingest_docs.py` | All requested documents found and re-ingested or dry-run planned | One or more re-ingest batches failed | Invalid CLI arguments, missing root, or no doc IDs provided | No candidate page directories or one or more requested doc IDs not found |
-| `python python_rag/application/cli/ingest/prune_missing_docs.py` | No stale documents found, or dry-run completed with no delete failures | One or more stale document deletes failed, or Qdrant/runtime failure | Missing root or invalid CLI arguments | Stale documents were found and deleted, or dry-run planned deletions |
+| `python python_rag/application/cli/commands/ingest_crawled.py` | Ingest completed | One or more batches failed | Invalid CLI arguments or missing root | No page folders found, all page folders are empty, or one or more empty page folders were skipped |
+| `python python_rag/application/cli/commands/retry_ingest_docs.py` | All requested documents found and re-ingested or dry-run planned | One or more re-ingest batches failed | Invalid CLI arguments, missing root, or no doc IDs provided | No candidate page directories or one or more requested doc IDs not found |
+| `python python_rag/application/cli/commands/prune_missing_docs.py` | No stale documents found, or dry-run completed with no delete failures | One or more stale document deletes failed, or Qdrant/runtime failure | Missing root or invalid CLI arguments | Stale documents were found and deleted, or dry-run planned deletions |
 
 API-launched ingestion runs the Python script as a detached process. When it
 finishes, the ingest log records `INGEST_EXIT_CODE=<code>` and

@@ -48,7 +48,7 @@
 |---|---|
 | `python_rag/` | Python RAG stack containing the FastAPI bridge, RAG API components, and reranker code. |
 | `python_rag/app/` | FastAPI entrypoints and route modules (`main.py`, `query.py`, `ingest.py`). |
-| `python_rag/application/cli/ingest/ingest_crawled.py` | Primary ingestion runner for crawled content. |
+| `python_rag/application/cli/commands/ingest_crawled.py` | Primary ingestion runner for crawled content. |
 | `python_rag/pipeline/` | Query and ingest pipeline logic/helpers. |
 | `python_rag/infrastructure/rerank/` | Local reranker adapter service. |
 | `python_rag/requirements.txt` | Python dependency manifest. |

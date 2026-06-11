@@ -131,7 +131,7 @@ class PipelineExitCodeTest extends TestCase
     {
         $process = new Process([
             'python3',
-            base_path('python_rag/application/cli/ingest/ingest_crawled.py'),
+            base_path('python_rag/application/cli/commands/ingest_crawled.py'),
             '--root',
             '/tmp/hawki-rag-test-missing-ingest-root',
         ], base_path());
@@ -145,7 +145,7 @@ class PipelineExitCodeTest extends TestCase
     {
         $process = new Process([
             'python3',
-            base_path('python_rag/application/cli/ingest/ingest_crawled.py'),
+            base_path('python_rag/application/cli/commands/ingest_crawled.py'),
             '--root',
             '/tmp/hawki-rag-test-missing-ingest-root',
         ], base_path(), [
@@ -167,7 +167,7 @@ class PipelineExitCodeTest extends TestCase
         try {
             $process = new Process([
                 'python3',
-                base_path('python_rag/application/cli/ingest/ingest_crawled.py'),
+                base_path('python_rag/application/cli/commands/ingest_crawled.py'),
                 '--root',
                 $root,
                 '--summary-file',
@@ -199,7 +199,7 @@ class PipelineExitCodeTest extends TestCase
         try {
             $process = new Process([
                 'python3',
-                base_path('python_rag/application/cli/ingest/ingest_crawled.py'),
+                base_path('python_rag/application/cli/commands/ingest_crawled.py'),
                 '--root',
                 $root,
                 '--summary-file',
@@ -230,7 +230,7 @@ class PipelineExitCodeTest extends TestCase
     {
         $process = new Process([
             'python3',
-            base_path('python_rag/application/cli/ingest/prune_missing_docs.py'),
+            base_path('python_rag/application/cli/commands/prune_missing_docs.py'),
             '--root',
             '/tmp/hawki-rag-test-missing-prune-root',
             '--collection',
@@ -269,7 +269,7 @@ PY;
             '-c',
             $python,
         ], base_path(), [
-            'PYTHONPATH' => base_path('python_rag/application/cli/ingest'),
+            'PYTHONPATH' => base_path('python_rag/application/cli/commands'),
         ]);
 
         $process->run();
@@ -287,7 +287,7 @@ PY;
         try {
             $process = new Process([
                 'python3',
-                base_path('python_rag/application/cli/ingest/retry_ingest_docs.py'),
+                base_path('python_rag/application/cli/commands/retry_ingest_docs.py'),
                 '--root',
                 $root,
                 '--doc-id',

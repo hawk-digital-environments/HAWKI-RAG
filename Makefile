@@ -322,7 +322,7 @@ ingest:
 	if [ -n "$(CHUNK_OVERLAP)" ]; then EXTRA_FLAGS="$$EXTRA_FLAGS --chunk-overlap $(CHUNK_OVERLAP)"; fi; \
 	if [ -n "$(TIMEOUT)" ]; then EXTRA_FLAGS="$$EXTRA_FLAGS --timeout $(TIMEOUT)"; fi; \
 	if [ -n "$(SUMMARY_FILE)" ]; then EXTRA_FLAGS="$$EXTRA_FLAGS --summary-file $(SUMMARY_FILE)"; fi; \
-		docker exec -e HAWKI_RAG_PIPELINE_AUTOMATION="$(AUTOMATION)" -e HAWKI_RAG_INGEST_RESUME_MODE="$(RESUME_MODE)" hawki_rag_bridge sh -lc "python /app/ingest/ingest_crawled.py --root $(CRAWLED_ROOT) --base-url $(BASE_URL) --provider $(PROVIDER) --graph-engine $(GRAPH_ENGINE) $$EXTRA_FLAGS --batch $(BATCH)"
+		docker exec -e HAWKI_RAG_PIPELINE_AUTOMATION="$(AUTOMATION)" -e HAWKI_RAG_INGEST_RESUME_MODE="$(RESUME_MODE)" hawki_rag_bridge sh -lc "python -m application.cli.commands.ingest_crawled --root $(CRAWLED_ROOT) --base-url $(BASE_URL) --provider $(PROVIDER) --graph-engine $(GRAPH_ENGINE) $$EXTRA_FLAGS --batch $(BATCH)"
 
 convert-ingest-folder:
 	@if [ -z "$(SCRAPED_FOLDER)" ]; then \

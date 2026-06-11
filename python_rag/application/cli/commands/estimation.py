@@ -6,8 +6,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from application.cli.ingest.metadata import first_str, make_doc_id
-from application.cli.ingest.materials import load_page_materials
+from application.cli.commands.metadata import first_str, make_doc_id
+from application.cli.commands.materials import load_page_materials
 
 
 def utc_now_iso() -> str:

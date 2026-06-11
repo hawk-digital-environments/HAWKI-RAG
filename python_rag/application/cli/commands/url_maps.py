@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 from typing import Any, Dict, Optional, Set, Tuple
 
-from application.cli.ingest.metadata import first_str
+from application.cli.commands.metadata import first_str
 
 
 def normalize_path(path_like: Any) -> Optional[Path]:
