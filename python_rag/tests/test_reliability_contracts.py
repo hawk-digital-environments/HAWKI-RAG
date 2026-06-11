@@ -31,7 +31,7 @@ if "neo4j" not in sys.modules:
 
 class ReliabilityContractTests(unittest.TestCase):
     def test_retryable_write_contract_is_idempotency_gated(self) -> None:
-        from common.reliability import is_safe_retryable_write
+        from shared.reliability import is_safe_retryable_write
 
         self.assertTrue(is_safe_retryable_write("qdrant.upsert_points", "op-1"))
         self.assertTrue(is_safe_retryable_write("neo4j.delete_by_doc_id", "op-2"))
@@ -63,7 +63,7 @@ class ReliabilityContractTests(unittest.TestCase):
         self.assertEqual(transport.requests[1].operation_id, "req-doc")
 
     def test_log_redaction_masks_secrets_in_headers_and_body_snippets(self) -> None:
-        from common.reliability import log_redacted_value, preview_request_body, preview_request_headers
+        from shared.reliability import log_redacted_value, preview_request_body, preview_request_headers
 
         headers = {
             "authorization": "Bearer deadbeef-token",

@@ -11,7 +11,7 @@ from requests import Response
 from requests.exceptions import RequestException
 
 from infrastructure.vectorstore.qdrant_requests import QdrantRequest
-from common.reliability import (
+from shared.reliability import (
     QDRANT_ADAPTER_EVENT,
     QDRANT_RETRYABLE_STATUS_CODES,
     normalize_retry_attempt_limit,

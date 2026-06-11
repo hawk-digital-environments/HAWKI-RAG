@@ -2,10 +2,10 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from core.graph.extraction import extract_triplets_with_graph_service
-from core.graph.raganything_client import RagAnythingGraphService
+from infrastructure.raganything.extraction import extract_triplets_with_graph_service
+from infrastructure.raganything.raganything_client import RagAnythingGraphService
 from infrastructure.rerank import rerank_hits as rerank_hits_impl
-from core.providers.factory import get_provider as create_provider
+from infrastructure.providers.factory import get_provider as create_provider
 from domain.settings import RAGServiceSettings, load_rag_settings
 
 logger = logging.getLogger(__name__)

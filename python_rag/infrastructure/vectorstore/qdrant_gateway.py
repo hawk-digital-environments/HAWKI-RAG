@@ -22,7 +22,7 @@ from infrastructure.vectorstore.qdrant_requests import (
     build_upsert_points_request,
 )
 from infrastructure.vectorstore.qdrant_transport import QdrantHTTPTransport
-from common.reliability import is_retry_safe_write
+from shared.reliability import is_retry_safe_write
 
 
 class QdrantHTTPGateway:

@@ -8,7 +8,7 @@ from typing import Any, Callable, Iterable
 from neo4j import GraphDatabase, exceptions as neo4j_exceptions
 
 from infrastructure.graph.neo4j_transport import Neo4jQueryExecutor, Neo4jQueryExecutorProtocol
-from common.reliability import is_retry_safe_write
+from shared.reliability import is_retry_safe_write
 
 from infrastructure.graph.neo4j_requests import (
     Neo4jQueryRequest,

@@ -12,7 +12,7 @@ except Exception:  # pragma: no cover - optional dependency
     neo4j_exceptions = None
 
 from infrastructure.graph.neo4j_requests import Neo4jQueryRequest
-from common.reliability import NEO4J_ADAPTER_EVENT, is_retryable_neo4j_exception, sanitize_for_log
+from shared.reliability import NEO4J_ADAPTER_EVENT, is_retryable_neo4j_exception, sanitize_for_log
 
 SessionFactory = Callable[[], Any]
 QueryResult = TypeVar("QueryResult")

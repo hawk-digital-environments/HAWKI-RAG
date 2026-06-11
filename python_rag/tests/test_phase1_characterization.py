@@ -39,7 +39,7 @@ _install_optional_dependency_stubs()
 
 class GraphFallbackCharacterizationTests(unittest.TestCase):
     def test_graph_provider_helper_clones_and_applies_explicit_graph_model(self) -> None:
-        from core.graph.provider_config import clone_provider_for_graph, provider_fingerprint
+        from infrastructure.raganything.provider_config import clone_provider_for_graph, provider_fingerprint
 
         class Provider:
             def __init__(self) -> None:
@@ -61,7 +61,7 @@ class GraphFallbackCharacterizationTests(unittest.TestCase):
         self.assertNotIn("secret-key-material", provider_fingerprint(provider))
 
     def test_raganything_edge_parser_prefers_recent_edges_for_current_file(self) -> None:
-        from core.graph.edge_parser import triplets_from_raganything_edges
+        from infrastructure.raganything.edge_parser import triplets_from_raganything_edges
 
         edges = [
             {
@@ -104,7 +104,7 @@ class GraphFallbackCharacterizationTests(unittest.TestCase):
         )
 
     def test_graph_cache_clear_removes_doc_status_and_lightrag_cache_files(self) -> None:
-        from core.graph.cache import clear_graph_cache_files
+        from infrastructure.raganything.cache import clear_graph_cache_files
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -178,7 +178,7 @@ class GraphFallbackCharacterizationTests(unittest.TestCase):
         )
 
     def test_graph_text_cleaner_normalizes_with_env_limits(self) -> None:
-        from core.graph.text import clean_graph_text
+        from infrastructure.raganything.text import clean_graph_text
 
         with patch.dict(
             os.environ,
@@ -299,8 +299,8 @@ class GraphFallbackCharacterizationTests(unittest.TestCase):
 
 class RagAnythingGraphSettingsCharacterizationTests(unittest.TestCase):
     def test_raganything_graph_settings_parse_and_injected_runtime_summary(self) -> None:
-        from core.graph.raganything_client import RagAnythingGraphService
-        from core.graph.raganything_settings import load_raganything_graph_settings
+        from infrastructure.raganything.raganything_client import RagAnythingGraphService
+        from infrastructure.raganything.raganything_settings import load_raganything_graph_settings
 
         with patch.dict(
             os.environ,
@@ -354,7 +354,7 @@ class RagAnythingGraphSettingsCharacterizationTests(unittest.TestCase):
 
 class RagAnythingUtilsCharacterizationTests(unittest.TestCase):
     def test_graph_utils_normalization_and_dedupe(self) -> None:
-        from core.graph.raganything_utils import dedupe_triplets, normalize_graph_embed_text
+        from infrastructure.raganything.raganything_utils import dedupe_triplets, normalize_graph_embed_text
 
         self.assertEqual(normalize_graph_embed_text("  hello\n\tworld  "), "hello world")
 
@@ -373,7 +373,7 @@ class RagAnythingUtilsCharacterizationTests(unittest.TestCase):
         )
 
     def test_graph_utils_junk_reasoning(self) -> None:
-        from core.graph.raganything_utils import graph_embed_junk_reason, is_junk_graph_label
+        from infrastructure.raganything.raganything_utils import graph_embed_junk_reason, is_junk_graph_label
 
         self.assertEqual(graph_embed_junk_reason(""), "empty")
         self.assertTrue(is_junk_graph_label("N/A", strict=False))
@@ -396,8 +396,8 @@ class RagAnythingUtilsCharacterizationTests(unittest.TestCase):
 
 class RagAnythingClientModuleCharacterizationTests(unittest.TestCase):
     def test_graph_cache_key_changes_with_db_name(self) -> None:
-        from core.graph.raganything_client_config import graph_runtime_cache_key
-        from core.graph.raganything_settings import load_raganything_graph_settings
+        from infrastructure.raganything.raganything_client_config import graph_runtime_cache_key
+        from infrastructure.raganything.raganything_settings import load_raganything_graph_settings
 
         class Provider:
             def __init__(self) -> None:
@@ -428,7 +428,7 @@ class RagAnythingClientModuleCharacterizationTests(unittest.TestCase):
             self.assertIn("db-b", key_alt)
 
     def test_graph_extract_helpers_produce_stable_ids(self) -> None:
-        from core.graph.raganything_extract import (
+        from infrastructure.raganything.raganything_extract import (
             graph_content_list_from_input,
             raganything_file_ref,
             stable_raganything_doc_id,
@@ -453,8 +453,8 @@ class RagAnythingClientModuleCharacterizationTests(unittest.TestCase):
         self.assertIn("doc__source.txt", file_ref)
 
     def test_graph_cache_scrub_can_cleanup_full_or_doc_scope(self) -> None:
-        from core.graph.raganything_cache import scrub_raganything_kv_graph_junk
-        from core.graph.raganything_utils import is_junk_graph_label
+        from infrastructure.raganything.raganything_cache import scrub_raganything_kv_graph_junk
+        from infrastructure.raganything.raganything_utils import is_junk_graph_label
 
         with tempfile.TemporaryDirectory() as tmp:
             working_dir = Path(tmp)
@@ -500,8 +500,8 @@ class RagAnythingClientModuleCharacterizationTests(unittest.TestCase):
 
 class RagAnythingSummaryCharacterizationTests(unittest.TestCase):
     def test_graph_runtime_summary_builder_returns_expected_shape(self) -> None:
-        from core.graph.raganything_summary import build_graph_runtime_summary
-        from core.graph.raganything_settings import load_raganything_graph_settings
+        from infrastructure.raganything.raganything_summary import build_graph_runtime_summary
+        from infrastructure.raganything.raganything_settings import load_raganything_graph_settings
 
         with tempfile.TemporaryDirectory() as tmp:
             working_dir = Path(tmp)
@@ -534,7 +534,7 @@ class RagAnythingSummaryCharacterizationTests(unittest.TestCase):
 
 class RagAnythingLoopCharacterizationTests(unittest.TestCase):
     def test_graph_loop_runs_sync_coro(self) -> None:
-        from core.graph.raganything_loop import RagAnythingGraphLoop
+        from infrastructure.raganything.raganything_loop import RagAnythingGraphLoop
 
         async def _value() -> str:
             return "ok"
@@ -545,8 +545,8 @@ class RagAnythingLoopCharacterizationTests(unittest.TestCase):
 
 class RagAnythingRuntimeCharacterizationTests(unittest.TestCase):
     def test_prepare_lightrag_neo4j_env_sets_runtime_variables(self) -> None:
-        from core.graph.raganything_runtime import prepare_lightrag_neo4j_env
-        from core.graph.raganything_settings import load_raganything_graph_settings
+        from infrastructure.raganything.raganything_runtime import prepare_lightrag_neo4j_env
+        from infrastructure.raganything.raganything_settings import load_raganything_graph_settings
 
         with patch.dict(
             os.environ,
@@ -573,7 +573,7 @@ class RagAnythingRuntimeCharacterizationTests(unittest.TestCase):
 
 class IngestCharacterizationTests(unittest.TestCase):
     def test_validate_ingest_document_reports_invalid_shape_and_metadata_warnings(self) -> None:
-        from application.use_cases.pipeline.validation import normalize_ingest_metadata, validate_ingest_document
+        from application.workflows.validation import normalize_ingest_metadata, validate_ingest_document
 
         missing = SimpleNamespace(id=" ", text="", payload={"converted_path": "/tmp/sample-toys.md"})
         errors, warnings = validate_ingest_document(missing)
@@ -602,7 +602,7 @@ class IngestCharacterizationTests(unittest.TestCase):
         self.assertEqual(normalized["page_url"], "upload://toy_catalog.docx")
 
     def test_prepare_documents_skips_invalid_docs_and_tracks_chunks(self) -> None:
-        from application.use_cases.pipeline.ingest.document_prep import prepare_documents
+        from application.workflows.ingest.chunking import prepare_documents
 
         docs = [
             SimpleNamespace(
@@ -629,7 +629,7 @@ class IngestCharacterizationTests(unittest.TestCase):
         self.assertEqual(chunk_records[0]["payload"]["component_type"], "chunk")
 
     def test_ingest_request_helpers_infer_job_and_apply_provider_overrides(self) -> None:
-        from application.use_cases.pipeline.ingest.request import apply_provider_overrides, infer_job_id
+        from application.workflows.ingest.request import apply_provider_overrides, infer_job_id
 
         docs = [SimpleNamespace(id="doc-1", payload={"trace_id": "trace-1"})]
         body = SimpleNamespace(job_id=None, embedding_model="embed-v2", graph_model="graph-v2")
@@ -647,7 +647,7 @@ class IngestCharacterizationTests(unittest.TestCase):
         self.assertEqual(provider._explicit_graph_model, "graph-v2")
 
     def test_ingest_documents_dry_run_returns_request_summary_shape(self) -> None:
-        from application.use_cases.pipeline.ingest_logic import ingest_documents
+        from application.workflows.ingest_logic import ingest_documents
 
         body = SimpleNamespace(
             docs=[
@@ -692,7 +692,7 @@ class IngestCharacterizationTests(unittest.TestCase):
         self.assertEqual(summary["documents"]["by_format"], {"markdown": 1})
 
     def test_build_points_creates_deterministic_qdrant_point_payload(self) -> None:
-        from application.use_cases.pipeline.ingest.vector_ingest import build_points
+        from application.workflows.ingest.vector_ingest import build_points
 
         class Provider:
             def embed(self, text: str) -> list[float]:
@@ -724,8 +724,8 @@ class IngestCharacterizationTests(unittest.TestCase):
         self.assertRegex(points[0]["id"], r"^[0-9a-f-]{36}$")
 
     def test_graph_ingest_settings_load_from_env(self) -> None:
-        from application.use_cases.pipeline.ingest.settings import load_graph_ingest_settings
-        from application.use_cases.pipeline.ingest.graph_ingest import graph_failure_log_path
+        from application.workflows.ingest.settings import load_graph_ingest_settings
+        from application.workflows.ingest.graph_ingest import graph_failure_log_path
 
         with patch.dict(
             os.environ,
@@ -991,7 +991,7 @@ class Neo4jCharacterizationTests(unittest.TestCase):
 
 class QueryCharacterizationTests(unittest.TestCase):
     def test_query_lexical_helpers_fold_fuzzy_match_and_boost_scores(self) -> None:
-        from application.use_cases.pipeline.query_lexical import (
+        from application.workflows.query_lexical import (
             extract_query_terms_for_lexical,
             fold_text,
             fuzzy_term_in_words,
@@ -1024,7 +1024,7 @@ class QueryCharacterizationTests(unittest.TestCase):
         self.assertGreater(boosted[0]["score"], 0.1)
 
     def test_query_settings_parse_env_with_caps_and_fallbacks(self) -> None:
-        from application.use_cases.pipeline.query_settings import (
+        from application.workflows.query_settings import (
             context_limits,
             fusion_weights,
             generation_enabled,
@@ -1057,7 +1057,7 @@ class QueryCharacterizationTests(unittest.TestCase):
             self.assertTrue(generation_enabled())
 
     def test_query_fallback_uses_text_search_then_relaxed_scroll(self) -> None:
-        from application.use_cases.pipeline.query_fallback import keyword_fallback_search
+        from application.workflows.query_fallback import keyword_fallback_search
 
         calls: list[tuple[str, bool | None]] = []
 
@@ -1079,7 +1079,7 @@ class QueryCharacterizationTests(unittest.TestCase):
         self.assertEqual(calls, [("search", None), ("scroll", True), ("scroll", False)])
 
     def test_query_fallback_uses_injected_scroll_controls(self) -> None:
-        from application.use_cases.pipeline.query_fallback import keyword_fallback_search
+        from application.workflows.query_fallback import keyword_fallback_search
 
         calls: list[tuple[str, int | bool | None]] = []
 
@@ -1109,7 +1109,7 @@ class QueryCharacterizationTests(unittest.TestCase):
         self.assertEqual(calls, [("search", 3), ("scroll_all", 7)])
 
     def test_query_hit_helpers_merge_dedupe_and_limit_by_doc_identity(self) -> None:
-        from application.use_cases.pipeline.query_logic
+        from application.workflows.query_logic
 
         primary = [
             {"id": "a", "score": 0.2, "payload": {"doc_id": "doc-a", "title": "Toy Train"}},
@@ -1127,7 +1127,7 @@ class QueryCharacterizationTests(unittest.TestCase):
         self.assertEqual([hit["payload"]["doc_id"] for hit in deduped], ["doc-c", "doc-a"])
 
     def test_query_context_summaries_trim_to_token_budget(self) -> None:
-        from application.use_cases.pipeline.query_logic
+        from application.workflows.query_logic
 
         hits = [
             {
@@ -1154,7 +1154,7 @@ class QueryCharacterizationTests(unittest.TestCase):
         self.assertEqual(summaries[0]["title"], "Toy Catalog")
 
     def test_query_uses_reranked_order_without_external_services(self) -> None:
-        from application.use_cases.pipeline.query_logic
+        from application.workflows.query_logic
 
         class Provider:
             def embed(self, text: str) -> list[float]:
@@ -1232,7 +1232,7 @@ class QueryCharacterizationTests(unittest.TestCase):
         self.assertEqual(result["retrieval"]["context_docs"], 2)
 
     def test_query_execution_module_injection_and_flow(self) -> None:
-        from application.use_cases.pipeline.query_execution
+        from application.workflows.query_execution
 
         calls: list[str] = []
         fast_mode_calls: list[bool] = []
@@ -1315,7 +1315,7 @@ class QueryCharacterizationTests(unittest.TestCase):
         self.assertEqual(fast_mode_calls, [False])
 
     def test_query_execution_fast_mode_setter_is_injected(self) -> None:
-        from application.use_cases.pipeline.query_execution
+        from application.workflows.query_execution
 
         body = SimpleNamespace(
             query="fast mode",
@@ -1370,7 +1370,7 @@ class QueryCharacterizationTests(unittest.TestCase):
         self.assertEqual(fast_mode_calls, [True])
 
     def test_query_stages_rewrite_contract_is_multimodal_and_dedupe_terms(self) -> None:
-        from application.use_cases.pipeline.query_stages
+        from application.workflows.query_stages
 
         with patch.object(
             query_stages,
@@ -1411,7 +1411,7 @@ class QueryCharacterizationTests(unittest.TestCase):
         multimodal_check.assert_called_once()
 
     def test_query_stages_rerank_and_filter_preserves_best_path_and_fallback(self) -> None:
-        from application.use_cases.pipeline.query_stages
+        from application.workflows.query_stages
 
         class RerankService:
             def __init__(self) -> None:
@@ -1469,7 +1469,7 @@ class QueryCharacterizationTests(unittest.TestCase):
 
 
     def test_query_rewrite_module_handles_injected_policy_dependencies(self) -> None:
-        from application.use_cases.pipeline.query_rewrite
+        from application.workflows.query_rewrite
 
         rewrite = query_rewrite.build_query_rewrite(
             SimpleNamespace(chat=lambda system, messages: "{}"),
@@ -1504,7 +1504,7 @@ class QueryCharacterizationTests(unittest.TestCase):
         self.assertEqual(terms, ["train", "planes", "toys", "visual"])
 
     def test_query_ranking_module_iterate_and_expansion_terms(self) -> None:
-        from application.use_cases.pipeline.query_ranking
+        from application.workflows.query_ranking
 
         class RerankService:
             def rerank_hits(self, **kwargs) -> list[dict[str, object]]:
@@ -1704,7 +1704,7 @@ class CliIngestHelperCharacterizationTests(unittest.TestCase):
 
 class IngestDeletionCharacterizationTests(unittest.TestCase):
     def test_delete_document_entries_deletes_vector_and_graph_then_closes_graph(self) -> None:
-        from application.use_cases.pipeline.ingest.deletion import delete_document_entries
+        from application.workflows.ingest.deletion import delete_document_entries
 
         events: list[tuple[str, str]] = []
 
@@ -1908,7 +1908,7 @@ class ApiAndVectorValidationTests(unittest.TestCase):
         from api.settings import AppSettings
 
         app_logger = logging.getLogger("tests.logging_config")
-        ingest_logger = logging.getLogger("application.use_cases.pipeline.ingest_logic")
+        ingest_logger = logging.getLogger("application.workflows.ingest_logic")
         rag_logger = logging.getLogger("core.rag_service")
         old_levels = (app_logger.level, ingest_logger.level, rag_logger.level)
         try:

@@ -27,7 +27,7 @@ class DirectIngestCommandBuilderTest extends TestCase
             'batch' => 10,
             'timeout' => 300,
             'resume_mode' => 'start',
-        ], '/app/python_rag/ingest/ingest_crawled.py', '/app/shared/crawl', 'http://bridge:8000', '/tmp/summary.json');
+        ], '/app/python_rag/application/cli/ingest/ingest_crawled.py', '/app/shared/crawl', 'http://bridge:8000', '/tmp/summary.json');
 
         $this->assertSame('python3', $command[0]);
         $this->assertContains('--root', $command);

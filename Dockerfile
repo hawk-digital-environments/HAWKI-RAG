@@ -56,7 +56,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY python_rag/requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir --retries 10 --timeout 180 -r requirements.txt
 
-COPY python_rag/rerank/local_reranker/app.py /app/app.py
+COPY python_rag/infrastructure/rerank/local_reranker/app.py /app/app.py
 
 EXPOSE 8000
 CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]

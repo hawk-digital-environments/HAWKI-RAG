@@ -7,7 +7,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from requests import RequestException
 
-from common.reliability import API_REQUEST_ERROR_EVENT, log_redacted_value
+from shared.reliability import API_REQUEST_ERROR_EVENT, log_redacted_value
 
 
 def build_error_payload(request: Request, *, status: int, error_type: str, message: str | None) -> dict[str, Any]:

@@ -7,7 +7,7 @@ from uuid import uuid4
 
 from fastapi import FastAPI, Request
 
-from common.reliability import (
+from shared.reliability import (
     API_REQUEST_END_EVENT,
     API_REQUEST_ERROR_EVENT,
     API_REQUEST_START_EVENT,

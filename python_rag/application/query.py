@@ -2,7 +2,7 @@
 Query entrypoints routed to pipeline.query_logic and graph graph_from_text.
 """
 import logging
-from application.use_cases.pipeline.query_logic import query_documents
+from application.workflows.query_logic import query_documents
 from infrastructure.graph.graph_text import graph_from_text
 
 logger = logging.getLogger(__name__)

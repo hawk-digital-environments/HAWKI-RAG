@@ -1,18 +1,6 @@
-from __future__ import annotations
+"""Compatibility shim for legacy module imports."""
 
-import re
+from ingest._compat_path import ensure_repo_on_path
 
-
-def extract_pdf_links(text: str) -> list[str]:
-    if not text:
-        return []
-    pattern = re.compile(r"https?://[^\s)>\"]+?\.pdf", re.IGNORECASE)
-    links = pattern.findall(text)
-    seen: set[str] = set()
-    out: list[str] = []
-    for link in links:
-        clean = link.rstrip(").,;\"'")
-        if clean not in seen:
-            seen.add(clean)
-            out.append(clean)
-    return out
+ensure_repo_on_path()
+from application.cli.ingest.links import *  # noqa: F401,F403

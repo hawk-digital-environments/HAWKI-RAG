@@ -1,3 +1,3 @@
-"""Messaging adapters (placeholder for queue/event infrastructure)."""
+"""Messaging adapters (queue and event-system boundaries)."""
 
-# Messaging modules are organized externally under rabbitmq/workers as needed.
+# Messaging adapters and workers are intentionally kept outside this package root by policy.

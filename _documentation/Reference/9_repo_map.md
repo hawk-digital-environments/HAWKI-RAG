@@ -48,9 +48,9 @@
 |---|---|
 | `python_rag/` | Python RAG stack containing the FastAPI bridge, RAG API components, and reranker code. |
 | `python_rag/app/` | FastAPI entrypoints and route modules (`main.py`, `query.py`, `ingest.py`). |
-| `python_rag/ingest/ingest_crawled.py` | Primary ingestion runner for crawled content. |
+| `python_rag/application/cli/ingest/ingest_crawled.py` | Primary ingestion runner for crawled content. |
 | `python_rag/pipeline/` | Query and ingest pipeline logic/helpers. |
-| `python_rag/rerank/` | Local reranker implementation. |
+| `python_rag/infrastructure/rerank/` | Local reranker adapter service. |
 | `python_rag/requirements.txt` | Python dependency manifest. |
 | `rag_storage/` | Local repo directory; in Compose, the RAG API working directory is the named volume `rag_storage` mounted at `/app/rag_storage` for `raganything_api_gpu` (GPU profile). `hawki_rag_bridge` uses `./python_rag:/app` and `shared_storage:/app/shared`. |
 

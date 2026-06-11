@@ -15,7 +15,7 @@
     - `domain/ports.py`, `domain/settings.py`, `domain/__init__.py`
 - `infrastructure/`
   - Concrete adapters, grouped by external system:
-    - `infrastructure/graph/`, `infrastructure/vectorstore/`, `infrastructure/raganything/`, `infrastructure/rerank/`, `infrastructure/messaging/`
+    - `infrastructure/graph/`, `infrastructure/vectorstore/`, `infrastructure/raganything/`, `infrastructure/rerank/`, `infrastructure/messaging/`, `infrastructure/providers/`
 
 ## Migration status
 
@@ -25,7 +25,3 @@ All remaining call sites use:
 - `application/*` for orchestration/use-case entrypoints,
 - `domain/*` for contracts and model contracts,
 - `infrastructure/*` for adapters.
-
-## Next migration step
-
-Move adapter imports in code from top-level modules (`core`, `graph`, `vectorstore`, etc.) to their corresponding `infrastructure/*` and `application/*` modules one module at a time.
