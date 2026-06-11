@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter  # type: ignore[reportMissingImports]
 
 from app.dependencies import get_provider_or_400
 from app.schemas import QueryRequest, apply_query_request_settings

@@ -2,7 +2,8 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from core.graph.orchestration import RAGGraphOrchestrator
+from core.graph.extraction import extract_triplets_with_graph_service
+from core.graph.raganything_client import RagAnythingGraphService
 from core.graph.reranker import rerank_hits as rerank_hits_impl
 from core.providers.factory import get_provider as create_provider
 from core.settings import RAGServiceSettings, load_rag_settings
@@ -17,18 +18,14 @@ class RAGService:
         self.settings = load_rag_settings()
         self.working_dir = Path(self.settings.rag_working_dir).expanduser()
         self.working_dir.mkdir(parents=True, exist_ok=True)
-        self._graph_orchestrator = RAGGraphOrchestrator(
-            settings=self.settings,
-            working_dir=self.working_dir,
-            logger_obj=logger,
-        )
-        self.raganything = self._graph_orchestrator.raganything_client
+        self._graph_service: RagAnythingGraphService | None = None
+        self.raganything: Any | None = None
         _configure_service_logging(self.settings)
 
-    def _ensure_graph_orchestrator(self) -> RAGGraphOrchestrator:
-        orchestrator = getattr(self, "_graph_orchestrator", None)
-        if orchestrator is not None:
-            return orchestrator
+    def _ensure_graph_service(self) -> RagAnythingGraphService:
+        service = getattr(self, "_graph_service", None)
+        if service is not None:
+            return service
 
         settings = getattr(self, "settings", None)
         if settings is None:
@@ -41,21 +38,21 @@ class RAGService:
             self.working_dir = Path(self.working_dir).expanduser()
 
         self.working_dir.mkdir(parents=True, exist_ok=True)
-        orchestrator = RAGGraphOrchestrator(settings=settings, working_dir=self.working_dir, logger_obj=logger)
-        self._graph_orchestrator = orchestrator
-        self.raganything = orchestrator.raganything_client
-        return orchestrator
+        service = RagAnythingGraphService(self.working_dir, logger_obj=logger)
+        self._graph_service = service
+        self.raganything = service.client
+        return service
 
     def clear_graph_cache(self) -> Dict[str, Any]:
         """Clear persisted RAG-Anything graph extraction state."""
-        orchestrator = self._ensure_graph_orchestrator()
-        result = orchestrator.clear_graph_cache()
-        self.raganything = orchestrator.raganything_client
+        service = self._ensure_graph_service()
+        result = service.clear_graph_cache()
+        self.raganything = service.client
         return result
 
     def graph_runtime_summary(self) -> Dict[str, Any]:
         """Return a lightweight runtime summary for the UI monitor."""
-        return self._ensure_graph_orchestrator().graph_runtime_summary()
+        return self._ensure_graph_service().graph_runtime_summary()
 
     def get_provider(self, name: str):
         return create_provider(name)
@@ -75,8 +72,9 @@ class RAGService:
             self.settings = load_rag_settings()
 
         provider = provider or self.get_provider(self.settings.graph_provider)
-        orchestrator = self._ensure_graph_orchestrator()
-        trips = orchestrator.extract_triplets(
+        service = self._ensure_graph_service()
+        trips = extract_triplets_with_graph_service(
+            service,
             text,
             engine,
             provider=provider,
@@ -84,12 +82,13 @@ class RAGService:
             doc_id=doc_id,
             file_path=file_path,
             neo4j_database=neo4j_database,
+            graph_perf_log=self.settings.graph_perf_log,
         )
-        self.raganything = orchestrator.raganything_client
+        self.raganything = service.client
         return trips
 
     def _triplets_from_raganything_llm_cache(self) -> List[tuple[str, str, str]]:
-        return self._ensure_graph_orchestrator().triplets_from_llm_cache()
+        return self._ensure_graph_service().triplets_from_llm_cache()
 
     def rerank_hits(
         self,

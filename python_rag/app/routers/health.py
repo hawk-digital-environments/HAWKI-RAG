@@ -6,7 +6,7 @@ import logging
 from collections.abc import Callable
 from typing import Any, Dict
 
-from fastapi import APIRouter
+from fastapi import APIRouter  # type: ignore[reportMissingImports]
 
 
 def build_health_router(

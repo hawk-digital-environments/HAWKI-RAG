@@ -1,7 +1,7 @@
 from typing import List, Dict, Any
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, Field
-from sentence_transformers import CrossEncoder
+from fastapi import FastAPI, HTTPException  # type: ignore[reportMissingImports]
+from pydantic import BaseModel, Field  # type: ignore[reportMissingImports]
+from sentence_transformers import CrossEncoder  # type: ignore[reportMissingImports]
 
 app = FastAPI(title="Local Reranker", version="0.1.0")
 # Load the Mixedbread reranker once at startup so every request reuses the weights.

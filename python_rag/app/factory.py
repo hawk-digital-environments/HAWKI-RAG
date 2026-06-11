@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Callable, TypeVar
 
-from fastapi import FastAPI
+from fastapi import FastAPI  # type: ignore[reportMissingImports]
 
 from core.rag_service import RAGService
 from vectorstore.qdrant_http import QdrantHTTP

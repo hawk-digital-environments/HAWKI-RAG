@@ -2,23 +2,27 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping, MutableMapping
 import logging
 import os
 import re
-from typing import Any
+from typing import Any, Dict
 
 from core.graph.raganything_settings import RagAnythingGraphSettings
 
 logger = logging.getLogger(__name__)
 
 
-def prepare_lightrag_neo4j_env(
+def build_lightrag_neo4j_env(
     settings: RagAnythingGraphSettings,
     *,
     neo4j_database: str | None = None,
-) -> tuple[bool, dict[str, str]]:
-    """Prepare environment variables needed for LightRAG Neo4j usage."""
-    applied: dict[str, str] = {}
+    source_env: Mapping[str, str] | None = None,
+) -> Dict[str, str]:
+    """Build required LightRAG Neo4j env values without mutating process state."""
+    env: Dict[str, str] = {}
+    current_env = source_env if source_env is not None else os.environ
+
     neo4j_user = settings.neo4j_user
     neo4j_pwd = settings.neo4j_password
     neo4j_uri = settings.neo4j_uri
@@ -30,22 +34,54 @@ def prepare_lightrag_neo4j_env(
             neo4j_uri = re.sub(r"^https?://", "bolt://", settings.neo4j_http_url)
             neo4j_uri = re.sub(r":7474(?=/|$)", ":7687", neo4j_uri)
             neo4j_uri = re.sub(r":7473(?=/|$)", ":7687", neo4j_uri)
-        if neo4j_uri:
-            os.environ["NEO4J_URI"] = neo4j_uri
-            applied["NEO4J_URI"] = neo4j_uri
 
-    if neo4j_user and not os.environ.get("NEO4J_USERNAME", "").strip():
-        os.environ["NEO4J_USERNAME"] = neo4j_user
-        applied["NEO4J_USERNAME"] = neo4j_user
+    if neo4j_uri and not str(current_env.get("NEO4J_URI", "")).strip():
+        env["NEO4J_URI"] = neo4j_uri
+
+    if neo4j_user and not str(current_env.get("NEO4J_USERNAME", "")).strip():
+        env["NEO4J_USERNAME"] = neo4j_user
 
     database = (neo4j_database or settings.neo4j_database).strip()
     if database:
-        os.environ["NEO4J_DATABASE"] = database
-        applied["NEO4J_DATABASE"] = database
+        env["NEO4J_DATABASE"] = database
 
-    if neo4j_pwd:
-        applied["NEO4J_PASSWORD"] = "***"
+    if neo4j_pwd and not str(current_env.get("NEO4J_PASSWORD", "")).strip():
+        env["NEO4J_PASSWORD"] = neo4j_pwd
 
+    return env
+
+
+def apply_lightrag_neo4j_env(
+    overrides: Mapping[str, str],
+    *,
+    target_env: MutableMapping[str, str] | None = None,
+) -> Dict[str, str]:
+    """Apply LightRAG Neo4j env overrides and return the concrete values."""
+    env = target_env if target_env is not None else os.environ
+    applied = {}
+    for key, value in overrides.items():
+        if not value:
+            continue
+        env[key] = value
+        applied[key] = value
+    return applied
+
+
+def _mask_sensitive_runtime_env(overrides: Mapping[str, str]) -> Dict[str, str]:
+    return {k: ("***" if k == "NEO4J_PASSWORD" else v) for k, v in overrides.items()}
+
+
+def prepare_lightrag_neo4j_env(
+    settings: RagAnythingGraphSettings,
+    *,
+    neo4j_database: str | None = None,
+) -> tuple[bool, dict[str, str]]:
+    """Prepare environment variables needed for LightRAG Neo4j usage."""
+    overrides = build_lightrag_neo4j_env(settings, neo4j_database=neo4j_database)
+    applied_runtime = apply_lightrag_neo4j_env(overrides)
+    applied = _mask_sensitive_runtime_env(applied_runtime)
+    if settings.neo4j_password:
+        applied.setdefault("NEO4J_PASSWORD", "***")
     ready = bool(
         os.environ.get("NEO4J_URI", "").strip()
         and os.environ.get("NEO4J_USERNAME", "").strip()
@@ -87,4 +123,3 @@ def clear_lightrag_temp_graph(
         logger.debug("LightRAG Neo4j temp graph cleanup failed: %s", exc)
     finally:
         driver.close()
-

@@ -4,7 +4,7 @@ import logging
 import time
 from typing import Any, List, Tuple
 
-from core.graph import RagAnythingGraphService
+from core.graph.raganything_client import RagAnythingGraphService
 from core.graph.text import clean_graph_text
 
 logger = logging.getLogger(__name__)

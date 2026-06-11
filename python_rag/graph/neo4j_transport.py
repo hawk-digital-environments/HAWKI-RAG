@@ -5,7 +5,7 @@ import time
 from collections.abc import Callable
 from typing import Any, Protocol, TypeVar
 
-from neo4j import exceptions as neo4j_exceptions
+from neo4j import exceptions as neo4j_exceptions  # type: ignore[reportMissingImports]
 
 from graph.neo4j_requests import Neo4jQueryRequest
 

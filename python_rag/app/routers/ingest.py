@@ -6,7 +6,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter  # type: ignore[reportMissingImports]
 
 from app.dependencies import get_provider_or_400
 from app.schemas import DocumentUpsertRequest, IngestRequest, apply_ingest_request_settings

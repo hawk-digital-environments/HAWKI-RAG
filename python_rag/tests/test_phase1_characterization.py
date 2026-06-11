@@ -10,7 +10,7 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
-from fastapi.testclient import TestClient
+from fastapi.testclient import TestClient  # type: ignore[reportMissingImports]
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -910,7 +910,7 @@ class Neo4jCharacterizationTests(unittest.TestCase):
     def test_neo4j_query_executor_retries_transient_errors(self) -> None:
         from graph.neo4j_requests import Neo4jQueryRequest
         from graph.neo4j_transport import Neo4jQueryExecutor
-        from neo4j import exceptions as neo4j_exceptions
+        from neo4j import exceptions as neo4j_exceptions  # type: ignore[reportMissingImports]
 
         attempts: list[int] = []
 
@@ -1733,7 +1733,7 @@ class IngestDeletionCharacterizationTests(unittest.TestCase):
 
 class ApiAndVectorValidationTests(unittest.TestCase):
     def test_api_schema_defaults_and_provider_errors_are_validation_boundaries(self) -> None:
-        from fastapi import HTTPException
+        from fastapi import HTTPException  # type: ignore[reportMissingImports]
 
         from app.dependencies import get_provider_or_400
         from app.schemas import IngestDoc, IngestRequest, QueryRequest, apply_ingest_request_settings, apply_query_request_settings
@@ -1785,7 +1785,7 @@ class ApiAndVectorValidationTests(unittest.TestCase):
         self.assertEqual(patched_ingest.graph_engine, "custom-graph")
 
     def test_app_settings_includes_runtime_env_overrides(self) -> None:
-        from fastapi import HTTPException
+        from fastapi import HTTPException  # type: ignore[reportMissingImports]
 
         from app.dependencies import get_provider_or_400
         from app.settings import load_app_settings
@@ -1814,7 +1814,7 @@ class ApiAndVectorValidationTests(unittest.TestCase):
         self.assertIn("unknown provider missing", raised.exception.detail)
 
     def test_document_replacement_request_validates_text_and_preserves_defaults(self) -> None:
-        from fastapi import HTTPException
+        from fastapi import HTTPException  # type: ignore[reportMissingImports]
 
         from app.documents import build_replacement_ingest_request
         from app.schemas import DocumentUpsertRequest

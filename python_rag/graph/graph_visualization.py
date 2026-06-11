@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional
 
 from graph.visualization_settings import GraphVisualizationSettings, load_graph_visualization_settings
 
-from neo4j import GraphDatabase, exceptions as neo4j_exceptions
+from neo4j import GraphDatabase, exceptions as neo4j_exceptions  # type: ignore[reportMissingImports]
 
 
 logger = logging.getLogger(__name__)

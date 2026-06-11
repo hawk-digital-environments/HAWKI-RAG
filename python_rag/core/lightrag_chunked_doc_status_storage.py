@@ -23,9 +23,9 @@ import os
 import re
 from typing import Any
 
-from lightrag.base import DocProcessingStatus, DocStatus
-from lightrag.exceptions import StorageNotInitializedError
-from lightrag.kg.json_doc_status_impl import JsonDocStatusStorage
+from lightrag.base import DocProcessingStatus, DocStatus  # type: ignore[reportMissingImports]
+from lightrag.exceptions import StorageNotInitializedError  # type: ignore[reportMissingImports]
+from lightrag.kg.json_doc_status_impl import JsonDocStatusStorage  # type: ignore[reportMissingImports]
 from lightrag.kg.shared_storage import (
     clear_all_update_flags,
     get_data_init_lock,
@@ -33,8 +33,8 @@ from lightrag.kg.shared_storage import (
     get_namespace_lock,
     get_update_flag,
     try_initialize_namespace,
-)
-from lightrag.utils import load_json, logger, write_json
+)  # type: ignore[reportMissingImports]
+from lightrag.utils import load_json, logger, write_json  # type: ignore[reportMissingImports]
 
 
 @dataclass

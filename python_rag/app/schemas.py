@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field  # type: ignore[reportMissingImports]
 
 from app.settings import AppSettings
 

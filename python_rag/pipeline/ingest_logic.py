@@ -7,7 +7,7 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List
 
-from fastapi import HTTPException
+from fastapi import HTTPException  # type: ignore[reportMissingImports]
 
 from graph.neo4j_graph import Neo4jGraph
 from pipeline.observability import pipeline_log

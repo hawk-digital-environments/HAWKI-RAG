@@ -5,7 +5,7 @@ import logging
 import time
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
-from neo4j import GraphDatabase, exceptions as neo4j_exceptions
+from neo4j import GraphDatabase, exceptions as neo4j_exceptions  # type: ignore[reportMissingImports]
 
 from graph.neo4j_transport import Neo4jQueryExecutor, Neo4jQueryExecutorProtocol
 
