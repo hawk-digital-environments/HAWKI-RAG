@@ -10,9 +10,29 @@ from __future__ import annotations
 
 import argparse
 import os
+from pathlib import Path
 import sys
 
-from application.cli.commands.runner import run_ingest
+def _ensure_python_rag_package() -> None:
+    """Add repository root to ``sys.path`` for direct script execution."""
+    current_file = Path(__file__).resolve()
+    for parent in [current_file, *current_file.parents]:
+        if (parent / "application").is_dir() and (parent / "shared").is_dir():
+            root = str(parent)
+            if root not in sys.path:
+                sys.path.insert(0, root)
+            return
+
+    fallback_root = str(current_file.parents[3]) if len(current_file.parents) > 3 else str(current_file.parent)
+    if fallback_root not in sys.path:
+        sys.path.insert(0, fallback_root)
+
+
+try:
+    from application.cli.commands.runner import run_ingest
+except ModuleNotFoundError:  # pragma: no cover - direct script execution path
+    _ensure_python_rag_package()
+    from application.cli.commands.runner import run_ingest
 
 EXIT_SUCCESS = 0
 EXIT_RUNTIME_FAILURE = 1

@@ -1109,7 +1109,7 @@ class QueryCharacterizationTests(unittest.TestCase):
         self.assertEqual(calls, [("search", 3), ("scroll_all", 7)])
 
     def test_query_hit_helpers_merge_dedupe_and_limit_by_doc_identity(self) -> None:
-        from application.workflows.query_logic
+        from application.workflows import query_logic
 
         primary = [
             {"id": "a", "score": 0.2, "payload": {"doc_id": "doc-a", "title": "Toy Train"}},
@@ -1127,7 +1127,7 @@ class QueryCharacterizationTests(unittest.TestCase):
         self.assertEqual([hit["payload"]["doc_id"] for hit in deduped], ["doc-c", "doc-a"])
 
     def test_query_context_summaries_trim_to_token_budget(self) -> None:
-        from application.workflows.query_logic
+        from application.workflows import query_logic
 
         hits = [
             {
@@ -1154,7 +1154,7 @@ class QueryCharacterizationTests(unittest.TestCase):
         self.assertEqual(summaries[0]["title"], "Toy Catalog")
 
     def test_query_uses_reranked_order_without_external_services(self) -> None:
-        from application.workflows.query_logic
+        from application.workflows import query_logic
 
         class Provider:
             def embed(self, text: str) -> list[float]:
@@ -1232,7 +1232,7 @@ class QueryCharacterizationTests(unittest.TestCase):
         self.assertEqual(result["retrieval"]["context_docs"], 2)
 
     def test_query_execution_module_injection_and_flow(self) -> None:
-        from application.workflows.query_execution
+        from application.workflows import query_execution
 
         calls: list[str] = []
         fast_mode_calls: list[bool] = []
@@ -1315,7 +1315,7 @@ class QueryCharacterizationTests(unittest.TestCase):
         self.assertEqual(fast_mode_calls, [False])
 
     def test_query_execution_fast_mode_setter_is_injected(self) -> None:
-        from application.workflows.query_execution
+        from application.workflows import query_execution
 
         body = SimpleNamespace(
             query="fast mode",
@@ -1370,7 +1370,7 @@ class QueryCharacterizationTests(unittest.TestCase):
         self.assertEqual(fast_mode_calls, [True])
 
     def test_query_stages_rewrite_contract_is_multimodal_and_dedupe_terms(self) -> None:
-        from application.workflows.query_stages
+        from application.workflows import query_stages
 
         with patch.object(
             query_stages,
@@ -1411,7 +1411,7 @@ class QueryCharacterizationTests(unittest.TestCase):
         multimodal_check.assert_called_once()
 
     def test_query_stages_rerank_and_filter_preserves_best_path_and_fallback(self) -> None:
-        from application.workflows.query_stages
+        from application.workflows import query_stages
 
         class RerankService:
             def __init__(self) -> None:
@@ -1469,7 +1469,7 @@ class QueryCharacterizationTests(unittest.TestCase):
 
 
     def test_query_rewrite_module_handles_injected_policy_dependencies(self) -> None:
-        from application.workflows.query_rewrite
+        from application.workflows import query_rewrite
 
         rewrite = query_rewrite.build_query_rewrite(
             SimpleNamespace(chat=lambda system, messages: "{}"),
@@ -1504,7 +1504,7 @@ class QueryCharacterizationTests(unittest.TestCase):
         self.assertEqual(terms, ["train", "planes", "toys", "visual"])
 
     def test_query_ranking_module_iterate_and_expansion_terms(self) -> None:
-        from application.workflows.query_ranking
+        from application.workflows import query_ranking
 
         class RerankService:
             def rerank_hits(self, **kwargs) -> list[dict[str, object]]:
@@ -2149,13 +2149,13 @@ class ApiAndVectorValidationTests(unittest.TestCase):
                 logger_name="app_test_ingest_route",
             )
 
-                with patch("application.ingest.ingest_documents", side_effect=fake_ingest_documents):
-                    with TestClient(app) as client:
-                        response = client.post(
-                            "/ingest",
-                            headers={"Idempotency-Key": "ingest-route-key"},
-                            json=ingest_body.model_dump(),
-                        )
+            with patch("application.ingest.ingest_documents", side_effect=fake_ingest_documents):
+                with TestClient(app) as client:
+                    response = client.post(
+                        "/ingest",
+                        headers={"Idempotency-Key": "ingest-route-key"},
+                        json=ingest_body.model_dump(),
+                    )
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), {"ok": True, "collection": "toy_docs", "count": 1})

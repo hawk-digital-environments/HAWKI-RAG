@@ -14,11 +14,27 @@ from typing import Set
 
 import requests
 
+def _ensure_python_rag_package() -> None:
+    """Add repository root to ``sys.path`` for direct script execution."""
+    current_file = Path(__file__).resolve()
+    for parent in [current_file, *current_file.parents]:
+        if (parent / "application").is_dir() and (parent / "shared").is_dir():
+            root = str(parent)
+            if root not in sys.path:
+                sys.path.insert(0, root)
+            break
+    else:
+        fallback_root = str(current_file.parents[3]) if len(current_file.parents) > 3 else str(current_file.parent)
+        if fallback_root not in sys.path:
+            sys.path.insert(0, fallback_root)
+
+
 # Reuse helpers from ingest_crawled for consistent doc_id generation.
 try:
     from application.cli.commands.ingest_crawled import discover_page_dirs, load_page_materials, first_str, make_doc_id
 except ModuleNotFoundError:  # pragma: no cover - legacy direct script execution
-    from ingest_crawled import discover_page_dirs, load_page_materials, first_str, make_doc_id
+    _ensure_python_rag_package()
+    from application.cli.commands.ingest_crawled import discover_page_dirs, load_page_materials, first_str, make_doc_id
 
 EXIT_SUCCESS = 0
 EXIT_RUNTIME_FAILURE = 1

@@ -32,7 +32,6 @@ class QdrantHTTPTransport:
         api_key: str | None,
         default_timeout: float,
         max_attempts: int = 3,
-        *,
         log_latency: bool = False,
         operation_attempts: Mapping[str, int] | None = None,
         backoff_cap_seconds: float = 5.0,

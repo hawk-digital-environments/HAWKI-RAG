@@ -113,10 +113,10 @@ def _check_neo4j() -> None:
 
 def _check_provider_availability(service: Any, settings: AppSettings, timeout_seconds: float) -> None:
     provider_name = (settings.rag_default_provider or "").strip().lower()
-    provider = service.get_provider(provider_name)
     if provider_name != "ollama":
         return
 
+    provider = service.get_provider(provider_name)
     base = str(getattr(provider, "base", os.environ.get("OLLAMA_API_URL", "http://ollama:11434/api"))).rstrip("/")
     last_error: str | None = None
     for path in ("/api/tags", "/api/version"):

@@ -18,6 +18,20 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Set, Tuple
 import time
+
+
+def _ensure_python_rag_package() -> None:
+    """Add repository root to ``sys.path`` for direct script execution."""
+    current_file = Path(__file__).resolve()
+    for parent in [current_file, *current_file.parents]:
+        if (parent / "application").is_dir() and (parent / "shared").is_dir():
+            root = str(parent)
+            if root not in sys.path:
+                sys.path.insert(0, root)
+            return
+    fallback_root = str(current_file.parents[3]) if len(current_file.parents) > 3 else str(current_file.parent)
+    if fallback_root not in sys.path:
+        sys.path.insert(0, fallback_root)
 try:
     from application.cli.commands.ingest_crawled import (
         build_url_maps,
@@ -33,7 +47,8 @@ try:
         post_batch,
     )
 except ModuleNotFoundError:  # pragma: no cover - legacy direct script execution
-    from ingest_crawled import (
+    _ensure_python_rag_package()
+    from application.cli.commands.ingest_crawled import (
         build_url_maps,
         discover_page_dirs,
         load_page_materials,
