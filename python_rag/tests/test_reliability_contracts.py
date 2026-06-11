@@ -112,8 +112,8 @@ class ReliabilityContractTests(unittest.TestCase):
         self.assertTrue(second_request.retryable)
 
     def test_startup_checks_fail_fast_after_retry_cap(self) -> None:
-        from app.factory import _run_startup_checks
-        from app.settings import load_app_settings
+        from api.factory import _run_startup_checks
+        from api.settings import load_app_settings
 
         class FakeService:
             def get_provider(self, _name: str) -> object:
@@ -128,9 +128,9 @@ class ReliabilityContractTests(unittest.TestCase):
         with patch.dict(os.environ, {"STARTUP_CHECK_ATTEMPTS": "2"}, clear=False):
             settings = load_app_settings()
 
-        with patch("app.factory._check_qdrant", side_effect=RuntimeError("qdrant unavailable")) as check_q:
-            with patch("app.factory._check_neo4j") as check_neo:
-                with patch("app.factory.time.sleep") as sleep:
+        with patch("api.factory._check_qdrant", side_effect=RuntimeError("qdrant unavailable")) as check_q:
+            with patch("api.factory._check_neo4j") as check_neo:
+                with patch("api.factory.time.sleep") as sleep:
                     with self.assertRaises(RuntimeError):
                         _run_startup_checks(
                             settings,
@@ -142,8 +142,8 @@ class ReliabilityContractTests(unittest.TestCase):
             self.assertEqual(sleep.call_count, 1)
 
     def test_startup_checks_skip_provider_probe_for_non_ollama_driver(self) -> None:
-        from app.factory import _run_startup_checks
-        from app.settings import load_app_settings
+        from api.factory import _run_startup_checks
+        from api.settings import load_app_settings
 
         calls = {"provider": 0}
 
@@ -161,8 +161,8 @@ class ReliabilityContractTests(unittest.TestCase):
         with patch.dict(os.environ, {"RAG_DEFAULT_PROVIDER": "openai", "STARTUP_CHECK_ATTEMPTS": "1"}, clear=False):
             settings = load_app_settings()
 
-        with patch("app.factory._check_qdrant"):
-            with patch("app.factory._check_neo4j"):
+        with patch("api.factory._check_qdrant"):
+            with patch("api.factory._check_neo4j"):
                 _run_startup_checks(
                     settings,
                     service=FakeService(),

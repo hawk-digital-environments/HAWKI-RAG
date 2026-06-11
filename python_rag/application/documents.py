@@ -3,8 +3,8 @@ from __future__ import annotations
 
 from fastapi import HTTPException
 
-from app.settings import AppSettings
-from .schemas import DocumentUpsertRequest, IngestDoc, IngestRequest
+from api.settings import AppSettings
+from api.http.schemas import DocumentUpsertRequest, IngestDoc, IngestRequest
 
 
 def build_replacement_ingest_request(

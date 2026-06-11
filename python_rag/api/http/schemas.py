@@ -5,7 +5,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from app.settings import AppSettings
+from api.settings import AppSettings
 
 
 def _apply_if_absent(data: BaseModel, field: str, value: object, updates: dict[str, object]) -> None:

@@ -7,7 +7,7 @@ from typing import Any
 
 from fastapi import APIRouter
 
-from app.schemas import GraphRequest
+from api.http.schemas import GraphRequest
 
 
 def build_graph_router(

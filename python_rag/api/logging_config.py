@@ -5,7 +5,7 @@ import logging
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from app.settings import AppSettings
+from api.settings import AppSettings
 
 
 _SECRET_PATTERNS = (

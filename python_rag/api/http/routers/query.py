@@ -7,9 +7,9 @@ from typing import Any
 
 from fastapi import APIRouter
 
-from app.dependencies import get_provider_or_400
-from app.schemas import QueryRequest, apply_query_request_settings
-from app.settings import AppSettings
+from api.http.dependencies import get_provider_or_400
+from api.http.schemas import QueryRequest, apply_query_request_settings
+from api.settings import AppSettings
 
 
 def build_query_router(*, logger: logging.Logger, rag_service: Any, app_settings: AppSettings) -> APIRouter:
@@ -22,7 +22,7 @@ def build_query_router(*, logger: logging.Logger, rag_service: Any, app_settings
 
     @router.post("/query")
     def query(body: QueryRequest) -> dict[str, Any]:
-        from app.query import query_documents
+        from application.query import query_documents
         body = apply_query_request_settings(body, app_settings)
 
         logger.info(

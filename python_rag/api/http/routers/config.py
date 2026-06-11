@@ -6,8 +6,8 @@ import logging
 
 from fastapi import APIRouter
 
-from app.settings import AppSettings
-from app.config_response import build_config_response
+from api.settings import AppSettings
+from application.config_response import build_config_response
 
 
 def build_config_router(

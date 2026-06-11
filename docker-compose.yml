@@ -206,7 +206,7 @@ services:
       - ./python_rag:/app
       - ./public:/app/public
       - shared_storage:/app/shared
-    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    command: ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000"]
     restart: unless-stopped
 
   # -------------------------------------------------
@@ -411,7 +411,7 @@ services:
       - ./python_rag:/app
       - rag_storage:/app/rag_storage
       - ./scripts/gpu_guard.sh:/usr/local/bin/gpu_guard.sh:ro
-    command: ["/usr/local/bin/gpu_guard.sh", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8003"]
+    command: ["/usr/local/bin/gpu_guard.sh", "uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8003"]
     depends_on:
       - ollama
       - qdrant

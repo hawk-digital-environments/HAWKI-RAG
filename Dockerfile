@@ -36,7 +36,7 @@ COPY python_rag /app
 RUN mkdir -p /app/rag_storage
 
 EXPOSE 8003
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8003"]
+CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8003"]
 
 # Local reranker
 FROM python:3.11-slim AS rerank

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.settings import AppSettings
+from api.settings import AppSettings
 
 
 def build_config_response(*, get_provider: Any, qdrant_factory: Any, app_settings: AppSettings) -> dict[str, Any]:

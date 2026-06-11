@@ -8,9 +8,9 @@ from typing import Any
 
 from fastapi import APIRouter, Request
 
-from app.dependencies import get_provider_or_400
-from app.schemas import DocumentUpsertRequest, IngestRequest, apply_ingest_request_settings
-from app.settings import AppSettings
+from api.http.dependencies import get_provider_or_400
+from api.http.schemas import DocumentUpsertRequest, IngestRequest, apply_ingest_request_settings
+from api.settings import AppSettings
 
 
 def build_ingest_router(
@@ -33,7 +33,7 @@ def build_ingest_router(
 
     @router.post("/ingest")
     def ingest(body: IngestRequest, request: Request) -> dict[str, Any]:
-        from app.ingest import ingest_documents
+        from application.ingest import ingest_documents
 
         body = apply_ingest_request_settings(body, app_settings)
         request_id = getattr(request.state, "request_id", None)
@@ -59,7 +59,7 @@ def build_ingest_router(
 
     @router.delete("/documents/{doc_id}")
     def delete_document_endpoint(doc_id: str, request: Request) -> dict[str, Any]:
-        from app.ingest import delete_document
+        from application.ingest import delete_document
 
         request_id = getattr(request.state, "request_id", None)
         idempotency_key = _extract_idempotency_key(request, doc_id)
@@ -79,8 +79,8 @@ def build_ingest_router(
 
     @router.put("/documents/{doc_id}")
     def replace_document(doc_id: str, body: DocumentUpsertRequest, request: Request) -> dict[str, Any]:
-        from app.documents import build_replacement_ingest_request
-        from app.ingest import delete_document, ingest_documents
+        from application.documents import build_replacement_ingest_request
+        from application.ingest import delete_document, ingest_documents
 
         request_id = getattr(request.state, "request_id", None)
         idempotency_key = _extract_idempotency_key(request, body.idempotency_key)

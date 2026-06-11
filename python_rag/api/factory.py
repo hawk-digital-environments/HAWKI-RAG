@@ -15,16 +15,16 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from requests import RequestException
 
-from core.rag_service import RAGService
-from graph.neo4j_settings import load_neo4j_settings
-from vectorstore.settings import qdrant_settings_from_env
-from vectorstore.qdrant_http import QdrantHTTP
+from application.service import RAGService
+from infrastructure.graph import load_neo4j_settings
+from infrastructure.vectorstore import qdrant_settings_from_env
+from infrastructure.vectorstore import QdrantHTTP
 
 from .settings import AppSettings, load_app_settings
-from .dependencies import get_provider_or_400
+from .http.dependencies import get_provider_or_400
 from .logging_config import configure_app_logging
 from .runtime import log_gpu_status
-from .routers import (
+from .http.routers import (
     build_config_router,
     build_graph_router,
     build_health_router,

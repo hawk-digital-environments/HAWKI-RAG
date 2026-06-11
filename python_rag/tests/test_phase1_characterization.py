@@ -1735,9 +1735,9 @@ class ApiAndVectorValidationTests(unittest.TestCase):
     def test_api_schema_defaults_and_provider_errors_are_validation_boundaries(self) -> None:
         from fastapi import HTTPException
 
-        from app.dependencies import get_provider_or_400
-        from app.schemas import IngestDoc, IngestRequest, QueryRequest, apply_ingest_request_settings, apply_query_request_settings
-        from app.settings import load_app_settings
+        from api.http.dependencies import get_provider_or_400
+        from api.http.schemas import IngestDoc, IngestRequest, QueryRequest, apply_ingest_request_settings, apply_query_request_settings
+        from api.settings import load_app_settings
 
         ingest = IngestRequest(
             docs=[IngestDoc(id="doc-1", text="Toy catalog", payload={"title": "Toys"})],
@@ -1787,8 +1787,8 @@ class ApiAndVectorValidationTests(unittest.TestCase):
     def test_app_settings_includes_runtime_env_overrides(self) -> None:
         from fastapi import HTTPException
 
-        from app.dependencies import get_provider_or_400
-        from app.settings import load_app_settings
+        from api.http.dependencies import get_provider_or_400
+        from api.settings import load_app_settings
 
         with patch.dict(
             os.environ,
@@ -1816,9 +1816,9 @@ class ApiAndVectorValidationTests(unittest.TestCase):
     def test_document_replacement_request_validates_text_and_preserves_defaults(self) -> None:
         from fastapi import HTTPException
 
-        from app.documents import build_replacement_ingest_request
-        from app.schemas import DocumentUpsertRequest
-        from app.settings import load_app_settings
+        from application.documents import build_replacement_ingest_request
+        from api.http.schemas import DocumentUpsertRequest
+        from api.settings import load_app_settings
 
         with self.assertRaises(HTTPException) as raised:
             build_replacement_ingest_request(
@@ -1849,8 +1849,8 @@ class ApiAndVectorValidationTests(unittest.TestCase):
         self.assertTrue(request.graph)
 
     def test_config_response_uses_provider_and_qdrant_boundaries(self) -> None:
-        from app.config_response import build_config_response
-        from app.settings import AppSettings
+        from application.config_response import build_config_response
+        from api.settings import AppSettings
 
         class Provider:
             embed_model = "embed-toys"
@@ -1904,8 +1904,8 @@ class ApiAndVectorValidationTests(unittest.TestCase):
     def test_app_logging_config_sets_app_and_graph_logger_levels(self) -> None:
         import logging
 
-        from app.logging_config import configure_app_logging, env_flag
-        from app.settings import AppSettings
+        from api.logging_config import configure_app_logging, env_flag
+        from api.settings import AppSettings
 
         app_logger = logging.getLogger("tests.logging_config")
         ingest_logger = logging.getLogger("pipeline.ingest_logic")
@@ -1952,17 +1952,17 @@ class ApiAndVectorValidationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             with patch.dict(os.environ, {"RAG_WORKING_DIR": tmp}, clear=False):
                 for mod_name in [
-                    "app.main",
-                    "app.routers",
-                    "app.routers.health",
-                    "app.routers.config",
-                    "app.routers.ingest",
-                    "app.routers.query",
-                    "app.routers.graph",
+                    "api.main",
+                    "api.http.routers",
+                    "api.http.routers.health",
+                    "api.http.routers.config",
+                    "api.http.routers.ingest",
+                    "api.http.routers.query",
+                    "api.http.routers.graph",
                 ]:
                     sys.modules.pop(mod_name, None)
 
-                app_main = importlib.import_module("app.main")
+                app_main = importlib.import_module("api.main")
                 paths = {route.path for route in app_main.app.router.routes}
 
         self.assertIn("/health", paths)
@@ -1974,8 +1974,8 @@ class ApiAndVectorValidationTests(unittest.TestCase):
         self.assertIn("/graph/cache/clear", paths)
 
     def test_app_factory_builds_routes_with_injected_dependencies(self) -> None:
-        from app.factory import build_app
-        from app.settings import load_app_settings
+        from api.factory import build_app
+        from api.settings import load_app_settings
 
         class FakeService:
             def __init__(self) -> None:
@@ -2028,8 +2028,8 @@ class ApiAndVectorValidationTests(unittest.TestCase):
         self.assertEqual(service.clear_calls, 1)
 
     def test_app_query_route_uses_injected_dependencies(self) -> None:
-        from app.factory import build_app
-        from app.schemas import QueryRequest
+        from api.factory import build_app
+        from api.http.schemas import QueryRequest
 
         class FakeService:
             def __init__(self) -> None:
@@ -2083,7 +2083,7 @@ class ApiAndVectorValidationTests(unittest.TestCase):
                 logger_name="app_test_query_route",
             )
 
-            with patch("app.query.query_documents", side_effect=fake_query_documents):
+            with patch("application.query.query_documents", side_effect=fake_query_documents):
                 with TestClient(app) as client:
                     response = client.post(
                         "/query",
@@ -2101,8 +2101,8 @@ class ApiAndVectorValidationTests(unittest.TestCase):
         self.assertEqual(service.provider_calls, [query_body.provider])
 
     def test_app_ingest_route_delegates_with_injected_dependencies(self) -> None:
-        from app.factory import build_app
-        from app.schemas import IngestDoc, IngestRequest
+        from api.factory import build_app
+        from api.http.schemas import IngestDoc, IngestRequest
 
         class FakeService:
             def __init__(self) -> None:
@@ -2149,7 +2149,7 @@ class ApiAndVectorValidationTests(unittest.TestCase):
                 logger_name="app_test_ingest_route",
             )
 
-                with patch("app.ingest.ingest_documents", side_effect=fake_ingest_documents):
+                with patch("application.ingest.ingest_documents", side_effect=fake_ingest_documents):
                     with TestClient(app) as client:
                         response = client.post(
                             "/ingest",
@@ -2169,7 +2169,7 @@ class ApiAndVectorValidationTests(unittest.TestCase):
         self.assertEqual(service.provider_calls, [ingest_body.provider])
 
     def test_app_document_routes_replace_and_delete_contract(self) -> None:
-        from app.factory import build_app
+        from api.factory import build_app
 
         class FakeService:
             def get_provider(self, name: str) -> object:
@@ -2184,7 +2184,7 @@ class ApiAndVectorValidationTests(unittest.TestCase):
             )
 
             with patch(
-                "app.documents.build_replacement_ingest_request",
+                "application.documents.build_replacement_ingest_request",
                 return_value=SimpleNamespace(
                     docs=[SimpleNamespace(id="doc-replace-1", text="replacement", payload={})],
                     provider="fake",
@@ -2197,10 +2197,10 @@ class ApiAndVectorValidationTests(unittest.TestCase):
                     dry_include_graph=False,
                 ),
             ) as replacement_builder, patch(
-                "app.ingest.delete_document",
+                "application.ingest.delete_document",
                 return_value={"qdrant": {"ok": True}, "neo4j": {"ok": True}},
             ) as delete_mock, patch(
-                "app.ingest.ingest_documents",
+                "application.ingest.ingest_documents",
                 return_value={"ok": True},
             ) as ingest_mock:
                 with TestClient(app) as client:

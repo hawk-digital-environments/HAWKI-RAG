@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from app.settings import load_app_settings
+from api.settings import load_app_settings
 from .factory import build_app
 
 
