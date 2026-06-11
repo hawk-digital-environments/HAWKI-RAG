@@ -6,10 +6,7 @@ import re
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
-try:
-    from ingest.url_maps import read_json_file
-except ImportError:
-    from url_maps import read_json_file
+from application.cli.ingest.url_maps import read_json_file
 
 import logging
 

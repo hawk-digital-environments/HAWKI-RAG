@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """CLI wrapper for crawling folder ingestion.
 
-This module parses CLI arguments and delegates execution to :mod:`ingest.runner`.
+This module parses CLI arguments and delegates execution to :mod:`runner`.
 The previous heavy orchestration logic was split out so this stays focused on CLI
-concerns and compatibility imports used by nearby scripts.
+concerns.
 """
 
 from __future__ import annotations
@@ -12,10 +12,7 @@ import argparse
 import os
 import sys
 
-try:
-    from ingest.runner import run_ingest
-except ImportError:
-    from runner import run_ingest
+from application.cli.ingest.runner import run_ingest
 
 EXIT_SUCCESS = 0
 EXIT_RUNTIME_FAILURE = 1
@@ -77,40 +74,21 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _reexport_metadata_helpers() -> None:
-    """Expose legacy helper imports used by local scripts.
+    """Expose helper imports used by CLI-adjacent call sites."""
 
-    Some scripts still import parser helpers from ingest_crawled directly.
-    Keeping these re-exports avoids breakage while the refactor continues.
-    """
-
-    try:
-        from ingest.discovery import discover_page_dirs
-        from ingest.materials import load_page_materials
-        from ingest.metadata import (
-            first_str,
-            make_doc_id,
-            resolve_date,
-            resolve_tags,
-            title_from_markdown,
-            to_array_list,
-        )
-        from ingest.payloads import build_bridge_doc, build_payload
-        from ingest.url_maps import build_url_maps, resolve_url_for_path
-        from ingest.submit import post_batch, write_summary_file
-    except ImportError:
-        from discovery import discover_page_dirs
-        from materials import load_page_materials
-        from metadata import (
-            first_str,
-            make_doc_id,
-            resolve_date,
-            resolve_tags,
-            title_from_markdown,
-            to_array_list,
-        )
-        from payloads import build_bridge_doc, build_payload
-        from url_maps import build_url_maps, resolve_url_for_path
-        from submit import post_batch, write_summary_file
+    from application.cli.ingest.discovery import discover_page_dirs
+    from application.cli.ingest.materials import load_page_materials
+    from application.cli.ingest.metadata import (
+        first_str,
+        make_doc_id,
+        resolve_date,
+        resolve_tags,
+        title_from_markdown,
+        to_array_list,
+    )
+    from application.cli.ingest.payloads import build_bridge_doc, build_payload
+    from application.cli.ingest.url_maps import build_url_maps, resolve_url_for_path
+    from application.cli.ingest.submit import post_batch, write_summary_file
 
     globals().update(
         {

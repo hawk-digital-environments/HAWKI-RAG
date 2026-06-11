@@ -4,10 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-try:
-    from ingest.metadata import first_str
-except ImportError:
-    from metadata import first_str
+from application.cli.ingest.metadata import first_str
 
 
 def build_payload(

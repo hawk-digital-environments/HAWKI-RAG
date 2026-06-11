@@ -6,12 +6,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-try:
-    from ingest.materials import load_page_materials
-    from ingest.metadata import first_str, make_doc_id
-except ImportError:
-    from materials import load_page_materials
-    from metadata import first_str, make_doc_id
+from application.cli.ingest.metadata import first_str, make_doc_id
+from application.cli.ingest.materials import load_page_materials
 
 
 def utc_now_iso() -> str:
