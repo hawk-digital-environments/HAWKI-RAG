@@ -74,7 +74,13 @@ class Neo4jQueryExecutor:
                 if attempt >= self._retry_attempts:
                     logger.warning("Neo4j %s failed: %s", "write" if write else "query", exc)
                     raise
-                logger.warning("Neo4j error (%s). Retrying...", exc)
+                logger.warning(
+                    "Neo4j %s failed (%s). Retrying attempt %s/%s",
+                    "write" if write else "query",
+                    exc,
+                    attempt,
+                    self._retry_attempts,
+                )
                 if backoff > 0:
                     time.sleep(backoff)
                 backoff = min(backoff * 2, self._backoff_cap_seconds)

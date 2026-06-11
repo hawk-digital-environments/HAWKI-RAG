@@ -13,11 +13,18 @@ def delete_document_entries(
     qdrant_factory: Any = QdrantHTTP,
     graph_factory: Any = Neo4jGraph,
 ) -> Dict[str, Any]:
+    normalized_doc_id = str(doc_id or "").strip()
+    if not normalized_doc_id:
+        return {
+            "qdrant": {"result": {"status": "skipped", "deleted": 0}, "deleted_docs": 0},
+            "neo4j": {"relationships_deleted": 0, "entities_deleted": 0},
+        }
+
     qdrant = qdrant_factory()
-    qdrant_result = qdrant.delete_by_doc_id(doc_id)
+    qdrant_result = qdrant.delete_by_doc_id(normalized_doc_id)
     graph = graph_factory()
     try:
-        neo4j_result = graph.delete_by_doc_id(doc_id)
+        neo4j_result = graph.delete_by_doc_id(normalized_doc_id)
     finally:
         try:
             graph.close()

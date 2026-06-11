@@ -191,7 +191,9 @@ class Neo4jGraph:
 
     def delete_by_doc_id(self, doc_id: str) -> Dict[str, int]:
         """Remove relationships (and orphaned nodes) belonging to a document."""
-        doc_key = str(doc_id)
+        doc_key = str(doc_id or "").strip()
+        if not doc_key:
+            return {"relationships_deleted": 0, "entities_deleted": 0}
 
         remove_edges_query = Neo4jQueryRequest(build_delete_doc_edges_query(), {"doc_id": doc_key})
         relationships_touched = self._run_write(

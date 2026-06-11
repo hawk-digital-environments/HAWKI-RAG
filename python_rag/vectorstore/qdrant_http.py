@@ -363,6 +363,11 @@ class QdrantHTTP:
             filter_body,
             timeout=self._http_settings.delete_timeout,
         )
+        if r.status_code == 404:
+            return {"result": {"status": "not_found", "deleted": 0}}
+        if r.status_code == 400:
+            # Invalid requests should fail fast so callers can route to a clear error boundary.
+            raise RuntimeError(f"Qdrant delete request rejected: {r.text}")
         r.raise_for_status()
         return r.json()
 

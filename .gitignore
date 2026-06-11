@@ -20,6 +20,7 @@ Homestead.json
 Homestead.yaml
 npm-debug.log
 yarn-error.log
+*.log
 /auth.json
 .DS_Store
 docker-compose.override.yml
@@ -38,7 +39,19 @@ resources/js/crawler
 !package.json
 !package-lock.json
 *.pyc
+*.py[co]
+*.pyo
 **/__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+.coverage*
+.tox/
+.venv/
+dist/
+build/
 /python_rag/public/
 /python_rag/rag_storage/
 /python_rag/shared/

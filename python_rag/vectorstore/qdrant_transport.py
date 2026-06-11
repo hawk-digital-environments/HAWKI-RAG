@@ -64,18 +64,25 @@ class QdrantHTTPTransport:
                         request.path,
                         elapsed,
                     )
-                if response.status_code >= 500:
+                if response.status_code in {429, 500, 502, 503, 504}:
                     logger.warning(
                         "Qdrant %s %s failed with %s",
                         request.method.upper(),
                         request.path,
                         response.status_code,
                     )
-                    response.raise_for_status()
+                    if attempt >= self.max_attempts:
+                        response.raise_for_status()
+                    if request.timeout is not None and request.timeout > 0:
+                        backoff = min(backoff * 2, 5.0)
+                        time.sleep(backoff)
+                    else:
+                        time.sleep(backoff)
+                    continue
                 return response
             except RequestException as exc:
                 if attempt >= self.max_attempts:
                     raise
-                logger.warning("Qdrant request error (%s). Retrying...", exc)
+                logger.warning("Qdrant request error (%s). Retrying attempt %s/%s", exc, attempt, self.max_attempts)
                 time.sleep(backoff)
                 backoff = min(backoff * 2, 5.0)
