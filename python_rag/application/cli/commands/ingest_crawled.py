@@ -93,6 +93,9 @@ def main(argv: list[str] | None = None) -> int:
     return run_ingest(args)
 
 
+ingest_crawled = sys.modules[__name__]
+
+
 def _reexport_metadata_helpers() -> None:
     """Expose helper imports used by CLI-adjacent call sites."""
 

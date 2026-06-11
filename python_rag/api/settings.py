@@ -70,7 +70,7 @@ class AppSettings:
     public_dir: Path
     cuda_visible_devices: str
     nvidia_visible_devices: str
-    startup_checks_enabled: bool = True
+    startup_checks_enabled: bool = False
     startup_check_attempts: int = 3
     startup_check_timeout_seconds: float = 3.0
     startup_check_backoff_seconds: float = 0.5
@@ -103,7 +103,7 @@ def load_app_settings(env: Mapping[str, str] | None = None) -> AppSettings:
         ),
         cuda_visible_devices=_env_str(env_map, "CUDA_VISIBLE_DEVICES", "unset"),
         nvidia_visible_devices=_env_str(env_map, "NVIDIA_VISIBLE_DEVICES", "unset"),
-        startup_checks_enabled=_env_bool(env_map, "STARTUP_CHECKS_ENABLED", True),
+        startup_checks_enabled=_env_bool(env_map, "STARTUP_CHECKS_ENABLED", False),
         startup_check_attempts=max(1, _env_int(env_map, "STARTUP_CHECK_ATTEMPTS", 3)),
         startup_check_timeout_seconds=max(0.5, _env_float(env_map, "STARTUP_CHECK_TIMEOUT_SECONDS", 3.0)),
         startup_check_backoff_seconds=max(0.0, _env_float(env_map, "STARTUP_CHECK_BACKOFF_SECONDS", 0.5)),

@@ -55,7 +55,6 @@ dist/
 build/
 /python_rag/public/
 /python_rag/rag_storage/
-/python_rag/shared/
 /python_rag/rabbit_worker/
 /python_rag/rabbitmq/
 /python_rag/workers/

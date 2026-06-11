@@ -29,7 +29,9 @@ def build_ingest_router(
 
     def _extract_idempotency_key(request: Request, fallback: str | None = None) -> str | None:
         header_value = request.headers.get("Idempotency-Key")
-        return (header_value.strip() or (fallback.strip() if isinstance(fallback, str) else None)) or None
+        header_key = header_value.strip() if isinstance(header_value, str) else ""
+        fallback_key = fallback.strip() if isinstance(fallback, str) else ""
+        return header_key or fallback_key or None
 
     @router.post("/ingest")
     def ingest(body: IngestRequest, request: Request) -> dict[str, Any]:

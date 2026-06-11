@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from inspect import signature
 import logging
 from typing import Any
 
@@ -41,6 +42,17 @@ from infrastructure.vectorstore.qdrant_interpretation import (
 from infrastructure.vectorstore.qdrant_transport import QdrantHTTPTransport
 
 logger = logging.getLogger(__name__)
+
+
+def _gateway_supports_operation_id(gateway: Any, method_name: str) -> bool:
+    method = getattr(gateway, method_name, None)
+    if method is None:
+        return False
+    try:
+        params = signature(method).parameters.values()
+    except (TypeError, ValueError):
+        return False
+    return any(param.name == "operation_id" or param.kind == param.VAR_KEYWORD for param in params)
 
 
 def _resolve_per_collection_limit(requested_limit: int, fallback_limit: int) -> int:
@@ -120,11 +132,17 @@ class QdrantHTTP:
         """Upsert batches of points into the chosen collection."""
         if not points:
             return
-        r = self._gateway.upsert(
-            points,
-            timeout=self._http_settings.upsert_timeout,
-            operation_id=idempotency_key,
-        )
+        if _gateway_supports_operation_id(self._gateway, "upsert"):
+            r = self._gateway.upsert(
+                points,
+                timeout=self._http_settings.upsert_timeout,
+                operation_id=idempotency_key,
+            )
+        else:
+            r = self._gateway.upsert(
+                points,
+                timeout=self._http_settings.upsert_timeout,
+            )
         if r.status_code >= 400:
             logger.error("Qdrant upsert failed status=%s body=%s", r.status_code, r.text)
         r.raise_for_status()
@@ -379,11 +397,17 @@ class QdrantHTTP:
 
     def delete_by_filter(self, filter_body: dict[str, Any], *, idempotency_key: str | None = None) -> dict[str, Any]:
         """Delete points matching the supplied Qdrant filter."""
-        r = self._gateway.delete_by_filter(
-            filter_body,
-            timeout=self._http_settings.delete_timeout,
-            operation_id=idempotency_key,
-        )
+        if _gateway_supports_operation_id(self._gateway, "delete_by_filter"):
+            r = self._gateway.delete_by_filter(
+                filter_body,
+                timeout=self._http_settings.delete_timeout,
+                operation_id=idempotency_key,
+            )
+        else:
+            r = self._gateway.delete_by_filter(
+                filter_body,
+                timeout=self._http_settings.delete_timeout,
+            )
         if r.status_code == 404:
             return {"result": {"status": "not_found", "deleted": 0}}
         if r.status_code == 400:
