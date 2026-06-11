@@ -23,8 +23,8 @@ EXIT_VALIDATION_FAILURE = 2
 EXIT_PARTIAL_SUCCESS = 3
 
 
-def collect_doc_ids(root: Path) -> Set[str]:
-    ids: Set[str] = set()
+def collect_doc_ids(root: Path) -> set[str]:
+    ids: set[str] = set()
     page_dirs = discover_page_dirs(root)
     for d in page_dirs:
         meta, _, _, _, _ = load_page_materials(d)
@@ -35,8 +35,8 @@ def collect_doc_ids(root: Path) -> Set[str]:
     return ids
 
 
-def fetch_existing_ids(qdrant_url: str, collection: str) -> Set[str]:
-    ids: Set[str] = set()
+def fetch_existing_ids(qdrant_url: str, collection: str) -> set[str]:
+    ids: set[str] = set()
     next_offset = None
     url = qdrant_url.rstrip("/") + f"/collections/{collection}/points/scroll"
     while True:
@@ -61,7 +61,7 @@ def fetch_existing_ids(qdrant_url: str, collection: str) -> Set[str]:
     return ids
 
 
-def delete_missing(base_url: str, doc_ids: Set[str], dry_run: bool) -> int:
+def delete_missing(base_url: str, doc_ids: set[str], dry_run: bool) -> int:
     failures = 0
     session = requests.Session()
     for idx, doc_id in enumerate(sorted(doc_ids), start=1):

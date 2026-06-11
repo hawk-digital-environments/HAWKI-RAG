@@ -1,4 +1,6 @@
-"""HTTP middleware package (adapter boundary)."""
+"""Request middleware boundaries for API adapters."""
 
-# Adapter-level middleware lives in api.factory.request context.
-# Keep package as boundary anchor for future extraction.
+from api.http.middleware.request_context import install_request_context_middleware
+
+__all__ = ["install_request_context_middleware"]
+

@@ -39,8 +39,8 @@ class ReliabilityContractTests(unittest.TestCase):
         self.assertFalse(is_safe_retryable_write("unknown.operation", "op-3"))
 
     def test_qdrant_gateway_marks_write_operations_retryable_only_with_idempotency_key(self) -> None:
-        from vectorstore.qdrant_gateway import QdrantHTTPGateway
-        from vectorstore.qdrant_requests import QdrantRequest
+        from infrastructure.vectorstore.qdrant_gateway import QdrantHTTPGateway
+        from infrastructure.vectorstore.qdrant_requests import QdrantRequest
 
         class FakeTransport:
             def __init__(self) -> None:
@@ -85,7 +85,7 @@ class ReliabilityContractTests(unittest.TestCase):
         self.assertIn("<redacted>", log_redacted_value("api_key=super-secret-key"))
 
     def test_neo4j_graph_marks_write_operations_retryable_only_with_request_id(self) -> None:
-        from graph.neo4j_graph import Neo4jGraph
+        from infrastructure.graph.neo4j_graph import Neo4jGraph
 
         class FakeExecutor:
             def __init__(self) -> None:
@@ -172,8 +172,8 @@ class ReliabilityContractTests(unittest.TestCase):
         self.assertEqual(calls["provider"], 0)
 
     def test_qdrant_transport_emits_retry_attempt_telemetry(self) -> None:
-        from vectorstore.qdrant_requests import QdrantRequest
-        from vectorstore.qdrant_transport import QdrantHTTPTransport
+        from infrastructure.vectorstore.qdrant_requests import QdrantRequest
+        from infrastructure.vectorstore.qdrant_transport import QdrantHTTPTransport
 
         class FakeResponse:
             def __init__(self, status_code: int) -> None:
@@ -209,7 +209,7 @@ class ReliabilityContractTests(unittest.TestCase):
             operation_id="op-1",
         )
 
-        with self.assertLogs("vectorstore.qdrant_transport", level="INFO") as capture:
+        with self.assertLogs("infrastructure.vectorstore.qdrant_transport", level="INFO") as capture:
             response = transport.send(request)
 
         self.assertEqual(response.status_code, 200)

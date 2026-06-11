@@ -12,21 +12,21 @@ except ImportError:
 
 def build_payload(
     *,
-    meta: Dict[str, Any],
+    meta: dict[str, Any],
     title: str,
     page_url: Optional[str],
     source_url: Optional[str],
     rel_path: str,
     date: Optional[str],
     meta_img: Optional[str],
-    meta_img_list: List[str],
-    images_list: List[str],
-    pdfs_list: List[str],
-    tags: List[str],
+    meta_img_list: list[str],
+    images_list: list[str],
+    pdfs_list: list[str],
+    tags: list[str],
     source_format: str,
     md_path: Optional[Path],
     ingested_at: str,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     return {
         "title": title,
         "page_url": page_url,
@@ -52,7 +52,7 @@ def build_payload(
     }
 
 
-def build_bridge_doc(*, doc_id: str, text: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+def build_bridge_doc(*, doc_id: str, text: str, payload: dict[str, Any]) -> dict[str, Any]:
     return {
         "id": doc_id,
         "text": text,

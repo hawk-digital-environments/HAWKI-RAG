@@ -10,7 +10,7 @@ from typing import Any, Callable, Dict
 logger = logging.getLogger(__name__)
 
 
-def _load_json_dict(path: Path) -> Dict[str, Any]:
+def _load_json_dict(path: Path) -> dict[str, Any]:
     """Load a JSON dictionary from disk and fall back to {} on failures."""
     try:
         with path.open("r", encoding="utf-8") as fh:
@@ -23,7 +23,7 @@ def _load_json_dict(path: Path) -> Dict[str, Any]:
         return {}
 
 
-def _save_json_dict(path: Path, data: Dict[str, Any]) -> None:
+def _save_json_dict(path: Path, data: dict[str, Any]) -> None:
     """Persist a JSON dictionary using a .tmp write/rename pattern."""
     try:
         tmp_path = path.with_suffix(path.suffix + ".tmp")
@@ -42,14 +42,14 @@ def scrub_raganything_kv_graph_junk(
     rag_doc_id: str | None = None,
     full_scan: bool = False,
     logger_obj: logging.Logger | None = None,
-) -> Dict[str, int]:
+) -> dict[str, int]:
     """Remove graph junk entries from RAG-Anything KV caches.
 
     Kept as a dedicated helper to isolate filesystem-heavy cleanup logic from
     graph service orchestration.
     """
     log = logger_obj or logger
-    stats: Dict[str, int] = {
+    stats: dict[str, int] = {
         "full_entities_docs": 0,
         "full_entities_names": 0,
         "full_relations_docs": 0,

@@ -33,7 +33,7 @@ def _cosine(a: list[float], b: list[float]) -> float:
     return dp / (na * nb)
 
 
-def _normalize_scores(values: List[float]) -> List[float]:
+def _normalize_scores(values: list[float]) -> list[float]:
     import math
 
     lo, hi = min(values), max(values)
@@ -43,13 +43,13 @@ def _normalize_scores(values: List[float]) -> List[float]:
 
 
 def _rank_candidates(
-    candidates: list[Dict[str, Any]],
+    candidates: list[dict[str, Any]],
     scores: list[float],
-    hits: list[Dict[str, Any]],
+    hits: list[dict[str, Any]],
     mix_mode: bool,
     mix_weight: float,
     orig_scores: list[float],
-) -> list[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     if mix_mode:
         rr_scores = [float(s) for s in scores]
         nr = _normalize_scores(rr_scores)
@@ -66,15 +66,15 @@ def _rank_candidates(
 
 def rerank_hits(
     *,
-    hits: List[Dict[str, Any]],
+    hits: list[dict[str, Any]],
     user_query: str,
     provider: Any,
-    query_vector: Optional[List[float]],
+    query_vector: Optional[list[float]],
     mode: str | None,
     top_n: int,
     mix_mode: bool,
     mix_weight: float,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     if not (mode and mode.lower() != "none" and hits):
         return hits
 
@@ -139,7 +139,7 @@ def rerank_hits(
                     if isinstance(order, list):
                         score_map = {str(item.get("id")): float(item.get("score", 0.0)) for item in order}
 
-                        def key_for(hit: Dict[str, Any]) -> str:
+                        def key_for(hit: dict[str, Any]) -> str:
                             p = hit.get("payload") or {}
                             page_url = p.get("page_url_text") or p.get("page_url") or p.get("source_url")
                             if isinstance(page_url, list):

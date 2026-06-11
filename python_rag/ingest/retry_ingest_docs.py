@@ -39,7 +39,7 @@ EXIT_RUNTIME_FAILURE = 1
 EXIT_VALIDATION_FAILURE = 2
 EXIT_PARTIAL_SUCCESS = 3
 
-def _load_doc_ids_from_file(path: Path) -> Set[str]:
+def _load_doc_ids_from_file(path: Path) -> set[str]:
     """
     Load doc IDs from a text or JSON file.
 
@@ -67,7 +67,7 @@ def _load_doc_ids_from_file(path: Path) -> Set[str]:
     return {doc_id.strip().lower() for doc_id in doc_ids if str(doc_id).strip()}
 
 
-def _load_doc_ids_from_failures(path: Path) -> Set[str]:
+def _load_doc_ids_from_failures(path: Path) -> set[str]:
     """
     Load doc IDs from a JSONL failures log (one JSON object per line).
 
@@ -75,7 +75,7 @@ def _load_doc_ids_from_failures(path: Path) -> Set[str]:
     """
     if not path.exists():
         raise FileNotFoundError(f"Failures file not found: {path}")
-    doc_ids: Set[str] = set()
+    doc_ids: set[str] = set()
     for line in path.read_text(encoding="utf-8").splitlines():
         raw = line.strip()
         if not raw:
@@ -94,8 +94,8 @@ def _load_doc_ids_from_failures(path: Path) -> Set[str]:
     return doc_ids
 
 
-def _normalize_doc_ids(values: Iterable[str]) -> Set[str]:
-    out: Set[str] = set()
+def _normalize_doc_ids(values: Iterable[str]) -> set[str]:
+    out: set[str] = set()
     for value in values:
         if not value:
             continue
@@ -103,8 +103,8 @@ def _normalize_doc_ids(values: Iterable[str]) -> Set[str]:
     return out
 
 
-def _build_options(args: argparse.Namespace) -> Dict[str, object]:
-    options: Dict[str, object] = {
+def _build_options(args: argparse.Namespace) -> dict[str, object]:
+    options: dict[str, object] = {
         "provider": args.provider,
         "graph": bool(args.graph),
         "graph_engine": args.graph_engine,
@@ -127,9 +127,9 @@ def _build_options(args: argparse.Namespace) -> Dict[str, object]:
 def _queue_doc(
     directory: Path,
     root: Path,
-    page_url_map: Dict[Path, str],
-    source_url_map: Dict[Path, str],
-) -> Optional[Tuple[Dict[str, object], str]]:
+    page_url_map: dict[Path, str],
+    source_url_map: dict[Path, str],
+) -> Optional[tuple[dict[str, object], str]]:
     meta, md_path, json_path, text, source_fmt = load_page_materials(directory)
     if not isinstance(text, str) or not text.strip():
         return None
@@ -177,7 +177,7 @@ def _queue_doc(
         "ingested_at": datetime.utcnow().isoformat() + "Z",
     }
 
-    doc: Dict[str, object] = {
+    doc: dict[str, object] = {
         "id": doc_id,
         "text": text,
         "payload": payload,
@@ -191,7 +191,7 @@ def run(args: argparse.Namespace) -> int:
         print(f"Root not found or not a directory: {root}", file=sys.stderr)
         return EXIT_VALIDATION_FAILURE
 
-    requested_doc_ids: Set[str] = _normalize_doc_ids(args.doc_ids or [])
+    requested_doc_ids: set[str] = _normalize_doc_ids(args.doc_ids or [])
     if args.doc_ids_file:
         file_ids = _load_doc_ids_from_file(Path(args.doc_ids_file).expanduser().resolve())
         requested_doc_ids.update(file_ids)
@@ -211,8 +211,8 @@ def run(args: argparse.Namespace) -> int:
         return EXIT_PARTIAL_SUCCESS
 
     remaining = set(requested_doc_ids)
-    matched: Dict[str, str] = {}
-    docs: List[Dict[str, object]] = []
+    matched: dict[str, str] = {}
+    docs: list[dict[str, object]] = []
     sent = 0
     batch_index = 0
     failures = 0
@@ -276,7 +276,7 @@ def run(args: argparse.Namespace) -> int:
     return EXIT_SUCCESS
 
 
-def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
+def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     ap = argparse.ArgumentParser(description="Re-ingest specific document IDs into LightRAG.")
     ap.add_argument("--root", required=True, help="Path to the crawled-data root that was used for the original ingest.")
     ap.add_argument("--base-url", default="http://localhost:8009", help="LightRAG base URL (default: http://localhost:8009)")
@@ -298,7 +298,7 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     return ap.parse_args(argv)
 
 
-def main(argv: Optional[List[str]] = None) -> None:
+def main(argv: Optional[list[str]] = None) -> None:
     args = parse_args(argv)
     rc = run(args)
     raise SystemExit(rc)

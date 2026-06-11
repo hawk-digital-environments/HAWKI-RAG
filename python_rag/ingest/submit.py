@@ -9,7 +9,7 @@ from typing import Any, Dict, Optional
 import requests
 
 
-def post_batch(base_url: str, docs: list[Dict[str, Any]], options: Dict[str, Any], timeout: int) -> tuple[bool, Optional[Dict[str, Any]], Optional[str]]:
+def post_batch(base_url: str, docs: list[dict[str, Any]], options: dict[str, Any], timeout: int) -> tuple[bool, Optional[dict[str, Any]], Optional[str]]:
     url = base_url.rstrip("/") + "/ingest"
     body = {"docs": docs}
     body.update(options)
@@ -30,7 +30,7 @@ def post_batch(base_url: str, docs: list[Dict[str, Any]], options: Dict[str, Any
         return False, None, err
 
 
-def write_summary_file(summary_file: Optional[str], summary: Dict[str, Any]) -> None:
+def write_summary_file(summary_file: Optional[str], summary: dict[str, Any]) -> None:
     if not summary_file:
         return
     out_path = Path(summary_file).expanduser().resolve()

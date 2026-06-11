@@ -52,8 +52,8 @@ def run_local_estimate(
     chunk_overlap: int,
     collection: Optional[str],
     batch_size: int,
-) -> Dict[str, Any]:
-    doc_stats: Dict[str, Any] = {
+) -> dict[str, Any]:
+    doc_stats: dict[str, Any] = {
         "total_docs": len(page_dirs),
         "processed_docs": 0,
         "skipped_docs": 0,

@@ -62,7 +62,7 @@ class OllamaProvider:
             return False
         return status in (None, 500)
 
-    def embed(self, text: str) -> List[float]:
+    def embed(self, text: str) -> list[float]:
         url = f"{self.base}/embeddings"
         timeout_env = os.environ.get("OLLAMA_EMBED_TIMEOUT", "").strip()
         try:
@@ -118,7 +118,7 @@ class OllamaProvider:
                 if not isinstance(vec, list):
                     last_error = RuntimeError("Ollama embeddings: unexpected response")
                     continue
-                out: List[float] = []
+                out: list[float] = []
                 for x in vec:
                     try:
                         fx = float(x)

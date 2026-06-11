@@ -2,7 +2,7 @@
 Ingest entrypoints (calls into pipeline.ingest_logic).
 """
 import logging
-from pipeline.ingest_logic import ingest_documents, delete_document
+from application.use_cases.pipeline.ingest_logic import ingest_documents, delete_document
 
 logger = logging.getLogger(__name__)
 

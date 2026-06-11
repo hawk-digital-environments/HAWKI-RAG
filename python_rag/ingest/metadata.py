@@ -27,7 +27,7 @@ def first_str(value: Any) -> Optional[str]:
     return text
 
 
-def resolve_date(meta: Dict[str, Any], fallback_path: Optional[Path]) -> Optional[str]:
+def resolve_date(meta: dict[str, Any], fallback_path: Optional[Path]) -> Optional[str]:
     date = first_str(meta.get("date"))
     if not date:
         date = first_str(meta.get("published_at") or meta.get("updated_at") or meta.get("modified_at"))
@@ -40,12 +40,12 @@ def resolve_date(meta: Dict[str, Any], fallback_path: Optional[Path]) -> Optiona
     return date
 
 
-def to_array_list(value: Any) -> List[str]:
+def to_array_list(value: Any) -> list[str]:
     if isinstance(value, str):
         return [value]
     if not isinstance(value, list):
         return []
-    out: List[str] = []
+    out: list[str] = []
     for item in value:
         text = first_str(item)
         if text:
@@ -93,7 +93,7 @@ def _load_stopwords() -> set[str]:
 STOPWORDS = _load_stopwords()
 
 
-def normalize_tags(candidates: Iterable[str], limit: int = 10) -> List[str]:
+def normalize_tags(candidates: Iterable[str], limit: int = 10) -> list[str]:
     out: list[str] = []
     seen = set()
     for cand in candidates:
@@ -110,7 +110,7 @@ def normalize_tags(candidates: Iterable[str], limit: int = 10) -> List[str]:
     return out
 
 
-def _fallback_keywords(text: str, limit: int = 10) -> List[str]:
+def _fallback_keywords(text: str, limit: int = 10) -> list[str]:
     if not text:
         return []
     text = text.lower()
@@ -129,7 +129,7 @@ def _fallback_keywords(text: str, limit: int = 10) -> List[str]:
     return out
 
 
-def resolve_tags(meta: Dict[str, Any], text: str) -> List[str]:
+def resolve_tags(meta: dict[str, Any], text: str) -> list[str]:
     raw_sources = [
         meta.get("tags"),
         meta.get("keywords"),

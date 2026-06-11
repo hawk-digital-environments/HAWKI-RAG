@@ -12,7 +12,7 @@ from typing import Any, Dict, List
 
 from core.graph.raganything_client import RagAnythingGraphService
 from core.graph.extraction import extract_triplets_with_graph_service
-from core.settings import RAGServiceSettings
+from domain.settings import RAGServiceSettings
 
 logger = logging.getLogger(__name__)
 
@@ -51,11 +51,11 @@ def _resolve_graph_service(state: _RAGGraphOrchestratorState) -> RagAnythingGrap
     return state.graph_service
 
 
-def clear_graph_cache(state: _RAGGraphOrchestratorState) -> Dict[str, Any]:
+def clear_graph_cache(state: _RAGGraphOrchestratorState) -> dict[str, Any]:
     return _resolve_graph_service(state).clear_graph_cache()
 
 
-def graph_runtime_summary(state: _RAGGraphOrchestratorState) -> Dict[str, Any]:
+def graph_runtime_summary(state: _RAGGraphOrchestratorState) -> dict[str, Any]:
     return _resolve_graph_service(state).graph_runtime_summary()
 
 
@@ -65,11 +65,11 @@ def extract_triplets(
     engine: str | None,
     *,
     provider: Any,
-    chunks: List[str] | None = None,
+    chunks: list[str] | None = None,
     doc_id: str | None = None,
     file_path: str | None = None,
     neo4j_database: str | None = None,
-) -> List[tuple[str, str, str]]:
+) -> list[tuple[str, str, str]]:
     return extract_triplets_with_graph_service(
         _resolve_graph_service(state),
         text,
@@ -83,7 +83,7 @@ def extract_triplets(
     )
 
 
-def triplets_from_llm_cache(state: _RAGGraphOrchestratorState) -> List[tuple[str, str, str]]:
+def triplets_from_llm_cache(state: _RAGGraphOrchestratorState) -> list[tuple[str, str, str]]:
     return _resolve_graph_service(state).triplets_from_llm_cache()
 
 
@@ -117,12 +117,12 @@ class RAGGraphOrchestrator:
     def _sync_client(self) -> None:
         self._ensure_graph_service()
 
-    def clear_graph_cache(self) -> Dict[str, Any]:
+    def clear_graph_cache(self) -> dict[str, Any]:
         result = clear_graph_cache(self._state)
         self._sync_client()
         return result
 
-    def graph_runtime_summary(self) -> Dict[str, Any]:
+    def graph_runtime_summary(self) -> dict[str, Any]:
         return graph_runtime_summary(self._state)
 
     def extract_triplets(
@@ -131,11 +131,11 @@ class RAGGraphOrchestrator:
         engine: str | None,
         *,
         provider: Any,
-        chunks: List[str] | None = None,
+        chunks: list[str] | None = None,
         doc_id: str | None = None,
         file_path: str | None = None,
         neo4j_database: str | None = None,
-    ) -> List[tuple[str, str, str]]:
+    ) -> list[tuple[str, str, str]]:
         trips = extract_triplets(
             self._state,
             text,
@@ -149,5 +149,5 @@ class RAGGraphOrchestrator:
         self._sync_client()
         return trips
 
-    def triplets_from_llm_cache(self) -> List[tuple[str, str, str]]:
+    def triplets_from_llm_cache(self) -> list[tuple[str, str, str]]:
         return triplets_from_llm_cache(self._state)

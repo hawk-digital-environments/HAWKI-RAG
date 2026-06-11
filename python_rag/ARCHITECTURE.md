@@ -17,9 +17,14 @@
   - Concrete adapters, grouped by external system:
     - `infrastructure/graph/`, `infrastructure/vectorstore/`, `infrastructure/raganything/`, `infrastructure/rerank/`, `infrastructure/messaging/`
 
-## Compatibility layer
+## Migration status
 
-The legacy `app/*` namespace is kept as a thin compatibility shim and re-exports the new `api/*` and `application/*` modules so existing imports continue to work while migration progresses.
+The legacy `app/*` and `pipeline/*` namespaces have been removed.
+All remaining call sites use:
+- `api/*` for transport/http concerns,
+- `application/*` for orchestration/use-case entrypoints,
+- `domain/*` for contracts and model contracts,
+- `infrastructure/*` for adapters.
 
 ## Next migration step
 

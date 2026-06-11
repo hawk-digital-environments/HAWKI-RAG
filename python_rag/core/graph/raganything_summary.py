@@ -13,9 +13,9 @@ def build_graph_runtime_summary(
     *,
     working_dir: Path,
     settings: RagAnythingGraphSettings,
-    runtime_meta: Dict[str, Any],
+    runtime_meta: dict[str, Any],
     graph_client_initialized: bool,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Build a diagnostic snapshot for graph runtime state."""
     chunk_files = sorted(working_dir.glob("kv_store_doc_status_chunk_*.json"))
     limits = graph_runtime_summary_limits(settings)

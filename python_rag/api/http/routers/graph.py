@@ -18,7 +18,7 @@ def build_graph_router(
 
     @router.post("/graph/from-text")
     def graph_from_text_endpoint(body: GraphRequest) -> dict[str, Any]:
-        from graph.graph_text import graph_from_text
+        from infrastructure.graph.graph_text import graph_from_text
 
         logger.info("api:graph_from_text chars=%s", len(body.text or ""))
         log_graph_status("graph_from_text")

@@ -21,12 +21,12 @@ def extract_triplets_with_graph_service(
     engine: str | None,
     *,
     provider: Any | None,
-    chunks: List[str] | None,
+    chunks: list[str] | None,
     doc_id: str | None,
     file_path: str | None,
     neo4j_database: str | None,
     graph_perf_log: bool,
-) -> List[Tuple[str, str, str]]:
+) -> list[tuple[str, str, str]]:
     fn_start = time.perf_counter()
     _perf_log(
         "perf:graph core.rag_service.extract_triplets start engine=%s doc_id=%s chunks=%s text_chars=%s",

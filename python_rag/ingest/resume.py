@@ -7,8 +7,8 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, Iterator, List, Optional, Set
 
 
-def batched(iterable: Iterable[Any], size: int) -> Iterator[List[Any]]:
-    buffer: List[Any] = []
+def batched(iterable: Iterable[Any], size: int) -> Iterator[list[Any]]:
+    buffer: list[Any] = []
     for item in iterable:
         buffer.append(item)
         if len(buffer) >= size:
@@ -23,7 +23,7 @@ def safe_state_filename(key: str) -> str:
     return f"{digest}.json"
 
 
-def load_resume_state(path: Path) -> Set[str]:
+def load_resume_state(path: Path) -> set[str]:
     if not path.exists():
         return set()
     try:
@@ -37,8 +37,8 @@ def load_resume_state(path: Path) -> Set[str]:
 def save_resume_state_payload(
     path: Path,
     *,
-    doc_ids: Set[str],
-    metadata: Dict[str, Any],
+    doc_ids: set[str],
+    metadata: dict[str, Any],
     updated_at: str,
 ) -> None:
     payload = {

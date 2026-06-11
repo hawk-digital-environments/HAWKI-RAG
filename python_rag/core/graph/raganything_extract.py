@@ -21,9 +21,9 @@ from core.graph.raganything_utils import dedupe_triplets
 logger = logging.getLogger(__name__)
 
 
-def graph_content_list_from_input(text: str, chunks: List[str] | None) -> List[Dict[str, Any]]:
+def graph_content_list_from_input(text: str, chunks: list[str] | None) -> list[dict[str, Any]]:
     parts = chunks if chunks is not None else [text]
-    out: List[Dict[str, Any]] = []
+    out: list[dict[str, Any]] = []
     for idx, part in enumerate(parts):
         if not isinstance(part, str):
             continue
@@ -34,14 +34,14 @@ def graph_content_list_from_input(text: str, chunks: List[str] | None) -> List[D
     return out
 
 
-def stable_raganything_doc_id(doc_id: str | None, file_path: str | None, content_list: List[Dict[str, Any]]) -> str:
+def stable_raganything_doc_id(doc_id: str | None, file_path: str | None, content_list: list[dict[str, Any]]) -> str:
     content_text = "\n".join(str(item.get("text") or "") for item in content_list if isinstance(item, dict))
     digest = hashlib.sha1(content_text.encode("utf-8", errors="ignore")).hexdigest()[:16]
     prefix = str(doc_id or file_path or "graph_doc")
     return f"{prefix}:{digest}"
 
 
-def raganything_extraction_doc_id(doc_id: str | None, file_path: str | None, content_list: List[Dict[str, Any]]) -> str:
+def raganything_extraction_doc_id(doc_id: str | None, file_path: str | None, content_list: list[dict[str, Any]]) -> str:
     stable_id = stable_raganything_doc_id(doc_id, file_path, content_list)
     return f"{stable_id}:extract:{time.time_ns()}"
 
@@ -77,7 +77,7 @@ def _clear_temp_graph(
 async def extract_triplets_from_graph_client(
     *,
     client: Any,
-    content_list: List[Dict[str, Any]],
+    content_list: list[dict[str, Any]],
     doc_id: str | None,
     file_path: str | None,
     file_ref: str,
@@ -90,7 +90,7 @@ async def extract_triplets_from_graph_client(
     neo4j_user: str | None = None,
     neo4j_password: str | None = None,
     scrub_raganything_kv_graph_junk: Any,
-) -> List[tuple[str, str, str]]:
+) -> list[tuple[str, str, str]]:
     log = logger_obj or logger
     source_file_ref = str(file_path or f"inline://{doc_id or 'graph_text'}")
     rag_doc_id = raganything_extraction_doc_id(doc_id, file_ref, content_list)
@@ -105,7 +105,7 @@ async def extract_triplets_from_graph_client(
     )
     created_floor = int(time.time())
 
-    async def _insert_and_export() -> List[tuple[str, str, str]]:
+    async def _insert_and_export() -> list[tuple[str, str, str]]:
         _clear_temp_graph(
             neo4j_database,
             neo4j_uri=neo4j_uri,

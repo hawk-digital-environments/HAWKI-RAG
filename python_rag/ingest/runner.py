@@ -52,7 +52,7 @@ def _env_bool(name: str, default: bool = False) -> bool:
     return str(raw).strip().lower() in {"1", "true", "yes", "on"}
 
 
-def _env_choice(name: str, allowed: Set[str], default: str) -> str:
+def _env_choice(name: str, allowed: set[str], default: str) -> str:
     raw = os.environ.get(name)
     if raw is None or str(raw).strip() == "":
         return default
@@ -64,15 +64,15 @@ def _env_choice(name: str, allowed: Set[str], default: str) -> str:
     return value
 
 
-def _save_resume_state(path: Path, doc_ids: Set[str], metadata: Dict[str, Any]) -> None:
+def _save_resume_state(path: Path, doc_ids: set[str], metadata: dict[str, Any]) -> None:
     try:
         save_resume_state_payload(path=path, doc_ids=doc_ids, metadata=metadata, updated_at=utc_now_iso())
     except Exception as exc:
         print(f"Warning: failed to persist resume state to {path}: {exc}", file=sys.stderr)
 
 
-def _build_default_options(args: Any) -> Dict[str, Any]:
-    options: Dict[str, Any] = {
+def _build_default_options(args: Any) -> dict[str, Any]:
+    options: dict[str, Any] = {
         "provider": args.provider,
         "graph": bool(args.graph),
         "graph_engine": args.graph_engine,
@@ -98,7 +98,7 @@ def _build_default_options(args: Any) -> Dict[str, Any]:
     return options
 
 
-def _build_no_pages_summary(summary_file: Optional[str]) -> Dict[str, Any]:
+def _build_no_pages_summary(summary_file: Optional[str]) -> dict[str, Any]:
     return {
         "timestamp": utc_now_iso(),
         "estimate_only": False,
@@ -116,7 +116,7 @@ def _build_no_pages_summary(summary_file: Optional[str]) -> Dict[str, Any]:
     }
 
 
-def _build_no_ingestable_summary(total_dirs: int, skipped_empty: int, skipped_empty_paths: list[str], summary_file: Optional[str]) -> Dict[str, Any]:
+def _build_no_ingestable_summary(total_dirs: int, skipped_empty: int, skipped_empty_paths: list[str], summary_file: Optional[str]) -> dict[str, Any]:
     return {
         "timestamp": utc_now_iso(),
         "estimate_only": False,
@@ -165,9 +165,9 @@ def run_ingest(args: Any) -> int:
     if not args.collection:
         args.collection = root.name
 
-    resume_doc_ids: Set[str] = set()
+    resume_doc_ids: set[str] = set()
     resume_state_path: Optional[Path] = None
-    resume_metadata: Dict[str, Any] = {}
+    resume_metadata: dict[str, Any] = {}
     resume_mode = False
 
     state_dir = Path(args.resume_state_dir).expanduser().resolve()
@@ -260,15 +260,15 @@ def run_ingest(args: Any) -> int:
 
     options = _build_default_options(args)
 
-    docs: list[Dict[str, Any]] = []
+    docs: list[dict[str, Any]] = []
     total = 0
     sent = 0
     batch_index = 0
-    last_response: Optional[Dict[str, Any]] = None
+    last_response: Optional[dict[str, Any]] = None
     skipped_existing = 0
     skipped_empty = 0
     skipped_empty_paths: list[str] = []
-    processed_doc_ids: Set[str] = set(resume_doc_ids)
+    processed_doc_ids: set[str] = set(resume_doc_ids)
     failed_batches = 0
 
     total_dirs = len(page_dirs)
@@ -280,7 +280,7 @@ def run_ingest(args: Any) -> int:
     min_split_batch = int(os.environ.get("INGEST_MIN_BATCH", "4"))
     max_split_depth = int(os.environ.get("INGEST_MAX_SPLITS", "4"))
 
-    def _send_batch(docs_batch: list[Dict[str, Any]], depth: int = 0) -> bool:
+    def _send_batch(docs_batch: list[dict[str, Any]], depth: int = 0) -> bool:
         nonlocal batch_index, sent, last_response, processed_doc_ids, failed_batches
         if not docs_batch:
             return True

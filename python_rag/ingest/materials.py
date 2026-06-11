@@ -44,7 +44,7 @@ def looks_like_path_list(text: str) -> bool:
     return (pathish / max(len(lines), 1)) >= 0.6
 
 
-def _pick_json_meta(dir_path: Path) -> Tuple[Optional[Path], Dict[str, Any]]:
+def _pick_json_meta(dir_path: Path) -> tuple[Optional[Path], dict[str, Any]]:
     json_files = [f for f in dir_path.iterdir() if f.is_file() and f.suffix.lower() == ".json"]
     json_files = [f for f in json_files if f.name != "conversion_meta.json"]
     if not json_files:
@@ -58,7 +58,7 @@ def _pick_json_meta(dir_path: Path) -> Tuple[Optional[Path], Dict[str, Any]]:
                 return f, data if isinstance(data, dict) else {}
 
     best_file = None
-    best_data: Dict[str, Any] = {}
+    best_data: dict[str, Any] = {}
     for f in json_files:
         data = read_json_file(f)
         if not isinstance(data, dict):
@@ -71,7 +71,7 @@ def _pick_json_meta(dir_path: Path) -> Tuple[Optional[Path], Dict[str, Any]]:
     return best_file, best_data
 
 
-def _pick_conversion_meta(dir_path: Path) -> Tuple[Optional[Path], Dict[str, Any]]:
+def _pick_conversion_meta(dir_path: Path) -> tuple[Optional[Path], dict[str, Any]]:
     path = dir_path / "conversion_meta.json"
     if not path.is_file():
         return None, {}
@@ -125,7 +125,7 @@ def _pick_converted_markdown_file(dir_path: Path) -> Optional[Path]:
     return candidates[0]
 
 
-def _pick_text_file(dir_path: Path) -> Tuple[Optional[Path], str]:
+def _pick_text_file(dir_path: Path) -> tuple[Optional[Path], str]:
     converted_markdown = _pick_converted_markdown_file(dir_path)
     if converted_markdown is not None:
         return converted_markdown, "converted_markdown"
@@ -149,12 +149,12 @@ def _pick_text_file(dir_path: Path) -> Tuple[Optional[Path], str]:
     return None, ""
 
 
-def load_page_materials(dir_path: Path) -> tuple[Dict[str, Any], Optional[Path], Optional[Path], str, str]:
+def load_page_materials(dir_path: Path) -> tuple[dict[str, Any], Optional[Path], Optional[Path], str, str]:
     """
     Reads optional page json (or any *.json) and preferred text content in a folder.
     Returns (meta, md_path, json_path, text, source_format).
     """
-    meta: Dict[str, Any] = {}
+    meta: dict[str, Any] = {}
     json_path: Optional[Path] = None
     md_path: Optional[Path] = None
     text = ""

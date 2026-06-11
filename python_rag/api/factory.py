@@ -8,12 +8,8 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any, TypeVar
-from uuid import uuid4
-
 import requests
-from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse
-from requests import RequestException
+from fastapi import FastAPI
 
 from application.service import RAGService
 from infrastructure.graph import load_neo4j_settings
@@ -31,152 +27,16 @@ from .http.routers import (
     build_ingest_router,
     build_query_router,
 )
+from .http.errors import install_exception_handlers
+from .http.middleware import install_request_context_middleware
 
 from common.reliability import (
-    API_REQUEST_ERROR_EVENT,
-    API_REQUEST_END_EVENT,
-    API_REQUEST_START_EVENT,
-    DEFAULT_REQUEST_BODY_SNIPPET_BYTES,
-    log_redacted_value,
     STARTUP_CHECK_EVENT,
     STARTUP_CHECK_RETRY_EVENT,
-    pick_request_id,
-    preview_request_body,
-    preview_request_headers,
+    log_redacted_value,
 )
 
-_MAX_BODY_SNIPPET = DEFAULT_REQUEST_BODY_SNIPPET_BYTES
-
 TQdrant = TypeVar("TQdrant")
-
-
-def _extract_request_id(request: Request) -> str:
-    return pick_request_id(request.headers, fallback=str(uuid4()))
-
-
-def _preview_request_headers(request: Request) -> dict[str, str]:
-    return preview_request_headers(request.headers)
-
-
-def _preview_request_body(request: Request) -> str | None:
-    return preview_request_body(
-        getattr(request, "_body", None),
-        content_type=request.headers.get("content-type"),
-        max_length=_MAX_BODY_SNIPPET,
-    )
-
-
-def _build_error_payload(request: Request, *, status: int, error_type: str, message: str | None) -> dict[str, Any]:
-    return {
-        "error": {
-            "type": error_type,
-            "status": status,
-            "message": log_redacted_value(message or ""),
-            "path": str(getattr(request.url, "path", "")),
-            "request_id": str(getattr(request.state, "request_id", "")),
-        }
-    }
-
-
-def _add_exception_handlers(app: FastAPI, logger: logging.Logger) -> None:
-    def handle_http_error(request: Request, exc: HTTPException) -> JSONResponse:
-        logger.warning(
-            "event=%s type=http_exception path=%s status=%s detail=%s",
-            API_REQUEST_ERROR_EVENT,
-            getattr(request.url, "path", ""),
-            exc.status_code,
-            log_redacted_value(exc.detail),
-        )
-        return JSONResponse(
-            status_code=exc.status_code,
-            content=_build_error_payload(
-                request,
-                status=exc.status_code,
-                error_type=exc.__class__.__name__,
-                message=str(exc.detail),
-            ),
-        )
-
-    def handle_value_error(request: Request, exc: ValueError) -> JSONResponse:
-        status_code = 400
-        logger.warning(
-            "event=%s type=value_error path=%s status=%s detail=%s",
-            API_REQUEST_ERROR_EVENT,
-            getattr(request.url, "path", ""),
-            status_code,
-            log_redacted_value(exc),
-        )
-        return JSONResponse(
-            status_code=status_code,
-            content=_build_error_payload(
-                request,
-                status=status_code,
-                error_type=exc.__class__.__name__,
-                message=str(exc),
-            ),
-        )
-
-    def handle_request_error(request: Request, exc: RequestException) -> JSONResponse:
-        status_code = 503
-        logger.error(
-            "event=%s type=request_error path=%s status=%s detail=%s",
-            API_REQUEST_ERROR_EVENT,
-            getattr(request.url, "path", ""),
-            status_code,
-            log_redacted_value(exc),
-        )
-        return JSONResponse(
-            status_code=status_code,
-            content=_build_error_payload(
-                request,
-                status=status_code,
-                error_type="ServiceUnavailable",
-                message="Upstream request failed or timed out.",
-            ),
-        )
-
-    def handle_runtime_error(request: Request, exc: RuntimeError) -> JSONResponse:
-        status_code = 502
-        logger.error(
-            "event=%s type=runtime_error path=%s status=%s detail=%s",
-            API_REQUEST_ERROR_EVENT,
-            getattr(request.url, "path", ""),
-            status_code,
-            log_redacted_value(exc),
-        )
-        return JSONResponse(
-            status_code=status_code,
-            content=_build_error_payload(
-                request,
-                status=status_code,
-                error_type=exc.__class__.__name__,
-                message=str(exc),
-            ),
-        )
-
-    def handle_unexpected(request: Request, exc: Exception) -> JSONResponse:
-        status_code = 500
-        logger.exception(
-            "event=%s type=unhandled_exception path=%s status=%s",
-            API_REQUEST_ERROR_EVENT,
-            getattr(request.url, "path", ""),
-            status_code,
-        )
-        return JSONResponse(
-            status_code=status_code,
-            content=_build_error_payload(
-                request,
-                status=status_code,
-                error_type="InternalServerError",
-                message="Unhandled server error.",
-            ),
-        )
-
-    app.add_exception_handler(HTTPException, handle_http_error)
-    app.add_exception_handler(ValueError, handle_value_error)
-    app.add_exception_handler(RequestException, handle_request_error)
-    app.add_exception_handler(RuntimeError, handle_runtime_error)
-    app.add_exception_handler(Exception, handle_unexpected)
 
 
 def _retry_with_backoff(
@@ -367,54 +227,8 @@ def build_app(
     app.state.graph_debug_log = graph_debug_log
     app.state.startup_checks_enabled = settings.startup_checks_enabled
 
-    _add_exception_handlers(app, logger)
-
-    @app.middleware("http")
-    async def _request_context(request: Request, call_next) -> Any:
-        request_id = _extract_request_id(request)
-        request.state.request_id = request_id
-        try:
-            await request.body()
-        except Exception:
-            pass
-
-        request_headers = _preview_request_headers(request)
-        request_body = _preview_request_body(request)
-        request_start = time.perf_counter()
-        logger.info(
-            "event=%s request_id=%s method=%s path=%s headers=%s body=%s",
-            API_REQUEST_START_EVENT,
-            request_id,
-            request.method,
-            request.url.path,
-            request_headers,
-            request_body,
-        )
-        try:
-            response = await call_next(request)
-        except Exception:
-            elapsed_ms = (time.perf_counter() - request_start) * 1000
-            logger.exception(
-                "event=%s request_id=%s method=%s path=%s elapsed_ms=%.3f",
-                API_REQUEST_ERROR_EVENT,
-                request_id,
-                request.method,
-                request.url.path,
-                elapsed_ms,
-            )
-            raise
-        response.headers["X-Request-ID"] = request_id
-        elapsed_ms = (time.perf_counter() - request_start) * 1000
-        logger.info(
-            "event=%s request_id=%s method=%s path=%s status=%s elapsed_ms=%.3f",
-            API_REQUEST_END_EVENT,
-            request_id,
-            request.method,
-            request.url.path,
-            response.status_code,
-            elapsed_ms,
-        )
-        return response
+    install_exception_handlers(app, logger)
+    install_request_context_middleware(app, logger)
 
     if settings.startup_checks_enabled:
 

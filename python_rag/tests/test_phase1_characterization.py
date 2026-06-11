@@ -127,7 +127,7 @@ class GraphFallbackCharacterizationTests(unittest.TestCase):
             self.assertTrue(all(not path.exists() for path in removable))
 
     def test_raganything_llm_cache_fallback_recovers_delimited_and_table_relations(self) -> None:
-        from core.rag_service import RAGService
+        from application.service import RAGService
 
         with tempfile.TemporaryDirectory() as tmp:
             cache_path = Path(tmp) / "kv_store_llm_response_cache.json"
@@ -163,7 +163,7 @@ class GraphFallbackCharacterizationTests(unittest.TestCase):
             )
 
     def test_source_filter_drops_prompt_examples_and_keeps_grounded_triplets(self) -> None:
-        from graph.graph_utils import filter_triplets_to_source
+        from infrastructure.graph.graph_utils import filter_triplets_to_source
 
         source = "HAWKI uses Qdrant for vector search and Neo4j for graph relationships."
         triplets = [
@@ -195,7 +195,7 @@ class GraphFallbackCharacterizationTests(unittest.TestCase):
             )
 
     def test_graph_from_text_uses_graph_perf_log_injection(self) -> None:
-        from graph.graph_text import graph_from_text
+        from infrastructure.graph.graph_text import graph_from_text
 
         class FakeGraph:
             def __init__(self):
@@ -213,7 +213,7 @@ class GraphFallbackCharacterizationTests(unittest.TestCase):
                 return [("A", "R", "B"), ("B", "S", "C")]
 
         fake_graph = FakeGraph()
-        with patch("graph.graph_text.Neo4jGraph", return_value=fake_graph):
+        with patch("infrastructure.graph.graph_text.Neo4jGraph", return_value=fake_graph):
             result = graph_from_text(
                 SimpleNamespace(text="sample", engine="engine-a"),
                 rag_service=FakeService(),
@@ -226,8 +226,8 @@ class GraphFallbackCharacterizationTests(unittest.TestCase):
         self.assertTrue(fake_graph.closed)
 
     def test_graph_visualization_write_can_be_disabled_with_injected_settings(self) -> None:
-        from graph.graph_visualization import write_graph_visualization
-        from graph.visualization_settings import GraphVisualizationSettings
+        from infrastructure.graph.graph_visualization import write_graph_visualization
+        from infrastructure.graph.visualization_settings import GraphVisualizationSettings
 
         settings = GraphVisualizationSettings(
             enabled=False,
@@ -238,14 +238,14 @@ class GraphFallbackCharacterizationTests(unittest.TestCase):
             limit=10,
         )
 
-        with tempfile.TemporaryDirectory() as tmp, patch("graph.graph_visualization.Neo4jGraphVisualization") as mocked_vis:
+        with tempfile.TemporaryDirectory() as tmp, patch("infrastructure.graph.graph_visualization.Neo4jGraphVisualization") as mocked_vis:
             result = write_graph_visualization(Path(tmp), settings=settings)
             self.assertIsNone(result)
             mocked_vis.assert_not_called()
 
     def test_graph_visualization_writer_uses_injected_settings(self) -> None:
-        from graph.graph_visualization import write_graph_visualization
-        from graph.visualization_settings import GraphVisualizationSettings
+        from infrastructure.graph.graph_visualization import write_graph_visualization
+        from infrastructure.graph.visualization_settings import GraphVisualizationSettings
         from unittest.mock import MagicMock
 
         snapshot_payload = {
@@ -274,7 +274,7 @@ class GraphFallbackCharacterizationTests(unittest.TestCase):
         )
 
         with tempfile.TemporaryDirectory() as tmp, patch(
-            "graph.graph_visualization.Neo4jGraphVisualization",
+            "infrastructure.graph.graph_visualization.Neo4jGraphVisualization",
             return_value=fake_visualizer,
         ) as mocked_vis:
             out = write_graph_visualization(
@@ -573,7 +573,7 @@ class RagAnythingRuntimeCharacterizationTests(unittest.TestCase):
 
 class IngestCharacterizationTests(unittest.TestCase):
     def test_validate_ingest_document_reports_invalid_shape_and_metadata_warnings(self) -> None:
-        from pipeline.validation import normalize_ingest_metadata, validate_ingest_document
+        from application.use_cases.pipeline.validation import normalize_ingest_metadata, validate_ingest_document
 
         missing = SimpleNamespace(id=" ", text="", payload={"converted_path": "/tmp/sample-toys.md"})
         errors, warnings = validate_ingest_document(missing)
@@ -602,7 +602,7 @@ class IngestCharacterizationTests(unittest.TestCase):
         self.assertEqual(normalized["page_url"], "upload://toy_catalog.docx")
 
     def test_prepare_documents_skips_invalid_docs_and_tracks_chunks(self) -> None:
-        from pipeline.ingest.document_prep import prepare_documents
+        from application.use_cases.pipeline.ingest.document_prep import prepare_documents
 
         docs = [
             SimpleNamespace(
@@ -629,7 +629,7 @@ class IngestCharacterizationTests(unittest.TestCase):
         self.assertEqual(chunk_records[0]["payload"]["component_type"], "chunk")
 
     def test_ingest_request_helpers_infer_job_and_apply_provider_overrides(self) -> None:
-        from pipeline.ingest.request import apply_provider_overrides, infer_job_id
+        from application.use_cases.pipeline.ingest.request import apply_provider_overrides, infer_job_id
 
         docs = [SimpleNamespace(id="doc-1", payload={"trace_id": "trace-1"})]
         body = SimpleNamespace(job_id=None, embedding_model="embed-v2", graph_model="graph-v2")
@@ -647,7 +647,7 @@ class IngestCharacterizationTests(unittest.TestCase):
         self.assertEqual(provider._explicit_graph_model, "graph-v2")
 
     def test_ingest_documents_dry_run_returns_request_summary_shape(self) -> None:
-        from pipeline.ingest_logic import ingest_documents
+        from application.use_cases.pipeline.ingest_logic import ingest_documents
 
         body = SimpleNamespace(
             docs=[
@@ -692,7 +692,7 @@ class IngestCharacterizationTests(unittest.TestCase):
         self.assertEqual(summary["documents"]["by_format"], {"markdown": 1})
 
     def test_build_points_creates_deterministic_qdrant_point_payload(self) -> None:
-        from pipeline.ingest.vector_ingest import build_points
+        from application.use_cases.pipeline.ingest.vector_ingest import build_points
 
         class Provider:
             def embed(self, text: str) -> list[float]:
@@ -724,8 +724,8 @@ class IngestCharacterizationTests(unittest.TestCase):
         self.assertRegex(points[0]["id"], r"^[0-9a-f-]{36}$")
 
     def test_graph_ingest_settings_load_from_env(self) -> None:
-        from pipeline.ingest.settings import load_graph_ingest_settings
-        from pipeline.ingest.graph_ingest import graph_failure_log_path
+        from application.use_cases.pipeline.ingest.settings import load_graph_ingest_settings
+        from application.use_cases.pipeline.ingest.graph_ingest import graph_failure_log_path
 
         with patch.dict(
             os.environ,
@@ -818,7 +818,7 @@ class IngestRunnerCharacterizationTests(unittest.TestCase):
 
 class Neo4jCharacterizationTests(unittest.TestCase):
     def test_neo4j_response_parsing_is_robust(self) -> None:
-        from graph.neo4j_responses import (
+        from infrastructure.graph.neo4j_responses import (
             parse_count,
             parse_fact_rows,
             parse_label_counts,
@@ -869,7 +869,7 @@ class Neo4jCharacterizationTests(unittest.TestCase):
         )
 
     def test_upsert_triplets_builds_doc_scoped_rows_for_neo4j(self) -> None:
-        from graph.neo4j_graph import Neo4jGraph
+        from infrastructure.graph.neo4j_graph import Neo4jGraph
 
         calls: list[tuple[str, dict]] = []
 
@@ -908,8 +908,8 @@ class Neo4jCharacterizationTests(unittest.TestCase):
         )
 
     def test_neo4j_query_executor_retries_transient_errors(self) -> None:
-        from graph.neo4j_requests import Neo4jQueryRequest
-        from graph.neo4j_transport import Neo4jQueryExecutor
+        from infrastructure.graph.neo4j_requests import Neo4jQueryRequest
+        from infrastructure.graph.neo4j_transport import Neo4jQueryExecutor
         from neo4j import exceptions as neo4j_exceptions
 
         attempts: list[int] = []
@@ -946,7 +946,7 @@ class Neo4jCharacterizationTests(unittest.TestCase):
         self.assertEqual(executed, [True])
 
     def test_neo4j_graph_accepts_injected_query_executor(self) -> None:
-        from graph.neo4j_graph import Neo4jGraph
+        from infrastructure.graph.neo4j_graph import Neo4jGraph
         from types import SimpleNamespace
 
         class FakeExecutor:
@@ -991,7 +991,7 @@ class Neo4jCharacterizationTests(unittest.TestCase):
 
 class QueryCharacterizationTests(unittest.TestCase):
     def test_query_lexical_helpers_fold_fuzzy_match_and_boost_scores(self) -> None:
-        from pipeline.query_lexical import (
+        from application.use_cases.pipeline.query_lexical import (
             extract_query_terms_for_lexical,
             fold_text,
             fuzzy_term_in_words,
@@ -1024,7 +1024,7 @@ class QueryCharacterizationTests(unittest.TestCase):
         self.assertGreater(boosted[0]["score"], 0.1)
 
     def test_query_settings_parse_env_with_caps_and_fallbacks(self) -> None:
-        from pipeline.query_settings import (
+        from application.use_cases.pipeline.query_settings import (
             context_limits,
             fusion_weights,
             generation_enabled,
@@ -1057,7 +1057,7 @@ class QueryCharacterizationTests(unittest.TestCase):
             self.assertTrue(generation_enabled())
 
     def test_query_fallback_uses_text_search_then_relaxed_scroll(self) -> None:
-        from pipeline.query_fallback import keyword_fallback_search
+        from application.use_cases.pipeline.query_fallback import keyword_fallback_search
 
         calls: list[tuple[str, bool | None]] = []
 
@@ -1079,7 +1079,7 @@ class QueryCharacterizationTests(unittest.TestCase):
         self.assertEqual(calls, [("search", None), ("scroll", True), ("scroll", False)])
 
     def test_query_fallback_uses_injected_scroll_controls(self) -> None:
-        from pipeline.query_fallback import keyword_fallback_search
+        from application.use_cases.pipeline.query_fallback import keyword_fallback_search
 
         calls: list[tuple[str, int | bool | None]] = []
 
@@ -1109,7 +1109,7 @@ class QueryCharacterizationTests(unittest.TestCase):
         self.assertEqual(calls, [("search", 3), ("scroll_all", 7)])
 
     def test_query_hit_helpers_merge_dedupe_and_limit_by_doc_identity(self) -> None:
-        from pipeline import query_logic
+        from application.use_cases.pipeline.query_logic
 
         primary = [
             {"id": "a", "score": 0.2, "payload": {"doc_id": "doc-a", "title": "Toy Train"}},
@@ -1127,7 +1127,7 @@ class QueryCharacterizationTests(unittest.TestCase):
         self.assertEqual([hit["payload"]["doc_id"] for hit in deduped], ["doc-c", "doc-a"])
 
     def test_query_context_summaries_trim_to_token_budget(self) -> None:
-        from pipeline import query_logic
+        from application.use_cases.pipeline.query_logic
 
         hits = [
             {
@@ -1154,7 +1154,7 @@ class QueryCharacterizationTests(unittest.TestCase):
         self.assertEqual(summaries[0]["title"], "Toy Catalog")
 
     def test_query_uses_reranked_order_without_external_services(self) -> None:
-        from pipeline import query_logic
+        from application.use_cases.pipeline.query_logic
 
         class Provider:
             def embed(self, text: str) -> list[float]:
@@ -1232,7 +1232,7 @@ class QueryCharacterizationTests(unittest.TestCase):
         self.assertEqual(result["retrieval"]["context_docs"], 2)
 
     def test_query_execution_module_injection_and_flow(self) -> None:
-        from pipeline import query_execution
+        from application.use_cases.pipeline.query_execution
 
         calls: list[str] = []
         fast_mode_calls: list[bool] = []
@@ -1315,7 +1315,7 @@ class QueryCharacterizationTests(unittest.TestCase):
         self.assertEqual(fast_mode_calls, [False])
 
     def test_query_execution_fast_mode_setter_is_injected(self) -> None:
-        from pipeline import query_execution
+        from application.use_cases.pipeline.query_execution
 
         body = SimpleNamespace(
             query="fast mode",
@@ -1370,7 +1370,7 @@ class QueryCharacterizationTests(unittest.TestCase):
         self.assertEqual(fast_mode_calls, [True])
 
     def test_query_stages_rewrite_contract_is_multimodal_and_dedupe_terms(self) -> None:
-        from pipeline import query_stages
+        from application.use_cases.pipeline.query_stages
 
         with patch.object(
             query_stages,
@@ -1411,7 +1411,7 @@ class QueryCharacterizationTests(unittest.TestCase):
         multimodal_check.assert_called_once()
 
     def test_query_stages_rerank_and_filter_preserves_best_path_and_fallback(self) -> None:
-        from pipeline import query_stages
+        from application.use_cases.pipeline.query_stages
 
         class RerankService:
             def __init__(self) -> None:
@@ -1469,7 +1469,7 @@ class QueryCharacterizationTests(unittest.TestCase):
 
 
     def test_query_rewrite_module_handles_injected_policy_dependencies(self) -> None:
-        from pipeline import query_rewrite
+        from application.use_cases.pipeline.query_rewrite
 
         rewrite = query_rewrite.build_query_rewrite(
             SimpleNamespace(chat=lambda system, messages: "{}"),
@@ -1504,7 +1504,7 @@ class QueryCharacterizationTests(unittest.TestCase):
         self.assertEqual(terms, ["train", "planes", "toys", "visual"])
 
     def test_query_ranking_module_iterate_and_expansion_terms(self) -> None:
-        from pipeline import query_ranking
+        from application.use_cases.pipeline.query_ranking
 
         class RerankService:
             def rerank_hits(self, **kwargs) -> list[dict[str, object]]:
@@ -1704,7 +1704,7 @@ class CliIngestHelperCharacterizationTests(unittest.TestCase):
 
 class IngestDeletionCharacterizationTests(unittest.TestCase):
     def test_delete_document_entries_deletes_vector_and_graph_then_closes_graph(self) -> None:
-        from pipeline.ingest.deletion import delete_document_entries
+        from application.use_cases.pipeline.ingest.deletion import delete_document_entries
 
         events: list[tuple[str, str]] = []
 
@@ -1908,7 +1908,7 @@ class ApiAndVectorValidationTests(unittest.TestCase):
         from api.settings import AppSettings
 
         app_logger = logging.getLogger("tests.logging_config")
-        ingest_logger = logging.getLogger("pipeline.ingest_logic")
+        ingest_logger = logging.getLogger("application.use_cases.pipeline.ingest_logic")
         rag_logger = logging.getLogger("core.rag_service")
         old_levels = (app_logger.level, ingest_logger.level, rag_logger.level)
         try:
@@ -2230,7 +2230,7 @@ class ApiAndVectorValidationTests(unittest.TestCase):
         ingest_mock.assert_called_once()
 
     def test_qdrant_payload_helpers_build_expected_filters_and_batches(self) -> None:
-        from vectorstore.payloads import (
+        from infrastructure.vectorstore.payloads import (
             build_delete_filter,
             build_search_body,
             build_text_filter,
@@ -2285,7 +2285,7 @@ class ApiAndVectorValidationTests(unittest.TestCase):
         )
 
     def test_qdrant_settings_parse_env_and_fall_back_on_invalid_numbers(self) -> None:
-        from vectorstore.settings import qdrant_settings_from_env
+        from infrastructure.vectorstore.settings import qdrant_settings_from_env
 
         with patch.dict(
             os.environ,
@@ -2309,7 +2309,7 @@ class ApiAndVectorValidationTests(unittest.TestCase):
         self.assertEqual(settings.max_attempts, 5)
 
     def test_qdrant_http_settings_parse_and_defaults(self) -> None:
-        from vectorstore.settings import qdrant_http_settings_from_env
+        from infrastructure.vectorstore.settings import qdrant_http_settings_from_env
 
         with patch.dict(
             os.environ,
@@ -2337,8 +2337,8 @@ class ApiAndVectorValidationTests(unittest.TestCase):
         self.assertEqual(settings.text_scroll_hard_cap, 50000)
 
     def test_qdrant_http_uses_injected_http_settings_for_timeouts(self) -> None:
-        from vectorstore.qdrant_http import QdrantHTTP
-        from vectorstore.settings import QdrantHTTPSettings, QdrantSettings
+        from infrastructure.vectorstore.qdrant_http import QdrantHTTP
+        from infrastructure.vectorstore.settings import QdrantHTTPSettings, QdrantSettings
 
         requests: list[tuple[str, str, dict[str, object]]] = []
 
@@ -2356,7 +2356,7 @@ class ApiAndVectorValidationTests(unittest.TestCase):
                 requests.append((method, url, dict(kwargs)))
                 return FakeResponse()
 
-        with patch("vectorstore.qdrant_http.requests.Session", return_value=FakeSession()):
+        with patch("infrastructure.vectorstore.qdrant_http.requests.Session", return_value=FakeSession()):
             client = QdrantHTTP(
                 settings=QdrantSettings(
                     scheme="http",
@@ -2393,8 +2393,8 @@ class ApiAndVectorValidationTests(unittest.TestCase):
         self.assertEqual(kwargs["timeout"], 9.0)
 
     def test_qdrant_http_delegates_requests_to_primitive_gateway(self) -> None:
-        from vectorstore.qdrant_http import QdrantHTTP
-        from vectorstore.settings import QdrantHTTPSettings, QdrantSettings
+        from infrastructure.vectorstore.qdrant_http import QdrantHTTP
+        from infrastructure.vectorstore.settings import QdrantHTTPSettings, QdrantSettings
 
         calls: list[tuple[str, object]] = []
 
@@ -2446,7 +2446,7 @@ class ApiAndVectorValidationTests(unittest.TestCase):
 
         fake_gateway = FakeGateway()
 
-        with patch("vectorstore.qdrant_http.QdrantHTTPGateway", return_value=fake_gateway):
+        with patch("infrastructure.vectorstore.qdrant_http.QdrantHTTPGateway", return_value=fake_gateway):
             client = QdrantHTTP(
                 settings=QdrantSettings(
                     scheme="http",
@@ -2485,8 +2485,8 @@ class ApiAndVectorValidationTests(unittest.TestCase):
         self.assertIn(("delete_by_filter", 2.0), calls)
 
     def test_qdrant_http_defaults_search_all_limit_to_top_k_when_not_configured(self) -> None:
-        from vectorstore.qdrant_http import QdrantHTTP
-        from vectorstore.settings import QdrantHTTPSettings, QdrantSettings
+        from infrastructure.vectorstore.qdrant_http import QdrantHTTP
+        from infrastructure.vectorstore.settings import QdrantHTTPSettings, QdrantSettings
 
         limits: list[int] = []
 
@@ -2525,7 +2525,7 @@ class ApiAndVectorValidationTests(unittest.TestCase):
             limits.append(int(body["limit"]))
             return []
 
-        with patch("vectorstore.qdrant_http.requests.Session", return_value=FakeSession()), patch.object(
+        with patch("infrastructure.vectorstore.qdrant_http.requests.Session", return_value=FakeSession()), patch.object(
             client,
             "list_collections",
             return_value=["a", "b"],
@@ -2539,7 +2539,7 @@ class ApiAndVectorValidationTests(unittest.TestCase):
         self.assertEqual(limits, [7, 7])
 
     def test_qdrant_collection_helpers_parse_names_counts_and_vector_size(self) -> None:
-        from vectorstore.collections import (
+        from infrastructure.vectorstore.collections import (
             collection_names,
             pick_most_populated_collection,
             vector_size_from_config,
@@ -2563,7 +2563,7 @@ class ApiAndVectorValidationTests(unittest.TestCase):
         )
 
     def test_qdrant_response_parsers_are_fault_tolerant(self) -> None:
-        from vectorstore.qdrant_responses import (
+        from infrastructure.vectorstore.qdrant_responses import (
             parse_collection_config,
             parse_collection_names,
             parse_count,
@@ -2583,7 +2583,7 @@ class ApiAndVectorValidationTests(unittest.TestCase):
         self.assertEqual(parse_collection_config({"result": {"config": 1}}), {"config": 1})
 
     def test_qdrant_interpretation_helpers_handle_404_and_missing_scores(self) -> None:
-        from vectorstore.qdrant_interpretation import (
+        from infrastructure.vectorstore.qdrant_interpretation import (
             attach_collection,
             parse_scroll_payload,
             parse_search_payload,
@@ -2632,7 +2632,7 @@ class ApiAndVectorValidationTests(unittest.TestCase):
         self.assertIsNone(next_offset)
 
     def test_qdrant_search_helpers_normalize_and_merge_results(self) -> None:
-        from vectorstore.qdrant_search import (
+        from infrastructure.vectorstore.qdrant_search import (
             merge_search_results,
             normalize_query_inputs,
             search_with_fallback_collections,

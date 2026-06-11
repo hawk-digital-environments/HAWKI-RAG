@@ -94,10 +94,10 @@ def configure_app_logging(settings: AppSettings, *, logger_name: str) -> tuple[l
     graph_debug = settings.graph_debug
     graph_debug_log = settings.graph_debug_log
     if graph_debug:
-        logging.getLogger("pipeline.ingest_logic").setLevel(logging.DEBUG)
-        logging.getLogger("core.rag_service").setLevel(logging.DEBUG)
+        logging.getLogger("application.use_cases.pipeline.ingest_logic").setLevel(logging.DEBUG)
+        logging.getLogger("application.service").setLevel(logging.DEBUG)
     else:
-        logging.getLogger("utils.text_preprocessor").setLevel(logging.INFO)
+        logging.getLogger("shared.text_preprocessor").setLevel(logging.INFO)
 
     if graph_debug_log:
         _add_file_handler(root_logger, Path(graph_debug_log))

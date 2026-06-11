@@ -1,9 +1,9 @@
 """Graph storage and query adapters."""
 
-from graph.neo4j_graph import Neo4jGraph
-from graph.neo4j_settings import Neo4jSettings, load_neo4j_settings
-from graph.neo4j_transport import Neo4jQueryExecutor, Neo4jQueryExecutorProtocol
-from graph.neo4j_requests import (
+from infrastructure.graph.neo4j_graph import Neo4jGraph
+from infrastructure.graph.neo4j_settings import Neo4jSettings, load_neo4j_settings
+from infrastructure.graph.neo4j_transport import Neo4jQueryExecutor, Neo4jQueryExecutorProtocol
+from infrastructure.graph.neo4j_requests import (
     Neo4jQueryRequest,
     clean_query_terms,
     build_cleanup_isolated_nodes_query,
@@ -16,7 +16,7 @@ from graph.neo4j_requests import (
     build_triplet_rows,
     build_upsert_triplets_query,
 )
-from graph.neo4j_responses import (
+from infrastructure.graph.neo4j_responses import (
     parse_count,
     parse_fact_rows,
     parse_label_counts,
@@ -24,9 +24,14 @@ from graph.neo4j_responses import (
     parse_delete_count,
     parse_structural_rows,
 )
-from graph.graph_text import graph_from_text
-from graph.graph_visualization import Neo4jGraphVisualization, write_graph_visualization
-from graph.visualization_settings import GraphVisualizationSettings, load_graph_visualization_settings
+from infrastructure.graph.graph_text import graph_from_text
+from infrastructure.graph.graph_utils import (
+    build_structural_hits,
+    filter_triplets_to_source,
+    clean_triplets,
+)
+from infrastructure.graph.graph_visualization import Neo4jGraphVisualization, write_graph_visualization
+from infrastructure.graph.visualization_settings import GraphVisualizationSettings, load_graph_visualization_settings
 
 __all__ = [
     "Neo4jGraph",
@@ -52,6 +57,9 @@ __all__ = [
     "parse_delete_count",
     "parse_structural_rows",
     "graph_from_text",
+    "build_structural_hits",
+    "filter_triplets_to_source",
+    "clean_triplets",
     "Neo4jGraphVisualization",
     "write_graph_visualization",
     "GraphVisualizationSettings",

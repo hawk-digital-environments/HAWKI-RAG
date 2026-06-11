@@ -71,7 +71,7 @@ class RagAnythingGraphService:
         self._rag_graph_cache_key: str | None = None
         self.client: Any | None = None
         self._rag_graph_loop = RagAnythingGraphLoop(logger_obj=logger_obj)
-        self._rag_graph_runtime_meta: Dict[str, Any] = {
+        self._rag_graph_runtime_meta: dict[str, Any] = {
             "doc_status_storage": "JsonDocStatusStorage",
             "graph_storage": "NetworkXStorage(default)",
             "graph_client_initialized": False,
@@ -108,7 +108,7 @@ class RagAnythingGraphService:
     def _close_raganything_instance(self, client: Any | None) -> None:
         self._rag_graph_loop.close_raganything_instance(client)
 
-    def clear_graph_cache(self) -> Dict[str, Any]:
+    def clear_graph_cache(self) -> dict[str, Any]:
         with self._rag_graph_lock:
             self._close_raganything_instance(self.client)
             self.client = None
@@ -121,7 +121,7 @@ class RagAnythingGraphService:
         *,
         rag_doc_id: str | None = None,
         full_scan: bool = False,
-    ) -> Dict[str, int]:
+    ) -> dict[str, int]:
         return _scrub_raganything_kv_graph_junk(
             working_dir=self.working_dir,
             is_junk_graph_label=self._is_junk_graph_label,
@@ -130,7 +130,7 @@ class RagAnythingGraphService:
             logger_obj=self.logger,
         )
 
-    def graph_runtime_summary(self) -> Dict[str, Any]:
+    def graph_runtime_summary(self) -> dict[str, Any]:
         with self._rag_graph_lock:
             meta = dict(self._rag_graph_runtime_meta)
             initialized = bool(self.client is not None)
@@ -142,15 +142,15 @@ class RagAnythingGraphService:
         )
 
     @staticmethod
-    def graph_content_list_from_input(text: str, chunks: List[str] | None) -> List[Dict[str, Any]]:
+    def graph_content_list_from_input(text: str, chunks: list[str] | None) -> list[dict[str, Any]]:
         return graph_content_list_from_input(text, chunks)
 
     @staticmethod
-    def stable_raganything_doc_id(doc_id: str | None, file_path: str | None, content_list: List[Dict[str, Any]]) -> str:
+    def stable_raganything_doc_id(doc_id: str | None, file_path: str | None, content_list: list[dict[str, Any]]) -> str:
         return stable_raganything_doc_id(doc_id, file_path, content_list)
 
     def raganything_extraction_doc_id(
-        self, doc_id: str | None, file_path: str | None, content_list: List[Dict[str, Any]]
+        self, doc_id: str | None, file_path: str | None, content_list: list[dict[str, Any]]
     ) -> str:
         return raganything_extraction_doc_id(doc_id, file_path, content_list)
 
@@ -162,12 +162,12 @@ class RagAnythingGraphService:
     def relation_label_from_text(raw: str) -> str:
         return relation_label_from_text(raw)
 
-    def triplets_from_edges(self, *, edges: List[Dict[str, Any]], file_ref: str, created_at_floor: int) -> List[tuple[str, str, str]]:
+    def triplets_from_edges(self, *, edges: list[dict[str, Any]], file_ref: str, created_at_floor: int) -> list[tuple[str, str, str]]:
         return _triplets_from_raganything_edges_raw(
             edges=edges, file_ref=file_ref, created_at_floor=created_at_floor, graph_debug=False
         )
 
-    def triplets_from_llm_cache(self) -> List[tuple[str, str, str]]:
+    def triplets_from_llm_cache(self) -> list[tuple[str, str, str]]:
         cache_path = self.working_dir / "kv_store_llm_response_cache.json"
         return parse_raganything_llm_cache(cache_path)
 
@@ -209,11 +209,11 @@ class RagAnythingGraphService:
         text: str,
         *,
         provider: Any,
-        chunks: List[str] | None,
+        chunks: list[str] | None,
         doc_id: str | None,
         file_path: str | None,
         neo4j_database: str | None,
-    ) -> List[tuple[str, str, str]]:
+    ) -> list[tuple[str, str, str]]:
         working_text = text
         cleaned_text = clean_graph_text(text)
         if not cleaned_text:
