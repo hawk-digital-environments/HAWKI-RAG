@@ -3,12 +3,21 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Any, Dict, Optional
+from collections.abc import Mapping
+from typing import Any
 
 import requests
-from requests import RequestException, Response
+from requests import Response
+from requests.exceptions import RequestException
 
 from vectorstore.qdrant_requests import QdrantRequest
+from common.reliability import (
+    QDRANT_ADAPTER_EVENT,
+    QDRANT_RETRYABLE_STATUS_CODES,
+    normalize_retry_attempt_limit,
+    is_retryable_http_exception,
+    sanitize_for_log,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -23,66 +32,126 @@ class QdrantHTTPTransport:
         api_key: str | None,
         default_timeout: float,
         max_attempts: int = 3,
+        *,
         log_latency: bool = False,
-        session: Optional[Any] = None,
+        operation_attempts: Mapping[str, int] | None = None,
+        backoff_cap_seconds: float = 5.0,
+        backoff_seconds: float = 0.5,
+        default_retryable: bool = True,
+        session: Any | None = None,
     ) -> None:
         self.base_url = base_url
         self.api_key = api_key
         self.default_timeout = default_timeout
-        self.max_attempts = max(1, int(max_attempts))
+        self._default_attempts = max(1, int(max_attempts))
+        self._operation_attempts = dict(operation_attempts or {})
         self.log_latency = log_latency
+        self._backoff_cap_seconds = max(0.0, float(backoff_cap_seconds))
+        self._backoff_seconds = max(0.0, float(backoff_seconds))
         self._session = session or requests.Session()
+        self._default_retryable = bool(default_retryable)
 
-    def _headers(self) -> Dict[str, str]:
+    def _headers(self) -> dict[str, str]:
         headers = {"Content-Type": "application/json"}
         if self.api_key:
             headers["api-key"] = self.api_key
         return headers
 
+    def _attempt_budget(self, request: QdrantRequest) -> int:
+        operation = request.operation
+        if operation is None:
+            return self._default_attempts
+        return normalize_retry_attempt_limit(
+            int(self._operation_attempts.get(operation, self._default_attempts)),
+            minimum=1,
+        )
+
+    def _is_retryable_exception(self, exc: Exception) -> bool:
+        return self._default_retryable and is_retryable_http_exception(exc)
+
     def send(self, request: QdrantRequest) -> Response:
         """Execute one HTTP request with retry and optional latency logging."""
         url = f"{self.base_url}{request.path}"
-        payload_kwargs: Dict[str, Any] = {
+        operation = request.operation or "qdrant.request"
+        timeout = self.default_timeout if request.timeout is None else request.timeout
+        payload_kwargs: dict[str, Any] = {
             "headers": self._headers(),
-            "timeout": self.default_timeout if request.timeout is None else request.timeout,
+            "timeout": timeout,
         }
         if request.json_body is not None:
             payload_kwargs["json"] = request.json_body
 
-        backoff = 0.5
+        max_attempts = self._attempt_budget(request)
+        backoff = self._backoff_seconds
         attempt = 0
         while True:
             attempt += 1
+            started = time.perf_counter()
+            timeout_ms = float(timeout) * 1000
             try:
-                start = time.perf_counter()
                 response = self._session.request(request.method, url, **payload_kwargs)
-                elapsed = time.perf_counter() - start
-                if self.log_latency:
-                    logger.info(
-                        "Qdrant %s %s succeeded in %.3fs",
-                        request.method.upper(),
-                        request.path,
-                        elapsed,
-                    )
-                if response.status_code in {429, 500, 502, 503, 504}:
+                elapsed_ms = (time.perf_counter() - started) * 1000
+                logger.info(
+                    "event=%s operation=%s request_id=%s attempt=%s/%s status=%s elapsed_ms=%.3f timeout_ms=%.2f backoff_ms=%.2f retryable=%s",
+                    QDRANT_ADAPTER_EVENT,
+                    operation,
+                    sanitize_for_log(request.operation_id or ""),
+                    attempt,
+                    max_attempts,
+                    response.status_code,
+                    elapsed_ms,
+                    timeout_ms,
+                    backoff * 1000,
+                    request.retryable,
+                )
+                should_retry = (
+                    request.retryable
+                    and response.status_code in QDRANT_RETRYABLE_STATUS_CODES
+                    and attempt < max_attempts
+                )
+                if should_retry:
                     logger.warning(
-                        "Qdrant %s %s failed with %s",
-                        request.method.upper(),
-                        request.path,
+                        "event=%s operation=%s request_id=%s attempt=%s/%s elapsed_ms=%.3f retry_after_ms=%.2f reason=status=%s timeout_ms=%.2f",
+                        QDRANT_ADAPTER_EVENT,
+                        operation,
+                        sanitize_for_log(request.operation_id or ""),
+                        attempt,
+                        max_attempts,
+                        elapsed_ms,
+                        backoff * 1000,
                         response.status_code,
+                        timeout_ms,
                     )
-                    if attempt >= self.max_attempts:
-                        response.raise_for_status()
-                    if request.timeout is not None and request.timeout > 0:
-                        backoff = min(backoff * 2, 5.0)
-                        time.sleep(backoff)
-                    else:
-                        time.sleep(backoff)
+                    time.sleep(backoff)
+                    backoff = min(backoff * 2, self._backoff_cap_seconds)
                     continue
                 return response
             except RequestException as exc:
-                if attempt >= self.max_attempts:
+                elapsed_ms = (time.perf_counter() - started) * 1000
+                if attempt >= max_attempts or not self._is_retryable_exception(exc) or not request.retryable:
+                    logger.error(
+                        "event=%s operation=%s request_id=%s attempt=%s/%s elapsed_ms=%.3f timeout_ms=%.2f reason=%s",
+                        QDRANT_ADAPTER_EVENT,
+                        operation,
+                        sanitize_for_log(request.operation_id or ""),
+                        attempt,
+                        max_attempts,
+                        elapsed_ms,
+                        timeout_ms,
+                        sanitize_for_log(type(exc).__name__, max_length=120),
+                    )
                     raise
-                logger.warning("Qdrant request error (%s). Retrying attempt %s/%s", exc, attempt, self.max_attempts)
+                logger.warning(
+                    "event=%s operation=%s request_id=%s attempt=%s/%s elapsed_ms=%.3f retry_after_ms=%.2f timeout_ms=%.2f reason=%s",
+                    QDRANT_ADAPTER_EVENT,
+                    operation,
+                    sanitize_for_log(request.operation_id or ""),
+                    attempt,
+                    max_attempts,
+                    elapsed_ms,
+                    backoff * 1000,
+                    timeout_ms,
+                    type(exc).__name__,
+                )
                 time.sleep(backoff)
-                backoff = min(backoff * 2, 5.0)
+                backoff = min(backoff * 2, self._backoff_cap_seconds)

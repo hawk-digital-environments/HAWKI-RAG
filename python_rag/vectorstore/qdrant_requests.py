@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from typing import Any
 
 
 @dataclass(frozen=True)
@@ -11,16 +11,23 @@ class QdrantRequest:
 
     method: str
     path: str
-    json_body: Optional[Dict[str, Any]] = None
-    timeout: Optional[float] = None
+    json_body: dict[str, Any] | None = None
+    timeout: float | None = None
+    operation: str | None = None
+    retryable: bool = True
+    operation_id: str | None = None
 
 
 def build_get_collection_request(collection: str) -> QdrantRequest:
-    return QdrantRequest("GET", f"/collections/{collection}")
+    return QdrantRequest(
+        "GET",
+        f"/collections/{collection}",
+        operation="qdrant.collections.get",
+    )
 
 
 def build_list_collections_request() -> QdrantRequest:
-    return QdrantRequest("GET", "/collections")
+    return QdrantRequest("GET", "/collections", operation="qdrant.collections.list")
 
 
 def build_create_collection_request(collection: str, vector_size: int, distance: str) -> QdrantRequest:
@@ -28,6 +35,8 @@ def build_create_collection_request(collection: str, vector_size: int, distance:
         "PUT",
         f"/collections/{collection}",
         json_body={"vectors": {"size": int(vector_size), "distance": distance}},
+        operation="qdrant.collections.create",
+        retryable=False,
     )
 
 
@@ -36,12 +45,17 @@ def build_upsert_points_request(
     points: list[dict[str, Any]],
     *,
     timeout: float,
+    operation_id: str | None = None,
+    retryable: bool = False,
 ) -> QdrantRequest:
     return QdrantRequest(
         "PUT",
         f"/collections/{collection}/points",
         json_body={"points": points},
         timeout=timeout,
+        operation="qdrant.upsert_points",
+        operation_id=operation_id,
+        retryable=retryable,
     )
 
 
@@ -51,12 +65,13 @@ def build_count_points_request(collection: str, *, exact: bool, timeout: float) 
         f"/collections/{collection}/points/count",
         json_body={"exact": bool(exact)},
         timeout=timeout,
+        operation="qdrant.points.count",
     )
 
 
 def build_search_request(
     collection: str,
-    body: Dict[str, Any],
+    body: dict[str, Any],
     *,
     timeout: float,
 ) -> QdrantRequest:
@@ -65,26 +80,32 @@ def build_search_request(
         f"/collections/{collection}/points/search",
         json_body=body,
         timeout=timeout,
+        operation="qdrant.points.search",
     )
 
 
 def build_delete_by_filter_request(
     collection: str,
-    filter_body: Dict[str, Any],
+    filter_body: dict[str, Any],
     *,
     timeout: float,
+    operation_id: str | None = None,
+    retryable: bool = False,
 ) -> QdrantRequest:
     return QdrantRequest(
         "POST",
         f"/collections/{collection}/points/delete",
         json_body={"filter": filter_body},
         timeout=timeout,
+        operation="qdrant.delete_by_filter",
+        operation_id=operation_id,
+        retryable=retryable,
     )
 
 
 def build_scroll_request(
     collection: str,
-    body: Dict[str, Any],
+    body: dict[str, Any],
     *,
     timeout: float,
 ) -> QdrantRequest:
@@ -93,4 +114,5 @@ def build_scroll_request(
         f"/collections/{collection}/points/scroll",
         json_body=body,
         timeout=timeout,
+        operation="qdrant.points.scroll",
     )

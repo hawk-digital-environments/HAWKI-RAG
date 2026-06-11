@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from fastapi import APIRouter  # type: ignore[reportMissingImports]
+from fastapi import APIRouter
 
 from app.schemas import GraphRequest
 

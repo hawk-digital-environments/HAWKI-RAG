@@ -1,7 +1,7 @@
 """Document endpoint helpers."""
 from __future__ import annotations
 
-from fastapi import HTTPException  # type: ignore[reportMissingImports]
+from fastapi import HTTPException
 
 from app.settings import AppSettings
 from .schemas import DocumentUpsertRequest, IngestDoc, IngestRequest

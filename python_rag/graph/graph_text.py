@@ -9,7 +9,8 @@ from __future__ import annotations
 import logging
 import time
 import os
-from typing import Any, Dict, Mapping
+from collections.abc import Mapping
+from typing import Any
 
 from graph.neo4j_graph import Neo4jGraph
 from graph.graph_utils import clean_triplets
@@ -34,7 +35,7 @@ def graph_from_text(
     *,
     rag_service: Any,
     graph_perf_log: bool | None = None,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     if graph_perf_log is None:
         graph_perf_log = _env_bool(os.environ, "GRAPH_PERF_LOG")
     fn_start = time.perf_counter()

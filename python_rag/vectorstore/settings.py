@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 @dataclass(frozen=True)
@@ -14,6 +14,7 @@ class QdrantSettings:
     api_key: str | None
     timeout: float
     max_attempts: int
+    retry_attempts_by_operation: dict[str, int] = field(default_factory=dict)
 
     @property
     def base_url(self) -> str:
@@ -38,6 +39,14 @@ class QdrantHTTPSettings:
 
 
 def qdrant_settings_from_env() -> QdrantSettings:
+    default_attempts = _int_env("QDRANT_RETRY_ATTEMPTS", 3)
+    upsert_attempts = _int_env("QDRANT_RETRY_ATTEMPTS_UPSERT", default_attempts)
+    delete_attempts = _int_env("QDRANT_RETRY_ATTEMPTS_DELETE", default_attempts)
+    count_attempts = _int_env("QDRANT_RETRY_ATTEMPTS_COUNT", default_attempts)
+    search_attempts = _int_env("QDRANT_RETRY_ATTEMPTS_SEARCH", default_attempts)
+    scroll_attempts = _int_env("QDRANT_RETRY_ATTEMPTS_SCROLL", default_attempts)
+    collection_read_attempts = _int_env("QDRANT_RETRY_ATTEMPTS_READ", default_attempts)
+    collection_create_attempts = _int_env("QDRANT_RETRY_ATTEMPTS_COLLECTION_CREATE", default_attempts)
     return QdrantSettings(
         scheme=os.environ.get("QDRANT_SCHEME", "http"),
         host=os.environ.get("QDRANT_HOST", "qdrant"),
@@ -45,7 +54,17 @@ def qdrant_settings_from_env() -> QdrantSettings:
         collection=os.environ.get("QDRANT_COLLECTION", "").strip(),
         api_key=os.environ.get("QDRANT_API_KEY"),
         timeout=_float_env("QDRANT_TIMEOUT", 30.0),
-        max_attempts=_int_env("QDRANT_RETRY_ATTEMPTS", 3),
+        max_attempts=default_attempts,
+        retry_attempts_by_operation={
+            "qdrant.upsert_points": upsert_attempts,
+            "qdrant.delete_by_filter": delete_attempts,
+            "qdrant.points.count": count_attempts,
+            "qdrant.points.search": search_attempts,
+            "qdrant.points.scroll": scroll_attempts,
+            "qdrant.collections.get": collection_read_attempts,
+            "qdrant.collections.list": collection_read_attempts,
+            "qdrant.collections.create": collection_create_attempts,
+        },
     )
 
 

@@ -10,7 +10,7 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
-from fastapi.testclient import TestClient  # type: ignore[reportMissingImports]
+from fastapi.testclient import TestClient
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -910,7 +910,7 @@ class Neo4jCharacterizationTests(unittest.TestCase):
     def test_neo4j_query_executor_retries_transient_errors(self) -> None:
         from graph.neo4j_requests import Neo4jQueryRequest
         from graph.neo4j_transport import Neo4jQueryExecutor
-        from neo4j import exceptions as neo4j_exceptions  # type: ignore[reportMissingImports]
+        from neo4j import exceptions as neo4j_exceptions
 
         attempts: list[int] = []
 
@@ -1733,7 +1733,7 @@ class IngestDeletionCharacterizationTests(unittest.TestCase):
 
 class ApiAndVectorValidationTests(unittest.TestCase):
     def test_api_schema_defaults_and_provider_errors_are_validation_boundaries(self) -> None:
-        from fastapi import HTTPException  # type: ignore[reportMissingImports]
+        from fastapi import HTTPException
 
         from app.dependencies import get_provider_or_400
         from app.schemas import IngestDoc, IngestRequest, QueryRequest, apply_ingest_request_settings, apply_query_request_settings
@@ -1785,7 +1785,7 @@ class ApiAndVectorValidationTests(unittest.TestCase):
         self.assertEqual(patched_ingest.graph_engine, "custom-graph")
 
     def test_app_settings_includes_runtime_env_overrides(self) -> None:
-        from fastapi import HTTPException  # type: ignore[reportMissingImports]
+        from fastapi import HTTPException
 
         from app.dependencies import get_provider_or_400
         from app.settings import load_app_settings
@@ -1814,7 +1814,7 @@ class ApiAndVectorValidationTests(unittest.TestCase):
         self.assertIn("unknown provider missing", raised.exception.detail)
 
     def test_document_replacement_request_validates_text_and_preserves_defaults(self) -> None:
-        from fastapi import HTTPException  # type: ignore[reportMissingImports]
+        from fastapi import HTTPException
 
         from app.documents import build_replacement_ingest_request
         from app.schemas import DocumentUpsertRequest
@@ -2133,6 +2133,7 @@ class ApiAndVectorValidationTests(unittest.TestCase):
             captured["public_dir_path"] = str(public_dir)
             captured["provider_fn_called"] = callable(get_provider)
             captured["provider_fn_value"] = get_provider(body.provider)
+            captured["idempotency_key"] = kwargs.get("idempotency_key")
             return {
                 "ok": True,
                 "collection": body.collection,
@@ -2148,12 +2149,13 @@ class ApiAndVectorValidationTests(unittest.TestCase):
                 logger_name="app_test_ingest_route",
             )
 
-            with patch("app.ingest.ingest_documents", side_effect=fake_ingest_documents):
-                with TestClient(app) as client:
-                    response = client.post(
-                        "/ingest",
-                        json=ingest_body.model_dump(),
-                    )
+                with patch("app.ingest.ingest_documents", side_effect=fake_ingest_documents):
+                    with TestClient(app) as client:
+                        response = client.post(
+                            "/ingest",
+                            headers={"Idempotency-Key": "ingest-route-key"},
+                            json=ingest_body.model_dump(),
+                        )
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), {"ok": True, "collection": "toy_docs", "count": 1})
@@ -2163,6 +2165,7 @@ class ApiAndVectorValidationTests(unittest.TestCase):
         self.assertEqual(captured["public_dir_path"], tmp)
         self.assertEqual(captured["provider_fn_called"], True)
         self.assertEqual(captured["provider_fn_value"].embed_model, "ingest-embed")
+        self.assertEqual(captured["idempotency_key"], "ingest-route-key")
         self.assertEqual(service.provider_calls, [ingest_body.provider])
 
     def test_app_document_routes_replace_and_delete_contract(self) -> None:
@@ -2218,7 +2221,11 @@ class ApiAndVectorValidationTests(unittest.TestCase):
         self.assertEqual(put_response.json()["deleted"], {"qdrant": {"ok": True}, "neo4j": {"ok": True}})
         self.assertEqual(put_response.json(), {"ok": True, "replaced_doc_id": "doc-replace-1", "deleted": {"qdrant": {"ok": True}, "neo4j": {"ok": True}}})
         self.assertEqual(delete_mock.call_count, 2)
-        delete_mock.assert_any_call("doc-replace-1")
+        delete_calls = delete_mock.call_args_list
+        self.assertEqual(delete_calls[0].args[0], "doc-replace-1")
+        self.assertEqual(delete_calls[0].kwargs["idempotency_key"], "doc-replace-1")
+        self.assertEqual(delete_calls[1].args[0], "doc-replace-1")
+        self.assertIsNone(delete_calls[1].kwargs["idempotency_key"])
         replacement_builder.assert_called_once()
         ingest_mock.assert_called_once()
 

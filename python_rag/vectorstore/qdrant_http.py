@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import requests
 from requests import RequestException
@@ -55,8 +55,8 @@ class QdrantHTTP:
 
     def __init__(
         self,
-        settings: Optional[QdrantSettings] = None,
-        http_settings: Optional[QdrantHTTPSettings] = None,
+        settings: QdrantSettings | None = None,
+        http_settings: QdrantHTTPSettings | None = None,
     ) -> None:
         qdrant_settings = settings or qdrant_settings_from_env()
         self.collection = qdrant_settings.collection
@@ -70,6 +70,7 @@ class QdrantHTTP:
             api_key=qdrant_settings.api_key,
             default_timeout=self.timeout,
             max_attempts=qdrant_settings.max_attempts,
+            operation_attempts=qdrant_settings.retry_attempts_by_operation,
             log_latency=self._http_settings.log_latency,
             session=requests.Session(),
         )
@@ -86,13 +87,13 @@ class QdrantHTTP:
         rc = self._gateway.ensure_collection(vector_size=vector_size, distance=distance)
         rc.raise_for_status()
 
-    def list_collections(self) -> List[str]:
+    def list_collections(self) -> list[str]:
         """Return all collection names available in Qdrant."""
         r = self._gateway.list_collections()
         r.raise_for_status()
         return parse_collection_names(r.json())
 
-    def _pick_default_collection(self) -> Optional[str]:
+    def _pick_default_collection(self) -> str | None:
         """Pick the most populated collection when no default is configured."""
         try:
             names = self.list_collections()
@@ -104,31 +105,50 @@ class QdrantHTTP:
     def _search_collection(
         self,
         collection: str,
-        body: Dict[str, Any],
+        body: dict[str, Any],
         timeout: float,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         response = self._gateway.search(collection, body, timeout=timeout)
         return parse_search_payload(response, empty_on_not_found=True)
 
-    def upsert(self, points: List[Dict[str, Any]]) -> None:
+    def upsert(
+        self,
+        points: list[dict[str, Any]],
+        *,
+        idempotency_key: str | None = None,
+    ) -> None:
         """Upsert batches of points into the chosen collection."""
         if not points:
             return
-        r = self._gateway.upsert(points, timeout=self._http_settings.upsert_timeout)
+        r = self._gateway.upsert(
+            points,
+            timeout=self._http_settings.upsert_timeout,
+            operation_id=idempotency_key,
+        )
         if r.status_code >= 400:
             logger.error("Qdrant upsert failed status=%s body=%s", r.status_code, r.text)
         r.raise_for_status()
 
-    def upsert_points(self, points: List[Dict[str, Any]], *, batch_size: int = 64) -> None:
+    def upsert_points(
+        self,
+        points: list[dict[str, Any]],
+        *,
+        batch_size: int = 64,
+        idempotency_key: str | None = None,
+    ) -> None:
         """Upsert points in batches."""
         if not points:
             return
         size = max(1, int(batch_size))
         logger.info("qdrant:upsert_points total=%s batch_size=%s", len(points), size)
         for batch in iter_batches(points, size):
-            self.upsert(batch)
+            self.upsert(batch, idempotency_key=idempotency_key)
 
-    def count_points(self, collection: Optional[str] = None, exact: bool = True) -> Optional[int]:
+    def count_points(
+        self,
+        collection: str | None = None,
+        exact: bool = True,
+    ) -> int | None:
         """Return the number of points stored in a collection."""
         col = collection or self.collection
         try:
@@ -144,18 +164,18 @@ class QdrantHTTP:
 
     def search(
         self,
-        vector: List[float],
+        vector: list[float],
         top_k: int = 5,
-        filters: Optional[Dict[str, Any]] = None,
+        filters: dict[str, Any] | None = None,
         *,
-        score_threshold: Optional[float] = None,
-        params: Optional[Dict[str, Any]] = None,
+        score_threshold: float | None = None,
+        params: dict[str, Any] | None = None,
         with_payload: bool = True,
         with_vector: bool = False,
-        payload_projection: Optional[List[str]] = None,
-        keyword_terms: Optional[List[str]] = None,
-        keyword_fields: Optional[List[str]] = None,
-    ) -> List[Dict[str, Any]]:
+        payload_projection: list[str] | None = None,
+        keyword_terms: list[str] | None = None,
+        keyword_fields: list[str] | None = None,
+    ) -> list[dict[str, Any]]:
         """Execute a vector search and return payload-rich results."""
         timeout = self._http_settings.search_timeout
         body = build_search_body(
@@ -218,7 +238,7 @@ class QdrantHTTP:
             self._http_settings.fallback_per_collection,
             top_k,
         )
-        merged: List[Dict[str, Any]] = []
+        merged: list[dict[str, Any]] = []
         for name in collections:
             body["limit"] = int(max_per_collection)
             results = self._search_collection(name, body, timeout)
@@ -228,12 +248,12 @@ class QdrantHTTP:
 
     def search_with_text(
         self,
-        vector: List[float],
+        vector: list[float],
         *,
         top_k: int,
-        terms: List[str],
-        fields: List[str],
-    ) -> List[Dict[str, Any]]:
+        terms: list[str],
+        fields: list[str],
+    ) -> list[dict[str, Any]]:
         terms = [t for t in (terms or []) if t]
         fields = [f for f in (fields or []) if f]
         if not terms or not fields:
@@ -273,12 +293,12 @@ class QdrantHTTP:
     def scroll_with_text(
         self,
         *,
-        terms: List[str],
-        fields: List[str],
+        terms: list[str],
+        fields: list[str],
         limit: int,
         require_all: bool = True,
-        offset: Optional[str] = None,
-    ) -> List[Dict[str, Any]]:
+        offset: str | None = None,
+    ) -> list[dict[str, Any]]:
         terms, fields = normalize_query_inputs(terms, fields)
         if not terms or not fields:
             return []
@@ -304,11 +324,11 @@ class QdrantHTTP:
     def scroll_with_text_all(
         self,
         *,
-        terms: List[str],
-        fields: List[str],
+        terms: list[str],
+        fields: list[str],
         limit: int,
         require_all: bool = True,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         terms, fields = normalize_query_inputs(terms, fields)
         if not terms or not fields:
             return []
@@ -333,8 +353,8 @@ class QdrantHTTP:
             cap = min(cap, hard_cap)
         batch_size = max(1, min(self._http_settings.text_scroll_batch, cap))
 
-        collected: List[Dict[str, Any]] = []
-        offset: Optional[str] = None
+        collected: list[dict[str, Any]] = []
+        offset: str | None = None
         while len(collected) < cap:
             body = build_scroll_body(
                 limit=int(min(batch_size, cap - len(collected))),
@@ -357,11 +377,12 @@ class QdrantHTTP:
             offset = next_offset
         return collected
 
-    def delete_by_filter(self, filter_body: Dict[str, Any]) -> Dict[str, Any]:
+    def delete_by_filter(self, filter_body: dict[str, Any], *, idempotency_key: str | None = None) -> dict[str, Any]:
         """Delete points matching the supplied Qdrant filter."""
         r = self._gateway.delete_by_filter(
             filter_body,
             timeout=self._http_settings.delete_timeout,
+            operation_id=idempotency_key,
         )
         if r.status_code == 404:
             return {"result": {"status": "not_found", "deleted": 0}}
@@ -371,17 +392,17 @@ class QdrantHTTP:
         r.raise_for_status()
         return r.json()
 
-    def delete_by_doc_id(self, doc_id: str) -> Dict[str, Any]:
+    def delete_by_doc_id(self, doc_id: str, *, idempotency_key: str | None = None) -> dict[str, Any]:
         """Delete all points that belong to the provided document id."""
-        return self.delete_by_filter(build_delete_filter(doc_id))
+        return self.delete_by_filter(build_delete_filter(doc_id), idempotency_key=idempotency_key)
 
-    def get_collection_config(self) -> Dict[str, Any]:
+    def get_collection_config(self) -> dict[str, Any]:
         """Fetch the collection configuration from Qdrant."""
         r = self._gateway.get_collection()
         r.raise_for_status()
         return parse_collection_config(r.json())
 
-    def get_vector_size(self) -> Optional[int]:
+    def get_vector_size(self) -> int | None:
         """Read the configured vector size; return None if it cannot be derived."""
         try:
             cfg = self.get_collection_config()

@@ -13,12 +13,15 @@ _POINT_NAMESPACE = uuid.NAMESPACE_URL
 def build_points(
     chunk_records: list[dict[str, Any]],
     provider: Any,
+    idempotency_key: str | None = None,
 ) -> tuple[list[dict[str, Any]], int | None, list[dict[str, Any]]]:
     points: list[dict[str, Any]] = []
     failures: list[dict[str, Any]] = []
     vector_size: int | None = None
     for rec in chunk_records:
         payload = dict(rec["payload"])
+        if idempotency_key:
+            payload["idempotency_key"] = idempotency_key
         doc_id = str(rec.get("doc_id") or payload.get("doc_id") or "")
         chunk_index = payload.get("chunk_index", 0)
         try:

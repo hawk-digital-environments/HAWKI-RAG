@@ -71,6 +71,15 @@ make test-services     # curl checks for Qdrant, Neo4j, bridge, reranker
 make logs-core         # follow compose logs
 ```
 
+## Repo hygiene / CI-ready artifacts
+Keep bytecode, cache, and test artifacts out of git by using:
+
+```bash
+make clean
+```
+
+This clears `__pycache__`, `*.py[cod]`, `*.log`, `.pytest_cache`, `.ruff_cache`, `.mypy_cache`, `.coverage*`, `.tox`, `.venv`, `dist`, `build`.
+
 ## Ingest content (inside containers, internal URLs)
 ```bash
 docker exec hawki_rag_bridge sh -lc "python /app/ingest/ingest_crawled.py \

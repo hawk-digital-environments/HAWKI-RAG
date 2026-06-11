@@ -41,6 +41,7 @@ resources/js/crawler
 *.pyc
 *.py[co]
 *.pyo
+*.py[cod]
 **/__pycache__/
 .pytest_cache/
 .mypy_cache/

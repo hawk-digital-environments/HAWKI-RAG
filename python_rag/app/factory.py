@@ -4,15 +4,15 @@ from __future__ import annotations
 
 import logging
 import os
-import re
 import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any, TypeVar
+from uuid import uuid4
 
 import requests
-from fastapi import FastAPI, HTTPException, Request  # type: ignore[reportMissingImports]
-from fastapi.responses import JSONResponse  # type: ignore[reportMissingImports]
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse
 from requests import RequestException
 
 from core.rag_service import RAGService
@@ -32,21 +32,38 @@ from .routers import (
     build_query_router,
 )
 
-
-_SENSITIVE_PATTERNS = (
-    re.compile(r"(?i)(api[_-]?key|access[_-]?token|authorization|secret|password)=[^\s&]+"),
-    re.compile(r"(?i)Authorization:\s*[^\r\n]+"),
-    re.compile(r"(?i)https?://[^/@:]+:[^/@]+@"),
+from common.reliability import (
+    API_REQUEST_ERROR_EVENT,
+    API_REQUEST_END_EVENT,
+    API_REQUEST_START_EVENT,
+    DEFAULT_REQUEST_BODY_SNIPPET_BYTES,
+    log_redacted_value,
+    STARTUP_CHECK_EVENT,
+    STARTUP_CHECK_RETRY_EVENT,
+    pick_request_id,
+    preview_request_body,
+    preview_request_headers,
 )
+
+_MAX_BODY_SNIPPET = DEFAULT_REQUEST_BODY_SNIPPET_BYTES
 
 TQdrant = TypeVar("TQdrant")
 
 
-def _sanitize_error(message: object) -> str:
-    safe = str(message)
-    for pattern in _SENSITIVE_PATTERNS:
-        safe = pattern.sub("<redacted>", safe)
-    return safe
+def _extract_request_id(request: Request) -> str:
+    return pick_request_id(request.headers, fallback=str(uuid4()))
+
+
+def _preview_request_headers(request: Request) -> dict[str, str]:
+    return preview_request_headers(request.headers)
+
+
+def _preview_request_body(request: Request) -> str | None:
+    return preview_request_body(
+        getattr(request, "_body", None),
+        content_type=request.headers.get("content-type"),
+        max_length=_MAX_BODY_SNIPPET,
+    )
 
 
 def _build_error_payload(request: Request, *, status: int, error_type: str, message: str | None) -> dict[str, Any]:
@@ -54,8 +71,9 @@ def _build_error_payload(request: Request, *, status: int, error_type: str, mess
         "error": {
             "type": error_type,
             "status": status,
-            "message": _sanitize_error(message or ""),
+            "message": log_redacted_value(message or ""),
             "path": str(getattr(request.url, "path", "")),
+            "request_id": str(getattr(request.state, "request_id", "")),
         }
     }
 
@@ -63,10 +81,11 @@ def _build_error_payload(request: Request, *, status: int, error_type: str, mess
 def _add_exception_handlers(app: FastAPI, logger: logging.Logger) -> None:
     def handle_http_error(request: Request, exc: HTTPException) -> JSONResponse:
         logger.warning(
-            "api:error type=http_exception path=%s status=%s detail=%s",
+            "event=%s type=http_exception path=%s status=%s detail=%s",
+            API_REQUEST_ERROR_EVENT,
             getattr(request.url, "path", ""),
             exc.status_code,
-            _sanitize_error(exc.detail),
+            log_redacted_value(exc.detail),
         )
         return JSONResponse(
             status_code=exc.status_code,
@@ -81,10 +100,11 @@ def _add_exception_handlers(app: FastAPI, logger: logging.Logger) -> None:
     def handle_value_error(request: Request, exc: ValueError) -> JSONResponse:
         status_code = 400
         logger.warning(
-            "api:error type=value_error path=%s status=%s detail=%s",
+            "event=%s type=value_error path=%s status=%s detail=%s",
+            API_REQUEST_ERROR_EVENT,
             getattr(request.url, "path", ""),
             status_code,
-            _sanitize_error(exc),
+            log_redacted_value(exc),
         )
         return JSONResponse(
             status_code=status_code,
@@ -99,10 +119,11 @@ def _add_exception_handlers(app: FastAPI, logger: logging.Logger) -> None:
     def handle_request_error(request: Request, exc: RequestException) -> JSONResponse:
         status_code = 503
         logger.error(
-            "api:error type=request_error path=%s status=%s detail=%s",
+            "event=%s type=request_error path=%s status=%s detail=%s",
+            API_REQUEST_ERROR_EVENT,
             getattr(request.url, "path", ""),
             status_code,
-            _sanitize_error(exc),
+            log_redacted_value(exc),
         )
         return JSONResponse(
             status_code=status_code,
@@ -117,10 +138,11 @@ def _add_exception_handlers(app: FastAPI, logger: logging.Logger) -> None:
     def handle_runtime_error(request: Request, exc: RuntimeError) -> JSONResponse:
         status_code = 502
         logger.error(
-            "api:error type=runtime_error path=%s status=%s detail=%s",
+            "event=%s type=runtime_error path=%s status=%s detail=%s",
+            API_REQUEST_ERROR_EVENT,
             getattr(request.url, "path", ""),
             status_code,
-            _sanitize_error(exc),
+            log_redacted_value(exc),
         )
         return JSONResponse(
             status_code=status_code,
@@ -135,7 +157,8 @@ def _add_exception_handlers(app: FastAPI, logger: logging.Logger) -> None:
     def handle_unexpected(request: Request, exc: Exception) -> JSONResponse:
         status_code = 500
         logger.exception(
-            "api:error type=unhandled_exception path=%s status=%s",
+            "event=%s type=unhandled_exception path=%s status=%s",
+            API_REQUEST_ERROR_EVENT,
             getattr(request.url, "path", ""),
             status_code,
         )
@@ -175,12 +198,13 @@ def _retry_with_backoff(
             if attempt >= max_attempts:
                 raise
             logger.warning(
-                "startup:check_retry operation=%s attempt=%s/%s timeout=%.2fs error=%s",
+                "event=%s operation=%s attempt=%s/%s timeout=%.2fs error=%s",
+                STARTUP_CHECK_RETRY_EVENT,
                 operation,
                 attempt,
                 max_attempts,
                 timeout_seconds,
-                _sanitize_error(exc),
+                log_redacted_value(exc),
             )
             if backoff > 0:
                 time.sleep(backoff)
@@ -208,8 +232,8 @@ def _check_qdrant(timeout_seconds: float) -> None:
 def _check_neo4j() -> None:
     settings = load_neo4j_settings()
     try:
-        from neo4j import GraphDatabase  # type: ignore[reportMissingImports]
-        from neo4j import exceptions as neo4j_exceptions  # type: ignore[reportMissingImports]
+        from neo4j import GraphDatabase
+        from neo4j import exceptions as neo4j_exceptions
     except Exception as exc:
         raise RuntimeError("Neo4j driver package is missing.") from exc
 
@@ -262,7 +286,8 @@ def _run_startup_checks(
     backoff_seconds = max(0.0, float(settings.startup_check_backoff_seconds))
 
     logger.info(
-        "startup:checks_start enabled=%s attempts=%s timeout=%s backoff=%s",
+        "event=%s enabled=%s attempts=%s timeout=%s backoff=%s",
+        STARTUP_CHECK_EVENT,
         settings.startup_checks_enabled,
         attempts,
         timeout_seconds,
@@ -300,7 +325,10 @@ def _run_startup_checks(
         backoff_seconds=backoff_seconds,
     )
 
-    logger.info("startup:checks_passed")
+    logger.info(
+        "event=%s qdrant_ok=true neo4j_ok=true provider_check_done=true",
+        STARTUP_CHECK_EVENT,
+    )
 
 
 def build_app(
@@ -340,6 +368,53 @@ def build_app(
     app.state.startup_checks_enabled = settings.startup_checks_enabled
 
     _add_exception_handlers(app, logger)
+
+    @app.middleware("http")
+    async def _request_context(request: Request, call_next) -> Any:
+        request_id = _extract_request_id(request)
+        request.state.request_id = request_id
+        try:
+            await request.body()
+        except Exception:
+            pass
+
+        request_headers = _preview_request_headers(request)
+        request_body = _preview_request_body(request)
+        request_start = time.perf_counter()
+        logger.info(
+            "event=%s request_id=%s method=%s path=%s headers=%s body=%s",
+            API_REQUEST_START_EVENT,
+            request_id,
+            request.method,
+            request.url.path,
+            request_headers,
+            request_body,
+        )
+        try:
+            response = await call_next(request)
+        except Exception:
+            elapsed_ms = (time.perf_counter() - request_start) * 1000
+            logger.exception(
+                "event=%s request_id=%s method=%s path=%s elapsed_ms=%.3f",
+                API_REQUEST_ERROR_EVENT,
+                request_id,
+                request.method,
+                request.url.path,
+                elapsed_ms,
+            )
+            raise
+        response.headers["X-Request-ID"] = request_id
+        elapsed_ms = (time.perf_counter() - request_start) * 1000
+        logger.info(
+            "event=%s request_id=%s method=%s path=%s status=%s elapsed_ms=%.3f",
+            API_REQUEST_END_EVENT,
+            request_id,
+            request.method,
+            request.url.path,
+            response.status_code,
+            elapsed_ms,
+        )
+        return response
 
     if settings.startup_checks_enabled:
 

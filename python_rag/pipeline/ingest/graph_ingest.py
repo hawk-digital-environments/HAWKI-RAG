@@ -120,6 +120,7 @@ def build_triplets_by_doc(
     graph_doc_max_chars: int | None = None,
     failure_log_path: str | Path | None = None,
     graph_settings: GraphIngestSettings | None = None,
+    request_id: str | None = None,
 ) -> tuple[dict[str, list[tuple[str, str, str]]], list[dict[str, Any]]]:
     resolved_settings = graph_settings or load_graph_ingest_settings()
     if graph_debug is None:
@@ -306,7 +307,7 @@ def build_triplets_by_doc(
             logger.info("graph:extract doc=%s triplets=%s ms=%.2f", doc_id, len(triplets), extract_ms)
             if graph is not None and triplets:
                 neo4j_start = time.perf_counter()
-                graph.upsert_triplets(triplets, doc_id=doc_id)
+                graph.upsert_triplets(triplets, doc_id=doc_id, request_id=request_id)
                 neo4j_ms = (time.perf_counter() - neo4j_start) * 1000
                 if public_dir is not None:
                     try:

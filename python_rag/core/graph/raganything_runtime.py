@@ -6,7 +6,7 @@ from collections.abc import Mapping, MutableMapping
 import logging
 import os
 import re
-from typing import Any, Dict
+from typing import Any
 
 from core.graph.raganything_settings import RagAnythingGraphSettings
 
@@ -18,9 +18,9 @@ def build_lightrag_neo4j_env(
     *,
     neo4j_database: str | None = None,
     source_env: Mapping[str, str] | None = None,
-) -> Dict[str, str]:
+) -> dict[str, str]:
     """Build required LightRAG Neo4j env values without mutating process state."""
-    env: Dict[str, str] = {}
+    env: dict[str, str] = {}
     current_env = source_env if source_env is not None else os.environ
 
     neo4j_user = settings.neo4j_user
@@ -55,7 +55,7 @@ def apply_lightrag_neo4j_env(
     overrides: Mapping[str, str],
     *,
     target_env: MutableMapping[str, str] | None = None,
-) -> Dict[str, str]:
+) -> dict[str, str]:
     """Apply LightRAG Neo4j env overrides and return the concrete values."""
     env = target_env if target_env is not None else os.environ
     applied = {}
@@ -67,7 +67,7 @@ def apply_lightrag_neo4j_env(
     return applied
 
 
-def _mask_sensitive_runtime_env(overrides: Mapping[str, str]) -> Dict[str, str]:
+def _mask_sensitive_runtime_env(overrides: Mapping[str, str]) -> dict[str, str]:
     return {k: ("***" if k == "NEO4J_PASSWORD" else v) for k, v in overrides.items()}
 
 
@@ -99,7 +99,10 @@ def clear_lightrag_temp_graph(
 ) -> None:
     """Delete temporary LightRAG + Neo4j graph state from a local DB."""
     try:
-        from neo4j import GraphDatabase  # type: ignore
+        from importlib import import_module
+
+        neo4j_module = import_module("neo4j")
+        GraphDatabase = neo4j_module.GraphDatabase
     except Exception as exc:
         logger.debug("LightRAG Neo4j temp graph cleanup skipped; driver unavailable: %s", exc)
         return

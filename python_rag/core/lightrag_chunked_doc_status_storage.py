@@ -18,23 +18,128 @@ Each chunk contains at most 2000 entries.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 import glob
 import os
 import re
+import logging
 from typing import Any
 
-from lightrag.base import DocProcessingStatus, DocStatus  # type: ignore[reportMissingImports]
-from lightrag.exceptions import StorageNotInitializedError  # type: ignore[reportMissingImports]
-from lightrag.kg.json_doc_status_impl import JsonDocStatusStorage  # type: ignore[reportMissingImports]
-from lightrag.kg.shared_storage import (
-    clear_all_update_flags,
-    get_data_init_lock,
-    get_namespace_data,
-    get_namespace_lock,
-    get_update_flag,
-    try_initialize_namespace,
-)  # type: ignore[reportMissingImports]
-from lightrag.utils import load_json, logger, write_json  # type: ignore[reportMissingImports]
+try:
+    from lightrag.base import DocProcessingStatus, DocStatus
+    from lightrag.exceptions import StorageNotInitializedError
+    from lightrag.kg.json_doc_status_impl import JsonDocStatusStorage
+    from lightrag.kg.shared_storage import (
+        clear_all_update_flags,
+        get_data_init_lock,
+        get_namespace_data,
+        get_namespace_lock,
+        get_update_flag,
+        try_initialize_namespace,
+    )
+    from lightrag.utils import load_json, logger, write_json
+
+    _LIGHTRAG_DOC_STATUS_AVAILABLE = True
+    _LIGHTRAG_DOC_STATUS_ERROR: Exception | None = None
+except Exception as exc:  # pragma: no cover - optional dependency path
+    _LIGHTRAG_DOC_STATUS_AVAILABLE = False
+    _LIGHTRAG_DOC_STATUS_ERROR = exc
+
+    logger = logging.getLogger(__name__)
+
+    class StorageNotInitializedError(RuntimeError):
+        """Raised when optional LightRAG storage dependencies are not installed."""
+
+    class DocProcessingStatus(dict):
+        """Typed compatibility fallback when LightRAG is unavailable."""
+
+    class _DocStatusValue:
+        def __init__(self, value: str) -> None:
+            self.value = value
+
+    class DocStatus:
+        FAILED = _DocStatusValue("FAILED")
+
+        @classmethod
+        def __iter__(cls):
+            yield cls.FAILED
+
+    class JsonDocStatusStorage:
+        """Fallback base class for optional dependency environments."""
+
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            self.global_config = args[0] if args else kwargs.get("global_config", {})
+            self.namespace = kwargs.get("namespace", "") if len(args) < 2 else args[1]
+            self.workspace = kwargs.get("workspace", None)
+            self.storage_updated = kwargs.get("storage_updated", None)
+
+        async def upsert(self, *_args: Any, **_kwargs: Any) -> None:
+            raise StorageNotInitializedError(
+                "LightRAG optional dependency 'lightrag' is unavailable for chunked doc status storage."
+            )
+
+    class _AsyncNoopContextManager:
+        async def __aenter__(self) -> _AsyncNoopContextManager:
+            return self
+
+        async def __aexit__(
+            self,
+            exc_type: type[BaseException] | None,
+            exc: BaseException | None,
+            tb: object,
+        ) -> None:
+            return None
+
+    class _UpdateFlag:
+        value = False
+
+    def get_data_init_lock() -> _AsyncNoopContextManager:
+        return _AsyncNoopContextManager()
+
+    def get_namespace_lock(*_args: Any, **_kwargs: Any) -> _AsyncNoopContextManager:
+        return _AsyncNoopContextManager()
+
+    async def get_namespace_data(*_args: Any, **_kwargs: Any) -> dict[str, Any]:
+        return {}
+
+    async def try_initialize_namespace(*_args: Any, **_kwargs: Any) -> bool:
+        return False
+
+    async def get_update_flag(*_args: Any, **_kwargs: Any) -> _UpdateFlag:
+        return _UpdateFlag()
+
+    async def clear_all_update_flags(*_args: Any, **_kwargs: Any) -> None:
+        return None
+
+    def _safe_load_json(path: str) -> Any:
+        try:
+            with open(path, "r", encoding="utf-8") as handle:
+                return json.load(handle)
+        except FileNotFoundError:
+            return {}
+        except Exception as exc:
+            logger.debug("chunked doc status load_json failed for %s: %s", path, exc)
+            return {}
+
+    def _safe_write_json(payload: Any, path: str) -> bool:
+        try:
+            with open(path, "w", encoding="utf-8") as handle:
+                json.dump(payload, handle, ensure_ascii=False)
+            return True
+        except Exception as exc:
+            logger.warning("chunked doc status write_json failed for %s: %s", path, exc)
+            return False
+
+    load_json = _safe_load_json
+    write_json = _safe_write_json
+
+
+def _ensure_lightrag_doc_status_storage_available() -> None:
+    if not _LIGHTRAG_DOC_STATUS_AVAILABLE:
+        raise StorageNotInitializedError(
+            "LightRAG optional dependency 'lightrag' is unavailable for ChunkedJsonDocStatusStorage"
+            + (f" (details: {_LIGHTRAG_DOC_STATUS_ERROR})" if _LIGHTRAG_DOC_STATUS_ERROR else "")
+        )
 
 
 @dataclass
@@ -120,6 +225,7 @@ class ChunkedJsonDocStatusStorage(JsonDocStatusStorage):
 
     async def initialize(self):
         """Initialize storage data from chunked files (or legacy single file)."""
+        _ensure_lightrag_doc_status_storage_available()
         self._storage_lock = get_namespace_lock(self.namespace, workspace=self.workspace)
         self.storage_updated = await get_update_flag(self.namespace, workspace=self.workspace)
         async with get_data_init_lock():
@@ -136,6 +242,7 @@ class ChunkedJsonDocStatusStorage(JsonDocStatusStorage):
                     )
 
     async def upsert(self, data: dict[str, dict[str, Any]]) -> None:
+        _ensure_lightrag_doc_status_storage_available()
         if not data:
             return
         normalized: dict[str, dict[str, Any]] = {}
@@ -155,6 +262,7 @@ class ChunkedJsonDocStatusStorage(JsonDocStatusStorage):
 
     async def get_status_counts(self) -> dict[str, int]:
         """Get counts of documents in each status, excluding duplicate attempts from FAILED."""
+        _ensure_lightrag_doc_status_storage_available()
         counts = {status.value: 0 for status in DocStatus}
         counts[self.DUPLICATE_SKIPPED_COUNT_KEY] = 0
         if self._storage_lock is None:
@@ -180,6 +288,7 @@ class ChunkedJsonDocStatusStorage(JsonDocStatusStorage):
         LightRAG writes duplicates as FAILED doc-status records. Treat them as skipped here so
         the processing pipeline does not repeatedly preserve/revisit them as actionable failures.
         """
+        _ensure_lightrag_doc_status_storage_available()
         result: dict[str, DocProcessingStatus] = {}
         if self._storage_lock is None:
             raise StorageNotInitializedError("ChunkedJsonDocStatusStorage")
@@ -211,6 +320,7 @@ class ChunkedJsonDocStatusStorage(JsonDocStatusStorage):
         return result
 
     async def index_done_callback(self) -> None:
+        _ensure_lightrag_doc_status_storage_available()
         if self._storage_lock is None:
             raise StorageNotInitializedError("ChunkedJsonDocStatusStorage")
 

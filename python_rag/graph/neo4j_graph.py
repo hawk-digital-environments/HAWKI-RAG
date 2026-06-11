@@ -3,11 +3,12 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Callable, Iterable
 
-from neo4j import GraphDatabase, exceptions as neo4j_exceptions  # type: ignore[reportMissingImports]
+from neo4j import GraphDatabase, exceptions as neo4j_exceptions
 
 from graph.neo4j_transport import Neo4jQueryExecutor, Neo4jQueryExecutorProtocol
+from common.reliability import is_retry_safe_write
 
 from graph.neo4j_requests import (
     Neo4jQueryRequest,
@@ -46,8 +47,8 @@ class Neo4jGraph:
     def __init__(
         self,
         *,
-        database: Optional[str] = None,
-        settings: Optional[Neo4jSettings] = None,
+        database: str | None = None,
+        settings: Neo4jSettings | None = None,
         query_executor: Neo4jQueryExecutorProtocol | None = None,
     ) -> None:
         self._settings = settings or load_neo4j_settings(database=database)
@@ -73,6 +74,7 @@ class Neo4jGraph:
                 self._session,
                 retry_attempts=getattr(self._settings, "retry_attempts", 3),
                 log_latency=getattr(self._settings, "log_latency", False),
+                operation_attempts=getattr(self._settings, "retry_attempts_by_operation", None),
             )
         else:
             self._driver = None
@@ -95,6 +97,7 @@ class Neo4jGraph:
                 self._session,
                 retry_attempts=max(1, int(getattr(settings, "retry_attempts", 1))),
                 log_latency=bool(getattr(settings, "log_latency", False)),
+                operation_attempts=getattr(settings, "retry_attempts_by_operation", None),
             )
         return self._query_executor.run_read(query, callback=callback)
 
@@ -105,12 +108,17 @@ class Neo4jGraph:
                 self._session,
                 retry_attempts=max(1, int(getattr(settings, "retry_attempts", 1))),
                 log_latency=bool(getattr(settings, "log_latency", False)),
+                operation_attempts=getattr(settings, "retry_attempts_by_operation", None),
             )
         return self._query_executor.run_write(query, callback=callback)
 
     def count_entities(self) -> int:
         """Return the count of graph entity-like nodes across supported schemas."""
-        query = Neo4jQueryRequest(build_count_query("entities"), {})
+        query = Neo4jQueryRequest(
+            build_count_query("entities"),
+            {},
+            operation="neo4j.count_entities",
+        )
         result = self._run_read(
             query,
             callback=lambda tx: tx.run(query.statement).single(),
@@ -119,32 +127,50 @@ class Neo4jGraph:
 
     def count_triplets(self) -> int:
         """Return the count of graph relationships across supported schemas."""
-        query = Neo4jQueryRequest(build_count_query("triplets"), {})
+        query = Neo4jQueryRequest(
+            build_count_query("triplets"),
+            {},
+            operation="neo4j.count_triplets",
+        )
         result = self._run_read(
             query,
             callback=lambda tx: tx.run(query.statement).single(),
         )
         return parse_count(result)
 
-    def count_relationships_by_type(self) -> List[Dict[str, int]]:
+    def count_relationships_by_type(self) -> list[dict[str, int]]:
         """Return relationship counts grouped by relationship type."""
-        query = Neo4jQueryRequest(build_row_grouped_query("relations"), {})
+        query = Neo4jQueryRequest(
+            build_row_grouped_query("relations"),
+            {},
+            operation="neo4j.count_relationships",
+        )
         results = self._run_read(
             query,
             callback=lambda tx: list(tx.run(query.statement)),
         )
         return parse_relation_counts(results)
 
-    def count_nodes_by_label(self) -> List[Dict[str, Any]]:
+    def count_nodes_by_label(self) -> list[dict[str, Any]]:
         """Return counts of nodes grouped by their label combinations."""
-        query = Neo4jQueryRequest(build_row_grouped_query("labels"), {})
+        query = Neo4jQueryRequest(
+            build_row_grouped_query("labels"),
+            {},
+            operation="neo4j.count_labels",
+        )
         results = self._run_read(
             query,
             callback=lambda tx: list(tx.run(query.statement)),
         )
         return parse_label_counts(results)
 
-    def upsert_triplets(self, triplets: Iterable[Tuple[str, str, str]], *, doc_id: Optional[str] = None) -> None:
+    def upsert_triplets(
+        self,
+        triplets: Iterable[tuple[str, str, str]],
+        *,
+        doc_id: str | None = None,
+        request_id: str | None = None,
+    ) -> None:
         """Insert or update triplets by merging nodes and relationships."""
         settings = getattr(self, "_settings", None)
         fn_start = time.perf_counter()
@@ -167,9 +193,13 @@ class Neo4jGraph:
             )
             return
 
+        is_retryable = bool(request_id and is_retry_safe_write("neo4j.upsert_triplets"))
         query = Neo4jQueryRequest(
             build_upsert_triplets_query(),
             {"rows": rows},
+            operation="neo4j.upsert_triplets",
+            request_id=request_id,
+            retryable=is_retryable,
         )
         exec_start = time.perf_counter()
         self._run_write(
@@ -189,13 +219,20 @@ class Neo4jGraph:
             (time.perf_counter() - fn_start) * 1000,
         )
 
-    def delete_by_doc_id(self, doc_id: str) -> Dict[str, int]:
+    def delete_by_doc_id(self, doc_id: str, *, request_id: str | None = None) -> dict[str, int]:
         """Remove relationships (and orphaned nodes) belonging to a document."""
         doc_key = str(doc_id or "").strip()
         if not doc_key:
             return {"relationships_deleted": 0, "entities_deleted": 0}
 
-        remove_edges_query = Neo4jQueryRequest(build_delete_doc_edges_query(), {"doc_id": doc_key})
+        is_retryable = bool(request_id and is_retry_safe_write("neo4j.delete_by_doc_id"))
+        remove_edges_query = Neo4jQueryRequest(
+            build_delete_doc_edges_query(),
+            {"doc_id": doc_key},
+            operation="neo4j.delete_by_doc_id",
+            request_id=request_id,
+            retryable=is_retryable,
+        )
         relationships_touched = self._run_write(
             remove_edges_query,
             callback=lambda tx: parse_delete_count(
@@ -203,7 +240,13 @@ class Neo4jGraph:
             ),
         )
 
-        orphaned_query = Neo4jQueryRequest(build_cleanup_orphaned_relationships_query(), {})
+        orphaned_query = Neo4jQueryRequest(
+            build_cleanup_orphaned_relationships_query(),
+            {},
+            operation="neo4j.delete_by_doc_id",
+            request_id=request_id,
+            retryable=is_retryable,
+        )
         relationships_deleted = self._run_write(
             orphaned_query,
             callback=lambda tx: int(
@@ -216,6 +259,9 @@ class Neo4jGraph:
             cleanup_query = Neo4jQueryRequest(
                 build_cleanup_isolated_nodes_query(),
                 {"doc_id": doc_key},
+                operation="neo4j.delete_by_doc_id",
+                request_id=request_id,
+                retryable=is_retryable,
             )
             nodes_deleted = self._run_write(
                 cleanup_query,
@@ -234,7 +280,7 @@ class Neo4jGraph:
         )
         return {"relationships_deleted": relationships_deleted, "entities_deleted": nodes_deleted}
 
-    def fetch_related(self, terms: Iterable[str], limit: int = 25) -> List[Dict[str, str]]:
+    def fetch_related(self, terms: Iterable[str], limit: int = 25) -> list[dict[str, str]]:
         """Pull related entities/relations that match any of the supplied terms."""
         cleaned = clean_query_terms(terms)
         if not cleaned:
@@ -243,6 +289,7 @@ class Neo4jGraph:
         query = Neo4jQueryRequest(
             build_fetch_related_query(),
             {"terms": cleaned, "limit": int(limit)},
+            operation="neo4j.fetch_related",
         )
         try:
             result = self._run_read(
@@ -252,7 +299,7 @@ class Neo4jGraph:
         except neo4j_exceptions.Neo4jError:
             return []
 
-        facts: List[Dict[str, str]] = []
+        facts: list[dict[str, str]] = []
         return parse_fact_rows(result)
 
     def search_structural(
@@ -262,7 +309,7 @@ class Neo4jGraph:
         limit: int = 40,
         hops: int = 2,
         include_rel_match: bool = False,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Return structural graph candidates based on matched entities and hop expansion."""
         cleaned = clean_query_terms(terms)
         if not cleaned:
@@ -272,6 +319,7 @@ class Neo4jGraph:
         query = Neo4jQueryRequest(
             build_search_structural_query(safe_hops, include_rel_match=include_rel_match),
             {"terms": cleaned, "limit": int(limit), "hops": safe_hops},
+            operation="neo4j.search_structural",
         )
         try:
             result = self._run_read(

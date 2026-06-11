@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter  # type: ignore[reportMissingImports]
+from fastapi import APIRouter
 
 from app.settings import AppSettings
 from app.config_response import build_config_response

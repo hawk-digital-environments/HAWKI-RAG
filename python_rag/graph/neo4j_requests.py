@@ -2,11 +2,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Tuple, TypedDict
+from typing import Any, TypedDict
 
 from collections.abc import Iterable
 
-Triplet = Tuple[str, str, str]
+Triplet = tuple[str, str, str]
 
 
 class UpsertRow(TypedDict):
@@ -21,7 +21,10 @@ class Neo4jQueryRequest:
     """Concrete, testable representation for one query dispatch."""
 
     statement: str
-    params: Dict[str, Any]
+    params: dict[str, Any]
+    operation: str | None = None
+    retryable: bool = True
+    request_id: str | None = None
 
 
 def build_upsert_triplets_query() -> str:

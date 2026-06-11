@@ -53,7 +53,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl && \
     rm -rf /var/lib/apt/lists/*
 
-COPY python_rag/rerank/local_reranker/requirements.txt /app/requirements.txt
+COPY python_rag/requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir --retries 10 --timeout 180 -r requirements.txt
 
 COPY python_rag/rerank/local_reranker/app.py /app/app.py

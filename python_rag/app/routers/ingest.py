@@ -6,7 +6,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter  # type: ignore[reportMissingImports]
+from fastapi import APIRouter, Request
 
 from app.dependencies import get_provider_or_400
 from app.schemas import DocumentUpsertRequest, IngestRequest, apply_ingest_request_settings
@@ -27,12 +27,24 @@ def build_ingest_router(
     def get_provider(name: str) -> Any:
         return get_provider_or_400(rag_service, name)
 
+    def _extract_idempotency_key(request: Request, fallback: str | None = None) -> str | None:
+        header_value = request.headers.get("Idempotency-Key")
+        return (header_value.strip() or (fallback.strip() if isinstance(fallback, str) else None)) or None
+
     @router.post("/ingest")
-    def ingest(body: IngestRequest) -> dict[str, Any]:
+    def ingest(body: IngestRequest, request: Request) -> dict[str, Any]:
         from app.ingest import ingest_documents
 
         body = apply_ingest_request_settings(body, app_settings)
-        logger.info("api:ingest docs=%s graph=%s", len(body.docs), body.graph)
+        request_id = getattr(request.state, "request_id", None)
+        idempotency_key = _extract_idempotency_key(request, body.idempotency_key)
+        logger.info(
+            "api:ingest request_id=%s docs=%s graph=%s idempotency_key=%s",
+            request_id,
+            len(body.docs),
+            body.graph,
+            idempotency_key,
+        )
         if body.graph:
             log_graph_status("ingest_graph")
 
@@ -42,14 +54,22 @@ def build_ingest_router(
             get_provider=get_provider,
             public_dir=public_dir,
             graph_debug=app_settings.graph_debug,
+            idempotency_key=idempotency_key,
         )
 
     @router.delete("/documents/{doc_id}")
-    def delete_document_endpoint(doc_id: str) -> dict[str, Any]:
+    def delete_document_endpoint(doc_id: str, request: Request) -> dict[str, Any]:
         from app.ingest import delete_document
 
-        logger.info("api:delete doc_id=%s", doc_id)
-        result = delete_document(doc_id)
+        request_id = getattr(request.state, "request_id", None)
+        idempotency_key = _extract_idempotency_key(request, doc_id)
+        logger.info(
+            "api:delete request_id=%s doc_id=%s idempotency_key=%s",
+            request_id,
+            doc_id,
+            idempotency_key,
+        )
+        result = delete_document(doc_id, idempotency_key=idempotency_key)
         return {
             "ok": True,
             "doc_id": str(doc_id),
@@ -58,11 +78,13 @@ def build_ingest_router(
         }
 
     @router.put("/documents/{doc_id}")
-    def replace_document(doc_id: str, body: DocumentUpsertRequest) -> dict[str, Any]:
+    def replace_document(doc_id: str, body: DocumentUpsertRequest, request: Request) -> dict[str, Any]:
         from app.documents import build_replacement_ingest_request
         from app.ingest import delete_document, ingest_documents
 
-        deletion = delete_document(doc_id)
+        request_id = getattr(request.state, "request_id", None)
+        idempotency_key = _extract_idempotency_key(request, body.idempotency_key)
+        deletion = delete_document(doc_id, idempotency_key=idempotency_key)
         ingest_request = build_replacement_ingest_request(
             doc_id=doc_id,
             body=body,
@@ -75,10 +97,16 @@ def build_ingest_router(
             get_provider=get_provider,
             public_dir=public_dir,
             graph_debug=app_settings.graph_debug,
+            idempotency_key=idempotency_key,
         )
         ingest_response["replaced_doc_id"] = str(doc_id)
         ingest_response["deleted"] = deletion
-        logger.info("api:replace doc_id=%s", doc_id)
+        logger.info(
+            "api:replace request_id=%s doc_id=%s idempotency_key=%s",
+            request_id,
+            doc_id,
+            idempotency_key,
+        )
         return ingest_response
 
     return router

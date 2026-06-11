@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import HTTPException  # type: ignore[reportMissingImports]
+from fastapi import HTTPException
 
 
 def get_provider_or_400(rag_service: Any, name: str) -> Any:

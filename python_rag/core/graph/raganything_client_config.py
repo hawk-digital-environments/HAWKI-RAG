@@ -5,9 +5,9 @@ from __future__ import annotations
 import asyncio
 import logging
 from pathlib import Path
-from typing import Any, Dict, Tuple
+from typing import Any
 
-import numpy as np  # type: ignore
+import numpy as np
 
 from core.graph.provider_config import clone_provider_for_graph, graph_model_override, provider_fingerprint
 from core.graph.raganything_runtime import prepare_lightrag_neo4j_env
@@ -55,14 +55,14 @@ def register_chunked_doc_status_storage() -> bool:
         return False
 
 
-def graph_runtime_summary_limits(settings: RagAnythingGraphSettings) -> Dict[str, int | None]:
+def graph_runtime_summary_limits(settings: RagAnythingGraphSettings) -> dict[str, int | None]:
     return {
         "graph_doc_max_chars": settings.graph_doc_max_chars,
         "graph_doc_max_chunks": settings.graph_doc_max_chunks,
         "graph_min_chunk_chars": settings.graph_min_chunk_chars,
         "graph_min_doc_chars": settings.graph_min_doc_chars,
         "ollama_chat_timeout": parse_optional_int(settings.ollama_chat_timeout),
-    }  # type: ignore[return-value]
+    }
 
 
 def _embed_model_dim(graph_provider: Any) -> int:
@@ -172,8 +172,8 @@ def build_raganything_client(
     settings: RagAnythingGraphSettings,
     logger_obj: logging.Logger,
     neo4j_database: str | None = None,
-) -> tuple[Any | None, Dict[str, Any], Dict[str, Any]]:
-    base_runtime_meta: Dict[str, Any] = {
+) -> tuple[Any | None, dict[str, Any], dict[str, Any]]:
+    base_runtime_meta: dict[str, Any] = {
         "doc_status_storage": "JsonDocStatusStorage",
         "graph_storage": "NetworkXStorage(default)",
         "graph_client_initialized": False,
@@ -220,7 +220,7 @@ def build_raganything_client(
         neo4j_database=neo4j_database,
     )
 
-    lightrag_kwargs: Dict[str, Any] = {}
+    lightrag_kwargs: dict[str, Any] = {}
     if chunked_doc_status_ok:
         lightrag_kwargs["doc_status_storage"] = "ChunkedJsonDocStatusStorage"
     if neo4j_graph_ok:

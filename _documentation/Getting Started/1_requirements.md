@@ -53,3 +53,24 @@
 - Ports listed above are unused.
 - `.env` exists and is filled.
 - If GPU: `nvidia-smi` returns successfully.
+
+
+## Python service bootstrap (recommended)
+- Install Python dependencies for the FastAPI bridge and reranker before first use:
+
+```bash
+cd /home/rnonk/RAG/RAWKI
+make python-deps
+```
+
+- Environment variables for startup health checks (documented in `.env.example`):
+  - `STARTUP_CHECKS_ENABLED` (default `true`)
+  - `STARTUP_CHECK_ATTEMPTS` (default `3`)
+  - `STARTUP_CHECK_TIMEOUT_SECONDS` (default `3`)
+  - `STARTUP_CHECK_BACKOFF_SECONDS` (default `0.5`)
+
+- If caches appear in repository status, run:
+
+```bash
+make clean
+```

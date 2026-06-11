@@ -2,11 +2,11 @@ import json
 import logging
 from pathlib import Path
 from dataclasses import replace
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from graph.visualization_settings import GraphVisualizationSettings, load_graph_visualization_settings
 
-from neo4j import GraphDatabase, exceptions as neo4j_exceptions  # type: ignore[reportMissingImports]
+from neo4j import GraphDatabase, exceptions as neo4j_exceptions
 
 
 logger = logging.getLogger(__name__)
@@ -18,7 +18,7 @@ class Neo4jGraphVisualization:
     def __init__(
         self,
         *,
-        database: Optional[str] = None,
+        database: str | None = None,
         settings: GraphVisualizationSettings | None = None,
         driver_factory=GraphDatabase.driver,
     ) -> None:
@@ -49,7 +49,7 @@ class Neo4jGraphVisualization:
             return self._driver.session(database=self._database)
         return self._driver.session()
 
-    def snapshot(self, *, limit: Optional[int] = None, recent_doc_id: Optional[str] = None) -> Dict[str, Any]:
+    def snapshot(self, *, limit: int | None = None, recent_doc_id: str | None = None) -> dict[str, Any]:
         effective_limit = int(limit) if limit is not None else 0
         limit_clause = "LIMIT $limit " if effective_limit > 0 else ""
         query = (
@@ -74,8 +74,8 @@ class Neo4jGraphVisualization:
         with self._session() as session:
             records = session.execute_read(lambda tx: list(tx.run(query, limit=effective_limit)))
 
-        nodes: Dict[str, Dict[str, Any]] = {}
-        links: List[Dict[str, Any]] = []
+        nodes: dict[str, dict[str, Any]] = {}
+        links: list[dict[str, Any]] = []
         doc_ids = set()
         recent_doc_key = str(recent_doc_id).strip() if recent_doc_id else None
         recent_relationship_count = 0
@@ -145,11 +145,11 @@ class Neo4jGraphVisualization:
 def write_graph_visualization(
     public_dir: Path,
     *,
-    database: Optional[str] = None,
-    limit: Optional[int] = None,
+    database: str | None = None,
+    limit: int | None = None,
     settings: GraphVisualizationSettings | None = None,
-    recent_doc_id: Optional[str] = None,
-) -> Optional[Path]:
+    recent_doc_id: str | None = None,
+) -> Path | None:
     config = settings or load_graph_visualization_settings(database=database)
     if database is not None and database.strip() and database.strip() != (config.database or ""):
         config = replace(config, database=(database or "").strip())

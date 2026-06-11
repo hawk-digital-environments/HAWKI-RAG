@@ -57,13 +57,19 @@ COMPOSE_FILE_PREFIX := COMPOSE_FILE=$(COMPOSE_FILE_LIST)
 COMPOSE_CMD = $(COMPOSE_ENV_PREFIX) COMPOSE_FILE=$(COMPOSE_FILE_LIST) $(if $(strip $(COMPOSE_PROFILES)),COMPOSE_PROFILES=$(COMPOSE_PROFILES)) $(COMPOSE_BIN) --env-file $(ENV_FILE)
 
 
-.PHONY: clean network pull-core build-app migrate-core _up-core up-core up-core-server health pull-models scraped-folders crawl convert ingest convert-ingest-folder pipeline logs-core down-core down-rag restart-core test-services neo4j-fresh python-test
+.PHONY: clean network pull-core build-app migrate-core _up-core up-core up-core-server health pull-models scraped-folders crawl convert ingest convert-ingest-folder pipeline logs-core down-core down-rag restart-core test-services neo4j-fresh python-test python-deps
 
 clean:
 	@find . -type d -name "__pycache__" -exec rm -rf {} +
 	@find . -type f -name "*.py[cod]" -delete
+	@find . -type f -name "*.pyc" -delete
+	@find . -type f -name "*.pyo" -delete
 	@find . -type f -name "*.log" -delete
 	@rm -rf .pytest_cache .ruff_cache .mypy_cache .coverage* .tox .venv dist build
+
+python-deps:
+	@python3 -m pip install --upgrade pip setuptools wheel
+	@python3 -m pip install -r python_rag/requirements.txt
 
 network:
 	@for net in hawki-network hosting_network; do \
