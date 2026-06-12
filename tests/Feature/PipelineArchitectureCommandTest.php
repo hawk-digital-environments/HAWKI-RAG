@@ -14,16 +14,13 @@ class PipelineArchitectureCommandTest extends TestCase
         $output = Artisan::output();
 
         $this->assertSame(0, $exitCode);
-        $this->assertStringContainsString('Pipeline event contracts', $output);
-        $this->assertStringContainsString('scrape.requested', $output);
-        $this->assertStringContainsString('RabbitMQ topology', $output);
-        $this->assertStringContainsString('pipeline.events', $output);
-        $this->assertStringContainsString('Failure modes', $output);
-        $this->assertStringContainsString('retry_limit_exhausted', $output);
-        $this->assertStringContainsString('Handler responsibilities', $output);
-        $this->assertStringContainsString('ScrapeMonitorEventHandler', $output);
+        $this->assertStringContainsString('Temporal RAG ingestion architecture', $output);
+        $this->assertStringContainsString('IngestSourceWorkflow', $output);
+        $this->assertStringContainsString('scrape_source', $output);
+        $this->assertStringContainsString('inspect_and_convert_files', $output);
+        $this->assertStringContainsString('ingest_markdown_files', $output);
         $this->assertStringContainsString('Persistence map', $output);
-        $this->assertStringContainsString('pipeline_jobs', $output);
-        $this->assertStringContainsString('Mental model', $output);
+        $this->assertStringContainsString('PostgreSQL Temporal tables', $output);
+        $this->assertStringContainsString('Scheduling', $output);
     }
 }

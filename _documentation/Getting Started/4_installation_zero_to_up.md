@@ -15,9 +15,10 @@ Open `.env` in an editor and set:
 | Variable | Required | When to set |
 | --- | --- | --- |
 | `APP_KEY` | Yes | Always |
-| `DB_ROOT_PASSWORD` | Yes | Always |
 | `DB_PASSWORD` | Yes | Always |
 | `NEO4J_PASSWORD` | Yes | Always |
+| `EXTERNAL_SCRAPER_URL` | Yes | When starting source ingestion workflows |
+| `EXTERNAL_CONVERTER_URL` | Yes | When starting source ingestion workflows |
 | `FILE_CONVERTER_TOKEN` | Optional | If you use file conversion |
 | `TAVILY_SEARCH_API_KEY` | Optional | If `WEB_SEARCH_PROVIDER=tavily` |
 | `BRAVE_SEARCH_API_KEY` | Optional | If `WEB_SEARCH_PROVIDER=brave` |
@@ -34,7 +35,7 @@ Open `.env` in an editor and set:
 - Command: `make up-core`
 
 :::tip "Verification"
-    `docker ps` should show containers such as `hawki_rag_app`, `hawki_qdrant`, `hawki_rag_bridge`, `hawki_rag_rerank`, `hawki_rag_neo4j`, `hawki_ollama`, `mariadb`, and `adminer`.
+    `docker ps` should show containers such as `hawki_rag_app`, `hawki_qdrant`, `hawki_rag_bridge`, `hawki_rag_rerank`, `hawki_rag_neo4j`, `hawki_ollama`, `hawki_rag_postgres`, `temporal`, `temporal_ui`, and `adminer`.
 :::
 
 ## Step 5 - Health check everything

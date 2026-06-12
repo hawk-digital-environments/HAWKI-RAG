@@ -103,6 +103,11 @@ class PipelineTaskController extends Controller
         return $this->retry($taskId);
     }
 
+    public function cancel(string $taskId): JsonResponse
+    {
+        return $this->taskActionResponse($taskId, $this->pipeline->tasks->cancel($taskId));
+    }
+
     private function taskActionResponse(string $taskId, mixed $task): JsonResponse
     {
         if (! $task) {

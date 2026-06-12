@@ -9,7 +9,6 @@ use App\Services\DirectIngest\DirectIngestLaunchService;
 use App\Services\DirectIngest\DirectIngestStatusService;
 use App\Services\DirectIngest\DirectIngestStatusStore;
 use App\Services\DirectIngest\DirectIngestStopService;
-use App\Services\Pipeline\Queues\PipelineQueueMonitorService;
 use App\Services\Pipeline\Recovery\PipelineRecoveryService;
 use App\Services\Pipeline\State\PipelineStateService;
 use App\Services\Pipeline\Status\PipelineStatusService;
@@ -26,7 +25,6 @@ readonly class PipelineService
         public PipelineTaskService $tasks,
         public PipelineRecoveryService $recovery,
         public PipelineUploadService $uploads,
-        public PipelineQueueMonitorService $queues,
         public CrawledDataFolderService $crawledFolders,
         public DirectIngestLaunchService $directIngestLaunches,
         public DirectIngestStatusService $directIngestStatuses,

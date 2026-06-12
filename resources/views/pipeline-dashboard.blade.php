@@ -20,9 +20,9 @@
     <main class="pipeline-dashboard" data-pipeline-dashboard>
         <header class="dashboard-header">
             <div>
-                <p class="eyebrow">Laravel-owned pipeline</p>
+                <p class="eyebrow">Temporal ingestion</p>
                 <h1>HAWKI Pipeline Dashboard</h1>
-                <p class="header-copy">Scrape, convert, and ingest state from Laravel database records.</p>
+                <p class="header-copy">Scrape, convert, ingest, and workflow state from Laravel database records.</p>
             </div>
             <div class="header-actions">
                 @include('partials.pipeline-nav', ['active' => 'dashboard', 'refreshId' => 'pipeline-dashboard-refresh'])

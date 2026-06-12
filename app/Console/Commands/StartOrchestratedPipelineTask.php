@@ -13,9 +13,10 @@ class StartOrchestratedPipelineTask extends Command
         {--sitemap-url= : Remote sitemap URL}
         {--sitemap-path= : Local sitemap path}
         {--source-url= : Single source URL}
-        {--url=* : Source URL, can be repeated}';
+        {--url=* : Source URL, can be repeated}
+        {--refresh-cadence= : Optional Temporal schedule cadence: daily, weekly, or monthly}';
 
-    protected $description = 'Create a Laravel-owned pipeline task and publish RabbitMQ worker jobs.';
+    protected $description = 'Create a Laravel-owned pipeline task and start Temporal source ingestion workflows.';
 
     public function handle(PipelineTaskService $tasks): int
     {
@@ -26,6 +27,7 @@ class StartOrchestratedPipelineTask extends Command
             'sitemap_path' => $this->option('sitemap-path'),
             'source_url' => $this->option('source-url'),
             'urls' => $this->option('url') ?: [],
+            'refresh_cadence' => $this->option('refresh-cadence'),
         ];
 
         $task = $tasks->start($input);

@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Services\Pipeline\Tasks;
 
 use App\Models\PipelineJob;
-use App\Services\Pipeline\Events\PipelineEventRecorder;
 use App\Services\Pipeline\Repositories\Queries\PipelineTaskJobsQuery;
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Support\Collection;
@@ -14,7 +13,6 @@ use Illuminate\Support\Collection;
 readonly class PipelineTaskTimelineService
 {
     public function __construct(
-        private PipelineEventRecorder $events,
         private PipelineTaskInputNormalizer $input,
         private PipelineTaskPayloadService $payloads,
         private PipelineTaskJobsQuery $taskJobs,
@@ -29,14 +27,7 @@ readonly class PipelineTaskTimelineService
     {
         $limit = max(1, min(250, $limit));
 
-        $timeline = $this->events->timeline($taskId, array_merge($filters, ['limit' => $limit]));
-        if ($timeline !== []) {
-            return $timeline;
-        }
-
-        return $this->taskJobs
-            ->forTaskByRecentUpdate($taskId)
-            ->flatMap(fn (PipelineJob $job) => $this->payloads->eventsForJob($job))
+        return $this->jobEvents($taskId)
             ->when($this->input->nullableString($filters['event_type'] ?? $filters['eventType'] ?? null), function (Collection $events, string $eventType): Collection {
                 return $events->filter(fn (array $event): bool => ($event['eventType'] ?? null) === $eventType);
             })
@@ -54,9 +45,33 @@ readonly class PipelineTaskTimelineService
      */
     public function eventFilters(string $taskId): array
     {
+        $events = $this->jobEvents($taskId);
+
         return [
-            'eventTypes' => $this->events->eventTypes($taskId),
-            'jobIds' => $this->events->jobIds($taskId),
+            'eventTypes' => $events
+                ->pluck('eventType')
+                ->filter()
+                ->unique()
+                ->sort()
+                ->values()
+                ->all(),
+            'jobIds' => $events
+                ->pluck('jobId')
+                ->filter()
+                ->unique()
+                ->sort()
+                ->values()
+                ->all(),
         ];
+    }
+
+    /**
+     * @return Collection<int, array<string, mixed>>
+     */
+    private function jobEvents(string $taskId): Collection
+    {
+        return $this->taskJobs
+            ->forTaskByRecentUpdate($taskId)
+            ->flatMap(fn (PipelineJob $job) => $this->payloads->eventsForJob($job));
     }
 }

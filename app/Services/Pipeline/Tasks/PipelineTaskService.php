@@ -20,6 +20,7 @@ class PipelineTaskService
         private readonly PipelineTaskStarter $starter,
         private readonly PipelineTaskJobUpdater $updater,
         private readonly PipelineTaskRetryService $retries,
+        private readonly PipelineTaskCancellationService $cancellations,
         private readonly PipelineTaskTimelineService $timeline,
         private readonly PipelineTaskStatusRefresher $refresher,
         private readonly PipelineTaskRepository $taskRepository,
@@ -92,6 +93,11 @@ class PipelineTaskService
     public function retry(string $taskId): ?PipelineTask
     {
         return $this->retryFailedJobs($taskId);
+    }
+
+    public function cancel(string $taskId): ?PipelineTask
+    {
+        return $this->cancellations->cancel($taskId);
     }
 
     public function completeIfIdle(string $taskId): ?PipelineTask

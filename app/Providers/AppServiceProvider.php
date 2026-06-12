@@ -9,7 +9,6 @@ use App\Services\Storage\StorageElementReader;
 use App\Services\Storage\StorageJobReportReader;
 use App\Services\Storage\StoragePathBuilder;
 use App\Services\Storage\UrlGenerator;
-use App\Services\Pipeline\Events\PipelineEventConfig;
 use App\Services\WebSearch\Exceptions\WebSearchFailedException;
 use App\Services\WebSearch\Implementations\BraveSearch;
 use App\Services\WebSearch\Implementations\TavilySearch;
@@ -31,7 +30,6 @@ class AppServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->singleton(ClockInterface::class, CarbonClock::class);
-        $this->app->singleton(PipelineEventConfig::class);
 
         $this->app->singleton(StorageService::class, function (Application $app) {
             $config = $app->make(ConfigRepository::class);

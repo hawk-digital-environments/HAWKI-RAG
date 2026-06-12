@@ -30,7 +30,7 @@ readonly class PipelineDemoCommandRenderer
      */
     public function dryRun(Command $command, array $urls, array $dashboardUrls): void
     {
-        $command->warn('Dry run only. No task, jobs, or RabbitMQ events were created.');
+        $command->warn('Dry run only. No task, jobs, or Temporal workflows were created.');
         $this->printUrls($command, $urls);
         $this->printDashboardUrls($command, $dashboardUrls);
         $this->printWorkerCommands($command);
@@ -52,9 +52,8 @@ readonly class PipelineDemoCommandRenderer
         $command->line('Task ID: '.$task->task_id);
         $command->line('Status: '.($status['status'] ?? $task->status));
         $command->line("Jobs created: {$jobsTotal}");
-        $command->line("Queued scrape jobs: {$queued}");
-        $command->line("Skipped scrape jobs: {$skipped}");
-        $command->line('RabbitMQ events requested: '.$queued.' scrape.requested event(s).');
+        $command->line("Temporal ingest workflows requested: {$queued}");
+        $command->line("Skipped jobs: {$skipped}");
         $this->printUrls($command, $urls);
         $this->printDashboardUrls($command, $dashboardUrls);
         $this->printWorkerCommands($command);
@@ -86,13 +85,10 @@ readonly class PipelineDemoCommandRenderer
     private function printWorkerCommands(Command $command): void
     {
         $command->newLine();
-        $command->line('If the task stays queued, start the pipeline workers:');
-        $command->line('  docker compose --profile pipeline-events up -d hawki-rag-scraper-event-worker hawki-rag-scrape-monitor-event-worker hawki-rag-converter-event-worker hawki-rag-ingestion-event-worker');
+        $command->line('If the task stays queued, start Temporal and the ingestion workers:');
+        $command->line('  make up-core');
         $command->line('');
-        $command->line('Direct Artisan worker commands:');
-        $command->line('  php artisan pipeline:scraper-event-worker');
-        $command->line('  php artisan pipeline:scrape-monitor-event-worker');
-        $command->line('  php artisan pipeline:converter-event-worker');
-        $command->line('  php artisan pipeline:ingestion-event-worker');
+        $command->line('Worker containers:');
+        $command->line('  docker compose up -d hawki-rag-temporal-workflow-worker hawki-rag-temporal-scraper-worker hawki-rag-temporal-converter-worker hawki-rag-temporal-ingestion-worker');
     }
 }

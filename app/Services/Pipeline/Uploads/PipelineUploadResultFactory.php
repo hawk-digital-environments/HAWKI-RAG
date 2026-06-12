@@ -53,22 +53,6 @@ readonly class PipelineUploadResultFactory
         ], 500);
     }
 
-    public function publishFailure(
-        PipelineTask $task,
-        PipelineJob $job,
-        \Throwable $exception,
-    ): PipelineUploadResult {
-        return PipelineUploadResult::fromPayload([
-            'success' => false,
-            'message' => 'The file was stored, but RabbitMQ did not accept the converter job.',
-            'taskId' => $task->task_id,
-            'jobId' => $job->job_id,
-            'datasetId' => $task->dataset_id,
-            'error' => $exception->getMessage(),
-            'dashboardUrl' => $this->dashboardUrl($task),
-        ], 502);
-    }
-
     public function success(PipelineTask $task, PipelineJob $job): PipelineUploadResult
     {
         return PipelineUploadResult::fromPayload([

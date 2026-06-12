@@ -155,29 +155,29 @@ def test_graph_document_preparation_collects_original_image_paths() -> None:
         "image-doc",
         [
             {
-                "content": "RabbitMQ Topic Exchange routes upload events to the converter worker.",
-                "payload": {
-                    "file_path": "/tmp/converted.md",
-                    "original_path": "/tmp/rabbitmq-topology.png",
-                    "source_file": "/tmp/source-file.png",
-                    "image_path": "/tmp/rabbitmq-topology.png",
-                    "images": ["/tmp/flow.jpg", "/tmp/readme.md"],
-                },
-            }
+                    "content": "Temporal Workflow routes conversion activities to the converter worker.",
+                    "payload": {
+                        "file_path": "/tmp/converted.md",
+                        "original_path": "/tmp/temporal-workflow.png",
+                        "source_file": "/tmp/source-file.png",
+                        "image_path": "/tmp/temporal-workflow.png",
+                        "images": ["/tmp/flow.jpg", "/tmp/readme.md"],
+                    },
+                }
         ],
         max_chunks=0,
         max_chars=0,
     )
 
     assert prepared.file_path == "/tmp/converted.md"
-    assert prepared.image_paths == ["/tmp/rabbitmq-topology.png", "/tmp/source-file.png", "/tmp/flow.jpg"]
+    assert prepared.image_paths == ["/tmp/temporal-workflow.png", "/tmp/source-file.png", "/tmp/flow.jpg"]
 
 
 def test_graph_content_list_includes_existing_image_blocks() -> None:
     from infrastructure.raganything.raganything_extract import graph_content_list_from_input
 
     with tempfile.TemporaryDirectory() as tmp:
-        image_path = Path(tmp) / "rabbitmq-topology.png"
+        image_path = Path(tmp) / "temporal-workflow.png"
         image_path.write_bytes(b"not-a-real-png-but-existing")
 
         content = graph_content_list_from_input(
@@ -199,8 +199,8 @@ def test_llm_triplet_fallback_parses_strict_json_response() -> None:
     ```json
     {
       "triplets": [
-        {"subject": "RabbitMQ Topic Exchange", "relation": "routes", "object": "converter worker"},
-        {"subject": "RabbitMQ Topic Exchange", "relation": "routes", "object": "converter worker"},
+        {"subject": "Temporal Workflow", "relation": "routes", "object": "converter worker"},
+        {"subject": "Temporal Workflow", "relation": "routes", "object": "converter worker"},
         {"subject": "[]", "relation": "mentions", "object": "noise"}
       ]
     }
@@ -208,7 +208,7 @@ def test_llm_triplet_fallback_parses_strict_json_response() -> None:
     """
 
     assert parse_llm_triplet_response(response) == [
-        ("RabbitMQ Topic Exchange", "routes", "converter worker")
+        ("Temporal Workflow", "routes", "converter worker")
     ]
 
 
@@ -248,7 +248,7 @@ def test_triplet_extractor_uses_llm_fallback_when_raganything_returns_empty() ->
         def chat(self, system: str, messages: list[dict[str, str]], *, temperature: float | None = None) -> str:
             self.messages = messages
             return (
-                '{"triplets":[{"subject":"RabbitMQ Topic Exchange",'
+                '{"triplets":[{"subject":"Temporal Workflow",'
                 '"relation":"routes","object":"converter worker"}]}'
             )
 
@@ -260,17 +260,17 @@ def test_triplet_extractor_uses_llm_fallback_when_raganything_returns_empty() ->
         "",
         "raganything",
         provider=provider,
-        chunks=["RabbitMQ Topic Exchange routes upload events to the converter worker."],
+        chunks=["Temporal Workflow routes conversion activities to the converter worker."],
         doc_id="image-doc",
         file_path="/tmp/converted.md",
-        image_paths=["/tmp/rabbitmq-topology.png"],
+        image_paths=["/tmp/temporal-workflow.png"],
         neo4j_database="neo4j",
         graph_perf_log=False,
     )
 
-    assert triplets == [("RabbitMQ Topic Exchange", "routes", "converter worker")]
-    assert graph_service.kwargs["image_paths"] == ["/tmp/rabbitmq-topology.png"]
-    assert "/tmp/rabbitmq-topology.png" in provider.messages[0]["content"]
+    assert triplets == [("Temporal Workflow", "routes", "converter worker")]
+    assert graph_service.kwargs["image_paths"] == ["/tmp/temporal-workflow.png"]
+    assert "/tmp/temporal-workflow.png" in provider.messages[0]["content"]
 
 
 def test_text_helper_modules_preserve_term_tag_and_chunk_rules() -> None:

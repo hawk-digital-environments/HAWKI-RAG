@@ -6,9 +6,11 @@ namespace App\Services\Pipeline\Tasks;
 
 use App\Models\PipelineJob;
 use App\Models\PipelineTask;
-use App\Services\Pipeline\Repositories\PipelineJobRecoveryRepository;
+use App\Services\Pipeline\Repositories\IngestionSourceRepository;
+use App\Services\Pipeline\Repositories\PipelineJobStateMutationRepository;
 use App\Services\Pipeline\Repositories\PipelineTaskRepository;
 use App\Services\Pipeline\Repositories\Queries\FailedPipelineJobsQuery;
+use App\Services\Temporal\TemporalOrchestrationClient;
 use Illuminate\Container\Attributes\Singleton;
 use Psr\Clock\ClockInterface;
 use Symfony\Component\Clock\Clock;
@@ -17,13 +19,14 @@ use Symfony\Component\Clock\Clock;
 readonly class PipelineTaskRetryService
 {
     public function __construct(
-        private PipelineTaskEventPayloadService $eventPayloads,
         private PipelineTaskMetadataService $metadata,
+        private IngestSourceWorkflowPayloadFactory $workflowPayloads,
+        private IngestionSourceRepository $ingestionSources,
         private PipelineTaskRepository $taskRepository,
         private FailedPipelineJobsQuery $failedJobs,
-        private PipelineJobRecoveryRepository $jobRecovery,
-        private PipelineTaskEventPublisher $publisher,
+        private PipelineJobStateMutationRepository $jobStates,
         private PipelineTaskStatusRefresher $refresher,
+        private TemporalOrchestrationClient $temporal,
         private ClockInterface $clock = new Clock(),
     ) {
     }
@@ -42,8 +45,7 @@ readonly class PipelineTaskRetryService
             $metadata['retry_count'] = (int) ($metadata['retry_count'] ?? 0) + 1;
             $metadata['retried_at'] = $this->timestamp();
 
-            $job = $this->jobRecovery->markQueuedForRetry($job, $metadata);
-            $this->publishRetryEventForJob($task, $job);
+            $this->restartTemporalWorkflow($task, $job, $metadata);
         }
 
         if ($jobs->isNotEmpty()) {
@@ -56,14 +58,52 @@ readonly class PipelineTaskRetryService
         return $this->refresher->recalculate($task);
     }
 
-    private function publishRetryEventForJob(PipelineTask $task, PipelineJob $job): void
+    /**
+     * @param array<string, mixed> $metadata
+     */
+    private function restartTemporalWorkflow(PipelineTask $task, PipelineJob $job, array $metadata): void
     {
-        $eventType = $this->eventPayloads->retryEventType($job);
-        if ($eventType === null) {
+        if (! is_string($job->source_id) || trim($job->source_id) === '') {
             return;
         }
 
-        $this->publisher->publish($eventType, $this->eventPayloads->forJob($task, $job, $eventType));
+        $source = $this->ingestionSources->findBySourceId($job->source_id);
+        if (! $source) {
+            return;
+        }
+
+        $workflowId = is_string($job->temporal_workflow_id) && trim($job->temporal_workflow_id) !== ''
+            ? $job->temporal_workflow_id
+            : $this->workflowPayloads->workflowId($source->source_id);
+
+        $source = $this->ingestionSources->upsertStarting($source->source_id, [
+            'source_url' => $source->source_url,
+            'task_id' => $task->task_id,
+            'dataset_id' => $task->dataset_id,
+            'refresh_cadence' => $source->refresh_cadence,
+            'raw_storage_path' => $source->raw_storage_path,
+            'markdown_storage_path' => $source->markdown_storage_path,
+            'metadata' => array_merge($source->metadata ?? [], [
+                'retried_at' => $this->timestamp(),
+            ]),
+        ]);
+
+        $workflowInput = $this->workflowPayloads->input($task, $job, $source);
+        $execution = $this->temporal->startIngestWorkflow($workflowInput, $workflowId);
+        $metadata['temporal'] = array_filter([
+            'workflow_id' => $execution->workflowId,
+            'run_id' => $execution->runId,
+            'schedule_id' => $job->temporal_schedule_id,
+        ], static fn (mixed $value): bool => $value !== null && $value !== '');
+
+        $this->ingestionSources->markWorkflowStarted($source, $execution->workflowId, $execution->runId, $job->temporal_schedule_id);
+        $this->jobStates->markTemporalStarted(
+            $job,
+            $execution->workflowId,
+            $execution->runId,
+            is_string($job->temporal_schedule_id) ? $job->temporal_schedule_id : null,
+            $metadata,
+        );
     }
 
     private function timestamp(): string

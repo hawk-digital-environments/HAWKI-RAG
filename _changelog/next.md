@@ -3,23 +3,23 @@
 ### What's New
 
 [//]: # (- The main new features and changes in this version.)
-- Simplify the HAWKI RAG pipeline to a Laravel-orchestrated MVP using RabbitMQ event workers for scrape, convert, and ingest.
-- Remove the legacy converted-document ingestion worker path in favor of the MVP event names.
+- Replace RabbitMQ-based RAG ingestion orchestration with Temporal workflows and Python activity workers.
+- Remove the legacy PHP event-bus worker path for scrape, convert, and ingest orchestration.
 - Add Neo4j graph visualization to the HAWKI RAG playground, including live graph snapshots, relationship counts, recently added triplet highlighting, and graph clearing controls.
 - Add graph-only ingestion mode for writing Neo4j triplets without running the full vector embedding flow.
 - Add document and pipeline state persistence foundations with new `documents` and `job_processing_state` models and migrations.
 - Replace phpMyAdmin with Adminer for a lighter database administration container.
-- Add a RabbitMQ service with management UI to the core Docker stack.
-- Add a crawler producer profile for RabbitMQ-based crawler event publishing.
+- Add Temporal Server and Temporal UI to the core Docker stack.
+- Add independently scalable Temporal workflow, scraper, converter, and ingestion workers.
 
 ### Quality of Life
 
 [//]: # (- Improvements and enhancements that improve the user experience.)
 - Introduce `docker-compose.local.yml` for local overrides, allowing developers to run the stack locally without modifying the default Compose files.
-- Add Makefile targets for local/server core startup, health checks, RabbitMQ publishing, crawl/convert/ingest flows, and Neo4j reset.
-- Reorganize `.env.example` into clearer sections for application, database, RabbitMQ, RAG, Neo4j, and search configuration.
+- Add Makefile targets for local/server core startup, health checks, Temporal workers, crawl/convert/ingest flows, and Neo4j reset.
+- Reorganize `.env.example` into clearer sections for application, PostgreSQL, Temporal, RAG, Neo4j, and search configuration.
 - Split the playground JavaScript into focused modules for ingestion, logs/stats, query handling, and graph visualization.
-- Add documentation for RabbitMQ ingestion, database operations, and pipeline state tracking.
+- Add documentation for Temporal ingestion, database operations, and pipeline state tracking.
 - Improve playground ingestion controls and status polling for default and Neo4j-specific ingestion modes.
 
 ### Bugfix
@@ -40,8 +40,8 @@
 ### Internals
 
 [//]: # (- Changes that are mostly relevant to maintainers and contributors, such as refactors, dependency updates, CI changes, etc.)
-- Refactor RAG orchestration from the older communication service abstraction into Laravel-owned RabbitMQ services and commands.
-- Add `ConvertedDocumentIngestionService` and `RagRabbitMQ` for event validation, topology declaration, retry handling, and bridge handoff.
+- Refactor RAG orchestration from the older communication service abstraction into Laravel-owned Temporal workflow/schedule services and commands.
+- Add Temporal workflow payload factories and external service adapter workers for scraper/converter/ingestion handoff.
 - Add pipeline validation and structured pipeline logging helpers for conversion and ingestion stages.
 - Remove previously tracked Python cache files and generated JSON artifacts from the repository.
 - Clean up Laravel migrations by removing obsolete cache/session/scrape table migrations and adding operational state tables for the new pipeline.

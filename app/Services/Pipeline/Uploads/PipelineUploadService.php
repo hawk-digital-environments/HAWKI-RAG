@@ -28,7 +28,6 @@ class PipelineUploadService
         private readonly PipelineUploadPolicy $policy,
         private readonly PipelineUploadIdentifierFactory $identifiers,
         private readonly PipelineUploadPayloadService $payloads,
-        private readonly PipelineUploadEventPublisher $publisher,
         private readonly PipelineUploadResultFactory $results,
         private readonly LoggerInterface $logger,
         private readonly ClockInterface $clock = new Clock(),
@@ -83,14 +82,15 @@ class PipelineUploadService
             $metadata,
         );
 
-        $payload = $this->payloads->fileDiscovered($task, $job, $sourceUrl, $storedUpload, $metadata);
-        $published = $this->publisher->publish($task, $job, $payload);
+        $this->logger->info('Pipeline controller upload stored as Laravel metadata.', [
+            'task_id' => $task->task_id,
+            'job_id' => $job->job_id,
+            'source_url' => $sourceUrl,
+            'local_path' => $storedUpload->localPath,
+            'orchestration' => 'temporal',
+        ]);
 
-        if (! $published->published && $published->exception !== null) {
-            return $this->results->publishFailure($published->task, $published->job, $published->exception);
-        }
-
-        return $this->results->success($published->task, $published->job);
+        return $this->results->success($task, $job);
     }
 
     private function now(): Carbon

@@ -26,6 +26,9 @@ class StartPipelineTaskRequest extends FormRequest
             'source_url' => 'nullable|string',
             'sourceUrl' => 'nullable|string',
             'urls' => 'nullable',
+            'refresh_cadence' => 'nullable|string|in:daily,weekly,monthly',
+            'refreshCadence' => 'nullable|string|in:daily,weekly,monthly',
+            'cadence' => 'nullable|string|in:daily,weekly,monthly',
             'metadata' => 'nullable|array',
         ];
     }

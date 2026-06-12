@@ -20,9 +20,10 @@
 - **Graph DB (Neo4j):** Stores entities/relationships extracted from text.
 - **Models (Ollama):** Runs `bge-m3` for embeddings; `llama3.1:8b` to write answers; `llama3.2:1b` for fast graph tasks.
 - **Bridge (Python FastAPI):** Ingests documents, chunks text, makes embeddings/graph, saves to Qdrant/Neo4j.
+- **Temporal:** Durable source-ingestion workflow orchestration for scrape, conversion, ingestion, retries, cancellation, and schedules.
 - **Reranker (Python):** Improves ordering of search results.
 - **RAG API (Python):** Runs retrieval orchestration across Qdrant/Neo4j and reranking for query workflows.
-- **Laravel App:** Web/API frontend; shows ingest status; proxies queries.
+- **Laravel App:** Web/API frontend; starts/cancels/schedules Temporal workflows; shows ingest status; proxies queries.
 
 ## Core Query Workflow (Diagram)
 ```mermaid
@@ -51,5 +52,5 @@ flowchart TB
 - **Embedding:** A list of numbers representing the meaning of text so similar texts are close together.
 - **Vector Database:** A database that can search by “closeness” of embeddings (Qdrant).
 - **Graph Database:** Stores nodes (entities) and edges (relationships) for richer queries (Neo4j).
-- **Queue:** Background job system (RabbitMQ optional; Laravel DB queue default).
+- **Temporal Workflow:** A durable process that remembers ingestion progress and retries work after worker restarts.
 - **Container:** A packaged mini-computer image; Docker runs many containers together.

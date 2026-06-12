@@ -7,7 +7,7 @@
 - GPU (optional): NVIDIA with CUDA for faster rerank/model inference; verify with `nvidia-smi`.
 
 ## Network & Ports
-- Ensure these host ports are free: 3306 (MariaDB) and `ADMINER_PORT` for Adminer (default is 8005 in this repo).
+- Ensure these host ports are free: 5432 (PostgreSQL), 7233 (Temporal), `TEMPORAL_UI_PORT` (default 8081), and `ADMINER_PORT` (default 8005).
 - RAG services (bridge, reranker, RAG API, Qdrant, Neo4j, Ollama) stay on the internal Docker network by default and do not bind host ports.
 
 ## Common Software (all platforms)
@@ -46,7 +46,7 @@
 
 
 ## Environment files
-- App/Laravel: copy `.env.example` → `.env`, fill secrets (DB, queues, keys).
+- App/Laravel: copy `.env.example` → `.env`, fill secrets (DB, Temporal, external scraper/converter, keys).
 
 ## Checklist before first run
 - Docker running and `docker ps` works.

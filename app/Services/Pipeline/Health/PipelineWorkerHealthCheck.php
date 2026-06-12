@@ -4,11 +4,6 @@ declare(strict_types=1);
 
 namespace App\Services\Pipeline\Health;
 
-use App\Console\Commands\Pipeline\ConverterEventWorkerCommand;
-use App\Console\Commands\Pipeline\IngestionEventWorkerCommand;
-use App\Console\Commands\Pipeline\ScrapeMonitorEventWorkerCommand;
-use App\Console\Commands\Pipeline\ScraperEventWorkerCommand;
-use App\Services\Pipeline\Events\PipelineEventConfig;
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Contracts\Config\Repository as ConfigRepository;
 
@@ -18,7 +13,6 @@ readonly class PipelineWorkerHealthCheck
     public function __construct(
         private ConfigRepository $config,
         private HttpEndpointHealthCheck $httpChecks,
-        private PipelineEventConfig $events,
         private PipelineHealthResultFactory $results,
     ) {
     }
@@ -28,39 +22,28 @@ readonly class PipelineWorkerHealthCheck
      */
     public function scraper(int $timeout): array
     {
-        $worker = $this->workerConfig('scraper');
-        $url = rtrim((string) $this->config->get('scraper.api_url'), '/').'/health';
-        $configError = $this->workerConfigError(ScraperEventWorkerCommand::class, $worker, 'scraper');
-        if ($configError !== null) {
-            return $configError;
-        }
+        $url = rtrim((string) $this->config->get('temporal.external_services.scraper_url'), '/').'/health';
+        $taskQueue = (string) $this->config->get('temporal.task_queues.scraper', 'rag-scraper-task-queue');
 
         return $this->httpChecks->reachabilityCheck(
-            'Scraper worker',
+            'Scraper adapter worker',
             $url,
             $timeout,
-            sprintf('Worker command registered, queue %s listens to %s.', $worker['queue'], implode(', ', $worker['listen'])),
-            'Start the scraper service or set CUSTOM_CRAWLER_URL. Start the consumer with php artisan pipeline:scraper-event-worker.',
+            sprintf('Temporal activity task queue %s calls the external scraper service.', $taskQueue),
+            'Start hawki-rag-temporal-scraper-worker and verify EXTERNAL_SCRAPER_URL or CUSTOM_CRAWLER_URL.',
         );
     }
 
     /**
      * @return array{name:string,status:string,detail:string,fix:string}
      */
-    public function scrapeMonitor(): array
+    public function workflow(): array
     {
-        $worker = $this->workerConfig('scrape_monitor');
-        $configError = $this->workerConfigError(ScrapeMonitorEventWorkerCommand::class, $worker, 'scrape_monitor');
-        if ($configError !== null) {
-            return $configError;
-        }
-
         return $this->results->ok(
-            'Scrape monitor worker',
+            'Workflow worker',
             sprintf(
-                'Worker command registered, queue %s listens to %s. RabbitMQ owns Crawl4AI completion polling.',
-                $worker['queue'],
-                implode(', ', $worker['listen']),
+                'IngestSourceWorkflow listens on Temporal task queue %s and coordinates scrape, conversion, ingestion, and readiness.',
+                $this->config->get('temporal.task_queues.workflow', 'rag-workflow-task-queue'),
             ),
         );
     }
@@ -70,27 +53,27 @@ readonly class PipelineWorkerHealthCheck
      */
     public function converter(int $timeout): array
     {
-        $worker = $this->workerConfig('converter');
         $url = (string) $this->config->get('file_converter.health_url');
-        $configError = $this->workerConfigError(ConverterEventWorkerCommand::class, $worker, 'converter');
-        if ($configError !== null) {
-            return $configError;
+        $taskQueue = (string) $this->config->get('temporal.task_queues.converter', 'rag-converter-task-queue');
+
+        if (trim($url) === '') {
+            $url = rtrim((string) $this->config->get('temporal.external_services.converter_url'), '/').'/health';
         }
 
         if (trim($url) === '') {
             return $this->results->failure(
-                'Converter worker',
-                'FILE_CONVERTER_HEALTH_URL is empty.',
-                'Set FILE_CONVERTER_URL or FILE_CONVERTER_HEALTH_URL and start php artisan pipeline:converter-event-worker.',
+                'Converter adapter worker',
+                'Converter health URL is empty.',
+                'Set EXTERNAL_CONVERTER_URL or FILE_CONVERTER_HEALTH_URL and start hawki-rag-temporal-converter-worker.',
             );
         }
 
         return $this->httpChecks->successCheck(
-            'Converter worker',
+            'Converter adapter worker',
             $url,
             $timeout,
-            sprintf('Worker command registered, queue %s listens to %s.', $worker['queue'], implode(', ', $worker['listen'])),
-            'Start the file converter service or set FILE_CONVERTER_URL. Start the consumer with php artisan pipeline:converter-event-worker.',
+            sprintf('Temporal activity task queue %s calls the external converter service.', $taskQueue),
+            'Start the external converter service and hawki-rag-temporal-converter-worker.',
         );
     }
 
@@ -99,67 +82,28 @@ readonly class PipelineWorkerHealthCheck
      */
     public function ingestion(int $timeout): array
     {
-        $worker = $this->workerConfig('ingestion');
         $bridge = rtrim((string) $this->config->get('config.hawki_rag_bridge_url'), '/');
-        $configError = $this->workerConfigError(IngestionEventWorkerCommand::class, $worker, 'ingestion');
-        if ($configError !== null) {
-            return $configError;
-        }
+        $taskQueue = (string) $this->config->get('temporal.task_queues.ingestion', 'rag-ingestion-task-queue');
 
         if ($bridge === '') {
             return $this->results->failure(
-                'Ingestion worker',
+                'Ingestion adapter worker',
                 'HAWKI_RAG_BRIDGE_URL is empty.',
-                'Set HAWKI_RAG_BRIDGE_URL and start php artisan pipeline:ingestion-event-worker.',
+                'Set HAWKI_RAG_BRIDGE_URL and start hawki-rag-temporal-ingestion-worker.',
             );
         }
 
         return $this->httpChecks->successCheck(
-            'Ingestion worker',
+            'Ingestion adapter worker',
             $bridge.'/health',
             $timeout,
             sprintf(
-                'Worker command registered, queue %s listens to %s. Provider: %s, graph: %s.',
-                $worker['queue'],
-                implode(', ', $worker['listen']),
-                $this->config->get('communication.rabbitmq.pipeline_ingestion.provider'),
-                filter_var($this->config->get('communication.rabbitmq.pipeline_ingestion.graph'), FILTER_VALIDATE_BOOLEAN) ? 'true' : 'false',
+                'Temporal activity task queue %s reads Markdown and writes through the RAG bridge. Provider: %s, graph: %s.',
+                $taskQueue,
+                $this->config->get('temporal.ingestion.provider'),
+                filter_var($this->config->get('temporal.ingestion.graph'), FILTER_VALIDATE_BOOLEAN) ? 'true' : 'false',
             ),
-            'Start hawki_rag_bridge or set HAWKI_RAG_BRIDGE_URL. Start the consumer with php artisan pipeline:ingestion-event-worker.',
+            'Start hawki_rag_bridge and hawki-rag-temporal-ingestion-worker, then verify HAWKI_RAG_BRIDGE_URL.',
         );
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    private function workerConfig(string $worker): array
-    {
-        return $this->events->worker($worker) ?? [];
-    }
-
-    /**
-     * @return array{name:string,status:string,detail:string,fix:string}|null
-     */
-    private function workerConfigError(string $commandClass, array $worker, string $name): ?array
-    {
-        $displayName = ucfirst(str_replace('_', ' ', $name)).' worker';
-
-        if (! class_exists($commandClass)) {
-            return $this->results->failure(
-                $displayName,
-                "Command class {$commandClass} is missing.",
-                'Restore the MVP pipeline worker command class.',
-            );
-        }
-
-        if (($worker['queue'] ?? '') === '' || ! is_array($worker['listen'] ?? null) || $worker['listen'] === []) {
-            return $this->results->failure(
-                $displayName,
-                'RabbitMQ worker queue or listen events are not configured.',
-                "Set communication.rabbitmq.pipeline_events.workers.{$name}.queue and listen events.",
-            );
-        }
-
-        return null;
     }
 }

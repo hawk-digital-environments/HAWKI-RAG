@@ -4,90 +4,58 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
-use App\Services\Pipeline\Architecture\PipelineArchitectureService;
-use App\Services\Pipeline\Events\PipelineEvent;
-use App\Services\Pipeline\Events\PipelineEventConfig;
+use Illuminate\Contracts\Config\Repository as ConfigRepository;
 use Illuminate\Console\Command;
 
 class PipelineWorkersCommand extends Command
 {
     protected $signature = 'pipeline:workers';
 
-    protected $description = 'Print MVP pipeline worker startup commands and RabbitMQ queue topology.';
+    protected $description = 'Print Temporal RAG ingestion worker startup commands and task queues.';
 
-    public function handle(PipelineArchitectureService $architecture, PipelineEventConfig $events): int
+    public function handle(ConfigRepository $config): int
     {
-        $topology = $architecture->topology();
-        $workerTopology = $topology['queues']['workers'] ?? [];
+        $queues = (array) $config->get('temporal.task_queues', []);
 
-        $this->line('HAWKI RAG MVP pipeline workers');
-        $this->line('Laravel owns orchestration. RabbitMQ is the event bus. No Prefect. No Redis.');
+        $this->line('HAWKI RAG Temporal ingestion workers');
+        $this->line('Laravel starts/cancels/schedules workflows. Temporal coordinates durable phase transitions.');
         $this->newLine();
 
-        $this->line('Start all pipeline workers with Docker:');
-        $this->line('  docker compose --profile pipeline-events up -d hawki-rag-scraper-event-worker hawki-rag-scrape-monitor-event-worker hawki-rag-converter-event-worker hawki-rag-ingestion-event-worker');
+        $this->line('Start the Temporal stack:');
+        $this->line('  docker compose up -d postgres temporal temporal-ui hawki_rag_app hawki_rag_bridge qdrant hawki_rag_neo4j');
         $this->newLine();
 
-        $this->line('Direct Artisan commands, one terminal per command:');
-        $this->line('  php artisan pipeline:declare-event-topology');
-        $this->line('  php artisan pipeline:scraper-event-worker');
-        $this->line('  php artisan pipeline:scrape-monitor-event-worker');
-        $this->line('  php artisan pipeline:converter-event-worker');
-        $this->line('  php artisan pipeline:ingestion-event-worker');
+        $this->line('Start all Temporal workers:');
+        $this->line('  docker compose up -d hawki-rag-temporal-workflow-worker hawki-rag-temporal-scraper-worker hawki-rag-temporal-converter-worker hawki-rag-temporal-ingestion-worker');
         $this->newLine();
 
-        $this->line('Scrape monitoring: RabbitMQ owns Crawl4AI status polling through scrape.monitor.requested events.');
-        $this->newLine();
-
-        $this->line('RabbitMQ exchanges:');
-        $this->line('  events exchange: '.$topology['eventsExchange']);
-        $this->line('  retry exchange: '.$topology['retryExchange']);
-        $this->line('  failed exchange: '.$topology['failedExchange']);
-        $this->line('  retry delay ms: '.$topology['retryDelayMs']);
-        $this->line('  max retries: '.$topology['maxRetries']);
-        $this->newLine();
-
-        $this->table(
-            ['Worker', 'Command', 'Queue', 'Listens to', 'Retry queues', 'Consumer tag'],
-            $this->workerRows(is_array($workerTopology) ? $workerTopology : [], $events),
-        );
-
-        $this->newLine();
-        $this->line('Failed event queue:');
-        $this->line('  queue: '.($topology['queues']['failedQueue'] ?? 'pipeline_failed_events'));
-        $this->line('  routing key: '.($topology['failedRoutingKey'] ?? PipelineEvent::JOB_FAILED));
-        $this->line('  event: '.PipelineEvent::JOB_FAILED);
+        $this->table(['Worker', 'Container', 'Task queue', 'Registers'], [
+            [
+                'workflow',
+                'hawki-rag-temporal-workflow-worker',
+                (string) ($queues['workflow'] ?? 'rag-workflow-task-queue'),
+                'IngestSourceWorkflow',
+            ],
+            [
+                'scraper adapter',
+                'hawki-rag-temporal-scraper-worker',
+                (string) ($queues['scraper'] ?? 'rag-scraper-task-queue'),
+                'scrape_source',
+            ],
+            [
+                'converter adapter',
+                'hawki-rag-temporal-converter-worker',
+                (string) ($queues['converter'] ?? 'rag-converter-task-queue'),
+                'inspect_and_convert_files',
+            ],
+            [
+                'ingestion adapter',
+                'hawki-rag-temporal-ingestion-worker',
+                (string) ($queues['ingestion'] ?? 'rag-ingestion-task-queue'),
+                'ingest_markdown_files, mark_source_ready',
+            ],
+        ]);
 
         return self::SUCCESS;
-    }
-
-    private function workerRows(array $workers, PipelineEventConfig $events): array
-    {
-        $commands = [
-            'scraper' => 'php artisan pipeline:scraper-event-worker',
-            'scrape_monitor' => 'php artisan pipeline:scrape-monitor-event-worker',
-            'converter' => 'php artisan pipeline:converter-event-worker',
-            'ingestion' => 'php artisan pipeline:ingestion-event-worker',
-        ];
-
-        return collect($workers)
-            ->map(function (array $workerConfig) use ($commands, $events): array {
-                $worker = (string) ($workerConfig['worker'] ?? '');
-                $configuredWorker = $events->worker($worker) ?? [];
-                $queue = (string) ($workerConfig['queueName'] ?? '');
-                $events = array_values(array_filter(array_map('strval', $workerConfig['listen'] ?? [])));
-                $retryQueues = array_values(array_filter(array_map('strval', $workerConfig['retryQueues'] ?? [])));
-
-                return [
-                    $worker,
-                    $commands[$worker] ?? 'unknown',
-                    $queue,
-                    implode(', ', $events),
-                    implode(', ', $retryQueues),
-                    (string) ($configuredWorker['consumer_tag'] ?? ''),
-                ];
-            })
-            ->values()
-            ->all();
     }
 }

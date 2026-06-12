@@ -43,6 +43,7 @@ ENV DOCKER_PROJECT_HOST=${DOCKER_PROJECT_HOST:-ixdlab.hawk.de} \
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
     python3-requests \
+    libpq-dev \
     libonig-dev \
     libxml2-dev \
     unzip \
@@ -57,7 +58,9 @@ RUN apt-get update && apt-get install -y \
 
 # Install PHP extensions
 RUN docker-php-ext-configure gd --with-freetype --with-jpeg \
- && docker-php-ext-install -j$(nproc) gd pdo_mysql opcache bcmath exif pcntl zip intl sockets \
+ && docker-php-ext-install -j$(nproc) gd pdo_mysql pdo_pgsql opcache bcmath exif pcntl zip intl sockets \
+ && pecl install grpc \
+ && docker-php-ext-enable grpc \
  && rm -rf /tmp/*
 
 # Copy only composer files for caching

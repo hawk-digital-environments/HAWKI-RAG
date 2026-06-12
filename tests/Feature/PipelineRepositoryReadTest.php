@@ -10,7 +10,6 @@ use App\Models\JobProcessingState;
 use App\Models\PipelineJob;
 use App\Models\PipelineTask;
 use App\Models\ScrapedElement;
-use App\Services\Pipeline\Events\PipelineEvent;
 use App\Services\Pipeline\Repositories\PipelineIngestionRepository;
 use App\Services\Pipeline\Repositories\PipelineJobCreationRepository;
 use App\Services\Pipeline\Repositories\PipelineJobRecoveryRepository;
@@ -414,7 +413,9 @@ class PipelineRepositoryReadTest extends TestCase
         $task = $this->task('task-ingestion-repository');
         $checksum = hash('sha256', 'repository-ingestion-document');
         $path = '/tmp/pipeline-ingestion/repository.md';
-        $event = PipelineEvent::normalize(PipelineEvent::CONTENT_INGESTED, [
+        $event = [
+            'event_id' => 'event-ingest-repository',
+            'event_type' => 'content.ingested',
             'task_id' => $task->task_id,
             'job_id' => 'ingest-repository-job',
             'dataset_id' => $task->dataset_id,
@@ -423,7 +424,10 @@ class PipelineRepositoryReadTest extends TestCase
             'local_path' => $path,
             'content_hash' => $checksum,
             'status' => PipelineJob::STATUS_RUNNING,
-        ]);
+            'max_retries' => 3,
+            'retry_count' => 0,
+            'source' => 'hawki-rag-laravel',
+        ];
 
         $state = $repository->upsertProcessingState($event, JobProcessingState::STATUS_PROCESSING, 5);
 

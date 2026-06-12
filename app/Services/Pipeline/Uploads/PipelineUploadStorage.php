@@ -71,7 +71,7 @@ class PipelineUploadStorage
 
     private function taskRoot(string $taskId): string
     {
-        return rtrim((string) $this->config->get('communication.rabbitmq.pipeline_ingestion.shared_storage_root', '/app/shared'), DIRECTORY_SEPARATOR)
+        return rtrim((string) $this->config->get('temporal.storage.shared_root', '/shared'), DIRECTORY_SEPARATOR)
             .DIRECTORY_SEPARATOR
             .$taskId;
     }

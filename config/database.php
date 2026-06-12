@@ -14,8 +14,9 @@ return [
     |
     */
 
-    // Default to 'mysql' if DB_CONNECTION is not set
-    'default' => env('DB_CONNECTION', 'mysql'),
+    // RAG ingestion metadata is stored in PostgreSQL. Temporal uses its own
+    // PostgreSQL database and Laravel never writes to Temporal tables.
+    'default' => env('DB_CONNECTION', 'pgsql'),
 
     /*
     |--------------------------------------------------------------------------

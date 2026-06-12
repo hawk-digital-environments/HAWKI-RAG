@@ -4,81 +4,64 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
-use App\Services\Pipeline\Architecture\PipelineArchitectureService;
+use Illuminate\Contracts\Config\Repository as ConfigRepository;
 use Illuminate\Console\Command;
 
 class PipelineArchitectureCommand extends Command
 {
     protected $signature = 'pipeline:architecture';
 
-    protected $description = 'Print pipeline event contracts, RabbitMQ topology, flow, and failure modes.';
+    protected $description = 'Print the Temporal RAG ingestion workflow, task queues, and persistence responsibilities.';
 
-    public function handle(PipelineArchitectureService $architecture): int
+    public function handle(ConfigRepository $config): int
     {
-        $summary = $architecture->summary();
+        $queues = (array) $config->get('temporal.task_queues', []);
 
-        $this->line('Pipeline event contracts');
-        $this->table(
-            ['Event', 'Job type', 'Consumed by', 'Next events'],
-            array_map(static fn (array $event): array => [
-                $event['eventType'],
-                $event['jobType'] ?? '-',
-                implode(', ', $event['consumedBy']) ?: '-',
-                implode(', ', $event['typicalNextEvents']) ?: '-',
-            ], $summary['events']),
-        );
-
-        $topology = $summary['topology'];
+        $this->line('Temporal RAG ingestion architecture');
         $this->newLine();
-        $this->line('RabbitMQ topology');
-        $this->line('events exchange: '.$topology['eventsExchange']);
-        $this->line('retry exchange: '.$topology['retryExchange']);
-        $this->line('failed exchange: '.$topology['failedExchange']);
-        $this->line('retry delay ms: '.$topology['retryDelayMs']);
-        $this->line('max retries: '.$topology['maxRetries']);
-
+        $this->line('Laravel creates source/task/job metadata, starts workflows, manages schedules, and displays status.');
+        $this->line('Temporal owns durable workflow history, retries, cancellation, timers, and daily/weekly/monthly schedules.');
+        $this->line('Python workers execute deterministic workflow code and side-effecting activities.');
         $this->newLine();
-        $this->line('Failure modes');
-        $this->table(
-            ['Mode', 'Owner', 'Expected recovery'],
-            array_map(static fn (array $failure): array => [
-                $failure['mode'],
-                $failure['owner'],
-                $failure['expectedRecovery'],
-            ], $summary['failureModes']),
-        );
 
-        $this->newLine();
-        $this->line('Handler responsibilities');
+        $this->line('Workflow phases');
         $this->table(
-            ['Handler', 'Consumes', 'Publishes'],
-            array_map(static fn (array $handler): array => [
-                $handler['handler'],
-                implode(', ', $handler['consumes']),
-                implode(', ', $handler['publishes']),
-            ], $summary['handlers']),
+            ['Order', 'Workflow/activity', 'Task queue', 'Worker/container'],
+            [
+                ['1', 'IngestSourceWorkflow', (string) ($queues['workflow'] ?? 'rag-workflow-task-queue'), 'hawki-rag-temporal-workflow-worker'],
+                ['2', 'scrape_source', (string) ($queues['scraper'] ?? 'rag-scraper-task-queue'), 'hawki-rag-temporal-scraper-worker'],
+                ['3', 'inspect_and_convert_files', (string) ($queues['converter'] ?? 'rag-converter-task-queue'), 'hawki-rag-temporal-converter-worker'],
+                ['4', 'ingest_markdown_files', (string) ($queues['ingestion'] ?? 'rag-ingestion-task-queue'), 'hawki-rag-temporal-ingestion-worker'],
+                ['5', 'mark_source_ready', (string) ($queues['ingestion'] ?? 'rag-ingestion-task-queue'), 'hawki-rag-temporal-ingestion-worker'],
+            ],
         );
 
         $this->newLine();
         $this->line('Persistence map');
         $this->table(
-            ['Table', 'Repository', 'Purpose'],
-            array_map(static fn (array $record): array => [
-                $record['table'],
-                $record['repository'],
-                $record['purpose'],
-            ], $summary['persistence']),
+            ['Store', 'Owner', 'Purpose'],
+            [
+                ['PostgreSQL Laravel tables', 'Laravel/RAG activities', 'sources, documents, workflow IDs, schedule IDs, freshness metadata, status'],
+                ['PostgreSQL Temporal tables', 'Temporal server only', 'workflow history, state, retries, timers, schedules'],
+                ['Qdrant', 'ingest_markdown_files activity via RAG bridge', 'chunk embeddings and vector payload metadata'],
+                ['Neo4j', 'ingest_markdown_files activity via RAG bridge', 'entities, relationships, document graph, URL/source links'],
+                ['Shared/object storage', 'external scraper/converter and ingestion worker', 'raw files, Markdown files, ingest manifest'],
+            ],
         );
 
         $this->newLine();
-        $this->line('Recovery');
-        $this->line($summary['recovery']['principle']);
+        $this->line('Scheduling');
+        $this->table(
+            ['Cadence', 'Cron'],
+            [
+                ['daily', (string) $config->get('temporal.refresh_cadences.daily', '0 2 * * *')],
+                ['weekly', (string) $config->get('temporal.refresh_cadences.weekly', '0 2 * * 0')],
+                ['monthly', (string) $config->get('temporal.refresh_cadences.monthly', '0 2 1 * *')],
+            ],
+        );
 
         $this->newLine();
-        $this->line('Mental model');
-        foreach ($summary['mentalModel'] as $index => $step) {
-            $this->line(($index + 1).'. '.$step);
-        }
+        $this->line('Temporal UI: http://localhost:'.(string) $config->get('temporal.ui_port', 8081));
 
         return self::SUCCESS;
     }

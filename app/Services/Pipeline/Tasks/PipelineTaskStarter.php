@@ -7,11 +7,12 @@ namespace App\Services\Pipeline\Tasks;
 use App\Models\PipelineJob;
 use App\Models\PipelineTask;
 use App\Services\Dataset\DatasetService;
-use App\Services\Pipeline\Events\PipelineEvent;
+use App\Services\Pipeline\Repositories\IngestionSourceRepository;
 use App\Services\Pipeline\Repositories\PipelineJobCreationRepository;
-use App\Services\Pipeline\Repositories\PipelineScrapeHistoryRepository;
+use App\Services\Pipeline\Repositories\PipelineJobStateMutationRepository;
 use App\Services\Pipeline\Repositories\PipelineTaskRepository;
 use App\Services\Pipeline\Repositories\PipelineTransactionRepository;
+use App\Services\Temporal\TemporalOrchestrationClient;
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Support\Carbon;
 use Psr\Clock\ClockInterface;
@@ -23,16 +24,17 @@ readonly class PipelineTaskStarter
     public function __construct(
         private DatasetService $datasets,
         private PipelineTaskCounterService $counters,
-        private PipelineTaskEventPayloadService $eventPayloads,
         private PipelineTaskInputNormalizer $input,
         private PipelineTaskMetadataService $metadata,
         private PipelineTaskSourceResolver $sources,
+        private IngestSourceWorkflowPayloadFactory $workflowPayloads,
+        private IngestionSourceRepository $ingestionSources,
         private PipelineTaskRepository $taskRepository,
         private PipelineJobCreationRepository $jobCreation,
-        private PipelineScrapeHistoryRepository $scrapeHistoryRepository,
+        private PipelineJobStateMutationRepository $jobStates,
         private PipelineTransactionRepository $transactions,
-        private PipelineTaskEventPublisher $publisher,
         private PipelineTaskStatusRefresher $refresher,
+        private TemporalOrchestrationClient $temporal,
         private ClockInterface $clock = new Clock(),
     ) {
     }
@@ -51,14 +53,17 @@ readonly class PipelineTaskStarter
                 $this->counters->defaults(),
                 [
                     'request' => $input,
-                    'orchestration' => 'laravel',
-                    'rabbitmq' => ['event_bus' => true],
+                    'orchestration' => 'temporal',
+                    'temporal' => [
+                        'workflow_type' => config('temporal.workflow.type', 'IngestSourceWorkflow'),
+                        'workflow_task_queue' => config('temporal.task_queues.workflow', 'rag-workflow-task-queue'),
+                    ],
                     'dataset' => $this->metadata->dataset($dataset),
                 ],
             );
 
             foreach ($this->sources->resolve($input) as $url) {
-                $this->createScrapeJob($task, $url);
+                $this->createTemporalSourceWorkflow($task, $url, $input);
             }
 
             return $this->refresher->recalculate($task);
@@ -67,35 +72,119 @@ readonly class PipelineTaskStarter
         return $task->refresh();
     }
 
-    private function createScrapeJob(PipelineTask $task, string $url): PipelineJob
+    /**
+     * @param array<string, mixed> $input
+     */
+    private function createTemporalSourceWorkflow(PipelineTask $task, string $url, array $input): PipelineJob
     {
         $contentHash = hash('sha256', $url);
-        $alreadyScraped = $this->scrapeHistoryRepository->hasCompletedScrape($url, $contentHash);
-        $status = $alreadyScraped ? PipelineJob::STATUS_SKIPPED : PipelineJob::STATUS_QUEUED;
+        $sourceId = $this->workflowPayloads->sourceId((string) $task->dataset_id, $url);
+        $jobId = 'ingest_'.substr(hash('sha256', $task->task_id.'|'.$sourceId), 0, 24);
+        $storage = $this->workflowPayloads->storagePaths($sourceId);
+        $cadence = $this->refreshCadence($input);
         $now = $this->now();
 
-        $job = $this->jobCreation->createScrapeJob(
-            ($alreadyScraped ? 'skipped_' : 'scrape_').substr(hash('sha256', $task->task_id.'|'.$url), 0, 24),
+        $source = $this->ingestionSources->upsertStarting($sourceId, [
+            'source_url' => $url,
+            'task_id' => $task->task_id,
+            'dataset_id' => $task->dataset_id,
+            'content_hash' => $contentHash,
+            'refresh_cadence' => $cadence,
+            'raw_storage_path' => $storage['raw'],
+            'markdown_storage_path' => $storage['markdown'],
+            'metadata' => [
+                'request' => $input,
+                'dataset' => is_array($task->metadata['dataset'] ?? null) ? $task->metadata['dataset'] : [],
+                'refresh' => $this->refreshMetadata($input),
+            ],
+        ]);
+
+        $metadata = array_merge($this->metadata->taskJob($task), [
+            'reason' => 'Started IngestSourceWorkflow through Temporal.',
+            'dataset_id' => $task->dataset_id,
+            'source_id' => $sourceId,
+            'raw_storage_path' => $storage['raw'],
+            'markdown_storage_path' => $storage['markdown'],
+            'refresh_cadence' => $cadence,
+        ]);
+
+        $job = $this->jobCreation->createTemporalSourceJob(
+            $jobId,
             $task,
+            $sourceId,
             $url,
             $contentHash,
-            $status,
             $now,
-            $alreadyScraped ? $now : null,
-            array_merge($this->metadata->taskJob($task), [
-                'reason' => $alreadyScraped ? 'URL was already scraped by Laravel.' : 'Queued for scraper worker through RabbitMQ.',
-                'dataset_id' => $task->dataset_id,
-            ]),
+            $metadata,
         );
 
-        if (! $alreadyScraped) {
-            $this->publisher->publish(
-                PipelineEvent::SCRAPE_REQUESTED,
-                $this->eventPayloads->forJob($task, $job, PipelineEvent::SCRAPE_REQUESTED),
+        $workflowId = $this->workflowPayloads->workflowId($sourceId);
+        $workflowInput = $this->workflowPayloads->input($task, $job, $source);
+
+        try {
+            $execution = $this->temporal->startIngestWorkflow($workflowInput, $workflowId);
+            $scheduleId = null;
+
+            if ($cadence !== null) {
+                $scheduleId = $this->workflowPayloads->scheduleId($sourceId);
+                $this->temporal->upsertIngestSchedule($scheduleId, $workflowId, $cadence, $workflowInput);
+            }
+
+            $metadata['temporal'] = array_filter([
+                'workflow_id' => $execution->workflowId,
+                'run_id' => $execution->runId,
+                'schedule_id' => $scheduleId,
+            ], static fn (mixed $value): bool => $value !== null && $value !== '');
+
+            $this->ingestionSources->markWorkflowStarted($source, $execution->workflowId, $execution->runId, $scheduleId);
+            $job = $this->jobStates->markTemporalStarted($job, $execution->workflowId, $execution->runId, $scheduleId, $metadata);
+        } catch (\Throwable $exception) {
+            $this->ingestionSources->markFailed($source, $exception->getMessage());
+            $job = $this->jobStates->markFailed(
+                $job,
+                'Unable to start Temporal ingest workflow: '.$exception->getMessage(),
+                $this->now(),
             );
         }
 
         return $job;
+    }
+
+    /**
+     * @param array<string, mixed> $input
+     */
+    private function refreshCadence(array $input): ?string
+    {
+        $metadata = is_array($input['metadata'] ?? null) ? $input['metadata'] : [];
+        $value = $this->input->nullableString(
+            $input['refresh_cadence']
+                ?? $input['refreshCadence']
+                ?? $input['cadence']
+                ?? $metadata['refresh_cadence']
+                ?? $metadata['refreshCadence']
+                ?? $metadata['cadence']
+                ?? null
+        );
+
+        return in_array($value, ['daily', 'weekly', 'monthly'], true) ? $value : null;
+    }
+
+    /**
+     * @param array<string, mixed> $input
+     * @return array<string, mixed>
+     */
+    private function refreshMetadata(array $input): array
+    {
+        $metadata = is_array($input['metadata'] ?? null) ? $input['metadata'] : [];
+        $refresh = is_array($metadata['refresh'] ?? null) ? $metadata['refresh'] : [];
+
+        return array_merge($refresh, array_filter([
+            'cadence' => $this->refreshCadence($input),
+            'etag' => $metadata['etag'] ?? null,
+            'last_modified' => $metadata['last_modified'] ?? $metadata['lastModified'] ?? null,
+            'content_hash' => $metadata['content_hash'] ?? $metadata['contentHash'] ?? null,
+            'document_version' => $metadata['document_version'] ?? $metadata['documentVersion'] ?? null,
+        ], static fn (mixed $value): bool => $value !== null && $value !== ''));
     }
 
     private function now(): Carbon

@@ -39,10 +39,11 @@ Route::prefix('pipeline/tasks')->group(function () {
     Route::post('/{taskId}/jobs', [PipelineTaskController::class, 'upsertJob']);
     Route::post('/{taskId}/retry', [PipelineTaskController::class, 'retry']);
     Route::post('/{taskId}/retry-failed-jobs', [PipelineTaskController::class, 'retryFailedJobs']);
+    Route::post('/{taskId}/cancel', [PipelineTaskController::class, 'cancel']);
 });
 
 Route::prefix('pipeline/health')->group(function () {
-    Route::get('/queues', [PipelineHealthController::class, 'queues']);
+    Route::get('/', [PipelineHealthController::class, 'show']);
 });
 
 Route::prefix('pipeline/controller')->group(function () {

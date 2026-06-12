@@ -84,26 +84,45 @@ if (root) {
         return pill;
     }
 
-    function renderMonitor(monitor) {
-        els.state.className = `status-pill ${statusClass(monitor.status)}`;
-        setText(els.state, monitor.status || 'unknown');
-        setText(els.updated, `Checked ${formatDate(monitor.checkedAt)} from ${monitor.managementUrl || 'RabbitMQ management API'}.`);
-        setStatus(monitor.message || 'Queue status loaded.', monitor.status === 'ok' ? 'success' : monitor.status === 'fail' ? 'error' : 'warning');
+    function renderMonitor(payload) {
+        const checks = Array.isArray(payload.checks) ? payload.checks : [];
+        const status = checks.some((check) => check.status === 'fail')
+            ? 'fail'
+            : checks.some((check) => check.status === 'warn')
+                ? 'warn'
+                : 'ok';
 
-        renderMetrics(monitor.totals || {});
-        renderWarnings(monitor.warnings || [], monitor.error || monitor.fix || '');
-        renderQueues(monitor.workers || []);
-        renderRetryQueues(monitor.workers || [], monitor.failedQueue || {});
+        els.state.className = `status-pill ${statusClass(status)}`;
+        setText(els.state, status);
+        setText(els.updated, `Checked ${formatDate(payload.checkedAt)} from Laravel health checks.`);
+        setStatus(
+            status === 'ok' ? 'Ingestion services look healthy.' : 'One or more ingestion services need attention.',
+            status === 'ok' ? 'success' : status === 'fail' ? 'error' : 'warning',
+        );
+
+        renderMetrics(checks);
+        renderWarnings(checks);
+        renderQueues(checks);
+        renderRetryQueues(checks);
     }
 
-    function renderMetrics(totals) {
+    function renderMetrics(checks) {
         els.metrics.innerHTML = '';
+        const counts = checks.reduce((summary, check) => {
+            const status = String(check.status || 'unknown').toLowerCase();
+            summary.total += 1;
+            if (status === 'ok') summary.ok += 1;
+            if (status === 'warn') summary.warn += 1;
+            if (status === 'fail') summary.fail += 1;
+            return summary;
+        }, { total: 0, ok: 0, warn: 0, fail: 0 });
+
         [
-            ['Ready messages', totals.readyMessages ?? 0, 'Waiting in primary worker queues'],
-            ['Unacked messages', totals.unackedMessages ?? 0, 'Reserved by workers'],
-            ['Consumers', totals.consumers ?? 0, 'Attached pipeline workers'],
-            ['Retry messages', totals.retryQueueCount ?? 0, 'Waiting in retry queues'],
-            ['Failed messages', totals.failedQueueCount ?? 0, 'Waiting in failed queue'],
+            ['Checks', counts.total, 'Configured health checks'],
+            ['Healthy', counts.ok, 'Services reporting ok'],
+            ['Warnings', counts.warn, 'Services with warnings'],
+            ['Failures', counts.fail, 'Services needing action'],
+            ['Task queues', 4, 'Workflow, scraper, converter, ingestion'],
         ].forEach(([label, value, caption]) => {
             const item = document.createElement('div');
             item.className = 'metric-item';
@@ -118,19 +137,18 @@ if (root) {
         });
     }
 
-    function renderWarnings(warnings, fallback) {
+    function renderWarnings(checks) {
         els.warnings.innerHTML = '';
-        const items = warnings.length > 0 ? warnings : [];
-        if (items.length === 0 && !fallback) {
+        const items = checks
+            .filter((check) => check.status !== 'ok' || check.fix)
+            .map((check) => `${check.name}: ${check.fix || check.detail || check.status}`);
+
+        if (items.length === 0) {
             const ok = document.createElement('div');
             ok.className = 'warning-item is-ok';
-            ok.textContent = 'No queue warnings.';
+            ok.textContent = 'No health warnings.';
             els.warnings.appendChild(ok);
             return;
-        }
-
-        if (fallback && items.length === 0) {
-            items.push(fallback);
         }
 
         items.forEach((warning) => {
@@ -141,67 +159,39 @@ if (root) {
         });
     }
 
-    function renderQueues(workers) {
-        setText(els.queueCount, `${workers.length} worker queue${workers.length === 1 ? '' : 's'}`);
+    function renderQueues(checks) {
+        setText(els.queueCount, `${checks.length} check${checks.length === 1 ? '' : 's'}`);
         renderTable(
             els.queues,
-            ['Worker', 'Queue name', 'Ready', 'Unacked', 'Consumers', 'Retry count', 'Status', 'Warning'],
-            workers,
-            (worker) => [
-                worker.worker,
-                worker.queueName,
-                worker.readyMessages,
-                worker.unackedMessages,
-                worker.consumers,
-                worker.retryQueueCount,
-                statusPill(worker.status),
-                (worker.warnings || []).join(' '),
+            ['Service', 'Status', 'Detail', 'Fix'],
+            checks,
+            (check) => [
+                check.name,
+                statusPill(check.status),
+                check.detail,
+                check.fix,
             ],
         );
     }
 
-    function renderRetryQueues(workers, failedQueue) {
-        const rows = [];
-        workers.forEach((worker) => {
-            (worker.retryQueues || []).forEach((queue) => {
-                rows.push({
-                    worker: worker.worker,
-                    type: 'retry',
-                    name: queue.name,
-                    readyMessages: queue.readyMessages,
-                    unackedMessages: queue.unackedMessages,
-                    consumers: queue.consumers,
-                    state: queue.state,
-                    exists: queue.exists,
-                });
-            });
-        });
-        rows.push({
-            worker: 'all',
-            type: 'failed',
-            name: failedQueue.name,
-            readyMessages: failedQueue.readyMessages,
-            unackedMessages: failedQueue.unackedMessages,
-            consumers: failedQueue.consumers,
-            state: failedQueue.state,
-            exists: failedQueue.exists,
-        });
-
-        const retryMessages = workers.reduce((sum, worker) => sum + Number(worker.retryQueueCount || 0), 0);
-        setText(els.retryCount, `${retryMessages} retry message${retryMessages === 1 ? '' : 's'}; failed queue ${Number(failedQueue.readyMessages || 0) + Number(failedQueue.unackedMessages || 0)} message${Number(failedQueue.readyMessages || 0) + Number(failedQueue.unackedMessages || 0) === 1 ? '' : 's'}`);
+    function renderRetryQueues(checks) {
+        const rows = checks
+            .filter((check) => check.fix || check.status !== 'ok')
+            .map((check) => ({
+                service: check.name,
+                status: check.status,
+                note: check.fix || check.detail,
+            }));
+        setText(els.retryCount, `${rows.length} note${rows.length === 1 ? '' : 's'}`);
 
         renderTable(
             els.retryQueues,
-            ['Type', 'Worker', 'Queue name', 'Ready', 'Unacked', 'Consumers', 'State'],
+            ['Service', 'Status', 'Note'],
             rows,
-            (queue) => [
-                queue.type,
-                queue.worker,
-                queue.name,
-                queue.readyMessages,
-                queue.unackedMessages,
-                queue.consumers,
-                queue.exists ? queue.state : 'missing',
+            (row) => [
+                row.service,
+                statusPill(row.status),
+                row.note,
             ],
         );
     }
@@ -251,20 +241,20 @@ if (root) {
     }
 
     async function loadQueues() {
-        setStatus('Loading RabbitMQ queue status...');
-        const data = await requestJson('api/pipeline/health/queues');
-        renderMonitor(data.queueMonitor || {});
+        setStatus('Loading ingestion health...');
+        const data = await requestJson('api/pipeline/health');
+        renderMonitor(data || {});
     }
 
     els.refresh?.addEventListener('click', async () => {
         try {
             await loadQueues();
         } catch (error) {
-            setStatus(error.message || 'Could not refresh queue status.', 'error');
+            setStatus(error.message || 'Could not refresh ingestion health.', 'error');
         }
     });
 
     loadQueues().catch((error) => {
-        setStatus(error.message || 'Could not load queue status.', 'error');
+        setStatus(error.message || 'Could not load ingestion health.', 'error');
     });
 }

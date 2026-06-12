@@ -35,6 +35,7 @@ services:
     container_name: hawki_rag_app
     volumes:
       - shared_storage:/app/shared
+      - shared_storage:/shared
       - ./storage:/var/www/html/storage
       - ./docker/rag_app:/container/custom
       - ./:/var/www/html
@@ -49,56 +50,83 @@ services:
       VIRTUAL_PATH: /hawki-rag/
       VIRTUAL_DEST: /
       ENVIRONMENT: "development"
+      DB_CONNECTION: pgsql
+      DB_HOST: postgres
+      DB_PORT: 5432
+      TEMPORAL_ADDRESS: temporal:7233
     networks:
       - hawki-network
       - hosting_network
       - default
+    depends_on:
+      postgres:
+        condition: service_healthy
+      temporal:
+        condition: service_started
 
   # -------------------------------------------------
-  # MariaDB Database for Laravel
+  # PostgreSQL for Laravel metadata and Temporal persistence
   # -------------------------------------------------
-  mariadb:
-    image: mariadb:latest
-    container_name: mariadb
+  postgres:
+    image: postgres:16
+    container_name: hawki_rag_postgres
     restart: always
     environment:
-      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
-      MARIADB_ROOT_HOST: "%"
-      MARIADB_DATABASE: ${DB_DATABASE}
-      MARIADB_USER: ${DB_APP_USERNAME:-rag_user}
-      MARIADB_PASSWORD: ${DB_APP_PASSWORD:-change_me}
+      POSTGRES_DB: ${DB_DATABASE:-hawki_rag}
+      POSTGRES_USER: ${DB_USERNAME:-rag_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-change_me}
       TZ: Europe/Berlin
     ports:
-      - "3306:3306"
+      - "5432:5432"
     volumes:
-      - hawki_mariadb_data:/var/lib/mysql
+      - hawki_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-rag_user} -d ${DB_DATABASE:-hawki_rag}"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
     logging:
       options:
         max-size: "128m"
         max-file: "3"
 
   # -------------------------------------------------
-  # RabbitMQ Broker (AMQP + management UI)
+  # Temporal Server and UI
   # -------------------------------------------------
-  rabbitmq:
-    image: rabbitmq:3-management
-    container_name: rabbitmq
+  temporal:
+    image: temporalio/auto-setup:1.25.2
+    container_name: temporal
     restart: unless-stopped
     environment:
-      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-guest}
-      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-guest}
-      RABBITMQ_DEFAULT_VHOST: ${RABBITMQ_VHOST:-/}
+      DB: postgres12
+      DB_PORT: 5432
+      POSTGRES_USER: ${DB_USERNAME:-rag_user}
+      POSTGRES_PWD: ${DB_PASSWORD:-change_me}
+      POSTGRES_SEEDS: postgres
+      TEMPORAL_ADDRESS: temporal:7233
+      DEFAULT_NAMESPACE: ${TEMPORAL_NAMESPACE:-default}
     ports:
-      - "5672:5672"
-      - "15672:15672"
-    volumes:
-      - rabbitmq_data:/var/lib/rabbitmq
-    healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
-      interval: 15s
-      timeout: 10s
-      retries: 12
-      start_period: 20s
+      - "7233:7233"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - default
+      - hawki-network
+
+  temporal-ui:
+    image: temporalio/ui:2.34.0
+    container_name: temporal_ui
+    restart: unless-stopped
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_CORS_ORIGINS: http://localhost:8080
+    ports:
+      - "${TEMPORAL_UI_PORT:-8081}:8080"
+    depends_on:
+      temporal:
+        condition: service_started
     networks:
       - default
       - hawki-network
@@ -110,7 +138,7 @@ services:
     ports:
       - "${ADMINER_PORT:-8005}:8080"
     environment:
-      ADMINER_DEFAULT_SERVER: mariadb
+      ADMINER_DEFAULT_SERVER: postgres
       TZ: Europe/Berlin
       VIRTUAL_HOST: ixdlab.hawk.de
       VIRTUAL_PATH: /adminer/
@@ -206,175 +234,138 @@ services:
       - ./python_rag:/app
       - ./public:/app/public
       - shared_storage:/app/shared
+      - shared_storage:/shared
     command: ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000"]
     restart: unless-stopped
 
   # -------------------------------------------------
-  # Laravel event-driven pipeline workers (RabbitMQ)
+  # Python Temporal workers
   # -------------------------------------------------
-  hawki-rag-scraper-event-worker:
-    image: rawki-hawki_rag_app
+  hawki-rag-temporal-workflow-worker:
+    image: hawki-rag-python:local
     pull_policy: never
     build:
       context: .
-      dockerfile: docker/laravel.Dockerfile
-      target: laravel-app
-      args:
-        - DOCKER_PROJECT_HOST=ixdlab.hawk.de
-        - DOCKER_PROJECT_PATH=/hawki-rag/
-    container_name: hawki_rag_scraper_event_worker
-    profiles: ["pipeline-events"]
+      dockerfile: Dockerfile
+      target: python-rag
+    container_name: hawki_rag_temporal_workflow_worker
     env_file:
       - ./.env
     environment:
-      PUID: ${PUID:-1000}
-      PGID: ${PGID:-1000}
-      ENVIRONMENT: "development"
-      SHARED_STORAGE_ROOT: ${SHARED_STORAGE_ROOT:-/app/shared}
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_NAMESPACE: ${TEMPORAL_NAMESPACE:-default}
+      DB_CONNECTION: pgsql
+      DB_HOST: postgres
+      DB_PORT: 5432
     volumes:
-      - shared_storage:/app/shared
-      - ./storage:/var/www/html/storage
-      - ./docker/rag_app:/container/custom
-      - ./:/var/www/html
-    command: ["php", "artisan", "pipeline:scraper-event-worker"]
-    working_dir: /var/www/html
+      - ./python_rag:/app
+      - shared_storage:/shared
+    command: ["python", "-m", "temporal_rag.worker_workflow"]
     depends_on:
-      mariadb:
+      temporal:
         condition: service_started
-      rabbitmq:
+    restart: unless-stopped
+    networks:
+      - default
+      - hawki-network
+
+  hawki-rag-temporal-scraper-worker:
+    image: hawki-rag-python:local
+    pull_policy: never
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: python-rag
+    container_name: hawki_rag_temporal_scraper_worker
+    env_file:
+      - ./.env
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_NAMESPACE: ${TEMPORAL_NAMESPACE:-default}
+      DB_CONNECTION: pgsql
+      DB_HOST: postgres
+      DB_PORT: 5432
+    volumes:
+      - ./python_rag:/app
+      - shared_storage:/shared
+    command: ["python", "-m", "temporal_rag.worker_scraper"]
+    depends_on:
+      temporal:
+        condition: service_started
+      postgres:
         condition: service_healthy
     restart: unless-stopped
     networks:
       - default
       - hawki-network
 
-  hawki-rag-scrape-monitor-event-worker:
-    image: rawki-hawki_rag_app
+  hawki-rag-temporal-converter-worker:
+    image: hawki-rag-python:local
     pull_policy: never
     build:
       context: .
-      dockerfile: docker/laravel.Dockerfile
-      target: laravel-app
-      args:
-        - DOCKER_PROJECT_HOST=ixdlab.hawk.de
-        - DOCKER_PROJECT_PATH=/hawki-rag/
-    container_name: hawki_rag_scrape_monitor_event_worker
-    profiles: ["pipeline-events"]
+      dockerfile: Dockerfile
+      target: python-rag
+    container_name: hawki_rag_temporal_converter_worker
     env_file:
       - ./.env
     environment:
-      PUID: ${PUID:-1000}
-      PGID: ${PGID:-1000}
-      ENVIRONMENT: "development"
-      SHARED_STORAGE_ROOT: ${SHARED_STORAGE_ROOT:-/app/shared}
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_NAMESPACE: ${TEMPORAL_NAMESPACE:-default}
+      DB_CONNECTION: pgsql
+      DB_HOST: postgres
+      DB_PORT: 5432
     volumes:
-      - shared_storage:/app/shared
-      - ./storage:/var/www/html/storage
-      - ./docker/rag_app:/container/custom
-      - ./:/var/www/html
-    command: ["php", "artisan", "pipeline:scrape-monitor-event-worker"]
-    working_dir: /var/www/html
+      - ./python_rag:/app
+      - shared_storage:/shared
+    command: ["python", "-m", "temporal_rag.worker_converter"]
     depends_on:
-      mariadb:
+      temporal:
         condition: service_started
-      rabbitmq:
+      postgres:
         condition: service_healthy
     restart: unless-stopped
     networks:
       - default
       - hawki-network
 
-  hawki-rag-converter-event-worker:
-    image: rawki-hawki_rag_app
+  hawki-rag-temporal-ingestion-worker:
+    image: hawki-rag-python:local
     pull_policy: never
     build:
       context: .
-      dockerfile: docker/laravel.Dockerfile
-      target: laravel-app
-      args:
-        - DOCKER_PROJECT_HOST=ixdlab.hawk.de
-        - DOCKER_PROJECT_PATH=/hawki-rag/
-    container_name: hawki_rag_converter_event_worker
-    profiles: ["pipeline-events"]
+      dockerfile: Dockerfile
+      target: python-rag
+    container_name: hawki_rag_temporal_ingestion_worker
     env_file:
       - ./.env
     environment:
-      PUID: ${PUID:-1000}
-      PGID: ${PGID:-1000}
-      ENVIRONMENT: "development"
-      SHARED_STORAGE_ROOT: ${SHARED_STORAGE_ROOT:-/app/shared}
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_NAMESPACE: ${TEMPORAL_NAMESPACE:-default}
+      DB_CONNECTION: pgsql
+      DB_HOST: postgres
+      DB_PORT: 5432
+      QDRANT_HOST: qdrant
+      QDRANT_PORT: 6333
+      NEO4J_URI: bolt://hawki_rag_neo4j:7687
+      NEO4J_USER: ${NEO4J_USER}
+      NEO4J_PASSWORD: ${NEO4J_PASSWORD}
     volumes:
-      - shared_storage:/app/shared
-      - ./storage:/var/www/html/storage
-      - ./docker/rag_app:/container/custom
-      - ./:/var/www/html
-    command: ["php", "artisan", "pipeline:converter-event-worker"]
-    working_dir: /var/www/html
+      - ./python_rag:/app
+      - ./public:/app/public
+      - shared_storage:/shared
+    command: ["python", "-m", "temporal_rag.worker_ingestion"]
     depends_on:
-      mariadb:
+      temporal:
         condition: service_started
-      rabbitmq:
-        condition: service_healthy
-    restart: unless-stopped
-    networks:
-      - default
-      - hawki-network
-
-  hawki-rag-ingestion-event-worker:
-    image: rawki-hawki_rag_app
-    pull_policy: never
-    build:
-      context: .
-      dockerfile: docker/laravel.Dockerfile
-      target: laravel-app
-      args:
-        - DOCKER_PROJECT_HOST=ixdlab.hawk.de
-        - DOCKER_PROJECT_PATH=/hawki-rag/
-    container_name: hawki_rag_ingestion_event_worker
-    profiles: ["pipeline-events"]
-    env_file:
-      - ./.env
-    environment:
-      PUID: ${PUID:-1000}
-      PGID: ${PGID:-1000}
-      ENVIRONMENT: "development"
-      SHARED_STORAGE_ROOT: ${SHARED_STORAGE_ROOT:-/app/shared}
-    volumes:
-      - shared_storage:/app/shared
-      - ./storage:/var/www/html/storage
-      - ./docker/rag_app:/container/custom
-      - ./:/var/www/html
-    command: ["php", "artisan", "pipeline:ingestion-event-worker"]
-    working_dir: /var/www/html
-    depends_on:
-      mariadb:
-        condition: service_started
-      rabbitmq:
+      postgres:
         condition: service_healthy
       hawki_rag_bridge:
         condition: service_started
-    restart: unless-stopped
-    networks:
-      - default
-      - hawki-network
-
-  # -------------------------------------------------
-  # Crawler producer (external image/command, profile-based)
-  # -------------------------------------------------
-  crawler_producer:
-    image: ${CRAWLER_PRODUCER_IMAGE:-ghcr.io/example/hawki-crawler-producer:latest}
-    container_name: crawler_producer
-    profiles: ["crawler-producer"]
-    env_file:
-      - ./.env
-    environment:
-      RABBITMQ_URL: ${RABBITMQ_URL:-amqp://guest:guest@rabbitmq:5672/%2F}
-      RABBITMQ_EXCHANGE: ${RABBITMQ_EXCHANGE:-jobs}
-      RABBITMQ_MAIN_ROUTING_KEY: ${RABBITMQ_MAIN_ROUTING_KEY:-crawl}
-    command: ${CRAWLER_PRODUCER_COMMAND:-python -m crawler_producer.main}
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
+      qdrant:
+        condition: service_started
+      hawki_rag_neo4j:
+        condition: service_started
     restart: unless-stopped
     networks:
       - default
@@ -431,8 +422,7 @@ volumes:
     name: rawki_shared_storage
   qdrant_data:
   neo4j_data:
-  hawki_mariadb_data:
-  rabbitmq_data:
+  hawki_postgres_data:
   ollama:
   rag_storage:
 

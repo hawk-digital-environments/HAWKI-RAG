@@ -72,12 +72,12 @@ class PipelineRecoveryMetadataServiceTest extends TestCase
 
         $metadata = $service->publishFailedJobMetadata(
             new PipelineJob(['metadata' => ['recovery_events' => [['event_id' => 'recovery-0']]]]),
-            new \RuntimeException('RabbitMQ unavailable'),
+            new \RuntimeException('Temporal unavailable'),
         );
 
         $this->assertSame('recovery_publish_failed', $metadata['last_recovery_event']['event']);
         $this->assertSame('RuntimeException', $metadata['last_recovery_event']['error_type']);
-        $this->assertSame('RabbitMQ unavailable', $metadata['last_recovery_event']['error_message']);
+        $this->assertSame('Temporal unavailable', $metadata['last_recovery_event']['error_message']);
         $this->assertSame('2026-06-08T13:00:00+00:00', $metadata['last_recovery_event']['at']);
         $this->assertCount(2, $metadata['recovery_events']);
     }

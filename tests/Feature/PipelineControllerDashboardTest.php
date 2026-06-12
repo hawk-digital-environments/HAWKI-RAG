@@ -4,12 +4,9 @@ namespace Tests\Feature;
 
 use App\Models\PipelineJob;
 use App\Models\PipelineTask;
-use App\Services\Pipeline\Events\PipelineEvent;
-use App\Services\Pipeline\Events\PipelineEventBus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\File;
-use Mockery;
 use Tests\TestCase;
 
 class PipelineControllerDashboardTest extends TestCase
@@ -37,28 +34,12 @@ class PipelineControllerDashboardTest extends TestCase
             ->assertDontSee('pipeline-task-select', false);
     }
 
-    public function test_uploading_file_creates_convert_job_and_publishes_file_discovered_event(): void
+    public function test_uploading_file_creates_skipped_convert_job_metadata_without_event_publish(): void
     {
         $root = storage_path('framework/testing/pipeline-controller');
         File::deleteDirectory($root);
-        config()->set('communication.rabbitmq.pipeline_ingestion.shared_storage_root', $root);
+        config()->set('temporal.storage.shared_root', $root);
         config()->set('file_converter.supported_extensions', ['pdf']);
-
-        $this->mock(PipelineEventBus::class, function ($mock): void {
-            $mock->shouldReceive('publish')
-                ->once()
-                ->with(PipelineEvent::FILE_DISCOVERED, Mockery::on(function (array $payload): bool {
-                    return ($payload['task_id'] ?? '') !== ''
-                        && ($payload['job_id'] ?? '') !== ''
-                        && ($payload['dataset_id'] ?? '') === 'controller-test'
-                        && ($payload['job_type'] ?? '') === PipelineJob::TYPE_CONVERT
-                        && ($payload['status'] ?? '') === PipelineJob::STATUS_QUEUED
-                        && ($payload['source_url'] ?? '') === 'upload://sample.pdf'
-                        && is_file((string) ($payload['local_path'] ?? ''))
-                        && ($payload['metadata']['graph'] ?? null) === false;
-                }))
-                ->andReturnUsing(fn (string $eventType, array $payload): array => PipelineEvent::normalize($eventType, $payload));
-        });
 
         $response = $this->post('/api/pipeline/controller/files', [
             'dataset_id' => 'controller-test',
@@ -89,7 +70,8 @@ class PipelineControllerDashboardTest extends TestCase
             'task_id' => $taskId,
             'job_type' => PipelineJob::TYPE_CONVERT,
             'source_url' => 'upload://sample.pdf',
-            'status' => PipelineJob::STATUS_QUEUED,
+            'status' => PipelineJob::STATUS_SKIPPED,
+            'current_stage' => 'upload.metadata_stored',
         ]);
 
         File::deleteDirectory($root);
@@ -101,12 +83,8 @@ class PipelineControllerDashboardTest extends TestCase
         File::deleteDirectory($root);
         File::ensureDirectoryExists(dirname($root));
         File::put($root, 'not a directory');
-        config()->set('communication.rabbitmq.pipeline_ingestion.shared_storage_root', $root);
+        config()->set('temporal.storage.shared_root', $root);
         config()->set('file_converter.supported_extensions', ['pdf']);
-
-        $this->mock(PipelineEventBus::class, function ($mock): void {
-            $mock->shouldNotReceive('publish');
-        });
 
         $this->post('/api/pipeline/controller/files', [
             'dataset_id' => 'blocked-controller-dataset',

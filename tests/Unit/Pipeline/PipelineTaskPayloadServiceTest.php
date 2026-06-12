@@ -6,7 +6,6 @@ namespace Tests\Unit\Pipeline;
 
 use App\Models\PipelineJob;
 use App\Models\PipelineTask;
-use App\Services\Pipeline\Events\PipelineEvent;
 use App\Services\Pipeline\Tasks\PipelineTaskPayloadService;
 use Illuminate\Support\Carbon;
 use Tests\TestCase;
@@ -77,7 +76,7 @@ class PipelineTaskPayloadServiceTest extends TestCase
             'updated_at' => Carbon::parse('2026-06-08 11:10:00'),
             'metadata' => [
                 'events' => [[
-                    'event_type' => PipelineEvent::JOB_FAILED,
+                    'event_type' => 'job.failed',
                     'event_id' => 'event-failed',
                     'status' => PipelineJob::STATUS_FAILED,
                     'at' => '2026-06-08T11:10:00+00:00',
@@ -88,7 +87,7 @@ class PipelineTaskPayloadServiceTest extends TestCase
         $events = app(PipelineTaskPayloadService::class)->eventsForJob($job);
 
         $this->assertCount(1, $events);
-        $this->assertSame(PipelineEvent::JOB_FAILED, $events[0]['eventType']);
+        $this->assertSame('job.failed', $events[0]['eventType']);
         $this->assertSame('event-failed', $events[0]['eventId']);
         $this->assertSame('task-events', $events[0]['taskId']);
         $this->assertSame('job-events', $events[0]['jobId']);

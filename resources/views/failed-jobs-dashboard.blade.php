@@ -22,7 +22,7 @@
             <div>
                 <p class="eyebrow">Pipeline recovery</p>
                 <h1>Failed Jobs</h1>
-                <p class="header-copy">Recover failed scrape, convert, and ingest jobs through RabbitMQ retry queues.</p>
+                <p class="header-copy">Recover failed scrape, convert, and ingest jobs by starting fresh Temporal workflow runs.</p>
             </div>
             <div class="header-actions">
                 @include('partials.pipeline-nav', ['active' => 'failed-jobs', 'refreshId' => 'failed-jobs-refresh'])
@@ -64,7 +64,7 @@
         <section class="panel">
             <div class="section-head">
                 <div>
-                    <h2>Failed job queue</h2>
+                    <h2>Failed jobs</h2>
                     <p>Retries reuse existing job IDs, content hashes, Qdrant point IDs, and Neo4j namespace metadata.</p>
                 </div>
             </div>

@@ -9,18 +9,88 @@ HAWKI RAG is designed for fast retrieval over crawled HAWKI content. By default 
 `bge-m3` for embeddings and `llama3:8b` / `llama3.1:8b` for grounded answers.
 <img width="2720" height="992" alt="HAWKI RAG Logo green" src="https://github.com/user-attachments/assets/af606f07-185b-4204-bcb8-8db1e8a58766" />
 
-## RabbitMQ MVP Pipeline
+## Temporal RAG Ingestion
 
-Laravel is the only pipeline orchestrator. It starts tasks, publishes RabbitMQ
-events, and tracks task/job status in the database.
+RAG source ingestion is orchestrated by Temporal. Laravel remains the API/admin/control
+layer: it creates source records, starts `IngestSourceWorkflow`, stores workflow and
+schedule IDs, cancels/retries workflows, and displays status from app PostgreSQL
+metadata. Temporal owns durable workflow history, retries, timers, and schedules.
 
-- DB/ops commands: [docs/db_cookbook.md](docs/db_cookbook.md)
-- Declare RabbitMQ topology: `php artisan pipeline:declare-event-topology`
-- Scraper worker: `php artisan pipeline:scraper-event-worker`
-- Scrape monitor worker: `php artisan pipeline:scrape-monitor-event-worker`
-- Converter worker: `php artisan pipeline:converter-event-worker`
-- Ingestion worker: `php artisan pipeline:ingestion-event-worker`
-- Python remains the FastAPI RAG bridge for embeddings, Qdrant, Neo4j, RAG-Anything/LightRAG, and `/ingest`.
+`IngestSourceWorkflow` runs four phases in order on independent task queues:
+
+| Phase | Task queue | Worker |
+|---|---|---|
+| `scrape_source` | `rag-scraper-task-queue` | `python -m temporal_rag.worker_scraper` |
+| `inspect_and_convert_files` | `rag-converter-task-queue` | `python -m temporal_rag.worker_converter` |
+| `ingest_markdown_files` | `rag-ingestion-task-queue` | `python -m temporal_rag.worker_ingestion` |
+| `mark_source_ready` | `rag-ingestion-task-queue` | `python -m temporal_rag.worker_ingestion` |
+
+The workflow definition is registered by `python -m temporal_rag.worker_workflow` on
+`rag-workflow-task-queue`. Temporal payloads contain only small references and status
+objects. Raw files, Markdown bodies, chunks, embeddings, and graph data are never passed
+through Temporal.
+
+Local Docker handoff uses shared storage:
+
+- `/shared/sources/{source_id}/raw/`
+- `/shared/sources/{source_id}/markdown/`
+- `/shared/sources/{source_id}/ingest/manifest.json`
+
+Object-storage deployments can use prefixes such as
+`s3://hawki-rag/sources/{source_id}/raw/`; the local worker implementation currently
+expects shared-volume paths unless an object-storage adapter is added.
+
+PostgreSQL stores both Laravel metadata and Temporal persistence, separated by database
+ownership. Laravel tables store sources, documents, workflow IDs, schedule IDs,
+freshness metadata, and ingestion status. Temporal PostgreSQL tables store workflow
+history/state/retries/timers and are not written by Laravel/RAG code. Qdrant stores chunk
+embeddings and vector payload metadata. Neo4j stores entities, relationships, document
+graph records, URL/source links, and extracted knowledge graph data. Elasticsearch is
+not needed because this local stack uses Temporal SQL/PostgreSQL persistence and
+visibility.
+
+RabbitMQ has been removed from Docker/runtime orchestration and the legacy PHP
+event-bus/worker layer for RAG ingestion. Source ingestion start/retry/cancel paths and
+Docker services now use Temporal instead.
+
+### Run Temporal ingestion locally
+
+```bash
+make up-core
+```
+
+Configure external services with `EXTERNAL_SCRAPER_URL`,
+`EXTERNAL_SCRAPER_START_PATH`, `EXTERNAL_SCRAPER_STATUS_PATH`,
+`EXTERNAL_CONVERTER_URL`, `EXTERNAL_CONVERTER_START_PATH`, and
+`EXTERNAL_CONVERTER_STATUS_PATH`. The scraper and converter remain external services;
+the workers are only adapters around their start/status APIs.
+
+Start one ingestion workflow from Laravel:
+
+```bash
+docker compose exec hawki_rag_app php artisan pipeline:start-task --source-url=https://example.edu --refresh-cadence=daily
+```
+
+Daily, weekly, and monthly cadences create/update Temporal schedules for
+`IngestSourceWorkflow`. Inspect workflows and schedules in Temporal UI at
+`http://localhost:8081` by default.
+
+To validate retries/resume behavior, start a workflow, stop one worker container during
+its phase, then start it again. Temporal should keep the workflow open and resume/retry
+the activity once the worker returns.
+
+Validation checklist:
+
+1. Start PostgreSQL, Temporal, Laravel, Qdrant, Neo4j, and the FastAPI bridge.
+2. Start all four Temporal workers.
+3. Start one workflow from Laravel CLI/API.
+4. Confirm Temporal UI shows scrape, converter, ingestion, and readiness activities.
+5. Confirm the external scraper and converter services were called.
+6. Confirm raw and Markdown files exist under `/shared/sources/{source_id}/`.
+7. Confirm Qdrant receives vectors and Neo4j receives graph updates.
+8. Confirm Laravel PostgreSQL metadata is updated with workflow/status fields.
+9. Restart a worker mid-run and confirm Temporal retries/resumes.
+10. Confirm RabbitMQ and Elasticsearch are not required for RAG ingestion.
 
 ## Neo4j Graph Explorer Indexes
 

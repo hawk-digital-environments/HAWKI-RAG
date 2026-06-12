@@ -12,9 +12,10 @@ BASE_COMPOSE_FILE ?= docker-compose.yml
 GPU_OVERRIDE_COMPOSE ?= docker-compose-gpu-override.yml
 LOCAL_OVERRIDE_COMPOSE ?= docker-compose.local.yml
 COMPOSE_FILE_SEP ?= :
+COMMA := ,
 # USE_OLLAMA_GPU: auto (default), 1 (force GPU override), 0 (force CPU mode)
 USE_OLLAMA_GPU ?= auto
-CORE_PROFILES_BASE ?= pipeline-events
+CORE_PROFILES_BASE ?=
 
 ifeq ($(USE_OLLAMA_GPU),auto)
 	ifeq ($(HOST_OS),Linux)
@@ -32,7 +33,7 @@ CORE_PROFILES := $(CORE_PROFILES_BASE)
 
 ifeq ($(USE_OLLAMA_GPU),1)
 	CORE_GPU_COMPOSE_SUFFIX := $(COMPOSE_FILE_SEP)$(GPU_OVERRIDE_COMPOSE)
-	CORE_PROFILES := gpu,$(CORE_PROFILES_BASE)
+	CORE_PROFILES := gpu$(if $(strip $(CORE_PROFILES_BASE)),$(COMMA)$(CORE_PROFILES_BASE),)
 	GPU_MESSAGE := Ollama GPU override enabled.
 else
 	GPU_MESSAGE := Ollama CPU mode.
@@ -117,12 +118,12 @@ _up-core: network
 
 up-core: COMPOSE_FILE_LIST = $(CORE_LOCAL_COMPOSE_FILE_LIST)
 up-core: COMPOSE_PROFILES = $(CORE_PROFILES)
-up-core: PROFILE_MESSAGE = $(GPU_MESSAGE) Local override enabled and pipeline event workers enabled.
+up-core: PROFILE_MESSAGE = $(GPU_MESSAGE) Local override enabled and Temporal workers enabled.
 up-core: _up-core
 
 up-core-server: COMPOSE_FILE_LIST = $(CORE_SERVER_COMPOSE_FILE_LIST)
 up-core-server: COMPOSE_PROFILES = $(CORE_PROFILES)
-up-core-server: PROFILE_MESSAGE = $(GPU_MESSAGE) Server mode and pipeline event workers enabled.
+up-core-server: PROFILE_MESSAGE = $(GPU_MESSAGE) Server mode and Temporal workers enabled.
 up-core-server: _up-core
 
 health:
@@ -174,22 +175,22 @@ health:
 		fi; \
 	}; \
 	echo "Container status"; \
-	check_running mariadb 1; \
-	check_running rabbitmq 1; \
+	check_running hawki_rag_postgres 1; \
+	check_running temporal 1; \
+	check_running temporal_ui 0; \
 	check_running hawki_rag_app 1; \
 	check_running hawki_qdrant 1; \
 	check_running hawki_rag_neo4j 1; \
 	check_running $(OLLAMA_CONTAINER) 1; \
 	check_running hawki_rag_bridge 0; \
 	check_running hawki_rag_rerank 0; \
-	check_running hawki_rag_scrape_monitor_worker 0; \
-	check_running hawki_rag_scraper_event_worker 0; \
-	check_running hawki_rag_converter_event_worker 0; \
-	check_running hawki_rag_ingestion_event_worker 0; \
+	check_running hawki_rag_temporal_workflow_worker 0; \
+	check_running hawki_rag_temporal_scraper_worker 0; \
+	check_running hawki_rag_temporal_converter_worker 0; \
+	check_running hawki_rag_temporal_ingestion_worker 0; \
 	echo ""; \
 	echo "Service checks"; \
-	check_exec "MariaDB ping" mariadb 'mariadb-admin ping -h 127.0.0.1 -u"$$MARIADB_USER" -p"$$MARIADB_PASSWORD"' 1; \
-	check_exec "RabbitMQ ping" rabbitmq "rabbitmq-diagnostics -q ping" 1; \
+	check_exec "PostgreSQL ping" hawki_rag_postgres 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"' 1; \
 	check_exec "Laravel artisan" hawki_rag_app "php artisan list --raw" 1; \
 	check_exec "Qdrant readyz" hawki_qdrant "curl -fsS http://localhost:6333/readyz" 1; \
 	check_exec "Neo4j browser" hawki_rag_neo4j "wget --spider -q http://localhost:7474/browser" 1; \
@@ -337,7 +338,7 @@ pipeline: crawl convert
 	@$(MAKE) ingest CRAWLED_ROOT="$(OUTPUT_DIR)" COLLECTION="$(COLLECTION)" GRAPH="$(GRAPH)" GRAPH_ONLY="$(GRAPH_ONLY)" GRAPH_ENGINE="$(GRAPH_ENGINE)" EMBEDDING_MODEL="$(EMBEDDING_MODEL)" NEO4J_DATABASE="$(NEO4J_DATABASE)" CHUNK_CHARS="$(CHUNK_CHARS)" CHUNK_OVERLAP="$(CHUNK_OVERLAP)" BATCH="$(BATCH)" PROVIDER="$(PROVIDER)" BASE_URL="$(BASE_URL)" TIMEOUT="$(TIMEOUT)" RESUME_MODE="$(RESUME_MODE)" DRY="$(DRY)" ESTIMATE_ONLY="$(ESTIMATE_ONLY)" SUMMARY_FILE="$(SUMMARY_FILE)"
 
 logs-core:
-	@$(COMPOSE_CMD) logs -f qdrant mariadb rabbitmq $(OLLAMA_SERVICE) hawki_rag_app hawki-rag-scrape-monitor-worker hawki-rag-scraper-event-worker hawki-rag-converter-event-worker hawki-rag-ingestion-event-worker
+	@$(COMPOSE_CMD) logs -f postgres temporal temporal-ui qdrant hawki_rag_neo4j $(OLLAMA_SERVICE) hawki_rag_app hawki_rag_bridge hawki_rag_rerank hawki-rag-temporal-workflow-worker hawki-rag-temporal-scraper-worker hawki-rag-temporal-converter-worker hawki-rag-temporal-ingestion-worker
 	@$(COMPOSE_CMD) logs -f
 
 down-core:
@@ -348,7 +349,7 @@ down-rag:
 
 restart-core:
 	@echo $(PROFILE_MESSAGE)
-	@$(COMPOSE_CMD) up -d --force-recreate qdrant mariadb hawki_rag_nginx $(OLLAMA_SERVICE) hawki_rag_app
+	@$(COMPOSE_CMD) up -d --force-recreate postgres temporal temporal-ui qdrant hawki_rag_neo4j $(OLLAMA_SERVICE) hawki_rag_app hawki_rag_bridge hawki_rag_rerank hawki-rag-temporal-workflow-worker hawki-rag-temporal-scraper-worker hawki-rag-temporal-converter-worker hawki-rag-temporal-ingestion-worker
 	@$(COMPOSE_CMD) up -d --force-recreate
 
 neo4j-fresh:

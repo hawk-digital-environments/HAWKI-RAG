@@ -5,8 +5,6 @@ declare(strict_types=1);
 namespace Tests\Unit\Pipeline;
 
 use App\Models\Dataset;
-use App\Models\PipelineJob;
-use App\Models\PipelineTask;
 use App\Services\Pipeline\Uploads\PipelineUploadPayloadService;
 use App\Services\Pipeline\Values\PipelineStoredUpload;
 use App\Services\Pipeline\Values\PipelineUploadInput;
@@ -26,8 +24,11 @@ class PipelineUploadPayloadServiceTest extends TestCase
         $this->assertSame('uploaded_file_convert_ingest', $metadata['request']['mode']);
         $this->assertSame('sample.pdf', $metadata['request']['metadata']['label']);
         $this->assertFalse($metadata['request']['metadata']['graph']);
-        $this->assertSame('laravel', $metadata['orchestration']);
-        $this->assertSame(['event_bus' => true], $metadata['rabbitmq']);
+        $this->assertSame('temporal', $metadata['orchestration']);
+        $this->assertSame(
+            'Uploaded files are stored as app metadata. Source URL ingestion is orchestrated by IngestSourceWorkflow.',
+            $metadata['temporal']['note'],
+        );
         $this->assertSame('upload-dataset', $metadata['dataset']['dataset_id']);
         $this->assertSame('/shared/uploads/sample.pdf', $metadata['upload']['local_path']);
     }
@@ -42,39 +43,11 @@ class PipelineUploadPayloadServiceTest extends TestCase
 
         $this->assertSame('pipeline-controller', $metadata['source']);
         $this->assertSame('uploaded_file_convert_ingest', $metadata['mode']);
+        $this->assertSame('File uploads are stored as metadata only in the Temporal source-ingestion migration.', $metadata['status_note']);
         $this->assertSame('sample.pdf', $metadata['original_filename']);
         $this->assertSame('/shared/uploads/sample.pdf', $metadata['uploaded_path']);
         $this->assertTrue($metadata['graph']);
         $this->assertSame('hawki_upload_dataset', $metadata['dataset']['qdrant_collection']);
-    }
-
-    public function test_it_builds_file_discovered_payload(): void
-    {
-        $storedUpload = $this->storedUpload();
-        $metadata = ['graph' => false, 'source' => 'pipeline-controller'];
-
-        $payload = app(PipelineUploadPayloadService::class)->fileDiscovered(
-            new PipelineTask([
-                'task_id' => 'task-upload',
-                'dataset_id' => 'upload-dataset',
-            ]),
-            new PipelineJob([
-                'job_id' => 'convert-upload',
-            ]),
-            'upload://sample.pdf',
-            $storedUpload,
-            $metadata,
-        );
-
-        $this->assertSame('task-upload', $payload['task_id']);
-        $this->assertSame('convert-upload', $payload['job_id']);
-        $this->assertSame('upload-dataset', $payload['dataset_id']);
-        $this->assertSame(PipelineJob::TYPE_CONVERT, $payload['job_type']);
-        $this->assertSame('upload://sample.pdf', $payload['source_url']);
-        $this->assertSame($storedUpload->localPath, $payload['local_path']);
-        $this->assertSame($storedUpload->contentHash, $payload['content_hash']);
-        $this->assertSame(PipelineJob::STATUS_QUEUED, $payload['status']);
-        $this->assertSame($metadata, $payload['metadata']);
     }
 
     private function dataset(): Dataset

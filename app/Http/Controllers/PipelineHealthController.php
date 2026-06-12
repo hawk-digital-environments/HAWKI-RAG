@@ -2,17 +2,17 @@
 
 namespace App\Http\Controllers;
 
-use App\Services\Pipeline\PipelineService;
+use App\Services\Pipeline\Health\PipelineHealthService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class PipelineHealthController extends Controller
 {
     public function __construct(
-        private readonly PipelineService $pipeline,
+        private readonly PipelineHealthService $health,
     ) {}
 
-    public function queues(Request $request): JsonResponse
+    public function show(Request $request): JsonResponse
     {
         $validated = $request->validate([
             'timeout' => 'nullable|integer|min:1|max:30',
@@ -20,7 +20,8 @@ class PipelineHealthController extends Controller
 
         return response()->json([
             'success' => true,
-            'queueMonitor' => $this->pipeline->queues->status((int) ($validated['timeout'] ?? 5)),
+            'checkedAt' => now()->toAtomString(),
+            'checks' => $this->health->check((int) ($validated['timeout'] ?? 5)),
         ]);
     }
 }

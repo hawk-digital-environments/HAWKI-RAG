@@ -345,10 +345,12 @@ if (root) {
     function renderJobs(jobs) {
         const filtered = state.jobTypeFilter ? jobs.filter((job) => job.jobType === state.jobTypeFilter) : jobs;
         setText(els.jobsCount, `${filtered.length} job${filtered.length === 1 ? '' : 's'} shown`);
-        renderTable(els.jobs, ['Job', 'Type', 'Status', 'Source', 'Path', 'Error', 'Started', 'Finished'], filtered, (job) => [
+        renderTable(els.jobs, ['Job', 'Type', 'Status', 'Workflow', 'Schedule', 'Source', 'Path', 'Error', 'Started', 'Finished'], filtered, (job) => [
             mono(job.jobId),
             job.jobType,
             statusPill(job.status),
+            mono(job.temporalWorkflowId),
+            mono(job.temporalScheduleId),
             wrap(job.sourceUrl),
             wrap(job.localPath),
             errorText(job.errorMessage),

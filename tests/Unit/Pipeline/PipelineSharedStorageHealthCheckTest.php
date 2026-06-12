@@ -16,8 +16,8 @@ class PipelineSharedStorageHealthCheckTest extends TestCase
         $path = storage_path('framework/testing/shared-storage/'.(string) Str::uuid());
         File::ensureDirectoryExists($path);
 
-        config()->set('communication.rabbitmq.pipeline_ingestion.shared_storage_root', $path);
-        config()->set('communication.rabbitmq.pipeline_ingestion.shared_storage_web_user', '');
+        config()->set('temporal.storage.shared_root', $path);
+        config()->set('temporal.storage.shared_storage_web_user', '');
         config()->set('scraper.storage_path', $path);
         config()->set('config.shared_root', $path);
 

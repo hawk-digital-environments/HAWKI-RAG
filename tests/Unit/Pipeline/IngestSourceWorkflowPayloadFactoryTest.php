@@ -1,0 +1,78 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Tests\Unit\Pipeline;
+
+use App\Models\IngestionSource;
+use App\Models\PipelineJob;
+use App\Models\PipelineTask;
+use App\Services\Pipeline\Tasks\IngestSourceWorkflowPayloadFactory;
+use Tests\TestCase;
+
+class IngestSourceWorkflowPayloadFactoryTest extends TestCase
+{
+    public function test_it_builds_small_reference_payload_for_temporal_workflow(): void
+    {
+        config()->set('temporal.storage.mode', 'shared');
+        config()->set('temporal.storage.shared_root', '/shared');
+        config()->set('temporal.task_queues.workflow', 'rag-workflow-task-queue');
+        config()->set('temporal.task_queues.scraper', 'rag-scraper-task-queue');
+        config()->set('temporal.task_queues.converter', 'rag-converter-task-queue');
+        config()->set('temporal.task_queues.ingestion', 'rag-ingestion-task-queue');
+        config()->set('temporal.ingestion.provider', 'ollama');
+        config()->set('temporal.ingestion.graph', true);
+
+        $factory = app(IngestSourceWorkflowPayloadFactory::class);
+        $sourceId = $factory->sourceId('dataset-a', 'https://example.edu');
+        $paths = $factory->storagePaths($sourceId);
+
+        $payload = $factory->input(
+            new PipelineTask([
+                'task_id' => 'task-a',
+                'dataset_id' => 'dataset-a',
+                'metadata' => [
+                    'dataset' => [
+                        'qdrant_collection' => 'hawki_dataset_a',
+                        'neo4j_namespace' => 'hawki_dataset_a',
+                    ],
+                ],
+            ]),
+            new PipelineJob([
+                'job_id' => 'ingest-a',
+                'job_type' => PipelineJob::TYPE_INGEST,
+            ]),
+            new IngestionSource([
+                'source_id' => $sourceId,
+                'source_url' => 'https://example.edu',
+                'refresh_cadence' => 'daily',
+                'etag' => 'etag-a',
+                'last_modified' => 'Fri, 12 Jun 2026 10:00:00 GMT',
+                'content_hash' => 'hash-a',
+                'document_version' => 'version-a',
+                'raw_storage_path' => $paths['raw'],
+                'markdown_storage_path' => $paths['markdown'],
+                'metadata' => [],
+            ]),
+        );
+
+        $this->assertSame($sourceId, $payload['source_id']);
+        $this->assertSame('https://example.edu', $payload['source_url']);
+        $this->assertSame('/shared/sources/'.$sourceId.'/raw/', $payload['raw_output_path']);
+        $this->assertSame('/shared/sources/'.$sourceId.'/markdown/', $payload['markdown_output_path']);
+        $this->assertSame('/shared/sources/'.$sourceId.'/ingest/manifest.json', $payload['ingest_manifest_path']);
+        $this->assertSame('daily', $payload['refresh']['cadence']);
+        $this->assertSame('etag-a', $payload['refresh']['etag']);
+        $this->assertSame('rag-workflow-task-queue', $payload['task_queues']['workflow']);
+        $this->assertSame('rag-scraper-task-queue', $payload['task_queues']['scraper']);
+        $this->assertSame('rag-converter-task-queue', $payload['task_queues']['converter']);
+        $this->assertSame('rag-ingestion-task-queue', $payload['task_queues']['ingestion']);
+        $this->assertSame('ollama', $payload['ingestion']['provider']);
+        $this->assertTrue($payload['ingestion']['graph']);
+
+        $encoded = json_encode($payload, JSON_THROW_ON_ERROR);
+        $this->assertStringNotContainsString('markdown_body', $encoded);
+        $this->assertStringNotContainsString('embedding', $encoded);
+        $this->assertStringNotContainsString('chunks', $encoded);
+    }
+}

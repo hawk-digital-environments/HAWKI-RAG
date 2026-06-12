@@ -83,6 +83,7 @@ Route::get('/pipeline/tasks/{taskId}/events', [PipelineTaskController::class, 'e
 Route::post('/pipeline/tasks/{taskId}/jobs', [PipelineTaskController::class, 'upsertJob']);
 Route::post('/pipeline/tasks/{taskId}/retry', [PipelineTaskController::class, 'retry']);
 Route::post('/pipeline/tasks/{taskId}/retry-failed-jobs', [PipelineTaskController::class, 'retryFailedJobs']);
+Route::post('/pipeline/tasks/{taskId}/cancel', [PipelineTaskController::class, 'cancel']);
 Route::post('/pipeline/controller/files', [PipelineControlController::class, 'uploadFile']);
 // Playground related routes
 

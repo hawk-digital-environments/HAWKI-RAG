@@ -11,7 +11,7 @@ readonly class PipelineHealthService
 {
     public function __construct(
         private PipelineDatabaseHealthCheck $database,
-        private PipelineRabbitHealthCheck $rabbit,
+        private PipelineTemporalHealthCheck $temporal,
         private PipelineWorkerHealthCheck $workers,
         private QdrantHealthCheck $qdrant,
         private Neo4jHealthCheck $neo4j,
@@ -28,9 +28,9 @@ readonly class PipelineHealthService
 
         return [
             $this->database->check(),
-            $this->rabbit->check(),
+            $this->temporal->check(),
+            $this->workers->workflow(),
             $this->workers->scraper($timeout),
-            $this->workers->scrapeMonitor(),
             $this->workers->converter($timeout),
             $this->workers->ingestion($timeout),
             $this->qdrant->check($timeout),

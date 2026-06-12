@@ -5,11 +5,15 @@ declare(strict_types=1);
 namespace App\Services\Pipeline\Recovery;
 
 use App\Models\PipelineJob;
-use App\Services\Pipeline\Events\PipelineEventBus;
+use App\Models\PipelineTask;
+use App\Services\Pipeline\Repositories\IngestionSourceRepository;
 use App\Services\Pipeline\Repositories\PipelineJobRecoveryRepository;
+use App\Services\Pipeline\Repositories\PipelineJobStateMutationRepository;
 use App\Services\Pipeline\Repositories\PipelineTaskRepository;
 use App\Services\Pipeline\Repositories\PipelineTransactionRepository;
+use App\Services\Pipeline\Tasks\IngestSourceWorkflowPayloadFactory;
 use App\Services\Pipeline\Tasks\PipelineTaskService;
+use App\Services\Temporal\TemporalOrchestrationClient;
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Support\Carbon;
 use Psr\Clock\ClockInterface;
@@ -20,14 +24,16 @@ use Symfony\Component\Clock\Clock;
 readonly class PipelineRecoveryAttemptService
 {
     public function __construct(
-        private PipelineEventBus $events,
         private PipelineTaskService $tasks,
         private PipelineRecoveryMetadataService $metadata,
-        private PipelineRecoveryPayloadService $payloads,
         private PipelineRecoveryFailedJobPresenter $presenter,
+        private IngestSourceWorkflowPayloadFactory $workflowPayloads,
+        private IngestionSourceRepository $ingestionSources,
         private PipelineJobRecoveryRepository $jobRecovery,
+        private PipelineJobStateMutationRepository $jobStates,
         private PipelineTaskRepository $taskRepository,
         private PipelineTransactionRepository $transactions,
+        private TemporalOrchestrationClient $temporal,
         private LoggerInterface $logger,
         private ClockInterface $clock = new Clock(),
     ) {
@@ -46,32 +52,36 @@ readonly class PipelineRecoveryAttemptService
 
         /** @var PipelineJob $preparedJob */
         $preparedJob = $prepared['job'];
+        /** @var PipelineTask $preparedTask */
+        $preparedTask = $prepared['task'];
         try {
-            $published = $this->events->publishRecoveryRetry(
-                $prepared['event'],
-                sprintf('operator %s recovery%s', $scope, $scopeId ? " {$scopeId}" : ''),
+            $started = $this->startTemporalRetry(
+                $preparedTask,
+                $preparedJob,
+                is_array($preparedJob->metadata) ? $preparedJob->metadata : [],
             );
-            $this->tasks->recalculateTaskStatus((string) $preparedJob->task_id);
-            $this->logger->info('pipeline.recovery.retry_queued', [
+            $this->tasks->recalculateTaskStatus((string) $started->task_id);
+            $this->logger->info('pipeline.recovery.temporal_retry_started', [
                 'scope' => $scope,
                 'scope_id' => $scopeId,
-                'task_id' => $preparedJob->task_id,
-                'job_id' => $preparedJob->job_id,
-                'event_type' => $published['event_type'] ?? null,
-                'retry_count' => $published['retry_count'] ?? null,
+                'task_id' => $started->task_id,
+                'job_id' => $started->job_id,
+                'workflow_id' => $started->temporal_workflow_id,
+                'run_id' => $started->temporal_run_id,
             ]);
 
-            return array_merge($this->presenter->present($preparedJob), [
+            return array_merge($this->presenter->present($started), [
                 'result' => 'retried',
-                'message' => 'Recovery retry queued.',
-                'publishedEventType' => $published['event_type'] ?? null,
+                'message' => 'Temporal workflow retry started.',
+                'temporalWorkflowId' => $started->temporal_workflow_id,
+                'temporalRunId' => $started->temporal_run_id,
             ]);
         } catch (\Throwable $error) {
             $failed = $this->markPublishFailed($preparedJob, $error);
 
             return array_merge($this->presenter->present($failed), [
                 'result' => 'failed',
-                'message' => 'Recovery retry could not be published: '.$error->getMessage(),
+                'message' => 'Temporal workflow retry could not be started: '.$error->getMessage(),
             ]);
         }
     }
@@ -111,17 +121,16 @@ readonly class PipelineRecoveryAttemptService
                 ];
             }
 
-            $metadata = is_array($locked->metadata) ? $locked->metadata : [];
-            $eventType = $this->payloads->retryEventType($locked);
-            if ($eventType === null) {
+            if ($locked->job_type !== PipelineJob::TYPE_INGEST || ! is_string($locked->source_id) || trim($locked->source_id) === '') {
                 return [
                     'result' => 'skipped',
                     'jobId' => $locked->job_id,
                     'taskId' => $locked->task_id,
-                    'message' => "Job type {$locked->job_type} cannot be retried through RabbitMQ recovery.",
+                    'message' => 'Only Temporal source ingestion jobs with a source_id can be retried here.',
                 ];
             }
 
+            $metadata = is_array($locked->metadata) ? $locked->metadata : [];
             $retryCount = (int) ($metadata['retry_count'] ?? 0) + 1;
             $recoveryEvent = $this->metadata->recoveryEvent($locked, $scope, $scopeId, $retryCount);
 
@@ -135,10 +144,50 @@ readonly class PipelineRecoveryAttemptService
                 'result' => 'prepared',
                 'job' => $locked,
                 'task' => $task,
-                'event' => $this->payloads->retryEvent($task, $locked, $eventType, $recoveryEvent),
                 'recoveryEvent' => $recoveryEvent,
             ];
         });
+    }
+
+    /**
+     * @param array<string, mixed> $metadata
+     */
+    private function startTemporalRetry(PipelineTask $task, PipelineJob $job, array $metadata): PipelineJob
+    {
+        $source = $this->ingestionSources->findBySourceId((string) $job->source_id);
+        if (! $source) {
+            throw new \RuntimeException("Ingestion source {$job->source_id} was not found.");
+        }
+
+        $source = $this->ingestionSources->upsertStarting($source->source_id, [
+            'source_url' => $source->source_url,
+            'task_id' => $task->task_id,
+            'dataset_id' => $task->dataset_id,
+            'refresh_cadence' => $source->refresh_cadence,
+            'raw_storage_path' => $source->raw_storage_path,
+            'markdown_storage_path' => $source->markdown_storage_path,
+            'metadata' => array_merge($source->metadata ?? [], [
+                'retried_at' => $this->clock->now()->format(\DateTimeInterface::ATOM),
+            ]),
+        ]);
+
+        $workflowId = is_string($job->temporal_workflow_id) && trim($job->temporal_workflow_id) !== ''
+            ? $job->temporal_workflow_id
+            : $this->workflowPayloads->workflowId($source->source_id);
+        $execution = $this->temporal->startIngestWorkflow(
+            $this->workflowPayloads->input($task, $job, $source),
+            $workflowId,
+        );
+        $scheduleId = is_string($job->temporal_schedule_id) ? $job->temporal_schedule_id : null;
+        $metadata['temporal'] = array_filter([
+            'workflow_id' => $execution->workflowId,
+            'run_id' => $execution->runId,
+            'schedule_id' => $scheduleId,
+        ], static fn (mixed $value): bool => $value !== null && $value !== '');
+
+        $this->ingestionSources->markWorkflowStarted($source, $execution->workflowId, $execution->runId, $scheduleId);
+
+        return $this->jobStates->markTemporalStarted($job, $execution->workflowId, $execution->runId, $scheduleId, $metadata);
     }
 
     private function markPublishFailed(PipelineJob $job, \Throwable $error): PipelineJob

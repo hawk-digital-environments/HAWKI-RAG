@@ -25,7 +25,7 @@ readonly class PipelineSharedStorageHealthCheck
     public function check(): array
     {
         $paths = array_values(array_unique(array_filter([
-            (string) $this->config->get('communication.rabbitmq.pipeline_ingestion.shared_storage_root'),
+            (string) $this->config->get('temporal.storage.shared_root'),
             (string) $this->config->get('scraper.storage_path'),
             (string) $this->config->get('config.shared_root'),
         ])));
@@ -43,7 +43,7 @@ readonly class PipelineSharedStorageHealthCheck
                 return $this->failureResult(
                     'Shared storage',
                     "Path is not writable: {$path}.",
-                    'Fix permissions with chown -R www-data:www-data /app/shared && chmod -R ug+rwX /app/shared, then verify SHARED_STORAGE_ROOT, SCRAPE_STORAGE_PATH, and HAWKI_RAG_PIPELINE_ROOT.',
+                    'Fix permissions with chown -R www-data:www-data /shared && chmod -R ug+rwX /shared, then verify HAWKI_RAG_TEMPORAL_SHARED_ROOT, SCRAPE_STORAGE_PATH, and HAWKI_RAG_PIPELINE_ROOT.',
                 );
             }
 
@@ -55,7 +55,7 @@ readonly class PipelineSharedStorageHealthCheck
                 return $this->failureResult(
                     'Shared storage',
                     "Could not create a probe file in {$path}: {$exception->getMessage()}",
-                    'Fix permissions with chown -R www-data:www-data /app/shared && chmod -R ug+rwX /app/shared.',
+                    'Fix permissions with chown -R www-data:www-data /shared && chmod -R ug+rwX /shared.',
                 );
             }
 
@@ -64,7 +64,7 @@ readonly class PipelineSharedStorageHealthCheck
                 return $this->failureResult(
                     'Shared storage',
                     $webUserError,
-                    'Fix permissions with chown -R www-data:www-data /app/shared && chmod -R ug+rwX /app/shared, or set PIPELINE_SHARED_STORAGE_WEB_USER to the PHP-FPM user.',
+                    'Fix permissions with chown -R www-data:www-data /shared && chmod -R ug+rwX /shared, or set PIPELINE_SHARED_STORAGE_WEB_USER to the PHP-FPM user.',
                 );
             }
         }
@@ -74,7 +74,7 @@ readonly class PipelineSharedStorageHealthCheck
 
     private function webUserError(string $path): ?string
     {
-        $webUser = trim((string) $this->config->get('communication.rabbitmq.pipeline_ingestion.shared_storage_web_user', ''));
+        $webUser = trim((string) $this->config->get('temporal.storage.shared_storage_web_user', ''));
         if ($webUser === '' || $this->app->environment('testing')) {
             return null;
         }

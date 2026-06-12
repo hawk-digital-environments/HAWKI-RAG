@@ -38,6 +38,7 @@ class PipelineJob extends Model
     protected $fillable = [
         'job_id',
         'task_id',
+        'source_id',
         'parent_job_id',
         'job_type',
         'status',
@@ -46,6 +47,10 @@ class PipelineJob extends Model
         'source_url',
         'local_path',
         'content_hash',
+        'temporal_workflow_id',
+        'temporal_run_id',
+        'temporal_schedule_id',
+        'index_status',
         'error_message',
         'label',
         'total_documents',

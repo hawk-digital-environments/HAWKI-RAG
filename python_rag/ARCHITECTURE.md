@@ -15,7 +15,9 @@
     - `domain/ports.py`, `domain/settings.py`, `domain/__init__.py`
 - `infrastructure/`
   - Concrete adapters, grouped by external system:
-    - `infrastructure/graph/`, `infrastructure/vectorstore/`, `infrastructure/raganything/`, `infrastructure/rerank/`, `infrastructure/messaging/`, `infrastructure/providers/`
+    - `infrastructure/graph/`, `infrastructure/vectorstore/`, `infrastructure/raganything/`, `infrastructure/rerank/`, `infrastructure/providers/`
+- `temporal_rag/`
+  - Temporal workflow and activity workers for source ingestion orchestration.
 
 ## Migration status
 

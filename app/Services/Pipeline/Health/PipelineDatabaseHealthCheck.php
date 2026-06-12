@@ -42,7 +42,7 @@ readonly class PipelineDatabaseHealthCheck
             return $this->failureResult(
                 'Database',
                 $exception->getMessage(),
-                'Start MariaDB and verify DB_HOST, DB_PORT, DB_DATABASE, DB_USERNAME, and DB_PASSWORD.',
+                'Start PostgreSQL and verify DB_HOST, DB_PORT, DB_DATABASE, DB_USERNAME, and DB_PASSWORD.',
             );
         }
     }

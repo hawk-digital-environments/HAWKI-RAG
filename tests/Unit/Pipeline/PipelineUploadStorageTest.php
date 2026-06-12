@@ -20,7 +20,7 @@ class PipelineUploadStorageTest extends TestCase
 
         $this->root = storage_path('framework/testing/pipeline-upload-storage');
         File::deleteDirectory($this->root);
-        config()->set('communication.rabbitmq.pipeline_ingestion.shared_storage_root', $this->root);
+        config()->set('temporal.storage.shared_root', $this->root);
     }
 
     protected function tearDown(): void

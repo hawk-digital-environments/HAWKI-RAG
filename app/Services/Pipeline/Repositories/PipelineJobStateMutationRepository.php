@@ -25,21 +25,41 @@ readonly class PipelineJobStateMutationRepository
     /**
      * @param array<string, mixed> $metadata
      */
-    public function markScrapeMonitorCompleted(
+    public function markTemporalStarted(
         PipelineJob $job,
-        string $datasetPath,
-        Carbon $completedAt,
+        string $workflowId,
+        ?string $runId,
+        ?string $scheduleId,
         array $metadata,
     ): PipelineJob {
         $job->forceFill([
-            'job_type' => PipelineJob::TYPE_SCRAPE,
-            'status' => PipelineJob::STATUS_COMPLETED,
-            'local_path' => $datasetPath,
-            'completed_at' => $completedAt,
-            'finished_at' => $completedAt,
+            'status' => PipelineJob::STATUS_RUNNING,
+            'current_stage' => 'temporal.workflow_started',
+            'temporal_workflow_id' => $workflowId,
+            'temporal_run_id' => $runId,
+            'temporal_schedule_id' => $scheduleId,
+            'index_status' => 'running',
             'metadata' => $metadata,
         ])->save();
 
-        return $job->refresh()->loadMissing('task');
+        return $job->refresh();
     }
+
+    /**
+     * @param array<string, mixed> $metadata
+     */
+    public function markTemporalCancellationRequested(PipelineJob $job, Carbon $cancelledAt, array $metadata): PipelineJob
+    {
+        $job->forceFill([
+            'status' => PipelineJob::STATUS_FAILED,
+            'current_stage' => 'temporal.cancel_requested',
+            'index_status' => 'cancelled',
+            'error_message' => 'Temporal workflow cancellation requested.',
+            'finished_at' => $cancelledAt,
+            'metadata' => $metadata,
+        ])->save();
+
+        return $job->refresh();
+    }
+
 }

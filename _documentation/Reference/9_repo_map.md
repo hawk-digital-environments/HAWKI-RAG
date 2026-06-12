@@ -27,18 +27,19 @@
 | `APP_NAME` | Laravel app display name. |
 | `APP_URL` | Base URL used by Laravel for generated links. |
 | `APP_KEY` | Laravel encryption/session secret. |
-| `DB_HOST` | MariaDB host. |
-| `DB_PORT` | MariaDB port. |
-| `DB_DATABASE` | MariaDB database name. |
-| `DB_USERNAME` | MariaDB username. |
-| `DB_PASSWORD` | MariaDB password. |
+| `DB_HOST` | PostgreSQL host. |
+| `DB_PORT` | PostgreSQL port. |
+| `DB_DATABASE` | PostgreSQL database name for Laravel metadata. |
+| `DB_USERNAME` | PostgreSQL username. |
+| `DB_PASSWORD` | PostgreSQL password. |
 | `NEO4J_HTTP_URL` | Neo4j HTTP endpoint used by graph operations. |
 | `NEO4J_USER` | Neo4j username. |
 | `NEO4J_PASSWORD` | Neo4j password. |
 | `QDRANT_HTTP_URL` | Qdrant endpoint used by vector indexing/search. |
 | `HAWKI_RAG_BRIDGE_URL` | Bridge base URL for ingest operations. |
 | `HAWKI_RAG_API_URL` | RAG API base URL for question-answering. |
-| `HAWKI_RAG_SHARED_ROOT` | Shared ingest root path inside containers. |
+| `HAWKI_RAG_TEMPORAL_SHARED_ROOT` | Shared Temporal ingestion handoff root path inside containers. |
+| `TEMPORAL_ADDRESS` | Temporal frontend address used by Laravel and workers. |
 | `OLLAMA_API_URL` | Ollama API endpoint. |
 | `OLLAMA_EMBED_MODEL` | Embedding model name. |
 | `GRAPH_OLLAMA_RAG_MODEL` | Graph extraction model name. |
@@ -64,7 +65,7 @@
 | Volume | Description |
 |---|---|
 | `rawki_shared_storage` | Shared volume between Laravel and bridge (`/app/shared`). |
-| `qdrant_data`, `neo4j_data`, `hawki_mariadb_data`, `rag_storage`, `ollama` | Persistent data volumes for vector DB, graph DB, SQL DB, RAG working data, and model store. |
+| `qdrant_data`, `neo4j_data`, `hawki_postgres_data`, `rag_storage`, `ollama` | Persistent data volumes for vector DB, graph DB, PostgreSQL/Temporal SQL data, RAG working data, and model store. |
 
 ## Logs & statuses
 | Item | Location/Command |

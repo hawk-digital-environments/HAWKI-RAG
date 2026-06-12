@@ -21,21 +21,21 @@
         <header class="dashboard-header">
             <div>
                 <p class="eyebrow">Pipeline health</p>
-                <h1>RabbitMQ Queue Monitor</h1>
-                <p class="header-copy">Pipeline queue depth, consumers, retry queues, and failed events from Laravel.</p>
+                <h1>Temporal Ingestion Health</h1>
+                <p class="header-copy">Temporal, PostgreSQL, external adapters, shared storage, Qdrant, and Neo4j from Laravel.</p>
             </div>
             <div class="header-actions">
                 @include('partials.pipeline-nav', ['active' => 'health', 'refreshId' => 'pipeline-health-refresh'])
             </div>
         </header>
 
-        <section class="health-status" id="pipeline-health-status">Loading queue status...</section>
+        <section class="health-status" id="pipeline-health-status">Loading ingestion health...</section>
 
         <section class="panel">
             <div class="section-head">
                 <div>
-                    <h2>Queue status card</h2>
-                    <p id="pipeline-health-updated">No queue status loaded.</p>
+                    <h2>Service status</h2>
+                    <p id="pipeline-health-updated">No health status loaded.</p>
                 </div>
                 <span class="status-pill" id="pipeline-health-state">loading</span>
             </div>
@@ -46,8 +46,8 @@
         <section class="panel">
             <div class="section-head">
                 <div>
-                    <h2>Pipeline queues</h2>
-                    <p id="pipeline-health-queue-count">0 queues</p>
+                    <h2>Temporal and data services</h2>
+                    <p id="pipeline-health-queue-count">0 checks</p>
                 </div>
             </div>
             <div class="table-wrap" id="pipeline-health-queues"></div>
@@ -56,8 +56,8 @@
         <section class="panel">
             <div class="section-head">
                 <div>
-                    <h2>Retry and failed queues</h2>
-                    <p id="pipeline-health-retry-count">0 retry messages</p>
+                    <h2>Operator notes</h2>
+                    <p id="pipeline-health-retry-count">0 notes</p>
                 </div>
             </div>
             <div class="table-wrap" id="pipeline-health-retry-queues"></div>

@@ -1,4 +1,4 @@
-# 5. Environment, Database, Queue (Step-by-Step)
+# 5. Environment, Database, Temporal (Step-by-Step)
 
 ## Environment (.env) — every key explained
 
@@ -12,11 +12,11 @@
 ### Database services
 | Variable | Default Value | Description |
 | --- | --- | --- |
-| `DB_HOST` | `mariadb` | MariaDB host used by Laravel app container. |
-| `DB_PORT` | `3306` | MariaDB port exposed on the internal Docker network. |
-| `DB_DATABASE` | _From `.env`_ | MariaDB database name for Laravel tables. |
-| `DB_USERNAME` | _From `.env`_ | MariaDB username used by Laravel. |
-| `DB_PASSWORD` | _From `.env`_ | MariaDB password used by Laravel. |
+| `DB_HOST` | `postgres` | PostgreSQL host used by Laravel app container and Temporal local persistence. |
+| `DB_PORT` | `5432` | PostgreSQL port exposed on the internal Docker network. |
+| `DB_DATABASE` | `hawki_rag` | PostgreSQL database name for Laravel app metadata tables. |
+| `DB_USERNAME` | _From `.env`_ | PostgreSQL username used by Laravel and local Temporal persistence. |
+| `DB_PASSWORD` | _From `.env`_ | PostgreSQL password used by Laravel and local Temporal persistence. |
 | `NEO4J_HTTP_URL` | `http://hawki_rag_neo4j:7474` | Neo4j HTTP endpoint for graph operations. |
 | `NEO4J_USER` | _From `.env`_ | Neo4j login user. |
 | `NEO4J_PASSWORD` | _From `.env`_ | Neo4j login password. |
@@ -27,7 +27,22 @@
 | --- | --- | --- |
 | `HAWKI_RAG_BRIDGE_URL` | _From `.env`_ | Ingest bridge base URL used for ingest operations. |
 | `HAWKI_RAG_API_URL` | _From `.env`_ | Question-answer API URL used by the app. |
-| `HAWKI_RAG_SHARED_ROOT` | `/app/shared` | Shared files path inside containers for ingestion input. |
+| `HAWKI_RAG_TEMPORAL_SHARED_ROOT` | `/shared` | Shared files path used for Temporal scraper/converter/ingestion handoff. |
+
+### Temporal ingestion
+| Variable | Default Value | Description |
+| --- | --- | --- |
+| `TEMPORAL_ADDRESS` | `temporal:7233` | Temporal frontend address from Docker containers. Do not use `localhost:7233` inside containers. |
+| `TEMPORAL_NAMESPACE` | `default` | Local Temporal namespace. |
+| `TEMPORAL_RAG_WORKFLOW_TASK_QUEUE` | `rag-workflow-task-queue` | Task queue for `IngestSourceWorkflow`. |
+| `TEMPORAL_RAG_SCRAPER_TASK_QUEUE` | `rag-scraper-task-queue` | Task queue for `scrape_source`. |
+| `TEMPORAL_RAG_CONVERTER_TASK_QUEUE` | `rag-converter-task-queue` | Task queue for `inspect_and_convert_files`. |
+| `TEMPORAL_RAG_INGESTION_TASK_QUEUE` | `rag-ingestion-task-queue` | Task queue for `ingest_markdown_files` and `mark_source_ready`. |
+| `TEMPORAL_RAG_DAILY_CRON` | `0 2 * * *` | Cron used when source refresh cadence is `daily`. |
+| `TEMPORAL_RAG_WEEKLY_CRON` | `0 2 * * 0` | Cron used when source refresh cadence is `weekly`. |
+| `TEMPORAL_RAG_MONTHLY_CRON` | `0 2 1 * *` | Cron used when source refresh cadence is `monthly`. |
+| `EXTERNAL_SCRAPER_URL` | `http://crawler:8000` | External scraper service base URL; worker calls its start/status endpoints. |
+| `EXTERNAL_CONVERTER_URL` | `http://file-converter:8000` | External converter service base URL; worker calls its start/status endpoints. |
 
 ### Ollama and models
 | Variable | Default Value | Description |
@@ -40,8 +55,8 @@
 ### Variables to verify before migrating
 | Variable | Default Value | Description |
 | --- | --- | --- |
-| `DB_HOST` | `mariadb` | Must resolve from `hawki_rag_app` container to the MariaDB service. |
-| `DB_PORT` | `3306` | Must match the MariaDB service port. |
+| `DB_HOST` | `postgres` | Must resolve from `hawki_rag_app` and Temporal worker containers to the PostgreSQL service. |
+| `DB_PORT` | `5432` | Must match the PostgreSQL service port. |
 | `DB_DATABASE` | _From `.env`_ | Target database for Laravel migrations. |
 | `DB_USERNAME` | _From `.env`_ | User executing Laravel migrations. |
 | `DB_PASSWORD` | _From `.env`_ | Password for migration user. |
@@ -49,3 +64,18 @@
 :::tip "Important"
     Run migrations with `php artisan migrate`; without it, Laravel cannot store jobs/sessions used by the UI.
 :::
+
+## Temporal setup
+
+Temporal local development uses PostgreSQL persistence and SQL visibility. Elasticsearch is
+not required. Laravel never writes directly to Temporal tables; it uses the Temporal SDK to
+start workflows, cancel workflows, and create/update/delete schedules.
+
+Start the stack:
+
+```bash
+docker compose up -d postgres temporal temporal-ui hawki_rag_app hawki_rag_bridge qdrant hawki_rag_neo4j
+docker compose up -d hawki-rag-temporal-workflow-worker hawki-rag-temporal-scraper-worker hawki-rag-temporal-converter-worker hawki-rag-temporal-ingestion-worker
+```
+
+Temporal UI is exposed on `http://localhost:8081` by default.

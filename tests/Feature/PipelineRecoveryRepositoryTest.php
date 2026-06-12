@@ -115,25 +115,25 @@ class PipelineRecoveryRepositoryTest extends TestCase
 
         $failed = app(PipelineJobRecoveryRepository::class)->markRecoveryPublishFailed(
             $job,
-            'RabbitMQ unavailable',
+            'Temporal unavailable',
             $failedAt,
             [
                 'last_recovery_event' => [
                     'event' => 'recovery_publish_failed',
-                    'error_message' => 'RabbitMQ unavailable',
+                    'error_message' => 'Temporal unavailable',
                 ],
             ],
         );
 
         $this->assertSame(PipelineJob::STATUS_FAILED, $failed->status);
-        $this->assertSame('RabbitMQ unavailable', $failed->error_message);
+        $this->assertSame('Temporal unavailable', $failed->error_message);
         $this->assertTrue($failedAt->equalTo($failed->finished_at));
         $this->assertSame('recovery_publish_failed', $failed->metadata['last_recovery_event']['event']);
 
         $this->assertDatabaseHas('pipeline_jobs', [
             'job_id' => 'job-recovery-publish-failed',
             'status' => PipelineJob::STATUS_FAILED,
-            'error_message' => 'RabbitMQ unavailable',
+            'error_message' => 'Temporal unavailable',
         ]);
     }
 

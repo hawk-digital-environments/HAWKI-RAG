@@ -17,9 +17,9 @@
         "laravel/tinker": "^2.9",
         "league/commonmark": "^2.7",
         "league/flysystem-sftp-v3": "^3.30.0",
-        "php-amqplib/php-amqplib": "^3.7",
         "ramsey/uuid": "^4.9",
-        "symfony/yaml": "^7.2"
+        "symfony/yaml": "^7.2",
+        "temporal/sdk": "^2.17"
     },
     "require-dev": {
         "fakerphp/faker": "^1.23",
@@ -55,7 +55,6 @@
         ],
         "post-create-project-cmd": [
             "@php artisan key:generate --ansi",
-            "@php -r \"file_exists('database/database.sqlite') || touch('database/database.sqlite');\"",
             "@php artisan migrate --graceful --ansi"
         ],
         "dev": [

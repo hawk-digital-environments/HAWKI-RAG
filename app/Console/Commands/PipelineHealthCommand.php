@@ -12,13 +12,13 @@ class PipelineHealthCommand extends Command
     protected $signature = 'pipeline:health
         {--timeout=5 : HTTP and connection timeout in seconds}';
 
-    protected $description = 'Check MVP pipeline dependencies and print clear fix suggestions.';
+    protected $description = 'Check Temporal RAG ingestion dependencies and print clear fix suggestions.';
 
     public function handle(PipelineHealthService $health): int
     {
         $results = $health->check(max(1, (int) $this->option('timeout')));
 
-        $this->line('HAWKI RAG MVP pipeline health');
+        $this->line('HAWKI RAG Temporal ingestion health');
         $this->newLine();
 
         foreach ($results as $result) {
