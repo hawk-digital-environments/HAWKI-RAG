@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Services\Pipeline\Status;
 
-use App\Services\FileConverter\ConversionFailureReportReader;
 use Illuminate\Container\Attributes\Config;
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Filesystem\Filesystem;
@@ -14,7 +13,6 @@ use Symfony\Component\Finder\Finder;
 readonly class PipelineConversionDatasetScanner
 {
     public function __construct(
-        private ConversionFailureReportReader $failures,
         private Filesystem $files,
         #[Config('file_converter.supported_extensions')]
         private array $converterExtensions = ['pdf', 'doc', 'docx'],
@@ -57,15 +55,13 @@ readonly class PipelineConversionDatasetScanner
             }
         }
 
-        $failures = $this->failures->failuresFor($resolvedPath);
-
         return [
             'sourceCount' => $sourceCount,
             'convertedCount' => $convertedCount,
-            'failedCount' => count($failures),
+            'failedCount' => 0,
             'convertedAt' => $convertedAt,
             'supportedExtensions' => $extensions,
-            'failures' => $failures,
+            'failures' => [],
         ];
     }
 

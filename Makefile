@@ -58,7 +58,7 @@ COMPOSE_FILE_PREFIX := COMPOSE_FILE=$(COMPOSE_FILE_LIST)
 COMPOSE_CMD = $(COMPOSE_ENV_PREFIX) COMPOSE_FILE=$(COMPOSE_FILE_LIST) $(if $(strip $(COMPOSE_PROFILES)),COMPOSE_PROFILES=$(COMPOSE_PROFILES)) $(COMPOSE_BIN) --env-file $(ENV_FILE)
 
 
-.PHONY: clean network pull-core build-app migrate-core _up-core up-core up-core-server health pull-models scraped-folders crawl convert ingest convert-ingest-folder pipeline logs-core down-core down-rag restart-core test-services neo4j-fresh python-test python-deps
+.PHONY: clean network pull-core build-app migrate-core _up-core up-core up-core-server health pull-models logs-core down-core down-rag restart-core test-services neo4j-fresh python-test python-deps
 
 clean:
 	@find . -type d -name "__pycache__" -exec rm -rf {} +
@@ -240,102 +240,6 @@ pull-models:
 	@docker exec -it $(OLLAMA_CONTAINER) ollama pull bge-m3
 	@docker exec -it $(OLLAMA_CONTAINER) ollama pull llama3.1:8b
 	@docker exec -it $(OLLAMA_CONTAINER) ollama pull llama3.2:1b
-
-# Pipeline helper variables (override via `make VAR=value`)
-ARTISAN ?= docker exec hawki_rag_app php artisan
-URL ?=
-JOB_ID_FULL ?=
-LABEL ?= $(if $(JOB_ID_FULL),$(JOB_ID_FULL),manual-crawl)
-CRAWLED_ROOT ?= /app/shared/crawled-data
-SHARED_ROOT ?= /app/shared
-SCRAPED_FOLDER ?=
-OUTPUT_DIR ?= $(CRAWLED_ROOT)/$(LABEL)
-MAX_PAGES ?= 100
-SITEMAP_PAGES ?= 100
-MAX_PAGES_FULL ?=
-SKIP_IMAGES ?= true
-IMAGE_EXCEPTIONS ?=
-DATE_SELECTOR ?=
-MAX_CONCURRENCY ?= 4
-MAX_RPM ?= 60
-REQUEST_DELAY ?=
-DISCOVERY_MODE ?= false
-EXTENSIONS ?= pdf,doc,docx
-SCAN_ALL ?= false
-AUTOMATION ?= $(or $(HAWKI_RAG_PIPELINE_AUTOMATION),false)
-EXISTING ?= $(or $(HAWKI_RAG_CONVERT_EXISTING_MODE),continue)
-GRAPH ?= true
-GRAPH_ONLY ?= false
-GRAPH_ENGINE ?= raganything
-EMBEDDING_MODEL ?=
-COLLECTION ?=
-NEO4J_DATABASE ?=
-CHUNK_CHARS ?=
-CHUNK_OVERLAP ?=
-BATCH ?= 16
-PROVIDER ?= ollama
-BASE_URL ?= http://localhost:8000
-TIMEOUT ?=
-RESUME_MODE ?= $(or $(HAWKI_RAG_INGEST_RESUME_MODE),resume)
-DRY ?= false
-ESTIMATE_ONLY ?= false
-SUMMARY_FILE ?=
-
-scraped-folders:
-	@docker exec hawki_rag_app sh -lc 'root="$(SHARED_ROOT)"; \
-		folders=$$(find "$$root" -mindepth 2 -maxdepth 2 -name completed_urls.json -exec dirname {} \; 2>/dev/null | sort); \
-		count=$$(printf "%s\n" "$$folders" | sed "/^$$/d" | wc -l | tr -d " "); \
-		echo "Found $$count scraped folder(s) under $$root"; \
-		if [ "$$count" -gt 0 ]; then printf "%s\n" "$$folders" | nl -w1 -s". "; fi; \
-		echo ""; \
-		echo "Convert and ingest one folder with:"; \
-		echo "  make convert-ingest-folder SCRAPED_FOLDER=/app/shared/<folder-name>"'
-
-crawl:
-	@if [ -z "$(URL)" ]; then echo "Set URL, for example: make crawl URL=https://www.hawk.de JOB_ID_FULL=manual_001"; exit 2; fi
-	@EXTRA_FLAGS=""; \
-	if [ "$(SKIP_IMAGES)" = "true" ]; then EXTRA_FLAGS="$$EXTRA_FLAGS --skip-images"; fi; \
-	if [ -n "$(IMAGE_EXCEPTIONS)" ]; then EXTRA_FLAGS="$$EXTRA_FLAGS --image-exceptions='$(IMAGE_EXCEPTIONS)'"; fi; \
-	if [ -n "$(DATE_SELECTOR)" ]; then EXTRA_FLAGS="$$EXTRA_FLAGS --date='$(DATE_SELECTOR)'"; fi; \
-	if [ -n "$(REQUEST_DELAY)" ]; then EXTRA_FLAGS="$$EXTRA_FLAGS --request-delay=$(REQUEST_DELAY)"; fi; \
-	if [ "$(DISCOVERY_MODE)" = "true" ]; then EXTRA_FLAGS="$$EXTRA_FLAGS --discovery-mode"; fi; \
-		docker exec -e HAWKI_RAG_PIPELINE_AUTOMATION="$(AUTOMATION)" hawki_rag_app php artisan scraper:scrape "$(URL)" --max-pages=$(MAX_PAGES) --output-dir="$(OUTPUT_DIR)" --label="$(LABEL)" --max-concurrency=$(MAX_CONCURRENCY) --max-rpm=$(MAX_RPM) $$EXTRA_FLAGS
-
-convert:
-	@if [ "$(OUTPUT_DIR)" = "/absolute/path/to/crawled-data" ]; then echo "Set OUTPUT_DIR to the crawl output directory"; exit 2; fi
-	@EXTRA_FLAGS=""; \
-	if [ "$(SCAN_ALL)" = "true" ]; then EXTRA_FLAGS="$$EXTRA_FLAGS --scan-all"; fi; \
-		docker exec -e HAWKI_RAG_PIPELINE_AUTOMATION="$(AUTOMATION)" -e HAWKI_RAG_CONVERT_EXISTING_MODE="$(EXISTING)" hawki_rag_app php artisan convert:crawled-pdfs "$(OUTPUT_DIR)" --extensions="$(EXTENSIONS)" --existing="$(EXISTING)" $$EXTRA_FLAGS
-
-ingest:
-	@if [ "$(CRAWLED_ROOT)" = "/absolute/path/to/crawled-data" ]; then echo "Set CRAWLED_ROOT to a path mounted in shared storage (default /app/shared inside hawki_rag_bridge)" && exit 2; fi
-	@EXTRA_FLAGS=""; \
-	if [ "$(GRAPH)" = "true" ]; then EXTRA_FLAGS="$$EXTRA_FLAGS --graph"; fi; \
-	if [ "$(GRAPH_ONLY)" = "true" ]; then EXTRA_FLAGS="$$EXTRA_FLAGS --graph-only"; fi; \
-	if [ "$(DRY)" = "true" ]; then EXTRA_FLAGS="$$EXTRA_FLAGS --dry"; fi; \
-	if [ "$(ESTIMATE_ONLY)" = "true" ]; then EXTRA_FLAGS="$$EXTRA_FLAGS --estimate-only"; fi; \
-	if [ "$(RESUME_MODE)" = "resume" ]; then EXTRA_FLAGS="$$EXTRA_FLAGS --resume"; fi; \
-	if [ "$(RESUME_MODE)" = "start" ]; then EXTRA_FLAGS="$$EXTRA_FLAGS --start"; fi; \
-	if [ -n "$(EMBEDDING_MODEL)" ]; then EXTRA_FLAGS="$$EXTRA_FLAGS --embedding-model $(EMBEDDING_MODEL)"; fi; \
-	if [ -n "$(COLLECTION)" ]; then EXTRA_FLAGS="$$EXTRA_FLAGS --collection $(COLLECTION)"; fi; \
-	if [ -n "$(NEO4J_DATABASE)" ]; then EXTRA_FLAGS="$$EXTRA_FLAGS --neo4j-database $(NEO4J_DATABASE)"; fi; \
-	if [ -n "$(CHUNK_CHARS)" ]; then EXTRA_FLAGS="$$EXTRA_FLAGS --chunk-chars $(CHUNK_CHARS)"; fi; \
-	if [ -n "$(CHUNK_OVERLAP)" ]; then EXTRA_FLAGS="$$EXTRA_FLAGS --chunk-overlap $(CHUNK_OVERLAP)"; fi; \
-	if [ -n "$(TIMEOUT)" ]; then EXTRA_FLAGS="$$EXTRA_FLAGS --timeout $(TIMEOUT)"; fi; \
-	if [ -n "$(SUMMARY_FILE)" ]; then EXTRA_FLAGS="$$EXTRA_FLAGS --summary-file $(SUMMARY_FILE)"; fi; \
-		docker exec -e HAWKI_RAG_PIPELINE_AUTOMATION="$(AUTOMATION)" -e HAWKI_RAG_INGEST_RESUME_MODE="$(RESUME_MODE)" hawki_rag_bridge sh -lc "python -m application.cli.commands.ingest_crawled --root $(CRAWLED_ROOT) --base-url $(BASE_URL) --provider $(PROVIDER) --graph-engine $(GRAPH_ENGINE) $$EXTRA_FLAGS --batch $(BATCH)"
-
-convert-ingest-folder:
-	@if [ -z "$(SCRAPED_FOLDER)" ]; then \
-		echo "Set SCRAPED_FOLDER to one of the folders below:"; \
-		$(MAKE) --no-print-directory scraped-folders; \
-		exit 2; \
-	fi
-	@$(MAKE) convert OUTPUT_DIR="$(SCRAPED_FOLDER)" EXTENSIONS="$(EXTENSIONS)" EXISTING="$(EXISTING)" SCAN_ALL="$(SCAN_ALL)"
-	@$(MAKE) ingest CRAWLED_ROOT="$(SCRAPED_FOLDER)" COLLECTION="$(COLLECTION)" GRAPH="$(GRAPH)" GRAPH_ONLY="$(GRAPH_ONLY)" GRAPH_ENGINE="$(GRAPH_ENGINE)" EMBEDDING_MODEL="$(EMBEDDING_MODEL)" NEO4J_DATABASE="$(NEO4J_DATABASE)" CHUNK_CHARS="$(CHUNK_CHARS)" CHUNK_OVERLAP="$(CHUNK_OVERLAP)" BATCH="$(BATCH)" PROVIDER="$(PROVIDER)" BASE_URL="$(BASE_URL)" TIMEOUT="$(TIMEOUT)" RESUME_MODE="$(RESUME_MODE)" DRY="$(DRY)" ESTIMATE_ONLY="$(ESTIMATE_ONLY)" SUMMARY_FILE="$(SUMMARY_FILE)"
-
-pipeline: crawl convert
-	@$(MAKE) ingest CRAWLED_ROOT="$(OUTPUT_DIR)" COLLECTION="$(COLLECTION)" GRAPH="$(GRAPH)" GRAPH_ONLY="$(GRAPH_ONLY)" GRAPH_ENGINE="$(GRAPH_ENGINE)" EMBEDDING_MODEL="$(EMBEDDING_MODEL)" NEO4J_DATABASE="$(NEO4J_DATABASE)" CHUNK_CHARS="$(CHUNK_CHARS)" CHUNK_OVERLAP="$(CHUNK_OVERLAP)" BATCH="$(BATCH)" PROVIDER="$(PROVIDER)" BASE_URL="$(BASE_URL)" TIMEOUT="$(TIMEOUT)" RESUME_MODE="$(RESUME_MODE)" DRY="$(DRY)" ESTIMATE_ONLY="$(ESTIMATE_ONLY)" SUMMARY_FILE="$(SUMMARY_FILE)"
 
 logs-core:
 	@$(COMPOSE_CMD) logs -f postgres temporal temporal-ui qdrant hawki_rag_neo4j $(OLLAMA_SERVICE) hawki_rag_app hawki_rag_bridge hawki_rag_rerank hawki-rag-temporal-workflow-worker hawki-rag-temporal-scraper-worker hawki-rag-temporal-converter-worker hawki-rag-temporal-ingestion-worker

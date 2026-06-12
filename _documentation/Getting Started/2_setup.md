@@ -15,7 +15,6 @@ Base compose is always `docker-compose.yml`, and `Makefile` exports `COMPOSE_FIL
   - `1`: force GPU override.
   - `0`: force CPU mode.
 - `ENV_FILE` (default `.env`): choose env file.
-- `CRAWLED_ROOT` (default `/app/shared`): ingest root for `make ingest`.
 - `COMPOSE_PROFILES`: optional profile toggle (e.g. `gpu` to include `raganything_api_gpu`).
 - `BASE_COMPOSE_FILE` / `GPU_OVERRIDE_COMPOSE`: advanced override of compose filenames.
 
@@ -80,13 +79,15 @@ make clean
 
 This clears `__pycache__`, `*.py[cod]`, `*.log`, `.pytest_cache`, `.ruff_cache`, `.mypy_cache`, `.coverage*`, `.tox`, `.venv`, `dist`, `build`.
 
-## Ingest content (inside containers, internal URLs)
+## Start source ingestion
 ```bash
-docker exec hawki_rag_bridge sh -lc "python -m application.cli.commands.ingest_crawled \
-  --root /app/shared/<folder> \
-  --base-url http://localhost:8000 \
-  --provider ollama --graph --batch 16"
+docker exec -it hawki_rag_app php artisan pipeline:start-task \
+  --source-url=https://example.edu \
+  --refresh-cadence=daily
 ```
+
+Laravel starts `IngestSourceWorkflow`; Temporal then coordinates scraper, converter, and ingestion workers.
+
 ### Shared volume path mapping
 Path mapping: `rawki_shared_storage` (Docker volume) -> `/app/shared` (bridge and Laravel app).
 

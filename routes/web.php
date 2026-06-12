@@ -2,8 +2,6 @@
 
 use App\Http\Controllers\AdminPanelController;
 use App\Http\Controllers\API\HawkiRagProxyController;
-use App\Http\Controllers\API\IngestController;
-use App\Http\Controllers\API\IngestStatusController;
 use App\Http\Controllers\API\RagHealthController;
 use App\Http\Controllers\API\RagMonitorController;
 use App\Http\Controllers\API\RagStatsController;
@@ -88,13 +86,6 @@ Route::post('/pipeline/controller/files', [PipelineControlController::class, 'up
 // Playground related routes
 
 Route::post('/query', [HawkiRagProxyController::class, 'query']);
-Route::get('/ingest/status', [IngestStatusController::class, 'show']);
-Route::post('/ingest/status/clear', [IngestStatusController::class, 'clear']);
-Route::get('/ingest/folders', [IngestController::class, 'folders']);
-Route::get('/ingest/live', [IngestController::class, 'live']);
-Route::post('/ingest/start', [IngestController::class, 'start']);
-Route::post('/ingest/stop', [IngestController::class, 'stop']);
-Route::post('/ingest/delete', [IngestController::class, 'deleteFolder']);
 Route::get('/rag/health', [RagHealthController::class, 'show']);
 Route::get('/rag/monitor', [RagMonitorController::class, 'show']);
 Route::get('/rag/stats', [RagStatsController::class, 'show']);

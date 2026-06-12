@@ -17,26 +17,6 @@ readonly class RagMonitorArtifactReader
     ) {
     }
 
-    public function latestIngestStatus(string $mode): ?array
-    {
-        $path = $mode === 'neo4j'
-            ? (string) $this->config->get('config.ingest_status_path_neo4j')
-            : (string) $this->config->get('config.ingest_status_path');
-        $data = $this->readJson($path);
-
-        if (! is_array($data)) {
-            return null;
-        }
-
-        if (is_array($data['ingests'] ?? null) && $data['ingests'] !== []) {
-            $latest = $data['ingests'][array_key_last($data['ingests'])];
-
-            return is_array($latest) ? $latest : null;
-        }
-
-        return $data;
-    }
-
     /**
      * @return array<string, mixed>|null
      */

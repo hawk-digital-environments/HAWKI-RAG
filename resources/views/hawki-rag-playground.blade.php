@@ -24,7 +24,7 @@
             <div>
                 <p class="eyebrow">HAWKI RAG playground</p>
                 <h1>HAWKI RAG Retrieval Playground</h1>
-                <p class="header-copy">Query, ingest, and inspect live RAG state.</p>
+                <p class="header-copy">Query and inspect live RAG state.</p>
             </div>
             <div class="header-actions">
                 @include('partials.pipeline-nav', ['active' => 'playground', 'refreshId' => 'playground-refresh'])
@@ -32,86 +32,6 @@
         </header>
 
         <div class="layout">
-            <section class="card panel">
-                <h2>Ingestion</h2>
-                <div class="panel-body">
-                    <div class="subsection">
-                        @php
-                            $embedModels = config('config.embedding_models', ['bge-m3']);
-                            $embedDefault = config('config.embedding_default', $embedModels[0] ?? null);
-                            $graphModels = config('config.graph_models', ['llama3.2:3b']);
-                            $graphDefault = config('config.graph_default', $graphModels[0] ?? null);
-                            $ragChunkCharsDefault = max(200, (int) env('CHUNK_SIZE', 1200));
-                        @endphp
-                        <h3 style="margin-top:0;">Ingest Data</h3>
-                        <p style="margin: 0 0 0.8rem; font-size: 0.9rem; color: #bae6fd;">
-                            Select a folder under the shared crawl volume and start ingestion.
-                        </p>
-                        <div class="grid two">
-                            <div>
-                                <label for="ingest-folder">Crawl folder</label>
-                                <select id="ingest-folder" style="width:100%; border-radius:0.8rem; border:1px solid rgba(148,163,184,0.22); background:rgba(15,23,42,0.78); color:inherit; padding:0.7rem 0.8rem;">
-                                    <option value="">Loading…</option>
-                                </select>
-                            </div>
-                            <div>
-                            <label>Graph extraction</label>
-                            <div class="muted">Use "Start graph ingest" for Neo4j triplets.</div>
-                            </div>
-                        </div>
-                        <div style="margin-top: 1rem;">
-                            <label for="ingest-collection">Qdrant collection name</label>
-                            <input id="ingest-collection" type="text" placeholder="Defaults to folder name" style="width:100%; border-radius:0.8rem; border:1px solid rgba(148,163,184,0.22); background:rgba(15,23,42,0.78); color:inherit; padding:0.7rem 0.8rem;" />
-                        </div>
-                        <div style="margin-top: 1rem;">
-                            <label>Graph collection</label>
-                            <div class="muted">Fixed internal graph collection name: <code>graphCol</code> (Neo4j default DB is used).</div>
-                        </div>
-                        <div style="margin-top: 1rem;">
-                            <label for="ingest-embedding-model">Embedding model</label>
-                            <select id="ingest-embedding-model" style="width:100%; border-radius:0.8rem; border:1px solid rgba(148,163,184,0.22); background:rgba(15,23,42,0.78); color:inherit; padding:0.7rem 0.8rem;">
-                                @foreach ($embedModels as $model)
-                                    <option value="{{ $model }}" {{ $model === $embedDefault ? 'selected' : '' }}>{{ $model }}</option>
-                                @endforeach
-                            </select>
-                        </div>
-                        <div style="margin-top: 1rem;">
-                            <label for="ingest-graph-model">Graph LLM model</label>
-                            <select id="ingest-graph-model" style="width:100%; border-radius:0.8rem; border:1px solid rgba(148,163,184,0.22); background:rgba(15,23,42,0.78); color:inherit; padding:0.7rem 0.8rem;">
-                                @foreach ($graphModels as $model)
-                                    <option value="{{ $model }}" {{ $model === $graphDefault ? 'selected' : '' }}>{{ $model }}</option>
-                                @endforeach
-                            </select>
-                        </div>
-                        <div style="margin-top: 1rem;">
-                            <label for="ingest-batch-size">Batch size (docs per request)</label>
-                            <input id="ingest-batch-size" type="number" min="1" value="16" style="width:100%; border-radius:0.8rem; border:1px solid rgba(148,163,184,0.22); background:rgba(15,23,42,0.78); color:inherit; padding:0.7rem 0.8rem;" />
-                        </div>
-                        <div style="margin-top: 1rem;">
-                            <label for="ingest-chunk-chars">Chunk size (chars) for RAG chunks</label>
-                            <input id="ingest-chunk-chars" type="number" min="200" value="{{ $ragChunkCharsDefault }}" style="width:100%; border-radius:0.8rem; border:1px solid rgba(148,163,184,0.22); background:rgba(15,23,42,0.78); color:inherit; padding:0.7rem 0.8rem;" />
-                        </div>
-                        <div style="margin-top: 1rem;">
-                            <label for="ingest-resume-mode">Resume mode</label>
-                            <select id="ingest-resume-mode" style="width:100%; border-radius:0.8rem; border:1px solid rgba(148,163,184,0.22); background:rgba(15,23,42,0.78); color:inherit; padding:0.7rem 0.8rem;">
-                                <option value="resume" selected>Resume (skip ingested)</option>
-                                <option value="start">Start fresh</option>
-                            </select>
-                        </div>
-                        <div style="margin-top: 1rem;">
-                            <div class="ingest-actions">
-                                <button type="button" id="ingest-btn">Start Qdrant Ingestion</button>
-                                <button type="button" id="ingest-graph-only-btn" style="background: linear-gradient(135deg, #22c55e, #16a34a);">Start Neo4j Ingestion</button>
-                                <button type="button" id="ingest-stop-btn" style="background: linear-gradient(135deg, #f97316, #ef4444);">Stop Current Ingest</button>
-                                <button type="button" id="ingest-delete-btn" style="background: linear-gradient(135deg, #f43f5e, #be123c);">Delete scraped folder</button>
-                            </div>
-                            <span id="ingest-action" class="ingest-action-note"></span>
-                        </div>
-                    </div>
-
-                </div>
-            </section>
-
             <section class="card panel">
                 <h2>Logs</h2>
                 <div class="panel-body">
@@ -122,15 +42,6 @@
                         </p>
                         <div id="rag-monitor-status" class="badge">Loading RAG-Anything status...</div>
                         <div id="rag-details" style="margin-top: 0.8rem; display: grid; gap: 0.5rem;"></div>
-                    </div>
-
-                    <div class="subsection">
-                        <h3 style="margin-top:0;">Live Ingestions</h3>
-                        <p style="margin: 0 0 0.6rem; font-size: 0.9rem; color: #bae6fd;">
-                            Active ingest processes (PID + folder).
-                        </p>
-                        <div id="ingest-live-status" class="badge">No running ingest process.</div>
-                        <div id="ingest-live-list" style="margin-top: 0.8rem; display: grid; gap: 0.5rem;"></div>
                     </div>
 
                     <div class="subsection">

@@ -30,10 +30,6 @@ readonly class RagMonitorService
             'bridge' => $bridge,
             'runtime' => $runtime,
             'config' => $this->graphConfig->report($runtime),
-            'latest_ingest' => [
-                'default' => $this->artifacts->latestIngestStatus('default'),
-                'neo4j' => $this->artifacts->latestIngestStatus('neo4j'),
-            ],
             'summary' => $this->artifacts->firstConfiguredJson('config.ingest_summary_paths'),
             'graph_preview' => $this->artifacts->firstConfiguredJson('config.graph_preview_paths'),
             'latest_document_graph' => $this->documentGraph->report(),

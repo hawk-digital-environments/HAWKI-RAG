@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Pipeline\Status;
 
+use App\Services\Pipeline\State\PipelineStateService;
 use Illuminate\Container\Attributes\Singleton;
 use Psr\Clock\ClockInterface;
 use Symfony\Component\Clock\Clock;
@@ -15,6 +16,7 @@ readonly class PipelineStatusService
         private PipelineScrapeStatusService $scrapeStatuses,
         private PipelineConversionStatusService $conversionStatuses,
         private PipelineIngestStatusService $ingestStatuses,
+        private PipelineStateService $pipelineState,
         private PipelineStageStatusMerger $stageMerger,
         private PipelineConversionStageSynchronizer $conversionStages,
         private ClockInterface $clock = new Clock,

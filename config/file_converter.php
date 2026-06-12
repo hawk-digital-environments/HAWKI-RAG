@@ -1,7 +1,6 @@
 <?php
 
-$url = env('FILE_CONVERTER_URL', 'http://127.0.0.1:8002/extract');
-$baseUrl = preg_replace('#/extract/?$#', '', rtrim((string) $url, '/')) ?: rtrim((string) $url, '/');
+$baseUrl = rtrim((string) env('EXTERNAL_CONVERTER_URL', env('FILE_CONVERTER_BASE_URL', 'http://file-converter:8000')), '/');
 $defaultSupportedExtensions = [
     'pdf',
     'doc',
@@ -36,26 +35,10 @@ $defaultSupportedExtensions = [
 ];
 
 return [
-    'url'             => $url,
     'health_url'      => env('FILE_CONVERTER_HEALTH_URL', $baseUrl . '/health'),
-    'info_url'        => env('FILE_CONVERTER_INFO_URL', $baseUrl . '/'),
-    'timeout'         => (int) env('FILE_CONVERTER_TIMEOUT', 600),
-    'connect_timeout' => (int) env('FILE_CONVERTER_CONNECT_TIMEOUT', 20),
     'retries'         => (int) env('FILE_CONVERTER_RETRIES', 3),
-    'retry_delay_ms'  => (int) env('FILE_CONVERTER_RETRY_DELAY_MS', 1500),
-    'temp_dir'        => env('FILE_CONVERTER_TEMP_DIR', storage_path('framework/cache/file-converter')),
-    'token'           => env('FILE_CONVERTER_TOKEN'),
-    'auth_header'     => env('FILE_CONVERTER_AUTH_HEADER', 'bearer'),
-    'failed_report_path' => env('FILE_CONVERTER_FAILED_REPORT_PATH', storage_path('logs/failed_conversion.json')),
     'supported_extensions' => array_values(array_filter(array_map(
         static fn ($extension) => ltrim(strtolower(trim($extension)), '.'),
         explode(',', env('FILE_CONVERTER_SUPPORTED_EXTENSIONS', implode(',', $defaultSupportedExtensions)))
     ))),
-    'output_contract' => [
-        'archive' => 'application/zip',
-        'root' => 'output',
-        'metadata' => 'output/meta.json',
-        'chunks' => 'output/chunks/*.md',
-        'assets' => 'output/assets/*',
-    ],
 ];

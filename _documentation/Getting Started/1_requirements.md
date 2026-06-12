@@ -7,7 +7,7 @@
 - GPU (optional): NVIDIA with CUDA for faster rerank/model inference; verify with `nvidia-smi`.
 
 ## Network & Ports
-- Ensure these host ports are free: 5432 (PostgreSQL), 7233 (Temporal), `TEMPORAL_UI_PORT` (default 8081), and `ADMINER_PORT` (default 8005).
+- Ensure these host ports are free: 5432 (PostgreSQL), 7233 (Temporal), and `TEMPORAL_UI_PORT` (default 8081).
 - RAG services (bridge, reranker, RAG API, Qdrant, Neo4j, Ollama) stay on the internal Docker network by default and do not bind host ports.
 
 ## Common Software (all platforms)

@@ -1,22 +1,14 @@
 import { apiUrl } from './urls.js';
 
-const ingestStatus = document.getElementById('ingest-status');
-const ingestProgress = document.getElementById('ingest-progress');
-const ingestClearBtn = document.getElementById('ingest-clear-btn');
 const ragDetails = document.getElementById('rag-details');
 const ragMonitorStatus = document.getElementById('rag-monitor-status');
 const ragStats = document.getElementById('rag-stats');
-const ingestLiveStatus = document.getElementById('ingest-live-status');
-const ingestLiveList = document.getElementById('ingest-live-list');
 const activityFeed = document.getElementById('activity-feed');
 const activityClearBtn = document.getElementById('activity-clear-btn');
 
 let activityHistory = [];
 const lastActivityBySource = new Map();
 let lastRagStatsHash = '';
-let lastIngestStatus = null;
-let lastLiveIngestions = [];
-let ingestStatusMode = 'default';
 
 function csrfToken() {
     return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
@@ -55,21 +47,6 @@ function formatUpdated(value) {
         minute: '2-digit',
         second: '2-digit',
     });
-}
-
-function appendIngestStatusCard(mode, status) {
-    if (!ragDetails || !status) return;
-    const card = createStatCard(`${mode === 'neo4j' ? 'Neo4j' : 'Qdrant'} ingest status`);
-    appendDetailRow(card, 'Status', status.status || 'unknown');
-    appendDetailRow(card, 'Collection', status.collection);
-    appendDetailRow(card, 'Graph', status.graph ? 'enabled' : (status.graph_only ? 'graph-only' : 'disabled'));
-    appendDetailRow(card, 'Resume mode', status.resume_mode);
-    appendDetailRow(card, 'PID', status.pid);
-    appendDetailRow(card, 'Updated', formatUpdated(status.updated_at));
-    if (status.path) {
-        appendDetailRow(card, 'Folder', String(status.path).split('/').filter(Boolean).pop() || status.path);
-    }
-    ragDetails.appendChild(card);
 }
 
 function renderRagMonitor(payload) {
@@ -169,9 +146,6 @@ function renderRagMonitor(payload) {
         ragDetails.appendChild(card);
     }
 
-    appendIngestStatusCard('neo4j', payload.latest_ingest?.neo4j);
-    appendIngestStatusCard('default', payload.latest_ingest?.default);
-
     if (Array.isArray(payload.graph_failures) && payload.graph_failures.length) {
         const card = createStatCard('Recent graph extraction failures');
         payload.graph_failures.forEach((failure, index) => {
@@ -209,153 +183,6 @@ function pushActivity(source, message) {
         activityHistory = activityHistory.slice(0, 20);
     }
     renderActivity();
-}
-
-function formatProgress(progress) {
-    if (!progress) return null;
-    if (progress.sent !== undefined && progress.total !== undefined) {
-        const mode = progress.mode === 'dry' ? 'dry-run' : 'ingest';
-        return `${mode} progress: ${progress.sent}/${progress.total} docs`;
-    }
-    if (progress.found_pdfs !== undefined) {
-        return `found PDFs: ${progress.found_pdfs}`;
-    }
-    return null;
-}
-
-async function fetchIngestStatus(mode) {
-    const response = await fetch(apiUrl(`ingest/status?mode=${mode}`), {
-        headers: {
-            'Accept': 'application/json',
-            'X-CSRF-TOKEN': csrfToken(),
-        },
-    });
-    if (!response.ok) return null;
-    return await response.json();
-}
-
-async function pollIngestStatus() {
-    if (!ingestStatus || !ingestProgress) return;
-    try {
-        let data = await fetchIngestStatus(ingestStatusMode);
-        if (!data || (!data.status && !(Array.isArray(data.log_lines) && data.log_lines.length))) {
-            const fallbackMode = ingestStatusMode === 'neo4j' ? 'default' : 'neo4j';
-            const fallback = await fetchIngestStatus(fallbackMode);
-            if (fallback && (fallback.status || (Array.isArray(fallback.log_lines) && fallback.log_lines.length))) {
-                data = fallback;
-                ingestStatusMode = fallbackMode;
-            }
-        }
-        if (!data) return;
-
-        const status = data.status || null;
-        if (status) {
-            lastIngestStatus = status;
-            const state = status.status || 'unknown';
-            const updated = status.updated_at || '';
-            ingestStatus.textContent = `status: ${state}${updated ? ` · ${updated}` : ''}`;
-            pushActivity('Ingest', `status: ${state}${updated ? ` · ${updated}` : ''}`);
-        } else {
-            lastIngestStatus = null;
-        }
-
-        ingestProgress.innerHTML = '';
-        if (status) {
-            const progressText = formatProgress(status.progress);
-            if (progressText) {
-                const row = document.createElement('div');
-                row.className = 'badge';
-                row.textContent = progressText;
-                ingestProgress.appendChild(row);
-            }
-            if (status.progress && status.progress.folders) {
-                const row = document.createElement('div');
-                row.className = 'badge';
-                row.textContent = `folders: ${status.progress.folders.current}/${status.progress.folders.total}`;
-                ingestProgress.appendChild(row);
-            }
-            if (status.last_line) {
-                const row = document.createElement('div');
-                row.className = 'badge';
-                row.textContent = status.last_line;
-                ingestProgress.appendChild(row);
-                pushActivity('Ingest', status.last_line);
-            }
-        }
-
-        if (Array.isArray(data.log_lines) && data.log_lines.length) {
-            data.log_lines.slice(-6).forEach((line) => {
-                const row = document.createElement('div');
-                row.className = 'badge';
-                row.textContent = line;
-                ingestProgress.appendChild(row);
-            });
-        }
-    } catch (error) {
-        // Polling should never block the rest of the playground.
-    }
-}
-
-async function fetchIngestLive(mode) {
-    const response = await fetch(apiUrl(`ingest/live?mode=${mode}`), {
-        headers: {
-            'Accept': 'application/json',
-            'X-CSRF-TOKEN': csrfToken(),
-        },
-    });
-    if (!response.ok) return null;
-    return await response.json();
-}
-
-async function pollIngestLive() {
-    if (!ingestLiveStatus || !ingestLiveList) return;
-    try {
-        let data = await fetchIngestLive(ingestStatusMode);
-        if (!data || !Array.isArray(data.live_ingestions) || !data.live_ingestions.length) {
-            const fallbackMode = ingestStatusMode === 'neo4j' ? 'default' : 'neo4j';
-            const fallback = await fetchIngestLive(fallbackMode);
-            if (fallback && Array.isArray(fallback.live_ingestions) && fallback.live_ingestions.length) {
-                data = fallback;
-                ingestStatusMode = fallbackMode;
-            }
-        }
-        if (!data) return;
-
-        let live = data.live_ingestions || [];
-        lastLiveIngestions = Array.isArray(live) ? live : [];
-        if (!live.length && lastIngestStatus && (lastIngestStatus.pid || lastIngestStatus.path)) {
-            live = [{
-                pid: lastIngestStatus.pid || null,
-                path: lastIngestStatus.path || null,
-                status: lastIngestStatus.status || null,
-                source: 'status',
-                alive: lastIngestStatus.status === 'running' ? null : false,
-            }];
-        }
-
-        ingestLiveList.innerHTML = '';
-        if (!live.length) {
-            ingestLiveStatus.textContent = 'No ingest status available.';
-            return;
-        }
-
-        const runningCount = live.filter((item) => item.alive === true || (item.alive === null && item.status === 'running')).length;
-        ingestLiveStatus.textContent = `running: ${runningCount} · last seen: ${live.length}`;
-        live.forEach((item) => {
-            const row = document.createElement('div');
-            row.className = 'badge';
-            const path = item.path || '';
-            const name = path ? path.split('/').filter(Boolean).pop() : 'unknown';
-            const pidLabel = item.pid ? `pid ${item.pid}` : 'pid n/a';
-            const sourceLabel = item.source ? ` · ${item.source}` : '';
-            const aliveLabel = item.alive === true ? ' · running' : (item.alive === false ? ' · stopped' : '');
-            const collectionLabel = item.collection ? ` · ${item.collection}` : '';
-            row.textContent = `${name} · ${pidLabel}${sourceLabel}${collectionLabel}${aliveLabel}`;
-            ingestLiveList.appendChild(row);
-        });
-    } catch (error) {
-        // Ignore polling errors.
-    }
 }
 
 async function pollRagMonitor() {
@@ -469,27 +296,6 @@ async function pollRagStats() {
     }
 }
 
-if (ingestClearBtn) {
-    ingestClearBtn.addEventListener('click', async () => {
-        ingestClearBtn.disabled = true;
-        try {
-            await fetch(apiUrl('ingest/status/clear?mode=all'), {
-                method: 'POST',
-                credentials: 'same-origin',
-                headers: {
-                    'Accept': 'application/json',
-                    'X-CSRF-TOKEN': csrfToken(),
-                },
-            });
-            if (ingestStatus) ingestStatus.textContent = 'No ingest activity yet.';
-            if (ingestProgress) ingestProgress.innerHTML = '';
-            pushActivity('Ingest', 'Ingest logs cleared');
-        } finally {
-            ingestClearBtn.disabled = false;
-        }
-    });
-}
-
 if (activityClearBtn) {
     activityClearBtn.addEventListener('click', () => {
         activityHistory = [];
@@ -502,20 +308,7 @@ window.playgroundLogs = {
     csrfToken,
     pushActivity,
     pollRagStats,
-    pollIngestStatus,
-    pollIngestLive,
-    getIngestStatusMode: () => ingestStatusMode,
-    setIngestStatusMode: (mode) => {
-        ingestStatusMode = mode || 'default';
-    },
-    getLastIngestStatus: () => lastIngestStatus,
-    getLastLiveIngestions: () => lastLiveIngestions,
 };
-
-pollIngestStatus();
-setInterval(pollIngestStatus, 2500);
-pollIngestLive();
-setInterval(pollIngestLive, 4000);
 
 if (ragDetails) {
     pollRagMonitor();

@@ -49,7 +49,7 @@
 |---|---|
 | `python_rag/` | Python RAG stack containing the FastAPI bridge, RAG API components, and reranker code. |
 | `python_rag/app/` | FastAPI entrypoints and route modules (`main.py`, `query.py`, `ingest.py`). |
-| `python_rag/application/cli/commands/ingest_crawled.py` | Primary ingestion runner for crawled content. |
+| `python_rag/temporal_rag/` | Temporal workflows, activities, adapters, and worker entrypoints for source ingestion. |
 | `python_rag/pipeline/` | Query and ingest pipeline logic/helpers. |
 | `python_rag/infrastructure/rerank/` | Local reranker adapter service. |
 | `python_rag/requirements.txt` | Python dependency manifest. |
@@ -71,5 +71,5 @@
 | Item | Location/Command |
 |---|---|
 | Laravel logs | `storage/logs/laravel.log` |
-| Ingest logs/status | `storage/logs/ingest_progress_*_{cache,full}.log` and `storage/logs/ingest_status*.json` |
+| Temporal worker logs | `docker compose logs -f hawki-rag-temporal-workflow-worker hawki-rag-temporal-scraper-worker hawki-rag-temporal-converter-worker hawki-rag-temporal-ingestion-worker` |
 | Bridge/RAG API runtime logs | `docker logs <container>` |
