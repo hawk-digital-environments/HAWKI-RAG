@@ -288,6 +288,15 @@ class PipelineTaskOrchestrationTest extends TestCase
             ->assertOk()
             ->assertSee('HAWKI Pipeline Dashboard');
 
+        $this->get('/tasks')
+            ->assertOk()
+            ->assertSee('Task Manager');
+
+        $this->get('/tasks/task-dashboard')
+            ->assertOk()
+            ->assertSee('Task Manager')
+            ->assertSee('hawki-selected-task-id');
+
         $this->getJson('/api/pipeline/tasks/task-dashboard/failed-jobs')
             ->assertOk()
             ->assertJsonPath('success', true)
@@ -351,6 +360,7 @@ class PipelineTaskOrchestrationTest extends TestCase
         $output = Artisan::output();
         $this->assertStringContainsString('Created demo pipeline task.', $output);
         $this->assertStringContainsString('Dashboard URL:', $output);
+        $this->assertStringContainsString('/tasks', $output);
         $this->assertStringContainsString('RabbitMQ events requested: 2 scrape.requested event(s).', $output);
         $this->assertStringContainsString('php artisan pipeline:scraper-event-worker', $output);
 

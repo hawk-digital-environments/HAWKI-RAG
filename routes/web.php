@@ -34,6 +34,10 @@ Route::get('/pipeline-dashboard', function () {
     return view('pipeline-dashboard');
 });
 
+Route::get('/tasks/{taskId?}', function (?string $taskId = null) {
+    return view('tasks-manager', ['taskId' => $taskId]);
+})->where('taskId', '[^/]+');
+
 Route::get('/pipeline-controller', function () {
     return view('pipeline-controller-dashboard');
 });

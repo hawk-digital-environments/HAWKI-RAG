@@ -2,6 +2,7 @@
     $active = $active ?? '';
     $refreshId = $refreshId ?? 'pipeline-refresh';
     $navItems = [
+        ['key' => 'tasks', 'label' => 'Task Manager', 'href' => '/tasks'],
         ['key' => 'dashboard', 'label' => 'Pipeline Dashboard', 'href' => '/pipeline-dashboard'],
         ['key' => 'health', 'label' => 'Health', 'href' => '/pipeline-health'],
         ['key' => 'datasets', 'label' => 'Datasets', 'href' => '/datasets'],

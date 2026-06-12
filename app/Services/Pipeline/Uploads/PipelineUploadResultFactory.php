@@ -84,6 +84,6 @@ readonly class PipelineUploadResultFactory
 
     private function dashboardUrl(PipelineTask $task): string
     {
-        return $this->urls->to('/pipeline-dashboard?task_id='.rawurlencode($task->task_id));
+        return $this->urls->to('/tasks/'.rawurlencode($task->task_id));
     }
 }

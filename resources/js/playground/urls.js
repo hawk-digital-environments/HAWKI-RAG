@@ -16,3 +16,9 @@ export function apiUrl(path) {
 
     return new URL(relative, new URL(configuredBasePath(), window.location.origin)).toString();
 }
+
+export function pageUrl(path) {
+    const relative = String(path || '').replace(/^\/+/, '');
+
+    return new URL(relative, new URL(configuredBasePath(), window.location.origin)).toString();
+}

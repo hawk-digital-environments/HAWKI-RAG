@@ -25,7 +25,7 @@ readonly class PipelineSmokeResultReporter
         Document $document,
         array $status,
     ): void {
-        $io->line('Dashboard URL: '.$this->urls->to('/pipeline-dashboard?task_id='.rawurlencode($task->task_id)));
+        $io->line('Task Manager URL: '.$this->urls->to('/tasks/'.rawurlencode($task->task_id)));
         $io->line('Documents URL: '.$this->urls->to('/documents?document_id='.rawurlencode((string) $document->id)));
         $io->line('Final task status: '.($status['status'] ?? 'unknown'));
         $io->newLine();

@@ -9,6 +9,7 @@ export default defineConfig({
             input: [
                 'resources/css/app.css',
                 'resources/css/pipeline-dashboard.css',
+                'resources/css/task-manager.css',
                 'resources/css/pipeline-health-dashboard.css',
                 'resources/css/datasets-dashboard.css',
                 'resources/css/documents-dashboard.css',
@@ -16,6 +17,7 @@ export default defineConfig({
                 'resources/css/dashboard-dark-theme.css',
                 'resources/js/app.js',
                 'resources/js/pipeline-dashboard.js',
+                'resources/js/task-manager.js',
                 'resources/js/pipeline-health-dashboard.js',
                 'resources/js/datasets-dashboard.js',
                 'resources/js/documents-dashboard.js',

@@ -1,4 +1,4 @@
-import { apiUrl } from './playground/urls.js';
+import { apiUrl, pageUrl } from './playground/urls.js';
 
 const root = document.querySelector('[data-documents-dashboard]');
 
@@ -121,7 +121,7 @@ if (root) {
     }
 
     function taskLink(taskId) {
-        return taskId ? `/pipeline-dashboard?task_id=${encodeURIComponent(taskId)}` : '';
+        return taskId ? pageUrl(`tasks/${encodeURIComponent(taskId)}`) : '';
     }
 
     function renderDocuments(documents) {
