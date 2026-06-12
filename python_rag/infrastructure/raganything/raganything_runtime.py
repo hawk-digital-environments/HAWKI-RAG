@@ -9,6 +9,7 @@ import re
 from typing import Any
 
 from infrastructure.raganything.raganything_settings import RagAnythingGraphSettings
+from shared.optional_imports import import_required_module
 
 logger = logging.getLogger(__name__)
 
@@ -99,9 +100,10 @@ def clear_lightrag_temp_graph(
 ) -> None:
     """Delete temporary LightRAG + Neo4j graph state from a local DB."""
     try:
-        from importlib import import_module
-
-        neo4j_module = import_module("neo4j")
+        neo4j_module = import_required_module(
+            "neo4j",
+            install_hint="Install python_rag/requirements.txt to clean LightRAG Neo4j state.",
+        )
         GraphDatabase = neo4j_module.GraphDatabase
     except Exception as exc:
         logger.debug("LightRAG Neo4j temp graph cleanup skipped; driver unavailable: %s", exc)

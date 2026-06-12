@@ -1,11 +1,7 @@
 from __future__ import annotations
 
-from inspect import signature
 import logging
 from typing import Any
-
-import requests
-from requests import RequestException
 
 from infrastructure.vectorstore.collections import pick_most_populated_collection, vector_size_from_config
 from infrastructure.vectorstore.payloads import (
@@ -23,6 +19,11 @@ from infrastructure.vectorstore.settings import (
     qdrant_settings_from_env,
 )
 from infrastructure.vectorstore.qdrant_gateway import QdrantHTTPGateway
+from infrastructure.vectorstore.qdrant_client_ops import (
+    gateway_supports_operation_id,
+    resolve_per_collection_limit,
+    resolve_selected_collection,
+)
 from infrastructure.vectorstore.qdrant_responses import (
     parse_collection_config,
     parse_collection_names,
@@ -30,7 +31,6 @@ from infrastructure.vectorstore.qdrant_responses import (
 )
 from infrastructure.vectorstore.qdrant_search import (
     normalize_query_inputs,
-    resolve_collection_with_default,
     search_with_fallback_collections,
 )
 from infrastructure.vectorstore.qdrant_interpretation import (
@@ -40,26 +40,36 @@ from infrastructure.vectorstore.qdrant_interpretation import (
     sort_hits_by_score,
 )
 from infrastructure.vectorstore.qdrant_transport import QdrantHTTPTransport
+from shared.optional_imports import import_required_module
 
 logger = logging.getLogger(__name__)
 
 
-def _gateway_supports_operation_id(gateway: Any, method_name: str) -> bool:
-    method = getattr(gateway, method_name, None)
-    if method is None:
-        return False
+class _RequestsProxy:
+    """Patchable proxy that lazily loads requests for session construction."""
+
+    def Session(self) -> Any:
+        return import_required_module(
+            "requests",
+            install_hint="Install python_rag/requirements.txt to use Qdrant HTTP transport.",
+        ).Session()
+
+
+class _UnavailableRequestsError(Exception):
+    """Internal sentinel used when requests is not installed."""
+
+
+requests = _RequestsProxy()
+
+
+def _request_exception_type() -> type[BaseException]:
     try:
-        params = signature(method).parameters.values()
-    except (TypeError, ValueError):
-        return False
-    return any(param.name == "operation_id" or param.kind == param.VAR_KEYWORD for param in params)
-
-
-def _resolve_per_collection_limit(requested_limit: int, fallback_limit: int) -> int:
-    """Preserve legacy behavior where empty env values used `top_k`."""
-    if requested_limit > 0:
-        return requested_limit
-    return fallback_limit
+        return import_required_module(
+            "requests",
+            install_hint="Install python_rag/requirements.txt to use Qdrant HTTP transport.",
+        ).exceptions.RequestException
+    except RuntimeError:
+        return _UnavailableRequestsError
 
 
 class QdrantHTTP:
@@ -132,7 +142,7 @@ class QdrantHTTP:
         """Upsert batches of points into the chosen collection."""
         if not points:
             return
-        if _gateway_supports_operation_id(self._gateway, "upsert"):
+        if gateway_supports_operation_id(self._gateway, "upsert"):
             r = self._gateway.upsert(
                 points,
                 timeout=self._http_settings.upsert_timeout,
@@ -173,7 +183,10 @@ class QdrantHTTP:
             r = self._gateway.count_points(col, exact=exact, timeout=self._http_settings.count_timeout)
             r.raise_for_status()
             return parse_count(r.json())
-        except RequestException as exc:
+        except Exception as exc:
+            request_exception_type = _request_exception_type()
+            if not isinstance(exc, request_exception_type):
+                raise
             status = getattr(getattr(exc, "response", None), "status_code", None)
             if status == 404:
                 return None
@@ -217,7 +230,7 @@ class QdrantHTTP:
                 collections = []
             if not collections:
                 return []
-            max_per_collection = _resolve_per_collection_limit(
+            max_per_collection = resolve_per_collection_limit(
                 self._http_settings.search_all_per_collection,
                 top_k,
             )
@@ -230,7 +243,7 @@ class QdrantHTTP:
                 execute=self._search_collection,
             )
 
-        self.collection = resolve_collection_with_default(
+        self.collection = resolve_selected_collection(
             self.collection,
             lambda: self._pick_default_collection() or "",
         )
@@ -252,7 +265,7 @@ class QdrantHTTP:
             r.raise_for_status()
             return []
 
-        max_per_collection = _resolve_per_collection_limit(
+        max_per_collection = resolve_per_collection_limit(
             self._http_settings.fallback_per_collection,
             top_k,
         )
@@ -276,7 +289,7 @@ class QdrantHTTP:
         fields = [f for f in (fields or []) if f]
         if not terms or not fields:
             return []
-        self.collection = resolve_collection_with_default(
+        self.collection = resolve_selected_collection(
             self.collection,
             lambda: self._pick_default_collection() or "",
         )
@@ -320,7 +333,7 @@ class QdrantHTTP:
         terms, fields = normalize_query_inputs(terms, fields)
         if not terms or not fields:
             return []
-        self.collection = resolve_collection_with_default(
+        self.collection = resolve_selected_collection(
             self.collection,
             lambda: self._pick_default_collection() or "",
         )
@@ -350,7 +363,7 @@ class QdrantHTTP:
         terms, fields = normalize_query_inputs(terms, fields)
         if not terms or not fields:
             return []
-        self.collection = resolve_collection_with_default(
+        self.collection = resolve_selected_collection(
             self.collection,
             lambda: self._pick_default_collection() or "",
         )
@@ -397,7 +410,7 @@ class QdrantHTTP:
 
     def delete_by_filter(self, filter_body: dict[str, Any], *, idempotency_key: str | None = None) -> dict[str, Any]:
         """Delete points matching the supplied Qdrant filter."""
-        if _gateway_supports_operation_id(self._gateway, "delete_by_filter"):
+        if gateway_supports_operation_id(self._gateway, "delete_by_filter"):
             r = self._gateway.delete_by_filter(
                 filter_body,
                 timeout=self._http_settings.delete_timeout,

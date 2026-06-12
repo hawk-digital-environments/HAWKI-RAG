@@ -8,8 +8,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from requests import Response
-
 from infrastructure.vectorstore.qdrant_requests import (
     QdrantRequest,
     build_count_points_request,
@@ -32,10 +30,10 @@ class QdrantHTTPGateway:
         self._transport = transport
         self.collection = collection
 
-    def send(self, request: QdrantRequest) -> Response:
+    def send(self, request: QdrantRequest) -> Any:
         return self._transport.send(request)
 
-    def ensure_collection(self, *, vector_size: int, distance: str) -> Response:
+    def ensure_collection(self, *, vector_size: int, distance: str) -> Any:
         return self.send(
             build_create_collection_request(
                 self.collection,
@@ -44,13 +42,13 @@ class QdrantHTTPGateway:
             )
         )
 
-    def list_collections(self) -> Response:
+    def list_collections(self) -> Any:
         return self.send(build_list_collections_request())
 
-    def get_collection(self) -> Response:
+    def get_collection(self) -> Any:
         return self.send(build_get_collection_request(self.collection))
 
-    def search(self, collection: str, body: dict[str, Any], *, timeout: float) -> Response:
+    def search(self, collection: str, body: dict[str, Any], *, timeout: float) -> Any:
         return self.send(build_search_request(collection, body, timeout=timeout))
 
     def upsert(
@@ -59,7 +57,7 @@ class QdrantHTTPGateway:
         *,
         timeout: float,
         operation_id: str | None = None,
-    ) -> Response:
+    ) -> Any:
         operation_retryable = bool(operation_id and is_retry_safe_write("qdrant.upsert_points"))
         return self.send(
             build_upsert_points_request(
@@ -71,7 +69,7 @@ class QdrantHTTPGateway:
             )
         )
 
-    def count_points(self, collection: str, *, exact: bool, timeout: float) -> Response:
+    def count_points(self, collection: str, *, exact: bool, timeout: float) -> Any:
         return self.send(build_count_points_request(collection, exact=exact, timeout=timeout))
 
     def delete_by_filter(
@@ -80,7 +78,7 @@ class QdrantHTTPGateway:
         *,
         timeout: float,
         operation_id: str | None = None,
-    ) -> Response:
+    ) -> Any:
         operation_retryable = bool(operation_id and is_retry_safe_write("qdrant.delete_by_filter"))
         return self.send(
             build_delete_by_filter_request(
@@ -92,5 +90,5 @@ class QdrantHTTPGateway:
             )
         )
 
-    def scroll(self, collection: str, body: dict[str, Any], *, timeout: float) -> Response:
+    def scroll(self, collection: str, body: dict[str, Any], *, timeout: float) -> Any:
         return self.send(build_scroll_request(collection, body, timeout=timeout))

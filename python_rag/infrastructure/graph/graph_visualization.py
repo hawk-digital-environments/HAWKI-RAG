@@ -1,15 +1,38 @@
 import json
 import logging
+from collections.abc import Callable
 from pathlib import Path
 from dataclasses import replace
 from typing import Any
 
 from infrastructure.graph.visualization_settings import GraphVisualizationSettings, load_graph_visualization_settings
-
-from neo4j import GraphDatabase, exceptions as neo4j_exceptions
+from shared.optional_imports import import_required_module
 
 
 logger = logging.getLogger(__name__)
+
+
+class _UnavailableNeo4jError(Exception):
+    """Internal sentinel used when the optional Neo4j package is absent."""
+
+
+def _load_neo4j_driver_factory() -> Callable[..., Any]:
+    neo4j_module = import_required_module(
+        "neo4j",
+        install_hint="Install python_rag/requirements.txt to export Neo4j graph visualizations.",
+    )
+    return neo4j_module.GraphDatabase.driver
+
+
+def _load_neo4j_error_type() -> type[Exception]:
+    try:
+        neo4j_module = import_required_module(
+            "neo4j",
+            install_hint="Install python_rag/requirements.txt to export Neo4j graph visualizations.",
+        )
+    except RuntimeError:
+        return _UnavailableNeo4jError
+    return neo4j_module.exceptions.Neo4jError
 
 
 class Neo4jGraphVisualization:
@@ -20,20 +43,22 @@ class Neo4jGraphVisualization:
         *,
         database: str | None = None,
         settings: GraphVisualizationSettings | None = None,
-        driver_factory=GraphDatabase.driver,
+        driver_factory: Callable[..., Any] | None = None,
     ) -> None:
         config = settings or load_graph_visualization_settings(database=database)
         self._settings = replace(
             config,
             database=(database or "").strip() or config.database,
         )
+        driver_factory = driver_factory or _load_neo4j_driver_factory()
         self._driver = driver_factory(self._settings.uri, auth=(self._settings.user, self._settings.password))
         self._database = self._settings.database
         if self._database:
+            neo4j_error_type = _load_neo4j_error_type()
             try:
                 with self._driver.session(database=self._database) as session:
                     session.run("RETURN 1").consume()
-            except neo4j_exceptions.Neo4jError as exc:
+            except neo4j_error_type as exc:
                 logger.warning(
                     "graph-viz:requested database '%s' unavailable (%s); using default database",
                     self._database,

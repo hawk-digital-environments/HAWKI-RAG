@@ -4,7 +4,16 @@ import logging
 import os
 from typing import Any, Dict, List, Optional
 
+from shared.optional_imports import import_required_module
+
 logger = logging.getLogger(__name__)
+
+
+def _requests_module() -> Any:
+    return import_required_module(
+        "requests",
+        install_hint="Install python_rag/requirements.txt to use remote reranking.",
+    )
 
 
 def _strip_control_chars(text: str | None) -> str:
@@ -113,10 +122,9 @@ def rerank_hits(
             return _rank_candidates(candidates, scores, hits, mix_mode, mix_weight, orig_scores)
 
         if mode == "external":
-            import requests
-
             rr_url = os.environ.get("RERANKER_API_URL", "").strip()
             if rr_url:
+                requests = _requests_module()
                 docs = []
                 for h in candidates:
                     payload = h.get("payload") or {}
@@ -153,10 +161,9 @@ def rerank_hits(
                         return _rank_candidates(candidates, scores, hits, mix_mode, mix_weight, orig_scores)
 
         if mode == "jina":
-            import requests
-
             jina_key = os.environ.get("JINA_API_KEY", "").strip()
             if jina_key:
+                requests = _requests_module()
                 docs = []
                 for h in candidates:
                     payload = h.get("payload") or {}

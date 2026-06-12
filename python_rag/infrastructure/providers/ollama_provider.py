@@ -2,14 +2,37 @@ import logging
 import math
 import os
 import random
-import re
 import time
-import requests
-from requests import HTTPError, RequestException, Timeout
-from typing import List
+from typing import Any
+
+from infrastructure.providers.ollama_helpers import (
+    build_chat_payload,
+    chat_options_from_env,
+    clean_embedding_text,
+    embed_nan_zero_fallback_enabled,
+    embedding_timeout_from_env,
+    extract_error_message,
+    generate_endpoint_candidates,
+    infer_embedding_dim,
+    is_ollama_nan_embedding_error,
+)
+from shared.optional_imports import import_required_module
 
 
 logger = logging.getLogger(__name__)
+
+
+def _requests_module() -> Any:
+    return import_required_module(
+        "requests",
+        install_hint="Install python_rag/requirements.txt to use the Ollama provider.",
+    )
+
+
+def _request_exception_types(requests_module: Any | None = None) -> tuple[type[BaseException], type[BaseException], type[BaseException]]:
+    module = requests_module or _requests_module()
+    exceptions = module.exceptions
+    return exceptions.HTTPError, exceptions.RequestException, exceptions.Timeout
 
 
 class OllamaProvider:
@@ -26,49 +49,21 @@ class OllamaProvider:
         self._last_embed_dim: int | None = None
 
     def _infer_embed_dim(self) -> int:
-        name = str(self.embed_model or "").lower()
-        if self._last_embed_dim and self._last_embed_dim > 0:
-            return self._last_embed_dim
-        if "bge-m3" in name:
-            return 1024
-        if "text-embedding-3-large" in name:
-            return 3072
-        if "text-embedding-3-small" in name:
-            return 1536
-        return 1024
+        return infer_embedding_dim(self.embed_model, self._last_embed_dim)
 
     @staticmethod
     def _clean_embedding_text(text: str) -> str:
-        # Remove control chars that often come from noisy crawled content/UI fragments.
-        cleaned = "".join(
-            ch for ch in str(text or "") if ch in ("\n", "\r", "\t") or ord(ch) >= 32
-        )
-        cleaned = cleaned.encode("utf-8", errors="ignore").decode("utf-8", errors="ignore")
-        cleaned = re.sub(r"[ \t]+", " ", cleaned)
-        cleaned = re.sub(r"\n{3,}", "\n\n", cleaned).strip()
-        max_chars_env = os.environ.get("OLLAMA_EMBED_MAX_CHARS", "").strip()
-        try:
-            max_chars = int(max_chars_env) if max_chars_env else 4000
-        except ValueError:
-            max_chars = 4000
-        if max_chars > 0:
-            cleaned = cleaned[:max_chars]
-        return cleaned or " "
+        return clean_embedding_text(text)
 
     @staticmethod
     def _is_ollama_nan_embedding_error(status: int | None, message: str) -> bool:
-        msg = (message or "").lower()
-        if "unsupported value: nan" not in msg:
-            return False
-        return status in (None, 500)
+        return is_ollama_nan_embedding_error(status, message)
 
     def embed(self, text: str) -> list[float]:
         url = f"{self.base}/embeddings"
-        timeout_env = os.environ.get("OLLAMA_EMBED_TIMEOUT", "").strip()
-        try:
-            timeout = float(timeout_env) if timeout_env else 60.0
-        except ValueError:
-            timeout = 60.0
+        timeout = embedding_timeout_from_env()
+        requests_module = _requests_module()
+        http_error, request_error, _timeout_error = _request_exception_types(requests_module)
 
         prompts = [str(text or "")]
         cleaned_prompt = self._clean_embedding_text(text)
@@ -78,9 +73,9 @@ class OllamaProvider:
         last_error: RuntimeError | None = None
         for attempt_idx, prompt in enumerate(prompts, start=1):
             try:
-                r = requests.post(url, json={"model": self.embed_model, "prompt": prompt}, timeout=timeout)
+                r = requests_module.post(url, json={"model": self.embed_model, "prompt": prompt}, timeout=timeout)
                 r.raise_for_status()
-            except HTTPError as exc:
+            except http_error as exc:
                 resp = exc.response
                 status = resp.status_code if resp is not None else None
                 detail = ""
@@ -110,7 +105,7 @@ class OllamaProvider:
                     )
                     continue
                 last_error = RuntimeError(f"Ollama embeddings HTTP error ({status}): {message}")
-            except RequestException as exc:
+            except request_error as exc:
                 last_error = RuntimeError(f"Ollama embeddings request failed: {exc}")
             else:
                 data = r.json()
@@ -133,8 +128,7 @@ class OllamaProvider:
         # Optional resilience mode for Ollama's known NaN bug: return a zero vector
         # instead of aborting the whole document ingest.
         if last_error and self._is_ollama_nan_embedding_error(None, str(last_error)):
-            fallback_env = os.environ.get("OLLAMA_EMBED_NAN_ZERO_FALLBACK", "true").strip().lower()
-            if fallback_env in ("1", "true", "yes", "on"):
+            if embed_nan_zero_fallback_enabled():
                 dim = self._infer_embed_dim()
                 logger.warning(
                     "Ollama embeddings NaN bug encountered; using zero-vector fallback (dim=%s, model=%s)",
@@ -149,54 +143,19 @@ class OllamaProvider:
 
     def chat(self, system: str, messages: list, *, temperature: float | None = None) -> str:
         url = f"{self.base}/chat"
-        timeout_env = os.environ.get("OLLAMA_CHAT_TIMEOUT", "").strip()
-        try:
-            timeout = float(timeout_env) if timeout_env else 120.0
-        except ValueError:
-            timeout = 120.0
-        retries_env = os.environ.get("OLLAMA_CHAT_RETRIES", "").strip()
-        try:
-            retries = int(retries_env) if retries_env else 0
-        except ValueError:
-            retries = 0
-        retries = max(0, retries)
-        backoff_env = os.environ.get("OLLAMA_CHAT_BACKOFF", "").strip()
-        try:
-            backoff = float(backoff_env) if backoff_env else 1.5
-        except ValueError:
-            backoff = 1.5
-        backoff = max(0.0, backoff)
-        jitter_env = os.environ.get("OLLAMA_CHAT_JITTER", "").strip()
-        try:
-            jitter = float(jitter_env) if jitter_env else 0.2
-        except ValueError:
-            jitter = 0.2
-        jitter = max(0.0, jitter)
-        if temperature is None:
-            env_temp = os.environ.get("OLLAMA_TEMPERATURE", "").strip()
-            if env_temp:
-                try:
-                    temperature = float(env_temp)
-                except ValueError:
-                    temperature = None
-        if temperature is None:
-            temperature = 0.3
-        num_predict_env = os.environ.get("OLLAMA_NUM_PREDICT", "").strip()
-        try:
-            num_predict = int(num_predict_env) if num_predict_env else 900
-        except ValueError:
-            num_predict = 900
-        top_p_env = os.environ.get("OLLAMA_TOP_P", "").strip()
-        try:
-            top_p = float(top_p_env) if top_p_env else 0.9
-        except ValueError:
-            top_p = 0.9
-        payload = {
-            "model": self.rag_model,
-            "messages": [{"role": "system", "content": system}] + messages,
-            "stream": False,
-            "options": {"temperature": temperature, "top_p": top_p, "num_predict": num_predict},
-        }
+        requests_module = _requests_module()
+        _http_error, request_error, timeout_error = _request_exception_types(requests_module)
+        chat_options = chat_options_from_env(temperature)
+        timeout = chat_options.timeout
+        retries = chat_options.retries
+        backoff = chat_options.backoff
+        jitter = chat_options.jitter
+        payload = build_chat_payload(
+            model=self.rag_model,
+            system=system,
+            messages=messages,
+            options=chat_options,
+        )
 
         def _sleep_backoff(attempt: int) -> None:
             if backoff <= 0:
@@ -210,8 +169,8 @@ class OllamaProvider:
         fallback_needed = False
         for attempt in range(1, max_attempts + 1):
             try:
-                r = requests.post(url, json=payload, timeout=timeout)
-            except Timeout as exc:
+                r = requests_module.post(url, json=payload, timeout=timeout)
+            except timeout_error as exc:
                 if attempt < max_attempts:
                     logger.warning("Ollama chat timed out (attempt %s/%s), retrying...", attempt, max_attempts)
                     _sleep_backoff(attempt)
@@ -219,7 +178,7 @@ class OllamaProvider:
                 raise RuntimeError(
                     f"Ollama chat request timed out after {max_attempts} attempt(s): {exc}"
                 ) from exc
-            except RequestException as exc:
+            except request_error as exc:
                 if attempt < max_attempts:
                     logger.warning("Ollama chat request failed (attempt %s/%s): %s", attempt, max_attempts, exc)
                     _sleep_backoff(attempt)
@@ -263,15 +222,11 @@ class OllamaProvider:
 
         # Fallback for legacy endpoints that do not expose /api/chat
         prompt = system + "\n\nUser:\n" + (messages[-1].get("content") if messages else "")
-        candidates = [f"{self.base}/generate"]
-        if self.base.endswith("/api"):
-            base_no_api = self.base[: -4]
-            candidates.append(f"{base_no_api}/generate")
-            candidates.append(f"{base_no_api}/api/generate")
+        candidates = generate_endpoint_candidates(self.base)
         last_error: str | None = None
         for candidate in candidates:
             try:
-                r2 = requests.post(
+                r2 = requests_module.post(
                     candidate,
                     json={"model": self.rag_model, "prompt": prompt, "stream": False},
                     timeout=timeout,
@@ -284,24 +239,14 @@ class OllamaProvider:
                     raise RuntimeError(
                         f"Ollama chat model '{self.rag_model}' is not installed. "
                         "Run `ollama pull` inside the Ollama container or host."
-                    )
+                )
                 last_error = f"HTTP {r2.status_code}: {detail}"
-            except RequestException as exc:
+            except request_error as exc:
                 last_error = str(exc)
         raise RuntimeError(
             f"Ollama chat request failed after trying {len(candidates)} endpoints: {last_error}"
         )
 
     @staticmethod
-    def _extract_error_message(resp: requests.Response) -> str:
-        detail = ""
-        if resp is not None:
-            try:
-                payload = resp.json()
-            except ValueError:
-                payload = None
-            if isinstance(payload, dict):
-                detail = payload.get("error") or payload.get("message") or str(payload)
-            else:
-                detail = resp.text
-        return detail or ""
+    def _extract_error_message(resp: Any) -> str:
+        return extract_error_message(resp)

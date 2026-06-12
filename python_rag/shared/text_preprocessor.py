@@ -6,29 +6,21 @@ import json
 import logging
 import math
 import re
-from collections import Counter
-from pathlib import Path
 from typing import Any
+
+from shared.text_chunking import split_text_into_chunks
+from shared.text_tags import (
+    fallback_tags as _fallback_tags_impl,
+    flatten_keywords as _flatten_keywords_impl,
+    normalize_tags as _normalize_tags_impl,
+)
+from shared.text_terms import STOPWORDS, TERM_PATTERN, extract_terms as _extract_terms_impl
 
 logger = logging.getLogger(__name__)
 
 
 def _load_stopwords() -> set[str]:
-    stop_path = Path(__file__).resolve().parent.parent / "config" / "german_stopwords_plain.txt"
-    try:
-        content = stop_path.read_text(encoding="utf-8")
-    except FileNotFoundError:
-        logger.warning("Stopwords not found: %s", stop_path)
-        return set()
-    return {
-        line.strip().lower()
-        for line in content.splitlines()
-        if line.strip() and not line.strip().startswith("#")
-    }
-
-
-STOPWORDS = _load_stopwords()
-TERM_PATTERN = re.compile(r"[A-Za-zÄÖÜäöüß][A-Za-zÄÖÜäöüß0-9_-]{3,}")
+    return set(STOPWORDS)
 
 _PROMPT_INJECTION_PATTERNS = [
     re.compile(r"(?i)\bignore\b.{0,40}\b(previous|earlier)\b.{0,20}\b(instruction|message|directive)s?\b"),
@@ -70,14 +62,7 @@ _MULTIMODAL_HINT_PATTERN = re.compile(
 
 
 def _extract_terms(text: str | None) -> list[str]:
-    if not text:
-        return []
-    tokens: list[str] = []
-    for match in TERM_PATTERN.findall(str(text)):
-        token = match.lower()
-        if token not in STOPWORDS and len(token) >= 4:
-            tokens.append(token)
-    return tokens
+    return _extract_terms_impl(text)
 
 
 def _is_multimodal_query(text: str | None) -> bool:
@@ -241,57 +226,15 @@ def _terms_from_payload(payload: dict[str, Any]) -> list[str]:
 
 
 def _flatten_keywords(raw: Any) -> list[str]:
-    if raw is None:
-        return []
-    if isinstance(raw, (list, tuple, set)):
-        out: list[str] = []
-        for item in raw:
-            out.extend(_flatten_keywords(item))
-        return out
-    value = str(raw)
-    cleaned = re.sub(r"^[^\n:]{0,200}:\s*", "", value)
-    cleaned = re.sub(r"-\s*\d+\s*[\.-]?\s*", "\n", cleaned)
-    cleaned = re.sub(r"\s*\d+\s*[\.\)\:\-]\s*", "\n", cleaned)
-    parts: list[str] = []
-    for line in re.split(r"[\r\n]+", cleaned):
-        line = re.sub(r"^\s*[\-\*\u2022]?\s*", "", line)
-        parts.extend(re.split(r"[,;]+", line))
-    return [part.strip() for part in parts if part.strip()]
+    return _flatten_keywords_impl(raw)
 
 
 def _normalize_tags(candidates: list[str], limit: int = 10) -> list[str]:
-    out: list[str] = []
-    seen: set[str] = set()
-    for cand in candidates:
-        cand = cand.replace("-", " ")
-        cand = re.sub(r"[^\w\s]", " ", cand, flags=re.UNICODE)
-        cand = re.sub(r"\s+", " ", cand).strip().lower()
-        if not cand or len(cand) < 2:
-            continue
-        if cand not in seen:
-            seen.add(cand)
-            out.append(cand)
-        if len(out) >= limit:
-            break
-    return out
+    return _normalize_tags_impl(candidates, limit=limit)
 
 
 def _fallback_tags(text: str, limit: int = 10) -> list[str]:
-    if not text:
-        return []
-    words = re.findall(r"[a-z\u00c0-\u024f]+", text.lower())
-    counts: Counter[str] = Counter()
-    for word in words:
-        if len(word) < 4 or word in STOPWORDS:
-            continue
-        counts[word] += 1
-    tags: list[str] = []
-    for word, _count in counts.most_common(limit * 2):
-        if word not in tags:
-            tags.append(word)
-        if len(tags) >= limit:
-            break
-    return tags
+    return _fallback_tags_impl(text, limit=limit)
 
 
 def ensure_tags(payload: dict[str, Any], text: str) -> None:
@@ -308,25 +251,6 @@ def ensure_tags(payload: dict[str, Any], text: str) -> None:
 
 
 def split_text(txt: str, target: int, overlap: int) -> list[str]:
-    txt = (txt or "").strip()
-    if not txt:
-        return []
-    if len(txt) <= target:
-        return [txt]
-    out: list[str] = []
-    start = 0
-    length = len(txt)
-    while start < length:
-        end = min(length, start + target)
-        slice_ = txt[start:end]
-        cut = slice_.rfind("\n\n")
-        if cut != -1 and cut > int(target * 0.6):
-            end = start + cut
-        chunk = txt[start:end].strip()
-        if chunk:
-            out.append(chunk)
-        if end >= length:
-            break
-        start = max(0, end - overlap)
-    logger.debug("split_text chunks=%s target=%s overlap=%s", len(out), target, overlap)
-    return out
+    chunks = split_text_into_chunks(txt, target, overlap)
+    logger.debug("split_text chunks=%s target=%s overlap=%s", len(chunks), target, overlap)
+    return chunks

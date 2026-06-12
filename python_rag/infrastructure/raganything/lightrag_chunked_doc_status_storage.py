@@ -21,23 +21,54 @@ from dataclasses import dataclass
 import json
 import glob
 import os
-import re
 import logging
 from typing import Any
 
+from infrastructure.raganything.doc_status_chunks import (
+    annotate_duplicate_skip_metadata,
+    chunk_item_dicts,
+    count_status_records,
+    is_duplicate_doc_record,
+    merge_chunk_payloads,
+    sort_chunk_files,
+)
+from shared.optional_imports import import_required_module
+
 try:
-    from lightrag.base import DocProcessingStatus, DocStatus
-    from lightrag.exceptions import StorageNotInitializedError
-    from lightrag.kg.json_doc_status_impl import JsonDocStatusStorage
-    from lightrag.kg.shared_storage import (
-        clear_all_update_flags,
-        get_data_init_lock,
-        get_namespace_data,
-        get_namespace_lock,
-        get_update_flag,
-        try_initialize_namespace,
+    lightrag_base = import_required_module(
+        "lightrag.base",
+        install_hint="Install python_rag/requirements.txt to use LightRAG doc status storage.",
     )
-    from lightrag.utils import load_json, logger, write_json
+    lightrag_exceptions = import_required_module(
+        "lightrag.exceptions",
+        install_hint="Install python_rag/requirements.txt to use LightRAG doc status storage.",
+    )
+    lightrag_doc_status = import_required_module(
+        "lightrag.kg.json_doc_status_impl",
+        install_hint="Install python_rag/requirements.txt to use LightRAG doc status storage.",
+    )
+    lightrag_shared_storage = import_required_module(
+        "lightrag.kg.shared_storage",
+        install_hint="Install python_rag/requirements.txt to use LightRAG doc status storage.",
+    )
+    lightrag_utils = import_required_module(
+        "lightrag.utils",
+        install_hint="Install python_rag/requirements.txt to use LightRAG doc status storage.",
+    )
+
+    DocProcessingStatus = lightrag_base.DocProcessingStatus
+    DocStatus = lightrag_base.DocStatus
+    StorageNotInitializedError = lightrag_exceptions.StorageNotInitializedError
+    JsonDocStatusStorage = lightrag_doc_status.JsonDocStatusStorage
+    clear_all_update_flags = lightrag_shared_storage.clear_all_update_flags
+    get_data_init_lock = lightrag_shared_storage.get_data_init_lock
+    get_namespace_data = lightrag_shared_storage.get_namespace_data
+    get_namespace_lock = lightrag_shared_storage.get_namespace_lock
+    get_update_flag = lightrag_shared_storage.get_update_flag
+    try_initialize_namespace = lightrag_shared_storage.try_initialize_namespace
+    load_json = lightrag_utils.load_json
+    logger = lightrag_utils.logger
+    write_json = lightrag_utils.write_json
 
     _LIGHTRAG_DOC_STATUS_AVAILABLE = True
     _LIGHTRAG_DOC_STATUS_ERROR: Exception | None = None
@@ -170,23 +201,12 @@ class ChunkedJsonDocStatusStorage(JsonDocStatusStorage):
 
     def _chunk_files(self) -> list[str]:
         pattern = f"{self._chunk_prefix}*.json"
-        paths = glob.glob(pattern)
-
-        def _idx(path: str) -> int:
-            m = re.search(r"_chunk_(\d+)\.json$", path)
-            return int(m.group(1)) if m else 10**9
-
-        return sorted(paths, key=_idx)
+        return sort_chunk_files(glob.glob(pattern))
 
     def _load_all_chunk_data(self) -> dict[str, Any]:
-        merged: dict[str, Any] = {}
         chunk_files = self._chunk_files()
         if chunk_files:
-            for path in chunk_files:
-                payload = load_json(path) or {}
-                if isinstance(payload, dict):
-                    merged.update(payload)
-            return merged
+            return merge_chunk_payloads(chunk_files, load_json)
 
         # Backward-compatible migration path: if the old monolithic file exists, load it.
         legacy = load_json(self._file_name) or {}
@@ -194,34 +214,19 @@ class ChunkedJsonDocStatusStorage(JsonDocStatusStorage):
 
     @staticmethod
     def _is_duplicate_doc_record(doc_id: str, doc: Any) -> bool:
-        if not isinstance(doc, dict):
-            return False
-        metadata = doc.get("metadata")
-        if isinstance(metadata, dict) and metadata.get("is_duplicate") is True:
-            return True
-        if isinstance(doc_id, str) and doc_id.startswith("dup-"):
-            return True
-        if str(doc.get("status") or "") != DocStatus.FAILED.value:
-            return False
-        error_msg = str(doc.get("error_msg") or "")
-        return "Content already exists." in error_msg and "Original doc_id:" in error_msg
+        return is_duplicate_doc_record(
+            doc_id,
+            doc,
+            failed_status_value=DocStatus.FAILED.value,
+        )
 
     @classmethod
     def _annotate_duplicate_skip_metadata(cls, doc_id: str, doc: Any) -> Any:
-        if not cls._is_duplicate_doc_record(doc_id, doc):
-            return doc
-        if not isinstance(doc, dict):
-            return doc
-        metadata = doc.get("metadata")
-        if not isinstance(metadata, dict):
-            metadata = {}
-        # LightRAG uses `FAILED` for duplicate attempts. We preserve the raw status for
-        # compatibility, but mark the record so workflow queries can treat it as skipped.
-        metadata.setdefault("is_duplicate", True)
-        metadata.setdefault("effective_status", "skipped")
-        metadata.setdefault("skip_reason", "duplicate")
-        doc["metadata"] = metadata
-        return doc
+        return annotate_duplicate_skip_metadata(
+            doc_id,
+            doc,
+            failed_status_value=DocStatus.FAILED.value,
+        )
 
     async def initialize(self):
         """Initialize storage data from chunked files (or legacy single file)."""
@@ -268,15 +273,12 @@ class ChunkedJsonDocStatusStorage(JsonDocStatusStorage):
         if self._storage_lock is None:
             raise StorageNotInitializedError("ChunkedJsonDocStatusStorage")
         async with self._storage_lock:
-            for doc_id, doc in self._data.items():
-                if self._is_duplicate_doc_record(str(doc_id), doc):
-                    counts[self.DUPLICATE_SKIPPED_COUNT_KEY] += 1
-                    continue
-                status_val = str((doc or {}).get("status") or "")
-                if status_val in counts:
-                    counts[status_val] += 1
-                elif status_val:
-                    counts[status_val] = counts.get(status_val, 0) + 1
+            counts = count_status_records(
+                self._data.items(),
+                status_values=[status.value for status in DocStatus],
+                failed_status_value=DocStatus.FAILED.value,
+                duplicate_count_key=self.DUPLICATE_SKIPPED_COUNT_KEY,
+            )
         return counts
 
     async def get_docs_by_status(
@@ -334,12 +336,7 @@ class ChunkedJsonDocStatusStorage(JsonDocStatusStorage):
             )
 
             items = list(data_dict.items())
-            if not items:
-                chunk_dicts = [{}]
-            else:
-                chunk_dicts = []
-                for start in range(0, len(items), self.MAX_ENTRIES_PER_CHUNK):
-                    chunk_dicts.append(dict(items[start : start + self.MAX_ENTRIES_PER_CHUNK]))
+            chunk_dicts = chunk_item_dicts(items, max_entries=self.MAX_ENTRIES_PER_CHUNK)
 
             existing_chunk_files = set(self._chunk_files())
             written_files: list[str] = []

@@ -128,20 +128,19 @@ def build_cleanup_isolated_nodes_query() -> str:
 
 
 def build_count_query(kind: str) -> str:
-    match kind:
-        case "entities":
-            return (
-                "MATCH (n) "
-                "WHERE coalesce(n.name, n.entity_id) IS NOT NULL "
-                "RETURN count(n) AS c"
-            )
-        case "triplets":
-            return (
-                "MATCH (s)-[r]->(o) "
-                "WHERE coalesce(s.name, s.entity_id) IS NOT NULL "
-                "  AND coalesce(o.name, o.entity_id) IS NOT NULL "
-                "RETURN count(r) AS c"
-            )
+    if kind == "entities":
+        return (
+            "MATCH (n) "
+            "WHERE coalesce(n.name, n.entity_id) IS NOT NULL "
+            "RETURN count(n) AS c"
+        )
+    if kind == "triplets":
+        return (
+            "MATCH (s)-[r]->(o) "
+            "WHERE coalesce(s.name, s.entity_id) IS NOT NULL "
+            "  AND coalesce(o.name, o.entity_id) IS NOT NULL "
+            "RETURN count(r) AS c"
+        )
     raise ValueError(f"unsupported count kind: {kind}")
 
 

@@ -6,12 +6,8 @@ import time
 from collections.abc import Callable, Mapping
 from typing import Any, Protocol, TypeVar
 
-try:
-    from neo4j import exceptions as neo4j_exceptions
-except Exception:  # pragma: no cover - optional dependency
-    neo4j_exceptions = None
-
 from infrastructure.graph.neo4j_requests import Neo4jQueryRequest
+from shared.optional_imports import import_optional_module
 from shared.reliability import NEO4J_ADAPTER_EVENT, is_retryable_neo4j_exception, sanitize_for_log
 
 SessionFactory = Callable[[], Any]
@@ -30,6 +26,13 @@ class Neo4jQueryExecutorProtocol(Protocol):
 
 
 logger = logging.getLogger(__name__)
+
+
+def _neo4j_error_type() -> type[BaseException] | None:
+    neo4j_module = import_optional_module("neo4j")
+    if neo4j_module is None:
+        return None
+    return neo4j_module.exceptions.Neo4jError
 
 
 class Neo4jQueryExecutor:
@@ -107,7 +110,8 @@ class Neo4jQueryExecutor:
                     )
                 return result
             except Exception as exc:
-                if neo4j_exceptions is None or not isinstance(exc, neo4j_exceptions.Neo4jError):
+                neo4j_error_type = _neo4j_error_type()
+                if neo4j_error_type is None or not isinstance(exc, neo4j_error_type):
                     raise
                 elapsed_ms = (time.perf_counter() - started) * 1000
                 if attempt >= max_attempts or not query.retryable or not self._is_retryable_exception(exc):

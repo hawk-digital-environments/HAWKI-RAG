@@ -2,15 +2,29 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, Field
-from sentence_transformers import CrossEncoder
+from shared.optional_imports import import_required_module
+
+
+def _load_symbol(module_name: str, symbol_name: str) -> Any:
+    module = import_required_module(
+        module_name,
+        install_hint="Install python_rag/requirements.txt to run the local reranker service.",
+    )
+    return getattr(module, symbol_name)
+
+
+FastAPI = _load_symbol("fastapi", "FastAPI")
+HTTPException = _load_symbol("fastapi", "HTTPException")
+BaseModel = _load_symbol("pydantic", "BaseModel")
+Field = _load_symbol("pydantic", "Field")
+CrossEncoder = _load_symbol("sentence_transformers", "CrossEncoder")
 
 app = FastAPI(title="Local Reranker", version="0.1.0")
 # Load the Mixedbread reranker once at startup so every request reuses the weights.
 model = CrossEncoder("mixedbread-ai/mxbai-rerank-base-v1")
 
-class RerankRequest(BaseModel):
+
+class RerankRequest(BaseModel):  # type: ignore[misc, valid-type]
     # Cohere-compatible fields
     query: str
     documents: list[str]

@@ -11,12 +11,33 @@ import logging
 import re
 from collections.abc import Mapping
 
-from requests import exceptions as request_exceptions
+from shared.optional_imports import import_optional_module
 
-try:
-    from neo4j import exceptions as neo4j_exceptions
-except Exception:  # pragma: no cover - optional dependency
-    neo4j_exceptions = None
+
+def _requests_exceptions_module() -> object | None:
+    requests_module = import_optional_module("requests")
+    if requests_module is None:
+        return None
+    return requests_module.exceptions
+
+
+def _neo4j_error_type() -> type[BaseException] | None:
+    neo4j_module = import_optional_module("neo4j")
+    if neo4j_module is None:
+        return None
+    return neo4j_module.exceptions.Neo4jError
+
+
+def _qdrant_retryable_exception_types() -> tuple[type[BaseException], ...]:
+    request_exceptions = _requests_exceptions_module()
+    if request_exceptions is None:
+        return ()
+    return (
+        request_exceptions.ConnectTimeout,
+        request_exceptions.ConnectionError,
+        request_exceptions.ReadTimeout,
+        request_exceptions.Timeout,
+    )
 
 
 RETRY_SAFE_WRITE_OPERATIONS: frozenset[str] = frozenset(
@@ -29,12 +50,7 @@ RETRY_SAFE_WRITE_OPERATIONS: frozenset[str] = frozenset(
 )
 
 QDRANT_RETRYABLE_STATUS_CODES: frozenset[int] = frozenset({429, 500, 502, 503, 504})
-QDRANT_RETRYABLE_EXCEPTIONS: tuple[type[BaseException], ...] = (
-    request_exceptions.ConnectTimeout,
-    request_exceptions.ConnectionError,
-    request_exceptions.ReadTimeout,
-    request_exceptions.Timeout,
-)
+QDRANT_RETRYABLE_EXCEPTIONS: tuple[type[BaseException], ...] = _qdrant_retryable_exception_types()
 NEO4J_RETRYABLE_ERROR_TOKENS: tuple[str, ...] = (
     "transient",
     "retry",
@@ -131,7 +147,10 @@ def _secret_replacement(match: re.Match[str]) -> str:
 
 def is_retryable_http_exception(exc: Exception) -> bool:
     """Shared transport retryability test for HTTP-like dependency errors."""
-    if isinstance(exc, QDRANT_RETRYABLE_EXCEPTIONS):
+    request_exceptions = _requests_exceptions_module()
+    if request_exceptions is None:
+        return False
+    if isinstance(exc, _qdrant_retryable_exception_types()):
         return True
     if isinstance(exc, request_exceptions.HTTPError):
         response = getattr(exc, "response", None)
@@ -142,9 +161,10 @@ def is_retryable_http_exception(exc: Exception) -> bool:
 
 def is_retryable_neo4j_exception(exc: Exception) -> bool:
     """Classify transient Neo4j exceptions as retryable."""
-    if neo4j_exceptions is None:
+    neo4j_error_type = _neo4j_error_type()
+    if neo4j_error_type is None:
         return False
-    if not isinstance(exc, neo4j_exceptions.Neo4jError):
+    if not isinstance(exc, neo4j_error_type):
         return False
     lowered = str(exc).lower()
     return any(token in lowered for token in NEO4J_RETRYABLE_ERROR_TOKENS)

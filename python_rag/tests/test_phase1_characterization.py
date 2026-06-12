@@ -13,11 +13,43 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
-from fastapi.testclient import TestClient
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+
+from shared.optional_imports import import_required_module
+
+
+def _fastapi_http_exception_type() -> type[BaseException]:
+    return import_required_module(
+        "fastapi",
+        install_hint="Install python_rag/requirements.txt to run API characterization tests.",
+    ).HTTPException
+
+
+def _fastapi_test_client_class():
+    return import_required_module(
+        "fastapi.testclient",
+        install_hint="Install python_rag/requirements.txt to run API characterization tests.",
+    ).TestClient
+
+
+def _neo4j_exceptions_module():
+    return import_required_module(
+        "neo4j",
+        install_hint="Install python_rag/requirements.txt to run Neo4j characterization tests.",
+    ).exceptions
+
+
+def _requests_http_error_type() -> type[BaseException]:
+    return import_required_module(
+        "requests",
+        install_hint="Install python_rag/requirements.txt to run Qdrant characterization tests.",
+    ).exceptions.HTTPError
+
+
+TestClient = _fastapi_test_client_class()
 
 
 def _install_optional_dependency_stubs() -> None:
@@ -1834,8 +1866,8 @@ class Neo4jCharacterizationTests(unittest.TestCase):
     def test_neo4j_query_executor_retries_transient_errors(self) -> None:
         from infrastructure.graph.neo4j_requests import Neo4jQueryRequest
         from infrastructure.graph.neo4j_transport import Neo4jQueryExecutor
-        from neo4j import exceptions as neo4j_exceptions
 
+        neo4j_exceptions = _neo4j_exceptions_module()
         attempts: list[int] = []
 
         class Session:
@@ -2657,12 +2689,11 @@ class IngestDeletionCharacterizationTests(unittest.TestCase):
 
 class ApiAndVectorValidationTests(unittest.TestCase):
     def test_api_schema_defaults_and_provider_errors_are_validation_boundaries(self) -> None:
-        from fastapi import HTTPException
-
         from api.http.dependencies import get_provider_or_400
         from api.http.schemas import IngestDoc, IngestRequest, QueryRequest, apply_ingest_request_settings, apply_query_request_settings
         from api.settings import load_app_settings
 
+        HTTPException = _fastapi_http_exception_type()
         ingest = IngestRequest(
             docs=[IngestDoc(id="doc-1", text="Toy catalog", payload={"title": "Toys"})],
         )
@@ -2709,11 +2740,10 @@ class ApiAndVectorValidationTests(unittest.TestCase):
         self.assertEqual(patched_ingest.graph_engine, "custom-graph")
 
     def test_app_settings_includes_runtime_env_overrides(self) -> None:
-        from fastapi import HTTPException
-
         from api.http.dependencies import get_provider_or_400
         from api.settings import load_app_settings
 
+        HTTPException = _fastapi_http_exception_type()
         with patch.dict(
             os.environ,
             {
@@ -2738,12 +2768,11 @@ class ApiAndVectorValidationTests(unittest.TestCase):
         self.assertIn("unknown provider missing", raised.exception.detail)
 
     def test_document_replacement_request_validates_text_and_preserves_defaults(self) -> None:
-        from fastapi import HTTPException
-
         from application.documents import build_replacement_ingest_request
         from api.http.schemas import DocumentUpsertRequest
         from api.settings import load_app_settings
 
+        HTTPException = _fastapi_http_exception_type()
         with self.assertRaises(HTTPException) as raised:
             build_replacement_ingest_request(
                 doc_id="doc-1",
@@ -3513,8 +3542,8 @@ class ApiAndVectorValidationTests(unittest.TestCase):
             parse_search_payload,
             sort_hits_by_score,
         )
-        from requests import HTTPError
 
+        HTTPError = _requests_http_error_type()
         class FakeResponse:
             def __init__(self, status_code: int, payload: dict[str, object] | None = None) -> None:
                 self.status_code = status_code

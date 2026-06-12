@@ -11,6 +11,7 @@ from typing import Any
 
 from infrastructure.graph.graph_utils import filter_triplets_to_source
 from infrastructure.graph.graph_visualization import write_graph_visualization
+from application.workflows.ingest.graph_documents import prepare_graph_document
 from application.workflows.ingest.settings import GraphIngestSettings, load_graph_ingest_settings
 
 logger = logging.getLogger(__name__)
@@ -176,8 +177,14 @@ def build_triplets_by_doc(
         doc_total_start = time.perf_counter()
         doc_index += 1
         prep_start = time.perf_counter()
-        chunk_texts = [p.get("content") for p in parts if isinstance(p.get("content"), str) and p.get("content").strip()]
-        if not chunk_texts:
+        prepared = prepare_graph_document(
+            str(doc_id),
+            parts,
+            max_chunks=graph_doc_max_chunks,
+            max_chars=graph_doc_max_chars,
+        )
+        chunk_texts = prepared.chunk_texts
+        if prepared.is_empty:
             out[doc_id] = []
             perf_log(
                 "perf:graph pipeline.ingest_logic._build_triplets_by_doc doc=%s step=prepare empty=true ms=%.2f",
@@ -195,39 +202,16 @@ def build_triplets_by_doc(
                 lens[:10],
                 sum(lens),
             )
-        orig_chunk_count = len(chunk_texts)
-        orig_chars = sum(len(t) for t in chunk_texts)
-        max_chunks = graph_doc_max_chunks
-        max_chars = graph_doc_max_chars
-        if max_chunks > 0 and len(chunk_texts) > max_chunks:
-            chunk_texts = chunk_texts[:max_chunks]
-        if max_chars > 0:
-            trimmed: list[str] = []
-            total = 0
-            for text in chunk_texts:
-                if total >= max_chars:
-                    break
-                remaining = max_chars - total
-                if len(text) > remaining:
-                    trimmed.append(text[:remaining])
-                    total = max_chars
-                    break
-                trimmed.append(text)
-                total += len(text)
-            chunk_texts = trimmed
-        first_payload = (parts[0] or {}).get("payload") if parts else {}
-        file_path = None
-        if isinstance(first_payload, dict):
-            file_path = first_payload.get("file_path") or first_payload.get("page_url") or first_payload.get("source_url")
-        total_chars = sum(len(t) for t in chunk_texts)
-        if orig_chunk_count != len(chunk_texts) or orig_chars != total_chars:
+        file_path = prepared.file_path
+        total_chars = prepared.total_chars
+        if prepared.was_trimmed:
             logger.info(
                 "graph:extract doc=%s trimmed chunks=%s/%s chars=%s/%s",
                 doc_id,
                 len(chunk_texts),
-                orig_chunk_count,
+                prepared.original_chunk_count,
                 total_chars,
-                orig_chars,
+                prepared.original_chars,
             )
         prep_ms = (time.perf_counter() - prep_start) * 1000
         logger.info(

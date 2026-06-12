@@ -6,10 +6,6 @@ import time
 from collections.abc import Mapping
 from typing import Any
 
-import requests
-from requests import Response
-from requests.exceptions import RequestException
-
 from infrastructure.vectorstore.qdrant_requests import QdrantRequest
 from shared.reliability import (
     QDRANT_ADAPTER_EVENT,
@@ -18,8 +14,31 @@ from shared.reliability import (
     is_retryable_http_exception,
     sanitize_for_log,
 )
+from shared.optional_imports import import_required_module
 
 logger = logging.getLogger(__name__)
+
+
+class _UnavailableRequestsError(Exception):
+    """Internal sentinel used when requests is not installed."""
+
+
+def _requests_module() -> Any:
+    return import_required_module(
+        "requests",
+        install_hint="Install python_rag/requirements.txt to use Qdrant HTTP transport.",
+    )
+
+
+def _requests_session() -> Any:
+    return _requests_module().Session()
+
+
+def _request_exception_type() -> type[BaseException]:
+    try:
+        return _requests_module().exceptions.RequestException
+    except RuntimeError:
+        return _UnavailableRequestsError
 
 
 class QdrantHTTPTransport:
@@ -47,7 +66,7 @@ class QdrantHTTPTransport:
         self.log_latency = log_latency
         self._backoff_cap_seconds = max(0.0, float(backoff_cap_seconds))
         self._backoff_seconds = max(0.0, float(backoff_seconds))
-        self._session = session or requests.Session()
+        self._session = session or _requests_session()
         self._default_retryable = bool(default_retryable)
 
     def _headers(self) -> dict[str, str]:
@@ -68,7 +87,7 @@ class QdrantHTTPTransport:
     def _is_retryable_exception(self, exc: Exception) -> bool:
         return self._default_retryable and is_retryable_http_exception(exc)
 
-    def send(self, request: QdrantRequest) -> Response:
+    def send(self, request: QdrantRequest) -> Any:
         """Execute one HTTP request with retry and optional latency logging."""
         url = f"{self.base_url}{request.path}"
         operation = request.operation or "qdrant.request"
@@ -125,7 +144,10 @@ class QdrantHTTPTransport:
                     backoff = min(backoff * 2, self._backoff_cap_seconds)
                     continue
                 return response
-            except RequestException as exc:
+            except Exception as exc:
+                request_exception_type = _request_exception_type()
+                if not isinstance(exc, request_exception_type):
+                    raise
                 elapsed_ms = (time.perf_counter() - started) * 1000
                 if attempt >= max_attempts or not self._is_retryable_exception(exc) or not request.retryable:
                     logger.error(

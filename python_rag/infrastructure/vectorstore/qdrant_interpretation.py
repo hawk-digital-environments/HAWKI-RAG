@@ -1,16 +1,14 @@
 """Response interpretation helpers for Qdrant adapters."""
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Tuple, TypeVar
-
-from requests import Response
+from typing import Any, Optional, TypeVar
 
 from infrastructure.vectorstore.qdrant_responses import SearchResultList, parse_search_result, parse_scroll_points
 
 SearchRow = dict[str, Any]
 
 
-def parse_search_payload(response: Response, *, empty_on_not_found: bool = False) -> SearchResultList:
+def parse_search_payload(response: Any, *, empty_on_not_found: bool = False) -> SearchResultList:
     """Parse vector search hits from a Qdrant response."""
     if response.status_code == 404 and empty_on_not_found:
         return []
@@ -19,7 +17,7 @@ def parse_search_payload(response: Response, *, empty_on_not_found: bool = False
 
 
 def parse_scroll_payload(
-    response: Response,
+    response: Any,
     *,
     empty_on_not_found: bool = False,
 ) -> tuple[SearchResultList, Optional[str]]:
@@ -55,4 +53,3 @@ def sort_hits_by_score(hits: list[T], limit: int | None = None) -> list[T]:
     if limit is None:
         return merged
     return merged[: int(limit)]
-

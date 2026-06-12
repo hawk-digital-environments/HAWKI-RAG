@@ -7,15 +7,21 @@ import logging
 from pathlib import Path
 from typing import Any
 
-import numpy as np
-
 from infrastructure.raganything.provider_config import clone_provider_for_graph, graph_model_override, provider_fingerprint
 from infrastructure.raganything.raganything_runtime import prepare_lightrag_neo4j_env
 from infrastructure.raganything.raganything_settings import RagAnythingGraphSettings
 from infrastructure.raganything.raganything_utils import graph_embed_junk_reason, junk_embedding_sentinel, normalize_graph_embed_text
 from infrastructure.raganything.raganything_settings import parse_optional_int
+from shared.optional_imports import import_required_module
 
 logger = logging.getLogger(__name__)
+
+
+def _numpy_module() -> Any:
+    return import_required_module(
+        "numpy",
+        install_hint="Install python_rag/requirements.txt to use RAG-Anything graph embeddings.",
+    )
 
 
 def graph_runtime_cache_key(
@@ -111,6 +117,7 @@ def _build_llm_model_func(graph_provider: Any, settings: RagAnythingGraphSetting
 
 def _build_embed_many_func(graph_provider: Any, settings: RagAnythingGraphSettings, *, embed_dim: int, logger_obj: logging.Logger) -> Any:
     async def embed_many(texts: Any) -> Any:
+        np = _numpy_module()
         text_list = [texts] if isinstance(texts, str) else list(texts or [])
         if not text_list:
             return np.zeros((0, 0), dtype=float)

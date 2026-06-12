@@ -5,10 +5,9 @@ import logging
 import time
 from typing import Any, Callable, Iterable
 
-from neo4j import GraphDatabase, exceptions as neo4j_exceptions
-
+from infrastructure.graph.neo4j_client_ops import ensure_query_executor, is_retryable_write
 from infrastructure.graph.neo4j_transport import Neo4jQueryExecutor, Neo4jQueryExecutorProtocol
-from shared.reliability import is_retry_safe_write
+from shared.optional_imports import import_required_module
 
 from infrastructure.graph.neo4j_requests import (
     Neo4jQueryRequest,
@@ -36,6 +35,28 @@ from infrastructure.graph.neo4j_responses import (
 logger = logging.getLogger(__name__)
 
 
+class _UnavailableNeo4jError(Exception):
+    """Sentinel exception type used when the Neo4j package is not installed."""
+
+
+def _neo4j_module() -> Any:
+    return import_required_module(
+        "neo4j",
+        install_hint="Install python_rag/requirements.txt to use the Neo4j graph adapter.",
+    )
+
+
+def _neo4j_driver_factory() -> Any:
+    return _neo4j_module().GraphDatabase.driver
+
+
+def _neo4j_error_type() -> type[BaseException]:
+    try:
+        return _neo4j_module().exceptions.Neo4jError
+    except RuntimeError:
+        return _UnavailableNeo4jError
+
+
 def _perf_log(enabled: bool, msg: str, *args: object) -> None:
     if enabled:
         logger.info(msg, *args)
@@ -55,7 +76,7 @@ class Neo4jGraph:
         self._database = self._settings.database
         self._query_executor: Neo4jQueryExecutorProtocol
         if query_executor is None:
-            self._driver = GraphDatabase.driver(
+            self._driver = _neo4j_driver_factory()(
                 self._settings.uri,
                 auth=(self._settings.user, self._settings.password),
             )
@@ -63,7 +84,7 @@ class Neo4jGraph:
                 try:
                     with self._driver.session(database=self._database) as session:
                         session.run("RETURN 1").consume()
-                except neo4j_exceptions.Neo4jError as exc:
+                except _neo4j_error_type() as exc:
                     logger.warning(
                         "neo4j:requested database '%s' is unavailable (%s); falling back to default database",
                         self._database,
@@ -91,25 +112,19 @@ class Neo4jGraph:
             self._driver.close()
 
     def _run_read(self, query: Neo4jQueryRequest, *, callback: Callable[[Any], Any]) -> Any:
-        if getattr(self, "_query_executor", None) is None:
-            settings = getattr(self, "_settings", None)
-            self._query_executor = Neo4jQueryExecutor(
-                self._session,
-                retry_attempts=max(1, int(getattr(settings, "retry_attempts", 1))),
-                log_latency=bool(getattr(settings, "log_latency", False)),
-                operation_attempts=getattr(settings, "retry_attempts_by_operation", None),
-            )
+        self._query_executor = ensure_query_executor(
+            getattr(self, "_query_executor", None),
+            session_factory=self._session,
+            settings=getattr(self, "_settings", None),
+        )
         return self._query_executor.run_read(query, callback=callback)
 
     def _run_write(self, query: Neo4jQueryRequest, *, callback: Callable[[Any], Any]) -> Any:
-        if getattr(self, "_query_executor", None) is None:
-            settings = getattr(self, "_settings", None)
-            self._query_executor = Neo4jQueryExecutor(
-                self._session,
-                retry_attempts=max(1, int(getattr(settings, "retry_attempts", 1))),
-                log_latency=bool(getattr(settings, "log_latency", False)),
-                operation_attempts=getattr(settings, "retry_attempts_by_operation", None),
-            )
+        self._query_executor = ensure_query_executor(
+            getattr(self, "_query_executor", None),
+            session_factory=self._session,
+            settings=getattr(self, "_settings", None),
+        )
         return self._query_executor.run_write(query, callback=callback)
 
     def count_entities(self) -> int:
@@ -193,7 +208,7 @@ class Neo4jGraph:
             )
             return
 
-        is_retryable = bool(request_id and is_retry_safe_write("neo4j.upsert_triplets"))
+        is_retryable = is_retryable_write(request_id, "neo4j.upsert_triplets")
         query = Neo4jQueryRequest(
             build_upsert_triplets_query(),
             {"rows": rows},
@@ -225,7 +240,7 @@ class Neo4jGraph:
         if not doc_key:
             return {"relationships_deleted": 0, "entities_deleted": 0}
 
-        is_retryable = bool(request_id and is_retry_safe_write("neo4j.delete_by_doc_id"))
+        is_retryable = is_retryable_write(request_id, "neo4j.delete_by_doc_id")
         remove_edges_query = Neo4jQueryRequest(
             build_delete_doc_edges_query(),
             {"doc_id": doc_key},
@@ -296,7 +311,7 @@ class Neo4jGraph:
                 query,
                 callback=lambda tx: list(tx.run(query.statement, **query.params)),
             )
-        except neo4j_exceptions.Neo4jError:
+        except _neo4j_error_type():
             return []
 
         facts: list[dict[str, str]] = []
@@ -326,6 +341,6 @@ class Neo4jGraph:
                 query,
                 callback=lambda tx: list(tx.run(query.statement, **query.params)),
             )
-        except neo4j_exceptions.Neo4jError:
+        except _neo4j_error_type():
             return []
         return parse_structural_rows(result)
