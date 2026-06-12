@@ -190,12 +190,18 @@ class PipelineEventLayerTest extends TestCase
         $channel->shouldReceive('queue_bind')
             ->once()
             ->with('pipeline_failed_events', 'pipeline.failures', PipelineEvent::JOB_FAILED);
+        $channel->shouldReceive('confirm_select')->once();
+        $channel->shouldReceive('set_return_listener')->once();
+        $channel->shouldReceive('set_nack_handler')->once();
         $channel->shouldReceive('basic_publish')
             ->once()
-            ->with(\Mockery::type(AMQPMessage::class), 'pipeline.events', PipelineEvent::SCRAPE_MONITOR_REQUESTED);
+            ->with(\Mockery::type(AMQPMessage::class), 'pipeline.events', PipelineEvent::SCRAPE_MONITOR_REQUESTED, true);
+        $channel->shouldReceive('wait_for_pending_acks_returns')->once()->with(5.0);
+        $channel->shouldReceive('close')->once();
 
         $rabbit = \Mockery::mock(RagRabbitMQ::class);
         $rabbit->shouldReceive('channel')->zeroOrMoreTimes()->andReturn($channel);
+        $rabbit->shouldReceive('publisherChannel')->once()->andReturn($channel);
         $this->app->instance(RagRabbitMQ::class, $rabbit);
 
         app(PipelineEventBus::class)->publish(PipelineEvent::SCRAPE_MONITOR_REQUESTED, [
@@ -561,6 +567,73 @@ class PipelineEventLayerTest extends TestCase
             'job_type' => PipelineJob::TYPE_CONVERT,
             'status' => PipelineJob::STATUS_COMPLETED,
         ]);
+    }
+
+    public function test_converter_redelivery_republishes_missing_file_converted_event_for_completed_job(): void
+    {
+        config()->set('file_converter.supported_extensions', ['png']);
+
+        $task = $this->task('task-event-convert-missing-publish');
+        $root = storage_path('framework/testing/pipeline-events/convert-missing-publish');
+        $sourceFile = "{$root}/topology.png";
+        $outputDir = "{$root}/converted_topology";
+        $convertedPath = "{$outputDir}/content_markdown.md";
+        File::ensureDirectoryExists($outputDir);
+        File::put($sourceFile, 'fake png content');
+        File::put($convertedPath, "# RabbitMQ Topology\n\nConverted OCR markdown.");
+
+        $this->mock(DocumentConverter::class, function (MockInterface $mock): void {
+            $mock->shouldNotReceive('requestDocumentToMarkdown');
+        });
+
+        PipelineJob::query()->create([
+            'job_id' => 'convert-event-missing-publish',
+            'task_id' => $task->task_id,
+            'job_type' => PipelineJob::TYPE_CONVERT,
+            'source_url' => 'upload://topology.png',
+            'local_path' => $sourceFile,
+            'content_hash' => hash_file('sha256', $sourceFile),
+            'status' => PipelineJob::STATUS_COMPLETED,
+            'started_at' => now(),
+            'finished_at' => now(),
+            'metadata' => [
+                'converted_path' => $convertedPath,
+                'output_dir' => $outputDir,
+                'graph' => true,
+            ],
+        ]);
+
+        $event = PipelineEvent::normalize(PipelineEvent::FILE_DISCOVERED, [
+            'task_id' => $task->task_id,
+            'job_id' => 'convert-event-missing-publish',
+            'parent_job_id' => 'upload-parent',
+            'dataset_id' => $task->dataset_id,
+            'source_url' => 'upload://topology.png',
+            'local_path' => $sourceFile,
+            'content_hash' => hash_file('sha256', $sourceFile),
+            'status' => PipelineJob::STATUS_PENDING,
+            'metadata' => [
+                'graph' => true,
+            ],
+        ]);
+
+        app(ConverterEventHandler::class)->handle($event);
+        app(ConverterEventHandler::class)->handle($event);
+
+        $this->assertSame(1, PipelineEventRecord::query()
+            ->where('task_id', $task->task_id)
+            ->where('job_id', 'convert-event-missing-publish')
+            ->where('event_type', PipelineEvent::FILE_CONVERTED)
+            ->count());
+
+        $record = PipelineEventRecord::query()
+            ->where('task_id', $task->task_id)
+            ->where('job_id', 'convert-event-missing-publish')
+            ->where('event_type', PipelineEvent::FILE_CONVERTED)
+            ->firstOrFail();
+
+        $this->assertSame($convertedPath, $record->payload['local_path']);
+        $this->assertSame($convertedPath, $record->payload['metadata']['converted_path']);
     }
 
     public function test_converter_consumer_records_database_duplicate_conversions_as_skipped_jobs(): void

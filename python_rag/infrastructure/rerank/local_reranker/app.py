@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from shared.optional_imports import import_required_module
+from common.optional_imports import import_required_module
 
 
 def _load_symbol(module_name: str, symbol_name: str) -> Any:

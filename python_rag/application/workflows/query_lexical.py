@@ -5,7 +5,7 @@ import re
 import unicodedata
 from typing import Any, Dict, List
 
-from shared.text_preprocessor import _extract_terms
+from common.text_preprocessor import _extract_terms
 
 
 def fold_text(value: Any) -> str:

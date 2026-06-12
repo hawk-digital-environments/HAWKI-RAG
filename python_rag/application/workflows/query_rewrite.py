@@ -4,10 +4,10 @@ from __future__ import annotations
 from typing import Any, Callable, Dict, List, Sequence
 
 from application.workflows.query_settings import int_env
-from shared.text_preprocessor import _is_multimodal_query as _default_is_multimodal_query
-from shared.text_preprocessor import _normalize_list as _default_normalize_list
-from shared.text_preprocessor import _rewrite_query as _default_rewrite_query
-from shared.text_preprocessor import _extract_terms as _default_extract_terms
+from common.text_preprocessor import _is_multimodal_query as _default_is_multimodal_query
+from common.text_preprocessor import _normalize_list as _default_normalize_list
+from common.text_preprocessor import _rewrite_query as _default_rewrite_query
+from common.text_preprocessor import _extract_terms as _default_extract_terms
 
 NormalizeList = Callable[[Sequence[str] | None], list[str]]
 RewriteQuery = Callable[[Any, str], dict[str, Any]]

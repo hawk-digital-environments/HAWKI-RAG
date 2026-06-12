@@ -80,7 +80,7 @@ class PipelineQueueMonitorTest extends TestCase
                 'scraper: Messages are ready but no consumers are attached.',
             ])
             ->assertJsonFragment([
-                'Failed queue contains 3 messages.',
+                'Failed queue contains 3 failed events awaiting recovery.',
             ]);
     }
 

@@ -142,8 +142,13 @@ class RagAnythingGraphService:
         )
 
     @staticmethod
-    def graph_content_list_from_input(text: str, chunks: list[str] | None) -> list[dict[str, Any]]:
-        return graph_content_list_from_input(text, chunks)
+    def graph_content_list_from_input(
+        text: str,
+        chunks: list[str] | None,
+        *,
+        image_paths: list[str] | None = None,
+    ) -> list[dict[str, Any]]:
+        return graph_content_list_from_input(text, chunks, image_paths=image_paths)
 
     @staticmethod
     def stable_raganything_doc_id(doc_id: str | None, file_path: str | None, content_list: list[dict[str, Any]]) -> str:
@@ -212,7 +217,8 @@ class RagAnythingGraphService:
         chunks: list[str] | None,
         doc_id: str | None,
         file_path: str | None,
-        neo4j_database: str | None,
+        image_paths: list[str] | None = None,
+        neo4j_database: str | None = None,
     ) -> list[tuple[str, str, str]]:
         working_text = text
         cleaned_text = clean_graph_text(text)
@@ -229,6 +235,7 @@ class RagAnythingGraphService:
         content_list = self.graph_content_list_from_input(
             cleaned_text if cleaned_text.strip() else working_text,
             cleaned_chunks if cleaned_chunks is not None else chunks,
+            image_paths=image_paths,
         )
         if not content_list:
             logger.info("graph:extract_triplets skipping empty/tiny content doc_id=%s", doc_id or "-")

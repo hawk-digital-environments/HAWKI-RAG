@@ -32,7 +32,7 @@ from infrastructure.raganything.doc_status_chunks import (
     merge_chunk_payloads,
     sort_chunk_files,
 )
-from shared.optional_imports import import_required_module
+from common.optional_imports import import_required_module
 
 try:
     lightrag_base = import_required_module(

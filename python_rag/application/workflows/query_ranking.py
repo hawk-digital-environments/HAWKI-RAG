@@ -5,7 +5,7 @@ from typing import Any, Callable, Dict, List
 
 from application.workflows.query_lexical import lexical_boost_hits
 from application.workflows.query_hits import dedupe_hits_by_title_or_url
-from shared.text_preprocessor import _extract_terms
+from common.text_preprocessor import _extract_terms
 
 
 DedupeHits = Callable[[list[dict[str, Any]]], list[dict[str, Any]]]

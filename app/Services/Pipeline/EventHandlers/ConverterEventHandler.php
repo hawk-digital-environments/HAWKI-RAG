@@ -9,6 +9,7 @@ use App\Services\Pipeline\Events\PipelineEvent;
 use App\Services\Pipeline\Events\PipelineEventBus;
 use App\Services\Pipeline\Events\PipelineEventStateService;
 use App\Services\Pipeline\Exceptions\PipelineEventHandlerException;
+use App\Services\Pipeline\Repositories\PipelineEventRecordRepository;
 use App\Services\Pipeline\Repositories\Queries\ActivePipelineJobsQuery;
 use Illuminate\Contracts\Config\Repository as ConfigRepository;
 use Illuminate\Container\Attributes\Singleton;
@@ -20,6 +21,7 @@ class ConverterEventHandler implements PipelineEventHandler
         private readonly PipelineEventBus $events,
         private readonly PipelineEventStateService $state,
         private readonly ActivePipelineJobsQuery $jobs,
+        private readonly PipelineEventRecordRepository $eventRecords,
         private readonly ConversionOutputWriter $outputs,
         private readonly PipelineEventArtifactReader $artifacts,
         private readonly ConfigRepository $config,
@@ -50,6 +52,8 @@ class ConverterEventHandler implements PipelineEventHandler
 
         $existing = $this->jobs->findByJobId((string) $event['job_id']);
         if ($existing && in_array($existing->status, [PipelineJob::STATUS_COMPLETED, PipelineJob::STATUS_SKIPPED], true)) {
+            $this->publishMissingFileConvertedEvent($event, $existing);
+
             return;
         }
 
@@ -116,5 +120,40 @@ class ConverterEventHandler implements PipelineEventHandler
         $extensions = array_map('strtolower', $this->config->get('file_converter.supported_extensions', ['pdf', 'doc', 'docx']));
 
         return in_array(strtolower(pathinfo($path, PATHINFO_EXTENSION)), $extensions, true);
+    }
+
+    /**
+     * A worker can die after marking conversion completed but before publishing
+     * file.converted. On redelivery, replay that missing edge instead of
+     * treating the terminal convert job as fully handled.
+     *
+     * @param array<string, mixed> $event
+     */
+    private function publishMissingFileConvertedEvent(array $event, PipelineJob $job): void
+    {
+        $taskId = (string) $event['task_id'];
+        $jobId = (string) $event['job_id'];
+
+        if ($this->eventRecords->existsForJobEvent($taskId, $jobId, PipelineEvent::FILE_CONVERTED)) {
+            return;
+        }
+
+        $jobMetadata = is_array($job->metadata) ? $job->metadata : [];
+        $convertedPath = (string) ($jobMetadata['converted_path'] ?? '');
+        if ($convertedPath === '' || ! $this->artifacts->isFile($convertedPath)) {
+            return;
+        }
+
+        $originalPath = (string) ($jobMetadata['original_path'] ?? $job->local_path ?? $event['local_path'] ?? '');
+
+        $this->events->publish(PipelineEvent::FILE_CONVERTED, array_merge($event, [
+            'local_path' => $convertedPath,
+            'content_hash' => $job->content_hash ?: $event['content_hash'],
+            'status' => $job->status,
+            'metadata' => array_merge($event['metadata'], $jobMetadata, [
+                'original_path' => $originalPath,
+                'converted_path' => $convertedPath,
+            ]),
+        ]));
     }
 }

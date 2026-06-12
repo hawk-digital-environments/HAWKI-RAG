@@ -23,7 +23,7 @@ from application.workflows.query_lexical import (
     fuzzy_term_in_words,
     tokenize_words,
 )
-from shared.text_preprocessor import (
+from common.text_preprocessor import (
     _extract_terms,
     _is_multimodal_query,
     _normalize_list,

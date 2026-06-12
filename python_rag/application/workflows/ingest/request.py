@@ -5,7 +5,7 @@ import hashlib
 import os
 from typing import Any
 
-from shared.reliability import is_retry_safe_write
+from common.reliability import is_retry_safe_write
 
 
 def _normalize_idempotency_key(value: Any, *, fallback: str | None = None) -> str | None:

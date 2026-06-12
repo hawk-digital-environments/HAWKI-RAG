@@ -18,7 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from shared.optional_imports import import_required_module
+from common.optional_imports import import_required_module
 
 
 def _fastapi_http_exception_type() -> type[BaseException]:

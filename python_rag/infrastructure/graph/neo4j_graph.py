@@ -7,7 +7,7 @@ from typing import Any, Callable, Iterable
 
 from infrastructure.graph.neo4j_client_ops import ensure_query_executor, is_retryable_write
 from infrastructure.graph.neo4j_transport import Neo4jQueryExecutor, Neo4jQueryExecutorProtocol
-from shared.optional_imports import import_required_module
+from common.optional_imports import import_required_module
 
 from infrastructure.graph.neo4j_requests import (
     Neo4jQueryRequest,

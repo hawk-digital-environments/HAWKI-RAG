@@ -242,6 +242,7 @@ def build_triplets_by_doc(
                 chunks=chunk_texts,
                 doc_id=doc_id,
                 file_path=file_path,
+                image_paths=prepared.image_paths,
                 neo4j_database=neo4j_database,
             )
         triplets, error = run_graph_extract_with_timeout(_extract, graph_doc_timeout_s, allow_alarm=use_alarm)

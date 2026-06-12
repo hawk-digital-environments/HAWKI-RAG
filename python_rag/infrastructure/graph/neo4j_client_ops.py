@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any, Callable
 
 from infrastructure.graph.neo4j_transport import Neo4jQueryExecutor, Neo4jQueryExecutorProtocol
-from shared.reliability import is_retry_safe_write
+from common.reliability import is_retry_safe_write
 
 
 def ensure_query_executor(

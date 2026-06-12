@@ -73,6 +73,7 @@ class RAGService:
         chunks: list[str] | None = None,
         doc_id: str | None = None,
         file_path: str | None = None,
+        image_paths: list[str] | None = None,
         neo4j_database: str | None = None,
     ) -> list[tuple[str, str, str]]:
         dependencies = self._service_dependencies()
@@ -89,6 +90,7 @@ class RAGService:
             chunks=chunks,
             doc_id=doc_id,
             file_path=file_path,
+            image_paths=image_paths,
             neo4j_database=neo4j_database,
             graph_perf_log=self.settings.graph_perf_log,
         )

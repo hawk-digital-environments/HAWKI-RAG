@@ -21,7 +21,12 @@ from infrastructure.raganything.raganything_utils import dedupe_triplets
 logger = logging.getLogger(__name__)
 
 
-def graph_content_list_from_input(text: str, chunks: list[str] | None) -> list[dict[str, Any]]:
+def graph_content_list_from_input(
+    text: str,
+    chunks: list[str] | None,
+    *,
+    image_paths: list[str] | None = None,
+) -> list[dict[str, Any]]:
     parts = chunks if chunks is not None else [text]
     out: list[dict[str, Any]] = []
     for idx, part in enumerate(parts):
@@ -31,6 +36,21 @@ def graph_content_list_from_input(text: str, chunks: list[str] | None) -> list[d
         if not value:
             continue
         out.append({"type": "text", "text": value, "page_idx": idx})
+    next_page_idx = len(out)
+    for raw_path in image_paths or []:
+        if not isinstance(raw_path, str):
+            continue
+        image_path = Path(raw_path.strip())
+        if not image_path.is_absolute() or not image_path.is_file():
+            continue
+        out.append({
+            "type": "image",
+            "img_path": str(image_path),
+            "image_caption": ["Original uploaded image associated with this converted OCR text."],
+            "image_footnote": [],
+            "page_idx": next_page_idx,
+        })
+        next_page_idx += 1
     return out
 
 

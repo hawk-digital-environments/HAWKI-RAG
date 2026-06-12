@@ -3,7 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
+
+
+IMAGE_EXTENSIONS = {".bmp", ".gif", ".jpeg", ".jpg", ".png", ".tif", ".tiff", ".webp"}
 
 
 @dataclass(slots=True)
@@ -16,6 +20,7 @@ class GraphDocumentInput:
     original_chars: int
     total_chars: int
     file_path: Any | None
+    image_paths: list[str]
 
     @property
     def is_empty(self) -> bool:
@@ -55,6 +60,7 @@ def prepare_graph_document(
     file_path = None
     if isinstance(first_payload, dict):
         file_path = first_payload.get("file_path") or first_payload.get("page_url") or first_payload.get("source_url")
+    image_paths = _image_paths_from_payload(first_payload if isinstance(first_payload, dict) else {})
 
     return GraphDocumentInput(
         doc_id=doc_id,
@@ -63,6 +69,7 @@ def prepare_graph_document(
         original_chars=original_chars,
         total_chars=sum(len(text) for text in chunk_texts),
         file_path=file_path,
+        image_paths=image_paths,
     )
 
 
@@ -79,6 +86,31 @@ def _trim_texts_to_chars(chunk_texts: list[str], *, max_chars: int) -> list[str]
         trimmed.append(text)
         total += len(text)
     return trimmed
+
+
+def _image_paths_from_payload(payload: dict[str, Any]) -> list[str]:
+    values: list[Any] = [
+        payload.get("original_path"),
+        payload.get("source_file"),
+        payload.get("image_path"),
+    ]
+    images = payload.get("images")
+    if isinstance(images, list):
+        values.extend(images)
+
+    out: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        if not isinstance(value, str):
+            continue
+        path = value.strip()
+        if not path or path in seen:
+            continue
+        if Path(path).suffix.lower() not in IMAGE_EXTENSIONS:
+            continue
+        out.append(path)
+        seen.add(path)
+    return out
 
 
 __all__ = ["GraphDocumentInput", "prepare_graph_document"]

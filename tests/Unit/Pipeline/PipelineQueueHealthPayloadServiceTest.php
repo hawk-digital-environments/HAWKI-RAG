@@ -95,7 +95,7 @@ class PipelineQueueHealthPayloadServiceTest extends TestCase
         $this->assertSame('fail', $workers[0]['status']);
         $this->assertSame('RabbitMQ management API is not reachable.', $workers[0]['warnings'][0]);
         $this->assertContains('scraper: RabbitMQ management API is not reachable.', $warnings);
-        $this->assertContains('Failed queue contains 2 messages.', $warnings);
+        $this->assertContains('Failed queue contains 2 failed events awaiting recovery.', $warnings);
         $this->assertSame(2, $totals['failedQueueCount']);
         $this->assertSame([
             'readyMessages' => 0,

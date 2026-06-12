@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from application.workflows.observability import pipeline_log
 from application.workflows.validation import normalize_ingest_metadata, validate_ingest_document
 from application.workflows.ingest.models import IngestChunkRecord, IngestDocumentStats
-from shared.text_preprocessor import ensure_tags, split_text
+from common.text_preprocessor import ensure_tags, split_text
 
 logger = logging.getLogger(__name__)
 

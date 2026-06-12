@@ -9,7 +9,7 @@ import re
 from typing import Any
 
 from infrastructure.raganything.raganything_settings import RagAnythingGraphSettings
-from shared.optional_imports import import_required_module
+from common.optional_imports import import_required_module
 
 logger = logging.getLogger(__name__)
 

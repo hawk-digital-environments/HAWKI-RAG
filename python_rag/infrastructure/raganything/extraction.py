@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Any, List, Tuple
+from typing import Any
 
 from infrastructure.raganything.raganything_client import RagAnythingGraphService
+from infrastructure.raganything.llm_triplet_fallback import (
+    extract_triplets_from_text_with_provider,
+)
 from infrastructure.raganything.text import clean_graph_text
 
 logger = logging.getLogger(__name__)
@@ -26,6 +29,7 @@ def extract_triplets_with_graph_service(
     file_path: str | None,
     neo4j_database: str | None,
     graph_perf_log: bool,
+    image_paths: list[str] | None = None,
 ) -> list[tuple[str, str, str]]:
     fn_start = time.perf_counter()
     _perf_log(
@@ -65,8 +69,21 @@ def extract_triplets_with_graph_service(
         chunks=cleaned_chunks if cleaned_chunks is not None else chunks,
         doc_id=doc_id,
         file_path=file_path,
+        image_paths=image_paths,
         neo4j_database=neo4j_database,
     )
+    if not trips:
+        fallback_text = _fallback_source_text(
+            cleaned_text if cleaned_text.strip() else text,
+            cleaned_chunks if cleaned_chunks is not None else chunks,
+        )
+        trips = extract_triplets_from_text_with_provider(
+            provider,
+            fallback_text,
+            doc_id=doc_id,
+            image_paths=image_paths,
+            logger_obj=logger,
+        )
     _perf_log(
         "perf:graph core.rag_service.extract_triplets step=raganything_insert_export triplets=%s ms=%.2f",
         graph_perf_log,
@@ -82,3 +99,9 @@ def extract_triplets_with_graph_service(
         (time.perf_counter() - fn_start) * 1000,
     )
     return trips
+
+
+def _fallback_source_text(text: str, chunks: list[str] | None) -> str:
+    if chunks:
+        return "\n\n".join(str(chunk).strip() for chunk in chunks if str(chunk).strip())
+    return str(text or "")

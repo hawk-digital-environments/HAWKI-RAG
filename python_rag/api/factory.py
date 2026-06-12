@@ -31,7 +31,7 @@ from .startup_checks import (
     check_qdrant,
     run_startup_checks,
 )
-from shared.reliability import STARTUP_CHECK_RETRY_EVENT, log_redacted_value
+from common.reliability import STARTUP_CHECK_RETRY_EVENT, log_redacted_value
 
 TQdrant = TypeVar("TQdrant")
 

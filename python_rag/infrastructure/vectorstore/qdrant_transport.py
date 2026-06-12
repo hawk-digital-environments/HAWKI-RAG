@@ -7,14 +7,14 @@ from collections.abc import Mapping
 from typing import Any
 
 from infrastructure.vectorstore.qdrant_requests import QdrantRequest
-from shared.reliability import (
+from common.reliability import (
     QDRANT_ADAPTER_EVENT,
     QDRANT_RETRYABLE_STATUS_CODES,
     normalize_retry_attempt_limit,
     is_retryable_http_exception,
     sanitize_for_log,
 )
-from shared.optional_imports import import_required_module
+from common.optional_imports import import_required_module
 
 logger = logging.getLogger(__name__)
 

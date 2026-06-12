@@ -97,7 +97,7 @@ def configure_app_logging(settings: AppSettings, *, logger_name: str) -> tuple[l
         logging.getLogger("application.workflows.ingest_logic").setLevel(logging.DEBUG)
         logging.getLogger("application.service").setLevel(logging.DEBUG)
     else:
-        logging.getLogger("shared.text_preprocessor").setLevel(logging.INFO)
+        logging.getLogger("common.text_preprocessor").setLevel(logging.INFO)
 
     if graph_debug_log:
         _add_file_handler(root_logger, Path(graph_debug_log))

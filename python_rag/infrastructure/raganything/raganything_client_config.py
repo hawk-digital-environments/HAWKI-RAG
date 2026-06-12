@@ -12,7 +12,7 @@ from infrastructure.raganything.raganything_runtime import prepare_lightrag_neo4
 from infrastructure.raganything.raganything_settings import RagAnythingGraphSettings
 from infrastructure.raganything.raganything_utils import graph_embed_junk_reason, junk_embedding_sentinel, normalize_graph_embed_text
 from infrastructure.raganything.raganything_settings import parse_optional_int
-from shared.optional_imports import import_required_module
+from common.optional_imports import import_required_module
 
 logger = logging.getLogger(__name__)
 

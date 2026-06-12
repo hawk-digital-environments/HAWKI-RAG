@@ -16,7 +16,7 @@ from infrastructure.providers.ollama_helpers import (
     infer_embedding_dim,
     is_ollama_nan_embedding_error,
 )
-from shared.optional_imports import import_required_module
+from common.optional_imports import import_required_module
 
 
 logger = logging.getLogger(__name__)

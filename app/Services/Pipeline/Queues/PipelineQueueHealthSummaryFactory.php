@@ -29,7 +29,7 @@ readonly class PipelineQueueHealthSummaryFactory
 
         $failedCount = $failedQueue['readyMessages'] + $failedQueue['unackedMessages'];
         if ($failedCount > 0) {
-            $warnings[] = 'Failed queue contains '.$failedCount.' message'.($failedCount === 1 ? '' : 's').'.';
+            $warnings[] = 'Failed queue contains '.$failedCount.' failed event'.($failedCount === 1 ? '' : 's').' awaiting recovery.';
         }
 
         return array_values(array_unique($warnings));

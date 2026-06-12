@@ -6,7 +6,7 @@ from dataclasses import replace
 from typing import Any
 
 from infrastructure.graph.visualization_settings import GraphVisualizationSettings, load_graph_visualization_settings
-from shared.optional_imports import import_required_module
+from common.optional_imports import import_required_module
 
 
 logger = logging.getLogger(__name__)

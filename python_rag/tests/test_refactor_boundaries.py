@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import logging
+import importlib
 import sys
+import tempfile
 import types
 from pathlib import Path
 from types import SimpleNamespace
@@ -56,7 +58,7 @@ def test_qdrant_client_ops_capture_gateway_and_limit_policy() -> None:
 
 
 def test_optional_import_helper_reports_missing_runtime_dependencies() -> None:
-    from shared.optional_imports import import_optional_module, import_required_module
+    from common.optional_imports import import_optional_module, import_required_module
 
     assert import_optional_module("sys") is sys
     assert import_optional_module("__hawki_missing_dependency__") is None
@@ -70,6 +72,19 @@ def test_optional_import_helper_reports_missing_runtime_dependencies() -> None:
         assert "install the project requirements" in str(exc)
     else:
         raise AssertionError("missing required dependency should raise RuntimeError")
+
+
+def test_canonical_lightrag_doc_status_storage_import_path_resolves() -> None:
+    module = importlib.import_module("infrastructure.raganything.lightrag_chunked_doc_status_storage")
+
+    assert module.ChunkedJsonDocStatusStorage.__name__ == "ChunkedJsonDocStatusStorage"
+
+
+def test_raganything_runtime_requirements_include_mineru_core_extra() -> None:
+    requirements = (ROOT / "requirements.txt").read_text(encoding="utf-8")
+
+    assert "raganything[all]" in requirements
+    assert "mineru[core]" in requirements
 
 
 def test_doc_status_chunk_helpers_plan_chunks_and_duplicate_counts() -> None:
@@ -133,10 +148,135 @@ def test_graph_document_preparation_trims_chunks_and_keeps_source() -> None:
     assert prepared.was_trimmed is True
 
 
+def test_graph_document_preparation_collects_original_image_paths() -> None:
+    from application.workflows.ingest.graph_documents import prepare_graph_document
+
+    prepared = prepare_graph_document(
+        "image-doc",
+        [
+            {
+                "content": "RabbitMQ Topic Exchange routes upload events to the converter worker.",
+                "payload": {
+                    "file_path": "/tmp/converted.md",
+                    "original_path": "/tmp/rabbitmq-topology.png",
+                    "source_file": "/tmp/source-file.png",
+                    "image_path": "/tmp/rabbitmq-topology.png",
+                    "images": ["/tmp/flow.jpg", "/tmp/readme.md"],
+                },
+            }
+        ],
+        max_chunks=0,
+        max_chars=0,
+    )
+
+    assert prepared.file_path == "/tmp/converted.md"
+    assert prepared.image_paths == ["/tmp/rabbitmq-topology.png", "/tmp/source-file.png", "/tmp/flow.jpg"]
+
+
+def test_graph_content_list_includes_existing_image_blocks() -> None:
+    from infrastructure.raganything.raganything_extract import graph_content_list_from_input
+
+    with tempfile.TemporaryDirectory() as tmp:
+        image_path = Path(tmp) / "rabbitmq-topology.png"
+        image_path.write_bytes(b"not-a-real-png-but-existing")
+
+        content = graph_content_list_from_input(
+            "",
+            [" OCR text from image "],
+            image_paths=[str(image_path), str(Path(tmp) / "missing.png"), "relative.png"],
+        )
+
+    assert content[0] == {"type": "text", "text": "OCR text from image", "page_idx": 0}
+    assert content[1]["type"] == "image"
+    assert content[1]["img_path"] == str(image_path)
+    assert content[1]["page_idx"] == 1
+
+
+def test_llm_triplet_fallback_parses_strict_json_response() -> None:
+    from infrastructure.raganything.llm_triplet_fallback import parse_llm_triplet_response
+
+    response = """
+    ```json
+    {
+      "triplets": [
+        {"subject": "RabbitMQ Topic Exchange", "relation": "routes", "object": "converter worker"},
+        {"subject": "RabbitMQ Topic Exchange", "relation": "routes", "object": "converter worker"},
+        {"subject": "[]", "relation": "mentions", "object": "noise"}
+      ]
+    }
+    ```
+    """
+
+    assert parse_llm_triplet_response(response) == [
+        ("RabbitMQ Topic Exchange", "routes", "converter worker")
+    ]
+
+
+def test_llm_triplet_fallback_recovers_complete_objects_from_truncated_response() -> None:
+    from infrastructure.raganything.llm_triplet_fallback import parse_llm_triplet_response
+
+    response = """
+    Here is the JSON:
+    ```
+    {"triplets":[
+      {"subject":"Dead-letter Queue","relation":"receives","object":"failed jobs"},
+      {"subject":"Retry Exchange","relation":"routes","object":"retry queues"},
+      {"subject":"Incomplete","relation":"breaks","object":"
+    """
+
+    assert parse_llm_triplet_response(response) == [
+        ("Dead-letter Queue", "receives", "failed jobs"),
+        ("Retry Exchange", "routes", "retry queues"),
+    ]
+
+
+def test_triplet_extractor_uses_llm_fallback_when_raganything_returns_empty() -> None:
+    from infrastructure.raganything.extraction import extract_triplets_with_graph_service
+
+    class EmptyGraphService:
+        def __init__(self) -> None:
+            self.kwargs: dict[str, object] = {}
+
+        def extract_triplets(self, text: str, **kwargs: object) -> list[tuple[str, str, str]]:
+            self.kwargs = kwargs
+            return []
+
+    class Provider:
+        def __init__(self) -> None:
+            self.messages: list[dict[str, str]] = []
+
+        def chat(self, system: str, messages: list[dict[str, str]], *, temperature: float | None = None) -> str:
+            self.messages = messages
+            return (
+                '{"triplets":[{"subject":"RabbitMQ Topic Exchange",'
+                '"relation":"routes","object":"converter worker"}]}'
+            )
+
+    graph_service = EmptyGraphService()
+    provider = Provider()
+
+    triplets = extract_triplets_with_graph_service(
+        graph_service,  # type: ignore[arg-type]
+        "",
+        "raganything",
+        provider=provider,
+        chunks=["RabbitMQ Topic Exchange routes upload events to the converter worker."],
+        doc_id="image-doc",
+        file_path="/tmp/converted.md",
+        image_paths=["/tmp/rabbitmq-topology.png"],
+        neo4j_database="neo4j",
+        graph_perf_log=False,
+    )
+
+    assert triplets == [("RabbitMQ Topic Exchange", "routes", "converter worker")]
+    assert graph_service.kwargs["image_paths"] == ["/tmp/rabbitmq-topology.png"]
+    assert "/tmp/rabbitmq-topology.png" in provider.messages[0]["content"]
+
+
 def test_text_helper_modules_preserve_term_tag_and_chunk_rules() -> None:
-    from shared.text_chunking import split_text_into_chunks
-    from shared.text_tags import fallback_tags, flatten_keywords, normalize_tags
-    from shared.text_terms import extract_terms
+    from common.text_chunking import split_text_into_chunks
+    from common.text_tags import fallback_tags, flatten_keywords, normalize_tags
+    from common.text_terms import extract_terms
 
     assert extract_terms("Wooden trains and Teddy-Bears")[:2] == ["wooden", "trains"]
     assert flatten_keywords("Keywords: 1. Wooden toys; 2. Teddy bears") == [

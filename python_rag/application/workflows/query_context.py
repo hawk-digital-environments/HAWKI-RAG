@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Tuple
 
-from shared.text_preprocessor import _estimate_tokens, _sanitize_context_snippet, _truncate_to_tokens
+from common.text_preprocessor import _estimate_tokens, _sanitize_context_snippet, _truncate_to_tokens
 
 
 def prepare_context_summaries(

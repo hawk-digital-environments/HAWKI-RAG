@@ -10,8 +10,8 @@ from fastapi import HTTPException
 
 from infrastructure.vectorstore.vector_search import run_high_recall, run_search
 from infrastructure.vectorstore.qdrant_http import QdrantHTTP
-from shared.safety_utils import analyze_prompt, enforce_output_safety, sanitize_prompt_text
-from shared.text_preprocessor import _extract_terms, _terms_from_payload
+from common.safety_utils import analyze_prompt, enforce_output_safety, sanitize_prompt_text
+from common.text_preprocessor import _extract_terms, _terms_from_payload
 from infrastructure.graph.graph_utils import fetch_related_terms, structural_hops, structural_limit, build_structural_hits
 from application.workflows.query_settings import (
     context_limits,

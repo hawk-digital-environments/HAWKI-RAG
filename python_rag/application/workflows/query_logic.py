@@ -21,8 +21,8 @@ from application.workflows.query_settings import (
     score_thresholds,
     search_top_k as configured_search_top_k,
 )
-from shared.safety_utils import analyze_prompt, enforce_output_safety, sanitize_prompt_text
-from shared.text_preprocessor import _extract_terms, _terms_from_payload
+from common.safety_utils import analyze_prompt, enforce_output_safety, sanitize_prompt_text
+from common.text_preprocessor import _extract_terms, _terms_from_payload
 
 
 def query_documents(body: Any, *, rag_service: Any, get_provider) -> dict[str, Any]:

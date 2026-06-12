@@ -40,7 +40,7 @@ from infrastructure.vectorstore.qdrant_interpretation import (
     sort_hits_by_score,
 )
 from infrastructure.vectorstore.qdrant_transport import QdrantHTTPTransport
-from shared.optional_imports import import_required_module
+from common.optional_imports import import_required_module
 
 logger = logging.getLogger(__name__)
 

@@ -7,8 +7,8 @@ from collections.abc import Callable, Mapping
 from typing import Any, Protocol, TypeVar
 
 from infrastructure.graph.neo4j_requests import Neo4jQueryRequest
-from shared.optional_imports import import_optional_module
-from shared.reliability import NEO4J_ADAPTER_EVENT, is_retryable_neo4j_exception, sanitize_for_log
+from common.optional_imports import import_optional_module
+from common.reliability import NEO4J_ADAPTER_EVENT, is_retryable_neo4j_exception, sanitize_for_log
 
 SessionFactory = Callable[[], Any]
 QueryResult = TypeVar("QueryResult")

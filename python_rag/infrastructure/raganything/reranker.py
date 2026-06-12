@@ -4,7 +4,7 @@ import logging
 import os
 from typing import Any, Dict, List, Optional
 
-from shared.optional_imports import import_required_module
+from common.optional_imports import import_required_module
 
 logger = logging.getLogger(__name__)
 

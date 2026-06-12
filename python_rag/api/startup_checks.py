@@ -11,8 +11,8 @@ from typing import Any
 from api.settings import AppSettings
 from infrastructure.graph.neo4j_settings import load_neo4j_settings
 from infrastructure.vectorstore.settings import qdrant_settings_from_env
-from shared.optional_imports import import_required_module
-from shared.reliability import (
+from common.optional_imports import import_required_module
+from common.reliability import (
     STARTUP_CHECK_EVENT,
     STARTUP_CHECK_RETRY_EVENT,
     log_redacted_value,
