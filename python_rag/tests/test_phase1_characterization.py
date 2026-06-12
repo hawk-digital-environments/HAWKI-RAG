@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import importlib
+import io
 import json
+import logging
 import os
 import sys
 import tempfile
+import time
 import types
 import unittest
 from pathlib import Path
@@ -295,6 +298,111 @@ class GraphFallbackCharacterizationTests(unittest.TestCase):
             written = json.loads((Path(tmp) / "neo4j_graph_visualization.json").read_text(encoding="utf-8"))
             self.assertEqual(written["ok"], True)
             self.assertEqual(written["nodes"], snapshot_payload["nodes"])
+
+
+class RAGServiceDependencyCharacterizationTests(unittest.TestCase):
+    def test_rag_service_uses_injected_dependency_boundaries(self) -> None:
+        from application.service import RAGService
+        from application.service_dependencies import RAGServiceDependencies
+        from domain.settings import RAGServiceSettings
+
+        with tempfile.TemporaryDirectory() as tmp:
+            settings = RAGServiceSettings(
+                rag_working_dir=Path(tmp),
+                graph_debug=False,
+                graph_debug_llm=False,
+                graph_perf_log=True,
+                graph_provider="toy-provider",
+            )
+            calls: dict[str, list[object]] = {
+                "providers": [],
+                "graph_dirs": [],
+                "extract": [],
+                "rerank": [],
+            }
+
+            class FakeGraphService:
+                def __init__(self) -> None:
+                    self.client = {"client": "fake-raganything"}
+
+                def clear_graph_cache(self) -> dict[str, object]:
+                    return {"ok": True, "cleared": "fake"}
+
+                def graph_runtime_summary(self) -> dict[str, object]:
+                    return {"graph_client_initialized": True}
+
+                def triplets_from_llm_cache(self) -> list[tuple[str, str, str]]:
+                    return [("Cache", "mentions", "Toy")]
+
+            fake_graph_service = FakeGraphService()
+
+            def settings_loader() -> RAGServiceSettings:
+                return settings
+
+            def provider_factory(name: str) -> dict[str, str]:
+                calls["providers"].append(name)
+                return {"provider": name}
+
+            def graph_service_factory(working_dir: Path, logger_obj: object) -> FakeGraphService:
+                calls["graph_dirs"].append(working_dir)
+                return fake_graph_service
+
+            def triplet_extractor(graph_service: object, text: str, engine: str | None, **kwargs: object) -> list[tuple[str, str, str]]:
+                calls["extract"].append(
+                    {
+                        "graph_service": graph_service,
+                        "text": text,
+                        "engine": engine,
+                        "provider": kwargs["provider"],
+                        "doc_id": kwargs["doc_id"],
+                        "graph_perf_log": kwargs["graph_perf_log"],
+                    }
+                )
+                return [("Toy", "has", "Wheels")]
+
+            def reranker(**kwargs: object) -> list[dict[str, object]]:
+                calls["rerank"].append(kwargs)
+                return [{"id": "ranked"}]
+
+            service = RAGService(
+                dependencies=RAGServiceDependencies(
+                    settings_loader=settings_loader,
+                    provider_factory=provider_factory,
+                    graph_service_factory=graph_service_factory,
+                    triplet_extractor=triplet_extractor,
+                    reranker=reranker,
+                )
+            )
+
+            self.assertEqual(service.get_provider("manual-provider"), {"provider": "manual-provider"})
+            self.assertEqual(
+                service.extract_triplets("toy text", None, doc_id="toy-doc"),
+                [("Toy", "has", "Wheels")],
+            )
+            self.assertEqual(service.raganything, fake_graph_service.client)
+            self.assertEqual(service.graph_runtime_summary(), {"graph_client_initialized": True})
+            self.assertEqual(service.clear_graph_cache(), {"ok": True, "cleared": "fake"})
+            self.assertEqual(service._triplets_from_raganything_llm_cache(), [("Cache", "mentions", "Toy")])
+            self.assertEqual(
+                service.rerank_hits(
+                    hits=[{"id": "raw"}],
+                    user_query="toy",
+                    provider={"provider": "toy-provider"},
+                    query_vector=None,
+                    mode="cosine",
+                    top_n=1,
+                    mix_mode=False,
+                    mix_weight=0.5,
+                ),
+                [{"id": "ranked"}],
+            )
+
+            self.assertEqual(calls["providers"], ["manual-provider", "toy-provider"])
+            self.assertEqual(calls["graph_dirs"], [Path(tmp).expanduser()])
+            self.assertEqual(calls["extract"][0]["provider"], {"provider": "toy-provider"})
+            self.assertEqual(calls["extract"][0]["doc_id"], "toy-doc")
+            self.assertTrue(calls["extract"][0]["graph_perf_log"])
+            self.assertEqual(calls["rerank"][0]["top_n"], 1)
 
 
 class RagAnythingGraphSettingsCharacterizationTests(unittest.TestCase):
@@ -691,6 +799,402 @@ class IngestCharacterizationTests(unittest.TestCase):
         self.assertEqual(summary["documents"]["doc_ids"], ["doc-1"])
         self.assertEqual(summary["documents"]["by_format"], {"markdown": 1})
 
+    def test_dry_run_helper_builds_graph_preview_without_store_writes(self) -> None:
+        from application.workflows.ingest.chunking import prepare_documents
+        from application.workflows.ingest.dry_run import build_dry_run_ingest_response
+        from application.workflows.ingest.settings import GraphIngestSettings
+
+        docs = [
+            SimpleNamespace(
+                id="toy-doc",
+                text="A wooden train is a toy for children.",
+                payload={"title": "Toy catalog", "source_url": "upload://toy.md", "source_format": "markdown"},
+            )
+        ]
+        chunk_records, doc_stats = prepare_documents(docs, chunk_chars=1200, chunk_overlap=0, default_job_id="job-toy")
+        provider = SimpleNamespace(embed_model="embed-old", rag_model="rag-old")
+        captured: dict[str, object] = {"provider_names": []}
+
+        class FakeRAGService:
+            def extract_triplets(self, text: str, engine: str, **kwargs: object) -> list[tuple[str, str, str]]:
+                captured["engine"] = engine
+                captured["provider"] = kwargs["provider"]
+                captured["doc_id"] = kwargs["doc_id"]
+                captured["neo4j_database"] = kwargs["neo4j_database"]
+                return [("Wooden train", "is", "Toy")]
+
+        def get_provider(name: str) -> object:
+            captured["provider_names"].append(name)
+            return provider
+
+        body = SimpleNamespace(
+            graph=True,
+            dry_include_graph=True,
+            provider="fake-provider",
+            graph_engine="raganything",
+            neo4j_database="toy-graph",
+            embedding_model="embed-new",
+            graph_model="rag-new",
+        )
+        settings = GraphIngestSettings(
+            graph_debug=False,
+            graph_perf_log=False,
+            graph_doc_timeout_s=0.0,
+            graph_doc_max_chars=0,
+            graph_doc_max_chunks=0,
+            graph_failure_log="",
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            result = build_dry_run_ingest_response(
+                body=body,
+                doc_stats=doc_stats,
+                chunk_records=chunk_records,
+                total_chunks=len(chunk_records),
+                batch_size=64,
+                collection="toy_docs",
+                rag_service=FakeRAGService(),
+                get_provider=get_provider,
+                public_dir=Path(tmp),
+                job_id="job-toy",
+                operation_id="operation-toy",
+                graph_debug=False,
+                graph_settings=settings,
+                logger_obj=logging.getLogger("test_dry_run_helper"),
+            )
+
+            preview_file = Path(result["summary"]["graph_preview_file"])
+            self.assertTrue(preview_file.exists())
+
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["dry_run"])
+        self.assertEqual(result["summary"]["graph_preview"]["total_triplets"], 1)
+        self.assertEqual(result["summary"]["graph_preview"]["per_doc"]["toy-doc"]["triplets"], 1)
+        self.assertEqual(captured["provider_names"], ["fake-provider"])
+        self.assertEqual(provider.embed_model, "embed-new")
+        self.assertEqual(provider.rag_model, "rag-new")
+        self.assertEqual(captured["doc_id"], "toy-doc")
+        self.assertEqual(captured["neo4j_database"], "toy-graph")
+
+    def test_vector_commit_helper_records_partial_embedding_failures_and_upserts_points(self) -> None:
+        from application.workflows.ingest.vector_commit import commit_vector_points
+
+        class Provider:
+            def embed(self, text: str) -> list[float]:
+                if "broken" in text:
+                    raise RuntimeError("embedding unavailable")
+                return [0.1, 0.2]
+
+        class FakeQdrant:
+            def __init__(self) -> None:
+                self.collection = "toy_docs"
+                self.ensure_calls: list[dict[str, object]] = []
+                self.upsert_calls: list[dict[str, object]] = []
+
+            def ensure_collection(self, vector_size: int, distance: str) -> None:
+                self.ensure_calls.append({"vector_size": vector_size, "distance": distance})
+
+            def upsert_points(
+                self,
+                points: list[dict[str, object]],
+                *,
+                batch_size: int,
+                idempotency_key: str | None = None,
+            ) -> None:
+                self.upsert_calls.append(
+                    {"points": points, "batch_size": batch_size, "idempotency_key": idempotency_key}
+                )
+
+        doc_stats: dict[str, object] = {
+            "processed_docs": 2,
+            "skipped_docs": 0,
+            "doc_ids": ["toy-good", "toy-broken"],
+            "chunks_per_doc": {"toy-good": 1, "toy-broken": 1},
+        }
+        chunk_records = [
+            {
+                "doc_id": "toy-good",
+                "content": "working toy text",
+                "payload": {"doc_id": "toy-good", "chunk_index": 0, "title": "Good Toy"},
+            },
+            {
+                "doc_id": "toy-broken",
+                "content": "broken toy text",
+                "payload": {"doc_id": "toy-broken", "chunk_index": 0, "title": "Broken Toy"},
+            },
+        ]
+        qdrant = FakeQdrant()
+
+        result = commit_vector_points(
+            body=SimpleNamespace(provider="fake", distance="Cosine"),
+            chunk_records=chunk_records,
+            doc_stats=doc_stats,
+            provider=Provider(),
+            qdrant=qdrant,
+            batch_size=32,
+            job_id="job-toy",
+            operation_id="operation-toy",
+            logger_obj=logging.getLogger("test_vector_commit_helper"),
+        )
+
+        self.assertEqual(result.vector_size, 2)
+        self.assertEqual(len(result.points), 1)
+        self.assertGreaterEqual(result.qdrant_ms, 0)
+        self.assertEqual(qdrant.ensure_calls, [{"vector_size": 2, "distance": "Cosine"}])
+        self.assertEqual(qdrant.upsert_calls[0]["batch_size"], 32)
+        self.assertEqual(qdrant.upsert_calls[0]["idempotency_key"], "operation-toy")
+        self.assertEqual(doc_stats["embedding_failed_chunks"], 1)
+        self.assertEqual(doc_stats["embedding_failed_docs"], 1)
+        self.assertEqual(doc_stats["embedding_skipped_docs"], 1)
+        self.assertEqual(doc_stats["processed_docs"], 1)
+        self.assertEqual(doc_stats["skipped_docs"], 1)
+        self.assertEqual(doc_stats["doc_ids"], ["toy-good"])
+
+    def test_graph_commit_helper_extracts_upserts_and_closes_graph(self) -> None:
+        from application.workflows.ingest.graph_commit import commit_graph_triplets
+        from application.workflows.ingest.settings import GraphIngestSettings
+
+        class FakeGraph:
+            def __init__(self) -> None:
+                self.upserts: list[dict[str, object]] = []
+                self.closed = False
+
+            def upsert_triplets(
+                self,
+                triplets: list[tuple[str, str, str]],
+                *,
+                doc_id: str | None = None,
+                request_id: str | None = None,
+            ) -> None:
+                self.upserts.append({"triplets": triplets, "doc_id": doc_id, "request_id": request_id})
+
+            def close(self) -> None:
+                self.closed = True
+
+        class FakeRAGService:
+            def extract_triplets(self, text: str, engine: str, **kwargs: object) -> list[tuple[str, str, str]]:
+                calls["engine"] = engine
+                calls["provider"] = kwargs["provider"]
+                calls["doc_id"] = kwargs["doc_id"]
+                calls["neo4j_database"] = kwargs["neo4j_database"]
+                return [("Wooden train", "is", "Toy")]
+
+        graph = FakeGraph()
+        provider = SimpleNamespace(rag_model="rag", embed_model="embed")
+        calls: dict[str, object] = {"graph_database": None}
+        doc_stats = {
+            "processed_docs": 1,
+            "total_chunks": 1,
+            "chunks_per_doc": {"toy-doc": 1},
+        }
+        chunk_records = [
+            {
+                "doc_id": "toy-doc",
+                "content": "A wooden train is a toy for children.",
+                "payload": {"doc_id": "toy-doc", "title": "Toy catalog", "source_url": "upload://toy.md"},
+            }
+        ]
+        settings = GraphIngestSettings(
+            graph_debug=False,
+            graph_perf_log=False,
+            graph_doc_timeout_s=0.0,
+            graph_doc_max_chars=0,
+            graph_doc_max_chunks=0,
+            graph_failure_log="",
+        )
+
+        def graph_factory(database: str | None) -> FakeGraph:
+            calls["graph_database"] = database
+            return graph
+
+        with tempfile.TemporaryDirectory() as tmp, patch(
+            "application.workflows.ingest.graph_ingest.write_graph_visualization",
+            return_value=None,
+        ):
+            result = commit_graph_triplets(
+                body=SimpleNamespace(graph_engine="raganything", neo4j_database="toy-graph"),
+                chunk_records=chunk_records,
+                doc_stats=doc_stats,
+                rag_service=FakeRAGService(),
+                provider=provider,
+                graph_factory=graph_factory,
+                public_dir=Path(tmp),
+                job_id="job-toy",
+                operation_id="operation-toy",
+                graph_debug=False,
+                graph_settings=settings,
+                logger_obj=logging.getLogger("test_graph_commit_helper"),
+            )
+
+        self.assertEqual(calls["graph_database"], "toy-graph")
+        self.assertEqual(calls["engine"], "raganything")
+        self.assertIs(calls["provider"], provider)
+        self.assertEqual(calls["doc_id"], "toy-doc")
+        self.assertEqual(calls["neo4j_database"], "toy-graph")
+        self.assertTrue(graph.closed)
+        self.assertEqual(graph.upserts[0]["doc_id"], "toy-doc")
+        self.assertEqual(graph.upserts[0]["request_id"], "operation-toy")
+        self.assertEqual(graph.upserts[0]["triplets"], [("Wooden train", "is", "Toy")])
+        self.assertIsNotNone(result.graph_preview)
+        assert result.graph_preview is not None
+        self.assertEqual(result.graph_preview["total_triplets"], 1)
+        self.assertGreaterEqual(result.neo4j_ms or 0, 0)
+
+    def test_finalize_helper_writes_summary_and_graph_preview_response(self) -> None:
+        from application.workflows.ingest.finalize import build_success_ingest_response
+
+        doc_stats = {
+            "processed_docs": 1,
+            "skipped_docs": 0,
+            "total_chunks": 1,
+            "doc_ids": ["toy-doc"],
+        }
+        graph_preview = {
+            "timestamp": "2026-06-12T00:00:00+00:00",
+            "total_docs": 1,
+            "total_chunks": 1,
+            "docs_with_triplets": 1,
+            "total_triplets": 1,
+            "per_doc": {"toy-doc": {"chunks": 1, "triplets": 1}},
+        }
+
+        with tempfile.TemporaryDirectory() as tmp:
+            result = build_success_ingest_response(
+                body=SimpleNamespace(graph=True, graph_only=False),
+                doc_stats=doc_stats,
+                total_chunks=1,
+                batch_size=64,
+                collection="toy_docs",
+                points_count=3,
+                graph_preview=graph_preview,
+                qdrant_ms=12.5,
+                neo4j_ms=4.5,
+                started_at=time.perf_counter(),
+                public_dir=Path(tmp),
+                job_id="job-toy",
+                operation_id="operation-toy",
+                logger_obj=logging.getLogger("test_finalize_helper"),
+            )
+
+            summary_file = Path(result["summary"]["summary_file"])
+            preview_file = Path(result["summary"]["graph_preview_file"])
+            persisted_summary = json.loads(summary_file.read_text(encoding="utf-8"))
+            persisted_preview = json.loads(preview_file.read_text(encoding="utf-8"))
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["points"], 3)
+        self.assertFalse(result["graph_only"])
+        self.assertEqual(result["summary"]["qdrant_preview"]["collection"], "toy_docs")
+        self.assertEqual(result["summary"]["qdrant_preview"]["elapsed_ms"], 12.5)
+        self.assertEqual(result["summary"]["graph"]["elapsed_ms"], 4.5)
+        self.assertEqual(result["summary"]["graph_preview"]["total_triplets"], 1)
+        self.assertEqual(persisted_summary["planned_points"], 1)
+        self.assertEqual(persisted_preview["total_triplets"], 1)
+
+    def test_ingest_documents_uses_injected_vector_and_graph_dependencies(self) -> None:
+        from application.workflows.ingest.dependencies import IngestWorkflowDependencies
+        from application.workflows.ingest.settings import GraphIngestSettings
+        from application.workflows.ingest_logic import ingest_documents
+
+        class FakeQdrant:
+            def __init__(self) -> None:
+                self.collection = "default_collection"
+
+        class FakeGraph:
+            def __init__(self) -> None:
+                self.upserts: list[dict[str, object]] = []
+                self.closed = False
+
+            def upsert_triplets(
+                self,
+                triplets: list[tuple[str, str, str]],
+                *,
+                doc_id: str | None = None,
+                request_id: str | None = None,
+            ) -> None:
+                self.upserts.append({"triplets": triplets, "doc_id": doc_id, "request_id": request_id})
+
+            def close(self) -> None:
+                self.closed = True
+
+        class FakeRAGService:
+            def extract_triplets(self, *args: object, **kwargs: object) -> list[tuple[str, str, str]]:
+                return [("Wooden train", "is", "Toy")]
+
+        qdrant = FakeQdrant()
+        graph = FakeGraph()
+        calls: dict[str, object] = {"graph_database": None, "providers": []}
+
+        body = SimpleNamespace(
+            docs=[
+                SimpleNamespace(
+                    id="toy-doc",
+                    text="A wooden train is a toy for children.",
+                    payload={"title": "Toy catalog", "source_url": "upload://toy.md", "source_format": "markdown"},
+                )
+            ],
+            dry_run=False,
+            dry_include_graph=False,
+            provider="fake",
+            collection="toy_docs",
+            graph=True,
+            graph_engine="raganything",
+            graph_only=True,
+            chunk_chars=1200,
+            chunk_overlap=0,
+            batch_size=64,
+            distance="Cosine",
+            neo4j_database="toy-graph",
+            job_id="job-toy",
+            idempotency_key=None,
+            embedding_model=None,
+            graph_model=None,
+        )
+        settings = GraphIngestSettings(
+            graph_debug=True,
+            graph_perf_log=False,
+            graph_doc_timeout_s=0.0,
+            graph_doc_max_chars=0,
+            graph_doc_max_chunks=0,
+            graph_failure_log="",
+        )
+
+        def graph_factory(database: str | None = None) -> FakeGraph:
+            calls["graph_database"] = database
+            return graph
+
+        def get_provider(name: str) -> object:
+            calls["providers"].append(name)
+            return SimpleNamespace(embed_model="embed", rag_model="rag")
+
+        with tempfile.TemporaryDirectory() as tmp, patch(
+            "application.workflows.ingest.graph_ingest.write_graph_visualization",
+            return_value=None,
+        ):
+            result = ingest_documents(
+                body,
+                rag_service=FakeRAGService(),
+                get_provider=get_provider,
+                public_dir=Path(tmp),
+                idempotency_key="operation-toy",
+                dependencies=IngestWorkflowDependencies(
+                    graph_settings_loader=lambda: settings,
+                    qdrant_factory=lambda: qdrant,
+                    graph_factory=graph_factory,
+                ),
+            )
+
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["graph_only"])
+        self.assertEqual(result["points"], 0)
+        self.assertEqual(result["summary"]["qdrant_preview"]["collection"], "toy_docs")
+        self.assertEqual(calls["providers"], ["fake"])
+        self.assertEqual(calls["graph_database"], "toy-graph")
+        self.assertTrue(graph.closed)
+        self.assertEqual(graph.upserts[0]["doc_id"], "toy-doc")
+        self.assertEqual(graph.upserts[0]["request_id"], "job-toy")
+        self.assertEqual(graph.upserts[0]["triplets"], [("Wooden train", "is", "Toy")])
+
     def test_build_points_creates_deterministic_qdrant_point_payload(self) -> None:
         from application.workflows.ingest.vector_ingest import build_points
 
@@ -761,6 +1265,426 @@ class IngestRunnerCharacterizationTests(unittest.TestCase):
 
             run_mock.assert_called_once()
             self.assertEqual(exit_code, 123)
+
+    def test_runner_config_helpers_parse_options_and_partial_summaries(self) -> None:
+        from application.cli.commands.runner_config import (
+            build_default_options,
+            build_no_ingestable_summary,
+            build_no_pages_summary,
+            env_bool,
+            env_choice,
+        )
+
+        self.assertTrue(env_bool("ENABLED", env={"ENABLED": "yes"}))
+        self.assertFalse(env_bool("ENABLED", default=False, env={"ENABLED": ""}))
+        self.assertEqual(env_choice("MODE", {"resume", "start"}, "resume", env={"MODE": "START"}), "start")
+        with self.assertRaises(ValueError):
+            env_choice("MODE", {"resume", "start"}, "resume", env={"MODE": "bad"})
+
+        args = SimpleNamespace(
+            provider="ollama",
+            graph=True,
+            graph_engine="raganything",
+            distance="Cosine",
+            chunk_chars="1200",
+            chunk_overlap="200",
+            batch="32",
+            graph_model="graph-model",
+            graph_only=True,
+            neo4j_database="toy-graph",
+            embedding_model="embed-model",
+            collection="toy_docs",
+            dry=True,
+            dry_include_graph=True,
+        )
+
+        options = build_default_options(args)
+        self.assertEqual(options["provider"], "ollama")
+        self.assertEqual(options["batch_size"], 32)
+        self.assertEqual(options["chunk_chars"], 1200)
+        self.assertTrue(options["graph_only"])
+        self.assertTrue(options["dry_run"])
+        self.assertTrue(options["dry_include_graph"])
+        self.assertEqual(options["neo4j_database"], "toy-graph")
+
+        no_pages = build_no_pages_summary("summary.json")
+        self.assertEqual(no_pages["reason"], "no_pages_found")
+        self.assertEqual(no_pages["documents"]["total_docs"], 0)
+
+        no_ingestable = build_no_ingestable_summary(3, 2, ["empty-a", "empty-b"], "summary.json")
+        self.assertEqual(no_ingestable["reason"], "no_ingestable_documents")
+        self.assertEqual(no_ingestable["documents"]["total_docs"], 3)
+        self.assertEqual(no_ingestable["documents"]["empty_paths"], ["empty-a", "empty-b"])
+
+    def test_retry_input_helpers_parse_doc_ids_and_options(self) -> None:
+        from application.cli.commands.retry_inputs import (
+            build_retry_options,
+            load_doc_ids_from_failures,
+            load_doc_ids_from_file,
+            normalize_doc_ids,
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            text_file = root / "ids.txt"
+            object_file = root / "ids.json"
+            failures_file = root / "failures.jsonl"
+            text_file.write_text("Doc-A, doc-b\nDOC-C", encoding="utf-8")
+            object_file.write_text(json.dumps({"doc_ids": ["Doc-D", " doc-e "]}), encoding="utf-8")
+            failures_file.write_text(
+                "\n".join(
+                    [
+                        json.dumps({"doc_id": "Doc-F"}),
+                        json.dumps({"id": "Doc-G"}),
+                        json.dumps({"docId": "Doc-H"}),
+                        "not-json",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            text_ids = load_doc_ids_from_file(text_file)
+            object_ids = load_doc_ids_from_file(object_file)
+            failure_ids = load_doc_ids_from_failures(failures_file)
+
+        self.assertEqual(text_ids, {"doc-a", "doc-b", "doc-c"})
+        self.assertEqual(object_ids, {"doc-d", "doc-e"})
+        self.assertEqual(failure_ids, {"doc-f", "doc-g", "doc-h"})
+        self.assertEqual(normalize_doc_ids([" Doc-I ", "", "DOC-J"]), {"doc-i", "doc-j"})
+
+        options = build_retry_options(
+            SimpleNamespace(
+                provider="ollama",
+                graph=False,
+                graph_engine="raganything",
+                distance="Cosine",
+                chunk_chars="900",
+                chunk_overlap="100",
+                graph_only=True,
+                collection="toy_docs",
+                dry=True,
+                dry_include_graph=True,
+            )
+        )
+
+        self.assertEqual(options["provider"], "ollama")
+        self.assertTrue(options["graph"])
+        self.assertTrue(options["graph_only"])
+        self.assertEqual(options["collection"], "toy_docs")
+        self.assertEqual(options["chunk_chars"], 900)
+        self.assertTrue(options["dry_run"])
+        self.assertTrue(options["dry_include_graph"])
+
+    def test_retry_document_helper_materializes_queue_doc(self) -> None:
+        from application.cli.commands.metadata import make_doc_id
+        from application.cli.commands.retry_documents import queue_retry_doc
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            page = root / "pages" / "toy"
+            page.mkdir(parents=True)
+            (page / "metadata.json").write_text(
+                json.dumps(
+                    {
+                        "url": "https://example.test/toys",
+                        "title": "Toy Shelf",
+                        "date": "2026-06-10",
+                        "tags": ["wooden toys", "trains"],
+                        "images": ["https://example.test/toy.png"],
+                        "metaImageUrl": "https://example.test/card.png",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (page / "content.md").write_text("# Toy Shelf\nWooden trains and teddy bears.", encoding="utf-8")
+
+            empty_page = root / "pages" / "empty"
+            empty_page.mkdir()
+            (empty_page / "metadata.json").write_text(json.dumps({"url": "https://example.test/empty"}), encoding="utf-8")
+
+            queued = queue_retry_doc(
+                directory=page,
+                root=root,
+                page_url_map={},
+                source_url_map={},
+            )
+            empty = queue_retry_doc(
+                directory=empty_page,
+                root=root,
+                page_url_map={},
+                source_url_map={},
+            )
+
+        self.assertIsNotNone(queued)
+        assert queued is not None
+        expected_id = make_doc_id("https://example.test/toys", "pages/toy")
+        self.assertEqual(queued.doc_id, expected_id)
+        self.assertEqual(queued.doc["id"], expected_id)
+        self.assertEqual(queued.doc["text"], "# Toy Shelf\nWooden trains and teddy bears.")
+        payload = queued.doc["payload"]
+        assert isinstance(payload, dict)
+        self.assertEqual(payload["title"], "Toy Shelf")
+        self.assertEqual(payload["page_url"], "https://example.test/toys")
+        self.assertEqual(payload["source_url"], "https://example.test/toys")
+        self.assertEqual(payload["date"], "2026-06-10")
+        self.assertEqual(payload["meta_img_url"], ["https://example.test/card.png"])
+        self.assertEqual(payload["images"], ["https://example.test/toy.png"])
+        self.assertEqual(payload["tags"], ["wooden toys", "trains"])
+        self.assertNotIn("file_path", payload)
+        self.assertIsNone(empty)
+
+    def test_retry_batch_sender_posts_and_tracks_failures(self) -> None:
+        from application.cli.commands.retry_batches import RetryBatchSender
+
+        calls: list[tuple[str, list[str], dict[str, object], int]] = []
+        responses = [
+            (True, {"ok": True}, None),
+            (False, None, "boom"),
+        ]
+
+        def fake_post(
+            base_url: str,
+            docs: list[dict[str, object]],
+            options: dict[str, object],
+            timeout: int,
+        ) -> tuple[bool, dict[str, object] | None, str | None]:
+            calls.append((base_url, [str(doc.get("id")) for doc in docs], options, timeout))
+            return responses.pop(0)
+
+        sender = RetryBatchSender(
+            args=SimpleNamespace(base_url="http://rag.local", timeout=7, dry=True),
+            options={"graph": True},
+            post_batch=fake_post,
+            logger_obj=logging.getLogger("retry-batch-test"),
+        )
+
+        with patch("builtins.print") as mocked_print:
+            self.assertTrue(sender.send([{"id": "doc-a"}]))
+            self.assertFalse(sender.send([{"id": "doc-b"}]))
+
+        self.assertEqual(sender.sent, 1)
+        self.assertEqual(sender.batch_index, 2)
+        self.assertEqual(sender.failures, 1)
+        self.assertEqual(
+            calls,
+            [
+                ("http://rag.local", ["doc-a"], {"graph": True}, 7),
+                ("http://rag.local", ["doc-b"], {"graph": True}, 7),
+            ],
+        )
+        mocked_print.assert_any_call("Planned 1 docs (batch 1)")
+
+    def test_retry_completion_reports_exit_policy(self) -> None:
+        from application.cli.commands.retry_completion import (
+            EXIT_PARTIAL_SUCCESS,
+            EXIT_RUNTIME_FAILURE,
+            EXIT_SUCCESS,
+            report_retry_completion,
+        )
+
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        with patch("sys.stdout", stdout), patch("sys.stderr", stderr):
+            partial = report_retry_completion(
+                requested_doc_ids={"doc-a", "doc-b"},
+                matched={"doc-a": "/tmp/doc-a"},
+                remaining={"doc-b"},
+                failures=0,
+            )
+
+        self.assertEqual(partial, EXIT_PARTIAL_SUCCESS)
+        self.assertIn("Matched 1 of 2 requested documents.", stdout.getvalue())
+        self.assertIn("  - doc-b", stderr.getvalue())
+
+        with patch("sys.stdout", io.StringIO()), patch("sys.stderr", io.StringIO()):
+            failed = report_retry_completion(
+                requested_doc_ids={"doc-a"},
+                matched={"doc-a": "/tmp/doc-a"},
+                remaining=set(),
+                failures=1,
+            )
+        self.assertEqual(failed, EXIT_RUNTIME_FAILURE)
+
+        with patch("sys.stdout", io.StringIO()), patch("sys.stderr", io.StringIO()):
+            success = report_retry_completion(
+                requested_doc_ids={"doc-a"},
+                matched={"doc-a": "/tmp/doc-a"},
+                remaining=set(),
+                failures=0,
+            )
+        self.assertEqual(success, EXIT_SUCCESS)
+
+    def test_runner_resume_plan_loads_existing_state_for_noninteractive_resume(self) -> None:
+        from application.cli.commands.resume import safe_state_filename, save_resume_state_payload
+        from application.cli.commands.runner_resume import build_resume_key_parts, prepare_resume_plan
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "crawl"
+            state_dir = Path(tmp) / "state"
+            root.mkdir()
+            args = SimpleNamespace(
+                collection="toy_docs",
+                base_url="http://rag.local",
+                graph_only=True,
+                neo4j_database="toy-graph",
+                resume_state_dir=str(state_dir),
+                dry=False,
+                estimate_only=False,
+                resume=False,
+                start=False,
+                graph=True,
+            )
+            key = "::".join(build_resume_key_parts(args, root.resolve()))
+            state_path = state_dir.expanduser().resolve() / safe_state_filename(key)
+            save_resume_state_payload(
+                state_path,
+                doc_ids={"doc-a", "doc-b"},
+                metadata={"collection": "toy_docs"},
+                updated_at="2026-06-12T00:00:00+00:00",
+            )
+
+            plan = prepare_resume_plan(
+                args,
+                root.resolve(),
+                automation_mode=True,
+                configured_resume_mode="resume",
+            )
+
+        self.assertTrue(plan.resume_mode)
+        self.assertEqual(plan.doc_ids, {"doc-a", "doc-b"})
+        self.assertEqual(plan.state_path, state_path)
+        self.assertEqual(plan.metadata["collection"], "toy_docs")
+        self.assertIn("graph_only", plan.key_parts)
+        self.assertIn("neo4j_db=toy-graph", plan.key_parts)
+
+    def test_runner_page_builder_materializes_bridge_doc_and_detects_empty_pages(self) -> None:
+        from application.cli.commands.runner_pages import build_page_document
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "crawl"
+            page = root / "page-a"
+            empty = root / "empty-page"
+            page.mkdir(parents=True)
+            empty.mkdir(parents=True)
+            (page / "metadata.json").write_text(
+                json.dumps({"title": "Toy Page", "url": "https://example.test/toys"}),
+                encoding="utf-8",
+            )
+            (page / "content.md").write_text(
+                "Toy blocks with manual https://example.test/manual.pdf",
+                encoding="utf-8",
+            )
+
+            result = build_page_document(
+                directory=page,
+                root=root,
+                page_url_map={},
+                source_url_map={},
+            )
+            empty_result = build_page_document(
+                directory=empty,
+                root=root,
+                page_url_map={},
+                source_url_map={},
+            )
+
+        self.assertFalse(result.empty)
+        self.assertIsNotNone(result.doc)
+        assert result.doc is not None
+        self.assertEqual(result.rel_dir, "page-a")
+        self.assertEqual(result.doc["payload"]["title"], "Toy Page")
+        self.assertEqual(result.doc["payload"]["page_url"], "https://example.test/toys")
+        self.assertEqual(result.doc["payload"]["source_url"], "https://example.test/toys")
+        self.assertEqual(result.doc["payload"]["pdfs"], ["https://example.test/manual.pdf"])
+        self.assertTrue(empty_result.empty)
+        self.assertIsNone(empty_result.doc)
+
+    def test_runner_batch_sender_posts_and_persists_resume_progress(self) -> None:
+        from application.cli.commands.runner_batches import BatchSender
+
+        calls: list[dict[str, object]] = []
+
+        def post_batch(**kwargs: object) -> tuple[bool, dict[str, object], None]:
+            calls.append(kwargs)
+            return True, {"summary": {"planned_points": len(kwargs["docs"])}}, None
+
+        with tempfile.TemporaryDirectory() as tmp:
+            state_path = Path(tmp) / "resume.json"
+            sender = BatchSender(
+                args=SimpleNamespace(base_url="http://rag.local", timeout=9, dry=False),
+                options={"collection": "toy_docs"},
+                resume_state_path=state_path,
+                resume_metadata={"collection": "toy_docs"},
+                processed_doc_ids=set(),
+                post_batch=post_batch,
+                min_split_batch=4,
+                max_split_depth=2,
+            )
+            ok = sender.send(
+                [{"id": "doc-a"}, {"id": "doc-b"}],
+                total=2,
+            )
+            persisted = json.loads(state_path.read_text(encoding="utf-8"))
+
+        self.assertTrue(ok)
+        self.assertEqual(sender.sent, 2)
+        self.assertEqual(sender.batch_index, 1)
+        self.assertEqual(sender.last_response, {"summary": {"planned_points": 2}})
+        self.assertEqual(calls[0]["base_url"], "http://rag.local")
+        self.assertEqual(calls[0]["timeout"], 9)
+        self.assertEqual(sorted(persisted["doc_ids"]), ["doc-a", "doc-b"])
+
+    def test_runner_completion_helpers_report_write_and_select_exit_code(self) -> None:
+        from application.cli.commands.runner_completion import (
+            determine_exit_code,
+            report_dry_run_summary,
+            report_resume_state,
+            write_last_summary,
+        )
+
+        printed: list[str] = []
+        with patch("builtins.print", side_effect=lambda *args, **kwargs: printed.append(" ".join(str(arg) for arg in args))):
+            report_dry_run_summary(
+                dry_run=True,
+                last_response={
+                    "summary": {
+                        "planned_points": 4,
+                        "graph_preview": {"planned_entities": 2, "planned_triplets": 3},
+                    }
+                },
+            )
+            report_resume_state(
+                resume_state_path=Path("/tmp/resume.json"),
+                dry_run=False,
+                resume_mode=True,
+                skipped_existing=2,
+            )
+
+        written: dict[str, object] = {}
+        write_last_summary(
+            summary_file="summary.json",
+            last_response={"summary": {"ok": True}},
+            write_summary_file=lambda path, summary: written.update({"path": path, "summary": summary}),
+        )
+
+        self.assertIn("[dry-run] Estimated Qdrant points: 4", printed)
+        self.assertIn("[dry-run] Estimated Neo4j entities: 2", printed)
+        self.assertIn("[dry-run] Estimated Neo4j relationships: 3", printed)
+        self.assertIn("Resume state stored at /tmp/resume.json", printed)
+        self.assertIn("Skipped 2 documents already ingested earlier.", printed)
+        self.assertEqual(written, {"path": "summary.json", "summary": {"ok": True}})
+        self.assertEqual(
+            determine_exit_code(dry_run=False, estimate_only=False, failed_batches=1, skipped_empty=0, sent=0),
+            1,
+        )
+        self.assertEqual(
+            determine_exit_code(dry_run=True, estimate_only=False, failed_batches=0, skipped_empty=1, sent=0),
+            3,
+        )
+        self.assertEqual(
+            determine_exit_code(dry_run=False, estimate_only=False, failed_batches=0, skipped_empty=0, sent=1),
+            0,
+        )
 
     def test_runner_no_pages_returns_partial_and_writes_summary(self) -> None:
         from application.cli.commands.ingest_crawled import ingest_crawled

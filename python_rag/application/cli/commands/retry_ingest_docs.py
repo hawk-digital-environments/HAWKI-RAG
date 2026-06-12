@@ -10,14 +10,10 @@ instance in controlled batches.
 from __future__ import annotations
 
 import argparse
-import json
-import re
 import sys
 import logging
-from datetime import datetime
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Set, Tuple
-import time
+from typing import Optional
 
 
 def _ensure_python_rag_package() -> None:
@@ -33,34 +29,32 @@ def _ensure_python_rag_package() -> None:
     if fallback_root not in sys.path:
         sys.path.insert(0, fallback_root)
 try:
-    from application.cli.commands.ingest_crawled import (
-        build_url_maps,
-        discover_page_dirs,
-        load_page_materials,
-        resolve_url_for_path,
-        make_doc_id,
-        first_str,
-        resolve_date,
-        to_array_list,
-        resolve_tags,
-        title_from_markdown,
-        post_batch,
+    from application.cli.commands.discovery import discover_page_dirs
+    from application.cli.commands.retry_batches import RetryBatchSender
+    from application.cli.commands.retry_completion import report_retry_completion
+    from application.cli.commands.retry_documents import queue_retry_doc
+    from application.cli.commands.retry_inputs import (
+        build_retry_options,
+        load_doc_ids_from_failures,
+        load_doc_ids_from_file,
+        normalize_doc_ids,
     )
+    from application.cli.commands.submit import post_batch
+    from application.cli.commands.url_maps import build_url_maps
 except ModuleNotFoundError:  # pragma: no cover - legacy direct script execution
     _ensure_python_rag_package()
-    from application.cli.commands.ingest_crawled import (
-        build_url_maps,
-        discover_page_dirs,
-        load_page_materials,
-        resolve_url_for_path,
-        make_doc_id,
-        first_str,
-        resolve_date,
-        to_array_list,
-        resolve_tags,
-        title_from_markdown,
-        post_batch,
+    from application.cli.commands.discovery import discover_page_dirs
+    from application.cli.commands.retry_batches import RetryBatchSender
+    from application.cli.commands.retry_completion import report_retry_completion
+    from application.cli.commands.retry_documents import queue_retry_doc
+    from application.cli.commands.retry_inputs import (
+        build_retry_options,
+        load_doc_ids_from_failures,
+        load_doc_ids_from_file,
+        normalize_doc_ids,
     )
+    from application.cli.commands.submit import post_batch
+    from application.cli.commands.url_maps import build_url_maps
 
 logger = logging.getLogger(__name__)
 
@@ -69,151 +63,6 @@ EXIT_RUNTIME_FAILURE = 1
 EXIT_VALIDATION_FAILURE = 2
 EXIT_PARTIAL_SUCCESS = 3
 
-def _load_doc_ids_from_file(path: Path) -> set[str]:
-    """
-    Load doc IDs from a text or JSON file.
-
-    - Plain text: whitespace/comma separated tokens.
-    - JSON: either a list of strings or an object containing a 'doc_ids' array.
-    """
-    if not path.exists():
-        raise FileNotFoundError(f"Doc ID file not found: {path}")
-    raw = path.read_text(encoding="utf-8").strip()
-    if not raw:
-        return set()
-    try:
-        data = json.loads(raw)
-    except json.JSONDecodeError:
-        tokens = re.split(r"[\s,]+", raw)
-        return {tok.strip().lower() for tok in tokens if tok.strip()}
-
-    doc_ids: Iterable[str] = []
-    if isinstance(data, list):
-        doc_ids = [str(item) for item in data]
-    elif isinstance(data, dict) and isinstance(data.get("doc_ids"), list):
-        doc_ids = [str(item) for item in data["doc_ids"]]
-    else:
-        raise ValueError(f"Unsupported JSON structure in {path}; expected list or object with 'doc_ids'.")
-    return {doc_id.strip().lower() for doc_id in doc_ids if str(doc_id).strip()}
-
-
-def _load_doc_ids_from_failures(path: Path) -> set[str]:
-    """
-    Load doc IDs from a JSONL failures log (one JSON object per line).
-
-    Expected keys: doc_id (preferred) or id/docId.
-    """
-    if not path.exists():
-        raise FileNotFoundError(f"Failures file not found: {path}")
-    doc_ids: set[str] = set()
-    for line in path.read_text(encoding="utf-8").splitlines():
-        raw = line.strip()
-        if not raw:
-            continue
-        try:
-            data = json.loads(raw)
-        except json.JSONDecodeError:
-            continue
-        if not isinstance(data, dict):
-            continue
-        for key in ("doc_id", "id", "docId"):
-            value = data.get(key)
-            if value:
-                doc_ids.add(str(value).strip().lower())
-                break
-    return doc_ids
-
-
-def _normalize_doc_ids(values: Iterable[str]) -> set[str]:
-    out: set[str] = set()
-    for value in values:
-        if not value:
-            continue
-        out.add(str(value).strip().lower())
-    return out
-
-
-def _build_options(args: argparse.Namespace) -> dict[str, object]:
-    options: dict[str, object] = {
-        "provider": args.provider,
-        "graph": bool(args.graph),
-        "graph_engine": args.graph_engine,
-        "distance": args.distance,
-        "chunk_chars": int(args.chunk_chars),
-        "chunk_overlap": int(args.chunk_overlap),
-    }
-    if args.graph_only:
-        options["graph"] = True
-        options["graph_only"] = True
-    if args.collection:
-        options["collection"] = args.collection
-    if args.dry:
-        options["dry_run"] = True
-        if args.dry_include_graph:
-            options["dry_include_graph"] = True
-    return options
-
-
-def _queue_doc(
-    directory: Path,
-    root: Path,
-    page_url_map: dict[Path, str],
-    source_url_map: dict[Path, str],
-) -> Optional[tuple[dict[str, object], str]]:
-    meta, md_path, json_path, text, source_fmt = load_page_materials(directory)
-    if not isinstance(text, str) or not text.strip():
-        return None
-
-    title = first_str(meta.get("title")) or (title_from_markdown(text) or "Untitled")
-    dir_resolved = directory.resolve(strict=False)
-    page_url = first_str(meta.get("url") or meta.get("page_url")) or resolve_url_for_path(page_url_map, dir_resolved, root)
-    source_path = md_path or json_path or directory
-    date = resolve_date(meta, source_path)
-    meta_img = first_str(meta.get("metaImageUrl") or meta.get("meta_img_url"))
-    updated_at = first_str(meta.get("updated_at") or meta.get("updatedAt"))
-    fetch_time = first_str(meta.get("fetch_time") or meta.get("fetchTime"))
-    title_list = to_array_list(meta.get("title")) or ([title] if title else [])
-    page_url_list = to_array_list(meta.get("page_url") or meta.get("url")) or ([page_url] if page_url else [])
-    meta_img_list = to_array_list(meta.get("meta_img_url") or meta.get("metaImageUrl"))
-    images_list = to_array_list(meta.get("images"))
-    pdfs_list = to_array_list(meta.get("pdfs"))
-    tags = resolve_tags(meta, text)
-    rel = str(directory.relative_to(root))
-    source_url = first_str(meta.get("source_url")) or resolve_url_for_path(source_url_map, dir_resolved, root)
-    if not source_url and page_url:
-        source_url = page_url
-    doc_id = make_doc_id(source_url if source_url and source_url != page_url else page_url, rel)
-
-    payload = {
-        "title": title,
-        "page_url": page_url,
-        "url_hash": first_str(meta.get("url_hash")),
-        "canonical_url": first_str(meta.get("canonical_url")),
-        "meta_img_url": meta_img_list,
-        "images": images_list,
-        "lang": first_str(meta.get("lang")),
-        "published_at": first_str(meta.get("published_at")),
-        "updated_at": updated_at,
-        "http_status": meta.get("http_status"),
-        "content_length": meta.get("content_length"),
-        "fetch_time": fetch_time,
-        "content_hash": first_str(meta.get("content_hash")),
-        "pdfs": pdfs_list,
-        "source_url": source_url or page_url or rel,
-        "date": date,
-        "meta_img_url_text": meta_img,
-        "tags": tags or None,
-        "source_format": source_fmt,
-        "ingested_at": datetime.utcnow().isoformat() + "Z",
-    }
-
-    doc: dict[str, object] = {
-        "id": doc_id,
-        "text": text,
-        "payload": payload,
-    }
-    return doc, doc_id
-
 
 def run(args: argparse.Namespace) -> int:
     root = Path(args.root).expanduser().resolve()
@@ -221,19 +70,19 @@ def run(args: argparse.Namespace) -> int:
         print(f"Root not found or not a directory: {root}", file=sys.stderr)
         return EXIT_VALIDATION_FAILURE
 
-    requested_doc_ids: set[str] = _normalize_doc_ids(args.doc_ids or [])
+    requested_doc_ids: set[str] = normalize_doc_ids(args.doc_ids or [])
     if args.doc_ids_file:
-        file_ids = _load_doc_ids_from_file(Path(args.doc_ids_file).expanduser().resolve())
+        file_ids = load_doc_ids_from_file(Path(args.doc_ids_file).expanduser().resolve())
         requested_doc_ids.update(file_ids)
     if args.failures_file:
-        failure_ids = _load_doc_ids_from_failures(Path(args.failures_file).expanduser().resolve())
+        failure_ids = load_doc_ids_from_failures(Path(args.failures_file).expanduser().resolve())
         requested_doc_ids.update(failure_ids)
 
     if not requested_doc_ids:
         print("No doc IDs provided. Use --doc-id, --doc-ids-file, or --failures-file.", file=sys.stderr)
         return EXIT_VALIDATION_FAILURE
 
-    options = _build_options(args)
+    options = build_retry_options(args)
     page_url_map, source_url_map = build_url_maps(root)
     page_dirs = discover_page_dirs(root)
     if not page_dirs:
@@ -243,16 +92,25 @@ def run(args: argparse.Namespace) -> int:
     remaining = set(requested_doc_ids)
     matched: dict[str, str] = {}
     docs: list[dict[str, object]] = []
-    sent = 0
-    batch_index = 0
-    failures = 0
+    batch_sender = RetryBatchSender(
+        args=args,
+        options=options,
+        post_batch=post_batch,
+        logger_obj=logger,
+    )
 
     print(f"Scanning {root} for {len(requested_doc_ids)} requested document(s)…")
     for directory in page_dirs:
-        queued = _queue_doc(directory, root, page_url_map, source_url_map)
+        queued = queue_retry_doc(
+            directory=directory,
+            root=root,
+            page_url_map=page_url_map,
+            source_url_map=source_url_map,
+        )
         if queued is None:
             continue
-        doc, doc_id = queued
+        doc = queued.doc
+        doc_id = queued.doc_id
         key = doc_id.lower()
         if key not in remaining:
             continue
@@ -262,48 +120,21 @@ def run(args: argparse.Namespace) -> int:
         remaining.remove(key)
 
         if len(docs) >= args.batch:
-            batch_index += 1
-            doc_ids_batch = [d["id"] for d in docs]
-            ok, _, err = post_batch(args.base_url, docs, options, timeout=args.timeout)
-            if ok:
-                logger.info("retry:batch sent=%s docs=%s", batch_index, len(docs))
-                sent += len(docs)
-                status_msg = "Planned" if args.dry else "Sent"
-                print(f"{status_msg} {sent} docs (batch {batch_index})")
-            else:
-                failures += 1
-                print(f"Batch {batch_index} failed; docs={doc_ids_batch} ({err or 'see log'})", file=sys.stderr)
+            batch_sender.send(docs)
             docs = []
 
         if not remaining:
             break
 
     if docs:
-        batch_index += 1
-        doc_ids_batch = [d["id"] for d in docs]
-        ok, _, err = post_batch(args.base_url, docs, options, timeout=args.timeout)
-        if ok:
-            logger.info("retry:batch sent=%s docs=%s", batch_index, len(docs))
-            sent += len(docs)
-            status_msg = "Planned" if args.dry else "Sent"
-            print(f"{status_msg} {sent} docs (batch {batch_index})")
-        else:
-            failures += 1
-            print(f"Batch {batch_index} failed; docs={doc_ids_batch} ({err or 'see log'})", file=sys.stderr)
+        batch_sender.send(docs)
 
-    matched_count = len(matched)
-    print(f"Matched {matched_count} of {len(requested_doc_ids)} requested documents.")
-    if remaining:
-        print("The following doc IDs were not found in the crawled data:", file=sys.stderr)
-        for missing in sorted(remaining):
-            print(f"  - {missing}", file=sys.stderr)
-
-    if failures:
-        print(f"{failures} batch(es) failed during re-ingest. Check the logs above.", file=sys.stderr)
-        return EXIT_RUNTIME_FAILURE
-    if remaining:
-        return EXIT_PARTIAL_SUCCESS
-    return EXIT_SUCCESS
+    return report_retry_completion(
+        requested_doc_ids=requested_doc_ids,
+        matched=matched,
+        remaining=remaining,
+        failures=batch_sender.failures,
+    )
 
 
 def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:

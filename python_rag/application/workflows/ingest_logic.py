@@ -2,40 +2,23 @@
 from __future__ import annotations
 
 import logging
-import os
 import time
 from pathlib import Path
 from typing import Any
 
 from fastapi import HTTPException
 
-from infrastructure.graph.neo4j_graph import Neo4jGraph
 from application.workflows.observability import pipeline_log
 from application.workflows.ingest.chunking import prepare_documents
 from application.workflows.ingest.deletion import delete_document_entries
-from application.workflows.ingest.graph_ingest import (
-    append_graph_failures,
-    build_triplets_by_doc,
-    graph_failure_log_path,
-)
+from application.workflows.ingest.dependencies import IngestWorkflowDependencies
+from application.workflows.ingest.dry_run import build_dry_run_ingest_response
+from application.workflows.ingest.finalize import build_success_ingest_response
+from application.workflows.ingest.graph_commit import commit_graph_triplets
 from application.workflows.ingest.request import apply_provider_overrides, infer_job_id, infer_operation_id
-from application.workflows.ingest.summary import (
-    build_graph_preview,
-    build_summary,
-    write_graph_preview,
-    write_ingest_summary,
-)
-from application.workflows.ingest.vector_ingest import build_points, record_embedding_failures
-from infrastructure.vectorstore.qdrant_http import QdrantHTTP
+from application.workflows.ingest.vector_commit import commit_vector_points
 
 logger = logging.getLogger(__name__)
-
-
-def _env_bool(name: str, default: bool = False) -> bool:
-    raw = os.environ.get(name, "")
-    if not raw.strip():
-        return default
-    return raw.strip().lower() in ("1", "true", "yes", "on")
 
 
 def ingest_documents(
@@ -46,10 +29,13 @@ def ingest_documents(
     public_dir: Path,
     idempotency_key: str | None = None,
     graph_debug: bool | None = None,
+    dependencies: IngestWorkflowDependencies | None = None,
 ) -> dict[str, Any]:
+    dependencies = dependencies or IngestWorkflowDependencies()
+    graph_settings = dependencies.graph_settings_loader()
     resolved_graph_debug = graph_debug
     if resolved_graph_debug is None:
-        resolved_graph_debug = _env_bool("GRAPH_DEBUG")
+        resolved_graph_debug = graph_settings.graph_debug
 
     dry_run = bool(body.dry_run)
     docs = list(getattr(body, "docs", []) or [])
@@ -93,7 +79,7 @@ def ingest_documents(
             getattr(body, "distance", None),
         )
 
-    qdrant = QdrantHTTP()
+    qdrant = dependencies.qdrant_factory()
     if body.collection:
         qdrant.collection = body.collection
 
@@ -124,68 +110,26 @@ def ingest_documents(
     batch_size = max(1, int(body.batch_size or 64))
 
     if dry_run:
-        summary = _build_summary_payload(
-            doc_stats,
+        return build_dry_run_ingest_response(
+            body=body,
+            doc_stats=doc_stats,
+            chunk_records=chunk_records,
             total_chunks=total_chunks,
             batch_size=batch_size,
             collection=qdrant.collection,
-            graph_enabled=bool(body.graph),
-            estimate_only=True,
-        )
-        if body.graph and getattr(body, "dry_include_graph", False):
-            provider = get_provider(body.provider)
-            apply_provider_overrides(provider, body)
-            triplets_by_doc, failures = build_triplets_by_doc(
-                chunk_records,
-                body.graph_engine,
-                rag_service,
-                provider,
-                neo4j_database=getattr(body, "neo4j_database", None),
-                public_dir=public_dir,
-                request_id=operation_id,
-            )
-            graph_preview = build_graph_preview(doc_stats, chunk_records, triplets_by_doc)
-            summary["graph_preview"] = graph_preview
-            preview_path = write_graph_preview(graph_preview, public_dir)
-            if preview_path:
-                summary["graph_preview_file"] = str(preview_path)
-            if failures:
-                failure_path = graph_failure_log_path(public_dir)
-                append_graph_failures(failure_path, failures)
-                summary["graph_failures"] = len(failures)
-                summary["graph_failures_file"] = str(failure_path)
-                for failure in failures:
-                    pipeline_log(
-                        logger,
-                        logging.WARNING,
-                        stage="ingest",
-                        status="partial",
-                        job_id=run_job_id,
-                        idempotency_key=operation_id,
-                        doc_id=failure.get("doc_id"),
-                        pipeline_stage="graph_extract",
-                        error_message=failure.get("error"),
-                        file_path=failure.get("file_path"),
-                    )
-        pipeline_log(
-            logger,
-            logging.INFO,
-            stage="ingest",
-            status="success",
+            rag_service=rag_service,
+            get_provider=get_provider,
+            public_dir=public_dir,
             job_id=run_job_id,
-            idempotency_key=operation_id,
-            processed_docs=doc_stats["processed_docs"],
-            skipped_docs=doc_stats["skipped_docs"],
-            total_chunks=total_chunks,
-            dry_run=True,
+            operation_id=operation_id,
+            graph_debug=resolved_graph_debug,
+            graph_settings=graph_settings,
+            logger_obj=logger,
         )
-        return {"ok": True, "dry_run": True, "summary": summary}
 
     provider = None
     points: list[dict[str, Any]] = []
-    vector_size: int | None = None
     qdrant_ms = None
-    qdrant_write_start = None
     start = time.perf_counter()
 
     if body.graph or not getattr(body, "graph_only", False):
@@ -193,227 +137,55 @@ def ingest_documents(
         apply_provider_overrides(provider, body)
 
     if not getattr(body, "graph_only", False):
-        logger.info(
-            "ingest:provider=%s embed_model=%s batch_size=%s",
-            body.provider,
-            getattr(provider, "embed_model", None),
-            batch_size,
-        )
-        points, vector_size, embedding_failures = build_points(
-            chunk_records,
-            provider,
-            idempotency_key=operation_id,
-        )
-        if embedding_failures:
-            record_embedding_failures(doc_stats, points, embedding_failures)
-            pipeline_log(
-                logger,
-                logging.WARNING,
-                stage="ingest",
-                status="partial",
-                job_id=run_job_id,
-                idempotency_key=operation_id,
-                pipeline_stage="embedding",
-                points=len(points),
-                failed_chunks=len(embedding_failures),
-                failed_docs=doc_stats.get("embedding_failed_docs", 0),
-            )
-        if not points:
-            pipeline_log(
-                logger,
-                logging.ERROR,
-                stage="ingest",
-                status="failed",
-                job_id=run_job_id,
-                idempotency_key=operation_id,
-                pipeline_stage="embedding",
-                error_message="Embedding failed for every prepared chunk.",
-                embedding_failures=embedding_failures,
-            )
-            raise HTTPException(status_code=500, detail="Embedding failed for every prepared chunk")
-        pipeline_log(
-            logger,
-            logging.INFO,
-            stage="ingest",
-            status="success",
-            job_id=run_job_id,
-            idempotency_key=operation_id,
-            pipeline_stage="embedding",
-            points=len(points),
-            vector_size=vector_size,
-        )
-        logger.info("ingest:qdrant points=%s vector_size=%s", len(points), vector_size)
-        qdrant.ensure_collection(vector_size or 1024, distance=body.distance)
-        qdrant_write_start = time.perf_counter()
-        qdrant.upsert_points(
-            points,
+        vector_result = commit_vector_points(
+            body=body,
+            chunk_records=chunk_records,
+            doc_stats=doc_stats,
+            provider=provider,
+            qdrant=qdrant,
             batch_size=batch_size,
-            idempotency_key=operation_id,
-        )
-        qdrant_ms = (time.perf_counter() - qdrant_write_start) * 1000
-        pipeline_log(
-            logger,
-            logging.INFO,
-            stage="ingest",
-            status="success",
             job_id=run_job_id,
-            idempotency_key=operation_id,
-            pipeline_stage="index_vector",
-            points=len(points),
-            elapsed_ms=round(qdrant_ms, 2),
-            collection=qdrant.collection,
+            operation_id=operation_id,
+            logger_obj=logger,
         )
-        logger.info("ingest:qdrant upserted=%s ms=%.2f", len(points), qdrant_ms)
-
-    if qdrant_write_start is not None:
-        qdrant_ms = (time.perf_counter() - qdrant_write_start) * 1000
+        points = vector_result.points
+        qdrant_ms = vector_result.qdrant_ms
 
     neo4j_ms = None
     graph_preview = None
     if body.graph:
-        graph = Neo4jGraph(database=getattr(body, "neo4j_database", None))
-        try:
-            graph_write_start = time.perf_counter()
-            triplet_start = time.perf_counter()
-            triplets_by_doc, failures = _extract_triplets_from_chunks(
-                chunk_records=chunk_records,
-                graph_engine=body.graph_engine,
-                rag_service=rag_service,
-                provider=provider,
-                graph_debug=resolved_graph_debug,
-                neo4j_database=getattr(body, "neo4j_database", None),
-                public_dir=public_dir,
-                graph=graph,
-                request_id=operation_id,
-            )
-            triplet_ms = (time.perf_counter() - triplet_start) * 1000
-            total_triplets = sum(len(v) for v in triplets_by_doc.values())
-            logger.info(
-                "graph:extract done engine=%s triplets=%s docs=%s ms=%.2f",
-                body.graph_engine,
-                total_triplets,
-                len(triplets_by_doc),
-                triplet_ms,
-            )
-            graph_preview = build_graph_preview(doc_stats, chunk_records, triplets_by_doc)
-            neo4j_ms = (time.perf_counter() - graph_write_start) * 1000
-            logger.info(
-                "graph:neo4j upsert docs=%s triplets=%s ms=%.2f",
-                len(triplets_by_doc),
-                total_triplets,
-                neo4j_ms,
-            )
-            if failures:
-                failure_path = graph_failure_log_path(public_dir)
-                append_graph_failures(failure_path, failures)
-                for failure in failures:
-                    pipeline_log(
-                        logger,
-                        logging.WARNING,
-                        stage="ingest",
-                        status="partial",
-                        job_id=run_job_id,
-                        idempotency_key=operation_id,
-                        doc_id=failure.get("doc_id"),
-                        pipeline_stage="graph_extract",
-                        error_message=failure.get("error"),
-                        file_path=failure.get("file_path"),
-                    )
-                logger.info("graph:failures count=%s file=%s", len(failures), failure_path)
-        finally:
-            try:
-                graph.close()
-            except Exception:
-                pass
+        graph_result = commit_graph_triplets(
+            body=body,
+            chunk_records=chunk_records,
+            doc_stats=doc_stats,
+            rag_service=rag_service,
+            provider=provider,
+            graph_factory=dependencies.graph_factory,
+            public_dir=public_dir,
+            job_id=run_job_id,
+            operation_id=operation_id,
+            graph_debug=resolved_graph_debug,
+            graph_settings=graph_settings,
+            logger_obj=logger,
+        )
+        graph_preview = graph_result.graph_preview
+        neo4j_ms = graph_result.neo4j_ms
 
-    total_ms = (time.perf_counter() - start) * 1000
-
-    summary = _build_summary_payload(
-        doc_stats,
+    return build_success_ingest_response(
+        body=body,
+        doc_stats=doc_stats,
         total_chunks=total_chunks,
         batch_size=batch_size,
         collection=qdrant.collection,
-        graph_enabled=bool(body.graph),
+        points_count=len(points),
+        graph_preview=graph_preview,
         qdrant_ms=qdrant_ms,
         neo4j_ms=neo4j_ms,
-        total_ms=total_ms,
-    )
-    if body.graph and graph_preview:
-        summary["graph_preview"] = graph_preview
-        preview_path = write_graph_preview(graph_preview, public_dir)
-        if preview_path:
-            summary["graph_preview_file"] = str(preview_path)
-
-    try:
-        summary_path = write_ingest_summary(summary, public_dir)
-        summary["summary_file"] = str(summary_path)
-    except Exception as exc:
-        summary["summary_file_error"] = str(exc)
-
-    pipeline_log(
-        logger,
-        logging.INFO,
-        stage="ingest",
-        status="success",
-        job_id=run_job_id,
-        idempotency_key=operation_id,
-        processed_docs=doc_stats["processed_docs"],
-        skipped_docs=doc_stats["skipped_docs"],
-        points=len(points),
-        total_chunks=total_chunks,
-        elapsed_ms=round(total_ms, 2),
-    )
-    logger.info("ingest:done points=%s total_ms=%.2f", len(points), total_ms)
-    return {"ok": True, "points": len(points), "summary": summary, "graph_only": bool(getattr(body, "graph_only", False))}
-
-
-def _extract_triplets_from_chunks(
-    chunk_records: list[dict[str, Any]],
-    *,
-    graph_engine: str,
-    rag_service: Any,
-    provider: Any | None,
-    neo4j_database: str | None,
-    public_dir: Path,
-    graph_debug: bool,
-    graph: Any | None = None,
-    request_id: str | None = None,
-) -> tuple[dict[str, list[tuple[str, str, str]]], list[dict[str, Any]]]:
-    return build_triplets_by_doc(
-        chunk_records,
-        graph_engine,
-        rag_service,
-        provider,
-        graph_debug=graph_debug,
-        graph=graph,
-        neo4j_database=neo4j_database,
+        started_at=start,
         public_dir=public_dir,
-        request_id=request_id,
-    )
-
-
-def _build_summary_payload(
-    doc_stats: dict[str, Any],
-    *,
-    total_chunks: int,
-    batch_size: int,
-    collection: str,
-    graph_enabled: bool,
-    estimate_only: bool = False,
-    qdrant_ms: float | None = None,
-    neo4j_ms: float | None = None,
-    total_ms: float | None = None,
-) -> dict[str, Any]:
-    return build_summary(
-        doc_stats,
-        total_chunks=total_chunks,
-        batch_size=batch_size,
-        collection=collection,
-        graph_enabled=graph_enabled,
-        estimate_only=estimate_only,
-        qdrant_ms=qdrant_ms,
-        neo4j_ms=neo4j_ms,
-        total_ms=total_ms,
+        job_id=run_job_id,
+        operation_id=operation_id,
+        logger_obj=logger,
     )
 
 

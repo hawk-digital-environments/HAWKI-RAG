@@ -1,12 +1,10 @@
+from __future__ import annotations
+
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
-from infrastructure.raganything.extraction import extract_triplets_with_graph_service
-from infrastructure.raganything.raganything_client import RagAnythingGraphService
-from infrastructure.rerank import rerank_hits as rerank_hits_impl
-from infrastructure.providers.factory import get_provider as create_provider
-from domain.settings import RAGServiceSettings, load_rag_settings
+from application.service_dependencies import GraphExtractionService, RAGServiceDependencies, configure_service_logging
 
 logger = logging.getLogger(__name__)
 
@@ -14,22 +12,31 @@ logger = logging.getLogger(__name__)
 class RAGService:
     """Facade over provider construction, retrieval reranking, and graph extraction."""
 
-    def __init__(self) -> None:
-        self.settings = load_rag_settings()
+    def __init__(self, dependencies: RAGServiceDependencies | None = None) -> None:
+        self._dependencies = dependencies or RAGServiceDependencies()
+        self.settings = self._dependencies.settings_loader()
         self.working_dir = Path(self.settings.rag_working_dir).expanduser()
         self.working_dir.mkdir(parents=True, exist_ok=True)
-        self._graph_service: RagAnythingGraphService | None = None
+        self._graph_service: GraphExtractionService | None = None
         self.raganything: Any | None = None
-        _configure_service_logging(self.settings)
+        configure_service_logging(self.settings, logger)
 
-    def _ensure_graph_service(self) -> RagAnythingGraphService:
+    def _service_dependencies(self) -> RAGServiceDependencies:
+        dependencies = getattr(self, "_dependencies", None)
+        if dependencies is None:
+            dependencies = RAGServiceDependencies()
+            self._dependencies = dependencies
+        return dependencies
+
+    def _ensure_graph_service(self) -> GraphExtractionService:
+        dependencies = self._service_dependencies()
         service = getattr(self, "_graph_service", None)
         if service is not None:
             return service
 
         settings = getattr(self, "settings", None)
         if settings is None:
-            settings = load_rag_settings()
+            settings = dependencies.settings_loader()
             self.settings = settings
 
         if not hasattr(self, "working_dir") or self.working_dir is None:
@@ -38,7 +45,7 @@ class RAGService:
             self.working_dir = Path(self.working_dir).expanduser()
 
         self.working_dir.mkdir(parents=True, exist_ok=True)
-        service = RagAnythingGraphService(self.working_dir, logger_obj=logger)
+        service = dependencies.graph_service_factory(self.working_dir, logger)
         self._graph_service = service
         self.raganything = service.client
         return service
@@ -55,7 +62,7 @@ class RAGService:
         return self._ensure_graph_service().graph_runtime_summary()
 
     def get_provider(self, name: str):
-        return create_provider(name)
+        return self._service_dependencies().provider_factory(name)
 
     def extract_triplets(
         self,
@@ -68,12 +75,13 @@ class RAGService:
         file_path: str | None = None,
         neo4j_database: str | None = None,
     ) -> list[tuple[str, str, str]]:
+        dependencies = self._service_dependencies()
         if not hasattr(self, "settings") or self.settings is None:
-            self.settings = load_rag_settings()
+            self.settings = dependencies.settings_loader()
 
         provider = provider or self.get_provider(self.settings.graph_provider)
         service = self._ensure_graph_service()
-        trips = extract_triplets_with_graph_service(
+        trips = dependencies.triplet_extractor(
             service,
             text,
             engine,
@@ -102,7 +110,7 @@ class RAGService:
         mix_mode: bool,
         mix_weight: float,
     ) -> list[dict[str, Any]]:
-        return rerank_hits_impl(
+        return self._service_dependencies().reranker(
             hits=hits,
             user_query=user_query,
             provider=provider,
@@ -112,8 +120,3 @@ class RAGService:
             mix_mode=mix_mode,
             mix_weight=mix_weight,
         )
-
-
-def _configure_service_logging(settings: RAGServiceSettings) -> None:
-    if not (settings.graph_debug or settings.graph_debug_llm):
-        logger.setLevel(logging.INFO)
