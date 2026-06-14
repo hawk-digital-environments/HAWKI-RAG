@@ -58,7 +58,7 @@ COMPOSE_FILE_PREFIX := COMPOSE_FILE=$(COMPOSE_FILE_LIST)
 COMPOSE_CMD = $(COMPOSE_ENV_PREFIX) COMPOSE_FILE=$(COMPOSE_FILE_LIST) $(if $(strip $(COMPOSE_PROFILES)),COMPOSE_PROFILES=$(COMPOSE_PROFILES)) $(COMPOSE_BIN) --env-file $(ENV_FILE)
 
 
-.PHONY: clean network pull-core build-app migrate-core _up-core up-core up-core-server health pull-models logs-core down-core down-rag restart-core test-services neo4j-fresh python-test python-deps
+.PHONY: clean network pull-core build-app migrate-core _up-core up-core up-core-ui up-core-server health pull-models logs-core logs-core-ui down-core down-rag restart-core restart-core-ui test-services neo4j-fresh python-test python-deps
 
 clean:
 	@find . -type d -name "__pycache__" -exec rm -rf {} +
@@ -118,8 +118,13 @@ _up-core: network
 
 up-core: COMPOSE_FILE_LIST = $(CORE_LOCAL_COMPOSE_FILE_LIST)
 up-core: COMPOSE_PROFILES = $(CORE_PROFILES)
-up-core: PROFILE_MESSAGE = $(GPU_MESSAGE) Local override enabled and Temporal workers enabled.
+up-core: PROFILE_MESSAGE = $(GPU_MESSAGE) Local override enabled. Temporal UI disabled by default.
 up-core: _up-core
+
+up-core-ui: COMPOSE_FILE_LIST = $(CORE_LOCAL_COMPOSE_FILE_LIST)
+up-core-ui: COMPOSE_PROFILES = $(if $(strip $(CORE_PROFILES)),devtools$(COMMA)$(CORE_PROFILES),devtools)
+up-core-ui: PROFILE_MESSAGE = $(GPU_MESSAGE) Local override enabled and Temporal UI enabled for dev diagnostics.
+up-core-ui: _up-core
 
 up-core-server: COMPOSE_FILE_LIST = $(CORE_SERVER_COMPOSE_FILE_LIST)
 up-core-server: COMPOSE_PROFILES = $(CORE_PROFILES)
@@ -242,8 +247,13 @@ pull-models:
 	@docker exec -it $(OLLAMA_CONTAINER) ollama pull llama3.2:1b
 
 logs-core:
-	@$(COMPOSE_CMD) logs -f postgres temporal temporal-ui qdrant hawki_rag_neo4j $(OLLAMA_SERVICE) hawki_rag_app hawki_rag_bridge hawki_rag_rerank hawki-rag-temporal-workflow-worker hawki-rag-temporal-scraper-worker hawki-rag-temporal-converter-worker hawki-rag-temporal-ingestion-worker
+	@$(COMPOSE_CMD) logs -f postgres temporal qdrant hawki_rag_neo4j $(OLLAMA_SERVICE) hawki_rag_app hawki_rag_bridge hawki_rag_rerank hawki-rag-temporal-workflow-worker hawki-rag-temporal-scraper-worker hawki-rag-temporal-converter-worker hawki-rag-temporal-ingestion-worker
 	@$(COMPOSE_CMD) logs -f
+
+logs-core-ui: COMPOSE_FILE_LIST = $(CORE_LOCAL_COMPOSE_FILE_LIST)
+logs-core-ui: COMPOSE_PROFILES = $(if $(strip $(CORE_PROFILES)),devtools$(COMMA)$(CORE_PROFILES),devtools)
+logs-core-ui:
+	@$(COMPOSE_CMD) logs -f temporal-ui
 
 down-core:
 	@$(COMPOSE_CMD) down
@@ -253,8 +263,15 @@ down-rag:
 
 restart-core:
 	@echo $(PROFILE_MESSAGE)
-	@$(COMPOSE_CMD) up -d --force-recreate postgres temporal temporal-ui qdrant hawki_rag_neo4j $(OLLAMA_SERVICE) hawki_rag_app hawki_rag_bridge hawki_rag_rerank hawki-rag-temporal-workflow-worker hawki-rag-temporal-scraper-worker hawki-rag-temporal-converter-worker hawki-rag-temporal-ingestion-worker
+	@$(COMPOSE_CMD) up -d --force-recreate postgres temporal qdrant hawki_rag_neo4j $(OLLAMA_SERVICE) hawki_rag_app hawki_rag_bridge hawki_rag_rerank hawki-rag-temporal-workflow-worker hawki-rag-temporal-scraper-worker hawki-rag-temporal-converter-worker hawki-rag-temporal-ingestion-worker
 	@$(COMPOSE_CMD) up -d --force-recreate
+
+restart-core-ui: COMPOSE_FILE_LIST = $(CORE_LOCAL_COMPOSE_FILE_LIST)
+restart-core-ui: COMPOSE_PROFILES = $(if $(strip $(CORE_PROFILES)),devtools$(COMMA)$(CORE_PROFILES),devtools)
+restart-core-ui: PROFILE_MESSAGE = $(GPU_MESSAGE) Local override enabled and Temporal UI enabled for dev diagnostics.
+restart-core-ui:
+	@echo $(PROFILE_MESSAGE)
+	@$(COMPOSE_CMD) up -d --force-recreate temporal-ui
 
 neo4j-fresh:
 	@echo "Stopping Neo4j service..."

@@ -16,7 +16,8 @@ class PipelineOperationsCommandTest extends TestCase
 
         $this->assertSame(0, $exitCode);
         $this->assertStringContainsString('HAWKI RAG Temporal ingestion workers', $output);
-        $this->assertStringContainsString('docker compose up -d postgres temporal temporal-ui', $output);
+        $this->assertStringContainsString('docker compose up -d postgres temporal hawki_rag_app', $output);
+        $this->assertStringContainsString('docker compose --profile devtools up -d temporal-ui', $output);
         $this->assertStringContainsString('hawki-rag-temporal-workflow-worker', $output);
         $this->assertStringContainsString('hawki-rag-temporal-scraper-worker', $output);
         $this->assertStringContainsString('hawki-rag-temporal-converter-worker', $output);

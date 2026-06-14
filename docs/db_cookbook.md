@@ -6,8 +6,9 @@ Quick command reference for the HAWKI RAG local stack after the Temporal migrati
 
 ```bash
 docker compose ps
-docker compose ps postgres temporal temporal-ui hawki_rag_app qdrant hawki_rag_neo4j
+docker compose ps postgres temporal hawki_rag_app qdrant hawki_rag_neo4j
 docker compose ps hawki-rag-temporal-workflow-worker hawki-rag-temporal-scraper-worker hawki-rag-temporal-converter-worker hawki-rag-temporal-ingestion-worker
+docker compose --profile devtools ps temporal-ui
 ```
 
 ## PostgreSQL Access
@@ -35,8 +36,9 @@ the host, use a host-reachable PostgreSQL address and port.
 
 ## Temporal
 
-Temporal frontend is exposed on `7233`. Temporal UI is exposed through
-`TEMPORAL_UI_PORT`, default `8081`.
+Temporal frontend is exposed on `7233`. Temporal UI is optional and, when
+started with the `devtools` profile, is exposed through `TEMPORAL_UI_PORT`,
+default `8081`.
 
 ```bash
 docker compose exec temporal-admin-tools temporal workflow list --namespace "${TEMPORAL_NAMESPACE:-default}"

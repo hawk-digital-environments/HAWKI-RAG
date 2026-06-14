@@ -59,6 +59,12 @@ Docker services now use Temporal instead.
 make up-core
 ```
 
+Enable Temporal UI only when you want low-level workflow diagnostics:
+
+```bash
+make up-core-ui
+```
+
 Configure external services with `EXTERNAL_SCRAPER_URL`,
 `EXTERNAL_SCRAPER_START_PATH`, `EXTERNAL_SCRAPER_STATUS_PATH`,
 `EXTERNAL_CONVERTER_URL`, `EXTERNAL_CONVERTER_START_PATH`, and
@@ -72,8 +78,8 @@ docker compose exec hawki_rag_app php artisan pipeline:start-task --source-url=h
 ```
 
 Daily, weekly, and monthly cadences create/update Temporal schedules for
-`IngestSourceWorkflow`. Inspect workflows and schedules in Temporal UI at
-`http://localhost:8081` by default.
+`IngestSourceWorkflow`. When started with the devtools profile, Temporal UI is
+available at `http://localhost:8081` by default.
 
 To validate retries/resume behavior, start a workflow, stop one worker container during
 its phase, then start it again. Temporal should keep the workflow open and resume/retry
@@ -82,15 +88,16 @@ the activity once the worker returns.
 Validation checklist:
 
 1. Start PostgreSQL, Temporal, Laravel, Qdrant, Neo4j, and the FastAPI bridge.
-2. Start all four Temporal workers.
-3. Start one workflow from Laravel CLI/API.
-4. Confirm Temporal UI shows scrape, converter, ingestion, and readiness activities.
-5. Confirm the external scraper and converter services were called.
-6. Confirm raw and Markdown files exist under `/shared/sources/{source_id}/`.
-7. Confirm Qdrant receives vectors and Neo4j receives graph updates.
-8. Confirm Laravel PostgreSQL metadata is updated with workflow/status fields.
-9. Restart a worker mid-run and confirm Temporal retries/resumes.
-10. Confirm RabbitMQ and Elasticsearch are not required for RAG ingestion.
+2. Start `make up-core-ui` as needed if you want Temporal UI during debugging.
+3. Start all four Temporal workers.
+4. Start one workflow from Laravel CLI/API.
+5. If Temporal UI is enabled, confirm it shows scrape, converter, ingestion, and readiness activities.
+6. Confirm the external scraper and converter services were called.
+7. Confirm raw and Markdown files exist under `/shared/sources/{source_id}/`.
+8. Confirm Qdrant receives vectors and Neo4j receives graph updates.
+9. Confirm Laravel PostgreSQL metadata is updated with workflow/status fields.
+10. Restart a worker mid-run and confirm Temporal retries/resumes.
+11. Confirm RabbitMQ and Elasticsearch are not required for RAG ingestion.
 
 ## Neo4j Graph Explorer Indexes
 

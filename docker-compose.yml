@@ -116,6 +116,7 @@ services:
       - hawki-network
 
   temporal-ui:
+    profiles: ["devtools"]
     image: temporalio/ui:2.34.0
     container_name: temporal_ui
     restart: unless-stopped

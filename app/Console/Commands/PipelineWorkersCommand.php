@@ -22,7 +22,9 @@ class PipelineWorkersCommand extends Command
         $this->newLine();
 
         $this->line('Start the Temporal stack:');
-        $this->line('  docker compose up -d postgres temporal temporal-ui hawki_rag_app hawki_rag_bridge qdrant hawki_rag_neo4j');
+        $this->line('  docker compose up -d postgres temporal hawki_rag_app hawki_rag_bridge qdrant hawki_rag_neo4j');
+        $this->line('Optional local/dev diagnostics:');
+        $this->line('  docker compose --profile devtools up -d temporal-ui');
         $this->newLine();
 
         $this->line('Start all Temporal workers:');
