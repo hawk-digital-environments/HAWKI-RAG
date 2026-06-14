@@ -74,15 +74,4 @@ readonly class DatasetService
             'created_at' => $this->clock->now(),
         ]);
     }
-
-    public function bridgeTargets(string $datasetId): array
-    {
-        $dataset = $this->ensure($datasetId);
-
-        return [
-            'dataset_id' => $dataset->dataset_id,
-            'qdrant_collection' => $dataset->qdrant_collection,
-            'neo4j_namespace' => $dataset->neo4j_namespace,
-        ];
-    }
 }

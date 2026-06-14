@@ -83,13 +83,4 @@ class PipelineJob extends Model
     {
         return $this->hasMany(PipelineStageState::class);
     }
-
-    public function isTerminal(): bool
-    {
-        return in_array($this->status, [
-            self::STATUS_COMPLETED,
-            self::STATUS_FAILED,
-            self::STATUS_SKIPPED,
-        ], true);
-    }
 }

@@ -36,43 +36,4 @@ class ScrapeProcess extends Model
     {
         return $this->hasOne(ScrapeStatistics::class, 'job_id', 'job_id');
     }
-
-    /* ----------------------------------
-     | Status Helpers
-     ---------------------------------- */
-
-    public function markRunning(): void
-    {
-        $this->update(['stage' => 'running']);
-    }
-
-    public function markCompleted(bool $success = true): void
-    {
-        $this->update([
-            'stage' => $success ? 'completed' : 'failed'
-        ]);
-    }
-
-    /* ----------------------------------
-     | Query Scopes
-     ---------------------------------- */
-
-    public function scopeRunning($query)
-    {
-        return $query->where('stage', 'running');
-    }
-
-    public function scopeCompleted($query)
-    {
-        return $query->where('stage', 'completed');
-    }
-
-    public function scopeFailed($query)
-    {
-        return $query->where('stage', 'failed');
-    }
-
-
-
-
 }

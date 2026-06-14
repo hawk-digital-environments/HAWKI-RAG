@@ -18,16 +18,6 @@ readonly class DocumentRepository
         return Document::query()->where('id', $documentId)->first();
     }
 
-    public function latestCompletedForDatasetPath(string $datasetId, string $path): ?Document
-    {
-        return Document::query()
-            ->where('dataset_id', $datasetId)
-            ->where('storage_path', realpath($path) ?: $path)
-            ->where('status', Document::STATUS_COMPLETED)
-            ->latest('updated_at')
-            ->first();
-    }
-
     public function latestCompleted(): ?Document
     {
         return Document::query()

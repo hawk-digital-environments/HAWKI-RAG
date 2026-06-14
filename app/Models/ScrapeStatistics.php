@@ -51,22 +51,6 @@ class ScrapeStatistics extends Model
         return $this->belongsTo(ScrapeProcess::class, 'job_id', 'job_id');
     }
 
-    public function progressPercentage(): int
-    {
-        $totalUrls = (int) $this->total_urls;
-
-        if ($totalUrls <= 0) {
-            return 0;
-        }
-
-        $percentage = (int) round(((int) $this->completed_urls * 100) / $totalUrls);
-
-        return max(0, min(100, $percentage));
-    }
-
-
-
-
     public function addError(array $error): void
     {
         $errors = $this->errors ?? [];
@@ -90,6 +74,4 @@ class ScrapeStatistics extends Model
     {
         return $this->warnings ?? [];
     }
-
-
 }

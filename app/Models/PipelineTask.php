@@ -44,9 +44,4 @@ class PipelineTask extends Model
     {
         return $this->belongsTo(Dataset::class, 'dataset_id', 'dataset_id');
     }
-
-    public function isTerminal(): bool
-    {
-        return in_array($this->status, self::TERMINAL_STATUSES, true);
-    }
 }
