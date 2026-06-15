@@ -27,6 +27,10 @@ http:
         type: text
         value: "{{graph}}"
 
+  auth:
+    type: bearer
+    token: "{{token}}"
+
 settings:
   encodeUrl: true
   timeout: 0

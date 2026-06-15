@@ -1,0 +1,38 @@
+info:
+  name: Unauthenticated API Ping
+  type: http
+  seq: 0
+  tags:
+    - auth
+    - smoke
+    - negative
+
+http:
+  method: GET
+  url: "{{baseUrl}}/api/ping"
+  headers:
+    - name: Accept
+      value: application/json
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  Verifies API routes reject unauthenticated requests through Sanctum.
+
+runtime:
+  scripts:
+    - type: tests
+      code: |-
+          test("Unauthenticated API Ping should return 401", function () {
+            expect(res.getStatus()).to.equal(401);
+          });
+
+          test("Unauthenticated API Ping should return auth error contract", function () {
+            const body = res.getBody();
+            expect(body).to.be.an("object");
+            expect(body).to.have.property("message").that.is.a("string");
+          });

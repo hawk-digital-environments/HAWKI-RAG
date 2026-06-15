@@ -26,6 +26,10 @@ http:
         "neo4j_namespace": "{{neo4jNamespace}}"
       }
 
+  auth:
+    type: bearer
+    token: "{{token}}"
+
 settings:
   encodeUrl: true
   timeout: 0

@@ -75,6 +75,8 @@ class DatasetManagementTest extends TestCase
             ->assertOk()
             ->assertSee('Datasets');
 
+        $this->actingAsApiUser();
+
         $this->getJson('/api/datasets')
             ->assertOk()
             ->assertJsonPath('success', true)
@@ -97,6 +99,8 @@ class DatasetManagementTest extends TestCase
 
     public function test_starting_pipeline_task_creates_and_uses_dataset(): void
     {
+        $this->actingAsApiUser();
+
         $this->postJson('/api/pipeline/tasks/start', [
             'task_id' => 'task-dataset-start',
             'dataset_id' => 'dataset-start',

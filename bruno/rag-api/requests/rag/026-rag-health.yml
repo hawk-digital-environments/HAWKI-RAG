@@ -5,7 +5,7 @@ info:
   tags:
     - rag
     - health
-    - smoke
+    - integration
 
 http:
   method: GET
@@ -58,4 +58,3 @@ runtime:
             expect(responseTime).to.be.a("number");
             expect(responseTime).to.be.at.least(0);
           });
-

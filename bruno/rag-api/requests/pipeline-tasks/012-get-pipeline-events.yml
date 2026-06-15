@@ -26,6 +26,10 @@ http:
     - name: Accept
       value: application/json
 
+  auth:
+    type: bearer
+    token: "{{token}}"
+
 settings:
   encodeUrl: true
   timeout: 0

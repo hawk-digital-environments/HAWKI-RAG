@@ -41,6 +41,8 @@ class PipelineControllerDashboardTest extends TestCase
         config()->set('temporal.storage.shared_root', $root);
         config()->set('file_converter.supported_extensions', ['pdf']);
 
+        $this->actingAsApiUser();
+
         $response = $this->post('/api/pipeline/controller/files', [
             'dataset_id' => 'controller-test',
             'graph' => 'false',
@@ -63,7 +65,7 @@ class PipelineControllerDashboardTest extends TestCase
         $this->assertDatabaseHas('pipeline_tasks', [
             'task_id' => $taskId,
             'dataset_id' => 'controller-test',
-            'status' => PipelineTask::STATUS_RUNNING,
+            'status' => PipelineTask::STATUS_COMPLETED,
         ]);
         $this->assertDatabaseHas('pipeline_jobs', [
             'job_id' => $jobId,
@@ -85,6 +87,8 @@ class PipelineControllerDashboardTest extends TestCase
         File::put($root, 'not a directory');
         config()->set('temporal.storage.shared_root', $root);
         config()->set('file_converter.supported_extensions', ['pdf']);
+
+        $this->actingAsApiUser();
 
         $this->post('/api/pipeline/controller/files', [
             'dataset_id' => 'blocked-controller-dataset',

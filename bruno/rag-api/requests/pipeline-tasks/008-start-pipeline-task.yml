@@ -31,6 +31,10 @@ http:
         }
       }
 
+  auth:
+    type: bearer
+    token: "{{token}}"
+
 settings:
   encodeUrl: true
   timeout: 0

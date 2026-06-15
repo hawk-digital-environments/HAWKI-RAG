@@ -5,7 +5,7 @@ info:
   tags:
     - rag
     - query
-    - smoke
+    - integration
 
 http:
   method: POST
@@ -67,4 +67,3 @@ runtime:
             expect(responseTime).to.be.a("number");
             expect(responseTime).to.be.at.least(0);
           });
-

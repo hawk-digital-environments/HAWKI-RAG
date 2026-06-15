@@ -17,6 +17,10 @@ http:
     - name: Accept
       value: application/json
 
+  auth:
+    type: bearer
+    token: "{{token}}"
+
 settings:
   encodeUrl: true
   timeout: 0
@@ -30,31 +34,24 @@ runtime:
   scripts:
     - type: tests
       code: |-
-          test("List Datasets" + " should return a successful status", function () {
-            const status = res.getStatus();
-            expect(status).to.be.within(200, 299);
+          test("List Datasets should return 200", function () {
+            expect(res.getStatus()).to.equal(200);
           });
 
-          test("List Datasets" + " should return JSON body", function () {
+          test("List Datasets should return dataset collection contract", function () {
             const body = res.getBody();
             expect(body).to.be.an("object");
-          });
-
-          test("List Datasets" + " should not return an error payload type", function () {
-            const body = res.getBody();
-            if (body && typeof body.success === "boolean") {
-              expect(body.success).to.be.oneOf([true, false]);
+            expect(body).to.have.property("success", true);
+            expect(body).to.have.property("datasets").that.is.an("array");
+            for (const dataset of body.datasets) {
+              expect(dataset).to.be.an("object");
+              expect(dataset).to.have.property("datasetId").that.is.a("string");
+              expect(dataset).to.have.property("name");
+              expect(dataset).to.have.property("status");
             }
           });
 
-          test("List Datasets" + " should return datasets list shape", function () {
-            const body = res.getBody();
-            if (body && Array.isArray(body.datasets)) {
-              expect(body.datasets).to.be.an("array");
-            }
-          });
-
-          test("List Datasets" + " should include response time", function () {
+          test("List Datasets should include response time", function () {
             const responseTime = res.getResponseTime();
             expect(responseTime).to.be.a("number");
             expect(responseTime).to.be.at.least(0);

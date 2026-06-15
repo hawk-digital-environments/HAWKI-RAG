@@ -5,6 +5,7 @@ info:
   tags:
     - documents
     - detail
+    - requires-data
 
 http:
   method: GET
@@ -16,6 +17,10 @@ http:
   headers:
     - name: Accept
       value: application/json
+
+  auth:
+    type: bearer
+    token: "{{token}}"
 
 settings:
   encodeUrl: true

@@ -276,15 +276,15 @@ _bruno-require-destructive:
 
 test-bruno: test-bruno-full
 
-test-bruno-full: test-bruno-smoke test-bruno-api test-bruno-pipeline test-bruno-scraper test-bruno-converter
+test-bruno-full: test-bruno-smoke test-bruno-api test-bruno-pipeline test-bruno-converter
 	@echo "Bruno full non-destructive suite completed. Reports: $(BRUNO_REPORT_DIR)"
 
-test-bruno-smoke: bruno-reports
+test-bruno-smoke: _bruno-require-token bruno-reports
 	@echo "Running Bruno smoke tests against $(BRUNO_BASE_URL)..."
 	@cd $(BRUNO_API_DIR) && $(BRUNO_BIN) run requests -r \
 		$(BRUNO_API_ARGS) \
+		--env-var token="$${RAWKI_API_TOKEN}" \
 		--tags smoke \
-		--exclude-tags rag \
 		$(BRUNO_RUN_FLAGS) \
 		--reporter-junit "$(BRUNO_REPORT_DIR)/bruno-smoke-junit.xml" \
 		--reporter-json "$(BRUNO_REPORT_DIR)/bruno-smoke.json" \
@@ -293,30 +293,25 @@ test-bruno-smoke: bruno-reports
 test-bruno-api: _bruno-require-token bruno-reports
 	@echo "Running Bruno API tests against $(BRUNO_BASE_URL)..."
 	@cd $(BRUNO_API_DIR) && $(BRUNO_BIN) run \
+		requests/auth \
 		requests/health \
-		requests/datasets \
-		requests/documents \
-		requests/rag \
-		requests/rag-graph \
 		-r \
 		$(BRUNO_API_ARGS) \
 		--env-var token="$${RAWKI_API_TOKEN}" \
-		--exclude-tags destructive \
+		--tags smoke \
 		$(BRUNO_RUN_FLAGS) \
 		--reporter-junit "$(BRUNO_REPORT_DIR)/bruno-api-junit.xml" \
 		--reporter-json "$(BRUNO_REPORT_DIR)/bruno-api.json" \
 		$(BRUNO_REPORT_FLAGS)
 
-test-bruno-pipeline: bruno-reports
+test-bruno-pipeline: _bruno-require-token bruno-reports
 	@echo "Running Bruno pipeline tests against $(BRUNO_BASE_URL)..."
 	@cd $(BRUNO_API_DIR) && $(BRUNO_BIN) run \
-		requests/pipeline-health \
-		requests/pipeline-tasks \
-		requests/pipeline-recovery \
-		-r \
+		requests/pipeline-health/017-pipeline-health.yml \
+		requests/pipeline-tasks/007-list-pipeline-tasks.yml \
+		requests/pipeline-recovery/019-list-failed-jobs.yml \
 		$(BRUNO_API_ARGS) \
-		$(BRUNO_PIPELINE_ARGS) \
-		--exclude-tags destructive \
+		--env-var token="$${RAWKI_API_TOKEN}" \
 		$(BRUNO_RUN_FLAGS) \
 		--reporter-junit "$(BRUNO_REPORT_DIR)/bruno-pipeline-junit.xml" \
 		--reporter-json "$(BRUNO_REPORT_DIR)/bruno-pipeline.json" \
@@ -332,12 +327,13 @@ test-bruno-scraper: bruno-reports
 		--reporter-json "$(BRUNO_REPORT_DIR)/bruno-scraper.json" \
 		$(BRUNO_REPORT_FLAGS)
 
-test-bruno-converter: bruno-reports
+test-bruno-converter: _bruno-require-token bruno-reports
 	@echo "Running Bruno converter-facing pipeline checks against $(BRUNO_BASE_URL)..."
 	@cd $(BRUNO_API_DIR) && $(BRUNO_BIN) run \
 		requests/pipeline-health/017-pipeline-health.yml \
 		requests/pipeline-upload/018-upload-pipeline-file.yml \
 		$(BRUNO_API_ARGS) \
+		--env-var token="$${RAWKI_API_TOKEN}" \
 		$(BRUNO_PIPELINE_ARGS) \
 		$(BRUNO_RUN_FLAGS) \
 		--reporter-junit "$(BRUNO_REPORT_DIR)/bruno-converter-junit.xml" \

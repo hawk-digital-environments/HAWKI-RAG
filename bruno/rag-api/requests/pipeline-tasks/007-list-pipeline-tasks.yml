@@ -17,6 +17,10 @@ http:
     - name: Accept
       value: application/json
 
+  auth:
+    type: bearer
+    token: "{{token}}"
+
 settings:
   encodeUrl: true
   timeout: 0
@@ -30,24 +34,23 @@ runtime:
   scripts:
     - type: tests
       code: |-
-          test("List Pipeline Tasks" + " should return a successful status", function () {
-            const status = res.getStatus();
-            expect(status).to.be.within(200, 299);
+          test("List Pipeline Tasks should return 200", function () {
+            expect(res.getStatus()).to.equal(200);
           });
 
-          test("List Pipeline Tasks" + " should return JSON body", function () {
+          test("List Pipeline Tasks should return task collection contract", function () {
             const body = res.getBody();
             expect(body).to.be.an("object");
-          });
-
-          test("List Pipeline Tasks" + " should not return an error payload type", function () {
-            const body = res.getBody();
-            if (body && typeof body.success === "boolean") {
-              expect(body.success).to.be.oneOf([true, false]);
+            expect(body).to.have.property("success", true);
+            expect(body).to.have.property("tasks").that.is.an("array");
+            for (const task of body.tasks) {
+              expect(task).to.be.an("object");
+              expect(task).to.have.property("taskId").that.is.a("string");
+              expect(task).to.have.property("status").that.is.a("string");
             }
           });
 
-          test("List Pipeline Tasks" + " should include response time", function () {
+          test("List Pipeline Tasks should include response time", function () {
             const responseTime = res.getResponseTime();
             expect(responseTime).to.be.a("number");
             expect(responseTime).to.be.at.least(0);

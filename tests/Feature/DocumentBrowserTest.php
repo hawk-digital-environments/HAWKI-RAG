@@ -24,6 +24,8 @@ class DocumentBrowserTest extends TestCase
             ->assertOk()
             ->assertSee('Document Browser');
 
+        $this->actingAsApiUser();
+
         $this->getJson('/api/documents?dataset_id=browser-dataset')
             ->assertOk()
             ->assertJsonPath('success', true)
@@ -40,6 +42,8 @@ class DocumentBrowserTest extends TestCase
     public function test_document_detail_shows_markdown_index_counts_and_related_jobs(): void
     {
         $document = $this->createIngestedDocument();
+
+        $this->actingAsApiUser();
 
         $this->getJson("/api/documents/{$document->id}")
             ->assertOk()
@@ -64,6 +68,8 @@ class DocumentBrowserTest extends TestCase
 
     public function test_document_detail_returns_not_found_for_non_numeric_placeholder_id(): void
     {
+        $this->actingAsApiUser();
+
         $this->getJson('/api/documents/sample-document-id')
             ->assertNotFound()
             ->assertJsonPath('success', false);
