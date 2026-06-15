@@ -90,8 +90,9 @@ class Neo4jGraph:
     def upsert_triplets(self, triplets: Iterable[Tuple[str, str, str]], *, doc_id: Optional[str] = None):
         """Insert or update triplets by merging nodes and relationships.
 
-        Each relationship is keyed by both its semantic type and the source doc_id
-        so documents can later be rectified or deleted without affecting other facts.
+        Each relationship is keyed by its semantic type between two entities. Reverse
+        duplicates with the same semantic type are folded into the existing direction.
+        Source documents are kept as provenance in r.doc_ids so the graph stays deduped.
         """
         fn_start = time.perf_counter()
         _perf_log("perf:graph graph.neo4j_graph.upsert_triplets start doc_id=%s", doc_id if doc_id is not None else "__legacy__")
@@ -103,8 +104,20 @@ class Neo4jGraph:
             "  CASE WHEN row.doc_id IN coalesce(s.doc_ids, []) THEN [] ELSE [row.doc_id] END "
             "SET o.doc_ids = coalesce(o.doc_ids, []) + "
             "  CASE WHEN row.doc_id IN coalesce(o.doc_ids, []) THEN [] ELSE [row.doc_id] END "
-            "MERGE (s)-[r:REL {type: row.r, doc_id: row.doc_id}]->(o) "
-            "SET r.updated_at = timestamp()"
+            "OPTIONAL MATCH (o)-[reverse:REL {type: row.r}]->(s) "
+            "FOREACH (_ IN CASE WHEN reverse IS NULL THEN [1] ELSE [] END | "
+            "  MERGE (s)-[r:REL {type: row.r}]->(o) "
+            "  SET r.doc_ids = coalesce(r.doc_ids, []) + "
+            "    CASE WHEN row.doc_id IN coalesce(r.doc_ids, []) THEN [] ELSE [row.doc_id] END, "
+            "    r.doc_id = coalesce(r.doc_id, row.doc_id), "
+            "    r.updated_at = timestamp() "
+            ") "
+            "FOREACH (_ IN CASE WHEN reverse IS NULL THEN [] ELSE [1] END | "
+            "  SET reverse.doc_ids = coalesce(reverse.doc_ids, []) + "
+            "    CASE WHEN row.doc_id IN coalesce(reverse.doc_ids, []) THEN [] ELSE [row.doc_id] END, "
+            "    reverse.doc_id = coalesce(reverse.doc_id, row.doc_id), "
+            "    reverse.updated_at = timestamp() "
+            ")"
         )
         doc_key = str(doc_id) if doc_id is not None else "__legacy__"
         rows_start = time.perf_counter()
@@ -137,22 +150,46 @@ class Neo4jGraph:
         """Remove relationships (and orphaned nodes) belonging to a document."""
         doc_key = str(doc_id)
         with self._session() as session:
-            def _delete(tx):
+            def _remove_doc_id(tx):
                 result = tx.run(
-                    "MATCH (s:Entity)-[r:REL {doc_id: $doc_id}]->(o:Entity) DELETE r",
+                    "MATCH (:Entity)-[r:REL]->(:Entity) "
+                    "WHERE r.doc_id = $doc_id OR $doc_id IN coalesce(r.doc_ids, []) "
+                    "SET r.doc_ids = [id IN coalesce(r.doc_ids, []) WHERE id <> $doc_id] "
+                    "SET r.doc_id = CASE "
+                    "  WHEN r.doc_id = $doc_id THEN head([id IN coalesce(r.doc_ids, []) WHERE id <> $doc_id]) "
+                    "  ELSE r.doc_id "
+                    "END "
+                    "RETURN count(r) AS c",
                     doc_id=doc_key,
+                )
+                record = result.single()
+                return int(record.get("c", 0) if record else 0)
+
+            relationships_touched = session.execute_write(_remove_doc_id)
+
+            def _delete_orphaned_relationships(tx):
+                result = tx.run(
+                    "MATCH (:Entity)-[r:REL]->(:Entity) "
+                    "WHERE coalesce(size(r.doc_ids), 0) = 0 "
+                    "DELETE r"
                 )
                 summary = result.consume()
                 return summary.counters.relationships_deleted
 
-            relationships_deleted = session.execute_write(_delete)
+            relationships_deleted = session.execute_write(_delete_orphaned_relationships)
 
             def _cleanup(tx):
-                result = tx.run("MATCH (n:Entity) WHERE NOT (n)--() DELETE n")
+                result = tx.run(
+                    "MATCH (n:Entity) "
+                    "SET n.doc_ids = [id IN coalesce(n.doc_ids, []) WHERE id <> $doc_id] "
+                    "WITH n "
+                    "WHERE NOT (n)--() DELETE n",
+                    doc_id=doc_key,
+                )
                 summary = result.consume()
                 return summary.counters.nodes_deleted
 
-            nodes_deleted = session.execute_write(_cleanup) if relationships_deleted else 0
+            nodes_deleted = session.execute_write(_cleanup) if relationships_touched or relationships_deleted else 0
 
         logger.info("neo4j:delete_by_doc_id relationships=%s entities=%s doc_id=%s", relationships_deleted, nodes_deleted, doc_id)
         return {"relationships_deleted": relationships_deleted, "entities_deleted": nodes_deleted}
@@ -246,7 +283,7 @@ class Neo4jGraph:
             "  coalesce(s.name, s.entity_id) AS subject, "
             "  coalesce(last(r).type, last(r).keywords, last(r).description, type(last(r))) AS relation, "
             "  coalesce(o.name, o.entity_id) AS object, "
-            "  coalesce(last(r).doc_id, last(r).source_id) AS doc_id, "
+            "  coalesce(last(r).doc_id, head(last(r).doc_ids), last(r).source_id) AS doc_id, "
             "  hops "
             "LIMIT $limit"
         ) % (safe_hops, rel_clause)

@@ -25,8 +25,7 @@ COPY --chown=www-data:www-data . .
 RUN rm -rf /var/www/html/public/build \
     && gosu www-data mkdir -p /var/www/html/public/build \
     && source /container/entrypoint/entrypoint.sh \
-    && npm run build \
-    && if [ -d resources/js/crawler ]; then cd resources/js/crawler && npm ci --fetch-timeout=300000; fi
+    && npm run build
 
 # =================================================================
 

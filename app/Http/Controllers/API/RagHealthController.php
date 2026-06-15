@@ -19,9 +19,9 @@ class RagHealthController extends Controller
             'http://raganything_api:8003/health',
         ])));
 
-        try {
-            $lastError = null;
-            foreach ($candidates as $url) {
+        $lastError = null;
+        foreach ($candidates as $url) {
+            try {
                 $start = microtime(true);
                 $response = Http::timeout(3)->get($url);
                 $elapsedMs = (int) ((microtime(true) - $start) * 1000);
@@ -43,22 +43,29 @@ class RagHealthController extends Controller
                     'endpoint' => $url,
                     'data' => $response->json(),
                 ]);
+            } catch (\Throwable $e) {
+                $lastError = [
+                    'status' => 502,
+                    'latency_ms' => null,
+                    'body' => $e->getMessage(),
+                    'endpoint' => $url,
+                ];
             }
+        }
 
-            if ($lastError) {
-                return response()->json([
-                    'ok' => false,
-                    'status' => $lastError['status'],
-                    'latency_ms' => $lastError['latency_ms'],
-                    'endpoint' => $lastError['endpoint'],
-                    'body' => $lastError['body'],
-                ], 502);
-            }
-        } catch (\Throwable $e) {
+        if ($lastError) {
             return response()->json([
                 'ok' => false,
-                'message' => $e->getMessage(),
+                'status' => $lastError['status'],
+                'latency_ms' => $lastError['latency_ms'],
+                'endpoint' => $lastError['endpoint'],
+                'body' => $lastError['body'],
             ], 502);
         }
+
+        return response()->json([
+            'ok' => false,
+            'message' => 'No RAG health endpoints were configured.',
+        ], 502);
     }
 }

@@ -9,9 +9,15 @@ body {
     radial-gradient(circle at 85% 30%, rgba(59, 130, 246, 0.1), transparent 45%),
     #0f172a;
     color: #e2e8f0;
-    overflow: hidden;
+    overflow: auto;
 }
-.container { max-width: 1400px; height: 100%; margin: 0 auto; padding: 1.25rem 1.5rem; }
+.container {
+    box-sizing: border-box;
+    max-width: 1400px;
+    min-height: 100%;
+    margin: 0 auto;
+    padding: 1.25rem 1.5rem;
+}
 h1 { margin: 0; font-weight: 700; font-size: 2rem; letter-spacing: -0.01em; }
 h2 { font-size: 1.25rem; margin-top: 0; }
 p { line-height: 1.6; }
@@ -27,12 +33,14 @@ a { color: #38bdf8; }
     display: grid;
     grid-template-columns: minmax(280px, 1fr) minmax(320px, 1.2fr) minmax(320px, 1.3fr);
     gap: 1.1rem;
-    height: 100%;
+    height: calc(100vh - 2.5rem);
+    min-height: 0;
 }
 .panel {
     display: flex;
     flex-direction: column;
     min-height: 0;
+    overflow: hidden;
 }
 .panel h2 {
     margin-bottom: 0.75rem;
@@ -41,6 +49,7 @@ a { color: #38bdf8; }
     flex: 1;
     min-height: 0;
     overflow: auto;
+    overscroll-behavior: contain;
     display: flex;
     flex-direction: column;
     gap: 1rem;
@@ -107,6 +116,10 @@ button:not(:disabled):hover { transform: translateY(-1px); box-shadow: 0 10px 25
     font-size: 0.9rem;
 }
 .hits-list { display: grid; gap: 1rem; }
+.query-results {
+    flex: 1 1 auto;
+    min-height: 0;
+}
 .hit {
     border-radius: 1rem;
     border: 1px solid rgba(59, 130, 246, 0.2);
@@ -173,14 +186,201 @@ ul { margin: 0.4rem 0 0; padding-left: 1.2rem; }
     font-size: 0.9rem;
     color: #bae6fd;
 }
+.graph-visualization-section {
+    margin-top: 1.1rem;
+    min-height: 620px;
+    border-radius: 1.1rem;
+    border: 1px solid rgba(148, 163, 184, 0.18);
+    background: rgba(15, 23, 42, 0.72);
+    box-shadow: 0 22px 55px rgba(15, 23, 42, 0.35);
+    padding: 1.2rem;
+}
+.graph-visualization-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 0.9rem;
+}
+.graph-visualization-header h2 {
+    margin: 0 0 0.25rem;
+}
+.graph-visualization-header p {
+    margin: 0;
+    color: #bae6fd;
+    font-size: 0.92rem;
+}
+.graph-legend {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.7rem 1rem;
+    margin: 0 0 0.9rem;
+    color: #cbd5e1;
+    font-size: 0.84rem;
+}
+.graph-legend span {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+.graph-legend-swatch {
+    display: inline-block;
+    width: 22px;
+    height: 3px;
+    border-radius: 999px;
+}
+.graph-legend-previous {
+    background: rgba(125, 211, 252, 0.74);
+}
+.graph-legend-recent {
+    background: #22c55e;
+    box-shadow: 0 0 12px rgba(34, 197, 94, 0.42);
+}
+.graph-canvas {
+    width: 100%;
+    height: 620px;
+    border-radius: 0.9rem;
+    border: 1px solid rgba(148, 163, 184, 0.2);
+    background: #08111f;
+    cursor: grab;
+    touch-action: none;
+    user-select: none;
+}
+.graph-canvas.is-panning {
+    cursor: grabbing;
+}
+.graph-canvas.has-pinned-node {
+    cursor: default;
+}
+.graph-empty {
+    display: none;
+    padding: 1rem;
+    margin-bottom: 0.8rem;
+    border-radius: 0.9rem;
+    border: 1px solid rgba(148, 163, 184, 0.2);
+    background: rgba(15, 23, 42, 0.72);
+    color: #bae6fd;
+}
+.graph-arrow {
+    fill: rgba(125, 211, 252, 0.62);
+}
+.graph-link {
+    fill: none;
+    stroke: rgba(125, 211, 252, 0.44);
+    stroke-width: 1.4;
+    transition: opacity 0.12s ease, stroke 0.12s ease, stroke-width 0.12s ease;
+}
+.graph-link.is-dim {
+    opacity: 0.14;
+}
+.graph-link.is-highlight {
+    stroke: #67e8f9;
+    stroke-width: 2.5;
+    opacity: 0.95;
+}
+.graph-link.is-recent {
+    stroke: #22c55e;
+    stroke-width: 2.4;
+    opacity: 0.95;
+    filter: drop-shadow(0 0 8px rgba(34, 197, 94, 0.45));
+}
+.graph-link.is-recent.is-highlight {
+    stroke: #86efac;
+    stroke-width: 3.2;
+}
+.graph-node-group {
+    cursor: pointer;
+    transition: opacity 0.12s ease;
+}
+.graph-node-group.is-dim,
+.graph-label-group.is-dim {
+    opacity: 0.22;
+}
+.graph-node-group.is-dragging {
+    cursor: grabbing;
+}
+.graph-node {
+    fill: #14b8a6;
+    stroke: #ccfbf1;
+    stroke-width: 1.4;
+    filter: drop-shadow(0 4px 12px rgba(20, 184, 166, 0.26));
+}
+.graph-node-group.is-highlight .graph-node {
+    fill: #facc15;
+    stroke: #fef9c3;
+    stroke-width: 2.2;
+}
+.graph-label-group {
+    pointer-events: none;
+    transition: opacity 0.12s ease;
+}
+.graph-label-bg {
+    fill: rgba(8, 17, 31, 0.88);
+    stroke: rgba(148, 163, 184, 0.24);
+    stroke-width: 1;
+}
+.graph-label-group.is-highlight .graph-label-bg {
+    fill: rgba(24, 24, 27, 0.96);
+    stroke: rgba(250, 204, 21, 0.7);
+}
+.graph-label {
+    fill: #e2e8f0;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0;
+}
+.graph-edge-label-group {
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.12s ease;
+}
+.graph-edge-label-group.is-visible {
+    opacity: 1;
+}
+.graph-edge-label-group.is-pinned {
+    opacity: 1;
+}
+.graph-edge-label-bg {
+    fill: rgba(15, 23, 42, 0.94);
+    stroke: rgba(125, 211, 252, 0.35);
+    stroke-width: 1;
+}
+.graph-edge-label-group.is-pinned .graph-edge-label-bg {
+    fill: rgba(8, 17, 31, 0.98);
+    stroke: rgba(250, 204, 21, 0.7);
+}
+.graph-edge-label-group.is-recent .graph-edge-label-bg {
+    fill: rgba(5, 46, 22, 0.96);
+    stroke: rgba(134, 239, 172, 0.72);
+}
+.graph-edge-label {
+    fill: #a5b4fc;
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 0;
+}
+.graph-edge-label-group.is-pinned .graph-edge-label {
+    fill: #fef9c3;
+    font-size: 10px;
+}
+.graph-edge-label-group.is-recent .graph-edge-label {
+    fill: #dcfce7;
+}
 @media (max-width: 1100px) {
-    body { overflow: auto; }
     .layout {
         grid-template-columns: 1fr;
         height: auto;
+        min-height: auto;
     }
     .panel-body {
         overflow: visible;
         padding-right: 0;
+    }
+    .graph-visualization-header {
+        flex-direction: column;
+    }
+    .graph-canvas {
+        height: 500px;
     }
 }

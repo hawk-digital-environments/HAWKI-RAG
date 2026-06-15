@@ -64,6 +64,7 @@ def clean_triplets(triplets: Iterable[Tuple[str, str, str]]) -> List[Tuple[str, 
         input_count if input_count >= 0 else "unknown",
     )
     cleaned: List[Tuple[str, str, str]] = []
+    seen = set()
     dropped = 0
     for s, r, o in triplets:
         subj = _normalize_text(s)
@@ -75,6 +76,12 @@ def clean_triplets(triplets: Iterable[Tuple[str, str, str]]) -> List[Tuple[str, 
         if _is_noise_entity(subj) or _is_noise_entity(obj):
             dropped += 1
             continue
+        key = (subj, rel, obj)
+        reverse_key = (obj, rel, subj)
+        if key in seen or reverse_key in seen:
+            dropped += 1
+            continue
+        seen.add(key)
         cleaned.append((subj, rel, obj))
     if dropped:
         logger.info("graph:triplets cleanup dropped=%s kept=%s", dropped, len(cleaned))

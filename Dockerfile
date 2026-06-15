@@ -26,8 +26,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY python_rag/requirements.txt /app/requirements.txt
-RUN python -m pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir --retries 10 --timeout 180 -r requirements.txt
+RUN --mount=type=cache,target=/root/.cache/pip \
+    python -m pip install --no-cache-dir "pip<26" \
+    && PIP_DEFAULT_TIMEOUT=1200 PIP_RETRIES=25 \
+       pip install --prefer-binary --retries 25 --timeout 1200 -r requirements.txt
 
 COPY python_rag /app
 
@@ -51,7 +53,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl && \
     rm -rf /var/lib/apt/lists/*
 
-COPY python_rag/requirements.txt /app/requirements.txt
+COPY python_rag/rerank/local_reranker/requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir --retries 10 --timeout 180 -r requirements.txt
 
 COPY python_rag/rerank/local_reranker/app.py /app/app.py

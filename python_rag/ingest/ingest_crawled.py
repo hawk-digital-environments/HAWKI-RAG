@@ -85,9 +85,73 @@ def _pick_json_meta(dir_path: Path) -> Tuple[Optional[Path], Dict[str, Any]]:
     return best_file, best_data
 
 
-def _pick_text_file(dir_path: Path) -> Tuple[Optional[Path], str]:
-    # Only ingest markdown files; ignore .txt to avoid path-list artifacts.
+def _pick_conversion_meta(dir_path: Path) -> Tuple[Optional[Path], Dict[str, Any]]:
+    path = dir_path / "conversion_meta.json"
+    if not path.is_file():
+        return None, {}
+
+    data = _read_json_file(path)
+    return path, data if isinstance(data, dict) else {}
+
+
+def _is_excluded_converted_markdown(path: Path) -> bool:
+    """Return True for flat converted artifacts that should not be ingested as page content."""
+    name = path.name.lower()
+    return name.endswith("_converted.md")
+
+
+def _eligible_markdown_files(dir_path: Path) -> List[Path]:
+    """
+    Return markdown files that are valid ingest sources for a page directory.
+
+    Policy:
+      - `content.md` is the primary crawl-page source.
+      - `converted.md` is allowed as an explicit canonical final markdown for the directory.
+      - Flat conversion artifacts like `*_converted.md` are excluded to avoid ingesting
+        attachment conversions as if they were primary page content.
+    """
     candidates = [f for f in dir_path.iterdir() if f.is_file() and f.suffix.lower() == ".md"]
+    return [f for f in candidates if not _is_excluded_converted_markdown(f)]
+
+
+def _pick_converted_markdown_file(dir_path: Path) -> Optional[Path]:
+    meta_path, meta = _pick_conversion_meta(dir_path)
+    if meta_path is None:
+        return None
+
+    files = meta.get("files") if isinstance(meta, dict) else None
+    candidates: List[Path] = []
+
+    if isinstance(files, list):
+        for item in files:
+            if not isinstance(item, str) or not item.lower().endswith(".md"):
+                continue
+            candidate = (dir_path / item).resolve(strict=False)
+            try:
+                candidate.relative_to(dir_path.resolve(strict=False))
+            except ValueError:
+                continue
+            if candidate.is_file():
+                candidates.append(candidate)
+
+    if not candidates:
+        candidates = [path for path in dir_path.rglob("*.md") if path.is_file()]
+
+    if not candidates:
+        return None
+
+    preferred = {"converted.md": 0, "converted_markdown.md": 1, "content.md": 2}
+    candidates.sort(key=lambda path: (preferred.get(path.name.lower(), 99), str(path)))
+    return candidates[0]
+
+
+def _pick_text_file(dir_path: Path) -> Tuple[Optional[Path], str]:
+    converted_markdown = _pick_converted_markdown_file(dir_path)
+    if converted_markdown is not None:
+        return converted_markdown, "converted_markdown"
+
+    # Only ingest markdown files; ignore .txt to avoid path-list artifacts.
+    candidates = _eligible_markdown_files(dir_path)
     if candidates:
         preferred = ("content.md", "converted.md")
         candidates_by_name = {f.name.lower(): f for f in candidates}
@@ -120,6 +184,8 @@ def load_page_materials(dir_path: Path) -> Tuple[Dict, Optional[Path], Optional[
 
     # find JSON
     json_path, meta = _pick_json_meta(dir_path)
+    if not meta:
+        json_path, meta = _pick_conversion_meta(dir_path)
 
     # find text (md/txt), preferring content.md / converted.md
     md_path, source_format = _pick_text_file(dir_path)
@@ -131,8 +197,8 @@ def load_page_materials(dir_path: Path) -> Tuple[Dict, Optional[Path], Optional[
             logger.debug("ingest:pick_text path=%s format=%s", md_path, source_format)
         else:
             # try other candidates if the chosen text looks like a file list
-            for f in dir_path.iterdir():
-                if f.is_file() and f.suffix.lower() == ".md" and f != md_path:
+            for f in _eligible_markdown_files(dir_path):
+                if f != md_path:
                     candidate = read_text_file(f).strip()
                     if candidate and not _looks_like_path_list(candidate):
                         md_path = f
@@ -216,12 +282,13 @@ def build_url_maps(root: Path) -> Tuple[Dict[Path, str], Dict[Path, str]]:
         conv_meta = _read_json_file(dir_path / "conversion_meta.json")
         if not isinstance(conv_meta, dict):
             continue
-        source_pdf = normalize_path(conv_meta.get("source_pdf"))
+        source_pdf = normalize_path(conv_meta.get("source_pdf") or conv_meta.get("source_file"))
+        explicit_page_url = first_str(conv_meta.get("page_url") or conv_meta.get("url") or conv_meta.get("original_url"))
+        explicit_source_url = first_str(conv_meta.get("source_url") or conv_meta.get("original_url"))
         if not source_pdf:
-            continue
-        info = pdf_lookup.get(source_pdf)
-        if not info:
-            continue
+            info = {}
+        else:
+            info = pdf_lookup.get(source_pdf, {})
         target_dirs: Set[Path] = set()
         dir_resolved = dir_path.resolve(strict=False)
         target_dirs.add(dir_resolved)
@@ -235,10 +302,12 @@ def build_url_maps(root: Path) -> Tuple[Dict[Path, str], Dict[Path, str]]:
         for tdir in target_dirs:
             if not tdir:
                 continue
-            if info.get("page_url"):
-                page_url_map.setdefault(tdir, info["page_url"])
-            if info.get("source_url"):
-                source_url_map.setdefault(tdir, info["source_url"])
+            page_url = explicit_page_url or info.get("page_url")
+            source_url = explicit_source_url or info.get("source_url") or page_url
+            if page_url:
+                page_url_map.setdefault(tdir, page_url)
+            if source_url:
+                source_url_map.setdefault(tdir, source_url)
 
     # Default source_url to page_url where specific overrides do not exist.
     for dir_path, page_url in page_url_map.items():
@@ -283,21 +352,44 @@ def resolve_url_for_path(mapping: Dict[Path, str], path: Path, root: Path) -> Op
     return None
 ########################################### PAGE DIR DISCOVERY #####################################
 def discover_page_dirs(root: Path) -> List[Path]:
-    """Return folders that look like a 'page' (contains json or md/txt)."""
+    """
+    Return folders that look like a page/document ingest unit.
+
+    Policy:
+      - Treat `converted_*` directories with `conversion_meta.json` as document units.
+      - Skip children of those converted trees to avoid duplicate ingestion.
+      - Count a directory as ingestable when it has non-conversion JSON metadata,
+        an eligible markdown source (`content.md` or `converted.md`, but not `*_converted.md`),
+        or a `.txt` file for legacy JSON-text fallback detection.
+    """
     out: List[Path] = []
     for dp, dn, fn in os.walk(root):
         p = Path(dp)
-        # Skip converted output folders to avoid duplicate ingestion.
-        parts = [part.lower() for part in p.parts]
-        if any(part.startswith("converted_") for part in parts):
-            dn[:] = []
-            continue
-        if "output" in parts and any(part.startswith("converted_") for part in parts):
+        # Converted output folders are their own document units when they have
+        # conversion metadata; skip their children to avoid duplicate ingestion.
+        try:
+            relative_parts = p.relative_to(root).parts
+        except ValueError:
+            relative_parts = p.parts
+        parts = [part.lower() for part in relative_parts]
+        in_converted_tree = any(part.startswith("converted_") for part in parts)
+        has_conversion_meta = "conversion_meta.json" in fn
+        if in_converted_tree:
+            if has_conversion_meta:
+                out.append(p)
             dn[:] = []
             continue
 
-        files = {Path(dp, f).suffix.lower() for f in fn}
-        if any(s in files for s in (".json", ".md", ".txt")):
+        has_non_conversion_json = any(
+            name.lower().endswith(".json") and name != "conversion_meta.json"
+            for name in fn
+        )
+        has_eligible_markdown = any(
+            name.lower().endswith(".md") and not name.lower().endswith("_converted.md")
+            for name in fn
+        )
+        has_txt = any(name.lower().endswith(".txt") for name in fn)
+        if has_non_conversion_json or has_eligible_markdown or has_txt:
             out.append(p)
     return out
 
@@ -494,6 +586,7 @@ def run_local_estimate(
     chunk_chars: int,
     chunk_overlap: int,
     collection: Optional[str],
+    batch_size: int,
 ) -> Dict[str, Any]:
     doc_stats: Dict[str, Any] = {
         "total_docs": len(page_dirs),
@@ -533,7 +626,6 @@ def run_local_estimate(
         total_chunks += chunk_count
 
     doc_stats["total_chunks"] = total_chunks
-    batch_size = args.batch
     summary: Dict[str, Any] = {
         "timestamp": utc_now_iso(),
         "estimate_only": True,
@@ -732,6 +824,7 @@ def main():
             chunk_chars=args.chunk_chars,
             chunk_overlap=args.chunk_overlap,
             collection=args.collection,
+            batch_size=args.batch,
         )
         preview = json.dumps(summary, indent=2, ensure_ascii=False)
         print(preview)
@@ -774,6 +867,7 @@ def main():
     last_response: Optional[Dict] = None
     skipped_existing = 0
     processed_doc_ids: Set[str] = set(resume_doc_ids)
+    failed_batches = 0
 
     logger.info("ingest:scan root=%s", root)
     print(f"Scanning: {root}")
@@ -786,7 +880,7 @@ def main():
     max_split_depth = int(os.environ.get("INGEST_MAX_SPLITS", "4"))
 
     def send_batch(docs_batch: List[Dict], depth: int = 0) -> bool:
-        nonlocal batch_index, sent, last_response, processed_doc_ids
+        nonlocal batch_index, sent, last_response, processed_doc_ids, failed_batches
         if not docs_batch:
             return True
         batch_index += 1
@@ -817,6 +911,7 @@ def main():
             right_ok = send_batch(right, depth + 1)
             return left_ok and right_ok
         print(f"Batch {batch_index} failed; docs={doc_ids_batch} ({err or 'see log'})", file=sys.stderr)
+        failed_batches += 1
         return False
 
     for idx, d in enumerate(page_dirs, start=1):
@@ -924,6 +1019,10 @@ def main():
             print(f"Resume state stored at {resume_state_path}")
         if resume_mode and skipped_existing:
             print(f"Skipped {skipped_existing} documents already ingested earlier.")
+
+    if not args.dry and not args.estimate_only:
+        if failed_batches:
+            sys.exit(1)
 
 if __name__ == "__main__":
     main()

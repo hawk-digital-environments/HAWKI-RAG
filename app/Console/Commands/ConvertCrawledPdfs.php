@@ -3,21 +3,24 @@
 namespace App\Console\Commands;
 
 use App\Services\FileConverter\DocumentConverter;
+use App\Services\Pipeline\PipelineDataValidator;
+use App\Services\Pipeline\PipelineLogger;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\File;
-use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use SplFileInfo;
 
 class ConvertCrawledPdfs extends Command
 {
     /**
      * Usage:
-     *   php artisan convert:crawled-pdfs storage/app/private/crawled-data/hawk
+     *   php artisan convert:crawled-pdfs /app/shared/crawled-data/hawk
      */
     protected $signature = 'convert:crawled-pdfs
-        {outputDir? : Path to crawler output directory}
+        {outputDir? : Path to crawler output directory (absolute path or path relative to the canonical crawled-data root)}
         {--extensions=pdf,doc,docx : Comma-separated list of extensions to convert}
-        {--scan-all : Scan all files under outputDir (not just **/files/)}';
+        {--scan-all : Scan all files under outputDir (not just **/files/)}
+        {--existing=ask : Existing output mode: ask, continue, restart, cancel}';
 
     protected $description = 'Convert documents under OUTPUT_DIR to Markdown using DocumentConverter, skipping already-converted files, and log failures to storage/logs/failed_conversion.json';
 
@@ -25,7 +28,7 @@ class ConvertCrawledPdfs extends Command
     {
         $outputDirArg = $this->argument('outputDir');
         if ($outputDirArg) {
-            $outputDir = base_path($outputDirArg);
+            $outputDir = $this->resolveOutputDir((string) $outputDirArg);
             if (!is_dir($outputDir)) {
                 $this->error("Output dir not found: $outputDir");
                 return Command::FAILURE;
@@ -37,7 +40,15 @@ class ConvertCrawledPdfs extends Command
             }
         }
 
-        $converter = new DocumentConverter();
+        $converter = app(DocumentConverter::class);
+        $validator = app(PipelineDataValidator::class);
+        $jobId = $this->conversionJobId($outputDir);
+        PipelineLogger::started('convert', [
+            'job_id' => $jobId,
+            'output_dir' => $outputDir,
+            'extensions' => $this->option('extensions'),
+            'scan_all' => (bool) $this->option('scan-all'),
+        ]);
 
         // Find documents under outputDir (recursive)
         $extensions = $this->parseExtensions((string) $this->option('extensions'));
@@ -49,6 +60,13 @@ class ConvertCrawledPdfs extends Command
             $scopeLabel = $scanAll ? 'recursive' : '**/files/*';
             $this->warn("No documents found under $outputDir (extensions: {$extLabel}; scope: {$scopeLabel})");
             $this->writeFailedJson([], 0, 0, 0); // write empty report
+            PipelineLogger::skipped('convert', [
+                'job_id' => $jobId,
+                'output_dir' => $outputDir,
+                'reason' => 'No source documents found.',
+                'extensions' => $extensions,
+                'scan_all' => $scanAll,
+            ]);
             return Command::SUCCESS;
         }
 
@@ -65,14 +83,16 @@ class ConvertCrawledPdfs extends Command
         $forceReprocess = false;
         if ($existingMetaCount > 0) {
             $this->line("Detected {$existingMetaCount} previously converted document(s) in this directory.");
-            $choice = $this->choice(
-                'How would you like to proceed?',
-                ['continue', 'restart', 'cancel'],
-                0
-            );
+            $choice = $this->resolveExistingOutputMode((string) $this->option('existing'));
 
             if ($choice === 'cancel') {
                 $this->info('Conversion cancelled by user request.');
+                PipelineLogger::skipped('convert', [
+                    'job_id' => $jobId,
+                    'output_dir' => $outputDir,
+                    'reason' => 'Conversion cancelled because existing outputs were found.',
+                    'existing_outputs' => $existingMetaCount,
+                ]);
                 return Command::SUCCESS;
             }
 
@@ -97,84 +117,186 @@ class ConvertCrawledPdfs extends Command
 
         foreach ($docPaths as $docPath) {
             $bar->advance();
+            $convertedId = null;
+            $docTitle = pathinfo($docPath, PATHINFO_FILENAME);
+            $stagingDir = null;
 
             try {
                 $docInfo = new SplFileInfo($docPath);
+                $flatPath = dirname($docPath) . '/' . pathinfo($docInfo->getFilename(), PATHINFO_FILENAME) . '_converted.md';
 
                 // Compute converted_id (sha256 of file contents)
                 $convertedId = @hash_file('sha256', $docInfo->getPathname());
                 if ($convertedId === false) {
                     throw new \RuntimeException('Unable to hash document (hash_file returned false).');
                 }
+                $docTitle = pathinfo($docInfo->getFilename(), PATHINFO_FILENAME);
+                PipelineLogger::started('convert', [
+                    'job_id' => $jobId,
+                    'doc_id' => $convertedId,
+                    'file_path' => $docPath,
+                    'title' => $docTitle,
+                    'pipeline_stage' => 'document_conversion',
+                ]);
 
                 // Destination folder next to the document
                 $destDir = dirname($docPath) . '/converted_' . pathinfo($docInfo->getFilename(), PATHINFO_FILENAME);
                 $metaPath = $destDir . '/conversion_meta.json';
 
-                if ($forceReprocess && File::isDirectory($destDir)) {
-                    if (!File::deleteDirectory($destDir)) {
-                        throw new \RuntimeException("Unable to remove existing conversion output at {$destDir}.");
-                    }
-                }
-
                 // Skip if meta exists and converted_id matches
                 if (!$forceReprocess && is_file($metaPath)) {
                     $meta = json_decode(@file_get_contents($metaPath), true);
                     if (is_array($meta) && ($meta['converted_id'] ?? null) === $convertedId) {
-                        $flatPath = dirname($pdfPath) . '/' . pathinfo($pdfInfo->getFilename(), PATHINFO_FILENAME) . '_converted.md';
-                        if (!is_file($flatPath)) {
-                            $flatContent = $this->loadMarkdownFromMeta($meta, $destDir);
-                            if ($flatContent !== null) {
-                                File::put($flatPath, $flatContent);
+                        $meta = $this->normalizeCachedMetadata($meta, $docPath, $destDir, $convertedId, $docTitle);
+                        $flatContent = is_file($flatPath)
+                            ? (string) file_get_contents($flatPath)
+                            : $this->loadMarkdownFromMeta($meta, $destDir);
+                        $markdownValidation = $validator->validateMarkdownContent($flatContent);
+                        $metadataValidation = $validator->validateConversionMetadata($meta);
+
+                        if ($flatContent !== null && $markdownValidation['errors'] === [] && $metadataValidation['errors'] === []) {
+                            if (!is_file($flatPath)) {
+                                $this->writeFileAtomically($flatPath, $flatContent);
                             }
+                            $this->writeFileAtomically($metaPath, json_encode($meta, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+                            if ($markdownValidation['warnings'] !== [] || $metadataValidation['warnings'] !== []) {
+                                PipelineLogger::partial('convert', [
+                                    'job_id' => $jobId,
+                                    'doc_id' => $convertedId,
+                                    'file_path' => $docPath,
+                                    'title' => $docTitle,
+                                    'pipeline_stage' => 'cached_output',
+                                    'warnings' => array_merge($markdownValidation['warnings'], $metadataValidation['warnings']),
+                                ]);
+                            }
+                            PipelineLogger::skipped('convert', [
+                                'job_id' => $jobId,
+                                'doc_id' => $convertedId,
+                                'file_path' => $docPath,
+                                'title' => $docTitle,
+                                'pipeline_stage' => 'cached_output',
+                                'reason' => 'Existing conversion output matches source checksum.',
+                                'markdown_path' => $flatPath,
+                                'metadata_path' => $metaPath,
+                            ]);
+                            $skipped++;
+                            continue;
                         }
-                        $skipped++;
-                        continue;
+
+                        PipelineLogger::partial('convert', [
+                            'job_id' => $jobId,
+                            'doc_id' => $convertedId,
+                            'file_path' => $docPath,
+                            'title' => $docTitle,
+                            'pipeline_stage' => 'cached_output',
+                            'reason' => 'Existing conversion output is incomplete; reprocessing.',
+                            'errors' => array_merge($markdownValidation['errors'], $metadataValidation['errors']),
+                            'warnings' => array_merge($markdownValidation['warnings'], $metadataValidation['warnings']),
+                        ]);
                     }
                 }
 
                 // Run conversion with retry (returns [relative_path => content])
                 $files = $this->convertWithRetry($converter, $docInfo, $maxRetries, $retryDelayMs);
-
-                // Write extracted files
-                File::makeDirectory($destDir, 0755, true, true);
-                $written = [];
-                foreach ($files as $relative => $content) {
-                    $outPath = $destDir . '/' . ltrim($relative, '/');
-                    File::ensureDirectoryExists(dirname($outPath));
-                    File::put($outPath, $content);
-                    $written[] = $this->makePathRelative($outPath, $destDir);
+                $filesValidation = $validator->validateConvertedFiles($files);
+                if ($filesValidation['errors'] !== []) {
+                    throw new \RuntimeException('Invalid converter output: ' . implode('; ', $filesValidation['errors']));
+                }
+                if ($filesValidation['warnings'] !== []) {
+                    PipelineLogger::partial('convert', [
+                        'job_id' => $jobId,
+                        'doc_id' => $convertedId,
+                        'file_path' => $docPath,
+                        'title' => $docTitle,
+                        'pipeline_stage' => 'converter_output',
+                        'warnings' => $filesValidation['warnings'],
+                    ]);
                 }
 
-                // Write / refresh conversion_meta.json
+                // Write extracted files to a staging directory. The published
+                // conversion directory is replaced only after validation passes.
+                $stagingDir = $this->makeStagingDir($destDir);
+                File::makeDirectory($stagingDir, 0755, true, true);
+                $written = [];
+                foreach ($files as $relative => $content) {
+                    $outPath = $stagingDir . '/' . ltrim($relative, '/');
+                    File::ensureDirectoryExists(dirname($outPath));
+                    File::put($outPath, $content);
+                    $written[] = $this->makePathRelative($outPath, $stagingDir);
+                }
+
+                // Validate metadata against the staged files first.
                 $metaPayload = [
                     'converted_id'   => $convertedId,
+                    'doc_id'         => $convertedId,
+                    'title'          => $docTitle,
                     'source_pdf'     => $docPath, // kept for backward compatibility
                     'source_file'    => $docPath,
                     'source_size'    => @filesize($docPath),
                     'source_mtime'   => @filemtime($docPath) ? date('c', filemtime($docPath)) : null,
-                    'output_dir'     => $destDir,
-                    'files'          => $written,   // relative to $destDir
+                    'output_dir'     => $stagingDir,
+                    'files'          => $written,
                     'converted_at'   => now()->toIso8601String(),
                     'tool'           => 'DocumentConverter::requestDocumentToMarkdown',
                     'version'        => 1,
                 ];
-                File::put($metaPath, json_encode($metaPayload, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
-
-                $flatPath = dirname($docPath) . '/' . pathinfo($docInfo->getFilename(), PATHINFO_FILENAME) . '_converted.md';
-                $flatContent = $this->pickMarkdownContent($files);
-                if ($flatContent !== null) {
-                    File::put($flatPath, $flatContent);
+                $metadataValidation = $validator->validateConversionMetadata($metaPayload);
+                if ($metadataValidation['errors'] !== []) {
+                    throw new \RuntimeException('Invalid conversion metadata: ' . implode('; ', $metadataValidation['errors']));
                 }
 
+                $flatContent = $this->pickMarkdownContent($files);
+                $flatMarkdownValidation = $validator->validateMarkdownContent($flatContent);
+                if ($flatMarkdownValidation['errors'] !== []) {
+                    throw new \RuntimeException('Invalid Markdown output: ' . implode('; ', $flatMarkdownValidation['errors']));
+                }
+
+                $this->replaceDirectory($stagingDir, $destDir);
+                $stagingDir = null;
+
+                $metaPayload['output_dir'] = $destDir;
+                $metadataValidation = $validator->validateConversionMetadata($metaPayload);
+                if ($metadataValidation['errors'] !== []) {
+                    throw new \RuntimeException('Invalid conversion metadata after publish: ' . implode('; ', $metadataValidation['errors']));
+                }
+
+                $this->writeFileAtomically($metaPath, json_encode($metaPayload, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+                if ($flatContent !== null) {
+                    $this->writeFileAtomically($flatPath, $flatContent);
+                }
+
+                PipelineLogger::success('convert', [
+                    'job_id' => $jobId,
+                    'doc_id' => $convertedId,
+                    'file_path' => $docPath,
+                    'title' => $docTitle,
+                    'pipeline_stage' => 'document_conversion',
+                    'output_dir' => $destDir,
+                    'markdown_path' => $flatPath,
+                    'metadata_path' => $metaPath,
+                    'files_written' => count($written),
+                    'warnings' => $metadataValidation['warnings'],
+                ]);
                 $processed++;
             } catch (\Throwable $e) {
+                if (is_string($stagingDir) && File::isDirectory($stagingDir)) {
+                    File::deleteDirectory($stagingDir);
+                }
+
                 $failed[] = [
                     'pdf_local_path' => $docPath,
                     'file_local_path' => $docPath,
                     'error'          => $e->getMessage(),
                 ];
-                Log::warning("ConvertCrawledPdfs failed: {$docPath} :: {$e->getMessage()}");
+                PipelineLogger::failed('convert', [
+                    'job_id' => $jobId,
+                    'doc_id' => isset($convertedId) && is_string($convertedId) ? $convertedId : null,
+                    'file_path' => $docPath,
+                    'title' => isset($docTitle) ? $docTitle : pathinfo($docPath, PATHINFO_FILENAME),
+                    'pipeline_stage' => 'document_conversion',
+                    'error_message' => $e->getMessage(),
+                    'exception' => $e,
+                ]);
             }
         }
 
@@ -193,13 +315,28 @@ class ConvertCrawledPdfs extends Command
             $this->warn('See storage/logs/failed_conversion.json for details.');
         }
 
+        $summaryContext = [
+            'job_id' => $jobId,
+            'output_dir' => $outputDir,
+            'processed' => $processed,
+            'skipped' => $skipped,
+            'failed' => count($failed),
+            'total' => count($docPaths),
+            'status_detail' => count($failed) > 0 ? 'partial' : 'complete',
+        ];
+        if (count($failed) > 0) {
+            PipelineLogger::partial('convert', $summaryContext);
+        } else {
+            PipelineLogger::success('convert', $summaryContext);
+        }
+
         return Command::SUCCESS;
     }
 
     private function pickOutputDir(): ?string
     {
         $candidates = [
-            '/app/shared',
+            $this->getCrawledDataRoot(),
         ];
 
         $roots = array_values(array_filter($candidates, static fn ($path) => is_dir($path)));
@@ -221,6 +358,55 @@ class ConvertCrawledPdfs extends Command
         $selected = $this->choice('Select a crawl folder', $dirs, 0);
         $this->info("Selected: {$selected}");
         return $selected;
+    }
+
+    private function resolveOutputDir(string $outputDir): string
+    {
+        if ($this->isAbsolutePath($outputDir)) {
+            return $outputDir;
+        }
+
+        return $this->getCrawledDataRoot() . DIRECTORY_SEPARATOR . ltrim($outputDir, DIRECTORY_SEPARATOR);
+    }
+
+    private function getCrawledDataRoot(): string
+    {
+        return rtrim((string) config('config.crawled_data_root', '/app/shared/crawled-data'), DIRECTORY_SEPARATOR);
+    }
+
+    private function isAbsolutePath(string $path): bool
+    {
+        return Str::startsWith($path, ['/','\\']) || preg_match('/^[A-Za-z]:[\/\\\\]/', $path) === 1;
+    }
+
+    private function conversionJobId(string $outputDir): string
+    {
+        return 'convert:' . substr(hash('sha256', realpath($outputDir) ?: $outputDir), 0, 16);
+    }
+
+    private function resolveExistingOutputMode(string $mode): string
+    {
+        $mode = strtolower(trim($mode));
+        $allowed = ['ask', 'continue', 'restart', 'cancel'];
+        if (!in_array($mode, $allowed, true)) {
+            $this->warn('Invalid --existing value. Continuing and validating cached outputs.');
+            return 'continue';
+        }
+
+        if ($mode !== 'ask') {
+            return $mode;
+        }
+
+        if (!$this->input->isInteractive()) {
+            $this->info('Non-interactive run detected; continuing and validating cached outputs.');
+            return 'continue';
+        }
+
+        return $this->choice(
+            'How would you like to proceed?',
+            ['continue', 'restart', 'cancel'],
+            0
+        );
     }
 
     /**
@@ -284,6 +470,47 @@ class ConvertCrawledPdfs extends Command
         File::ensureDirectoryExists(dirname($dest));
         File::put($tmp, json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
         @rename($tmp, $dest);
+    }
+
+    private function makeStagingDir(string $destDir): string
+    {
+        return dirname($destDir)
+            . DIRECTORY_SEPARATOR
+            . '.'
+            . basename($destDir)
+            . '.tmp-'
+            . (string) Str::uuid();
+    }
+
+    private function replaceDirectory(string $sourceDir, string $destDir): void
+    {
+        if (!File::isDirectory($sourceDir)) {
+            throw new \RuntimeException("Staging directory not found: {$sourceDir}");
+        }
+
+        if (File::isDirectory($destDir) && !File::deleteDirectory($destDir)) {
+            throw new \RuntimeException("Unable to remove existing conversion output at {$destDir}.");
+        }
+
+        if (File::isFile($destDir) && !File::delete($destDir)) {
+            throw new \RuntimeException("Unable to remove file blocking conversion output at {$destDir}.");
+        }
+
+        if (!@rename($sourceDir, $destDir)) {
+            throw new \RuntimeException("Unable to publish conversion output to {$destDir}.");
+        }
+    }
+
+    private function writeFileAtomically(string $path, string $content): void
+    {
+        File::ensureDirectoryExists(dirname($path));
+        $tmp = $path . '.tmp-' . (string) Str::uuid();
+        File::put($tmp, $content);
+
+        if (!@rename($tmp, $path)) {
+            File::delete($tmp);
+            throw new \RuntimeException("Unable to write file atomically: {$path}");
+        }
     }
 
     private function makePathRelative(string $path, string $baseDir): string
@@ -377,5 +604,48 @@ class ConvertCrawledPdfs extends Command
         }
 
         return null;
+    }
+
+    private function normalizeCachedMetadata(
+        array $meta,
+        string $sourcePath,
+        string $destDir,
+        string $convertedId,
+        string $docTitle
+    ): array {
+        $meta['converted_id'] = $convertedId;
+        $meta['doc_id'] = $meta['doc_id'] ?? $convertedId;
+        $meta['title'] = $meta['title'] ?? $docTitle;
+        $meta['source_file'] = $meta['source_file'] ?? ($meta['source_pdf'] ?? $sourcePath);
+        $meta['source_pdf'] = $meta['source_pdf'] ?? $sourcePath;
+        $meta['output_dir'] = $meta['output_dir'] ?? $destDir;
+        $meta['converted_at'] = $meta['converted_at'] ?? now()->toIso8601String();
+
+        if (!isset($meta['files']) || !is_array($meta['files']) || $meta['files'] === []) {
+            $meta['files'] = $this->collectCachedOutputFiles($destDir);
+        }
+
+        return $meta;
+    }
+
+    /**
+     * @return array<int,string>
+     */
+    private function collectCachedOutputFiles(string $destDir): array
+    {
+        if (!is_dir($destDir)) {
+            return [];
+        }
+
+        $files = [];
+        foreach (File::allFiles($destDir) as $file) {
+            if ($file->getFilename() === 'conversion_meta.json') {
+                continue;
+            }
+            $files[] = $this->makePathRelative($file->getPathname(), $destDir);
+        }
+        sort($files);
+
+        return $files;
     }
 }

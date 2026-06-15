@@ -37,3 +37,5 @@ resources/js/crawler
 *.json
 !package.json
 !package-lock.json
+*.pyc
+**/__pycache__/

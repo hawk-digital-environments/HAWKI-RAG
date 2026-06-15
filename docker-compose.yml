@@ -34,7 +34,7 @@ services:
         - DOCKER_PROJECT_PATH=/hawki-rag/
     container_name: hawki_rag_app
     volumes:
-      - shared_storage:/var/www/storage/app/public
+      - shared_storage:/app/shared
       - ./storage:/var/www/html/storage
       - ./docker/rag_app:/container/custom
       - ./:/var/www/html
@@ -62,10 +62,11 @@ services:
     container_name: mariadb
     restart: always
     environment:
-      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
-      MYSQL_DATABASE: ${DB_DATABASE}
-      MYSQL_USER: ${DB_USERNAME}
-      MYSQL_PASSWORD: ${DB_PASSWORD}
+      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+      MARIADB_ROOT_HOST: "%"
+      MARIADB_DATABASE: ${DB_DATABASE}
+      MARIADB_USER: ${DB_APP_USERNAME:-rag_user}
+      MARIADB_PASSWORD: ${DB_APP_PASSWORD:-change_me}
       TZ: Europe/Berlin
     ports:
       - "3306:3306"
@@ -76,19 +77,43 @@ services:
         max-size: "128m"
         max-file: "3"
 
-  phpmyadmin:
-    image: ${PHPMYADMIN_IMAGE:-phpmyadmin/phpmyadmin:latest}
-    container_name: phpmyadmin
+  # -------------------------------------------------
+  # RabbitMQ Broker (AMQP + management UI)
+  # -------------------------------------------------
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: rabbitmq
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-guest}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-guest}
+      RABBITMQ_DEFAULT_VHOST: ${RABBITMQ_VHOST:-/}
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 15s
+      timeout: 10s
+      retries: 12
+      start_period: 20s
+    networks:
+      - default
+      - hawki-network
+
+  adminer:
+    image: ${ADMINER_IMAGE:-adminer:latest}
+    container_name: adminer
     restart: always
     ports:
-      - "${PHPMYADMIN_PORT:-8004}:80"
+      - "${ADMINER_PORT:-8005}:8080"
     environment:
-      PMA_HOST: mariadb
-      PMA_PORT: 3306
-      UPLOAD_LIMIT: 1024M
+      ADMINER_DEFAULT_SERVER: mariadb
       TZ: Europe/Berlin
       VIRTUAL_HOST: ixdlab.hawk.de
-      VIRTUAL_PATH: /phpmyadmin/
+      VIRTUAL_PATH: /adminer/
       VIRTUAL_DEST: /
     networks:
       - hosting_network
@@ -176,11 +201,101 @@ services:
       GRAPH_OLLAMA_RAG_MODEL: ${GRAPH_OLLAMA_RAG_MODEL:-llama3.2:3b}
       OLLAMA_CHAT_TIMEOUT: ${OLLAMA_CHAT_TIMEOUT:-60}
       GRAPH_PERF_LOG: "1"
+      HAWKI_RAG_PUBLIC_DIR: /app/public
     volumes:
       - ./python_rag:/app
+      - ./public:/app/public
       - shared_storage:/app/shared
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
     restart: unless-stopped
+
+  # -------------------------------------------------
+  # Laravel converted-document ingestion worker (RabbitMQ orchestration + DB state)
+  # -------------------------------------------------
+  hawki-rag-ingestion-worker:
+    build:
+      context: .
+      dockerfile: docker/laravel.Dockerfile
+      target: laravel-app
+      args:
+        - DOCKER_PROJECT_HOST=ixdlab.hawk.de
+        - DOCKER_PROJECT_PATH=/hawki-rag/
+    container_name: hawki_rag_ingestion_worker
+    profiles: ["rag-ingestion-worker"]
+    env_file:
+      - ./.env
+    environment:
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+      ENVIRONMENT: "development"
+      HAWKI_RAG_BRIDGE_URL: ${HAWKI_RAG_BRIDGE_URL:-http://hawki_rag_bridge:8000}
+      SHARED_STORAGE_ROOT: ${SHARED_STORAGE_ROOT:-/app/shared}
+      RABBITMQ_EVENTS_EXCHANGE: ${RABBITMQ_EVENTS_EXCHANGE:-pipeline.events}
+      RABBITMQ_EVENTS_EXCHANGE_TYPE: ${RABBITMQ_EVENTS_EXCHANGE_TYPE:-direct}
+      RABBITMQ_RETRY_EXCHANGE: ${RABBITMQ_RETRY_EXCHANGE:-pipeline.retry}
+      RABBITMQ_RETRY_EXCHANGE_TYPE: ${RABBITMQ_RETRY_EXCHANGE_TYPE:-direct}
+      RABBITMQ_FAILED_EXCHANGE: ${RABBITMQ_FAILED_EXCHANGE:-pipeline.failed}
+      RABBITMQ_FAILED_EXCHANGE_TYPE: ${RABBITMQ_FAILED_EXCHANGE_TYPE:-direct}
+      RABBITMQ_RAG_INGESTION_QUEUE: ${RABBITMQ_RAG_INGESTION_QUEUE:-rag_ingestion_jobs}
+      RABBITMQ_DOCUMENT_CONVERTED_ROUTING_KEY: ${RABBITMQ_DOCUMENT_CONVERTED_ROUTING_KEY:-convert.document.completed}
+      RABBITMQ_RAG_INGESTION_RETRY_QUEUE: ${RABBITMQ_RAG_INGESTION_RETRY_QUEUE:-rag_ingestion_jobs_retry}
+      RABBITMQ_RAG_INGESTION_RETRY_ROUTING_KEY: ${RABBITMQ_RAG_INGESTION_RETRY_ROUTING_KEY:-convert.document.completed.retry}
+      RABBITMQ_FAILED_QUEUE: ${RABBITMQ_RAG_INGESTION_FAILED_QUEUE:-rag_ingestion_failed_jobs}
+      RABBITMQ_FAILED_ROUTING_KEY: ${RABBITMQ_FAILED_ROUTING_KEY:-pipeline.failed}
+      RABBITMQ_RETRY_DELAY_MS: ${RABBITMQ_RETRY_DELAY_MS:-5000}
+      RABBITMQ_PREFETCH_COUNT: ${RABBITMQ_PREFETCH_COUNT:-1}
+      RABBITMQ_MAX_RETRIES: ${RABBITMQ_MAX_RETRIES:-3}
+      RABBITMQ_QUEUE_TYPE: ${RABBITMQ_QUEUE_TYPE:-quorum}
+      RABBITMQ_PUBLISHER_CONFIRMS: ${RABBITMQ_PUBLISHER_CONFIRMS:-true}
+      RABBITMQ_PERSISTENT_MESSAGES: ${RABBITMQ_PERSISTENT_MESSAGES:-true}
+      JOB_SCHEMA_VERSION: ${JOB_SCHEMA_VERSION:-1}
+      SERVICE_NAME: ${SERVICE_NAME:-hawki-rag}
+    volumes:
+      - shared_storage:/app/shared
+      - ./storage:/var/www/html/storage
+      - ./docker/rag_app:/container/custom
+      - ./:/var/www/html
+    command: ["php", "artisan", "rag:rabbit-ingestion-worker"]
+    working_dir: /var/www/html
+    depends_on:
+      mariadb:
+        condition: service_started
+      rabbitmq:
+        condition: service_healthy
+      hawki_rag_bridge:
+        condition: service_started
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "php", "artisan", "list", "--raw"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+    networks:
+      - default
+      - hawki-network
+
+  # -------------------------------------------------
+  # Crawler producer (external image/command, profile-based)
+  # -------------------------------------------------
+  crawler_producer:
+    image: ${CRAWLER_PRODUCER_IMAGE:-ghcr.io/example/hawki-crawler-producer:latest}
+    container_name: crawler_producer
+    profiles: ["crawler-producer"]
+    env_file:
+      - ./.env
+    environment:
+      RABBITMQ_URL: ${RABBITMQ_URL:-amqp://guest:guest@rabbitmq:5672/%2F}
+      RABBITMQ_EXCHANGE: ${RABBITMQ_EXCHANGE:-jobs}
+      RABBITMQ_MAIN_ROUTING_KEY: ${RABBITMQ_MAIN_ROUTING_KEY:-crawl}
+    command: ${CRAWLER_PRODUCER_COMMAND:-python -m crawler_producer.main}
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - default
+      - hawki-network
 
   # -------------------------------------------------
   # Ollama
@@ -234,6 +349,7 @@ volumes:
   qdrant_data:
   neo4j_data:
   hawki_mariadb_data:
+  rabbitmq_data:
   ollama:
   rag_storage:
 

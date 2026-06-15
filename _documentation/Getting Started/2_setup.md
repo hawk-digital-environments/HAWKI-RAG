@@ -79,7 +79,7 @@ docker exec hawki_rag_bridge sh -lc "python /app/ingest/ingest_crawled.py \
   --provider ollama --graph --batch 16"
 ```
 ### Shared volume path mapping
-Path mapping: `rawki_shared_storage` (Docker volume) -> `/app/shared` (bridge) and `/var/www/storage/app/public` (Laravel app).
+Path mapping: `rawki_shared_storage` (Docker volume) -> `/app/shared` (bridge and Laravel app).
 
 ## Shut down / reset
 ```bash

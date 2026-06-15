@@ -8,3 +8,12 @@ HAWKI RAG pipeline.
 HAWKI RAG is designed for fast retrieval over crawled HAWKI content. By default it uses
 `bge-m3` for embeddings and `llama3:8b` / `llama3.1:8b` for grounded answers.
 <img width="2720" height="992" alt="HAWKI RAG Logo green" src="https://github.com/user-attachments/assets/af606f07-185b-4204-bcb8-8db1e8a58766" />
+
+## RabbitMQ Ingestion Worker
+
+Converted-document event consumption is available as an additive worker layer:
+
+- Docs: [docs/rag_ingestion_worker_rabbitmq.md](docs/rag_ingestion_worker_rabbitmq.md)
+- DB/ops commands: [docs/db_cookbook.md](docs/db_cookbook.md)
+- Worker entrypoint: `php artisan rag:rabbit-ingestion-worker`
+- Python remains the FastAPI RAG bridge for embeddings, Qdrant, Neo4j, RAG-Anything/LightRAG, and `/ingest`.

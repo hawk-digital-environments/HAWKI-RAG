@@ -1,18 +1,9 @@
 <?php
 
+$pipelineRoot = rtrim((string) env('HAWKI_RAG_PIPELINE_ROOT', '/app/shared'), DIRECTORY_SEPARATOR);
+$crawledDataRoot = rtrim((string) env('HAWKI_RAG_CRAWLED_DATA_ROOT', $pipelineRoot . '/crawled-data'), DIRECTORY_SEPARATOR);
+
 return [
-
-    /*
-    |--------------------------------------------------------------------------
-    | Redis Configuration for Scrape Events
-    |--------------------------------------------------------------------------
-    |
-    | Configuration for Redis Pub/Sub communication between the Python
-    | microservice (CustomCrawler) and Laravel application.
-    |
-    */
-
-    'redis_channel' => env('SCRAPE_REDIS_CHANNEL', 'scrape-events'),
 
     /*
     |--------------------------------------------------------------------------
@@ -35,7 +26,7 @@ return [
     |
     */
 
-    'storage_path' => env('SCRAPE_STORAGE_PATH', storage_path('app/scrape-jobs')),
+    'storage_path' => env('SCRAPE_STORAGE_PATH', $crawledDataRoot),
 
     /*
     |--------------------------------------------------------------------------
@@ -53,16 +44,5 @@ return [
         'skip_images' => env('SCRAPE_DEFAULT_SKIP_IMAGES', false),
         'discovery_mode' => env('SCRAPE_DEFAULT_DISCOVERY_MODE', false),
     ],
-
-    /*
-    |--------------------------------------------------------------------------
-    | Event Listener Configuration
-    |--------------------------------------------------------------------------
-    |
-    | Configuration for the Redis event listener that processes scrape events.
-    |
-    */
-
-    'max_job_duration' => env('SCRAPE_MAX_JOB_DURATION', 3600), // Maximum time (in seconds) to listen for job events
 
 ];

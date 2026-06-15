@@ -17,7 +17,10 @@ from fastapi import HTTPException
 from utils.text_preprocessor import ensure_tags, split_text
 from vectorstore.qdrant_http import QdrantHTTP
 from graph.neo4j_graph import Neo4jGraph
+from graph.graph_visualization import write_graph_visualization
 from graph.graph_utils import clean_triplets
+from pipeline.observability import pipeline_log
+from pipeline.validation import normalize_ingest_metadata, validate_ingest_document
 
 logger = logging.getLogger(__name__)
 _POINT_NAMESPACE = uuid.NAMESPACE_URL
@@ -28,6 +31,26 @@ GRAPH_PERF_LOG = os.environ.get("GRAPH_PERF_LOG", "").strip().lower() in ("1", "
 def _perf_log(msg: str, *args: Any) -> None:
     if GRAPH_PERF_LOG:
         logger.info(msg, *args)
+
+
+def _infer_job_id(body: Any, docs: List[Any]) -> str | None:
+    body_job_id = getattr(body, "job_id", None)
+    if body_job_id:
+        return str(body_job_id)
+    for doc in docs:
+        payload = getattr(doc, "payload", None) or {}
+        if isinstance(payload, dict):
+            job_id = payload.get("job_id") or payload.get("trace_id")
+            if job_id:
+                return str(job_id)
+    return None
+
+
+def _doc_job_id(default_job_id: str | None, doc: Any) -> str | None:
+    payload = getattr(doc, "payload", None) or {}
+    if isinstance(payload, dict):
+        return str(payload.get("job_id") or payload.get("trace_id") or default_job_id or "") or None
+    return default_job_id
 
 
 class _GraphTimeout(Exception):
@@ -132,9 +155,24 @@ def ingest_documents(
     public_dir: Path,
 ) -> Dict[str, Any]:
     dry_run = bool(body.dry_run)
+    docs = list(getattr(body, "docs", []) or [])
+    run_job_id = _infer_job_id(body, docs)
+    pipeline_log(
+        logger,
+        logging.INFO,
+        stage="ingest",
+        status="started",
+        job_id=run_job_id,
+        total_docs=len(docs),
+        dry_run=dry_run,
+        graph=bool(body.graph),
+        graph_only=bool(getattr(body, "graph_only", False)),
+        collection=body.collection,
+        neo4j_database=getattr(body, "neo4j_database", None),
+    )
     logger.info(
         "ingest:start docs=%s dry_run=%s graph=%s graph_only=%s collection=%s neo4j_database=%s",
-        len(body.docs),
+        len(docs),
         dry_run,
         bool(body.graph),
         bool(getattr(body, "graph_only", False)),
@@ -158,18 +196,55 @@ def ingest_documents(
 
     chunk_records: List[Dict[str, Any]] = []
     doc_stats: Dict[str, Any] = {
-        "total_docs": len(body.docs),
+        "total_docs": len(docs),
         "processed_docs": 0,
         "skipped_docs": 0,
         "by_format": {},
         "doc_ids": [],
+        "validation_failures": [],
+        "validation_warnings": [],
     }
 
-    for d in body.docs:
+    for d in docs:
+        doc_id = str(getattr(d, "id", ""))
+        doc_job_id = _doc_job_id(run_job_id, d)
+        errors, warnings = validate_ingest_document(d)
+        if errors:
+            message = "; ".join(errors)
+            doc_stats["skipped_docs"] += 1
+            doc_stats["validation_failures"].append({"doc_id": doc_id, "errors": errors})
+            pipeline_log(
+                logger,
+                logging.WARNING,
+                stage="ingest",
+                status="skipped",
+                job_id=doc_job_id,
+                doc_id=doc_id,
+                error_message=message,
+                reason="validation_failed",
+                errors=errors,
+            )
+            continue
+
+        normalized_payload = normalize_ingest_metadata(d)
+        if warnings:
+            doc_stats["validation_warnings"].append({"doc_id": doc_id, "warnings": warnings})
+            pipeline_log(
+                logger,
+                logging.WARNING,
+                stage="ingest",
+                status="partial",
+                job_id=doc_job_id,
+                doc_id=doc_id,
+                warnings=warnings,
+                title=normalized_payload.get("title"),
+                source_url=normalized_payload.get("source_url") or normalized_payload.get("page_url"),
+            )
+
         chunks = split_text(d.text, body.chunk_chars, body.chunk_overlap) or [d.text]
-        logger.debug("ingest:doc %s chunks=%s", d.id, len(chunks))
+        logger.debug("ingest:doc %s chunks=%s", doc_id, len(chunks))
         if GRAPH_DEBUG:
-            logger.debug("ingest:doc %s text_len=%s", d.id, len(d.text or ""))
+            logger.debug("ingest:doc %s text_len=%s", doc_id, len(d.text or ""))
         doc_processed = False
         fmt: Optional[str] = None
         chunk_count = 0
@@ -177,17 +252,17 @@ def ingest_documents(
         for idx, ch in enumerate(chunks):
             if not isinstance(ch, str) or not ch.strip():
                 continue
-            payload = dict(d.payload)
+            payload = dict(normalized_payload)
             payload.update({
                 "content": ch,
                 "chunk_index": idx,
                 "source_format": payload.get("source_format", "text"),
             })
-            payload["doc_id"] = str(d.id)
+            payload["doc_id"] = doc_id
             payload.setdefault("component_type", "chunk")
             ensure_tags(payload, ch)
             chunk_records.append({
-                "doc_id": str(d.id),
+                "doc_id": doc_id,
                 "content": ch,
                 "payload": payload,
             })
@@ -198,20 +273,52 @@ def ingest_documents(
 
         if doc_processed:
             doc_stats["processed_docs"] += 1
-            doc_stats["doc_ids"].append(str(d.id))
+            doc_stats["doc_ids"].append(doc_id)
             fmt_key = fmt or "unknown"
             by_fmt = doc_stats["by_format"]
             by_fmt[fmt_key] = by_fmt.get(fmt_key, 0) + 1
             if chunk_count:
                 chunks_map = doc_stats.setdefault("chunks_per_doc", {})
-                chunks_map[str(d.id)] = chunk_count
+                chunks_map[doc_id] = chunk_count
+            pipeline_log(
+                logger,
+                logging.INFO,
+                stage="ingest",
+                status="success",
+                job_id=doc_job_id,
+                doc_id=doc_id,
+                chunks=chunk_count,
+                source_format=fmt_key,
+                title=normalized_payload.get("title"),
+                source_url=normalized_payload.get("source_url") or normalized_payload.get("page_url"),
+            )
         else:
             doc_stats["skipped_docs"] += 1
+            pipeline_log(
+                logger,
+                logging.WARNING,
+                stage="ingest",
+                status="skipped",
+                job_id=doc_job_id,
+                doc_id=doc_id,
+                error_message="No non-empty chunks generated.",
+                reason="empty_chunks",
+            )
 
     total_chunks = len(chunk_records)
     doc_stats["total_chunks"] = total_chunks
 
     if total_chunks == 0:
+        pipeline_log(
+            logger,
+            logging.ERROR,
+            stage="ingest",
+            status="failed",
+            job_id=run_job_id,
+            error_message="No valid content to ingest",
+            validation_failures=doc_stats.get("validation_failures", []),
+            skipped_docs=doc_stats["skipped_docs"],
+        )
         raise HTTPException(400, detail="No valid content to ingest")
     logger.info("ingest:prepared docs=%s chunks=%s", doc_stats["processed_docs"], total_chunks)
 
@@ -236,6 +343,7 @@ def ingest_documents(
                 rag_service,
                 provider,
                 neo4j_database=getattr(body, "neo4j_database", None),
+                public_dir=public_dir,
             )
             graph_preview = _build_graph_preview(doc_stats, chunk_records, triplets_by_doc)
             summary["graph_preview"] = graph_preview
@@ -247,6 +355,29 @@ def ingest_documents(
                 _append_graph_failures(failure_path, failures)
                 summary["graph_failures"] = len(failures)
                 summary["graph_failures_file"] = str(failure_path)
+                for failure in failures:
+                    pipeline_log(
+                        logger,
+                        logging.WARNING,
+                        stage="ingest",
+                        status="partial",
+                        job_id=run_job_id,
+                        doc_id=failure.get("doc_id"),
+                        pipeline_stage="graph_extract",
+                        error_message=failure.get("error"),
+                        file_path=failure.get("file_path"),
+                    )
+        pipeline_log(
+            logger,
+            logging.INFO,
+            stage="ingest",
+            status="success",
+            job_id=run_job_id,
+            processed_docs=doc_stats["processed_docs"],
+            skipped_docs=doc_stats["skipped_docs"],
+            total_chunks=total_chunks,
+            dry_run=True,
+        )
         return {"ok": True, "dry_run": True, "summary": summary}
 
     provider = None
@@ -264,11 +395,32 @@ def ingest_documents(
     if not getattr(body, "graph_only", False):
         logger.info("ingest:provider=%s embed_model=%s batch_size=%s", body.provider, getattr(provider, "embed_model", None), batch_size)
         points, vector_size = _build_points(chunk_records, provider)
+        pipeline_log(
+            logger,
+            logging.INFO,
+            stage="ingest",
+            status="success",
+            job_id=run_job_id,
+            pipeline_stage="embedding",
+            points=len(points),
+            vector_size=vector_size,
+        )
         logger.info("ingest:qdrant points=%s vector_size=%s", len(points), vector_size)
         qdrant.ensure_collection(vector_size or 1024, distance=body.distance)
         qdrant_write_start = time.perf_counter()
         qdrant.upsert_points(points, batch_size=batch_size)
         qdrant_ms = (time.perf_counter() - qdrant_write_start) * 1000
+        pipeline_log(
+            logger,
+            logging.INFO,
+            stage="ingest",
+            status="success",
+            job_id=run_job_id,
+            pipeline_stage="index_vector",
+            points=len(points),
+            elapsed_ms=round(qdrant_ms, 2),
+            collection=qdrant.collection,
+        )
         logger.info("ingest:qdrant upserted=%s ms=%.2f", len(points), qdrant_ms)
     if qdrant_write_start is not None:
         qdrant_ms = (time.perf_counter() - qdrant_write_start) * 1000
@@ -287,6 +439,7 @@ def ingest_documents(
                 provider,
                 graph=graph,
                 neo4j_database=getattr(body, "neo4j_database", None),
+                public_dir=public_dir,
             )
             triplet_ms = (time.perf_counter() - triplet_start) * 1000
             total_triplets = sum(len(v) for v in triplets_by_doc.values())
@@ -303,6 +456,18 @@ def ingest_documents(
             if failures:
                 failure_path = _graph_failure_log_path(public_dir)
                 _append_graph_failures(failure_path, failures)
+                for failure in failures:
+                    pipeline_log(
+                        logger,
+                        logging.WARNING,
+                        stage="ingest",
+                        status="partial",
+                        job_id=run_job_id,
+                        doc_id=failure.get("doc_id"),
+                        pipeline_stage="graph_extract",
+                        error_message=failure.get("error"),
+                        file_path=failure.get("file_path"),
+                    )
                 logger.info("graph:failures count=%s file=%s", len(failures), failure_path)
         finally:
             try:
@@ -337,6 +502,18 @@ def ingest_documents(
     except Exception as exc:
         summary["summary_file_error"] = str(exc)
 
+    pipeline_log(
+        logger,
+        logging.INFO,
+        stage="ingest",
+        status="success",
+        job_id=run_job_id,
+        processed_docs=doc_stats["processed_docs"],
+        skipped_docs=doc_stats["skipped_docs"],
+        points=len(points),
+        total_chunks=total_chunks,
+        elapsed_ms=round(total_ms, 2),
+    )
     logger.info("ingest:done points=%s total_ms=%.2f", len(points), total_ms)
     return {"ok": True, "points": len(points), "summary": summary, "graph_only": bool(getattr(body, "graph_only", False))}
 
@@ -383,6 +560,18 @@ def _build_points(chunk_records: List[Dict[str, Any]], provider: Any) -> Tuple[L
         try:
             vec = provider.embed(rec["content"])
         except Exception as exc:
+            pipeline_log(
+                logger,
+                logging.ERROR,
+                stage="ingest",
+                status="failed",
+                job_id=payload.get("job_id") or payload.get("trace_id"),
+                doc_id=rec.get("doc_id"),
+                pipeline_stage="embedding",
+                error_message=f"Embedding failed: {exc}",
+                source_url=payload.get("source_url") or payload.get("page_url"),
+                title=payload.get("title"),
+            )
             raise HTTPException(status_code=500, detail=f"Embedding failed: {exc}") from exc
         vector_size = vector_size or len(vec)
         point_key = f"{rec['doc_id']}:{payload.get('chunk_index', 0)}"
@@ -405,6 +594,7 @@ def _build_triplets_by_doc(
     *,
     graph: Any | None = None,
     neo4j_database: str | None = None,
+    public_dir: Path | None = None,
 ) -> tuple[Dict[str, List[tuple[str, str, str]]], List[Dict[str, Any]]]:
     fn_start = time.perf_counter()
     _perf_log(
@@ -562,6 +752,11 @@ def _build_triplets_by_doc(
                 neo4j_start = time.perf_counter()
                 graph.upsert_triplets(triplets, doc_id=doc_id)
                 neo4j_ms = (time.perf_counter() - neo4j_start) * 1000
+                if public_dir is not None:
+                    try:
+                        write_graph_visualization(public_dir, database=neo4j_database, recent_doc_id=doc_id)
+                    except Exception as exc:
+                        logger.warning("graph-viz:update failed doc=%s: %s", doc_id, exc)
                 _perf_log(
                     "perf:graph pipeline.ingest_logic._build_triplets_by_doc doc=%s step=neo4j_upsert triplets=%s ms=%.2f",
                     doc_id,

@@ -891,6 +891,9 @@ class RAGService:
         if chunked_doc_status_ok:
             lightrag_kwargs["doc_status_storage"] = "ChunkedJsonDocStatusStorage"
         if neo4j_graph_ok:
+            # RAG-Anything writes a temporary extraction graph. The pipeline mirrors
+            # those edges into our canonical Entity/REL schema and then removes the
+            # temporary LightRAG :base graph from Neo4j.
             lightrag_kwargs["graph_storage"] = "Neo4JStorage"
         else:
             logger.warning(
@@ -1049,6 +1052,34 @@ class RAGService:
         return f"{prefix}:{digest}"
 
     @staticmethod
+    def _raganything_extraction_doc_id(doc_id: str | None, file_path: str | None, content_list: List[Dict[str, Any]]) -> str:
+        stable_id = RAGService._stable_raganything_doc_id(doc_id, file_path, content_list)
+        return f"{stable_id}:extract:{time.time_ns()}"
+
+    @staticmethod
+    def _clear_lightrag_neo4j_temp_graph(neo4j_database: str | None = None) -> None:
+        try:
+            from neo4j import GraphDatabase  # type: ignore
+        except Exception as exc:
+            logger.debug("LightRAG Neo4j temp graph cleanup skipped; driver unavailable: %s", exc)
+            return
+
+        uri = os.environ.get("NEO4J_URI", "bolt://neo4j:7687")
+        user = os.environ.get("NEO4J_USER") or os.environ.get("NEO4J_USERNAME") or "neo4j"
+        password = os.environ.get("NEO4J_PASSWORD", "password")
+        database = (neo4j_database or os.environ.get("NEO4J_DATABASE") or "").strip() or None
+
+        driver = GraphDatabase.driver(uri, auth=(user, password))
+        try:
+            session_kwargs = {"database": database} if database else {}
+            with driver.session(**session_kwargs) as session:
+                session.execute_write(lambda tx: tx.run("MATCH (n:base) DETACH DELETE n").consume())
+        except Exception as exc:
+            logger.debug("LightRAG Neo4j temp graph cleanup failed: %s", exc)
+        finally:
+            driver.close()
+
+    @staticmethod
     def _edge_relation_label(edge: Dict[str, Any]) -> str:
         raw = edge.get("keywords") or edge.get("description") or edge.get("content") or "RELATED_TO"
         if isinstance(raw, (list, tuple)):
@@ -1152,7 +1183,7 @@ class RAGService:
             return []
 
         file_ref = str(file_path or f"inline://{doc_id or 'graph_text'}")
-        rag_doc_id = self._stable_raganything_doc_id(doc_id, file_ref, content_list)
+        rag_doc_id = self._raganything_extraction_doc_id(doc_id, file_ref, content_list)
         logger.info(
             "RAG-Anything graph insert requested doc_id=%s rag_doc_id=%s file=%s blocks=%s chars=%s",
             doc_id or "-",
@@ -1164,6 +1195,7 @@ class RAGService:
         created_floor = int(time.time())
 
         async def _insert_and_export() -> List[tuple[str, str, str]]:
+            self._clear_lightrag_neo4j_temp_graph(neo4j_database)
             # RAG-Anything currently enforces parser installation inside
             # `_ensure_lightrag_initialized()` even for direct text-only `content_list` inserts.
             # Our graph ingest path passes only text blocks, so bypass that parser gate to allow
@@ -1196,12 +1228,14 @@ class RAGService:
             graph_obj = getattr(lightrag_obj, "chunk_entity_relation_graph", None)
             if graph_obj is None:
                 logger.warning("RAG-Anything graph storage is unavailable after insert.")
+                self._clear_lightrag_neo4j_temp_graph(neo4j_database)
                 return []
 
             try:
                 edges = await graph_obj.get_all_edges()
             except Exception as exc:
                 logger.warning("RAG-Anything graph edge export failed: %s", exc)
+                self._clear_lightrag_neo4j_temp_graph(neo4j_database)
                 return []
 
             if not isinstance(edges, list):
@@ -1215,6 +1249,7 @@ class RAGService:
                 file_ref=file_ref,
                 created_at_floor=created_floor,
             )
+            self._clear_lightrag_neo4j_temp_graph(neo4j_database)
             logger.info(
                 "RAG-Anything graph export doc_id=%s file=%s edges_total=%s triplets=%s",
                 doc_id or "-",

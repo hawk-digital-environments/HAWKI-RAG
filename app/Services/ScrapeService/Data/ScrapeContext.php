@@ -78,6 +78,7 @@ class ScrapeContext
             'stage' => $this->process->stage,
             'timestamp' => now()->toIso8601String(),
         ]);
+        $this->jobStats->save();
     }
 
     /**
@@ -94,6 +95,7 @@ class ScrapeContext
             'stage' => $stage ?? $this->getStage(),
             'timestamp' => now()->toIso8601String(),
         ]);
+        $this->jobStats->save();
     }
 
     /**

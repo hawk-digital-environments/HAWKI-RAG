@@ -3,11 +3,11 @@
 namespace App\Services\ScrapeService\Pipeline;
 
 use App\Models\ScrapedElement;
-use App\Models\ScrapeStatistics;
+use App\Services\Pipeline\PipelineDataValidator;
+use App\Services\Pipeline\PipelineLogger;
 use App\Services\ScrapeService\Data\ScrapeContext;
 use App\Services\StorageService\StorageService;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
 
@@ -15,26 +15,38 @@ class ScrapeFinalizerService
 {
 
     protected StorageService $storageService;
+    protected PipelineDataValidator $validator;
+
     public function __construct(
     )
     {
         $this->storageService = app(StorageService::class);
+        $this->validator = app(PipelineDataValidator::class);
     }
 
     public function executeFinalization(ScrapeContext $context): void
     {
         try {
-            //Log::info("Starting finalization for job: {$context->jobId}");
+            PipelineLogger::started('scrape', [
+                'job_id' => $context->jobId,
+                'pipeline_stage' => 'finalization',
+            ]);
 
             $this->checkupElements($context);
             $context->setStage('Scrape-Completed');
             $context->setStats('completed_at', now());
             Cache::forget("scrape_process:{$context->jobId}");
+            PipelineLogger::success('scrape', [
+                'job_id' => $context->jobId,
+                'pipeline_stage' => 'finalization',
+            ]);
 
         } catch (\Exception $e) {
-            Log::error("Finalization failed for job: {$context->jobId}", [
-                'error' => $e->getMessage(),
-                'exception' => $e
+            PipelineLogger::failed('scrape', [
+                'job_id' => $context->jobId,
+                'pipeline_stage' => 'finalization',
+                'error_message' => $e->getMessage(),
+                'exception' => $e,
             ]);
             $context->addError("Finalization failed: " . $e->getMessage());
             throw $e;
@@ -71,9 +83,11 @@ class ScrapeFinalizerService
 
                 if (!$urlHash) {
                     $errorCount++;
-                    Log::warning("Missing url_hash in disk data", [
+                    PipelineLogger::validationFailed('scrape', [
                         'job_id' => $context->jobId,
-                        'url_data' => $urlData
+                        'pipeline_stage' => 'finalization',
+                        'error_message' => 'Missing url_hash in disk data.',
+                        'url_data' => $urlData,
                     ]);
                     continue;
                 }
@@ -81,6 +95,12 @@ class ScrapeFinalizerService
                 // Check if element exists in database
                 if (in_array($urlHash, $existingElements)) {
                     $syncedCount++;
+                    PipelineLogger::skipped('scrape', [
+                        'job_id' => $context->jobId,
+                        'doc_id' => $urlHash,
+                        'pipeline_stage' => 'finalization',
+                        'reason' => 'Scraped element already exists.',
+                    ]);
                     continue;
                 }
 
@@ -91,14 +111,26 @@ class ScrapeFinalizerService
 
             } catch (\Exception $e) {
                 $errorCount++;
-                Log::error("Failed to process element for url_hash: " . ($urlData['url_hash'] ?? 'unknown'), [
+                PipelineLogger::failed('scrape', [
                     'job_id' => $context->jobId,
-                    'error' => $e->getMessage(),
-                    'exception' => $e
+                    'doc_id' => $urlData['url_hash'] ?? 'unknown',
+                    'pipeline_stage' => 'finalization',
+                    'error_message' => $e->getMessage(),
+                    'exception' => $e,
                 ]);
                 $context->addWarning("Failed to sync element: " . $e->getMessage());
             }
         }
+
+        PipelineLogger::success('scrape', [
+            'job_id' => $context->jobId,
+            'pipeline_stage' => 'finalization_checkup',
+            'total_urls' => $totalUrls,
+            'existing_elements' => $existingCount,
+            'synced' => $syncedCount,
+            'created' => $createdCount,
+            'errors' => $errorCount,
+        ]);
 
         if ($errorCount > 0) {
             $context->addWarning("Finalization completed with {$errorCount} errors");
@@ -131,13 +163,28 @@ class ScrapeFinalizerService
     {
         // Fetch element data from disk
         $elementData = $this->storageService->fetchElementData($context->jobId, $urlHash);
+        $validation = $this->validator->validateScrapeElement($elementData);
+        if ($validation['errors'] !== []) {
+            throw new \Exception("Invalid scraped element {$urlHash}: " . implode('; ', $validation['errors']));
+        }
+        if ($validation['warnings'] !== []) {
+            PipelineLogger::partial('scrape', [
+                'job_id' => $context->jobId,
+                'doc_id' => $urlHash,
+                'pipeline_stage' => 'finalization',
+                'warnings' => $validation['warnings'],
+            ]);
+            foreach ($validation['warnings'] as $warning) {
+                $context->addWarning("Scraped element {$urlHash}: {$warning}");
+            }
+        }
 
         // Helper function to extract first element if arrayed, otherwise return as-is
-        $extractValue = fn($value) => is_array($value) ? ($value[0] ?? null) : $value;
+        $extractValue = fn($value) => $this->validator->firstScalar($value);
 
         // Extract scalar values from arrays
         $pageUrl = $extractValue($elementData['page_url'] ?? null);
-        $title = $extractValue($elementData['title'] ?? null);
+        $title = $extractValue($elementData['title'] ?? null) ?? $this->titleFromUrl($pageUrl);
         $metaImgUrl = $extractValue($elementData['meta_img_url'] ?? null);
         $publishedAt = $extractValue($elementData['published_at'] ?? $elementData['date'] ?? null);
 
@@ -150,9 +197,11 @@ class ScrapeFinalizerService
             try {
                 $publishedAt = (new \DateTime($publishedAt))->format('Y-m-d H:i:s');
             } catch (\Exception $e) {
-                Log::warning("Invalid published_at date: {$publishedAt}", [
-                    'url_hash' => $urlHash,
-                    'error' => $e->getMessage()
+                PipelineLogger::partial('scrape', [
+                    'job_id' => $context->jobId,
+                    'doc_id' => $urlHash,
+                    'pipeline_stage' => 'finalization',
+                    'error_message' => "Invalid published_at date: {$publishedAt}",
                 ]);
                 $publishedAt = null;
             }
@@ -171,8 +220,8 @@ class ScrapeFinalizerService
             'title' => $title,
             'page_url' => $pageUrl,
             'meta_img_url' => $metaImgUrl,
-            'page_url_hash' => $elementData['url_hash'] ?? $urlHash,
-            'content_hash' => $elementData['content_hash'] ?? null,
+            'page_url_hash' => $urlHash,
+            'content_hash' => $this->validator->firstScalar($elementData['content_hash'] ?? null) ?? hash('sha256', $pageUrl),
             'language' => $elementData['lang'] ?? 'en',
             'images' => is_array($images) ? json_encode($images) : $images,
             'pdfs' => is_array($pdfs) ? json_encode($pdfs) : $pdfs,
@@ -187,6 +236,14 @@ class ScrapeFinalizerService
             'content_length' => $elementData['content_length'] ?? null,
             'fetch_time' => $elementData['fetch_time'] ?? null,
             'http_status' => $elementData['http_status'] ?? null,
+        ]);
+
+        PipelineLogger::success('scrape', [
+            'job_id' => $context->jobId,
+            'doc_id' => $urlHash,
+            'source_url' => $pageUrl,
+            'title' => $title,
+            'pipeline_stage' => 'finalization_element_persisted',
         ]);
 
         //Log::info("Successfully created missing element", [
@@ -232,6 +289,20 @@ class ScrapeFinalizerService
             'domain' => $domain,
             'full_domain' => $host,
         ];
+    }
+
+    private function titleFromUrl(?string $url): string
+    {
+        if (!$url) {
+            return 'Untitled document';
+        }
+
+        $path = trim((string) parse_url($url, PHP_URL_PATH), '/');
+        if ($path !== '') {
+            return basename($path);
+        }
+
+        return parse_url($url, PHP_URL_HOST) ?: 'Untitled document';
     }
 
 
