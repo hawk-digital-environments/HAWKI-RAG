@@ -22,6 +22,7 @@ from .http.routers import (
     build_health_router,
     build_ingest_router,
     build_query_router,
+    build_temporal_router,
 )
 from .http.errors import install_exception_handlers
 from .http.middleware import install_request_context_middleware
@@ -183,4 +184,5 @@ def build_app(
             log_graph_status=log_graph_status,
         )
     )
+    app.include_router(build_temporal_router(logger=logger))
     return app

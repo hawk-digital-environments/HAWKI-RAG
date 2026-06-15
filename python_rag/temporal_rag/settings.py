@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import timedelta
 import os
 
 
@@ -35,10 +36,14 @@ def _env_float(name: str, default: float) -> float:
 class TemporalRagSettings:
     temporal_address: str
     temporal_namespace: str
+    workflow_type: str
     workflow_task_queue: str
     scraper_task_queue: str
     converter_task_queue: str
     ingestion_task_queue: str
+    workflow_execution_timeout_seconds: int
+    workflow_run_timeout_seconds: int
+    workflow_task_timeout_seconds: int
     scraper_url: str
     scraper_start_path: str
     scraper_status_path: str
@@ -63,10 +68,14 @@ class TemporalRagSettings:
         return cls(
             temporal_address=_env("TEMPORAL_ADDRESS", "temporal:7233"),
             temporal_namespace=_env("TEMPORAL_NAMESPACE", "default"),
+            workflow_type=_env("TEMPORAL_INGEST_WORKFLOW_TYPE", "IngestSourceWorkflow"),
             workflow_task_queue=_env("TEMPORAL_RAG_WORKFLOW_TASK_QUEUE", "rag-workflow-task-queue"),
             scraper_task_queue=_env("TEMPORAL_RAG_SCRAPER_TASK_QUEUE", "rag-scraper-task-queue"),
             converter_task_queue=_env("TEMPORAL_RAG_CONVERTER_TASK_QUEUE", "rag-converter-task-queue"),
             ingestion_task_queue=_env("TEMPORAL_RAG_INGESTION_TASK_QUEUE", "rag-ingestion-task-queue"),
+            workflow_execution_timeout_seconds=_duration_seconds("TEMPORAL_WORKFLOW_EXECUTION_TIMEOUT", 86400),
+            workflow_run_timeout_seconds=_duration_seconds("TEMPORAL_WORKFLOW_RUN_TIMEOUT", 21600),
+            workflow_task_timeout_seconds=_duration_seconds("TEMPORAL_WORKFLOW_TASK_TIMEOUT", 30),
             scraper_url=_env("EXTERNAL_SCRAPER_URL", _env("CUSTOM_CRAWLER_URL", "http://crawler:8000")),
             scraper_start_path=_env("EXTERNAL_SCRAPER_START_PATH", "/api/scrape/start"),
             scraper_status_path=_env("EXTERNAL_SCRAPER_STATUS_PATH", "/api/scrape/jobs/{job_id}"),
@@ -86,6 +95,48 @@ class TemporalRagSettings:
             db_user=_env("DB_USERNAME", "rag_user"),
             db_password=_env("DB_PASSWORD", ""),
         )
+
+    @property
+    def workflow_execution_timeout(self) -> timedelta:
+        return timedelta(seconds=self.workflow_execution_timeout_seconds)
+
+    @property
+    def workflow_run_timeout(self) -> timedelta:
+        return timedelta(seconds=self.workflow_run_timeout_seconds)
+
+    @property
+    def workflow_task_timeout(self) -> timedelta:
+        return timedelta(seconds=self.workflow_task_timeout_seconds)
+
+    def cron_for_cadence(self, cadence: str) -> str:
+        key = cadence.strip().lower()
+        if key == "daily":
+            return _env("TEMPORAL_RAG_DAILY_CRON", "0 2 * * *")
+        if key == "weekly":
+            return _env("TEMPORAL_RAG_WEEKLY_CRON", "0 2 * * 0")
+        if key == "monthly":
+            return _env("TEMPORAL_RAG_MONTHLY_CRON", "0 2 1 * *")
+        raise ValueError(f"Unsupported Temporal refresh cadence [{cadence}].")
+
+
+def _duration_seconds(name: str, default: int) -> int:
+    raw = _env(name, str(default)).lower().strip()
+    parts = raw.split()
+    if len(parts) == 2 and parts[0].isdigit():
+        value = int(parts[0])
+        unit = parts[1].rstrip("s")
+        if unit == "second":
+            return value
+        if unit == "minute":
+            return value * 60
+        if unit == "hour":
+            return value * 3600
+        if unit == "day":
+            return value * 86400
+    try:
+        return int(raw)
+    except ValueError:
+        return default
 
 
 __all__ = ["TemporalRagSettings"]

@@ -1,0 +1,61 @@
+info:
+  name: Start Pipeline Task
+  type: http
+  seq: 8
+  tags:
+    - pipeline
+    - mutation
+
+http:
+  method: POST
+  url: "{{baseUrl}}/api/pipeline/tasks/start"
+  headers:
+    - name: Accept
+      value: application/json
+    - name: Content-Type
+      value: application/json
+  body:
+    type: json
+    data: |-
+      {
+        "task_id": "{{taskId}}",
+        "dataset_id": "{{datasetId}}",
+        "sitemap_url": "{{sitemapUrl}}",
+        "source_url": "{{sourceUrl}}",
+        "urls": [
+          "{{seedUrl}}"
+        ],
+        "refresh_cadence": "{{refreshCadence}}",
+        "metadata": {
+          "tenant": "{{tenant}}"
+        }
+      }
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  Start pipeline task with optional source and scheduling options.
+
+runtime:
+  scripts:
+    - type: tests
+      code: |-
+          test("Start Pipeline Task" + " should return a successful status", function () {
+            const status = res.getStatus();
+            expect(status).to.be.within(200, 299);
+          });
+
+          test("Start Pipeline Task" + " should return JSON body", function () {
+            const body = res.getBody();
+            expect(body).to.be.an("object");
+          });
+
+          test("Start Pipeline Task" + " should include response time", function () {
+            const responseTime = res.getResponseTime();
+            expect(responseTime).to.be.a("number");
+            expect(responseTime).to.be.at.least(0);
+          });

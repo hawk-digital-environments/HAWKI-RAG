@@ -18,8 +18,7 @@
         "league/commonmark": "^2.7",
         "league/flysystem-sftp-v3": "^3.30.0",
         "ramsey/uuid": "^4.9",
-        "symfony/yaml": "^7.2",
-        "temporal/sdk": "^2.17"
+        "symfony/yaml": "^7.2"
     },
     "require-dev": {
         "fakerphp/faker": "^1.23",

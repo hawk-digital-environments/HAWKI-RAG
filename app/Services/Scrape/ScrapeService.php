@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace App\Services\Scrape;
 
 use App\Services\Pipeline\State\PipelineStateService;
+use App\Services\Scrape\Clients\ScrapeCrawlerClient;
 use App\Services\Scrape\Data\ScrapeRequestResult;
 use App\Services\Scrape\Repositories\ScrapeProcessRepository;
+use App\Services\Scrape\Tasks\ScrapeTaskService;
 
 class ScrapeService
 {

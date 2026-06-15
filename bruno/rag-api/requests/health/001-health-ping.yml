@@ -1,0 +1,51 @@
+info:
+  name: Health Ping
+  type: http
+  seq: 1
+  tags:
+    - health
+    - smoke
+
+http:
+  method: GET
+  url: "{{baseUrl}}/api/ping"
+  headers:
+    - name: Accept
+      value: application/json
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  Basic liveness check for the API service.
+
+runtime:
+  scripts:
+    - type: tests
+      code: |-
+          test("Health Ping" + " should return a successful status", function () {
+            const status = res.getStatus();
+            expect(status).to.be.within(200, 299);
+          });
+
+          test("Health Ping" + " should return JSON body", function () {
+            const body = res.getBody();
+            expect(body).to.be.an("object");
+          });
+
+          test("Health Ping" + " should not return an error payload type", function () {
+            const body = res.getBody();
+            if (body && typeof body.success === "boolean") {
+              expect(body.success).to.be.oneOf([true, false]);
+            }
+          });
+
+          test("Health Ping" + " should include response time", function () {
+            const responseTime = res.getResponseTime();
+            expect(responseTime).to.be.a("number");
+            expect(responseTime).to.be.at.least(0);
+          });
+

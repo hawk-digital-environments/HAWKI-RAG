@@ -1,0 +1,70 @@
+info:
+  name: Submit Query
+  type: http
+  seq: 25
+  tags:
+    - rag
+    - query
+    - smoke
+
+http:
+  method: POST
+  url: "{{baseUrl}}/api/query"
+  headers:
+    - name: Accept
+      value: application/json
+    - name: Content-Type
+      value: application/json
+  auth:
+    type: bearer
+    token: "{{token}}"
+  body:
+    type: json
+    data: |-
+      {
+        "query": "{{query}}",
+        "top_k": 10,
+        "is_optimized": true,
+        "generate": true,
+        "fast_mode": false,
+        "preferred_tags": [
+          "{{tag1}}",
+          "{{tag2}}"
+        ]
+      }
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  Send a RAG query and return generated answer payload.
+
+runtime:
+  scripts:
+    - type: tests
+      code: |-
+          test("Submit Query" + " should return a successful status", function () {
+            const status = res.getStatus();
+            expect(status).to.be.within(200, 299);
+          });
+
+          test("Submit Query" + " should return JSON body", function () {
+            const body = res.getBody();
+            expect(body).to.be.an("object");
+          });
+
+          test("Submit Query" + " should have auth configured", function () {
+            const authHeader = req.getHeader("Authorization") || "";
+            const token = bru.getVar("token") || bru.getEnvVar("token") || bru.getSecretVar("token") || "";
+            expect(Boolean(authHeader) || Boolean(token)).to.equal(true);
+          });
+
+          test("Submit Query" + " should include response time", function () {
+            const responseTime = res.getResponseTime();
+            expect(responseTime).to.be.a("number");
+            expect(responseTime).to.be.at.least(0);
+          });
+

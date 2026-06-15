@@ -1,0 +1,55 @@
+info:
+  name: Clear Neo4j Graph
+  type: http
+  seq: 39
+  tags:
+    - rag
+    - graph
+    - mutation
+    - destructive
+
+http:
+  method: POST
+  url: "{{baseUrl}}/api/rag/neo4j/clear"
+  headers:
+    - name: Accept
+      value: application/json
+  auth:
+    type: bearer
+    token: "{{token}}"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  Clear Neo4j graph data (destructive). Use only in non-production.
+
+runtime:
+  scripts:
+    - type: tests
+      code: |-
+          test("Clear Neo4j Graph" + " should return a successful status", function () {
+            const status = res.getStatus();
+            expect(status).to.be.within(200, 299);
+          });
+
+          test("Clear Neo4j Graph" + " should return JSON body", function () {
+            const body = res.getBody();
+            expect(body).to.be.an("object");
+          });
+
+          test("Clear Neo4j Graph" + " should have auth configured", function () {
+            const authHeader = req.getHeader("Authorization") || "";
+            const token = bru.getVar("token") || bru.getEnvVar("token") || bru.getSecretVar("token") || "";
+            expect(Boolean(authHeader) || Boolean(token)).to.equal(true);
+          });
+
+          test("Clear Neo4j Graph" + " should include response time", function () {
+            const responseTime = res.getResponseTime();
+            expect(responseTime).to.be.a("number");
+            expect(responseTime).to.be.at.least(0);
+          });
+

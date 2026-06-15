@@ -1,0 +1,55 @@
+info:
+  name: List Pipeline Jobs
+  type: http
+  seq: 10
+  tags:
+    - pipeline
+    - jobs
+
+http:
+  method: GET
+  url: "{{baseUrl}}/api/pipeline/tasks/:taskId/jobs"
+  params:
+    - name: taskId
+      value: "{{taskId}}"
+      type: path
+  headers:
+    - name: Accept
+      value: application/json
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  List jobs for a given pipeline task.
+
+runtime:
+  scripts:
+    - type: tests
+      code: |-
+          test("List Pipeline Jobs" + " should return a successful status", function () {
+            const status = res.getStatus();
+            expect(status).to.be.within(200, 299);
+          });
+
+          test("List Pipeline Jobs" + " should return JSON body", function () {
+            const body = res.getBody();
+            expect(body).to.be.an("object");
+          });
+
+          test("List Pipeline Jobs" + " should not return an error payload type", function () {
+            const body = res.getBody();
+            if (body && typeof body.success === "boolean") {
+              expect(body.success).to.be.oneOf([true, false]);
+            }
+          });
+
+          test("List Pipeline Jobs" + " should include response time", function () {
+            const responseTime = res.getResponseTime();
+            expect(responseTime).to.be.a("number");
+            expect(responseTime).to.be.at.least(0);
+          });
+

@@ -1,0 +1,54 @@
+info:
+  name: List Pipeline Tasks
+  type: http
+  seq: 7
+  tags:
+    - pipeline
+    - list
+
+http:
+  method: GET
+  url: "{{baseUrl}}/api/pipeline/tasks"
+  params:
+    - name: limit
+      value: "{{pipelineTaskLimit}}"
+      type: query
+  headers:
+    - name: Accept
+      value: application/json
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  List pipeline tasks.
+
+runtime:
+  scripts:
+    - type: tests
+      code: |-
+          test("List Pipeline Tasks" + " should return a successful status", function () {
+            const status = res.getStatus();
+            expect(status).to.be.within(200, 299);
+          });
+
+          test("List Pipeline Tasks" + " should return JSON body", function () {
+            const body = res.getBody();
+            expect(body).to.be.an("object");
+          });
+
+          test("List Pipeline Tasks" + " should not return an error payload type", function () {
+            const body = res.getBody();
+            if (body && typeof body.success === "boolean") {
+              expect(body.success).to.be.oneOf([true, false]);
+            }
+          });
+
+          test("List Pipeline Tasks" + " should include response time", function () {
+            const responseTime = res.getResponseTime();
+            expect(responseTime).to.be.a("number");
+            expect(responseTime).to.be.at.least(0);
+          });

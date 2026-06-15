@@ -1,0 +1,51 @@
+info:
+  name: Cancel Scrape
+  type: http
+  seq: 2
+  tags:
+    - scrape
+
+http:
+  method: POST
+  url: "{{baseUrl}}/cancelScrape"
+  headers:
+    - name: Accept
+      value: application/json
+    - name: Content-Type
+      value: application/json
+  body:
+    type: json
+    data: |-
+      {
+        "jobId": "{{jobId}}"
+      }
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  Cancel an in-flight scrape job.
+
+runtime:
+  scripts:
+    - type: tests
+      code: |-
+          test("Cancel Scrape" + " should return a successful status", function () {
+            const status = res.getStatus();
+            expect(status).to.be.within(200, 299);
+          });
+
+          test("Cancel Scrape" + " should return JSON body", function () {
+            const body = res.getBody();
+            expect(body).to.be.an("object");
+          });
+
+          test("Cancel Scrape" + " should include response time", function () {
+            const responseTime = res.getResponseTime();
+            expect(responseTime).to.be.a("number");
+            expect(responseTime).to.be.at.least(0);
+          });
+

@@ -62,6 +62,13 @@ class DocumentBrowserTest extends TestCase
             ]);
     }
 
+    public function test_document_detail_returns_not_found_for_non_numeric_placeholder_id(): void
+    {
+        $this->getJson('/api/documents/sample-document-id')
+            ->assertNotFound()
+            ->assertJsonPath('success', false);
+    }
+
     private function createIngestedDocument(): Document
     {
         Dataset::query()->create([

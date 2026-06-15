@@ -1,0 +1,56 @@
+info:
+  name: Create Dataset
+  type: http
+  seq: 3
+  tags:
+    - datasets
+    - mutation
+
+http:
+  method: POST
+  url: "{{baseUrl}}/api/datasets"
+  headers:
+    - name: Accept
+      value: application/json
+    - name: Content-Type
+      value: application/json
+  body:
+    type: json
+    data: |-
+      {
+        "dataset_id": "{{datasetId}}",
+        "name": "{{datasetName}}",
+        "description": "Sample dataset",
+        "status": "{{datasetStatus}}",
+        "qdrant_collection": "{{qdrantCollection}}",
+        "neo4j_namespace": "{{neo4jNamespace}}"
+      }
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  Create a dataset and receive datasetId in response.
+
+runtime:
+  scripts:
+    - type: tests
+      code: |-
+          test("Create Dataset" + " should return a successful status", function () {
+            const status = res.getStatus();
+            expect(status).to.be.within(200, 299);
+          });
+
+          test("Create Dataset" + " should return JSON body", function () {
+            const body = res.getBody();
+            expect(body).to.be.an("object");
+          });
+
+          test("Create Dataset" + " should include response time", function () {
+            const responseTime = res.getResponseTime();
+            expect(responseTime).to.be.a("number");
+            expect(responseTime).to.be.at.least(0);
+          });

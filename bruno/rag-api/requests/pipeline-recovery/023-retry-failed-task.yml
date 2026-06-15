@@ -1,0 +1,49 @@
+info:
+  name: Retry Failed Task
+  type: http
+  seq: 23
+  tags:
+    - pipeline
+    - recovery
+    - retry
+
+http:
+  method: POST
+  url: "{{baseUrl}}/api/pipeline/recovery/tasks/:taskId/retry-failed"
+  params:
+    - name: taskId
+      value: "{{taskId}}"
+      type: path
+  headers:
+    - name: Accept
+      value: application/json
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  Retry failed jobs for one task.
+
+runtime:
+  scripts:
+    - type: tests
+      code: |-
+          test("Retry Failed Task" + " should return a successful status", function () {
+            const status = res.getStatus();
+            expect(status).to.be.within(200, 299);
+          });
+
+          test("Retry Failed Task" + " should return JSON body", function () {
+            const body = res.getBody();
+            expect(body).to.be.an("object");
+          });
+
+          test("Retry Failed Task" + " should include response time", function () {
+            const responseTime = res.getResponseTime();
+            expect(responseTime).to.be.a("number");
+            expect(responseTime).to.be.at.least(0);
+          });
+

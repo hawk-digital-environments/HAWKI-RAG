@@ -1,0 +1,52 @@
+info:
+  name: Delete Scrape Content
+  type: http
+  seq: 5
+  tags:
+    - scrape
+    - mutation
+
+http:
+  method: POST
+  url: "{{baseUrl}}/deleteScrapeContent"
+  headers:
+    - name: Accept
+      value: application/json
+    - name: Content-Type
+      value: application/json
+  body:
+    type: json
+    data: |-
+      {
+        "jobId": "{{jobId}}"
+      }
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  Delete stored content for one scrape job.
+
+runtime:
+  scripts:
+    - type: tests
+      code: |-
+          test("Delete Scrape Content" + " should return a successful status", function () {
+            const status = res.getStatus();
+            expect(status).to.be.within(200, 299);
+          });
+
+          test("Delete Scrape Content" + " should return JSON body", function () {
+            const body = res.getBody();
+            expect(body).to.be.an("object");
+          });
+
+          test("Delete Scrape Content" + " should include response time", function () {
+            const responseTime = res.getResponseTime();
+            expect(responseTime).to.be.a("number");
+            expect(responseTime).to.be.at.least(0);
+          });
+

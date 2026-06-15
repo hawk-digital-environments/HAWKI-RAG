@@ -3,6 +3,7 @@
 SHELL := /bin/bash
 
 COMPOSE_BIN ?= docker compose
+COMPOSE_PARALLEL_LIMIT ?= 1
 
 # Core stack variables (override via `make VAR=value`)
 ENV_FILE ?= .env
@@ -55,10 +56,27 @@ ifneq ($(strip $(COMPOSE_PROFILES)),)
 	COMPOSE_PROFILE_PREFIX := COMPOSE_PROFILES=$(COMPOSE_PROFILES)
 endif
 COMPOSE_FILE_PREFIX := COMPOSE_FILE=$(COMPOSE_FILE_LIST)
-COMPOSE_CMD = $(COMPOSE_ENV_PREFIX) COMPOSE_FILE=$(COMPOSE_FILE_LIST) $(if $(strip $(COMPOSE_PROFILES)),COMPOSE_PROFILES=$(COMPOSE_PROFILES)) $(COMPOSE_BIN) --env-file $(ENV_FILE)
+COMPOSE_CMD = $(COMPOSE_ENV_PREFIX) COMPOSE_PARALLEL_LIMIT=$(COMPOSE_PARALLEL_LIMIT) COMPOSE_FILE=$(COMPOSE_FILE_LIST) $(if $(strip $(COMPOSE_PROFILES)),COMPOSE_PROFILES=$(COMPOSE_PROFILES)) $(COMPOSE_BIN) --env-file $(ENV_FILE)
 
+# Bruno collection test variables (override via `make VAR=value`)
+BRUNO_BIN ?= bru
+BRUNO_ENV ?= local
+BRUNO_BASE_URL ?= http://localhost:8080
+BRUNO_REPORT_DIR ?= $(CURDIR)/bruno/reports
+BRUNO_RUN_FLAGS ?= --bail
+BRUNO_REPORT_FLAGS ?= --reporter-skip-all-headers --reporter-skip-body
+BRUNO_API_DIR ?= bruno/rag-api
+BRUNO_WEB_DIR ?= bruno/rag-web
+BRUNO_DATASET_ID ?= rawki-demo
+BRUNO_UPLOAD_FILE ?= fixtures/turbo-paper.pdf
+BRUNO_GRAPH ?= true
+BRUNO_API_ARGS = --env $(BRUNO_ENV) --env-var baseUrl=$(BRUNO_BASE_URL)
+BRUNO_PIPELINE_ARGS = --env-var datasetId=$(BRUNO_DATASET_ID) --env-var file=$(BRUNO_UPLOAD_FILE) --env-var graph=$(BRUNO_GRAPH)
+export RAWKI_API_TOKEN
+export BRUNO_ALLOW_DESTRUCTIVE
 
-.PHONY: clean network pull-core build-app migrate-core _up-core up-core up-core-ui up-core-server health pull-models logs-core logs-core-ui down-core down-rag restart-core restart-core-ui test-services neo4j-fresh python-test python-deps
+.PHONY: clean network pull-core build-app migrate-core _up-core up-core up-core-ui up-core-server health pull-models logs-core logs-core-ui down-core down-rag restart-core restart-core-ui test-services test-bruno test-bruno-full test-bruno-smoke test-bruno-api test-bruno-pipeline test-bruno-scraper test-bruno-converter test-bruno-everything test-bruno-destructive bruno-reports _bruno-require-token _bruno-require-destructive neo4j-fresh python-test python-deps
+.NOTPARALLEL: test-bruno test-bruno-full test-bruno-everything
 
 clean:
 	@find . -type d -name "__pycache__" -exec rm -rf {} +
@@ -237,6 +255,107 @@ test-services:
 		printf "hawki_rag_rerank: skipped (container not running)\n"; \
 	fi; \
 	echo "Service checks completed."
+
+bruno-reports:
+	@mkdir -p "$(BRUNO_REPORT_DIR)"
+
+_bruno-require-token:
+	@if [ -z "$${RAWKI_API_TOKEN:-}" ]; then \
+		echo "RAWKI_API_TOKEN is required for Sanctum-protected Bruno API tests."; \
+		echo "Create a local token with: docker exec -it hawki_rag_app php artisan user:token"; \
+		echo "Then run: export RAWKI_API_TOKEN=your-local-token"; \
+		exit 1; \
+	fi
+
+_bruno-require-destructive:
+	@if [ "$(BRUNO_ALLOW_DESTRUCTIVE)" != "1" ]; then \
+		echo "Refusing destructive Bruno tests."; \
+		echo "Re-run with BRUNO_ALLOW_DESTRUCTIVE=1 if you intend to clear local graph data."; \
+		exit 1; \
+	fi
+
+test-bruno: test-bruno-full
+
+test-bruno-full: test-bruno-smoke test-bruno-api test-bruno-pipeline test-bruno-scraper test-bruno-converter
+	@echo "Bruno full non-destructive suite completed. Reports: $(BRUNO_REPORT_DIR)"
+
+test-bruno-smoke: bruno-reports
+	@echo "Running Bruno smoke tests against $(BRUNO_BASE_URL)..."
+	@cd $(BRUNO_API_DIR) && $(BRUNO_BIN) run requests -r \
+		$(BRUNO_API_ARGS) \
+		--tags smoke \
+		--exclude-tags rag \
+		$(BRUNO_RUN_FLAGS) \
+		--reporter-junit "$(BRUNO_REPORT_DIR)/bruno-smoke-junit.xml" \
+		--reporter-json "$(BRUNO_REPORT_DIR)/bruno-smoke.json" \
+		$(BRUNO_REPORT_FLAGS)
+
+test-bruno-api: _bruno-require-token bruno-reports
+	@echo "Running Bruno API tests against $(BRUNO_BASE_URL)..."
+	@cd $(BRUNO_API_DIR) && $(BRUNO_BIN) run \
+		requests/health \
+		requests/datasets \
+		requests/documents \
+		requests/rag \
+		requests/rag-graph \
+		-r \
+		$(BRUNO_API_ARGS) \
+		--env-var token="$${RAWKI_API_TOKEN}" \
+		--exclude-tags destructive \
+		$(BRUNO_RUN_FLAGS) \
+		--reporter-junit "$(BRUNO_REPORT_DIR)/bruno-api-junit.xml" \
+		--reporter-json "$(BRUNO_REPORT_DIR)/bruno-api.json" \
+		$(BRUNO_REPORT_FLAGS)
+
+test-bruno-pipeline: bruno-reports
+	@echo "Running Bruno pipeline tests against $(BRUNO_BASE_URL)..."
+	@cd $(BRUNO_API_DIR) && $(BRUNO_BIN) run \
+		requests/pipeline-health \
+		requests/pipeline-tasks \
+		requests/pipeline-recovery \
+		-r \
+		$(BRUNO_API_ARGS) \
+		$(BRUNO_PIPELINE_ARGS) \
+		--exclude-tags destructive \
+		$(BRUNO_RUN_FLAGS) \
+		--reporter-junit "$(BRUNO_REPORT_DIR)/bruno-pipeline-junit.xml" \
+		--reporter-json "$(BRUNO_REPORT_DIR)/bruno-pipeline.json" \
+		$(BRUNO_REPORT_FLAGS)
+
+test-bruno-scraper: bruno-reports
+	@echo "Running Bruno scraper tests against $(BRUNO_BASE_URL)..."
+	@cd $(BRUNO_WEB_DIR) && $(BRUNO_BIN) run requests/web-scrape -r \
+		$(BRUNO_API_ARGS) \
+		--exclude-tags destructive \
+		$(BRUNO_RUN_FLAGS) \
+		--reporter-junit "$(BRUNO_REPORT_DIR)/bruno-scraper-junit.xml" \
+		--reporter-json "$(BRUNO_REPORT_DIR)/bruno-scraper.json" \
+		$(BRUNO_REPORT_FLAGS)
+
+test-bruno-converter: bruno-reports
+	@echo "Running Bruno converter-facing pipeline checks against $(BRUNO_BASE_URL)..."
+	@cd $(BRUNO_API_DIR) && $(BRUNO_BIN) run \
+		requests/pipeline-health/017-pipeline-health.yml \
+		requests/pipeline-upload/018-upload-pipeline-file.yml \
+		$(BRUNO_API_ARGS) \
+		$(BRUNO_PIPELINE_ARGS) \
+		$(BRUNO_RUN_FLAGS) \
+		--reporter-junit "$(BRUNO_REPORT_DIR)/bruno-converter-junit.xml" \
+		--reporter-json "$(BRUNO_REPORT_DIR)/bruno-converter.json" \
+		$(BRUNO_REPORT_FLAGS)
+
+test-bruno-everything: test-bruno-full test-bruno-destructive
+	@echo "Bruno full suite including destructive tests completed. Reports: $(BRUNO_REPORT_DIR)"
+
+test-bruno-destructive: _bruno-require-token _bruno-require-destructive bruno-reports
+	@echo "Running destructive Bruno tests against $(BRUNO_BASE_URL)..."
+	@cd $(BRUNO_API_DIR) && $(BRUNO_BIN) run requests/rag-graph/039-clear-neo4j-graph.yml \
+		$(BRUNO_API_ARGS) \
+		--env-var token="$${RAWKI_API_TOKEN}" \
+		$(BRUNO_RUN_FLAGS) \
+		--reporter-junit "$(BRUNO_REPORT_DIR)/bruno-destructive-junit.xml" \
+		--reporter-json "$(BRUNO_REPORT_DIR)/bruno-destructive.json" \
+		$(BRUNO_REPORT_FLAGS)
 
 python-test:
 	@PYTHONPATH=python_rag python -m unittest discover -s python_rag/tests -p 'test_*.py'

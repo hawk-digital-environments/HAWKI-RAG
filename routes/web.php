@@ -14,6 +14,7 @@ use App\Http\Controllers\ScrapeController;
 use Illuminate\Support\Facades\Route;
 
 Route::redirect('/', '/hawki-rag-playground');
+Route::get('/swagger', fn () => redirect('/swagger/index.html'));
 
 // HAWKI RAG playground helpers
 

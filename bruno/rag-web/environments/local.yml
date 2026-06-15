@@ -1,0 +1,16 @@
+name: local
+variables:
+  - name: baseUrl
+    value: http://localhost:8080
+  - name: url
+    value: https://example.com/
+  - name: label
+    value: rawki-demo
+  - name: outputDir
+    value: /shared/crawled/rawki-demo
+  - name: dateSelector
+    value: time
+  - name: jobId
+    value: sample-scrape-job-id
+  - name: taskId
+    value: sample-crawler-task-id

@@ -1,0 +1,65 @@
+info:
+  name: Request Scrape
+  type: http
+  seq: 1
+  tags:
+    - scrape
+    - mutation
+
+http:
+  method: POST
+  url: "{{baseUrl}}/requestScrape"
+  headers:
+    - name: Accept
+      value: application/json
+    - name: Content-Type
+      value: application/json
+  body:
+    type: json
+    data: |-
+      {
+        "url": "{{url}}",
+        "label": "{{label}}",
+        "maxPages": 10,
+        "outputDir": "{{outputDir}}",
+        "skipImages": true,
+        "imageExceptions": [
+          ".ad",
+          ".cookie"
+        ],
+        "discoveryMode": false,
+        "dateSelector": "{{dateSelector}}",
+        "maxConcurrency": 2,
+        "maxRpm": 120,
+        "requestDelay": 0
+      }
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  Start a scrape run from a public URL.
+
+runtime:
+  scripts:
+    - type: tests
+      code: |-
+          test("Request Scrape" + " should return a successful status", function () {
+            const status = res.getStatus();
+            expect(status).to.be.within(200, 299);
+          });
+
+          test("Request Scrape" + " should return JSON body", function () {
+            const body = res.getBody();
+            expect(body).to.be.an("object");
+          });
+
+          test("Request Scrape" + " should include response time", function () {
+            const responseTime = res.getResponseTime();
+            expect(responseTime).to.be.a("number");
+            expect(responseTime).to.be.at.least(0);
+          });
+

@@ -6,8 +6,8 @@ return [
     | Temporal RAG Orchestration
     |--------------------------------------------------------------------------
     |
-    | Laravel starts and manages Temporal workflow executions. Python workers
-    | execute the workflow and activities on the task queues configured here.
+    | Laravel stores metadata and delegates Temporal client operations to the
+    | Python bridge. Python starts workflows and runs activities/workers.
     |
     */
 
@@ -16,6 +16,8 @@ return [
     'ui_port' => env('TEMPORAL_UI_PORT', 8081),
     'namespace' => env('TEMPORAL_NAMESPACE', 'default'),
     'identity' => env('TEMPORAL_CLIENT_IDENTITY', 'hawki-rag-laravel'),
+    'bridge_url' => env('HAWKI_RAG_BRIDGE_URL', 'http://hawki_rag_bridge:8000'),
+    'bridge_timeout' => env('HAWKI_RAG_BRIDGE_TIMEOUT', 30),
 
     'workflow' => [
         'type' => env('TEMPORAL_INGEST_WORKFLOW_TYPE', 'IngestSourceWorkflow'),

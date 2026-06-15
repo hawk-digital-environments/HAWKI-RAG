@@ -12,7 +12,7 @@ use App\Services\Pipeline\Repositories\PipelineJobCreationRepository;
 use App\Services\Pipeline\Repositories\PipelineJobStateMutationRepository;
 use App\Services\Pipeline\Repositories\PipelineTaskRepository;
 use App\Services\Pipeline\Repositories\PipelineTransactionRepository;
-use App\Services\Temporal\TemporalOrchestrationClient;
+use App\Services\Pipeline\Clients\PythonTemporalBridgeClient;
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Support\Carbon;
 use Psr\Clock\ClockInterface;
@@ -34,7 +34,7 @@ readonly class PipelineTaskStarter
         private PipelineJobStateMutationRepository $jobStates,
         private PipelineTransactionRepository $transactions,
         private PipelineTaskStatusRefresher $refresher,
-        private TemporalOrchestrationClient $temporal,
+        private PythonTemporalBridgeClient $temporalBridge,
         private ClockInterface $clock = new Clock(),
     ) {
     }
@@ -122,12 +122,12 @@ readonly class PipelineTaskStarter
         $workflowInput = $this->workflowPayloads->input($task, $job, $source);
 
         try {
-            $execution = $this->temporal->startIngestWorkflow($workflowInput, $workflowId);
+            $execution = $this->temporalBridge->startIngestWorkflow($workflowInput, $workflowId);
             $scheduleId = null;
 
             if ($cadence !== null) {
                 $scheduleId = $this->workflowPayloads->scheduleId($sourceId);
-                $this->temporal->upsertIngestSchedule($scheduleId, $workflowId, $cadence, $workflowInput);
+                $this->temporalBridge->upsertIngestSchedule($scheduleId, $workflowId, $cadence, $workflowInput);
             }
 
             $metadata['temporal'] = array_filter([

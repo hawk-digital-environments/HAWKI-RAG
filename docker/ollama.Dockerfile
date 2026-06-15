@@ -9,7 +9,13 @@ ARG TARGETARCH
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    git ca-certificates curl build-essential cmake pkg-config \
+    git ca-certificates curl build-essential gpg wget lsb-release pkg-config \
+    && wget -O - https://apt.kitware.com/keys/kitware-archive-latest.asc \
+        | gpg --dearmor -o /usr/share/keyrings/kitware-archive-keyring.gpg \
+    && echo "deb [signed-by=/usr/share/keyrings/kitware-archive-keyring.gpg] https://apt.kitware.com/ubuntu/ $(lsb_release -cs) main" \
+        > /etc/apt/sources.list.d/kitware.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends cmake \
     && rm -rf /var/lib/apt/lists/*
 
 # Build Ollama from source with CUDA support

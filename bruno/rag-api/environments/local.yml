@@ -1,0 +1,84 @@
+name: local
+variables:
+  - name: baseUrl
+    value: http://localhost:8080
+  - name: token
+    secret: true
+  - name: datasetId
+    value: rawki-demo
+  - name: datasetName
+    value: RAWKI Demo
+  - name: datasetStatus
+    value: active
+  - name: datasetLimit
+    value: "50"
+  - name: documentId
+    value: sample-document-id
+  - name: documentLimit
+    value: "100"
+  - name: taskId
+    value: sample-task-id
+  - name: pipelineTaskLimit
+    value: "30"
+  - name: pipelineEventLimit
+    value: "100"
+  - name: failedJobLimit
+    value: "100"
+  - name: jobId
+    value: sample-job-id
+  - name: jobId2
+    value: sample-job-id-2
+  - name: parentJobId
+    value: sample-parent-job-id
+  - name: jobType
+    value: crawl
+  - name: pipelineJobStatus
+    value: queued
+  - name: eventType
+    value: status
+  - name: sourceUrl
+    value: https://example.com/
+  - name: seedUrl
+    value: https://example.com/
+  - name: sitemapUrl
+    value: https://example.com/sitemap.xml
+  - name: refreshCadence
+    value: daily
+  - name: tenant
+    value: local
+  - name: contentHash
+    value: sample-content-hash
+  - name: localPath
+    value: /shared/rawki-demo/sample.md
+  - name: file
+    value: fixtures/turbo-paper.pdf
+  - name: graph
+    value: "true"
+  - name: pipelineHealthTimeout
+    value: "5"
+  - name: qdrantCollection
+    value: rawki_demo
+  - name: neo4jNamespace
+    value: rawki_demo
+  - name: query
+    value: What is in the indexed documents?
+  - name: searchQuery
+    value: example
+  - name: tag1
+    value: demo
+  - name: tag2
+    value: local
+  - name: nodeId
+    value: sample-node-id
+  - name: graphOverviewLimit
+    value: "80"
+  - name: graphSearchLimit
+    value: "12"
+  - name: graphSemanticSearchLimit
+    value: "8"
+  - name: graphNodeLimit
+    value: "80"
+  - name: snapshotName
+    value: Local snapshot
+  - name: snapshotId
+    value: sample-snapshot-id

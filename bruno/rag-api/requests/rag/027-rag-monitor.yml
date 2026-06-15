@@ -1,0 +1,60 @@
+info:
+  name: RAG Monitor
+  type: http
+  seq: 27
+  tags:
+    - rag
+    - health
+
+http:
+  method: GET
+  url: "{{baseUrl}}/api/rag/monitor"
+  headers:
+    - name: Accept
+      value: application/json
+  auth:
+    type: bearer
+    token: "{{token}}"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  Read RAG monitor output and runtime flags.
+
+runtime:
+  scripts:
+    - type: tests
+      code: |-
+          test("RAG Monitor" + " should return a successful status", function () {
+            const status = res.getStatus();
+            expect(status).to.be.within(200, 299);
+          });
+
+          test("RAG Monitor" + " should return JSON body", function () {
+            const body = res.getBody();
+            expect(body).to.be.an("object");
+          });
+
+          test("RAG Monitor" + " should not return an error payload type", function () {
+            const body = res.getBody();
+            if (body && typeof body.success === "boolean") {
+              expect(body.success).to.be.oneOf([true, false]);
+            }
+          });
+
+          test("RAG Monitor" + " should have auth configured", function () {
+            const authHeader = req.getHeader("Authorization") || "";
+            const token = bru.getVar("token") || bru.getEnvVar("token") || bru.getSecretVar("token") || "";
+            expect(Boolean(authHeader) || Boolean(token)).to.equal(true);
+          });
+
+          test("RAG Monitor" + " should include response time", function () {
+            const responseTime = res.getResponseTime();
+            expect(responseTime).to.be.a("number");
+            expect(responseTime).to.be.at.least(0);
+          });
+

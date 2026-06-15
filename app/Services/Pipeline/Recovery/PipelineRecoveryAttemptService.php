@@ -13,7 +13,7 @@ use App\Services\Pipeline\Repositories\PipelineTaskRepository;
 use App\Services\Pipeline\Repositories\PipelineTransactionRepository;
 use App\Services\Pipeline\Tasks\IngestSourceWorkflowPayloadFactory;
 use App\Services\Pipeline\Tasks\PipelineTaskService;
-use App\Services\Temporal\TemporalOrchestrationClient;
+use App\Services\Pipeline\Clients\PythonTemporalBridgeClient;
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Support\Carbon;
 use Psr\Clock\ClockInterface;
@@ -33,7 +33,7 @@ readonly class PipelineRecoveryAttemptService
         private PipelineJobStateMutationRepository $jobStates,
         private PipelineTaskRepository $taskRepository,
         private PipelineTransactionRepository $transactions,
-        private TemporalOrchestrationClient $temporal,
+        private PythonTemporalBridgeClient $temporalBridge,
         private LoggerInterface $logger,
         private ClockInterface $clock = new Clock(),
     ) {
@@ -174,7 +174,7 @@ readonly class PipelineRecoveryAttemptService
         $workflowId = is_string($job->temporal_workflow_id) && trim($job->temporal_workflow_id) !== ''
             ? $job->temporal_workflow_id
             : $this->workflowPayloads->workflowId($source->source_id);
-        $execution = $this->temporal->startIngestWorkflow(
+        $execution = $this->temporalBridge->startIngestWorkflow(
             $this->workflowPayloads->input($task, $job, $source),
             $workflowId,
         );

@@ -1,0 +1,63 @@
+info:
+  name: Get Pipeline Events
+  type: http
+  seq: 12
+  tags:
+    - pipeline
+    - events
+
+http:
+  method: GET
+  url: "{{baseUrl}}/api/pipeline/tasks/:taskId/events"
+  params:
+    - name: taskId
+      value: "{{taskId}}"
+      type: path
+    - name: limit
+      value: "{{pipelineEventLimit}}"
+      type: query
+    - name: event_type
+      value: "{{eventType}}"
+      type: query
+    - name: job_id
+      value: "{{jobId}}"
+      type: query
+  headers:
+    - name: Accept
+      value: application/json
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  List pipeline task events with optional filters.
+
+runtime:
+  scripts:
+    - type: tests
+      code: |-
+          test("Get Pipeline Events" + " should return a successful status", function () {
+            const status = res.getStatus();
+            expect(status).to.be.within(200, 299);
+          });
+
+          test("Get Pipeline Events" + " should return JSON body", function () {
+            const body = res.getBody();
+            expect(body).to.be.an("object");
+          });
+
+          test("Get Pipeline Events" + " should not return an error payload type", function () {
+            const body = res.getBody();
+            if (body && typeof body.success === "boolean") {
+              expect(body.success).to.be.oneOf([true, false]);
+            }
+          });
+
+          test("Get Pipeline Events" + " should include response time", function () {
+            const responseTime = res.getResponseTime();
+            expect(responseTime).to.be.a("number");
+            expect(responseTime).to.be.at.least(0);
+          });

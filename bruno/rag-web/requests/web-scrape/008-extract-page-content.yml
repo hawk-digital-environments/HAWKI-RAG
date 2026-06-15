@@ -1,0 +1,52 @@
+info:
+  name: Extract Page Content
+  type: http
+  seq: 8
+  tags:
+    - scrape
+    - read
+
+http:
+  method: POST
+  url: "{{baseUrl}}/extractPageContent"
+  headers:
+    - name: Accept
+      value: application/json
+    - name: Content-Type
+      value: application/json
+  body:
+    type: json
+    data: |-
+      {
+        "url": "{{url}}"
+      }
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+
+docs: |-
+  Extract page content directly from URL.
+
+runtime:
+  scripts:
+    - type: tests
+      code: |-
+          test("Extract Page Content" + " should return a successful status", function () {
+            const status = res.getStatus();
+            expect(status).to.be.within(200, 299);
+          });
+
+          test("Extract Page Content" + " should return JSON body", function () {
+            const body = res.getBody();
+            expect(body).to.be.an("object");
+          });
+
+          test("Extract Page Content" + " should include response time", function () {
+            const responseTime = res.getResponseTime();
+            expect(responseTime).to.be.a("number");
+            expect(responseTime).to.be.at.least(0);
+          });
+

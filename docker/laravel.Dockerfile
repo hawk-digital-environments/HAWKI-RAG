@@ -40,28 +40,13 @@ ENV DOCKER_PROJECT_HOST=${DOCKER_PROJECT_HOST:-ixdlab.hawk.de} \
     ASSET_URL="${DOCKER_PROJECT_PROTOCOL}://${DOCKER_PROJECT_HOST}${DOCKER_PROJECT_PATH}" \
     APP_URL="${DOCKER_PROJECT_PROTOCOL}://${DOCKER_PROJECT_HOST}${DOCKER_PROJECT_PATH}"
 
-# Install system dependencies
+# Install runtime/build dependencies. The base image already includes the PHP
+# extensions used by Laravel here: gd, pdo_mysql, pdo_pgsql, opcache, bcmath,
+# exif, pcntl, zip, and intl. Temporal client operations run in Python.
 RUN apt-get update && apt-get install -y \
     python3-requests \
-    libpq-dev \
-    libonig-dev \
-    libxml2-dev \
     unzip \
-    libpng-dev \
-    libjpeg-dev \
-    libfreetype6-dev \
-    libicu-dev \
-    libmagickwand-dev \
-    libzip-dev \
-    build-essential \
  && rm -rf /var/lib/apt/lists/*
-
-# Install PHP extensions
-RUN docker-php-ext-configure gd --with-freetype --with-jpeg \
- && docker-php-ext-install -j$(nproc) gd pdo_mysql pdo_pgsql opcache bcmath exif pcntl zip intl sockets \
- && pecl install grpc \
- && docker-php-ext-enable grpc \
- && rm -rf /tmp/*
 
 # Copy only composer files for caching
 COPY composer.json composer.lock ./

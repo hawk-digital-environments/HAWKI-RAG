@@ -10,7 +10,7 @@ use App\Services\Pipeline\Repositories\IngestionSourceRepository;
 use App\Services\Pipeline\Repositories\PipelineJobStateMutationRepository;
 use App\Services\Pipeline\Repositories\PipelineTaskRepository;
 use App\Services\Pipeline\Repositories\Queries\FailedPipelineJobsQuery;
-use App\Services\Temporal\TemporalOrchestrationClient;
+use App\Services\Pipeline\Clients\PythonTemporalBridgeClient;
 use Illuminate\Container\Attributes\Singleton;
 use Psr\Clock\ClockInterface;
 use Symfony\Component\Clock\Clock;
@@ -26,7 +26,7 @@ readonly class PipelineTaskRetryService
         private FailedPipelineJobsQuery $failedJobs,
         private PipelineJobStateMutationRepository $jobStates,
         private PipelineTaskStatusRefresher $refresher,
-        private TemporalOrchestrationClient $temporal,
+        private PythonTemporalBridgeClient $temporalBridge,
         private ClockInterface $clock = new Clock(),
     ) {
     }
@@ -89,7 +89,7 @@ readonly class PipelineTaskRetryService
         ]);
 
         $workflowInput = $this->workflowPayloads->input($task, $job, $source);
-        $execution = $this->temporal->startIngestWorkflow($workflowInput, $workflowId);
+        $execution = $this->temporalBridge->startIngestWorkflow($workflowInput, $workflowId);
         $metadata['temporal'] = array_filter([
             'workflow_id' => $execution->workflowId,
             'run_id' => $execution->runId,

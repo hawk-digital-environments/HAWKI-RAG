@@ -10,7 +10,7 @@ use App\Services\Pipeline\Repositories\IngestionSourceRepository;
 use App\Services\Pipeline\Repositories\PipelineJobStateMutationRepository;
 use App\Services\Pipeline\Repositories\PipelineTaskRepository;
 use App\Services\Pipeline\Repositories\Queries\PipelineTaskJobsQuery;
-use App\Services\Temporal\TemporalOrchestrationClient;
+use App\Services\Pipeline\Clients\PythonTemporalBridgeClient;
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Support\Carbon;
 use Psr\Clock\ClockInterface;
@@ -25,7 +25,7 @@ readonly class PipelineTaskCancellationService
         private PipelineJobStateMutationRepository $jobStates,
         private IngestionSourceRepository $sources,
         private PipelineTaskStatusRefresher $refresher,
-        private TemporalOrchestrationClient $temporal,
+        private PythonTemporalBridgeClient $temporalBridge,
         private ClockInterface $clock = new Clock(),
     ) {
     }
@@ -46,7 +46,7 @@ readonly class PipelineTaskCancellationService
                 ? $job->temporal_run_id
                 : null;
 
-            $this->temporal->cancelWorkflow($workflowId, $runId);
+            $this->temporalBridge->cancelWorkflow($workflowId, $runId);
 
             $metadata = $job->metadata ?? [];
             $metadata['cancelled_at'] = $this->timestamp();

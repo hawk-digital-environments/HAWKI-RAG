@@ -1,34 +1,64 @@
-# Reduce Docker build context size and speed up builds
+# Keep Docker build contexts small and reproducible.
 
-# VCS and local artifacts
-.git
+# VCS and local metadata
+.git/
 .gitignore
+.dockerignore
 .DS_Store
-node_modules
-vendor
 
-# Laravel build outputs and caches
-public/build
-storage/logs
-storage/framework/cache
-storage/framework/sessions
-storage/framework/views
+# Dependencies installed inside images
+node_modules/
+vendor/
 
-# Documentation
-_documentation
-_documentation.build
-
-# Large local data (mounted at runtime)
-storage/app/private/crawled-data
-../hawki-data/crawled-data
-
-# Environment and local config (provided at runtime)
+# Environment, secrets, and local overrides
 .env
+.env.*
+auth.json
+docker-compose.override.yml
 *.local
 
-# Docker and ops
-*.Dockerfile
-Dockerfile
-docker/*.log
-ops/local-reranker/__pycache__
-.github
+# Laravel runtime and build outputs
+public/build/
+public/hot
+public/storage/
+storage/*.key
+storage/pail/
+storage/logs/
+storage/framework/cache/
+storage/framework/sessions/
+storage/framework/views/
+
+# Local RAG/runtime data and generated artifacts
+rag_storage/
+python_rag/public/
+python_rag/rag_storage/
+python_rag/rabbit_worker/
+python_rag/rabbitmq/
+python_rag/workers/
+storage/app/private/crawled-data/
+../hawki-data/crawled-data/
+
+# Python caches and test artifacts
+**/__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage*
+.tox/
+.venv/
+
+# Documentation and local tooling not needed in runtime images
+_documentation/
+_documentation.build/
+.agents/
+.codex/
+.github/
+bruno/
+docs/
+public/swagger/
+
+# Logs and temporary files
+*.log
+npm-debug.log
+yarn-error.log

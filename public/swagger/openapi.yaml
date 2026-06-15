@@ -1,0 +1,653 @@
+openapi: 3.0.3
+info:
+  title: HAWKI RAG API
+  description: Local API reference generated from currently registered routes.
+  version: "1.0.0"
+servers:
+  - url: /api
+    description: Laravel API base URL
+paths:
+  /ping:
+    get:
+      tags:
+        - Health
+      summary: Health ping
+      responses:
+        "200":
+          description: Service is alive
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PingResponse"
+              example:
+                pong: true
+  /datasets:
+    get:
+      tags:
+        - Datasets
+      summary: List datasets
+      security:
+        - {}
+      responses:
+        "200":
+          description: Datasets list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+    post:
+      tags:
+        - Datasets
+      summary: Create dataset
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "201":
+          description: Dataset created
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /datasets/{datasetId}:
+    parameters:
+      - in: path
+        name: datasetId
+        required: true
+        schema:
+          type: string
+    get:
+      tags:
+        - Datasets
+      summary: Get dataset
+      responses:
+        "200":
+          description: Dataset details
+          content:
+            application/json:
+              schema:
+                type: object
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /documents:
+    get:
+      tags:
+        - Documents
+      summary: List documents
+      responses:
+        "200":
+          description: Document list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+  /documents/{documentId}:
+    parameters:
+      - in: path
+        name: documentId
+        required: true
+        schema:
+          type: string
+    get:
+      tags:
+        - Documents
+      summary: Get document
+      responses:
+        "200":
+          description: Document
+          content:
+            application/json:
+              schema:
+                type: object
+  /pipeline/tasks:
+    get:
+      tags:
+        - Pipeline
+      summary: List pipeline tasks
+      responses:
+        "200":
+          description: Task list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      tags:
+        - Pipeline
+      summary: Start legacy pipeline task
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "201":
+          description: Task started
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /pipeline/tasks/start:
+    post:
+      tags:
+        - Pipeline
+      summary: Start pipeline task
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "201":
+          description: Task started
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /pipeline/tasks/{taskId}:
+    parameters:
+      - in: path
+        name: taskId
+        required: true
+        schema:
+          type: string
+    get:
+      tags:
+        - Pipeline
+      summary: Get task
+      responses:
+        "200":
+          description: Task details
+          content:
+            application/json:
+              schema:
+                type: object
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /pipeline/tasks/{taskId}/jobs:
+    parameters:
+      - in: path
+        name: taskId
+        required: true
+        schema:
+          type: string
+    get:
+      tags:
+        - Pipeline
+      summary: List task jobs
+      responses:
+        "200":
+          description: Jobs list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+    post:
+      tags:
+        - Pipeline
+      summary: Upsert a job
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: Job upserted
+  /pipeline/tasks/{taskId}/failed-jobs:
+    parameters:
+      - in: path
+        name: taskId
+        required: true
+        schema:
+          type: string
+    get:
+      tags:
+        - Pipeline
+      summary: List failed jobs for task
+      responses:
+        "200":
+          description: Failed jobs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+  /pipeline/tasks/{taskId}/events:
+    parameters:
+      - in: path
+        name: taskId
+        required: true
+        schema:
+          type: string
+    get:
+      tags:
+        - Pipeline
+      summary: Stream/events for task
+      responses:
+        "200":
+          description: Event list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+  /pipeline/tasks/{taskId}/retry:
+    parameters:
+      - in: path
+        name: taskId
+        required: true
+        schema:
+          type: string
+    post:
+      tags:
+        - Pipeline
+      summary: Retry task
+      responses:
+        "200":
+          description: Retry initiated
+  /pipeline/tasks/{taskId}/retry-failed-jobs:
+    parameters:
+      - in: path
+        name: taskId
+        required: true
+        schema:
+          type: string
+    post:
+      tags:
+        - Pipeline
+      summary: Retry failed jobs of task
+      responses:
+        "200":
+          description: Retry initiated
+  /pipeline/tasks/{taskId}/cancel:
+    parameters:
+      - in: path
+        name: taskId
+        required: true
+        schema:
+          type: string
+    post:
+      tags:
+        - Pipeline
+      summary: Cancel task
+      responses:
+        "200":
+          description: Cancellation accepted
+  /pipeline/health:
+    get:
+      tags:
+        - Pipeline
+      summary: Pipeline health status
+      responses:
+        "200":
+          description: Pipeline health snapshot
+          content:
+            application/json:
+              schema:
+                type: object
+  /pipeline/controller/files:
+    post:
+      tags:
+        - Pipeline
+      summary: Upload pipeline control files
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        "201":
+          description: File received
+  /pipeline/recovery/failed-jobs:
+    get:
+      tags:
+        - Pipeline Recovery
+      summary: List failed jobs
+      responses:
+        "200":
+          description: Failed job list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+  /pipeline/recovery/jobs/retry-selected:
+    post:
+      tags:
+        - Pipeline Recovery
+      summary: Retry selected failed jobs
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: Retry queued
+  /pipeline/recovery/jobs/{jobId}/retry:
+    parameters:
+      - in: path
+        name: jobId
+        required: true
+        schema:
+          type: string
+    post:
+      tags:
+        - Pipeline Recovery
+      summary: Retry single failed job
+      responses:
+        "200":
+          description: Retry queued
+  /pipeline/recovery/retry-all:
+    post:
+      tags:
+        - Pipeline Recovery
+      summary: Retry all failed jobs
+      responses:
+        "200":
+          description: Retry queued
+  /pipeline/recovery/tasks/{taskId}/retry-failed:
+    parameters:
+      - in: path
+        name: taskId
+        required: true
+        schema:
+          type: string
+    post:
+      tags:
+        - Pipeline Recovery
+      summary: Retry failed jobs for a task
+      responses:
+        "200":
+          description: Retry queued
+  /pipeline/recovery/datasets/{datasetId}/retry-failed:
+    parameters:
+      - in: path
+        name: datasetId
+        required: true
+        schema:
+          type: string
+    post:
+      tags:
+        - Pipeline Recovery
+      summary: Retry failed jobs for a dataset
+      responses:
+        "200":
+          description: Retry queued
+  /query:
+    post:
+      tags:
+        - Query
+      summary: Query RAG backend
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/QueryRequest"
+      responses:
+        "200":
+          description: Query response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QueryResponse"
+  /rag/health:
+    get:
+      tags:
+        - RAG
+      summary: Show RAG health
+      responses:
+        "200":
+          description: Health details
+          content:
+            application/json:
+              schema:
+                type: object
+  /rag/monitor:
+    get:
+      tags:
+        - RAG
+      summary: RAG monitor
+      responses:
+        "200":
+          description: Monitor payload
+          content:
+            application/json:
+              schema:
+                type: object
+  /rag/stats:
+    get:
+      tags:
+        - RAG
+      summary: RAG statistics
+      responses:
+        "200":
+          description: Stats payload
+          content:
+            application/json:
+              schema:
+                type: object
+  /rag/neo4j/graph/overview:
+    get:
+      tags:
+        - Graph
+      summary: Get graph overview
+      responses:
+        "200":
+          description: Overview payload
+          content:
+            application/json:
+              schema:
+                type: object
+  /rag/neo4j/graph/search:
+    get:
+      tags:
+        - Graph
+      summary: Search graph
+      parameters:
+        - in: query
+          name: q
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Search result
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+  /rag/neo4j/graph/semantic-search:
+    get:
+      tags:
+        - Graph
+      summary: Graph semantic search
+      parameters:
+        - in: query
+          name: q
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Search result
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+  /rag/neo4j/graph/node:
+    get:
+      tags:
+        - Graph
+      summary: Get graph node
+      parameters:
+        - in: query
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Node payload
+          content:
+            application/json:
+              schema:
+                type: object
+  /rag/neo4j/graph/expand:
+    post:
+      tags:
+        - Graph
+      summary: Expand graph node
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: Expanded graph data
+  /rag/neo4j/graph/clear-view:
+    post:
+      tags:
+        - Graph
+      summary: Clear graph view
+      responses:
+        "200":
+          description: View cleared
+  /rag/neo4j/graph/snapshots:
+    get:
+      tags:
+        - Graph
+      summary: List graph snapshots
+      responses:
+        "200":
+          description: Snapshot list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+    post:
+      tags:
+        - Graph
+      summary: Save graph snapshot
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "201":
+          description: Snapshot saved
+  /rag/neo4j/graph/snapshots/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+    get:
+      tags:
+        - Graph
+      summary: Load graph snapshot
+      responses:
+        "200":
+          description: Snapshot payload
+          content:
+            application/json:
+              schema:
+                type: object
+    delete:
+      tags:
+        - Graph
+      summary: Delete snapshot
+      responses:
+        "204":
+          description: Deleted
+  /rag/neo4j/clear:
+    post:
+      tags:
+        - Graph
+      summary: Clear Neo4j graph content
+      responses:
+        "200":
+          description: Graph cleared
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  responses:
+    Unauthorized:
+      description: Unauthorized
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+  schemas:
+    Error:
+      type: object
+      properties:
+        message:
+          type: string
+        status:
+          type: integer
+    PingResponse:
+      type: object
+      properties:
+        pong:
+          type: boolean
+    QueryRequest:
+      type: object
+      required:
+        - query
+      properties:
+        query:
+          type: string
+    QueryResponse:
+      type: object
+      properties:
+        answer:
+          type: string
+        sources:
+          type: array
+          items:
+            type: object

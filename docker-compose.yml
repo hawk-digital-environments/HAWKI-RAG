@@ -229,10 +229,6 @@ services:
   hawki-rag-temporal-workflow-worker:
     image: hawki-rag-python:local
     pull_policy: never
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: python-rag
     container_name: hawki_rag_temporal_workflow_worker
     env_file:
       - ./.env
@@ -257,10 +253,6 @@ services:
   hawki-rag-temporal-scraper-worker:
     image: hawki-rag-python:local
     pull_policy: never
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: python-rag
     container_name: hawki_rag_temporal_scraper_worker
     env_file:
       - ./.env
@@ -287,10 +279,6 @@ services:
   hawki-rag-temporal-converter-worker:
     image: hawki-rag-python:local
     pull_policy: never
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: python-rag
     container_name: hawki_rag_temporal_converter_worker
     env_file:
       - ./.env
@@ -317,10 +305,6 @@ services:
   hawki-rag-temporal-ingestion-worker:
     image: hawki-rag-python:local
     pull_policy: never
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: python-rag
     container_name: hawki_rag_temporal_ingestion_worker
     env_file:
       - ./.env
