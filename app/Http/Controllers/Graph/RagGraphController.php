@@ -65,7 +65,7 @@ class RagGraphController extends Controller
 
     public function snapshots(Neo4jGraphExplorer $graph): JsonResponse
     {
-        return response()->json($graph->snapshots());
+        return $this->noStore(response()->json($graph->snapshots()));
     }
 
     public function saveSnapshot(Request $request, Neo4jGraphExplorer $graph): JsonResponse
@@ -81,17 +81,17 @@ class RagGraphController extends Controller
     public function loadSnapshot(string $id, Neo4jGraphExplorer $graph): JsonResponse
     {
         $result = $graph->loadSnapshot($id);
-        return response()->json($result, ($result['ok'] ?? false) ? 200 : 404);
+        return $this->noStore(response()->json($result, ($result['ok'] ?? false) ? 200 : 404));
     }
 
     public function deleteSnapshot(string $id, Neo4jGraphExplorer $graph): JsonResponse
     {
-        return response()->json($graph->deleteSnapshot($id));
+        return $this->noStore(response()->json($graph->deleteSnapshot($id)));
     }
 
     public function clearView(): JsonResponse
     {
-        return response()->json(['ok' => true, 'nodes' => [], 'edges' => []]);
+        return $this->noStore(response()->json(['ok' => true, 'nodes' => [], 'edges' => []]));
     }
 
     public function clearNeo4j(Neo4jAdmin $neo4j, GraphCacheService $cache): JsonResponse
@@ -103,20 +103,29 @@ class RagGraphController extends Controller
             $cache->writeEmptyVisualizationSnapshot();
         }
 
-        return response()->json($result, $status);
+        return $this->noStore(response()->json($result, $status));
     }
 
     private function graphResponse(callable $callback): JsonResponse
     {
         try {
             $result = $callback();
-            return response()->json($result, ($result['ok'] ?? true) ? 200 : 422);
+            return $this->noStore(response()->json($result, ($result['ok'] ?? true) ? 200 : 422));
         } catch (\Throwable $e) {
-            return response()->json([
+            return $this->noStore(response()->json([
                 'ok' => false,
                 'message' => 'Neo4j graph explorer request failed.',
                 'error' => $e->getMessage(),
-            ], 502);
+            ], 502));
         }
+    }
+
+    private function noStore(JsonResponse $response): JsonResponse
+    {
+        $response->headers->set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+        $response->headers->set('Pragma', 'no-cache');
+        $response->headers->set('Expires', '0');
+
+        return $response;
     }
 }
