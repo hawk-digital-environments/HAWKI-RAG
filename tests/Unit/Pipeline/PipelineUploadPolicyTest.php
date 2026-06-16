@@ -29,14 +29,27 @@ class PipelineUploadPolicyTest extends TestCase
         $this->assertFalse($policy->supports('png'));
     }
 
-    public function test_it_builds_unsupported_message_from_config(): void
+    public function test_empty_supported_extensions_means_the_converter_decides(): void
+    {
+        config()->set('file_converter.supported_extensions', []);
+
+        $policy = app(PipelineUploadPolicy::class);
+
+        $this->assertTrue($policy->supports('pdf'));
+        $this->assertTrue($policy->supports('svg'));
+        $this->assertTrue($policy->supports('pptx'));
+        $this->assertTrue($policy->supports(''));
+        $this->assertSame('Unsupported converter input. The converter rejected this file.', $policy->unsupportedMessage());
+    }
+
+    public function test_it_uses_generic_unsupported_message(): void
     {
         config()->set('file_converter.supported_extensions', ['.PDF', 'docx']);
 
         $policy = app(PipelineUploadPolicy::class);
 
         $this->assertSame(
-            'Unsupported converter input. Supported file types: pdf, docx.',
+            'Unsupported converter input. The converter rejected this file.',
             $policy->unsupportedMessage(),
         );
     }

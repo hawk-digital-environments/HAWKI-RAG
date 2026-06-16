@@ -15,6 +15,8 @@ readonly class PipelineJobStateMutationRepository
     {
         $job->forceFill([
             'status' => PipelineJob::STATUS_FAILED,
+            'current_stage' => 'temporal.workflow_failed',
+            'index_status' => 'failed',
             'error_message' => $message,
             'finished_at' => $failedAt,
         ])->save();

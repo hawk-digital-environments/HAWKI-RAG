@@ -242,7 +242,7 @@ if (root) {
 
     async function loadQueues() {
         setStatus('Loading ingestion health...');
-        const data = await requestJson('api/pipeline/health');
+        const data = await requestJson('pipeline/health');
         renderMonitor(data || {});
     }
 

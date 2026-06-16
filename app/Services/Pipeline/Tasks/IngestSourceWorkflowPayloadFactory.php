@@ -29,12 +29,15 @@ readonly class IngestSourceWorkflowPayloadFactory
         $metadata = $source->metadata ?? [];
         $refresh = is_array($metadata['refresh'] ?? null) ? $metadata['refresh'] : [];
 
-        return [
+        $upload = is_array($metadata['upload'] ?? null) ? $metadata['upload'] : null;
+
+        return array_filter([
             'source_id' => $source->source_id,
             'source_url' => $source->source_url,
             'task_id' => $task->task_id,
             'job_id' => $job->job_id,
             'dataset_id' => $task->dataset_id,
+            'upload' => $upload,
             'refresh' => array_merge([
                 'cadence' => $source->refresh_cadence,
                 'requested_at' => $this->clock->now()->format(\DateTimeInterface::ATOM),
@@ -59,7 +62,7 @@ readonly class IngestSourceWorkflowPayloadFactory
             ],
             'ingestion' => [
                 'provider' => $this->config->get('temporal.ingestion.provider', 'ollama'),
-                'graph' => filter_var($this->config->get('temporal.ingestion.graph', false), FILTER_VALIDATE_BOOLEAN),
+                'graph' => $this->graphEnabled($metadata),
                 'collection' => $metadata['dataset']['qdrant_collection'] ?? null,
                 'neo4j_namespace' => $metadata['dataset']['neo4j_namespace'] ?? null,
                 'chunk_chars' => (int) $this->config->get('config.chunk_size', env('CHUNK_SIZE', 1200)),
@@ -67,7 +70,7 @@ readonly class IngestSourceWorkflowPayloadFactory
                 'batch_size' => (int) $this->config->get('config.ingest_batch_size', 64),
             ],
             'external_services' => $this->config->get('temporal.external_services', []),
-        ];
+        ], static fn (mixed $value): bool => $value !== null);
     }
 
     public function sourceId(string $datasetId, string $url): string
@@ -122,5 +125,19 @@ readonly class IngestSourceWorkflowPayloadFactory
     private function objectPrefix(): string
     {
         return (string) $this->config->get('temporal.storage.object_prefix', 's3://hawki-rag');
+    }
+
+    /**
+     * @param array<string, mixed> $metadata
+     */
+    private function graphEnabled(array $metadata): bool
+    {
+        $request = is_array($metadata['request'] ?? null) ? $metadata['request'] : [];
+        $requestMetadata = is_array($request['metadata'] ?? null) ? $request['metadata'] : [];
+
+        return filter_var(
+            $requestMetadata['graph'] ?? $metadata['graph'] ?? $this->config->get('temporal.ingestion.graph', false),
+            FILTER_VALIDATE_BOOLEAN,
+        );
     }
 }

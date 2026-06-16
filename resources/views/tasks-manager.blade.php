@@ -126,7 +126,7 @@
                                 <h3>Documents</h3>
                                 <p id="task-manager-documents-count">0 documents</p>
                             </div>
-                            <a class="secondary-link" id="task-manager-documents-link" href="{{ url('/documents') }}">Open documents</a>
+                            <a class="secondary-link" id="task-manager-documents-link" href="{{ url('/datasets') }}">Open data browser</a>
                         </div>
                         <div class="table-wrap" id="task-manager-documents"></div>
                     </div>

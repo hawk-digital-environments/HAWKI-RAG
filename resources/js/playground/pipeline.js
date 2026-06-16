@@ -107,7 +107,7 @@ function stageStatusClass(status) {
     if (['completed', 'success'].includes(value)) return 'is-completed';
     if (['running', 'processing', 'received'].includes(value)) return 'is-running';
     if (['failed', 'error'].includes(value)) return 'is-failed';
-    if (['partial', 'skipped'].includes(value)) return 'is-partial';
+    if (['partial', 'skipped', 'n/a', 'not_available', 'unavailable'].includes(value)) return 'is-partial';
     return 'is-pending';
 }
 
@@ -235,6 +235,17 @@ function statusFromCounts(counts) {
     return 'partial';
 }
 
+function explicitStageEntries(task) {
+    const stages = task?.stages && typeof task.stages === 'object' ? task.stages : {};
+    if (Object.keys(stages).length === 0) return null;
+
+    return [
+        ['scrape', stages.scrape || { status: 'queued' }],
+        ['convert', stages.convert || { status: 'queued' }],
+        ['ingest', stages.ingest || { status: 'queued' }],
+    ];
+}
+
 function renderPipelineTask(task) {
     if (!currentEl || !stagesEl || !task) return;
 
@@ -255,6 +266,14 @@ function renderPipelineTask(task) {
     }
 
     stagesEl.innerHTML = '';
+    const explicitStages = explicitStageEntries(task);
+    if (explicitStages) {
+        explicitStages.forEach(([label, stage]) => {
+            stagesEl.appendChild(renderStageCard(label, stage));
+        });
+        return;
+    }
+
     [
         ['scrape', 'scrape'],
         ['convert', 'convert'],

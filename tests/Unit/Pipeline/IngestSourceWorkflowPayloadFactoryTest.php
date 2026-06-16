@@ -75,4 +75,49 @@ class IngestSourceWorkflowPayloadFactoryTest extends TestCase
         $this->assertStringNotContainsString('embedding', $encoded);
         $this->assertStringNotContainsString('chunks', $encoded);
     }
+
+    public function test_it_includes_upload_handoff_and_request_graph_override(): void
+    {
+        config()->set('temporal.storage.mode', 'shared');
+        config()->set('temporal.storage.shared_root', '/shared');
+        config()->set('temporal.ingestion.graph', true);
+
+        $factory = app(IngestSourceWorkflowPayloadFactory::class);
+        $sourceId = $factory->sourceId('dataset-upload', 'upload://sample.pdf|hash');
+        $paths = $factory->storagePaths($sourceId);
+
+        $payload = $factory->input(
+            new PipelineTask([
+                'task_id' => 'task-upload',
+                'dataset_id' => 'dataset-upload',
+            ]),
+            new PipelineJob([
+                'job_id' => 'ingest-upload',
+                'job_type' => PipelineJob::TYPE_INGEST,
+            ]),
+            new IngestionSource([
+                'source_id' => $sourceId,
+                'source_url' => 'upload://sample.pdf',
+                'content_hash' => 'hash',
+                'raw_storage_path' => $paths['raw'],
+                'markdown_storage_path' => $paths['markdown'],
+                'metadata' => [
+                    'request' => [
+                        'metadata' => [
+                            'graph' => false,
+                        ],
+                    ],
+                    'upload' => [
+                        'original_filename' => 'sample.pdf',
+                        'target_name' => 'sample-upload.pdf',
+                        'local_path' => '/shared/task/sample-upload.pdf',
+                    ],
+                ],
+            ]),
+        );
+
+        $this->assertSame('/shared/task/sample-upload.pdf', $payload['upload']['local_path']);
+        $this->assertSame('sample-upload.pdf', $payload['upload']['target_name']);
+        $this->assertFalse($payload['ingestion']['graph']);
+    }
 }

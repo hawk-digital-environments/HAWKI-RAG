@@ -26,7 +26,7 @@ class PipelineUploadPayloadServiceTest extends TestCase
         $this->assertFalse($metadata['request']['metadata']['graph']);
         $this->assertSame('temporal', $metadata['orchestration']);
         $this->assertSame(
-            'Uploaded files are stored as app metadata. Source URL ingestion is orchestrated by IngestSourceWorkflow.',
+            'Uploaded files are handed to IngestSourceWorkflow through shared storage.',
             $metadata['temporal']['note'],
         );
         $this->assertSame('upload-dataset', $metadata['dataset']['dataset_id']);
@@ -43,9 +43,11 @@ class PipelineUploadPayloadServiceTest extends TestCase
 
         $this->assertSame('pipeline-controller', $metadata['source']);
         $this->assertSame('uploaded_file_convert_ingest', $metadata['mode']);
-        $this->assertSame('File uploads are stored as metadata only in the Temporal source-ingestion migration.', $metadata['status_note']);
+        $this->assertSame('File upload handed to Temporal for conversion and ingestion.', $metadata['status_note']);
         $this->assertSame('sample.pdf', $metadata['original_filename']);
         $this->assertSame('/shared/uploads/sample.pdf', $metadata['uploaded_path']);
+        $this->assertSame('sample-a1b2c3.pdf', $metadata['target_name']);
+        $this->assertSame('pdf', $metadata['extension']);
         $this->assertTrue($metadata['graph']);
         $this->assertSame('hawki_upload_dataset', $metadata['dataset']['qdrant_collection']);
     }

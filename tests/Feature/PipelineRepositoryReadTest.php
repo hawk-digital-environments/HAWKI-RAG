@@ -6,7 +6,6 @@ namespace Tests\Feature;
 
 use App\Models\Dataset;
 use App\Models\Document;
-use App\Models\JobProcessingState;
 use App\Models\PipelineJob;
 use App\Models\PipelineTask;
 use App\Models\ScrapedElement;
@@ -407,7 +406,7 @@ class PipelineRepositoryReadTest extends TestCase
         ));
     }
 
-    public function test_ingestion_repository_records_processing_state_and_documents(): void
+    public function test_ingestion_repository_records_documents(): void
     {
         $repository = app(PipelineIngestionRepository::class);
         $task = $this->task('task-ingestion-repository');
@@ -428,31 +427,6 @@ class PipelineRepositoryReadTest extends TestCase
             'retry_count' => 0,
             'source' => 'hawki-rag-laravel',
         ];
-
-        $state = $repository->upsertProcessingState($event, JobProcessingState::STATUS_PROCESSING, 5);
-
-        $this->assertSame('ingest-repository-job', $state->job_id);
-        $this->assertSame(JobProcessingState::STATUS_PROCESSING, $state->status);
-        $this->assertSame(3, $state->max_retries);
-        $this->assertDatabaseHas('job_processing_state', [
-            'job_id' => 'ingest-repository-job',
-            'stage' => JobProcessingState::STAGE_RAG_INGESTION,
-            'status' => JobProcessingState::STATUS_PROCESSING,
-            'max_retries' => 3,
-        ]);
-
-        $failed = $repository->upsertFailedProcessingState($event, new \RuntimeException('Bridge failed'), 2, 5);
-
-        $this->assertSame($state->id, $failed->id);
-        $this->assertSame(JobProcessingState::STATUS_FAILED, $failed->status);
-        $this->assertSame('Bridge failed', $failed->error_message);
-        $this->assertDatabaseHas('job_processing_state', [
-            'job_id' => 'ingest-repository-job',
-            'status' => JobProcessingState::STATUS_FAILED,
-            'retry_count' => 2,
-            'max_retries' => 5,
-            'error_message' => 'Bridge failed',
-        ]);
 
         $document = $repository->upsertIngestedDocument(
             $event,

@@ -62,6 +62,79 @@ class PipelineTaskPayloadServiceTest extends TestCase
         $this->assertSame(['label' => 'Page'], $payload['jobs'][0]['metadata']);
     }
 
+    public function test_it_builds_uploaded_file_stage_payload_before_ingestion_starts(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-06-08 12:00:00'));
+
+        $task = new PipelineTask([
+            'task_id' => 'task-upload',
+            'dataset_id' => 'dataset-upload',
+            'status' => PipelineTask::STATUS_RUNNING,
+            'started_at' => Carbon::parse('2026-06-08 11:00:00'),
+            'metadata' => [
+                'request' => [
+                    'mode' => 'uploaded_file_convert_ingest',
+                ],
+            ],
+        ]);
+        $task->setRelation('jobs', collect([
+            new PipelineJob([
+                'job_id' => 'job-upload',
+                'task_id' => 'task-upload',
+                'job_type' => PipelineJob::TYPE_INGEST,
+                'status' => PipelineJob::STATUS_RUNNING,
+                'current_stage' => 'temporal.workflow_started',
+                'started_at' => Carbon::parse('2026-06-08 11:01:00'),
+                'metadata' => [
+                    'original_filename' => 'sample.svg',
+                ],
+            ]),
+        ]));
+
+        $payload = app(PipelineTaskPayloadService::class)->detail($task, 1, ['jobs_total' => 0]);
+
+        $this->assertSame('n/a', $payload['stages']['scrape']['status']);
+        $this->assertSame('Mode not available for uploaded files.', $payload['stages']['scrape']['message']);
+        $this->assertSame('processing', $payload['stages']['convert']['status']);
+        $this->assertSame(PipelineJob::STATUS_QUEUED, $payload['stages']['ingest']['status']);
+        $this->assertSame('Waiting for converter to finish.', $payload['stages']['ingest']['message']);
+    }
+
+    public function test_it_builds_uploaded_file_stage_payload_after_conversion_finishes(): void
+    {
+        $task = new PipelineTask([
+            'task_id' => 'task-upload',
+            'dataset_id' => 'dataset-upload',
+            'status' => PipelineTask::STATUS_RUNNING,
+            'metadata' => [
+                'request' => [
+                    'mode' => 'uploaded_file_convert_ingest',
+                ],
+            ],
+        ]);
+        $task->setRelation('jobs', collect([
+            new PipelineJob([
+                'job_id' => 'job-upload',
+                'task_id' => 'task-upload',
+                'job_type' => PipelineJob::TYPE_INGEST,
+                'status' => PipelineJob::STATUS_RUNNING,
+                'current_stage' => 'ingest_markdown_files',
+                'metadata' => [
+                    'status' => 'started',
+                    'converted_files' => ['/shared/raw/sample.svg'],
+                    'markdown_files_created' => 1,
+                ],
+            ]),
+        ]));
+
+        $payload = app(PipelineTaskPayloadService::class)->detail($task, 1, ['jobs_total' => 0]);
+
+        $this->assertSame(PipelineJob::STATUS_COMPLETED, $payload['stages']['convert']['status']);
+        $this->assertSame(1, $payload['stages']['convert']['counts']['convertedFiles']);
+        $this->assertSame('processing', $payload['stages']['ingest']['status']);
+        $this->assertSame('Ingestion processing.', $payload['stages']['ingest']['message']);
+    }
+
     public function test_it_builds_fallback_event_payloads_from_job_metadata(): void
     {
         $job = new PipelineJob([

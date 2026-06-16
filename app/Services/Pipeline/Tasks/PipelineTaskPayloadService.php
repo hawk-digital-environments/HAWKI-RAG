@@ -23,10 +23,13 @@ readonly class PipelineTaskPayloadService
      */
     public function detail(PipelineTask $task, int $activeJobs, array $defaultCounters): array
     {
+        $jobs = $task->jobs;
+
         return array_merge($this->summary($task, $activeJobs, $defaultCounters), [
-            'jobs' => $task->jobs
+            'jobs' => $jobs
                 ->map(fn (PipelineJob $job) => $this->job($job))
                 ->all(),
+            'stages' => $this->stages($task),
         ]);
     }
 
@@ -46,6 +49,7 @@ readonly class PipelineTaskPayloadService
             'metadata' => $task->metadata ?? [],
             'activeJobs' => $activeJobs,
             'updatedAt' => $this->clock->now()->format(\DateTimeInterface::ATOM),
+            'stages' => $this->stages($task),
         ];
     }
 
@@ -117,6 +121,165 @@ readonly class PipelineTaskPayloadService
     private function nullableString(mixed $value): ?string
     {
         return is_scalar($value) && trim((string) $value) !== '' ? trim((string) $value) : null;
+    }
+
+    /**
+     * @return array<string, array<string, mixed>>
+     */
+    private function stages(PipelineTask $task): array
+    {
+        if (! $this->isUploadedFileTask($task) || ! $task->relationLoaded('jobs')) {
+            return [];
+        }
+
+        $job = $task->jobs
+            ->first(fn (PipelineJob $candidate): bool => $candidate->job_type === PipelineJob::TYPE_INGEST);
+
+        if (! $job instanceof PipelineJob) {
+            return [];
+        }
+
+        return $this->uploadedFileStages($job);
+    }
+
+    private function isUploadedFileTask(PipelineTask $task): bool
+    {
+        $metadata = is_array($task->metadata) ? $task->metadata : [];
+
+        return ($metadata['request']['mode'] ?? null) === 'uploaded_file_convert_ingest';
+    }
+
+    /**
+     * @return array<string, array<string, mixed>>
+     */
+    private function uploadedFileStages(PipelineJob $job): array
+    {
+        $phase = (string) ($job->current_stage ?? '');
+        $details = is_array($job->metadata) ? $job->metadata : [];
+        $convertStatus = $this->uploadedConvertStatus($job, $phase, $details);
+        $ingestStatus = $this->uploadedIngestStatus($job, $phase);
+
+        return [
+            'scrape' => [
+                'status' => 'n/a',
+                'message' => 'Mode not available for uploaded files.',
+                'counts' => [],
+            ],
+            'convert' => [
+                'status' => $convertStatus,
+                'message' => $this->stageMessage($convertStatus, [
+                    'processing' => 'Converting uploaded file.',
+                    'completed' => 'Conversion finished.',
+                    'failed' => $job->error_message ?: ($details['error_details'] ?? 'Conversion failed.'),
+                    'queued' => 'Waiting for converter.',
+                ]),
+                'startedAt' => $this->dateValue($job->started_at),
+                'completedAt' => $convertStatus === PipelineJob::STATUS_COMPLETED ? $this->dateValue($job->updated_at) : null,
+                'counts' => $this->uploadedConvertCounts($convertStatus, $details),
+                'errors' => $convertStatus === PipelineJob::STATUS_FAILED ? array_values(array_filter([
+                    $job->error_message ?: ($details['error_details'] ?? null),
+                ])) : [],
+            ],
+            'ingest' => [
+                'status' => $ingestStatus,
+                'message' => $this->stageMessage($ingestStatus, [
+                    'queued' => 'Waiting for converter to finish.',
+                    'processing' => 'Ingestion processing.',
+                    'completed' => 'Ingestion finished.',
+                    'failed' => $job->error_message ?: ($details['error_details'] ?? 'Ingestion failed.'),
+                ]),
+                'startedAt' => in_array($ingestStatus, ['processing', PipelineJob::STATUS_COMPLETED, PipelineJob::STATUS_FAILED], true)
+                    ? $this->dateValue($job->updated_at)
+                    : null,
+                'completedAt' => $ingestStatus === PipelineJob::STATUS_COMPLETED ? $this->dateValue($job->finished_at) : null,
+                'counts' => $this->uploadedIngestCounts($details),
+                'errors' => $ingestStatus === PipelineJob::STATUS_FAILED ? array_values(array_filter([
+                    $job->error_message ?: ($details['error_details'] ?? null),
+                ])) : [],
+            ],
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $details
+     */
+    private function uploadedConvertStatus(PipelineJob $job, string $phase, array $details): string
+    {
+        if ($job->status === PipelineJob::STATUS_FAILED && $phase === 'inspect_and_convert_files') {
+            return PipelineJob::STATUS_FAILED;
+        }
+
+        if ($job->status === PipelineJob::STATUS_COMPLETED
+            || in_array($phase, ['ingest_markdown_files', 'mark_source_ready'], true)
+            || ($phase === 'inspect_and_convert_files' && ($details['status'] ?? null) === 'success')) {
+            return PipelineJob::STATUS_COMPLETED;
+        }
+
+        if (in_array($phase, ['temporal.workflow_starting', 'temporal.workflow_started', 'scrape_source', 'inspect_and_convert_files'], true)) {
+            return 'processing';
+        }
+
+        if ($job->status === PipelineJob::STATUS_FAILED) {
+            return PipelineJob::STATUS_FAILED;
+        }
+
+        return PipelineJob::STATUS_QUEUED;
+    }
+
+    private function uploadedIngestStatus(PipelineJob $job, string $phase): string
+    {
+        if ($job->status === PipelineJob::STATUS_COMPLETED || $phase === 'mark_source_ready') {
+            return PipelineJob::STATUS_COMPLETED;
+        }
+
+        if ($job->status === PipelineJob::STATUS_FAILED && in_array($phase, ['ingest_markdown_files', 'mark_source_ready'], true)) {
+            return PipelineJob::STATUS_FAILED;
+        }
+
+        if ($phase === 'ingest_markdown_files') {
+            return 'processing';
+        }
+
+        return PipelineJob::STATUS_QUEUED;
+    }
+
+    /**
+     * @param array<string, mixed> $details
+     * @return array<string, int>
+     */
+    private function uploadedConvertCounts(string $status, array $details): array
+    {
+        $convertedFiles = is_array($details['converted_files'] ?? null)
+            ? count($details['converted_files'])
+            : ($status === PipelineJob::STATUS_COMPLETED ? 1 : 0);
+        $sourceFiles = max(1, (int) ($details['files_found'] ?? $convertedFiles));
+
+        return [
+            'sourceFiles' => $sourceFiles,
+            'convertedFiles' => $convertedFiles,
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $details
+     * @return array<string, int>
+     */
+    private function uploadedIngestCounts(array $details): array
+    {
+        return [
+            'total' => (int) ($details['documents_indexed'] ?? $details['document_count'] ?? 0),
+            'completed' => (int) ($details['documents_indexed'] ?? 0),
+            'chunks' => (int) ($details['chunks_indexed'] ?? 0),
+            'vectors' => (int) ($details['vectors_upserted'] ?? 0),
+        ];
+    }
+
+    /**
+     * @param array<string, string> $messages
+     */
+    private function stageMessage(string $status, array $messages): string
+    {
+        return $messages[$status] ?? '';
     }
 
     private function dateValue(mixed $value): ?string

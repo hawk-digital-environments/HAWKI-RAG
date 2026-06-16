@@ -31,12 +31,38 @@ readonly class PipelineJobCreationRepository
             'source_url' => $sourceUrl,
             'local_path' => $storedUpload->localPath,
             'content_hash' => $storedUpload->contentHash,
-            'status' => PipelineJob::STATUS_SKIPPED,
-            'current_stage' => 'upload.metadata_stored',
-            'index_status' => 'skipped',
+            'status' => PipelineJob::STATUS_QUEUED,
+            'current_stage' => 'upload.queued',
+            'index_status' => 'queued',
             'started_at' => $startedAt,
-            'completed_at' => $startedAt,
-            'finished_at' => $startedAt,
+            'metadata' => $metadata,
+        ]);
+    }
+
+    /**
+     * @param array<string, mixed> $metadata
+     */
+    public function createUploadIngestJob(
+        string $jobId,
+        PipelineTask $task,
+        string $sourceId,
+        string $sourceUrl,
+        PipelineStoredUpload $storedUpload,
+        Carbon $startedAt,
+        array $metadata,
+    ): PipelineJob {
+        return PipelineJob::query()->create([
+            'job_id' => $jobId,
+            'task_id' => $task->task_id,
+            'source_id' => $sourceId,
+            'job_type' => PipelineJob::TYPE_INGEST,
+            'source_url' => $sourceUrl,
+            'local_path' => $storedUpload->localPath,
+            'content_hash' => $storedUpload->contentHash,
+            'status' => PipelineJob::STATUS_RUNNING,
+            'current_stage' => 'temporal.workflow_starting',
+            'index_status' => 'running',
+            'started_at' => $startedAt,
             'metadata' => $metadata,
         ]);
     }

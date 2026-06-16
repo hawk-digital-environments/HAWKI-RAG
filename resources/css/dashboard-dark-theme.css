@@ -43,9 +43,7 @@ body {
 
 .pipeline-dashboard,
 .pipeline-health-dashboard,
-.datasets-dashboard,
-.documents-dashboard,
-.failed-jobs-dashboard {
+.datasets-dashboard {
     width: min(1500px, calc(100% - 32px));
     padding: 24px 0 40px;
 }
@@ -173,6 +171,7 @@ dd,
 .timeline-refresh-note,
 .controls-grid span,
 .document-filters span,
+.document-search span,
 dt {
     color: #bae6fd;
 }
@@ -308,7 +307,8 @@ dd a {
 .warning-item,
 .timeline-filters select,
 .controls-grid select,
-.document-filters input {
+.document-filters input,
+.document-search input {
     border-color: rgba(148, 163, 184, 0.2);
     background: rgba(8, 17, 31, 0.64);
     color: #e5eefb;
@@ -438,9 +438,7 @@ input::placeholder {
 @media (max-width: 900px) {
     .pipeline-dashboard,
     .pipeline-health-dashboard,
-    .datasets-dashboard,
-    .documents-dashboard,
-    .failed-jobs-dashboard {
+    .datasets-dashboard {
         width: min(100% - 20px, 1500px);
         padding-top: 16px;
     }

@@ -15,7 +15,7 @@ readonly class PipelineConversionDatasetScanner
     public function __construct(
         private Filesystem $files,
         #[Config('file_converter.supported_extensions')]
-        private array $converterExtensions = ['pdf', 'doc', 'docx'],
+        private array $converterExtensions = [],
     ) {
     }
 
@@ -50,7 +50,7 @@ readonly class PipelineConversionDatasetScanner
                 continue;
             }
 
-            if (in_array(strtolower($file->getExtension()), $extensions, true)) {
+            if ($extensions === [] || in_array(strtolower($file->getExtension()), $extensions, true)) {
                 $sourceCount++;
             }
         }
@@ -72,7 +72,7 @@ readonly class PipelineConversionDatasetScanner
     {
         $extensions = $this->converterExtensions;
         if (! is_array($extensions)) {
-            return ['pdf', 'doc', 'docx'];
+            return [];
         }
 
         $extensions = array_values(array_filter(
@@ -80,7 +80,7 @@ readonly class PipelineConversionDatasetScanner
             static fn ($extension) => $extension !== ''
         ));
 
-        return $extensions ?: ['pdf', 'doc', 'docx'];
+        return $extensions;
     }
 
     private function filesUnder(string $path): Finder

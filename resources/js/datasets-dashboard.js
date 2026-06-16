@@ -3,6 +3,7 @@ import { apiUrl } from './playground/urls.js';
 const root = document.querySelector('[data-datasets-dashboard]');
 
 if (root) {
+    const query = new URLSearchParams(window.location.search);
     const els = {
         refresh: document.getElementById('datasets-refresh'),
         status: document.getElementById('datasets-status'),
@@ -14,6 +15,17 @@ if (root) {
         metrics: document.getElementById('datasets-metrics'),
         taskCount: document.getElementById('datasets-task-count'),
         documentCount: document.getElementById('datasets-document-count'),
+        documentSearchForm: document.getElementById('datasets-document-search-form'),
+        documentSearch: document.getElementById('datasets-document-search'),
+        documentState: document.getElementById('datasets-document-state'),
+        documentUpdated: document.getElementById('datasets-document-updated'),
+        documentInfo: document.getElementById('datasets-document-info'),
+        documentMetrics: document.getElementById('datasets-document-metrics'),
+        documentPreviewNote: document.getElementById('datasets-document-preview-note'),
+        documentMarkdownPreview: document.getElementById('datasets-document-markdown-preview'),
+        documentJobsCount: document.getElementById('datasets-document-jobs-count'),
+        documentRelatedJobs: document.getElementById('datasets-document-related-jobs'),
+        documentMetadata: document.getElementById('datasets-document-metadata'),
         ingestionCount: document.getElementById('datasets-ingestion-count'),
         tasks: document.getElementById('datasets-tasks'),
         documents: document.getElementById('datasets-documents'),
@@ -21,11 +33,19 @@ if (root) {
     };
 
     const state = {
-        selectedDatasetId: localStorage.getItem('hawkiDatasetsDashboardDatasetId') || '',
+        selectedDatasetId: query.get('dataset_id') || query.get('datasetId') || localStorage.getItem('hawkiDatasetsDashboardDatasetId') || '',
+        selectedDocumentId: query.get('document_id') || query.get('documentId') || localStorage.getItem('hawkiDatasetsDashboardDocumentId') || '',
+        documentSearch: query.get('q') || '',
         datasets: [],
+        documents: [],
         pollTimer: null,
         requestId: 0,
+        documentRequestId: 0,
     };
+
+    if (els.documentSearch) {
+        els.documentSearch.value = state.documentSearch;
+    }
 
     function csrfToken() {
         return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
@@ -86,10 +106,10 @@ if (root) {
 
     function statusClass(status) {
         const value = String(status || 'idle').toLowerCase();
-        if (value === 'completed' || value === 'active') return 'is-completed';
-        if (value === 'running' || value === 'queued' || value === 'pending') return 'is-running';
+        if (['completed', 'indexed', 'active'].includes(value)) return 'is-completed';
+        if (['running', 'queued', 'pending', 'processing'].includes(value)) return 'is-running';
         if (value === 'failed') return 'is-failed';
-        if (value === 'skipped' || value === 'archived') return 'is-skipped';
+        if (['skipped', 'archived', 'disabled'].includes(value)) return 'is-skipped';
 
         return 'is-idle';
     }
@@ -100,6 +120,80 @@ if (root) {
         pill.textContent = valueOrDash(status);
 
         return pill;
+    }
+
+    function isFailedStatus(status) {
+        return String(status || '').toLowerCase() === 'failed';
+    }
+
+    function makeLink(href, text) {
+        if (!href || !text) return valueOrDash(text);
+
+        const link = document.createElement('a');
+        link.href = href;
+        link.textContent = text;
+        link.className = 'table-link';
+
+        return link;
+    }
+
+    function syncUrl() {
+        const next = new URL(window.location.href);
+        next.search = '';
+        if (state.selectedDatasetId) next.searchParams.set('dataset_id', state.selectedDatasetId);
+        if (state.selectedDocumentId) next.searchParams.set('document_id', state.selectedDocumentId);
+        if (state.documentSearch) next.searchParams.set('q', state.documentSearch);
+        window.history.replaceState({}, '', next.toString());
+    }
+
+    function actionButton(label, handler, failureMessage = 'Action failed.') {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'inline-button';
+        button.textContent = label;
+        button.addEventListener('click', async () => {
+            button.disabled = true;
+            try {
+                await handler();
+            } catch (error) {
+                setStatus(error.message || failureMessage, 'error');
+            } finally {
+                button.disabled = false;
+            }
+        });
+
+        return button;
+    }
+
+    function retryTaskButton(task) {
+        if (!isFailedStatus(task.status) || !task.taskId) {
+            return '-';
+        }
+
+        return actionButton('Retry', () => retryTask(task.taskId), 'Retry failed.');
+    }
+
+    function retryJobButton(job) {
+        if (!isFailedStatus(job.status) || !job.jobId) {
+            return '-';
+        }
+
+        return actionButton('Retry', () => retryJob(job.jobId), 'Retry failed.');
+    }
+
+    function openDocumentButton(document) {
+        if (!document.id) {
+            return '-';
+        }
+
+        const button = actionButton(
+            document.id === state.selectedDocumentId ? 'Open' : 'Open',
+            () => loadDocument(document.id),
+            'Document load failed.',
+        );
+        button.disabled = document.id === state.selectedDocumentId;
+
+        return button;
     }
 
     function renderDatasets(datasets) {
@@ -139,7 +233,7 @@ if (root) {
             ].filter(Boolean).join(' | ');
 
             button.append(top, id, meta);
-            button.addEventListener('click', () => loadDataset(dataset.datasetId));
+            button.addEventListener('click', () => loadDataset(dataset.datasetId, { keepDocumentSelection: false }));
             els.list.appendChild(button);
         });
     }
@@ -153,7 +247,6 @@ if (root) {
         renderInfo(dataset);
         renderMetrics(dataset);
         renderTasks(dataset.tasks || []);
-        renderDocuments(dataset.documents || []);
         renderIngestionHistory(dataset.ingestionHistory || []);
     }
 
@@ -183,11 +276,14 @@ if (root) {
         els.metrics.innerHTML = '';
         const qdrant = dataset.graphStats?.qdrant || {};
         const neo4j = dataset.graphStats?.neo4j || {};
+        const qdrantCaption = qdrant.ok === false
+            ? qdrant.error
+            : (qdrant.message || qdrant.collection);
 
         [
             ['Documents', dataset.documentCount ?? 0, 'Database documents'],
             ['Tasks', dataset.taskCount ?? 0, 'Pipeline tasks'],
-            ['Qdrant points', qdrant.points ?? '-', qdrant.ok === false ? qdrant.error : qdrant.collection],
+            ['Qdrant points', qdrant.points ?? '-', qdrantCaption],
             ['Graph nodes', neo4j.nodes ?? '-', neo4j.ok === false ? neo4j.error : neo4j.namespace],
             ['Graph relationships', neo4j.relationships ?? '-', neo4j.ok === false ? neo4j.error : neo4j.namespace],
         ].forEach(([label, value, caption]) => {
@@ -206,30 +302,135 @@ if (root) {
 
     function renderTasks(tasks) {
         setText(els.taskCount, `${tasks.length} task${tasks.length === 1 ? '' : 's'}`);
-        renderTable(els.tasks, ['Task', 'Status', 'Jobs', 'Started', 'Finished'], tasks, (task) => [
+        renderTable(els.tasks, ['Task', 'Status', 'Jobs', 'Started', 'Finished', 'Action'], tasks, (task) => [
             task.taskId,
             statusPill(task.status),
             task.counters?.jobs_total ?? 0,
             formatDate(task.startedAt),
             formatDate(task.finishedAt),
+            retryTaskButton(task),
         ]);
     }
 
     function renderDocuments(documents) {
         setText(els.documentCount, `${documents.length} document${documents.length === 1 ? '' : 's'} shown`);
-        renderTable(els.documents, ['Document', 'Status', 'Collection', 'Source URL', 'Path', 'Updated'], documents, (document) => [
+        renderTable(els.documents, ['Document', 'Status', 'Qdrant', 'Neo4j', 'Source URL', 'Path', 'Updated', 'Action'], documents, (document) => [
             document.title || document.originalFilename || document.id,
             statusPill(document.status),
-            document.collection,
+            statusPill(document.qdrantStatus || document.status),
+            statusPill(document.neo4jStatus || 'unknown'),
             document.sourceUrl,
-            document.storagePath,
+            document.localPath || document.storagePath,
             formatDate(document.updatedAt || document.createdAt),
+            openDocumentButton(document),
+        ], 'No documents found for this dataset.');
+    }
+
+    function renderDocument(doc) {
+        state.selectedDocumentId = doc.id;
+        localStorage.setItem('hawkiDatasetsDashboardDocumentId', doc.id);
+        setText(els.documentUpdated, `Updated ${formatDate(doc.updatedAt || new Date().toISOString())}`);
+        els.documentState.className = `status-pill ${statusClass(doc.status)}`;
+        setText(els.documentState, doc.status || 'unknown');
+
+        renderDocumentInfo(doc);
+        renderDocumentMetrics(doc);
+        renderMarkdown(doc);
+        renderRelatedJobs(doc.relatedJobs || []);
+        setText(els.documentMetadata, JSON.stringify(doc.metadata || {}, null, 2));
+        renderDocuments(state.documents);
+        syncUrl();
+    }
+
+    function renderDocumentInfo(doc) {
+        els.documentInfo.innerHTML = '';
+
+        [
+            ['Dataset ID', makeLink(`/datasets?dataset_id=${encodeURIComponent(doc.datasetId || '')}`, doc.datasetId)],
+            ['Task ID', doc.taskId],
+            ['Job ID', doc.jobId],
+            ['Source URL', doc.sourceUrl],
+            ['Local path', doc.localPath],
+            ['Content type', doc.contentType],
+            ['Content hash', doc.contentHash],
+            ['Qdrant status', statusPill(doc.qdrantStatus)],
+            ['Neo4j status', statusPill(doc.neo4jStatus)],
+            ['Ingested at', formatDate(doc.ingestedAt)],
+            ['Qdrant collection', doc.qdrantCollection || doc.collection],
+            ['Neo4j namespace', doc.neo4jNamespace],
+        ].forEach(([label, value]) => {
+            const wrapper = document.createElement('div');
+            const term = document.createElement('dt');
+            const description = document.createElement('dd');
+            term.textContent = label;
+            if (value instanceof HTMLElement) {
+                description.appendChild(value);
+            } else {
+                description.textContent = valueOrDash(value);
+            }
+            wrapper.append(term, description);
+            els.documentInfo.appendChild(wrapper);
+        });
+    }
+
+    function renderDocumentMetrics(doc) {
+        els.documentMetrics.innerHTML = '';
+        [
+            ['Qdrant points', doc.qdrantPointCount ?? '-', doc.qdrantCollection || doc.collection],
+            ['Neo4j entities', doc.neo4jEntityCount ?? '-', doc.neo4jNamespace || doc.neo4jStatus],
+            ['Neo4j relations', doc.neo4jRelationCount ?? '-', doc.neo4jNamespace || doc.neo4jStatus],
+            ['File size', doc.fileSize ? `${doc.fileSize} bytes` : '-', doc.contentType],
+        ].forEach(([label, value, caption]) => {
+            const item = document.createElement('div');
+            item.className = 'metric-item';
+            const strong = document.createElement('strong');
+            strong.textContent = valueOrDash(value);
+            const span = document.createElement('span');
+            span.textContent = label;
+            const small = document.createElement('small');
+            small.textContent = valueOrDash(caption);
+            item.append(strong, span, small);
+            els.documentMetrics.appendChild(item);
+        });
+    }
+
+    function renderMarkdown(doc) {
+        const preview = doc.markdownPreview || '';
+        if (preview) {
+            setText(els.documentMarkdownPreview, preview);
+            setText(
+                els.documentPreviewNote,
+                doc.markdownPreviewTruncated
+                    ? `Preview is truncated from ${doc.markdownPreviewPath || doc.localPath}.`
+                    : `Preview from ${doc.markdownPreviewPath || doc.localPath}.`,
+            );
+            els.documentMarkdownPreview.dataset.empty = 'false';
+            return;
+        }
+
+        setText(els.documentMarkdownPreview, doc.markdownPreviewError || 'No extracted Markdown preview is available.');
+        setText(els.documentPreviewNote, doc.markdownPreviewError || 'Preview reads the recorded local path.');
+        els.documentMarkdownPreview.dataset.empty = 'true';
+    }
+
+    function renderRelatedJobs(jobs) {
+        setText(els.documentJobsCount, `${jobs.length} job${jobs.length === 1 ? '' : 's'} shown`);
+        renderTable(els.documentRelatedJobs, ['Job', 'Task', 'Type', 'Status', 'Source URL', 'Path', 'Error', 'Finished', 'Action'], jobs, (job) => [
+            job.jobId,
+            job.taskId,
+            job.jobType,
+            statusPill(job.status),
+            job.sourceUrl,
+            job.localPath,
+            job.errorMessage,
+            formatDate(job.finishedAt),
+            retryJobButton(job),
         ]);
     }
 
     function renderIngestionHistory(history) {
         setText(els.ingestionCount, `${history.length} ingestion job${history.length === 1 ? '' : 's'} shown`);
-        renderTable(els.ingestionHistory, ['Job', 'Task', 'Status', 'Source URL', 'Path', 'Error', 'Finished'], history, (job) => [
+        renderTable(els.ingestionHistory, ['Job', 'Task', 'Status', 'Source URL', 'Path', 'Error', 'Finished', 'Action'], history, (job) => [
             job.jobId,
             job.taskId,
             statusPill(job.status),
@@ -237,13 +438,15 @@ if (root) {
             job.localPath,
             job.errorMessage,
             formatDate(job.finishedAt),
+            retryJobButton(job),
         ]);
     }
 
-    function renderTable(container, headers, rows, mapper) {
+    function renderTable(container, headers, rows, mapper, emptyMessage = 'Nothing recorded yet.') {
+        if (!container) return;
         container.innerHTML = '';
         if (rows.length === 0) {
-            renderEmpty(container, 'Nothing recorded yet.');
+            renderEmpty(container, emptyMessage);
             return;
         }
 
@@ -263,6 +466,9 @@ if (root) {
         rows.forEach((row) => {
             const data = mapper(row);
             const bodyRow = document.createElement('tr');
+            if (row.id && row.id === state.selectedDocumentId) {
+                bodyRow.classList.add('is-selected');
+            }
             data.forEach((value) => {
                 const td = document.createElement('td');
                 if (value instanceof HTMLElement) {
@@ -279,6 +485,7 @@ if (root) {
     }
 
     function renderEmpty(container, message) {
+        if (!container) return;
         const empty = document.createElement('div');
         empty.className = 'empty-state';
         empty.textContent = message;
@@ -291,14 +498,39 @@ if (root) {
         return `${lastIngestion.status || 'ingested'} ${formatDate(lastIngestion.finishedAt)}`;
     }
 
+    function setDocumentsLoading() {
+        setText(els.documentCount, 'Loading documents...');
+        if (els.documents) {
+            els.documents.innerHTML = '';
+            renderEmpty(els.documents, 'Loading documents...');
+        }
+    }
+
+    async function resolveInitialDocumentDataset() {
+        if (!state.selectedDocumentId || state.selectedDatasetId) {
+            return;
+        }
+
+        try {
+            const data = await requestJson(`documents/data/${encodeURIComponent(state.selectedDocumentId)}`);
+            if (data.document?.datasetId) {
+                state.selectedDatasetId = data.document.datasetId;
+                localStorage.setItem('hawkiDatasetsDashboardDatasetId', state.selectedDatasetId);
+            }
+        } catch {
+            state.selectedDocumentId = '';
+        }
+    }
+
     async function loadDatasets({ keepSelection = true } = {}) {
         const requestId = ++state.requestId;
-        const data = await requestJson('api/datasets?limit=100');
+        const data = await requestJson('datasets/data?limit=100');
         if (requestId !== state.requestId) return;
 
         state.datasets = Array.isArray(data.datasets) ? data.datasets : [];
         if (!keepSelection || !state.datasets.some((dataset) => dataset.datasetId === state.selectedDatasetId)) {
             state.selectedDatasetId = state.datasets[0]?.datasetId || '';
+            state.selectedDocumentId = '';
         }
 
         renderDatasets(state.datasets);
@@ -310,18 +542,120 @@ if (root) {
         }
     }
 
-    async function loadDataset(datasetId, { renderList = true } = {}) {
+    async function loadDataset(datasetId, { renderList = true, keepDocumentSelection = true, loadDocumentList = true } = {}) {
         if (!datasetId) return;
+        const changedDataset = state.selectedDatasetId !== datasetId;
         state.selectedDatasetId = datasetId;
         localStorage.setItem('hawkiDatasetsDashboardDatasetId', datasetId);
+        if (changedDataset || !keepDocumentSelection) {
+            state.selectedDocumentId = '';
+            localStorage.removeItem('hawkiDatasetsDashboardDocumentId');
+        }
         setStatus(`Loading dataset ${datasetId}...`);
+        setDocumentsLoading();
 
-        const data = await requestJson(`api/datasets/${encodeURIComponent(datasetId)}`);
+        const data = await requestJson(`datasets/data/${encodeURIComponent(datasetId)}`);
         renderDataset(data.dataset);
 
         if (renderList) {
             renderDatasets(state.datasets);
         }
+
+        if (loadDocumentList) {
+            await loadDocuments({ keepSelection: keepDocumentSelection && !changedDataset });
+        }
+
+        syncUrl();
+    }
+
+    async function loadDocuments({ keepSelection = true } = {}) {
+        if (!state.selectedDatasetId) {
+            state.documents = [];
+            renderDocuments([]);
+            clearDocumentDetail();
+            return;
+        }
+
+        const requestId = ++state.documentRequestId;
+        const params = new URLSearchParams({
+            dataset_id: state.selectedDatasetId,
+            limit: '150',
+        });
+        if (state.documentSearch) {
+            params.set('q', state.documentSearch);
+        }
+
+        const data = await requestJson(`documents/data?${params.toString()}`);
+        if (requestId !== state.documentRequestId) return;
+
+        state.documents = Array.isArray(data.documents) ? data.documents : [];
+        if (!keepSelection || !state.documents.some((document) => document.id === state.selectedDocumentId)) {
+            state.selectedDocumentId = state.documents[0]?.id || '';
+        }
+
+        renderDocuments(state.documents);
+
+        if (state.selectedDocumentId) {
+            await loadDocument(state.selectedDocumentId, { renderList: false });
+        } else {
+            localStorage.removeItem('hawkiDatasetsDashboardDocumentId');
+            clearDocumentDetail();
+            syncUrl();
+        }
+    }
+
+    async function loadDocument(documentId, { renderList = true } = {}) {
+        if (!documentId) return;
+        state.selectedDocumentId = documentId;
+        localStorage.setItem('hawkiDatasetsDashboardDocumentId', documentId);
+        setStatus(`Loading document ${documentId}...`);
+
+        const data = await requestJson(`documents/data/${encodeURIComponent(documentId)}`);
+        if (data.document?.datasetId && data.document.datasetId !== state.selectedDatasetId) {
+            state.selectedDatasetId = data.document.datasetId;
+            localStorage.setItem('hawkiDatasetsDashboardDatasetId', state.selectedDatasetId);
+        }
+
+        renderDocument(data.document);
+
+        if (renderList) {
+            renderDocuments(state.documents);
+        }
+
+        setStatus(`Showing document ${documentId}.`);
+    }
+
+    async function retryTask(taskId) {
+        setStatus(`Retrying failed jobs for ${taskId}...`);
+        await requestJson(`pipeline/recovery/tasks/${encodeURIComponent(taskId)}/retry-failed`, { method: 'POST' });
+        await loadDataset(state.selectedDatasetId, { renderList: false });
+        setStatus(`Queued retry for ${taskId}.`, 'success');
+    }
+
+    async function retryJob(jobId) {
+        setStatus(`Retrying ${jobId}...`);
+        await requestJson(`pipeline/recovery/jobs/${encodeURIComponent(jobId)}/retry`, { method: 'POST' });
+        await loadDataset(state.selectedDatasetId, { renderList: false });
+        setStatus(`Queued retry for ${jobId}.`, 'success');
+    }
+
+    function clearDocumentDetail() {
+        setText(els.documentUpdated, 'No document loaded.');
+        if (els.documentState) {
+            els.documentState.className = 'status-pill is-idle';
+            setText(els.documentState, 'idle');
+        }
+        [els.documentInfo, els.documentMetrics, els.documentRelatedJobs].filter(Boolean).forEach((container) => {
+            container.innerHTML = '';
+            renderEmpty(container, 'Nothing to show yet.');
+        });
+        setText(els.documentPreviewNote, 'Preview reads the recorded local path.');
+        setText(els.documentMarkdownPreview, 'No extracted Markdown preview is available.');
+        if (els.documentMarkdownPreview) {
+            els.documentMarkdownPreview.dataset.empty = 'true';
+        }
+        setText(els.documentMetadata, '{}');
+        setText(els.documentJobsCount, '0 jobs');
     }
 
     function clearDetail() {
@@ -336,6 +670,7 @@ if (root) {
                 renderEmpty(container, 'Nothing to show yet.');
             });
         [els.taskCount, els.documentCount, els.ingestionCount].forEach((el) => setText(el, '0'));
+        clearDocumentDetail();
     }
 
     function startPolling() {
@@ -350,19 +685,36 @@ if (root) {
         }, 10000);
     }
 
+    els.documentSearchForm?.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        state.documentSearch = els.documentSearch?.value.trim() || '';
+        state.selectedDocumentId = '';
+        localStorage.removeItem('hawkiDatasetsDashboardDocumentId');
+
+        try {
+            setStatus('Filtering documents...');
+            await loadDocuments({ keepSelection: false });
+            setStatus('Documents filtered.', 'success');
+        } catch (error) {
+            setStatus(error.message || 'Document filter failed.', 'error');
+        }
+    });
+
     els.refresh?.addEventListener('click', async () => {
         try {
-            setStatus('Refreshing datasets...');
+            setStatus('Refreshing data browser...');
             await loadDatasets({ keepSelection: true });
-            setStatus('Datasets refreshed.', 'success');
+            setStatus('Data browser refreshed.', 'success');
         } catch (error) {
             setStatus(error.message || 'Refresh failed.', 'error');
         }
     });
 
-    loadDatasets({ keepSelection: true }).catch((error) => {
-        setStatus(error.message || 'Could not load datasets.', 'error');
-        clearDetail();
-    });
+    resolveInitialDocumentDataset()
+        .then(() => loadDatasets({ keepSelection: true }))
+        .catch((error) => {
+            setStatus(error.message || 'Could not load data browser.', 'error');
+            clearDetail();
+        });
     startPolling();
 }

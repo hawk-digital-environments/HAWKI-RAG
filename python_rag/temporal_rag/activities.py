@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import logging
 from pathlib import Path
+import shutil
 import time
 from typing import Any
 from urllib.parse import urljoin
+import zipfile
 
 import requests
 from temporalio import activity
@@ -17,6 +20,7 @@ from temporal_rag.logging import log_event
 from temporal_rag.metadata import AppMetadataStore
 from temporal_rag.settings import TemporalRagSettings
 from temporal_rag.storage import (
+    is_object_prefix,
     list_markdown_files,
     read_text_file,
     sha256_text,
@@ -25,7 +29,6 @@ from temporal_rag.storage import (
 )
 
 logger = logging.getLogger(__name__)
-
 
 @activity.defn(name="scrape_source")
 def scrape_source(workflow_input: dict[str, Any]) -> dict[str, Any]:
@@ -36,6 +39,12 @@ def scrape_source(workflow_input: dict[str, Any]) -> dict[str, Any]:
     service_config = _service_config(workflow_input, "scraper", settings)
     metadata.mark_phase(workflow_input, "scrape_source", "started", {"raw_dir": raw_dir})
     log_event(logger, "scrape_source:start", source_id=source_id, raw_dir=raw_dir, task_queue=settings.scraper_task_queue)
+
+    upload_result = _scrape_uploaded_file(workflow_input, source_id, raw_dir)
+    if upload_result is not None:
+        metadata.mark_phase(workflow_input, "scrape_source", "success", upload_result)
+        log_event(logger, "scrape_source:uploaded_file", **upload_result, task_queue=settings.scraper_task_queue)
+        return upload_result
 
     try:
         client = ExternalJobClient(**service_config)
@@ -76,12 +85,23 @@ def inspect_and_convert_files(payload: dict[str, Any]) -> dict[str, Any]:
     log_event(logger, "inspect_and_convert_files:start", source_id=source_id, raw_dir=raw_dir, markdown_dir=markdown_dir, task_queue=settings.converter_task_queue)
 
     try:
-        client = ExternalJobClient(**service_config)
-        response = client.start_and_wait({
-            "source_id": source_id,
-            "raw_dir": raw_dir,
-            "markdown_dir": markdown_dir,
-        })
+        if _uses_direct_converter(service_config):
+            response = _convert_files_with_extract_api(service_config, source_id, raw_dir, markdown_dir)
+        else:
+            try:
+                client = ExternalJobClient(**service_config)
+                response = client.start_and_wait({
+                    "source_id": source_id,
+                    "raw_dir": raw_dir,
+                    "markdown_dir": markdown_dir,
+                })
+            except RuntimeError as exc:
+                if not _should_fallback_to_extract_api(exc, service_config):
+                    raise
+
+                fallback_config = dict(service_config)
+                fallback_config["start_path"] = "/extract"
+                response = _convert_files_with_extract_api(fallback_config, source_id, raw_dir, markdown_dir)
     except Exception as exc:
         _record_activity_exception(
             metadata,
@@ -269,6 +289,192 @@ def _record_activity_exception(
     }
     metadata.mark_phase(workflow_input, phase, "failed", result)
     log_event(logger, f"{phase}:error", **result)
+
+
+def _scrape_uploaded_file(workflow_input: dict[str, Any], source_id: str, raw_dir: str) -> dict[str, Any] | None:
+    upload = workflow_input.get("upload")
+    if not isinstance(upload, dict):
+        return None
+
+    local_path = upload.get("local_path") or upload.get("uploaded_path")
+    if not isinstance(local_path, str) or not local_path.strip():
+        return None
+
+    source = Path(local_path.removeprefix("file://")).expanduser().resolve()
+    if not source.exists() or not source.is_file():
+        raise RuntimeError(f"Uploaded source file was not found: {source}")
+
+    raw_root = Path(raw_dir.removeprefix("file://")).expanduser().resolve()
+    raw_root.mkdir(parents=True, exist_ok=True)
+    target_name = str(upload.get("target_name") or source.name)
+    target = raw_root / target_name
+    if source != target:
+        shutil.copy2(source, target)
+
+    return {
+        "source_id": source_id,
+        "external_job_id": None,
+        "raw_dir": str(raw_root),
+        "files_found": 1,
+        "status": "success",
+        "error_details": None,
+        "uploaded_file": str(target),
+    }
+
+
+def _uses_direct_converter(service_config: dict[str, Any]) -> bool:
+    return str(service_config.get("start_path") or "").strip().strip("/") == "extract"
+
+
+def _should_fallback_to_extract_api(exc: RuntimeError, service_config: dict[str, Any]) -> bool:
+    start_path = str(service_config.get("start_path") or "")
+
+    return "/api/convert/start" in start_path and "404 Client Error" in str(exc)
+
+
+def _convert_files_with_extract_api(
+    service_config: dict[str, Any],
+    source_id: str,
+    raw_dir: str,
+    markdown_dir: str,
+) -> dict[str, Any]:
+    raw_root = _local_directory(raw_dir, "raw")
+    markdown_root = _local_directory(markdown_dir, "markdown", must_exist=False)
+    markdown_root.mkdir(parents=True, exist_ok=True)
+
+    candidates = [path for path in sorted(raw_root.rglob("*")) if path.is_file()]
+
+    if not candidates:
+        return {
+            "source_id": source_id,
+            "external_job_id": None,
+            "markdown_dir": str(markdown_root),
+            "markdown_files_created": 0,
+            "converted_files": [],
+            "skipped_files": [],
+            "status": "failed",
+            "error_details": "No files were found for the converter.",
+        }
+
+    converted_files: list[str] = []
+    markdown_files_created = 0
+    for raw_file in candidates:
+        output_dir = markdown_root / _converter_output_dir_name(raw_file)
+        if output_dir.exists():
+            shutil.rmtree(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        created = _extract_single_file(service_config, raw_file, output_dir)
+        markdown_files_created += created
+        converted_files.append(str(raw_file))
+
+    return {
+        "source_id": source_id,
+        "external_job_id": None,
+        "markdown_dir": str(markdown_root),
+        "markdown_files_created": markdown_files_created,
+        "converted_files": converted_files,
+        "skipped_files": [],
+        "status": "success" if markdown_files_created > 0 else "failed",
+        "error_details": None if markdown_files_created > 0 else "Converter did not produce Markdown files.",
+    }
+
+
+def _extract_single_file(service_config: dict[str, Any], raw_file: Path, output_dir: Path) -> int:
+    base_url = str(service_config["base_url"]).rstrip("/") + "/"
+    start_path = str(service_config.get("start_path") or "/extract").lstrip("/")
+    url = urljoin(base_url, start_path)
+    token = str(service_config.get("token") or "")
+    timeout_seconds = float(service_config.get("timeout_seconds") or 30)
+    retry_attempts = max(1, int(service_config.get("retry_attempts") or 1))
+    headers = {"Authorization": f"Bearer {token}"} if token else {}
+    last_error: Exception | None = None
+
+    for attempt in range(1, retry_attempts + 1):
+        try:
+            with raw_file.open("rb") as handle:
+                response = requests.post(
+                    url,
+                    headers=headers,
+                    files={"file": (raw_file.name, handle)},
+                    timeout=timeout_seconds,
+                )
+
+            if response.status_code >= 500 or response.status_code in {408, 429}:
+                response.raise_for_status()
+            if not response.ok:
+                raise RuntimeError(
+                    f"Converter request failed [{response.status_code}]: {_response_error(response)}"
+                )
+
+            return _unpack_converter_zip(response.content, output_dir)
+        except Exception as exc:
+            last_error = exc
+            if attempt >= retry_attempts:
+                break
+            time.sleep(min(2 ** (attempt - 1), 10))
+
+    raise RuntimeError(f"Converter extract request failed for {raw_file.name}: {last_error}") from last_error
+
+
+def _unpack_converter_zip(content: bytes, output_dir: Path) -> int:
+    archive_data = io.BytesIO(content)
+    if not zipfile.is_zipfile(archive_data):
+        raise RuntimeError("Converter returned a non-ZIP response.")
+
+    archive_data.seek(0)
+    markdown_files_created = 0
+    output_root = output_dir.resolve()
+    with zipfile.ZipFile(archive_data) as archive:
+        for member in archive.infolist():
+            if member.is_dir():
+                continue
+
+            member_path = Path(member.filename)
+            if member_path.is_absolute() or ".." in member_path.parts:
+                raise RuntimeError(f"Converter ZIP contained an unsafe path: {member.filename}")
+
+            target = (output_root / member_path).resolve()
+            try:
+                target.relative_to(output_root)
+            except ValueError as exc:
+                raise RuntimeError(f"Converter ZIP path escaped output directory: {member.filename}") from exc
+
+            target.parent.mkdir(parents=True, exist_ok=True)
+            with archive.open(member) as source, target.open("wb") as destination:
+                shutil.copyfileobj(source, destination)
+
+            if target.suffix.lower() in {".md", ".markdown"}:
+                markdown_files_created += 1
+
+    return markdown_files_created
+
+
+def _local_directory(path: str, label: str, *, must_exist: bool = True) -> Path:
+    if is_object_prefix(path):
+        raise RuntimeError(f"{label} directory uses object storage; direct converter extraction requires shared storage.")
+
+    root = Path(path.removeprefix("file://")).expanduser().resolve()
+    if must_exist and (not root.exists() or not root.is_dir()):
+        raise RuntimeError(f"{label.capitalize()} directory was not found: {root}")
+
+    return root
+
+
+def _converter_output_dir_name(raw_file: Path) -> str:
+    safe_stem = "".join(char.lower() if char.isalnum() else "-" for char in raw_file.stem).strip("-")
+    digest = hashlib.sha256(str(raw_file.resolve()).encode("utf-8")).hexdigest()[:8]
+
+    return f"{safe_stem or 'document'}-{digest}"
+
+
+def _response_error(response: requests.Response) -> str:
+    try:
+        payload = response.json()
+    except ValueError:
+        return response.text[:500]
+
+    return str(payload)[:500]
 
 
 def _empty_totals(source_id: str) -> dict[str, Any]:

@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta content="{{ csrf_token() }}" name="csrf-token" />
-    <title>HAWKI Datasets</title>
+    <title>HAWKI Data Browser</title>
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -20,9 +20,9 @@
     <main class="datasets-dashboard" data-datasets-dashboard>
         <header class="dashboard-header">
             <div>
-                <p class="eyebrow">HAWKI RAG datasets</p>
-                <h1>Datasets</h1>
-                <p class="header-copy">Dataset-scoped tasks, documents, ingestion, and graph storage.</p>
+                <p class="eyebrow">HAWKI RAG data</p>
+                <h1>Data Browser</h1>
+                <p class="header-copy">Dataset-scoped tasks, documents, ingestion, preview, and graph storage.</p>
             </div>
             <div class="header-actions">
                 @include('partials.pipeline-nav', ['active' => 'datasets', 'refreshId' => 'datasets-refresh'])
@@ -80,8 +80,63 @@
                             <h2>Documents</h2>
                             <p id="datasets-document-count">0 documents</p>
                         </div>
+                        <form class="document-search" id="datasets-document-search-form">
+                            <input id="datasets-document-search" type="search" placeholder="Search documents" autocomplete="off" />
+                            <button type="submit" class="secondary-button">Search</button>
+                        </form>
                     </div>
                     <div class="table-wrap" id="datasets-documents"></div>
+                </section>
+
+                <section class="panel">
+                    <div class="section-head">
+                        <div>
+                            <h2>Document info</h2>
+                            <p id="datasets-document-updated">No document loaded.</p>
+                        </div>
+                        <span class="status-pill" id="datasets-document-state">idle</span>
+                    </div>
+                    <dl class="document-info-grid" id="datasets-document-info"></dl>
+                </section>
+
+                <section class="panel">
+                    <div class="section-head">
+                        <div>
+                            <h2>Index evidence</h2>
+                            <p>Counts come from ingestion metadata when the bridge returns them.</p>
+                        </div>
+                    </div>
+                    <div class="metric-grid document-metric-grid" id="datasets-document-metrics"></div>
+                </section>
+
+                <section class="panel">
+                    <div class="section-head">
+                        <div>
+                            <h2>Extracted Markdown preview</h2>
+                            <p id="datasets-document-preview-note">Preview reads the recorded local path.</p>
+                        </div>
+                    </div>
+                    <pre class="markdown-preview" id="datasets-document-markdown-preview"></pre>
+                </section>
+
+                <section class="panel">
+                    <div class="section-head">
+                        <div>
+                            <h2>Related pipeline jobs</h2>
+                            <p id="datasets-document-jobs-count">0 jobs</p>
+                        </div>
+                    </div>
+                    <div class="table-wrap" id="datasets-document-related-jobs"></div>
+                </section>
+
+                <section class="panel">
+                    <div class="section-head">
+                        <div>
+                            <h2>Metadata</h2>
+                            <p>Raw document metadata stored with the ingested record.</p>
+                        </div>
+                    </div>
+                    <pre class="metadata-preview" id="datasets-document-metadata"></pre>
                 </section>
 
                 <section class="panel">

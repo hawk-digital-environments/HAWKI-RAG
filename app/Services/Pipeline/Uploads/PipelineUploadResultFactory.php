@@ -61,13 +61,8 @@ readonly class PipelineUploadResultFactory
             'jobId' => $job->job_id,
             'datasetId' => $task->dataset_id,
             'task' => $this->tasks->show($task->task_id),
-            'dashboardUrl' => $this->dashboardUrl($task),
+            'dashboardUrl' => $this->urls->to('/pipeline-controller'),
             'controllerUrl' => $this->urls->to('/pipeline-controller'),
         ], 201);
-    }
-
-    private function dashboardUrl(PipelineTask $task): string
-    {
-        return $this->urls->to('/tasks/'.rawurlencode($task->task_id));
     }
 }

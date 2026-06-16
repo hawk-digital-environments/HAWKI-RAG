@@ -31,6 +31,11 @@ class PipelineUploadIdentifierFactory
         );
     }
 
+    public function ingestJobId(string $taskId, string $sourceId): string
+    {
+        return 'ingest_'.substr(hash('sha256', $taskId.'|'.$sourceId), 0, 24);
+    }
+
     public function sourceUrl(PipelineStoredUpload $storedUpload): string
     {
         return 'upload://'.$storedUpload->originalName;

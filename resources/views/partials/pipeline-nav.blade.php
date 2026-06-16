@@ -2,14 +2,10 @@
     $active = $active ?? '';
     $refreshId = $refreshId ?? 'pipeline-refresh';
     $navItems = [
-        ['key' => 'tasks', 'label' => 'Task Manager', 'href' => '/tasks'],
-        ['key' => 'dashboard', 'label' => 'Pipeline Dashboard', 'href' => '/pipeline-dashboard'],
         ['key' => 'health', 'label' => 'Health', 'href' => '/pipeline-health'],
-        ['key' => 'datasets', 'label' => 'Datasets', 'href' => '/datasets'],
-        ['key' => 'documents', 'label' => 'Documents', 'href' => '/documents'],
+        ['key' => 'datasets', 'label' => 'Data Browser', 'href' => '/datasets'],
         ['key' => 'controller', 'label' => 'Controller', 'href' => '/pipeline-controller'],
         ['key' => 'graph', 'label' => 'Neo4j Graph', 'href' => '/neo4j-graph-explorer'],
-        ['key' => 'failed-jobs', 'label' => 'Failed Jobs', 'href' => '/failed-jobs'],
         ['key' => 'playground', 'label' => 'Playground', 'href' => '/hawki-rag-playground'],
     ];
     $dashboardItem = $navItems[0];

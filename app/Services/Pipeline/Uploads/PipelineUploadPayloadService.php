@@ -37,7 +37,7 @@ readonly class PipelineUploadPayloadService
             ],
             'orchestration' => 'temporal',
             'temporal' => [
-                'note' => 'Uploaded files are stored as app metadata. Source URL ingestion is orchestrated by IngestSourceWorkflow.',
+                'note' => 'Uploaded files are handed to IngestSourceWorkflow through shared storage.',
             ],
             'dataset' => $this->metadata->dataset($dataset),
             'upload' => [
@@ -59,9 +59,11 @@ readonly class PipelineUploadPayloadService
         return [
             'source' => 'pipeline-controller',
             'mode' => 'uploaded_file_convert_ingest',
-            'status_note' => 'File uploads are stored as metadata only in the Temporal source-ingestion migration.',
+            'status_note' => 'File upload handed to Temporal for conversion and ingestion.',
             'original_filename' => $storedUpload->originalName,
             'uploaded_path' => $storedUpload->localPath,
+            'target_name' => $storedUpload->targetName,
+            'extension' => $storedUpload->extension,
             'graph' => $input->graph,
             'dataset' => $this->metadata->dataset($dataset),
         ];

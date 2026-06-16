@@ -30,6 +30,16 @@ readonly class DatasetVectorStatsService
                 'exact' => true,
             ]);
 
+            if ($response->status() === 404) {
+                return [
+                    'ok' => true,
+                    'collection' => $dataset->qdrant_collection,
+                    'points' => 0,
+                    'status' => 'not_created',
+                    'message' => 'Collection not created yet',
+                ];
+            }
+
             if (! $response->successful()) {
                 return [
                     'ok' => false,

@@ -1,5 +1,5 @@
 @php
-    $converterExtensions = collect(config('file_converter.supported_extensions', ['pdf', 'doc', 'docx']))
+    $converterExtensions = collect(config('file_converter.supported_extensions', []))
         ->map(fn ($extension) => ltrim(strtolower(trim((string) $extension)), '.'))
         ->filter()
         ->unique()
@@ -11,7 +11,7 @@
     <div class="pipeline-panel-head">
         <div>
             <span class="pipeline-kicker">File input</span>
-            <h2 id="pipeline-file-input-title">Convert and Ingest Document</h2>
+            <h2 id="pipeline-file-input-title">Convert and Ingest File</h2>
         </div>
     </div>
 
@@ -22,8 +22,8 @@
                 <input id="pipeline-file-dataset" name="dataset_id" type="text" value="controller-uploads" autocomplete="off" />
             </div>
             <div>
-                <label for="pipeline-file-input">Document</label>
-                <input id="pipeline-file-input" name="file" type="file" accept="{{ $converterAccept }}" data-supported-extensions="{{ $converterExtensions->implode(',') }}" />
+                <label for="pipeline-file-input">File</label>
+                <input id="pipeline-file-input" name="file" type="file" @if ($converterAccept !== '') accept="{{ $converterAccept }}" @endif data-supported-extensions="{{ $converterExtensions->implode(',') }}" />
             </div>
             <label class="controller-toggle" for="pipeline-file-graph">
                 <input id="pipeline-file-graph" name="graph" type="checkbox" value="true" checked />

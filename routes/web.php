@@ -5,8 +5,12 @@ use App\Http\Controllers\API\HawkiRagProxyController;
 use App\Http\Controllers\API\RagHealthController;
 use App\Http\Controllers\API\RagMonitorController;
 use App\Http\Controllers\API\RagStatsController;
+use App\Http\Controllers\DatasetController;
+use App\Http\Controllers\DocumentBrowserController;
 use App\Http\Controllers\Graph\RagGraphController;
 use App\Http\Controllers\PipelineControlController;
+use App\Http\Controllers\PipelineHealthController;
+use App\Http\Controllers\PipelineRecoveryController;
 use App\Http\Controllers\PipelineStatusController;
 use App\Http\Controllers\PipelineTaskController;
 use App\Http\Controllers\ScrapeController;
@@ -29,14 +33,6 @@ Route::get('/neo4j-graph-explorer', function () {
     return view('neo4j-graph-dashboard');
 });
 
-Route::get('/pipeline-dashboard', function () {
-    return view('pipeline-dashboard');
-});
-
-Route::get('/tasks/{taskId?}', function (?string $taskId = null) {
-    return view('tasks-manager', ['taskId' => $taskId]);
-})->where('taskId', '[^/]+');
-
 Route::get('/pipeline-controller', function () {
     return view('pipeline-controller-dashboard');
 });
@@ -48,14 +44,16 @@ Route::get('/pipeline-health', function () {
 Route::get('/datasets', function () {
     return view('datasets-dashboard');
 });
+Route::get('/datasets/data', [DatasetController::class, 'index']);
+Route::get('/datasets/data/{datasetId}', [DatasetController::class, 'show']);
 
-Route::get('/documents', function () {
-    return view('documents-dashboard');
-});
+Route::get('/documents', function (\Illuminate\Http\Request $request) {
+    $query = $request->getQueryString();
 
-Route::get('/failed-jobs', function () {
-    return view('failed-jobs-dashboard');
+    return redirect('/datasets'.($query ? '?'.$query : ''));
 });
+Route::get('/documents/data', [DocumentBrowserController::class, 'index']);
+Route::get('/documents/data/{documentId}', [DocumentBrowserController::class, 'show']);
 
 Route::post('/requestScrape', [ScrapeController::class, 'requestScrape']);
 Route::post('/cancelScrape', [ScrapeController::class, 'cancelScrape']);
@@ -83,7 +81,14 @@ Route::post('/pipeline/tasks/{taskId}/jobs', [PipelineTaskController::class, 'up
 Route::post('/pipeline/tasks/{taskId}/retry', [PipelineTaskController::class, 'retry']);
 Route::post('/pipeline/tasks/{taskId}/retry-failed-jobs', [PipelineTaskController::class, 'retryFailedJobs']);
 Route::post('/pipeline/tasks/{taskId}/cancel', [PipelineTaskController::class, 'cancel']);
+Route::get('/pipeline/health', [PipelineHealthController::class, 'show']);
 Route::post('/pipeline/controller/files', [PipelineControlController::class, 'uploadFile']);
+Route::get('/pipeline/recovery/failed-jobs', [PipelineRecoveryController::class, 'failedJobs']);
+Route::post('/pipeline/recovery/jobs/retry-selected', [PipelineRecoveryController::class, 'retrySelected']);
+Route::post('/pipeline/recovery/jobs/{jobId}/retry', [PipelineRecoveryController::class, 'retryJob']);
+Route::post('/pipeline/recovery/retry-all', [PipelineRecoveryController::class, 'retryAll']);
+Route::post('/pipeline/recovery/tasks/{taskId}/retry-failed', [PipelineRecoveryController::class, 'retryTask']);
+Route::post('/pipeline/recovery/datasets/{datasetId}/retry-failed', [PipelineRecoveryController::class, 'retryDataset']);
 // Playground related routes
 
 Route::post('/query', [HawkiRagProxyController::class, 'query']);

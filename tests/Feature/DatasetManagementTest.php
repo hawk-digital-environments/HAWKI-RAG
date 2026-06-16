@@ -127,6 +127,53 @@ class DatasetManagementTest extends TestCase
         $this->assertSame('hawki_dataset_start', $job->metadata['dataset']['neo4j_namespace'] ?? null);
     }
 
+    public function test_missing_qdrant_collection_is_reported_as_empty_dataset_stats(): void
+    {
+        config()->set('config.qdrant_http_url', 'http://qdrant.test');
+        config()->set('config.neo4j_http_url', 'http://neo4j.test');
+        config()->set('config.neo4j_user', 'neo4j');
+        config()->set('config.neo4j_password', 'secret');
+
+        Http::fake([
+            'http://qdrant.test/*/points/count' => Http::response([
+                'status' => ['error' => 'Not found'],
+            ], 404),
+            'http://neo4j.test/*' => Http::response([
+                'results' => [[
+                    'columns' => ['nodes', 'relationships'],
+                    'data' => [[
+                        'row' => [0, 0],
+                    ]],
+                ]],
+                'errors' => [],
+            ], 200),
+        ]);
+
+        Dataset::query()->create([
+            'dataset_id' => 'empty-dataset',
+            'name' => 'Empty Dataset',
+            'status' => Dataset::STATUS_ACTIVE,
+            'qdrant_collection' => 'hawki_empty_dataset',
+            'neo4j_namespace' => 'hawki_empty_dataset',
+        ]);
+
+        PipelineTask::query()->create([
+            'task_id' => 'task-empty-dataset',
+            'dataset_id' => 'empty-dataset',
+            'status' => PipelineTask::STATUS_PENDING,
+            'metadata' => [],
+        ]);
+
+        $this->actingAsApiUser();
+
+        $this->getJson('/api/datasets/empty-dataset')
+            ->assertOk()
+            ->assertJsonPath('dataset.graphStats.qdrant.ok', true)
+            ->assertJsonPath('dataset.graphStats.qdrant.points', 0)
+            ->assertJsonPath('dataset.graphStats.qdrant.status', 'not_created')
+            ->assertJsonPath('dataset.graphStats.qdrant.message', 'Collection not created yet');
+    }
+
     private function fakeGraphStats(int $points, int $nodes, int $relationships): void
     {
         config()->set('config.qdrant_http_url', 'http://qdrant.test');

@@ -63,7 +63,7 @@ readonly class PipelineDemoCommandSupport
      */
     public function dashboardUrls(): array
     {
-        $dashboard = $this->urls->to('/tasks');
+        $dashboard = $this->urls->to('/pipeline-controller');
         $urls = [$dashboard];
         $mounted = $this->mountedDashboardUrl();
 
@@ -110,6 +110,6 @@ readonly class PipelineDemoCommandSupport
             return null;
         }
 
-        return $origin.'/'.trim($path.'/tasks', '/');
+        return $origin.'/'.trim($path.'/pipeline-controller', '/');
     }
 }

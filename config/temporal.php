@@ -58,8 +58,8 @@ return [
         'scraper_status_path' => env('EXTERNAL_SCRAPER_STATUS_PATH', '/api/scrape/jobs/{job_id}'),
         'scraper_token' => env('EXTERNAL_SCRAPER_TOKEN', env('CUSTOM_CRAWLER_API_KEY', '')),
         'converter_url' => env('EXTERNAL_CONVERTER_URL', env('FILE_CONVERTER_BASE_URL', 'http://file-converter:8000')),
-        'converter_start_path' => env('EXTERNAL_CONVERTER_START_PATH', '/api/convert/start'),
-        'converter_status_path' => env('EXTERNAL_CONVERTER_STATUS_PATH', '/api/convert/jobs/{job_id}'),
+        'converter_start_path' => env('EXTERNAL_CONVERTER_START_PATH', '/extract'),
+        'converter_status_path' => env('EXTERNAL_CONVERTER_STATUS_PATH', ''),
         'converter_token' => env('EXTERNAL_CONVERTER_TOKEN', env('FILE_CONVERTER_TOKEN', '')),
     ],
 ];

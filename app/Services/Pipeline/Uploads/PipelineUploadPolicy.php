@@ -21,20 +21,21 @@ class PipelineUploadPolicy
     {
         return array_values(array_filter(array_map(
             static fn (mixed $value): string => ltrim(strtolower(trim((string) $value)), '.'),
-            $this->config->get('file_converter.supported_extensions', ['pdf', 'doc', 'docx']),
+            $this->config->get('file_converter.supported_extensions', []),
         )));
     }
 
     public function supports(string $extension): bool
     {
-        return in_array($this->normalizeExtension($extension), $this->supportedExtensions(), true);
+        $supportedExtensions = $this->supportedExtensions();
+
+        return $supportedExtensions === []
+            || in_array($this->normalizeExtension($extension), $supportedExtensions, true);
     }
 
     public function unsupportedMessage(): string
     {
-        return 'Unsupported converter input. Supported file types: '
-            .implode(', ', $this->supportedExtensions())
-            .'.';
+        return 'Unsupported converter input. The converter rejected this file.';
     }
 
     public function normalizeExtension(string $extension): string

@@ -140,7 +140,7 @@ if (root) {
         if (['completed', 'indexed', 'active'].includes(value)) return 'is-completed';
         if (['running', 'queued', 'pending', 'processing'].includes(value)) return 'is-running';
         if (['failed', 'cancelled', 'partial'].includes(value)) return 'is-failed';
-        if (['skipped', 'archived', 'disabled'].includes(value)) return 'is-skipped';
+        if (['skipped', 'archived', 'disabled', 'n/a', 'not_available', 'unavailable'].includes(value)) return 'is-skipped';
         return 'is-idle';
     }
 
@@ -262,7 +262,7 @@ if (root) {
         setText(els.taskStatus, task.status || 'unknown');
 
         renderInfo(task);
-        renderStages(jobs);
+        renderStages(task);
         renderCounters(task.counters || {});
         renderJobs(jobs);
         renderDocuments(state.documents);
@@ -300,9 +300,51 @@ if (root) {
         });
     }
 
-    function renderStages(jobs) {
+    function renderStages(task) {
         if (!els.stages) return;
         els.stages.innerHTML = '';
+        const explicitStages = task?.stages && typeof task.stages === 'object' && Object.keys(task.stages).length > 0
+            ? task.stages
+            : null;
+
+        if (explicitStages) {
+            stageDefinitions
+                .filter(([type]) => explicitStages[type])
+                .forEach(([type, label]) => {
+                    const stage = explicitStages[type];
+                    const status = String(stage.status || 'queued').toLowerCase();
+                    const counts = stage.counts || {};
+                    const progress = ['completed', 'success'].includes(status)
+                        ? 100
+                        : (['running', 'processing', 'received'].includes(status) ? 50 : 0);
+
+                    const card = document.createElement('div');
+                    card.className = `stage-card ${statusClass(status)}`;
+                    const title = document.createElement('strong');
+                    title.textContent = label;
+                    const meta = document.createElement('span');
+                    meta.textContent = [
+                        valueOrDash(stage.status),
+                        stage.message || null,
+                        counts.sourceFiles !== undefined || counts.convertedFiles !== undefined
+                            ? `${counts.convertedFiles || 0}/${counts.sourceFiles || 0} files`
+                            : null,
+                        counts.completed !== undefined || counts.total !== undefined
+                            ? `${counts.completed || 0}/${counts.total || 0} docs`
+                            : null,
+                    ].filter(Boolean).join(' | ');
+                    const meter = document.createElement('div');
+                    meter.className = 'stage-meter';
+                    const bar = document.createElement('span');
+                    bar.style.width = `${progress}%`;
+                    meter.appendChild(bar);
+                    card.append(title, meta, meter);
+                    els.stages.appendChild(card);
+                });
+            return;
+        }
+
+        const jobs = Array.isArray(task?.jobs) ? task.jobs : [];
         stageDefinitions.forEach(([type, label]) => {
             const stageJobs = jobs.filter((job) => job.jobType === type);
             const completed = stageJobs.filter((job) => String(job.status).toLowerCase() === 'completed').length;
@@ -363,10 +405,10 @@ if (root) {
         setText(els.documentsCount, `${documents.length} document${documents.length === 1 ? '' : 's'} shown`);
         if (els.documentsLink) {
             const datasetId = state.selectedTask?.datasetId || '';
-            els.documentsLink.href = datasetId ? pageUrl(`documents?dataset_id=${encodeURIComponent(datasetId)}`) : pageUrl('documents');
+            els.documentsLink.href = datasetId ? pageUrl(`datasets?dataset_id=${encodeURIComponent(datasetId)}`) : pageUrl('datasets');
         }
         renderTable(els.documents, ['Document', 'Status', 'Qdrant', 'Neo4j', 'Source', 'Job', 'Updated'], documents, (doc) => [
-            makeLink(`/documents?document_id=${encodeURIComponent(doc.id)}`, doc.title || doc.originalFilename || doc.id),
+            makeLink(pageUrl(`datasets?dataset_id=${encodeURIComponent(doc.datasetId || '')}&document_id=${encodeURIComponent(doc.id)}`), doc.title || doc.originalFilename || doc.id),
             statusPill(doc.status),
             statusPill(doc.qdrantStatus),
             statusPill(doc.neo4jStatus),
@@ -611,7 +653,7 @@ if (root) {
 
     async function loadTasks({ keepSelection = true } = {}) {
         const requestId = ++state.requestId;
-        const data = await requestJson('api/pipeline/tasks?limit=80');
+        const data = await requestJson('pipeline/tasks?limit=80');
         if (requestId !== state.requestId) return;
         state.tasks = Array.isArray(data.tasks) ? data.tasks : [];
         renderSummary();
@@ -636,8 +678,8 @@ if (root) {
         setStatus(`Loading task ${taskId}...`);
 
         const [taskData, failedData, eventsData] = await Promise.all([
-            requestJson(`api/pipeline/tasks/${encodeURIComponent(taskId)}`),
-            requestJson(`api/pipeline/tasks/${encodeURIComponent(taskId)}/failed-jobs`),
+            requestJson(`pipeline/tasks/${encodeURIComponent(taskId)}`),
+            requestJson(`pipeline/tasks/${encodeURIComponent(taskId)}/failed-jobs`),
             requestJson(eventsPath(taskId)),
         ]);
 
@@ -657,7 +699,7 @@ if (root) {
         if (!task?.datasetId) return [];
         try {
             const params = new URLSearchParams({ dataset_id: task.datasetId, limit: '250' });
-            const data = await requestJson(`api/documents?${params.toString()}`);
+            const data = await requestJson(`documents/data?${params.toString()}`);
             const documents = Array.isArray(data.documents) ? data.documents : [];
             return documents.filter((doc) => {
                 if (doc.taskId) return doc.taskId === task.taskId;
@@ -672,7 +714,7 @@ if (root) {
         const params = new URLSearchParams({ limit: '200' });
         if (state.eventTypeFilter) params.set('event_type', state.eventTypeFilter);
         if (state.eventJobFilter) params.set('job_id', state.eventJobFilter);
-        return `api/pipeline/tasks/${encodeURIComponent(taskId)}/events?${params.toString()}`;
+        return `pipeline/tasks/${encodeURIComponent(taskId)}/events?${params.toString()}`;
     }
 
     function clearTask() {
@@ -718,7 +760,7 @@ if (root) {
     async function retryJob(jobId) {
         if (!jobId) return;
         setStatus(`Retrying ${jobId}...`);
-        await requestJson(`api/pipeline/recovery/jobs/${encodeURIComponent(jobId)}/retry`, { method: 'POST' });
+        await requestJson(`pipeline/recovery/jobs/${encodeURIComponent(jobId)}/retry`, { method: 'POST' });
         state.selectedFailedJobs.delete(jobId);
         await loadTasks({ keepSelection: true });
         setStatus(`Queued retry for ${jobId}.`, 'success');
@@ -728,7 +770,7 @@ if (root) {
         const jobIds = Array.from(state.selectedFailedJobs);
         if (jobIds.length === 0) return;
         setStatus(`Retrying ${jobIds.length} selected job${jobIds.length === 1 ? '' : 's'}...`);
-        await requestJson('api/pipeline/recovery/jobs/retry-selected', {
+        await requestJson('pipeline/recovery/jobs/retry-selected', {
             method: 'POST',
             body: JSON.stringify({ job_ids: jobIds }),
         });
@@ -740,7 +782,7 @@ if (root) {
     async function retryTask() {
         if (!state.selectedTaskId) return;
         setStatus(`Retrying failed jobs for ${state.selectedTaskId}...`);
-        await requestJson(`api/pipeline/recovery/tasks/${encodeURIComponent(state.selectedTaskId)}/retry-failed`, {
+        await requestJson(`pipeline/recovery/tasks/${encodeURIComponent(state.selectedTaskId)}/retry-failed`, {
             method: 'POST',
         });
         state.selectedFailedJobs.clear();

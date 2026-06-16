@@ -38,20 +38,7 @@ function setFileNote(message, tone = 'info') {
 }
 
 function supportedFileMessage() {
-    const extensions = String(fileInput?.dataset?.supportedExtensions || '')
-        .split(',')
-        .map((extension) => extension.trim())
-        .filter(Boolean);
-
-    if (extensions.length === 0) {
-        return 'Choose a supported converter file.';
-    }
-
-    if (extensions.length > 8) {
-        return `Choose a supported converter file. Supported examples: ${extensions.slice(0, 8).map((extension) => `.${extension}`).join(', ')}, ...`;
-    }
-
-    return `Choose a supported converter file: ${extensions.map((extension) => `.${extension}`).join(', ')}.`;
+    return 'Choose a file to convert.';
 }
 
 fileForm?.addEventListener('submit', async (event) => {

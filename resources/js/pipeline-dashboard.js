@@ -422,7 +422,7 @@ if (root) {
 
     async function loadTasks({ keepSelection = true } = {}) {
         const requestId = ++state.requestId;
-        const data = await requestJson('api/pipeline/tasks?limit=50');
+        const data = await requestJson('pipeline/tasks?limit=50');
         if (requestId !== state.requestId) return;
 
         state.tasks = Array.isArray(data.tasks) ? data.tasks : [];
@@ -447,8 +447,8 @@ if (root) {
         setStatus(`Loading task ${taskId}...`);
 
         const [taskData, failedData, eventsData] = await Promise.all([
-            requestJson(`api/pipeline/tasks/${encodeURIComponent(taskId)}`),
-            requestJson(`api/pipeline/tasks/${encodeURIComponent(taskId)}/failed-jobs`),
+            requestJson(`pipeline/tasks/${encodeURIComponent(taskId)}`),
+            requestJson(`pipeline/tasks/${encodeURIComponent(taskId)}/failed-jobs`),
             requestJson(eventsPath(taskId)),
         ]);
 
@@ -470,7 +470,7 @@ if (root) {
         if (state.eventTypeFilter) params.set('event_type', state.eventTypeFilter);
         if (state.jobFilter) params.set('job_id', state.jobFilter);
 
-        return `api/pipeline/tasks/${encodeURIComponent(taskId)}/events?${params.toString()}`;
+        return `pipeline/tasks/${encodeURIComponent(taskId)}/events?${params.toString()}`;
     }
 
     function clearTaskDetail() {
@@ -506,7 +506,7 @@ if (root) {
         setStatus(`Retrying failed jobs for ${state.selectedTaskId}...`);
 
         try {
-            await requestJson(`api/pipeline/tasks/${encodeURIComponent(state.selectedTaskId)}/retry-failed-jobs`, {
+            await requestJson(`pipeline/tasks/${encodeURIComponent(state.selectedTaskId)}/retry-failed-jobs`, {
                 method: 'POST',
             });
             await loadTasks({ keepSelection: true });
