@@ -3368,6 +3368,8 @@ class ApiAndVectorValidationTests(unittest.TestCase):
                 return self._payload
 
         class FakeGateway:
+            collection = "toy_collection"
+
             def get_collection(self):
                 calls.append(("get_collection", self))
                 return FakeResponse({"result": {"status": "ok"}})
@@ -3434,11 +3436,13 @@ class ApiAndVectorValidationTests(unittest.TestCase):
             client.upsert([{"id": "a", "vector": [1, 2], "payload": {}}])
             self.assertEqual(client.count_points(), 42)
             client.delete_by_filter({"must": []})
+            client.set_collection("runtime_collection")
 
         self.assertIn(("search", "toy_collection", 2.0), calls)
         self.assertIn(("upsert", 1, 2.0), calls)
         self.assertIn(("count", "toy_collection", True, 2.0), calls)
         self.assertIn(("delete_by_filter", 2.0), calls)
+        self.assertEqual(fake_gateway.collection, "runtime_collection")
 
     def test_qdrant_http_defaults_search_all_limit_to_top_k_when_not_configured(self) -> None:
         from infrastructure.vectorstore.qdrant_http import QdrantHTTP

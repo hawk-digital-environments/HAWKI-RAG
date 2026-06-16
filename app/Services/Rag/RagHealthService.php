@@ -93,8 +93,8 @@ readonly class RagHealthService
         $primaryBase = (string) $this->config->get('config.rag_api_url', '');
 
         return array_values(array_unique(array_filter([
-            rtrim($bridgeBase, '/').'/health',
-            $primaryBase !== '' ? rtrim($primaryBase, '/').'/health' : null,
+            rtrim($bridgeBase, '/').'/health?runtime=false',
+            $primaryBase !== '' ? rtrim($primaryBase, '/').'/health?runtime=false' : null,
         ])));
     }
 }

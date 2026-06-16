@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import io
+import json
 import logging
 from pathlib import Path
 import shutil
@@ -29,6 +30,12 @@ from temporal_rag.storage import (
 )
 
 logger = logging.getLogger(__name__)
+
+PASSTHROUGH_METADATA_FILENAME = "rawki_passthrough.json"
+
+
+class DirectExtractUnsupportedFileError(RuntimeError):
+    """The direct converter rejected a file type that RAG-Anything may still parse."""
 
 @activity.defn(name="scrape_source")
 def scrape_source(workflow_input: dict[str, Any]) -> dict[str, Any]:
@@ -159,6 +166,7 @@ def ingest_markdown_files(payload: dict[str, Any]) -> dict[str, Any]:
     try:
         for batch in _batches(files, batch_size):
             docs: list[dict[str, Any]] = []
+            batch_manifest_records: list[dict[str, Any]] = []
             for markdown_file in batch:
                 text = read_text_file(markdown_file)
                 if not text.strip():
@@ -167,6 +175,7 @@ def ingest_markdown_files(payload: dict[str, Any]) -> dict[str, Any]:
                 doc_id = stable_document_id(source_id, markdown_file, markdown_dir)
                 content_hash = sha256_text(text)
                 relative_path = str(Path(markdown_file).resolve().relative_to(Path(markdown_dir).resolve()))
+                passthrough_metadata = _load_passthrough_metadata(markdown_file)
                 payload = {
                     "source_id": source_id,
                     "document_id": doc_id,
@@ -181,19 +190,27 @@ def ingest_markdown_files(payload: dict[str, Any]) -> dict[str, Any]:
                     "job_id": workflow_input.get("job_id"),
                     "task_id": workflow_input.get("task_id"),
                 }
+                if passthrough_metadata:
+                    payload.update(passthrough_metadata)
                 _delete_existing_document(settings, doc_id, _operation_id(workflow_input, doc_id, "delete"))
                 docs.append({"id": doc_id, "text": text, "payload": payload})
-                manifest_records.append({
+                manifest_record = {
                     "document_id": doc_id,
                     "relative_path": relative_path,
                     "content_hash": content_hash,
-                })
+                    "markdown_path": markdown_file,
+                }
+                if passthrough_metadata:
+                    manifest_record["passthrough"] = passthrough_metadata
+                batch_manifest_records.append(manifest_record)
+                manifest_records.append(manifest_record)
 
             if not docs:
                 continue
 
             response = _post_ingest(settings, workflow_input, ingest_options, docs)
             _accumulate_ingest_response(totals, response)
+            metadata.upsert_documents(workflow_input, batch_manifest_records, response)
 
         if manifest_path:
             write_manifest(manifest_path, manifest_records)
@@ -304,8 +321,10 @@ def _scrape_uploaded_file(workflow_input: dict[str, Any], source_id: str, raw_di
     if not source.exists() or not source.is_file():
         raise RuntimeError(f"Uploaded source file was not found: {source}")
 
-    raw_root = Path(raw_dir.removeprefix("file://")).expanduser().resolve()
-    raw_root.mkdir(parents=True, exist_ok=True)
+    raw_root = _fresh_local_directory(raw_dir)
+    markdown_dir = workflow_input.get("markdown_output_path")
+    if isinstance(markdown_dir, str) and markdown_dir.strip():
+        _fresh_local_directory(markdown_dir)
     target_name = str(upload.get("target_name") or source.name)
     target = raw_root / target_name
     if source != target:
@@ -320,6 +339,14 @@ def _scrape_uploaded_file(workflow_input: dict[str, Any], source_id: str, raw_di
         "error_details": None,
         "uploaded_file": str(target),
     }
+
+
+def _fresh_local_directory(path: str) -> Path:
+    root = Path(path.removeprefix("file://")).expanduser().resolve()
+    if root.exists():
+        shutil.rmtree(root)
+    root.mkdir(parents=True, exist_ok=True)
+    return root
 
 
 def _uses_direct_converter(service_config: dict[str, Any]) -> bool:
@@ -357,6 +384,7 @@ def _convert_files_with_extract_api(
         }
 
     converted_files: list[str] = []
+    passthrough_files: list[str] = []
     markdown_files_created = 0
     for raw_file in candidates:
         output_dir = markdown_root / _converter_output_dir_name(raw_file)
@@ -364,7 +392,16 @@ def _convert_files_with_extract_api(
             shutil.rmtree(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        created = _extract_single_file(service_config, raw_file, output_dir)
+        try:
+            created = _extract_single_file(service_config, raw_file, output_dir)
+        except DirectExtractUnsupportedFileError as exc:
+            created = _write_raganything_passthrough(raw_file, output_dir, exc)
+            passthrough_files.append(str(raw_file))
+            logger.info(
+                "converter:direct_extract_passthrough file=%s reason=%s",
+                raw_file,
+                exc,
+            )
         markdown_files_created += created
         converted_files.append(str(raw_file))
 
@@ -374,6 +411,7 @@ def _convert_files_with_extract_api(
         "markdown_dir": str(markdown_root),
         "markdown_files_created": markdown_files_created,
         "converted_files": converted_files,
+        "passthrough_files": passthrough_files,
         "skipped_files": [],
         "status": "success" if markdown_files_created > 0 else "failed",
         "error_details": None if markdown_files_created > 0 else "Converter did not produce Markdown files.",
@@ -403,11 +441,18 @@ def _extract_single_file(service_config: dict[str, Any], raw_file: Path, output_
             if response.status_code >= 500 or response.status_code in {408, 429}:
                 response.raise_for_status()
             if not response.ok:
+                error = _response_error(response)
+                if _is_unsupported_direct_extract_response(response.status_code, error):
+                    raise DirectExtractUnsupportedFileError(
+                        f"Direct converter does not support {raw_file.name}: {error}"
+                    )
                 raise RuntimeError(
-                    f"Converter request failed [{response.status_code}]: {_response_error(response)}"
+                    f"Converter request failed [{response.status_code}]: {error}"
                 )
 
             return _unpack_converter_zip(response.content, output_dir)
+        except DirectExtractUnsupportedFileError:
+            raise
         except Exception as exc:
             last_error = exc
             if attempt >= retry_attempts:
@@ -415,6 +460,82 @@ def _extract_single_file(service_config: dict[str, Any], raw_file: Path, output_
             time.sleep(min(2 ** (attempt - 1), 10))
 
     raise RuntimeError(f"Converter extract request failed for {raw_file.name}: {last_error}") from last_error
+
+
+def _write_raganything_passthrough(raw_file: Path, output_dir: Path, error: Exception) -> int:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    raw_path = str(raw_file.resolve())
+    file_hash = _sha256_file(raw_file)
+    markdown_path = output_dir / "content_markdown.md"
+    markdown_path.write_text(
+        "\n".join([
+            f"# {raw_file.name}",
+            "",
+            "The direct converter could not extract Markdown for this file.",
+            "The original file is attached for RAG-Anything/MinerU native parsing or OCR during graph ingestion.",
+            "",
+            f"Original file: `{raw_file.name}`",
+            f"Original SHA-256: `{file_hash}`",
+            "",
+        ]),
+        encoding="utf-8",
+    )
+
+    metadata: dict[str, Any] = {
+        "source_format": "raganything_passthrough",
+        "original_filename": raw_file.name,
+        "original_path": raw_path,
+        "source_file": raw_path,
+        "file_path": raw_path,
+        "converted_path": str(markdown_path.resolve()),
+        "converter_fallback": "raganything_passthrough",
+        "converter_error": str(error),
+        "original_sha256": file_hash,
+    }
+    if _is_image_file(raw_file):
+        metadata["image_path"] = raw_path
+        metadata["images"] = [raw_path]
+
+    (output_dir / PASSTHROUGH_METADATA_FILENAME).write_text(
+        json.dumps(metadata, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    return 1
+
+
+def _load_passthrough_metadata(markdown_file: str) -> dict[str, Any]:
+    metadata_path = Path(markdown_file).resolve().parent / PASSTHROUGH_METADATA_FILENAME
+    if not metadata_path.is_file():
+        return {}
+    try:
+        payload = json.loads(metadata_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        logger.warning("converter:passthrough_metadata unreadable path=%s error=%s", metadata_path, exc)
+        return {}
+    if not isinstance(payload, dict):
+        return {}
+    return {
+        str(key): value
+        for key, value in payload.items()
+        if isinstance(key, str) and key.strip()
+    }
+
+
+def _is_unsupported_direct_extract_response(status_code: int, error: str) -> bool:
+    message = error.lower()
+    return status_code == 400 and "unsupported file type" in message
+
+
+def _is_image_file(path: Path) -> bool:
+    return path.suffix.lower() in {".bmp", ".gif", ".jpeg", ".jpg", ".png", ".tif", ".tiff", ".webp"}
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def _unpack_converter_zip(content: bytes, output_dir: Path) -> int:
@@ -505,6 +626,11 @@ def _post_ingest(
     ingest_options: dict[str, Any],
     docs: list[dict[str, Any]],
 ) -> dict[str, Any]:
+    requires_graph = any(
+        isinstance(doc.get("payload"), dict)
+        and doc["payload"].get("converter_fallback") == "raganything_passthrough"
+        for doc in docs
+    )
     body = {
         "docs": docs,
         "provider": ingest_options.get("provider") or "ollama",
@@ -513,7 +639,7 @@ def _post_ingest(
         "chunk_chars": int(ingest_options.get("chunk_chars") or 1200),
         "chunk_overlap": int(ingest_options.get("chunk_overlap") or 250),
         "batch_size": int(ingest_options.get("batch_size") or 64),
-        "graph": bool(ingest_options.get("graph", False)),
+        "graph": bool(ingest_options.get("graph", False)) or requires_graph,
         "idempotency_key": _operation_id(workflow_input, docs[0]["id"], "ingest"),
     }
     return _bridge_request(settings, "POST", "/ingest", json=body)

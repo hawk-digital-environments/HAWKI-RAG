@@ -41,6 +41,9 @@ readonly class PipelineJobStateMutationRepository
             'temporal_run_id' => $runId,
             'temporal_schedule_id' => $scheduleId,
             'index_status' => 'running',
+            'error_message' => null,
+            'completed_at' => null,
+            'finished_at' => null,
             'metadata' => $metadata,
         ])->save();
 

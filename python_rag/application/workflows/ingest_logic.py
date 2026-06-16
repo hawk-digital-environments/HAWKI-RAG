@@ -81,7 +81,10 @@ def ingest_documents(
 
     qdrant = dependencies.qdrant_factory()
     if body.collection:
-        qdrant.collection = body.collection
+        if hasattr(qdrant, "set_collection"):
+            qdrant.set_collection(body.collection)
+        else:
+            qdrant.collection = body.collection
 
     chunk_records, doc_stats = prepare_documents(
         docs,

@@ -101,6 +101,14 @@ class QdrantHTTP:
             collection=self.collection,
         )
 
+    def set_collection(self, collection: str) -> None:
+        """Switch the active collection for all collection-scoped requests."""
+        selected = str(collection or "").strip()
+        if not selected:
+            return
+        self.collection = selected
+        self._gateway.collection = selected
+
     def ensure_collection(self, vector_size: int, distance: str = "Cosine") -> None:
         """Create the collection if it does not already exist."""
         r = self._gateway.get_collection()

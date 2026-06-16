@@ -363,6 +363,10 @@ dd a {
     color: #86efac;
 }
 
+.status-icon.is-check {
+    background: #15803d;
+}
+
 .status-pill.is-skipped,
 .status-pill.is-ingest,
 .status-pill.is-warn {

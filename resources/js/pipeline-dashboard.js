@@ -1,4 +1,5 @@
 import { apiUrl } from './playground/urls.js';
+import { renderStatusIndicator } from './status-indicator.js';
 
 const root = document.querySelector('[data-pipeline-dashboard]');
 
@@ -128,7 +129,7 @@ if (root) {
     function statusPill(status) {
         const pill = document.createElement('span');
         pill.className = `status-pill ${statusClass(status)}`;
-        pill.textContent = valueOrDash(status);
+        renderStatusIndicator(pill, status);
 
         return pill;
     }
@@ -195,7 +196,7 @@ if (root) {
         const ingestJobs = jobs.filter((job) => job.jobType === 'ingest');
 
         els.taskStatus.className = `status-pill ${statusClass(task.status)}`;
-        setText(els.taskStatus, task.status || 'unknown');
+        renderStatusIndicator(els.taskStatus, task.status);
         setText(els.updated, task.updatedAt ? `Updated ${formatDate(task.updatedAt)}` : 'Updated from database');
 
         renderTaskInfo(task);
@@ -226,7 +227,11 @@ if (root) {
             const term = document.createElement('dt');
             const description = document.createElement('dd');
             term.textContent = label;
-            description.textContent = valueOrDash(value);
+            if (label === 'Status') {
+                description.appendChild(statusPill(value));
+            } else {
+                description.textContent = valueOrDash(value);
+            }
             wrapper.append(term, description);
             els.taskInfo.appendChild(wrapper);
         });
@@ -475,8 +480,8 @@ if (root) {
 
     function clearTaskDetail() {
         setStatus('No pipeline tasks found.');
-        setText(els.taskStatus, 'idle');
         els.taskStatus.className = 'status-pill is-idle';
+        renderStatusIndicator(els.taskStatus, 'idle');
         setText(els.updated, 'No task loaded.');
         [
             [els.taskInfo, 'Select a task to view its details.'],

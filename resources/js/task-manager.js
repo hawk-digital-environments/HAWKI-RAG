@@ -1,4 +1,5 @@
 import { apiUrl, pageUrl } from './playground/urls.js';
+import { renderStatusIndicator } from './status-indicator.js';
 
 const root = document.querySelector('[data-task-manager]');
 
@@ -147,7 +148,7 @@ if (root) {
     function statusPill(status) {
         const pill = document.createElement('span');
         pill.className = `status-pill ${statusClass(status)}`;
-        pill.textContent = valueOrDash(status);
+        renderStatusIndicator(pill, status);
         return pill;
     }
 
@@ -259,7 +260,7 @@ if (root) {
         setText(els.title, taskLabel(task));
         setText(els.updated, task.updatedAt ? `Updated ${formatDate(task.updatedAt)}` : 'Updated from database');
         els.taskStatus.className = `status-pill ${statusClass(task.status)}`;
-        setText(els.taskStatus, task.status || 'unknown');
+        renderStatusIndicator(els.taskStatus, task.status);
 
         renderInfo(task);
         renderStages(task);
@@ -292,6 +293,8 @@ if (root) {
             term.textContent = label;
             if (label === 'Task URL' && value) {
                 description.appendChild(makeLink(value, value));
+            } else if (label === 'Status') {
+                description.appendChild(statusPill(value));
             } else {
                 description.textContent = valueOrDash(value);
             }
@@ -726,7 +729,7 @@ if (root) {
         setText(els.title, 'No task selected');
         setText(els.updated, 'Waiting for task data.');
         els.taskStatus.className = 'status-pill is-idle';
-        setText(els.taskStatus, 'idle');
+        renderStatusIndicator(els.taskStatus, 'idle');
         [
             [els.info, 'No task selected.'],
             [els.stages, 'No stage data.'],

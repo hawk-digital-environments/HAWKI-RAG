@@ -1,4 +1,5 @@
 import { apiUrl } from './playground/urls.js';
+import { renderStatusIndicator } from './status-indicator.js';
 
 const root = document.querySelector('[data-datasets-dashboard]');
 
@@ -117,7 +118,7 @@ if (root) {
     function statusPill(status) {
         const pill = document.createElement('span');
         pill.className = `status-pill ${statusClass(status)}`;
-        pill.textContent = valueOrDash(status);
+        renderStatusIndicator(pill, status);
 
         return pill;
     }
@@ -240,7 +241,7 @@ if (root) {
 
     function renderDataset(dataset) {
         els.state.className = `status-pill ${statusClass(dataset.status)}`;
-        setText(els.state, dataset.status || 'unknown');
+        renderStatusIndicator(els.state, dataset.status);
         setText(els.updated, `Updated ${formatDate(new Date().toISOString())}`);
         setStatus(`Showing dataset ${dataset.datasetId}.`);
 
@@ -266,7 +267,11 @@ if (root) {
             const term = document.createElement('dt');
             const description = document.createElement('dd');
             term.textContent = label;
-            description.textContent = valueOrDash(value);
+            if (label === 'Status') {
+                description.appendChild(statusPill(value));
+            } else {
+                description.textContent = valueOrDash(value);
+            }
             wrapper.append(term, description);
             els.info.appendChild(wrapper);
         });
@@ -331,7 +336,7 @@ if (root) {
         localStorage.setItem('hawkiDatasetsDashboardDocumentId', doc.id);
         setText(els.documentUpdated, `Updated ${formatDate(doc.updatedAt || new Date().toISOString())}`);
         els.documentState.className = `status-pill ${statusClass(doc.status)}`;
-        setText(els.documentState, doc.status || 'unknown');
+        renderStatusIndicator(els.documentState, doc.status);
 
         renderDocumentInfo(doc);
         renderDocumentMetrics(doc);
@@ -643,7 +648,7 @@ if (root) {
         setText(els.documentUpdated, 'No document loaded.');
         if (els.documentState) {
             els.documentState.className = 'status-pill is-idle';
-            setText(els.documentState, 'idle');
+            renderStatusIndicator(els.documentState, 'idle');
         }
         [els.documentInfo, els.documentMetrics, els.documentRelatedJobs].filter(Boolean).forEach((container) => {
             container.innerHTML = '';
@@ -661,7 +666,7 @@ if (root) {
     function clearDetail() {
         setStatus('No datasets found.');
         els.state.className = 'status-pill is-idle';
-        setText(els.state, 'idle');
+        renderStatusIndicator(els.state, 'idle');
         setText(els.updated, 'No dataset loaded.');
         [els.info, els.metrics, els.tasks, els.documents, els.ingestionHistory]
             .filter(Boolean)
