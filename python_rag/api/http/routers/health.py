@@ -6,7 +6,7 @@ import logging
 from collections.abc import Callable
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 
 
 def build_health_router(
@@ -17,13 +17,14 @@ def build_health_router(
     router = APIRouter()
 
     @router.get("/health")
-    def health() -> dict[str, Any]:
+    def health(include_runtime: bool = Query(default=True, alias="runtime")) -> dict[str, Any]:
         logger.debug("health:ok")
-        runtime: dict[str, Any] = {}
-        try:
-            runtime = runtime_summary()
-        except Exception as exc:
-            runtime = {"error": str(exc)}
-        return {"ok": True, "runtime": runtime}
+        runtime_payload: dict[str, Any] = {}
+        if include_runtime:
+            try:
+                runtime_payload = runtime_summary()
+            except Exception as exc:
+                runtime_payload = {"error": str(exc)}
+        return {"ok": True, "runtime": runtime_payload}
 
     return router

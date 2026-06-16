@@ -2967,11 +2967,14 @@ class ApiAndVectorValidationTests(unittest.TestCase):
 
             with TestClient(app) as client:
                 health = client.get("/health").json()
+                lightweight_health = client.get("/health?runtime=false").json()
                 config = client.get("/config").json()
                 cache = client.post("/graph/cache/clear").json()
 
         self.assertEqual(health["ok"], True)
         self.assertEqual(health["runtime"], {"mode": "test"})
+        self.assertEqual(lightweight_health["ok"], True)
+        self.assertEqual(lightweight_health["runtime"], {})
         self.assertEqual(config["provider"], app_settings.rag_default_provider)
         self.assertEqual(config["qdrant_collection"], "app_test")
         self.assertEqual(config["qdrant_vector_size"], 128)

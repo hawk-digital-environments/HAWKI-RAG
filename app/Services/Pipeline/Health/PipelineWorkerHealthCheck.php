@@ -95,7 +95,7 @@ readonly class PipelineWorkerHealthCheck
 
         return $this->httpChecks->successCheck(
             'Ingestion adapter worker',
-            $bridge.'/health',
+            $bridge.'/health?runtime=false',
             $timeout,
             sprintf(
                 'Temporal activity task queue %s reads Markdown and writes through the RAG bridge. Provider: %s, graph: %s.',
