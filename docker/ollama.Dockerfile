@@ -5,6 +5,7 @@ SHELL ["/bin/bash", "-lc"]
 ARG OLLAMA_GIT_REF=main
 ARG GO_VERSION=1.24.1
 ARG TARGETARCH
+ARG OLLAMA_ARM_CPU_ARCH=armv8.6-a
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -48,8 +49,14 @@ WORKDIR /src
 RUN git clone --depth 1 --branch ${OLLAMA_GIT_REF} https://github.com/ollama/ollama.git
 WORKDIR /src/ollama
 
-# Build native libs (CUDA) via CMake, then build Ollama
-RUN cmake -B build \
+# Build native libs (CUDA) via CMake, then build Ollama.
+# On ARM64, disable ggml's all-CPU-variants mode and pin a GCC 11-compatible
+# architecture so the source build does not try unsupported ARMv9.2/SME flags.
+RUN CMAKE_ARGS=() \
+    && if [[ "$(uname -m)" == "aarch64" || "$(uname -m)" == "arm64" || "${TARGETARCH:-}" == "arm64" ]]; then \
+         CMAKE_ARGS+=("-DGGML_CPU_ALL_VARIANTS=OFF" "-DGGML_CPU_ARM_ARCH=${OLLAMA_ARM_CPU_ARCH}"); \
+       fi \
+    && cmake -B build "${CMAKE_ARGS[@]}" \
     && cmake --build build -j"$(nproc)" \
     && go build -tags "cuda" -o /usr/bin/ollama .
 

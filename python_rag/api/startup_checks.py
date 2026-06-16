@@ -115,10 +115,10 @@ def check_provider_availability(service: Any, settings: AppSettings, timeout_sec
     provider = service.get_provider(provider_name)
     base = str(getattr(provider, "base", os.environ.get("OLLAMA_API_URL", "http://ollama:11434/api"))).rstrip("/")
     last_error: str | None = None
-    for path in ("/api/tags", "/api/version"):
+    for url in _ollama_probe_urls(base):
         try:
             response = _requests_module().get(
-                f"{base}{path}",
+                url,
                 headers={"Accept": "application/json"},
                 timeout=timeout_seconds,
             )
@@ -129,6 +129,18 @@ def check_provider_availability(service: Any, settings: AppSettings, timeout_sec
             last_error = str(exc)
 
     raise RuntimeError(f"Ollama provider check failed: {last_error}")
+
+
+def _ollama_probe_urls(base: str) -> tuple[str, str]:
+    """Return health-check URLs for Ollama API roots with or without /api."""
+
+    normalized_base = base.rstrip("/")
+    if normalized_base.endswith("/api"):
+        api_base = normalized_base
+    else:
+        api_base = f"{normalized_base}/api"
+
+    return (f"{api_base}/tags", f"{api_base}/version")
 
 
 def run_startup_checks(

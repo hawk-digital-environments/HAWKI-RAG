@@ -171,6 +171,64 @@ class ReliabilityContractTests(unittest.TestCase):
 
         self.assertEqual(calls["provider"], 0)
 
+    def test_ollama_startup_probe_accepts_base_url_with_api_suffix(self) -> None:
+        from api.settings import load_app_settings
+        from api.startup_checks import check_provider_availability
+
+        calls: list[str] = []
+
+        class FakeResponse:
+            status_code = 200
+
+            def raise_for_status(self) -> None:
+                raise AssertionError("raise_for_status should not be called for 200 responses")
+
+        class FakeRequests:
+            @staticmethod
+            def get(url: str, **_kwargs):
+                calls.append(url)
+                return FakeResponse()
+
+        class FakeService:
+            def get_provider(self, _name: str) -> object:
+                return SimpleNamespace(base="http://ollama:11434/api")
+
+        settings = load_app_settings({"RAG_DEFAULT_PROVIDER": "ollama"})
+
+        with patch("api.startup_checks._requests_module", return_value=FakeRequests):
+            check_provider_availability(FakeService(), settings, 1.0)
+
+        self.assertEqual(calls, ["http://ollama:11434/api/tags"])
+
+    def test_ollama_startup_probe_accepts_base_url_without_api_suffix(self) -> None:
+        from api.settings import load_app_settings
+        from api.startup_checks import check_provider_availability
+
+        calls: list[str] = []
+
+        class FakeResponse:
+            status_code = 200
+
+            def raise_for_status(self) -> None:
+                raise AssertionError("raise_for_status should not be called for 200 responses")
+
+        class FakeRequests:
+            @staticmethod
+            def get(url: str, **_kwargs):
+                calls.append(url)
+                return FakeResponse()
+
+        class FakeService:
+            def get_provider(self, _name: str) -> object:
+                return SimpleNamespace(base="http://ollama:11434")
+
+        settings = load_app_settings({"RAG_DEFAULT_PROVIDER": "ollama"})
+
+        with patch("api.startup_checks._requests_module", return_value=FakeRequests):
+            check_provider_availability(FakeService(), settings, 1.0)
+
+        self.assertEqual(calls, ["http://ollama:11434/api/tags"])
+
     def test_qdrant_transport_emits_retry_attempt_telemetry(self) -> None:
         from infrastructure.vectorstore.qdrant_requests import QdrantRequest
         from infrastructure.vectorstore.qdrant_transport import QdrantHTTPTransport
