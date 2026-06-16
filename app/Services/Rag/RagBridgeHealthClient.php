@@ -21,10 +21,10 @@ readonly class RagBridgeHealthClient
     /**
      * @return array<string, mixed>
      */
-    public function health(): array
+    public function health(bool $includeRuntime = false): array
     {
         $baseUrl = rtrim((string) $this->config->get('config.base_url', 'http://hawki_rag_bridge:8000'), '/');
-        $endpoint = $baseUrl.'/health?runtime=false';
+        $endpoint = $baseUrl.'/health?runtime='.($includeRuntime ? 'true' : 'false');
 
         try {
             $start = $this->timer->start();

@@ -16,6 +16,7 @@ readonly class DatasetService
         private DatasetRepository $datasets,
         private DatasetIdentifierFactory $identifiers,
         private DatasetPayloadBuilder $payloads,
+        private DatasetStorageCleanupService $storageCleanup,
         private ClockInterface $clock = new Clock,
     ) {}
 
@@ -73,5 +74,15 @@ readonly class DatasetService
                 ?? $this->identifiers->neo4jNamespace($safe),
             'created_at' => $this->clock->now(),
         ]);
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    public function deleteStorage(string $datasetId): ?array
+    {
+        $dataset = $this->datasets->findByDatasetId($datasetId);
+
+        return $dataset ? $this->storageCleanup->deleteStorage($dataset) : null;
     }
 }

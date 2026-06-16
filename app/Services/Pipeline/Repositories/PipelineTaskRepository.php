@@ -43,7 +43,7 @@ readonly class PipelineTaskRepository
     public function findWithOrderedJobs(string $taskId): ?PipelineTask
     {
         return PipelineTask::query()
-            ->with(['jobs' => fn ($query) => $query->orderBy('id')])
+            ->with(['jobs' => fn ($query) => $query->with(['stages' => fn ($stageQuery) => $stageQuery->orderBy('id')])->orderBy('id')])
             ->where('task_id', $taskId)
             ->first();
     }

@@ -305,6 +305,18 @@ function taskRunMeta(task) {
     return `${done}/${total} done · ${active} active · ${started}`;
 }
 
+function isPipelineTaskCancellable(task) {
+    const status = String(task?.status || '').toLowerCase();
+    if (['completed', 'failed', 'cancelled', 'canceled', 'skipped'].includes(status)) {
+        return false;
+    }
+
+    const counters = task?.counters || {};
+    const active = Number(task?.activeJobs ?? counters.jobs_active ?? counters.jobs_running ?? 0);
+
+    return active > 0 || ['pending', 'queued', 'running', 'processing', 'received'].includes(status);
+}
+
 function renderPipelineTaskRuns(tasks) {
     if (!runListEl) return;
     runListEl.innerHTML = '';
@@ -312,6 +324,7 @@ function renderPipelineTaskRuns(tasks) {
     if (!tasks.length) {
         const empty = document.createElement('button');
         empty.type = 'button';
+        empty.className = 'pipeline-run-select';
         empty.disabled = true;
         empty.textContent = 'No pipeline tasks yet.';
         runListEl.appendChild(empty);
@@ -319,8 +332,15 @@ function renderPipelineTaskRuns(tasks) {
     }
 
     tasks.forEach((task) => {
+        const row = document.createElement('div');
+        row.className = 'pipeline-run-row';
+        if (task.taskId === activePipelineTaskId) {
+            row.classList.add('is-selected');
+        }
+
         const button = document.createElement('button');
         button.type = 'button';
+        button.className = 'pipeline-run-select';
         button.dataset.taskId = task.taskId;
         if (task.taskId === activePipelineTaskId) {
             button.classList.add('is-selected');
@@ -348,7 +368,20 @@ function renderPipelineTaskRuns(tasks) {
 
         button.append(title, meta);
         button.addEventListener('click', () => selectPipelineTask(task.taskId));
-        runListEl.appendChild(button);
+
+        row.appendChild(button);
+
+        if (isPipelineTaskCancellable(task)) {
+            const cancel = document.createElement('button');
+            cancel.type = 'button';
+            cancel.className = 'pipeline-run-cancel';
+            cancel.textContent = 'Cancel';
+            cancel.title = 'Cancel active processing for this pipeline task';
+            cancel.addEventListener('click', () => cancelPipelineTask(task.taskId, cancel));
+            row.appendChild(cancel);
+        }
+
+        runListEl.appendChild(row);
     });
 }
 
@@ -533,6 +566,47 @@ async function selectPipelineTask(taskId) {
     setActivePipelineTask(taskId);
     startPolling();
     await pollPipeline();
+}
+
+async function cancelPipelineTask(taskId, button = null) {
+    if (!taskId) return;
+
+    const confirmed = window.confirm(`Cancel active processing for pipeline task ${taskId}?`);
+    if (!confirmed) return;
+
+    if (button) button.disabled = true;
+    setTaskNote(`Cancelling pipeline task ${taskId}...`, 'warn');
+
+    try {
+        const response = await fetch(apiUrl(`pipeline/tasks/${encodeURIComponent(taskId)}/cancel`), {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: {
+                'Accept': 'application/json',
+                'X-CSRF-TOKEN': csrfToken(),
+            },
+        });
+        const data = await parseResponseJson(response);
+        if (!response.ok || !data.success) {
+            throw new Error(data.message || `Pipeline task cancel failed (${response.status})`);
+        }
+
+        if (data.task) {
+            updatePipelineTaskRun(data.task);
+            if (taskId === activePipelineTaskId) {
+                renderPipelineTask(data.task);
+            }
+        }
+
+        pushActivity('Pipeline', `cancel requested for task ${taskId}`);
+        setTaskNote(`Cancel requested for ${taskId}.`, 'success');
+        await loadPipelineTaskRuns();
+    } catch (error) {
+        setTaskNote(error.message || 'Pipeline task cancel failed.', 'error');
+        pushActivity('Pipeline', error.message || 'Pipeline task cancel failed.');
+    } finally {
+        if (button) button.disabled = false;
+    }
 }
 
 function pipelineTaskIdFor(task) {

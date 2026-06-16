@@ -232,6 +232,13 @@ dt,
     gap: 8px;
 }
 
+.dataset-list-entry {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+    align-items: stretch;
+}
+
 .dataset-list-item {
     width: 100%;
     display: grid;
@@ -248,6 +255,27 @@ dt,
 .dataset-list-item.is-selected {
     border-color: var(--teal);
     background: #f0fdfa;
+}
+
+.dataset-delete-button {
+    align-self: stretch;
+    min-width: 72px;
+    border: 1px solid #fecaca;
+    border-radius: 8px;
+    background: #fff5f5;
+    color: #b42318;
+    font-size: 0.78rem;
+    font-weight: 800;
+}
+
+.dataset-delete-button:hover:not(:disabled) {
+    border-color: #fda29b;
+    background: #fee4e2;
+}
+
+.dataset-delete-button:disabled {
+    cursor: progress;
+    opacity: 0.55;
 }
 
 .dataset-list-top {
@@ -460,11 +488,16 @@ dd a:hover {
 }
 
 .data-table tbody tr:hover {
-    background: #fbfcfe;
+    background: #f8fafc;
 }
 
 .data-table tbody tr.is-selected {
-    background: #f0fdfa;
+    background: #e0f2fe;
+    box-shadow: inset 3px 0 0 var(--teal);
+}
+
+.data-table tbody tr.is-selected td {
+    border-bottom-color: #bae6fd;
 }
 
 .markdown-preview,
@@ -585,5 +618,13 @@ dd a:hover {
 
     .document-search input {
         width: 100%;
+    }
+
+    .dataset-list-entry {
+        grid-template-columns: 1fr;
+    }
+
+    .dataset-delete-button {
+        min-height: 38px;
     }
 }

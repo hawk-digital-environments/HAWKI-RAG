@@ -37,6 +37,46 @@ readonly class RagStatsService
     /**
      * @return array<string, mixed>
      */
+    public function deleteQdrantCollection(string $collection): array
+    {
+        $name = trim($collection);
+        if ($name === '') {
+            return [
+                'ok' => false,
+                'message' => 'Collection name is required.',
+            ];
+        }
+
+        $qdrantUrl = rtrim((string) $this->config->get('config.qdrant_http_url', 'http://qdrant:6333'), '/');
+
+        try {
+            $response = $this->http->timeout(10)->delete($qdrantUrl.'/collections/'.rawurlencode($name));
+            if (! $response->successful()) {
+                return [
+                    'ok' => false,
+                    'collection' => $name,
+                    'message' => "Qdrant returned HTTP {$response->status()} while deleting {$name}.",
+                    'error' => $response->body(),
+                ];
+            }
+
+            return [
+                'ok' => true,
+                'collection' => $name,
+                'message' => "Deleted Qdrant collection {$name}.",
+            ];
+        } catch (\Throwable $exception) {
+            return [
+                'ok' => false,
+                'collection' => $name,
+                'message' => $exception->getMessage(),
+            ];
+        }
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
     private function fetchQdrantStats(string $baseUrl): array
     {
         try {

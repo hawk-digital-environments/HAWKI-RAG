@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Pipeline\Tasks;
 
 use App\Models\PipelineJob;
+use App\Models\PipelineStageState;
 use App\Models\PipelineTask;
 use Illuminate\Container\Attributes\Singleton;
 use Psr\Clock\ClockInterface;
@@ -158,6 +159,7 @@ readonly class PipelineTaskPayloadService
         $details = is_array($job->metadata) ? $job->metadata : [];
         $convertStatus = $this->uploadedConvertStatus($job, $phase, $details);
         $ingestStatus = $this->uploadedIngestStatus($job, $phase);
+        $tracked = $this->trackedStages($job);
 
         return [
             'scrape' => [
@@ -166,36 +168,38 @@ readonly class PipelineTaskPayloadService
                 'counts' => [],
             ],
             'convert' => [
-                'status' => $convertStatus,
+                'status' => $tracked['convert']['status'] ?? $convertStatus,
                 'message' => $this->stageMessage($convertStatus, [
                     'processing' => 'Converting uploaded file.',
+                    'running' => 'Converting uploaded file.',
                     'completed' => 'Conversion finished.',
                     'failed' => $job->error_message ?: ($details['error_details'] ?? 'Conversion failed.'),
                     'queued' => 'Waiting for converter.',
                 ]),
-                'startedAt' => $this->dateValue($job->started_at),
-                'completedAt' => $convertStatus === PipelineJob::STATUS_COMPLETED ? $this->dateValue($job->updated_at) : null,
-                'counts' => $this->uploadedConvertCounts($convertStatus, $details),
-                'errors' => $convertStatus === PipelineJob::STATUS_FAILED ? array_values(array_filter([
+                'startedAt' => $tracked['convert']['startedAt'] ?? $this->dateValue($job->started_at),
+                'completedAt' => $tracked['convert']['completedAt'] ?? ($convertStatus === PipelineJob::STATUS_COMPLETED ? $this->dateValue($job->updated_at) : null),
+                'counts' => array_merge($this->uploadedConvertCounts($convertStatus, $details), $tracked['convert']['counts'] ?? []),
+                'errors' => $tracked['convert']['errors'] ?? ($convertStatus === PipelineJob::STATUS_FAILED ? array_values(array_filter([
                     $job->error_message ?: ($details['error_details'] ?? null),
-                ])) : [],
+                ])) : []),
             ],
             'ingest' => [
-                'status' => $ingestStatus,
+                'status' => $tracked['ingest']['status'] ?? $ingestStatus,
                 'message' => $this->stageMessage($ingestStatus, [
                     'queued' => 'Waiting for converter to finish.',
                     'processing' => 'Ingestion processing.',
+                    'running' => 'Ingestion processing.',
                     'completed' => 'Ingestion finished.',
                     'failed' => $job->error_message ?: ($details['error_details'] ?? 'Ingestion failed.'),
                 ]),
-                'startedAt' => in_array($ingestStatus, ['processing', PipelineJob::STATUS_COMPLETED, PipelineJob::STATUS_FAILED], true)
+                'startedAt' => $tracked['ingest']['startedAt'] ?? (in_array($ingestStatus, ['processing', 'running', PipelineJob::STATUS_COMPLETED, PipelineJob::STATUS_FAILED], true)
                     ? $this->dateValue($job->updated_at)
-                    : null,
-                'completedAt' => $ingestStatus === PipelineJob::STATUS_COMPLETED ? $this->dateValue($job->finished_at) : null,
-                'counts' => $this->uploadedIngestCounts($details),
-                'errors' => $ingestStatus === PipelineJob::STATUS_FAILED ? array_values(array_filter([
+                    : null),
+                'completedAt' => $tracked['ingest']['completedAt'] ?? ($ingestStatus === PipelineJob::STATUS_COMPLETED ? $this->dateValue($job->finished_at) : null),
+                'counts' => array_merge($this->uploadedIngestCounts($details), $tracked['ingest']['counts'] ?? []),
+                'errors' => $tracked['ingest']['errors'] ?? ($ingestStatus === PipelineJob::STATUS_FAILED ? array_values(array_filter([
                     $job->error_message ?: ($details['error_details'] ?? null),
-                ])) : [],
+                ])) : []),
             ],
         ];
     }
@@ -210,12 +214,12 @@ readonly class PipelineTaskPayloadService
         }
 
         if ($job->status === PipelineJob::STATUS_COMPLETED
-            || in_array($phase, ['ingest_markdown_files', 'mark_source_ready'], true)
+            || in_array($phase, ['ingest', 'ingest_markdown_files', 'mark_source_ready'], true)
             || ($phase === 'inspect_and_convert_files' && ($details['status'] ?? null) === 'success')) {
             return PipelineJob::STATUS_COMPLETED;
         }
 
-        if (in_array($phase, ['temporal.workflow_starting', 'temporal.workflow_started', 'scrape_source', 'inspect_and_convert_files'], true)) {
+        if (in_array($phase, ['convert', 'temporal.workflow_starting', 'temporal.workflow_started', 'scrape_source', 'inspect_and_convert_files'], true)) {
             return 'processing';
         }
 
@@ -236,7 +240,7 @@ readonly class PipelineTaskPayloadService
             return PipelineJob::STATUS_FAILED;
         }
 
-        if ($phase === 'ingest_markdown_files') {
+        if (in_array($phase, ['ingest', 'ingest_markdown_files'], true)) {
             return 'processing';
         }
 
@@ -272,6 +276,28 @@ readonly class PipelineTaskPayloadService
             'chunks' => (int) ($details['chunks_indexed'] ?? 0),
             'vectors' => (int) ($details['vectors_upserted'] ?? 0),
         ];
+    }
+
+    /**
+     * @return array<string, array<string, mixed>>
+     */
+    private function trackedStages(PipelineJob $job): array
+    {
+        if (! $job->relationLoaded('stages')) {
+            return [];
+        }
+
+        return $job->stages
+            ->mapWithKeys(fn (PipelineStageState $stage): array => [
+                $stage->stage => [
+                    'status' => $stage->status,
+                    'startedAt' => $this->dateValue($stage->started_at),
+                    'completedAt' => $this->dateValue($stage->completed_at),
+                    'counts' => $stage->counts ?? [],
+                    'errors' => $stage->errors ?? [],
+                ],
+            ])
+            ->all();
     }
 
     /**

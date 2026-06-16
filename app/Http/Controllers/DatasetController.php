@@ -49,4 +49,25 @@ class DatasetController extends Controller
             'dataset' => $dataset,
         ]);
     }
+
+    public function destroyStorage(string $datasetId): JsonResponse
+    {
+        $result = $this->datasets->deleteStorage($datasetId);
+        if (!$result) {
+            return response()->json([
+                'success' => false,
+                'message' => "Dataset {$datasetId} was not found.",
+            ], 404);
+        }
+
+        $ok = ($result['qdrant']['ok'] ?? false) && ($result['neo4j']['ok'] ?? false);
+
+        return response()->json([
+            'success' => $ok,
+            'message' => $ok
+                ? "Deleted external storage for dataset {$datasetId}."
+                : "External storage cleanup failed for dataset {$datasetId}.",
+            'cleanup' => $result,
+        ], $ok ? 200 : 502);
+    }
 }

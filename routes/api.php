@@ -20,6 +20,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/', [DatasetController::class, 'index']);
         Route::post('/', [DatasetController::class, 'store']);
         Route::get('/{datasetId}', [DatasetController::class, 'show']);
+        Route::delete('/{datasetId}/storage', [DatasetController::class, 'destroyStorage']);
     });
 
     Route::prefix('documents')->group(function () {
@@ -61,6 +62,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/rag/health', [RagHealthController::class, 'show']);
     Route::get('/rag/monitor', [RagMonitorController::class, 'show']);
     Route::get('/rag/stats', [RagStatsController::class, 'show']);
+    Route::delete('/rag/qdrant/collections/{collection}', [RagStatsController::class, 'destroyQdrantCollection']);
     Route::get('/rag/neo4j/graph/overview', [RagGraphController::class, 'overview']);
     Route::get('/rag/neo4j/graph/search', [RagGraphController::class, 'search']);
     Route::get('/rag/neo4j/graph/semantic-search', [RagGraphController::class, 'semanticSearch']);

@@ -32,26 +32,26 @@
         </header>
 
         <div class="layout">
-            <section class="card panel">
-                <h2>Logs</h2>
-                <div class="panel-body">
+            <section class="card panel playground-observability-panel">
+                <h2>Live State</h2>
+                <div class="panel-body playground-observability-body">
                     <div class="subsection rag-monitor-panel">
-                        <h3 style="margin-top:0;">RAG-Anything Monitor</h3>
-                        <p style="margin: 0 0 0.6rem; font-size: 0.9rem; color: #bae6fd;">
+                        <h3>RAG-Anything Monitor</h3>
+                        <p class="section-copy">
                             Bridge health, graph extraction limits, and latest ingest graph summary.
                         </p>
                         <div id="rag-monitor-status" class="badge">Loading RAG-Anything status...</div>
-                        <div id="rag-details" style="margin-top: 0.8rem; display: grid; gap: 0.5rem;"></div>
+                        <div id="rag-details" class="rag-details-grid"></div>
                     </div>
 
                     <div class="subsection">
-                        <h3 style="margin-top:0;">Vector + Graph Stats</h3>
-                        <p style="margin: 0 0 0.6rem; font-size: 0.9rem; color: #bae6fd;">
+                        <h3>Vector + Graph Stats</h3>
+                        <p class="section-copy">
                             Qdrant collections and Neo4j triplets (live counts).
                         </p>
-                        <div id="rag-stats" style="display:grid; gap:0.6rem;"></div>
-                        <div style="margin-top: 0.8rem;">
-                            <button type="button" id="neo4j-clear-btn" style="background: linear-gradient(135deg, #f43f5e, #be123c);">
+                        <div id="rag-stats" class="rag-stats-grid"></div>
+                        <div class="graph-danger-row">
+                            <button type="button" id="neo4j-clear-btn" class="danger-button">
                                 Clear Neo4j graph (danger)
                             </button>
                             <span id="neo4j-clear-note" class="ingest-action-note"></span>

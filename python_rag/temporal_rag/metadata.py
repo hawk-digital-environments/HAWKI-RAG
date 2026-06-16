@@ -68,6 +68,10 @@ class AppMetadataStore:
                     )
 
                     if job_id:
+                        ui_stage = self._ui_stage(phase)
+                        job_status = self._job_status(status)
+                        source_status = self._source_status(status)
+                        current_stage = self._current_ui_stage(phase, status)
                         cur.execute(
                             """
                             update pipeline_jobs
@@ -80,14 +84,18 @@ class AppMetadataStore:
                              where job_id = %s
                             """,
                             (
-                                self._job_status(status),
-                                phase,
-                                self._source_status(status),
+                                job_status,
+                                current_stage,
+                                source_status,
                                 details.get("error") or details.get("error_details"),
                                 json.dumps(details),
                                 job_id,
                             ),
                         )
+                        self._upsert_stage_state(cur, job_id, ui_stage, phase, status, details)
+                        next_stage = self._next_pending_stage(phase, status)
+                        if next_stage:
+                            self._upsert_stage_state(cur, job_id, next_stage, phase, "pending", {})
         except Exception:
             logger.exception("app_metadata:mark_phase failed source_id=%s phase=%s", source_id, phase)
 
@@ -122,7 +130,7 @@ class AppMetadataStore:
                             """
                             update pipeline_jobs
                                set status = 'completed',
-                                   current_stage = 'mark_source_ready',
+                                   current_stage = 'ingest',
                                    index_status = 'ready',
                                    total_documents = %s,
                                    processed_documents = %s,
@@ -143,6 +151,7 @@ class AppMetadataStore:
                                 job_id,
                             ),
                         )
+                        self._upsert_stage_state(cur, job_id, "ingest", "mark_source_ready", "ready", result)
         except Exception:
             logger.exception("app_metadata:mark_ready failed source_id=%s", source_id)
 
@@ -307,6 +316,157 @@ class AppMetadataStore:
             "cancelled": "failed",
             "canceled": "failed",
         }.get(status, "running")
+
+    @staticmethod
+    def _ui_stage(phase: str) -> str:
+        return {
+            "scrape_source": "scrape",
+            "inspect_and_convert_files": "convert",
+            "ingest_markdown_files": "ingest",
+            "mark_source_ready": "ingest",
+        }.get(phase, phase)
+
+    @classmethod
+    def _current_ui_stage(cls, phase: str, status: str) -> str:
+        return cls._next_pending_stage(phase, status) or cls._ui_stage(phase)
+
+    @staticmethod
+    def _next_pending_stage(phase: str, status: str) -> str | None:
+        if status not in {"success", "completed"}:
+            return None
+        return {
+            "scrape_source": "convert",
+            "inspect_and_convert_files": "ingest",
+        }.get(phase)
+
+    @staticmethod
+    def _stage_status(status: str) -> str:
+        return {
+            "started": "running",
+            "running": "running",
+            "success": "completed",
+            "completed": "completed",
+            "ready": "completed",
+            "failed": "failed",
+            "skipped": "skipped",
+            "timeout": "failed",
+            "cancelled": "failed",
+            "canceled": "failed",
+        }.get(status, status or "running")
+
+    def _upsert_stage_state(
+        self,
+        cur: Any,
+        job_id: str,
+        ui_stage: str,
+        phase: str,
+        status: str,
+        details: dict[str, Any],
+    ) -> None:
+        stage_status = self._stage_status(status)
+        counts = self._stage_counts(ui_stage, details)
+        errors = []
+        error = details.get("error") or details.get("error_details")
+        if error:
+            errors.append(str(error))
+
+        cur.execute(
+            """
+            insert into pipeline_stage_states (
+                pipeline_job_id,
+                job_id,
+                stage,
+                status,
+                counts,
+                metadata,
+                errors,
+                warnings,
+                started_at,
+                completed_at,
+                failed_at,
+                last_transition_at,
+                created_at,
+                updated_at
+            )
+            select
+                id,
+                %s,
+                %s,
+                %s,
+                %s::json,
+                %s::json,
+                %s::json,
+                '[]'::json,
+                case when %s in ('running', 'completed') then now() else null end,
+                case when %s = 'completed' then now() else null end,
+                case when %s = 'failed' then now() else null end,
+                now(),
+                now(),
+                now()
+              from pipeline_jobs
+             where job_id = %s
+            on conflict (job_id, stage) do update
+               set status = excluded.status,
+                   counts = excluded.counts,
+                   metadata = excluded.metadata,
+                   errors = excluded.errors,
+                   started_at = coalesce(pipeline_stage_states.started_at, excluded.started_at),
+                   completed_at = case
+                       when excluded.status = 'completed' then coalesce(pipeline_stage_states.completed_at, excluded.completed_at)
+                       when excluded.status in ('running', 'failed') then null
+                       else pipeline_stage_states.completed_at
+                   end,
+                   failed_at = case
+                       when excluded.status = 'failed' then coalesce(pipeline_stage_states.failed_at, excluded.failed_at)
+                       when excluded.status in ('running', 'completed') then null
+                       else pipeline_stage_states.failed_at
+                   end,
+                   last_transition_at = now(),
+                   updated_at = now()
+            """,
+            (
+                job_id,
+                ui_stage,
+                stage_status,
+                json.dumps(counts),
+                json.dumps({"temporal_phase": phase, "details": details}),
+                json.dumps(errors),
+                stage_status,
+                stage_status,
+                stage_status,
+                job_id,
+            ),
+        )
+
+    @staticmethod
+    def _stage_counts(ui_stage: str, details: dict[str, Any]) -> dict[str, int]:
+        if ui_stage == "convert":
+            total = int(
+                details.get("files_found")
+                or details.get("file_count")
+                or details.get("markdown_files_created")
+                or 0
+            )
+            processed = int(details.get("markdown_files_created") or details.get("converted_files") or 0)
+            return {"total": total, "processed": processed, "convertedFiles": processed}
+        if ui_stage == "ingest":
+            processed = int(details.get("documents_indexed") or 0)
+            failed = int(details.get("failed_documents") or 0)
+            skipped = int(details.get("skipped_documents") or 0)
+            total = processed + failed + skipped
+            return {
+                "total": total,
+                "processed": processed,
+                "failed": failed,
+                "skipped": skipped,
+                "chunksIndexed": int(details.get("chunks_indexed") or 0),
+                "vectorsUpserted": int(details.get("vectors_upserted") or 0),
+                "graphRecordsUpdated": int(details.get("graph_records_updated") or 0),
+            }
+        if ui_stage == "scrape":
+            processed = int(details.get("files_found") or details.get("file_count") or 0)
+            return {"total": processed, "processed": processed}
+        return {}
 
     @staticmethod
     def _source_metadata(

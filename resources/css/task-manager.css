@@ -119,6 +119,13 @@ dt,
     justify-content: flex-end;
 }
 
+.pipeline-nav .secondary-button,
+.pipeline-nav .secondary-link {
+    width: 132px;
+    min-width: 132px;
+    max-width: 132px;
+}
+
 .pipeline-nav-menu {
     position: relative;
 }
@@ -678,10 +685,13 @@ dd {
     }
 
     .primary-button,
-    .secondary-button,
-    .danger-button,
-    .secondary-link {
+    .danger-button {
         flex: 1 1 150px;
+    }
+
+    .pipeline-nav .secondary-button,
+    .pipeline-nav .secondary-link {
+        flex: none;
     }
 
     .summary-strip,

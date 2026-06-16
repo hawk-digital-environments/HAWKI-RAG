@@ -46,6 +46,7 @@ Route::get('/datasets', function () {
 });
 Route::get('/datasets/data', [DatasetController::class, 'index']);
 Route::get('/datasets/data/{datasetId}', [DatasetController::class, 'show']);
+Route::delete('/datasets/data/{datasetId}/storage', [DatasetController::class, 'destroyStorage']);
 
 Route::get('/documents', function (\Illuminate\Http\Request $request) {
     $query = $request->getQueryString();
@@ -95,6 +96,7 @@ Route::post('/query', [HawkiRagProxyController::class, 'query']);
 Route::get('/rag/health', [RagHealthController::class, 'show']);
 Route::get('/rag/monitor', [RagMonitorController::class, 'show']);
 Route::get('/rag/stats', [RagStatsController::class, 'show']);
+Route::delete('/rag/qdrant/collections/{collection}', [RagStatsController::class, 'destroyQdrantCollection']);
 Route::get('/rag/neo4j/graph/overview', [RagGraphController::class, 'overview']);
 Route::get('/rag/neo4j/graph/search', [RagGraphController::class, 'search']);
 Route::get('/rag/neo4j/graph/semantic-search', [RagGraphController::class, 'semanticSearch']);

@@ -22,7 +22,7 @@ readonly class RagMonitorService
      */
     public function show(): array
     {
-        $bridge = $this->bridge->health();
+        $bridge = $this->bridge->health(includeRuntime: true);
         $runtime = $this->bridge->runtime($bridge);
 
         return [

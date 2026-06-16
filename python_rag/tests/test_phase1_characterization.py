@@ -1854,12 +1854,50 @@ class Neo4jCharacterizationTests(unittest.TestCase):
 
         self.assertEqual(len(calls), 1)
         cypher, params = calls[0]
-        self.assertIn("MERGE (s:Entity {name: row.s})", cypher)
+        self.assertIn("MERGE (s:Entity {entity_key: row.s_key})", cypher)
         self.assertEqual(
             params["rows"],
             [
-                {"s": "HAWKI", "r": "USES", "o": "Qdrant", "doc_id": "doc-1"},
-                {"s": "HAWKI", "r": "PERSISTS", "o": "Neo4j", "doc_id": "doc-1"},
+                {"s": "HAWKI", "s_key": "hawki", "r": "USES", "o": "Qdrant", "o_key": "qdrant", "doc_id": "doc-1"},
+                {
+                    "s": "HAWKI",
+                    "s_key": "hawki",
+                    "r": "PERSISTS",
+                    "o": "Neo4j",
+                    "o_key": "neo4j",
+                    "doc_id": "doc-1",
+                },
+            ],
+        )
+
+    def test_upsert_triplet_rows_use_case_insensitive_entity_keys(self) -> None:
+        from infrastructure.graph.neo4j_requests import build_triplet_rows
+
+        self.assertEqual(
+            build_triplet_rows(
+                [
+                    ("Rrolf", "mentions", "RAG-System"),
+                    ("rrolf", "mentions", "Rag System"),
+                ],
+                "doc-1",
+            ),
+            [
+                {
+                    "s": "Rrolf",
+                    "s_key": "rrolf",
+                    "r": "mentions",
+                    "o": "RAG-System",
+                    "o_key": "rag system",
+                    "doc_id": "doc-1",
+                },
+                {
+                    "s": "rrolf",
+                    "s_key": "rrolf",
+                    "r": "mentions",
+                    "o": "Rag System",
+                    "o_key": "rag system",
+                    "doc_id": "doc-1",
+                },
             ],
         )
 

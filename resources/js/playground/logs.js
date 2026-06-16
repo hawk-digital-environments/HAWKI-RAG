@@ -9,6 +9,7 @@ const activityClearBtn = document.getElementById('activity-clear-btn');
 let activityHistory = [];
 const lastActivityBySource = new Map();
 let lastRagStatsHash = '';
+let qdrantCollectionDeleteInFlight = null;
 
 function csrfToken() {
     return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
@@ -30,6 +31,45 @@ function createStatCard(title) {
     heading.textContent = title;
     card.appendChild(heading);
     return card;
+}
+
+async function deleteQdrantCollection(name, button) {
+    const collection = String(name || '').trim();
+    if (!collection || qdrantCollectionDeleteInFlight) return;
+    if (!window.confirm(`Delete Qdrant collection "${collection}"? This removes its vectors from Qdrant.`)) {
+        return;
+    }
+
+    qdrantCollectionDeleteInFlight = collection;
+    if (button) {
+        button.disabled = true;
+        button.textContent = 'Deleting';
+    }
+
+    try {
+        const response = await fetch(apiUrl(`rag/qdrant/collections/${encodeURIComponent(collection)}`), {
+            method: 'DELETE',
+            headers: {
+                'Accept': 'application/json',
+                'X-CSRF-TOKEN': csrfToken(),
+            },
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || data.ok === false) {
+            throw new Error(data.message || data.error || `Delete failed (${response.status})`);
+        }
+        pushActivity('Stats', `Deleted Qdrant collection ${collection}`);
+        lastRagStatsHash = '';
+        await pollRagStats();
+    } catch (error) {
+        pushActivity('Stats', `Delete failed: ${error.message}`);
+        if (button) {
+            button.disabled = false;
+            button.textContent = 'Delete';
+        }
+    } finally {
+        qdrantCollectionDeleteInFlight = null;
+    }
 }
 
 function formatFlag(value) {
@@ -238,25 +278,25 @@ async function pollRagStats() {
             const card = document.createElement('div');
             card.className = 'stat-card';
             card.innerHTML = '<h4>Qdrant collections</h4>';
-            let hiddenEmpty = 0;
             data.qdrant.collections.forEach((col) => {
                 const count = col.count ?? 'n/a';
-                if (typeof count === 'number' && count === 0) {
-                    hiddenEmpty += 1;
-                    return;
-                }
                 const row = document.createElement('div');
                 row.className = 'stat-row';
-                row.innerHTML = `<span class="stat-label">${col.name}</span><span class="stat-value">${count} points</span>`;
+                const label = document.createElement('span');
+                label.className = 'stat-label';
+                label.textContent = col.name;
+                const value = document.createElement('span');
+                value.className = 'stat-value';
+                value.textContent = `${count} points`;
+                const action = document.createElement('button');
+                action.type = 'button';
+                action.className = 'activity-clear-btn';
+                action.textContent = 'Delete';
+                action.addEventListener('click', () => deleteQdrantCollection(col.name, action));
+                row.append(label, value, action);
                 card.appendChild(row);
                 statsSnapshot.push(`${col.name}:${count}`);
             });
-            if (hiddenEmpty > 0) {
-                const note = document.createElement('div');
-                note.className = 'stat-row';
-                note.innerHTML = `<span class="stat-label">Hidden empty collections</span><span class="stat-value">${hiddenEmpty}</span>`;
-                card.appendChild(note);
-            }
             ragStats.appendChild(card);
         }
 

@@ -208,6 +208,12 @@ if (root) {
         }
 
         datasets.forEach((dataset) => {
+            const wrapper = document.createElement('div');
+            wrapper.className = 'dataset-list-entry';
+            if (dataset.datasetId === state.selectedDatasetId) {
+                wrapper.classList.add('is-selected');
+            }
+
             const button = document.createElement('button');
             button.type = 'button';
             button.className = 'dataset-list-item';
@@ -235,7 +241,25 @@ if (root) {
 
             button.append(top, id, meta);
             button.addEventListener('click', () => loadDataset(dataset.datasetId, { keepDocumentSelection: false }));
-            els.list.appendChild(button);
+
+            const deleteButton = document.createElement('button');
+            deleteButton.type = 'button';
+            deleteButton.className = 'dataset-delete-button';
+            deleteButton.textContent = 'Delete';
+            deleteButton.title = 'Delete this dataset Qdrant collection and Neo4j graph data';
+            deleteButton.addEventListener('click', async () => {
+                deleteButton.disabled = true;
+                try {
+                    await deleteDatasetStorage(dataset);
+                } catch (error) {
+                    setStatus(error.message || 'Dataset storage delete failed.', 'error');
+                } finally {
+                    deleteButton.disabled = false;
+                }
+            });
+
+            wrapper.append(button, deleteButton);
+            els.list.appendChild(wrapper);
         });
     }
 
@@ -642,6 +666,24 @@ if (root) {
         await requestJson(`pipeline/recovery/jobs/${encodeURIComponent(jobId)}/retry`, { method: 'POST' });
         await loadDataset(state.selectedDatasetId, { renderList: false });
         setStatus(`Queued retry for ${jobId}.`, 'success');
+    }
+
+    async function deleteDatasetStorage(dataset) {
+        const qdrant = dataset.qdrantCollection || 'the linked Qdrant collection';
+        const neo4j = dataset.neo4jNamespace || 'the linked Neo4j namespace';
+        const confirmed = window.confirm(
+            `Delete external storage for ${dataset.datasetId}?\n\nThis deletes Qdrant collection "${qdrant}" and Neo4j graph data for "${neo4j}". The Laravel dataset, tasks, and document records stay in the database.`,
+        );
+        if (!confirmed) return;
+
+        setStatus(`Deleting external storage for ${dataset.datasetId}...`);
+        const data = await requestJson(`datasets/data/${encodeURIComponent(dataset.datasetId)}/storage`, { method: 'DELETE' });
+        const qdrantMessage = data.cleanup?.qdrant?.message || 'Qdrant cleanup finished.';
+        const neo4jNodes = data.cleanup?.neo4j?.nodes ?? 0;
+        const neo4jRelationships = data.cleanup?.neo4j?.relationships ?? 0;
+
+        await loadDatasets({ keepSelection: true });
+        setStatus(`${qdrantMessage} Neo4j deleted ${neo4jNodes} nodes and ${neo4jRelationships} relationships.`, 'success');
     }
 
     function clearDocumentDetail() {

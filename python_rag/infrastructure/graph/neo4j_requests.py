@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import re
+import unicodedata
 from typing import Any, TypedDict
 
 from collections.abc import Iterable
@@ -11,8 +13,10 @@ Triplet = tuple[str, str, str]
 
 class UpsertRow(TypedDict):
     s: str
+    s_key: str
     r: str
     o: str
+    o_key: str
     doc_id: str
 
 
@@ -30,8 +34,10 @@ class Neo4jQueryRequest:
 def build_upsert_triplets_query() -> str:
     return (
         "UNWIND $rows AS row "
-        "MERGE (s:Entity {name: row.s}) "
-        "MERGE (o:Entity {name: row.o}) "
+        "MERGE (s:Entity {entity_key: row.s_key}) "
+        "MERGE (o:Entity {entity_key: row.o_key}) "
+        "SET s.name = CASE WHEN s.name IS NULL OR s.name = row.s_key THEN row.s ELSE s.name END "
+        "SET o.name = CASE WHEN o.name IS NULL OR o.name = row.o_key THEN row.o ELSE o.name END "
         "SET s.doc_ids = coalesce(s.doc_ids, []) + "
         "  CASE WHEN row.doc_id IN coalesce(s.doc_ids, []) THEN [] ELSE [row.doc_id] END "
         "SET o.doc_ids = coalesce(o.doc_ids, []) + "
@@ -153,11 +159,22 @@ def build_row_grouped_query(kind: str) -> str:
 
 
 def build_triplet_rows(triplets: Iterable[Triplet], doc_id: str) -> list[UpsertRow]:
-    return [
-        {"s": s, "r": r, "o": o, "doc_id": doc_id}
-        for s, r, o in triplets
-        if s and r and o
-    ]
+    rows: list[UpsertRow] = []
+    for s, r, o in triplets:
+        s_key = canonical_entity_key(s)
+        o_key = canonical_entity_key(o)
+        if not s or not r or not o or not s_key or not o_key:
+            continue
+        rows.append({"s": s, "s_key": s_key, "r": r, "o": o, "o_key": o_key, "doc_id": doc_id})
+    return rows
+
+
+def canonical_entity_key(value: str) -> str:
+    text = unicodedata.normalize("NFKD", str(value or ""))
+    text = "".join(ch for ch in text if not unicodedata.combining(ch))
+    text = text.lower()
+    text = re.sub(r"[^a-z0-9]+", " ", text)
+    return re.sub(r"\s+", " ", text).strip()
 
 
 def clean_query_terms(terms: Iterable[str]) -> list[str]:
