@@ -54,6 +54,11 @@ readonly class DatasetRepository
         return Dataset::query()->firstOrCreate(['dataset_id' => $datasetId], $attributes);
     }
 
+    public function delete(Dataset $dataset): bool
+    {
+        return (bool) $dataset->delete();
+    }
+
     public function documentCount(Dataset $dataset): int
     {
         return $this->documentQuery($dataset)->count();

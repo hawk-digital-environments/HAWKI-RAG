@@ -79,10 +79,20 @@ readonly class DatasetService
     /**
      * @return array<string, mixed>|null
      */
-    public function deleteStorage(string $datasetId): ?array
+    public function delete(string $datasetId): ?array
     {
         $dataset = $this->datasets->findByDatasetId($datasetId);
 
-        return $dataset ? $this->storageCleanup->deleteStorage($dataset) : null;
+        if (! $dataset) {
+            return null;
+        }
+
+        $cleanup = $this->storageCleanup->deleteStorage($dataset);
+        $cleanupOk = ($cleanup['qdrant']['ok'] ?? false) && ($cleanup['neo4j']['ok'] ?? false);
+
+        return [
+            ...$cleanup,
+            'datasetDeleted' => $cleanupOk ? $this->datasets->delete($dataset) : false,
+        ];
     }
 }

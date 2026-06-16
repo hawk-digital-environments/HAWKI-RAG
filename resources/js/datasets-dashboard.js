@@ -672,18 +672,25 @@ if (root) {
         const qdrant = dataset.qdrantCollection || 'the linked Qdrant collection';
         const neo4j = dataset.neo4jNamespace || 'the linked Neo4j namespace';
         const confirmed = window.confirm(
-            `Delete external storage for ${dataset.datasetId}?\n\nThis deletes Qdrant collection "${qdrant}" and Neo4j graph data for "${neo4j}". The Laravel dataset, tasks, and document records stay in the database.`,
+            `Delete dataset ${dataset.datasetId}?\n\nThis deletes Qdrant collection "${qdrant}", Neo4j graph data for "${neo4j}", and removes the dataset from this browser. Historical task and document records stay in the database.`,
         );
         if (!confirmed) return;
 
-        setStatus(`Deleting external storage for ${dataset.datasetId}...`);
+        setStatus(`Deleting dataset ${dataset.datasetId}...`);
         const data = await requestJson(`datasets/data/${encodeURIComponent(dataset.datasetId)}/storage`, { method: 'DELETE' });
         const qdrantMessage = data.cleanup?.qdrant?.message || 'Qdrant cleanup finished.';
         const neo4jNodes = data.cleanup?.neo4j?.nodes ?? 0;
         const neo4jRelationships = data.cleanup?.neo4j?.relationships ?? 0;
 
-        await loadDatasets({ keepSelection: true });
-        setStatus(`${qdrantMessage} Neo4j deleted ${neo4jNodes} nodes and ${neo4jRelationships} relationships.`, 'success');
+        if (dataset.datasetId === state.selectedDatasetId) {
+            state.selectedDatasetId = '';
+            state.selectedDocumentId = '';
+            localStorage.removeItem('hawkiDatasetsDashboardDatasetId');
+            localStorage.removeItem('hawkiDatasetsDashboardDocumentId');
+        }
+
+        await loadDatasets({ keepSelection: false });
+        setStatus(`Deleted ${dataset.datasetId}. ${qdrantMessage} Neo4j deleted ${neo4jNodes} nodes and ${neo4jRelationships} relationships.`, 'success');
     }
 
     function clearDocumentDetail() {

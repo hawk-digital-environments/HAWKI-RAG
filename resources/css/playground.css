@@ -1085,6 +1085,39 @@ ul { margin: 0.4rem 0 0; padding-left: 1.2rem; }
     font-size: 0.82rem;
     overflow-wrap: anywhere;
 }
+.graph-source-doc-list {
+    display: grid;
+    gap: 0.55rem;
+}
+.graph-source-doc {
+    display: grid;
+    gap: 0.25rem;
+    padding: 0.55rem;
+    border: 1px solid rgba(125, 211, 252, 0.22);
+    border-radius: 0.55rem;
+    background: rgba(14, 165, 233, 0.1);
+}
+.graph-source-doc strong,
+.graph-source-doc a {
+    color: #bae6fd;
+}
+.graph-source-doc a {
+    text-decoration: none;
+}
+.graph-source-doc a:hover {
+    text-decoration: underline;
+}
+.graph-source-doc small {
+    color: #93c5fd;
+    font-size: 0.74rem;
+    line-height: 1.35;
+}
+.graph-source-doc p {
+    margin: 0;
+    color: #dbeafe;
+    font-size: 0.76rem;
+    line-height: 1.45;
+}
 @media (max-width: 1100px) {
     .container {
         width: min(100% - 20px, 1500px);

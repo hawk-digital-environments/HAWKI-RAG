@@ -98,6 +98,7 @@ function toCyElements(nodes = [], edges = []) {
                 fullLabel: node.label || node.id,
                 nodeType: node.type || 'Entity',
                 sourceDocumentIds: node.source_document_ids || [],
+                sourceDocuments: node.source_documents || [],
                 weight: Math.max(1, Math.min(12, (node.source_document_ids || []).length || 1)),
                 color: nodeColor(node.type),
             },
@@ -414,7 +415,8 @@ function renderDetails(node) {
     }
 
     const props = node.data('properties') || {};
-    const docs = node.data('sourceDocumentIds') || [];
+    const docs = node.data('sourceDocuments') || [];
+    const docIds = node.data('sourceDocumentIds') || [];
     detailEl.innerHTML = `
         <div class="graph-detail-title">${escapeHtml(node.data('fullLabel'))}</div>
         <div class="graph-detail-subtitle">${escapeHtml(node.data('nodeType'))} · ${node.connectedEdges().length} relationships</div>
@@ -423,10 +425,35 @@ function renderDetails(node) {
             ${Object.entries(props).slice(0, 10).map(([key, value]) => `
                 <dt>${escapeHtml(key)}</dt><dd>${escapeHtml(formatValue(value))}</dd>
             `).join('')}
-            <dt>Source documents</dt><dd>${docs.length ? docs.map(escapeHtml).join(', ') : 'None'}</dd>
+            <dt>Source documents</dt><dd>${docs.length ? renderSourceDocuments(docs) : (docIds.length ? docIds.map(escapeHtml).join(', ') : 'None')}</dd>
         </dl>
     `;
     document.getElementById('graph-expand-selected-btn')?.addEventListener('click', expandSelected);
+}
+
+function renderSourceDocuments(docs) {
+    return `
+        <div class="graph-source-doc-list">
+            ${docs.map((doc) => {
+                const source = doc.sourceUrl || '';
+                const label = doc.label || doc.title || doc.originalFilename || source || doc.docId;
+                const href = source && /^https?:\/\//i.test(source) ? source : '';
+                const secondary = [
+                    doc.originalFilename && doc.originalFilename !== label ? doc.originalFilename : '',
+                    source && source !== label ? source : '',
+                    doc.markdownPreviewPath || doc.localPath || '',
+                ].filter(Boolean);
+
+                return `
+                    <article class="graph-source-doc">
+                        <strong>${href ? `<a href="${escapeAttribute(href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}</a>` : escapeHtml(label)}</strong>
+                        ${secondary.length ? `<small>${secondary.map(escapeHtml).join(' · ')}</small>` : ''}
+                        ${doc.markdownSnippet ? `<p>${escapeHtml(doc.markdownSnippet)}</p>` : ''}
+                    </article>
+                `;
+            }).join('')}
+        </div>
+    `;
 }
 
 function escapeHtml(value) {
@@ -437,6 +464,10 @@ function escapeHtml(value) {
         '"': '&quot;',
         "'": '&#039;',
     }[char]));
+}
+
+function escapeAttribute(value) {
+    return escapeHtml(value).replace(/`/g, '&#096;');
 }
 
 function formatValue(value) {

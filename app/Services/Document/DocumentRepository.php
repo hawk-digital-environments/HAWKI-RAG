@@ -32,6 +32,26 @@ readonly class DocumentRepository
     }
 
     /**
+     * @param list<string> $externalIds
+     * @return Collection<int, Document>
+     */
+    public function findByExternalIds(array $externalIds): Collection
+    {
+        $externalIds = array_values(array_unique(array_filter(array_map(
+            static fn (string $value): string => trim($value),
+            $externalIds,
+        ))));
+
+        if ($externalIds === []) {
+            return collect();
+        }
+
+        return Document::query()
+            ->whereIn('external_id', $externalIds)
+            ->get();
+    }
+
+    /**
      * @return Collection<int, Document>
      */
     public function list(array $filters, int $limit): Collection

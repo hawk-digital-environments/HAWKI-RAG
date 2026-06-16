@@ -9,6 +9,10 @@ use Illuminate\Container\Attributes\Singleton;
 #[Singleton]
 readonly class GraphResultNormalizer
 {
+    public function __construct(private GraphSourceDocumentResolver $sources)
+    {
+    }
+
     /**
      * @return list<array<string, mixed>>
      */
@@ -54,9 +58,11 @@ readonly class GraphResultNormalizer
             }
         }
 
+        $normalizedNodes = $this->sources->attachToNodes($this->nodes($nodes));
+
         return array_merge([
             'ok' => true,
-            'nodes' => $this->nodes($nodes),
+            'nodes' => $normalizedNodes,
             'edges' => $this->edges($edges, $idMap),
             'warnings' => [],
         ], $extra);
@@ -69,7 +75,7 @@ readonly class GraphResultNormalizer
     {
         return array_values(array_filter(array_map(function (array $record): ?array {
             $graphNodes = $record['_graph']['nodes'] ?? [];
-            $node = $this->nodes($graphNodes)[0] ?? null;
+            $node = $this->sources->attachToNodes($this->nodes($graphNodes))[0] ?? null;
             if ($node) {
                 $node['score'] = $record['score'] ?? null;
                 $node['highlighted'] = true;

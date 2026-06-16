@@ -52,7 +52,7 @@ class DatasetController extends Controller
 
     public function destroyStorage(string $datasetId): JsonResponse
     {
-        $result = $this->datasets->deleteStorage($datasetId);
+        $result = $this->datasets->delete($datasetId);
         if (!$result) {
             return response()->json([
                 'success' => false,
@@ -60,13 +60,13 @@ class DatasetController extends Controller
             ], 404);
         }
 
-        $ok = ($result['qdrant']['ok'] ?? false) && ($result['neo4j']['ok'] ?? false);
+        $ok = ($result['qdrant']['ok'] ?? false) && ($result['neo4j']['ok'] ?? false) && ($result['datasetDeleted'] ?? false);
 
         return response()->json([
             'success' => $ok,
             'message' => $ok
-                ? "Deleted external storage for dataset {$datasetId}."
-                : "External storage cleanup failed for dataset {$datasetId}.",
+                ? "Deleted dataset {$datasetId}."
+                : "Dataset delete failed for {$datasetId}.",
             'cleanup' => $result,
         ], $ok ? 200 : 502);
     }
