@@ -127,7 +127,7 @@ _up-core: network
 	@echo "Launching full stack (COMPOSE_FILE=$(COMPOSE_FILE_LIST), profiles: $(if $(strip $(COMPOSE_PROFILES)),$(COMPOSE_PROFILES),none))..."
 	@$(COMPOSE_CMD) up -d --build --remove-orphans
 	@echo "Ensuring Ollama models are pulled..."
-	@for model in bge-m3 llama3.1:8b llama3.2:1b; do \
+	@for model in bge-m3 llama3.1:8b llama3.2:1b qwen2.5vl:7b; do \
 		echo "Pulling $$model..."; \
 		docker exec $(OLLAMA_CONTAINER) ollama pull $$model >/dev/null 2>&1 || true; \
 	done
@@ -360,6 +360,7 @@ pull-models:
 	@docker exec -it $(OLLAMA_CONTAINER) ollama pull bge-m3
 	@docker exec -it $(OLLAMA_CONTAINER) ollama pull llama3.1:8b
 	@docker exec -it $(OLLAMA_CONTAINER) ollama pull llama3.2:1b
+	@docker exec -it $(OLLAMA_CONTAINER) ollama pull qwen2.5vl:7b
 
 logs-core:
 	@$(COMPOSE_CMD) logs -f postgres temporal qdrant hawki_rag_neo4j $(OLLAMA_SERVICE) hawki_rag_app hawki_rag_bridge hawki_rag_rerank hawki-rag-temporal-workflow-worker hawki-rag-temporal-scraper-worker hawki-rag-temporal-converter-worker hawki-rag-temporal-ingestion-worker

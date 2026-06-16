@@ -21,6 +21,7 @@ def provider_fingerprint(provider: Any) -> str:
         provider.__class__.__name__,
         str(getattr(provider, "base", "")),
         str(getattr(provider, "rag_model", "")),
+        str(getattr(provider, "vision_model", "")),
         str(getattr(provider, "embed_model", "")),
         str(getattr(provider, "key", ""))[:8],  # enough to detect config changes, avoids logging secrets
     ]
@@ -37,7 +38,7 @@ def clone_provider_for_graph(provider: Any) -> Any:
         clone = provider.__class__()  # re-read env-backed config
     except Exception:
         clone = provider
-    for attr in ("base", "key", "rag_model", "embed_model", "_explicit_graph_model"):
+    for attr in ("base", "key", "rag_model", "vision_model", "embed_model", "_explicit_graph_model"):
         if hasattr(provider, attr):
             try:
                 setattr(clone, attr, getattr(provider, attr))

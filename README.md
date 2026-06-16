@@ -156,3 +156,4 @@ Default models:
 
 - Embeddings: `bge-m3`
 - Answers: `llama3.1:8b`
+- Image understanding: `qwen2.5vl:7b`

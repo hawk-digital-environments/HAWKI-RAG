@@ -56,13 +56,13 @@ What `make up-core` does:
 | --- | --- |
 | Compose context | Uses computed `COMPOSE_FILE` with `ENV_FILE` and optional `COMPOSE_PROFILES`. |
 | Launch preview | Prints selected compose files before startup. |
-| Model readiness | Pulls Ollama models: `bge-m3`, `llama3.1:8b`, `llama3.2:1b`. |
+| Model readiness | Pulls Ollama models: `bge-m3`, `llama3.1:8b`, `llama3.2:1b`, `qwen2.5vl:7b`. |
 
 ## Model pulls (Ollama)
-- Default pulls: `bge-m3`, `llama3.1:8b`, `llama3.2:1b`.
+- Default pulls: `bge-m3`, `llama3.1:8b`, `llama3.2:1b`, `qwen2.5vl:7b`.
 - Optional (manual): `llama3.2:3b`
   - `docker exec hawki_ollama ollama pull llama3.2:3b`
-- Rough VRAM guide: `bge-m3` < 4 GB, `llama3.2:1b` ~2 GB, `llama3.1:8b` prefers 12-16 GB.
+- Rough VRAM guide: `bge-m3` < 4 GB, `llama3.2:1b` ~2 GB, `llama3.1:8b` prefers 12-16 GB, `qwen2.5vl:7b` prefers 8-12 GB.
 
 ## Health and logs
 ```bash

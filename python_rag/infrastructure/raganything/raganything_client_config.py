@@ -40,6 +40,7 @@ def graph_runtime_cache_key(
             str(db_name),
             str(settings.graph_temperature).strip(),
             str(settings.ollama_chat_timeout).strip(),
+            str(settings.vision_model).strip(),
         ]
     )
 
@@ -113,6 +114,66 @@ def _build_llm_model_func(graph_provider: Any, settings: RagAnythingGraphSetting
         return response
 
     return llm_model_func
+
+
+def _graph_temperature(settings: RagAnythingGraphSettings) -> float | None:
+    graph_temp_env = settings.graph_temperature.strip()
+    if not graph_temp_env:
+        return 0.0
+    try:
+        return float(graph_temp_env)
+    except ValueError:
+        return None
+
+
+def _build_vision_model_func(graph_provider: Any, settings: RagAnythingGraphSettings, *, logger_obj: logging.Logger) -> Any:
+    async def vision_model_func(
+        prompt: str,
+        system_prompt: str | None = None,
+        history_messages: list | None = None,
+        image_data: str | None = None,
+        messages: list | None = None,
+        **kwargs: Any,
+    ) -> str:
+        del kwargs
+        system = system_prompt or "You are a helpful visual assistant."
+        temperature = _graph_temperature(settings)
+
+        if settings.vision_model and hasattr(graph_provider, "vision_model"):
+            try:
+                setattr(graph_provider, "vision_model", settings.vision_model)
+            except Exception:
+                pass
+
+        if settings.graph_debug_llm:
+            logger_obj.debug("graph:raganything vision system=%s", system)
+            logger_obj.debug("graph:raganything vision prompt=%s", prompt)
+
+        if hasattr(graph_provider, "vision_chat"):
+            response = await asyncio.to_thread(
+                graph_provider.vision_chat,
+                system,
+                prompt,
+                image_data=image_data,
+                messages=messages or history_messages,
+                temperature=temperature,
+            )
+        else:
+            text_messages = list(history_messages or messages or [])
+            if prompt:
+                text_messages.append({"role": "user", "content": prompt})
+            response = await asyncio.to_thread(
+                graph_provider.chat,
+                system,
+                text_messages,
+                temperature=temperature,
+            )
+
+        if settings.graph_debug_llm:
+            logger_obj.debug("graph:raganything vision response=%s", response)
+        return response
+
+    return vision_model_func
 
 
 def _build_embed_many_func(graph_provider: Any, settings: RagAnythingGraphSettings, *, embed_dim: int, logger_obj: logging.Logger) -> Any:
@@ -202,9 +263,15 @@ def build_raganything_client(
         return None, base_runtime_meta, {}
 
     graph_provider = clone_provider_for_graph(provider)
+    if settings.vision_model and hasattr(graph_provider, "vision_model"):
+        try:
+            setattr(graph_provider, "vision_model", settings.vision_model)
+        except Exception:
+            pass
     embed_dim = _embed_model_dim(graph_provider)
 
     llm_model_func = _build_llm_model_func(graph_provider, settings, logger_obj=logger_obj)
+    vision_model_func = _build_vision_model_func(graph_provider, settings, logger_obj=logger_obj)
     emb_func = EmbeddingFunc(
         embedding_dim=embed_dim,
         func=_build_embed_many_func(graph_provider, settings, embed_dim=embed_dim, logger_obj=logger_obj),
@@ -240,15 +307,17 @@ def build_raganything_client(
     try:
         client = RAGAnything(
             llm_model_func=llm_model_func,
+            vision_model_func=vision_model_func,
             embedding_func=emb_func,
             config=config,
             lightrag_kwargs=lightrag_kwargs,
         )
         logger_obj.info(
-            "RAG-Anything graph client initialized (working_dir=%s, provider=%s, rag_model=%s, embed_model=%s, doc_status_storage=%s, graph_storage=%s)",
+            "RAG-Anything graph client initialized (working_dir=%s, provider=%s, rag_model=%s, vision_model=%s, embed_model=%s, doc_status_storage=%s, graph_storage=%s)",
             working_dir,
             graph_provider.__class__.__name__,
             getattr(graph_provider, "rag_model", None),
+            getattr(graph_provider, "vision_model", None),
             getattr(graph_provider, "embed_model", None),
             lightrag_kwargs.get("doc_status_storage", "JsonDocStatusStorage"),
             lightrag_kwargs.get("graph_storage", "NetworkXStorage(default)"),

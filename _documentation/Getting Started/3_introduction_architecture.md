@@ -18,7 +18,7 @@
 ## How This Project Implements RAG
 - **Vector DB (Qdrant):** Stores meanings of text as numbers (“embeddings”).
 - **Graph DB (Neo4j):** Stores entities/relationships extracted from text.
-- **Models (Ollama):** Runs `bge-m3` for embeddings; `llama3.1:8b` to write answers; `llama3.2:1b` for fast graph tasks.
+- **Models (Ollama):** Runs `bge-m3` for embeddings; `llama3.1:8b` to write answers; `llama3.2:1b` for fast graph tasks; `qwen2.5vl:7b` for image understanding.
 - **Bridge (Python FastAPI):** Ingests documents, chunks text, makes embeddings/graph, saves to Qdrant/Neo4j.
 - **Temporal:** Durable source-ingestion workflow orchestration for scrape, conversion, ingestion, retries, cancellation, and schedules.
 - **Reranker (Python):** Improves ordering of search results.

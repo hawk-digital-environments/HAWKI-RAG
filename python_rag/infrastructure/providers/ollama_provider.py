@@ -22,6 +22,21 @@ from common.optional_imports import import_required_module
 logger = logging.getLogger(__name__)
 
 
+def _clean_ollama_image_data(value: Any) -> str | None:
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+
+    lower_raw = raw.lower()
+    marker = ";base64,"
+    marker_idx = lower_raw.find(marker)
+    if marker_idx >= 0:
+        return raw[marker_idx + len(marker) :].strip()
+    if lower_raw.startswith("data:") and "," in raw:
+        return raw.split(",", 1)[1].strip()
+    return raw
+
+
 def _requests_module() -> Any:
     return import_required_module(
         "requests",
@@ -45,6 +60,10 @@ class OllamaProvider:
         self.rag_model = os.environ.get(
             "OLLAMA_RAG_MODEL",
             os.environ.get("OLLAMA_TEXT_MODEL", "llama3:8b"),
+        )
+        self.vision_model = os.environ.get(
+            "OLLAMA_VISION_MODEL",
+            os.environ.get("GRAPH_OLLAMA_VISION_MODEL", "qwen2.5vl:7b"),
         )
         self._last_embed_dim: int | None = None
 
@@ -246,6 +265,192 @@ class OllamaProvider:
         raise RuntimeError(
             f"Ollama chat request failed after trying {len(candidates)} endpoints: {last_error}"
         )
+
+    def vision_chat(
+        self,
+        system: str,
+        prompt: str,
+        *,
+        image_data: str | None = None,
+        messages: list | None = None,
+        temperature: float | None = None,
+    ) -> str:
+        url = f"{self.base}/chat"
+        requests_module = _requests_module()
+        _http_error, request_error, timeout_error = _request_exception_types(requests_module)
+        chat_options = chat_options_from_env(temperature)
+        timeout = chat_options.timeout
+        retries = chat_options.retries
+        backoff = chat_options.backoff
+        jitter = chat_options.jitter
+        payload = {
+            "model": self.vision_model,
+            "messages": self._build_vision_messages(
+                system=system,
+                prompt=prompt,
+                image_data=image_data,
+                messages=messages,
+            ),
+            "stream": False,
+            "options": {
+                "temperature": chat_options.temperature,
+                "top_p": chat_options.top_p,
+                "num_predict": chat_options.num_predict,
+            },
+        }
+
+        def _sleep_backoff(attempt: int) -> None:
+            if backoff <= 0:
+                return
+            delay = backoff * max(1, attempt)
+            if jitter > 0:
+                delay += random.uniform(0.0, jitter) * delay
+            time.sleep(delay)
+
+        max_attempts = max(1, retries + 1)
+        for attempt in range(1, max_attempts + 1):
+            try:
+                r = requests_module.post(url, json=payload, timeout=timeout)
+            except timeout_error as exc:
+                if attempt < max_attempts:
+                    logger.warning("Ollama vision chat timed out (attempt %s/%s), retrying...", attempt, max_attempts)
+                    _sleep_backoff(attempt)
+                    continue
+                raise RuntimeError(
+                    f"Ollama vision chat request timed out after {max_attempts} attempt(s): {exc}"
+                ) from exc
+            except request_error as exc:
+                if attempt < max_attempts:
+                    logger.warning(
+                        "Ollama vision chat request failed (attempt %s/%s): %s",
+                        attempt,
+                        max_attempts,
+                        exc,
+                    )
+                    _sleep_backoff(attempt)
+                    continue
+                raise RuntimeError(
+                    f"Ollama vision chat request failed after {max_attempts} attempt(s): {exc}"
+                ) from exc
+
+            if r.ok:
+                j = r.json()
+                msg = (j.get("message") or {}).get("content")
+                if isinstance(msg, str):
+                    return msg
+                resp = j.get("response")
+                if isinstance(resp, str):
+                    return resp
+                if attempt < max_attempts:
+                    logger.warning(
+                        "Ollama vision chat returned empty content (attempt %s/%s), retrying...",
+                        attempt,
+                        max_attempts,
+                    )
+                    _sleep_backoff(attempt)
+                    continue
+                raise RuntimeError("Ollama vision chat: empty response")
+
+            detail = self._extract_error_message(r)
+            status = r.status_code
+            if status >= 500 and attempt < max_attempts:
+                logger.warning("Ollama vision chat HTTP %s (attempt %s/%s), retrying...", status, attempt, max_attempts)
+                _sleep_backoff(attempt)
+                continue
+            if status == 404 and "model" in detail.lower():
+                raise RuntimeError(
+                    f"Ollama vision model '{self.vision_model}' is not installed. "
+                    f"Run `ollama pull {self.vision_model}` inside the Ollama container or host."
+                )
+            raise RuntimeError(f"Ollama vision chat HTTP error ({status}): {detail}")
+
+        raise RuntimeError("Ollama vision chat request failed with no response")
+
+    @classmethod
+    def _build_vision_messages(
+        cls,
+        *,
+        system: str,
+        prompt: str,
+        image_data: str | None,
+        messages: list | None,
+    ) -> list[dict[str, Any]]:
+        if messages:
+            normalized_messages = []
+            has_system = False
+            for message in messages:
+                normalized = cls._normalize_vision_message(message)
+                if normalized is None:
+                    continue
+                has_system = has_system or str(normalized.get("role") or "").lower() == "system"
+                normalized_messages.append(normalized)
+            clean_image = _clean_ollama_image_data(image_data)
+            if prompt or clean_image:
+                user_message: dict[str, Any] = {"role": "user", "content": prompt}
+                if clean_image:
+                    user_message["images"] = [clean_image]
+                normalized_messages.append(user_message)
+            if not has_system:
+                normalized_messages.insert(0, {"role": "system", "content": system})
+            return normalized_messages
+
+        user_message: dict[str, Any] = {"role": "user", "content": prompt}
+        clean_image = _clean_ollama_image_data(image_data)
+        if clean_image:
+            user_message["images"] = [clean_image]
+        return [{"role": "system", "content": system}, user_message]
+
+    @staticmethod
+    def _normalize_vision_message(message: Any) -> dict[str, Any] | None:
+        if not isinstance(message, dict):
+            return None
+
+        role = str(message.get("role") or "user")
+        content = message.get("content", "")
+        images: list[str] = []
+        text_parts: list[str] = []
+
+        if isinstance(content, list):
+            for part in content:
+                if not isinstance(part, dict):
+                    text_parts.append(str(part))
+                    continue
+                part_type = str(part.get("type") or "").lower()
+                if part_type == "text":
+                    text_parts.append(str(part.get("text") or ""))
+                    continue
+                if part_type in ("image_url", "input_image"):
+                    image_url = part.get("image_url") or part.get("image")
+                    if isinstance(image_url, dict):
+                        image_url = image_url.get("url")
+                    clean_image = _clean_ollama_image_data(image_url)
+                    if clean_image:
+                        images.append(clean_image)
+                    continue
+                clean_image = _clean_ollama_image_data(part.get("image_data"))
+                if clean_image:
+                    images.append(clean_image)
+        else:
+            text_parts.append(str(content or ""))
+
+        raw_images = message.get("images")
+        if isinstance(raw_images, list):
+            for item in raw_images:
+                clean_image = _clean_ollama_image_data(item)
+                if clean_image:
+                    images.append(clean_image)
+        else:
+            clean_image = _clean_ollama_image_data(raw_images)
+            if clean_image:
+                images.append(clean_image)
+
+        normalized: dict[str, Any] = {
+            "role": role,
+            "content": "\n".join(part for part in text_parts if part).strip(),
+        }
+        if images:
+            normalized["images"] = images
+        return normalized
 
     @staticmethod
     def _extract_error_message(resp: Any) -> str:

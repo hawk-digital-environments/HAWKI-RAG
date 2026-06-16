@@ -36,6 +36,7 @@ def build_graph_runtime_summary(
         },
         "models": {
             "graph_model": str(settings.graph_model).strip(),
+            "vision_model": str(settings.vision_model).strip(),
             "embed_model": str(settings.embed_model).strip(),
         },
         "limits": limits,

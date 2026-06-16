@@ -50,6 +50,8 @@
 | `OLLAMA_API_URL` | `http://ollama:11434/api` | Ollama API base URL (compose alias like `http://hawki_ollama:11434/api` can also be used). |
 | `OLLAMA_EMBED_MODEL` | `bge-m3` | Embedding model used during ingestion. |
 | `GRAPH_OLLAMA_RAG_MODEL` | `llama3.2:1b` | Default graph extraction model. |
+| `OLLAMA_VISION_MODEL` | `qwen2.5vl:7b` | Vision model used by RAG-Anything to describe images. |
+| `GRAPH_OLLAMA_VISION_MODEL` | `qwen2.5vl:7b` | Graph-specific override for the RAG-Anything image vision model. |
 
 ## Database setup
 ### Variables to verify before migrating

@@ -34,6 +34,7 @@ class AppMetadataStore:
             dbname=self.settings.db_name,
             user=self.settings.db_user,
             password=self.settings.db_password,
+            options="-c timezone=UTC",
             autocommit=True,
         )
         try:
