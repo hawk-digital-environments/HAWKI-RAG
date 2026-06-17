@@ -369,7 +369,8 @@ function renderPipelineTaskRuns(tasks) {
         button.append(title, meta);
         button.addEventListener('click', () => selectPipelineTask(task.taskId));
 
-        row.appendChild(button);
+        const actions = document.createElement('div');
+        actions.className = 'pipeline-run-actions';
 
         if (isPipelineTaskCancellable(task)) {
             const cancel = document.createElement('button');
@@ -378,9 +379,18 @@ function renderPipelineTaskRuns(tasks) {
             cancel.textContent = 'Cancel';
             cancel.title = 'Cancel active processing for this pipeline task';
             cancel.addEventListener('click', () => cancelPipelineTask(task.taskId, cancel));
-            row.appendChild(cancel);
+            actions.appendChild(cancel);
         }
 
+        const deleteButton = document.createElement('button');
+        deleteButton.type = 'button';
+        deleteButton.className = 'pipeline-run-delete';
+        deleteButton.textContent = 'Delete';
+        deleteButton.title = 'Delete this cached pipeline task history';
+        deleteButton.addEventListener('click', () => deletePipelineTask(task.taskId, deleteButton));
+        actions.appendChild(deleteButton);
+
+        row.append(button, actions);
         runListEl.appendChild(row);
     });
 }
@@ -604,6 +614,58 @@ async function cancelPipelineTask(taskId, button = null) {
     } catch (error) {
         setTaskNote(error.message || 'Pipeline task cancel failed.', 'error');
         pushActivity('Pipeline', error.message || 'Pipeline task cancel failed.');
+    } finally {
+        if (button) button.disabled = false;
+    }
+}
+
+async function deletePipelineTask(taskId, button = null) {
+    if (!taskId) return;
+
+    const task = pipelineTaskRuns.find((candidate) => candidate.taskId === taskId);
+    const activeWarning = isPipelineTaskCancellable(task)
+        ? '\n\nThis task still looks active. Delete only removes the cached task history; use Cancel to stop active processing.'
+        : '';
+    const confirmed = window.confirm(
+        `Delete cached pipeline task ${taskId}?${activeWarning}\n\nThis removes its task, job, and stage history from Pipeline Tasks. Dataset content is not deleted.`,
+    );
+    if (!confirmed) return;
+
+    if (button) button.disabled = true;
+    setTaskNote(`Deleting cached task ${taskId}...`, 'warn');
+
+    try {
+        const response = await fetch(apiUrl(`pipeline/tasks/${encodeURIComponent(taskId)}`), {
+            method: 'DELETE',
+            credentials: 'same-origin',
+            headers: {
+                'Accept': 'application/json',
+                'X-CSRF-TOKEN': csrfToken(),
+            },
+        });
+        const data = await parseResponseJson(response);
+        if (!response.ok || !data.success) {
+            throw new Error(data.message || `Pipeline task delete failed (${response.status})`);
+        }
+
+        pipelineTaskRuns = pipelineTaskRuns.filter((candidate) => candidate.taskId !== taskId);
+
+        if (taskId === activePipelineTaskId) {
+            activePipelineTaskId = '';
+            if (pollTimer) {
+                clearInterval(pollTimer);
+                pollTimer = null;
+            }
+            renderPipeline(null);
+        }
+
+        renderPipelineTaskRuns(pipelineTaskRuns);
+        pushActivity('Pipeline', `deleted cached task ${taskId}`);
+        setTaskNote(`Deleted cached task ${taskId}.`, 'success');
+        await loadPipelineTaskRuns();
+    } catch (error) {
+        setTaskNote(error.message || 'Pipeline task delete failed.', 'error');
+        pushActivity('Pipeline', error.message || 'Pipeline task delete failed.');
     } finally {
         if (button) button.disabled = false;
     }

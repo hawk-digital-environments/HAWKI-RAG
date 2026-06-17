@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\PipelineJob;
+use App\Models\PipelineStageState;
 use App\Models\PipelineTask;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -144,5 +145,52 @@ class PipelineControllerDashboardTest extends TestCase
             ->assertOk()
             ->assertSee('accept=".pdf,.txt,.png,.webp,.zip"', false)
             ->assertSee('data-supported-extensions="pdf,txt,png,webp,zip"', false);
+    }
+
+    public function test_pipeline_task_cache_can_be_deleted(): void
+    {
+        $task = PipelineTask::query()->create([
+            'task_id' => 'task-cache-delete',
+            'dataset_id' => 'cache-delete-dataset',
+            'status' => PipelineTask::STATUS_COMPLETED,
+            'started_at' => now(),
+            'finished_at' => now(),
+            'counters' => ['jobs_total' => 1, 'jobs_completed' => 1],
+            'metadata' => [],
+        ]);
+        $job = PipelineJob::query()->create([
+            'job_id' => 'job-cache-delete',
+            'task_id' => $task->task_id,
+            'job_type' => PipelineJob::TYPE_CONVERT,
+            'status' => PipelineJob::STATUS_COMPLETED,
+            'started_at' => now(),
+            'finished_at' => now(),
+            'metadata' => [],
+        ]);
+        $stage = PipelineStageState::query()->create([
+            'pipeline_job_id' => $job->id,
+            'job_id' => $job->job_id,
+            'stage' => 'convert',
+            'status' => PipelineJob::STATUS_COMPLETED,
+            'counts' => [],
+            'metadata' => [],
+        ]);
+
+        $this->withSession(['_token' => 'test-token'])
+            ->deleteJson('/pipeline/tasks/task-cache-delete', [], ['X-CSRF-TOKEN' => 'test-token'])
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('taskId', 'task-cache-delete')
+            ->assertJsonPath('deleted', true);
+
+        $this->assertDatabaseMissing('pipeline_tasks', [
+            'task_id' => 'task-cache-delete',
+        ]);
+        $this->assertDatabaseMissing('pipeline_jobs', [
+            'job_id' => 'job-cache-delete',
+        ]);
+        $this->assertDatabaseMissing('pipeline_stage_states', [
+            'id' => $stage->id,
+        ]);
     }
 }

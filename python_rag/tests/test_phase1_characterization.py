@@ -197,6 +197,38 @@ class GraphFallbackCharacterizationTests(unittest.TestCase):
                 ],
             )
 
+    def test_raganything_llm_cache_fallback_can_scope_to_current_extraction(self) -> None:
+        from infrastructure.raganything.fallback_parser import parse_raganything_llm_cache
+
+        with tempfile.TemporaryDirectory() as tmp:
+            cache_path = Path(tmp) / "kv_store_llm_response_cache.json"
+            cache_path.write_text(
+                json.dumps(
+                    {
+                        "stale": {
+                            "return": "relation<|#|>solution04-final-gngrqk4l.py<|#|>graph<|#|>related_to,",
+                            "chunk_id": "doc_old:extract:1-chunk-000",
+                            "create_time": 100,
+                        },
+                        "current": {
+                            "return": "relation<|#|>skill1-o1fxaa1u.md<|#|>RAG-Anything<|#|>attached_for_parsing",
+                            "chunk_id": "doc_current:extract:2-chunk-000",
+                            "create_time": 200,
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            self.assertEqual(
+                parse_raganything_llm_cache(
+                    cache_path,
+                    chunk_id_prefix="doc_current:extract:2",
+                    created_at_floor=150,
+                ),
+                [("skill1-o1fxaa1u.md", "attached_for_parsing", "RAG-Anything")],
+            )
+
     def test_source_filter_drops_prompt_examples_and_keeps_grounded_triplets(self) -> None:
         from infrastructure.graph.graph_utils import filter_triplets_to_source
 

@@ -32,12 +32,21 @@ def relation_label_from_text(raw: str) -> str:
     return rel or "RELATED_TO"
 
 
-def parse_raganything_llm_cache(cache_path: Path) -> list[Triplet]:
+def parse_raganything_llm_cache(
+    cache_path: Path,
+    *,
+    chunk_id_prefix: str | None = None,
+    created_at_floor: int | None = None,
+) -> list[Triplet]:
     """Recover relations from LightRAG extraction outputs it failed to parse.
 
     Smaller local models sometimes answer the LightRAG extraction prompt with a
     markdown table instead of the expected delimiter format. LightRAG then logs
     relations in the LLM cache but does not persist them into graph edges.
+
+    When a chunk prefix or timestamp floor is supplied, only records from the
+    current extraction are considered. LightRAG keeps this cache as a shared KV
+    file, so parsing every record can leak old document triplets into a new doc.
     """
     if not cache_path.is_file():
         return []
@@ -55,6 +64,12 @@ def parse_raganything_llm_cache(cache_path: Path) -> list[Triplet]:
     for rec in payload.values():
         if not isinstance(rec, dict):
             continue
+        if not _cache_record_matches(
+            rec,
+            chunk_id_prefix=chunk_id_prefix,
+            created_at_floor=created_at_floor,
+        ):
+            continue
         text = str(rec.get("return") or "")
         if not text.strip():
             continue
@@ -66,6 +81,42 @@ def parse_raganything_llm_cache(cache_path: Path) -> list[Triplet]:
     if recovered:
         logger.info("RAG-Anything LLM cache fallback recovered triplets=%s", len(recovered))
     return recovered
+
+
+def _cache_record_matches(
+    rec: dict[str, object],
+    *,
+    chunk_id_prefix: str | None,
+    created_at_floor: int | None,
+) -> bool:
+    if chunk_id_prefix:
+        chunk_id = str(rec.get("chunk_id") or "")
+        if not chunk_id.startswith(chunk_id_prefix):
+            return False
+
+    if created_at_floor is None:
+        return True
+
+    timestamp = _cache_record_timestamp(rec)
+    if timestamp is None:
+        return chunk_id_prefix is not None
+
+    return timestamp >= created_at_floor
+
+
+def _cache_record_timestamp(rec: dict[str, object]) -> int | None:
+    for key in ("create_time", "update_time"):
+        value = rec.get(key)
+        if isinstance(value, bool):
+            continue
+        if isinstance(value, (int, float)):
+            return int(value)
+        if isinstance(value, str):
+            try:
+                return int(float(value.strip()))
+            except ValueError:
+                continue
+    return None
 
 
 def _parse_delimited_relations(text: str) -> Iterable[Triplet]:

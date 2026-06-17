@@ -39,6 +39,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/{taskId}/retry', [PipelineTaskController::class, 'retry']);
         Route::post('/{taskId}/retry-failed-jobs', [PipelineTaskController::class, 'retryFailedJobs']);
         Route::post('/{taskId}/cancel', [PipelineTaskController::class, 'cancel']);
+        Route::delete('/{taskId}', [PipelineTaskController::class, 'destroy']);
     });
 
     Route::prefix('pipeline/health')->group(function () {

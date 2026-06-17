@@ -108,6 +108,22 @@ class PipelineTaskController extends Controller
         return $this->taskActionResponse($taskId, $this->pipeline->tasks->cancel($taskId));
     }
 
+    public function destroy(string $taskId): JsonResponse
+    {
+        if (! $this->pipeline->tasks->delete($taskId)) {
+            return response()->json([
+                'success' => false,
+                'message' => "Pipeline task {$taskId} was not found.",
+            ], 404);
+        }
+
+        return response()->json([
+            'success' => true,
+            'taskId' => $taskId,
+            'deleted' => true,
+        ]);
+    }
+
     private function taskActionResponse(string $taskId, mixed $task): JsonResponse
     {
         if (! $task) {

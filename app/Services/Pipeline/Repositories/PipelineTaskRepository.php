@@ -4,14 +4,21 @@ declare(strict_types=1);
 namespace App\Services\Pipeline\Repositories;
 
 use App\Models\Dataset;
+use App\Models\PipelineJob;
+use App\Models\PipelineStageState;
 use App\Models\PipelineTask;
 use Illuminate\Container\Attributes\Singleton;
+use Illuminate\Database\DatabaseManager;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 
 #[Singleton]
 readonly class PipelineTaskRepository
 {
+    public function __construct(private DatabaseManager $database)
+    {
+    }
+
     public function findByTaskId(string $taskId): ?PipelineTask
     {
         return PipelineTask::query()
@@ -131,5 +138,34 @@ readonly class PipelineTaskRepository
         ])->save();
 
         return $task->refresh();
+    }
+
+    public function deleteHistory(string $taskId): bool
+    {
+        return $this->database->transaction(function () use ($taskId): bool {
+            $task = $this->findByTaskId($taskId);
+
+            if (! $task) {
+                return false;
+            }
+
+            $jobIds = PipelineJob::query()
+                ->where('task_id', $taskId)
+                ->pluck('id');
+
+            if ($jobIds->isNotEmpty()) {
+                PipelineStageState::query()
+                    ->whereIn('pipeline_job_id', $jobIds)
+                    ->delete();
+
+                PipelineJob::query()
+                    ->whereIn('id', $jobIds)
+                    ->delete();
+            }
+
+            $task->delete();
+
+            return true;
+        });
     }
 }

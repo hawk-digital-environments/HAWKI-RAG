@@ -207,7 +207,11 @@ async def extract_triplets_from_graph_client(
             created_at_floor=created_floor,
             graph_debug=False,
         )
-        fallback_triplets = parse_raganything_llm_cache(working_dir / "kv_store_llm_response_cache.json")
+        fallback_triplets = parse_raganything_llm_cache(
+            working_dir / "kv_store_llm_response_cache.json",
+            chunk_id_prefix=rag_doc_id,
+            created_at_floor=created_floor,
+        )
         if fallback_triplets:
             triplets = dedupe_triplets([*triplets, *fallback_triplets])
             _clear_temp_graph(

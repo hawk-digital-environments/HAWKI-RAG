@@ -100,6 +100,11 @@ class PipelineTaskService
         return $this->cancellations->cancel($taskId);
     }
 
+    public function delete(string $taskId): bool
+    {
+        return $this->taskRepository->deleteHistory($taskId);
+    }
+
     public function completeIfIdle(string $taskId): ?PipelineTask
     {
         $task = $this->taskRepository->findByTaskId($taskId);
