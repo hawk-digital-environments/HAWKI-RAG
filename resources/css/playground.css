@@ -27,7 +27,7 @@ body {
 }
 .container {
     box-sizing: border-box;
-    width: min(1500px, calc(100% - 32px));
+    width: min(1760px, calc(100% - 32px));
     min-height: 100%;
     margin: 0 auto;
     padding: 24px 0 40px;
@@ -296,10 +296,8 @@ button {
     font-weight: 800;
     line-height: 1;
     cursor: pointer;
-    transition: transform 0.12s ease, box-shadow 0.12s ease;
 }
 button:disabled { opacity: 0.6; cursor: wait; }
-button:not(:disabled):hover { transform: translateY(-1px); box-shadow: 0 10px 25px rgba(13, 148, 136, 0.4); }
 .badge {
     display: inline-flex;
     align-items: center;
@@ -409,10 +407,6 @@ ul { margin: 0.4rem 0 0; padding-left: 1.2rem; }
     border: 1px solid rgba(251, 113, 133, 0.45);
     color: #fecdd3;
     font-size: 0.74rem;
-}
-.activity-clear-btn:not(:disabled):hover {
-    box-shadow: none;
-    background: rgba(244, 63, 94, 0.24);
 }
 .ingest-actions {
     display: flex;
@@ -722,7 +716,6 @@ ul { margin: 0.4rem 0 0; padding-left: 1.2rem; }
     padding: 0.65rem 0.7rem;
     text-align: left;
 }
-.pipeline-run-select:not(:disabled):hover,
 .pipeline-run-select.is-selected {
     border-color: rgba(45, 212, 191, 0.46);
     background: rgba(20, 184, 166, 0.12);
@@ -745,18 +738,10 @@ ul { margin: 0.4rem 0 0; padding-left: 1.2rem; }
     background: rgba(127, 29, 29, 0.24);
     color: #fecdd3;
 }
-.pipeline-run-cancel:not(:disabled):hover {
-    border-color: rgba(251, 113, 133, 0.7);
-    background: rgba(153, 27, 27, 0.38);
-}
 .pipeline-run-delete {
     border: 1px solid rgba(248, 113, 113, 0.52);
     background: rgba(69, 10, 10, 0.34);
     color: #fecaca;
-}
-.pipeline-run-delete:not(:disabled):hover {
-    border-color: rgba(248, 113, 113, 0.78);
-    background: rgba(127, 29, 29, 0.48);
 }
 .pipeline-run-cancel:disabled,
 .pipeline-run-delete:disabled {
@@ -1160,9 +1145,6 @@ ul { margin: 0.4rem 0 0; padding-left: 1.2rem; }
 }
 .graph-source-doc a {
     text-decoration: none;
-}
-.graph-source-doc a:hover {
-    text-decoration: underline;
 }
 .graph-source-doc small {
     color: #93c5fd;

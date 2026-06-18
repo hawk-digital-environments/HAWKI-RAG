@@ -235,7 +235,6 @@ dt {
     padding: 12px;
 }
 
-.task-list-item:hover,
 .task-list-item.is-selected {
     border-color: var(--blue);
     background: #f5f9ff;
@@ -422,10 +421,6 @@ dd {
     font-size: 0.74rem;
     font-weight: 800;
     text-transform: uppercase;
-}
-
-.job-table tbody tr:hover {
-    background: #fbfcfe;
 }
 
 .mono {

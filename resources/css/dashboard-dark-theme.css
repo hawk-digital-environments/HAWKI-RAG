@@ -43,7 +43,7 @@ body {
 .pipeline-dashboard,
 .pipeline-health-dashboard,
 .datasets-dashboard {
-    width: min(1500px, calc(100% - 32px));
+    width: min(1760px, calc(100% - 32px));
     padding: 24px 0 40px;
 }
 
@@ -277,15 +277,6 @@ dd a {
     color: #fff1f2;
 }
 
-.primary-button:not(:disabled):hover,
-.secondary-button:not(:disabled):hover,
-.danger-button:not(:disabled):hover,
-.inline-button:not(:disabled):hover,
-.secondary-link:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 10px 25px rgba(13, 148, 136, 0.28);
-}
-
 .task-sidebar,
 .dataset-sidebar,
 .document-sidebar,
@@ -318,16 +309,10 @@ dd a {
     color: #e5eefb;
 }
 
-.task-list-item:hover,
 .task-list-item.is-selected,
-.dataset-list-item:hover,
 .dataset-list-item.is-selected,
-.document-list-item:hover,
 .document-list-item.is-selected,
-.failed-table tbody tr:hover,
-.failed-table tbody tr.is-selected,
-.data-table tbody tr:hover,
-.job-table tbody tr:hover {
+.failed-table tbody tr.is-selected {
     border-color: rgba(45, 212, 191, 0.46);
     background: rgba(20, 184, 166, 0.12);
 }
@@ -336,11 +321,6 @@ dd a {
     border-color: rgba(248, 113, 113, 0.34);
     background: rgba(127, 29, 29, 0.22);
     color: #fecaca;
-}
-
-.dataset-delete-button:hover:not(:disabled) {
-    border-color: rgba(248, 113, 113, 0.62);
-    background: rgba(153, 27, 27, 0.36);
 }
 
 .data-table th,
@@ -467,7 +447,7 @@ input::placeholder {
     .pipeline-dashboard,
     .pipeline-health-dashboard,
     .datasets-dashboard {
-        width: min(100% - 20px, 1500px);
+        width: min(100% - 20px, 1760px);
         padding-top: 16px;
     }
 }

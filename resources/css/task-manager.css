@@ -295,7 +295,6 @@ dt,
     padding: 12px;
 }
 
-.task-list-item:hover,
 .task-list-item.is-selected {
     border-color: var(--blue);
     background: #f5f9ff;
@@ -482,10 +481,6 @@ dd {
     text-transform: uppercase;
 }
 
-.manager-table tbody tr:hover {
-    background: #fbfcfe;
-}
-
 .manager-table input[type="checkbox"] {
     width: 16px;
     height: 16px;
@@ -505,10 +500,6 @@ dd {
     color: var(--blue);
     font-weight: 800;
     text-decoration: none;
-}
-
-.table-link:hover {
-    text-decoration: underline;
 }
 
 .status-pill {

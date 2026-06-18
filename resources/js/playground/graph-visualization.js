@@ -152,11 +152,6 @@ function initGraph() {
         expandSelected();
     });
 
-    cy.on('mouseover', 'node', (event) => {
-        const node = event.target;
-        setMeta(`${node.data('fullLabel')} · ${node.connectedEdges().length} relationships`);
-    });
-
     cy.on('zoom', () => {
         const next = cy.zoom() < 0.35 ? 'far' : (cy.zoom() < 0.9 ? 'medium' : 'close');
         if (next !== detailLevel) {

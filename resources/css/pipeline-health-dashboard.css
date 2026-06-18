@@ -42,7 +42,7 @@ button {
 }
 
 .pipeline-health-dashboard {
-    width: min(1520px, calc(100% - 32px));
+    width: min(1760px, calc(100% - 32px));
     margin: 0 auto;
     padding: 24px 0 40px;
 }
@@ -293,10 +293,6 @@ h2 {
     text-transform: uppercase;
 }
 
-.data-table tbody tr:hover {
-    background: #fbfcfe;
-}
-
 .empty-state {
     border: 1px dashed var(--line-strong);
     border-radius: 8px;
@@ -319,13 +315,8 @@ td {
 
 @media (max-width: 860px) {
     .pipeline-health-dashboard {
-        width: min(100% - 20px, 1520px);
+        width: min(100% - 20px, 1760px);
         padding-top: 16px;
-    }
-
-    .dashboard-header {
-        align-items: flex-start;
-        flex-direction: column;
     }
 
     .header-actions {

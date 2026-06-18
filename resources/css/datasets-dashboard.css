@@ -44,7 +44,7 @@ button {
 }
 
 .datasets-dashboard {
-    width: min(1520px, calc(100% - 32px));
+    width: min(1760px, calc(100% - 32px));
     margin: 0 auto;
     padding: 24px 0 40px;
 }
@@ -282,7 +282,6 @@ dt,
     padding: 12px;
 }
 
-.dataset-list-item:hover,
 .dataset-list-item.is-selected {
     border-color: var(--teal);
     background: #f0fdfa;
@@ -297,11 +296,6 @@ dt,
     color: #b42318;
     font-size: 0.78rem;
     font-weight: 800;
-}
-
-.dataset-delete-button:hover:not(:disabled) {
-    border-color: #fda29b;
-    background: #fee4e2;
 }
 
 .dataset-delete-button:disabled {
@@ -456,11 +450,6 @@ dd a {
     text-decoration: none;
 }
 
-.table-link:hover,
-dd a:hover {
-    text-decoration: underline;
-}
-
 .metric-grid {
     display: grid;
     grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -540,10 +529,6 @@ dd a:hover {
     font-size: 0.74rem;
     font-weight: 800;
     text-transform: uppercase;
-}
-
-.data-table tbody tr:hover {
-    background: #f8fafc;
 }
 
 .data-table tbody tr.is-selected {
@@ -660,13 +645,8 @@ dd a:hover {
 
 @media (max-width: 860px) {
     .datasets-dashboard {
-        width: min(100% - 20px, 1520px);
+        width: min(100% - 20px, 1760px);
         padding-top: 16px;
-    }
-
-    .dashboard-header {
-        align-items: flex-start;
-        flex-direction: column;
     }
 
     .header-actions {
