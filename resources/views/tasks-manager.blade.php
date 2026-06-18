@@ -21,9 +21,9 @@
     <main class="task-manager" data-task-manager>
         <header class="task-manager-header">
             <div>
-                <p class="eyebrow">Pipeline operations</p>
+                <p class="eyebrow">HAWKI RAG tasks</p>
                 <h1>Task Manager</h1>
-                <p class="header-copy">Tasks, worker jobs, documents, failures, and events.</p>
+                <p class="header-copy">Inspect pipeline tasks, worker jobs, documents, failures, and events.</p>
             </div>
             <div class="header-actions">
                 @include('partials.pipeline-nav', ['active' => 'tasks', 'refreshId' => 'task-manager-refresh'])

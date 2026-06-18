@@ -58,6 +58,10 @@ endif
 COMPOSE_FILE_PREFIX := COMPOSE_FILE=$(COMPOSE_FILE_LIST)
 COMPOSE_CMD = $(COMPOSE_ENV_PREFIX) COMPOSE_PARALLEL_LIMIT=$(COMPOSE_PARALLEL_LIMIT) COMPOSE_FILE=$(COMPOSE_FILE_LIST) $(if $(strip $(COMPOSE_PROFILES)),COMPOSE_PROFILES=$(COMPOSE_PROFILES)) $(COMPOSE_BIN) --env-file $(ENV_FILE)
 
+# UI asset variables
+UI_AUTO_BUILD ?= 1
+UI_BUILD_DIR ?= /tmp/rawki-vite-build
+
 # Bruno collection test variables (override via `make VAR=value`)
 BRUNO_BIN ?= bru
 BRUNO_ENV ?= local
@@ -75,7 +79,7 @@ BRUNO_PIPELINE_ARGS = --env-var datasetId=$(BRUNO_DATASET_ID) --env-var file=$(B
 export RAWKI_API_TOKEN
 export BRUNO_ALLOW_DESTRUCTIVE
 
-.PHONY: clean network pull-core build-app migrate-core _up-core up-core up-core-ui up-core-server health pull-models logs-core logs-core-ui down-core down-rag restart-core restart-core-ui test-services test-bruno test-bruno-full test-bruno-smoke test-bruno-api test-bruno-pipeline test-bruno-scraper test-bruno-converter test-bruno-everything test-bruno-destructive bruno-reports _bruno-require-token _bruno-require-destructive neo4j-fresh python-test python-deps
+.PHONY: clean network pull-core build-app build-ui publish-ui migrate-core _up-core up-core up-core-ui up-core-server health pull-models logs-core logs-core-ui down-core down-rag restart-core restart-core-ui test-services test-bruno test-bruno-full test-bruno-smoke test-bruno-api test-bruno-pipeline test-bruno-scraper test-bruno-converter test-bruno-everything test-bruno-destructive bruno-reports _bruno-require-token _bruno-require-destructive neo4j-fresh python-test python-deps
 .NOTPARALLEL: test-bruno test-bruno-full test-bruno-everything
 
 clean:
@@ -106,6 +110,20 @@ pull-core:
 build-app:
 	@$(COMPOSE_CMD) build hawki_rag_app
 
+build-ui:
+	@echo "Building HAWKI RAG UI assets..."
+	@if [ ! -x node_modules/.bin/vite ]; then \
+		echo "Node dependencies are missing; running npm install..."; \
+		npm install; \
+	fi
+	@npm run build -- --outDir "$(UI_BUILD_DIR)" --emptyOutDir
+
+publish-ui: build-ui
+	@echo "Publishing HAWKI RAG UI assets to hawki_rag_app..."
+	@docker cp "$(UI_BUILD_DIR)/." hawki_rag_app:/var/www/built_resources/
+	@docker exec hawki_rag_app sh -lc 'chown -R www-data:www-data storage bootstrap/cache /var/www/built_resources'
+	@echo "UI assets are ready at http://localhost:8080"
+
 migrate-core:
 	@echo "Running Laravel migrations..."
 	@attempt=1; \
@@ -135,14 +153,16 @@ _up-core: network
 	@$(MAKE) --no-print-directory migrate-core COMPOSE_FILE_LIST="$(COMPOSE_FILE_LIST)" COMPOSE_PROFILES="$(COMPOSE_PROFILES)" ENV_FILE="$(ENV_FILE)" COMPOSE_BIN="$(COMPOSE_BIN)"
 
 up-core: COMPOSE_FILE_LIST = $(CORE_LOCAL_COMPOSE_FILE_LIST)
-up-core: COMPOSE_PROFILES = $(CORE_PROFILES)
-up-core: PROFILE_MESSAGE = $(GPU_MESSAGE) Local override enabled. Temporal UI disabled by default.
+up-core: COMPOSE_PROFILES = $(if $(strip $(CORE_PROFILES)),devtools$(COMMA)$(CORE_PROFILES),devtools)
+up-core: PROFILE_MESSAGE = $(GPU_MESSAGE) Full local experience enabled with Temporal UI/devtools.
 up-core: _up-core
+	@if [ "$(UI_AUTO_BUILD)" = "1" ]; then \
+		$(MAKE) --no-print-directory publish-ui UI_BUILD_DIR="$(UI_BUILD_DIR)"; \
+	else \
+		echo "Skipping UI asset publish (UI_AUTO_BUILD=$(UI_AUTO_BUILD))."; \
+	fi
 
-up-core-ui: COMPOSE_FILE_LIST = $(CORE_LOCAL_COMPOSE_FILE_LIST)
-up-core-ui: COMPOSE_PROFILES = $(if $(strip $(CORE_PROFILES)),devtools$(COMMA)$(CORE_PROFILES),devtools)
-up-core-ui: PROFILE_MESSAGE = $(GPU_MESSAGE) Local override enabled and Temporal UI enabled for dev diagnostics.
-up-core-ui: _up-core
+up-core-ui: up-core
 
 up-core-server: COMPOSE_FILE_LIST = $(CORE_SERVER_COMPOSE_FILE_LIST)
 up-core-server: COMPOSE_PROFILES = $(CORE_PROFILES)

@@ -13,8 +13,8 @@ class Neo4jGraphExplorerPageTest extends TestCase
         $this->get('/neo4j-graph-explorer')
             ->assertOk()
             ->assertSee('Neo4j Graph Explorer')
-            ->assertSee('Graph Workspace')
-            ->assertSee('graph-search-input', false);
+            ->assertSee('data-neo4j-graph-dashboard', false)
+            ->assertDontSee('graph-search-input', false);
 
         $this->get('/hawki-rag-playground')
             ->assertOk()

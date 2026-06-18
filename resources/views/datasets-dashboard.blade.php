@@ -14,7 +14,7 @@
         $apiBasePath = $apiBasePath === '//' ? '/' : $apiBasePath;
     @endphp
     <meta name="hawki-api-base-path" content="{{ $apiBasePath }}" />
-    @vite(["resources/css/datasets-dashboard.css", "resources/css/dashboard-dark-theme.css", "resources/js/datasets-dashboard.js"])
+    @vite(["resources/css/datasets-dashboard.css", "resources/css/dashboard-dark-theme.css", "resources/css/hawki-rag-theme.css", "resources/js/datasets-dashboard.js"])
 </head>
 <body>
     <main class="datasets-dashboard" data-datasets-dashboard>
@@ -43,35 +43,24 @@
             <section class="dataset-detail" aria-live="polite">
                 <div class="detail-status" id="datasets-status">Loading datasets...</div>
 
-                <section class="panel">
+                <section class="panel overview-panel">
                     <div class="section-head">
                         <div>
-                            <h2>Dataset info</h2>
+                            <h2>Selected data pool</h2>
                             <p id="datasets-updated">No dataset loaded.</p>
                         </div>
                         <span class="status-pill" id="datasets-state">idle</span>
                     </div>
-                    <dl class="dataset-info-grid" id="datasets-info"></dl>
-                </section>
-
-                <section class="panel">
-                    <div class="section-head">
-                        <div>
-                            <h2>Storage and graph</h2>
-                            <p>One Qdrant collection and one Neo4j namespace per dataset.</p>
+                    <div class="overview-grid">
+                        <div class="overview-block">
+                            <h3>Dataset</h3>
+                            <dl class="dataset-info-grid compact-info-grid" id="datasets-info"></dl>
+                        </div>
+                        <div class="overview-block">
+                            <h3>Retrieval evidence</h3>
+                            <div class="metric-grid compact-metric-grid" id="datasets-metrics"></div>
                         </div>
                     </div>
-                    <div class="metric-grid" id="datasets-metrics"></div>
-                </section>
-
-                <section class="panel">
-                    <div class="section-head">
-                        <div>
-                            <h2>Tasks</h2>
-                            <p id="datasets-task-count">0 tasks</p>
-                        </div>
-                    </div>
-                    <div class="table-wrap" id="datasets-tasks"></div>
                 </section>
 
                 <section class="panel">
@@ -88,25 +77,18 @@
                     <div class="table-wrap" id="datasets-documents"></div>
                 </section>
 
-                <section class="panel">
+                <section class="panel document-context-panel">
                     <div class="section-head">
                         <div>
-                            <h2>Document info</h2>
+                            <h2>Selected document</h2>
                             <p id="datasets-document-updated">No document loaded.</p>
                         </div>
                         <span class="status-pill" id="datasets-document-state">idle</span>
                     </div>
-                    <dl class="document-info-grid" id="datasets-document-info"></dl>
-                </section>
-
-                <section class="panel">
-                    <div class="section-head">
-                        <div>
-                            <h2>Index evidence</h2>
-                            <p>Counts come from ingestion metadata when the bridge returns them.</p>
-                        </div>
+                    <div class="document-context-grid">
+                        <dl class="document-info-grid compact-info-grid" id="datasets-document-info"></dl>
+                        <div class="metric-grid document-metric-grid compact-metric-grid" id="datasets-document-metrics"></div>
                     </div>
-                    <div class="metric-grid document-metric-grid" id="datasets-document-metrics"></div>
                 </section>
 
                 <section class="panel">
@@ -119,35 +101,38 @@
                     <pre class="markdown-preview" id="datasets-document-markdown-preview"></pre>
                 </section>
 
-                <section class="panel">
-                    <div class="section-head">
-                        <div>
-                            <h2>Related pipeline jobs</h2>
-                            <p id="datasets-document-jobs-count">0 jobs</p>
-                        </div>
-                    </div>
+                <details class="technical-panel">
+                    <summary>
+                        <span>Document pipeline details</span>
+                        <small id="datasets-document-jobs-count">0 jobs</small>
+                    </summary>
                     <div class="table-wrap" id="datasets-document-related-jobs"></div>
-                </section>
+                </details>
 
-                <section class="panel">
-                    <div class="section-head">
-                        <div>
-                            <h2>Metadata</h2>
-                            <p>Raw document metadata stored with the ingested record.</p>
-                        </div>
+                <details class="technical-panel">
+                    <summary>
+                        <span>Dataset pipeline details</span>
+                        <small><span id="datasets-task-count">0 tasks</span> · <span id="datasets-ingestion-count">0 ingestion jobs</span></small>
+                    </summary>
+                    <div class="technical-grid">
+                        <section>
+                            <h3>Tasks</h3>
+                            <div class="table-wrap" id="datasets-tasks"></div>
+                        </section>
+                        <section>
+                            <h3>Ingestion history</h3>
+                            <div class="table-wrap" id="datasets-ingestion-history"></div>
+                        </section>
                     </div>
+                </details>
+
+                <details class="technical-panel">
+                    <summary>
+                        <span>Raw document metadata</span>
+                        <small>developer detail</small>
+                    </summary>
                     <pre class="metadata-preview" id="datasets-document-metadata"></pre>
-                </section>
-
-                <section class="panel">
-                    <div class="section-head">
-                        <div>
-                            <h2>Ingestion history</h2>
-                            <p id="datasets-ingestion-count">0 ingestion jobs</p>
-                        </div>
-                    </div>
-                    <div class="table-wrap" id="datasets-ingestion-history"></div>
-                </section>
+                </details>
             </section>
         </div>
     </main>

@@ -87,8 +87,6 @@ readonly class PipelineDemoCommandRenderer
         $command->newLine();
         $command->line('If the task stays queued, start Temporal and the ingestion workers:');
         $command->line('  make up-core');
-        $command->line('Optional local/dev diagnostics:');
-        $command->line('  make up-core-ui');
         $command->line('');
         $command->line('Worker containers:');
         $command->line('  docker compose up -d hawki-rag-temporal-workflow-worker hawki-rag-temporal-scraper-worker hawki-rag-temporal-converter-worker hawki-rag-temporal-ingestion-worker');

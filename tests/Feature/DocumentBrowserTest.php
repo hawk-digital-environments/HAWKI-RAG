@@ -8,6 +8,7 @@ use App\Models\PipelineJob;
 use App\Models\PipelineTask;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
 class DocumentBrowserTest extends TestCase
@@ -66,6 +67,43 @@ class DocumentBrowserTest extends TestCase
             ]);
     }
 
+    public function test_document_detail_falls_back_to_live_neo4j_entity_count_when_summary_omits_entities(): void
+    {
+        $document = $this->createIngestedDocument([
+            'bridge_response' => [
+                'ok' => true,
+                'points' => 146,
+                'summary' => [
+                    'graph' => ['enabled' => true],
+                    'graph_preview' => [
+                        'planned_entities' => null,
+                        'total_triplets' => 6,
+                    ],
+                ],
+            ],
+        ]);
+
+        Http::fake([
+            'http://neo4j.test/*' => Http::response([
+                'results' => [[
+                    'data' => [[
+                        'row' => [7, 6],
+                    ]],
+                ]],
+                'errors' => [],
+            ]),
+        ]);
+        config()->set('config.neo4j_http_url', 'http://neo4j.test');
+
+        $this->actingAsApiUser();
+
+        $this->getJson("/api/documents/{$document->id}")
+            ->assertOk()
+            ->assertJsonPath('document.qdrantPointCount', 146)
+            ->assertJsonPath('document.neo4jEntityCount', 7)
+            ->assertJsonPath('document.neo4jRelationCount', 6);
+    }
+
     public function test_document_detail_returns_not_found_for_non_numeric_placeholder_id(): void
     {
         $this->actingAsApiUser();
@@ -75,7 +113,7 @@ class DocumentBrowserTest extends TestCase
             ->assertJsonPath('success', false);
     }
 
-    private function createIngestedDocument(): Document
+    private function createIngestedDocument(array $metadataOverrides = []): Document
     {
         Dataset::query()->create([
             'dataset_id' => 'browser-dataset',
@@ -128,6 +166,25 @@ class DocumentBrowserTest extends TestCase
         File::ensureDirectoryExists(dirname($path));
         File::put($path, "# Browser document\n\nIndexed Markdown content.");
 
+        $metadata = array_replace_recursive([
+            'task_id' => 'task-browser',
+            'job_id' => 'ingest-browser',
+            'event_id' => 'event-browser',
+            'qdrant_collection' => 'hawki_browser_dataset',
+            'neo4j_namespace' => 'hawki_browser_dataset',
+            'bridge_response' => [
+                'ok' => true,
+                'points' => 4,
+                'summary' => [
+                    'graph' => ['enabled' => true],
+                    'graph_preview' => [
+                        'planned_entities' => 6,
+                        'total_triplets' => 5,
+                    ],
+                ],
+            ],
+        ], $metadataOverrides);
+
         return Document::query()->create([
             'external_id' => 'ingest-browser',
             'dataset_id' => 'browser-dataset',
@@ -140,24 +197,7 @@ class DocumentBrowserTest extends TestCase
             'file_size' => filesize($path),
             'checksum_sha256' => hash_file('sha256', $path),
             'title' => 'Browser document',
-            'metadata_json' => [
-                'task_id' => 'task-browser',
-                'job_id' => 'ingest-browser',
-                'event_id' => 'event-browser',
-                'qdrant_collection' => 'hawki_browser_dataset',
-                'neo4j_namespace' => 'hawki_browser_dataset',
-                'bridge_response' => [
-                    'ok' => true,
-                    'points' => 4,
-                    'summary' => [
-                        'graph' => ['enabled' => true],
-                        'graph_preview' => [
-                            'planned_entities' => 6,
-                            'total_triplets' => 5,
-                        ],
-                    ],
-                ],
-            ],
+            'metadata_json' => $metadata,
             'status' => Document::STATUS_COMPLETED,
         ]);
     }

@@ -32,6 +32,11 @@ Start HAWKI RAG:
 make up-core
 ```
 
+This starts the full local experience, including the Laravel UI, RAG services,
+Temporal workers, Temporal UI/devtools, Qdrant, Neo4j, Ollama, reranker, and
+fresh Vite/Svelte UI assets.
+Use `make up-core` for the local full-stack experience.
+
 Generate the application key once:
 
 ```bash
@@ -50,8 +55,16 @@ Open the app:
 http://localhost:8080
 ```
 
+Temporal UI:
+
+```text
+http://localhost:8081
+```
+
 ## Main Pages
 
+- Experience hub: `http://localhost:8080/hawki-rag`
+- Admin hub: `http://localhost:8080/admin`
 - Playground: `http://localhost:8080/hawki-rag-playground`
 - Upload/control page: `http://localhost:8080/pipeline-controller`
 - Documents: `http://localhost:8080/documents`
@@ -141,7 +154,7 @@ make down-core
 Optional workflow diagnostics:
 
 ```bash
-make up-core-ui
+make up-core
 ```
 
 Then open `http://localhost:8081`.

@@ -34,6 +34,17 @@ return [
     */
 
     'storage_path' => env('SCRAPE_STORAGE_PATH', $crawledDataRoot),
+    'allowed_local_roots' => array_values(array_filter(array_map(
+        static fn (string $path): string => rtrim($path, DIRECTORY_SEPARATOR),
+        explode(',', (string) env(
+            'SCRAPE_ALLOWED_LOCAL_ROOTS',
+            implode(',', array_unique(array_filter([
+                $pipelineRoot,
+                $crawledDataRoot,
+                storage_path('app'),
+            ])))
+        ))
+    ))),
 
     /*
     |--------------------------------------------------------------------------

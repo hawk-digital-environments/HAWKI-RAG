@@ -6,6 +6,18 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Sanctum Routes
+    |--------------------------------------------------------------------------
+    |
+    | RAWKI uses Sanctum bearer tokens for internal APIs. The default
+    | /sanctum/csrf-cookie SPA bootstrap route is disabled unless explicitly
+    | enabled for a first-party Sanctum SPA.
+    */
+
+    'routes' => filter_var(env('SANCTUM_ROUTES', false), FILTER_VALIDATE_BOOLEAN),
+
+    /*
+    |--------------------------------------------------------------------------
     | Stateful Domains
     |--------------------------------------------------------------------------
     |
@@ -47,7 +59,7 @@ return [
     |
     */
 
-    'expiration' => null,
+    'expiration' => env('SANCTUM_EXPIRATION', 10080),
 
     /*
     |--------------------------------------------------------------------------
@@ -62,7 +74,7 @@ return [
     |
     */
 
-    'token_prefix' => env('SANCTUM_TOKEN_PREFIX', ''),
+    'token_prefix' => env('SANCTUM_TOKEN_PREFIX', 'hawki_rag_'),
 
     /*
     |--------------------------------------------------------------------------

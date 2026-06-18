@@ -5,7 +5,8 @@ All commands run from project root unless noted. Use `docker ps` to see containe
 | Command | Purpose |
 |---|---|
 | `make network` | Create Docker networks `hawki-network` and `hosting_network` required by Compose. |
-| `make up-core` | Start full stack from `docker-compose.yml`, including PostgreSQL, Temporal, Temporal UI, Temporal workers, and required Ollama models. |
+| `make up-core` | Start the full local stack, run migrations, pull required Ollama models, and publish fresh Vite/Svelte UI assets into the Laravel app. |
+| `make publish-ui` | Rebuild and publish only the Vite/Svelte UI assets into the running `hawki_rag_app` container. |
 | `make health` | Run internal health checks for Qdrant, Ollama, reranker, and bridge. |
 | `make logs-core` | Stream Compose logs for core and stack services. |
 | `docker exec -it hawki_rag_app php artisan migrate` | Create database tables. |

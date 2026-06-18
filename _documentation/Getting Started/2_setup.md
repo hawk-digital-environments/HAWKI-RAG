@@ -57,6 +57,7 @@ What `make up-core` does:
 | Compose context | Uses computed `COMPOSE_FILE` with `ENV_FILE` and optional `COMPOSE_PROFILES`. |
 | Launch preview | Prints selected compose files before startup. |
 | Model readiness | Pulls Ollama models: `bge-m3`, `llama3.1:8b`, `llama3.2:1b`, `qwen2.5vl:7b`. |
+| UI readiness | Builds Vite/Svelte assets and publishes them into the running Laravel app. |
 
 ## Model pulls (Ollama)
 - Default pulls: `bge-m3`, `llama3.1:8b`, `llama3.2:1b`, `qwen2.5vl:7b`.

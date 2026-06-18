@@ -75,7 +75,7 @@ h2 {
 }
 
 h1 {
-    font-size: 2rem;
+    font-size: 1.4rem;
     line-height: 1.15;
 }
 
@@ -100,9 +100,14 @@ dt {
 
 .header-actions {
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     justify-content: flex-end;
     gap: 10px;
+    min-width: 0;
+    max-width: 100%;
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+    scrollbar-width: thin;
 }
 
 .primary-button,
@@ -577,11 +582,11 @@ dd {
         width: 100%;
     }
 
-    .primary-button,
-    .secondary-button,
-    .danger-button,
-    .secondary-link {
-        flex: 1 1 150px;
+    .header-actions .primary-button,
+    .header-actions .secondary-button,
+    .header-actions .danger-button,
+    .header-actions .secondary-link {
+        flex: 0 0 auto;
     }
 
     .dashboard-grid {

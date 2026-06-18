@@ -14,7 +14,7 @@
         $apiBasePath = $apiBasePath === '//' ? '/' : $apiBasePath;
     @endphp
     <meta name="hawki-api-base-path" content="{{ $apiBasePath }}" />
-    @vite(["resources/css/app.css", "resources/js/pipeline-controller.js"])
+    @vite(["resources/css/app.css", "resources/css/hawki-rag-theme.css", "resources/js/pipeline-controller.js"])
 </head>
 <body>
     <div class="container pipeline-controller-dashboard" data-pipeline-controller-dashboard>
@@ -28,6 +28,18 @@
                 @include('partials.pipeline-nav', ['active' => 'controller', 'refreshId' => 'pipeline-controller-refresh'])
             </div>
         </header>
+
+        @include('partials.hawki-rag-page-signal', [
+            'variant' => 'pipeline',
+            'kicker' => 'Search. Retrieve. Explore.',
+            'title' => 'Ingestion Control',
+            'copy' => 'Turn files and crawler runs into searchable Qdrant vectors and Neo4j graph signals.',
+            'signals' => [
+                ['state' => 'Input', 'label' => 'Upload or crawl', 'copy' => 'Start controlled ingestion from files or scraper tasks.', 'tone' => 'active'],
+                ['state' => 'Flow', 'label' => 'Pipeline stages', 'copy' => 'Follow scrape, convert, ingest, retry, cancel, and cleanup.', 'tone' => 'active'],
+                ['state' => 'Graph', 'label' => 'Retrieval assets', 'copy' => 'Prepare data for vector search and graph exploration.', 'tone' => 'next'],
+            ],
+        ])
 
         @include('partials.pipeline-controller-workspace')
     </div>

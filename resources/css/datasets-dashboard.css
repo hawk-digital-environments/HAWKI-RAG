@@ -72,7 +72,7 @@ h2 {
 }
 
 h1 {
-    font-size: 2rem;
+    font-size: 1.4rem;
     line-height: 1.15;
 }
 
@@ -98,9 +98,14 @@ dt,
 
 .header-actions {
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     justify-content: flex-end;
     gap: 10px;
+    min-width: 0;
+    max-width: 100%;
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+    scrollbar-width: thin;
 }
 
 .secondary-button,
@@ -173,6 +178,11 @@ dt,
     padding: 16px;
 }
 
+.overview-panel,
+.document-context-panel {
+    padding: 18px;
+}
+
 .section-head {
     display: flex;
     align-items: center;
@@ -184,6 +194,27 @@ dt,
 .section-head p {
     margin: 4px 0 0;
     font-size: 0.86rem;
+}
+
+.overview-grid,
+.document-context-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 0.9fr) minmax(320px, 1.1fr);
+    gap: 14px;
+    align-items: start;
+}
+
+.overview-block,
+.technical-panel section {
+    min-width: 0;
+}
+
+.overview-block h3,
+.technical-panel h3 {
+    margin: 0 0 10px;
+    color: var(--text);
+    font-size: 0.88rem;
+    line-height: 1.2;
 }
 
 .document-search {
@@ -392,6 +423,10 @@ dd {
     margin: 0;
 }
 
+.compact-info-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .dataset-info-grid div,
 .document-info-grid div,
 .metric-item {
@@ -432,6 +467,10 @@ dd a:hover {
     gap: 10px;
 }
 
+.compact-metric-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
 .document-metric-grid {
     grid-template-columns: repeat(4, minmax(0, 1fr));
 }
@@ -460,13 +499,29 @@ dd a:hover {
     overflow-wrap: anywhere;
 }
 
+.evidence-stack {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.evidence-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    color: var(--muted);
+    font-size: 0.76rem;
+    font-weight: 800;
+    white-space: nowrap;
+}
+
 .table-wrap {
     overflow-x: auto;
 }
 
 .data-table {
     width: 100%;
-    min-width: 920px;
+    min-width: 680px;
     border-collapse: collapse;
     font-size: 0.84rem;
 }
@@ -523,6 +578,54 @@ dd a:hover {
     color: var(--muted);
 }
 
+.technical-panel {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--panel);
+    box-shadow: 0 18px 44px rgba(15, 23, 42, 0.18);
+}
+
+.technical-panel > summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px 16px;
+    color: var(--text);
+    cursor: pointer;
+    list-style: none;
+}
+
+.technical-panel > summary::-webkit-details-marker {
+    display: none;
+}
+
+.technical-panel > summary span {
+    font-weight: 850;
+}
+
+.technical-panel > summary small {
+    color: var(--muted);
+    font-weight: 800;
+}
+
+.technical-panel[open] > summary {
+    border-bottom: 1px solid var(--line);
+}
+
+.technical-panel > .table-wrap,
+.technical-panel > .metadata-preview,
+.technical-grid {
+    margin: 0;
+    padding: 16px;
+}
+
+.technical-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+}
+
 .empty-state {
     border: 1px dashed var(--line-strong);
     border-radius: 8px;
@@ -541,6 +644,12 @@ dd a:hover {
     .dataset-info-grid,
     .document-info-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .overview-grid,
+    .document-context-grid,
+    .technical-grid {
+        grid-template-columns: 1fr;
     }
 
     .metric-grid,
@@ -565,9 +674,9 @@ dd a:hover {
         width: 100%;
     }
 
-    .secondary-button,
-    .secondary-link {
-        flex: 1 1 150px;
+    .header-actions .secondary-button,
+    .header-actions .secondary-link {
+        flex: 0 0 auto;
     }
 
     .document-search {
@@ -602,7 +711,9 @@ dd a:hover {
     .dataset-info-grid,
     .document-info-grid,
     .metric-grid,
-    .document-metric-grid {
+    .document-metric-grid,
+    .compact-info-grid,
+    .compact-metric-grid {
         grid-template-columns: 1fr;
     }
 

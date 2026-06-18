@@ -59,6 +59,10 @@ Crawled Markdown files are processed through the RAG-Anything flow, chunked and 
   Folder-by-folder orientation for Laravel, Python, Docker, volumes, and logs.
   [Open chapter](./Reference/9_repo_map.md)
 
+- __10. Security and GDPR Checklist__
+  Production security controls, GDPR duties, and RAG-specific deletion boundaries.
+  [Open chapter](./Operations/10_security_gdpr_checklist.md)
+
 </div>
 
 ## Quick Start

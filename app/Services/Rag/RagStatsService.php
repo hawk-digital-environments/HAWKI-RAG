@@ -7,6 +7,7 @@ namespace App\Services\Rag;
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Contracts\Config\Repository as ConfigRepository;
 use Illuminate\Http\Client\Factory as HttpFactory;
+use Psr\Log\LoggerInterface;
 
 #[Singleton]
 readonly class RagStatsService
@@ -14,6 +15,7 @@ readonly class RagStatsService
     public function __construct(
         private ConfigRepository $config,
         private HttpFactory $http,
+        private LoggerInterface $logger,
     ) {}
 
     /**
@@ -52,11 +54,16 @@ readonly class RagStatsService
         try {
             $response = $this->http->timeout(10)->delete($qdrantUrl.'/collections/'.rawurlencode($name));
             if (! $response->successful()) {
+                $this->logger->warning('Qdrant collection delete failed', [
+                    'collection' => $name,
+                    'status' => $response->status(),
+                    'body' => $response->body(),
+                ]);
+
                 return [
                     'ok' => false,
                     'collection' => $name,
                     'message' => "Qdrant returned HTTP {$response->status()} while deleting {$name}.",
-                    'error' => $response->body(),
                 ];
             }
 
@@ -66,10 +73,15 @@ readonly class RagStatsService
                 'message' => "Deleted Qdrant collection {$name}.",
             ];
         } catch (\Throwable $exception) {
+            $this->logger->warning('Qdrant collection delete failed', [
+                'collection' => $name,
+                'exception' => $exception,
+            ]);
+
             return [
                 'ok' => false,
                 'collection' => $name,
-                'message' => $exception->getMessage(),
+                'message' => 'Qdrant collection delete failed.',
             ];
         }
     }
@@ -82,7 +94,12 @@ readonly class RagStatsService
         try {
             $collectionsResp = $this->http->timeout(3)->get($baseUrl.'/collections');
             if (! $collectionsResp->successful()) {
-                return ['ok' => false, 'error' => $collectionsResp->body()];
+                $this->logger->warning('Qdrant stats request failed', [
+                    'status' => $collectionsResp->status(),
+                    'body' => $collectionsResp->body(),
+                ]);
+
+                return ['ok' => false, 'error' => 'Qdrant stats unavailable.'];
             }
 
             $names = [];
@@ -108,7 +125,11 @@ readonly class RagStatsService
                 'collections' => $counts,
             ];
         } catch (\Throwable $exception) {
-            return ['ok' => false, 'error' => $exception->getMessage()];
+            $this->logger->warning('Qdrant stats request failed', [
+                'exception' => $exception,
+            ]);
+
+            return ['ok' => false, 'error' => 'Qdrant stats unavailable.'];
         }
     }
 
@@ -137,6 +158,11 @@ readonly class RagStatsService
             $labelsResp = $query('MATCH (n:Entity) RETURN labels(n) AS labels, count(*) AS count');
 
             if (! $entitiesResp->successful() || ! $tripletsResp->successful()) {
+                $this->logger->warning('Neo4j stats request failed', [
+                    'entities_status' => $entitiesResp->status(),
+                    'triplets_status' => $tripletsResp->status(),
+                ]);
+
                 return ['ok' => false, 'error' => 'Neo4j query failed'];
             }
 
@@ -154,7 +180,11 @@ readonly class RagStatsService
                 'labels' => $this->neo4jRows($labelsResp->successful() ? ($labelsResp->json('results.0.data') ?? []) : [], 'labels'),
             ];
         } catch (\Throwable $exception) {
-            return ['ok' => false, 'error' => $exception->getMessage()];
+            $this->logger->warning('Neo4j stats request failed', [
+                'exception' => $exception,
+            ]);
+
+            return ['ok' => false, 'error' => 'Neo4j stats unavailable.'];
         }
     }
 

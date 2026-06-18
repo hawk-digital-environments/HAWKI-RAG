@@ -55,4 +55,14 @@ return [
     'pipeline_demo_urls' => env('PIPELINE_DEMO_URLS', ''),
     'docker_project_path' => env('DOCKER_PROJECT_PATH', ''),
     'virtual_path' => env('VIRTUAL_PATH', ''),
+    'health_gate' => [
+        'enabled' => filter_var(env('HAWKI_RAG_HEALTH_GATE_ENABLED', true), FILTER_VALIDATE_BOOLEAN),
+        'timeout' => (int) env('HAWKI_RAG_HEALTH_GATE_TIMEOUT', 3),
+        'required' => array_values(array_filter(array_map(
+            'trim',
+            explode(',', env('HAWKI_RAG_HEALTH_GATE_REQUIRED', 'retrieval,graph,pipeline'))
+        ))),
+        'pro_ready' => filter_var(env('HAWKI_RAG_PRO_READY', false), FILTER_VALIDATE_BOOLEAN),
+        'analytics_ready' => filter_var(env('HAWKI_RAG_ANALYTICS_READY', false), FILTER_VALIDATE_BOOLEAN),
+    ],
 ];

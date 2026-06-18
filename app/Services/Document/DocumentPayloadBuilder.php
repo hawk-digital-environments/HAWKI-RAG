@@ -15,6 +15,7 @@ readonly class DocumentPayloadBuilder
         private DocumentRepository $documents,
         private DocumentMarkdownPreviewReader $previews,
         private DocumentIngestionStatusResolver $statuses,
+        private DocumentGraphStatsService $graphStats,
     ) {
     }
 
@@ -56,14 +57,28 @@ readonly class DocumentPayloadBuilder
         ];
 
         if ($includeDetails) {
+            $qdrantPointCount = $this->statuses->qdrantPointCount($bridgeResponse);
+            $neo4jEntityCount = $this->statuses->neo4jEntityCount($bridgeResponse);
+            $neo4jRelationCount = $this->statuses->neo4jRelationCount($bridgeResponse);
+            $liveGraphStats = null;
+
+            if ($neo4jEntityCount === null || $neo4jRelationCount === null) {
+                $liveGraphStats = $this->graphStats->stats($document, $metadata);
+                if (($liveGraphStats['ok'] ?? false) === true) {
+                    $neo4jEntityCount ??= (int) ($liveGraphStats['nodes'] ?? 0);
+                    $neo4jRelationCount ??= (int) ($liveGraphStats['relationships'] ?? 0);
+                }
+            }
+
             $preview = $this->previews->preview($document->storage_path);
             $payload['markdownPreview'] = $preview['content'];
             $payload['markdownPreviewPath'] = $preview['path'];
             $payload['markdownPreviewError'] = $preview['error'];
             $payload['markdownPreviewTruncated'] = $preview['truncated'];
-            $payload['qdrantPointCount'] = $this->statuses->qdrantPointCount($bridgeResponse);
-            $payload['neo4jEntityCount'] = $this->statuses->neo4jEntityCount($bridgeResponse);
-            $payload['neo4jRelationCount'] = $this->statuses->neo4jRelationCount($bridgeResponse);
+            $payload['qdrantPointCount'] = $qdrantPointCount;
+            $payload['neo4jEntityCount'] = $neo4jEntityCount;
+            $payload['neo4jRelationCount'] = $neo4jRelationCount;
+            $payload['neo4jLiveStats'] = $liveGraphStats;
             $payload['relatedJobs'] = $this->relatedJobs($document, $taskId, $jobId);
         }
 

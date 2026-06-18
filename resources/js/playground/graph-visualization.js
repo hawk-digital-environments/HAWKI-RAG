@@ -1,4 +1,4 @@
-import cytoscape from 'cytoscape';
+import cytoscape from 'cytoscape/dist/cytoscape.esm.min.mjs';
 import elk from 'cytoscape-elk';
 import coseBilkent from 'cytoscape-cose-bilkent';
 import { apiUrl } from './urls.js';

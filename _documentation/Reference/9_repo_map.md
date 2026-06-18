@@ -15,10 +15,12 @@
 | `app/Http/Controllers/API/HawkiRagProxyController.php` | Proxies user queries to bridge. |
 | `app/Http/Controllers/API/IngestController.php` | Starts/stops ingest processes, validates paths, writes status. |
 | `app/Http/Controllers/API/IngestStatusController.php` | Reads/updates ingest status and logs. |
-| `app/Http/Controllers/API/RagHealthController.php` | Health checks for RAG API/bridge. |
+| `app/Http/Controllers/Health/` | Health and monitoring HTTP controllers, separated from core UI/API controllers. |
 | `app/Services/GraphService/Neo4jAdmin.php` | Clears all nodes/edges in Neo4j. |
 | `config/config.php` | App config mapping for endpoint URLs, model defaults, and ingest/log paths (keys listed below). |
-| `routes/api.php` | Maps API routes to controllers above (standard Laravel). |
+| `routes/web_ui.php` | Browser-facing UI pages and UI-consumed RAG endpoints. |
+| `routes/internal_api.php` | Token-authenticated internal/API-client endpoints mounted under `/api`. |
+| `routes/health.php` | Separate health and monitoring route sector for RAG monitor, ping, and pipeline health surfaces. |
 | `storage/` | Logs (`storage/logs`) and shared files (`storage/app/public`, bound to shared volume). |
 
 ### Config keys (`config/config.php` + `.env`)

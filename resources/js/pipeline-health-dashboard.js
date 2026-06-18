@@ -1,3 +1,4 @@
+import './health-gate.js';
 import { apiUrl } from './playground/urls.js';
 
 const root = document.querySelector('[data-pipeline-health-dashboard]');

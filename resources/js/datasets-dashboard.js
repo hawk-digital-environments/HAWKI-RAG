@@ -1,3 +1,4 @@
+import './health-gate.js';
 import { apiUrl } from './playground/urls.js';
 import { renderStatusIndicator } from './status-indicator.js';
 
@@ -197,6 +198,23 @@ if (root) {
         return button;
     }
 
+    function evidencePills(document) {
+        const wrapper = document.createElement('span');
+        wrapper.className = 'evidence-stack';
+
+        const qdrant = document.createElement('span');
+        qdrant.className = 'evidence-item';
+        qdrant.append('Qdrant ', statusPill(document.qdrantStatus || document.status));
+
+        const neo4j = document.createElement('span');
+        neo4j.className = 'evidence-item';
+        neo4j.append('Neo4j ', statusPill(document.neo4jStatus || 'unknown'));
+
+        wrapper.append(qdrant, neo4j);
+
+        return wrapper;
+    }
+
     function renderDatasets(datasets) {
         if (!els.list) return;
         els.list.innerHTML = '';
@@ -278,13 +296,11 @@ if (root) {
     function renderInfo(dataset) {
         els.info.innerHTML = '';
         [
-            ['Dataset ID', dataset.datasetId],
             ['Name', dataset.name],
+            ['Dataset ID', dataset.datasetId],
             ['Status', dataset.status],
-            ['Created', formatDate(dataset.createdAt)],
             ['Qdrant collection', dataset.qdrantCollection],
             ['Neo4j namespace', dataset.neo4jNamespace],
-            ['Description', dataset.description],
             ['Last ingestion', lastIngestionLabel(dataset.lastIngestion) || '-'],
         ].forEach(([label, value]) => {
             const wrapper = document.createElement('div');
@@ -311,10 +327,9 @@ if (root) {
 
         [
             ['Documents', dataset.documentCount ?? 0, 'Database documents'],
-            ['Tasks', dataset.taskCount ?? 0, 'Pipeline tasks'],
             ['Qdrant points', qdrant.points ?? '-', qdrantCaption],
-            ['Graph nodes', neo4j.nodes ?? '-', neo4j.ok === false ? neo4j.error : neo4j.namespace],
-            ['Graph relationships', neo4j.relationships ?? '-', neo4j.ok === false ? neo4j.error : neo4j.namespace],
+            ['Neo4j entities', neo4j.nodes ?? '-', neo4j.ok === false ? neo4j.error : neo4j.namespace],
+            ['Neo4j relations', neo4j.relationships ?? '-', neo4j.ok === false ? neo4j.error : neo4j.namespace],
         ].forEach(([label, value, caption]) => {
             const item = document.createElement('div');
             item.className = 'metric-item';
@@ -331,11 +346,10 @@ if (root) {
 
     function renderTasks(tasks) {
         setText(els.taskCount, `${tasks.length} task${tasks.length === 1 ? '' : 's'}`);
-        renderTable(els.tasks, ['Task', 'Status', 'Jobs', 'Started', 'Finished', 'Action'], tasks, (task) => [
+        renderTable(els.tasks, ['Task', 'Status', 'Jobs', 'Finished', 'Action'], tasks, (task) => [
             task.taskId,
             statusPill(task.status),
             task.counters?.jobs_total ?? 0,
-            formatDate(task.startedAt),
             formatDate(task.finishedAt),
             retryTaskButton(task),
         ]);
@@ -343,13 +357,11 @@ if (root) {
 
     function renderDocuments(documents) {
         setText(els.documentCount, `${documents.length} document${documents.length === 1 ? '' : 's'} shown`);
-        renderTable(els.documents, ['Document', 'Status', 'Qdrant', 'Neo4j', 'Source URL', 'Path', 'Updated', 'Action'], documents, (document) => [
+        renderTable(els.documents, ['Document', 'Status', 'Evidence', 'Source', 'Updated', 'Action'], documents, (document) => [
             document.title || document.originalFilename || document.id,
             statusPill(document.status),
-            statusPill(document.qdrantStatus || document.status),
-            statusPill(document.neo4jStatus || 'unknown'),
+            evidencePills(document),
             document.sourceUrl,
-            document.localPath || document.storagePath,
             formatDate(document.updatedAt || document.createdAt),
             openDocumentButton(document),
         ], 'No documents found for this dataset.');
@@ -375,18 +387,12 @@ if (root) {
         els.documentInfo.innerHTML = '';
 
         [
+            ['Document', doc.title || doc.originalFilename || doc.id],
             ['Dataset ID', makeLink(`/datasets?dataset_id=${encodeURIComponent(doc.datasetId || '')}`, doc.datasetId)],
-            ['Task ID', doc.taskId],
-            ['Job ID', doc.jobId],
+            ['Status', statusPill(doc.status)],
             ['Source URL', doc.sourceUrl],
-            ['Local path', doc.localPath],
             ['Content type', doc.contentType],
-            ['Content hash', doc.contentHash],
-            ['Qdrant status', statusPill(doc.qdrantStatus)],
-            ['Neo4j status', statusPill(doc.neo4jStatus)],
             ['Ingested at', formatDate(doc.ingestedAt)],
-            ['Qdrant collection', doc.qdrantCollection || doc.collection],
-            ['Neo4j namespace', doc.neo4jNamespace],
         ].forEach(([label, value]) => {
             const wrapper = document.createElement('div');
             const term = document.createElement('dt');
@@ -444,29 +450,23 @@ if (root) {
 
     function renderRelatedJobs(jobs) {
         setText(els.documentJobsCount, `${jobs.length} job${jobs.length === 1 ? '' : 's'} shown`);
-        renderTable(els.documentRelatedJobs, ['Job', 'Task', 'Type', 'Status', 'Source URL', 'Path', 'Error', 'Finished', 'Action'], jobs, (job) => [
+        renderTable(els.documentRelatedJobs, ['Job', 'Type', 'Status', 'Finished', 'Error', 'Action'], jobs, (job) => [
             job.jobId,
-            job.taskId,
             job.jobType,
             statusPill(job.status),
-            job.sourceUrl,
-            job.localPath,
-            job.errorMessage,
             formatDate(job.finishedAt),
+            job.errorMessage,
             retryJobButton(job),
         ]);
     }
 
     function renderIngestionHistory(history) {
         setText(els.ingestionCount, `${history.length} ingestion job${history.length === 1 ? '' : 's'} shown`);
-        renderTable(els.ingestionHistory, ['Job', 'Task', 'Status', 'Source URL', 'Path', 'Error', 'Finished', 'Action'], history, (job) => [
+        renderTable(els.ingestionHistory, ['Job', 'Status', 'Finished', 'Error', 'Action'], history, (job) => [
             job.jobId,
-            job.taskId,
             statusPill(job.status),
-            job.sourceUrl,
-            job.localPath,
-            job.errorMessage,
             formatDate(job.finishedAt),
+            job.errorMessage,
             retryJobButton(job),
         ]);
     }

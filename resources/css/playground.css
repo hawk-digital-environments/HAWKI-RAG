@@ -4,8 +4,8 @@
     --control-radius: 0.5rem;
     --control-padding-x: 0.9rem;
     --control-font-size: 0.88rem;
-    --nav-action-width: 132px;
-    --header-title-size: 2rem;
+    --nav-action-min-width: 0;
+    --header-title-size: 1.4rem;
     --header-title-line-height: 1.15;
     --header-title-weight: 800;
     --header-copy-size: 0.95rem;
@@ -73,6 +73,11 @@ body {
     flex-wrap: nowrap;
     justify-content: flex-end;
     gap: 0.6rem;
+    min-width: 0;
+    max-width: 100%;
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+    scrollbar-width: thin;
 }
 .pipeline-nav {
     display: flex;
@@ -80,6 +85,11 @@ body {
     justify-content: flex-end;
     gap: 0.6rem;
     flex-wrap: nowrap;
+    min-width: 0;
+    max-width: 100%;
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+    scrollbar-width: thin;
 }
 .secondary-button,
 .secondary-link {
@@ -103,9 +113,10 @@ body {
 }
 .pipeline-nav .secondary-button,
 .pipeline-nav .secondary-link {
-    width: var(--nav-action-width);
-    min-width: var(--nav-action-width);
-    max-width: var(--nav-action-width);
+    flex: 0 0 auto;
+    width: auto;
+    min-width: var(--nav-action-min-width);
+    max-width: none;
 }
 .secondary-link.is-active,
 .secondary-link[aria-current="page"] {
@@ -168,7 +179,7 @@ body {
     border-radius: 0.55rem;
     padding: 0 0.75rem;
 }
-h1 { margin: 0; font-weight: 700; font-size: 2rem; letter-spacing: 0; }
+h1 { margin: 0; font-weight: 700; font-size: 1.4rem; letter-spacing: 0; }
 h2 { font-size: 1.25rem; margin-top: 0; }
 p { line-height: 1.6; }
 a { color: #38bdf8; }
@@ -917,6 +928,33 @@ ul { margin: 0.4rem 0 0; padding-left: 1.2rem; }
     font-size: 0.82rem;
     overflow-wrap: anywhere;
 }
+.graph-walkway-mount {
+    margin-top: 1.1rem;
+}
+.graph-technical-drawer {
+    margin-top: 1rem;
+    border: 1px solid rgba(148, 163, 184, 0.18);
+    border-radius: 0.8rem;
+    background: rgba(8, 17, 31, 0.62);
+}
+.graph-technical-drawer > summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1rem 1.1rem;
+    color: #e5eefb;
+    cursor: pointer;
+}
+.graph-technical-drawer > summary span {
+    font-weight: 800;
+}
+.graph-technical-drawer > summary small {
+    color: #93c5fd;
+}
+.graph-technical-drawer[open] > summary {
+    border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+}
 .graph-visualization-section {
     margin-top: 1.1rem;
     border-radius: 1.1rem;
@@ -1152,12 +1190,12 @@ ul { margin: 0.4rem 0 0; padding-left: 1.2rem; }
     }
     .pipeline-nav {
         width: 100%;
-        flex-wrap: wrap;
+        flex-wrap: nowrap;
         justify-content: flex-start;
     }
     .secondary-button,
     .secondary-link {
-        flex: none;
+        flex: 0 0 auto;
     }
     .layout {
         grid-template-columns: 1fr;

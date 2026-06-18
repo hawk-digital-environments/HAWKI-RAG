@@ -18,7 +18,15 @@ class RagStatsController extends Controller
 
     public function destroyQdrantCollection(Request $request, RagStatsService $stats, string $collection): JsonResponse
     {
-        $result = $stats->deleteQdrantCollection(rawurldecode($collection));
+        $collection = rawurldecode($collection);
+        if (! preg_match('/\A[A-Za-z0-9][A-Za-z0-9._:-]{0,190}\z/', $collection)) {
+            return response()->json([
+                'ok' => false,
+                'message' => 'Invalid Qdrant collection name.',
+            ], 422);
+        }
+
+        $result = $stats->deleteQdrantCollection($collection);
 
         return response()->json($result, ($result['ok'] ?? false) ? 200 : 422);
     }

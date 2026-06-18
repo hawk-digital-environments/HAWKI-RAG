@@ -1,4 +1,5 @@
 import './bootstrap';
+import './health-gate.js';
 import './playground/pipeline.js';
 import { apiUrl } from './playground/urls.js';
 

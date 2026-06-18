@@ -76,7 +76,7 @@ h3 {
 }
 
 h1 {
-    font-size: 2rem;
+    font-size: 1.4rem;
     line-height: 1.12;
 }
 
@@ -106,7 +106,17 @@ dt,
 }
 
 .header-actions,
-.pipeline-nav,
+.pipeline-nav {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 10px;
+    min-width: 0;
+    max-width: 100%;
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+    scrollbar-width: thin;
+}
+
 .pipeline-nav-menu-list,
 .action-row,
 .event-filters {
@@ -121,9 +131,10 @@ dt,
 
 .pipeline-nav .secondary-button,
 .pipeline-nav .secondary-link {
-    width: 132px;
-    min-width: 132px;
-    max-width: 132px;
+    flex: 0 0 auto;
+    width: auto;
+    min-width: 0;
+    max-width: none;
 }
 
 .pipeline-nav-menu {
@@ -682,6 +693,7 @@ dd {
     .pipeline-nav {
         justify-content: flex-start;
         width: 100%;
+        flex-wrap: nowrap;
     }
 
     .primary-button,
@@ -691,7 +703,7 @@ dd {
 
     .pipeline-nav .secondary-button,
     .pipeline-nav .secondary-link {
-        flex: none;
+        flex: 0 0 auto;
     }
 
     .summary-strip,

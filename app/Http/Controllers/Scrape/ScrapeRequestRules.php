@@ -15,10 +15,10 @@ readonly class ScrapeRequestRules
     public function scrape(): array
     {
         return [
-            'url' => 'required|string',
-            'label' => 'nullable|string',
-            'maxPages' => 'nullable|integer|min:0',
-            'outputDir' => 'string|nullable',
+            'url' => 'required|string|max:2048',
+            'label' => 'nullable|string|max:80|regex:/\A[A-Za-z0-9_-]+\z/',
+            'maxPages' => 'nullable|integer|min:0|max:10000',
+            'outputDir' => 'string|nullable|max:1024',
             'skipImages' => 'nullable|boolean',
             'imageExceptions' => [
                 'nullable',
@@ -28,10 +28,10 @@ readonly class ScrapeRequestRules
                     }
                 },
             ],
-            'dateSelector' => 'string|nullable',
-            'maxConcurrency' => 'nullable|integer|min:1',
-            'maxRpm' => 'nullable|integer|min:1',
-            'requestDelay' => 'nullable|integer|min:0',
+            'dateSelector' => 'string|nullable|max:500',
+            'maxConcurrency' => 'nullable|integer|min:1|max:20',
+            'maxRpm' => 'nullable|integer|min:1|max:1000',
+            'requestDelay' => 'nullable|integer|min:0|max:60000',
             'discoveryMode' => 'nullable|boolean',
         ];
     }
@@ -41,7 +41,7 @@ readonly class ScrapeRequestRules
      */
     public function jobId(): array
     {
-        return ['jobId' => 'required|string'];
+        return ['jobId' => 'required|string|max:191|regex:/\A[A-Za-z0-9][A-Za-z0-9._:-]{0,190}\z/'];
     }
 
     /**
@@ -50,7 +50,7 @@ readonly class ScrapeRequestRules
     public function crawlerTask(): array
     {
         return [
-            'taskId' => 'required|string',
+            'taskId' => 'required|string|max:191|regex:/\A[A-Za-z0-9][A-Za-z0-9._:-]{0,190}\z/',
             'options' => 'nullable|array',
         ];
     }
@@ -61,7 +61,7 @@ readonly class ScrapeRequestRules
     public function scrapeResult(): array
     {
         return [
-            'jobId' => 'required|string',
+            'jobId' => 'required|string|max:191|regex:/\A[A-Za-z0-9][A-Za-z0-9._:-]{0,190}\z/',
             'elementId' => 'required|integer|min:1',
         ];
     }
@@ -71,6 +71,6 @@ readonly class ScrapeRequestRules
      */
     public function url(): array
     {
-        return ['url' => 'required|string'];
+        return ['url' => 'required|string|max:2048'];
     }
 }

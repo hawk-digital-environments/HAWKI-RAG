@@ -54,6 +54,8 @@ return [
 
     'url' => env('APP_URL', 'http://localhost'),
 
+    'asset_base_path' => env('DOCKER_PROJECT_PATH', '/'),
+
     /*
     |--------------------------------------------------------------------------
     | Application Timezone

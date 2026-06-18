@@ -112,10 +112,11 @@ class RagGraphController extends Controller
             $result = $callback();
             return $this->noStore(response()->json($result, ($result['ok'] ?? true) ? 200 : 422));
         } catch (\Throwable $e) {
+            report($e);
+
             return $this->noStore(response()->json([
                 'ok' => false,
                 'message' => 'Neo4j graph explorer request failed.',
-                'error' => $e->getMessage(),
             ], 502));
         }
     }

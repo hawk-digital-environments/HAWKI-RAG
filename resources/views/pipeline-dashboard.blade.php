@@ -20,8 +20,8 @@
     <main class="pipeline-dashboard" data-pipeline-dashboard>
         <header class="dashboard-header">
             <div>
-                <p class="eyebrow">Temporal ingestion</p>
-                <h1>HAWKI Pipeline Dashboard</h1>
+                <p class="eyebrow">HAWKI RAG pipeline</p>
+                <h1>Pipeline Dashboard</h1>
                 <p class="header-copy">Scrape, convert, ingest, and workflow state from Laravel database records.</p>
             </div>
             <div class="header-actions">

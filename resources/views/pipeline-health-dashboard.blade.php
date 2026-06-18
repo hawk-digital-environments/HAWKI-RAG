@@ -20,9 +20,9 @@
     <main class="pipeline-health-dashboard" data-pipeline-health-dashboard>
         <header class="dashboard-header">
             <div>
-                <p class="eyebrow">Pipeline health</p>
-                <h1>Temporal Ingestion Health</h1>
-                <p class="header-copy">Temporal, PostgreSQL, external adapters, shared storage, Qdrant, and Neo4j from Laravel.</p>
+                <p class="eyebrow">HAWKI RAG health</p>
+                <h1>Health Repair</h1>
+                <p class="header-copy">Check Temporal, PostgreSQL, adapters, shared storage, Qdrant, and Neo4j from Laravel.</p>
             </div>
             <div class="header-actions">
                 @include('partials.pipeline-nav', ['active' => 'health', 'refreshId' => 'pipeline-health-refresh'])

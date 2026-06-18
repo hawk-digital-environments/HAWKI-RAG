@@ -17,19 +17,6 @@
     @vite(["resources/css/app.css", "resources/js/neo4j-graph-dashboard.js"])
 </head>
 <body>
-    <div class="container graph-dashboard" data-neo4j-graph-dashboard>
-        <header class="dashboard-header">
-            <div>
-                <p class="eyebrow">HAWKI RAG graph</p>
-                <h1>Neo4j Graph Explorer</h1>
-                <p class="header-copy">Inspect graph entities, relationships, snapshots, and semantic graph search.</p>
-            </div>
-            <div class="header-actions">
-                @include('partials.pipeline-nav', ['active' => 'graph', 'refreshId' => 'neo4j-graph-refresh'])
-            </div>
-        </header>
-
-        @include('partials.neo4j-graph-explorer')
-    </div>
+    <div data-neo4j-graph-dashboard></div>
 </body>
 </html>
