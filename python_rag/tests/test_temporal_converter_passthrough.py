@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
@@ -23,6 +24,45 @@ class _UnsupportedResponse:
 
 
 class TemporalConverterPassthroughTests(unittest.TestCase):
+    def test_custom_converter_profile_overrides_converter_service_config(self) -> None:
+        with TemporaryDirectory() as tmp:
+            profile = Path(tmp) / "custom_converter.json"
+            profile.write_text(
+                json.dumps({
+                    "converter_url": "https://converter.example.test",
+                    "converter_start_path": "/extract",
+                    "converter_status_path": "/jobs/{job_id}",
+                    "converter_token": "secret-token",
+                }),
+                encoding="utf-8",
+            )
+
+            config = activities._service_config(
+                {
+                    "converter_mode": "custom",
+                    "custom_converter_profile_path": str(profile),
+                    "external_services": {
+                        "converter_url": "http://default-converter.test",
+                        "converter_start_path": "/extract",
+                    },
+                },
+                "converter",
+                _settings(),
+            )
+
+        self.assertEqual(config["base_url"], "https://converter.example.test")
+        self.assertEqual(config["start_path"], "/extract")
+        self.assertEqual(config["status_path"], "/jobs/{job_id}")
+        self.assertEqual(config["token"], "secret-token")
+
+    def test_custom_converter_mode_requires_profile_path(self) -> None:
+        with self.assertRaisesRegex(RuntimeError, "without a converter profile path"):
+            activities._service_config(
+                {"converter_mode": "custom"},
+                "converter",
+                _settings(),
+            )
+
     def test_direct_extract_unsupported_image_creates_raganything_passthrough(self) -> None:
         with TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -83,7 +123,28 @@ class TemporalConverterPassthroughTests(unittest.TestCase):
             )
 
         body = bridge.call_args.kwargs["json"]
+        headers = bridge.call_args.kwargs["headers"]
         self.assertIs(body["graph"], True)
+        self.assertEqual(body["idempotency_key"], "source_image:job_image:doc_image:ingest")
+        self.assertEqual(headers["Idempotency-Key"], "source_image:job_image:doc_image:ingest")
+        self.assertEqual(headers["X-Request-ID"], "source_image:job_image:doc_image:ingest")
+
+
+def _settings() -> SimpleNamespace:
+    return SimpleNamespace(
+        scraper_url="http://scraper.test",
+        scraper_start_path="/api/scrape/start",
+        scraper_status_path="/api/scrape/jobs/{job_id}",
+        scraper_token="",
+        converter_url="http://converter.test",
+        converter_start_path="/extract",
+        converter_status_path="",
+        converter_token="",
+        request_timeout_seconds=1,
+        http_retry_attempts=1,
+        poll_interval_seconds=1,
+        poll_timeout_seconds=2,
+    )
 
 
 if __name__ == "__main__":

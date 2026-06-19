@@ -2,6 +2,7 @@
 
 $pipelineRoot = rtrim((string) env('HAWKI_RAG_PIPELINE_ROOT', '/shared'), DIRECTORY_SEPARATOR);
 $crawledDataRoot = rtrim((string) env('HAWKI_RAG_CRAWLED_DATA_ROOT', env('DEFAULT_CRAWLED_ROOT', $pipelineRoot)), DIRECTORY_SEPARATOR);
+$temporalSharedRoot = rtrim((string) env('HAWKI_RAG_TEMPORAL_SHARED_ROOT', '/shared'), DIRECTORY_SEPARATOR);
 
 return [
 
@@ -48,6 +49,14 @@ return [
         storage_path('logs/comm_logs.json'),
         storage_path('logs/laravel.log'),
     ],
+    'raganything_runtime_log_paths' => array_values(array_unique(array_filter([
+        env('HAWKI_RAG_RAGANYTHING_LOG_PATH'),
+        env('GRAPH_DEBUG_LOG'),
+        $pipelineRoot.'/logs/raganything_runtime.log',
+        $temporalSharedRoot.'/logs/raganything_runtime.log',
+        '/shared/logs/raganything_runtime.log',
+        storage_path('logs/raganything_runtime.log'),
+    ], static fn ($path) => is_string($path) && trim($path) !== ''))),
     'pipeline_proof_log_globs' => [
         storage_path('logs/laravel-*.log'),
     ],

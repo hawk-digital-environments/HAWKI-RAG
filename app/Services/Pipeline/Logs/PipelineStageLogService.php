@@ -38,6 +38,17 @@ readonly class PipelineStageLogService
         'ingest' => 'Ingest',
     ];
 
+    private const RAGANYTHING_LOG_HINTS = [
+        'api:ingest',
+        'graph:extract',
+        'graph:neo4j',
+        'graph-viz',
+        'graph:extract_triplets',
+        'perf:graph',
+        'RAG-Anything',
+        'raganything',
+    ];
+
     public function __construct(
         private PipelineTaskRepository $tasks,
         private Filesystem $files,
@@ -152,11 +163,41 @@ readonly class PipelineStageLogService
             '',
         ];
 
+        $this->appendRagAnythingRuntimeLogSection($lines, $task, $jobs, $stage);
         $this->appendTaskSection($lines, $task);
         $this->appendJobSection($lines, $jobs, $stage);
         $this->appendCommunicationLogSection($lines, $task, $jobs, $stage);
 
         return rtrim(implode("\n", $lines))."\n";
+    }
+
+    /**
+     * @param list<string> $lines
+     * @param Collection<int, PipelineJob> $jobs
+     */
+    private function appendRagAnythingRuntimeLogSection(array &$lines, PipelineTask $task, Collection $jobs, string $stage): void
+    {
+        if ($stage !== 'ingest') {
+            return;
+        }
+
+        $entries = $this->ragAnythingRuntimeEntries($task, $jobs);
+
+        $lines[] = 'RAG-Anything runtime log entries';
+        $lines[] = str_repeat('-', 80);
+
+        if ($entries === []) {
+            $lines[] = 'No matching RAG-Anything runtime log entries were found yet.';
+            $lines[] = '';
+
+            return;
+        }
+
+        foreach ($entries as $entry) {
+            $lines[] = $entry;
+        }
+
+        $lines[] = '';
     }
 
     /**
@@ -257,6 +298,318 @@ readonly class PipelineStageLogService
             $this->appendJson($lines, '  Raw entry', $entry);
             $lines[] = '';
         }
+    }
+
+    /**
+     * @param Collection<int, PipelineJob> $jobs
+     * @return list<string>
+     */
+    private function ragAnythingRuntimeEntries(PipelineTask $task, Collection $jobs): array
+    {
+        $paths = $this->ragAnythingRuntimeLogPaths();
+        if ($paths === []) {
+            return [];
+        }
+
+        $baseNeedles = $this->runtimeNeedles($task, $jobs);
+        $documentNeedles = $this->documentNeedles($jobs);
+        $selected = [];
+        $entries = [];
+
+        foreach ($paths as $path) {
+            if (! $this->files->isFile($path)) {
+                continue;
+            }
+
+            $logLines = $this->runtimeLogLines($path);
+
+            foreach ($logLines as $line) {
+                $text = $line['text'];
+                if (! $this->runtimeLineLooksRelevant($text)) {
+                    continue;
+                }
+
+                if ($this->lineMatchesNeedles($text, $baseNeedles)) {
+                    $this->appendRuntimeEntry($entries, $selected, $path, $line['number'], $text);
+                    $documentNeedles = $this->mergeNeedles($documentNeedles, $this->documentNeedlesFromLine($text));
+                }
+            }
+
+            if ($documentNeedles === []) {
+                continue;
+            }
+
+            foreach ($logLines as $line) {
+                $text = $line['text'];
+                if (! $this->runtimeLineLooksRelevant($text)) {
+                    continue;
+                }
+
+                if ($this->lineMatchesNeedles($text, $documentNeedles)) {
+                    $this->appendRuntimeEntry($entries, $selected, $path, $line['number'], $text);
+                }
+            }
+        }
+
+        return $entries;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function ragAnythingRuntimeLogPaths(): array
+    {
+        $configured = $this->config->get('config.raganything_runtime_log_paths', []);
+        $paths = is_array($configured) ? $configured : [$configured];
+
+        return collect($paths)
+            ->filter(fn (mixed $path): bool => is_string($path) && trim($path) !== '')
+            ->map(fn (string $path): string => trim($path))
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @return list<array{number: int, text: string}>
+     */
+    private function runtimeLogLines(string $path): array
+    {
+        $lines = [];
+        $file = new \SplFileObject($path, 'r');
+        $lineNumber = 0;
+
+        while (! $file->eof()) {
+            $lineNumber++;
+            $line = rtrim((string) $file->fgets(), "\r\n");
+            if ($line === '') {
+                continue;
+            }
+
+            $lines[] = [
+                'number' => $lineNumber,
+                'text' => $line,
+            ];
+        }
+
+        return $lines;
+    }
+
+    /**
+     * @param list<string> $entries
+     * @param array<string, true> $selected
+     */
+    private function appendRuntimeEntry(array &$entries, array &$selected, string $path, int $lineNumber, string $line): void
+    {
+        $key = $path.':'.$lineNumber;
+        if (isset($selected[$key])) {
+            return;
+        }
+
+        $selected[$key] = true;
+        $entries[] = '['.basename($path).':'.$lineNumber.'] '.$line;
+    }
+
+    /**
+     * @param Collection<int, PipelineJob> $jobs
+     * @return list<string>
+     */
+    private function runtimeNeedles(PipelineTask $task, Collection $jobs): array
+    {
+        $needles = $this->matchingNeedles($task, $jobs);
+
+        $jobs->each(function (PipelineJob $job) use (&$needles): void {
+            $metadata = is_array($job->metadata) ? $job->metadata : [];
+            $this->appendNeedle($needles, $metadata['source_id'] ?? null);
+            $this->appendNeedle($needles, $metadata['task_id'] ?? null);
+            $this->appendNeedle($needles, $metadata['job_id'] ?? null);
+            $this->appendNeedle($needles, $metadata['document_id'] ?? null);
+            $this->appendNeedle($needles, $metadata['doc_id'] ?? null);
+            $this->appendNeedle($needles, $job->local_path);
+            $this->appendNeedle($needles, $job->content_hash);
+        });
+
+        return $this->normalizeNeedles($needles);
+    }
+
+    /**
+     * @param Collection<int, PipelineJob> $jobs
+     * @return list<string>
+     */
+    private function documentNeedles(Collection $jobs): array
+    {
+        $needles = [];
+
+        $jobs->each(function (PipelineJob $job) use (&$needles): void {
+            $metadata = is_array($job->metadata) ? $job->metadata : [];
+            $this->appendNeedle($needles, $metadata['document_id'] ?? null);
+            $this->appendNeedle($needles, $metadata['doc_id'] ?? null);
+
+            foreach ($this->manifestPathsForJob($job) as $path) {
+                foreach ($this->documentNeedlesFromManifest($path) as $documentId) {
+                    $this->appendNeedle($needles, $documentId);
+                }
+            }
+        });
+
+        return $this->normalizeNeedles($needles);
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function manifestPathsForJob(PipelineJob $job): array
+    {
+        $sourceId = is_string($job->source_id) ? trim($job->source_id) : '';
+        if ($sourceId === '') {
+            return [];
+        }
+
+        $sharedRoot = rtrim((string) $this->config->get('temporal.storage.shared_root', '/shared'), '/');
+
+        return [$sharedRoot.'/sources/'.$sourceId.'/ingest/manifest.json'];
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function documentNeedlesFromManifest(string $path): array
+    {
+        if (! $this->files->isFile($path)) {
+            return [];
+        }
+
+        $decoded = json_decode($this->files->get($path), true);
+        if (! is_array($decoded)) {
+            return [];
+        }
+
+        $needles = [];
+        foreach ($decoded as $record) {
+            if (! is_array($record)) {
+                continue;
+            }
+
+            $this->appendNeedle($needles, $record['document_id'] ?? null);
+            $this->appendNeedle($needles, $record['doc_id'] ?? null);
+        }
+
+        return $this->normalizeNeedles($needles);
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function documentNeedlesFromLine(string $line): array
+    {
+        $needles = [];
+        $patterns = [
+            '/\bdoc_id=([A-Za-z0-9._:-]+)/',
+            '/\bdoc=([A-Za-z0-9._:-]+)/',
+            '/"doc_id"\s*:\s*"([^"]+)"/',
+            '/"document_id"\s*:\s*"([^"]+)"/',
+        ];
+
+        foreach ($patterns as $pattern) {
+            if (preg_match_all($pattern, $line, $matches)) {
+                foreach ($matches[1] as $match) {
+                    $this->appendNeedle($needles, $match);
+                }
+            }
+        }
+
+        foreach (['idempotency_key', 'request_id'] as $field) {
+            if (! preg_match_all('/\b'.$field.'=([A-Za-z0-9._:-]+)/', $line, $matches)) {
+                continue;
+            }
+
+            foreach ($matches[1] as $operationId) {
+                $documentId = $this->documentIdFromOperationId($operationId);
+                if ($documentId !== null) {
+                    $this->appendNeedle($needles, $documentId);
+                }
+            }
+        }
+
+        return $this->normalizeNeedles($needles);
+    }
+
+    private function documentIdFromOperationId(string $operationId): ?string
+    {
+        $parts = explode(':', trim($operationId));
+        if (count($parts) < 4 || end($parts) !== 'ingest') {
+            return null;
+        }
+
+        $documentId = $parts[count($parts) - 2] ?? '';
+
+        return $documentId !== '' ? $documentId : null;
+    }
+
+    private function runtimeLineLooksRelevant(string $line): bool
+    {
+        $lower = strtolower($line);
+
+        foreach (self::RAGANYTHING_LOG_HINTS as $hint) {
+            if (str_contains($lower, strtolower($hint))) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param list<string> $needles
+     */
+    private function lineMatchesNeedles(string $line, array $needles): bool
+    {
+        foreach ($needles as $needle) {
+            if (str_contains($line, $needle)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param list<string> $needles
+     */
+    private function appendNeedle(array &$needles, mixed $value): void
+    {
+        if (! is_scalar($value)) {
+            return;
+        }
+
+        $needle = trim((string) $value);
+        if ($needle !== '') {
+            $needles[] = $needle;
+        }
+    }
+
+    /**
+     * @param list<string> $left
+     * @param list<string> $right
+     * @return list<string>
+     */
+    private function mergeNeedles(array $left, array $right): array
+    {
+        return $this->normalizeNeedles([...$left, ...$right]);
+    }
+
+    /**
+     * @param list<string> $needles
+     * @return list<string>
+     */
+    private function normalizeNeedles(array $needles): array
+    {
+        return collect($needles)
+            ->filter(fn (string $needle): bool => strlen(trim($needle)) >= 6)
+            ->map(fn (string $needle): string => trim($needle))
+            ->unique()
+            ->values()
+            ->all();
     }
 
     /**

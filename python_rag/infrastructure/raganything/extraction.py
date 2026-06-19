@@ -30,6 +30,7 @@ def extract_triplets_with_graph_service(
     neo4j_database: str | None,
     graph_perf_log: bool,
     image_paths: list[str] | None = None,
+    request_id: str | None = None,
 ) -> list[tuple[str, str, str]]:
     fn_start = time.perf_counter()
     _perf_log(
@@ -71,6 +72,7 @@ def extract_triplets_with_graph_service(
         file_path=file_path,
         image_paths=image_paths,
         neo4j_database=neo4j_database,
+        request_id=request_id,
     )
     if not trips:
         fallback_text = _fallback_source_text(
@@ -90,7 +92,7 @@ def extract_triplets_with_graph_service(
         len(trips),
         (time.perf_counter() - rag_start) * 1000,
     )
-    logger.info("graph:extract_triplets raganything-kg count=%s", len(trips))
+    logger.info("graph:extract_triplets request_id=%s raganything-kg count=%s", request_id or "-", len(trips))
     _perf_log(
         "perf:graph core.rag_service.extract_triplets done path=%s triplets=%s ms=%.2f",
         graph_perf_log,

@@ -219,6 +219,7 @@ class RagAnythingGraphService:
         file_path: str | None,
         image_paths: list[str] | None = None,
         neo4j_database: str | None = None,
+        request_id: str | None = None,
     ) -> list[tuple[str, str, str]]:
         working_text = text
         cleaned_text = clean_graph_text(text)
@@ -274,6 +275,7 @@ class RagAnythingGraphService:
                     neo4j_uri=self._settings.neo4j_uri,
                     neo4j_user=self._settings.neo4j_user,
                     neo4j_password=self._settings.neo4j_password,
+                    request_id=request_id,
                     scrub_raganything_kv_graph_junk=self.scrub_raganything_kv_graph_junk,
                 )
             )

@@ -31,6 +31,7 @@ class PipelineUploadService
         private readonly PipelineJobCreationRepository $jobCreation,
         private readonly PipelineUploadStorage $storage,
         private readonly PipelineUploadPolicy $policy,
+        private readonly PipelineCustomConverterProfileWriter $customConverterProfiles,
         private readonly PipelineUploadIdentifierFactory $identifiers,
         private readonly PipelineUploadPayloadService $payloads,
         private readonly IngestSourceWorkflowPayloadFactory $workflowPayloads,
@@ -51,8 +52,8 @@ class PipelineUploadService
 
         $extension = $this->storage->extensionFor($file);
 
-        if (! $this->policy->supports($extension)) {
-            return $this->results->unsupportedFile();
+        if (! $this->policy->supports($extension, $input)) {
+            return $this->results->unsupportedFile($input);
         }
 
         $taskId = $this->identifiers->uploadTaskId();
@@ -69,23 +70,37 @@ class PipelineUploadService
             return $this->results->storageFailure($input, $exception);
         }
 
-        $dataset = $this->datasets->ensure($input->datasetId);
         $sourceUrl = $this->identifiers->sourceUrl($storedUpload);
+        $sourceId = $this->workflowPayloads->sourceId(
+            $input->datasetId,
+            $sourceUrl.'|'.$storedUpload->contentHash,
+        );
+        $storage = $this->workflowPayloads->storagePaths($sourceId);
+
+        try {
+            $customConverterProfilePath = $this->customConverterProfiles->write($sourceId, $input, $storage);
+        } catch (\Throwable $exception) {
+            $this->logger->warning('Custom converter profile could not be prepared.', [
+                'dataset_id' => $input->datasetId,
+                'task_id' => $taskId,
+                'source_id' => $sourceId,
+                'error' => $exception->getMessage(),
+            ]);
+
+            return $this->results->customConverterProfileFailure($input, $exception);
+        }
+
+        $dataset = $this->datasets->ensure($input->datasetId);
         $now = $this->now();
 
         $task = $this->taskRepository->createUploadTask(
             $taskId,
             $dataset,
             $now,
-            $this->payloads->taskMetadata($dataset, $input, $storedUpload),
+            $this->payloads->taskMetadata($dataset, $input, $storedUpload, $customConverterProfilePath),
         );
 
-        $sourceId = $this->workflowPayloads->sourceId(
-            $dataset->dataset_id,
-            $sourceUrl.'|'.$storedUpload->contentHash,
-        );
         $jobId = $this->identifiers->ingestJobId($taskId, $sourceId);
-        $storage = $this->workflowPayloads->storagePaths($sourceId);
 
         $source = $this->ingestionSources->upsertStarting($sourceId, [
             'source_url' => $sourceUrl,
@@ -105,10 +120,11 @@ class PipelineUploadService
                     'content_hash' => $storedUpload->contentHash,
                     'extension' => $storedUpload->extension,
                 ],
+                'custom_converter' => $this->payloads->customConverterMetadata($input, $customConverterProfilePath),
             ],
         ]);
 
-        $metadata = array_merge($this->payloads->jobMetadata($dataset, $input, $storedUpload), [
+        $metadata = array_merge($this->payloads->jobMetadata($dataset, $input, $storedUpload, $customConverterProfilePath), [
             'reason' => 'Started upload IngestSourceWorkflow through Temporal.',
             'dataset_id' => $task->dataset_id,
             'source_id' => $sourceId,

@@ -30,6 +30,9 @@ readonly class IngestSourceWorkflowPayloadFactory
         $refresh = is_array($metadata['refresh'] ?? null) ? $metadata['refresh'] : [];
 
         $upload = is_array($metadata['upload'] ?? null) ? $metadata['upload'] : null;
+        $customConverter = is_array($metadata['custom_converter'] ?? null)
+            ? $metadata['custom_converter']
+            : null;
 
         return array_filter([
             'source_id' => $source->source_id,
@@ -38,6 +41,8 @@ readonly class IngestSourceWorkflowPayloadFactory
             'job_id' => $job->job_id,
             'dataset_id' => $task->dataset_id,
             'upload' => $upload,
+            'converter_mode' => $customConverter ? 'custom' : 'native',
+            'custom_converter_profile_path' => $customConverter['profile_path'] ?? null,
             'refresh' => array_merge([
                 'cadence' => $source->refresh_cadence,
                 'requested_at' => $this->clock->now()->format(\DateTimeInterface::ATOM),

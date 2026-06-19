@@ -52,6 +52,30 @@ class PipelineUploadPayloadServiceTest extends TestCase
         $this->assertSame('hawki_upload_dataset', $metadata['dataset']['qdrant_collection']);
     }
 
+    public function test_it_builds_custom_converter_metadata_without_token(): void
+    {
+        $input = PipelineUploadInput::fromValidated([
+            'converter_mode' => 'custom',
+            'converter_url' => 'https://converter.example.test',
+            'converter_token' => 'secret-api-key',
+            'converter_start_path' => '/extract',
+        ]);
+
+        $metadata = app(PipelineUploadPayloadService::class)->taskMetadata(
+            $this->dataset(),
+            $input,
+            $this->storedUpload(),
+            '/shared/sources/source-1/secrets/custom_converter.json',
+        );
+
+        $this->assertSame('custom', $metadata['request']['metadata']['converter_mode']);
+        $this->assertSame('https://converter.example.test', $metadata['custom_converter']['endpoint']);
+        $this->assertSame('/extract', $metadata['custom_converter']['start_path']);
+        $this->assertArrayNotHasKey('status_path', $metadata['custom_converter']);
+        $this->assertSame('/shared/sources/source-1/secrets/custom_converter.json', $metadata['custom_converter']['profile_path']);
+        $this->assertStringNotContainsString('secret-api-key', json_encode($metadata, JSON_UNESCAPED_SLASHES));
+    }
+
     private function dataset(): Dataset
     {
         return new Dataset([

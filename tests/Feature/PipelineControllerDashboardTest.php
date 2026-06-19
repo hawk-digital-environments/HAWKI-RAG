@@ -22,13 +22,12 @@ class PipelineControllerDashboardTest extends TestCase
         $this->get('/pipeline-controller')
             ->assertOk()
             ->assertSee('Pipeline Controller')
-            ->assertSee('Convert and Ingest File')
             ->assertSee('Scraper Tasks')
             ->assertSee('pipeline-nav', false)
             ->assertSee('pipeline-controller-refresh', false)
+            ->assertSee('pipeline-upload-module', false)
             ->assertSee('pipeline-stage-log-viewer', false)
             ->assertSee('Stage logs')
-            ->assertSee('pipeline-file-form', false)
             ->assertSee('pipeline-task-select', false);
 
         $this->get('/hawki-rag-playground')
@@ -43,7 +42,7 @@ class PipelineControllerDashboardTest extends TestCase
         $root = storage_path('framework/testing/pipeline-controller');
         File::deleteDirectory($root);
         config()->set('temporal.storage.shared_root', $root);
-        config()->set('file_converter.supported_extensions', []);
+        config()->set('file_converter.raganything_supported_extensions', ['pdf']);
         Http::fake([
             '*temporal/workflows/ingest' => Http::response([
                 'workflow_id' => 'ingest-source-upload-workflow',
@@ -56,7 +55,7 @@ class PipelineControllerDashboardTest extends TestCase
         $response = $this->post('/api/pipeline/controller/files', [
             'dataset_id' => 'controller-test',
             'graph' => 'false',
-            'file' => UploadedFile::fake()->create('sample.svg', 12, 'image/svg+xml'),
+            'file' => UploadedFile::fake()->create('sample.pdf', 12, 'application/pdf'),
         ], [
             'Accept' => 'application/json',
         ]);
@@ -84,23 +83,104 @@ class PipelineControllerDashboardTest extends TestCase
             'job_id' => $jobId,
             'task_id' => $taskId,
             'job_type' => PipelineJob::TYPE_INGEST,
-            'source_url' => 'upload://sample.svg',
+            'source_url' => 'upload://sample.pdf',
             'status' => PipelineJob::STATUS_RUNNING,
             'current_stage' => 'temporal.workflow_started',
             'temporal_workflow_id' => 'ingest-source-upload-workflow',
             'temporal_run_id' => 'upload-run-1',
         ]);
         $this->assertDatabaseHas('ingestion_sources', [
-            'source_url' => 'upload://sample.svg',
+            'source_url' => 'upload://sample.pdf',
             'task_id' => $taskId,
             'dataset_id' => 'controller-test',
             'index_status' => 'running',
             'temporal_workflow_id' => 'ingest-source-upload-workflow',
         ]);
         Http::assertSent(fn ($request): bool => $request->url() === config('temporal.bridge_url').'/temporal/workflows/ingest'
-            && data_get($request->data(), 'workflow_input.upload.original_filename') === 'sample.svg'
+            && data_get($request->data(), 'workflow_input.upload.original_filename') === 'sample.pdf'
             && data_get($request->data(), 'workflow_input.upload.local_path') !== null
+            && data_get($request->data(), 'workflow_input.converter_mode') === 'native'
             && data_get($request->data(), 'workflow_input.ingestion.graph') === false);
+
+        File::deleteDirectory($root);
+    }
+
+    public function test_native_upload_rejects_non_raganything_file_type(): void
+    {
+        config()->set('file_converter.raganything_supported_extensions', ['pdf']);
+
+        $this->actingAsApiUser();
+
+        $this->post('/api/pipeline/controller/files', [
+            'dataset_id' => 'native-reject',
+            'file' => UploadedFile::fake()->create('diagram.svg', 12, 'image/svg+xml'),
+        ], [
+            'Accept' => 'application/json',
+        ])
+            ->assertStatus(422)
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('message', 'This file type is not accepted by RAGAnything native ingestion. Enable Custom converter for special formats.');
+
+        $this->assertDatabaseMissing('datasets', [
+            'dataset_id' => 'native-reject',
+        ]);
+    }
+
+    public function test_custom_converter_upload_accepts_non_native_file_and_passes_profile_path(): void
+    {
+        $root = storage_path('framework/testing/pipeline-controller-custom');
+        File::deleteDirectory($root);
+        config()->set('temporal.storage.shared_root', $root);
+        config()->set('file_converter.raganything_supported_extensions', ['pdf']);
+        config()->set('file_converter.custom_converter_status_path', '/jobs/{job_id}');
+        Http::fake([
+            '*temporal/workflows/ingest' => Http::response([
+                'workflow_id' => 'ingest-source-custom-workflow',
+                'run_id' => 'upload-custom-run-1',
+            ]),
+        ]);
+
+        $this->actingAsApiUser();
+
+        $response = $this->post('/api/pipeline/controller/files', [
+            'dataset_id' => 'custom-converter-test',
+            'converter_mode' => 'custom',
+            'converter_url' => 'https://converter.example.test',
+            'converter_token' => 'secret-user-api-key',
+            'converter_start_path' => '/extract',
+            'converter_status_path' => '/user-controlled-status',
+            'file' => UploadedFile::fake()->create('diagram.svg', 12, 'image/svg+xml'),
+        ], [
+            'Accept' => 'application/json',
+        ])
+            ->assertCreated()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('datasetId', 'custom-converter-test');
+
+        $profilePath = null;
+        Http::assertSent(function ($request) use (&$profilePath): bool {
+            $data = $request->data();
+            $profilePath = data_get($data, 'workflow_input.custom_converter_profile_path');
+
+            return $request->url() === config('temporal.bridge_url').'/temporal/workflows/ingest'
+                && data_get($data, 'workflow_input.converter_mode') === 'custom'
+                && is_string($profilePath)
+                && str_contains($profilePath, 'custom_converter.json')
+                && ! str_contains(json_encode($data, JSON_UNESCAPED_SLASHES), 'secret-user-api-key');
+        });
+
+        $this->assertIsString($profilePath);
+        $this->assertFileExists($profilePath);
+        $profile = json_decode(File::get($profilePath), true);
+        $this->assertSame('https://converter.example.test', $profile['converter_url']);
+        $this->assertSame('/extract', $profile['converter_start_path']);
+        $this->assertSame('/jobs/{job_id}', $profile['converter_status_path']);
+        $this->assertSame('secret-user-api-key', $profile['converter_token']);
+        $this->assertStringNotContainsString('/user-controlled-status', json_encode($profile, JSON_UNESCAPED_SLASHES));
+
+        $task = PipelineTask::query()->where('dataset_id', 'custom-converter-test')->firstOrFail();
+        $this->assertStringNotContainsString('secret-user-api-key', json_encode($task->metadata, JSON_UNESCAPED_SLASHES));
+        $this->assertSame($task->task_id, $response->json('taskId'));
 
         File::deleteDirectory($root);
     }
@@ -112,7 +192,7 @@ class PipelineControllerDashboardTest extends TestCase
         File::ensureDirectoryExists(dirname($root));
         File::put($root, 'not a directory');
         config()->set('temporal.storage.shared_root', $root);
-        config()->set('file_converter.supported_extensions', ['pdf']);
+        config()->set('file_converter.raganything_supported_extensions', ['pdf']);
 
         $this->actingAsApiUser();
 
@@ -137,16 +217,19 @@ class PipelineControllerDashboardTest extends TestCase
         File::delete($root);
     }
 
-    public function test_controller_file_input_uses_configured_converter_extensions(): void
+    public function test_controller_file_input_exposes_raganything_and_converter_extension_lists(): void
     {
         $this->withoutVite();
 
-        config()->set('file_converter.supported_extensions', ['pdf', 'txt', 'png', 'webp', 'zip']);
+        config()->set('file_converter.raganything_supported_extensions', ['pdf', 'txt', 'png', 'webp']);
+        config()->set('file_converter.supported_extensions', ['zip']);
 
         $this->get('/pipeline-controller')
             ->assertOk()
-            ->assertSee('accept=".pdf,.txt,.png,.webp,.zip"', false)
-            ->assertSee('data-supported-extensions="pdf,txt,png,webp,zip"', false);
+            ->assertSee('pipeline-upload-module', false)
+            ->assertSee('data-native-extensions="pdf,txt,png,webp"', false)
+            ->assertSee('data-native-accept=".pdf,.txt,.png,.webp"', false)
+            ->assertSee('data-custom-extensions="zip"', false);
     }
 
     public function test_pipeline_task_cache_can_be_deleted(): void
@@ -265,5 +348,67 @@ class PipelineControllerDashboardTest extends TestCase
         $this->assertStringContainsString('HAWKI-RAG Scraper stage log', $download->getContent());
 
         File::deleteDirectory(dirname($logPath));
+    }
+
+    public function test_ingest_stage_log_includes_real_raganything_runtime_entries(): void
+    {
+        $runtimeLogPath = storage_path('framework/testing/raganything-runtime/raganything_runtime.log');
+        File::ensureDirectoryExists(dirname($runtimeLogPath));
+
+        $operationId = 'source_real_ingest:ingest_real_job:doc_real_abc123:ingest';
+        File::put($runtimeLogPath, implode(PHP_EOL, [
+            'level="INFO" logger="api.main" event="api:ingest request_id='.$operationId.' docs=1 graph=True idempotency_key='.$operationId.'"',
+            'level="INFO" logger="api.main" event="event=api.request_start request_id=unrelated method=GET path=/health"',
+            'level="INFO" logger="application.service" event="RAG-Anything graph insert requested doc_id=doc_real_abc123 rag_doc_id=rag-doc file=intermediate-progress.md blocks=1 chars=42"',
+            'level="INFO" logger="application.service" event="RAG-Anything graph export doc_id=doc_real_abc123 file=intermediate-progress.md edges_total=3 triplets=2"',
+            'level="INFO" logger="application.service" event="RAG-Anything graph insert requested doc_id=unrelated_doc rag_doc_id=other file=other.md blocks=1 chars=12"',
+        ]).PHP_EOL);
+
+        config()->set('config.raganything_runtime_log_paths', [$runtimeLogPath]);
+
+        $task = PipelineTask::query()->create([
+            'task_id' => 'task-raganything-logs',
+            'dataset_id' => 'raganything-dataset',
+            'status' => PipelineTask::STATUS_RUNNING,
+            'started_at' => now(),
+            'counters' => ['jobs_total' => 1],
+            'metadata' => ['request' => ['mode' => 'uploaded_file_convert_ingest']],
+        ]);
+        $job = PipelineJob::query()->create([
+            'job_id' => 'ingest_real_job',
+            'task_id' => $task->task_id,
+            'source_id' => 'source_real_ingest',
+            'job_type' => PipelineJob::TYPE_INGEST,
+            'status' => PipelineJob::STATUS_RUNNING,
+            'current_stage' => 'ingest',
+            'source_url' => 'upload://Intermediate progress.pdf',
+            'local_path' => '/shared/task_controller_upload/intermediate-progress.pdf',
+            'metadata' => ['source_id' => 'source_real_ingest'],
+        ]);
+        PipelineStageState::query()->create([
+            'pipeline_job_id' => $job->id,
+            'job_id' => $job->job_id,
+            'stage' => 'ingest',
+            'status' => PipelineJob::STATUS_RUNNING,
+            'counts' => [],
+            'metadata' => [],
+            'warnings' => [],
+            'errors' => [],
+        ]);
+
+        $response = $this->getJson('/pipeline/tasks/task-raganything-logs/stages/ingest/logs')
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $text = (string) $response->json('log.text');
+        $this->assertStringContainsString('RAG-Anything runtime log entries', $text);
+        $this->assertStringContainsString('api:ingest request_id='.$operationId, $text);
+        $this->assertStringContainsString('RAG-Anything graph insert requested doc_id=doc_real_abc123', $text);
+        $this->assertStringContainsString('RAG-Anything graph export doc_id=doc_real_abc123', $text);
+        $this->assertStringContainsString('Ingest job and stage records', $text);
+        $this->assertStringNotContainsString('path=/health', $text);
+        $this->assertStringNotContainsString('unrelated_doc', $text);
+
+        File::deleteDirectory(dirname($runtimeLogPath));
     }
 }

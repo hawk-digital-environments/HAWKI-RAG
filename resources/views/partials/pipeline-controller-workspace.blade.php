@@ -1,40 +1,24 @@
 @php
-    $converterExtensions = collect(config('file_converter.supported_extensions', []))
+    $nativeExtensions = collect(config('file_converter.raganything_supported_extensions', []))
         ->map(fn ($extension) => ltrim(strtolower(trim((string) $extension)), '.'))
         ->filter()
         ->unique()
         ->values();
-    $converterAccept = $converterExtensions->map(fn ($extension) => '.' . $extension)->implode(',');
+    $nativeAccept = $nativeExtensions->map(fn ($extension) => '.' . $extension)->implode(',');
+    $customConverterExtensions = collect(config('file_converter.supported_extensions', []))
+        ->map(fn ($extension) => ltrim(strtolower(trim((string) $extension)), '.'))
+        ->filter()
+        ->unique()
+        ->values();
 @endphp
 
 <section class="controller-file-section" aria-labelledby="pipeline-file-input-title">
-    <div class="pipeline-panel-head">
-        <div>
-            <span class="pipeline-kicker">File input</span>
-            <h2 id="pipeline-file-input-title">Convert and Ingest File</h2>
-        </div>
-    </div>
-
-    <form id="pipeline-file-form" class="controller-file-form" enctype="multipart/form-data">
-        <div class="controller-file-grid">
-            <div>
-                <label for="pipeline-file-dataset">Dataset ID</label>
-                <input id="pipeline-file-dataset" name="dataset_id" type="text" value="controller-uploads" autocomplete="off" />
-            </div>
-            <div>
-                <label for="pipeline-file-input">File</label>
-                <input id="pipeline-file-input" name="file" type="file" @if ($converterAccept !== '') accept="{{ $converterAccept }}" @endif data-supported-extensions="{{ $converterExtensions->implode(',') }}" />
-            </div>
-            <label class="controller-toggle" for="pipeline-file-graph">
-                <input id="pipeline-file-graph" name="graph" type="checkbox" value="true" checked />
-                <span>Neo4j graph</span>
-            </label>
-        </div>
-        <div class="controller-file-actions">
-            <button type="submit" id="pipeline-file-submit">Convert and Ingest File</button>
-            <span id="pipeline-file-note" class="pipeline-task-note" aria-live="polite"></span>
-        </div>
-    </form>
+    <div
+        id="pipeline-upload-module"
+        data-native-extensions="{{ $nativeExtensions->implode(',') }}"
+        data-native-accept="{{ $nativeAccept }}"
+        data-custom-extensions="{{ $customConverterExtensions->implode(',') }}"
+    ></div>
 </section>
 
 <section class="pipeline-operations-section">

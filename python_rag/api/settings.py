@@ -74,6 +74,7 @@ class AppSettings:
     startup_check_attempts: int = 3
     startup_check_timeout_seconds: float = 3.0
     startup_check_backoff_seconds: float = 0.5
+    raganything_log_path: str = ""
 
 
 def load_app_settings(env: Mapping[str, str] | None = None) -> AppSettings:
@@ -107,4 +108,5 @@ def load_app_settings(env: Mapping[str, str] | None = None) -> AppSettings:
         startup_check_attempts=max(1, _env_int(env_map, "STARTUP_CHECK_ATTEMPTS", 3)),
         startup_check_timeout_seconds=max(0.5, _env_float(env_map, "STARTUP_CHECK_TIMEOUT_SECONDS", 3.0)),
         startup_check_backoff_seconds=max(0.0, _env_float(env_map, "STARTUP_CHECK_BACKOFF_SECONDS", 0.5)),
+        raganything_log_path=_env_str(env_map, "HAWKI_RAG_RAGANYTHING_LOG_PATH", "/shared/logs/raganything_runtime.log"),
     )

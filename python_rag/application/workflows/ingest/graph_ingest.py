@@ -158,7 +158,8 @@ def build_triplets_by_doc(
     if graph_doc_timeout_s > 0:
         logger.info("graph:extract doc_timeout=%.2fs", graph_doc_timeout_s)
     logger.info(
-        "graph:extract start engine=%s docs=%s chunks=%s provider=%s rag_model=%s embed_model=%s",
+        "graph:extract start request_id=%s engine=%s docs=%s chunks=%s provider=%s rag_model=%s embed_model=%s",
+        request_id or "-",
         engine,
         len(grouped),
         len(chunk_records),
@@ -197,7 +198,8 @@ def build_triplets_by_doc(
         if graph_debug:
             lens = [len(t) for t in chunk_texts]
             logger.debug(
-                "graph:extract doc=%s chunk_lens=%s total_chars=%s",
+                "graph:extract request_id=%s doc=%s chunk_lens=%s total_chars=%s",
+                request_id or "-",
                 doc_id,
                 lens[:10],
                 sum(lens),
@@ -206,7 +208,8 @@ def build_triplets_by_doc(
         total_chars = prepared.total_chars
         if prepared.was_trimmed:
             logger.info(
-                "graph:extract doc=%s trimmed chunks=%s/%s chars=%s/%s",
+                "graph:extract request_id=%s doc=%s trimmed chunks=%s/%s chars=%s/%s",
+                request_id or "-",
                 doc_id,
                 len(chunk_texts),
                 prepared.original_chunk_count,
@@ -215,7 +218,8 @@ def build_triplets_by_doc(
             )
         prep_ms = (time.perf_counter() - prep_start) * 1000
         logger.info(
-            "graph:extract doc=%s idx=%s/%s chunks=%s chars=%s file=%s",
+            "graph:extract request_id=%s doc=%s idx=%s/%s chunks=%s chars=%s file=%s",
+            request_id or "-",
             doc_id,
             doc_index,
             total_docs,
@@ -244,6 +248,7 @@ def build_triplets_by_doc(
                 file_path=file_path,
                 image_paths=prepared.image_paths,
                 neo4j_database=neo4j_database,
+                request_id=request_id,
             )
         triplets, error = run_graph_extract_with_timeout(_extract, graph_doc_timeout_s, allow_alarm=use_alarm)
         extract_ms = (time.perf_counter() - extract_start) * 1000
@@ -256,7 +261,7 @@ def build_triplets_by_doc(
                 "error": error,
                 "timestamp": utc_now_iso(),
             })
-            logger.warning("graph:extract doc=%s failed=%s ms=%.2f", doc_id, error, extract_ms)
+            logger.warning("graph:extract request_id=%s doc=%s failed=%s ms=%.2f", request_id or "-", doc_id, error, extract_ms)
             perf_log(
                 "perf:graph pipeline.ingest_logic._build_triplets_by_doc doc=%s step=extract status=error ms=%.2f",
                 doc_id,
@@ -289,7 +294,7 @@ def build_triplets_by_doc(
                 graph_perf_log=graph_perf_log,
                 settings=resolved_settings,
             )
-            logger.info("graph:extract doc=%s triplets=%s ms=%.2f", doc_id, len(triplets), extract_ms)
+            logger.info("graph:extract request_id=%s doc=%s triplets=%s ms=%.2f", request_id or "-", doc_id, len(triplets), extract_ms)
             if graph is not None and triplets:
                 neo4j_start = time.perf_counter()
                 graph.upsert_triplets(triplets, doc_id=doc_id, request_id=request_id)
@@ -298,7 +303,7 @@ def build_triplets_by_doc(
                     try:
                         write_graph_visualization(public_dir, database=neo4j_database, recent_doc_id=doc_id)
                     except Exception as exc:
-                        logger.warning("graph-viz:update failed doc=%s: %s", doc_id, exc)
+                        logger.warning("graph-viz:update failed request_id=%s doc=%s: %s", request_id or "-", doc_id, exc)
                 perf_log(
                     "perf:graph pipeline.ingest_logic._build_triplets_by_doc doc=%s step=neo4j_upsert triplets=%s ms=%.2f",
                     doc_id,
@@ -307,7 +312,7 @@ def build_triplets_by_doc(
                     graph_perf_log=graph_perf_log,
                     settings=resolved_settings,
                 )
-                logger.info("graph:neo4j upsert doc=%s triplets=%s", doc_id, len(triplets))
+                logger.info("graph:neo4j upsert request_id=%s doc=%s triplets=%s", request_id or "-", doc_id, len(triplets))
             perf_log(
                 "perf:graph pipeline.ingest_logic._build_triplets_by_doc doc=%s step=total ms=%.2f",
                 doc_id,

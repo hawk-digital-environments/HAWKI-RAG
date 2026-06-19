@@ -31,12 +31,27 @@ readonly class PipelineUploadResultFactory
         ], 422);
     }
 
-    public function unsupportedFile(): PipelineUploadResult
+    public function unsupportedFile(PipelineUploadInput $input): PipelineUploadResult
     {
         return PipelineUploadResult::fromPayload([
             'success' => false,
-            'message' => $this->policy->unsupportedMessage(),
+            'message' => $this->policy->unsupportedMessage($input),
+            'acceptedExtensions' => $this->policy->supportedExtensions(),
         ], 422);
+    }
+
+    public function customConverterProfileFailure(
+        PipelineUploadInput $input,
+        \Throwable $exception,
+    ): PipelineUploadResult {
+        return PipelineUploadResult::fromPayload([
+            'success' => false,
+            'message' => 'Custom converter profile could not be prepared for this upload.',
+            'datasetId' => $input->datasetId,
+            'taskId' => null,
+            'jobId' => null,
+            'error' => $exception->getMessage(),
+        ], 500);
     }
 
     public function storageFailure(

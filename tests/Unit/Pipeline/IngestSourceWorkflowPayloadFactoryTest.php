@@ -61,6 +61,7 @@ class IngestSourceWorkflowPayloadFactoryTest extends TestCase
         $this->assertSame('/shared/sources/'.$sourceId.'/raw/', $payload['raw_output_path']);
         $this->assertSame('/shared/sources/'.$sourceId.'/markdown/', $payload['markdown_output_path']);
         $this->assertSame('/shared/sources/'.$sourceId.'/ingest/manifest.json', $payload['ingest_manifest_path']);
+        $this->assertSame('native', $payload['converter_mode']);
         $this->assertSame('daily', $payload['refresh']['cadence']);
         $this->assertSame('etag-a', $payload['refresh']['etag']);
         $this->assertSame('rag-workflow-task-queue', $payload['task_queues']['workflow']);
@@ -118,6 +119,49 @@ class IngestSourceWorkflowPayloadFactoryTest extends TestCase
 
         $this->assertSame('/shared/task/sample-upload.pdf', $payload['upload']['local_path']);
         $this->assertSame('sample-upload.pdf', $payload['upload']['target_name']);
+        $this->assertSame('native', $payload['converter_mode']);
         $this->assertFalse($payload['ingestion']['graph']);
+    }
+
+    public function test_it_includes_custom_converter_profile_path_without_secret_material(): void
+    {
+        config()->set('temporal.storage.mode', 'shared');
+        config()->set('temporal.storage.shared_root', '/shared');
+
+        $factory = app(IngestSourceWorkflowPayloadFactory::class);
+        $sourceId = $factory->sourceId('dataset-upload', 'upload://diagram.svg|hash');
+        $paths = $factory->storagePaths($sourceId);
+
+        $payload = $factory->input(
+            new PipelineTask([
+                'task_id' => 'task-upload',
+                'dataset_id' => 'dataset-upload',
+            ]),
+            new PipelineJob([
+                'job_id' => 'ingest-upload',
+                'job_type' => PipelineJob::TYPE_INGEST,
+            ]),
+            new IngestionSource([
+                'source_id' => $sourceId,
+                'source_url' => 'upload://diagram.svg',
+                'content_hash' => 'hash',
+                'raw_storage_path' => $paths['raw'],
+                'markdown_storage_path' => $paths['markdown'],
+                'metadata' => [
+                    'custom_converter' => [
+                        'enabled' => true,
+                        'endpoint' => 'https://converter.example.test',
+                        'profile_path' => '/shared/sources/'.$sourceId.'/secrets/custom_converter.json',
+                    ],
+                ],
+            ]),
+        );
+
+        $this->assertSame('custom', $payload['converter_mode']);
+        $this->assertSame(
+            '/shared/sources/'.$sourceId.'/secrets/custom_converter.json',
+            $payload['custom_converter_profile_path'],
+        );
+        $this->assertStringNotContainsString('converter.example.test', json_encode($payload, JSON_THROW_ON_ERROR));
     }
 }

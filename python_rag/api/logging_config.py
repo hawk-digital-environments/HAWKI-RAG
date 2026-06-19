@@ -103,4 +103,9 @@ def configure_app_logging(settings: AppSettings, *, logger_name: str) -> tuple[l
         _add_file_handler(root_logger, Path(graph_debug_log))
         logger.info("graph:debug_logging_to=%s", Path(graph_debug_log))
 
+    raganything_log_path = str(settings.raganything_log_path or "").strip()
+    if raganything_log_path:
+        _add_file_handler(root_logger, Path(raganything_log_path))
+        logger.info("raganything:runtime_logging_to=%s", Path(raganything_log_path))
+
     return logger, graph_debug, graph_debug_log

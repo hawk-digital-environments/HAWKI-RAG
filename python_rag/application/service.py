@@ -75,6 +75,7 @@ class RAGService:
         file_path: str | None = None,
         image_paths: list[str] | None = None,
         neo4j_database: str | None = None,
+        request_id: str | None = None,
     ) -> list[tuple[str, str, str]]:
         dependencies = self._service_dependencies()
         if not hasattr(self, "settings") or self.settings is None:
@@ -92,6 +93,7 @@ class RAGService:
             file_path=file_path,
             image_paths=image_paths,
             neo4j_database=neo4j_database,
+            request_id=request_id,
             graph_perf_log=self.settings.graph_perf_log,
         )
         self.raganything = service.client

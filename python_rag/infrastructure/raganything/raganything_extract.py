@@ -110,12 +110,14 @@ async def extract_triplets_from_graph_client(
     neo4j_user: str | None = None,
     neo4j_password: str | None = None,
     scrub_raganything_kv_graph_junk: Any,
+    request_id: str | None = None,
 ) -> list[tuple[str, str, str]]:
     log = logger_obj or logger
     source_file_ref = str(file_path or f"inline://{doc_id or 'graph_text'}")
     rag_doc_id = raganything_extraction_doc_id(doc_id, file_ref, content_list)
     log.info(
-        "RAG-Anything graph insert requested doc_id=%s rag_doc_id=%s file=%s source_file=%s blocks=%s chars=%s",
+        "RAG-Anything graph insert requested request_id=%s doc_id=%s rag_doc_id=%s file=%s source_file=%s blocks=%s chars=%s",
+        request_id or "-",
         doc_id or "-",
         rag_doc_id,
         file_ref,
@@ -168,7 +170,7 @@ async def extract_triplets_from_graph_client(
                     display_stats=debug,
                 )
         except Exception as exc:
-            log.warning("RAG-Anything graph insert failed: %s", exc)
+            log.warning("RAG-Anything graph insert failed request_id=%s: %s", request_id or "-", exc)
             return []
 
         scrub_raganything_kv_graph_junk(rag_doc_id=rag_doc_id)
@@ -176,7 +178,7 @@ async def extract_triplets_from_graph_client(
         lightrag_obj = getattr(client, "lightrag", None)
         graph_obj = getattr(lightrag_obj, "chunk_entity_relation_graph", None)
         if graph_obj is None:
-            log.warning("RAG-Anything graph storage is unavailable after insert.")
+            log.warning("RAG-Anything graph storage is unavailable after insert request_id=%s.", request_id or "-")
             _clear_temp_graph(
                 neo4j_database,
                 neo4j_uri=neo4j_uri,
@@ -188,7 +190,7 @@ async def extract_triplets_from_graph_client(
         try:
             edges = await graph_obj.get_all_edges()
         except Exception as exc:
-            log.warning("RAG-Anything graph edge export failed: %s", exc)
+            log.warning("RAG-Anything graph edge export failed request_id=%s: %s", request_id or "-", exc)
             _clear_temp_graph(
                 neo4j_database,
                 neo4j_uri=neo4j_uri,
@@ -198,7 +200,7 @@ async def extract_triplets_from_graph_client(
             return []
 
         if not isinstance(edges, list):
-            log.warning("RAG-Anything graph edge export returned unexpected type=%s", type(edges).__name__)
+            log.warning("RAG-Anything graph edge export returned unexpected type=%s request_id=%s", type(edges).__name__, request_id or "-")
             return []
 
         triplets = _triplets_from_raganything_edges(
@@ -222,7 +224,8 @@ async def extract_triplets_from_graph_client(
             )
 
         log.info(
-            "RAG-Anything graph export doc_id=%s file=%s edges_total=%s triplets=%s",
+            "RAG-Anything graph export request_id=%s doc_id=%s file=%s edges_total=%s triplets=%s",
+            request_id or "-",
             doc_id or "-",
             file_ref,
             len(edges),

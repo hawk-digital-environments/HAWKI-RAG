@@ -64,7 +64,8 @@ def commit_graph_triplets(
         triplet_ms = (time.perf_counter() - triplet_start) * 1000
         total_triplets = sum(len(v) for v in triplets_by_doc.values())
         logger_obj.info(
-            "graph:extract done engine=%s triplets=%s docs=%s ms=%.2f",
+            "graph:extract done request_id=%s engine=%s triplets=%s docs=%s ms=%.2f",
+            operation_id or "-",
             body.graph_engine,
             total_triplets,
             len(triplets_by_doc),
@@ -73,7 +74,8 @@ def commit_graph_triplets(
         graph_preview = build_graph_preview(doc_stats, chunk_records, triplets_by_doc)
         neo4j_ms = (time.perf_counter() - graph_write_start) * 1000
         logger_obj.info(
-            "graph:neo4j upsert docs=%s triplets=%s ms=%.2f",
+            "graph:neo4j upsert request_id=%s docs=%s triplets=%s ms=%.2f",
+            operation_id or "-",
             len(triplets_by_doc),
             total_triplets,
             neo4j_ms,

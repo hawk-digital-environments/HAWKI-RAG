@@ -268,7 +268,7 @@ def _service_config(workflow_input: dict[str, Any], service: str, settings: Temp
         status_path = str(external.get("converter_status_path") or settings.converter_status_path)
         token = str(external.get("converter_token") or settings.converter_token)
 
-    return {
+    config = {
         "base_url": base_url,
         "start_path": start_path,
         "status_path": status_path,
@@ -278,6 +278,58 @@ def _service_config(workflow_input: dict[str, Any], service: str, settings: Temp
         "poll_interval_seconds": settings.poll_interval_seconds,
         "poll_timeout_seconds": settings.poll_timeout_seconds,
     }
+
+    if service == "converter":
+        config.update(_custom_converter_profile_config(workflow_input))
+
+    return config
+
+
+def _custom_converter_profile_config(workflow_input: dict[str, Any]) -> dict[str, Any]:
+    profile_path = workflow_input.get("custom_converter_profile_path")
+    if not isinstance(profile_path, str) or not profile_path.strip():
+        if str(workflow_input.get("converter_mode") or "").lower() == "custom":
+            raise RuntimeError("Custom converter mode was requested without a converter profile path.")
+        return {}
+
+    path = Path(profile_path.removeprefix("file://")).expanduser()
+    if not path.is_file():
+        raise RuntimeError(f"Custom converter profile was not found: {path}")
+
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RuntimeError(f"Custom converter profile is unreadable: {path}") from exc
+
+    if not isinstance(payload, dict):
+        raise RuntimeError(f"Custom converter profile must be a JSON object: {path}")
+
+    profile = {
+        "base_url": _profile_string(payload, "converter_url", "base_url", "url"),
+        "start_path": _profile_string(payload, "converter_start_path", "start_path") or "/extract",
+        "status_path": _profile_string(payload, "converter_status_path", "status_path") or "",
+        "token": _profile_string(payload, "converter_token", "token", "api_key") or "",
+    }
+
+    if not profile["base_url"]:
+        raise RuntimeError(f"Custom converter profile is missing converter_url: {path}")
+
+    logger.info(
+        "converter:custom_profile_loaded path=%s start_path=%s has_status_path=%s has_token=%s",
+        path,
+        profile["start_path"],
+        bool(profile["status_path"]),
+        bool(profile["token"]),
+    )
+    return profile
+
+
+def _profile_string(payload: dict[str, Any], *keys: str) -> str:
+    for key in keys:
+        value = payload.get(key)
+        if isinstance(value, (str, int, float)) and str(value).strip():
+            return str(value).strip()
+    return ""
 
 
 def _status(payload: dict[str, Any]) -> str:
@@ -626,6 +678,7 @@ def _post_ingest(
     ingest_options: dict[str, Any],
     docs: list[dict[str, Any]],
 ) -> dict[str, Any]:
+    operation_id = _operation_id(workflow_input, docs[0]["id"], "ingest")
     requires_graph = any(
         isinstance(doc.get("payload"), dict)
         and doc["payload"].get("converter_fallback") == "raganything_passthrough"
@@ -640,9 +693,18 @@ def _post_ingest(
         "chunk_overlap": int(ingest_options.get("chunk_overlap") or 250),
         "batch_size": int(ingest_options.get("batch_size") or 64),
         "graph": bool(ingest_options.get("graph", False)) or requires_graph,
-        "idempotency_key": _operation_id(workflow_input, docs[0]["id"], "ingest"),
+        "idempotency_key": operation_id,
     }
-    return _bridge_request(settings, "POST", "/ingest", json=body)
+    return _bridge_request(
+        settings,
+        "POST",
+        "/ingest",
+        headers={
+            "Idempotency-Key": operation_id,
+            "X-Request-ID": operation_id,
+        },
+        json=body,
+    )
 
 
 def _delete_existing_document(settings: TemporalRagSettings, doc_id: str, operation_id: str) -> None:

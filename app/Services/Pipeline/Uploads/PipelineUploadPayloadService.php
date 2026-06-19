@@ -24,6 +24,7 @@ readonly class PipelineUploadPayloadService
         Dataset $dataset,
         PipelineUploadInput $input,
         PipelineStoredUpload $storedUpload,
+        ?string $customConverterProfilePath = null,
     ): array {
         return [
             'request' => [
@@ -33,6 +34,7 @@ readonly class PipelineUploadPayloadService
                     'label' => $storedUpload->originalName,
                     'source' => 'pipeline-controller',
                     'graph' => $input->graph,
+                    'converter_mode' => $input->converterMode,
                 ],
             ],
             'orchestration' => 'temporal',
@@ -45,6 +47,7 @@ readonly class PipelineUploadPayloadService
                 'local_path' => $storedUpload->localPath,
                 'content_hash' => $storedUpload->contentHash,
             ],
+            'custom_converter' => $this->customConverterMetadata($input, $customConverterProfilePath),
         ];
     }
 
@@ -55,6 +58,7 @@ readonly class PipelineUploadPayloadService
         Dataset $dataset,
         PipelineUploadInput $input,
         PipelineStoredUpload $storedUpload,
+        ?string $customConverterProfilePath = null,
     ): array {
         return [
             'source' => 'pipeline-controller',
@@ -65,7 +69,28 @@ readonly class PipelineUploadPayloadService
             'target_name' => $storedUpload->targetName,
             'extension' => $storedUpload->extension,
             'graph' => $input->graph,
+            'converter_mode' => $input->converterMode,
+            'custom_converter' => $this->customConverterMetadata($input, $customConverterProfilePath),
             'dataset' => $this->metadata->dataset($dataset),
         ];
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    public function customConverterMetadata(
+        PipelineUploadInput $input,
+        ?string $customConverterProfilePath,
+    ): ?array {
+        if (! $input->usesCustomConverter() || $customConverterProfilePath === null) {
+            return null;
+        }
+
+        return array_filter([
+            'enabled' => true,
+            'endpoint' => $input->customConverterUrl,
+            'start_path' => $input->customConverterStartPath,
+            'profile_path' => $customConverterProfilePath,
+        ], static fn (mixed $value): bool => $value !== null && $value !== '');
     }
 }
