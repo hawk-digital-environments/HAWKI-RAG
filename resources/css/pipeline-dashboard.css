@@ -149,6 +149,24 @@ dt {
     color: #ffffff;
 }
 
+.stage-actions {
+    display: inline-flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.stage-log-button.is-active {
+    background: var(--blue-soft);
+    color: var(--blue);
+    border-color: var(--blue);
+}
+
+.stage-download-link[aria-disabled="true"] {
+    pointer-events: none;
+    opacity: 0.56;
+}
+
 .dashboard-grid {
     display: grid;
     grid-template-columns: 340px minmax(0, 1fr);
@@ -398,6 +416,28 @@ dd {
 
 .job-table-wrap {
     overflow-x: auto;
+}
+
+.stage-log-panel {
+    display: grid;
+    gap: 12px;
+}
+
+.stage-log-viewer {
+    min-height: 260px;
+    max-height: 520px;
+    margin: 0;
+    overflow: auto;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: #0f172a;
+    color: #e2e8f0;
+    padding: 14px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.8rem;
+    line-height: 1.55;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
 }
 
 .job-table {

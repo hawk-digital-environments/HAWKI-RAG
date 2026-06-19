@@ -16,7 +16,6 @@ if (root) {
             qdrantCollectionEndpointBase: apiUrl('rag/qdrant/collections'),
             neo4jClearEndpoint: apiUrl('rag/neo4j/clear'),
             navItems: [
-                {key: 'health', label: 'Health', href: pageUrl('/pipeline-health')},
                 {key: 'datasets', label: 'Data Browser', href: pageUrl('/datasets')},
                 {key: 'controller', label: 'Controller', href: pageUrl('/pipeline-controller')},
                 {key: 'graph', label: 'Neo4j Graph', href: pageUrl('/neo4j-graph-explorer')},

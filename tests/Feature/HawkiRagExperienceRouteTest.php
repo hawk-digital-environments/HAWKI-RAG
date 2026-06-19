@@ -8,37 +8,23 @@ use Tests\TestCase;
 
 class HawkiRagExperienceRouteTest extends TestCase
 {
-    public function test_root_opens_the_hawki_rag_experience(): void
+    public function test_root_opens_the_operator_experience(): void
     {
         $this->get('/')
-            ->assertRedirect('/hawki-rag');
+            ->assertRedirect('/admin');
     }
 
-    public function test_hawki_rag_experience_page_mounts_svelte_shell(): void
+    public function test_operator_experience_page_mounts_svelte_shell(): void
     {
         $this->withoutVite();
 
-        $this->get('/hawki-rag')
+        $this->get('/admin')
             ->assertOk()
-            ->assertSee('HAWKI-RAG Experience')
+            ->assertSee('HAWKI-RAG Operator')
             ->assertSee('data-hawki-rag-experience', false)
-            ->assertSee('"key":"chats"', false)
+            ->assertSee('"operatorRoutes"', false)
+            ->assertSee('"key":"operator"', false)
             ->assertSee('"key":"health"', false);
-    }
-
-    public function test_user_world_aliases_point_to_current_surfaces(): void
-    {
-        $this->get('/hawki-rag/chats')
-            ->assertRedirect('/hawki-rag-playground');
-
-        $this->get('/hawki-rag/chats/chat-001')
-            ->assertRedirect('/hawki-rag-playground?chat=chat-001');
-
-        $this->get('/hawki-rag/spaces/default/sources')
-            ->assertRedirect('/datasets?space=default');
-
-        $this->get('/hawki-rag/spaces/default/topics')
-            ->assertNotFound();
     }
 
     public function test_operator_world_aliases_point_to_current_surfaces(): void
@@ -47,8 +33,8 @@ class HawkiRagExperienceRouteTest extends TestCase
 
         $this->get('/admin')
             ->assertOk()
-            ->assertSee('HAWKI-RAG Experience')
-            ->assertSee('"initialWorld":"admin"', false);
+            ->assertSee('HAWKI-RAG Operator')
+            ->assertSee('"activeSection":"operator"', false);
 
         $this->get('/admin/pipeline')
             ->assertRedirect('/pipeline-controller');

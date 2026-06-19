@@ -24,8 +24,10 @@ class PipelineControllerDashboardTest extends TestCase
             ->assertSee('Pipeline Controller')
             ->assertSee('Convert and Ingest File')
             ->assertSee('Scraper Tasks')
-            ->assertSee('pipeline-nav-dashboard', false)
-            ->assertSee('pipeline-nav-menu', false)
+            ->assertSee('pipeline-nav', false)
+            ->assertSee('pipeline-controller-refresh', false)
+            ->assertSee('pipeline-stage-log-viewer', false)
+            ->assertSee('Stage logs')
             ->assertSee('pipeline-file-form', false)
             ->assertSee('pipeline-task-select', false);
 
@@ -192,5 +194,76 @@ class PipelineControllerDashboardTest extends TestCase
         $this->assertDatabaseMissing('pipeline_stage_states', [
             'id' => $stage->id,
         ]);
+    }
+
+    public function test_pipeline_stage_logs_can_be_viewed_and_downloaded(): void
+    {
+        $logPath = storage_path('framework/testing/pipeline-stage-logs/comm_logs.json');
+        File::ensureDirectoryExists(dirname($logPath));
+        File::put($logPath, json_encode([
+            'message' => 'pipeline.stage',
+            'context' => [
+                'event' => 'pipeline.stage',
+                'stage' => 'scrape',
+                'status' => 'success',
+                'job_id' => 'job-stage-logs',
+                'pipeline_stage' => 'execution',
+                'message' => 'Crawler submitted pages.',
+            ],
+            'level_name' => 'INFO',
+            'datetime' => '2026-06-19T12:00:00+00:00',
+        ], JSON_UNESCAPED_SLASHES).PHP_EOL);
+        config()->set('logging.channels.communication.path', $logPath);
+
+        $task = PipelineTask::query()->create([
+            'task_id' => 'task-stage-logs',
+            'dataset_id' => 'logs-dataset',
+            'status' => PipelineTask::STATUS_RUNNING,
+            'started_at' => now(),
+            'counters' => ['jobs_total' => 1],
+            'metadata' => ['request' => ['mode' => 'scrape_convert_ingest']],
+        ]);
+        $job = PipelineJob::query()->create([
+            'job_id' => 'job-stage-logs',
+            'task_id' => $task->task_id,
+            'job_type' => PipelineJob::TYPE_SCRAPE,
+            'status' => PipelineJob::STATUS_COMPLETED,
+            'source_url' => 'https://example.test/logs',
+            'local_path' => '/app/shared/logs-dataset',
+            'metadata' => ['events' => []],
+        ]);
+        PipelineStageState::query()->create([
+            'pipeline_job_id' => $job->id,
+            'job_id' => $job->job_id,
+            'stage' => 'scrape',
+            'status' => PipelineJob::STATUS_COMPLETED,
+            'counts' => ['pages' => 3],
+            'metadata' => ['worker' => 'scraper'],
+            'warnings' => [],
+            'errors' => [],
+        ]);
+
+        $response = $this->getJson('/pipeline/tasks/task-stage-logs/stages/scraper/logs')
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('log.filename', 'scraper_log_logs-dataset.txt')
+            ->assertJsonPath('log.stage', 'scrape')
+            ->assertJsonPath('log.label', 'Scraper');
+
+        $text = (string) $response->json('log.text');
+        $this->assertStringContainsString('HAWKI-RAG Scraper stage log', $text);
+        $this->assertStringContainsString('Job: job-stage-logs', $text);
+        $this->assertStringContainsString('Crawler submitted pages.', $text);
+
+        $download = $this->get('/pipeline/tasks/task-stage-logs/stages/scraper/logs/download')
+            ->assertOk();
+
+        $this->assertStringContainsString(
+            'filename="scraper_log_logs-dataset.txt"',
+            (string) $download->headers->get('content-disposition')
+        );
+        $this->assertStringContainsString('HAWKI-RAG Scraper stage log', $download->getContent());
+
+        File::deleteDirectory(dirname($logPath));
     }
 }

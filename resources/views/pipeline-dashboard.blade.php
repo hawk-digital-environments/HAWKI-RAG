@@ -70,6 +70,10 @@
                             <h2>Scrape jobs</h2>
                             <p id="pipeline-dashboard-scrape-count">0 jobs</p>
                         </div>
+                        <div class="stage-actions">
+                            <button type="button" class="secondary-button stage-log-button" data-stage-log="scraper">Logs</button>
+                            <a class="secondary-button stage-download-link" data-stage-download="scraper" href="#" aria-disabled="true">Download</a>
+                        </div>
                     </div>
                     <div class="job-table-wrap" id="pipeline-dashboard-scrape-jobs"></div>
                 </section>
@@ -79,6 +83,10 @@
                         <div>
                             <h2>Convert jobs</h2>
                             <p id="pipeline-dashboard-convert-count">0 jobs</p>
+                        </div>
+                        <div class="stage-actions">
+                            <button type="button" class="secondary-button stage-log-button" data-stage-log="converter">Logs</button>
+                            <a class="secondary-button stage-download-link" data-stage-download="converter" href="#" aria-disabled="true">Download</a>
                         </div>
                     </div>
                     <div class="job-table-wrap" id="pipeline-dashboard-convert-jobs"></div>
@@ -90,8 +98,22 @@
                             <h2>Ingest jobs</h2>
                             <p id="pipeline-dashboard-ingest-count">0 jobs</p>
                         </div>
+                        <div class="stage-actions">
+                            <button type="button" class="secondary-button stage-log-button" data-stage-log="ingest">Logs</button>
+                            <a class="secondary-button stage-download-link" data-stage-download="ingest" href="#" aria-disabled="true">Download</a>
+                        </div>
                     </div>
                     <div class="job-table-wrap" id="pipeline-dashboard-ingest-jobs"></div>
+                </section>
+
+                <section class="panel stage-log-panel">
+                    <div class="section-head">
+                        <div>
+                            <h2>Stage logs</h2>
+                            <p id="pipeline-dashboard-stage-log-status">Choose a stage log to inspect.</p>
+                        </div>
+                    </div>
+                    <pre class="stage-log-viewer" id="pipeline-dashboard-stage-logs">No stage log selected.</pre>
                 </section>
 
                 <section class="panel">

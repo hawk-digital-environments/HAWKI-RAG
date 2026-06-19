@@ -87,6 +87,15 @@
             </div>
             <div id="pipeline-task-run" class="pipeline-task-run" hidden></div>
             <div id="pipeline-stages" class="pipeline-stages pipeline-stages-expanded"></div>
+            <section class="pipeline-stage-log-panel" aria-labelledby="pipeline-stage-log-title">
+                <div class="pipeline-stage-log-head">
+                    <div>
+                        <h4 id="pipeline-stage-log-title">Stage logs</h4>
+                        <p id="pipeline-stage-log-status">Select Scrape, Convert, or Ingest logs from a stage card.</p>
+                    </div>
+                </div>
+                <pre id="pipeline-stage-log-viewer" class="pipeline-stage-log-viewer">No stage log selected.</pre>
+            </section>
         </main>
     </div>
 </section>

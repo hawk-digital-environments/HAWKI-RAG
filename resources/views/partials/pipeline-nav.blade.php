@@ -2,7 +2,6 @@
     $active = $active ?? '';
     $refreshId = $refreshId ?? 'pipeline-refresh';
     $navItems = [
-        ['key' => 'health', 'label' => 'Health', 'href' => '/pipeline-health'],
         ['key' => 'datasets', 'label' => 'Data Browser', 'href' => '/datasets'],
         ['key' => 'controller', 'label' => 'Controller', 'href' => '/pipeline-controller'],
         ['key' => 'graph', 'label' => 'Neo4j Graph', 'href' => '/neo4j-graph-explorer'],

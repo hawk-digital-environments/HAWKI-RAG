@@ -7,6 +7,7 @@ use App\Models\Document;
 use App\Models\PipelineJob;
 use App\Models\PipelineTask;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
@@ -172,6 +173,70 @@ class DatasetManagementTest extends TestCase
             ->assertJsonPath('dataset.graphStats.qdrant.points', 0)
             ->assertJsonPath('dataset.graphStats.qdrant.status', 'not_created')
             ->assertJsonPath('dataset.graphStats.qdrant.message', 'Collection not created yet');
+    }
+
+    public function test_deleting_dataset_removes_neo4j_nodes_by_single_doc_id_and_attached_relationships(): void
+    {
+        config()->set('config.qdrant_http_url', 'http://qdrant.test');
+        config()->set('config.neo4j_http_url', 'http://neo4j.test');
+        config()->set('config.neo4j_user', 'neo4j');
+        config()->set('config.neo4j_password', 'secret');
+
+        Http::fake([
+            'http://qdrant.test/collections/hawki_delete_dataset' => Http::response([], 200),
+            'http://neo4j.test/*' => Http::response([
+                'results' => [
+                    ['data' => [['row' => [2]]]],
+                    ['data' => [['row' => [3, 4]]]],
+                    ['data' => [['row' => [1]]]],
+                ],
+                'errors' => [],
+            ], 200),
+        ]);
+
+        Dataset::query()->create([
+            'dataset_id' => 'delete-dataset',
+            'name' => 'Delete Dataset',
+            'status' => Dataset::STATUS_ACTIVE,
+            'qdrant_collection' => 'hawki_delete_dataset',
+            'neo4j_namespace' => 'hawki_delete_dataset',
+        ]);
+
+        Document::query()->create([
+            'external_id' => 'ingest-delete-dataset',
+            'dataset_id' => 'delete-dataset',
+            'collection' => 'hawki_delete_dataset',
+            'source_type' => Document::SOURCE_UPLOAD,
+            'source_url' => 'file:///delete-dataset.pdf',
+            'storage_path' => '/app/shared/delete-dataset/content.md',
+            'checksum_sha256' => hash('sha256', 'delete-dataset-doc'),
+            'status' => Document::STATUS_COMPLETED,
+        ]);
+
+        $this->actingAsApiUser();
+
+        $this->deleteJson('/api/datasets/delete-dataset/storage')
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('cleanup.neo4j.documentJobIds', 1)
+            ->assertJsonPath('cleanup.neo4j.nodes', 4)
+            ->assertJsonPath('cleanup.neo4j.relationships', 6);
+
+        $this->assertDatabaseMissing('datasets', ['dataset_id' => 'delete-dataset']);
+
+        Http::assertSent(function (Request $request): bool {
+            if (! str_starts_with($request->url(), 'http://neo4j.test/')) {
+                return false;
+            }
+
+            $statements = $request['statements'];
+            $nodeCleanup = (string) ($statements[1]['statement'] ?? '');
+
+            return ($statements[1]['parameters']['document_job_ids'] ?? []) === ['ingest-delete-dataset']
+                && str_contains($nodeCleanup, 'OR n.doc_id IN $document_job_ids')
+                && str_contains($nodeCleanup, 'OPTIONAL MATCH (node)-[attached]-()')
+                && str_contains($nodeCleanup, 'FOREACH (node IN nodes | DELETE node)');
+        });
     }
 
     private function fakeGraphStats(int $points, int $nodes, int $relationships): void

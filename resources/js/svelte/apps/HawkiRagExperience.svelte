@@ -1,10 +1,9 @@
 <!--
-  @component Product-level HAWKI-RAG Svelte shell that separates user discovery routes from operator/admin routes.
+  @component Product-level HAWKI-RAG Svelte shell for operator route tabs.
 -->
 <script lang="ts">
     import type {HTMLAttributes} from 'svelte/elements';
 
-    type ExperienceWorld = 'user' | 'admin';
     type RouteState = 'ready' | 'live' | 'planned';
 
     interface ExperienceRoute {
@@ -30,14 +29,10 @@
     }
 
     interface Props extends HTMLAttributes<HTMLDivElement> {
-        /** Which product world is selected when the page first renders. */
-        initialWorld?: ExperienceWorld;
         /** Route key highlighted when the page first renders. */
         activeSection?: string;
-        /** Browser-facing student/teacher routes. */
-        userRoutes: ExperienceRoute[];
-        /** Browser-facing operator/admin routes. */
-        adminRoutes: ExperienceRoute[];
+        /** Browser-facing operator routes. */
+        operatorRoutes: ExperienceRoute[];
         /** Core service boundary shown below the route map. */
         coreServices: CoreService[];
     }
@@ -53,25 +48,27 @@
     ];
 
     const {
-        initialWorld = 'user',
-        activeSection = 'overview',
-        userRoutes,
-        adminRoutes,
+        activeSection = 'operator',
+        operatorRoutes,
         coreServices,
         class: className = '',
         ...restProps
     }: Props = $props();
 
-    let selectedWorld = $state<ExperienceWorld>(initialWorldValue());
-    let selectedKey = $state(initialSectionValue());
+    let selectedKey = $state('');
 
-    const selectedRoutes = $derived(selectedWorld === 'admin' ? adminRoutes : userRoutes);
+    $effect(() => {
+        if (selectedKey === '') {
+            selectedKey = activeSection;
+        }
+    });
+
     const selectedRoute = $derived(
-        selectedRoutes.find((route) => route.key === selectedKey) ?? selectedRoutes[0] ?? null,
+        operatorRoutes.find((route) => route.key === selectedKey) ?? operatorRoutes[0] ?? null,
     );
-    const readyCount = $derived(selectedRoutes.filter((route) => route.state !== 'planned').length);
+    const readyCount = $derived(operatorRoutes.filter((route) => route.state !== 'planned').length);
     const routePath = $derived(
-        selectedRoutes
+        operatorRoutes
             .map((route, index) => {
                 const point = pointFor(index);
 
@@ -82,19 +79,6 @@
 
     function pointFor(index: number): NodePoint {
         return NODE_POINTS[index % NODE_POINTS.length];
-    }
-
-    function initialWorldValue(): ExperienceWorld {
-        return initialWorld === 'admin' ? 'admin' : 'user';
-    }
-
-    function initialSectionValue(): string {
-        return activeSection;
-    }
-
-    function selectWorld(world: ExperienceWorld): void {
-        selectedWorld = world;
-        selectedKey = world === 'admin' ? 'admin' : 'overview';
     }
 
     function selectRoute(route: ExperienceRoute): void {
@@ -114,25 +98,6 @@
             <p>Search. Retrieve. Explore.</p>
             <h1>HAWKI-RAG</h1>
         </div>
-
-        <nav class="world-switch" aria-label="HAWKI-RAG world selector">
-            <button
-                type="button"
-                class:world-switch__item--active={selectedWorld === 'user'}
-                aria-pressed={selectedWorld === 'user'}
-                onclick={() => selectWorld('user')}
-            >
-                User World
-            </button>
-            <button
-                type="button"
-                class:world-switch__item--active={selectedWorld === 'admin'}
-                aria-pressed={selectedWorld === 'admin'}
-                onclick={() => selectWorld('admin')}
-            >
-                Operator World
-            </button>
-        </nav>
     </header>
 
     <main class="experience-layout">
@@ -143,7 +108,7 @@
                 <path d={routePath} />
             </svg>
 
-            {#each selectedRoutes as route, index (route.key)}
+            {#each operatorRoutes as route, index (route.key)}
                 {@const point = pointFor(index)}
                 <button
                     type="button"
@@ -169,17 +134,17 @@
             {/if}
         </section>
 
-        <section class="route-rail" aria-label={selectedWorld === 'user' ? 'User routes' : 'Operator routes'}>
+        <section class="route-rail" aria-label="Operator routes">
             <div class="route-rail__head">
                 <div>
-                    <p>{selectedWorld === 'user' ? 'Student / Teacher' : 'Admin / Developer'}</p>
-                    <h2>{selectedWorld === 'user' ? 'User World' : 'Operator World'}</h2>
+                    <p>Admin / Developer</p>
+                    <h2>Operator World</h2>
                 </div>
-                <span>{readyCount}/{selectedRoutes.length}</span>
+                <span>{readyCount}/{operatorRoutes.length}</span>
             </div>
 
             <div class="route-list">
-                {#each selectedRoutes as route (route.key)}
+                {#each operatorRoutes as route (route.key)}
                     <a
                         class="route-item"
                         class:route-item--active={selectedRoute?.key === route.key}
@@ -243,7 +208,7 @@
     }
 
     .experience-header {
-        grid-template-columns: minmax(0, 1fr) auto;
+        grid-template-columns: minmax(0, 1fr);
         align-items: end;
         margin: 0 auto 18px;
         max-width: 1480px;
@@ -267,34 +232,6 @@
         font-size: clamp(2.25rem, 5vw, 4.8rem);
         line-height: 0.98;
         letter-spacing: 0;
-    }
-
-    .world-switch {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(120px, 1fr));
-        gap: 8px;
-        border: 1px solid var(--experience-border);
-        border-radius: 8px;
-        padding: 8px;
-        background: rgba(8, 18, 32, 0.66);
-    }
-
-    .world-switch button {
-        min-height: 42px;
-        border: 1px solid transparent;
-        border-radius: 7px;
-        background: transparent;
-        color: var(--experience-muted);
-        cursor: pointer;
-        font: inherit;
-        font-size: 0.9rem;
-        font-weight: 820;
-    }
-
-    .world-switch__item--active {
-        border-color: var(--experience-border-strong) !important;
-        background: rgba(34, 211, 238, 0.14) !important;
-        color: var(--experience-text) !important;
     }
 
     .experience-layout {
@@ -627,10 +564,6 @@
         }
 
         .experience-header {
-            grid-template-columns: 1fr;
-        }
-
-        .world-switch {
             grid-template-columns: 1fr;
         }
 

@@ -24,7 +24,7 @@ First island: `apps/SystemTroubleshooter.svelte`, mounted from
 
 Current product islands:
 
-- `apps/HawkiRagExperience.svelte`: `/hawki-rag` and `/admin` product route map.
+- `apps/HawkiRagExperience.svelte`: `/admin` operator route map.
 - `apps/HawkiRagPlayground.svelte`: `/hawki-rag-playground` retrieval console.
 - `apps/SystemTroubleshooter.svelte`: global Health/Repair troubleshoot button.
 - `apps/GraphExplorerPage.svelte`: Neo4j graph explorer page shell.

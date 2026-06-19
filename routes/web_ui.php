@@ -68,69 +68,12 @@ use Illuminate\Support\Facades\Route;
 |--------------------------------------------------------------------------
 | Root Routes, die selbst kein eigenes Dashboard besitzen.
 */
-$hawkiRagExperienceConfig = static function (string $world = 'user', string $section = 'overview'): array {
+$hawkiRagExperienceConfig = static function (string $section = 'operator'): array {
     return [
-        'initialWorld' => $world,
         'activeSection' => $section,
-        'userRoutes' => [
+        'operatorRoutes' => [
             [
-                'key' => 'overview',
-                'label' => 'Home',
-                'title' => 'HAWKI-RAG',
-                'href' => '/hawki-rag',
-                'summary' => 'Retrieval world, trusted citations, source discovery.',
-                'service' => 'Experience shell',
-                'state' => 'ready',
-            ],
-            [
-                'key' => 'chats',
-                'label' => 'Chat',
-                'title' => 'Chat with HAWKI-RAG',
-                'href' => '/hawki-rag/chats',
-                'summary' => 'Qdrant and graph-backed answers.',
-                'service' => 'Retrieval',
-                'state' => 'live',
-            ],
-            [
-                'key' => 'spaces',
-                'label' => 'Spaces',
-                'title' => 'Group Spaces',
-                'href' => '/hawki-rag/spaces',
-                'summary' => 'Shared document pools for classes and teams.',
-                'service' => 'Retrieval',
-                'state' => 'planned',
-            ],
-            [
-                'key' => 'sources',
-                'label' => 'Sources',
-                'title' => 'Explore Sources',
-                'href' => '/hawki-rag/spaces/default/sources',
-                'summary' => 'Datasets, documents, and trusted source metadata.',
-                'service' => 'Dataset browser',
-                'state' => 'ready',
-            ],
-            [
-                'key' => 'favorites',
-                'label' => 'Favorites',
-                'title' => 'Favorites',
-                'href' => '/hawki-rag/spaces/default/favorites',
-                'summary' => 'Saved documents, data pools, and citations.',
-                'service' => 'Study workflow',
-                'state' => 'planned',
-            ],
-            [
-                'key' => 'study',
-                'label' => 'Study',
-                'title' => 'Study Mode',
-                'href' => '/hawki-rag/spaces/default/study',
-                'summary' => 'Guided exploration for students and teachers.',
-                'service' => 'Study workflow',
-                'state' => 'planned',
-            ],
-        ],
-        'adminRoutes' => [
-            [
-                'key' => 'admin',
+                'key' => 'operator',
                 'label' => 'Admin',
                 'title' => 'Operator Dashboard',
                 'href' => '/admin',
@@ -220,50 +163,19 @@ $hawkiRagExperienceConfig = static function (string $world = 'user', string $sec
 };
 
 Route::middleware('throttle:hawki-ui')->group(function () use ($hawkiRagExperienceConfig): void {
-Route::redirect('/', '/hawki-rag');
+Route::redirect('/', '/admin');
 Route::get('/swagger', fn () => redirect('/swagger/index.html'));
 
 /*
 |--------------------------------------------------------------------------
-| UI Page: HAWKI-RAG Experience (/hawki-rag and /admin)
+| UI Page: HAWKI-RAG Operator Experience (/admin)
 |--------------------------------------------------------------------------
-| Svelte Experience Hub fuer User World und Operator World. Diese Route ist
-| die neue Produkt-Tuer, waehrend bestehende Dashboards weiter stabil bleiben.
+| Svelte Experience Hub fuer Operator Tabs. Bestehende Dashboards bleiben
+| stabile Zielseiten fuer die einzelnen Operator-Flows.
 */
-Route::get('/hawki-rag', fn () => view('hawki-rag', [
-    'experience' => $hawkiRagExperienceConfig('user', 'overview'),
-]));
 Route::get('/admin', fn () => view('hawki-rag', [
-    'experience' => $hawkiRagExperienceConfig('admin', 'admin'),
+    'experience' => $hawkiRagExperienceConfig('operator'),
 ]));
-
-/*
-|--------------------------------------------------------------------------
-| User World Aliases
-|--------------------------------------------------------------------------
-| Moderne Browser-Routen fuer Chat, Spaces, Sources, Topics, Favorites und
-| Study. Fertige Bereiche leiten auf stabile bestehende Seiten, geplante
-| Bereiche bleiben sichtbar im Svelte Experience Hub.
-*/
-Route::get('/hawki-rag/chats', fn () => redirect('/hawki-rag-playground'));
-Route::get('/hawki-rag/chats/{chatId}', function (string $chatId) {
-    return redirect('/hawki-rag-playground?chat='.rawurlencode($chatId));
-})->where('chatId', '[A-Za-z0-9._:-]+');
-Route::get('/hawki-rag/spaces', fn () => view('hawki-rag', [
-    'experience' => $hawkiRagExperienceConfig('user', 'spaces'),
-]));
-Route::get('/hawki-rag/spaces/{spaceId}', fn (string $spaceId) => view('hawki-rag', [
-    'experience' => $hawkiRagExperienceConfig('user', 'spaces'),
-]))->where('spaceId', '[A-Za-z0-9._:-]+');
-Route::get('/hawki-rag/spaces/{spaceId}/sources', function (string $spaceId) {
-    return redirect('/datasets?space='.rawurlencode($spaceId));
-})->where('spaceId', '[A-Za-z0-9._:-]+');
-Route::get('/hawki-rag/spaces/{spaceId}/favorites', fn (string $spaceId) => view('hawki-rag', [
-    'experience' => $hawkiRagExperienceConfig('user', 'favorites'),
-]))->where('spaceId', '[A-Za-z0-9._:-]+');
-Route::get('/hawki-rag/spaces/{spaceId}/study', fn (string $spaceId) => view('hawki-rag', [
-    'experience' => $hawkiRagExperienceConfig('user', 'study'),
-]))->where('spaceId', '[A-Za-z0-9._:-]+');
 
 /*
 |--------------------------------------------------------------------------
@@ -276,7 +188,7 @@ Route::get('/admin/pipeline', fn () => redirect('/pipeline-controller'));
 Route::get('/admin/datasets', fn () => redirect('/datasets'));
 Route::get('/admin/graph', fn () => redirect('/neo4j-graph-explorer'));
 Route::get('/admin/analytics', fn () => view('hawki-rag', [
-    'experience' => $hawkiRagExperienceConfig('admin', 'analytics'),
+    'experience' => $hawkiRagExperienceConfig('analytics'),
 ]));
 Route::get('/admin/health-repair', fn () => redirect('/pipeline-health'));
 
@@ -341,6 +253,8 @@ Route::get('/pipeline/tasks/{taskId}', [PipelineTaskController::class, 'show']);
 Route::get('/pipeline/tasks/{taskId}/jobs', [PipelineTaskController::class, 'jobs']);
 Route::get('/pipeline/tasks/{taskId}/failed-jobs', [PipelineTaskController::class, 'failedJobs']);
 Route::get('/pipeline/tasks/{taskId}/events', [PipelineTaskController::class, 'events']);
+Route::get('/pipeline/tasks/{taskId}/stages/{stage}/logs', [PipelineTaskController::class, 'stageLogs']);
+Route::get('/pipeline/tasks/{taskId}/stages/{stage}/logs/download', [PipelineTaskController::class, 'downloadStageLogs']);
 Route::post('/pipeline/tasks/{taskId}/jobs', [PipelineTaskController::class, 'upsertJob']);
 Route::post('/pipeline/tasks/{taskId}/retry', [PipelineTaskController::class, 'retry'])->middleware('throttle:hawki-destructive');
 Route::post('/pipeline/tasks/{taskId}/retry-failed-jobs', [PipelineTaskController::class, 'retryFailedJobs'])->middleware('throttle:hawki-destructive');

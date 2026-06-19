@@ -23,20 +23,27 @@ if (root) {
         convertCount: document.getElementById('pipeline-dashboard-convert-count'),
         ingestCount: document.getElementById('pipeline-dashboard-ingest-count'),
         failedCount: document.getElementById('pipeline-dashboard-failed-count'),
+        stageLogs: document.getElementById('pipeline-dashboard-stage-logs'),
+        stageLogStatus: document.getElementById('pipeline-dashboard-stage-log-status'),
         events: document.getElementById('pipeline-dashboard-events'),
         eventsCount: document.getElementById('pipeline-dashboard-events-count'),
         eventTypeFilter: document.getElementById('pipeline-dashboard-event-type-filter'),
         jobFilter: document.getElementById('pipeline-dashboard-job-filter'),
+        stageLogButtons: Array.from(root.querySelectorAll('[data-stage-log]')),
+        stageDownloadLinks: Array.from(root.querySelectorAll('[data-stage-download]')),
     };
 
     const state = {
         selectedTaskId: query.get('task_id') || query.get('taskId') || localStorage.getItem('hawkiPipelineDashboardTaskId') || '',
+        selectedDatasetId: '',
+        activeStageLog: normalizeStageLog(query.get('stage_log') || query.get('stageLog') || localStorage.getItem('hawkiPipelineDashboardStageLog') || ''),
         tasks: [],
         failedJobs: [],
         eventTypeFilter: '',
         jobFilter: '',
         pollTimer: null,
         requestId: 0,
+        logRequestId: 0,
     };
 
     const pipelineEventTypes = [
@@ -58,6 +65,23 @@ if (root) {
         ['failed', 'Failed'],
         ['jobs_total', 'Total jobs'],
     ];
+
+    const stageLogLabels = {
+        scraper: 'Scraper',
+        converter: 'Converter',
+        ingest: 'Ingest',
+    };
+
+    function normalizeStageLog(stage) {
+        return {
+            scrape: 'scraper',
+            scraper: 'scraper',
+            convert: 'converter',
+            converter: 'converter',
+            ingest: 'ingest',
+            ingestion: 'ingest',
+        }[String(stage || '').trim().toLowerCase()] || '';
+    }
 
     function csrfToken() {
         return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
@@ -146,6 +170,14 @@ if (root) {
             || 'Pipeline task';
     }
 
+    function syncUrl() {
+        const next = new URL(window.location.href);
+        next.search = '';
+        if (state.selectedTaskId) next.searchParams.set('task_id', state.selectedTaskId);
+        if (state.activeStageLog) next.searchParams.set('stage_log', state.activeStageLog);
+        window.history.replaceState({}, '', next.toString());
+    }
+
     function renderTasks(tasks) {
         if (!els.taskList) return;
         els.taskList.innerHTML = '';
@@ -195,6 +227,7 @@ if (root) {
         const convertJobs = jobs.filter((job) => job.jobType === 'convert');
         const ingestJobs = jobs.filter((job) => job.jobType === 'ingest');
 
+        state.selectedDatasetId = task.datasetId || '';
         els.taskStatus.className = `status-pill ${statusClass(task.status)}`;
         renderStatusIndicator(els.taskStatus, task.status);
         setText(els.updated, task.updatedAt ? `Updated ${formatDate(task.updatedAt)}` : 'Updated from database');
@@ -207,6 +240,8 @@ if (root) {
         renderJobTable(els.failedJobs, els.failedCount, failedJobs);
         renderTimelineFilters(jobs, events, eventFilters);
         renderEvents(events);
+        updateStageLogActions();
+        refreshActiveStageLogs({ quiet: true });
 
         els.retry.disabled = failedJobs.length === 0 || !state.selectedTaskId;
         setStatus(`Showing task ${task.taskId}.`, task.status === 'failed' ? 'error' : 'neutral');
@@ -425,6 +460,81 @@ if (root) {
         container.appendChild(empty);
     }
 
+    function stageLogPath(stage, download = false) {
+        const suffix = download ? '/download' : '';
+
+        return `pipeline/tasks/${encodeURIComponent(state.selectedTaskId)}/stages/${encodeURIComponent(stage)}/logs${suffix}`;
+    }
+
+    function stageLogFilename(stage) {
+        const datasetId = String(state.selectedDatasetId || state.selectedTaskId || 'dataset')
+            .replace(/[^A-Za-z0-9._-]+/g, '_')
+            .replace(/^[._-]+|[._-]+$/g, '') || 'dataset';
+
+        return `${stage}_log_${datasetId}.txt`;
+    }
+
+    function updateStageLogActions() {
+        els.stageLogButtons.forEach((button) => {
+            const stage = button.dataset.stageLog || '';
+            button.disabled = !state.selectedTaskId;
+            button.classList.toggle('is-active', stage === state.activeStageLog);
+            button.setAttribute('aria-pressed', stage === state.activeStageLog ? 'true' : 'false');
+        });
+
+        els.stageDownloadLinks.forEach((link) => {
+            const stage = link.dataset.stageDownload || '';
+            if (!state.selectedTaskId || !stage) {
+                link.href = '#';
+                link.removeAttribute('download');
+                link.setAttribute('aria-disabled', 'true');
+                return;
+            }
+
+            link.href = apiUrl(stageLogPath(stage, true));
+            link.download = stageLogFilename(stage);
+            link.setAttribute('aria-disabled', 'false');
+        });
+    }
+
+    async function loadStageLogs(stage, { quiet = false } = {}) {
+        stage = normalizeStageLog(stage);
+        if (!state.selectedTaskId || !stage) return;
+
+        const requestId = ++state.logRequestId;
+        state.activeStageLog = stage;
+        localStorage.setItem('hawkiPipelineDashboardStageLog', stage);
+        updateStageLogActions();
+        syncUrl();
+
+        if (!quiet) {
+            setText(els.stageLogStatus, `Loading ${stageLogLabels[stage] || stage} logs...`);
+            setText(els.stageLogs, 'Loading logs...');
+        }
+
+        const data = await requestJson(stageLogPath(stage));
+        if (requestId !== state.logRequestId) return;
+
+        const log = data.log || {};
+        setText(els.stageLogStatus, `${log.label || stageLogLabels[stage] || stage} logs | ${log.filename || stageLogFilename(stage)} | ${log.lineCount ?? 0} lines`);
+        setText(els.stageLogs, log.text || 'No log lines found for this stage yet.');
+        updateStageLogActions();
+    }
+
+    function refreshActiveStageLogs({ quiet = true } = {}) {
+        if (!state.activeStageLog || !state.selectedTaskId) {
+            updateStageLogActions();
+            return;
+        }
+
+        loadStageLogs(state.activeStageLog, { quiet }).catch((error) => {
+            if (!quiet) {
+                setText(els.stageLogStatus, error.message || 'Could not load stage logs.');
+                setText(els.stageLogs, '');
+            }
+        });
+    }
+
     async function loadTasks({ keepSelection = true } = {}) {
         const requestId = ++state.requestId;
         const data = await requestJson('pipeline/tasks?limit=50');
@@ -449,6 +559,7 @@ if (root) {
         if (!taskId) return;
         state.selectedTaskId = taskId;
         localStorage.setItem('hawkiPipelineDashboardTaskId', taskId);
+        syncUrl();
         setStatus(`Loading task ${taskId}...`);
 
         const [taskData, failedData, eventsData] = await Promise.all([
@@ -480,9 +591,12 @@ if (root) {
 
     function clearTaskDetail() {
         setStatus('No pipeline tasks found.');
+        state.selectedDatasetId = '';
         els.taskStatus.className = 'status-pill is-idle';
         renderStatusIndicator(els.taskStatus, 'idle');
         setText(els.updated, 'No task loaded.');
+        setText(els.stageLogStatus, 'Choose a stage log to inspect.');
+        setText(els.stageLogs, 'No stage log selected.');
         [
             [els.taskInfo, 'Select a task to view its details.'],
             [els.counters, 'Select a task to view progress totals.'],
@@ -501,6 +615,7 @@ if (root) {
             .forEach((el) => setText(el, '0'));
         renderSelectOptions(els.eventTypeFilter, 'All event types', pipelineEventTypes, state.eventTypeFilter);
         renderSelectOptions(els.jobFilter, 'All jobs', [], state.jobFilter);
+        updateStageLogActions();
         els.retry.disabled = true;
     }
 
@@ -546,6 +661,15 @@ if (root) {
     });
 
     els.retry?.addEventListener('click', retryFailedJobs);
+    els.stageLogButtons.forEach((button) => {
+        button.addEventListener('click', () => {
+            const stage = button.dataset.stageLog || '';
+            loadStageLogs(stage).catch((error) => {
+                setText(els.stageLogStatus, error.message || 'Could not load stage logs.');
+                setText(els.stageLogs, '');
+            });
+        });
+    });
     els.eventTypeFilter?.addEventListener('change', () => {
         state.eventTypeFilter = els.eventTypeFilter.value;
         if (state.selectedTaskId) {

@@ -17,9 +17,14 @@ const taskDetailEl = document.getElementById('pipeline-task-detail');
 const taskRunEl = document.getElementById('pipeline-task-run');
 const runListEl = document.getElementById('pipeline-run-list');
 const runRefreshButton = document.getElementById('pipeline-run-refresh-btn');
+const stageLogStatusEl = document.getElementById('pipeline-stage-log-status');
+const stageLogViewerEl = document.getElementById('pipeline-stage-log-viewer');
 
 let activeJobId = '';
 let activePipelineTaskId = '';
+let activePipelineDatasetId = '';
+let activeStageLog = normalizeStageLog(localStorage.getItem('hawkiPipelineControllerStageLog') || '');
+let stageLogRequestId = 0;
 let selectedCatalogTaskId = localStorage.getItem('hawkiSelectedScraperTaskId')
     || localStorage.getItem('hawkiPipelineTaskId')
     || '';
@@ -71,6 +76,7 @@ function setTaskNote(message, tone = 'info') {
 function setActiveJob(jobId) {
     activeJobId = jobId || '';
     activePipelineTaskId = '';
+    activePipelineDatasetId = '';
 
     if (jobIdEl) {
         jobIdEl.textContent = activeJobId ? `Job ID: ${activeJobId}` : 'Job ID: none';
@@ -86,6 +92,119 @@ function setActivePipelineTask(taskId) {
     }
 
     renderPipelineTaskRuns(pipelineTaskRuns);
+    updateStageLogActions();
+}
+
+function normalizeStageLog(stage) {
+    return {
+        scrape: 'scraper',
+        scraper: 'scraper',
+        convert: 'converter',
+        converter: 'converter',
+        ingest: 'ingest',
+        ingestion: 'ingest',
+    }[String(stage || '').trim().toLowerCase()] || '';
+}
+
+function stageLogLabel(stage) {
+    return {
+        scraper: 'Scraper',
+        converter: 'Converter',
+        ingest: 'Ingest',
+    }[normalizeStageLog(stage)] || 'Stage';
+}
+
+function stageLogPath(stage, download = false) {
+    const suffix = download ? '/download' : '';
+
+    return `pipeline/tasks/${encodeURIComponent(activePipelineTaskId)}/stages/${encodeURIComponent(normalizeStageLog(stage))}/logs${suffix}`;
+}
+
+function stageLogFilename(stage) {
+    const datasetId = String(activePipelineDatasetId || activePipelineTaskId || 'dataset')
+        .replace(/[^A-Za-z0-9._-]+/g, '_')
+        .replace(/^[._-]+|[._-]+$/g, '') || 'dataset';
+
+    return `${normalizeStageLog(stage)}_log_${datasetId}.txt`;
+}
+
+function updateStageLogActions() {
+    document.querySelectorAll('[data-controller-stage-log]').forEach((button) => {
+        const stage = normalizeStageLog(button.dataset.controllerStageLog || '');
+        button.disabled = !activePipelineTaskId;
+        button.classList.toggle('is-active', stage === activeStageLog);
+        button.setAttribute('aria-pressed', stage === activeStageLog ? 'true' : 'false');
+    });
+
+    document.querySelectorAll('[data-controller-stage-download]').forEach((link) => {
+        const stage = normalizeStageLog(link.dataset.controllerStageDownload || '');
+        if (!activePipelineTaskId || !stage) {
+            link.href = '#';
+            link.removeAttribute('download');
+            link.setAttribute('aria-disabled', 'true');
+            return;
+        }
+
+        link.href = apiUrl(stageLogPath(stage, true));
+        link.download = stageLogFilename(stage);
+        link.setAttribute('aria-disabled', 'false');
+    });
+}
+
+async function loadStageLogs(stage, { quiet = false } = {}) {
+    stage = normalizeStageLog(stage);
+    if (!activePipelineTaskId || !stage) {
+        if (!activePipelineTaskId) {
+            if (stageLogStatusEl) stageLogStatusEl.textContent = 'Select a pipeline task to view stage logs.';
+            if (stageLogViewerEl) stageLogViewerEl.textContent = 'No pipeline task selected.';
+        }
+        return;
+    }
+
+    const requestId = ++stageLogRequestId;
+    activeStageLog = stage;
+    localStorage.setItem('hawkiPipelineControllerStageLog', stage);
+    updateStageLogActions();
+
+    if (!quiet) {
+        if (stageLogStatusEl) stageLogStatusEl.textContent = `Loading ${stageLogLabel(stage)} logs...`;
+        if (stageLogViewerEl) stageLogViewerEl.textContent = 'Loading logs...';
+    }
+
+    const response = await fetch(apiUrl(stageLogPath(stage)), {
+        headers: {
+            'Accept': 'application/json',
+            'X-CSRF-TOKEN': csrfToken(),
+        },
+    });
+    const data = await parseResponseJson(response);
+    if (!response.ok || !data.success) {
+        throw new Error(data.message || `Stage logs failed (${response.status})`);
+    }
+    if (requestId !== stageLogRequestId) return;
+
+    const log = data.log || {};
+    if (stageLogStatusEl) {
+        stageLogStatusEl.textContent = `${log.label || stageLogLabel(stage)} logs | ${log.filename || stageLogFilename(stage)} | ${log.lineCount ?? 0} lines`;
+    }
+    if (stageLogViewerEl) {
+        stageLogViewerEl.textContent = log.text || 'No log lines found for this stage yet.';
+    }
+    updateStageLogActions();
+}
+
+function refreshActiveStageLogs({ quiet = true } = {}) {
+    if (!activeStageLog || !activePipelineTaskId) {
+        updateStageLogActions();
+        return;
+    }
+
+    loadStageLogs(activeStageLog, { quiet }).catch((error) => {
+        if (!quiet) {
+            if (stageLogStatusEl) stageLogStatusEl.textContent = error.message || 'Could not load stage logs.';
+            if (stageLogViewerEl) stageLogViewerEl.textContent = '';
+        }
+    });
 }
 
 function stageSummary(stage) {
@@ -126,6 +245,7 @@ function appendMetric(parent, label, value) {
 }
 
 function renderStageCard(name, stage = {}) {
+    const logStage = normalizeStageLog(name);
     const card = document.createElement('article');
     card.className = `pipeline-stage-card ${stageStatusClass(stage.status)}`;
 
@@ -143,7 +263,34 @@ function renderStageCard(name, stage = {}) {
     const status = document.createElement('strong');
     status.className = 'pipeline-stage-status';
     status.textContent = stage.status || 'queued';
-    header.append(title, status);
+    const side = document.createElement('div');
+    side.className = 'pipeline-stage-side';
+    side.appendChild(status);
+
+    const actions = document.createElement('div');
+    actions.className = 'pipeline-stage-actions';
+
+    const logs = document.createElement('button');
+    logs.type = 'button';
+    logs.className = 'pipeline-stage-log-btn';
+    logs.textContent = 'Logs';
+    logs.dataset.controllerStageLog = logStage;
+    logs.addEventListener('click', () => {
+        loadStageLogs(logStage).catch((error) => {
+            if (stageLogStatusEl) stageLogStatusEl.textContent = error.message || 'Could not load stage logs.';
+            if (stageLogViewerEl) stageLogViewerEl.textContent = '';
+        });
+    });
+
+    const download = document.createElement('a');
+    download.className = 'pipeline-stage-download-btn';
+    download.textContent = 'Download';
+    download.href = '#';
+    download.dataset.controllerStageDownload = logStage;
+
+    actions.append(logs, download);
+    side.appendChild(actions);
+    header.append(title, side);
     card.appendChild(header);
 
     const metrics = document.createElement('div');
@@ -170,6 +317,8 @@ function renderStageCard(name, stage = {}) {
             .join(' | ');
         card.appendChild(errorBox);
     }
+
+    updateStageLogActions();
 
     return card;
 }
@@ -251,6 +400,7 @@ function renderPipelineTask(task) {
 
     const counters = task.counters || {};
     const jobs = Array.isArray(task.jobs) ? task.jobs : [];
+    activePipelineDatasetId = task.datasetId || '';
     currentEl.textContent = `Task ${task.status || 'unknown'} · ${task.activeJobs || 0} active`;
     if (jobIdEl) jobIdEl.textContent = `Task ID: ${task.taskId || 'none'}`;
     if (datasetPathEl) datasetPathEl.textContent = `Dataset: ${task.datasetId || 'none'}`;
@@ -271,6 +421,7 @@ function renderPipelineTask(task) {
         explicitStages.forEach(([label, stage]) => {
             stagesEl.appendChild(renderStageCard(label, stage));
         });
+        refreshActiveStageLogs({ quiet: true });
         return;
     }
 
@@ -285,6 +436,7 @@ function renderPipelineTask(task) {
             counts,
         }));
     });
+    refreshActiveStageLogs({ quiet: true });
 }
 
 function taskRunLabel(task) {
@@ -416,8 +568,11 @@ function renderPipeline(data) {
         if (jobIdEl) jobIdEl.textContent = 'Job ID: none';
         if (datasetPathEl) datasetPathEl.textContent = 'Dataset path: none';
         if (updatedAtEl) updatedAtEl.textContent = '';
+        if (stageLogStatusEl) stageLogStatusEl.textContent = 'Select Scrape, Convert, or Ingest logs from a stage card.';
+        if (stageLogViewerEl) stageLogViewerEl.textContent = 'No stage log selected.';
         clearTaskRun();
         stagesEl.innerHTML = '';
+        updateStageLogActions();
         return;
     }
 
@@ -434,6 +589,7 @@ function renderPipeline(data) {
     ['scrape', 'convert', 'ingest'].forEach((name) => {
         stagesEl.appendChild(renderStageCard(name, stages[name] || {}));
     });
+    updateStageLogActions();
 }
 
 function sourceLabel(task) {

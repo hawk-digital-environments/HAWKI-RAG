@@ -77,6 +77,8 @@ Route::middleware(['auth:sanctum', 'throttle:hawki-api'])->group(function () {
         Route::get('/{taskId}/jobs', [PipelineTaskController::class, 'jobs']);
         Route::get('/{taskId}/failed-jobs', [PipelineTaskController::class, 'failedJobs']);
         Route::get('/{taskId}/events', [PipelineTaskController::class, 'events']);
+        Route::get('/{taskId}/stages/{stage}/logs', [PipelineTaskController::class, 'stageLogs']);
+        Route::get('/{taskId}/stages/{stage}/logs/download', [PipelineTaskController::class, 'downloadStageLogs']);
         Route::post('/{taskId}/jobs', [PipelineTaskController::class, 'upsertJob']);
         Route::post('/{taskId}/retry', [PipelineTaskController::class, 'retry'])->middleware('throttle:hawki-destructive');
         Route::post('/{taskId}/retry-failed-jobs', [PipelineTaskController::class, 'retryFailedJobs'])->middleware('throttle:hawki-destructive');

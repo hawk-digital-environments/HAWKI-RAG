@@ -10,6 +10,7 @@ use App\Http\Requests\Pipeline\StartPipelineTaskRequest;
 use App\Http\Requests\Pipeline\UpsertPipelineJobRequest;
 use App\Services\Pipeline\PipelineService;
 use Illuminate\Http\JsonResponse;
+use Symfony\Component\HttpFoundation\Response;
 
 class PipelineTaskController extends Controller
 {
@@ -78,6 +79,51 @@ class PipelineTaskController extends Controller
             'taskId' => $taskId,
             'events' => $this->pipeline->tasks->recentEvents($taskId, $request->limit(), $request->filters()),
             'filters' => $this->pipeline->tasks->eventFilters($taskId),
+        ]);
+    }
+
+    public function stageLogs(string $taskId, string $stage): JsonResponse
+    {
+        if (! $this->pipeline->logs->isSupportedStage($stage)) {
+            return response()->json([
+                'success' => false,
+                'message' => "Pipeline stage {$stage} does not have logs.",
+            ], 422);
+        }
+
+        $log = $this->pipeline->logs->forStage($taskId, $stage);
+        if (! $log) {
+            return response()->json([
+                'success' => false,
+                'message' => "Pipeline task {$taskId} was not found.",
+            ], 404);
+        }
+
+        return response()->json([
+            'success' => true,
+            'taskId' => $taskId,
+            'log' => $log,
+        ]);
+    }
+
+    public function downloadStageLogs(string $taskId, string $stage): Response
+    {
+        if (! $this->pipeline->logs->isSupportedStage($stage)) {
+            return response("Pipeline stage {$stage} does not have logs.", 422, [
+                'Content-Type' => 'text/plain; charset=UTF-8',
+            ]);
+        }
+
+        $log = $this->pipeline->logs->forStage($taskId, $stage);
+        if (! $log) {
+            return response("Pipeline task {$taskId} was not found.", 404, [
+                'Content-Type' => 'text/plain; charset=UTF-8',
+            ]);
+        }
+
+        return response((string) $log['text'], 200, [
+            'Content-Type' => 'text/plain; charset=UTF-8',
+            'Content-Disposition' => 'attachment; filename="'.$log['filename'].'"',
         ]);
     }
 

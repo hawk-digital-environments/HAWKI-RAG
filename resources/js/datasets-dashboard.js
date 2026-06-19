@@ -11,7 +11,6 @@ if (root) {
         status: document.getElementById('datasets-status'),
         count: document.getElementById('datasets-count'),
         list: document.getElementById('datasets-list'),
-        state: document.getElementById('datasets-state'),
         updated: document.getElementById('datasets-updated'),
         info: document.getElementById('datasets-info'),
         metrics: document.getElementById('datasets-metrics'),
@@ -282,8 +281,6 @@ if (root) {
     }
 
     function renderDataset(dataset) {
-        els.state.className = `status-pill ${statusClass(dataset.status)}`;
-        renderStatusIndicator(els.state, dataset.status);
         setText(els.updated, `Updated ${formatDate(new Date().toISOString())}`);
         setStatus(`Showing dataset ${dataset.datasetId}.`);
 
@@ -298,7 +295,6 @@ if (root) {
         [
             ['Name', dataset.name],
             ['Dataset ID', dataset.datasetId],
-            ['Status', dataset.status],
             ['Qdrant collection', dataset.qdrantCollection],
             ['Neo4j namespace', dataset.neo4jNamespace],
             ['Last ingestion', lastIngestionLabel(dataset.lastIngestion) || '-'],
@@ -307,11 +303,7 @@ if (root) {
             const term = document.createElement('dt');
             const description = document.createElement('dd');
             term.textContent = label;
-            if (label === 'Status') {
-                description.appendChild(statusPill(value));
-            } else {
-                description.textContent = valueOrDash(value);
-            }
+            description.textContent = valueOrDash(value);
             wrapper.append(term, description);
             els.info.appendChild(wrapper);
         });
@@ -714,8 +706,6 @@ if (root) {
 
     function clearDetail() {
         setStatus('No datasets found.');
-        els.state.className = 'status-pill is-idle';
-        renderStatusIndicator(els.state, 'idle');
         setText(els.updated, 'No dataset loaded.');
         [els.info, els.metrics, els.tasks, els.documents, els.ingestionHistory]
             .filter(Boolean)

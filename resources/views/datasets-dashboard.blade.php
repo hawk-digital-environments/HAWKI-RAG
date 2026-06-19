@@ -49,7 +49,6 @@
                             <h2>Selected data pool</h2>
                             <p id="datasets-updated">No dataset loaded.</p>
                         </div>
-                        <span class="status-pill" id="datasets-state">idle</span>
                     </div>
                     <div class="overview-grid">
                         <div class="overview-block">

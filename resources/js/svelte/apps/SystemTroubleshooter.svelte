@@ -165,7 +165,7 @@
 
 <div {...restProps}>
     <div class="launcherBar">
-        <a class="homeLink" href={resolvePageUrl('/hawki-rag')}>Home</a>
+        <a class="homeLink" href={resolvePageUrl('/admin')}>Home</a>
         <button
             type="button"
             class="launcher"

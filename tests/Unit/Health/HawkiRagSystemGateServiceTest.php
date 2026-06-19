@@ -54,6 +54,7 @@ class HawkiRagSystemGateServiceTest extends TestCase
 
         $this->assertSame('ready', $report['status']);
         $this->assertSame([], $report['blocking']);
+        $this->assertSame(['Open Pipeline Health'], array_column($report['repairActions'], 'label'));
     }
 
     private function passingPipeline(): PipelineHealthService

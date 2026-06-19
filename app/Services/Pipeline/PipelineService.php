@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Pipeline;
 
 use App\Services\Pipeline\Recovery\PipelineRecoveryService;
+use App\Services\Pipeline\Logs\PipelineStageLogService;
 use App\Services\Pipeline\State\PipelineStateService;
 use App\Services\Pipeline\Status\PipelineStatusService;
 use App\Services\Pipeline\Tasks\PipelineTaskService;
@@ -18,6 +19,7 @@ readonly class PipelineService
         public PipelineStateService $state,
         public PipelineStatusService $status,
         public PipelineTaskService $tasks,
+        public PipelineStageLogService $logs,
         public PipelineRecoveryService $recovery,
         public PipelineUploadService $uploads,
     ) {}

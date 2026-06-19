@@ -21,7 +21,7 @@ function parseConfig() {
 function withPageUrls(items = []) {
     return items.map((item) => ({
         ...item,
-        href: pageUrl(item.href || '/hawki-rag'),
+        href: pageUrl(item.href || '/admin'),
     }));
 }
 
@@ -31,10 +31,8 @@ if (root) {
     mount(HawkiRagExperience, {
         target: root,
         props: {
-            initialWorld: config.initialWorld || 'user',
-            activeSection: config.activeSection || 'overview',
-            userRoutes: withPageUrls(config.userRoutes || []),
-            adminRoutes: withPageUrls(config.adminRoutes || []),
+            activeSection: config.activeSection || 'operator',
+            operatorRoutes: withPageUrls(config.operatorRoutes || []),
             coreServices: config.coreServices || [],
         },
     });

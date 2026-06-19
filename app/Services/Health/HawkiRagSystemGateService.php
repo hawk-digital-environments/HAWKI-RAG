@@ -250,9 +250,6 @@ readonly class HawkiRagSystemGateService
     {
         return [
             ['label' => 'Open Pipeline Health', 'href' => '/pipeline-health', 'kind' => 'health'],
-            ['label' => 'Open Pipeline Controller', 'href' => '/pipeline-controller', 'kind' => 'pipeline'],
-            ['label' => 'Open Graph Explorer', 'href' => '/neo4j-graph-explorer', 'kind' => 'graph'],
-            ['label' => 'Open Data Browser', 'href' => '/datasets', 'kind' => 'data'],
         ];
     }
 }
