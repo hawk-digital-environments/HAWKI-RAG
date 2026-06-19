@@ -40,7 +40,6 @@ body {
     color: var(--text);
 }
 
-.pipeline-dashboard,
 .pipeline-health-dashboard,
 .datasets-dashboard {
     width: min(1760px, calc(100% - 32px));
@@ -444,7 +443,6 @@ input::placeholder {
 }
 
 @media (max-width: 900px) {
-    .pipeline-dashboard,
     .pipeline-health-dashboard,
     .datasets-dashboard {
         width: min(100% - 20px, 1760px);

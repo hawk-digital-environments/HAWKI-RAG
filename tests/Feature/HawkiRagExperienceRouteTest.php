@@ -24,7 +24,8 @@ class HawkiRagExperienceRouteTest extends TestCase
             ->assertSee('data-hawki-rag-experience', false)
             ->assertSee('"operatorRoutes"', false)
             ->assertSee('"key":"operator"', false)
-            ->assertSee('"key":"health"', false);
+            ->assertSee('"key":"health"', false)
+            ->assertSee('"key":"settings"', false);
     }
 
     public function test_operator_world_aliases_point_to_current_surfaces(): void
@@ -47,5 +48,8 @@ class HawkiRagExperienceRouteTest extends TestCase
 
         $this->get('/admin/health-repair')
             ->assertRedirect('/pipeline-health');
+
+        $this->get('/admin/settings')
+            ->assertRedirect('/settings');
     }
 }

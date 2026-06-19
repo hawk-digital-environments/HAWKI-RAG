@@ -40,11 +40,6 @@ class ScrapeCrawlerClient
         return $this->request('POST', "/jobs/{$jobId}/resume");
     }
 
-    public function extractPageContent(string $url): array
-    {
-        return $this->http->extractPageContent($url);
-    }
-
     public function request(string $method, string $path, array $payload = []): array
     {
         return $this->http->request($method, $path, $payload);

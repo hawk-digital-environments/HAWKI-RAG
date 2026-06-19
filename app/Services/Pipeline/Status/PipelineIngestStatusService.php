@@ -21,7 +21,7 @@ readonly class PipelineIngestStatusService
     {
         return $this->emptyStages->stage(
             'unknown',
-            'Legacy RabbitMQ ingest state tracking has been removed. Use Temporal pipeline task and job status.',
+            'RabbitMQ ingest state tracking has been removed. Use Temporal pipeline task and job status.',
         );
     }
 }

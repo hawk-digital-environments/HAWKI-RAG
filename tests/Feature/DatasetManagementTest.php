@@ -74,7 +74,8 @@ class DatasetManagementTest extends TestCase
 
         $this->get('/datasets')
             ->assertOk()
-            ->assertSee('Datasets');
+            ->assertSee('HAWKI Data Browser')
+            ->assertSee('data-datasets-dashboard', false);
 
         $this->actingAsApiUser();
 

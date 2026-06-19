@@ -58,6 +58,11 @@ class RouteSecurityTest extends TestCase
             ->assertHeader('Expires', '0');
 
         $this->assertStringContainsString('no-store', (string) $response->headers->get('Cache-Control'));
+
+        $this->getJson('/settings/config')
+            ->assertOk()
+            ->assertHeader('Pragma', 'no-cache')
+            ->assertHeader('Expires', '0');
     }
 
     public function test_internal_api_cors_requires_an_explicit_allowed_origin(): void

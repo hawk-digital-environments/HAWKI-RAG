@@ -8,7 +8,6 @@ use App\Services\Scrape\Exceptions\ScrapeResponseException;
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Contracts\Config\Repository as ConfigRepository;
 use Illuminate\Http\Client\Factory as HttpFactory;
-use Psr\Log\LoggerInterface;
 
 #[Singleton]
 readonly class ScrapeCrawlerHttpClient
@@ -17,25 +16,7 @@ readonly class ScrapeCrawlerHttpClient
         private HttpFactory $http,
         private ConfigRepository $config,
         private ScrapeCrawlerResponseMapper $responses,
-        private LoggerInterface $logger,
     ) {
-    }
-
-    public function extractPageContent(string $url): array
-    {
-        try {
-            $response = $this->http->timeout(300)
-                ->retry(2, 500, throw: false)
-                ->post($this->apiUrl().'/scrape', ['url' => $url]);
-
-            return $this->responses->pageExtractionResult($response);
-        } catch (\JsonException|ScrapeResponseException $exception) {
-            return $this->responses->invalidJsonResult($exception);
-        } catch (\Throwable $exception) {
-            $this->logger->error('failed to extract page content '.$exception->getMessage(), ['exception' => $exception]);
-
-            return $this->responses->exceptionResult($exception);
-        }
     }
 
     public function request(string $method, string $path, array $payload = []): array

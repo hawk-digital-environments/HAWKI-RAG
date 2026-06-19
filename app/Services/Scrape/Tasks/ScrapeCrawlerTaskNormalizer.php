@@ -48,7 +48,7 @@ readonly class ScrapeCrawlerTaskNormalizer
                 'routingKey' => $this->values->firstScalar([$item['routing_key'] ?? null, $item['routingKey'] ?? null]),
                 'profileId' => $this->values->firstScalar([$item['profile_id'] ?? null, $item['profileId'] ?? null]),
                 'schedule' => $this->values->firstScalar([$item['schedule'] ?? null, $item['cron'] ?? null]),
-                'type' => $this->values->firstScalar([$item['type'] ?? null, $item['kind'] ?? null]) ?? 'legacy',
+                'type' => $this->values->firstScalar([$item['type'] ?? null, $item['kind'] ?? null]) ?? 'crawler-api',
                 'source' => 'crawler-api',
                 'primaryUrl' => $this->values->firstScalar([$item['source_url'] ?? null, $item['sourceUrl'] ?? null, $item['url'] ?? null]),
                 'raw' => $raw,

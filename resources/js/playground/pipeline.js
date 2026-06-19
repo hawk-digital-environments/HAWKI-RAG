@@ -898,7 +898,7 @@ async function startPipelineTaskFromCatalog(task) {
     return data;
 }
 
-async function startLegacyScraperTask(taskId) {
+async function startCrawlerTaskFallback(taskId) {
     const response = await fetch(apiUrl('scraper/tasks/start'), {
         method: 'POST',
         credentials: 'same-origin',
@@ -947,7 +947,7 @@ async function startSelectedTask() {
             return;
         }
 
-        const data = await startLegacyScraperTask(taskId);
+        const data = await startCrawlerTaskFallback(taskId);
         setActiveJob(data.jobId);
         setTaskNote(`Created scraper job ID ${data.jobId}`, 'success');
         pushActivity('Pipeline', `task ${taskId} created job ${data.jobId}`);

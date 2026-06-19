@@ -45,12 +45,3 @@ export interface GraphSearchPayload {
     message?: string;
     error?: string;
 }
-
-export interface WalkwayStation {
-    node: GraphNode;
-    index: number;
-    x: number;
-    y: number;
-    tone: number;
-    relationCount: number;
-}

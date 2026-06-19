@@ -1,15 +1,16 @@
 # HAWKI-RAG Svelte UI Boundary
 
 This document describes the browser experience added on top of the existing
-Laravel and RAG services. The current implementation uses Svelte islands mounted
-by Laravel/Vite, not a SvelteKit router.
+Laravel and RAG services. The current implementation uses Svelte page components
+mounted by Laravel/Vite through one thin Blade document shell, not a SvelteKit
+router.
 
 ## Operator Surface
 
 | Surface | Browser route | Job |
 | --- | --- | --- |
 | Operator World | `/admin` | Admin/developer entry point for ingestion, datasets, graph, analytics, and repair. |
-| Graph World | `/neo4j-graph-explorer` | Live Neo4j/Qdrant graph exploration with the Svelte walkway and technical Cytoscape drawer. |
+| Graph World | `/neo4j-graph-explorer` | Live Neo4j/Qdrant graph exploration with the Svelte graph shell and Cytoscape drawer. |
 | Health/Repair | `/pipeline-health` and `/health/system-gate` | System diagnosis, blocking repair overlay, and troubleshoot progress states. |
 
 ## Operator Routes
@@ -30,14 +31,16 @@ by Laravel/Vite, not a SvelteKit router.
 | `routes/web_ui.php` | Browser pages and UI-facing route aliases. |
 | `routes/internal_api.php` | Sanctum-protected internal API routes for scripts, Bruno, and service clients. |
 | `routes/health.php` | Separate health/monitoring/repair boundary. |
-| `resources/views/hawki-rag.blade.php` | Blade shell for the Svelte experience hub. |
+| `resources/views/svelte-page.blade.php` | Shared Blade document shell for CSRF, base path metadata, Vite tags, and initial JSON config. |
 | `resources/js/hawki-rag-experience.js` | Vite entry that mounts the Svelte experience and the global troubleshoot button. |
 | `resources/js/svelte/apps/HawkiRagExperience.svelte` | Product-level route map for operator tabs. |
-| `resources/views/hawki-rag-playground.blade.php` | Blade shell for the Svelte retrieval console. |
 | `resources/js/hawki-rag-playground.js` | Vite entry that mounts the Svelte retrieval console. |
 | `resources/js/svelte/apps/HawkiRagPlayground.svelte` | Query composer, evidence board, graph facts, and live RAG signals. |
 | `resources/js/svelte/apps/GraphExplorerPage.svelte` | Graph explorer Svelte page shell. |
-| `resources/js/svelte/apps/GraphWalkway.svelte` | Creative path/walkway visualization for graph exploration. |
+| `resources/js/svelte/apps/DatasetsDashboardPage.svelte` | Data Browser page shell. |
+| `resources/js/svelte/apps/PipelineControllerPage.svelte` | Pipeline Controller page shell. |
+| `resources/js/svelte/apps/PipelineHealthDashboardPage.svelte` | Pipeline Health page shell. |
+| `resources/js/svelte/components/DashboardHeader.svelte` | Shared dashboard header and route navigation. |
 | `resources/js/svelte/apps/SystemTroubleshooter.svelte` | Troubleshoot button and progress/check state panel. |
 
 ## Core Service Boundary
@@ -52,9 +55,9 @@ by Laravel/Vite, not a SvelteKit router.
 
 ## Implementation Rules
 
-- Keep Laravel as the server-side route owner while the migration is island-based.
+- Keep Laravel as the server-side route owner while browser markup lives in Svelte page components.
 - Mount Svelte from Vite entry files under `resources/js`.
-- Keep existing operational pages alive until a Svelte page fully replaces them.
+- Keep existing endpoint contracts stable while replacing page markup and DOM runtimes incrementally.
 - Put browser page routes in `routes/web_ui.php`.
 - Put token-protected service/API routes in `routes/internal_api.php`.
 - Keep health and repair routes in `routes/health.php`.

@@ -90,12 +90,14 @@ class ScraperTaskProxyTest extends TestCase
             ], 200),
         ]);
 
-        $this->postJson('/scraper/tasks/start', [
-            'taskId' => 'manual-site-goettingen',
-            'options' => [
-                'job_id' => 'site-goettingen_123',
-            ],
-        ])
+        $this
+            ->withSession(['_token' => 'test-token'])
+            ->postJson('/scraper/tasks/start', [
+                'taskId' => 'manual-site-goettingen',
+                'options' => [
+                    'job_id' => 'site-goettingen_123',
+                ],
+            ], ['X-CSRF-TOKEN' => 'test-token'])
             ->assertOk()
             ->assertJsonPath('success', true)
             ->assertJsonPath('taskId', 'manual-site-goettingen')

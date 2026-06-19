@@ -687,12 +687,14 @@ def _post_ingest(
     body = {
         "docs": docs,
         "provider": ingest_options.get("provider") or "ollama",
+        "embedding_model": ingest_options.get("embedding_model"),
         "collection": ingest_options.get("collection"),
         "neo4j_database": ingest_options.get("neo4j_database"),
         "chunk_chars": int(ingest_options.get("chunk_chars") or 1200),
         "chunk_overlap": int(ingest_options.get("chunk_overlap") or 250),
         "batch_size": int(ingest_options.get("batch_size") or 64),
         "graph": bool(ingest_options.get("graph", False)) or requires_graph,
+        "graph_model": ingest_options.get("graph_model"),
         "idempotency_key": operation_id,
     }
     return _bridge_request(

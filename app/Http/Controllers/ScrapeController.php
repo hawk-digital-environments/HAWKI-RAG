@@ -17,22 +17,6 @@ class ScrapeController extends Controller
         private readonly ScrapeControllerResponseFactory $responses,
     ) {}
 
-    public function requestScrape(Request $request)
-    {
-        $validatedData = $request->validate($this->rules->scrape());
-        $result = $this->scrapeService->startPipeline($validatedData);
-
-        return $this->responses->scrapeRequest($result);
-    }
-
-    public function cancelScrape(Request $request)
-    {
-        $validatedData = $request->validate($this->rules->jobId());
-        $data = $this->scrapeService->stopPipeline($validatedData['jobId']);
-
-        return $this->responses->crawler($data);
-    }
-
     public function getCrawlerJobs()
     {
         return $this->responses->crawler($this->scrapeService->listCrawlerJobs());
@@ -75,51 +59,5 @@ class ScrapeController extends Controller
     public function resumeCrawlerJob(string $jobId)
     {
         return $this->responses->crawler($this->scrapeService->resumeCrawlerJob($jobId));
-    }
-
-    public function getAllScrapes(Request $request)
-    {
-        $data = $this->scrapeService->listScrapeJobs();
-
-        return $this->responses->data($data);
-    }
-
-    public function deleteScrapeJob(Request $request)
-    {
-        $validatedData = $request->validate($this->rules->jobId());
-        $success = $this->scrapeService->deleteScrapeJob($validatedData['jobId']);
-
-        return $this->responses->success($success);
-    }
-
-    public function deleteScrapeContent(Request $request)
-    {
-        $validatedData = $request->validate($this->rules->jobId());
-        $success = $this->scrapeService->deleteScrapeContent($validatedData['jobId']);
-
-        return $this->responses->success($success);
-    }
-
-    public function getScrapeInformation(Request $request)
-    {
-        $validatedData = $request->validate($this->rules->jobId());
-        $data = $this->scrapeService->getScrapeInformation($validatedData['jobId']);
-
-        return $this->responses->data($data);
-    }
-
-    public function getScrapeResult(Request $request)
-    {
-        $validatedData = $request->validate($this->rules->scrapeResult());
-        $data = $this->scrapeService->getScrapeResult($validatedData['jobId'], (int) $validatedData['elementId']);
-
-        return $this->responses->data($data);
-    }
-
-    public function extractPageContent(Request $request)
-    {
-        $validatedData = $request->validate($this->rules->url());
-
-        return $this->responses->crawler($this->scrapeService->extractPageContent($validatedData['url']));
     }
 }

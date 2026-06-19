@@ -7,6 +7,7 @@ namespace App\Services\Pipeline\Tasks;
 use App\Models\IngestionSource;
 use App\Models\PipelineJob;
 use App\Models\PipelineTask;
+use App\Services\Settings\SettingsService;
 use Illuminate\Config\Repository as ConfigRepository;
 use Illuminate\Container\Attributes\Singleton;
 use Psr\Clock\ClockInterface;
@@ -17,6 +18,7 @@ readonly class IngestSourceWorkflowPayloadFactory
 {
     public function __construct(
         private ConfigRepository $config,
+        private SettingsService $settings,
         private ClockInterface $clock = new Clock(),
     ) {
     }
@@ -33,6 +35,7 @@ readonly class IngestSourceWorkflowPayloadFactory
         $customConverter = is_array($metadata['custom_converter'] ?? null)
             ? $metadata['custom_converter']
             : null;
+        $modelRuntime = $this->settings->modelRuntime();
 
         return array_filter([
             'source_id' => $source->source_id,
@@ -66,7 +69,9 @@ readonly class IngestSourceWorkflowPayloadFactory
                 'ingestion' => $this->config->get('temporal.task_queues.ingestion', 'rag-ingestion-task-queue'),
             ],
             'ingestion' => [
-                'provider' => $this->config->get('temporal.ingestion.provider', 'ollama'),
+                'provider' => $modelRuntime['provider'],
+                'graph_model' => $modelRuntime['graph_model'],
+                'embedding_model' => $modelRuntime['embedding_model'],
                 'graph' => $this->graphEnabled($metadata),
                 'collection' => $metadata['dataset']['qdrant_collection'] ?? null,
                 'neo4j_namespace' => $metadata['dataset']['neo4j_namespace'] ?? null,

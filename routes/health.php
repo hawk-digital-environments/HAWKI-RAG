@@ -48,7 +48,11 @@ Route::get('/up', fn () => response()->noContent())->middleware('throttle:hawki-
 */
 Route::middleware(['web', 'throttle:hawki-health'])->group(function () {
     Route::get('/pipeline-health', function () {
-        return view('pipeline-health-dashboard');
+        return view('svelte-page', [
+            'title' => 'HAWKI Pipeline Health',
+            'vite' => ['resources/css/pipeline-health-dashboard.css', 'resources/css/dashboard-dark-theme.css', 'resources/js/pipeline-health-dashboard.js'],
+            'rootAttributes' => ['data-pipeline-health-dashboard' => true],
+        ]);
     });
 
     Route::get('/pipeline/health', [PipelineHealthController::class, 'show']);

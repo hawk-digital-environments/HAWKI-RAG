@@ -1,9 +1,22 @@
 import './health-gate.js';
+import { mount } from 'svelte';
+import PipelineHealthDashboardPage from './svelte/apps/PipelineHealthDashboardPage.svelte';
 import { apiUrl } from './playground/urls.js';
 
 const root = document.querySelector('[data-pipeline-health-dashboard]');
 
 if (root) {
+    mount(PipelineHealthDashboardPage, {
+        target: root,
+        props: {
+            onready: bootPipelineHealthDashboard,
+        },
+    });
+}
+
+function bootPipelineHealthDashboard() {
+    if (!root) return;
+
     const els = {
         refresh: document.getElementById('pipeline-health-refresh'),
         status: document.getElementById('pipeline-health-status'),

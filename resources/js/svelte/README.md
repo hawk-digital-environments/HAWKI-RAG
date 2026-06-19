@@ -1,8 +1,8 @@
 # HAWKI-RAG Svelte Migration
 
-Svelte is introduced as Laravel/Vite islands. Laravel keeps routing, Blade keeps
-page shells, and Svelte owns rich interactive UI surfaces one component at a
-time.
+Svelte is the owner for browser page markup. Laravel keeps routing and one thin
+Blade document shell for CSRF, base-path metadata, Vite tags, and initial JSON
+config.
 
 ## Structure
 
@@ -15,12 +15,9 @@ time.
 
 ## Migration Rule
 
-Move one self-contained UI surface at a time. Keep existing endpoint contracts
-stable and mount Svelte from the current Laravel Vite entries until a whole page
-is ready to become a Svelte app.
-
-First island: `apps/SystemTroubleshooter.svelte`, mounted from
-`resources/js/health-gate.js`.
+Keep endpoint contracts stable while moving page structure, shared navigation,
+forms, panels, and state rendering into Svelte. Existing DOM runtimes may remain
+temporarily only when they are loaded after a Svelte page shell mounts.
 
 Current product islands:
 
@@ -28,7 +25,13 @@ Current product islands:
 - `apps/HawkiRagPlayground.svelte`: `/hawki-rag-playground` retrieval console.
 - `apps/SystemTroubleshooter.svelte`: global Health/Repair troubleshoot button.
 - `apps/GraphExplorerPage.svelte`: Neo4j graph explorer page shell.
-- `apps/GraphWalkway.svelte`: creative graph path/walkway visualization.
+- `apps/DatasetsDashboardPage.svelte`: `/datasets` page shell.
+- `apps/PipelineControllerPage.svelte`: `/pipeline-controller` page shell.
+- `apps/PipelineHealthDashboardPage.svelte`: `/pipeline-health` page shell.
+
+Laravel shell:
+
+- `resources/views/svelte-page.blade.php`: single browser document shell.
 
 Route ownership:
 

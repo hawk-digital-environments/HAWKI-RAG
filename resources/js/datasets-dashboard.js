@@ -1,10 +1,23 @@
 import './health-gate.js';
+import { mount } from 'svelte';
+import DatasetsDashboardPage from './svelte/apps/DatasetsDashboardPage.svelte';
 import { apiUrl } from './playground/urls.js';
 import { renderStatusIndicator } from './status-indicator.js';
 
 const root = document.querySelector('[data-datasets-dashboard]');
 
 if (root) {
+    mount(DatasetsDashboardPage, {
+        target: root,
+        props: {
+            onready: bootDatasetsDashboard,
+        },
+    });
+}
+
+function bootDatasetsDashboard() {
+    if (!root) return;
+
     const query = new URLSearchParams(window.location.search);
     const els = {
         refresh: document.getElementById('datasets-refresh'),

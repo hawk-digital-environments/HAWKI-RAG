@@ -16,6 +16,8 @@ return [
     'providers' => [
         // Ollama (local)
         'ollama' => [
+            'label' => 'Ollama',
+            'runtime_supported' => true,
 
             'api_url' => env('OLLAMA_API_URL', 'http://127.0.0.1:11434/api'),
 
@@ -26,12 +28,38 @@ return [
             ],
 
             'models' => [
-                'embedding'  => 'bge-m3',
+                'embedding'  => env('OLLAMA_EMBED_MODEL', 'bge-m3'),
+                'graph'      => env('GRAPH_OLLAMA_RAG_MODEL', env('OLLAMA_RAG_MODEL', 'llama3:8b')),
                 // swap to llama3:8b (larger) by setting OLLAMA_TEXT_MODEL in .env
                 'text'       => env('OLLAMA_TEXT_MODEL', 'llama3:8b'),
                 'multimodal' => env('OLLAMA_VISION_MODEL', 'llava:13b'),
                 // default RAG chat model (uses llama3:8b unless overridden)
                 'rag'        => env('OLLAMA_RAG_MODEL', 'llama3:8b'),
+            ],
+        ],
+        'openai' => [
+            'label' => 'ChatGPT / OpenAI',
+            'runtime_supported' => false,
+            'api_url' => env('OPENAI_API_URL', 'https://api.openai.com/v1'),
+            'endpoints' => [
+                'embedding' => 'embeddings',
+                'chat' => 'chat/completions',
+            ],
+            'models' => [
+                'embedding' => env('OPENAI_EMBED_MODEL', ''),
+                'graph' => env('OPENAI_GRAPH_MODEL', env('OPENAI_CHAT_MODEL', '')),
+            ],
+        ],
+        'anthropic' => [
+            'label' => 'Claude / Anthropic',
+            'runtime_supported' => false,
+            'api_url' => env('ANTHROPIC_API_URL', 'https://api.anthropic.com/v1'),
+            'endpoints' => [
+                'chat' => 'messages',
+            ],
+            'models' => [
+                'embedding' => '',
+                'graph' => env('ANTHROPIC_GRAPH_MODEL', env('CLAUDE_GRAPH_MODEL', '')),
             ],
         ],
     ],

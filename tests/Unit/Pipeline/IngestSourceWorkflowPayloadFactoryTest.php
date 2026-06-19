@@ -69,11 +69,13 @@ class IngestSourceWorkflowPayloadFactoryTest extends TestCase
         $this->assertSame('rag-converter-task-queue', $payload['task_queues']['converter']);
         $this->assertSame('rag-ingestion-task-queue', $payload['task_queues']['ingestion']);
         $this->assertSame('ollama', $payload['ingestion']['provider']);
+        $this->assertSame('llama3.1:8b', $payload['ingestion']['graph_model']);
+        $this->assertSame('bge-m3', $payload['ingestion']['embedding_model']);
         $this->assertTrue($payload['ingestion']['graph']);
 
         $encoded = json_encode($payload, JSON_THROW_ON_ERROR);
         $this->assertStringNotContainsString('markdown_body', $encoded);
-        $this->assertStringNotContainsString('embedding', $encoded);
+        $this->assertStringNotContainsString('"embedding":[', $encoded);
         $this->assertStringNotContainsString('chunks', $encoded);
     }
 

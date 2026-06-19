@@ -43,16 +43,18 @@ use App\Http\Controllers\Graph\RagGraphController;
 |--------------------------------------------------------------------------
 | PipelineControlController: verarbeitet File Uploads aus der UI fuer Ingestion.
 | PipelineRecoveryController: treibt Retry Controls fuer fehlgeschlagene Pipeline Jobs an.
-| PipelineStatusController: stellt Legacy Job-Status Lookups bereit.
+| PipelineStatusController: stellt Job-Status Lookups bereit.
 | PipelineTaskController: versorgt Task Lists, Jobs, Events, Retries, Cancel
 | und Delete Actions.
-| ScrapeController: steuert Scraper Tasks/Jobs und Legacy Scrape Endpoints.
+| ScrapeController: steuert aktive Scraper Tasks und Jobs.
 */
 use App\Http\Controllers\PipelineControlController;
 use App\Http\Controllers\PipelineRecoveryController;
 use App\Http\Controllers\PipelineStatusController;
 use App\Http\Controllers\PipelineTaskController;
 use App\Http\Controllers\ScrapeController;
+use App\Http\Controllers\SettingsController;
+use App\Services\Settings\SettingsService;
 
 /*
 |--------------------------------------------------------------------------
@@ -126,6 +128,15 @@ $hawkiRagExperienceConfig = static function (string $section = 'operator'): arra
                 'service' => 'Health/Repair',
                 'state' => 'live',
             ],
+            [
+                'key' => 'settings',
+                'label' => 'Settings',
+                'title' => 'Settings',
+                'href' => '/admin/settings',
+                'summary' => 'Custom converter and model runtime defaults.',
+                'service' => 'Operator settings',
+                'state' => 'live',
+            ],
         ],
         'coreServices' => [
             [
@@ -162,7 +173,27 @@ $hawkiRagExperienceConfig = static function (string $section = 'operator'): arra
     ];
 };
 
-Route::middleware('throttle:hawki-ui')->group(function () use ($hawkiRagExperienceConfig): void {
+$pipelineControllerConfig = static function (): array {
+    $normalizeExtensions = static fn (array $extensions): array => collect($extensions)
+        ->map(fn ($extension) => ltrim(strtolower(trim((string) $extension)), '.'))
+        ->filter()
+        ->unique()
+        ->values()
+        ->all();
+    $customConverter = app(SettingsService::class)->customConverterUploadDefaults();
+
+    return [
+        'nativeExtensions' => $normalizeExtensions(config('file_converter.raganything_supported_extensions', [])),
+        'customExtensions' => $normalizeExtensions(config('file_converter.supported_extensions', [])),
+        'customConverter' => [
+            'enabled' => (bool) ($customConverter['enabled'] ?? false),
+            'configured' => (bool) ($customConverter['configured'] ?? false),
+            'supported_extensions' => $normalizeExtensions($customConverter['supported_extensions'] ?? []),
+        ],
+    ];
+};
+
+Route::middleware('throttle:hawki-ui')->group(function () use ($hawkiRagExperienceConfig, $pipelineControllerConfig): void {
 Route::redirect('/', '/admin');
 Route::get('/swagger', fn () => redirect('/swagger/index.html'));
 
@@ -173,8 +204,12 @@ Route::get('/swagger', fn () => redirect('/swagger/index.html'));
 | Svelte Experience Hub fuer Operator Tabs. Bestehende Dashboards bleiben
 | stabile Zielseiten fuer die einzelnen Operator-Flows.
 */
-Route::get('/admin', fn () => view('hawki-rag', [
-    'experience' => $hawkiRagExperienceConfig('operator'),
+Route::get('/admin', fn () => view('svelte-page', [
+    'title' => 'HAWKI-RAG Operator',
+    'vite' => ['resources/css/app.css', 'resources/js/hawki-rag-experience.js'],
+    'configScriptId' => 'hawki-rag-experience-config',
+    'config' => $hawkiRagExperienceConfig('operator'),
+    'rootAttributes' => ['data-hawki-rag-experience' => true],
 ]));
 
 /*
@@ -187,10 +222,25 @@ Route::get('/admin', fn () => view('hawki-rag', [
 Route::get('/admin/pipeline', fn () => redirect('/pipeline-controller'));
 Route::get('/admin/datasets', fn () => redirect('/datasets'));
 Route::get('/admin/graph', fn () => redirect('/neo4j-graph-explorer'));
-Route::get('/admin/analytics', fn () => view('hawki-rag', [
-    'experience' => $hawkiRagExperienceConfig('analytics'),
+Route::get('/admin/settings', fn () => redirect('/settings'));
+Route::get('/admin/analytics', fn () => view('svelte-page', [
+    'title' => 'HAWKI-RAG Operator',
+    'vite' => ['resources/css/app.css', 'resources/js/hawki-rag-experience.js'],
+    'configScriptId' => 'hawki-rag-experience-config',
+    'config' => $hawkiRagExperienceConfig('analytics'),
+    'rootAttributes' => ['data-hawki-rag-experience' => true],
 ]));
 Route::get('/admin/health-repair', fn () => redirect('/pipeline-health'));
+
+/*
+|--------------------------------------------------------------------------
+| UI Page: Settings (/settings)
+|--------------------------------------------------------------------------
+| Operator defaults for converter profiles and model runtime choices.
+*/
+Route::get('/settings', [SettingsController::class, 'page']);
+Route::get('/settings/config', [SettingsController::class, 'show']);
+Route::put('/settings/config', [SettingsController::class, 'update'])->middleware('throttle:hawki-destructive');
 
 /*
 |--------------------------------------------------------------------------
@@ -199,9 +249,10 @@ Route::get('/admin/health-repair', fn () => redirect('/pipeline-health'));
 | Chat, RAG Status Cards, Qdrant Stats und die zentrale Playground Shell.
 */
 Route::get('/hawki-rag-playground', function () {
-    return view('hawki-rag-playground', [
-        'chatPrompt' => config('model_prompts.prompts.chat') ?? '',
-        'ragPrompt'  => config('model_prompts.prompts.rag') ?? '',
+    return view('svelte-page', [
+        'title' => 'HAWKI-RAG Console',
+        'vite' => 'resources/js/hawki-rag-playground.js',
+        'rootAttributes' => ['data-hawki-rag-playground' => true],
     ]);
 });
 Route::post('/query', [HawkiRagProxyController::class, 'query'])->middleware('throttle:hawki-rag-query');
@@ -215,7 +266,11 @@ Route::delete('/rag/qdrant/collections/{collection}', [RagStatsController::class
 | Graph Visualization, Search, Node Expansion, Snapshots und Graph Reset.
 */
 Route::get('/neo4j-graph-explorer', function () {
-    return view('neo4j-graph-dashboard');
+    return view('svelte-page', [
+        'title' => 'Neo4j Graph Explorer',
+        'vite' => ['resources/css/app.css', 'resources/js/neo4j-graph-dashboard.js'],
+        'rootAttributes' => ['data-neo4j-graph-dashboard' => true],
+    ]);
 });
 Route::get('/rag/neo4j/graph/overview', [RagGraphController::class, 'overview']);
 Route::get('/rag/neo4j/graph/search', [RagGraphController::class, 'search']);
@@ -234,10 +289,16 @@ Route::post('/rag/neo4j/clear', [RagGraphController::class, 'clearNeo4j'])->midd
 | UI Page: Pipeline Controller (/pipeline-controller)
 |--------------------------------------------------------------------------
 | File Upload Ingestion, Scraper Task Selection und die Pipeline Task Run List.
-| Pipeline Task Endpoints koennen auch von Task-Manager-Style Views genutzt werden.
+| Pipeline Task Endpoints werden von Controller, Dataset Browser und Recovery Controls genutzt.
 */
-Route::get('/pipeline-controller', function () {
-    return view('pipeline-controller-dashboard');
+Route::get('/pipeline-controller', function () use ($pipelineControllerConfig) {
+    return view('svelte-page', [
+        'title' => 'HAWKI Pipeline Controller',
+        'vite' => ['resources/css/app.css', 'resources/css/hawki-rag-theme.css', 'resources/js/pipeline-controller.js'],
+        'configScriptId' => 'pipeline-controller-config',
+        'config' => $pipelineControllerConfig(),
+        'rootAttributes' => ['data-pipeline-controller-dashboard' => true],
+    ]);
 });
 Route::get('/scraper/jobs', [ScrapeController::class, 'getCrawlerJobs']);
 Route::get('/scraper/tasks', [ScrapeController::class, 'getCrawlerTasks']);
@@ -270,7 +331,11 @@ Route::post('/pipeline/controller/files', [PipelineControlController::class, 'up
 | Retry Actions aus Dataset-/Task-Details.
 */
 Route::get('/datasets', function () {
-    return view('datasets-dashboard');
+    return view('svelte-page', [
+        'title' => 'HAWKI Data Browser',
+        'vite' => ['resources/css/datasets-dashboard.css', 'resources/css/dashboard-dark-theme.css', 'resources/css/hawki-rag-theme.css', 'resources/js/datasets-dashboard.js'],
+        'rootAttributes' => ['data-datasets-dashboard' => true],
+    ]);
 });
 Route::get('/datasets/data', [DatasetController::class, 'index']);
 Route::get('/datasets/data/{datasetId}', [DatasetController::class, 'show']);
@@ -287,7 +352,7 @@ Route::get('/documents/data/{documentId}', [DocumentBrowserController::class, 's
 |--------------------------------------------------------------------------
 | Shared UI APIs: Pipeline Recovery and Task Manager
 |--------------------------------------------------------------------------
-| Wird von den Retry Controls im Datasets Dashboard und von Task-Manager Scripts genutzt.
+| Wird von den Retry Controls im Dataset Browser und von Recovery-Actions genutzt.
 */
 Route::get('/pipeline/recovery/failed-jobs', [PipelineRecoveryController::class, 'failedJobs']);
 Route::post('/pipeline/recovery/jobs/retry-selected', [PipelineRecoveryController::class, 'retrySelected'])->middleware('throttle:hawki-destructive');
@@ -296,19 +361,4 @@ Route::post('/pipeline/recovery/retry-all', [PipelineRecoveryController::class, 
 Route::post('/pipeline/recovery/tasks/{taskId}/retry-failed', [PipelineRecoveryController::class, 'retryTask'])->middleware('throttle:hawki-destructive');
 Route::post('/pipeline/recovery/datasets/{datasetId}/retry-failed', [PipelineRecoveryController::class, 'retryDataset'])->middleware('throttle:hawki-destructive');
 
-/*
-|--------------------------------------------------------------------------
-| Legacy Scraper API Surface
-|--------------------------------------------------------------------------
-| Aeltere Scraper Controls bleiben fuer Legacy Playground Widgets und direkte
-| Caller verfuegbar.
-*/
-Route::post('/requestScrape', [ScrapeController::class, 'requestScrape'])->middleware('throttle:hawki-upload');
-Route::post('/cancelScrape', [ScrapeController::class, 'cancelScrape'])->middleware('throttle:hawki-destructive');
-Route::post('/getAllScrapes', [ScrapeController::class, 'getAllScrapes']);
-Route::post('/deleteScrapeJob', [ScrapeController::class, 'deleteScrapeJob'])->middleware('throttle:hawki-destructive');
-Route::post('/deleteScrapeContent', [ScrapeController::class, 'deleteScrapeContent'])->middleware('throttle:hawki-destructive');
-Route::post('/getScrapeInformation', [ScrapeController::class, 'getScrapeInformation']);
-Route::post('/getScrapeResult', [ScrapeController::class, 'getScrapeResult']);
-Route::post('/extractPageContent', [ScrapeController::class, 'extractPageContent']);
 });

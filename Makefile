@@ -120,6 +120,7 @@ build-ui:
 
 publish-ui: build-ui
 	@echo "Publishing HAWKI RAG UI assets to hawki_rag_app..."
+	@docker exec hawki_rag_app sh -lc 'mkdir -p /var/www/built_resources && find /var/www/built_resources -mindepth 1 -maxdepth 1 -exec rm -rf {} +'
 	@docker cp "$(UI_BUILD_DIR)/." hawki_rag_app:/var/www/built_resources/
 	@docker exec hawki_rag_app sh -lc 'chown -R www-data:www-data storage bootstrap/cache /var/www/built_resources'
 	@echo "UI assets are ready at http://localhost:8080"

@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 namespace App\Http\Requests\Pipeline;
 
+use App\Services\Settings\SettingsService;
 use App\Services\Pipeline\Values\PipelineUploadInput;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Http\UploadedFile;
@@ -45,6 +46,10 @@ class UploadPipelineFileRequest extends FormRequest
                 return;
             }
 
+            if (app(SettingsService::class)->customConverterUploadDefaults()['api_url'] ?? null) {
+                return;
+            }
+
             $validator->errors()->add(
                 'converter_url',
                 'The converter url field is required when converter mode is custom.',
@@ -61,6 +66,9 @@ class UploadPipelineFileRequest extends FormRequest
 
     public function uploadInput(): PipelineUploadInput
     {
-        return PipelineUploadInput::fromValidated($this->validated());
+        return PipelineUploadInput::fromValidated(
+            $this->validated(),
+            app(SettingsService::class)->customConverterUploadDefaults(),
+        );
     }
 }

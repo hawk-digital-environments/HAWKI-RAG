@@ -86,15 +86,8 @@ readonly class SecurityHeaders
             'pipeline/*',
             'rag/*',
             'scraper/*',
-            'cancelScrape',
-            'deleteScrapeContent',
-            'deleteScrapeJob',
-            'extractPageContent',
-            'getAllScrapes',
-            'getScrapeInformation',
-            'getScrapeResult',
-            'query',
-            'requestScrape'
+            'settings*',
+            'query'
         );
     }
 }

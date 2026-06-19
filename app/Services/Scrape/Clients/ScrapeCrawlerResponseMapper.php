@@ -11,21 +11,6 @@ use Illuminate\Http\Client\Response;
 #[Singleton]
 readonly class ScrapeCrawlerResponseMapper
 {
-    public function pageExtractionResult(Response $response): array
-    {
-        $data = $this->decodeJsonResponse($response->body());
-        $success = $response->successful() && (bool) ($data['success'] ?? false);
-
-        return [
-            'success' => $success,
-            'status' => $success ? $response->status() : ($response->successful() ? 502 : $response->status()),
-            'data' => $data,
-            'message' => $success
-                ? 'Page content extracted successfully.'
-                : $this->errorMessageFromData($data, $response->status()),
-        ];
-    }
-
     public function requestResult(Response $response): array
     {
         $data = $this->decodeJsonResponse($response->body());

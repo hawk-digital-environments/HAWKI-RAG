@@ -1,40 +1,61 @@
 import './bootstrap';
 import './health-gate.js';
-import './playground/pipeline.js';
 import { mount } from 'svelte';
-import PipelineUploadModule from './svelte/apps/PipelineUploadModule.svelte';
+import PipelineControllerPage from './svelte/apps/PipelineControllerPage.svelte';
 import { apiUrl } from './playground/urls.js';
 
-const refreshButton = document.getElementById('pipeline-controller-refresh');
-const uploadModule = document.getElementById('pipeline-upload-module');
-
-refreshButton?.addEventListener('click', () => {
-    window.location.reload();
-});
+const root = document.querySelector('[data-pipeline-controller-dashboard]');
+const configElement = document.getElementById('pipeline-controller-config');
 
 function csrfToken() {
     return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
 }
 
-function parseExtensions(value) {
-    return String(value || '')
-        .split(',')
-        .map((extension) => extension.trim().toLowerCase().replace(/^\.+/, ''))
-        .filter(Boolean);
+function readConfig() {
+    if (!configElement?.textContent) {
+        return {
+            nativeExtensions: [],
+            customExtensions: [],
+            customConverter: {},
+        };
+    }
+
+    try {
+        return JSON.parse(configElement.textContent);
+    } catch (error) {
+        console.error('Invalid pipeline controller config.', error);
+        return {
+            nativeExtensions: [],
+            customExtensions: [],
+            customConverter: {},
+        };
+    }
 }
 
-if (uploadModule) {
-    mount(PipelineUploadModule, {
-        target: uploadModule,
+function extensionList(value) {
+    return Array.isArray(value)
+        ? value.map((extension) => String(extension || '').trim()).filter(Boolean)
+        : [];
+}
+
+function bootPipelineRuntime() {
+    import('./playground/pipeline.js').catch((error) => {
+        console.error('Failed to load pipeline controller runtime.', error);
+    });
+}
+
+if (root) {
+    const config = readConfig();
+
+    mount(PipelineControllerPage, {
+        target: root,
         props: {
-            endpoint: apiUrl('pipeline/controller/files'),
+            uploadEndpoint: apiUrl('pipeline/controller/files'),
             csrfToken: csrfToken(),
-            nativeExtensions: parseExtensions(uploadModule.dataset.nativeExtensions),
-            customExtensions: parseExtensions(uploadModule.dataset.customExtensions),
-            onqueued: (taskId) => {
-                window.hawkiPipelineController?.selectTask?.(taskId);
-                window.hawkiPipelineController?.refreshRuns?.();
-            },
+            nativeExtensions: extensionList(config.nativeExtensions),
+            customExtensions: extensionList(config.customExtensions),
+            customConverter: config.customConverter || {},
+            onready: bootPipelineRuntime,
         },
     });
 }

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Pipeline\Uploads;
 
 use App\Services\Pipeline\Values\PipelineUploadInput;
+use App\Services\Settings\SettingsService;
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Contracts\Config\Repository as ConfigRepository;
 use Illuminate\Filesystem\Filesystem;
@@ -15,6 +16,7 @@ readonly class PipelineCustomConverterProfileWriter
     public function __construct(
         private Filesystem $files,
         private ConfigRepository $config,
+        private SettingsService $settings,
     ) {
     }
 
@@ -26,6 +28,12 @@ readonly class PipelineCustomConverterProfileWriter
         $profile = $input->customConverterProfile();
         if ($profile === []) {
             return null;
+        }
+        if (! isset($profile['converter_token'])) {
+            $token = $this->settings->customConverterToken();
+            if ($token !== null) {
+                $profile['converter_token'] = $token;
+            }
         }
 
         $profile['version'] = '1';

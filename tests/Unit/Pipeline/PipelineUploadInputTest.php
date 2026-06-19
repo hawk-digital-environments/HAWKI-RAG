@@ -62,4 +62,22 @@ class PipelineUploadInputTest extends TestCase
             'converter_token' => 'token-123',
         ], $input->customConverterProfile());
     }
+
+    public function test_custom_converter_uses_saved_defaults_when_request_fields_are_absent(): void
+    {
+        $input = PipelineUploadInput::fromValidated([
+            'converter_mode' => 'custom',
+        ], [
+            'api_url' => 'https://converter.example.test',
+            'start_path' => 'extract',
+        ]);
+
+        $this->assertTrue($input->usesCustomConverter());
+        $this->assertSame('https://converter.example.test', $input->customConverterUrl);
+        $this->assertSame('/extract', $input->customConverterStartPath);
+        $this->assertSame([
+            'converter_url' => 'https://converter.example.test',
+            'converter_start_path' => '/extract',
+        ], $input->customConverterProfile());
+    }
 }

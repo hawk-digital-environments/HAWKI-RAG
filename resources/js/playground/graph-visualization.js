@@ -33,6 +33,8 @@ let selectedNodeId = null;
 let searchMatchIds = new Set();
 let recentNodeIds = new Set();
 let recentEdgeIds = new Set();
+let pathFocusNodeIds = new Set();
+let pathFocusEdgeIds = new Set();
 let activeSearchQuery = '';
 let detailLevel = 'medium';
 
@@ -255,6 +257,31 @@ function graphStyle() {
             },
         },
         {
+            selector: 'node.path-node',
+            style: {
+                'border-color': '#bbf7d0',
+                'border-width': 5,
+                'background-color': '#22c55e',
+                'z-index': 25,
+            },
+        },
+        {
+            selector: 'node.path-node.selected',
+            style: {
+                'border-color': '#dcfce7',
+                'background-color': '#22c55e',
+            },
+        },
+        {
+            selector: 'edge.path-edge',
+            style: {
+                'line-color': '#22c55e',
+                'target-arrow-color': '#22c55e',
+                width: 5,
+                'z-index': 24,
+            },
+        },
+        {
             selector: '.dimmed',
             style: {
                 opacity: 0.18,
@@ -383,10 +410,12 @@ function communityBucket(id) {
 function updateHighlights() {
     if (!cy) return;
     cy.batch(() => {
-        cy.elements().removeClass('selected neighbor search-match recent dimmed');
+        cy.elements().removeClass('selected neighbor search-match recent path-node path-edge dimmed');
         searchMatchIds.forEach((id) => cy.getElementById(id).addClass('search-match'));
         recentNodeIds.forEach((id) => cy.getElementById(id).addClass('recent'));
         recentEdgeIds.forEach((id) => cy.getElementById(id).addClass('recent'));
+        pathFocusNodeIds.forEach((id) => cy.getElementById(id).addClass('path-node'));
+        pathFocusEdgeIds.forEach((id) => cy.getElementById(id).addClass('path-edge'));
 
         if (selectedNodeId) {
             const selected = cy.getElementById(selectedNodeId);
@@ -406,50 +435,45 @@ function metaText() {
 function renderDetails(node) {
     if (!detailEl) return;
     if (!node) {
-        detailEl.innerHTML = '<p class="muted">Select a node to inspect entity metadata and expand neighbors.</p>';
+        detailEl.innerHTML = '<p class="muted">Select a node to inspect entity paths.</p>';
         return;
     }
 
-    const props = node.data('properties') || {};
-    const docs = node.data('sourceDocuments') || [];
-    const docIds = node.data('sourceDocumentIds') || [];
+    const label = nodeLabel(node);
+    const pathCount = node.connectedEdges().length;
     detailEl.innerHTML = `
-        <div class="graph-detail-title">${escapeHtml(node.data('fullLabel'))}</div>
-        <div class="graph-detail-subtitle">${escapeHtml(node.data('nodeType'))} · ${node.connectedEdges().length} relationships</div>
-        <button type="button" id="graph-expand-selected-btn">Expand neighbors</button>
-        <dl class="graph-detail-list">
-            ${Object.entries(props).slice(0, 10).map(([key, value]) => `
-                <dt>${escapeHtml(key)}</dt><dd>${escapeHtml(formatValue(value))}</dd>
-            `).join('')}
-            <dt>Source documents</dt><dd>${docs.length ? renderSourceDocuments(docs) : (docIds.length ? docIds.map(escapeHtml).join(', ') : 'None')}</dd>
-        </dl>
+        <button type="button" id="graph-show-node-paths-btn" class="graph-path-summary">
+            <span>${escapeHtml(label)}</span>
+            <strong>connected to ${pathCount} paths</strong>
+        </button>
     `;
-    document.getElementById('graph-expand-selected-btn')?.addEventListener('click', expandSelected);
+    document.getElementById('graph-show-node-paths-btn')?.addEventListener('click', () => showNodePaths(node.id()));
 }
 
-function renderSourceDocuments(docs) {
-    return `
-        <div class="graph-source-doc-list">
-            ${docs.map((doc) => {
-                const source = doc.sourceUrl || '';
-                const label = doc.label || doc.title || doc.originalFilename || source || doc.docId;
-                const href = source && /^https?:\/\//i.test(source) ? source : '';
-                const secondary = [
-                    doc.originalFilename && doc.originalFilename !== label ? doc.originalFilename : '',
-                    source && source !== label ? source : '',
-                    doc.markdownPreviewPath || doc.localPath || '',
-                ].filter(Boolean);
+function nodeLabel(node) {
+    return String(node?.data('fullLabel') || node?.data('label') || node?.id() || 'Selected entity');
+}
 
-                return `
-                    <article class="graph-source-doc">
-                        <strong>${href ? `<a href="${escapeAttribute(href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}</a>` : escapeHtml(label)}</strong>
-                        ${secondary.length ? `<small>${secondary.map(escapeHtml).join(' · ')}</small>` : ''}
-                        ${doc.markdownSnippet ? `<p>${escapeHtml(doc.markdownSnippet)}</p>` : ''}
-                    </article>
-                `;
-            }).join('')}
-        </div>
-    `;
+async function showNodePaths(nodeId) {
+    if (!nodeId) return;
+    await loadNode(nodeId, { focusPaths: true });
+}
+
+function focusConnectedPaths(nodeId) {
+    if (!cy || !nodeId) return;
+    const node = cy.getElementById(nodeId);
+    if (node.empty()) return;
+
+    const connectedEdges = node.connectedEdges();
+    const connectedNodes = connectedEdges.connectedNodes();
+    pathFocusEdgeIds = new Set(connectedEdges.map((edge) => edge.id()));
+    pathFocusNodeIds = new Set(connectedNodes.map((connectedNode) => connectedNode.id()));
+    recentEdgeIds = new Set(pathFocusEdgeIds);
+    recentNodeIds = new Set(pathFocusNodeIds);
+    selectedNodeId = nodeId;
+    searchMatchIds = new Set([nodeId]);
+    updateHighlights();
+    setStatus(`${nodeLabel(node)} connected to ${connectedEdges.length} paths.`, 'success');
 }
 
 function escapeHtml(value) {
@@ -462,16 +486,6 @@ function escapeHtml(value) {
     }[char]));
 }
 
-function escapeAttribute(value) {
-    return escapeHtml(value).replace(/`/g, '&#096;');
-}
-
-function formatValue(value) {
-    if (Array.isArray(value)) return value.join(', ');
-    if (value && typeof value === 'object') return JSON.stringify(value);
-    return value ?? '';
-}
-
 async function loadOverview() {
     setStatus('Loading graph overview...');
     try {
@@ -480,6 +494,8 @@ async function loadOverview() {
         recentNodeIds = new Set();
         recentEdgeIds = new Set();
         searchMatchIds = new Set();
+        pathFocusNodeIds = new Set();
+        pathFocusEdgeIds = new Set();
         selectedNodeId = null;
         mergeGraph(data);
         setStatus('');
@@ -536,7 +552,7 @@ function renderSearchResults(container, results, warnings = []) {
     });
 }
 
-async function loadNode(nodeId) {
+async function loadNode(nodeId, { focusPaths = false } = {}) {
     if (!nodeId) return;
     setStatus('Loading entity neighborhood...');
     try {
@@ -544,11 +560,17 @@ async function loadNode(nodeId) {
         searchMatchIds = new Set([nodeId]);
         recentNodeIds = new Set(data.nodes.map((node) => String(node.id)));
         recentEdgeIds = new Set(data.edges.map((edge) => String(edge.id)));
+        pathFocusNodeIds = new Set();
+        pathFocusEdgeIds = new Set();
         cy?.elements().remove();
         mergeGraph(data, { markSearch: true, markRecent: true });
         selectedNodeId = nodeId;
         updateHighlights();
         renderDetails(cy.getElementById(nodeId));
+        if (focusPaths) {
+            focusConnectedPaths(nodeId);
+            return;
+        }
         setStatus('');
     } catch (error) {
         setStatus(error.message, 'error');
@@ -628,6 +650,8 @@ async function loadSnapshot(id) {
         cy.elements().remove();
         cy.add([...(scene.nodes || []).map((node) => ({ group: 'nodes', data: node.data, position: node.position })), ...(scene.edges || []).map((edge) => ({ group: 'edges', data: edge.data }))]);
         selectedNodeId = scene.selected_node || null;
+        pathFocusNodeIds = new Set();
+        pathFocusEdgeIds = new Set();
         detailLevel = scene.detail_level || 'medium';
         if (groupingSelect && scene.active_filters?.grouping) groupingSelect.value = scene.active_filters.grouping;
         if (layoutSelect && scene.active_filters?.layout) layoutSelect.value = scene.active_filters.layout;
@@ -671,6 +695,11 @@ if (graphCanvas) {
     clearViewBtn?.addEventListener('click', () => {
         cy.elements().remove();
         selectedNodeId = null;
+        searchMatchIds = new Set();
+        recentNodeIds = new Set();
+        recentEdgeIds = new Set();
+        pathFocusNodeIds = new Set();
+        pathFocusEdgeIds = new Set();
         renderDetails(null);
         setMeta('Graph view cleared');
     });

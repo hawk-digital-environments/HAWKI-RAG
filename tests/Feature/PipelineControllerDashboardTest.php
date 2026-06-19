@@ -22,13 +22,9 @@ class PipelineControllerDashboardTest extends TestCase
         $this->get('/pipeline-controller')
             ->assertOk()
             ->assertSee('Pipeline Controller')
-            ->assertSee('Scraper Tasks')
-            ->assertSee('pipeline-nav', false)
-            ->assertSee('pipeline-controller-refresh', false)
-            ->assertSee('pipeline-upload-module', false)
-            ->assertSee('pipeline-stage-log-viewer', false)
-            ->assertSee('Stage logs')
-            ->assertSee('pipeline-task-select', false);
+            ->assertSee('data-pipeline-controller-dashboard', false)
+            ->assertSee('pipeline-controller-config', false)
+            ->assertDontSee('pipeline-task-select', false);
 
         $this->get('/hawki-rag-playground')
             ->assertOk()
@@ -185,6 +181,76 @@ class PipelineControllerDashboardTest extends TestCase
         File::deleteDirectory($root);
     }
 
+    public function test_custom_converter_upload_uses_saved_settings_without_sending_secret(): void
+    {
+        $root = storage_path('framework/testing/pipeline-controller-settings');
+        $settingsPath = storage_path('framework/testing/pipeline-controller-settings.json');
+        File::deleteDirectory($root);
+        File::delete($settingsPath);
+        config()->set('config.operator_settings_path', $settingsPath);
+        config()->set('temporal.storage.shared_root', $root);
+        config()->set('file_converter.raganything_supported_extensions', ['pdf']);
+        Http::fake([
+            '*temporal/workflows/ingest' => Http::response([
+                'workflow_id' => 'ingest-source-settings-workflow',
+                'run_id' => 'upload-settings-run-1',
+            ]),
+        ]);
+
+        $this->withSession(['_token' => 'test-token'])
+            ->putJson('/settings/config', [
+                'customConverter' => [
+                    'enabled' => true,
+                    'supportedExtensions' => '',
+                    'apiUrl' => 'https://converter.example.test',
+                    'startPath' => '/extract',
+                    'apiKey' => 'stored-converter-key',
+                ],
+                'models' => [
+                    'provider' => 'ollama',
+                    'graphModel' => 'llama3.2:3b',
+                    'embeddingModel' => 'bge-m3',
+                ],
+            ], ['X-CSRF-TOKEN' => 'test-token'])
+            ->assertOk();
+
+        $this->actingAsApiUser();
+
+        $this->post('/api/pipeline/controller/files', [
+            'dataset_id' => 'saved-converter-test',
+            'converter_mode' => 'custom',
+            'file' => UploadedFile::fake()->create('diagram.svg', 12, 'image/svg+xml'),
+        ], [
+            'Accept' => 'application/json',
+        ])
+            ->assertCreated()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('datasetId', 'saved-converter-test');
+
+        $profilePath = null;
+        Http::assertSent(function ($request) use (&$profilePath): bool {
+            $data = $request->data();
+            $profilePath = data_get($data, 'workflow_input.custom_converter_profile_path');
+
+            return $request->url() === config('temporal.bridge_url').'/temporal/workflows/ingest'
+                && data_get($data, 'workflow_input.converter_mode') === 'custom'
+                && data_get($data, 'workflow_input.ingestion.provider') === 'ollama'
+                && data_get($data, 'workflow_input.ingestion.graph_model') === 'llama3.2:3b'
+                && data_get($data, 'workflow_input.ingestion.embedding_model') === 'bge-m3'
+                && is_string($profilePath)
+                && ! str_contains(json_encode($data, JSON_UNESCAPED_SLASHES), 'stored-converter-key');
+        });
+
+        $this->assertIsString($profilePath);
+        $profile = json_decode(File::get($profilePath), true);
+        $this->assertSame('https://converter.example.test', $profile['converter_url']);
+        $this->assertSame('/extract', $profile['converter_start_path']);
+        $this->assertSame('stored-converter-key', $profile['converter_token']);
+
+        File::deleteDirectory($root);
+        File::delete($settingsPath);
+    }
+
     public function test_failed_upload_storage_does_not_create_dataset_task_or_job(): void
     {
         $root = storage_path('framework/testing/pipeline-controller-blocked');
@@ -226,10 +292,44 @@ class PipelineControllerDashboardTest extends TestCase
 
         $this->get('/pipeline-controller')
             ->assertOk()
-            ->assertSee('pipeline-upload-module', false)
-            ->assertSee('data-native-extensions="pdf,txt,png,webp"', false)
-            ->assertSee('data-native-accept=".pdf,.txt,.png,.webp"', false)
-            ->assertSee('data-custom-extensions="zip"', false);
+            ->assertSee('pipeline-controller-config', false)
+            ->assertSee('"nativeExtensions":["pdf","txt","png","webp"]', false)
+            ->assertSee('"customExtensions":["zip"]', false);
+    }
+
+    public function test_controller_config_uses_settings_converter_without_exposing_secret_fields(): void
+    {
+        $this->withoutVite();
+
+        $settingsPath = storage_path('framework/testing/pipeline-controller-config-settings.json');
+        File::delete($settingsPath);
+        config()->set('config.operator_settings_path', $settingsPath);
+
+        $this->withSession(['_token' => 'test-token'])
+            ->putJson('/settings/config', [
+                'customConverter' => [
+                    'enabled' => true,
+                    'supportedExtensions' => 'svg',
+                    'apiUrl' => 'https://converter.example.test',
+                    'startPath' => '/extract',
+                    'apiKey' => 'controller-config-secret',
+                ],
+                'models' => [
+                    'provider' => 'ollama',
+                    'graphModel' => 'llama3.2:3b',
+                    'embeddingModel' => 'bge-m3',
+                ],
+            ], ['X-CSRF-TOKEN' => 'test-token'])
+            ->assertOk();
+
+        $this->get('/pipeline-controller')
+            ->assertOk()
+            ->assertSee('"customConverter":{"enabled":true,"configured":true,"supported_extensions":["svg"]}', false)
+            ->assertDontSee('https://converter.example.test', false)
+            ->assertDontSee('controller-config-secret', false)
+            ->assertDontSee('/extract', false);
+
+        File::delete($settingsPath);
     }
 
     public function test_pipeline_task_cache_can_be_deleted(): void

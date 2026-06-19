@@ -22,8 +22,7 @@ class DocumentBrowserTest extends TestCase
         $document = $this->createIngestedDocument();
 
         $this->get('/documents')
-            ->assertOk()
-            ->assertSee('Document Browser');
+            ->assertRedirect('/datasets');
 
         $this->actingAsApiUser();
 
