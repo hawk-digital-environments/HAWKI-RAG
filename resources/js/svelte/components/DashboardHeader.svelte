@@ -14,10 +14,6 @@
         copy: string;
         /** Active navigation key. */
         active: string;
-        /** Stable refresh button id for the page. */
-        refreshId: string;
-        /** Optional refresh handler. */
-        onrefresh?: () => void;
     }
 
     const {
@@ -25,8 +21,6 @@
         title,
         copy,
         active,
-        refreshId,
-        onrefresh,
         class: className = '',
         ...restProps
     }: Props = $props();
@@ -39,6 +33,6 @@
         <p class="header-copy">{copy}</p>
     </div>
     <div class="header-actions">
-        <DashboardNav {active} {refreshId} {onrefresh} />
+        <DashboardNav {active} />
     </div>
 </header>

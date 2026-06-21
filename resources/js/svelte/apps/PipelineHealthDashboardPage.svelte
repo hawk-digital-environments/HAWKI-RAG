@@ -17,9 +17,6 @@
         onready?.();
     });
 
-    function runtimeRefresh(): void {
-        // The health runtime attaches the actual refresh behavior after mount.
-    }
 </script>
 
 <main {...restProps} class={['pipeline-health-dashboard', className].filter(Boolean).join(' ')}>
@@ -28,8 +25,6 @@
         title="Pipeline Health"
         copy="Check Temporal, PostgreSQL, adapters, shared storage, Qdrant, and Neo4j from Laravel."
         active="health"
-        refreshId="pipeline-health-refresh"
-        onrefresh={runtimeRefresh}
     />
 
     <section class="health-status" id="pipeline-health-status">Loading ingestion health...</section>

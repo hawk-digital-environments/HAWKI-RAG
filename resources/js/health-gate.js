@@ -11,7 +11,6 @@ let list = null;
 let summary = null;
 let checkedAt = null;
 let actions = null;
-let refreshButton = null;
 let title = null;
 let timer = null;
 let busy = false;
@@ -40,7 +39,6 @@ function createOverlay() {
             <div class="hawki-health-gate-actions"></div>
             <div class="hawki-health-gate-footer">
                 <span class="hawki-health-gate-checked">Waiting for first check.</span>
-                <button type="button" class="hawki-health-gate-refresh">Refresh checks</button>
             </div>
         </div>
     `;
@@ -50,8 +48,6 @@ function createOverlay() {
     list = overlay.querySelector('.hawki-health-gate-checks');
     actions = overlay.querySelector('.hawki-health-gate-actions');
     checkedAt = overlay.querySelector('.hawki-health-gate-checked');
-    refreshButton = overlay.querySelector('.hawki-health-gate-refresh');
-    refreshButton?.addEventListener('click', () => refreshGate(true));
 
     document.body.appendChild(overlay);
 
@@ -183,10 +179,9 @@ function renderFailure(error) {
     if (checkedAt) checkedAt.textContent = 'Gate check failed.';
 }
 
-async function refreshGate(manual = false) {
+async function refreshGate() {
     if (busy) return;
     busy = true;
-    if (manual && refreshButton) refreshButton.disabled = true;
 
     try {
         const response = await fetch(apiUrl('health/system-gate?timeout=3'), {
@@ -203,7 +198,6 @@ async function refreshGate(manual = false) {
         renderFailure(error);
     } finally {
         busy = false;
-        if (refreshButton) refreshButton.disabled = false;
     }
 }
 

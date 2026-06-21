@@ -8,7 +8,3 @@ if (document.getElementById('neo4j-graph-canvas')) {
         console.error('Failed to load graph visualization.', error);
     });
 }
-
-document.getElementById('playground-refresh')?.addEventListener('click', () => {
-    window.location.reload();
-});

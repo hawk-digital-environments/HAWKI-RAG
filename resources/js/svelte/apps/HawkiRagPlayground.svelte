@@ -4,16 +4,11 @@
 <script lang="ts">
     import {onMount} from 'svelte';
     import type {HTMLAttributes} from 'svelte/elements';
+    import DashboardHeader from '../components/DashboardHeader.svelte';
 
     type RetrievalMode = 'deep' | 'fast';
     type ResultTab = 'sources' | 'graph' | 'raw';
     type Tone = 'ready' | 'active' | 'warn' | 'fail';
-
-    interface NavItem {
-        key: string;
-        label: string;
-        href: string;
-    }
 
     interface Props extends HTMLAttributes<HTMLDivElement> {
         /** Browser URL for submitting HAWKI-RAG queries. */
@@ -26,8 +21,6 @@
         qdrantCollectionEndpointBase: string;
         /** Browser URL for clearing Neo4j graph data. */
         neo4jClearEndpoint: string;
-        /** Navigation links for the HAWKI-RAG UI surfaces. */
-        navItems: NavItem[];
     }
 
     interface QueryHit {
@@ -99,7 +92,6 @@
         statsEndpoint,
         qdrantCollectionEndpointBase,
         neo4jClearEndpoint,
-        navItems,
         class: className = '',
         ...restProps
     }: Props = $props();
@@ -506,22 +498,12 @@
 </script>
 
 <div {...restProps} class={['playground-shell', className].filter(Boolean).join(' ')}>
-    <header class="playground-top dashboard-header">
-        <div class="playground-title">
-            <p class="eyebrow">HAWKI RAG retrieval</p>
-            <h1>Retrieval Console</h1>
-            <p class="header-copy">Ask questions, inspect evidence, and compare vector or graph-backed answers.</p>
-        </div>
-
-        <div class="header-actions">
-            <nav class="playground-nav" aria-label="HAWKI-RAG pages">
-                <button type="button" onclick={refreshSystem}>Refresh</button>
-                {#each navItems as item}
-                    <a class:playground-nav__item--active={item.key === 'playground'} href={item.href}>{item.label}</a>
-                {/each}
-            </nav>
-        </div>
-    </header>
+    <DashboardHeader
+        eyebrow="HAWKI RAG retrieval"
+        title="Retrieval Console"
+        copy="Ask questions, inspect evidence, and compare vector or graph-backed answers."
+        active="playground"
+    />
 
     <section class="signal-strip" aria-label="Live retrieval state">
         {#each systemSignals as signal}
@@ -868,7 +850,6 @@
         overflow-wrap: anywhere;
     }
 
-    .playground-top,
     .signal-strip,
     .playground-grid {
         margin: 0 auto;
@@ -877,31 +858,6 @@
     .signal-strip,
     .playground-grid {
         max-width: 1760px;
-    }
-
-    .playground-top {
-        display: grid;
-        grid-template-columns: minmax(0, 1fr) auto;
-        gap: 20px;
-        align-items: end;
-        max-width: 1760px;
-        margin-bottom: 18px;
-        padding: 0 0 18px;
-        border-bottom: 1px solid rgba(148, 163, 184, 0.22);
-    }
-
-    .playground-title {
-        min-width: 0;
-    }
-
-    .playground-title .eyebrow {
-        margin: 0 0 0.35rem;
-        color: var(--pg-cyan);
-        font-size: 0.78rem;
-        font-weight: 800;
-        line-height: 1.2;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
     }
 
     .panel-heading p {
@@ -913,37 +869,6 @@
         text-transform: uppercase;
     }
 
-    .playground-title .header-copy {
-        max-width: 680px;
-        margin: 8px 0 0;
-        color: #bae6fd;
-        font-size: 0.95rem;
-        line-height: 1.55;
-    }
-
-    .playground-title h1 {
-        margin: 0;
-        color: var(--pg-text);
-        font-size: 1.4rem;
-        font-weight: 800;
-        line-height: 1.15;
-        letter-spacing: 0;
-    }
-
-    .playground-nav {
-        display: flex;
-        flex-wrap: nowrap;
-        justify-content: flex-end;
-        gap: 0.6rem;
-        min-width: 0;
-        max-width: 100%;
-        overflow-x: auto;
-        overscroll-behavior-inline: contain;
-        scrollbar-width: thin;
-    }
-
-    .playground-nav a,
-    .playground-nav button,
     .prompt-bank button,
     .segmented button,
     .result-tabs button,
@@ -958,44 +883,6 @@
         font-size: 0.85rem;
         font-weight: 820;
         text-decoration: none;
-    }
-
-    .header-actions {
-        display: flex;
-        flex-wrap: nowrap;
-        justify-content: flex-end;
-        gap: 0.6rem;
-        min-width: 0;
-        max-width: 100%;
-        overflow-x: auto;
-        overscroll-behavior-inline: contain;
-        scrollbar-width: thin;
-    }
-
-    .playground-nav a,
-    .playground-nav button {
-        flex: 0 0 auto;
-        min-height: 40px;
-        height: 40px;
-        border-radius: 0.5rem;
-        padding: 0 0.9rem;
-        font-size: 0.88rem;
-        font-weight: 800;
-    }
-
-    .playground-nav a,
-    .playground-nav button {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        padding: 0 12px;
-        white-space: nowrap;
-    }
-
-    .playground-nav__item--active {
-        border-color: var(--pg-border-strong) !important;
-        background: rgba(20, 184, 166, 0.18) !important;
-        color: #99f6e4 !important;
     }
 
     .signal-strip {
@@ -1600,15 +1487,10 @@
     }
 
     @media (max-width: 900px) {
-        .playground-top,
         .playground-grid,
         .source-layout,
         .system-panel {
             grid-template-columns: 1fr;
-        }
-
-        .playground-nav {
-            justify-content: flex-start;
         }
 
         .signal-strip {

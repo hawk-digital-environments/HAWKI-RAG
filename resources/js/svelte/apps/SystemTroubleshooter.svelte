@@ -31,6 +31,12 @@
 
     const progressText = $derived(`${Math.round(progress)}%`);
 
+    function isCurrentPage(path: string): boolean {
+        const target = new URL(resolvePageUrl(path), window.location.origin);
+
+        return window.location.pathname === target.pathname;
+    }
+
     function delay(ms: number): Promise<void> {
         return new Promise((resolve) => window.setTimeout(resolve, ms));
     }
@@ -165,15 +171,48 @@
 
 <div {...restProps}>
     <div class="launcherBar">
-        <a class="homeLink" href={resolvePageUrl('/admin')}>Home</a>
+        <a
+            class="launcherControl"
+            href={resolvePageUrl('/admin')}
+            aria-label="Home"
+            aria-current={isCurrentPage('/admin') ? 'page' : undefined}
+            title="Home"
+        >
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M3.75 11.4 12 4.25l8.25 7.15" />
+                <path d="M5.75 10.2v8.05a1.5 1.5 0 0 0 1.5 1.5h9.5a1.5 1.5 0 0 0 1.5-1.5V10.2" />
+                <path d="M9.75 19.75v-5.5h4.5v5.5" />
+            </svg>
+            <span class="srOnly">Home</span>
+        </a>
+        <a
+            class="launcherControl"
+            href={resolvePageUrl('/settings')}
+            aria-label="Settings"
+            aria-current={isCurrentPage('/settings') ? 'page' : undefined}
+            title="Settings"
+        >
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M12 8.15a3.85 3.85 0 1 1 0 7.7 3.85 3.85 0 0 1 0-7.7Z" />
+                <path d="M19.15 12.95a7.84 7.84 0 0 0 .04-.95 7.84 7.84 0 0 0-.04-.95l2.02-1.58-1.92-3.32-2.38.96a7.46 7.46 0 0 0-1.64-.95L14.88 3.6h-3.76l-.35 2.56a7.46 7.46 0 0 0-1.64.95l-2.38-.96-1.92 3.32 2.02 1.58a7.84 7.84 0 0 0-.04.95c0 .32.01.64.04.95l-2.02 1.58 1.92 3.32 2.38-.96c.5.39 1.05.71 1.64.95l.35 2.56h3.76l.35-2.56a7.46 7.46 0 0 0 1.64-.95l2.38.96 1.92-3.32-2.02-1.58Z" />
+            </svg>
+            <span class="srOnly">Settings</span>
+        </a>
         <button
             type="button"
-            class="launcher"
+            class="launcherControl"
+            aria-label="Troubleshoot"
             aria-controls="hawki-troubleshooter-panel"
             aria-expanded={panelOpen}
             onclick={openPanel}
+            title="Troubleshoot"
         >
-            Troubleshoot
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M12 3.75 4.25 7.15v5.7c0 4.1 3.05 6.8 7.75 7.4 4.7-.6 7.75-3.3 7.75-7.4v-5.7L12 3.75Z" />
+                <path d="M12 8.15v4.4" />
+                <path d="M12 16.15h.01" />
+            </svg>
+            <span class="srOnly">Troubleshoot</span>
         </button>
     </div>
 
@@ -246,37 +285,81 @@
         z-index: 100000;
         display: flex;
         align-items: center;
-        gap: 8px;
+        gap: 7px;
+        padding: 7px;
+        border: 1px solid rgba(125, 211, 252, 0.3);
+        border-radius: 16px;
+        background:
+            linear-gradient(145deg, rgba(8, 18, 32, 0.96), rgba(15, 23, 42, 0.9)),
+            rgba(8, 18, 32, 0.92);
+        box-shadow: 0 18px 46px rgba(2, 8, 23, 0.38), 0 0 30px rgba(14, 165, 233, 0.16);
+        backdrop-filter: blur(14px);
     }
 
-    .homeLink,
-    .launcher {
-        min-height: 44px;
-        border: 1px solid var(--hawki-trouble-interactive-border);
-        border-radius: 8px;
-        padding: 0 16px;
-        background: var(--hawki-trouble-interactive);
-        color: var(--hawki-trouble-text-strong);
-        box-shadow: var(--hawki-trouble-shadow);
-        cursor: pointer;
-        font: inherit;
-        font-size: 0.9rem;
-        font-weight: 800;
-        letter-spacing: 0;
-        text-decoration: none;
-    }
-
-    .homeLink {
+    .launcherControl {
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        background: var(--hawki-trouble-control);
+        width: 42px;
+        height: 42px;
+        min-height: 42px;
+        border: 1px solid rgba(148, 163, 184, 0.24);
+        border-radius: 12px;
+        padding: 0;
+        background: rgba(15, 23, 42, 0.7);
+        color: var(--hawki-trouble-text-strong);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+        cursor: pointer;
+        font: inherit;
+        text-decoration: none;
+        transition:
+            background 160ms ease,
+            border-color 160ms ease,
+            color 160ms ease,
+            transform 160ms ease,
+            box-shadow 160ms ease;
+    }
+
+    .launcherControl:hover,
+    .launcherControl:focus-visible,
+    .launcherControl[aria-current="page"] {
+        border-color: rgba(125, 211, 252, 0.64);
+        background: rgba(14, 165, 233, 0.18);
+        color: #e0f2fe;
+        box-shadow: 0 10px 24px rgba(14, 165, 233, 0.22);
+        transform: translateY(-1px);
+        outline: none;
+    }
+
+    .launcherControl[aria-expanded="true"] {
+        border-color: rgba(52, 211, 153, 0.72);
+        background: rgba(6, 95, 70, 0.36);
+        color: #d1fae5;
+    }
+
+    .launcherControl svg {
+        width: 20px;
+        height: 20px;
+        stroke: currentColor;
+        stroke-width: 1.85;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        fill: none;
+    }
+
+    .srOnly {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
     }
 
     .panel {
         position: fixed;
         right: 18px;
-        bottom: 76px;
+        bottom: 86px;
         z-index: 100001;
         width: min(480px, calc(100vw - 28px));
         max-height: min(760px, calc(100vh - 104px));
@@ -471,7 +554,7 @@
 
         .panel {
             right: 14px;
-            bottom: 70px;
+            bottom: 82px;
         }
     }
 </style>

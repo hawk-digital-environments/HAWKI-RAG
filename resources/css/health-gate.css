@@ -197,8 +197,7 @@ body.hawki-health-gate-blocked > :not(.hawki-health-gate):not(.hawki-troubleshoo
     margin-top: 22px;
 }
 
-.hawki-health-gate-action,
-.hawki-health-gate-refresh {
+.hawki-health-gate-action {
     border: 0;
     border-radius: 10px;
     padding: 10px 14px;
@@ -208,15 +207,6 @@ body.hawki-health-gate-blocked > :not(.hawki-health-gate):not(.hawki-troubleshoo
     font-weight: 800;
     text-decoration: none;
     cursor: pointer;
-}
-
-.hawki-health-gate-refresh {
-    background: rgba(248, 250, 252, 0.12);
-}
-
-.hawki-health-gate-refresh:disabled {
-    cursor: wait;
-    opacity: 0.6;
 }
 
 .hawki-health-gate-footer {

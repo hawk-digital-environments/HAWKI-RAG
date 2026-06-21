@@ -27,6 +27,7 @@ const snapshotLoad = document.getElementById('graph-snapshot-load');
 const snapshotDeleteBtn = document.getElementById('graph-snapshot-delete-btn');
 const statusEl = document.getElementById('graph-status');
 const detailEl = document.getElementById('graph-detail-panel');
+const OVERVIEW_POLL_INTERVAL_MS = 12000;
 
 let cy = null;
 let selectedNodeId = null;
@@ -366,7 +367,9 @@ function mergeGraph(payload, { markRecent = false, markSearch = false, runLayout
 
     if (graphEmpty) graphEmpty.style.display = cy.elements().length ? 'none' : 'block';
     setMeta(metaText());
-    if (runLayoutAfter) runLayout();
+    if (runLayoutAfter && elements.length > 0) runLayout();
+
+    return elements.length;
 }
 
 function applyGrouping() {
@@ -486,22 +489,38 @@ function escapeHtml(value) {
     }[char]));
 }
 
-async function loadOverview() {
-    setStatus('Loading graph overview...');
+async function loadOverview({ quiet = false, replace = true } = {}) {
+    if (!quiet) {
+        setStatus('Loading graph overview...');
+    }
     try {
         const data = await requestJson(apiUrl('rag/neo4j/graph/overview?limit=80'));
-        cy?.elements().remove();
-        recentNodeIds = new Set();
-        recentEdgeIds = new Set();
-        searchMatchIds = new Set();
-        pathFocusNodeIds = new Set();
-        pathFocusEdgeIds = new Set();
-        selectedNodeId = null;
-        mergeGraph(data);
-        setStatus('');
-        pushActivity('Graph', `Cytoscape overview loaded · ${data.nodes.length} nodes · ${data.edges.length} edges`);
+        if (replace) {
+            cy?.elements().remove();
+            recentNodeIds = new Set();
+            recentEdgeIds = new Set();
+            searchMatchIds = new Set();
+            pathFocusNodeIds = new Set();
+            pathFocusEdgeIds = new Set();
+            selectedNodeId = null;
+        }
+
+        const addedCount = mergeGraph(data, {
+            markRecent: !replace,
+            runLayoutAfter: replace || !selectedNodeId,
+        });
+
+        if (!quiet) {
+            setStatus('');
+            pushActivity('Graph', `Cytoscape overview loaded · ${data.nodes.length} nodes · ${data.edges.length} edges`);
+        } else if (addedCount > 0) {
+            setStatus(`Graph synced ${addedCount} new item${addedCount === 1 ? '' : 's'}.`, 'success');
+            pushActivity('Graph', `Auto-synced ${addedCount} graph item${addedCount === 1 ? '' : 's'}`);
+        }
     } catch (error) {
-        setStatus(error.message, 'error');
+        if (!quiet) {
+            setStatus(error.message, 'error');
+        }
     }
 }
 
@@ -680,6 +699,9 @@ if (graphCanvas) {
     initGraph();
     loadSnapshotList().catch(() => {});
     loadOverview();
+    const overviewPollTimer = setInterval(() => {
+        loadOverview({ quiet: true, replace: false });
+    }, OVERVIEW_POLL_INTERVAL_MS);
 
     searchInput?.addEventListener('input', debounce((event) => searchEntities(event.target.value), 350));
     semanticInput?.addEventListener('keydown', (event) => {
@@ -711,6 +733,7 @@ if (graphCanvas) {
         await loadSnapshotList();
         setStatus('Snapshot deleted.');
     });
+    window.addEventListener('beforeunload', () => clearInterval(overviewPollTimer), { once: true });
 }
 
 if (clearBtn) {

@@ -18,7 +18,6 @@ function bootPipelineHealthDashboard() {
     if (!root) return;
 
     const els = {
-        refresh: document.getElementById('pipeline-health-refresh'),
         status: document.getElementById('pipeline-health-status'),
         state: document.getElementById('pipeline-health-state'),
         updated: document.getElementById('pipeline-health-updated'),
@@ -260,15 +259,15 @@ function bootPipelineHealthDashboard() {
         renderMonitor(data || {});
     }
 
-    els.refresh?.addEventListener('click', async () => {
-        try {
-            await loadQueues();
-        } catch (error) {
-            setStatus(error.message || 'Could not refresh ingestion health.', 'error');
-        }
-    });
-
     loadQueues().catch((error) => {
         setStatus(error.message || 'Could not load ingestion health.', 'error');
     });
+
+    const pollTimer = window.setInterval(() => {
+        loadQueues().catch(() => {
+            // Keep background health polling quiet on transient service errors.
+        });
+    }, 10000);
+
+    window.addEventListener('beforeunload', () => window.clearInterval(pollTimer), { once: true });
 }

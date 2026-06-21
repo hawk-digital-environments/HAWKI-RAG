@@ -17,9 +17,6 @@
         onready?.();
     });
 
-    function runtimeRefresh(): void {
-        // The data browser runtime attaches the actual refresh behavior after mount.
-    }
 </script>
 
 <main {...restProps} class={['datasets-dashboard', className].filter(Boolean).join(' ')}>
@@ -28,8 +25,6 @@
         title="Data Browser"
         copy="Dataset-scoped tasks, documents, ingestion, preview, and graph storage."
         active="datasets"
-        refreshId="datasets-refresh"
-        onrefresh={runtimeRefresh}
     />
 
     <div class="dashboard-grid">

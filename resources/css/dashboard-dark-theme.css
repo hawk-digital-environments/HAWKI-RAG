@@ -22,7 +22,9 @@
     --control-radius: 0.5rem;
     --control-padding-x: 0.9rem;
     --control-font-size: 0.88rem;
-    --nav-action-min-width: 0;
+    --nav-action-width: 132px;
+    --nav-action-height: var(--control-height);
+    --nav-action-min-width: var(--nav-action-width);
     --header-title-size: 1.4rem;
     --header-title-line-height: 1.15;
     --header-title-weight: 800;
@@ -133,10 +135,14 @@ body {
 
 .pipeline-nav .secondary-button,
 .pipeline-nav .secondary-link {
-    flex: 0 0 auto;
-    width: auto;
+    flex: 0 0 var(--nav-action-width);
+    width: var(--nav-action-width);
     min-width: var(--nav-action-min-width);
-    max-width: none;
+    max-width: var(--nav-action-width);
+    height: var(--nav-action-height);
+    min-height: var(--nav-action-height);
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .eyebrow {
@@ -469,6 +475,6 @@ input::placeholder {
 
     .pipeline-nav .secondary-button,
     .pipeline-nav .secondary-link {
-        flex: 0 0 auto;
+        flex: 0 0 var(--nav-action-width);
     }
 }

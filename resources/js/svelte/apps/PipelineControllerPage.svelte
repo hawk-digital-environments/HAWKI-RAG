@@ -92,7 +92,6 @@
         title="Pipeline Controller"
         copy="Start crawler tasks, upload documents, and follow scrape to convert to ingest chaining."
         active="controller"
-        refreshId="pipeline-controller-refresh"
     />
 
     <section class="hawki-rag-page-signal hawki-rag-page-signal--pipeline" aria-label="Ingestion Control route context">
@@ -138,7 +137,6 @@
             <aside class="pipeline-task-panel">
                 <div class="pipeline-panel-head">
                     <h3>Scraper Tasks</h3>
-                    <button type="button" id="pipeline-task-refresh-btn" class="pipeline-secondary-btn">Refresh</button>
                 </div>
                 <label for="pipeline-task-select">Available task</label>
                 <select id="pipeline-task-select">
@@ -155,7 +153,6 @@
                 <div class="pipeline-run-list-block">
                     <div class="pipeline-panel-head">
                         <h3>Pipeline Tasks</h3>
-                        <button type="button" id="pipeline-run-refresh-btn" class="pipeline-secondary-btn">Refresh</button>
                     </div>
                     <div id="pipeline-run-list" class="pipeline-run-list">
                         <button type="button" disabled>Loading pipeline tasks...</button>

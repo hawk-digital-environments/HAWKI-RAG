@@ -268,7 +268,6 @@
         title="Settings"
         copy="Converter defaults, provider credentials, and graph extraction model choices."
         active="settings"
-        refreshId="settings-refresh"
     />
 
     <form class="settings-layout" onsubmit={(event) => { event.preventDefault(); void saveSettings(); }}>

@@ -20,7 +20,6 @@ function bootDatasetsDashboard() {
 
     const query = new URLSearchParams(window.location.search);
     const els = {
-        refresh: document.getElementById('datasets-refresh'),
         status: document.getElementById('datasets-status'),
         count: document.getElementById('datasets-count'),
         list: document.getElementById('datasets-list'),
@@ -733,11 +732,10 @@ function bootDatasetsDashboard() {
     function startPolling() {
         if (state.pollTimer) clearInterval(state.pollTimer);
         state.pollTimer = setInterval(async () => {
-            if (!state.selectedDatasetId) return;
             try {
                 await loadDatasets({ keepSelection: true });
             } catch {
-                // Polling stays quiet; manual refresh reports errors.
+                // Polling stays quiet; the visible status only changes on initial load or user actions.
             }
         }, 10000);
     }
@@ -754,16 +752,6 @@ function bootDatasetsDashboard() {
             setStatus('Documents filtered.', 'success');
         } catch (error) {
             setStatus(error.message || 'Document filter failed.', 'error');
-        }
-    });
-
-    els.refresh?.addEventListener('click', async () => {
-        try {
-            setStatus('Refreshing data browser...');
-            await loadDatasets({ keepSelection: true });
-            setStatus('Data browser refreshed.', 'success');
-        } catch (error) {
-            setStatus(error.message || 'Refresh failed.', 'error');
         }
     });
 

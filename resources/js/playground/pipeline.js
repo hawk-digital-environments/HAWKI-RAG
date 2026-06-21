@@ -9,14 +9,12 @@ const updatedAtEl = document.getElementById('pipeline-updated-at');
 const stagesEl = document.getElementById('pipeline-stages');
 const taskSelect = document.getElementById('pipeline-task-select');
 const taskNote = document.getElementById('pipeline-task-note');
-const taskRefreshButton = document.getElementById('pipeline-task-refresh-btn');
 const taskStartButton = document.getElementById('pipeline-task-start-btn');
 const taskCountEl = document.getElementById('pipeline-task-count');
 const taskSourceEl = document.getElementById('pipeline-task-source');
 const taskDetailEl = document.getElementById('pipeline-task-detail');
 const taskRunEl = document.getElementById('pipeline-task-run');
 const runListEl = document.getElementById('pipeline-run-list');
-const runRefreshButton = document.getElementById('pipeline-run-refresh-btn');
 const stageLogStatusEl = document.getElementById('pipeline-stage-log-status');
 const stageLogViewerEl = document.getElementById('pipeline-stage-log-viewer');
 
@@ -31,6 +29,10 @@ let selectedCatalogTaskId = localStorage.getItem('hawkiSelectedScraperTaskId')
 let availableTasks = [];
 let pipelineTaskRuns = [];
 let pollTimer = null;
+let taskListPollTimer = null;
+let runListPollTimer = null;
+let taskCatalogLoading = false;
+let taskRunLoading = false;
 
 localStorage.removeItem('hawkiPipelineJobId');
 localStorage.removeItem('hawkiPipelineRunTaskId');
@@ -681,10 +683,14 @@ function renderTaskOptions(tasks, message = '') {
     setTaskNote(selected?.description || message || `${tasks.length} task(s) available.`, 'info');
 }
 
-async function loadScraperTasks() {
+async function loadScraperTasks({ quiet = false } = {}) {
     if (!taskSelect) return;
-    if (taskRefreshButton) taskRefreshButton.disabled = true;
-    setTaskNote('Loading scraper tasks...');
+    if (taskCatalogLoading) return;
+
+    taskCatalogLoading = true;
+    if (!quiet) {
+        setTaskNote('Loading scraper tasks...');
+    }
 
     try {
         const response = await fetch(apiUrl('scraper/tasks'), {
@@ -697,16 +703,20 @@ async function loadScraperTasks() {
         availableTasks = Array.isArray(data.tasks) ? data.tasks : [];
         renderTaskOptions(availableTasks, data.message || unavailableTasksMessage);
     } catch (error) {
-        availableTasks = [];
-        renderTaskOptions([], error.message || unavailableTasksMessage);
+        if (!quiet) {
+            availableTasks = [];
+            renderTaskOptions([], error.message || unavailableTasksMessage);
+        }
     } finally {
-        if (taskRefreshButton) taskRefreshButton.disabled = false;
+        taskCatalogLoading = false;
     }
 }
 
-async function loadPipelineTaskRuns() {
+async function loadPipelineTaskRuns({ quiet = false } = {}) {
     if (!runListEl) return;
-    if (runRefreshButton) runRefreshButton.disabled = true;
+    if (taskRunLoading) return;
+
+    taskRunLoading = true;
 
     try {
         const response = await fetch(apiUrl('pipeline/tasks?limit=30'), {
@@ -719,11 +729,13 @@ async function loadPipelineTaskRuns() {
         pipelineTaskRuns = Array.isArray(data.tasks) ? data.tasks : [];
         renderPipelineTaskRuns(pipelineTaskRuns);
     } catch (error) {
-        pipelineTaskRuns = [];
-        renderPipelineTaskRuns([]);
-        pushActivity('Pipeline', error.message || 'Pipeline task list failed.');
+        if (!quiet) {
+            pipelineTaskRuns = [];
+            renderPipelineTaskRuns([]);
+            pushActivity('Pipeline', error.message || 'Pipeline task list failed.');
+        }
     } finally {
-        if (runRefreshButton) runRefreshButton.disabled = false;
+        taskRunLoading = false;
     }
 }
 
@@ -1008,6 +1020,18 @@ function startPolling() {
     pollTimer = setInterval(pollPipeline, 3000);
 }
 
+function startListPolling() {
+    if (taskListPollTimer) clearInterval(taskListPollTimer);
+    if (runListPollTimer) clearInterval(runListPollTimer);
+
+    taskListPollTimer = setInterval(() => {
+        loadScraperTasks({ quiet: true });
+    }, 10000);
+    runListPollTimer = setInterval(() => {
+        loadPipelineTaskRuns({ quiet: true });
+    }, 5000);
+}
+
 taskSelect?.addEventListener('change', () => {
     const selected = availableTasks.find((task) => task.id === taskSelect.value);
     selectedCatalogTaskId = selected?.id || '';
@@ -1019,9 +1043,7 @@ taskSelect?.addEventListener('change', () => {
     renderSelectedTaskDetail(selected);
     setTaskNote(selected?.description || selected?.id || '');
 });
-taskRefreshButton?.addEventListener('click', loadScraperTasks);
 taskStartButton?.addEventListener('click', startSelectedTask);
-runRefreshButton?.addEventListener('click', loadPipelineTaskRuns);
 
 window.hawkiPipelineController = {
     selectTask: selectPipelineTask,
@@ -1032,3 +1054,9 @@ window.hawkiPipelineController = {
 renderPipeline(null);
 loadScraperTasks();
 loadPipelineTaskRuns();
+startListPolling();
+
+window.addEventListener('beforeunload', () => {
+    if (taskListPollTimer) clearInterval(taskListPollTimer);
+    if (runListPollTimer) clearInterval(runListPollTimer);
+});

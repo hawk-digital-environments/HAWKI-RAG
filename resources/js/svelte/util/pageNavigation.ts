@@ -12,6 +12,5 @@ export function dashboardNavItems(): DashboardNavItem[] {
         {key: 'controller', label: 'Controller', href: pageUrl('/pipeline-controller')},
         {key: 'graph', label: 'Neo4j Graph', href: pageUrl('/neo4j-graph-explorer')},
         {key: 'playground', label: 'Playground', href: pageUrl('/hawki-rag-playground')},
-        {key: 'settings', label: 'Settings', href: pageUrl('/settings')},
     ];
 }

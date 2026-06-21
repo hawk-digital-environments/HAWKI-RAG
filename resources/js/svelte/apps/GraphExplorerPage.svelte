@@ -28,7 +28,6 @@
         title="Neo4j Graph Explorer"
         copy="Search entities, expand paths, and inspect graph evidence from Neo4j."
         active="graph"
-        refreshId="neo4j-graph-refresh"
     />
 
     <section class="graph-visualization-section" aria-labelledby="graph-workspace-heading">
