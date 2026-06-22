@@ -3,6 +3,18 @@
 $pipelineRoot = rtrim((string) env('HAWKI_RAG_PIPELINE_ROOT', '/shared'), DIRECTORY_SEPARATOR);
 $crawledDataRoot = rtrim((string) env('HAWKI_RAG_CRAWLED_DATA_ROOT', env('DEFAULT_CRAWLED_ROOT', $pipelineRoot)), DIRECTORY_SEPARATOR);
 $temporalSharedRoot = rtrim((string) env('HAWKI_RAG_TEMPORAL_SHARED_ROOT', '/shared'), DIRECTORY_SEPARATOR);
+$stageRuntimeLogPaths = static function (string $stage, string $file) use ($pipelineRoot, $temporalSharedRoot): array {
+    $upperStage = strtoupper($stage);
+
+    return array_values(array_unique(array_filter([
+        env('HAWKI_RAG_'.$upperStage.'_LOG_PATH'),
+        env('HAWKI_RAG_TEMPORAL_'.$upperStage.'_LOG_PATH'),
+        $pipelineRoot.'/logs/'.$file,
+        $temporalSharedRoot.'/logs/'.$file,
+        '/shared/logs/'.$file,
+        storage_path('logs/'.$file),
+    ], static fn ($path) => is_string($path) && trim($path) !== '')));
+};
 
 return [
 
@@ -58,6 +70,11 @@ return [
         '/shared/logs/raganything_runtime.log',
         storage_path('logs/raganything_runtime.log'),
     ], static fn ($path) => is_string($path) && trim($path) !== ''))),
+    'pipeline_stage_runtime_log_paths' => [
+        'scrape' => $stageRuntimeLogPaths('scraper', 'scraper_worker.log'),
+        'convert' => $stageRuntimeLogPaths('converter', 'converter_worker.log'),
+        'ingest' => $stageRuntimeLogPaths('ingestion', 'ingestion_worker.log'),
+    ],
     'pipeline_proof_log_globs' => [
         storage_path('logs/laravel-*.log'),
     ],

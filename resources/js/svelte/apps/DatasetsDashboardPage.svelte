@@ -5,6 +5,7 @@
     import {onMount} from 'svelte';
     import type {HTMLAttributes} from 'svelte/elements';
     import DashboardHeader from '../components/DashboardHeader.svelte';
+    import HawkiRagBackground from '../components/HawkiRagBackground.svelte';
 
     interface Props extends HTMLAttributes<HTMLElement> {
         /** Called once the static dashboard DOM is available for the current data browser runtime. */
@@ -19,7 +20,9 @@
 
 </script>
 
-<main {...restProps} class={['datasets-dashboard', className].filter(Boolean).join(' ')}>
+<main {...restProps} class={['datasets-dashboard', 'hawki-page-shell', className].filter(Boolean).join(' ')}>
+    <HawkiRagBackground />
+
     <DashboardHeader
         eyebrow="HAWKI RAG data"
         title="Data Browser"

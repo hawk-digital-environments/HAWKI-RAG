@@ -279,20 +279,25 @@
 
 <style>
     .launcherBar {
+        --launcher-size: 40px;
+        --launcher-icon-size: 18px;
+        --launcher-radius: 999px;
+
         position: fixed;
         right: 18px;
         bottom: 18px;
         z-index: 100000;
-        display: flex;
+        display: grid;
+        grid-template-columns: repeat(3, var(--launcher-size));
         align-items: center;
-        gap: 7px;
-        padding: 7px;
+        gap: 0;
+        padding: 4px;
         border: 1px solid rgba(125, 211, 252, 0.3);
-        border-radius: 16px;
+        border-radius: var(--launcher-radius);
         background:
             linear-gradient(145deg, rgba(8, 18, 32, 0.96), rgba(15, 23, 42, 0.9)),
             rgba(8, 18, 32, 0.92);
-        box-shadow: 0 18px 46px rgba(2, 8, 23, 0.38), 0 0 30px rgba(14, 165, 233, 0.16);
+        box-shadow: 0 14px 38px rgba(2, 8, 23, 0.34), 0 0 24px rgba(14, 165, 233, 0.14);
         backdrop-filter: blur(14px);
     }
 
@@ -300,50 +305,51 @@
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        width: 42px;
-        height: 42px;
-        min-height: 42px;
-        border: 1px solid rgba(148, 163, 184, 0.24);
-        border-radius: 12px;
+        width: var(--launcher-size);
+        height: var(--launcher-size);
+        min-width: var(--launcher-size);
+        min-height: var(--launcher-size);
+        border: 0;
+        border-radius: var(--launcher-radius);
         padding: 0;
-        background: rgba(15, 23, 42, 0.7);
+        background: transparent;
         color: var(--hawki-trouble-text-strong);
-        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
         cursor: pointer;
         font: inherit;
         text-decoration: none;
         transition:
             background 160ms ease,
-            border-color 160ms ease,
             color 160ms ease,
-            transform 160ms ease,
             box-shadow 160ms ease;
+    }
+
+    .launcherControl + .launcherControl {
+        box-shadow: inset 1px 0 0 rgba(148, 163, 184, 0.12);
     }
 
     .launcherControl:hover,
     .launcherControl:focus-visible,
     .launcherControl[aria-current="page"] {
-        border-color: rgba(125, 211, 252, 0.64);
         background: rgba(14, 165, 233, 0.18);
         color: #e0f2fe;
-        box-shadow: 0 10px 24px rgba(14, 165, 233, 0.22);
-        transform: translateY(-1px);
+        box-shadow: inset 0 0 0 1px rgba(125, 211, 252, 0.42);
         outline: none;
     }
 
     .launcherControl[aria-expanded="true"] {
-        border-color: rgba(52, 211, 153, 0.72);
         background: rgba(6, 95, 70, 0.36);
         color: #d1fae5;
+        box-shadow: inset 0 0 0 1px rgba(52, 211, 153, 0.5);
     }
 
     .launcherControl svg {
-        width: 20px;
-        height: 20px;
+        width: var(--launcher-icon-size);
+        height: var(--launcher-icon-size);
         stroke: currentColor;
-        stroke-width: 1.85;
+        stroke-width: 2;
         stroke-linecap: round;
         stroke-linejoin: round;
+        vector-effect: non-scaling-stroke;
         fill: none;
     }
 

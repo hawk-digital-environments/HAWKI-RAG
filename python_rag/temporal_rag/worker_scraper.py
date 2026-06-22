@@ -14,7 +14,7 @@ from temporal_rag.worker_runtime import create_activity_executor
 
 
 async def main() -> None:
-    configure_logging()
+    configure_logging("scraper")
     settings = TemporalRagSettings.from_env()
     client = await Client.connect(settings.temporal_address, namespace=settings.temporal_namespace)
     with create_activity_executor(settings) as activity_executor:

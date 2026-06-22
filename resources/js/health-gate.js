@@ -163,9 +163,9 @@ function renderFailure(error) {
     createOverlay();
     setBlocked(true);
 
-    if (title) title.textContent = 'Health/Repair unavailable';
+    if (title) title.textContent = 'Service unavailable';
     if (summary) {
-        summary.textContent = 'The Health/Repair gate itself is unavailable. Repair Laravel routing or the app container first.';
+        summary.textContent = 'Service gate itself is unavailable. Repair Laravel routing or the app container first.';
     }
 
     renderChecks([{

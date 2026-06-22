@@ -5,6 +5,7 @@
     import {onMount} from 'svelte';
     import type {HTMLAttributes} from 'svelte/elements';
     import DashboardHeader from '../components/DashboardHeader.svelte';
+    import HawkiRagBackground from '../components/HawkiRagBackground.svelte';
     import PipelineUploadModule from './PipelineUploadModule.svelte';
 
     interface PipelineControllerRuntime {
@@ -86,7 +87,9 @@
     }
 </script>
 
-<div {...restProps} class={['container', 'pipeline-controller-dashboard', className].filter(Boolean).join(' ')}>
+<div {...restProps} class={['container', 'pipeline-controller-dashboard', 'hawki-page-shell', className].filter(Boolean).join(' ')}>
+    <HawkiRagBackground />
+
     <DashboardHeader
         eyebrow="HAWKI RAG controller"
         title="Pipeline Controller"

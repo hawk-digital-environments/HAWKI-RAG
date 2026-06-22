@@ -22,6 +22,7 @@ let activeJobId = '';
 let activePipelineTaskId = '';
 let activePipelineDatasetId = '';
 let activeStageLog = normalizeStageLog(localStorage.getItem('hawkiPipelineControllerStageLog') || '');
+let stageLogPinnedByUser = false;
 let stageLogRequestId = 0;
 let selectedCatalogTaskId = localStorage.getItem('hawkiSelectedScraperTaskId')
     || localStorage.getItem('hawkiPipelineTaskId')
@@ -86,8 +87,16 @@ function setActiveJob(jobId) {
 }
 
 function setActivePipelineTask(taskId) {
+    const nextTaskId = taskId || '';
+    const changed = activePipelineTaskId !== nextTaskId;
     activePipelineTaskId = taskId || '';
     activeJobId = '';
+
+    if (changed) {
+        activeStageLog = '';
+        stageLogPinnedByUser = false;
+        localStorage.removeItem('hawkiPipelineControllerStageLog');
+    }
 
     if (jobIdEl) {
         jobIdEl.textContent = activePipelineTaskId ? `Task ID: ${activePipelineTaskId}` : 'Task ID: none';
@@ -278,6 +287,7 @@ function renderStageCard(name, stage = {}) {
     logs.textContent = 'Logs';
     logs.dataset.controllerStageLog = logStage;
     logs.addEventListener('click', () => {
+        stageLogPinnedByUser = true;
         loadStageLogs(logStage).catch((error) => {
             if (stageLogStatusEl) stageLogStatusEl.textContent = error.message || 'Could not load stage logs.';
             if (stageLogViewerEl) stageLogViewerEl.textContent = '';
@@ -397,6 +407,49 @@ function explicitStageEntries(task) {
     ];
 }
 
+function currentStageLogFromEntries(entries, task) {
+    if (!Array.isArray(entries) || entries.length === 0) return '';
+
+    const eligible = entries.filter(([, stage]) => {
+        const status = String(stage?.status || '').toLowerCase();
+        return !['n/a', 'not_available', 'unavailable'].includes(status);
+    });
+    const candidates = eligible.length > 0 ? eligible : entries;
+
+    const running = candidates.find(([, stage]) => ['running', 'processing', 'received'].includes(String(stage?.status || '').toLowerCase()));
+    if (running) return normalizeStageLog(running[0]);
+
+    const failed = candidates.find(([, stage]) => ['failed', 'error'].includes(String(stage?.status || '').toLowerCase()));
+    if (failed) return normalizeStageLog(failed[0]);
+
+    const queued = candidates.find(([, stage]) => ['queued', 'pending'].includes(String(stage?.status || '').toLowerCase()));
+    if (queued && !['completed', 'failed'].includes(String(task?.status || '').toLowerCase())) {
+        return normalizeStageLog(queued[0]);
+    }
+
+    const completed = [...candidates].reverse().find(([, stage]) => ['completed', 'success'].includes(String(stage?.status || '').toLowerCase()));
+    if (completed) return normalizeStageLog(completed[0]);
+
+    return normalizeStageLog(candidates[0]?.[0]);
+}
+
+function followCurrentStageLogs(task, entries) {
+    const currentStageLog = currentStageLogFromEntries(entries, task);
+    if (!currentStageLog) {
+        refreshActiveStageLogs({ quiet: true });
+        return;
+    }
+
+    if (!activeStageLog || (!stageLogPinnedByUser && activeStageLog !== currentStageLog)) {
+        loadStageLogs(currentStageLog, { quiet: true }).catch(() => {
+            // Stage logs are best-effort during polling.
+        });
+        return;
+    }
+
+    refreshActiveStageLogs({ quiet: true });
+}
+
 function renderPipelineTask(task) {
     if (!currentEl || !stagesEl || !task) return;
 
@@ -423,22 +476,26 @@ function renderPipelineTask(task) {
         explicitStages.forEach(([label, stage]) => {
             stagesEl.appendChild(renderStageCard(label, stage));
         });
-        refreshActiveStageLogs({ quiet: true });
+        followCurrentStageLogs(task, explicitStages);
         return;
     }
 
-    [
+    const fallbackStages = [
         ['scrape', 'scrape'],
         ['convert', 'convert'],
         ['ingest', 'ingest'],
-    ].forEach(([label, type]) => {
+    ].map(([label, type]) => {
         const counts = jobStatusCounts(jobs, type);
-        stagesEl.appendChild(renderStageCard(label, {
+        return [label, {
             status: statusFromCounts(counts),
             counts,
-        }));
+        }];
     });
-    refreshActiveStageLogs({ quiet: true });
+
+    fallbackStages.forEach(([label, stage]) => {
+        stagesEl.appendChild(renderStageCard(label, stage));
+    });
+    followCurrentStageLogs(task, fallbackStages);
 }
 
 function taskRunLabel(task) {

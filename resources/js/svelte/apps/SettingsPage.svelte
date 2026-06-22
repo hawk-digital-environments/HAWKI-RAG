@@ -4,6 +4,7 @@
 <script lang="ts">
     import type {HTMLAttributes} from 'svelte/elements';
     import DashboardHeader from '../components/DashboardHeader.svelte';
+    import HawkiRagBackground from '../components/HawkiRagBackground.svelte';
 
     type SettingsTone = 'info' | 'warn' | 'error' | 'success';
 
@@ -262,7 +263,9 @@
     }
 </script>
 
-<main {...restProps} class={['container', 'settings-dashboard', className].filter(Boolean).join(' ')}>
+<main {...restProps} class={['container', 'settings-dashboard', 'hawki-page-shell', className].filter(Boolean).join(' ')}>
+    <HawkiRagBackground />
+
     <DashboardHeader
         eyebrow="HAWKI RAG settings"
         title="Settings"

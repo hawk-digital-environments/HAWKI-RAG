@@ -75,20 +75,11 @@ $hawkiRagExperienceConfig = static function (string $section = 'operator'): arra
         'activeSection' => $section,
         'operatorRoutes' => [
             [
-                'key' => 'operator',
-                'label' => 'Admin',
-                'title' => 'Operator Dashboard',
-                'href' => '/admin',
-                'summary' => 'Control surface for the HAWKI-RAG stack.',
-                'service' => 'Experience shell',
-                'state' => 'ready',
-            ],
-            [
                 'key' => 'pipeline',
                 'label' => 'Pipeline',
                 'title' => 'Pipeline Controller',
                 'href' => '/admin/pipeline',
-                'summary' => 'Upload, ingest, cancel, retry, and delete task cache.',
+                'summary' => 'Run ingestion, uploads, conversion, retries, and live stage logs.',
                 'service' => 'Pipeline',
                 'state' => 'live',
             ],
@@ -97,7 +88,7 @@ $hawkiRagExperienceConfig = static function (string $section = 'operator'): arra
                 'label' => 'Datasets',
                 'title' => 'Dataset Browser',
                 'href' => '/admin/datasets',
-                'summary' => 'Documents, dataset storage, and recovery actions.',
+                'summary' => 'Browse stored documents, datasets, sources, and recovery context.',
                 'service' => 'Dataset browser',
                 'state' => 'ready',
             ],
@@ -106,67 +97,17 @@ $hawkiRagExperienceConfig = static function (string $section = 'operator'): arra
                 'label' => 'Graph',
                 'title' => 'Graph Explorer',
                 'href' => '/admin/graph',
-                'summary' => 'Neo4j graph world and technical graph inspection.',
+                'summary' => 'Inspect entities, relations, neighborhoods, and graph paths.',
                 'service' => 'Graph retrieval',
                 'state' => 'live',
             ],
             [
-                'key' => 'analytics',
-                'label' => 'Analytics',
-                'title' => 'Internal Analytics',
-                'href' => '/admin/analytics',
-                'summary' => 'Topic trends, graph depth, and source coverage.',
-                'service' => 'Analytics',
-                'state' => 'planned',
-            ],
-            [
-                'key' => 'health',
-                'label' => 'Repair',
-                'title' => 'Health/Repair',
-                'href' => '/admin/health-repair',
-                'summary' => 'RAG bridge, Qdrant, Neo4j, pipeline, and storage checks.',
-                'service' => 'Health/Repair',
-                'state' => 'live',
-            ],
-            [
-                'key' => 'settings',
-                'label' => 'Settings',
-                'title' => 'Settings',
-                'href' => '/admin/settings',
-                'summary' => 'Custom converter and model runtime defaults.',
-                'service' => 'Operator settings',
-                'state' => 'live',
-            ],
-        ],
-        'coreServices' => [
-            [
-                'key' => 'retrieval',
-                'label' => 'Retrieval',
-                'title' => 'RAG-Anything with Qdrant.',
-                'state' => 'live',
-            ],
-            [
-                'key' => 'graph-retrieval',
-                'label' => 'Graph Retrieval',
-                'title' => 'Qdrant plus Neo4j graph retrieval.',
-                'state' => 'live',
-            ],
-            [
-                'key' => 'proxy-pointer',
-                'label' => 'HAWKI-RAG-PRO',
-                'title' => 'Proxy Pointer retrieval path.',
-                'state' => 'planned',
-            ],
-            [
-                'key' => 'analytics',
-                'label' => 'Analytics',
-                'title' => 'Scientific graph and source analysis.',
-                'state' => 'planned',
-            ],
-            [
-                'key' => 'health-repair',
-                'label' => 'Health/Repair',
-                'title' => 'System diagnosis and recovery.',
+                'key' => 'retrieve',
+                'label' => 'Retrieve',
+                'title' => 'Retrieval Playground',
+                'href' => '/admin/retrieve',
+                'summary' => 'Ask questions, compare vector and graph answers, and inspect evidence.',
+                'service' => 'Retrieval console',
                 'state' => 'live',
             ],
         ],
@@ -206,7 +147,7 @@ Route::get('/swagger', fn () => redirect('/swagger/index.html'));
 */
 Route::get('/admin', fn () => view('svelte-page', [
     'title' => 'HAWKI-RAG Operator',
-    'vite' => ['resources/css/app.css', 'resources/js/hawki-rag-experience.js'],
+    'vite' => ['resources/css/app.css', 'resources/css/hawki-rag-theme.css', 'resources/js/hawki-rag-experience.js'],
     'configScriptId' => 'hawki-rag-experience-config',
     'config' => $hawkiRagExperienceConfig('operator'),
     'rootAttributes' => ['data-hawki-rag-experience' => true],
@@ -222,10 +163,11 @@ Route::get('/admin', fn () => view('svelte-page', [
 Route::get('/admin/pipeline', fn () => redirect('/pipeline-controller'));
 Route::get('/admin/datasets', fn () => redirect('/datasets'));
 Route::get('/admin/graph', fn () => redirect('/neo4j-graph-explorer'));
+Route::get('/admin/retrieve', fn () => redirect('/hawki-rag-playground'));
 Route::get('/admin/settings', fn () => redirect('/settings'));
 Route::get('/admin/analytics', fn () => view('svelte-page', [
     'title' => 'HAWKI-RAG Operator',
-    'vite' => ['resources/css/app.css', 'resources/js/hawki-rag-experience.js'],
+    'vite' => ['resources/css/app.css', 'resources/css/hawki-rag-theme.css', 'resources/js/hawki-rag-experience.js'],
     'configScriptId' => 'hawki-rag-experience-config',
     'config' => $hawkiRagExperienceConfig('analytics'),
     'rootAttributes' => ['data-hawki-rag-experience' => true],

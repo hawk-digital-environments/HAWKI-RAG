@@ -4,6 +4,14 @@ import { svelte } from '@sveltejs/vite-plugin-svelte';
 
 const projectPath = process.env.DOCKER_PROJECT_PATH || '/';
 
+function resolveAssetBase(rawProjectPath) {
+    const projectBase = String(rawProjectPath || '')
+        .trim()
+        .replace(/^\/+|\/+$/g, '');
+
+    return `/${projectBase ? `${projectBase}/` : ''}build/`;
+}
+
 export default defineConfig({
     plugins: [
         svelte(),
@@ -25,9 +33,9 @@ export default defineConfig({
             refresh: true,
         }),
     ],
-    // Ensure built assets resolve correctly when the app is mounted below a sub-path
-    // such as "/hawki-rag/" behind the reverse proxy.
-    base: projectPath.endsWith('/') ? projectPath : `${projectPath}/`,
+    // Match Laravel's public build directory, including reverse-proxy sub-paths
+    // such as "/hawki-rag/build/".
+    base: resolveAssetBase(projectPath),
     build: {
         // ELK is a single upstream graph-layout bundle loaded only by graph pages.
         // Keep the limit close to its current size so unrelated bundle growth still warns.

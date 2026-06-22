@@ -21,7 +21,7 @@ temporarily only when they are loaded after a Svelte page shell mounts.
 
 Current product islands:
 
-- `apps/HawkiRagExperience.svelte`: `/admin` operator route map.
+- `apps/HawkiRagExperience.svelte`: `/admin` minimal operator landing page.
 - `apps/HawkiRagPlayground.svelte`: `/hawki-rag-playground` retrieval console.
 - `apps/SystemTroubleshooter.svelte`: global Health/Repair troubleshoot button.
 - `apps/GraphExplorerPage.svelte`: Neo4j graph explorer page shell.

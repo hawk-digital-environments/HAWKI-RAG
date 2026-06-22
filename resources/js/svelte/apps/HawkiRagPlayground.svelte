@@ -5,6 +5,7 @@
     import {onMount} from 'svelte';
     import type {HTMLAttributes} from 'svelte/elements';
     import DashboardHeader from '../components/DashboardHeader.svelte';
+    import HawkiRagBackground from '../components/HawkiRagBackground.svelte';
 
     type RetrievalMode = 'deep' | 'fast';
     type ResultTab = 'sources' | 'graph' | 'raw';
@@ -497,7 +498,9 @@
     }
 </script>
 
-<div {...restProps} class={['playground-shell', className].filter(Boolean).join(' ')}>
+<div {...restProps} class={['playground-shell', 'hawki-page-shell', className].filter(Boolean).join(' ')}>
+    <HawkiRagBackground />
+
     <DashboardHeader
         eyebrow="HAWKI RAG retrieval"
         title="Retrieval Console"
@@ -822,10 +825,6 @@
 
         min-height: 100vh;
         padding: clamp(14px, 2vw, 26px);
-        background:
-            linear-gradient(135deg, rgba(7, 17, 31, 0.98), rgba(16, 24, 39, 0.94)),
-            repeating-linear-gradient(90deg, rgba(34, 211, 238, 0.05) 0 1px, transparent 1px 88px),
-            repeating-linear-gradient(0deg, rgba(244, 211, 94, 0.04) 0 1px, transparent 1px 58px);
         color: var(--pg-text);
         font-family: Inter, ui-sans-serif, system-ui, sans-serif;
     }

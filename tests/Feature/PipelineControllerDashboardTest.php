@@ -450,6 +450,94 @@ class PipelineControllerDashboardTest extends TestCase
         File::deleteDirectory(dirname($logPath));
     }
 
+    public function test_scrape_stage_log_includes_direct_scraper_worker_entries(): void
+    {
+        $runtimeRoot = storage_path('framework/testing/pipeline-stage-runtime-scrape');
+        $runtimeLogPath = $runtimeRoot.'/scraper_worker.log';
+        File::ensureDirectoryExists($runtimeRoot);
+        File::put($runtimeLogPath, implode(PHP_EOL, [
+            "2026-06-21 10:00:00 INFO temporal_rag.activities scrape_source:start {'source_id': 'source_scrape_direct', 'raw_dir': '/shared/sources/source_scrape_direct/raw', 'task_queue': 'rag-scraper-task-queue'}",
+            "2026-06-21 10:00:01 INFO temporal_rag.activities scrape_source:end {'source_id': 'source_other', 'raw_dir': '/shared/sources/source_other/raw', 'task_queue': 'rag-scraper-task-queue'}",
+        ]).PHP_EOL);
+        config()->set('config.pipeline_stage_runtime_log_paths.scrape', [$runtimeLogPath]);
+
+        $task = PipelineTask::query()->create([
+            'task_id' => 'task-direct-scrape-logs',
+            'dataset_id' => 'direct-scrape-dataset',
+            'status' => PipelineTask::STATUS_RUNNING,
+            'started_at' => now(),
+            'counters' => ['jobs_total' => 1],
+            'metadata' => ['request' => ['mode' => 'scrape_convert_ingest']],
+        ]);
+        PipelineJob::query()->create([
+            'job_id' => 'job-direct-scrape',
+            'task_id' => $task->task_id,
+            'source_id' => 'source_scrape_direct',
+            'job_type' => PipelineJob::TYPE_SCRAPE,
+            'status' => PipelineJob::STATUS_RUNNING,
+            'current_stage' => 'scrape_source',
+            'source_url' => 'https://example.test/direct-scrape',
+            'local_path' => '/shared/sources/source_scrape_direct/raw',
+            'metadata' => ['source_id' => 'source_scrape_direct'],
+        ]);
+
+        $response = $this->getJson('/pipeline/tasks/task-direct-scrape-logs/stages/scrape/logs')
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $text = (string) $response->json('log.text');
+        $this->assertStringContainsString('Scraper worker log entries', $text);
+        $this->assertStringContainsString('scrape_source:start', $text);
+        $this->assertStringContainsString('source_scrape_direct', $text);
+        $this->assertStringNotContainsString('source_other', $text);
+
+        File::deleteDirectory($runtimeRoot);
+    }
+
+    public function test_convert_stage_log_includes_direct_converter_worker_entries(): void
+    {
+        $runtimeRoot = storage_path('framework/testing/pipeline-stage-runtime-convert');
+        $runtimeLogPath = $runtimeRoot.'/converter_worker.log';
+        File::ensureDirectoryExists($runtimeRoot);
+        File::put($runtimeLogPath, implode(PHP_EOL, [
+            "2026-06-21 10:01:00 INFO temporal_rag.activities inspect_and_convert_files:start {'source_id': 'source_convert_direct', 'raw_dir': '/shared/sources/source_convert_direct/raw', 'markdown_dir': '/shared/sources/source_convert_direct/markdown', 'task_queue': 'rag-converter-task-queue'}",
+            "2026-06-21 10:01:01 INFO temporal_rag.activities inspect_and_convert_files:end {'source_id': 'source_other', 'markdown_dir': '/shared/sources/source_other/markdown', 'task_queue': 'rag-converter-task-queue'}",
+        ]).PHP_EOL);
+        config()->set('config.pipeline_stage_runtime_log_paths.convert', [$runtimeLogPath]);
+
+        $task = PipelineTask::query()->create([
+            'task_id' => 'task-direct-convert-logs',
+            'dataset_id' => 'direct-convert-dataset',
+            'status' => PipelineTask::STATUS_RUNNING,
+            'started_at' => now(),
+            'counters' => ['jobs_total' => 1],
+            'metadata' => ['request' => ['mode' => 'uploaded_file_convert_ingest']],
+        ]);
+        PipelineJob::query()->create([
+            'job_id' => 'job-direct-convert',
+            'task_id' => $task->task_id,
+            'source_id' => 'source_convert_direct',
+            'job_type' => PipelineJob::TYPE_INGEST,
+            'status' => PipelineJob::STATUS_RUNNING,
+            'current_stage' => 'inspect_and_convert_files',
+            'source_url' => 'upload://direct-convert.pdf',
+            'local_path' => '/shared/task_controller_upload/direct-convert.pdf',
+            'metadata' => ['source_id' => 'source_convert_direct'],
+        ]);
+
+        $response = $this->getJson('/pipeline/tasks/task-direct-convert-logs/stages/convert/logs')
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $text = (string) $response->json('log.text');
+        $this->assertStringContainsString('Converter worker log entries', $text);
+        $this->assertStringContainsString('inspect_and_convert_files:start', $text);
+        $this->assertStringContainsString('source_convert_direct', $text);
+        $this->assertStringNotContainsString('source_other', $text);
+
+        File::deleteDirectory($runtimeRoot);
+    }
+
     public function test_ingest_stage_log_includes_real_raganything_runtime_entries(): void
     {
         $runtimeLogPath = storage_path('framework/testing/raganything-runtime/raganything_runtime.log');

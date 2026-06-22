@@ -23,9 +23,14 @@ class HawkiRagExperienceRouteTest extends TestCase
             ->assertSee('HAWKI-RAG Operator')
             ->assertSee('data-hawki-rag-experience', false)
             ->assertSee('"operatorRoutes"', false)
-            ->assertSee('"key":"operator"', false)
-            ->assertSee('"key":"health"', false)
-            ->assertSee('"key":"settings"', false);
+            ->assertSee('"key":"pipeline"', false)
+            ->assertSee('"key":"datasets"', false)
+            ->assertSee('"key":"graph"', false)
+            ->assertSee('"key":"retrieve"', false)
+            ->assertDontSee('"key":"operator"', false)
+            ->assertDontSee('"key":"analytics"', false)
+            ->assertDontSee('"key":"health"', false)
+            ->assertDontSee('"key":"settings"', false);
     }
 
     public function test_operator_world_aliases_point_to_current_surfaces(): void
@@ -45,6 +50,9 @@ class HawkiRagExperienceRouteTest extends TestCase
 
         $this->get('/admin/graph')
             ->assertRedirect('/neo4j-graph-explorer');
+
+        $this->get('/admin/retrieve')
+            ->assertRedirect('/hawki-rag-playground');
 
         $this->get('/admin/health-repair')
             ->assertRedirect('/pipeline-health');

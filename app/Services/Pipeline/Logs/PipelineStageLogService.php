@@ -49,6 +49,31 @@ readonly class PipelineStageLogService
         'raganything',
     ];
 
+    private const STAGE_RUNTIME_LOG_HINTS = [
+        'scrape' => [
+            'scrape_source',
+            'rag-scraper-task-queue',
+            'crawler',
+            'scraper',
+        ],
+        'convert' => [
+            'inspect_and_convert_files',
+            'rag-converter-task-queue',
+            'converter',
+            'convert_files',
+            'extract_api',
+        ],
+        'ingest' => [
+            'ingest_markdown_files',
+            'mark_source_ready',
+            'rag-ingestion-task-queue',
+            'ingestion',
+            'ingest',
+        ],
+    ];
+
+    private const RUNTIME_LOG_LINE_LIMIT = 800;
+
     public function __construct(
         private PipelineTaskRepository $tasks,
         private Filesystem $files,
@@ -163,12 +188,77 @@ readonly class PipelineStageLogService
             '',
         ];
 
-        $this->appendRagAnythingRuntimeLogSection($lines, $task, $jobs, $stage);
+        $this->appendDirectStageLogSection($lines, $task, $jobs, $stage);
         $this->appendTaskSection($lines, $task);
         $this->appendJobSection($lines, $jobs, $stage);
         $this->appendCommunicationLogSection($lines, $task, $jobs, $stage);
 
         return rtrim(implode("\n", $lines))."\n";
+    }
+
+    /**
+     * @param list<string> $lines
+     * @param Collection<int, PipelineJob> $jobs
+     */
+    private function appendDirectStageLogSection(array &$lines, PipelineTask $task, Collection $jobs, string $stage): void
+    {
+        if ($stage === 'scrape') {
+            $this->appendLogEntriesSection(
+                $lines,
+                'Scraper crawler.log entries',
+                $this->scraperCrawlerLogEntries($task, $jobs),
+                'No matching scraper crawler.log entries were found yet.'
+            );
+            $this->appendStageRuntimeLogSection($lines, $task, $jobs, $stage, 'Scraper worker log entries');
+
+            return;
+        }
+
+        if ($stage === 'convert') {
+            $this->appendStageRuntimeLogSection($lines, $task, $jobs, $stage, 'Converter worker log entries');
+
+            return;
+        }
+
+        $this->appendRagAnythingRuntimeLogSection($lines, $task, $jobs, $stage);
+        $this->appendStageRuntimeLogSection($lines, $task, $jobs, $stage, 'Temporal ingestion worker log entries');
+    }
+
+    /**
+     * @param list<string> $lines
+     * @param Collection<int, PipelineJob> $jobs
+     */
+    private function appendStageRuntimeLogSection(array &$lines, PipelineTask $task, Collection $jobs, string $stage, string $title): void
+    {
+        $this->appendLogEntriesSection(
+            $lines,
+            $title,
+            $this->stageRuntimeEntries($task, $jobs, $stage),
+            'No matching '.$this->stageName($stage).' worker log entries were found yet.'
+        );
+    }
+
+    /**
+     * @param list<string> $lines
+     * @param list<string> $entries
+     */
+    private function appendLogEntriesSection(array &$lines, string $title, array $entries, string $emptyMessage): void
+    {
+        $lines[] = $title;
+        $lines[] = str_repeat('-', 80);
+
+        if ($entries === []) {
+            $lines[] = $emptyMessage;
+            $lines[] = '';
+
+            return;
+        }
+
+        foreach ($entries as $entry) {
+            $lines[] = $entry;
+        }
+
+        $lines[] = '';
     }
 
     /**
@@ -183,21 +273,12 @@ readonly class PipelineStageLogService
 
         $entries = $this->ragAnythingRuntimeEntries($task, $jobs);
 
-        $lines[] = 'RAG-Anything runtime log entries';
-        $lines[] = str_repeat('-', 80);
-
-        if ($entries === []) {
-            $lines[] = 'No matching RAG-Anything runtime log entries were found yet.';
-            $lines[] = '';
-
-            return;
-        }
-
-        foreach ($entries as $entry) {
-            $lines[] = $entry;
-        }
-
-        $lines[] = '';
+        $this->appendLogEntriesSection(
+            $lines,
+            'RAG-Anything runtime log entries',
+            $entries,
+            'No matching RAG-Anything runtime log entries were found yet.'
+        );
     }
 
     /**
@@ -355,11 +436,125 @@ readonly class PipelineStageLogService
     }
 
     /**
+     * @param Collection<int, PipelineJob> $jobs
+     * @return list<string>
+     */
+    private function stageRuntimeEntries(PipelineTask $task, Collection $jobs, string $stage): array
+    {
+        $paths = $this->stageRuntimeLogPaths($stage);
+        if ($paths === []) {
+            return [];
+        }
+
+        $needles = $this->runtimeNeedles($task, $jobs);
+        $selected = [];
+        $entries = [];
+
+        foreach ($paths as $path) {
+            if (! $this->files->isFile($path)) {
+                continue;
+            }
+
+            foreach ($this->runtimeLogLines($path) as $line) {
+                $text = $line['text'];
+                if (! $this->stageRuntimeLineLooksRelevant($stage, $text)) {
+                    continue;
+                }
+
+                if ($needles !== [] && ! $this->lineMatchesNeedles($text, $needles)) {
+                    continue;
+                }
+
+                $this->appendRuntimeEntry($entries, $selected, $path, $line['number'], $text);
+            }
+        }
+
+        return $entries;
+    }
+
+    /**
+     * @param Collection<int, PipelineJob> $jobs
+     * @return list<string>
+     */
+    private function scraperCrawlerLogEntries(PipelineTask $task, Collection $jobs): array
+    {
+        $paths = $this->scraperCrawlerLogPaths($task, $jobs);
+        if ($paths === []) {
+            return [];
+        }
+
+        $selected = [];
+        $entries = [];
+
+        foreach ($paths as $path) {
+            if (! $this->files->isFile($path)) {
+                continue;
+            }
+
+            foreach ($this->runtimeLogLines($path) as $line) {
+                $this->appendRuntimeEntry($entries, $selected, $path, $line['number'], $line['text']);
+            }
+        }
+
+        return $entries;
+    }
+
+    /**
+     * @param Collection<int, PipelineJob> $jobs
+     * @return list<string>
+     */
+    private function scraperCrawlerLogPaths(PipelineTask $task, Collection $jobs): array
+    {
+        $sharedRoot = rtrim((string) $this->config->get('temporal.storage.shared_root', '/shared'), '/');
+        $candidates = [];
+
+        if (is_scalar($task->task_id) && trim((string) $task->task_id) !== '') {
+            $this->appendPathCandidate($candidates, $sharedRoot.'/'.$task->task_id);
+        }
+
+        if (is_scalar($task->dataset_id) && trim((string) $task->dataset_id) !== '') {
+            $this->appendPathCandidate($candidates, $sharedRoot.'/'.$task->dataset_id);
+        }
+
+        $jobs->each(function (PipelineJob $job) use (&$candidates, $sharedRoot): void {
+            $this->appendPathCandidate($candidates, $job->local_path);
+            if (is_scalar($job->job_id) && trim((string) $job->job_id) !== '') {
+                $this->appendPathCandidate($candidates, $sharedRoot.'/'.$job->job_id);
+            }
+
+            if (is_scalar($job->source_id) && trim((string) $job->source_id) !== '') {
+                $this->appendPathCandidate($candidates, $sharedRoot.'/sources/'.$job->source_id.'/raw');
+            }
+
+            $metadata = is_array($job->metadata) ? $job->metadata : [];
+            $this->appendLogPathCandidatesFromPayload($candidates, $metadata);
+        });
+
+        return $this->resolveLogPaths($candidates, 'crawler.log');
+    }
+
+    /**
      * @return list<string>
      */
     private function ragAnythingRuntimeLogPaths(): array
     {
         $configured = $this->config->get('config.raganything_runtime_log_paths', []);
+        $paths = is_array($configured) ? $configured : [$configured];
+
+        return collect($paths)
+            ->filter(fn (mixed $path): bool => is_string($path) && trim($path) !== '')
+            ->map(fn (string $path): string => trim($path))
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function stageRuntimeLogPaths(string $stage): array
+    {
+        $configured = $this->config->get('config.pipeline_stage_runtime_log_paths.'.$stage, []);
         $paths = is_array($configured) ? $configured : [$configured];
 
         return collect($paths)
@@ -390,6 +585,10 @@ readonly class PipelineStageLogService
                 'number' => $lineNumber,
                 'text' => $line,
             ];
+
+            if (count($lines) > self::RUNTIME_LOG_LINE_LIMIT) {
+                array_shift($lines);
+            }
         }
 
         return $lines;
@@ -559,6 +758,19 @@ readonly class PipelineStageLogService
         return false;
     }
 
+    private function stageRuntimeLineLooksRelevant(string $stage, string $line): bool
+    {
+        $lower = strtolower($line);
+
+        foreach (self::STAGE_RUNTIME_LOG_HINTS[$stage] ?? [] as $hint) {
+            if (str_contains($lower, strtolower($hint))) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     /**
      * @param list<string> $needles
      */
@@ -607,6 +819,97 @@ readonly class PipelineStageLogService
         return collect($needles)
             ->filter(fn (string $needle): bool => strlen(trim($needle)) >= 6)
             ->map(fn (string $needle): string => trim($needle))
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @param list<string> $candidates
+     * @param array<string, mixed> $payload
+     */
+    private function appendLogPathCandidatesFromPayload(array &$candidates, array $payload, int $depth = 0): void
+    {
+        if ($depth > 3) {
+            return;
+        }
+
+        $pathKeys = [
+            'crawler_log',
+            'crawler_log_path',
+            'dataset_path',
+            'local_path',
+            'log_path',
+            'markdown_dir',
+            'markdown_output_path',
+            'output_path',
+            'raw_dir',
+            'raw_output_path',
+        ];
+
+        foreach ($payload as $key => $value) {
+            if (is_string($key) && in_array($key, $pathKeys, true)) {
+                $this->appendPathCandidate($candidates, $value);
+            }
+
+            if (is_array($value)) {
+                $this->appendLogPathCandidatesFromPayload($candidates, $value, $depth + 1);
+            }
+        }
+    }
+
+    /**
+     * @param list<string> $candidates
+     */
+    private function appendPathCandidate(array &$candidates, mixed $value): void
+    {
+        if (is_array($value)) {
+            foreach ($value as $item) {
+                $this->appendPathCandidate($candidates, $item);
+            }
+
+            return;
+        }
+
+        if (! is_scalar($value)) {
+            return;
+        }
+
+        $path = trim((string) $value);
+        if ($path === '') {
+            return;
+        }
+
+        if (str_starts_with($path, 'file://')) {
+            $path = substr($path, 7);
+        }
+
+        if ($path !== '') {
+            $candidates[] = $path;
+        }
+    }
+
+    /**
+     * @param list<string> $candidates
+     * @return list<string>
+     */
+    private function resolveLogPaths(array $candidates, string $fileName): array
+    {
+        $paths = [];
+
+        foreach ($candidates as $candidate) {
+            if ($this->files->isFile($candidate)) {
+                $paths[] = $candidate;
+                continue;
+            }
+
+            if ($this->files->isDirectory($candidate)) {
+                $paths[] = rtrim($candidate, DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR.$fileName;
+            }
+        }
+
+        return collect($paths)
+            ->filter(fn (string $path): bool => $this->files->isFile($path))
             ->unique()
             ->values()
             ->all();
