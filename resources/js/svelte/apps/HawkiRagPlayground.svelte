@@ -24,6 +24,8 @@
         neo4jClearEndpoint: string;
         /** Browser URL for downloading original uploaded source files. */
         uploadDownloadEndpoint: string;
+        /** Whether the current browser request is allowed to use operator APIs. */
+        operatorAuthorized?: boolean;
     }
 
     interface QueryHit {
@@ -97,6 +99,7 @@
         qdrantCollectionEndpointBase,
         neo4jClearEndpoint,
         uploadDownloadEndpoint,
+        operatorAuthorized = false,
         class: className = '',
         ...restProps
     }: Props = $props();
@@ -177,6 +180,10 @@
     const rawJson = $derived(rawPayload ? JSON.stringify(rawPayload, null, 2) : '');
 
     onMount(() => {
+        if (!operatorAuthorized) {
+            return;
+        }
+
         void refreshSystem();
         const monitorTimer = window.setInterval(() => {
             void loadMonitor();
@@ -576,6 +583,7 @@
         active="playground"
     />
 
+    {#if operatorAuthorized}
     <section class="signal-strip" aria-label="Live retrieval state">
         {#each systemSignals as signal}
             <article data-tone={signal.tone}>
@@ -868,6 +876,13 @@
             </section>
         </aside>
     </main>
+    {:else}
+    <section class="playground-auth-panel" aria-labelledby="playground-auth-required-title">
+        <span class="playground-auth-kicker">Operator access required</span>
+        <h2 id="playground-auth-required-title">Retrieval controls are locked.</h2>
+        <p>Sign in with an operator account or enable the explicit local bypass before running retrieval, viewing operator stats, or clearing graph storage.</p>
+    </section>
+    {/if}
 </div>
 
 <style>
@@ -901,6 +916,32 @@
         padding: clamp(14px, 2vw, 26px);
         color: var(--pg-text);
         font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+    }
+
+    .playground-auth-panel {
+        display: grid;
+        gap: 10px;
+        max-width: 960px;
+        margin: 0 auto;
+        border: 1px solid rgba(148, 163, 184, 0.22);
+        border-radius: 12px;
+        padding: 20px;
+        background: rgba(15, 23, 42, 0.72);
+        color: #e2e8f0;
+        box-shadow: 0 18px 48px rgba(15, 23, 42, 0.2);
+    }
+
+    .playground-auth-panel h2,
+    .playground-auth-panel p {
+        margin: 0;
+    }
+
+    .playground-auth-kicker {
+        color: #7dd3fc;
+        font-size: 0.82rem;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
     }
 
     button,

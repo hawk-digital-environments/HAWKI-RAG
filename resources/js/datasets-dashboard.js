@@ -5,12 +5,33 @@ import { apiUrl } from './playground/urls.js';
 import { renderStatusIndicator } from './status-indicator.js';
 
 const root = document.querySelector('[data-datasets-dashboard]');
+const configElement = document.getElementById('datasets-dashboard-config');
+
+function readConfig() {
+    if (!configElement?.textContent) {
+        return {
+            operatorAuthorized: false,
+        };
+    }
+
+    try {
+        return JSON.parse(configElement.textContent);
+    } catch (error) {
+        console.error('Invalid datasets dashboard config.', error);
+        return {
+            operatorAuthorized: false,
+        };
+    }
+}
 
 if (root) {
+    const config = readConfig();
+
     mount(DatasetsDashboardPage, {
         target: root,
         props: {
-            onready: bootDatasetsDashboard,
+            operatorAuthorized: config.operatorAuthorized === true,
+            onready: config.operatorAuthorized === true ? bootDatasetsDashboard : undefined,
         },
     });
 }

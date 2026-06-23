@@ -8,13 +8,19 @@
     import HawkiRagBackground from '../components/HawkiRagBackground.svelte';
 
     interface Props extends HTMLAttributes<HTMLElement> {
+        /** Whether the current browser request is allowed to use operator APIs. */
+        operatorAuthorized?: boolean;
         /** Called once the static dashboard DOM is available for the current data browser runtime. */
         onready?: () => void;
     }
 
-    const {onready, class: className = '', ...restProps}: Props = $props();
+    const {operatorAuthorized = false, onready, class: className = '', ...restProps}: Props = $props();
 
     onMount(() => {
+        if (!operatorAuthorized) {
+            return;
+        }
+
         onready?.();
     });
 
@@ -30,6 +36,7 @@
         active="datasets"
     />
 
+    {#if operatorAuthorized}
     <div class="dashboard-grid">
         <aside class="dataset-sidebar" aria-label="Datasets">
             <div class="section-head">
@@ -134,4 +141,37 @@
             </details>
         </section>
     </div>
+    {:else}
+    <section class="datasets-auth-panel" aria-labelledby="datasets-auth-required-title">
+        <span class="datasets-auth-kicker">Operator access required</span>
+        <h2 id="datasets-auth-required-title">Dataset controls are locked.</h2>
+        <p>Sign in with an operator account or enable the explicit local bypass before loading datasets, documents, and recovery actions.</p>
+    </section>
+    {/if}
 </main>
+
+<style>
+    .datasets-auth-panel {
+        display: grid;
+        gap: 10px;
+        border: 1px solid rgba(148, 163, 184, 0.22);
+        border-radius: 12px;
+        padding: 20px;
+        background: rgba(15, 23, 42, 0.72);
+        color: #e2e8f0;
+        box-shadow: 0 18px 48px rgba(15, 23, 42, 0.2);
+    }
+
+    .datasets-auth-panel h2,
+    .datasets-auth-panel p {
+        margin: 0;
+    }
+
+    .datasets-auth-kicker {
+        color: #7dd3fc;
+        font-size: 0.82rem;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+    }
+</style>

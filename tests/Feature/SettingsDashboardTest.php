@@ -12,6 +12,8 @@ class SettingsDashboardTest extends TestCase
     public function test_settings_page_mounts_and_saves_converter_and_model_defaults(): void
     {
         $this->withoutVite();
+        config()->set('config.operator_auth.bypass', true);
+        config()->set('config.operator_auth.bypass_environments', [app()->environment()]);
         $settingsPath = storage_path('framework/testing/settings-dashboard.json');
         File::delete($settingsPath);
         config()->set('config.operator_settings_path', $settingsPath);
@@ -72,6 +74,8 @@ class SettingsDashboardTest extends TestCase
 
     public function test_settings_rejects_provider_not_supported_by_runtime(): void
     {
+        config()->set('config.operator_auth.bypass', true);
+        config()->set('config.operator_auth.bypass_environments', [app()->environment()]);
         $settingsPath = storage_path('framework/testing/settings-dashboard-invalid.json');
         File::delete($settingsPath);
         config()->set('config.operator_settings_path', $settingsPath);

@@ -8,17 +8,24 @@
     import HawkiRagBackground from '../components/HawkiRagBackground.svelte';
 
     interface Props extends HTMLAttributes<HTMLDivElement> {
+        /** Whether the current browser request is allowed to use operator APIs. */
+        operatorAuthorized?: boolean;
         /** Opens and lazy-loads the Cytoscape graph engine. */
         onopenTechnicalGraph?: () => void;
     }
 
     const {
+        operatorAuthorized = false,
         onopenTechnicalGraph,
         class: className = '',
         ...restProps
     }: Props = $props();
 
     onMount(() => {
+        if (!operatorAuthorized) {
+            return;
+        }
+
         onopenTechnicalGraph?.();
     });
 </script>
@@ -33,6 +40,7 @@
         active="graph"
     />
 
+    {#if operatorAuthorized}
     <section class="graph-visualization-section" aria-labelledby="graph-workspace-heading">
         <div class="graph-visualization-header">
             <div>
@@ -116,6 +124,13 @@
             </aside>
         </div>
     </section>
+    {:else}
+    <section class="graph-auth-panel" aria-labelledby="graph-auth-required-title">
+        <span class="graph-auth-kicker">Operator access required</span>
+        <h2 id="graph-auth-required-title">Graph controls are locked.</h2>
+        <p>Sign in with an operator account or enable the explicit local bypass before searching entities, expanding neighborhoods, or saving graph snapshots.</p>
+    </section>
+    {/if}
 </div>
 
 <style>
@@ -154,6 +169,32 @@
     .graph-visualization-section {
         max-width: 1760px;
         margin: 0 auto;
+    }
+
+    .graph-auth-panel {
+        display: grid;
+        gap: 10px;
+        max-width: 960px;
+        margin: 0 auto;
+        border: 1px solid rgba(148, 163, 184, 0.22);
+        border-radius: 12px;
+        padding: 20px;
+        background: rgba(15, 23, 42, 0.72);
+        color: #e2e8f0;
+        box-shadow: 0 18px 48px rgba(15, 23, 42, 0.2);
+    }
+
+    .graph-auth-panel h2,
+    .graph-auth-panel p {
+        margin: 0;
+    }
+
+    .graph-auth-kicker {
+        color: #7dd3fc;
+        font-size: 0.82rem;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
     }
 
 </style>

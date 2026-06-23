@@ -14,6 +14,8 @@ class Neo4jGraphExplorerPageTest extends TestCase
             ->assertOk()
             ->assertSee('Neo4j Graph Explorer')
             ->assertSee('data-neo4j-graph-dashboard', false)
+            ->assertSee('neo4j-graph-dashboard-config', false)
+            ->assertSee('"operatorAuthorized":false', false)
             ->assertDontSee('graph-search-input', false);
 
         $this->get('/hawki-rag-playground')

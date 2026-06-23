@@ -112,8 +112,8 @@ build-app:
 
 build-ui:
 	@echo "Building HAWKI RAG UI assets..."
-	@if [ ! -x node_modules/.bin/vite ]; then \
-		echo "Node dependencies are missing; running npm install..."; \
+	@if [ ! -x node_modules/.bin/vite ] || [ ! -d node_modules/@sveltejs/vite-plugin-svelte ]; then \
+		echo "Node dependencies are missing or incomplete; running npm install..."; \
 		npm install; \
 	fi
 	@npm run build -- --outDir "$(UI_BUILD_DIR)" --emptyOutDir

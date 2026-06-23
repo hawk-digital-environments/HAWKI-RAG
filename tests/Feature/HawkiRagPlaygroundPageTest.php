@@ -16,6 +16,8 @@ class HawkiRagPlaygroundPageTest extends TestCase
             ->assertOk()
             ->assertSee('HAWKI-RAG Console')
             ->assertSee('data-hawki-rag-playground', false)
+            ->assertSee('hawki-rag-playground-config', false)
+            ->assertSee('"operatorAuthorized":false', false)
             ->assertDontSee('query-form', false)
             ->assertDontSee('Scraper Pipeline');
     }

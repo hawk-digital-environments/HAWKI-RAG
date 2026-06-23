@@ -17,6 +17,7 @@ function readConfig() {
             nativeExtensions: [],
             customExtensions: [],
             customConverter: {},
+            operatorAuthorized: false,
         };
     }
 
@@ -28,6 +29,7 @@ function readConfig() {
             nativeExtensions: [],
             customExtensions: [],
             customConverter: {},
+            operatorAuthorized: false,
         };
     }
 }
@@ -55,7 +57,8 @@ if (root) {
             nativeExtensions: extensionList(config.nativeExtensions),
             customExtensions: extensionList(config.customExtensions),
             customConverter: config.customConverter || {},
-            onready: bootPipelineRuntime,
+            operatorAuthorized: config.operatorAuthorized === true,
+            onready: config.operatorAuthorized === true ? bootPipelineRuntime : undefined,
         },
     });
 }

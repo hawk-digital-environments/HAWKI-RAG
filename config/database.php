@@ -1,5 +1,22 @@
 <?php
 
+$resolveHostForLocalCli = static function (string $host): string {
+    $trimmed = trim($host);
+
+    if ($trimmed === '') {
+        return $host;
+    }
+
+    $runningInDocker = is_file('/.dockerenv');
+    $runningCli = PHP_SAPI === 'cli';
+
+    if ($runningCli && ! $runningInDocker && in_array($trimmed, ['postgres', 'mysql', 'mariadb'], true)) {
+        return '127.0.0.1';
+    }
+
+    return $host;
+};
+
 return [
 
     /*
@@ -45,7 +62,7 @@ return [
         'mysql' => [
             'driver' => 'mysql',
             'url' => env('DB_URL'),
-            'host' => env('DB_HOST', '127.0.0.1'),
+            'host' => $resolveHostForLocalCli((string) env('DB_HOST', '127.0.0.1')),
             'port' => env('DB_PORT', '3306'),
             'database' => env('DB_DATABASE', 'laravel'),
             'username' => env('DB_USERNAME', 'root'),
@@ -65,7 +82,7 @@ return [
         'mariadb' => [
             'driver' => 'mariadb',
             'url' => env('DB_URL'),
-            'host' => env('DB_HOST', '127.0.0.1'),
+            'host' => $resolveHostForLocalCli((string) env('DB_HOST', '127.0.0.1')),
             'port' => env('DB_PORT', '3306'),
             'database' => env('DB_DATABASE', 'laravel'),
             'username' => env('DB_USERNAME', 'root'),
@@ -85,7 +102,7 @@ return [
         'pgsql' => [
             'driver' => 'pgsql',
             'url' => env('DB_URL'),
-            'host' => env('DB_HOST', '127.0.0.1'),
+            'host' => $resolveHostForLocalCli((string) env('DB_HOST', '127.0.0.1')),
             'port' => env('DB_PORT', '5432'),
             'database' => env('DB_DATABASE', 'laravel'),
             'username' => env('DB_USERNAME', 'root'),

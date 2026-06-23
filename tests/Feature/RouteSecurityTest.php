@@ -30,6 +30,7 @@ class RouteSecurityTest extends TestCase
         $this->assertStringContainsString("form-action 'self'", $csp);
         $this->assertStringContainsString("script-src-attr 'none'", $csp);
         $this->assertStringContainsString("connect-src 'self'", $csp);
+        $response->assertDontSee('fonts.googleapis.com', false);
     }
 
     public function test_web_ui_does_not_require_operator_secret(): void
@@ -39,6 +40,47 @@ class RouteSecurityTest extends TestCase
         $this->get('/pipeline-controller')
             ->assertOk()
             ->assertSee('Pipeline Controller');
+    }
+
+    public function test_pipeline_controller_page_stays_idle_without_operator_access(): void
+    {
+        $this->withoutVite();
+        config()->set('config.operator_auth.bypass', false);
+
+        $this->get('/pipeline-controller')
+            ->assertOk()
+            ->assertSee('"operatorAuthorized":false', false)
+            ->assertDontSee('pipeline-task-select', false);
+    }
+
+    public function test_other_operator_dashboards_stay_idle_without_operator_access(): void
+    {
+        $this->withoutVite();
+        config()->set('config.operator_auth.bypass', false);
+
+        $this->get('/datasets')
+            ->assertOk()
+            ->assertSee('datasets-dashboard-config', false)
+            ->assertSee('"operatorAuthorized":false', false)
+            ->assertDontSee('datasets-document-search-form', false);
+
+        $this->get('/settings')
+            ->assertOk()
+            ->assertSee('settings-dashboard-config', false)
+            ->assertSee('"operatorAuthorized":false', false)
+            ->assertDontSee('settings-custom-converter-enabled', false);
+
+        $this->get('/hawki-rag-playground')
+            ->assertOk()
+            ->assertSee('hawki-rag-playground-config', false)
+            ->assertSee('"operatorAuthorized":false', false)
+            ->assertDontSee('query-form', false);
+
+        $this->get('/neo4j-graph-explorer')
+            ->assertOk()
+            ->assertSee('neo4j-graph-dashboard-config', false)
+            ->assertSee('"operatorAuthorized":false', false)
+            ->assertDontSee('graph-search-input', false);
     }
 
     public function test_internal_api_requires_sanctum_authentication(): void

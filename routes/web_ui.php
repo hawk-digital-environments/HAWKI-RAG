@@ -55,6 +55,7 @@ use App\Http\Controllers\PipelineTaskController;
 use App\Http\Controllers\ScrapeController;
 use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\UploadedSourceDocumentController;
+use App\Services\Profile\OperatorAccessService;
 use App\Services\Settings\SettingsService;
 
 /*
@@ -193,10 +194,14 @@ Route::middleware('operator')->group(function (): void {
 |--------------------------------------------------------------------------
 | Chat, RAG Status Cards, Qdrant Stats und die zentrale Playground Shell.
 */
-Route::get('/hawki-rag-playground', function () {
+Route::get('/hawki-rag-playground', function (\Illuminate\Http\Request $request, OperatorAccessService $operatorAccess) {
     return view('svelte-page', [
         'title' => 'HAWKI-RAG Console',
         'vite' => 'resources/js/hawki-rag-playground.js',
+        'configScriptId' => 'hawki-rag-playground-config',
+        'config' => [
+            'operatorAuthorized' => $operatorAccess->allows($request),
+        ],
         'rootAttributes' => ['data-hawki-rag-playground' => true],
     ]);
 });
@@ -212,10 +217,14 @@ Route::middleware('operator')->group(function (): void {
 |--------------------------------------------------------------------------
 | Graph Visualization, Search, Node Expansion, Snapshots und Graph Reset.
 */
-Route::get('/neo4j-graph-explorer', function () {
+Route::get('/neo4j-graph-explorer', function (\Illuminate\Http\Request $request, OperatorAccessService $operatorAccess) {
     return view('svelte-page', [
         'title' => 'Neo4j Graph Explorer',
         'vite' => ['resources/css/app.css', 'resources/js/neo4j-graph-dashboard.js'],
+        'configScriptId' => 'neo4j-graph-dashboard-config',
+        'config' => [
+            'operatorAuthorized' => $operatorAccess->allows($request),
+        ],
         'rootAttributes' => ['data-neo4j-graph-dashboard' => true],
     ]);
 });
@@ -240,12 +249,15 @@ Route::middleware('operator')->group(function (): void {
 | File Upload Ingestion, Scraper Task Selection und die Pipeline Task Run List.
 | Pipeline Task Endpoints werden von Controller, Dataset Browser und Recovery Controls genutzt.
 */
-Route::get('/pipeline-controller', function () use ($pipelineControllerConfig) {
+Route::get('/pipeline-controller', function (\Illuminate\Http\Request $request, OperatorAccessService $operatorAccess) use ($pipelineControllerConfig) {
     return view('svelte-page', [
         'title' => 'HAWKI Pipeline Controller',
         'vite' => ['resources/css/app.css', 'resources/css/hawki-rag-theme.css', 'resources/js/pipeline-controller.js'],
         'configScriptId' => 'pipeline-controller-config',
-        'config' => $pipelineControllerConfig(),
+        'config' => [
+            ...$pipelineControllerConfig(),
+            'operatorAuthorized' => $operatorAccess->allows($request),
+        ],
         'rootAttributes' => ['data-pipeline-controller-dashboard' => true],
     ]);
 });
@@ -281,10 +293,14 @@ Route::middleware('operator')->group(function (): void {
 | Dataset Browser, Document Browser Drawer, Dataset Storage Cleanup und
 | Retry Actions aus Dataset-/Task-Details.
 */
-Route::get('/datasets', function () {
+Route::get('/datasets', function (\Illuminate\Http\Request $request, OperatorAccessService $operatorAccess) {
     return view('svelte-page', [
         'title' => 'HAWKI Data Browser',
         'vite' => ['resources/css/datasets-dashboard.css', 'resources/css/dashboard-dark-theme.css', 'resources/css/hawki-rag-theme.css', 'resources/js/datasets-dashboard.js'],
+        'configScriptId' => 'datasets-dashboard-config',
+        'config' => [
+            'operatorAuthorized' => $operatorAccess->allows($request),
+        ],
         'rootAttributes' => ['data-datasets-dashboard' => true],
     ]);
 });

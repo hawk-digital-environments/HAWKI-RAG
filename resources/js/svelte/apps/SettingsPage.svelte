@@ -37,6 +37,7 @@
         customConverter?: CustomConverterConfig;
         models?: ModelConfig;
         providers?: ProviderOption[];
+        operatorAuthorized?: boolean;
     }
 
     interface ProviderForm {
@@ -57,12 +58,15 @@
         csrfToken: string;
         /** Initial settings payload rendered by Laravel. */
         initialConfig: SettingsConfig;
+        /** Whether the current browser request is allowed to use operator APIs. */
+        operatorAuthorized?: boolean;
     }
 
     const {
         endpoint,
         csrfToken,
         initialConfig,
+        operatorAuthorized = false,
         class: className = '',
         ...restProps
     }: Props = $props();
@@ -273,6 +277,7 @@
         active="settings"
     />
 
+    {#if operatorAuthorized}
     <form class="settings-layout" onsubmit={(event) => { event.preventDefault(); void saveSettings(); }}>
         <section class="settings-panel" aria-labelledby="settings-converter-title">
             <div class="section-head">
@@ -389,6 +394,13 @@
             <span class="settings-status" data-tone={tone} aria-live="polite">{status}</span>
         </div>
     </form>
+    {:else}
+    <section class="settings-auth-panel" aria-labelledby="settings-auth-required-title">
+        <span class="settings-auth-kicker">Operator access required</span>
+        <h2 id="settings-auth-required-title">Settings are locked.</h2>
+        <p>Sign in with an operator account or enable the explicit local bypass before editing converter defaults, credentials, and runtime models.</p>
+    </section>
+    {/if}
 </main>
 
 <style>
@@ -400,6 +412,30 @@
     .settings-layout {
         display: grid;
         gap: 1rem;
+    }
+
+    .settings-auth-panel {
+        display: grid;
+        gap: 10px;
+        border: 1px solid rgba(148, 163, 184, 0.22);
+        border-radius: 12px;
+        padding: 20px;
+        background: rgba(15, 23, 42, 0.72);
+        color: #e2e8f0;
+        box-shadow: 0 18px 48px rgba(15, 23, 42, 0.2);
+    }
+
+    .settings-auth-panel h2,
+    .settings-auth-panel p {
+        margin: 0;
+    }
+
+    .settings-auth-kicker {
+        color: #7dd3fc;
+        font-size: 0.82rem;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
     }
 
     .settings-panel,

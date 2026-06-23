@@ -13,24 +13,27 @@ function csrfToken() {
 
 function readConfig() {
     if (!configElement?.textContent) {
-        return {};
+        return { operatorAuthorized: false };
     }
 
     try {
         return JSON.parse(configElement.textContent);
     } catch (error) {
         console.error('Invalid settings dashboard config.', error);
-        return {};
+        return { operatorAuthorized: false };
     }
 }
 
 if (root) {
+    const config = readConfig();
+
     mount(SettingsPage, {
         target: root,
         props: {
             endpoint: apiUrl('settings/config'),
             csrfToken: csrfToken(),
-            initialConfig: readConfig(),
+            initialConfig: config,
+            operatorAuthorized: config.operatorAuthorized === true,
         },
     });
 }
