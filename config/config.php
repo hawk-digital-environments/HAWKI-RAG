@@ -89,7 +89,5 @@ return [
             'trim',
             explode(',', env('HAWKI_RAG_HEALTH_GATE_REQUIRED', 'retrieval,graph,pipeline'))
         ))),
-        'pro_ready' => filter_var(env('HAWKI_RAG_PRO_READY', false), FILTER_VALIDATE_BOOLEAN),
-        'analytics_ready' => filter_var(env('HAWKI_RAG_ANALYTICS_READY', false), FILTER_VALIDATE_BOOLEAN),
     ],
 ];

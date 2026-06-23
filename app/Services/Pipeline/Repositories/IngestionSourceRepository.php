@@ -18,6 +18,14 @@ readonly class IngestionSourceRepository
             ->first();
     }
 
+    public function deleteIfOwnedByTask(string $sourceId, string $taskId): bool
+    {
+        return (bool) IngestionSource::query()
+            ->where('source_id', $sourceId)
+            ->where('task_id', $taskId)
+            ->delete();
+    }
+
     /**
      * @param array<string, mixed> $attributes
      */

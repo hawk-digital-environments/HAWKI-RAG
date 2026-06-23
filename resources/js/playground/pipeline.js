@@ -196,10 +196,12 @@ async function loadStageLogs(stage, { quiet = false } = {}) {
 
     const log = data.log || {};
     if (stageLogStatusEl) {
-        stageLogStatusEl.textContent = `${log.label || stageLogLabel(stage)} logs | ${log.filename || stageLogFilename(stage)} | ${log.lineCount ?? 0} lines`;
+        const refreshedAt = log.updatedAt ? ` | live ${formatDate(log.updatedAt)}` : '';
+        stageLogStatusEl.textContent = `${log.label || stageLogLabel(stage)} logs | ${log.filename || stageLogFilename(stage)} | ${log.lineCount ?? 0} lines${refreshedAt}`;
     }
     if (stageLogViewerEl) {
         stageLogViewerEl.textContent = log.text || 'No log lines found for this stage yet.';
+        stageLogViewerEl.scrollTop = stageLogViewerEl.scrollHeight;
     }
     updateStageLogActions();
 }
@@ -597,7 +599,7 @@ function renderPipelineTaskRuns(tasks) {
         deleteButton.type = 'button';
         deleteButton.className = 'pipeline-run-delete';
         deleteButton.textContent = 'Delete';
-        deleteButton.title = 'Delete this cached pipeline task history';
+        deleteButton.title = 'Delete this pipeline task history and owned shared-storage folders';
         deleteButton.addEventListener('click', () => deletePipelineTask(task.taskId, deleteButton));
         actions.appendChild(deleteButton);
 
@@ -849,10 +851,10 @@ async function deletePipelineTask(taskId, button = null) {
 
     const task = pipelineTaskRuns.find((candidate) => candidate.taskId === taskId);
     const activeWarning = isPipelineTaskCancellable(task)
-        ? '\n\nThis task still looks active. Delete only removes the cached task history; use Cancel to stop active processing.'
+        ? '\n\nThis task still looks active. Use Cancel first if workers may still be reading its files.'
         : '';
     const confirmed = window.confirm(
-        `Delete cached pipeline task ${taskId}?${activeWarning}\n\nThis removes its task, job, and stage history from Pipeline Tasks. Dataset content is not deleted.`,
+        `Delete pipeline task ${taskId}?${activeWarning}\n\nWarning: this removes its task, job, and stage history, plus owned shared-storage folders such as /app/shared/${taskId} and unshared /app/shared/sources/<source_id> workspaces.\n\nDataset content in Qdrant and Neo4j is not deleted. Continue?`,
     );
     if (!confirmed) return;
 
@@ -885,8 +887,14 @@ async function deletePipelineTask(taskId, button = null) {
         }
 
         renderPipelineTaskRuns(pipelineTaskRuns);
-        pushActivity('Pipeline', `deleted cached task ${taskId}`);
-        setTaskNote(`Deleted cached task ${taskId}.`, 'success');
+        const cleanup = data.storageCleanup || {};
+        const removedCount = Array.isArray(cleanup.deleted) ? cleanup.deleted.length : 0;
+        const skippedCount = Array.isArray(cleanup.skipped) ? cleanup.skipped.length : 0;
+        const cleanupMessage = removedCount || skippedCount
+            ? ` Removed ${removedCount} folder(s); skipped ${skippedCount}.`
+            : '';
+        pushActivity('Pipeline', `deleted task ${taskId}`);
+        setTaskNote(`Deleted task ${taskId}.${cleanupMessage}`, 'success');
         await loadPipelineTaskRuns();
     } catch (error) {
         setTaskNote(error.message || 'Pipeline task delete failed.', 'error');

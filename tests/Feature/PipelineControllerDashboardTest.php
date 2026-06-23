@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\IngestionSource;
 use App\Models\PipelineJob;
 use App\Models\PipelineStageState;
 use App\Models\PipelineTask;
@@ -334,6 +335,17 @@ class PipelineControllerDashboardTest extends TestCase
 
     public function test_pipeline_task_cache_can_be_deleted(): void
     {
+        $root = storage_path('framework/testing/pipeline-task-delete-storage');
+        File::deleteDirectory($root);
+        config()->set('temporal.storage.shared_root', $root);
+
+        $taskRoot = $root.'/task-cache-delete';
+        $sourceRoot = $root.'/sources/source-cache-delete';
+        File::ensureDirectoryExists($taskRoot);
+        File::ensureDirectoryExists($sourceRoot.'/raw');
+        File::put($taskRoot.'/uploaded.pdf', 'upload');
+        File::put($sourceRoot.'/raw/uploaded.pdf', 'raw');
+
         $task = PipelineTask::query()->create([
             'task_id' => 'task-cache-delete',
             'dataset_id' => 'cache-delete-dataset',
@@ -346,11 +358,22 @@ class PipelineControllerDashboardTest extends TestCase
         $job = PipelineJob::query()->create([
             'job_id' => 'job-cache-delete',
             'task_id' => $task->task_id,
+            'source_id' => 'source-cache-delete',
             'job_type' => PipelineJob::TYPE_CONVERT,
             'status' => PipelineJob::STATUS_COMPLETED,
+            'local_path' => $taskRoot.'/uploaded.pdf',
             'started_at' => now(),
             'finished_at' => now(),
             'metadata' => [],
+        ]);
+        IngestionSource::query()->create([
+            'source_id' => 'source-cache-delete',
+            'source_url' => 'upload://uploaded.pdf',
+            'task_id' => $task->task_id,
+            'dataset_id' => $task->dataset_id,
+            'raw_storage_path' => $sourceRoot.'/raw/',
+            'markdown_storage_path' => $sourceRoot.'/markdown/',
+            'index_status' => IngestionSource::STATUS_READY,
         ]);
         $stage = PipelineStageState::query()->create([
             'pipeline_job_id' => $job->id,
@@ -366,7 +389,8 @@ class PipelineControllerDashboardTest extends TestCase
             ->assertOk()
             ->assertJsonPath('success', true)
             ->assertJsonPath('taskId', 'task-cache-delete')
-            ->assertJsonPath('deleted', true);
+            ->assertJsonPath('deleted', true)
+            ->assertJsonPath('storageCleanup.ok', true);
 
         $this->assertDatabaseMissing('pipeline_tasks', [
             'task_id' => 'task-cache-delete',
@@ -377,6 +401,13 @@ class PipelineControllerDashboardTest extends TestCase
         $this->assertDatabaseMissing('pipeline_stage_states', [
             'id' => $stage->id,
         ]);
+        $this->assertDatabaseMissing('ingestion_sources', [
+            'source_id' => 'source-cache-delete',
+        ]);
+        $this->assertDirectoryDoesNotExist($taskRoot);
+        $this->assertDirectoryDoesNotExist($sourceRoot);
+
+        File::deleteDirectory($root);
     }
 
     public function test_pipeline_stage_logs_can_be_viewed_and_downloaded(): void
@@ -434,9 +465,10 @@ class PipelineControllerDashboardTest extends TestCase
             ->assertJsonPath('log.label', 'Scraper');
 
         $text = (string) $response->json('log.text');
-        $this->assertStringContainsString('HAWKI-RAG Scraper stage log', $text);
-        $this->assertStringContainsString('Job: job-stage-logs', $text);
-        $this->assertStringContainsString('Crawler submitted pages.', $text);
+        $this->assertStringContainsString('Scraper crawler.log entries', $text);
+        $this->assertStringNotContainsString('HAWKI-RAG Scraper stage log', $text);
+        $this->assertStringNotContainsString('Job: job-stage-logs', $text);
+        $this->assertStringNotContainsString('Crawler submitted pages.', $text);
 
         $download = $this->get('/pipeline/tasks/task-stage-logs/stages/scraper/logs/download')
             ->assertOk();
@@ -445,7 +477,10 @@ class PipelineControllerDashboardTest extends TestCase
             'filename="scraper_log_logs-dataset.txt"',
             (string) $download->headers->get('content-disposition')
         );
-        $this->assertStringContainsString('HAWKI-RAG Scraper stage log', $download->getContent());
+        $downloadText = (string) $download->getContent();
+        $this->assertStringContainsString('HAWKI-RAG Scraper stage log', $downloadText);
+        $this->assertStringContainsString('Job: job-stage-logs', $downloadText);
+        $this->assertStringContainsString('Crawler submitted pages.', $downloadText);
 
         File::deleteDirectory(dirname($logPath));
     }
@@ -541,18 +576,29 @@ class PipelineControllerDashboardTest extends TestCase
     public function test_ingest_stage_log_includes_real_raganything_runtime_entries(): void
     {
         $runtimeLogPath = storage_path('framework/testing/raganything-runtime/raganything_runtime.log');
+        $runtimeAliasPath = storage_path('framework/testing/raganything-runtime/raganything_runtime_alias.log');
         File::ensureDirectoryExists(dirname($runtimeLogPath));
+        if (is_link($runtimeAliasPath) || file_exists($runtimeAliasPath)) {
+            unlink($runtimeAliasPath);
+        }
 
         $operationId = 'source_real_ingest:ingest_real_job:doc_real_abc123:ingest';
         File::put($runtimeLogPath, implode(PHP_EOL, [
             'level="INFO" logger="api.main" event="api:ingest request_id='.$operationId.' docs=1 graph=True idempotency_key='.$operationId.'"',
+            'level="INFO" logger="api.main" event="event=api.request_start request_id='.$operationId.' method=POST path=/ingest body={\"docs\": [{\"id\": \"doc_real_abc123\", \"text\": \"NOISY_RAW_DOC_TEXT RAG-Anything\"}]}"',
             'level="INFO" logger="api.main" event="event=api.request_start request_id=unrelated method=GET path=/health"',
+            'level="INFO" logger="application.workflows.ingest_logic" event="{"collection": "hawki_raganything-dataset", "event": "application.workflows.stage", "graph": true, "idempotency_key": "'.$operationId.'", "job_id": "ingest_real_job", "stage": "ingest", "status": "started", "total_docs": 1}"',
+            'level="WARNING" logger="application.workflows.ingest.chunking" event="{"doc_id": "doc_real_abc123", "event": "application.workflows.stage", "job_id": "ingest_real_job", "stage": "ingest", "status": "partial", "warnings": ["metadata title is missing."]}"',
+            'level="DEBUG" logger="application.workflows.ingest.chunking" event="ingest:doc doc_real_abc123 chunks=209"',
+            'level="INFO" logger="application.workflows.ingest.chunking" event="{"chunks": 209, "doc_id": "doc_real_abc123", "event": "application.workflows.stage", "job_id": "ingest_real_job", "stage": "ingest", "status": "success"}"',
+            'level="INFO" logger="application.workflows.ingest.vector_commit" event="{"event": "application.workflows.stage", "idempotency_key": "'.$operationId.'", "job_id": "ingest_real_job", "pipeline_stage": "embedding", "points": 209, "stage": "ingest", "status": "success"}"',
             'level="INFO" logger="application.service" event="RAG-Anything graph insert requested doc_id=doc_real_abc123 rag_doc_id=rag-doc file=intermediate-progress.md blocks=1 chars=42"',
             'level="INFO" logger="application.service" event="RAG-Anything graph export doc_id=doc_real_abc123 file=intermediate-progress.md edges_total=3 triplets=2"',
             'level="INFO" logger="application.service" event="RAG-Anything graph insert requested doc_id=unrelated_doc rag_doc_id=other file=other.md blocks=1 chars=12"',
         ]).PHP_EOL);
+        symlink($runtimeLogPath, $runtimeAliasPath);
 
-        config()->set('config.raganything_runtime_log_paths', [$runtimeLogPath]);
+        config()->set('config.raganything_runtime_log_paths', [$runtimeLogPath, $runtimeAliasPath]);
 
         $task = PipelineTask::query()->create([
             'task_id' => 'task-raganything-logs',
@@ -591,11 +637,24 @@ class PipelineControllerDashboardTest extends TestCase
         $text = (string) $response->json('log.text');
         $this->assertStringContainsString('RAG-Anything runtime log entries', $text);
         $this->assertStringContainsString('api:ingest request_id='.$operationId, $text);
+        $this->assertStringContainsString('application.workflows.stage', $text);
+        $this->assertStringContainsString('"pipeline_stage": "embedding"', $text);
+        $this->assertStringContainsString('ingest:doc doc_real_abc123 chunks=209', $text);
         $this->assertStringContainsString('RAG-Anything graph insert requested doc_id=doc_real_abc123', $text);
         $this->assertStringContainsString('RAG-Anything graph export doc_id=doc_real_abc123', $text);
-        $this->assertStringContainsString('Ingest job and stage records', $text);
+        $this->assertStringNotContainsString('Ingest job and stage records', $text);
+        $this->assertStringNotContainsString('NOISY_RAW_DOC_TEXT', $text);
+        $this->assertStringNotContainsString('api.request_start', $text);
         $this->assertStringNotContainsString('path=/health', $text);
         $this->assertStringNotContainsString('unrelated_doc', $text);
+        $this->assertSame(1, substr_count($text, 'api:ingest request_id='.$operationId));
+
+        $download = $this->get('/pipeline/tasks/task-raganything-logs/stages/ingest/logs/download')
+            ->assertOk();
+        $downloadText = (string) $download->getContent();
+        $this->assertStringContainsString('Ingest job and stage records', $downloadText);
+        $this->assertStringNotContainsString('NOISY_RAW_DOC_TEXT', $downloadText);
+        $this->assertStringNotContainsString('api.request_start', $downloadText);
 
         File::deleteDirectory(dirname($runtimeLogPath));
     }

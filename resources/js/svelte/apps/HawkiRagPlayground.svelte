@@ -1372,11 +1372,13 @@
 
     .system-panel {
         display: grid;
+        grid-template-columns: 1fr;
         gap: 12px;
         background: rgba(8, 18, 32, 0.82);
     }
 
     .system-section {
+        min-width: 0;
         padding: 12px;
         background: rgba(15, 23, 42, 0.5);
         box-shadow: none;
@@ -1411,6 +1413,7 @@
         margin: 0;
         color: var(--pg-text);
         font-weight: 790;
+        min-width: 0;
         overflow-wrap: anywhere;
     }
 
@@ -1472,16 +1475,16 @@
         font-size: 0.76rem;
     }
 
-    @media (max-width: 1240px) {
+    @media (max-width: 1440px) {
         .playground-grid {
             grid-template-columns: minmax(320px, 0.9fr) minmax(0, 1.1fr);
         }
 
         .system-panel {
-            grid-column: 1 / -1;
+            grid-column: 2;
             position: static;
             min-height: auto;
-            grid-template-columns: repeat(3, minmax(0, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
         }
     }
 

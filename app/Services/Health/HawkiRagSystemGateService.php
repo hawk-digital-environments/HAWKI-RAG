@@ -37,24 +37,6 @@ readonly class HawkiRagSystemGateService
             $this->retrievalCheck(in_array('retrieval', $required, true)),
             $this->graphCheck(in_array('graph', $required, true)),
             $this->pipelineCheck(in_array('pipeline', $required, true), $timeout),
-            $this->flagCheck(
-                'pro',
-                'HAWKI-RAG-PRO Proxy Pointer',
-                'config.health_gate.pro_ready',
-                'Proxy Pointer retrieval is marked ready.',
-                'Proxy Pointer retrieval is not marked ready yet.',
-                'Implement/register Proxy Pointer retrieval, then set HAWKI_RAG_PRO_READY=true after verification.',
-                in_array('pro', $required, true),
-            ),
-            $this->flagCheck(
-                'analytics',
-                'HAWKI-RAG Analytics',
-                'config.health_gate.analytics_ready',
-                'Analytics is marked ready.',
-                'Analytics is not marked ready yet.',
-                'Finish the analytics service/dashboard, then set HAWKI_RAG_ANALYTICS_READY=true after verification.',
-                in_array('analytics', $required, true),
-            ),
         ];
 
         $blocking = array_values(array_filter(
@@ -178,30 +160,6 @@ readonly class HawkiRagSystemGateService
         } catch (\Throwable $exception) {
             return $this->exceptionCheck('pipeline', 'HAWKI-RAG Pipeline', $exception, $required);
         }
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    private function flagCheck(
-        string $key,
-        string $title,
-        string $configKey,
-        string $readyDetail,
-        string $blockedDetail,
-        string $fix,
-        bool $required,
-    ): array {
-        $ready = filter_var($this->config->get($configKey, false), FILTER_VALIDATE_BOOLEAN);
-
-        return $this->check(
-            $key,
-            $title,
-            $ready ? 'ok' : 'fail',
-            $ready ? $readyDetail : $blockedDetail,
-            $ready ? '' : $fix,
-            $required,
-        );
     }
 
     /**

@@ -13,12 +13,10 @@ use Tests\TestCase;
 
 class HawkiRagSystemGateServiceTest extends TestCase
 {
-    public function test_it_blocks_when_required_pro_and_analytics_are_not_ready(): void
+    public function test_it_ignores_removed_pro_and_analytics_checks(): void
     {
         config()->set('config.health_gate.enabled', true);
         config()->set('config.health_gate.required', ['retrieval', 'graph', 'pipeline', 'pro', 'analytics']);
-        config()->set('config.health_gate.pro_ready', false);
-        config()->set('config.health_gate.analytics_ready', false);
 
         $service = new HawkiRagSystemGateService(
             config(),
@@ -30,17 +28,16 @@ class HawkiRagSystemGateServiceTest extends TestCase
 
         $report = $service->report(1);
 
-        $this->assertSame('blocked', $report['status']);
-        $this->assertSame(['pro', 'analytics'], array_column($report['blocking'], 'key'));
+        $this->assertSame('ready', $report['status']);
+        $this->assertSame(['retrieval', 'graph', 'pipeline'], array_column($report['checks'], 'key'));
+        $this->assertSame([], $report['blocking']);
         $this->assertSame('2026-06-18T12:00:00+00:00', $report['checkedAt']);
     }
 
     public function test_it_is_ready_when_all_required_checks_pass(): void
     {
         config()->set('config.health_gate.enabled', true);
-        config()->set('config.health_gate.required', ['retrieval', 'graph', 'pipeline', 'pro', 'analytics']);
-        config()->set('config.health_gate.pro_ready', true);
-        config()->set('config.health_gate.analytics_ready', true);
+        config()->set('config.health_gate.required', ['retrieval', 'graph', 'pipeline']);
 
         $service = new HawkiRagSystemGateService(
             config(),
@@ -54,6 +51,7 @@ class HawkiRagSystemGateServiceTest extends TestCase
 
         $this->assertSame('ready', $report['status']);
         $this->assertSame([], $report['blocking']);
+        $this->assertSame(['retrieval', 'graph', 'pipeline'], array_column($report['checks'], 'key'));
         $this->assertSame(['Open Pipeline Health'], array_column($report['repairActions'], 'label'));
     }
 

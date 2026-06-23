@@ -40,6 +40,13 @@ readonly class PipelineStageLogService
 
     private const RAGANYTHING_LOG_HINTS = [
         'api:ingest',
+        'application.workflows.stage',
+        'ingest:start',
+        'ingest:doc',
+        'ingest:prepared',
+        'ingest:qdrant',
+        'ingest:points',
+        'index_vector',
         'graph:extract',
         'graph:neo4j',
         'graph-viz',
@@ -72,7 +79,7 @@ readonly class PipelineStageLogService
         ],
     ];
 
-    private const RUNTIME_LOG_LINE_LIMIT = 800;
+    private const RUNTIME_LOG_LINE_LIMIT = 5000;
 
     public function __construct(
         private PipelineTaskRepository $tasks,
@@ -92,6 +99,22 @@ readonly class PipelineStageLogService
      */
     public function forStage(string $taskId, string $stage): ?array
     {
+        return $this->stagePayload($taskId, $stage, false);
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    public function reportForStage(string $taskId, string $stage): ?array
+    {
+        return $this->stagePayload($taskId, $stage, true);
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function stagePayload(string $taskId, string $stage, bool $includeDiagnosticReport): ?array
+    {
         $canonicalStage = $this->canonicalStage($stage);
         if ($canonicalStage === null) {
             return null;
@@ -103,7 +126,9 @@ readonly class PipelineStageLogService
         }
 
         $jobs = $this->stageJobs($task, $canonicalStage);
-        $text = $this->buildText($task, $canonicalStage, $jobs);
+        $text = $includeDiagnosticReport
+            ? $this->buildReportText($task, $canonicalStage, $jobs)
+            : $this->buildLiveText($task, $canonicalStage, $jobs);
 
         return [
             'taskId' => $task->task_id,
@@ -175,7 +200,18 @@ readonly class PipelineStageLogService
     /**
      * @param Collection<int, PipelineJob> $jobs
      */
-    private function buildText(PipelineTask $task, string $stage, Collection $jobs): string
+    private function buildLiveText(PipelineTask $task, string $stage, Collection $jobs): string
+    {
+        $lines = [];
+        $this->appendDirectStageLogSection($lines, $task, $jobs, $stage);
+
+        return rtrim(implode("\n", $lines))."\n";
+    }
+
+    /**
+     * @param Collection<int, PipelineJob> $jobs
+     */
+    private function buildReportText(PipelineTask $task, string $stage, Collection $jobs): string
     {
         $lines = [
             'HAWKI-RAG '.$this->stageName($stage).' stage log',
@@ -432,7 +468,7 @@ readonly class PipelineStageLogService
             }
         }
 
-        return $entries;
+        return $this->sortRuntimeEntries($entries);
     }
 
     /**
@@ -469,7 +505,7 @@ readonly class PipelineStageLogService
             }
         }
 
-        return $entries;
+        return $this->sortRuntimeEntries($entries);
     }
 
     /**
@@ -496,7 +532,32 @@ readonly class PipelineStageLogService
             }
         }
 
+        return $this->sortRuntimeEntries($entries);
+    }
+
+    /**
+     * @param list<string> $entries
+     * @return list<string>
+     */
+    private function sortRuntimeEntries(array $entries): array
+    {
+        usort($entries, function (string $left, string $right): int {
+            return $this->runtimeEntryPosition($left) <=> $this->runtimeEntryPosition($right);
+        });
+
         return $entries;
+    }
+
+    /**
+     * @return array{0: string, 1: int}
+     */
+    private function runtimeEntryPosition(string $entry): array
+    {
+        if (preg_match('/^\[([^:]+):(\d+)]/', $entry, $matches)) {
+            return [(string) $matches[1], (int) $matches[2]];
+        }
+
+        return [$entry, 0];
     }
 
     /**
@@ -541,12 +602,14 @@ readonly class PipelineStageLogService
         $configured = $this->config->get('config.raganything_runtime_log_paths', []);
         $paths = is_array($configured) ? $configured : [$configured];
 
-        return collect($paths)
+        $candidates = collect($paths)
             ->filter(fn (mixed $path): bool => is_string($path) && trim($path) !== '')
             ->map(fn (string $path): string => trim($path))
             ->unique()
             ->values()
             ->all();
+
+        return $this->uniqueReadableLogPaths($candidates);
     }
 
     /**
@@ -557,12 +620,55 @@ readonly class PipelineStageLogService
         $configured = $this->config->get('config.pipeline_stage_runtime_log_paths.'.$stage, []);
         $paths = is_array($configured) ? $configured : [$configured];
 
-        return collect($paths)
+        $candidates = collect($paths)
             ->filter(fn (mixed $path): bool => is_string($path) && trim($path) !== '')
             ->map(fn (string $path): string => trim($path))
             ->unique()
             ->values()
             ->all();
+
+        return $this->uniqueReadableLogPaths($candidates);
+    }
+
+    /**
+     * @param list<string> $paths
+     * @return list<string>
+     */
+    private function uniqueReadableLogPaths(array $paths): array
+    {
+        $unique = [];
+        $seen = [];
+
+        foreach ($paths as $path) {
+            if (! $this->files->isFile($path)) {
+                continue;
+            }
+
+            $key = $this->fileIdentity($path);
+            if (isset($seen[$key])) {
+                continue;
+            }
+
+            $seen[$key] = true;
+            $unique[] = $path;
+        }
+
+        return $unique;
+    }
+
+    private function fileIdentity(string $path): string
+    {
+        $stat = @stat($path);
+        if (is_array($stat) && isset($stat['dev'], $stat['ino'])) {
+            return 'inode:'.$stat['dev'].':'.$stat['ino'];
+        }
+
+        $realPath = realpath($path);
+        if (is_string($realPath) && $realPath !== '') {
+            return 'path:'.$realPath;
+        }
+
+        return 'path:'.$path;
     }
 
     /**
@@ -747,6 +853,10 @@ readonly class PipelineStageLogService
 
     private function runtimeLineLooksRelevant(string $line): bool
     {
+        if ($this->runtimeLineShouldBeHidden($line)) {
+            return false;
+        }
+
         $lower = strtolower($line);
 
         foreach (self::RAGANYTHING_LOG_HINTS as $hint) {
@@ -756,6 +866,15 @@ readonly class PipelineStageLogService
         }
 
         return false;
+    }
+
+    private function runtimeLineShouldBeHidden(string $line): bool
+    {
+        $lower = strtolower($line);
+
+        return str_contains($lower, 'api.request_start')
+            || str_contains($lower, 'body={"docs"')
+            || str_contains($lower, 'body={\\"docs\\"');
     }
 
     private function stageRuntimeLineLooksRelevant(string $stage, string $line): bool

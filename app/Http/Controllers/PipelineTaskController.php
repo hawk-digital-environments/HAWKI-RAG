@@ -114,7 +114,7 @@ class PipelineTaskController extends Controller
             ]);
         }
 
-        $log = $this->pipeline->logs->forStage($taskId, $stage);
+        $log = $this->pipeline->logs->reportForStage($taskId, $stage);
         if (! $log) {
             return response("Pipeline task {$taskId} was not found.", 404, [
                 'Content-Type' => 'text/plain; charset=UTF-8',
@@ -156,17 +156,27 @@ class PipelineTaskController extends Controller
 
     public function destroy(string $taskId): JsonResponse
     {
-        if (! $this->pipeline->tasks->delete($taskId)) {
+        $result = $this->pipeline->tasks->delete($taskId);
+        if (! $result) {
             return response()->json([
                 'success' => false,
                 'message' => "Pipeline task {$taskId} was not found.",
             ], 404);
         }
 
+        if (! ($result['deleted'] ?? false)) {
+            return response()->json([
+                'success' => false,
+                'message' => "Pipeline task {$taskId} storage cleanup failed; task history was not deleted.",
+                'storageCleanup' => $result['storageCleanup'] ?? null,
+            ], 500);
+        }
+
         return response()->json([
             'success' => true,
             'taskId' => $taskId,
             'deleted' => true,
+            'storageCleanup' => $result['storageCleanup'] ?? null,
         ]);
     }
 

@@ -55,6 +55,18 @@ readonly class PipelineTaskRepository
             ->first();
     }
 
+    public function sourceHasJobsOutsideTask(string $sourceId, string $taskId): bool
+    {
+        return PipelineJob::query()
+            ->where('source_id', $sourceId)
+            ->where(function ($query) use ($taskId): void {
+                $query
+                    ->where('task_id', '!=', $taskId)
+                    ->orWhereNull('task_id');
+            })
+            ->exists();
+    }
+
     /**
      * @param array<string, int> $counters
      * @param array<string, mixed> $metadata

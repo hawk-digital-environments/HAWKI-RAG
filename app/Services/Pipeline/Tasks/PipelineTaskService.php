@@ -23,6 +23,7 @@ class PipelineTaskService
         private readonly PipelineTaskCancellationService $cancellations,
         private readonly PipelineTaskTimelineService $timeline,
         private readonly PipelineTaskStatusRefresher $refresher,
+        private readonly PipelineTaskStorageCleanupService $storageCleanup,
         private readonly PipelineTaskRepository $taskRepository,
         private readonly PipelineTaskJobsQuery $taskJobs,
         private readonly FailedPipelineJobsQuery $failedJobs,
@@ -100,9 +101,28 @@ class PipelineTaskService
         return $this->cancellations->cancel($taskId);
     }
 
-    public function delete(string $taskId): bool
+    /**
+     * @return array{deleted: bool, storageCleanup: array<string, mixed>}|null
+     */
+    public function delete(string $taskId): ?array
     {
-        return $this->taskRepository->deleteHistory($taskId);
+        $task = $this->taskRepository->findWithOrderedJobs($taskId);
+        if (! $task) {
+            return null;
+        }
+
+        $storageCleanup = $this->storageCleanup->deleteForTask($task);
+        if (! ($storageCleanup['ok'] ?? false)) {
+            return [
+                'deleted' => false,
+                'storageCleanup' => $storageCleanup,
+            ];
+        }
+
+        return [
+            'deleted' => $this->taskRepository->deleteHistory($taskId),
+            'storageCleanup' => $storageCleanup,
+        ];
     }
 
     public function completeIfIdle(string $taskId): ?PipelineTask
