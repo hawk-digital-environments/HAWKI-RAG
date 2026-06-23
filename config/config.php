@@ -19,7 +19,7 @@ $stageRuntimeLogPaths = static function (string $stage, string $file) use ($pipe
 return [
 
 
-    'base_url' => env('HAWKI_RAG_BASE_URL', 'http://hawki_rag_bridge:8000'),
+    'hawki_rag_bridge_url' => env('HAWKI_RAG_BRIDGE_URL', 'http://hawki_rag_bridge:8000'),
     'qdrant_http_url' => env('QDRANT_HTTP_URL', 'http://qdrant:6333'),
     'neo4j_http_url' => env('NEO4J_HTTP_URL', 'http://hawki_rag_neo4j:7474'),
     'neo4j_user' => env('NEO4J_USER', 'neo4j'),
@@ -31,7 +31,6 @@ return [
     'pipeline_root' => $pipelineRoot,
     'shared_root' => $pipelineRoot,
     'crawled_data_root' => $crawledDataRoot,
-    'rag_api_url' => env('HAWKI_RAG_API_URL', env('HAWKI_RAG_BRIDGE_URL', 'http://hawki_rag_bridge:8000')),
     'ingest_summary_paths' => [
         env('HAWKI_RAG_INGEST_SUMMARY_PUBLIC_PATH', public_path('ingest_summary.json')),
         env('HAWKI_RAG_INGEST_SUMMARY_STORAGE_PATH', storage_path('logs/ingest_summary.json')),
@@ -78,7 +77,6 @@ return [
     'pipeline_proof_log_globs' => [
         storage_path('logs/laravel-*.log'),
     ],
-    'hawki_rag_bridge_url' => env('HAWKI_RAG_BRIDGE_URL', 'http://hawki_rag_bridge:8000'),
     'pipeline_demo_urls' => env('PIPELINE_DEMO_URLS', ''),
     'docker_project_path' => env('DOCKER_PROJECT_PATH', ''),
     'virtual_path' => env('VIRTUAL_PATH', ''),
@@ -88,6 +86,13 @@ return [
         'required' => array_values(array_filter(array_map(
             'trim',
             explode(',', env('HAWKI_RAG_HEALTH_GATE_REQUIRED', 'retrieval,graph,pipeline'))
+        ))),
+    ],
+    'operator_auth' => [
+        'bypass' => filter_var(env('HAWKI_RAG_OPERATOR_AUTH_BYPASS', false), FILTER_VALIDATE_BOOLEAN),
+        'bypass_environments' => array_values(array_filter(array_map(
+            'trim',
+            explode(',', env('HAWKI_RAG_OPERATOR_AUTH_BYPASS_ENVIRONMENTS', 'local,testing'))
         ))),
     ],
 ];

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
+use App\Models\User;
+use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
 class RouteSecurityTest extends TestCase
@@ -52,6 +54,8 @@ class RouteSecurityTest extends TestCase
 
     public function test_sensitive_routes_are_not_cacheable(): void
     {
+        config()->set('config.operator_auth.bypass', false);
+
         $response = $this->getJson('/api/pipeline/tasks')
             ->assertUnauthorized()
             ->assertHeader('Pragma', 'no-cache')
@@ -60,9 +64,54 @@ class RouteSecurityTest extends TestCase
         $this->assertStringContainsString('no-store', (string) $response->headers->get('Cache-Control'));
 
         $this->getJson('/settings/config')
-            ->assertOk()
+            ->assertUnauthorized()
             ->assertHeader('Pragma', 'no-cache')
             ->assertHeader('Expires', '0');
+    }
+
+    public function test_web_ui_operator_endpoints_require_operator_authentication(): void
+    {
+        config()->set('config.operator_auth.bypass', false);
+
+        $this->getJson('/settings/config')
+            ->assertUnauthorized()
+            ->assertJsonPath('message', 'Operator authentication required.');
+
+        $this->getJson('/documents/uploads/download?source_url=upload%3A%2F%2Fsecret.pdf')
+            ->assertUnauthorized()
+            ->assertJsonPath('message', 'Operator authentication required.');
+
+        $this->withSession(['_token' => 'test-token'])
+            ->postJson('/query', ['query' => 'hello'], ['X-CSRF-TOKEN' => 'test-token'])
+            ->assertUnauthorized()
+            ->assertJsonPath('message', 'Operator authentication required.');
+    }
+
+    public function test_web_ui_operator_endpoints_allow_sanctum_users(): void
+    {
+        config()->set('config.operator_auth.bypass', false);
+        Sanctum::actingAs(new User([
+            'username' => 'operator-test',
+            'email' => 'operator-test@example.test',
+            'ip' => '127.0.0.1',
+        ]));
+
+        $this->getJson('/settings/config')
+            ->assertOk();
+    }
+
+    public function test_web_ui_operator_local_bypass_must_be_explicit_and_environment_scoped(): void
+    {
+        config()->set('config.operator_auth.bypass', true);
+        config()->set('config.operator_auth.bypass_environments', ['production']);
+
+        $this->getJson('/settings/config')
+            ->assertUnauthorized();
+
+        config()->set('config.operator_auth.bypass_environments', [app()->environment()]);
+
+        $this->getJson('/settings/config')
+            ->assertOk();
     }
 
     public function test_internal_api_cors_requires_an_explicit_allowed_origin(): void
@@ -85,7 +134,11 @@ class RouteSecurityTest extends TestCase
 
     public function test_query_payloads_are_size_limited(): void
     {
-        $this->actingAsApiUser();
+        Sanctum::actingAs(new User([
+            'username' => 'api-test',
+            'email' => 'api-test@example.test',
+            'ip' => '127.0.0.1',
+        ]));
 
         $this->postJson('/api/query', ['query' => str_repeat('x', 4001)])
             ->assertUnprocessable()

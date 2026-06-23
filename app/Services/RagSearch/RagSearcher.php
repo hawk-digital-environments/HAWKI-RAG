@@ -19,7 +19,7 @@ class RagSearcher
         private readonly RagSearchPayloadFactory $payloads,
         private readonly RagSearchSchemaFactory $schemas,
         private readonly RagSearchResponseFilter $responses,
-        #[Config('config.base_url')]
+        #[Config('config.hawki_rag_bridge_url')]
         private readonly string $baseUrl,
     ) {}
 

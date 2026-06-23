@@ -69,6 +69,6 @@ readonly class RagProxyService
 
     private function queryEndpoint(): string
     {
-        return rtrim((string) $this->config->get('config.base_url'), '/').'/query';
+        return rtrim((string) $this->config->get('config.hawki_rag_bridge_url'), '/').'/query';
     }
 }

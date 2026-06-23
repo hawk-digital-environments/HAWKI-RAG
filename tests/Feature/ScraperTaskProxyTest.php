@@ -12,6 +12,13 @@ class ScraperTaskProxyTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->actingAsApiUser();
+    }
+
     public function test_scraper_ui_profile_and_stored_tasks_are_normalized_for_the_playground(): void
     {
         config()->set('scraper.task_ui_url', 'http://scraper-ui.test');

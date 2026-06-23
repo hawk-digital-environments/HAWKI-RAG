@@ -25,8 +25,7 @@
 ### HAWKI RAG endpoints and paths
 | Variable | Default Value | Description |
 | --- | --- | --- |
-| `HAWKI_RAG_BRIDGE_URL` | _From `.env`_ | Ingest bridge base URL used for ingest operations. |
-| `HAWKI_RAG_API_URL` | _From `.env`_ | Question-answer API URL used by the app. |
+| `HAWKI_RAG_BRIDGE_URL` | _From `.env`_ | HAWKI-RAG bridge base URL used for query, ingest, health, and graph cache operations. |
 | `HAWKI_RAG_TEMPORAL_SHARED_ROOT` | `/shared` | Shared files path used for Temporal scraper/converter/ingestion handoff. |
 
 ### Temporal ingestion

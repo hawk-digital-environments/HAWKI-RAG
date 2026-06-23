@@ -7,6 +7,12 @@
     import type {HTMLAttributes} from 'svelte/elements';
 
     type P5Constructor = new (sketch: (p: P5) => void, node?: HTMLElement) => P5;
+    type P5Addon = (P5Constructor: unknown) => void;
+    type ModularP5Constructor = P5Constructor & {
+        registerAddon: (addon: P5Addon) => void;
+    };
+    type P5Module = {default: ModularP5Constructor};
+    type P5AddonModule = {default: P5Addon};
 
     interface FloatingNode {
         x: number;
@@ -30,6 +36,35 @@
     }: Props = $props();
 
     let backgroundHost: HTMLDivElement;
+
+    async function loadBackgroundP5Constructor(): Promise<P5Constructor> {
+        const [
+            coreModule,
+            accessibilityModule,
+            colorModule,
+            shapeModule,
+            mathModule,
+            typeModule,
+        ] = await Promise.all([
+            import('p5/core') as Promise<P5Module>,
+            import('p5/accessibility') as Promise<P5AddonModule>,
+            import('p5/color') as Promise<P5AddonModule>,
+            import('p5/shape') as Promise<P5AddonModule>,
+            import('p5/math') as Promise<P5AddonModule>,
+            import('p5/type') as Promise<P5AddonModule>,
+        ]);
+
+        const P5Constructor = coreModule.default;
+        [
+            accessibilityModule.default,
+            colorModule.default,
+            shapeModule.default,
+            mathModule.default,
+            typeModule.default,
+        ].forEach((addon) => P5Constructor.registerAddon(addon));
+
+        return P5Constructor;
+    }
 
     function createBackgroundSketch(P5Constructor: P5Constructor, host: HTMLDivElement, reduceMotion: boolean): P5 {
         return new P5Constructor((p: P5) => {
@@ -148,11 +183,10 @@
         let sketch: P5 | null = null;
         let disposed = false;
 
-        void import('p5').then((module) => {
+        void loadBackgroundP5Constructor().then((P5Constructor) => {
             if (!backgroundHost || disposed) return;
 
             const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-            const P5Constructor = module.default as P5Constructor;
             sketch = createBackgroundSketch(P5Constructor, backgroundHost, reduceMotion);
         });
 

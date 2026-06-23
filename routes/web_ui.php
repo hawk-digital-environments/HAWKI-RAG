@@ -54,6 +54,7 @@ use App\Http\Controllers\PipelineStatusController;
 use App\Http\Controllers\PipelineTaskController;
 use App\Http\Controllers\ScrapeController;
 use App\Http\Controllers\SettingsController;
+use App\Http\Controllers\UploadedSourceDocumentController;
 use App\Services\Settings\SettingsService;
 
 /*
@@ -181,8 +182,10 @@ Route::get('/admin/health-repair', fn () => redirect('/pipeline-health'));
 | Operator defaults for converter profiles and model runtime choices.
 */
 Route::get('/settings', [SettingsController::class, 'page']);
-Route::get('/settings/config', [SettingsController::class, 'show']);
-Route::put('/settings/config', [SettingsController::class, 'update'])->middleware('throttle:hawki-destructive');
+Route::middleware('operator')->group(function (): void {
+    Route::get('/settings/config', [SettingsController::class, 'show']);
+    Route::put('/settings/config', [SettingsController::class, 'update'])->middleware('throttle:hawki-destructive');
+});
 
 /*
 |--------------------------------------------------------------------------
@@ -197,9 +200,11 @@ Route::get('/hawki-rag-playground', function () {
         'rootAttributes' => ['data-hawki-rag-playground' => true],
     ]);
 });
-Route::post('/query', [HawkiRagProxyController::class, 'query'])->middleware('throttle:hawki-rag-query');
-Route::get('/rag/stats', [RagStatsController::class, 'show']);
-Route::delete('/rag/qdrant/collections/{collection}', [RagStatsController::class, 'destroyQdrantCollection'])->middleware('throttle:hawki-destructive');
+Route::middleware('operator')->group(function (): void {
+    Route::post('/query', [HawkiRagProxyController::class, 'query'])->middleware('throttle:hawki-rag-query');
+    Route::get('/rag/stats', [RagStatsController::class, 'show']);
+    Route::delete('/rag/qdrant/collections/{collection}', [RagStatsController::class, 'destroyQdrantCollection'])->middleware('throttle:hawki-destructive');
+});
 
 /*
 |--------------------------------------------------------------------------
@@ -214,17 +219,19 @@ Route::get('/neo4j-graph-explorer', function () {
         'rootAttributes' => ['data-neo4j-graph-dashboard' => true],
     ]);
 });
-Route::get('/rag/neo4j/graph/overview', [RagGraphController::class, 'overview']);
-Route::get('/rag/neo4j/graph/search', [RagGraphController::class, 'search']);
-Route::get('/rag/neo4j/graph/semantic-search', [RagGraphController::class, 'semanticSearch']);
-Route::get('/rag/neo4j/graph/node', [RagGraphController::class, 'node']);
-Route::post('/rag/neo4j/graph/expand', [RagGraphController::class, 'expand']);
-Route::post('/rag/neo4j/graph/clear-view', [RagGraphController::class, 'clearView']);
-Route::get('/rag/neo4j/graph/snapshots', [RagGraphController::class, 'snapshots']);
-Route::post('/rag/neo4j/graph/snapshots', [RagGraphController::class, 'saveSnapshot']);
-Route::get('/rag/neo4j/graph/snapshots/{id}', [RagGraphController::class, 'loadSnapshot']);
-Route::delete('/rag/neo4j/graph/snapshots/{id}', [RagGraphController::class, 'deleteSnapshot']);
-Route::post('/rag/neo4j/clear', [RagGraphController::class, 'clearNeo4j'])->middleware('throttle:hawki-destructive');
+Route::middleware('operator')->group(function (): void {
+    Route::get('/rag/neo4j/graph/overview', [RagGraphController::class, 'overview']);
+    Route::get('/rag/neo4j/graph/search', [RagGraphController::class, 'search']);
+    Route::get('/rag/neo4j/graph/semantic-search', [RagGraphController::class, 'semanticSearch']);
+    Route::get('/rag/neo4j/graph/node', [RagGraphController::class, 'node']);
+    Route::post('/rag/neo4j/graph/expand', [RagGraphController::class, 'expand']);
+    Route::post('/rag/neo4j/graph/clear-view', [RagGraphController::class, 'clearView']);
+    Route::get('/rag/neo4j/graph/snapshots', [RagGraphController::class, 'snapshots']);
+    Route::post('/rag/neo4j/graph/snapshots', [RagGraphController::class, 'saveSnapshot']);
+    Route::get('/rag/neo4j/graph/snapshots/{id}', [RagGraphController::class, 'loadSnapshot']);
+    Route::delete('/rag/neo4j/graph/snapshots/{id}', [RagGraphController::class, 'deleteSnapshot']);
+    Route::post('/rag/neo4j/clear', [RagGraphController::class, 'clearNeo4j'])->middleware('throttle:hawki-destructive');
+});
 
 /*
 |--------------------------------------------------------------------------
@@ -242,28 +249,30 @@ Route::get('/pipeline-controller', function () use ($pipelineControllerConfig) {
         'rootAttributes' => ['data-pipeline-controller-dashboard' => true],
     ]);
 });
-Route::get('/scraper/jobs', [ScrapeController::class, 'getCrawlerJobs']);
-Route::get('/scraper/tasks', [ScrapeController::class, 'getCrawlerTasks']);
-Route::post('/scraper/tasks/start', [ScrapeController::class, 'startCrawlerTask'])->middleware('throttle:hawki-upload');
-Route::get('/scraper/status/{jobId}', [ScrapeController::class, 'getCrawlerStatus']);
-Route::post('/scraper/jobs/{jobId}/cancel', [ScrapeController::class, 'cancelCrawlerJob']);
-Route::post('/scraper/jobs/{jobId}/pause', [ScrapeController::class, 'pauseCrawlerJob']);
-Route::post('/scraper/jobs/{jobId}/resume', [ScrapeController::class, 'resumeCrawlerJob']);
-Route::get('/pipeline/status/{jobId}', [PipelineStatusController::class, 'show']);
-Route::get('/pipeline/tasks', [PipelineTaskController::class, 'index']);
-Route::post('/pipeline/tasks/start', [PipelineTaskController::class, 'start'])->middleware('throttle:hawki-upload');
-Route::get('/pipeline/tasks/{taskId}', [PipelineTaskController::class, 'show']);
-Route::get('/pipeline/tasks/{taskId}/jobs', [PipelineTaskController::class, 'jobs']);
-Route::get('/pipeline/tasks/{taskId}/failed-jobs', [PipelineTaskController::class, 'failedJobs']);
-Route::get('/pipeline/tasks/{taskId}/events', [PipelineTaskController::class, 'events']);
-Route::get('/pipeline/tasks/{taskId}/stages/{stage}/logs', [PipelineTaskController::class, 'stageLogs']);
-Route::get('/pipeline/tasks/{taskId}/stages/{stage}/logs/download', [PipelineTaskController::class, 'downloadStageLogs']);
-Route::post('/pipeline/tasks/{taskId}/jobs', [PipelineTaskController::class, 'upsertJob']);
-Route::post('/pipeline/tasks/{taskId}/retry', [PipelineTaskController::class, 'retry'])->middleware('throttle:hawki-destructive');
-Route::post('/pipeline/tasks/{taskId}/retry-failed-jobs', [PipelineTaskController::class, 'retryFailedJobs'])->middleware('throttle:hawki-destructive');
-Route::post('/pipeline/tasks/{taskId}/cancel', [PipelineTaskController::class, 'cancel'])->middleware('throttle:hawki-destructive');
-Route::delete('/pipeline/tasks/{taskId}', [PipelineTaskController::class, 'destroy'])->middleware('throttle:hawki-destructive');
-Route::post('/pipeline/controller/files', [PipelineControlController::class, 'uploadFile'])->middleware('throttle:hawki-upload');
+Route::middleware('operator')->group(function (): void {
+    Route::get('/scraper/jobs', [ScrapeController::class, 'getCrawlerJobs']);
+    Route::get('/scraper/tasks', [ScrapeController::class, 'getCrawlerTasks']);
+    Route::post('/scraper/tasks/start', [ScrapeController::class, 'startCrawlerTask'])->middleware('throttle:hawki-upload');
+    Route::get('/scraper/status/{jobId}', [ScrapeController::class, 'getCrawlerStatus']);
+    Route::post('/scraper/jobs/{jobId}/cancel', [ScrapeController::class, 'cancelCrawlerJob']);
+    Route::post('/scraper/jobs/{jobId}/pause', [ScrapeController::class, 'pauseCrawlerJob']);
+    Route::post('/scraper/jobs/{jobId}/resume', [ScrapeController::class, 'resumeCrawlerJob']);
+    Route::get('/pipeline/status/{jobId}', [PipelineStatusController::class, 'show']);
+    Route::get('/pipeline/tasks', [PipelineTaskController::class, 'index']);
+    Route::post('/pipeline/tasks/start', [PipelineTaskController::class, 'start'])->middleware('throttle:hawki-upload');
+    Route::get('/pipeline/tasks/{taskId}', [PipelineTaskController::class, 'show']);
+    Route::get('/pipeline/tasks/{taskId}/jobs', [PipelineTaskController::class, 'jobs']);
+    Route::get('/pipeline/tasks/{taskId}/failed-jobs', [PipelineTaskController::class, 'failedJobs']);
+    Route::get('/pipeline/tasks/{taskId}/events', [PipelineTaskController::class, 'events']);
+    Route::get('/pipeline/tasks/{taskId}/stages/{stage}/logs', [PipelineTaskController::class, 'stageLogs']);
+    Route::get('/pipeline/tasks/{taskId}/stages/{stage}/logs/download', [PipelineTaskController::class, 'downloadStageLogs']);
+    Route::post('/pipeline/tasks/{taskId}/jobs', [PipelineTaskController::class, 'upsertJob']);
+    Route::post('/pipeline/tasks/{taskId}/retry', [PipelineTaskController::class, 'retry'])->middleware('throttle:hawki-destructive');
+    Route::post('/pipeline/tasks/{taskId}/retry-failed-jobs', [PipelineTaskController::class, 'retryFailedJobs'])->middleware('throttle:hawki-destructive');
+    Route::post('/pipeline/tasks/{taskId}/cancel', [PipelineTaskController::class, 'cancel'])->middleware('throttle:hawki-destructive');
+    Route::delete('/pipeline/tasks/{taskId}', [PipelineTaskController::class, 'destroy'])->middleware('throttle:hawki-destructive');
+    Route::post('/pipeline/controller/files', [PipelineControlController::class, 'uploadFile'])->middleware('throttle:hawki-upload');
+});
 
 /*
 |--------------------------------------------------------------------------
@@ -279,16 +288,22 @@ Route::get('/datasets', function () {
         'rootAttributes' => ['data-datasets-dashboard' => true],
     ]);
 });
-Route::get('/datasets/data', [DatasetController::class, 'index']);
-Route::get('/datasets/data/{datasetId}', [DatasetController::class, 'show']);
-Route::delete('/datasets/data/{datasetId}/storage', [DatasetController::class, 'destroyStorage'])->middleware('throttle:hawki-destructive');
+Route::middleware('operator')->group(function (): void {
+    Route::get('/datasets/data', [DatasetController::class, 'index']);
+    Route::get('/datasets/data/{datasetId}', [DatasetController::class, 'show']);
+    Route::delete('/datasets/data/{datasetId}/storage', [DatasetController::class, 'destroyStorage'])->middleware('throttle:hawki-destructive');
+});
 Route::get('/documents', function (\Illuminate\Http\Request $request) {
     $query = $request->getQueryString();
 
     return redirect('/datasets'.($query ? '?'.$query : ''));
 });
-Route::get('/documents/data', [DocumentBrowserController::class, 'index']);
-Route::get('/documents/data/{documentId}', [DocumentBrowserController::class, 'show']);
+Route::middleware('operator')->group(function (): void {
+    Route::get('/documents/data', [DocumentBrowserController::class, 'index']);
+    Route::get('/documents/data/{documentId}', [DocumentBrowserController::class, 'show']);
+    Route::get('/documents/uploads/download', UploadedSourceDocumentController::class)
+        ->name('documents.uploads.download');
+});
 
 /*
 |--------------------------------------------------------------------------
@@ -296,11 +311,13 @@ Route::get('/documents/data/{documentId}', [DocumentBrowserController::class, 's
 |--------------------------------------------------------------------------
 | Wird von den Retry Controls im Dataset Browser und von Recovery-Actions genutzt.
 */
-Route::get('/pipeline/recovery/failed-jobs', [PipelineRecoveryController::class, 'failedJobs']);
-Route::post('/pipeline/recovery/jobs/retry-selected', [PipelineRecoveryController::class, 'retrySelected'])->middleware('throttle:hawki-destructive');
-Route::post('/pipeline/recovery/jobs/{jobId}/retry', [PipelineRecoveryController::class, 'retryJob'])->middleware('throttle:hawki-destructive');
-Route::post('/pipeline/recovery/retry-all', [PipelineRecoveryController::class, 'retryAll'])->middleware('throttle:hawki-destructive');
-Route::post('/pipeline/recovery/tasks/{taskId}/retry-failed', [PipelineRecoveryController::class, 'retryTask'])->middleware('throttle:hawki-destructive');
-Route::post('/pipeline/recovery/datasets/{datasetId}/retry-failed', [PipelineRecoveryController::class, 'retryDataset'])->middleware('throttle:hawki-destructive');
+Route::middleware('operator')->group(function (): void {
+    Route::get('/pipeline/recovery/failed-jobs', [PipelineRecoveryController::class, 'failedJobs']);
+    Route::post('/pipeline/recovery/jobs/retry-selected', [PipelineRecoveryController::class, 'retrySelected'])->middleware('throttle:hawki-destructive');
+    Route::post('/pipeline/recovery/jobs/{jobId}/retry', [PipelineRecoveryController::class, 'retryJob'])->middleware('throttle:hawki-destructive');
+    Route::post('/pipeline/recovery/retry-all', [PipelineRecoveryController::class, 'retryAll'])->middleware('throttle:hawki-destructive');
+    Route::post('/pipeline/recovery/tasks/{taskId}/retry-failed', [PipelineRecoveryController::class, 'retryTask'])->middleware('throttle:hawki-destructive');
+    Route::post('/pipeline/recovery/datasets/{datasetId}/retry-failed', [PipelineRecoveryController::class, 'retryDataset'])->middleware('throttle:hawki-destructive');
+});
 
 });

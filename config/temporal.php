@@ -16,7 +16,6 @@ return [
     'ui_port' => env('TEMPORAL_UI_PORT', 8081),
     'namespace' => env('TEMPORAL_NAMESPACE', 'default'),
     'identity' => env('TEMPORAL_CLIENT_IDENTITY', 'hawki-rag-laravel'),
-    'bridge_url' => env('HAWKI_RAG_BRIDGE_URL', 'http://hawki_rag_bridge:8000'),
     'bridge_timeout' => env('HAWKI_RAG_BRIDGE_TIMEOUT', 30),
 
     'workflow' => [

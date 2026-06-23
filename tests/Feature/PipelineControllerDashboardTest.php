@@ -16,6 +16,13 @@ class PipelineControllerDashboardTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->actingAsApiUser();
+    }
+
     public function test_pipeline_controller_has_its_own_page_and_is_removed_from_playground(): void
     {
         $this->withoutVite();
@@ -93,7 +100,7 @@ class PipelineControllerDashboardTest extends TestCase
             'index_status' => 'running',
             'temporal_workflow_id' => 'ingest-source-upload-workflow',
         ]);
-        Http::assertSent(fn ($request): bool => $request->url() === config('temporal.bridge_url').'/temporal/workflows/ingest'
+        Http::assertSent(fn ($request): bool => $request->url() === config('config.hawki_rag_bridge_url').'/temporal/workflows/ingest'
             && data_get($request->data(), 'workflow_input.upload.original_filename') === 'sample.pdf'
             && data_get($request->data(), 'workflow_input.upload.local_path') !== null
             && data_get($request->data(), 'workflow_input.converter_mode') === 'native'
@@ -159,7 +166,7 @@ class PipelineControllerDashboardTest extends TestCase
             $data = $request->data();
             $profilePath = data_get($data, 'workflow_input.custom_converter_profile_path');
 
-            return $request->url() === config('temporal.bridge_url').'/temporal/workflows/ingest'
+            return $request->url() === config('config.hawki_rag_bridge_url').'/temporal/workflows/ingest'
                 && data_get($data, 'workflow_input.converter_mode') === 'custom'
                 && is_string($profilePath)
                 && str_contains($profilePath, 'custom_converter.json')
@@ -233,7 +240,7 @@ class PipelineControllerDashboardTest extends TestCase
             $data = $request->data();
             $profilePath = data_get($data, 'workflow_input.custom_converter_profile_path');
 
-            return $request->url() === config('temporal.bridge_url').'/temporal/workflows/ingest'
+            return $request->url() === config('config.hawki_rag_bridge_url').'/temporal/workflows/ingest'
                 && data_get($data, 'workflow_input.converter_mode') === 'custom'
                 && data_get($data, 'workflow_input.ingestion.provider') === 'ollama'
                 && data_get($data, 'workflow_input.ingestion.graph_model') === 'llama3.2:3b'

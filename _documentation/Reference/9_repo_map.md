@@ -38,8 +38,7 @@
 | `NEO4J_USER` | Neo4j username. |
 | `NEO4J_PASSWORD` | Neo4j password. |
 | `QDRANT_HTTP_URL` | Qdrant endpoint used by vector indexing/search. |
-| `HAWKI_RAG_BRIDGE_URL` | Bridge base URL for ingest operations. |
-| `HAWKI_RAG_API_URL` | RAG API base URL for question-answering. |
+| `HAWKI_RAG_BRIDGE_URL` | HAWKI-RAG bridge base URL used for query, ingest, health, and graph cache operations. |
 | `HAWKI_RAG_TEMPORAL_SHARED_ROOT` | Shared Temporal ingestion handoff root path inside containers. |
 | `TEMPORAL_ADDRESS` | Temporal frontend address used by Laravel and workers. |
 | `OLLAMA_API_URL` | Ollama API endpoint. |

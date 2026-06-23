@@ -157,7 +157,7 @@ readonly class PythonTemporalBridgeClient
 
     private function bridgeUrl(): string
     {
-        return rtrim((string) $this->config->get('temporal.bridge_url', 'http://hawki_rag_bridge:8000'), '/');
+        return rtrim((string) $this->config->get('config.hawki_rag_bridge_url', 'http://hawki_rag_bridge:8000'), '/');
     }
 
     private function timeout(): int

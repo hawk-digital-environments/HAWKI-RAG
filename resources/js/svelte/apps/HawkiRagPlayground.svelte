@@ -22,6 +22,8 @@
         qdrantCollectionEndpointBase: string;
         /** Browser URL for clearing Neo4j graph data. */
         neo4jClearEndpoint: string;
+        /** Browser URL for downloading original uploaded source files. */
+        uploadDownloadEndpoint: string;
     }
 
     interface QueryHit {
@@ -33,6 +35,7 @@
         kind: string;
         format: string;
         parent: string;
+        contentHash: string;
     }
 
     interface KgFact {
@@ -93,6 +96,7 @@
         statsEndpoint,
         qdrantCollectionEndpointBase,
         neo4jClearEndpoint,
+        uploadDownloadEndpoint,
         class: className = '',
         ...restProps
     }: Props = $props();
@@ -281,6 +285,7 @@
         const kind = textValue(payload.component_type || payload.type, 'chunk');
         const format = textValue(payload.source_format || payload.format, 'source');
         const parent = textValue(payload.parent_url || payload.parent_page_url || payload.parent_node || payload.parent_id);
+        const contentHash = textValue(payload.content_hash || payload.checksum_sha256 || payload.file_hash);
 
         return {
             score: nullableNumber(hit.score),
@@ -291,6 +296,7 @@
             kind,
             format,
             parent,
+            contentHash,
         };
     }
 
@@ -496,6 +502,68 @@
     function scoreLabel(score: number | null): string {
         return score === null ? 'n/a' : score.toFixed(score <= 1 ? 4 : 2);
     }
+
+    function hitPrimarySource(hit: QueryHit): string {
+        return hit.url || hit.sourceUrl;
+    }
+
+    function isUploadSource(value: string): boolean {
+        return value.trim().toLowerCase().startsWith('upload://');
+    }
+
+    function isHttpSource(value: string): boolean {
+        return /^https?:\/\//i.test(value.trim());
+    }
+
+    function uploadSourceDownloadUrl(sourceUrl: string, contentHash: string): string {
+        const url = new URL(uploadDownloadEndpoint, window.location.href);
+        url.searchParams.set('source_url', sourceUrl);
+        if (contentHash) {
+            url.searchParams.set('content_hash', contentHash);
+        }
+
+        return url.toString();
+    }
+
+    function uploadSourceName(sourceUrl: string): string {
+        const rawName = sourceUrl.trim().slice('upload://'.length);
+        const withoutPath = rawName.replace(/\\/g, '/').split('/').filter(Boolean).pop() || 'uploaded document';
+
+        try {
+            return decodeURIComponent(withoutPath);
+        } catch {
+            return withoutPath;
+        }
+    }
+
+    function hitSourceHref(hit: QueryHit): string {
+        const source = hitPrimarySource(hit);
+        if (isUploadSource(source)) {
+            return uploadSourceDownloadUrl(source, hit.contentHash);
+        }
+        if (isHttpSource(source)) {
+            return source;
+        }
+
+        return '';
+    }
+
+    function hitSourceLabel(hit: QueryHit): string {
+        const source = hitPrimarySource(hit);
+        if (isUploadSource(source)) {
+            return `Download ${uploadSourceName(source)}`;
+        }
+
+        return source;
+    }
+
+    function hitSourceTarget(hit: QueryHit): string | undefined {
+        return isUploadSource(hitPrimarySource(hit)) ? undefined : '_blank';
+    }
+
+    function hitSourceRel(hit: QueryHit): string | undefined {
+        return isUploadSource(hitPrimarySource(hit)) ? undefined : 'noopener noreferrer';
+    }
 </script>
 
 <div {...restProps} class={['playground-shell', 'hawki-page-shell', className].filter(Boolean).join(' ')}>
@@ -663,10 +731,16 @@
                                         <div class="score-bar" aria-label={`Score ${scoreLabel(hit.score)}, ${scoreShareLabel(hit.score)}`}>
                                             <span style={`width: ${scorePercent(hit.score).toFixed(3)}%;`}></span>
                                         </div>
-                                        {#if hit.url}
-                                            <a href={hit.url} target="_blank" rel="noopener noreferrer">{hit.url}</a>
-                                        {:else if hit.sourceUrl}
-                                            <span class="source-path">{hit.sourceUrl}</span>
+                                        {#if hitSourceHref(hit)}
+                                            <a
+                                                class:source-download-link={isUploadSource(hitPrimarySource(hit))}
+                                                href={hitSourceHref(hit)}
+                                                target={hitSourceTarget(hit)}
+                                                rel={hitSourceRel(hit)}
+                                                download={isUploadSource(hitPrimarySource(hit)) ? true : undefined}
+                                            >{hitSourceLabel(hit)}</a>
+                                        {:else if hitPrimarySource(hit)}
+                                            <span class="source-path">{hitPrimarySource(hit)}</span>
                                         {/if}
                                         {#if hit.snippet}
                                             <p>{hit.snippet}</p>
@@ -685,7 +759,7 @@
                             <span>Top source</span>
                             {#if selectedHit}
                                 <strong>{selectedHit.title}</strong>
-                                <p>{selectedHit.parent || selectedHit.sourceUrl || selectedHit.url || 'No parent source recorded.'}</p>
+                                <p>{selectedHit.parent || hitSourceLabel(selectedHit) || 'No parent source recorded.'}</p>
                             {:else}
                                 <strong>No selected source</strong>
                                 <p>Run retrieval to inspect the strongest evidence.</p>
@@ -1304,6 +1378,10 @@
     .source-path {
         color: var(--pg-cyan);
         overflow-wrap: anywhere;
+    }
+
+    .source-download-link {
+        font-weight: 820;
     }
 
     .source-lens {

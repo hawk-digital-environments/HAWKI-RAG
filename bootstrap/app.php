@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\RequireOperatorAccess;
 use App\Http\Middleware\SecurityHeaders;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -17,6 +18,9 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withCommands([__DIR__.'/../app/Console/Commands'])
     ->withMiddleware(function (Middleware $middleware) {
         $middleware->append(SecurityHeaders::class);
+        $middleware->alias([
+            'operator' => RequireOperatorAccess::class,
+        ]);
         $middleware->redirectGuestsTo(fn (Request $request): ?string => null);
     })
     ->withExceptions(function (Exceptions $exceptions) {
