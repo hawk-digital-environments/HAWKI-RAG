@@ -19,10 +19,10 @@ return [
     'tasks_path' => env('CUSTOM_CRAWLER_TASKS_PATH', '/tasks'),
     'task_start_path' => env('CUSTOM_CRAWLER_TASK_START_PATH', '/tasks/{task}/run'),
     'task_start_method' => env('CUSTOM_CRAWLER_TASK_START_METHOD', 'POST'),
-    'task_ui_url' => env('CUSTOM_CRAWLER_TASK_UI_URL', env('CUSTOM_CRAWLER_UI_URL', 'http://host.docker.internal:5173')),
-    'task_ui_profiles_path' => env('CUSTOM_CRAWLER_TASK_UI_PROFILES_PATH', '/api/profiles'),
-    'task_ui_tasks_path' => env('CUSTOM_CRAWLER_TASK_UI_TASKS_PATH', '/api/tasks'),
-    'task_ui_submit_path' => env('CUSTOM_CRAWLER_TASK_UI_SUBMIT_PATH', '/api/crawler/submit'),
+    'task_ui_url' => env('CUSTOM_CRAWLER_TASK_UI_URL', env('CUSTOM_CRAWLER_UI_URL', env('CUSTOM_CRAWLER_URL', 'http://crawl4ai-service'))),
+    'task_ui_profiles_path' => env('CUSTOM_CRAWLER_TASK_UI_PROFILES_PATH', '/ui/api/profiles'),
+    'task_ui_tasks_path' => env('CUSTOM_CRAWLER_TASK_UI_TASKS_PATH', '/ui/api/tasks'),
+    'task_ui_submit_path' => env('CUSTOM_CRAWLER_TASK_UI_SUBMIT_PATH', '/ui/api/crawler/submit'),
 
     /*
     |--------------------------------------------------------------------------

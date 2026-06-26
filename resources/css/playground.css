@@ -696,13 +696,34 @@ ul { margin: 0.4rem 0 0; padding-left: 1.2rem; }
     outline: none;
     border-color: rgba(45, 212, 191, 0.55);
 }
+.pipeline-task-control-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+}
+.pipeline-task-control-head label {
+    margin: 0;
+}
+.pipeline-new-task-link {
+    color: #67e8f9;
+    font-size: 0.78rem;
+    font-weight: 700;
+    text-decoration: none;
+    white-space: nowrap;
+}
+.pipeline-new-task-link:focus {
+    outline: 2px solid rgba(45, 212, 191, 0.55);
+    outline-offset: 3px;
+}
 .pipeline-task-summary {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: stretch;
     gap: 0.55rem;
 }
 .pipeline-task-summary span,
-.pipeline-task-detail {
+.pipeline-new-task-link {
     min-width: 0;
     border-radius: 0.65rem;
     border: 1px solid rgba(148, 163, 184, 0.16);
@@ -714,40 +735,33 @@ ul { margin: 0.4rem 0 0; padding-left: 1.2rem; }
     font-size: 0.76rem;
     overflow-wrap: anywhere;
 }
+.pipeline-new-task-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.48rem 0.68rem;
+    color: #67e8f9;
+    font-size: 0.76rem;
+    font-weight: 800;
+    text-decoration: none;
+    white-space: nowrap;
+}
+.pipeline-new-task-link:hover {
+    border-color: rgba(103, 232, 249, 0.46);
+    background: rgba(8, 145, 178, 0.18);
+    color: #cffafe;
+}
 .pipeline-task-summary strong {
     color: #f8fafc;
 }
-.pipeline-task-detail {
-    display: grid;
-    gap: 0.65rem;
-    padding: 0.75rem;
+.pipeline-task-graph-toggle {
+    width: 100%;
 }
-.pipeline-task-detail[hidden] {
-    display: none;
-}
-.pipeline-task-detail h4 {
-    margin: 0;
-    color: #f8fafc;
-    font-size: 0.95rem;
-}
-.pipeline-task-detail p {
-    margin: 0;
-    color: #bae6fd;
-    font-size: 0.8rem;
-    overflow-wrap: anywhere;
-}
-.pipeline-task-chips {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.4rem;
-}
-.pipeline-task-chips span {
-    border-radius: 999px;
-    background: rgba(14, 165, 233, 0.14);
-    color: #dbeafe;
-    padding: 0.25rem 0.5rem;
-    font-size: 0.72rem;
-    overflow-wrap: anywhere;
+.pipeline-task-panel .pipeline-task-graph-toggle input {
+    width: 1rem;
+    min-width: 1rem;
+    height: 1rem;
+    padding: 0;
 }
 .pipeline-run-list-block {
     display: grid;

@@ -69,7 +69,7 @@ readonly class PipelineTaskStarter
             return $this->refresher->recalculate($task);
         });
 
-        return $task->refresh();
+        return $task;
     }
 
     /**

@@ -37,6 +37,28 @@ def _perf_log(msg: str, *args: Any, graph_perf_log: bool | None = None) -> None:
 
 _IMAGE_EXT_RE = re.compile(r"\.(png|jpe?g|gif|webp|svg)(?:\\?|#|$)", re.IGNORECASE)
 _PAGE_MARK_RE = re.compile(r"^(?:p|page)\\s*\\d+$", re.IGNORECASE)
+_URL_RE = re.compile(r"^(?:https?://|www\.)", re.IGNORECASE)
+_INTERNAL_ID_RE = re.compile(r"^(?:ingest|doc|chunk|task)_[a-z0-9][a-z0-9_-]{8,}$", re.IGNORECASE)
+_HASH_RE = re.compile(r"^[a-f0-9]{32,}$", re.IGNORECASE)
+_GENERATED_MARKDOWN_RE = re.compile(r"^\d{3,}\.md$", re.IGNORECASE)
+_DELIMITER_RESIDUE_MARKERS = ("<|#|", "<|", "|#|", "<|COMPLETE|>", "|COMPLETE|")
+_LOW_VALUE_RELATIONS = {
+    "generated",
+    "has url",
+    "has_url",
+    "has title",
+    "has_title",
+    "is title of",
+    "is_title_of",
+    "is named as",
+    "is_named_as",
+    "is equivalent to",
+    "is_equivalent_to",
+    "is referenced by",
+    "is_referenced_by",
+    "refers to",
+    "refers_to",
+}
 _KNOWN_PROMPT_EXAMPLE_TERMS = {
     "evolutionary search",
     "gradient based search",
@@ -91,6 +113,30 @@ def _looks_like_page_marker(value: str) -> bool:
     return bool(_PAGE_MARK_RE.match(value.strip()))
 
 
+def _looks_like_url(value: str) -> bool:
+    return bool(_URL_RE.match(value.strip()))
+
+
+def _looks_like_internal_id(value: str) -> bool:
+    return bool(_INTERNAL_ID_RE.match(value.strip()))
+
+
+def _looks_like_generated_artifact(value: str) -> bool:
+    compact = value.strip()
+    return bool(_HASH_RE.match(compact) or _GENERATED_MARKDOWN_RE.match(compact))
+
+
+def _has_delimiter_residue(value: str) -> bool:
+    return any(marker in value for marker in _DELIMITER_RESIDUE_MARKERS)
+
+
+def _is_low_value_relation(value: str) -> bool:
+    normalized = _normalize_match_text(value)
+    if normalized in _LOW_VALUE_RELATIONS:
+        return True
+    return value.strip().lower() in _LOW_VALUE_RELATIONS
+
+
 def _is_noise_entity(value: str) -> bool:
     if not value:
         return True
@@ -100,6 +146,25 @@ def _is_noise_entity(value: str) -> bool:
     if _looks_like_page_marker(compact):
         return True
     if _looks_like_image_ref(compact):
+        return True
+    if _looks_like_url(compact):
+        return True
+    if _looks_like_internal_id(compact):
+        return True
+    if _looks_like_generated_artifact(compact):
+        return True
+    if _has_delimiter_residue(compact):
+        return True
+    return False
+
+
+def _is_noise_relation(value: str) -> bool:
+    if not value:
+        return True
+    compact = value.strip()
+    if _has_delimiter_residue(compact):
+        return True
+    if _is_low_value_relation(compact):
         return True
     return False
 
@@ -130,6 +195,9 @@ def clean_triplets(
             dropped += 1
             continue
         if _is_noise_entity(subj) or _is_noise_entity(obj):
+            dropped += 1
+            continue
+        if _is_noise_relation(rel):
             dropped += 1
             continue
         key = (subj, rel, obj)

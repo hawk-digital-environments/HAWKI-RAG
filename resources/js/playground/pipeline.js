@@ -11,8 +11,7 @@ const taskSelect = document.getElementById('pipeline-task-select');
 const taskNote = document.getElementById('pipeline-task-note');
 const taskStartButton = document.getElementById('pipeline-task-start-btn');
 const taskCountEl = document.getElementById('pipeline-task-count');
-const taskSourceEl = document.getElementById('pipeline-task-source');
-const taskDetailEl = document.getElementById('pipeline-task-detail');
+const taskGraphInput = document.getElementById('pipeline-task-graph');
 const taskRunEl = document.getElementById('pipeline-task-run');
 const runListEl = document.getElementById('pipeline-run-list');
 const stageLogStatusEl = document.getElementById('pipeline-stage-log-status');
@@ -653,63 +652,11 @@ function renderPipeline(data) {
     updateStageLogActions();
 }
 
-function sourceLabel(task) {
-    if (!task) return 'none';
-    if (task.source === 'scraper-task-ui') return 'HAWKI-Scraper UI';
-    if (task.source === 'crawler-api') return 'Crawler API';
-    return task.source || 'unknown';
-}
-
-function settingValue(settings, key) {
-    const value = settings?.[key];
-    if (value === true) return 'on';
-    if (value === false) return 'off';
-    return value === undefined || value === null || value === '' ? null : String(value);
-}
-
-function renderSelectedTaskDetail(task) {
-    if (!taskDetailEl) return;
-    taskDetailEl.innerHTML = '';
-
-    if (!task) {
-        taskDetailEl.hidden = true;
-        return;
-    }
-
-    const title = document.createElement('h4');
-    title.textContent = task.label || task.id;
-
-    const url = document.createElement('p');
-    url.textContent = task.primaryUrl || task.sitemapUrl || task.description || task.id;
-
-    const chips = document.createElement('div');
-    chips.className = 'pipeline-task-chips';
-    [
-        sourceLabel(task),
-        task.type || null,
-        task.schedule ? `schedule ${task.schedule}` : null,
-        settingValue(task.settings, 'max_pages') ? `${settingValue(task.settings, 'max_pages')} pages` : null,
-        settingValue(task.settings, 'skip_images') ? `images ${settingValue(task.settings, 'skip_images')}` : null,
-        settingValue(task.settings, 'discovery_mode') ? `discovery ${settingValue(task.settings, 'discovery_mode')}` : null,
-    ].filter(Boolean).forEach((value) => {
-        const chip = document.createElement('span');
-        chip.textContent = value;
-        chips.appendChild(chip);
-    });
-
-    taskDetailEl.append(title, url, chips);
-    taskDetailEl.hidden = false;
-}
-
 function renderTaskOptions(tasks, message = '') {
     if (!taskSelect || !taskStartButton) return;
     taskSelect.innerHTML = '';
 
     if (taskCountEl) taskCountEl.textContent = String(tasks.length);
-    if (taskSourceEl) {
-        const sources = [...new Set(tasks.map(sourceLabel).filter(Boolean))];
-        taskSourceEl.textContent = `Source: ${sources.length ? sources.join(', ') : 'none'}`;
-    }
 
     if (!tasks.length) {
         const option = document.createElement('option');
@@ -718,7 +665,6 @@ function renderTaskOptions(tasks, message = '') {
         taskSelect.appendChild(option);
         taskSelect.disabled = true;
         taskStartButton.disabled = true;
-        renderSelectedTaskDetail(null);
         setTaskNote(message || unavailableTasksMessage, 'warn');
         return;
     }
@@ -737,9 +683,7 @@ function renderTaskOptions(tasks, message = '') {
 
     taskSelect.disabled = false;
     taskStartButton.disabled = false;
-    const selected = tasks.find((task) => task.id === taskSelect.value) || tasks[0];
-    renderSelectedTaskDetail(selected);
-    setTaskNote(selected?.description || message || `${tasks.length} task(s) available.`, 'info');
+    setTaskNote(message || `${tasks.length} task(s) available.`, 'info');
 }
 
 async function loadScraperTasks({ quiet = false } = {}) {
@@ -934,11 +878,17 @@ function settingsMetadata(task) {
 function pipelineTaskPayload(task) {
     const sourceUrl = task.primaryUrl || '';
     const sitemapUrl = task.sitemapUrl || '';
+    const graphEnabled = taskGraphInput instanceof HTMLInputElement ? taskGraphInput.checked : true;
     const metadata = {
         source: task.source || 'scraper-task',
         catalog_task_id: task.id,
         catalog_task_label: task.label || task.id,
         catalog_task_type: task.type || null,
+        graph: graphEnabled,
+        rag_ingest_graph: graphEnabled,
+        profile_id: task.profileId || null,
+        profile_name: task.profileName || null,
+        site_profile_path: task.containerPath || null,
         ...settingsMetadata(task),
     };
 
@@ -1105,8 +1055,7 @@ taskSelect?.addEventListener('change', () => {
     } else {
         localStorage.removeItem('hawkiSelectedScraperTaskId');
     }
-    renderSelectedTaskDetail(selected);
-    setTaskNote(selected?.description || selected?.id || '');
+    setTaskNote(selected ? 'Task selected.' : '');
 });
 taskStartButton?.addEventListener('click', startSelectedTask);
 

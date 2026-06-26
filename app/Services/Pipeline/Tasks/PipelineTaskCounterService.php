@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Pipeline\Tasks;
 
 use App\Models\PipelineJob;
+use App\Models\PipelineStageState;
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Support\Collection;
 
@@ -19,20 +20,25 @@ readonly class PipelineTaskCounterService
     {
         $byStatus = $jobs->countBy('status');
         $running = $this->runningCount($jobs);
+        $completedScrapeJobs = $jobs
+            ->where('job_type', PipelineJob::TYPE_SCRAPE)
+            ->where('status', PipelineJob::STATUS_COMPLETED)
+            ->count();
+        $convertJobs = $jobs
+            ->where('job_type', PipelineJob::TYPE_CONVERT)
+            ->count();
+        $completedConvertJobs = $jobs
+            ->where('job_type', PipelineJob::TYPE_CONVERT)
+            ->where('status', PipelineJob::STATUS_COMPLETED)
+            ->count();
+        $scrapeStageRows = $this->stageCount($jobs, 'scrape');
+        $convertStageRows = $this->stageCount($jobs, 'convert');
 
         $counters = [
             'queued' => (int) ($byStatus[PipelineJob::STATUS_QUEUED] ?? 0),
-            'scraped' => $jobs
-                ->where('job_type', PipelineJob::TYPE_SCRAPE)
-                ->where('status', PipelineJob::STATUS_COMPLETED)
-                ->count(),
-            'files_found' => $jobs
-                ->where('job_type', PipelineJob::TYPE_CONVERT)
-                ->count(),
-            'converted' => $jobs
-                ->where('job_type', PipelineJob::TYPE_CONVERT)
-                ->where('status', PipelineJob::STATUS_COMPLETED)
-                ->count(),
+            'scraped' => $completedScrapeJobs > 0 ? $completedScrapeJobs : $this->stageProcessedCount($jobs, 'scrape'),
+            'files_found' => $convertJobs > 0 ? $convertJobs : $this->stageTotalCount($jobs, 'convert'),
+            'converted' => $completedConvertJobs > 0 ? $completedConvertJobs : $this->stageProcessedCount($jobs, 'convert'),
             'ingested' => $jobs
                 ->where('job_type', PipelineJob::TYPE_INGEST)
                 ->where('status', PipelineJob::STATUS_COMPLETED)
@@ -50,8 +56,8 @@ readonly class PipelineTaskCounterService
             'jobs_completed' => (int) ($byStatus[PipelineJob::STATUS_COMPLETED] ?? 0),
             'jobs_failed' => $counters['failed'],
             'jobs_skipped' => $counters['skipped'],
-            'scrape_jobs' => $jobs->where('job_type', PipelineJob::TYPE_SCRAPE)->count(),
-            'convert_jobs' => $jobs->where('job_type', PipelineJob::TYPE_CONVERT)->count(),
+            'scrape_jobs' => $jobs->where('job_type', PipelineJob::TYPE_SCRAPE)->count() ?: $scrapeStageRows,
+            'convert_jobs' => $convertJobs ?: $convertStageRows,
             'ingest_jobs' => $jobs->where('job_type', PipelineJob::TYPE_INGEST)->count(),
         ]);
     }
@@ -89,5 +95,43 @@ readonly class PipelineTaskCounterService
     public function runningCount(Collection $jobs): int
     {
         return $jobs->where('status', PipelineJob::STATUS_RUNNING)->count();
+    }
+
+    /**
+     * @param  Collection<int, PipelineJob>  $jobs
+     */
+    private function stageCount(Collection $jobs, string $stage): int
+    {
+        return $this->stages($jobs, $stage)->count();
+    }
+
+    /**
+     * @param  Collection<int, PipelineJob>  $jobs
+     */
+    private function stageProcessedCount(Collection $jobs, string $stage): int
+    {
+        return $this->stages($jobs, $stage)
+            ->sum(fn (PipelineStageState $state): int => (int) (($state->counts ?? [])['processed'] ?? ($state->counts ?? [])['completed'] ?? 0));
+    }
+
+    /**
+     * @param  Collection<int, PipelineJob>  $jobs
+     */
+    private function stageTotalCount(Collection $jobs, string $stage): int
+    {
+        return $this->stages($jobs, $stage)
+            ->sum(fn (PipelineStageState $state): int => (int) (($state->counts ?? [])['total'] ?? ($state->counts ?? [])['processed'] ?? 0));
+    }
+
+    /**
+     * @param  Collection<int, PipelineJob>  $jobs
+     * @return Collection<int, PipelineStageState>
+     */
+    private function stages(Collection $jobs, string $stage): Collection
+    {
+        return $jobs
+            ->flatMap(fn (PipelineJob $job): Collection => $job->relationLoaded('stages') ? $job->stages : collect())
+            ->filter(fn (PipelineStageState $state): bool => $state->stage === $stage)
+            ->values();
     }
 }

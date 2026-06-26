@@ -17,6 +17,7 @@ readonly class PipelineTaskJobsQuery
     public function forTask(string $taskId): Collection
     {
         return PipelineJob::query()
+            ->with('stages')
             ->where('task_id', $taskId)
             ->get();
     }

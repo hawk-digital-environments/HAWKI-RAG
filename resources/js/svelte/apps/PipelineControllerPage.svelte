@@ -155,9 +155,12 @@
                     </select>
                     <div class="pipeline-task-summary">
                         <span><strong id="pipeline-task-count">0</strong> tasks</span>
-                        <span id="pipeline-task-source">Source: none</span>
+                        <a class="pipeline-new-task-link" href="/ui/tasks/new">+ New Task</a>
                     </div>
-                    <div id="pipeline-task-detail" class="pipeline-task-detail" hidden></div>
+                    <label class="controller-toggle pipeline-task-graph-toggle" for="pipeline-task-graph">
+                        <input id="pipeline-task-graph" type="checkbox" checked />
+                        <span>Neo4j Graph</span>
+                    </label>
                     <div id="pipeline-task-note" class="pipeline-task-note"></div>
                     <button type="button" id="pipeline-task-start-btn">Start Pipeline Task</button>
 

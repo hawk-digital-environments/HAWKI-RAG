@@ -72,9 +72,7 @@ readonly class PipelineTaskRetryService
             return;
         }
 
-        $workflowId = is_string($job->temporal_workflow_id) && trim($job->temporal_workflow_id) !== ''
-            ? $job->temporal_workflow_id
-            : $this->workflowPayloads->workflowId($source->source_id);
+        $workflowId = $this->retryWorkflowId($job, $source->source_id, (int) ($metadata['retry_count'] ?? 1));
 
         $source = $this->ingestionSources->upsertStarting($source->source_id, [
             'source_url' => $source->source_url,
@@ -109,5 +107,16 @@ readonly class PipelineTaskRetryService
     private function timestamp(): string
     {
         return $this->clock->now()->format(\DateTimeInterface::ATOM);
+    }
+
+    private function retryWorkflowId(PipelineJob $job, string $sourceId, int $retryCount): string
+    {
+        $baseWorkflowId = is_string($job->temporal_workflow_id) && trim($job->temporal_workflow_id) !== ''
+            ? $job->temporal_workflow_id
+            : $this->workflowPayloads->workflowId($sourceId);
+
+        $safeJobId = preg_replace('/[^A-Za-z0-9_.-]+/', '-', (string) $job->job_id) ?: 'job';
+
+        return sprintf('%s-retry-%d-%s', $baseWorkflowId, max(1, $retryCount), $safeJobId);
     }
 }

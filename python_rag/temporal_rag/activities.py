@@ -55,21 +55,18 @@ def scrape_source(workflow_input: dict[str, Any]) -> dict[str, Any]:
 
     try:
         client = ExternalJobClient(**service_config)
-        response = client.start_and_wait({
-            "source_id": source_id,
-            "source_url": workflow_input["source_url"],
-            "output_path": raw_dir,
-        })
+        response = client.start_and_wait(_scraper_start_payload(workflow_input, source_id, raw_dir))
     except Exception as exc:
         _record_activity_exception(metadata, workflow_input, "scrape_source", exc, raw_dir=raw_dir)
         raise
 
     status = _status(response)
+    crawler_raw_dir = _shared_worker_path(response.get("raw_dir") or response.get("raw_output_path") or response.get("output_directory"))
     result = {
         "source_id": source_id,
         "external_job_id": response.get("external_job_id"),
-        "raw_dir": response.get("raw_dir") or response.get("raw_output_path") or raw_dir,
-        "files_found": int(response.get("files_found") or response.get("file_count") or 0),
+        "raw_dir": crawler_raw_dir or raw_dir,
+        "files_found": int(response.get("files_found") or response.get("file_count") or response.get("pages_crawled") or 0),
         "status": status,
         "error_details": response.get("error") or response.get("error_details"),
     }
@@ -132,6 +129,59 @@ def inspect_and_convert_files(payload: dict[str, Any]) -> dict[str, Any]:
     metadata.mark_phase(workflow_input, "inspect_and_convert_files", status, result)
     log_event(logger, "inspect_and_convert_files:end", **result, task_queue=settings.converter_task_queue)
     return result
+
+
+def _scraper_start_payload(workflow_input: dict[str, Any], source_id: str, raw_dir: str) -> dict[str, Any]:
+    metadata = workflow_input.get("metadata")
+    request = workflow_input.get("request")
+    if not isinstance(request, dict) and isinstance(metadata, dict):
+        request = metadata.get("request")
+    if not isinstance(request, dict):
+        request = {}
+
+    request_metadata = request.get("metadata")
+    if not isinstance(request_metadata, dict):
+        request_metadata = {}
+
+    payload: dict[str, Any] = {
+        "job_id": str(workflow_input.get("job_id") or source_id),
+        "url": str(workflow_input.get("source_url") or ""),
+        "output_dir": raw_dir,
+        "source_id": source_id,
+        "source_url": workflow_input.get("source_url"),
+    }
+
+    if request_metadata.get("site_profile_path"):
+        payload["site_profile_path"] = request_metadata["site_profile_path"]
+
+    for key in (
+        "rescrape_failed",
+        "max_pages",
+        "max_concurrency",
+        "max_rpm",
+        "skip_images",
+        "max_images_per_page",
+        "max_link_density",
+        "discovery_mode",
+    ):
+        if key in request_metadata and request_metadata[key] is not None:
+            payload[key] = request_metadata[key]
+
+    return payload
+
+
+def _shared_worker_path(value: Any) -> str | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+
+    path = value.strip()
+    for prefix in ("/var/www/html/shared", "/app/shared"):
+        if path == prefix:
+            return "/shared"
+        if path.startswith(prefix + "/"):
+            return "/shared/" + path[len(prefix) + 1:]
+
+    return path
 
 
 @activity.defn(name="ingest_markdown_files")

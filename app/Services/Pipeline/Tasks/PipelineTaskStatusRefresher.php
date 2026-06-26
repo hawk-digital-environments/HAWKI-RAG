@@ -30,7 +30,9 @@ readonly class PipelineTaskStatusRefresher
         $counters = $this->counters->forJobs($jobs);
         $status = $this->statuses->resolve($task, $counters, $jobs->isNotEmpty());
 
-        return $this->taskRepository->updateStatusCounters($task, $status['status'], $status['finished_at'], $counters);
+        return $this->taskRepository
+            ->updateStatusCounters($task, $status['status'], $status['finished_at'], $counters)
+            ->setRelation('jobs', $jobs);
     }
 
     public function activeJobCount(PipelineTask $task): int

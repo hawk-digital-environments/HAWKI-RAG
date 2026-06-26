@@ -53,6 +53,7 @@ use App\Http\Controllers\PipelineRecoveryController;
 use App\Http\Controllers\PipelineStatusController;
 use App\Http\Controllers\PipelineTaskController;
 use App\Http\Controllers\ScrapeController;
+use App\Http\Controllers\ScrapeTaskUiProxyController;
 use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\UploadedSourceDocumentController;
 use App\Services\Profile\OperatorAccessService;
@@ -285,6 +286,8 @@ Route::middleware('operator')->group(function (): void {
     Route::delete('/pipeline/tasks/{taskId}', [PipelineTaskController::class, 'destroy'])->middleware('throttle:hawki-destructive');
     Route::post('/pipeline/controller/files', [PipelineControlController::class, 'uploadFile'])->middleware('throttle:hawki-upload');
 });
+Route::any('/ui/{path?}', ScrapeTaskUiProxyController::class)
+    ->where('path', '.*');
 
 /*
 |--------------------------------------------------------------------------

@@ -24,6 +24,54 @@ class _UnsupportedResponse:
 
 
 class TemporalConverterPassthroughTests(unittest.TestCase):
+    def test_scraper_start_payload_matches_custom_crawler_contract(self) -> None:
+        payload = activities._scraper_start_payload(
+            {
+                "job_id": "ingest_lubeck",
+                "source_url": "https://uni-luebeck.de",
+                "metadata": {
+                    "request": {
+                        "metadata": {
+                            "site_profile_path": "/var/www/html/profiles/Lubeck.json",
+                            "max_pages": 25,
+                            "max_concurrency": 1,
+                            "max_rpm": 60,
+                            "skip_images": True,
+                            "discovery_mode": False,
+                        },
+                    },
+                },
+            },
+            "source_lubeck",
+            "/shared/sources/source_lubeck/raw/",
+        )
+
+        self.assertEqual(payload["job_id"], "ingest_lubeck")
+        self.assertEqual(payload["url"], "https://uni-luebeck.de")
+        self.assertEqual(payload["output_dir"], "/shared/sources/source_lubeck/raw/")
+        self.assertEqual(payload["source_id"], "source_lubeck")
+        self.assertEqual(payload["source_url"], "https://uni-luebeck.de")
+        self.assertEqual(payload["site_profile_path"], "/var/www/html/profiles/Lubeck.json")
+        self.assertEqual(payload["max_pages"], 25)
+        self.assertEqual(payload["max_concurrency"], 1)
+        self.assertEqual(payload["max_rpm"], 60)
+        self.assertIs(payload["skip_images"], True)
+        self.assertIs(payload["discovery_mode"], False)
+
+    def test_crawler_output_directory_is_mapped_to_worker_shared_path(self) -> None:
+        self.assertEqual(
+            activities._shared_worker_path("/var/www/html/shared/ingest_lubeck"),
+            "/shared/ingest_lubeck",
+        )
+        self.assertEqual(
+            activities._shared_worker_path("/app/shared/sources/source_lubeck/raw"),
+            "/shared/sources/source_lubeck/raw",
+        )
+        self.assertEqual(
+            activities._shared_worker_path("/shared/sources/source_lubeck/raw"),
+            "/shared/sources/source_lubeck/raw",
+        )
+
     def test_custom_converter_profile_overrides_converter_service_config(self) -> None:
         with TemporaryDirectory() as tmp:
             profile = Path(tmp) / "custom_converter.json"

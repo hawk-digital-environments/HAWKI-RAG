@@ -171,9 +171,7 @@ readonly class PipelineRecoveryAttemptService
             ]),
         ]);
 
-        $workflowId = is_string($job->temporal_workflow_id) && trim($job->temporal_workflow_id) !== ''
-            ? $job->temporal_workflow_id
-            : $this->workflowPayloads->workflowId($source->source_id);
+        $workflowId = $this->retryWorkflowId($job, $source->source_id, (int) ($metadata['retry_count'] ?? 1));
         $execution = $this->temporalBridge->startIngestWorkflow(
             $this->workflowPayloads->input($task, $job, $source),
             $workflowId,
@@ -207,5 +205,16 @@ readonly class PipelineRecoveryAttemptService
     private function now(): Carbon
     {
         return Carbon::instance(\DateTimeImmutable::createFromInterface($this->clock->now()));
+    }
+
+    private function retryWorkflowId(PipelineJob $job, string $sourceId, int $retryCount): string
+    {
+        $baseWorkflowId = is_string($job->temporal_workflow_id) && trim($job->temporal_workflow_id) !== ''
+            ? $job->temporal_workflow_id
+            : $this->workflowPayloads->workflowId($sourceId);
+
+        $safeJobId = preg_replace('/[^A-Za-z0-9_.-]+/', '-', (string) $job->job_id) ?: 'job';
+
+        return sprintf('%s-retry-%d-%s', $baseWorkflowId, max(1, $retryCount), $safeJobId);
     }
 }

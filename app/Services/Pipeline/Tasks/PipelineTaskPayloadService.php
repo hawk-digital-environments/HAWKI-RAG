@@ -129,7 +129,7 @@ readonly class PipelineTaskPayloadService
      */
     private function stages(PipelineTask $task): array
     {
-        if (! $this->isUploadedFileTask($task) || ! $task->relationLoaded('jobs')) {
+        if (! $task->relationLoaded('jobs')) {
             return [];
         }
 
@@ -138,6 +138,10 @@ readonly class PipelineTaskPayloadService
 
         if (! $job instanceof PipelineJob) {
             return [];
+        }
+
+        if (! $this->isUploadedFileTask($task)) {
+            return $this->trackedStages($job);
         }
 
         return $this->uploadedFileStages($job);
@@ -293,11 +297,50 @@ readonly class PipelineTaskPayloadService
                     'status' => $stage->status,
                     'startedAt' => $this->dateValue($stage->started_at),
                     'completedAt' => $this->dateValue($stage->completed_at),
-                    'counts' => $stage->counts ?? [],
+                    'counts' => $this->stageCounts((string) $stage->stage, is_array($stage->counts) ? $stage->counts : []),
                     'errors' => $stage->errors ?? [],
                 ],
             ])
             ->all();
+    }
+
+    /**
+     * @param array<string, mixed> $counts
+     * @return array<string, int>
+     */
+    private function stageCounts(string $stage, array $counts): array
+    {
+        if ($stage === 'scrape') {
+            $pagesCrawled = (int) ($counts['pagesCrawled'] ?? $counts['processed'] ?? $counts['completed'] ?? 0);
+            $totalPages = (int) ($counts['totalPages'] ?? $counts['total'] ?? $pagesCrawled);
+
+            return array_merge($counts, [
+                'pagesCrawled' => $pagesCrawled,
+                'totalPages' => $totalPages,
+            ]);
+        }
+
+        if ($stage === 'convert') {
+            $convertedFiles = (int) ($counts['convertedFiles'] ?? $counts['processed'] ?? $counts['completed'] ?? 0);
+            $sourceFiles = (int) ($counts['sourceFiles'] ?? $counts['total'] ?? $convertedFiles);
+
+            return array_merge($counts, [
+                'convertedFiles' => $convertedFiles,
+                'sourceFiles' => $sourceFiles,
+            ]);
+        }
+
+        if ($stage === 'ingest') {
+            $completed = (int) ($counts['completed'] ?? $counts['processed'] ?? 0);
+            $total = (int) ($counts['total'] ?? $completed);
+
+            return array_merge($counts, [
+                'completed' => $completed,
+                'total' => $total,
+            ]);
+        }
+
+        return $counts;
     }
 
     /**

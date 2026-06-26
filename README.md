@@ -121,8 +121,8 @@ Production checklist:
 Required external services for ingestion:
 
 ```env
-EXTERNAL_SCRAPER_URL=http://crawler:8000
-EXTERNAL_CONVERTER_URL=http://file-converter:8000
+EXTERNAL_SCRAPER_URL=http://crawl4ai-service
+EXTERNAL_CONVERTER_URL=http://hawki-toolkit-file-converter-file-converter-1
 ```
 
 ## Operations

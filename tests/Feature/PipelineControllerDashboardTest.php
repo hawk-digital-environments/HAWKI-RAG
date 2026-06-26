@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\IngestionSource;
+use App\Models\Dataset;
 use App\Models\PipelineJob;
 use App\Models\PipelineStageState;
 use App\Models\PipelineTask;
@@ -108,6 +109,66 @@ class PipelineControllerDashboardTest extends TestCase
             && data_get($request->data(), 'workflow_input.ingestion.graph') === false);
 
         File::deleteDirectory($root);
+    }
+
+    public function test_scraper_task_detail_includes_temporal_stage_rows(): void
+    {
+        $task = PipelineTask::query()->create([
+            'task_id' => 'task-scraper-stage-detail',
+            'dataset_id' => 'lubeck',
+            'status' => PipelineTask::STATUS_COMPLETED,
+            'started_at' => now()->subMinute(),
+            'finished_at' => now(),
+            'counters' => ['jobs_total' => 1],
+            'metadata' => [
+                'request' => [
+                    'metadata' => [
+                        'source' => 'scraper-task-ui',
+                    ],
+                ],
+            ],
+        ]);
+        $job = PipelineJob::query()->create([
+            'job_id' => 'ingest-scraper-stage-detail',
+            'task_id' => $task->task_id,
+            'job_type' => PipelineJob::TYPE_INGEST,
+            'status' => PipelineJob::STATUS_COMPLETED,
+            'source_url' => 'https://uni-luebeck.de',
+            'started_at' => now()->subMinute(),
+            'finished_at' => now(),
+        ]);
+
+        foreach ([
+            ['stage' => 'scrape', 'counts' => ['total' => 1, 'processed' => 1]],
+            ['stage' => 'convert', 'counts' => ['total' => 21, 'processed' => 21]],
+            ['stage' => 'ingest', 'counts' => ['total' => 21, 'processed' => 21]],
+        ] as $stage) {
+            PipelineStageState::query()->create([
+                'pipeline_job_id' => $job->id,
+                'job_id' => $job->job_id,
+                'stage' => $stage['stage'],
+                'status' => PipelineJob::STATUS_COMPLETED,
+                'counts' => $stage['counts'],
+                'metadata' => [],
+                'errors' => [],
+                'warnings' => [],
+            ]);
+        }
+
+        $this->getJson('/pipeline/tasks/task-scraper-stage-detail')
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('task.counters.scraped', 1)
+            ->assertJsonPath('task.counters.files_found', 21)
+            ->assertJsonPath('task.counters.converted', 21)
+            ->assertJsonPath('task.stages.scrape.status', PipelineJob::STATUS_COMPLETED)
+            ->assertJsonPath('task.stages.scrape.counts.pagesCrawled', 1)
+            ->assertJsonPath('task.stages.scrape.counts.totalPages', 1)
+            ->assertJsonPath('task.stages.convert.status', PipelineJob::STATUS_COMPLETED)
+            ->assertJsonPath('task.stages.convert.counts.convertedFiles', 21)
+            ->assertJsonPath('task.stages.convert.counts.sourceFiles', 21)
+            ->assertJsonPath('task.stages.ingest.status', PipelineJob::STATUS_COMPLETED)
+            ->assertJsonPath('task.stages.ingest.counts.completed', 21);
     }
 
     public function test_native_upload_rejects_non_raganything_file_type(): void
@@ -260,6 +321,79 @@ class PipelineControllerDashboardTest extends TestCase
         File::delete($settingsPath);
     }
 
+    public function test_retry_failed_temporal_job_uses_unique_retry_workflow_id(): void
+    {
+        Http::fake([
+            '*temporal/workflows/ingest' => Http::response([
+                'workflow_id' => 'ingest-source-source-retry-retry-2-ingest-retry',
+                'run_id' => 'retry-run-2',
+            ]),
+        ]);
+
+        Dataset::query()->create([
+            'dataset_id' => 'retry-dataset',
+            'name' => 'retry-dataset',
+            'status' => Dataset::STATUS_ACTIVE,
+            'qdrant_collection' => 'hawki_retry_dataset',
+            'neo4j_namespace' => 'hawki_retry_dataset',
+        ]);
+
+        $task = PipelineTask::query()->create([
+            'task_id' => 'task-retry-temporal',
+            'dataset_id' => 'retry-dataset',
+            'status' => PipelineTask::STATUS_FAILED,
+            'started_at' => now()->subMinutes(5),
+            'finished_at' => now()->subMinute(),
+            'counters' => ['failed' => 1],
+            'metadata' => [],
+        ]);
+
+        IngestionSource::query()->create([
+            'source_id' => 'source-retry',
+            'source_url' => 'https://example.test/retry',
+            'task_id' => $task->task_id,
+            'dataset_id' => $task->dataset_id,
+            'content_hash' => 'hash-retry',
+            'index_status' => 'failed',
+            'raw_storage_path' => '/shared/sources/source-retry/raw/',
+            'markdown_storage_path' => '/shared/sources/source-retry/markdown/',
+            'metadata' => [
+                'request' => [
+                    'metadata' => [
+                        'source' => 'scraper-task-ui',
+                        'max_pages' => 1,
+                    ],
+                ],
+            ],
+        ]);
+
+        PipelineJob::query()->create([
+            'job_id' => 'ingest-retry',
+            'task_id' => $task->task_id,
+            'job_type' => PipelineJob::TYPE_INGEST,
+            'source_id' => 'source-retry',
+            'source_url' => 'https://example.test/retry',
+            'content_hash' => 'hash-retry',
+            'status' => PipelineJob::STATUS_FAILED,
+            'index_status' => 'failed',
+            'error_message' => 'Worker failed',
+            'started_at' => now()->subMinutes(4),
+            'finished_at' => now()->subMinute(),
+            'temporal_workflow_id' => 'ingest-source-source-retry',
+            'temporal_run_id' => 'old-run',
+            'metadata' => ['retry_count' => 1],
+        ]);
+
+        $this->withSession(['_token' => 'test-token'])
+            ->postJson('/pipeline/tasks/task-retry-temporal/retry-failed-jobs', [], ['X-CSRF-TOKEN' => 'test-token'])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        Http::assertSent(fn ($request): bool => $request->url() === config('config.hawki_rag_bridge_url').'/temporal/workflows/ingest'
+            && data_get($request->data(), 'workflow_id') === 'ingest-source-source-retry-retry-2-ingest-retry'
+            && data_get($request->data(), 'workflow_input.metadata.request.metadata.max_pages') === 1);
+    }
+
     public function test_failed_upload_storage_does_not_create_dataset_task_or_job(): void
     {
         $root = storage_path('framework/testing/pipeline-controller-blocked');
@@ -348,10 +482,13 @@ class PipelineControllerDashboardTest extends TestCase
         config()->set('temporal.storage.shared_root', $root);
 
         $taskRoot = $root.'/task-cache-delete';
+        $jobRoot = $root.'/job-cache-delete';
         $sourceRoot = $root.'/sources/source-cache-delete';
         File::ensureDirectoryExists($taskRoot);
+        File::ensureDirectoryExists($jobRoot.'/pages');
         File::ensureDirectoryExists($sourceRoot.'/raw');
         File::put($taskRoot.'/uploaded.pdf', 'upload');
+        File::put($jobRoot.'/pages/page.md', 'raw crawler output');
         File::put($sourceRoot.'/raw/uploaded.pdf', 'raw');
 
         $task = PipelineTask::query()->create([
@@ -413,6 +550,7 @@ class PipelineControllerDashboardTest extends TestCase
             'source_id' => 'source-cache-delete',
         ]);
         $this->assertDirectoryDoesNotExist($taskRoot);
+        $this->assertDirectoryDoesNotExist($jobRoot);
         $this->assertDirectoryDoesNotExist($sourceRoot);
 
         File::deleteDirectory($root);

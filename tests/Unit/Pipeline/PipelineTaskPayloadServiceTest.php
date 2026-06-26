@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Unit\Pipeline;
 
 use App\Models\PipelineJob;
+use App\Models\PipelineStageState;
 use App\Models\PipelineTask;
 use App\Services\Pipeline\Tasks\PipelineTaskPayloadService;
 use Illuminate\Support\Carbon;
@@ -133,6 +134,60 @@ class PipelineTaskPayloadServiceTest extends TestCase
         $this->assertSame(1, $payload['stages']['convert']['counts']['convertedFiles']);
         $this->assertSame('processing', $payload['stages']['ingest']['status']);
         $this->assertSame('Ingestion processing.', $payload['stages']['ingest']['message']);
+    }
+
+    public function test_it_builds_scraper_task_stage_payload_from_temporal_stage_rows(): void
+    {
+        $task = new PipelineTask([
+            'task_id' => 'task-scraper',
+            'dataset_id' => 'lubeck',
+            'status' => PipelineTask::STATUS_COMPLETED,
+            'metadata' => [
+                'request' => [
+                    'metadata' => [
+                        'source' => 'scraper-task-ui',
+                    ],
+                ],
+            ],
+        ]);
+
+        $job = new PipelineJob([
+            'job_id' => 'ingest-lubeck',
+            'task_id' => 'task-scraper',
+            'job_type' => PipelineJob::TYPE_INGEST,
+            'status' => PipelineJob::STATUS_COMPLETED,
+            'current_stage' => 'ingest',
+        ]);
+        $job->setRelation('stages', collect([
+            new PipelineStageState([
+                'stage' => 'scrape',
+                'status' => PipelineJob::STATUS_COMPLETED,
+                'counts' => ['total' => 1, 'processed' => 1],
+            ]),
+            new PipelineStageState([
+                'stage' => 'convert',
+                'status' => PipelineJob::STATUS_COMPLETED,
+                'counts' => ['total' => 21, 'processed' => 21, 'convertedFiles' => 21],
+            ]),
+            new PipelineStageState([
+                'stage' => 'ingest',
+                'status' => PipelineJob::STATUS_COMPLETED,
+                'counts' => ['total' => 21, 'processed' => 21],
+            ]),
+        ]));
+        $task->setRelation('jobs', collect([$job]));
+
+        $payload = app(PipelineTaskPayloadService::class)->detail($task, 0, ['jobs_total' => 1]);
+
+        $this->assertSame(PipelineJob::STATUS_COMPLETED, $payload['stages']['scrape']['status']);
+        $this->assertSame(1, $payload['stages']['scrape']['counts']['pagesCrawled']);
+        $this->assertSame(1, $payload['stages']['scrape']['counts']['totalPages']);
+        $this->assertSame(PipelineJob::STATUS_COMPLETED, $payload['stages']['convert']['status']);
+        $this->assertSame(21, $payload['stages']['convert']['counts']['convertedFiles']);
+        $this->assertSame(21, $payload['stages']['convert']['counts']['sourceFiles']);
+        $this->assertSame(PipelineJob::STATUS_COMPLETED, $payload['stages']['ingest']['status']);
+        $this->assertSame(21, $payload['stages']['ingest']['counts']['completed']);
+        $this->assertSame(21, $payload['stages']['ingest']['counts']['total']);
     }
 
     public function test_it_builds_fallback_event_payloads_from_job_metadata(): void

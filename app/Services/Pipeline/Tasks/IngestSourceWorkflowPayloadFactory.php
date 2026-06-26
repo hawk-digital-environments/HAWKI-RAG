@@ -57,6 +57,9 @@ readonly class IngestSourceWorkflowPayloadFactory
             'raw_output_path' => $source->raw_storage_path,
             'markdown_output_path' => $source->markdown_storage_path,
             'ingest_manifest_path' => $this->manifestPath($source->source_id),
+            'metadata' => [
+                'request' => $metadata['request'] ?? null,
+            ],
             'storage' => [
                 'mode' => $this->storageMode(),
                 'shared_root' => $this->sharedRoot(),

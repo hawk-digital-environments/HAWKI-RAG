@@ -37,6 +37,10 @@ readonly class PipelineTaskStorageCleanupService
 
         $this->deleteDirectory($this->taskRoot($task), $result);
 
+        foreach ($this->jobWorkspaceRoots($task) as $jobRoot) {
+            $this->deleteDirectory($jobRoot, $result);
+        }
+
         foreach ($this->sourceIds($task) as $sourceId) {
             if (! $this->sourceWorkspaceCanBeDeleted($sourceId, (string) $task->task_id)) {
                 $result['skipped'][] = [
@@ -66,6 +70,22 @@ readonly class PipelineTaskStorageCleanupService
         return $jobs
             ->map(fn (PipelineJob $job): string => is_string($job->source_id) ? trim($job->source_id) : '')
             ->filter(fn (string $sourceId): bool => $sourceId !== '')
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function jobWorkspaceRoots(PipelineTask $task): array
+    {
+        $jobs = $task->relationLoaded('jobs') ? $task->jobs : collect();
+
+        return $jobs
+            ->map(fn (PipelineJob $job): string => is_string($job->job_id) ? trim($job->job_id) : '')
+            ->filter(fn (string $jobId): bool => $jobId !== '')
+            ->map(fn (string $jobId): string => $this->sharedRoot().DIRECTORY_SEPARATOR.$jobId)
             ->unique()
             ->values()
             ->all();

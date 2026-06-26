@@ -24,12 +24,12 @@ class ScraperTaskProxyTest extends TestCase
         config()->set('scraper.task_ui_url', 'http://scraper-ui.test');
 
         Http::fake([
-            'http://scraper-ui.test/api/profiles' => Http::response([
+            'http://scraper-ui.test/ui/api/profiles' => Http::response([
                 'profiles' => [
                     $this->profileEntry(),
                 ],
             ], 200),
-            'http://scraper-ui.test/api/tasks' => Http::response([
+            'http://scraper-ui.test/ui/api/tasks' => Http::response([
                 'tasks' => [
                     [
                         'id' => 'scheduled-goettingen',
@@ -62,14 +62,47 @@ class ScraperTaskProxyTest extends TestCase
             ]);
     }
 
+    public function test_scraper_tasks_use_mounted_task_ui_api_defaults(): void
+    {
+        config()->set('scraper.task_ui_url', 'http://scraper-ui.test');
+
+        Http::fake([
+            'http://scraper-ui.test/ui/api/profiles' => Http::response([
+                'profiles' => [
+                    $this->profileEntry(),
+                ],
+            ], 200),
+            'http://scraper-ui.test/ui/api/tasks' => Http::response([
+                'tasks' => [
+                    [
+                        'id' => 'scheduled-goettingen',
+                        'name' => 'Daily Goettingen Crawl',
+                        'profileId' => 'site-goettingen',
+                    ],
+                ],
+            ], 200),
+        ]);
+
+        $this->getJson('/scraper/tasks')
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonCount(2, 'tasks')
+            ->assertJsonFragment([
+                'id' => 'scheduled-goettingen',
+                'label' => 'Daily Goettingen Crawl',
+                'profileId' => 'site-goettingen',
+                'source' => 'scraper-task-ui',
+            ]);
+    }
+
     public function test_empty_scraper_tasks_show_build_message(): void
     {
         config()->set('scraper.task_ui_url', 'http://scraper-ui.test');
         config()->set('scraper.api_url', 'http://crawler.test');
 
         Http::fake([
-            'http://scraper-ui.test/api/profiles' => Http::response(['profiles' => []], 200),
-            'http://scraper-ui.test/api/tasks' => Http::response(['tasks' => []], 200),
+            'http://scraper-ui.test/ui/api/profiles' => Http::response(['profiles' => []], 200),
+            'http://scraper-ui.test/ui/api/tasks' => Http::response(['tasks' => []], 200),
             'http://crawler.test/tasks' => Http::response(['tasks' => []], 200),
         ]);
 
@@ -84,14 +117,14 @@ class ScraperTaskProxyTest extends TestCase
         config()->set('scraper.task_ui_url', 'http://scraper-ui.test');
 
         Http::fake([
-            'http://scraper-ui.test/api/profiles' => Http::response([
+            'http://scraper-ui.test/ui/api/profiles' => Http::response([
                 'profiles' => [
                     $this->profileEntry(),
                 ],
             ], 200),
-            'http://scraper-ui.test/api/tasks' => Http::response(['tasks' => []], 200),
-            'http://scraper-ui.test/api/profiles/site-goettingen' => Http::response($this->profileEntry(), 200),
-            'http://scraper-ui.test/api/crawler/submit' => Http::response([
+            'http://scraper-ui.test/ui/api/tasks' => Http::response(['tasks' => []], 200),
+            'http://scraper-ui.test/ui/api/profiles/site-goettingen' => Http::response($this->profileEntry(), 200),
+            'http://scraper-ui.test/ui/api/crawler/submit' => Http::response([
                 'event' => 'job_submitted',
                 'job_id' => 'site-goettingen_123',
             ], 200),
@@ -112,7 +145,7 @@ class ScraperTaskProxyTest extends TestCase
 
         Http::assertSent(function (Request $request): bool {
             return $request->method() === 'POST'
-                && $request->url() === 'http://scraper-ui.test/api/crawler/submit'
+                && $request->url() === 'http://scraper-ui.test/ui/api/crawler/submit'
                 && $request['job_id'] === 'site-goettingen_123'
                 && $request['url'] === 'https://www.uni-goettingen.de'
                 && $request['site_profile_path'] === '/app/profiles/site-goettingen.json'

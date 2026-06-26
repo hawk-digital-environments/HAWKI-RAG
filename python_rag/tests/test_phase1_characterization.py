@@ -244,6 +244,28 @@ class GraphFallbackCharacterizationTests(unittest.TestCase):
             [("HAWKI", "uses", "Qdrant")],
         )
 
+    def test_graph_triplet_filter_drops_runtime_metadata_and_malformed_relations(self) -> None:
+        from infrastructure.graph.graph_utils import filter_triplets_to_source
+
+        source = (
+            "Die Universität zu Lübeck bietet Studiengänge in Medizin, Informatik "
+            "und Biomedical Engineering an."
+        )
+        triplets = [
+            ("https://uni-luebeck.de/", "has URL", "universität zu lübeck"),
+            ("ingest_ee55bd5d94f149b51f543d46", "is related to", "uni-luebeck"),
+            ("Universität: Universität zu Lübeck", "has_url<|#|", "https://uni-luebeck.de/"),
+            ("uni-luebeck", "is_named_as", "universität zu lübeck"),
+            ("00001.md", "generated,", "ingest_5471720dd2ff9589e685cbc5"),
+            ("uni-luebeck", "is_referenced_by,", "91e3087790ed9ea472789512573135d3df84d68032b2c2d6698e8499f732cf64"),
+            ("Universität zu Lübeck", "offers", "Biomedical Engineering"),
+        ]
+
+        self.assertEqual(
+            filter_triplets_to_source(triplets, source),
+            [("Universität zu Lübeck", "offers", "Biomedical Engineering")],
+        )
+
     def test_graph_text_cleaner_normalizes_with_env_limits(self) -> None:
         from infrastructure.raganything.text import clean_graph_text
 
