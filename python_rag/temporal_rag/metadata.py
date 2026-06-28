@@ -464,9 +464,43 @@ class AppMetadataStore:
                 "graphRecordsUpdated": int(details.get("graph_records_updated") or 0),
             }
         if ui_stage == "scrape":
-            processed = int(details.get("files_found") or details.get("file_count") or 0)
-            return {"total": processed, "processed": processed}
+            processed = (
+                AppMetadataStore._positive_int(details.get("pages_crawled"))
+                or AppMetadataStore._positive_int(details.get("files_found"))
+                or AppMetadataStore._positive_int(details.get("file_count"))
+                or 0
+            )
+            page_limit = (
+                AppMetadataStore._positive_int(details.get("max_pages"))
+                or AppMetadataStore._positive_int(details.get("page_limit"))
+                or AppMetadataStore._positive_int(details.get("pageLimit"))
+            )
+            total = page_limit or AppMetadataStore._positive_int(details.get("total_pages")) or processed
+            counts = {
+                "total": max(processed, total),
+                "processed": processed,
+                "pagesCrawled": processed,
+                "totalPages": max(processed, total),
+            }
+            if page_limit is not None:
+                counts["pageLimit"] = page_limit
+            return counts
         return {}
+
+    @staticmethod
+    def _positive_int(value: Any) -> int | None:
+        if isinstance(value, bool):
+            return None
+
+        if isinstance(value, (int, float)):
+            integer = int(value)
+            return integer if integer > 0 else None
+
+        if isinstance(value, str) and value.strip().isdigit():
+            integer = int(value.strip())
+            return integer if integer > 0 else None
+
+        return None
 
     @staticmethod
     def _source_metadata(

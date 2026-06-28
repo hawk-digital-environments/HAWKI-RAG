@@ -50,6 +50,22 @@ class TemporalMetadataTests(unittest.TestCase):
         self.assertEqual(calls[0]["options"], "-c timezone=UTC")
         self.assertTrue(connection.closed)
 
+    def test_scrape_stage_counts_use_profile_page_limit_as_total_pages(self) -> None:
+        counts = AppMetadataStore._stage_counts(
+            "scrape",
+            {
+                "pages_crawled": 4,
+                "files_found": 4,
+                "max_pages": 300,
+            },
+        )
+
+        self.assertEqual(counts["processed"], 4)
+        self.assertEqual(counts["pagesCrawled"], 4)
+        self.assertEqual(counts["total"], 300)
+        self.assertEqual(counts["totalPages"], 300)
+        self.assertEqual(counts["pageLimit"], 300)
+
 
 if __name__ == "__main__":
     unittest.main()

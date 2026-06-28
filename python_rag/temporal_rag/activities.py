@@ -32,6 +32,12 @@ from temporal_rag.storage import (
 logger = logging.getLogger(__name__)
 
 PASSTHROUGH_METADATA_FILENAME = "rawki_passthrough.json"
+SCRAPER_BOOKKEEPING_FILENAMES = frozenset({
+    "crawler.log",
+    "job_state.json",
+    "summary.json",
+    "urls_index.json",
+})
 
 
 class DirectExtractUnsupportedFileError(RuntimeError):
@@ -55,22 +61,14 @@ def scrape_source(workflow_input: dict[str, Any]) -> dict[str, Any]:
 
     try:
         client = ExternalJobClient(**service_config)
-        response = client.start_and_wait(_scraper_start_payload(workflow_input, source_id, raw_dir))
+        start_payload = _scraper_start_payload(workflow_input, source_id, raw_dir)
+        response = client.start_and_wait(start_payload)
     except Exception as exc:
         _record_activity_exception(metadata, workflow_input, "scrape_source", exc, raw_dir=raw_dir)
         raise
 
-    status = _status(response)
-    crawler_raw_dir = _shared_worker_path(response.get("raw_dir") or response.get("raw_output_path") or response.get("output_directory"))
-    result = {
-        "source_id": source_id,
-        "external_job_id": response.get("external_job_id"),
-        "raw_dir": crawler_raw_dir or raw_dir,
-        "files_found": int(response.get("files_found") or response.get("file_count") or response.get("pages_crawled") or 0),
-        "status": status,
-        "error_details": response.get("error") or response.get("error_details"),
-    }
-    metadata.mark_phase(workflow_input, "scrape_source", status, result)
+    result = _scrape_result(response, start_payload, source_id, raw_dir)
+    metadata.mark_phase(workflow_input, "scrape_source", str(result["status"]), result)
     log_event(logger, "scrape_source:end", **result, task_queue=settings.scraper_task_queue)
     return result
 
@@ -154,6 +152,11 @@ def _scraper_start_payload(workflow_input: dict[str, Any], source_id: str, raw_d
     if request_metadata.get("site_profile_path"):
         payload["site_profile_path"] = request_metadata["site_profile_path"]
 
+    sitemap_url = _string_value(request.get("sitemapUrl") or request.get("sitemap_url") or request_metadata.get("sitemap_url"))
+    if sitemap_url:
+        payload["sitemap"] = True
+        payload["sitemap_base"] = sitemap_url
+
     for key in (
         "rescrape_failed",
         "max_pages",
@@ -182,6 +185,86 @@ def _shared_worker_path(value: Any) -> str | None:
             return "/shared/" + path[len(prefix) + 1:]
 
     return path
+
+
+def _string_value(value: Any) -> str:
+    if isinstance(value, (str, int, float)) and str(value).strip():
+        return str(value).strip()
+
+    return ""
+
+
+def _scrape_result(
+    response: dict[str, Any],
+    start_payload: dict[str, Any],
+    source_id: str,
+    raw_dir: str,
+) -> dict[str, Any]:
+    status = _status(response)
+    crawler_raw_dir = _shared_worker_path(
+        response.get("raw_dir") or response.get("raw_output_path") or response.get("output_directory")
+    )
+    output_dir = crawler_raw_dir or raw_dir
+    crawled_file_count = _crawled_output_file_count(output_dir)
+    pages_crawled = (
+        _positive_int(response.get("pages_crawled"))
+        or _positive_int(response.get("files_found"))
+        or _positive_int(response.get("file_count"))
+        or crawled_file_count
+        or 0
+    )
+    page_limit = _positive_int(start_payload.get("max_pages"))
+    error_details = response.get("error") or response.get("error_details")
+    if status == "success" and pages_crawled <= 0:
+        status = "failed"
+        error_details = error_details or "Scraper completed without crawled page files."
+    elif status == "success" and page_limit is not None and pages_crawled < page_limit:
+        status = "failed"
+        error_details = error_details or (
+            f"Scraper stopped at {pages_crawled}/{page_limit} pages before reaching the configured page limit."
+        )
+
+    result = {
+        "source_id": source_id,
+        "external_job_id": response.get("external_job_id"),
+        "raw_dir": output_dir,
+        "files_found": pages_crawled,
+        "pages_crawled": pages_crawled,
+        "raw_files_found": crawled_file_count,
+        "status": status,
+        "error_details": error_details,
+    }
+
+    if page_limit is not None:
+        result["max_pages"] = page_limit
+
+    return result
+
+
+def _crawled_output_file_count(raw_dir: str) -> int:
+    if is_object_prefix(raw_dir):
+        return 0
+
+    root = Path(raw_dir.removeprefix("file://")).expanduser()
+    if not root.is_dir():
+        return 0
+
+    return sum(1 for path in root.rglob("*") if path.is_file() and path.name not in SCRAPER_BOOKKEEPING_FILENAMES)
+
+
+def _positive_int(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return None
+
+    if isinstance(value, (int, float)):
+        integer = int(value)
+        return integer if integer > 0 else None
+
+    if isinstance(value, str) and value.strip().isdigit():
+        integer = int(value.strip())
+        return integer if integer > 0 else None
+
+    return None
 
 
 @activity.defn(name="ingest_markdown_files")
@@ -471,7 +554,7 @@ def _convert_files_with_extract_api(
     markdown_root = _local_directory(markdown_dir, "markdown", must_exist=False)
     markdown_root.mkdir(parents=True, exist_ok=True)
 
-    candidates = [path for path in sorted(raw_root.rglob("*")) if path.is_file()]
+    candidates = _raw_conversion_candidates(raw_root)
 
     if not candidates:
         return {
@@ -682,6 +765,20 @@ def _local_directory(path: str, label: str, *, must_exist: bool = True) -> Path:
         raise RuntimeError(f"{label.capitalize()} directory was not found: {root}")
 
     return root
+
+
+def _raw_conversion_candidates(raw_root: Path) -> list[Path]:
+    skip_bookkeeping = _looks_like_scraper_output_dir(raw_root)
+
+    return [
+        path
+        for path in sorted(raw_root.rglob("*"))
+        if path.is_file() and (not skip_bookkeeping or path.name not in SCRAPER_BOOKKEEPING_FILENAMES)
+    ]
+
+
+def _looks_like_scraper_output_dir(raw_root: Path) -> bool:
+    return (raw_root / "job_state.json").is_file() or (raw_root / "urls_index.json").is_file()
 
 
 def _converter_output_dir_name(raw_file: Path) -> str:

@@ -245,7 +245,6 @@ readonly class PipelineStageLogService
                 $this->scraperCrawlerLogEntries($task, $jobs),
                 'No matching scraper crawler.log entries were found yet.'
             );
-            $this->appendStageRuntimeLogSection($lines, $task, $jobs, $stage, 'Scraper worker log entries');
 
             return;
         }

@@ -124,6 +124,7 @@ class PipelineControllerDashboardTest extends TestCase
                 'request' => [
                     'metadata' => [
                         'source' => 'scraper-task-ui',
+                        'max_pages' => 300,
                     ],
                 ],
             ],
@@ -139,7 +140,7 @@ class PipelineControllerDashboardTest extends TestCase
         ]);
 
         foreach ([
-            ['stage' => 'scrape', 'counts' => ['total' => 1, 'processed' => 1]],
+            ['stage' => 'scrape', 'counts' => ['total' => 4, 'processed' => 4]],
             ['stage' => 'convert', 'counts' => ['total' => 21, 'processed' => 21]],
             ['stage' => 'ingest', 'counts' => ['total' => 21, 'processed' => 21]],
         ] as $stage) {
@@ -158,12 +159,14 @@ class PipelineControllerDashboardTest extends TestCase
         $this->getJson('/pipeline/tasks/task-scraper-stage-detail')
             ->assertOk()
             ->assertJsonPath('success', true)
-            ->assertJsonPath('task.counters.scraped', 1)
+            ->assertJsonPath('task.counters.scraped', 4)
             ->assertJsonPath('task.counters.files_found', 21)
             ->assertJsonPath('task.counters.converted', 21)
-            ->assertJsonPath('task.stages.scrape.status', PipelineJob::STATUS_COMPLETED)
-            ->assertJsonPath('task.stages.scrape.counts.pagesCrawled', 1)
-            ->assertJsonPath('task.stages.scrape.counts.totalPages', 1)
+            ->assertJsonPath('task.stages.scrape.status', PipelineJob::STATUS_FAILED)
+            ->assertJsonPath('task.stages.scrape.counts.pagesCrawled', 4)
+            ->assertJsonPath('task.stages.scrape.counts.totalPages', 300)
+            ->assertJsonPath('task.stages.scrape.counts.pageLimit', 300)
+            ->assertJsonPath('task.stages.scrape.errors.0', 'Scraper stopped at 4/300 pages before reaching the configured page limit.')
             ->assertJsonPath('task.stages.convert.status', PipelineJob::STATUS_COMPLETED)
             ->assertJsonPath('task.stages.convert.counts.convertedFiles', 21)
             ->assertJsonPath('task.stages.convert.counts.sourceFiles', 21)
@@ -631,7 +634,7 @@ class PipelineControllerDashboardTest extends TestCase
         File::deleteDirectory(dirname($logPath));
     }
 
-    public function test_scrape_stage_log_includes_direct_scraper_worker_entries(): void
+    public function test_scrape_stage_log_excludes_direct_scraper_worker_entries(): void
     {
         $runtimeRoot = storage_path('framework/testing/pipeline-stage-runtime-scrape');
         $runtimeLogPath = $runtimeRoot.'/scraper_worker.log';
@@ -667,9 +670,10 @@ class PipelineControllerDashboardTest extends TestCase
             ->assertJsonPath('success', true);
 
         $text = (string) $response->json('log.text');
-        $this->assertStringContainsString('Scraper worker log entries', $text);
-        $this->assertStringContainsString('scrape_source:start', $text);
-        $this->assertStringContainsString('source_scrape_direct', $text);
+        $this->assertStringNotContainsString('Scraper worker log entries', $text);
+        $this->assertStringNotContainsString('scraper_worker.log', $text);
+        $this->assertStringNotContainsString('scrape_source:start', $text);
+        $this->assertStringNotContainsString('source_scrape_direct', $text);
         $this->assertStringNotContainsString('source_other', $text);
 
         File::deleteDirectory($runtimeRoot);

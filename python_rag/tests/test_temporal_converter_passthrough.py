@@ -31,6 +31,7 @@ class TemporalConverterPassthroughTests(unittest.TestCase):
                 "source_url": "https://uni-luebeck.de",
                 "metadata": {
                     "request": {
+                        "sitemapUrl": "https://uni-luebeck.de/sitemap.xml",
                         "metadata": {
                             "site_profile_path": "/var/www/html/profiles/Lubeck.json",
                             "max_pages": 25,
@@ -52,6 +53,8 @@ class TemporalConverterPassthroughTests(unittest.TestCase):
         self.assertEqual(payload["source_id"], "source_lubeck")
         self.assertEqual(payload["source_url"], "https://uni-luebeck.de")
         self.assertEqual(payload["site_profile_path"], "/var/www/html/profiles/Lubeck.json")
+        self.assertIs(payload["sitemap"], True)
+        self.assertEqual(payload["sitemap_base"], "https://uni-luebeck.de/sitemap.xml")
         self.assertEqual(payload["max_pages"], 25)
         self.assertEqual(payload["max_concurrency"], 1)
         self.assertEqual(payload["max_rpm"], 60)
@@ -71,6 +74,82 @@ class TemporalConverterPassthroughTests(unittest.TestCase):
             activities._shared_worker_path("/shared/sources/source_lubeck/raw"),
             "/shared/sources/source_lubeck/raw",
         )
+
+    def test_scrape_result_fails_when_scraper_only_writes_bookkeeping_files(self) -> None:
+        with TemporaryDirectory() as tmp:
+            raw_dir = Path(tmp)
+            (raw_dir / "job_state.json").write_text('{"completed_urls": 0}', encoding="utf-8")
+            (raw_dir / "urls_index.json").write_text('{"total_entries": 0}', encoding="utf-8")
+            (raw_dir / "summary.json").write_text('{"status": "completed"}', encoding="utf-8")
+            (raw_dir / "crawler.log").write_text("completed\n", encoding="utf-8")
+
+            result = activities._scrape_result(
+                {
+                    "status": "completed",
+                    "output_directory": str(raw_dir),
+                    "external_job_id": "scrape-empty",
+                },
+                {"max_pages": 300},
+                "source_empty",
+                str(raw_dir),
+            )
+
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["pages_crawled"], 0)
+        self.assertEqual(result["files_found"], 0)
+        self.assertEqual(result["raw_files_found"], 0)
+        self.assertEqual(result["max_pages"], 300)
+        self.assertIn("without crawled page files", result["error_details"])
+
+    def test_scrape_result_uses_real_output_files_when_scraper_omits_counts(self) -> None:
+        with TemporaryDirectory() as tmp:
+            raw_dir = Path(tmp)
+            (raw_dir / "job_state.json").write_text('{"completed_urls": 1}', encoding="utf-8")
+            page = raw_dir / "pages" / "home.md"
+            page.parent.mkdir()
+            page.write_text("# Home", encoding="utf-8")
+
+            result = activities._scrape_result(
+                {
+                    "status": "completed",
+                    "output_directory": str(raw_dir),
+                    "external_job_id": "scrape-one-page",
+                },
+                {"max_pages": 1},
+                "source_page",
+                str(raw_dir),
+            )
+
+        self.assertEqual(result["status"], "success")
+        self.assertEqual(result["pages_crawled"], 1)
+        self.assertEqual(result["files_found"], 1)
+        self.assertEqual(result["raw_files_found"], 1)
+        self.assertEqual(result["max_pages"], 1)
+
+    def test_scrape_result_fails_when_scraper_stops_before_page_limit(self) -> None:
+        with TemporaryDirectory() as tmp:
+            raw_dir = Path(tmp)
+            page = raw_dir / "pages" / "home.md"
+            page.parent.mkdir()
+            page.write_text("# Home", encoding="utf-8")
+
+            result = activities._scrape_result(
+                {
+                    "status": "completed",
+                    "output_directory": str(raw_dir),
+                    "external_job_id": "scrape-short",
+                },
+                {"max_pages": 300},
+                "source_short",
+                str(raw_dir),
+            )
+
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["pages_crawled"], 1)
+        self.assertEqual(result["files_found"], 1)
+        self.assertEqual(result["raw_files_found"], 1)
+        self.assertEqual(result["max_pages"], 300)
+        self.assertIn("1/300 pages", result["error_details"])
 
     def test_custom_converter_profile_overrides_converter_service_config(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -154,6 +233,32 @@ class TemporalConverterPassthroughTests(unittest.TestCase):
 
             loaded = activities._load_passthrough_metadata(str(handoff))
             self.assertEqual(loaded["file_path"], str(image.resolve()))
+
+    def test_direct_extract_skips_scraper_bookkeeping_files(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            raw_dir = root / "raw"
+            markdown_dir = root / "markdown"
+            raw_dir.mkdir()
+            for name in activities.SCRAPER_BOOKKEEPING_FILENAMES:
+                (raw_dir / name).write_text("{}", encoding="utf-8")
+
+            result = activities._convert_files_with_extract_api(
+                {
+                    "base_url": "http://converter.test",
+                    "start_path": "/extract",
+                    "timeout_seconds": 1,
+                    "retry_attempts": 1,
+                },
+                "source_empty",
+                str(raw_dir),
+                str(markdown_dir),
+            )
+
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["converted_files"], [])
+        self.assertEqual(result["markdown_files_created"], 0)
+        self.assertIn("No files were found", result["error_details"])
 
     def test_passthrough_documents_force_graph_ingestion(self) -> None:
         docs = [{
