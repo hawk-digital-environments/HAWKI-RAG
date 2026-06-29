@@ -61,6 +61,8 @@ COMPOSE_CMD = $(COMPOSE_ENV_PREFIX) COMPOSE_PARALLEL_LIMIT=$(COMPOSE_PARALLEL_LI
 # UI asset variables
 UI_AUTO_BUILD ?= 1
 UI_BUILD_DIR ?= /tmp/rawki-vite-build
+UI_NODE_IMAGE ?= node:22-bookworm-slim
+UI_NODE_RUN = docker run --rm --entrypoint /usr/bin/env --user "$$(id -u):$$(id -g)" -v "$(CURDIR):/work" -v "$(UI_BUILD_DIR):$(UI_BUILD_DIR)" -w /work $(UI_NODE_IMAGE)
 
 # Bruno collection test variables (override via `make VAR=value`)
 BRUNO_BIN ?= bru
@@ -112,11 +114,12 @@ build-app:
 
 build-ui:
 	@echo "Building HAWKI RAG UI assets..."
+	@mkdir -p "$(UI_BUILD_DIR)"
 	@if [ ! -x node_modules/.bin/vite ] || [ ! -d node_modules/@sveltejs/vite-plugin-svelte ]; then \
 		echo "Node dependencies are missing or incomplete; running npm install..."; \
-		npm install; \
+		$(UI_NODE_RUN) npm install; \
 	fi
-	@npm run build -- --outDir "$(UI_BUILD_DIR)" --emptyOutDir
+	@$(UI_NODE_RUN) npm run build -- --outDir "$(UI_BUILD_DIR)" --emptyOutDir
 
 publish-ui: build-ui
 	@echo "Publishing HAWKI RAG UI assets to hawki_rag_app..."
@@ -412,10 +415,10 @@ restart-core-ui:
 
 neo4j-fresh:
 	@echo "Stopping Neo4j service..."
-	@$(COMPOSE_CMD) stop neo4j >/dev/null 2>&1 || true
-	@$(COMPOSE_CMD) rm -f neo4j >/dev/null 2>&1 || true
+	@$(COMPOSE_CMD) stop hawki_rag_neo4j >/dev/null 2>&1 || true
+	@$(COMPOSE_CMD) rm -f hawki_rag_neo4j >/dev/null 2>&1 || true
 	@echo "Removing persisted Neo4j data (databases, transactions)..."
-	@$(COMPOSE_CMD) run --rm --entrypoint bash neo4j -lc 'rm -rf /data/databases/* /data/transactions/*' >/dev/null
+	@$(COMPOSE_CMD) run --rm --entrypoint bash hawki_rag_neo4j -lc 'rm -rf /data/databases/* /data/transactions/*' >/dev/null
 	@echo "Starting Neo4j service..."
-	@$(COMPOSE_CMD) up -d neo4j >/dev/null
+	@$(COMPOSE_CMD) up -d hawki_rag_neo4j >/dev/null
 	@echo "Neo4j store reset complete."
