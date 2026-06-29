@@ -41,6 +41,7 @@ def commit_graph_triplets(
     graph_debug: bool,
     graph_settings: GraphIngestSettings,
     logger_obj: logging.Logger,
+    replace_doc_ids_by_doc: dict[str, set[str]] | None = None,
 ) -> GraphCommitResult:
     """Extract graph triplets, upsert them to Neo4j, and build graph preview data."""
 
@@ -59,6 +60,7 @@ def commit_graph_triplets(
             neo4j_database=neo4j_database,
             public_dir=public_dir,
             request_id=operation_id,
+            replace_doc_ids_by_doc=replace_doc_ids_by_doc,
             graph_settings=graph_settings,
         )
         triplet_ms = (time.perf_counter() - triplet_start) * 1000

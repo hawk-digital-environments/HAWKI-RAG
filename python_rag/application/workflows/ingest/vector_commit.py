@@ -32,6 +32,7 @@ def commit_vector_points(
     batch_size: int,
     job_id: str | None,
     operation_id: str | None,
+    replace_doc_ids: set[str] | None = None,
     logger_obj: logging.Logger,
 ) -> VectorCommitResult:
     """Embed prepared chunks and commit them to the configured Qdrant collection."""
@@ -89,6 +90,16 @@ def commit_vector_points(
     logger_obj.info("ingest:qdrant points=%s vector_size=%s", len(points), vector_size)
     qdrant.ensure_collection(vector_size or 1024, distance=body.distance)
     qdrant_write_start = time.perf_counter()
+    for doc_id in sorted(replace_doc_ids or set()):
+        if not doc_id:
+            continue
+        if hasattr(qdrant, "delete_by_doc_id"):
+            qdrant.delete_by_doc_id(
+                doc_id,
+                idempotency_key=f"{operation_id}:replace:{doc_id}" if operation_id else None,
+            )
+        else:
+            logger_obj.warning("ingest:qdrant replace skipped; client has no delete_by_doc_id doc=%s", doc_id)
     qdrant.upsert_points(
         points,
         batch_size=batch_size,
@@ -104,10 +115,11 @@ def commit_vector_points(
         idempotency_key=operation_id,
         pipeline_stage="index_vector",
         points=len(points),
+        replaced_docs=len(replace_doc_ids or set()),
         elapsed_ms=round(qdrant_ms, 2),
         collection=qdrant.collection,
     )
-    logger_obj.info("ingest:qdrant upserted=%s ms=%.2f", len(points), qdrant_ms)
+    logger_obj.info("ingest:qdrant upserted=%s replaced_docs=%s ms=%.2f", len(points), len(replace_doc_ids or set()), qdrant_ms)
     return VectorCommitResult(points=points, vector_size=vector_size, qdrant_ms=qdrant_ms)
 
 

@@ -6,6 +6,11 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from application.workflows.observability import pipeline_log
 from application.workflows.validation import normalize_ingest_metadata, validate_ingest_document
+from application.workflows.ingest.incremental import (
+    content_hash_for_text,
+    normalized_page_url,
+    stable_document_id_from_payload,
+)
 from application.workflows.ingest.models import IngestChunkRecord, IngestDocumentStats
 from common.converter_markdown import (
     should_strip_converter_markdown_noise,
@@ -43,20 +48,21 @@ def prepare_documents(
     }
 
     for d in docs:
-        doc_id = str(getattr(d, "id", ""))
+        source_doc_id = str(getattr(d, "id", ""))
+        doc_id = source_doc_id
         current_doc_job_id = doc_job_id(default_job_id, d)
         errors, warnings = validate_ingest_document(d)
         if errors:
             message = "; ".join(errors)
             doc_stats["skipped_docs"] += 1
-            doc_stats["validation_failures"].append({"doc_id": doc_id, "errors": errors})
+            doc_stats["validation_failures"].append({"doc_id": source_doc_id, "errors": errors})
             pipeline_log(
                 logger,
                 logging.WARNING,
                 stage="ingest",
                 status="skipped",
                 job_id=current_doc_job_id,
-                doc_id=doc_id,
+                doc_id=source_doc_id,
                 error_message=message,
                 reason="validation_failed",
                 errors=errors,
@@ -81,6 +87,20 @@ def prepare_documents(
         document_text = d.text
         if should_strip_converter_markdown_noise(normalized_payload):
             document_text = strip_leading_converter_markdown_noise(document_text)
+
+        if not str(normalized_payload.get("content_hash") or "").strip():
+            normalized_payload["content_hash"] = content_hash_for_text(document_text)
+        stable_doc_id, source_identity = stable_document_id_from_payload(normalized_payload, source_doc_id)
+        doc_id = stable_doc_id
+        if source_doc_id and source_doc_id != doc_id:
+            normalized_payload.setdefault("source_document_id", source_doc_id)
+        if source_identity:
+            normalized_payload["source_identity"] = source_identity
+        canonical_url = normalized_page_url(normalized_payload)
+        if canonical_url:
+            normalized_payload.setdefault("canonical_url", canonical_url)
+        if current_doc_job_id:
+            normalized_payload.setdefault("job_id", current_doc_job_id)
 
         chunks = split_text(document_text, chunk_chars, chunk_overlap) or [document_text]
         logger.debug("ingest:doc %s chunks=%s", doc_id, len(chunks))

@@ -7,12 +7,14 @@ from dataclasses import dataclass
 from typing import Any
 
 from application.workflows.ingest.settings import GraphIngestSettings, load_graph_ingest_settings
+from application.workflows.ingest.page_registry import IngestedPageRegistry
 from infrastructure.graph.neo4j_graph import Neo4jGraph
 from infrastructure.vectorstore.qdrant_http import QdrantHTTP
 
 GraphSettingsLoader = Callable[[], GraphIngestSettings]
 QdrantFactory = Callable[[], Any]
 GraphFactory = Callable[[str | None], Any]
+PageRegistryFactory = Callable[[], Any | None]
 
 
 def create_qdrant_http() -> QdrantHTTP:
@@ -25,6 +27,11 @@ def create_neo4j_graph(database: str | None = None) -> Neo4jGraph:
     return Neo4jGraph(database=database)
 
 
+def create_ingested_page_registry() -> IngestedPageRegistry:
+    """Create the production ingested page registry adapter."""
+    return IngestedPageRegistry.from_env()
+
+
 @dataclass(frozen=True)
 class IngestWorkflowDependencies:
     """Factories and settings loaders used by ingestion orchestration."""
@@ -32,10 +39,12 @@ class IngestWorkflowDependencies:
     graph_settings_loader: GraphSettingsLoader = load_graph_ingest_settings
     qdrant_factory: QdrantFactory = create_qdrant_http
     graph_factory: GraphFactory = create_neo4j_graph
+    page_registry_factory: PageRegistryFactory = create_ingested_page_registry
 
 
 __all__ = [
     "IngestWorkflowDependencies",
+    "create_ingested_page_registry",
     "create_neo4j_graph",
     "create_qdrant_http",
 ]

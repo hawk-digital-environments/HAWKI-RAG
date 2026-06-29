@@ -327,7 +327,6 @@ def ingest_markdown_files(payload: dict[str, Any]) -> dict[str, Any]:
                 }
                 if passthrough_metadata:
                     payload.update(passthrough_metadata)
-                _delete_existing_document(settings, doc_id, _operation_id(workflow_input, doc_id, "delete"))
                 docs.append({"id": doc_id, "text": text, "payload": payload})
                 manifest_record = {
                     "document_id": doc_id,
@@ -353,7 +352,7 @@ def ingest_markdown_files(payload: dict[str, Any]) -> dict[str, Any]:
         _record_activity_exception(metadata, workflow_input, "ingest_markdown_files", exc, markdown_dir=markdown_dir)
         raise
 
-    totals["status"] = "success" if totals["documents_indexed"] > 0 else "skipped"
+    totals["status"] = "success" if totals["documents_indexed"] > 0 or totals["unchanged_documents"] > 0 else "skipped"
     totals["document_version"] = hashlib.sha256(
         "|".join(record["content_hash"] for record in manifest_records).encode("utf-8")
     ).hexdigest()[:24]
@@ -812,6 +811,9 @@ def _ingest_result(source_id: str, *, status: str) -> dict[str, Any]:
         "graph_records_updated": 0,
         "failed_documents": 0,
         "skipped_documents": 0,
+        "new_documents": 0,
+        "changed_documents": 0,
+        "unchanged_documents": 0,
         "status": status,
         "error_details": None,
     }
@@ -858,10 +860,6 @@ def _post_ingest(
     )
 
 
-def _delete_existing_document(settings: TemporalRagSettings, doc_id: str, operation_id: str) -> None:
-    _bridge_request(settings, "DELETE", f"/documents/{doc_id}", headers={"Idempotency-Key": operation_id})
-
-
 def _bridge_request(settings: TemporalRagSettings, method: str, path: str, **kwargs: Any) -> dict[str, Any]:
     url = urljoin(settings.bridge_url.rstrip("/") + "/", path.lstrip("/"))
     last_error: Exception | None = None
@@ -886,6 +884,9 @@ def _accumulate_ingest_response(totals: dict[str, Any], response: dict[str, Any]
     documents = summary.get("documents") if isinstance(summary.get("documents"), dict) else {}
     totals["documents_indexed"] += int(documents.get("processed_docs") or 0)
     totals["skipped_documents"] += int(documents.get("skipped_docs") or 0)
+    totals["new_documents"] += int(documents.get("incremental_new_docs") or 0)
+    totals["changed_documents"] += int(documents.get("incremental_changed_docs") or 0)
+    totals["unchanged_documents"] += int(documents.get("incremental_unchanged_docs") or 0)
     totals["chunks_indexed"] += int(documents.get("total_chunks") or 0)
     totals["vectors_upserted"] += int(response.get("points") or 0)
     graph_preview = summary.get("graph_preview") if isinstance(summary.get("graph_preview"), dict) else {}

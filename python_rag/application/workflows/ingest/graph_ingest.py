@@ -122,6 +122,7 @@ def build_triplets_by_doc(
     failure_log_path: str | Path | None = None,
     graph_settings: GraphIngestSettings | None = None,
     request_id: str | None = None,
+    replace_doc_ids_by_doc: dict[str, set[str]] | None = None,
 ) -> tuple[dict[str, list[tuple[str, str, str]]], list[dict[str, Any]]]:
     resolved_settings = graph_settings or load_graph_ingest_settings()
     if graph_debug is None:
@@ -295,6 +296,33 @@ def build_triplets_by_doc(
                 settings=resolved_settings,
             )
             logger.info("graph:extract request_id=%s doc=%s triplets=%s ms=%.2f", request_id or "-", doc_id, len(triplets), extract_ms)
+            delete_doc_ids = (replace_doc_ids_by_doc or {}).get(str(doc_id), set())
+            if graph is not None and delete_doc_ids:
+                neo4j_delete_start = time.perf_counter()
+                for delete_doc_id in sorted(delete_doc_ids):
+                    if not delete_doc_id:
+                        continue
+                    if hasattr(graph, "delete_by_doc_id"):
+                        graph.delete_by_doc_id(
+                            delete_doc_id,
+                            request_id=f"{request_id}:replace_graph:{delete_doc_id}" if request_id else None,
+                        )
+                    else:
+                        logger.warning("graph:neo4j replace skipped; graph has no delete_by_doc_id doc=%s", delete_doc_id)
+                perf_log(
+                    "perf:graph pipeline.ingest_logic._build_triplets_by_doc doc=%s step=neo4j_delete replaced_docs=%s ms=%.2f",
+                    doc_id,
+                    len(delete_doc_ids),
+                    (time.perf_counter() - neo4j_delete_start) * 1000,
+                    graph_perf_log=graph_perf_log,
+                    settings=resolved_settings,
+                )
+                logger.info(
+                    "graph:neo4j replace request_id=%s doc=%s replaced_docs=%s",
+                    request_id or "-",
+                    doc_id,
+                    len(delete_doc_ids),
+                )
             if graph is not None and triplets:
                 neo4j_start = time.perf_counter()
                 graph.upsert_triplets(triplets, doc_id=doc_id, request_id=request_id)

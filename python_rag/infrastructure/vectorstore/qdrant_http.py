@@ -6,6 +6,7 @@ from typing import Any
 from infrastructure.vectorstore.collections import pick_most_populated_collection, vector_size_from_config
 from infrastructure.vectorstore.payloads import (
     build_delete_filter,
+    build_match_filter,
     build_scroll_body,
     build_search_body,
     build_text_filter,
@@ -415,6 +416,37 @@ class QdrantHTTP:
                 break
             offset = next_offset
         return collected
+
+    def scroll_by_filter(
+        self,
+        filter_body: dict[str, Any],
+        *,
+        limit: int,
+        offset: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Return points matching an exact Qdrant filter."""
+        if not filter_body:
+            return []
+        self.collection = resolve_selected_collection(
+            self.collection,
+            lambda: self._pick_default_collection() or "",
+        )
+        collection = self.collection
+        if not collection:
+            return []
+        body = build_scroll_body(limit=limit, filter_body=filter_body, offset=offset)
+        r = self._gateway.scroll(collection, body, timeout=self._http_settings.text_timeout)
+        if r.status_code == 404:
+            return []
+        points, _ = parse_scroll_payload(r, empty_on_not_found=True)
+        return points
+
+    def find_points_by_payload(self, filters: dict[str, Any], *, limit: int = 1) -> list[dict[str, Any]]:
+        """Return points whose payload matches all provided key/value filters."""
+        filter_body = build_match_filter(filters)
+        if not filter_body:
+            return []
+        return self.scroll_by_filter(filter_body, limit=max(1, int(limit)))
 
     def delete_by_filter(self, filter_body: dict[str, Any], *, idempotency_key: str | None = None) -> dict[str, Any]:
         """Delete points matching the supplied Qdrant filter."""
