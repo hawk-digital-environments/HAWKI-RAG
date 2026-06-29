@@ -10,7 +10,7 @@ from typing import Any, Dict, Iterable, List, Optional
 
 
 _DEFAULT_STOPWORD_PATH = (
-    Path(__file__).resolve().parents[1] / "config" / "german_stopwords_plain.txt"
+    Path(__file__).resolve().parents[3] / "german_stopwords_full.txt"
 )
 
 
@@ -86,7 +86,7 @@ def _load_stopwords() -> set[str]:
     return {
         line.strip().lower()
         for line in content.splitlines()
-        if line.strip() and not line.strip().startswith("#")
+        if line.strip() and not line.strip().startswith(("#", ";"))
     }
 
 

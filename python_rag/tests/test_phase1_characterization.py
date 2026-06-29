@@ -248,10 +248,20 @@ class GraphFallbackCharacterizationTests(unittest.TestCase):
         from infrastructure.graph.graph_utils import filter_triplets_to_source
 
         source = (
+            "chunk file nextChunk next file Chunk Number File Name\n"
             "Die Universität zu Lübeck bietet Studiengänge in Medizin, Informatik "
             "und Biomedical Engineering an."
         )
         triplets = [
+            ("chunk", "Chunk Number,File Name", "file"),
+            ("chunk", "Chunk Number", "file"),
+            ("file", "Chunk Number", "nextChunk"),
+            ("nextChunk", "Chunk Number,File Name", "file"),
+            ("next file", "Chunk Number", "file"),
+            ("und", "mentions", "Biomedical Engineering"),
+            ("Die", "Title, Section", "Techniker"),
+            ("Techniker", "is", "Die"),
+            ("Universität zu Lübeck", "ist", "Biomedical Engineering"),
             ("https://uni-luebeck.de/", "has URL", "universität zu lübeck"),
             ("ingest_ee55bd5d94f149b51f543d46", "is related to", "uni-luebeck"),
             ("Universität: Universität zu Lübeck", "has_url<|#|", "https://uni-luebeck.de/"),
@@ -265,6 +275,86 @@ class GraphFallbackCharacterizationTests(unittest.TestCase):
             filter_triplets_to_source(triplets, source),
             [("Universität zu Lübeck", "offers", "Biomedical Engineering")],
         )
+
+    def test_converter_markdown_cleaner_strips_leading_metadata_rows_only(self) -> None:
+        from common.converter_markdown import strip_leading_converter_markdown_noise
+
+        text = "\n".join(
+            [
+                "",
+                "| chunk | Chunk Number,File Name | file |",
+                "| --- | --- | --- |",
+                "| file | Chunk Number | nextChunk |",
+                "",
+                "# Techniker Krankenkasse",
+                "Versicherungsschutz fuer Herrn Yazdan Asadi.",
+                "",
+                "| File Name | Beschreibung |",
+                "| Antrag.pdf | Normale Dokumenttabelle |",
+            ]
+        )
+
+        cleaned = strip_leading_converter_markdown_noise(text)
+
+        self.assertTrue(cleaned.startswith("# Techniker Krankenkasse"))
+        self.assertNotIn("nextChunk", cleaned)
+        self.assertIn("| File Name | Beschreibung |", cleaned)
+
+    def test_temporal_markdown_reader_strips_converter_noise_before_ingest(self) -> None:
+        from temporal_rag.storage import read_text_file
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "converted.md"
+            path.write_text(
+                "\n".join(
+                    [
+                        "| chunk | Chunk Number,File Name | file |",
+                        "| --- | --- | --- |",
+                        "| file | Chunk Number | nextChunk |",
+                        "",
+                        "# Techniker Krankenkasse",
+                        "Versicherungsschutz fuer Herrn Yazdan Asadi.",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            text = read_text_file(str(path))
+
+        self.assertTrue(text.startswith("# Techniker Krankenkasse"))
+        self.assertNotIn("nextChunk", text)
+
+    def test_prepare_documents_strips_converter_markdown_noise_before_chunking(self) -> None:
+        from application.workflows.ingest.chunking import prepare_documents
+
+        docs = [
+            SimpleNamespace(
+                id="doc-md",
+                text="\n".join(
+                    [
+                        "| chunk | Chunk Number,File Name | file |",
+                        "| --- | --- | --- |",
+                        "| file | Chunk Number | nextChunk |",
+                        "",
+                        "# Techniker Krankenkasse",
+                        "Versicherungsschutz fuer Herrn Yazdan Asadi.",
+                    ]
+                ),
+                payload={"title": "Policy", "source_url": "upload://policy.md", "source_format": "markdown"},
+            )
+        ]
+
+        chunk_records, stats = prepare_documents(
+            docs,
+            chunk_chars=1000,
+            chunk_overlap=0,
+            default_job_id="job-md",
+        )
+
+        self.assertEqual(stats["processed_docs"], 1)
+        self.assertEqual(len(chunk_records), 1)
+        self.assertTrue(chunk_records[0]["content"].startswith("# Techniker Krankenkasse"))
+        self.assertNotIn("Chunk Number", chunk_records[0]["content"])
 
     def test_graph_text_cleaner_normalizes_with_env_limits(self) -> None:
         from infrastructure.raganything.text import clean_graph_text

@@ -276,9 +276,13 @@ def test_triplet_extractor_uses_llm_fallback_when_raganything_returns_empty() ->
 def test_text_helper_modules_preserve_term_tag_and_chunk_rules() -> None:
     from common.text_chunking import split_text_into_chunks
     from common.text_tags import fallback_tags, flatten_keywords, normalize_tags
-    from common.text_terms import extract_terms
+    from common.text_terms import STOPWORDS, extract_terms
 
+    assert len(STOPWORDS) > 1800
+    assert "die" in STOPWORDS
+    assert "; german stopwords" not in STOPWORDS
     assert extract_terms("Wooden trains and Teddy-Bears")[:2] == ["wooden", "trains"]
+    assert extract_terms("diese Universität") == ["universität"]
     assert flatten_keywords("Keywords: 1. Wooden toys; 2. Teddy bears") == [
         "Wooden toys",
         "Teddy bears",

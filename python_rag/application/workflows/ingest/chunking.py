@@ -7,6 +7,10 @@ from typing import Any, Dict, List, Optional, Tuple
 from application.workflows.observability import pipeline_log
 from application.workflows.validation import normalize_ingest_metadata, validate_ingest_document
 from application.workflows.ingest.models import IngestChunkRecord, IngestDocumentStats
+from common.converter_markdown import (
+    should_strip_converter_markdown_noise,
+    strip_leading_converter_markdown_noise,
+)
 from common.text_preprocessor import ensure_tags, split_text
 
 logger = logging.getLogger(__name__)
@@ -74,10 +78,14 @@ def prepare_documents(
                 source_url=normalized_payload.get("source_url") or normalized_payload.get("page_url"),
             )
 
-        chunks = split_text(d.text, chunk_chars, chunk_overlap) or [d.text]
+        document_text = d.text
+        if should_strip_converter_markdown_noise(normalized_payload):
+            document_text = strip_leading_converter_markdown_noise(document_text)
+
+        chunks = split_text(document_text, chunk_chars, chunk_overlap) or [document_text]
         logger.debug("ingest:doc %s chunks=%s", doc_id, len(chunks))
         if graph_debug:
-            logger.debug("ingest:doc %s text_len=%s", doc_id, len(d.text or ""))
+            logger.debug("ingest:doc %s text_len=%s", doc_id, len(document_text or ""))
         doc_processed = False
         fmt: Optional[str] = None
         chunk_count = 0
@@ -140,4 +148,3 @@ def prepare_documents(
 
     doc_stats["total_chunks"] = len(chunk_records)
     return chunk_records, doc_stats
-

@@ -10,6 +10,7 @@ import time
 import unicodedata
 from typing import Any, Dict, List, Iterable, Tuple
 
+from common.text_terms import STOPWORDS
 from infrastructure.graph.neo4j_graph import Neo4jGraph
 
 logger = logging.getLogger(__name__)
@@ -42,6 +43,24 @@ _INTERNAL_ID_RE = re.compile(r"^(?:ingest|doc|chunk|task)_[a-z0-9][a-z0-9_-]{8,}
 _HASH_RE = re.compile(r"^[a-f0-9]{32,}$", re.IGNORECASE)
 _GENERATED_MARKDOWN_RE = re.compile(r"^\d{3,}\.md$", re.IGNORECASE)
 _DELIMITER_RESIDUE_MARKERS = ("<|#|", "<|", "|#|", "<|COMPLETE|>", "|COMPLETE|")
+_CONVERTER_METADATA_ENTITY_LABELS = {
+    "chunk",
+    "chunk number",
+    "chunks",
+    "file",
+    "file name",
+    "files",
+    "next chunk",
+    "next file",
+    "nextfile",
+    "nextchunk",
+}
+_CONVERTER_METADATA_RELATIONS = {
+    "chunk number",
+    "chunk number file name",
+    "file name",
+    "next file",
+}
 _LOW_VALUE_RELATIONS = {
     "generated",
     "has url",
@@ -78,18 +97,41 @@ def _normalize_match_text(value: Any) -> str:
         return ""
     text = unicodedata.normalize("NFKD", str(value))
     text = "".join(ch for ch in text if not unicodedata.combining(ch))
-    text = text.lower()
+    text = text.lower().replace("ß", "ss")
     text = re.sub(r"[^a-z0-9]+", " ", text)
     return re.sub(r"\s+", " ", text).strip()
+
+
+_NORMALIZED_STOPWORDS = {
+    token
+    for word in STOPWORDS
+    for token in _normalize_match_text(word).split()
+    if token
+}
+
+
+def _label_tokens(label_norm: str) -> list[str]:
+    return [
+        token
+        for token in label_norm.split()
+        if len(token) >= 3 and token not in _NORMALIZED_STOPWORDS
+    ]
+
+
+def _is_stopword_only_label(value: str) -> bool:
+    tokens = [token for token in _normalize_match_text(value).split() if token]
+    return bool(tokens) and all(token in _NORMALIZED_STOPWORDS for token in tokens)
 
 
 def _source_contains_label(source_norm: str, label: str) -> bool:
     label_norm = _normalize_match_text(label)
     if not label_norm:
         return False
+    tokens = _label_tokens(label_norm)
+    if not tokens:
+        return False
     if label_norm in source_norm:
         return True
-    tokens = [token for token in label_norm.split() if len(token) >= 3]
     if len(tokens) >= 2:
         return all(re.search(rf"\b{re.escape(token)}\b", source_norm) for token in tokens)
     return bool(tokens and re.search(rf"\b{re.escape(tokens[0])}\b", source_norm))
@@ -137,6 +179,14 @@ def _is_low_value_relation(value: str) -> bool:
     return value.strip().lower() in _LOW_VALUE_RELATIONS
 
 
+def _is_converter_metadata_entity(value: str) -> bool:
+    return _normalize_match_text(value) in _CONVERTER_METADATA_ENTITY_LABELS
+
+
+def _is_converter_metadata_relation(value: str) -> bool:
+    return _normalize_match_text(value) in _CONVERTER_METADATA_RELATIONS
+
+
 def _is_noise_entity(value: str) -> bool:
     if not value:
         return True
@@ -155,6 +205,10 @@ def _is_noise_entity(value: str) -> bool:
         return True
     if _has_delimiter_residue(compact):
         return True
+    if _is_converter_metadata_entity(compact):
+        return True
+    if _is_stopword_only_label(compact):
+        return True
     return False
 
 
@@ -164,7 +218,11 @@ def _is_noise_relation(value: str) -> bool:
     compact = value.strip()
     if _has_delimiter_residue(compact):
         return True
+    if _is_converter_metadata_relation(compact):
+        return True
     if _is_low_value_relation(compact):
+        return True
+    if _is_stopword_only_label(compact):
         return True
     return False
 

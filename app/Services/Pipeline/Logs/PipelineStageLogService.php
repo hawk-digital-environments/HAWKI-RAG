@@ -80,6 +80,7 @@ readonly class PipelineStageLogService
     ];
 
     private const RUNTIME_LOG_LINE_LIMIT = 5000;
+    private const RUNTIME_TASK_START_GRACE_SECONDS = 120;
 
     public function __construct(
         private PipelineTaskRepository $tasks,
@@ -427,7 +428,7 @@ readonly class PipelineStageLogService
             return [];
         }
 
-        $baseNeedles = $this->runtimeNeedles($task, $jobs);
+        $baseNeedles = $this->ragAnythingRuntimeNeedles($task, $jobs);
         $documentNeedles = $this->documentNeedles($jobs);
         $selected = [];
         $entries = [];
@@ -493,6 +494,10 @@ readonly class PipelineStageLogService
             foreach ($this->runtimeLogLines($path) as $line) {
                 $text = $line['text'];
                 if (! $this->stageRuntimeLineLooksRelevant($stage, $text)) {
+                    continue;
+                }
+
+                if (! $this->runtimeLineIsInsideTaskWindow($text, $task)) {
                     continue;
                 }
 
@@ -740,6 +745,27 @@ readonly class PipelineStageLogService
      * @param Collection<int, PipelineJob> $jobs
      * @return list<string>
      */
+    private function ragAnythingRuntimeNeedles(PipelineTask $task, Collection $jobs): array
+    {
+        $needles = [];
+        $this->appendNeedle($needles, $task->task_id);
+
+        $jobs->each(function (PipelineJob $job) use (&$needles): void {
+            $metadata = is_array($job->metadata) ? $job->metadata : [];
+            $this->appendNeedle($needles, $job->job_id);
+            $this->appendNeedle($needles, $metadata['task_id'] ?? null);
+            $this->appendNeedle($needles, $metadata['job_id'] ?? null);
+            $this->appendNeedle($needles, $metadata['document_id'] ?? null);
+            $this->appendNeedle($needles, $metadata['doc_id'] ?? null);
+        });
+
+        return $this->normalizeNeedles($needles);
+    }
+
+    /**
+     * @param Collection<int, PipelineJob> $jobs
+     * @return list<string>
+     */
     private function documentNeedles(Collection $jobs): array
     {
         $needles = [];
@@ -887,6 +913,35 @@ readonly class PipelineStageLogService
         }
 
         return false;
+    }
+
+    private function runtimeLineIsInsideTaskWindow(string $line, PipelineTask $task): bool
+    {
+        $lineTime = $this->runtimeLineTime($line);
+        if ($lineTime === null || ! ($task->started_at instanceof \DateTimeInterface)) {
+            return true;
+        }
+
+        $taskStartedAt = \DateTimeImmutable::createFromInterface($task->started_at)
+            ->setTimezone(new \DateTimeZone('UTC'));
+
+        return $lineTime->getTimestamp() >= $taskStartedAt->getTimestamp() - self::RUNTIME_TASK_START_GRACE_SECONDS;
+    }
+
+    private function runtimeLineTime(string $line): ?\DateTimeImmutable
+    {
+        if (! preg_match('/\b(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})(?:[,.](\d{1,6}))?/', $line, $matches)) {
+            return null;
+        }
+
+        $fraction = str_pad(substr((string) ($matches[3] ?? '0'), 0, 6), 6, '0');
+        $time = \DateTimeImmutable::createFromFormat(
+            '!Y-m-d H:i:s.u',
+            $matches[1].' '.$matches[2].'.'.$fraction,
+            new \DateTimeZone('UTC'),
+        );
+
+        return $time instanceof \DateTimeImmutable ? $time : null;
     }
 
     /**

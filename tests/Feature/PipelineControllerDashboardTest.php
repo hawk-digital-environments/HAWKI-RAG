@@ -694,7 +694,7 @@ class PipelineControllerDashboardTest extends TestCase
             'task_id' => 'task-direct-convert-logs',
             'dataset_id' => 'direct-convert-dataset',
             'status' => PipelineTask::STATUS_RUNNING,
-            'started_at' => now(),
+            'started_at' => \Illuminate\Support\Carbon::parse('2026-06-21 10:00:30', 'UTC'),
             'counters' => ['jobs_total' => 1],
             'metadata' => ['request' => ['mode' => 'uploaded_file_convert_ingest']],
         ]);
@@ -723,6 +723,52 @@ class PipelineControllerDashboardTest extends TestCase
         File::deleteDirectory($runtimeRoot);
     }
 
+    public function test_ingest_stage_log_excludes_old_worker_entries_for_same_source(): void
+    {
+        $runtimeRoot = storage_path('framework/testing/pipeline-stage-runtime-ingest');
+        $runtimeLogPath = $runtimeRoot.'/ingestion_worker.log';
+        File::ensureDirectoryExists($runtimeRoot);
+        File::put($runtimeLogPath, implode(PHP_EOL, [
+            "2026-06-28 08:34:59,723 INFO temporal_rag.activities ingest_markdown_files:start {'source_id': 'source_repeat_upload', 'markdown_dir': '/shared/sources/source_repeat_upload/markdown', 'task_queue': 'rag-ingestion-task-queue'}",
+            "2026-06-28 23:45:40,165 INFO temporal_rag.activities ingest_markdown_files:start {'source_id': 'source_repeat_upload', 'markdown_dir': '/shared/sources/source_repeat_upload/markdown', 'task_queue': 'rag-ingestion-task-queue'}",
+            "2026-06-28 23:45:41,165 INFO temporal_rag.activities ingest_markdown_files:start {'source_id': 'source_other_upload', 'markdown_dir': '/shared/sources/source_other_upload/markdown', 'task_queue': 'rag-ingestion-task-queue'}",
+        ]).PHP_EOL);
+        config()->set('config.raganything_runtime_log_paths', []);
+        config()->set('config.pipeline_stage_runtime_log_paths.ingest', [$runtimeLogPath]);
+
+        $task = PipelineTask::query()->create([
+            'task_id' => 'task-repeat-upload-ingest-logs',
+            'dataset_id' => 'repeat-upload-dataset',
+            'status' => PipelineTask::STATUS_RUNNING,
+            'started_at' => \Illuminate\Support\Carbon::parse('2026-06-28 23:45:38', 'UTC'),
+            'counters' => ['jobs_total' => 1],
+            'metadata' => ['request' => ['mode' => 'uploaded_file_convert_ingest']],
+        ]);
+        PipelineJob::query()->create([
+            'job_id' => 'ingest_current_repeat',
+            'task_id' => $task->task_id,
+            'source_id' => 'source_repeat_upload',
+            'job_type' => PipelineJob::TYPE_INGEST,
+            'status' => PipelineJob::STATUS_RUNNING,
+            'current_stage' => 'ingest_markdown_files',
+            'source_url' => 'upload://repeat.pdf',
+            'local_path' => '/shared/task_controller_upload/repeat.pdf',
+            'metadata' => ['source_id' => 'source_repeat_upload'],
+        ]);
+
+        $response = $this->getJson('/pipeline/tasks/task-repeat-upload-ingest-logs/stages/ingest/logs')
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $text = (string) $response->json('log.text');
+        $this->assertStringContainsString('Temporal ingestion worker log entries', $text);
+        $this->assertStringContainsString('2026-06-28 23:45:40,165', $text);
+        $this->assertStringNotContainsString('2026-06-28 08:34:59,723', $text);
+        $this->assertStringNotContainsString('source_other_upload', $text);
+
+        File::deleteDirectory($runtimeRoot);
+    }
+
     public function test_ingest_stage_log_includes_real_raganything_runtime_entries(): void
     {
         $runtimeLogPath = storage_path('framework/testing/raganything-runtime/raganything_runtime.log');
@@ -733,7 +779,11 @@ class PipelineControllerDashboardTest extends TestCase
         }
 
         $operationId = 'source_real_ingest:ingest_real_job:doc_real_abc123:ingest';
+        $oldOperationId = 'source_real_ingest:ingest_old_job:doc_old_abc123:ingest';
         File::put($runtimeLogPath, implode(PHP_EOL, [
+            'level="INFO" logger="api.main" event="api:ingest request_id='.$oldOperationId.' docs=1 graph=True idempotency_key='.$oldOperationId.'"',
+            'level="INFO" logger="application.workflows.ingest_logic" event="{"collection": "hawki_raganything-dataset", "event": "application.workflows.stage", "graph": true, "idempotency_key": "'.$oldOperationId.'", "job_id": "ingest_old_job", "stage": "ingest", "status": "started", "total_docs": 1}"',
+            'level="INFO" logger="application.workflows.ingest.chunking" event="{"chunks": 1, "doc_id": "doc_old_abc123", "event": "application.workflows.stage", "job_id": "ingest_old_job", "stage": "ingest", "status": "success"}"',
             'level="INFO" logger="api.main" event="api:ingest request_id='.$operationId.' docs=1 graph=True idempotency_key='.$operationId.'"',
             'level="INFO" logger="api.main" event="event=api.request_start request_id='.$operationId.' method=POST path=/ingest body={\"docs\": [{\"id\": \"doc_real_abc123\", \"text\": \"NOISY_RAW_DOC_TEXT RAG-Anything\"}]}"',
             'level="INFO" logger="api.main" event="event=api.request_start request_id=unrelated method=GET path=/health"',
@@ -797,6 +847,8 @@ class PipelineControllerDashboardTest extends TestCase
         $this->assertStringNotContainsString('api.request_start', $text);
         $this->assertStringNotContainsString('path=/health', $text);
         $this->assertStringNotContainsString('unrelated_doc', $text);
+        $this->assertStringNotContainsString('ingest_old_job', $text);
+        $this->assertStringNotContainsString('doc_old_abc123', $text);
         $this->assertSame(1, substr_count($text, 'api:ingest request_id='.$operationId));
 
         $download = $this->get('/pipeline/tasks/task-raganything-logs/stages/ingest/logs/download')

@@ -12,7 +12,7 @@ TERM_PATTERN = re.compile(r"[A-Za-zÄÖÜäöüß][A-Za-zÄÖÜäöüß0-9_-]{3,
 
 
 def load_stopwords() -> set[str]:
-    stop_path = Path(__file__).resolve().parent.parent / "config" / "german_stopwords_plain.txt"
+    stop_path = Path(__file__).resolve().parent.parent / "german_stopwords_full.txt"
     try:
         content = stop_path.read_text(encoding="utf-8")
     except FileNotFoundError:
@@ -21,7 +21,7 @@ def load_stopwords() -> set[str]:
     return {
         line.strip().lower()
         for line in content.splitlines()
-        if line.strip() and not line.strip().startswith("#")
+        if line.strip() and not line.strip().startswith(("#", ";"))
     }
 
 

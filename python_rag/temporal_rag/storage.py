@@ -7,6 +7,8 @@ import json
 from pathlib import Path
 from typing import Any, Iterable
 
+from common.converter_markdown import strip_leading_converter_markdown_noise
+
 
 def is_object_prefix(path: str) -> bool:
     return path.startswith("s3://")
@@ -32,7 +34,11 @@ def read_text_file(path: str) -> str:
     if is_object_prefix(path):
         raise RuntimeError("s3:// Markdown reads require an object-storage adapter in this deployment.")
 
-    return Path(path).read_text(encoding="utf-8")
+    local_path = Path(path)
+    text = local_path.read_text(encoding="utf-8")
+    if local_path.suffix.lower() in {".md", ".markdown"}:
+        return strip_leading_converter_markdown_noise(text)
+    return text
 
 
 def stable_document_id(source_id: str, markdown_file: str, markdown_root: str) -> str:
