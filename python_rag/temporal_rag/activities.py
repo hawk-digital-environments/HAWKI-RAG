@@ -166,6 +166,8 @@ def _scraper_start_payload(workflow_input: dict[str, Any], source_id: str, raw_d
         "max_images_per_page",
         "max_link_density",
         "discovery_mode",
+        "wait_until",
+        "page_timeout_ms",
     ):
         if key in request_metadata and request_metadata[key] is not None:
             payload[key] = request_metadata[key]

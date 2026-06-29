@@ -64,6 +64,8 @@ readonly class ScrapeTaskProfileNormalizer
             'max_pages' => $this->number($profile, 'max_pages', 100),
             'max_link_density' => $this->number($profile, 'max_link_density', 0.4),
             'discovery_mode' => is_bool($profile['discovery_mode'] ?? null) ? $profile['discovery_mode'] : false,
+            'wait_until' => $this->values->firstScalar([$profile['wait_until'] ?? null]),
+            'page_timeout_ms' => $this->optionalNumber($profile, 'page_timeout_ms'),
             'raw' => $entry,
         ];
     }
@@ -108,5 +110,12 @@ readonly class ScrapeTaskProfileNormalizer
         $value = $profile[$key] ?? null;
 
         return is_int($value) || is_float($value) ? $value : $default;
+    }
+
+    private function optionalNumber(array $profile, string $key): int|float|null
+    {
+        $value = $profile[$key] ?? null;
+
+        return is_int($value) || is_float($value) ? $value : null;
     }
 }

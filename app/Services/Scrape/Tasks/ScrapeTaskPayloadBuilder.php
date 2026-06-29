@@ -103,6 +103,8 @@ readonly class ScrapeTaskPayloadBuilder
             'rescrape_failed' => $profile['rescrape_failed'],
             'max_images_per_page' => $profile['max_images_per_page'],
             'max_link_density' => $profile['max_link_density'],
+            'wait_until' => $profile['wait_until'],
+            'page_timeout_ms' => $profile['page_timeout_ms'],
         ];
     }
 }

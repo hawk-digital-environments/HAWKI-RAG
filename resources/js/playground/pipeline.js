@@ -866,6 +866,8 @@ function settingsMetadata(task) {
         'rescrape_failed',
         'max_images_per_page',
         'max_link_density',
+        'wait_until',
+        'page_timeout_ms',
     ].forEach((key) => {
         if (settings[key] !== undefined && settings[key] !== null && settings[key] !== '') {
             metadata[key] = settings[key];

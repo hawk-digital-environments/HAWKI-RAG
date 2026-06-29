@@ -21,6 +21,9 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'operator' => RequireOperatorAccess::class,
         ]);
+        $middleware->validateCsrfTokens(except: [
+            'ui/*',
+        ]);
         $middleware->redirectGuestsTo(fn (Request $request): ?string => null);
     })
     ->withExceptions(function (Exceptions $exceptions) {

@@ -40,6 +40,14 @@ readonly class ScrapeTaskStartPayloadBuilder
             'discovery_mode' => $profile['discovery_mode'],
         ];
 
+        if (($profile['wait_until'] ?? null) !== null) {
+            $payload['wait_until'] = $profile['wait_until'];
+        }
+
+        if (($profile['page_timeout_ms'] ?? null) !== null) {
+            $payload['page_timeout_ms'] = $profile['page_timeout_ms'];
+        }
+
         if ($firstHost !== null) {
             $payload['url'] = 'https://'.$firstHost;
         } elseif ($firstSitemap !== null) {

@@ -153,6 +153,8 @@ class ScraperTaskProxyTest extends TestCase
                 && $request['max_concurrency'] === 2
                 && $request['max_rpm'] === 30
                 && $request['skip_images'] === true
+                && $request['wait_until'] === 'networkidle'
+                && $request['page_timeout_ms'] === 90000
                 && $request['sitemap'] === true
                 && $request['sitemap_base'] === 'https://www.uni-goettingen.de/sitemap.xml';
         });
@@ -195,6 +197,8 @@ class ScraperTaskProxyTest extends TestCase
                 'max_images_per_page' => 12,
                 'max_link_density' => 0.2,
                 'discovery_mode' => true,
+                'wait_until' => 'networkidle',
+                'page_timeout_ms' => 90000,
             ],
         ];
     }
