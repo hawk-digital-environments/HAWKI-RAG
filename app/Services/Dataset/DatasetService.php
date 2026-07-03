@@ -43,14 +43,20 @@ readonly class DatasetService
 
         return $this->datasets->create([
             'dataset_id' => $datasetId,
+            'tenant_id' => $this->identifiers->stringValue($input['tenant_id'] ?? null) ?? 'default',
+            'owner_application_id' => $this->identifiers->stringValue($input['owner_application_id'] ?? null) ?? 'rawki-default',
             'name' => $this->identifiers->displayName($datasetId, $input['name'] ?? null),
             'description' => $this->identifiers->stringValue($input['description'] ?? null),
             'status' => $this->identifiers->stringValue($input['status'] ?? null) ?? Dataset::STATUS_ACTIVE,
+            'visibility' => $this->identifiers->stringValue($input['visibility'] ?? null) ?? Dataset::VISIBILITY_DISCOVERABLE,
+            'protected' => (bool) ($input['protected'] ?? false),
+            'metadata_json' => $input['metadata'] ?? $input['metadata_json'] ?? null,
             'qdrant_collection' => $this->identifiers->stringValue($input['qdrant_collection'] ?? $input['qdrantCollection'] ?? null)
                 ?? $this->identifiers->qdrantCollection($safe),
             'neo4j_namespace' => $this->identifiers->stringValue($input['neo4j_namespace'] ?? $input['neo4jNamespace'] ?? null)
                 ?? $this->identifiers->neo4jNamespace($safe),
             'created_at' => $this->clock->now(),
+            'updated_at' => $this->clock->now(),
         ]);
     }
 
@@ -68,11 +74,17 @@ readonly class DatasetService
             'name' => $this->identifiers->displayName($datasetId, $input['name'] ?? null),
             'description' => $this->identifiers->stringValue($input['description'] ?? null),
             'status' => Dataset::STATUS_ACTIVE,
+            'tenant_id' => $this->identifiers->stringValue($input['tenant_id'] ?? null) ?? 'default',
+            'owner_application_id' => $this->identifiers->stringValue($input['owner_application_id'] ?? null) ?? 'rawki-default',
+            'visibility' => Dataset::VISIBILITY_DISCOVERABLE,
+            'protected' => false,
+            'metadata_json' => $input['metadata'] ?? $input['metadata_json'] ?? null,
             'qdrant_collection' => $this->identifiers->stringValue($input['qdrant_collection'] ?? $input['qdrantCollection'] ?? null)
                 ?? $this->identifiers->qdrantCollection($safe),
             'neo4j_namespace' => $this->identifiers->stringValue($input['neo4j_namespace'] ?? $input['neo4jNamespace'] ?? null)
                 ?? $this->identifiers->neo4jNamespace($safe),
             'created_at' => $this->clock->now(),
+            'updated_at' => $this->clock->now(),
         ]);
     }
 

@@ -4,11 +4,16 @@ declare(strict_types=1);
 namespace App\Services\Pipeline\Repositories;
 
 use App\Models\Document;
+use App\Services\SpecV2\Repositories\CorpusRepository;
 use Illuminate\Container\Attributes\Singleton;
 
 #[Singleton]
 readonly class PipelineIngestionRepository
 {
+    public function __construct(
+        private CorpusRepository $corpora,
+    ) {}
+
     /**
      * @param array{dataset_id:string,qdrant_collection:string,neo4j_namespace:string} $targets
      * @param array<string, mixed> $bridgeResponse
@@ -21,7 +26,7 @@ readonly class PipelineIngestionRepository
         ?int $fileSize,
         array $bridgeResponse,
     ): Document {
-        return Document::query()->updateOrCreate(
+        $document = Document::query()->updateOrCreate(
             [
                 'collection' => $targets['qdrant_collection'],
                 'checksum_sha256' => $checksum,
@@ -47,5 +52,9 @@ readonly class PipelineIngestionRepository
                 'status' => Document::STATUS_COMPLETED,
             ],
         );
+
+        $this->corpora->syncFromDocument($document);
+
+        return $document;
     }
 }

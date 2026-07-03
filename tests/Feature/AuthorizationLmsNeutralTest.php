@@ -3,12 +3,13 @@
 namespace Tests\Feature;
 
 use App\Models\Document;
+use App\Services\Authorization\IdentityProvisioningService;
 use App\Services\Authorization\Connectors\StaticLmsPermissionConnector;
 use App\Services\Authorization\Oidc\OidcJwtValidator;
 use App\Services\Authorization\PermissionGraph\PermissionGraphRelationshipFactory;
-use App\Services\Authorization\Repositories\AuthorizationIdentityRepository;
 use App\Services\Authorization\Values\LmsDocumentRelation;
 use App\Services\Authorization\Values\LmsMembership;
+use App\Services\Authorization\Values\ResolvedUserIdentity;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
@@ -26,6 +27,8 @@ class AuthorizationLmsNeutralTest extends TestCase
             'sub' => 'subject-123',
             'aud' => 'rawki',
             'exp' => time() + 3600,
+            'tenant_id' => 'uni-hawk',
+            'application_id' => 'hawki-web',
             'email' => 'learner@example.test',
             'preferred_username' => 'learner',
         ];
@@ -40,12 +43,45 @@ class AuthorizationLmsNeutralTest extends TestCase
         ]);
 
         $resolved = app(OidcJwtValidator::class)->validate($jwt);
-        $record = app(AuthorizationIdentityRepository::class)->upsertFromResolved($resolved);
+        $record = app(IdentityProvisioningService::class)->upsertResolvedIdentity($resolved);
 
         $this->assertSame('keycloak', $record->provider);
         $this->assertSame('subject-123', $record->external_user_id);
         $this->assertSame('learner@example.test', $record->email);
+        $this->assertSame('uni-hawk', $record->tenant_id);
+        $this->assertSame('hawki-web', $record->application_id);
+        $this->assertNotNull($record->internal_user_id);
         $this->assertDatabaseHas('users', ['email' => 'learner@example.test']);
+        $this->assertDatabaseHas('applications', ['id' => 'hawki-web', 'tenant_id' => 'uni-hawk']);
+        $this->assertDatabaseHas('internal_users', ['id' => $record->internal_user_id, 'tenant_id' => 'uni-hawk']);
+    }
+
+    public function test_group_member_identity_mapping_reuses_internal_user_for_later_oidc_login(): void
+    {
+        $assignments = app(IdentityProvisioningService::class)->groupMemberAssignments(
+            'uni-hawk',
+            'hawki-web',
+            ['alice@hawk.de'],
+        );
+
+        $record = app(IdentityProvisioningService::class)->upsertResolvedIdentity(
+            new ResolvedUserIdentity(
+                issuer: 'https://keycloak.example.test/realms/rawki',
+                subject: 'subject-999',
+                provider: 'keycloak',
+                externalUserId: 'subject-999',
+                email: 'alice@hawk.de',
+                username: 'alice',
+                claims: [
+                    'tenant_id' => 'uni-hawk',
+                    'application_id' => 'hawki-web',
+                ],
+            ),
+        );
+
+        $this->assertSame($assignments[0]->internalUserId, $record->internal_user_id);
+        $this->assertSame('uni-hawk', $record->tenant_id);
+        $this->assertSame('hawki-web', $record->application_id);
     }
 
     public function test_oidc_jwt_rejects_wrong_issuer(): void

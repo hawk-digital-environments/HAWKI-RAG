@@ -1,21 +1,25 @@
 <?php
+declare(strict_types=1);
 
-namespace App\Models;
+namespace App\Models\SpecV2;
 
-use App\Models\SpecV2\Application;
-use App\Models\SpecV2\Tenant;
+use App\Models\Document;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-class Dataset extends Model
+class Heap extends Model
 {
-    public const STATUS_ACTIVE = 'active';
-    public const STATUS_ARCHIVED = 'archived';
     public const VISIBILITY_DISCOVERABLE = 'discoverable';
     public const VISIBILITY_HIDDEN = 'hidden';
 
-    public $timestamps = false;
+    protected $table = 'datasets';
+
+    protected $primaryKey = 'dataset_id';
+
+    public $incrementing = false;
+
+    protected $keyType = 'string';
 
     protected $fillable = [
         'dataset_id',
@@ -40,16 +44,6 @@ class Dataset extends Model
         'updated_at' => 'datetime',
     ];
 
-    public function tasks(): HasMany
-    {
-        return $this->hasMany(PipelineTask::class, 'dataset_id', 'dataset_id');
-    }
-
-    public function documents(): HasMany
-    {
-        return $this->hasMany(Document::class, 'dataset_id', 'dataset_id');
-    }
-
     public function tenant(): BelongsTo
     {
         return $this->belongsTo(Tenant::class, 'tenant_id', 'id');
@@ -58,5 +52,10 @@ class Dataset extends Model
     public function ownerApplication(): BelongsTo
     {
         return $this->belongsTo(Application::class, 'owner_application_id', 'id');
+    }
+
+    public function documents(): HasMany
+    {
+        return $this->hasMany(Document::class, 'dataset_id', 'dataset_id');
     }
 }

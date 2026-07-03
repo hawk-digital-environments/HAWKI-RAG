@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Authorization\Oidc;
 
 use App\Models\User;
-use App\Services\Authorization\Repositories\AuthorizationIdentityRepository;
+use App\Services\Authorization\IdentityProvisioningService;
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Http\Request;
 
@@ -14,7 +14,7 @@ readonly class OidcUserResolver
 {
     public function __construct(
         private OidcJwtValidator $validator,
-        private AuthorizationIdentityRepository $identities,
+        private IdentityProvisioningService $identityProvisioning,
     ) {}
 
     public function userFromRequest(Request $request): ?User
@@ -29,7 +29,7 @@ readonly class OidcUserResolver
             return null;
         }
 
-        $record = $this->identities->upsertFromResolved($identity);
+        $record = $this->identityProvisioning->upsertResolvedIdentity($identity);
 
         return $record->user;
     }

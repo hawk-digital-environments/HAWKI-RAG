@@ -2,6 +2,8 @@
 
 namespace App\Models;
 
+use App\Models\SpecV2\Corpus;
+use App\Models\SpecV2\Heap;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -30,6 +32,7 @@ class Document extends Model
         'id',
         'external_id',
         'dataset_id',
+        'corpus_id',
         'collection',
         'source_type',
         'source_url',
@@ -55,5 +58,15 @@ class Document extends Model
     public function dataset(): BelongsTo
     {
         return $this->belongsTo(Dataset::class, 'dataset_id', 'dataset_id');
+    }
+
+    public function heap(): BelongsTo
+    {
+        return $this->belongsTo(Heap::class, 'dataset_id', 'dataset_id');
+    }
+
+    public function corpus(): BelongsTo
+    {
+        return $this->belongsTo(Corpus::class, 'corpus_id', 'id');
     }
 }

@@ -32,6 +32,8 @@ readonly class DocumentPayloadBuilder
         $payload = [
             'id' => $document->id,
             'datasetId' => $document->dataset_id,
+            'heapId' => $document->dataset_id,
+            'corpusId' => $document->corpus_id,
             'sourceUrl' => $document->source_url,
             'contentType' => $document->mime_type,
             'contentHash' => $document->checksum_sha256,

@@ -29,6 +29,15 @@ return [
         ],
     ],
 
+    'identity_bridge' => [
+        'default_tenant_id' => env('AUTHZ_DEFAULT_TENANT_ID', 'default'),
+        'default_tenant_name' => env('AUTHZ_DEFAULT_TENANT_NAME', 'Default Tenant'),
+        'default_application_id' => env('AUTHZ_DEFAULT_APPLICATION_ID', 'rawki-default'),
+        'default_application_name' => env('AUTHZ_DEFAULT_APPLICATION_NAME', 'RAWKI Default'),
+        'tenant_claim_keys' => ['tenant_id', 'tenantId', 'tenant', 'org', 'org_id'],
+        'application_claim_keys' => ['application_id', 'applicationId', 'app_id', 'appId', 'azp', 'client_id', 'clientId'],
+    ],
+
     'connectors' => [
         'default' => env('LMS_PERMISSION_CONNECTOR', 'static'),
         'static' => [
