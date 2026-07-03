@@ -49,6 +49,11 @@ def apply_ingest_request_settings(body: IngestRequest, settings: AppSettings) ->
     return body.model_copy(update=updates)
 
 
+class AuthorizationContextPayload(BaseModel):
+    provider: str
+    user_id: str
+
+
 class QueryRequest(BaseModel):
     query: str
     top_k: int = 5
@@ -60,7 +65,7 @@ class QueryRequest(BaseModel):
     smart_lookup: bool = False
     structural_hops: int | None = None
     preferred_tags: list[str] | None = None
-    auth_context: dict[str, Any] | None = None
+    auth_context: AuthorizationContextPayload | None = None
     # Reranker options: none | cosine | external | jina
     reranker: str = "none"
     rerank_top_n: int = 20

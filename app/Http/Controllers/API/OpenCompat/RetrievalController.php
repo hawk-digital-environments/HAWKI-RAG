@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers\API\OpenCompat;
 
 use App\Http\Controllers\Controller;
+use App\Services\Authorization\AuthorizationService;
 use App\Services\OpenCompat\OpenCompatService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -13,25 +14,25 @@ class RetrievalController extends Controller
 {
     public function __construct(private readonly OpenCompatService $compat) {}
 
-    public function chunks(Request $request): JsonResponse
+    public function chunks(Request $request, AuthorizationService $authorization): JsonResponse
     {
         $input = $this->validateQuery($request);
 
-        return $this->json($this->compat->retrieveChunks($input));
+        return $this->json($this->compat->retrieveChunks($input, $authorization->retrievalContextFor($request->user())));
     }
 
-    public function groupedChunks(Request $request): JsonResponse
+    public function groupedChunks(Request $request, AuthorizationService $authorization): JsonResponse
     {
         $input = $this->validateQuery($request);
 
-        return $this->json($this->compat->retrieveChunks($input, grouped: true));
+        return $this->json($this->compat->retrieveChunks($input, $authorization->retrievalContextFor($request->user()), grouped: true));
     }
 
-    public function docs(Request $request): JsonResponse
+    public function docs(Request $request, AuthorizationService $authorization): JsonResponse
     {
         $input = $this->validateQuery($request);
 
-        return $this->json($this->compat->retrieveDocs($input));
+        return $this->json($this->compat->retrieveDocs($input, $authorization->retrievalContextFor($request->user())));
     }
 
     public function searchDocuments(Request $request): JsonResponse
@@ -60,7 +61,7 @@ class RetrievalController extends Controller
         return $this->json($this->compat->batchDocuments($input));
     }
 
-    public function batchChunks(Request $request): JsonResponse
+    public function batchChunks(Request $request, AuthorizationService $authorization): JsonResponse
     {
         $input = $request->validate([
             'query' => 'sometimes|string|max:4000',
@@ -72,7 +73,7 @@ class RetrievalController extends Controller
             'chunkIds.*' => 'string|max:255',
         ]);
 
-        return $this->json($this->compat->batchChunks($input));
+        return $this->json($this->compat->batchChunks($input, $authorization->retrievalContextFor($request->user())));
     }
 
     /**

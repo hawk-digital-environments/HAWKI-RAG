@@ -54,6 +54,29 @@ def test_authorization_filter_denies_all_hits_when_enabled_without_auth_context(
     assert filter_authorized_hits([{"payload": {"doc_id": "doc-1"}}], None) == []
 
 
+def test_authorization_filter_accepts_attribute_based_auth_context_payload(monkeypatch) -> None:
+    from application.workflows.authorization_filter import filter_authorized_hits
+
+    monkeypatch.setenv("AUTHZ_ENABLED", "true")
+    monkeypatch.setattr(
+        "application.workflows.authorization_filter.batch_check_documents",
+        lambda context, doc_ids: {"doc-allowed": True, "doc-denied": False},
+    )
+
+    class Payload:
+        provider = "local"
+        user_id = "u1"
+
+    hits = [
+        {"payload": {"doc_id": "doc-allowed", "content": "allowed"}},
+        {"payload": {"doc_id": "doc-denied", "content": "denied"}},
+    ]
+
+    filtered = filter_authorized_hits(hits, Payload())
+
+    assert [hit["payload"]["doc_id"] for hit in filtered] == ["doc-allowed"]
+
+
 def test_batch_check_documents_sends_spicedb_checkbulk_payload_and_maps_results(monkeypatch) -> None:
     from application.workflows.authorization_filter import AuthorizationContext, batch_check_documents
 

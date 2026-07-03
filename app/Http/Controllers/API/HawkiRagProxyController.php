@@ -7,12 +7,18 @@ namespace App\Http\Controllers\API;
 use App\Http\Controllers\Controller;
 use App\Services\Authorization\AuthorizationService;
 use App\Services\Rag\RagProxyService;
+use App\Services\Rag\RagQueryPayloadFactory;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class HawkiRagProxyController extends Controller
 {
-    public function query(Request $request, RagProxyService $proxy, AuthorizationService $authorization): JsonResponse
+    public function query(
+        Request $request,
+        RagProxyService $proxy,
+        AuthorizationService $authorization,
+        RagQueryPayloadFactory $payloads,
+    ): JsonResponse
     {
         $data = $request->validate([
             'query'           => 'required|string|max:4000',
@@ -24,9 +30,8 @@ class HawkiRagProxyController extends Controller
             'preferred_tags'  => 'sometimes|array|max:20',
             'preferred_tags.*'=> 'string|max:80',
         ]);
-        $data['auth_context'] = $authorization->retrievalContextFor($request->user());
 
-        $result = $proxy->query($data);
+        $result = $proxy->query($payloads->make($data, $authorization->retrievalContextFor($request->user())));
 
         return response()->json($result['payload'], $result['status']);
     }

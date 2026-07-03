@@ -8,6 +8,7 @@ use App\Models\Document;
 use App\Models\User;
 use App\Services\Authorization\Contracts\PermissionGraphClient;
 use App\Services\Authorization\Repositories\AuthorizationIdentityRepository;
+use App\Services\Authorization\Values\RetrievalAuthorizationContext;
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Contracts\Config\Repository as ConfigRepository;
 use Psr\Log\LoggerInterface;
@@ -42,7 +43,13 @@ readonly class AuthorizationService
         }
 
         $context = $this->retrievalContextFor($user);
-        $allowed = (bool) ($this->graph->batchCheckDocuments($context['provider'], $context['user_id'], [$documentId])[$documentId] ?? false);
+        if ($context === null) {
+            $this->audit('denied', $user, $documentId, 'missing_auth_context');
+
+            return false;
+        }
+
+        $allowed = (bool) ($this->graph->batchCheckDocuments($context->provider, $context->userId, [$documentId])[$documentId] ?? false);
         $this->audit($allowed ? 'allowed' : 'denied', $user, $documentId, $allowed ? 'permission_graph_allowed' : 'permission_graph_denied');
 
         return $allowed;
@@ -53,10 +60,7 @@ readonly class AuthorizationService
         return $this->canViewDocument($user, (string) $document->id);
     }
 
-    /**
-     * @return array{provider: string, user_id: string}|null
-     */
-    public function retrievalContextFor(?User $user): ?array
+    public function retrievalContextFor(?User $user): ?RetrievalAuthorizationContext
     {
         if ($user === null) {
             return null;
@@ -64,16 +68,10 @@ readonly class AuthorizationService
 
         $identity = $this->identities->findByUser($user);
         if ($identity !== null) {
-            return [
-                'provider' => $identity->provider,
-                'user_id' => $identity->external_user_id,
-            ];
+            return RetrievalAuthorizationContext::fromIdentity($identity);
         }
 
-        return [
-            'provider' => 'local',
-            'user_id' => (string) $user->getAuthIdentifier(),
-        ];
+        return RetrievalAuthorizationContext::forLocalUser($user);
     }
 
     private function audit(string $decision, ?User $user, string $documentId, string $reason): void

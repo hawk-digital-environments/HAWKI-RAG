@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Rag;
 
+use App\Services\Rag\Values\RagQueryPayload;
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Contracts\Config\Repository as ConfigRepository;
 use Illuminate\Http\Client\Factory as HttpFactory;
@@ -17,30 +18,12 @@ readonly class RagProxyService
     ) {}
 
     /**
-     * @param array<string, mixed> $data
      * @return array{payload: mixed, status: int}
      */
-    public function query(array $data): array
+    public function query(RagQueryPayload $payload): array
     {
-        $payload = [
-            'query' => $data['query'],
-            'top_k' => $data['top_k'] ?? 5,
-            'is_optimized' => $data['is_optimized'] ?? false,
-            'generate' => $data['generate'] ?? true,
-            'fast_mode' => $data['fast_mode'] ?? false,
-            'smart_lookup' => $data['smart_lookup'] ?? false,
-        ];
-
-        if (! empty($data['preferred_tags'])) {
-            $payload['preferred_tags'] = $data['preferred_tags'];
-        }
-
-        if (! empty($data['auth_context']) && is_array($data['auth_context'])) {
-            $payload['auth_context'] = $data['auth_context'];
-        }
-
         try {
-            $response = $this->http->timeout(60)->post($this->queryEndpoint(), $payload);
+            $response = $this->http->timeout(60)->post($this->queryEndpoint(), $payload->toArray());
         } catch (\Throwable $exception) {
             return [
                 'status' => 502,

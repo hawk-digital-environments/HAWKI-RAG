@@ -7,6 +7,7 @@ import logging
 import os
 import urllib.error
 import urllib.request
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
@@ -22,10 +23,12 @@ class AuthorizationContext:
 
     @classmethod
     def from_payload(cls, payload: Any) -> "AuthorizationContext | None":
-        if not isinstance(payload, dict):
-            return None
-        provider = _string(payload.get("provider"))
-        user_id = _string(payload.get("user_id"))
+        if isinstance(payload, Mapping):
+            provider = _string(payload.get("provider"))
+            user_id = _string(payload.get("user_id"))
+        else:
+            provider = _string(getattr(payload, "provider", None))
+            user_id = _string(getattr(payload, "user_id", None))
         if not provider or not user_id:
             return None
         return cls(provider=provider, user_id=user_id)

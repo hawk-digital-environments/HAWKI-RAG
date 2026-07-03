@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Dataset;
 use App\Models\Document;
+use App\Models\AuthorizationIdentity;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
@@ -89,6 +90,38 @@ class OpenCompatApiTest extends TestCase
 
         Http::assertSent(fn (Request $request): bool => $request->url() === 'http://bridge.test/query'
             && $request->data()['generate'] === false);
+    }
+
+    public function test_retrieve_chunks_sends_authorization_context_from_identity_mapping(): void
+    {
+        config()->set('config.hawki_rag_bridge_url', 'http://bridge.test');
+        Http::fake([
+            'http://bridge.test/query' => Http::response([
+                'ok' => true,
+                'count' => 0,
+                'hits' => [],
+            ], 200),
+        ]);
+
+        $user = $this->actingAsApiUser();
+        AuthorizationIdentity::query()->create([
+            'user_id' => $user->id,
+            'issuer' => 'https://issuer.test',
+            'subject' => 'subject-123',
+            'provider' => 'keycloak',
+            'external_user_id' => 'learner-123',
+        ]);
+
+        $this->postJson('/api/retrieve/chunks', [
+            'query' => 'policy',
+            'top_k' => 1,
+        ])->assertOk();
+
+        Http::assertSent(fn (Request $request): bool => $request->url() === 'http://bridge.test/query'
+            && ($request->data()['auth_context'] ?? null) === [
+                'provider' => 'keycloak',
+                'user_id' => 'learner-123',
+            ]);
     }
 
     public function test_documents_list_docs_returns_compat_shape_without_rawki_wrapper(): void
