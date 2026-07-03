@@ -13,6 +13,7 @@ from infrastructure.vectorstore.qdrant_http import QdrantHTTP
 from common.safety_utils import analyze_prompt, enforce_output_safety, sanitize_prompt_text
 from common.text_preprocessor import _extract_terms, _terms_from_payload
 from infrastructure.graph.graph_utils import fetch_related_terms, structural_hops, structural_limit, build_structural_hits
+from application.workflows.authorization_filter import filter_authorized_hits
 from application.workflows.query_settings import (
     context_limits,
     fusion_weights,
@@ -71,6 +72,7 @@ def run_query_documents(
     extract_terms_fn: Callable[[str], list[str]] = _extract_terms,
     terms_from_payload_fn: Callable[[dict[str, Any]], list[str]] = _terms_from_payload,
     set_fast_mode_fn: Callable[[bool], None] = _set_fast_mode_env,
+    authorize_hits_fn: Callable[[list[dict[str, Any]], Any], list[dict[str, Any]]] = filter_authorized_hits,
 ) -> dict[str, Any]:
     """Run the query orchestration used by `/query` with injectable collaborators."""
     timings: dict[str, float] = {}
@@ -180,6 +182,21 @@ def run_query_documents(
     timings["rerank_ms"] = (time.perf_counter() - t_rerank_start) * 1000
     logger.info("query:rerank hits=%s ms=%.2f", len(hits), timings["rerank_ms"])
 
+    auth_context = getattr(body, "auth_context", None)
+    authorized_hits = authorize_hits_fn(hits, auth_context)
+    if len(authorized_hits) < body.top_k and hits:
+        secondary_hits = run_high_recall_fn(
+            qdrant=qdrant,
+            vec=vec,
+            top_k=max(body.top_k * 3, len(hits) * 2),
+            filters=filters,
+            preferred_tags=body.preferred_tags,
+        )
+        if secondary_hits:
+            merged_for_auth = merge_hits_fn(hits, secondary_hits, max(body.top_k * 3, len(hits) + len(secondary_hits)))
+            authorized_hits = authorize_hits_fn(merged_for_auth, auth_context)
+    hits = authorized_hits
+
     iterative_enabled = iterative_retrieval_enabled_fn()
     iteration_used = False
     expansion_terms: list[str] = []
@@ -218,6 +235,7 @@ def run_query_documents(
                 top_k=body.top_k,
             )
 
+    hits = authorize_hits_fn(hits, auth_context)
     max_context_tokens, max_context_docs = context_limits_fn()
 
     final_hit_limit = max(body.top_k, max_context_docs)

@@ -1,0 +1,13 @@
+definition user {}
+
+definition course {
+  relation member: user
+  relation instructor: user
+  permission viewer = member + instructor
+}
+
+definition document {
+  relation owner: user
+  relation course: course
+  permission viewer = owner + course->viewer
+}

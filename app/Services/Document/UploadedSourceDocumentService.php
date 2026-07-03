@@ -53,6 +53,20 @@ readonly class UploadedSourceDocumentService
         return $this->fromSharedUploadStorage($sourceUrl, $contentHash);
     }
 
+    public function documentIdForSource(string $sourceUrl, ?string $contentHash = null): ?string
+    {
+        $sourceUrl = $this->uploadSourceUrl($sourceUrl);
+        if ($sourceUrl === null) {
+            return null;
+        }
+
+        foreach ($this->documents($sourceUrl, $this->contentHash($contentHash)) as $document) {
+            return (string) $document->id;
+        }
+
+        return null;
+    }
+
     /**
      * @return iterable<int, PipelineJob>
      */

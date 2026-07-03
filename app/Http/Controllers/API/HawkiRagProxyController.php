@@ -5,13 +5,14 @@ declare(strict_types=1);
 namespace App\Http\Controllers\API;
 
 use App\Http\Controllers\Controller;
+use App\Services\Authorization\AuthorizationService;
 use App\Services\Rag\RagProxyService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class HawkiRagProxyController extends Controller
 {
-    public function query(Request $request, RagProxyService $proxy): JsonResponse
+    public function query(Request $request, RagProxyService $proxy, AuthorizationService $authorization): JsonResponse
     {
         $data = $request->validate([
             'query'           => 'required|string|max:4000',
@@ -23,6 +24,7 @@ class HawkiRagProxyController extends Controller
             'preferred_tags'  => 'sometimes|array|max:20',
             'preferred_tags.*'=> 'string|max:80',
         ]);
+        $data['auth_context'] = $authorization->retrievalContextFor($request->user());
 
         $result = $proxy->query($data);
 

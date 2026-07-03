@@ -120,6 +120,12 @@ def prepare_documents(
                 "source_format": payload.get("source_format", "text"),
             })
             payload["doc_id"] = doc_id
+            payload.setdefault("document_id", doc_id)
+            if payload.get("course_id") or payload.get("permission_scope_id"):
+                payload.setdefault("permission_scope_id", payload.get("course_id") or payload.get("permission_scope_id"))
+            if payload.get("permission_provider") or payload.get("provider") or payload.get("source_system"):
+                payload.setdefault("permission_provider", payload.get("permission_provider") or payload.get("provider") or payload.get("source_system"))
+            payload.setdefault("source_system", payload.get("source_system") or payload.get("permission_provider") or "rawki")
             payload.setdefault("component_type", "chunk")
             ensure_tags(payload, ch)
             chunk_records.append({

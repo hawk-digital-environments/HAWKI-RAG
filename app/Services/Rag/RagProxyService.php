@@ -35,6 +35,10 @@ readonly class RagProxyService
             $payload['preferred_tags'] = $data['preferred_tags'];
         }
 
+        if (! empty($data['auth_context']) && is_array($data['auth_context'])) {
+            $payload['auth_context'] = $data['auth_context'];
+        }
+
         try {
             $response = $this->http->timeout(60)->post($this->queryEndpoint(), $payload);
         } catch (\Throwable $exception) {

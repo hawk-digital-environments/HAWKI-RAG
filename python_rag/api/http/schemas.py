@@ -60,6 +60,7 @@ class QueryRequest(BaseModel):
     smart_lookup: bool = False
     structural_hops: int | None = None
     preferred_tags: list[str] | None = None
+    auth_context: dict[str, Any] | None = None
     # Reranker options: none | cosine | external | jina
     reranker: str = "none"
     rerank_top_n: int = 20

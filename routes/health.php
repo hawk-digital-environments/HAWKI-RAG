@@ -68,7 +68,7 @@ Route::middleware(['web', 'throttle:hawki-health'])->group(function () {
 | Token-geschuetzte Health Checks fuer interne Clients, Bruno, Scripts und
 | System-to-System Calls. Laravel mountet diese Gruppe weiterhin unter /api.
 */
-Route::middleware(['api', 'auth:sanctum', 'throttle:hawki-api'])->prefix('api')->group(function () {
+Route::middleware(['api', 'auth:sanctum,oidc', 'throttle:hawki-api'])->prefix('api')->group(function () {
     Route::get('/ping', fn () => response()->json(['pong' => true]));
     Route::get('/pipeline/health', [PipelineHealthController::class, 'show']);
     Route::get('/rag/health', [RagHealthController::class, 'show']);

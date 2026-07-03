@@ -1,0 +1,16 @@
+model
+  schema 1.1
+
+type user
+
+type course
+  relations
+    define member: [user]
+    define instructor: [user]
+    define viewer: member or instructor
+
+type document
+  relations
+    define course: [course]
+    define owner: [user]
+    define viewer: owner or viewer from course

@@ -9,6 +9,10 @@ use App\Services\Storage\StorageElementReader;
 use App\Services\Storage\StorageJobReportReader;
 use App\Services\Storage\StoragePathBuilder;
 use App\Services\Storage\UrlGenerator;
+use App\Services\Authorization\Contracts\PermissionGraphClient;
+use App\Services\Authorization\Oidc\OidcUserResolver;
+use App\Services\Authorization\PermissionGraph\OpenFgaPermissionGraphClient;
+use App\Services\Authorization\PermissionGraph\SpiceDbPermissionGraphClient;
 use App\Services\WebSearch\Exceptions\WebSearchFailedException;
 use App\Services\WebSearch\Implementations\BraveSearch;
 use App\Services\WebSearch\Implementations\TavilySearch;
@@ -23,6 +27,7 @@ use Illuminate\Http\Request;
 use Illuminate\Routing\UrlGenerator as LaravelUrlGenerator;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Vite;
 use Psr\Clock\ClockInterface;
 use Illuminate\Support\ServiceProvider;
@@ -37,6 +42,14 @@ class AppServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->singleton(ClockInterface::class, CarbonClock::class);
+        $this->app->singleton(PermissionGraphClient::class, function (Application $app): PermissionGraphClient {
+            $config = $app->make(ConfigRepository::class);
+
+            return match (strtolower((string) $config->get('authz.graph.backend', 'spicedb'))) {
+                'openfga' => $app->make(OpenFgaPermissionGraphClient::class),
+                default => $app->make(SpiceDbPermissionGraphClient::class),
+            };
+        });
 
         $this->app->singleton(StorageService::class, function (Application $app) {
             $config = $app->make(ConfigRepository::class);
@@ -81,8 +94,16 @@ class AppServiceProvider extends ServiceProvider
         $url->useOrigin((string) $config->get('app.url'));
 
         $this->configureViteAssetPaths($config);
+        $this->registerOidcGuard();
         $this->registerRouteConstraints();
         $this->registerRateLimits();
+    }
+
+    private function registerOidcGuard(): void
+    {
+        Auth::viaRequest('oidc', function (Request $request) {
+            return $this->app->make(OidcUserResolver::class)->userFromRequest($request);
+        });
     }
 
     private function configureViteAssetPaths(ConfigRepository $config): void
