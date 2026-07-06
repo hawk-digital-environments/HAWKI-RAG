@@ -5,13 +5,13 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\Dataset\CreateDatasetRequest;
 use App\Http\Requests\Dataset\ListDatasetsRequest;
-use App\Services\Dataset\DatasetService;
+use App\Services\Compatibility\LegacyDatasetService;
 use Illuminate\Http\JsonResponse;
 
 class DatasetController extends Controller
 {
     public function __construct(
-        private readonly DatasetService $datasets,
+        private readonly LegacyDatasetService $datasets,
     ) {
     }
 

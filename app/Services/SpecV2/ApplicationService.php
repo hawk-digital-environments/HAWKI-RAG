@@ -5,6 +5,7 @@ namespace App\Services\SpecV2;
 
 use App\Models\SpecV2\Application;
 use App\Services\Authorization\ApiActor;
+use App\Services\Authorization\ApiActorScopeService;
 use App\Services\Authorization\ApplicationTokenService;
 use App\Services\SpecV2\Exceptions\ApplicationNotFoundException;
 use App\Services\SpecV2\Exceptions\TenantNotFoundException;
@@ -24,11 +25,17 @@ readonly class ApplicationService
         private SpecIdentifierFactory $identifiers,
         private ApplicationPayloadBuilder $payloads,
         private PaginationPayloadBuilder $pagination,
+        private ApiActorScopeService $actors,
     ) {}
 
     public function list(?string $tenantId, int $page, int $perPage): array
     {
-        $applications = $this->applications->paginate($tenantId, $perPage, $page);
+        $filters = $this->actors->currentApplicationFilters();
+        if ($tenantId !== null) {
+            $filters['tenant_id'] = $tenantId;
+        }
+
+        $applications = $this->applications->paginate($filters, $perPage, $page);
 
         return [
             'data' => $applications->getCollection()->map(fn (Application $application): array => $this->payloads->payload($application))->all(),
@@ -40,6 +47,10 @@ readonly class ApplicationService
     {
         $application = $this->applications->findById($applicationId);
         if (! $application instanceof Application) {
+            throw ApplicationNotFoundException::withId($applicationId);
+        }
+
+        if (! $this->actors->currentCanReadApplication($application)) {
             throw ApplicationNotFoundException::withId($applicationId);
         }
 

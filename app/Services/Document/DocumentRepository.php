@@ -9,14 +9,13 @@ use App\Models\PipelineJob;
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Str;
 
 #[Singleton]
 readonly class DocumentRepository
 {
     public function findById(string $documentId): ?Document
     {
-        if (! Str::isUuid($documentId)) {
+        if (trim($documentId) === '') {
             return null;
         }
 

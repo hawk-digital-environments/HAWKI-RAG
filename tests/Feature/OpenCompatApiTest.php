@@ -4,10 +4,13 @@ namespace Tests\Feature;
 
 use App\Models\Dataset;
 use App\Models\Document;
-use App\Models\UserIdentity;
+use App\Models\SpecV2\Group;
+use App\Models\SpecV2\GroupMember;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
+use App\Services\Authorization\IdentityProvisioningService;
+use App\Services\SpecV2\Repositories\DocumentGrantRepository;
 use Tests\TestCase;
 
 class OpenCompatApiTest extends TestCase
@@ -104,7 +107,7 @@ class OpenCompatApiTest extends TestCase
             ], 200),
         ]);
 
-        $this->issueApplicationToken([
+        ['token' => $token] = $this->issueApplicationToken([
             'id' => 'rawki-default',
             'tenant_id' => 'default',
             'permissions' => ['reads'],
@@ -162,37 +165,31 @@ class OpenCompatApiTest extends TestCase
             'metadata_json' => [],
         ]);
 
-        $user = $this->actingAsApiUser();
-        UserIdentity::query()->create([
-            'user_id' => $user->id,
-            'issuer' => 'https://issuer.test',
-            'subject' => 'subject-123',
-            'provider' => 'keycloak',
-            'external_user_id' => 'learner-123',
+        $assignments = app(IdentityProvisioningService::class)->groupMemberAssignments(
+            'default',
+            'rawki-default',
+            ['learner-123'],
+        );
+        Group::query()->create([
+            'id' => 'rawki-default:course_a',
             'tenant_id' => 'default',
-            'application_id' => 'rawki-default',
+            'owner_application_id' => 'rawki-default',
+            'name' => 'Course A',
+            'metadata_json' => [],
         ]);
-        \App\Models\AuthorizationPermissionEvent::query()->create([
-            'provider' => 'keycloak',
-            'external_user_id' => 'learner-123',
-            'course_id' => 'course-a',
-            'role' => 'member',
-            'document_id' => null,
-            'payload' => ['type' => 'membership'],
+        GroupMember::query()->create([
+            'group_id' => 'rawki-default:course_a',
+            'user_identifier' => 'learner-123',
+            'internal_user_id' => $assignments[0]->internalUserId,
         ]);
-        \App\Models\AuthorizationPermissionEvent::query()->create([
-            'provider' => 'keycloak',
-            'external_user_id' => null,
-            'course_id' => 'course-a',
-            'role' => null,
-            'document_id' => $protectedDocument->id,
-            'payload' => ['type' => 'document_relation'],
-        ]);
+        app(DocumentGrantRepository::class)->add((string) $protectedDocument->id, ['rawki-default:course_a']);
 
-        $this->postJson('/api/retrieve/chunks', [
-            'query' => 'policy',
-            'top_k' => 1,
-        ])->assertOk();
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->postJson('/api/retrieve/chunks', [
+                'query' => 'policy',
+                'top_k' => 1,
+                'user_identifier' => 'learner-123',
+            ])->assertOk();
 
         Http::assertSent(function (Request $request) use ($protectedDocument, $publicDocument): bool {
             if ($request->url() !== 'http://bridge.test/query') {
@@ -250,6 +247,73 @@ class OpenCompatApiTest extends TestCase
             ->assertJsonPath('documents.0.filename', 'doc.txt')
             ->assertJsonPath('documents.0.metadata.dataset_id', 'compat-dataset')
             ->assertJsonPath('documents.0.system_metadata.task_id', 'task-1');
+    }
+
+    public function test_update_document_metadata_refreshes_canonical_search_payload(): void
+    {
+        Dataset::query()->create([
+            'dataset_id' => 'compat-update',
+            'tenant_id' => 'default',
+            'owner_application_id' => 'rawki-default',
+            'name' => 'Compat Update',
+            'status' => Dataset::STATUS_ACTIVE,
+            'visibility' => Dataset::VISIBILITY_DISCOVERABLE,
+            'protected' => false,
+            'metadata_json' => ['course' => 'design'],
+            'qdrant_collection' => 'compat_update',
+            'neo4j_namespace' => 'compat_update',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $document = Document::query()->create([
+            'dataset_id' => 'compat-update',
+            'collection' => 'compat_update',
+            'source_type' => Document::SOURCE_API,
+            'source_url' => 'https://example.test/update',
+            'original_filename' => 'update.md',
+            'storage_path' => '/tmp/update.md',
+            'checksum_sha256' => hash('sha256', 'update'),
+            'status' => Document::STATUS_COMPLETED,
+            'metadata_json' => ['topic' => 'before'],
+        ]);
+
+        config()->set('config.qdrant_http_url', 'http://qdrant.test');
+        Http::fake([
+            'http://qdrant.test/*' => Http::response(['status' => 'ok', 'result' => ['status' => 'acknowledged']], 200),
+        ]);
+
+        $this->actingAsApiUser();
+
+        $this->postJson('/api/documents/'.$document->id.'/update_metadata', [
+            'metadata' => ['topic' => 'after', 'level' => 'advanced'],
+        ])->assertOk()
+            ->assertJsonPath('document.metadata.topic', 'after')
+            ->assertJsonPath('document.metadata.level', 'advanced');
+
+        $document->refresh();
+
+        $this->assertSame('after', $document->metadata_json['topic']);
+        $this->assertSame('advanced', $document->metadata_json['level']);
+        $this->assertSame('after', $document->metadata_json['__rawki']['search_payload']['topic']);
+        $this->assertSame('advanced', $document->metadata_json['__rawki']['search_payload']['level']);
+        $this->assertSame('design', $document->metadata_json['__rawki']['search_payload']['course']);
+
+        Http::assertSent(function (Request $request) use ($document): bool {
+            return $request->method() === 'POST'
+                && $request->url() === 'http://qdrant.test/collections/compat_update/points/payload/delete'
+                && ($request['filter']['must'][0]['match']['value'] ?? null) === $document->id
+                && ($request['keys'] ?? null) === ['course', 'topic', 'level', 'heap', 'document_id', 'owner_app', 'visibility', 'protected'];
+        });
+
+        Http::assertSent(function (Request $request) use ($document): bool {
+            return $request->method() === 'POST'
+                && $request->url() === 'http://qdrant.test/collections/compat_update/points/payload'
+                && ($request['filter']['must'][0]['match']['value'] ?? null) === $document->id
+                && ($request['payload']['topic'] ?? null) === 'after'
+                && ($request['payload']['level'] ?? null) === 'advanced'
+                && ($request['payload']['course'] ?? null) === 'design';
+        });
     }
 
     public function test_search_documents_is_scoped_to_application_heaps(): void

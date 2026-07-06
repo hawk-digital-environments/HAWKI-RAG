@@ -10,10 +10,14 @@ use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 #[Singleton]
 readonly class TenantRepository
 {
-    public function paginate(int $perPage, int $page): LengthAwarePaginator
+    /**
+     * @param array<string, mixed> $filters
+     */
+    public function paginate(array $filters, int $perPage, int $page): LengthAwarePaginator
     {
         return Tenant::query()
             ->withCount(['applications', 'groups', 'heaps'])
+            ->when($filters['id'] ?? null, fn ($query, $id) => $query->where('id', $id))
             ->orderBy('name')
             ->paginate($perPage, ['*'], 'page', $page);
     }

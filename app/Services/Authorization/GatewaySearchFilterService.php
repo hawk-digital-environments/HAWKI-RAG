@@ -16,7 +16,7 @@ readonly class GatewaySearchFilterService
     private const NO_MATCH_DOCUMENT_ID = '__rawki_no_match__';
 
     public function __construct(
-        private ApplicationScopeResolver $scopes,
+        private ApplicationReadPolicy $policy,
         private FilterLanguageParser $filters,
         private DocumentFilterEvaluator $evaluator,
     ) {}
@@ -27,7 +27,7 @@ readonly class GatewaySearchFilterService
      */
     public function build(array $clientFilters, ApiActor $actor, ?string $requestedUserIdentifier = null): array
     {
-        $scope = $this->scopes->resolve($actor, $requestedUserIdentifier);
+        $scope = $this->policy->documentScope($actor, $requestedUserIdentifier);
         $expression = $this->filters->parse($clientFilters);
 
         if ($scope->unrestricted && $expression->isEmpty()) {

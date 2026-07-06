@@ -11,18 +11,42 @@ use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 #[Singleton]
 readonly class CorpusRepository
 {
-    public function paginate(int $perPage, int $page): LengthAwarePaginator
+    /**
+     * @param list<string>|null $documentIds
+     */
+    public function paginate(?array $documentIds, int $perPage, int $page): LengthAwarePaginator
     {
         return Corpus::query()
+            ->when($documentIds !== null, function ($query) use ($documentIds): void {
+                $query->whereHas('documents', function ($documentQuery) use ($documentIds): void {
+                    if ($documentIds === []) {
+                        $documentQuery->whereRaw('1 = 0');
+                    } else {
+                        $documentQuery->whereIn('documents.id', $documentIds);
+                    }
+                });
+            })
             ->withCount('documents')
             ->orderByDesc('reference_count')
             ->orderBy('id')
             ->paginate($perPage, ['*'], 'page', $page);
     }
 
-    public function findById(string $corpusId): ?Corpus
+    /**
+     * @param list<string>|null $documentIds
+     */
+    public function findById(string $corpusId, ?array $documentIds = null): ?Corpus
     {
         return Corpus::query()
+            ->when($documentIds !== null, function ($query) use ($documentIds): void {
+                $query->whereHas('documents', function ($documentQuery) use ($documentIds): void {
+                    if ($documentIds === []) {
+                        $documentQuery->whereRaw('1 = 0');
+                    } else {
+                        $documentQuery->whereIn('documents.id', $documentIds);
+                    }
+                });
+            })
             ->withCount('documents')
             ->where('id', $corpusId)
             ->first();

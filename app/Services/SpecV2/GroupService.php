@@ -5,6 +5,7 @@ namespace App\Services\SpecV2;
 
 use App\Models\SpecV2\Group;
 use App\Services\Authorization\ApiActor;
+use App\Services\Authorization\ApiActorScopeService;
 use App\Services\Authorization\IdentityProvisioningService;
 use App\Services\SpecV2\Exceptions\ApplicationNotFoundException;
 use App\Services\SpecV2\Exceptions\GroupNotFoundException;
@@ -25,6 +26,7 @@ readonly class GroupService
         private IdentityProvisioningService $identityProvisioning,
         private SpecIdentifierFactory $identifiers,
         private PaginationPayloadBuilder $pagination,
+        private ApiActorScopeService $actors,
     ) {}
 
     /**
@@ -32,7 +34,10 @@ readonly class GroupService
      */
     public function list(array $filters, int $page, int $perPage): LengthAwarePaginator
     {
-        return $this->groups->paginate($filters, $perPage, $page);
+        return $this->groups->paginate([
+            ...$filters,
+            ...$this->actors->currentGroupFilters(),
+        ], $perPage, $page);
     }
 
     public function show(string $groupId): Group
@@ -42,6 +47,10 @@ readonly class GroupService
             $group->load('members');
         }
         if (! $group instanceof Group) {
+            throw GroupNotFoundException::withId($groupId);
+        }
+
+        if (! $this->actors->currentCanReadGroup($group)) {
             throw GroupNotFoundException::withId($groupId);
         }
 
@@ -88,6 +97,10 @@ readonly class GroupService
             throw GroupNotFoundException::withId($groupId);
         }
 
+        if (! $this->actors->currentCanReadGroup($group)) {
+            throw GroupNotFoundException::withId($groupId);
+        }
+
         $this->groups->delete($group);
     }
 
@@ -95,6 +108,10 @@ readonly class GroupService
     {
         $group = $this->groups->findById($groupId);
         if (! $group instanceof Group) {
+            throw GroupNotFoundException::withId($groupId);
+        }
+
+        if (! $this->actors->currentCanReadGroup($group)) {
             throw GroupNotFoundException::withId($groupId);
         }
 
@@ -113,6 +130,10 @@ readonly class GroupService
     {
         $group = $this->groups->findById($groupId);
         if (! $group instanceof Group) {
+            throw GroupNotFoundException::withId($groupId);
+        }
+
+        if (! $this->actors->currentCanReadGroup($group)) {
             throw GroupNotFoundException::withId($groupId);
         }
 
@@ -136,6 +157,10 @@ readonly class GroupService
     {
         $group = $this->groups->findById($groupId);
         if (! $group instanceof Group) {
+            throw GroupNotFoundException::withId($groupId);
+        }
+
+        if (! $this->actors->currentCanReadGroup($group)) {
             throw GroupNotFoundException::withId($groupId);
         }
 

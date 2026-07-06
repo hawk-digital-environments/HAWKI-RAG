@@ -5,6 +5,7 @@ namespace App\Services\SpecV2;
 
 use App\Models\Document;
 use App\Models\SpecV2\Heap;
+use App\Services\SpecV2\Values\DocumentSearchPayload;
 use Illuminate\Container\Attributes\Singleton;
 
 #[Singleton]
@@ -28,49 +29,56 @@ readonly class DocumentSearchPayloadFactory
     }
 
     /**
-     * @return array<string, mixed>
+     * @return list<string>
      */
-    public function storedMetadata(Document $document, Heap $heap): array
+    public function payloadKeysFromStoredMetadata(mixed $metadata): array
     {
-        $metadata = $this->publicMetadata($document->metadata_json);
-        $metadata[self::INTERNAL_KEY] = [
+        if (! is_array($metadata)) {
+            return [];
+        }
+
+        $internal = is_array($metadata[self::INTERNAL_KEY] ?? null) ? $metadata[self::INTERNAL_KEY] : [];
+        $searchPayload = is_array($internal['search_payload'] ?? null) ? $internal['search_payload'] : [];
+
+        return array_values(array_unique(array_map(
+            static fn (string $key): string => trim($key),
+            array_keys($searchPayload),
+        )));
+    }
+
+    public function build(Document $document, Heap $heap): DocumentSearchPayload
+    {
+        $publicMetadata = $this->publicMetadata($document->metadata_json);
+        $heapMetadata = $this->heapMetadata($heap);
+        $searchPayload = array_replace(
+            $heapMetadata,
+            $publicMetadata,
+            $this->systemPayload($document, $heap),
+        );
+
+        $publicMetadata[self::INTERNAL_KEY] = [
             'heap_context' => [
                 'heap' => $heap->dataset_id,
                 'owner_app' => $heap->owner_application_id,
                 'visibility' => $heap->visibility ?? Heap::VISIBILITY_DISCOVERABLE,
                 'protected' => (bool) $heap->protected,
-                'metadata_keys' => array_keys($this->heapMetadata($heap)),
+                'heap_metadata_keys' => array_keys($heapMetadata),
+                'document_metadata_keys' => array_keys($this->publicMetadata($document->metadata_json)),
             ],
-            'search_payload' => array_replace(
-                $this->heapMetadata($heap),
-                $metadata,
-                $this->systemPayload($document, $heap),
-            ),
+            'search_payload' => $searchPayload,
         ];
 
-        return $metadata;
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    public function qdrantHeapPayload(Document $document, Heap $heap): array
-    {
-        return array_replace(
-            $this->heapMetadata($heap),
-            $this->systemPayload($document, $heap),
+        return new DocumentSearchPayload(
+            publicMetadata: $this->publicMetadata($document->metadata_json),
+            storedMetadata: $publicMetadata,
+            qdrantPayload: $searchPayload,
+            payloadKeys: array_values(array_unique([
+                ...array_keys($searchPayload),
+                ...self::SYSTEM_KEYS,
+            ])),
+            heapMetadataKeys: array_values(array_keys($heapMetadata)),
+            documentMetadataKeys: array_values(array_keys($this->publicMetadata($document->metadata_json))),
         );
-    }
-
-    /**
-     * @return list<string>
-     */
-    public function qdrantHeapPayloadKeys(Heap $heap): array
-    {
-        return array_values(array_unique([
-            ...array_keys($this->heapMetadata($heap)),
-            ...self::SYSTEM_KEYS,
-        ]));
     }
 
     /**

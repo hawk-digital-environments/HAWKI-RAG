@@ -45,6 +45,36 @@ readonly class GroupRepository
             ->get();
     }
 
+    public function findConnectorProjectionGroup(string $tenantId, string $applicationId, string $provider, string $courseId): ?Group
+    {
+        return Group::query()
+            ->where('tenant_id', $tenantId)
+            ->where('owner_application_id', $applicationId)
+            ->get()
+            ->first(function (Group $group) use ($provider, $courseId): bool {
+                $projection = is_array($group->metadata_json['projection'] ?? null) ? $group->metadata_json['projection'] : [];
+
+                return ($projection['provider'] ?? null) === $provider
+                    && ($projection['course_id'] ?? null) === $courseId;
+            });
+    }
+
+    /**
+     * @return Collection<int, Group>
+     */
+    public function findConnectorProjectionGroups(string $provider, string $courseId): Collection
+    {
+        return Group::query()
+            ->get()
+            ->filter(function (Group $group) use ($provider, $courseId): bool {
+                $projection = is_array($group->metadata_json['projection'] ?? null) ? $group->metadata_json['projection'] : [];
+
+                return ($projection['provider'] ?? null) === $provider
+                    && ($projection['course_id'] ?? null) === $courseId;
+            })
+            ->values();
+    }
+
     /**
      * @param array<string, mixed> $attributes
      */

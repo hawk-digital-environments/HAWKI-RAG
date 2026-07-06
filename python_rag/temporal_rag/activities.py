@@ -582,7 +582,7 @@ def _convert_files_with_extract_api(
             created = _extract_single_file(service_config, raw_file, output_dir)
         except DirectExtractUnsupportedFileError as exc:
             created = _write_raganything_passthrough(raw_file, output_dir, exc)
-            passthrough_files.append(str(raw_file))
+            passthrough_files.append(_display_candidate_path(raw_file, raw_root, raw_dir))
             logger.info(
                 "converter:direct_extract_passthrough file=%s reason=%s",
                 raw_file,
@@ -776,6 +776,17 @@ def _raw_conversion_candidates(raw_root: Path) -> list[Path]:
         for path in sorted(raw_root.rglob("*"))
         if path.is_file() and (not skip_bookkeeping or path.name not in SCRAPER_BOOKKEEPING_FILENAMES)
     ]
+
+
+def _display_candidate_path(raw_file: Path, raw_root: Path, raw_dir: str) -> str:
+    requested_root = Path(raw_dir.removeprefix("file://")).expanduser()
+
+    try:
+        relative_path = raw_file.relative_to(raw_root)
+    except ValueError:
+        return str(raw_file)
+
+    return str(requested_root / relative_path)
 
 
 def _looks_like_scraper_output_dir(raw_root: Path) -> bool:

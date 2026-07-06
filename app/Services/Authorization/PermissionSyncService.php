@@ -20,6 +20,7 @@ readonly class PermissionSyncService
         private PermissionGraphClient $graph,
         private PermissionGraphRelationshipFactory $relationships,
         private PermissionEventRepository $events,
+        private NativeGrantProjectionService $grants,
     ) {}
 
     /**
@@ -37,6 +38,11 @@ readonly class PermissionSyncService
                     'ignored' => true,
                     'written' => 0,
                 ],
+                'native' => [
+                    'groups_created' => 0,
+                    'document_grants_created' => 0,
+                    'group_members_upserted' => 0,
+                ],
                 'reconciliation' => [
                     'strategy' => 'no-op',
                     'stale_cleanup' => 'Authorization is disabled; connector inputs are accepted and ignored.',
@@ -44,6 +50,8 @@ readonly class PermissionSyncService
             ];
         }
 
+        $memberships = is_array($memberships) ? $memberships : iterator_to_array($memberships, false);
+        $documentRelations = is_array($documentRelations) ? $documentRelations : iterator_to_array($documentRelations, false);
         $relationships = [];
 
         foreach ($memberships as $membership) {
@@ -56,9 +64,12 @@ readonly class PermissionSyncService
             $relationships[] = $this->relationships->documentRelation($relation);
         }
 
+        $native = $this->grants->project($memberships, $documentRelations);
+
         return [
             'relationships' => array_map(fn ($relationship): array => $relationship->toArray(), $relationships),
             'graph' => $this->graph->writeRelationships($relationships),
+            'native' => $native,
             'reconciliation' => [
                 'strategy' => 'idempotent-upsert',
                 'stale_cleanup' => 'Keep source_updated_at per normalized event; scheduled reconciliation can remove relationships absent from the latest connector snapshot.',

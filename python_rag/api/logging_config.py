@@ -45,15 +45,36 @@ def _has_file_handler(root_logger: logging.Logger, path: Path) -> bool:
     return False
 
 
-def _add_file_handler(root_logger: logging.Logger, path: Path) -> None:
+def _add_file_handler(root_logger: logging.Logger, path: Path) -> bool:
     log_path = path.expanduser()
-    log_path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        root_logger.warning(
+            "logging:file_handler_unavailable path=%s error=%s",
+            log_path,
+            exc,
+        )
+        return False
+
     if _has_file_handler(root_logger, log_path):
-        return
-    file_handler = logging.FileHandler(log_path, encoding="utf-8")
+        return True
+
+    try:
+        file_handler = logging.FileHandler(log_path, encoding="utf-8")
+    except OSError as exc:
+        root_logger.warning(
+            "logging:file_handler_unavailable path=%s error=%s",
+            log_path,
+            exc,
+        )
+        return False
+
     file_handler.setLevel(logging.DEBUG)
     file_handler.setFormatter(_StructuredFormatter())
     root_logger.addHandler(file_handler)
+
+    return True
 
 
 @dataclass(frozen=True)
@@ -99,13 +120,11 @@ def configure_app_logging(settings: AppSettings, *, logger_name: str) -> tuple[l
     else:
         logging.getLogger("common.text_preprocessor").setLevel(logging.INFO)
 
-    if graph_debug_log:
-        _add_file_handler(root_logger, Path(graph_debug_log))
+    if graph_debug_log and _add_file_handler(root_logger, Path(graph_debug_log)):
         logger.info("graph:debug_logging_to=%s", Path(graph_debug_log))
 
     raganything_log_path = str(settings.raganything_log_path or "").strip()
-    if raganything_log_path:
-        _add_file_handler(root_logger, Path(raganything_log_path))
+    if raganything_log_path and _add_file_handler(root_logger, Path(raganything_log_path)):
         logger.info("raganything:runtime_logging_to=%s", Path(raganything_log_path))
 
     return logger, graph_debug, graph_debug_log

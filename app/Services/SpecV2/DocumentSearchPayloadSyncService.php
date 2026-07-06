@@ -8,6 +8,7 @@ use App\Models\SpecV2\Heap;
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Contracts\Config\Repository as ConfigRepository;
 use Illuminate\Http\Client\Factory as HttpFactory;
+use Illuminate\Support\Facades\Log;
 
 #[Singleton]
 readonly class DocumentSearchPayloadSyncService
@@ -18,19 +19,41 @@ readonly class DocumentSearchPayloadSyncService
         private HttpFactory $http,
     ) {}
 
-    public function syncStoredMetadata(Document $document): void
+    /**
+     * @param list<string> $stalePayloadKeys
+     */
+    public function syncDocument(Document $document, array $stalePayloadKeys = [], ?string $previousCollection = null): void
     {
+        if ($document->relationLoaded('heap')) {
+            $heap = $document->getRelation('heap');
+            if (! $heap instanceof Heap || $heap->dataset_id !== $document->dataset_id) {
+                $document->unsetRelation('heap');
+            }
+        }
+
         $document->loadMissing('heap');
 
         if (! $document->heap instanceof Heap) {
             return;
         }
 
-        $document->metadata_json = $this->payloads->storedMetadata($document, $document->heap);
+        $payload = $this->payloads->build($document, $document->heap);
+        $document->metadata_json = $payload->storedMetadata;
 
         if ($document->isDirty('metadata_json')) {
-            $document->save();
+            $document->saveQuietly();
         }
+
+        $this->syncQdrantPayload(
+            $document,
+            $document->heap,
+            $payload->qdrantPayload,
+            array_values(array_unique([
+                ...$stalePayloadKeys,
+                ...$payload->payloadKeys,
+            ])),
+            $previousCollection,
+        );
     }
 
     /**
@@ -49,27 +72,23 @@ readonly class DocumentSearchPayloadSyncService
                     }
 
                     $document->setRelation('heap', $heap);
-                    $document->metadata_json = $this->payloads->storedMetadata($document, $heap);
-
-                    if ($document->isDirty('metadata_json')) {
-                        $document->save();
-                    }
-
-                    $this->syncQdrantPayload($document, $heap, $staleHeapMetadataKeys);
+                    $this->syncDocument($document, $staleHeapMetadataKeys);
                 }
             });
     }
 
     /**
      * @param list<string> $staleHeapMetadataKeys
+     * @param array<string, mixed> $payload
      */
-    private function syncQdrantPayload(Document $document, Heap $heap, array $staleHeapMetadataKeys): void
+    private function syncQdrantPayload(
+        Document $document,
+        Heap $heap,
+        array $payload,
+        array $staleHeapMetadataKeys,
+        ?string $previousCollection = null,
+    ): void
     {
-        $collection = trim((string) ($heap->qdrant_collection ?: $document->collection));
-        if ($collection === '') {
-            return;
-        }
-
         $baseUrl = rtrim((string) $this->config->get('config.qdrant_http_url', 'http://qdrant:6333'), '/');
         if ($baseUrl === '') {
             return;
@@ -88,22 +107,41 @@ readonly class DocumentSearchPayloadSyncService
             ]],
         ];
 
-        $keys = array_values(array_unique([
-            ...$staleHeapMetadataKeys,
-            ...$this->payloads->qdrantHeapPayloadKeys($heap),
-        ]));
+        $currentCollection = trim((string) ($heap->qdrant_collection ?: $document->collection));
+        $collections = array_values(array_unique(array_filter([
+            $this->stringValue($previousCollection),
+            $this->stringValue($currentCollection),
+        ])));
 
-        if ($keys !== []) {
-            $request->post($baseUrl.'/collections/'.rawurlencode($collection).'/points/payload/delete', [
-                'keys' => $keys,
-                'filter' => $filter,
-            ])->throw();
+        if ($collections === []) {
+            return;
         }
 
-        $request->post($baseUrl.'/collections/'.rawurlencode($collection).'/points/payload', [
-            'payload' => $this->payloads->qdrantHeapPayload($document, $heap),
-            'filter' => $filter,
-        ])->throw();
+        $keys = $this->normalizedKeys($staleHeapMetadataKeys);
+
+        foreach ($collections as $collection) {
+            try {
+                if ($keys !== []) {
+                    $request->post($baseUrl.'/collections/'.rawurlencode($collection).'/points/payload/delete', [
+                        'keys' => $keys,
+                        'filter' => $filter,
+                    ])->throw();
+                }
+
+                if ($collection === $currentCollection) {
+                    $request->post($baseUrl.'/collections/'.rawurlencode($collection).'/points/payload', [
+                        'payload' => $payload,
+                        'filter' => $filter,
+                    ])->throw();
+                }
+            } catch (\Throwable $exception) {
+                Log::warning('Document search payload sync to Qdrant failed.', [
+                    'document_id' => (string) $document->id,
+                    'collection' => $collection,
+                    'error' => $exception->getMessage(),
+                ]);
+            }
+        }
     }
 
     /**
@@ -116,5 +154,10 @@ readonly class DocumentSearchPayloadSyncService
             static fn (string $key): string => trim($key),
             $keys,
         ))));
+    }
+
+    private function stringValue(mixed $value): ?string
+    {
+        return is_scalar($value) && trim((string) $value) !== '' ? trim((string) $value) : null;
     }
 }

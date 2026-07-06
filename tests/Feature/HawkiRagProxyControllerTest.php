@@ -2,11 +2,13 @@
 
 namespace Tests\Feature;
 
-use App\Models\AuthorizationPermissionEvent;
 use App\Models\Dataset;
 use App\Models\Document;
-use App\Models\UserIdentity;
+use App\Models\SpecV2\Group;
+use App\Models\SpecV2\GroupMember;
 use App\Models\User;
+use App\Services\Authorization\IdentityProvisioningService;
+use App\Services\SpecV2\Repositories\DocumentGrantRepository;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
@@ -84,37 +86,24 @@ class HawkiRagProxyControllerTest extends TestCase
             'status' => Document::STATUS_COMPLETED,
         ]);
 
-        $identityUser = User::query()->create([
-            'username' => 'learner-123',
-            'email' => 'learner-123@example.test',
-            'ip' => '127.0.0.25',
-        ]);
-
-        UserIdentity::query()->create([
-            'user_id' => $identityUser->id,
-            'provider' => 'keycloak',
-            'external_user_id' => 'learner-123',
+        $assignments = app(IdentityProvisioningService::class)->groupMemberAssignments(
+            'uni-hawk',
+            $application->id,
+            ['learner-123'],
+        );
+        Group::query()->create([
+            'id' => $application->id.':course_design',
             'tenant_id' => 'uni-hawk',
-            'application_id' => $application->id,
-            'issuer' => 'https://issuer.test',
-            'subject' => 'subject-123',
+            'owner_application_id' => $application->id,
+            'name' => 'Course Design',
+            'metadata_json' => [],
         ]);
-        AuthorizationPermissionEvent::query()->create([
-            'provider' => 'keycloak',
-            'external_user_id' => 'learner-123',
-            'course_id' => 'course-design',
-            'role' => 'member',
-            'document_id' => null,
-            'payload' => ['type' => 'membership'],
+        GroupMember::query()->create([
+            'group_id' => $application->id.':course_design',
+            'user_identifier' => 'learner-123',
+            'internal_user_id' => $assignments[0]->internalUserId,
         ]);
-        AuthorizationPermissionEvent::query()->create([
-            'provider' => 'keycloak',
-            'external_user_id' => null,
-            'course_id' => 'course-design',
-            'role' => null,
-            'document_id' => $protectedDocument->id,
-            'payload' => ['type' => 'document_relation'],
-        ]);
+        app(DocumentGrantRepository::class)->add((string) $protectedDocument->id, [$application->id.':course_design']);
 
         $this->withHeader('Authorization', 'Bearer '.$token)
             ->postJson('/api/query', [

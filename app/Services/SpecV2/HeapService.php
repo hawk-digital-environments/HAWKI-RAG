@@ -6,8 +6,9 @@ namespace App\Services\SpecV2;
 use App\Models\Dataset;
 use App\Models\SpecV2\Heap;
 use App\Services\Authorization\ApiActor;
+use App\Services\Authorization\ApiActorScopeService;
 use App\Services\SpecV2\Events\HeapSearchPayloadChanged;
-use App\Services\Dataset\DatasetIdentifierFactory;
+use App\Services\Heap\HeapIdentifierFactory;
 use App\Services\SpecV2\Exceptions\ApplicationNotFoundException;
 use App\Services\SpecV2\Exceptions\HeapNotFoundException;
 use App\Services\SpecV2\Repositories\ApplicationRepository;
@@ -23,9 +24,10 @@ readonly class HeapService
     public function __construct(
         private HeapRepository $heaps,
         private ApplicationRepository $applications,
-        private DatasetIdentifierFactory $datasetIdentifiers,
+        private HeapIdentifierFactory $heapIdentifiers,
         private SpecIdentifierFactory $identifiers,
         private HeapDeletionService $deletions,
+        private ApiActorScopeService $actors,
         private ClockInterface $clock = new Clock,
     ) {}
 
@@ -34,13 +36,20 @@ readonly class HeapService
      */
     public function list(array $filters, int $page, int $perPage): LengthAwarePaginator
     {
-        return $this->heaps->paginate($filters, $perPage, $page);
+        return $this->heaps->paginate([
+            ...$filters,
+            ...$this->actors->currentHeapFilters(),
+        ], $perPage, $page);
     }
 
     public function show(string $heapId): Heap
     {
         $heap = $this->heaps->findById($heapId);
         if (! $heap instanceof Heap) {
+            throw HeapNotFoundException::withId($heapId);
+        }
+
+        if (! $this->actors->currentCanReadDataset($heap)) {
             throw HeapNotFoundException::withId($heapId);
         }
 
@@ -61,10 +70,10 @@ readonly class HeapService
             throw ApplicationNotFoundException::withId($applicationId);
         }
 
-        $heapId = $this->datasetIdentifiers->datasetId(
-            $input['id'] ?? $input['heap_id'] ?? $this->datasetIdentifiers->safeName((string) ($input['name'] ?? 'heap'))
+        $heapId = $this->heapIdentifiers->heapId(
+            $input['id'] ?? $input['heap_id'] ?? $this->heapIdentifiers->safeName((string) ($input['name'] ?? 'heap'))
         );
-        $safe = $this->datasetIdentifiers->safeName($heapId);
+        $safe = $this->heapIdentifiers->safeName($heapId);
 
         $heap = $this->heaps->create([
             'dataset_id' => $heapId,
@@ -76,8 +85,8 @@ readonly class HeapService
             'visibility' => $this->visibility($input['visibility'] ?? null),
             'protected' => (bool) ($input['protected'] ?? false),
             'metadata_json' => $input['metadata'] ?? null,
-            'qdrant_collection' => $this->datasetIdentifiers->qdrantCollection($safe),
-            'neo4j_namespace' => $this->datasetIdentifiers->neo4jNamespace($safe),
+            'qdrant_collection' => $this->heapIdentifiers->qdrantCollection($safe),
+            'neo4j_namespace' => $this->heapIdentifiers->neo4jNamespace($safe),
             'created_at' => $this->clock->now(),
             'updated_at' => $this->clock->now(),
         ]);
@@ -95,6 +104,10 @@ readonly class HeapService
     {
         $heap = $this->heaps->findById($heapId);
         if (! $heap instanceof Heap) {
+            throw HeapNotFoundException::withId($heapId);
+        }
+
+        if (! $this->actors->currentCanReadDataset($heap)) {
             throw HeapNotFoundException::withId($heapId);
         }
 
@@ -136,6 +149,10 @@ readonly class HeapService
     {
         $heap = $this->heaps->findById($heapId);
         if (! $heap instanceof Heap) {
+            throw HeapNotFoundException::withId($heapId);
+        }
+
+        if (! $this->actors->currentCanReadDataset($heap)) {
             throw HeapNotFoundException::withId($heapId);
         }
 

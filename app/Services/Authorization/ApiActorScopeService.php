@@ -5,6 +5,10 @@ namespace App\Services\Authorization;
 
 use App\Models\Dataset;
 use App\Models\SpecV2\Application;
+use App\Models\SpecV2\Corpus;
+use App\Models\SpecV2\Group;
+use App\Models\SpecV2\Heap;
+use App\Models\SpecV2\Tenant;
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Contracts\Auth\Factory as AuthFactory;
 use Illuminate\Contracts\Config\Repository as ConfigRepository;
@@ -16,21 +20,32 @@ readonly class ApiActorScopeService
         private AuthFactory $auth,
         private ConfigRepository $config,
         private ApiActorResolver $actors,
+        private ApplicationTokenService $tokens,
+        private ApplicationReadPolicy $policy,
         private ApplicationScopeResolver $documents,
     ) {}
 
     public function currentActor(): ?ApiActor
     {
-        $principal = $this->auth->guard()->user();
-        if ($principal === null) {
-            return null;
+        $application = $this->tokens->authenticate(request()->bearerToken());
+        if ($application instanceof Application) {
+            return ApiActor::forApplication($application);
         }
 
-        try {
-            return $this->actors->resolvePrincipal($principal);
-        } catch (\Throwable) {
-            return null;
+        foreach (['sanctum', 'oidc'] as $guard) {
+            $principal = $this->auth->guard($guard)->user();
+            if ($principal === null) {
+                continue;
+            }
+
+            try {
+                return $this->actors->resolvePrincipal($principal);
+            } catch (\Throwable) {
+                continue;
+            }
         }
+
+        return null;
     }
 
     /**
@@ -43,38 +58,17 @@ readonly class ApiActorScopeService
             return [];
         }
 
-        if ($actor->hasApplicationPermission(Application::PERMISSION_READS_FEDERATED)) {
-            return [];
-        }
-
-        if ($actor->hasApplicationPermission(Application::PERMISSION_READS_ALL_APPS)) {
-            return ['tenant_id' => $actor->tenantId()];
-        }
-
-        if ($actor->hasApplicationPermission(Application::PERMISSION_READS)) {
-            return ['owner_application_id' => $actor->applicationId()];
-        }
-
-        return ['owner_application_id' => '__rawki_no_match__'];
+        return $this->policy->heapFilters($actor);
     }
 
-    public function currentCanReadDataset(Dataset $dataset): bool
+    public function currentCanReadDataset(Dataset|Heap $dataset): bool
     {
         $actor = $this->currentActor();
         if (! $actor instanceof ApiActor) {
             return false;
         }
 
-        if ($actor->hasApplicationPermission(Application::PERMISSION_READS_FEDERATED)) {
-            return true;
-        }
-
-        if ($actor->hasApplicationPermission(Application::PERMISSION_READS_ALL_APPS)) {
-            return (string) ($dataset->tenant_id ?: $this->defaultTenantId()) === $actor->tenantId();
-        }
-
-        return $actor->hasApplicationPermission(Application::PERMISSION_READS)
-            && (string) ($dataset->owner_application_id ?: $this->defaultApplicationId()) === $actor->applicationId();
+        return $this->policy->canReadHeap($actor, $dataset);
     }
 
     /**
@@ -106,6 +100,114 @@ readonly class ApiActorScopeService
 
         return $scope->unrestricted
             || in_array($documentId, $scope->documentIds ?? [], true);
+    }
+
+    /**
+     * @return array<array-key, mixed>
+     */
+    public function currentHeapFilters(): array
+    {
+        return $this->currentDatasetFilters();
+    }
+
+    /**
+     * @return array<array-key, mixed>
+     */
+    public function currentGroupFilters(): array
+    {
+        $actor = $this->currentActor();
+        if (! $actor instanceof ApiActor) {
+            return ['owner_application_id' => '__rawki_no_match__'];
+        }
+
+        return $this->policy->groupFilters($actor);
+    }
+
+    /**
+     * @return array<array-key, mixed>
+     */
+    public function currentApplicationFilters(): array
+    {
+        $actor = $this->currentActor();
+        if (! $actor instanceof ApiActor) {
+            return ['id' => '__rawki_no_match__'];
+        }
+
+        return $this->policy->applicationFilters($actor);
+    }
+
+    /**
+     * @return array<array-key, mixed>
+     */
+    public function currentTenantFilters(): array
+    {
+        $actor = $this->currentActor();
+        if (! $actor instanceof ApiActor) {
+            return ['id' => '__rawki_no_match__'];
+        }
+
+        return $this->policy->tenantFilters($actor);
+    }
+
+    public function currentCanReadGroup(Group $group): bool
+    {
+        $actor = $this->currentActor();
+        if (! $actor instanceof ApiActor) {
+            return false;
+        }
+
+        return $this->policy->canReadGroup($actor, $group);
+    }
+
+    public function currentCanReadApplication(Application $application): bool
+    {
+        $actor = $this->currentActor();
+        if (! $actor instanceof ApiActor) {
+            return false;
+        }
+
+        return $this->policy->canReadApplication($actor, $application);
+    }
+
+    public function currentCanReadTenant(Tenant $tenant): bool
+    {
+        $actor = $this->currentActor();
+        if (! $actor instanceof ApiActor) {
+            return false;
+        }
+
+        return $this->policy->canReadTenant($actor, $tenant);
+    }
+
+    /**
+     * @return list<string>|null
+     */
+    public function currentCorpusIds(): ?array
+    {
+        $actor = $this->currentActor();
+        if (! $actor instanceof ApiActor) {
+            return [];
+        }
+
+        $scope = $this->policy->documentScope($actor);
+
+        return $scope->unrestricted ? null : ($scope->documentIds ?? []);
+    }
+
+    public function currentCanReadCorpus(Corpus $corpus): bool
+    {
+        $documentIds = $this->currentCorpusIds();
+        if ($documentIds === null) {
+            return true;
+        }
+
+        if ($documentIds === []) {
+            return false;
+        }
+
+        return $corpus->documents()
+            ->whereIn('documents.id', $documentIds)
+            ->exists();
     }
 
     /**

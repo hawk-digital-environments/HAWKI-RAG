@@ -6,7 +6,7 @@ namespace App\Services\Authorization;
 
 use App\Models\Document;
 use App\Models\SpecV2\Application;
-use App\Services\Authorization\Repositories\PermissionEventRepository;
+use App\Services\Authorization\Repositories\GrantAccessRepository;
 use App\Services\Authorization\Repositories\UserIdentityRepository;
 use App\Services\Authorization\Values\ApplicationDocumentScope;
 use Illuminate\Container\Attributes\Singleton;
@@ -19,7 +19,7 @@ readonly class ApplicationScopeResolver
     public function __construct(
         private ConfigRepository $config,
         private UserIdentityRepository $identities,
-        private PermissionEventRepository $permissionEvents,
+        private GrantAccessRepository $grants,
     ) {}
 
     public function resolve(ApiActor $actor, ?string $requestedUserIdentifier = null): ApplicationDocumentScope
@@ -46,12 +46,12 @@ readonly class ApplicationScopeResolver
             }),
         );
 
-        $subjects = $this->authorizationSubjects($actor, $requestedUserIdentifier);
-        if ($subjects === []) {
+        $internalUserIds = $this->authorizedInternalUserIds($actor, $requestedUserIdentifier);
+        if ($internalUserIds === []) {
             return ApplicationDocumentScope::constrained(['document_ids' => $public], $public);
         }
 
-        $accessibleProtectedIds = $this->permissionEvents->accessibleDocumentIdsForSubjects($subjects);
+        $accessibleProtectedIds = $this->grants->accessibleDocumentIdsForInternalUsers($internalUserIds);
         if ($accessibleProtectedIds === []) {
             return ApplicationDocumentScope::constrained(['document_ids' => $public], $public);
         }
@@ -139,21 +139,15 @@ readonly class ApplicationScopeResolver
     }
 
     /**
-     * @return list<array{provider?: string, user_id?: string, internal_user_id?: string}>
+     * @return list<string>
      */
-    private function authorizationSubjects(ApiActor $actor, ?string $requestedUserIdentifier): array
+    private function authorizedInternalUserIds(ApiActor $actor, ?string $requestedUserIdentifier): array
     {
         if ($actor->isUser()) {
             $identity = $actor->identity();
-            if ($identity === null) {
-                return [];
-            }
-
-            return [[
-                'provider' => $identity->provider,
-                'user_id' => $identity->external_user_id,
-                'internal_user_id' => $identity->internal_user_id,
-            ]];
+            return $identity !== null && is_string($identity->internal_user_id) && trim($identity->internal_user_id) !== ''
+                ? [(string) $identity->internal_user_id]
+                : [];
         }
 
         $identifier = $this->stringValue($requestedUserIdentifier);
@@ -168,12 +162,10 @@ readonly class ApplicationScopeResolver
         $identities = $this->identities->findAllByIdentifiers([$identifier], $tenantIds);
 
         return $identities
-            ->map(fn ($identity): array => [
-                'provider' => (string) $identity->provider,
-                'user_id' => (string) $identity->external_user_id,
-                'internal_user_id' => (string) $identity->internal_user_id,
-            ])
-            ->unique(fn (array $subject): string => $subject['provider'].'|'.$subject['user_id'].'|'.($subject['internal_user_id'] ?? ''))
+            ->pluck('internal_user_id')
+            ->filter(fn (mixed $internalUserId): bool => is_string($internalUserId) && trim($internalUserId) !== '')
+            ->map(fn (string $internalUserId): string => trim($internalUserId))
+            ->unique()
             ->values()
             ->all();
     }

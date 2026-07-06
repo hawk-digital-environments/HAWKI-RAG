@@ -7,7 +7,7 @@ namespace App\Services\OpenCompat;
 use App\Models\Document;
 use App\Models\PipelineTask;
 use App\Services\Authorization\ApiActorScopeService;
-use App\Services\Dataset\DatasetService;
+use App\Services\Compatibility\LegacyDatasetService;
 use App\Services\Document\DocumentBrowserService;
 use App\Services\Document\DocumentRepository;
 use App\Services\Pipeline\PipelineService;
@@ -27,7 +27,7 @@ readonly class OpenCompatService
     public function __construct(
         private DocumentBrowserService $browser,
         private DocumentRepository $documents,
-        private DatasetService $datasets,
+        private LegacyDatasetService $datasets,
         private PipelineService $pipeline,
         private RagStatsService $stats,
         private SettingsService $settings,

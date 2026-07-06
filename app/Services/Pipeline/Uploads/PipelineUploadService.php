@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Pipeline\Uploads;
 
-use App\Services\Dataset\DatasetService;
+use App\Services\Heap\HeapCatalogService;
 use App\Services\Pipeline\Clients\PythonTemporalBridgeClient;
 use App\Services\Pipeline\Exceptions\PipelineUploadStorageException;
 use App\Services\Pipeline\Repositories\IngestionSourceRepository;
@@ -26,7 +26,7 @@ use Symfony\Component\Clock\Clock;
 class PipelineUploadService
 {
     public function __construct(
-        private readonly DatasetService $datasets,
+        private readonly HeapCatalogService $heaps,
         private readonly PipelineTaskRepository $taskRepository,
         private readonly PipelineJobCreationRepository $jobCreation,
         private readonly PipelineUploadStorage $storage,
@@ -90,7 +90,7 @@ class PipelineUploadService
             return $this->results->customConverterProfileFailure($input, $exception);
         }
 
-        $dataset = $this->datasets->ensure($input->datasetId);
+        $dataset = $this->heaps->ensure($input->datasetId);
         $now = $this->now();
 
         $task = $this->taskRepository->createUploadTask(

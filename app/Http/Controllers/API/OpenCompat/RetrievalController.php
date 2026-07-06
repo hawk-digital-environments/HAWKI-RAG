@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers\API\OpenCompat;
 
 use App\Http\Controllers\Controller;
-use App\Services\Authorization\ApplicationScopeResolver;
+use App\Services\Authorization\ApplicationReadPolicy;
 use App\Services\Authorization\ApiActorResolver;
 use App\Services\Authorization\GatewaySearchFilterService;
 use App\Services\OpenCompat\OpenCompatService;
@@ -43,7 +43,7 @@ class RetrievalController extends Controller
         return $this->json($this->compat->retrieveDocs($input));
     }
 
-    public function searchDocuments(Request $request, ApiActorResolver $actors, ApplicationScopeResolver $scopes): JsonResponse
+    public function searchDocuments(Request $request, ApiActorResolver $actors, ApplicationReadPolicy $policy): JsonResponse
     {
         $input = $request->validate([
             'query' => 'sometimes|string|max:1000',
@@ -52,7 +52,7 @@ class RetrievalController extends Controller
             'limit' => 'sometimes|integer|min:1|max:250',
             'user_identifier' => 'sometimes|string|max:255',
         ]);
-        $input['scope_filters'] = $scopes->resolve(
+        $input['scope_filters'] = $policy->documentScope(
             $actors->resolve($request),
             $input['user_identifier'] ?? null,
         )->repositoryFilters;
@@ -61,7 +61,7 @@ class RetrievalController extends Controller
         return $this->json($this->compat->searchDocuments($input));
     }
 
-    public function batchDocuments(Request $request, ApiActorResolver $actors, ApplicationScopeResolver $scopes): JsonResponse
+    public function batchDocuments(Request $request, ApiActorResolver $actors, ApplicationReadPolicy $policy): JsonResponse
     {
         $input = $request->validate([
             'document_ids' => 'sometimes|array|max:250',
@@ -72,7 +72,7 @@ class RetrievalController extends Controller
             'ids.*' => 'string|max:255',
             'user_identifier' => 'sometimes|string|max:255',
         ]);
-        $input['scope_filters'] = $scopes->resolve(
+        $input['scope_filters'] = $policy->documentScope(
             $actors->resolve($request),
             $input['user_identifier'] ?? null,
         )->repositoryFilters;

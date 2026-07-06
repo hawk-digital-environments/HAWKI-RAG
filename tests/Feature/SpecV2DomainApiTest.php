@@ -30,7 +30,7 @@ class SpecV2DomainApiTest extends TestCase
             ->assertJsonPath('id', 'uni-hawk')
             ->assertJsonPath('metadata.kind', 'university');
 
-        $this->postJson('/api/applications', [
+        $application = $this->postJson('/api/applications', [
             'id' => 'hawki-web',
             'tenant_id' => 'uni-hawk',
             'name' => 'HAWKI Web',
@@ -40,8 +40,10 @@ class SpecV2DomainApiTest extends TestCase
             ->assertJsonPath('tenantId', 'uni-hawk')
             ->assertJsonPath('permissions.0', 'reads-all-apps')
             ->assertJsonPath('tokenType', 'Bearer');
+        $token = $application->json('token');
 
-        $this->postJson('/api/heaps', [
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->postJson('/api/heaps', [
             'id' => 'heap-design',
             'name' => 'Design Heap',
             'owner_application_id' => 'hawki-web',
@@ -54,7 +56,8 @@ class SpecV2DomainApiTest extends TestCase
             ->assertJsonPath('visibility', 'hidden')
             ->assertJsonPath('metadata.course', 'design');
 
-        $this->postJson('/api/groups', [
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->postJson('/api/groups', [
             'id' => 'design_students',
             'name' => 'Design Students',
             'owner_application_id' => 'hawki-web',
@@ -62,9 +65,10 @@ class SpecV2DomainApiTest extends TestCase
             ->assertJsonPath('id', 'hawki-web:design_students')
             ->assertJsonPath('ownerApp', 'hawki-web');
 
-        $this->putJson('/api/groups/hawki-web:design_students/users', [
-            'users' => ['alice@hawk.de', 'bob@hawk.de'],
-        ])->assertOk()
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->putJson('/api/groups/hawki-web:design_students/users', [
+                'users' => ['alice@hawk.de', 'bob@hawk.de'],
+            ])->assertOk()
             ->assertJsonPath('data.0', 'alice@hawk.de')
             ->assertJsonPath('pagination.total', 2);
 
@@ -100,12 +104,14 @@ class SpecV2DomainApiTest extends TestCase
             'status' => Document::STATUS_COMPLETED,
         ]);
 
-        $this->getJson('/api/corpora')
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->getJson('/api/corpora')
             ->assertOk()
             ->assertJsonPath('data.0.id', hash('sha256', 'design corpus'))
             ->assertJsonPath('data.0.referenceCount', 1);
 
-        $this->getJson('/api/corpora/'.hash('sha256', 'design corpus'))
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->getJson('/api/corpora/'.hash('sha256', 'design corpus'))
             ->assertOk()
             ->assertJsonPath('id', hash('sha256', 'design corpus'))
             ->assertJsonPath('documentCount', 1);
@@ -204,9 +210,6 @@ class SpecV2DomainApiTest extends TestCase
         $this->actingAsApiUser();
 
         config()->set('config.qdrant_http_url', 'http://qdrant.test');
-        Http::fake([
-            'http://qdrant.test/*' => Http::response(['status' => 'ok', 'result' => ['status' => 'acknowledged']], 200),
-        ]);
 
         Dataset::query()->create([
             'dataset_id' => 'heap-sync',
@@ -249,22 +252,91 @@ class SpecV2DomainApiTest extends TestCase
         $this->assertTrue($document->metadata_json['__rawki']['search_payload']['protected']);
         $this->assertSame('architecture', $document->metadata_json['__rawki']['search_payload']['course']);
 
+    }
+
+    public function test_document_move_between_heaps_refreshes_canonical_search_payload_and_old_collection_cleanup(): void
+    {
+        $this->actingAsApiUser();
+
+        config()->set('config.qdrant_http_url', 'http://qdrant.test');
+        Http::fake([
+            'http://qdrant.test/*' => Http::response(['status' => 'ok', 'result' => ['status' => 'acknowledged']], 200),
+        ]);
+
+        Dataset::query()->create([
+            'dataset_id' => 'heap-source',
+            'tenant_id' => 'default',
+            'owner_application_id' => 'rawki-default',
+            'name' => 'Heap Source',
+            'status' => Dataset::STATUS_ACTIVE,
+            'visibility' => Dataset::VISIBILITY_DISCOVERABLE,
+            'protected' => false,
+            'metadata_json' => ['course' => 'source'],
+            'qdrant_collection' => 'heap_source',
+            'neo4j_namespace' => 'heap_source',
+        ]);
+
+        Dataset::query()->create([
+            'dataset_id' => 'heap-target',
+            'tenant_id' => 'default',
+            'owner_application_id' => 'rawki-default',
+            'name' => 'Heap Target',
+            'status' => Dataset::STATUS_ACTIVE,
+            'visibility' => Dataset::VISIBILITY_HIDDEN,
+            'protected' => true,
+            'metadata_json' => ['course' => 'target'],
+            'qdrant_collection' => 'heap_target',
+            'neo4j_namespace' => 'heap_target',
+        ]);
+
+        $document = Document::query()->create([
+            'dataset_id' => 'heap-source',
+            'collection' => 'heap_source',
+            'source_type' => Document::SOURCE_API,
+            'source_url' => 'https://example.test/move-me',
+            'storage_path' => '/tmp/move-me.md',
+            'checksum_sha256' => hash('sha256', 'move-me'),
+            'status' => Document::STATUS_COMPLETED,
+            'metadata_json' => ['topic' => 'migration'],
+        ]);
+
+        Http::fake([
+            'http://qdrant.test/*' => Http::response(['status' => 'ok', 'result' => ['status' => 'acknowledged']], 200),
+        ]);
+
+        $document->dataset_id = 'heap-target';
+        $document->collection = 'heap_target';
+        $document->save();
+        $document->refresh();
+
+        $this->assertSame('heap-target', $document->metadata_json['__rawki']['heap_context']['heap']);
+        $this->assertSame('target', $document->metadata_json['__rawki']['search_payload']['course']);
+        $this->assertTrue($document->metadata_json['__rawki']['search_payload']['protected']);
+
         Http::assertSent(function (ClientRequest $request) use ($document): bool {
+            $keys = $request['keys'] ?? null;
+            if (! is_array($keys)) {
+                return false;
+            }
+
+            sort($keys);
+            $expected = ['course', 'document_id', 'heap', 'owner_app', 'protected', 'topic', 'visibility'];
+            sort($expected);
+
             return $request->method() === 'POST'
-                && $request->url() === 'http://qdrant.test/collections/heap_sync/points/payload/delete'
+                && $request->url() === 'http://qdrant.test/collections/heap_source/points/payload/delete'
                 && ($request['filter']['must'][0]['match']['value'] ?? null) === $document->id
-                && ($request['keys'] ?? null) === ['course', 'heap', 'document_id', 'owner_app', 'visibility', 'protected'];
+                && $keys === $expected;
         });
 
         Http::assertSent(function (ClientRequest $request) use ($document): bool {
             return $request->method() === 'POST'
-                && $request->url() === 'http://qdrant.test/collections/heap_sync/points/payload'
+                && $request->url() === 'http://qdrant.test/collections/heap_target/points/payload'
                 && ($request['filter']['must'][0]['match']['value'] ?? null) === $document->id
-                && ($request['payload']['heap'] ?? null) === 'heap-sync'
-                && ($request['payload']['document_id'] ?? null) === $document->id
-                && ($request['payload']['visibility'] ?? null) === 'hidden'
-                && ($request['payload']['protected'] ?? null) === true
-                && ($request['payload']['course'] ?? null) === 'architecture';
+                && ($request['payload']['heap'] ?? null) === 'heap-target'
+                && ($request['payload']['course'] ?? null) === 'target'
+                && ($request['payload']['topic'] ?? null) === 'migration'
+                && ($request['payload']['protected'] ?? null) === true;
         });
     }
 }

@@ -46,17 +46,23 @@ def graph_from_text(
         len(getattr(body, "text", "") or ""),
     )
     extract_start = time.perf_counter()
-    triplets = rag_service.extract_triplets(body.text, body.engine)
+    extracted_triplets = rag_service.extract_triplets(body.text, body.engine)
     extract_ms = (time.perf_counter() - extract_start) * 1000
     _perf_log(
         graph_perf_log,
         "perf:graph graph.graph_text.graph_from_text step=extract raw_triplets=%s ms=%.2f",
-        len(triplets),
+        len(extracted_triplets),
         extract_ms,
     )
     clean_start = time.perf_counter()
-    triplets = clean_triplets(triplets)
+    triplets = clean_triplets(extracted_triplets, graph_perf_log=graph_perf_log)
     clean_ms = (time.perf_counter() - clean_start) * 1000
+    if not triplets and extracted_triplets:
+        logger.info(
+            "graph:from_text cleanup dropped all extracted triplets; preserving raw extraction output count=%s",
+            len(extracted_triplets),
+        )
+        triplets = list(extracted_triplets)
     _perf_log(
         graph_perf_log,
         "perf:graph graph.graph_text.graph_from_text step=clean triplets=%s ms=%.2f",

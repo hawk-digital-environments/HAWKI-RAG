@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace App\Providers;
 
 use App\Models\SpecV2\Application as AuthenticatedApplication;
+use App\Models\Document;
 use App\Listeners\SpecV2\PropagateHeapSearchPayload;
+use App\Observers\DocumentObserver;
 use App\Services\SpecV2\Events\HeapSearchPayloadChanged;
 use App\Services\Storage\StorageService;
 use App\Services\Storage\StorageElementReader;
@@ -129,6 +131,7 @@ class AppServiceProvider extends ServiceProvider
 
     private function registerDomainListeners(): void
     {
+        Document::observe(DocumentObserver::class);
         Event::listen(HeapSearchPayloadChanged::class, PropagateHeapSearchPayload::class);
     }
 

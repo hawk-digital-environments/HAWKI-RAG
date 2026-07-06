@@ -6,7 +6,7 @@ namespace App\Services\Pipeline\Tasks;
 
 use App\Models\PipelineJob;
 use App\Models\PipelineTask;
-use App\Services\Dataset\DatasetService;
+use App\Services\Heap\HeapCatalogService;
 use App\Services\Pipeline\Repositories\IngestionSourceRepository;
 use App\Services\Pipeline\Repositories\PipelineJobCreationRepository;
 use App\Services\Pipeline\Repositories\PipelineJobStateMutationRepository;
@@ -22,7 +22,7 @@ use Symfony\Component\Clock\Clock;
 readonly class PipelineTaskStarter
 {
     public function __construct(
-        private DatasetService $datasets,
+        private HeapCatalogService $heaps,
         private PipelineTaskCounterService $counters,
         private PipelineTaskInputNormalizer $input,
         private PipelineTaskMetadataService $metadata,
@@ -45,7 +45,7 @@ readonly class PipelineTaskStarter
     public function start(array $input): PipelineTask
     {
         $task = $this->transactions->run(function () use ($input): PipelineTask {
-            $dataset = $this->datasets->ensure($input);
+            $dataset = $this->heaps->ensure($input);
             $task = $this->taskRepository->createRunningTask(
                 $this->input->taskId($input),
                 $dataset,
