@@ -4,13 +4,8 @@ declare(strict_types=1);
 
 namespace App\Services\Authorization;
 
-use App\Models\Document;
-use App\Models\SpecV2\Application;
-use App\Services\Authorization\Repositories\AuthorizationIdentityRepository;
-use App\Services\Authorization\Repositories\PermissionEventRepository;
+use App\Services\Authorization\Values\ApplicationDocumentScope;
 use Illuminate\Container\Attributes\Singleton;
-use Illuminate\Contracts\Config\Repository as ConfigRepository;
-use Illuminate\Database\Eloquent\Builder;
 
 #[Singleton]
 readonly class GatewaySearchFilterService
@@ -18,9 +13,7 @@ readonly class GatewaySearchFilterService
     private const NO_MATCH_DOCUMENT_ID = '__rawki_no_match__';
 
     public function __construct(
-        private ConfigRepository $config,
-        private AuthorizationIdentityRepository $identities,
-        private PermissionEventRepository $permissionEvents,
+        private ApplicationScopeResolver $scopes,
     ) {}
 
     /**
@@ -30,145 +23,19 @@ readonly class GatewaySearchFilterService
     public function build(array $clientFilters, ApiActor $actor, ?string $requestedUserIdentifier = null): array
     {
         $clientFilter = $this->normalizeClientFilters($clientFilters);
+        $scope = $this->scopes->resolve($actor, $requestedUserIdentifier);
 
-        if ($this->scopeIsGlobal($actor) && ! $this->authorizationApplies($actor)) {
+        if ($scope->unrestricted) {
             return $clientFilter;
         }
 
-        $documentFilter = $this->documentAllowFilter($this->scopedDocumentIds($actor, $requestedUserIdentifier));
+        $documentFilter = $this->documentAllowFilter($scope);
 
         if ($clientFilter === []) {
             return $documentFilter;
         }
 
         return ['must' => [$documentFilter, $clientFilter]];
-    }
-
-    private function scopeIsGlobal(ApiActor $actor): bool
-    {
-        return $actor->hasApplicationPermission(Application::PERMISSION_READS_FEDERATED);
-    }
-
-    private function authorizationApplies(ApiActor $actor): bool
-    {
-        return (bool) $this->config->get('authz.enabled', false)
-            && ! $actor->hasApplicationPermission(Application::PERMISSION_READS_PROTECTED);
-    }
-
-    /**
-     * @return list<string>
-     */
-    private function scopedDocumentIds(ApiActor $actor, ?string $requestedUserIdentifier): array
-    {
-        $scope = $this->scopedDocumentsQuery($actor);
-
-        if (! $this->authorizationApplies($actor)) {
-            return $this->pluckDocumentIds($scope);
-        }
-
-        $public = $this->pluckDocumentIds(
-            (clone $scope)->where(function (Builder $query): void {
-                $query->where('datasets.protected', false)
-                    ->orWhereNull('datasets.protected');
-            })
-        );
-
-        $subjects = $this->authorizationSubjects($actor, $requestedUserIdentifier);
-        if ($subjects === []) {
-            return $public;
-        }
-
-        $accessibleProtectedIds = $this->permissionEvents->accessibleDocumentIdsForSubjects($subjects);
-        if ($accessibleProtectedIds === []) {
-            return $public;
-        }
-
-        $protected = $this->pluckDocumentIds(
-            (clone $scope)
-                ->where('datasets.protected', true)
-                ->whereIn('documents.id', $accessibleProtectedIds)
-        );
-
-        return array_values(array_unique([...$public, ...$protected]));
-    }
-
-    private function scopedDocumentsQuery(ApiActor $actor): Builder
-    {
-        $query = Document::query()
-            ->select('documents.id')
-            ->distinct()
-            ->join('datasets', 'datasets.dataset_id', '=', 'documents.dataset_id');
-
-        if ($actor->hasApplicationPermission(Application::PERMISSION_READS_FEDERATED)) {
-            return $query;
-        }
-
-        if ($actor->hasApplicationPermission(Application::PERMISSION_READS_ALL_APPS)) {
-            return $query->where('datasets.tenant_id', $actor->tenantId());
-        }
-
-        return $query->where('datasets.owner_application_id', $actor->applicationId());
-    }
-
-    /**
-     * @return list<array{provider: string, user_id: string}>
-     */
-    private function authorizationSubjects(ApiActor $actor, ?string $requestedUserIdentifier): array
-    {
-        if ($actor->isUser()) {
-            $identity = $actor->identity();
-            if ($identity === null) {
-                return [];
-            }
-
-            return $this->normalizeSubjects([[
-                'provider' => $identity->provider,
-                'user_id' => $identity->external_user_id,
-            ]]);
-        }
-
-        $identifier = $this->stringValue($requestedUserIdentifier);
-        if ($identifier === null) {
-            return [];
-        }
-
-        $tenantIds = $actor->hasApplicationPermission(Application::PERMISSION_READS_FEDERATED)
-            ? null
-            : [$actor->tenantId()];
-
-        $identities = $this->identities->findAllByIdentifiers([$identifier], $tenantIds);
-
-        return $this->normalizeSubjects(
-            $identities->map(fn ($identity): array => [
-                'provider' => $identity->provider,
-                'user_id' => $identity->external_user_id,
-            ])->all(),
-        );
-    }
-
-    /**
-     * @param list<array{provider: mixed, user_id: mixed}> $subjects
-     * @return list<array{provider: string, user_id: string}>
-     */
-    private function normalizeSubjects(array $subjects): array
-    {
-        $normalized = [];
-
-        foreach ($subjects as $subject) {
-            $provider = $this->stringValue($subject['provider'] ?? null);
-            $userId = $this->stringValue($subject['user_id'] ?? null);
-            if ($provider === null || $userId === null) {
-                continue;
-            }
-
-            $key = $provider.'|'.$userId;
-            $normalized[$key] = [
-                'provider' => $provider,
-                'user_id' => $userId,
-            ];
-        }
-
-        return array_values($normalized);
     }
 
     /**
@@ -263,88 +130,108 @@ readonly class GatewaySearchFilterService
             return $this->normalizeFilterBody($node);
         }
 
-        $key = $this->stringValue($node['key'] ?? null);
-        if ($key === null || ! is_array($node['match'] ?? null)) {
+        $key = $node['key'] ?? null;
+        if (! is_string($key) || trim($key) === '') {
             return null;
         }
 
-        return [
-            'key' => $this->normalizeFilterKey($key),
-            'match' => $node['match'],
-        ];
-    }
+        $normalized = ['key' => $this->normalizeFilterKey($key)];
 
-    /**
-     * @param list<string> $documentIds
-     * @return array<string, mixed>
-     */
-    private function documentAllowFilter(array $documentIds): array
-    {
-        $documentIds = array_values(array_unique(array_filter(array_map(
-            fn (string $id): string => trim($id),
-            $documentIds,
-        ))));
+        if (isset($node['match']) && is_array($node['match']) && array_key_exists('value', $node['match'])) {
+            $value = $this->normalizeFilterValue($node['match']['value']);
+            if ($value !== null) {
+                $normalized['match'] = ['value' => $value];
 
-        if ($documentIds === []) {
-            return [
-                'must' => [[
-                    'key' => 'doc_id',
-                    'match' => ['value' => self::NO_MATCH_DOCUMENT_ID],
-                ]],
-            ];
+                return $normalized;
+            }
         }
 
-        $matches = array_map(
-            static fn (string $documentId): array => [
-                'key' => 'doc_id',
-                'match' => ['value' => $documentId],
-            ],
-            $documentIds,
-        );
+        if (isset($node['match_any']) && is_array($node['match_any'])) {
+            $values = array_values(array_filter(array_map(
+                fn (mixed $value): string|int|float|bool|null => $this->normalizeFilterValue($value),
+                $node['match_any'],
+            ), static fn (mixed $value): bool => $value !== null));
 
-        return count($matches) === 1
-            ? ['must' => [$matches[0]]]
-            : ['should' => $matches];
+            if ($values !== []) {
+                $normalized['match_any'] = $values;
+
+                return $normalized;
+            }
+        }
+
+        if (isset($node['range']) && is_array($node['range'])) {
+            $range = array_filter($node['range'], static fn (mixed $value): bool => is_scalar($value) || $value === null);
+            if ($range !== []) {
+                $normalized['range'] = $range;
+
+                return $normalized;
+            }
+        }
+
+        return null;
     }
 
-    private function looksLikeFilterBody(array $filter): bool
+    private function looksLikeFilterBody(array $filters): bool
     {
-        return array_intersect(['must', 'should', 'must_not'], array_keys($filter)) !== [];
+        foreach (['must', 'should', 'must_not'] as $clause) {
+            if (array_key_exists($clause, $filters)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function normalizeFilterKey(string $key): string
     {
-        return $key === 'document_id' ? 'doc_id' : $key;
+        $trimmed = trim($key);
+
+        if (str_starts_with($trimmed, 'metadata.')) {
+            return $trimmed;
+        }
+
+        return 'metadata.'.$trimmed;
     }
 
     private function normalizeFilterValue(mixed $value): string|int|float|bool|null
     {
-        if (is_bool($value) || is_int($value) || is_float($value)) {
-            return $value;
+        if (is_string($value)) {
+            $value = trim($value);
+
+            return $value === '' ? null : $value;
         }
 
-        if (is_string($value)) {
-            $trimmed = trim($value);
-
-            return $trimmed !== '' ? $trimmed : null;
+        if (is_int($value) || is_float($value) || is_bool($value)) {
+            return $value;
         }
 
         return null;
     }
 
     /**
-     * @return list<string>
+     * @return array<string, mixed>
      */
-    private function pluckDocumentIds(Builder $query): array
+    private function documentAllowFilter(ApplicationDocumentScope $scope): array
     {
-        return $query->pluck('documents.id')
-            ->filter(fn (mixed $id): bool => is_string($id) && trim($id) !== '')
-            ->values()
-            ->all();
-    }
+        $documentIds = $scope->documentIds ?? [];
 
-    private function stringValue(mixed $value): ?string
-    {
-        return is_scalar($value) && trim((string) $value) !== '' ? trim((string) $value) : null;
+        if ($documentIds === []) {
+            return [
+                'should' => [[
+                    'key' => 'doc_id',
+                    'match' => ['value' => self::NO_MATCH_DOCUMENT_ID],
+                ]],
+            ];
+        }
+
+        return [
+            'should' => array_map(
+                static fn (string $documentId): array => [
+                    'key' => 'doc_id',
+                    'match' => ['value' => $documentId],
+                ],
+                $documentIds,
+            ),
+        ];
     }
 }

@@ -10,8 +10,10 @@ use App\Models\SpecV2\Tenant;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-class AuthorizationIdentity extends Model
+class UserIdentity extends Model
 {
+    protected $table = 'user_identities';
+
     protected $fillable = [
         'user_id',
         'issuer',

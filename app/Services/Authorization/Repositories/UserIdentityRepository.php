@@ -4,51 +4,48 @@ declare(strict_types=1);
 
 namespace App\Services\Authorization\Repositories;
 
-use App\Models\AuthorizationIdentity;
 use App\Models\User;
+use App\Models\UserIdentity;
 use App\Services\Authorization\Values\ResolvedUserIdentity;
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Str;
 
 #[Singleton]
-readonly class AuthorizationIdentityRepository
+readonly class UserIdentityRepository
 {
-    public function findByUser(User $user): ?AuthorizationIdentity
+    public function findByUser(User $user): ?UserIdentity
     {
-        $identity = AuthorizationIdentity::query()
+        $identity = UserIdentity::query()
             ->where('user_id', $user->id)
             ->orderByDesc('updated_at')
             ->orderByDesc('id')
             ->first();
 
-        return $identity instanceof AuthorizationIdentity ? $identity : null;
+        return $identity instanceof UserIdentity ? $identity : null;
     }
 
-    public function findByIssuerAndSubject(string $issuer, string $subject): ?AuthorizationIdentity
+    public function findByIssuerAndSubject(string $issuer, string $subject): ?UserIdentity
     {
-        $identity = AuthorizationIdentity::query()
+        $identity = UserIdentity::query()
             ->where('issuer', $issuer)
             ->where('subject', $subject)
             ->first();
 
-        return $identity instanceof AuthorizationIdentity ? $identity : null;
+        return $identity instanceof UserIdentity ? $identity : null;
     }
 
     /**
      * @param list<string|null> $identifiers
      */
-    public function findByTenantAndIdentifiers(string $tenantId, array $identifiers): ?AuthorizationIdentity
+    public function findByTenantAndIdentifiers(string $tenantId, array $identifiers): ?UserIdentity
     {
-        $candidates = array_values(array_unique(array_filter(
-            array_map(fn (?string $value): ?string => $this->stringValue($value), $identifiers),
-        )));
+        $candidates = $this->normalizedIdentifiers($identifiers);
 
         if ($candidates === []) {
             return null;
         }
 
-        $identity = AuthorizationIdentity::query()
+        $identity = UserIdentity::query()
             ->where('tenant_id', $tenantId)
             ->where(function ($query) use ($candidates): void {
                 $query->whereIn('external_user_id', $candidates)
@@ -59,25 +56,23 @@ readonly class AuthorizationIdentityRepository
             ->orderByDesc('id')
             ->first();
 
-        return $identity instanceof AuthorizationIdentity ? $identity : null;
+        return $identity instanceof UserIdentity ? $identity : null;
     }
 
     /**
      * @param list<string|null> $identifiers
      * @param list<string>|null $tenantIds
-     * @return Collection<int, AuthorizationIdentity>
+     * @return Collection<int, UserIdentity>
      */
     public function findAllByIdentifiers(array $identifiers, ?array $tenantIds = null): Collection
     {
-        $candidates = array_values(array_unique(array_filter(
-            array_map(fn (?string $value): ?string => $this->stringValue($value), $identifiers),
-        )));
+        $candidates = $this->normalizedIdentifiers($identifiers);
 
         if ($candidates === []) {
             return collect();
         }
 
-        return AuthorizationIdentity::query()
+        return UserIdentity::query()
             ->when(
                 $tenantIds !== null && $tenantIds !== [],
                 fn ($query) => $query->whereIn('tenant_id', $tenantIds),
@@ -95,19 +90,22 @@ readonly class AuthorizationIdentityRepository
     /**
      * @param array<string, string|null> $context
      */
-    public function upsertFromResolved(ResolvedUserIdentity $identity, array $context = []): AuthorizationIdentity
-    {
+    public function upsertFromResolved(
+        ResolvedUserIdentity $identity,
+        array $context = [],
+        ?User $user = null,
+    ): UserIdentity {
         $record = $this->findByIssuerAndSubject($identity->issuer, $identity->subject);
 
-        if (! $record instanceof AuthorizationIdentity) {
-            $record = new AuthorizationIdentity([
+        if (! $record instanceof UserIdentity) {
+            $record = new UserIdentity([
                 'issuer' => $identity->issuer,
                 'subject' => $identity->subject,
             ]);
-            $record->user_id = $this->findOrCreateUser($identity)->id;
         }
 
         $record->fill([
+            'user_id' => $user?->id ?? $record->user_id,
             'provider' => $identity->provider,
             'external_user_id' => $identity->externalUserId,
             'email' => $identity->email,
@@ -122,19 +120,19 @@ readonly class AuthorizationIdentityRepository
         return $record;
     }
 
-    public function upsertLocalUser(User $user, string $tenantId, string $applicationId, string $internalUserId): AuthorizationIdentity
+    public function upsertLocalUser(User $user, string $tenantId, string $applicationId, string $internalUserId): UserIdentity
     {
         $record = $this->findByIssuerAndSubject('local://rawki', 'user:'.$user->id);
 
-        if (! $record instanceof AuthorizationIdentity) {
-            $record = new AuthorizationIdentity([
+        if (! $record instanceof UserIdentity) {
+            $record = new UserIdentity([
                 'issuer' => 'local://rawki',
                 'subject' => 'user:'.$user->id,
             ]);
-            $record->user_id = $user->id;
         }
 
         $record->fill([
+            'user_id' => $user->id,
             'provider' => 'local',
             'external_user_id' => (string) $user->id,
             'email' => $user->email,
@@ -158,17 +156,16 @@ readonly class AuthorizationIdentityRepository
         string $applicationId,
         string $internalUserId,
         string $identifier,
-    ): AuthorizationIdentity {
+    ): UserIdentity {
         $issuer = 'rawki://identity/'.$tenantId;
         $subject = 'identifier:'.hash('sha256', $identifier);
         $record = $this->findByIssuerAndSubject($issuer, $subject);
 
-        if (! $record instanceof AuthorizationIdentity) {
-            $record = new AuthorizationIdentity([
+        if (! $record instanceof UserIdentity) {
+            $record = new UserIdentity([
                 'issuer' => $issuer,
                 'subject' => $subject,
             ]);
-            $record->user_id = $this->createPlaceholderUser($identifier, $tenantId)->id;
         }
 
         $record->fill([
@@ -190,38 +187,27 @@ readonly class AuthorizationIdentityRepository
         return $record;
     }
 
-    private function findOrCreateUser(ResolvedUserIdentity $identity): User
+    public function attachUser(UserIdentity $identity, User $user): UserIdentity
     {
-        if ($identity->email !== null) {
-            $existing = User::query()->where('email', $identity->email)->first();
-            if ($existing instanceof User) {
-                return $existing;
-            }
+        if ((int) $identity->user_id === (int) $user->id) {
+            return $identity;
         }
 
-        $user = new User([
-            'username' => $identity->username ?? $identity->externalUserId,
-            'email' => $identity->email ?? $identity->externalUserId.'@oidc.local',
-            'ip' => 'oidc:'.Str::limit(hash('sha256', $identity->issuer.'|'.$identity->subject), 48, ''),
-        ]);
-        $user->save();
+        $identity->user_id = $user->id;
+        $identity->save();
 
-        return $user;
+        return $identity;
     }
 
-    private function createPlaceholderUser(string $identifier, string $tenantId): User
+    /**
+     * @param list<string|null> $identifiers
+     * @return list<string>
+     */
+    private function normalizedIdentifiers(array $identifiers): array
     {
-        $hash = hash('sha256', $tenantId.'|'.$identifier);
-        $user = new User([
-            'username' => Str::limit($identifier, 255, ''),
-            'email' => filter_var($identifier, FILTER_VALIDATE_EMAIL)
-                ? $identifier
-                : 'identity-'.$hash.'@rawki.local',
-            'ip' => 'authz:'.Str::limit($hash, 48, ''),
-        ]);
-        $user->save();
-
-        return $user;
+        return array_values(array_unique(array_filter(
+            array_map(fn (?string $value): ?string => $this->stringValue($value), $identifiers),
+        )));
     }
 
     private function stringValue(?string $value): ?string

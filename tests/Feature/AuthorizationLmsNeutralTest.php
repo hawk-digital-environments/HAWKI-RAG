@@ -3,9 +3,11 @@
 namespace Tests\Feature;
 
 use App\Models\Document;
+use App\Models\User;
 use App\Services\Authorization\IdentityProvisioningService;
 use App\Services\Authorization\Connectors\StaticLmsPermissionConnector;
 use App\Services\Authorization\Oidc\OidcJwtValidator;
+use App\Services\Authorization\Oidc\OidcUserResolver;
 use App\Services\Authorization\PermissionGraph\PermissionGraphRelationshipFactory;
 use App\Services\Authorization\Values\LmsDocumentRelation;
 use App\Services\Authorization\Values\LmsMembership;
@@ -51,7 +53,8 @@ class AuthorizationLmsNeutralTest extends TestCase
         $this->assertSame('uni-hawk', $record->tenant_id);
         $this->assertSame('hawki-web', $record->application_id);
         $this->assertNotNull($record->internal_user_id);
-        $this->assertDatabaseHas('users', ['email' => 'learner@example.test']);
+        $this->assertNull($record->user_id);
+        $this->assertDatabaseMissing('users', ['email' => 'learner@example.test']);
         $this->assertDatabaseHas('applications', ['id' => 'hawki-web', 'tenant_id' => 'uni-hawk']);
         $this->assertDatabaseHas('internal_users', ['id' => $record->internal_user_id, 'tenant_id' => 'uni-hawk']);
     }
@@ -82,6 +85,45 @@ class AuthorizationLmsNeutralTest extends TestCase
         $this->assertSame($assignments[0]->internalUserId, $record->internal_user_id);
         $this->assertSame('uni-hawk', $record->tenant_id);
         $this->assertSame('hawki-web', $record->application_id);
+        $this->assertDatabaseCount('users', 0);
+    }
+
+    public function test_oidc_request_resolution_creates_human_user_and_links_identity(): void
+    {
+        [$privateKey, $jwk] = $this->rsaKeyPair();
+        $claims = [
+            'iss' => 'https://keycloak.example.test/realms/rawki',
+            'sub' => 'subject-123',
+            'aud' => 'rawki',
+            'exp' => time() + 3600,
+            'tenant_id' => 'uni-hawk',
+            'application_id' => 'hawki-web',
+            'email' => 'learner@example.test',
+            'preferred_username' => 'learner',
+        ];
+        $jwt = $this->jwt($claims, $privateKey);
+
+        config()->set('authz.oidc.issuer', $claims['iss']);
+        config()->set('authz.oidc.audience', 'rawki');
+        config()->set('authz.oidc.jwks_url', 'https://keycloak.example.test/certs');
+        config()->set('authz.oidc.provider', 'keycloak');
+        Http::fake([
+            'https://keycloak.example.test/certs' => Http::response(['keys' => [$jwk]]),
+        ]);
+
+        $request = request()->create('/api/query', 'GET', server: [
+            'HTTP_AUTHORIZATION' => 'Bearer '.$jwt,
+        ]);
+
+        $user = app(OidcUserResolver::class)->userFromRequest($request);
+
+        $this->assertInstanceOf(User::class, $user);
+        $this->assertDatabaseHas('users', ['email' => 'learner@example.test']);
+        $this->assertDatabaseHas('user_identities', [
+            'user_id' => $user->id,
+            'issuer' => $claims['iss'],
+            'subject' => 'subject-123',
+        ]);
     }
 
     public function test_oidc_jwt_rejects_wrong_issuer(): void

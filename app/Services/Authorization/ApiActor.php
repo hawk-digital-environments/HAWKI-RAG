@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace App\Services\Authorization;
 
-use App\Models\AuthorizationIdentity;
 use App\Models\SpecV2\Application;
+use App\Models\UserIdentity;
 use App\Models\User;
 
 readonly class ApiActor
@@ -17,7 +17,7 @@ readonly class ApiActor
         private string $type,
         private Application $application,
         private ?User $user = null,
-        private ?AuthorizationIdentity $identity = null,
+        private ?UserIdentity $identity = null,
     ) {}
 
     public static function forApplication(Application $application): self
@@ -25,7 +25,7 @@ readonly class ApiActor
         return new self(self::TYPE_APPLICATION, $application);
     }
 
-    public static function forUser(User $user, Application $application, ?AuthorizationIdentity $identity): self
+    public static function forUser(User $user, Application $application, ?UserIdentity $identity): self
     {
         return new self(self::TYPE_USER, $application, $user, $identity);
     }
@@ -50,7 +50,7 @@ readonly class ApiActor
         return $this->user;
     }
 
-    public function identity(): ?AuthorizationIdentity
+    public function identity(): ?UserIdentity
     {
         return $this->identity;
     }

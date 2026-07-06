@@ -4,7 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Dataset;
 use App\Models\Document;
-use App\Models\AuthorizationIdentity;
+use App\Models\UserIdentity;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
@@ -163,7 +163,7 @@ class OpenCompatApiTest extends TestCase
         ]);
 
         $user = $this->actingAsApiUser();
-        AuthorizationIdentity::query()->create([
+        UserIdentity::query()->create([
             'user_id' => $user->id,
             'issuer' => 'https://issuer.test',
             'subject' => 'subject-123',
@@ -250,6 +250,148 @@ class OpenCompatApiTest extends TestCase
             ->assertJsonPath('documents.0.filename', 'doc.txt')
             ->assertJsonPath('documents.0.metadata.dataset_id', 'compat-dataset')
             ->assertJsonPath('documents.0.system_metadata.task_id', 'task-1');
+    }
+
+    public function test_search_documents_is_scoped_to_application_heaps(): void
+    {
+        ['application' => $application, 'token' => $token] = $this->issueApplicationToken([
+            'id' => 'hawki-web',
+            'tenant_id' => 'uni-hawk',
+            'permissions' => ['reads'],
+        ]);
+
+        Dataset::query()->create([
+            'dataset_id' => 'heap-owned',
+            'tenant_id' => 'uni-hawk',
+            'owner_application_id' => $application->id,
+            'name' => 'Owned Heap',
+            'status' => Dataset::STATUS_ACTIVE,
+            'visibility' => Dataset::VISIBILITY_DISCOVERABLE,
+            'protected' => false,
+            'metadata_json' => [],
+            'qdrant_collection' => 'owned_heap',
+            'neo4j_namespace' => 'owned_heap',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        Dataset::query()->create([
+            'dataset_id' => 'heap-other',
+            'tenant_id' => 'uni-hawk',
+            'owner_application_id' => 'other-app',
+            'name' => 'Other Heap',
+            'status' => Dataset::STATUS_ACTIVE,
+            'visibility' => Dataset::VISIBILITY_DISCOVERABLE,
+            'protected' => false,
+            'metadata_json' => [],
+            'qdrant_collection' => 'other_heap',
+            'neo4j_namespace' => 'other_heap',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $owned = Document::query()->create([
+            'dataset_id' => 'heap-owned',
+            'collection' => 'owned_heap',
+            'source_type' => Document::SOURCE_API,
+            'source_url' => 'https://example.test/owned',
+            'original_filename' => 'owned.pdf',
+            'storage_path' => '/tmp/owned.pdf',
+            'checksum_sha256' => hash('sha256', 'owned'),
+            'status' => Document::STATUS_COMPLETED,
+            'metadata_json' => [],
+        ]);
+
+        Document::query()->create([
+            'dataset_id' => 'heap-other',
+            'collection' => 'other_heap',
+            'source_type' => Document::SOURCE_API,
+            'source_url' => 'https://example.test/other',
+            'original_filename' => 'other.pdf',
+            'storage_path' => '/tmp/other.pdf',
+            'checksum_sha256' => hash('sha256', 'other'),
+            'status' => Document::STATUS_COMPLETED,
+            'metadata_json' => [],
+        ]);
+
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->postJson('/api/search/documents', [
+                'query' => 'pdf',
+            ])
+            ->assertOk()
+            ->assertJsonPath('count', 1)
+            ->assertJsonPath('documents.0.id', $owned->id);
+    }
+
+    public function test_batch_documents_respects_same_application_scope(): void
+    {
+        ['application' => $application, 'token' => $token] = $this->issueApplicationToken([
+            'id' => 'hawki-batch',
+            'tenant_id' => 'uni-hawk',
+            'permissions' => ['reads'],
+        ]);
+
+        Dataset::query()->create([
+            'dataset_id' => 'batch-owned',
+            'tenant_id' => 'uni-hawk',
+            'owner_application_id' => $application->id,
+            'name' => 'Batch Owned',
+            'status' => Dataset::STATUS_ACTIVE,
+            'visibility' => Dataset::VISIBILITY_DISCOVERABLE,
+            'protected' => false,
+            'metadata_json' => [],
+            'qdrant_collection' => 'batch_owned',
+            'neo4j_namespace' => 'batch_owned',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        Dataset::query()->create([
+            'dataset_id' => 'batch-other',
+            'tenant_id' => 'uni-hawk',
+            'owner_application_id' => 'other-app',
+            'name' => 'Batch Other',
+            'status' => Dataset::STATUS_ACTIVE,
+            'visibility' => Dataset::VISIBILITY_DISCOVERABLE,
+            'protected' => false,
+            'metadata_json' => [],
+            'qdrant_collection' => 'batch_other',
+            'neo4j_namespace' => 'batch_other',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $owned = Document::query()->create([
+            'dataset_id' => 'batch-owned',
+            'collection' => 'batch_owned',
+            'source_type' => Document::SOURCE_API,
+            'source_url' => 'https://example.test/owned-batch',
+            'original_filename' => 'owned-batch.pdf',
+            'storage_path' => '/tmp/owned-batch.pdf',
+            'checksum_sha256' => hash('sha256', 'owned-batch'),
+            'status' => Document::STATUS_COMPLETED,
+            'metadata_json' => [],
+        ]);
+
+        $other = Document::query()->create([
+            'dataset_id' => 'batch-other',
+            'collection' => 'batch_other',
+            'source_type' => Document::SOURCE_API,
+            'source_url' => 'https://example.test/other-batch',
+            'original_filename' => 'other-batch.pdf',
+            'storage_path' => '/tmp/other-batch.pdf',
+            'checksum_sha256' => hash('sha256', 'other-batch'),
+            'status' => Document::STATUS_COMPLETED,
+            'metadata_json' => [],
+        ]);
+
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->postJson('/api/batch/documents', [
+                'document_ids' => [$owned->id, $other->id],
+            ])
+            ->assertOk()
+            ->assertJsonPath('count', 1)
+            ->assertJsonPath('documents.0.id', $owned->id);
     }
 
     public function test_unsupported_external_semantics_are_explicit(): void

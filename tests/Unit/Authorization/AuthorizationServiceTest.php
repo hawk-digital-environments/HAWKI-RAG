@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Unit\Authorization;
 
-use App\Models\AuthorizationIdentity;
+use App\Models\UserIdentity;
 use App\Services\Authorization\AuthorizationService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
@@ -35,7 +35,7 @@ class AuthorizationServiceTest extends TestCase
     public function test_retrieval_context_prefers_stored_authorization_identity(): void
     {
         $user = $this->actingAsApiUser();
-        AuthorizationIdentity::query()->create([
+        UserIdentity::query()->create([
             'user_id' => $user->id,
             'issuer' => 'https://issuer.test',
             'subject' => 'subject-1',

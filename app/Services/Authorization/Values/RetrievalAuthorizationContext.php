@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Authorization\Values;
 
-use App\Models\AuthorizationIdentity;
+use App\Models\UserIdentity;
 use App\Models\User;
 
 readonly class RetrievalAuthorizationContext
@@ -14,7 +14,7 @@ readonly class RetrievalAuthorizationContext
         public string $userId,
     ) {}
 
-    public static function fromIdentity(AuthorizationIdentity $identity): self
+    public static function fromIdentity(UserIdentity $identity): self
     {
         return new self(
             provider: $identity->provider,

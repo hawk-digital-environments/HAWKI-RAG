@@ -3,12 +3,12 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
-use App\Models\AuthorizationIdentity;
 use App\Models\Dataset;
 use App\Models\Document;
 use App\Models\PipelineTask;
 use App\Models\SpecV2\Corpus;
 use App\Models\SpecV2\GroupMember;
+use App\Models\UserIdentity;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -73,7 +73,7 @@ class SpecV2DomainApiTest extends TestCase
 
         $this->assertNotNull($member);
         $this->assertNotNull($member->internal_user_id);
-        $this->assertDatabaseHas('authorization_identities', [
+        $this->assertDatabaseHas('user_identities', [
             'tenant_id' => 'uni-hawk',
             'application_id' => 'hawki-web',
             'external_user_id' => 'alice@hawk.de',
@@ -182,7 +182,7 @@ class SpecV2DomainApiTest extends TestCase
         ])->assertCreated()
             ->assertJsonPath('ownerApp', 'rawki-default');
 
-        $identity = AuthorizationIdentity::query()
+        $identity = UserIdentity::query()
             ->where('user_id', $user->id)
             ->where('provider', 'local')
             ->first();

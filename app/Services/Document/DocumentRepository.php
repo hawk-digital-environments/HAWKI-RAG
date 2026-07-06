@@ -52,6 +52,28 @@ readonly class DocumentRepository
     }
 
     /**
+     * @param list<string> $documentIds
+     * @param array<string, mixed> $filters
+     * @return Collection<int, Document>
+     */
+    public function findManyByIds(array $documentIds, array $filters = []): Collection
+    {
+        $documentIds = array_values(array_unique(array_filter(array_map(
+            static fn (string $value): string => trim($value),
+            $documentIds,
+        ))));
+
+        if ($documentIds === []) {
+            return collect();
+        }
+
+        return $this->filteredQuery([
+            ...$filters,
+            'document_ids' => $documentIds,
+        ])->get();
+    }
+
+    /**
      * @return Collection<int, Document>
      */
     public function list(array $filters, int $limit): Collection
@@ -94,27 +116,53 @@ readonly class DocumentRepository
 
     private function filteredQuery(array $filters): Builder
     {
-        $query = Document::query();
+        $query = Document::query()->select('documents.*');
         $datasetId = $this->stringValue($filters['heap_id'] ?? $filters['heapId'] ?? $filters['dataset_id'] ?? $filters['datasetId'] ?? null);
+        $tenantId = $this->stringValue($filters['tenant_id'] ?? null);
+        $ownerApplicationId = $this->stringValue($filters['owner_application_id'] ?? null);
         $search = $this->stringValue($filters['q'] ?? $filters['search'] ?? null);
+        $documentIds = array_values(array_filter(array_map(
+            fn (mixed $value): ?string => is_scalar($value) && trim((string) $value) !== '' ? trim((string) $value) : null,
+            is_array($filters['document_ids'] ?? null) ? $filters['document_ids'] : (is_array($filters['documentIds'] ?? null) ? $filters['documentIds'] : []),
+        )));
+
+        if ($tenantId !== null || $ownerApplicationId !== null) {
+            $query->join('datasets as heaps', 'heaps.dataset_id', '=', 'documents.dataset_id');
+        }
 
         if ($datasetId) {
-            $query->where('dataset_id', $datasetId);
+            $query->where('documents.dataset_id', $datasetId);
+        }
+
+        if ($tenantId !== null) {
+            $query->where('heaps.tenant_id', $tenantId);
+        }
+
+        if ($ownerApplicationId !== null) {
+            $query->where('heaps.owner_application_id', $ownerApplicationId);
+        }
+
+        if (($filters['document_ids'] ?? $filters['documentIds'] ?? null) !== null) {
+            if ($documentIds === []) {
+                $query->whereRaw('1 = 0');
+            } else {
+                $query->whereIn('documents.id', $documentIds);
+            }
         }
 
         if ($search) {
             $query->where(function (Builder $inner) use ($search): void {
                 $like = '%'.str_replace(['%', '_'], ['\%', '\_'], $search).'%';
                 $inner
-                    ->where('source_url', 'like', $like)
-                    ->orWhere('storage_path', 'like', $like)
-                    ->orWhere('title', 'like', $like)
-                    ->orWhere('original_filename', 'like', $like)
-                    ->orWhere('checksum_sha256', 'like', $like);
+                    ->where('documents.source_url', 'like', $like)
+                    ->orWhere('documents.storage_path', 'like', $like)
+                    ->orWhere('documents.title', 'like', $like)
+                    ->orWhere('documents.original_filename', 'like', $like)
+                    ->orWhere('documents.checksum_sha256', 'like', $like);
             });
         }
 
-        return $query;
+        return $query->distinct();
     }
 
     private function stringValue(mixed $value): ?string

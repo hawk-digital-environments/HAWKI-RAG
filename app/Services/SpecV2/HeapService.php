@@ -7,7 +7,6 @@ use App\Models\Dataset;
 use App\Models\SpecV2\Heap;
 use App\Services\Authorization\ApiActor;
 use App\Services\Dataset\DatasetIdentifierFactory;
-use App\Services\Dataset\DatasetService;
 use App\Services\SpecV2\Exceptions\ApplicationNotFoundException;
 use App\Services\SpecV2\Exceptions\HeapNotFoundException;
 use App\Services\SpecV2\Payloads\HeapPayloadBuilder;
@@ -26,7 +25,7 @@ readonly class HeapService
         private ApplicationRepository $applications,
         private DatasetIdentifierFactory $datasetIdentifiers,
         private SpecIdentifierFactory $identifiers,
-        private DatasetService $datasets,
+        private HeapDeletionService $deletions,
         private HeapPayloadBuilder $payloads,
         private PaginationPayloadBuilder $pagination,
         private ClockInterface $clock = new Clock,
@@ -136,12 +135,12 @@ readonly class HeapService
 
     public function delete(string $heapId): array
     {
-        $deleted = $this->datasets->delete($heapId);
-        if ($deleted === null) {
+        $heap = $this->heaps->findById($heapId);
+        if (! $heap instanceof Heap) {
             throw HeapNotFoundException::withId($heapId);
         }
 
-        return $deleted;
+        return $this->deletions->delete($heap);
     }
 
     private function visibility(mixed $value): string

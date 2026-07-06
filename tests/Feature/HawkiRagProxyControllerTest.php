@@ -2,10 +2,10 @@
 
 namespace Tests\Feature;
 
-use App\Models\AuthorizationIdentity;
 use App\Models\AuthorizationPermissionEvent;
 use App\Models\Dataset;
 use App\Models\Document;
+use App\Models\UserIdentity;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
@@ -90,7 +90,7 @@ class HawkiRagProxyControllerTest extends TestCase
             'ip' => '127.0.0.25',
         ]);
 
-        AuthorizationIdentity::query()->create([
+        UserIdentity::query()->create([
             'user_id' => $identityUser->id,
             'provider' => 'keycloak',
             'external_user_id' => 'learner-123',
@@ -142,6 +142,40 @@ class HawkiRagProxyControllerTest extends TestCase
                 && $request->data()['preferred_tags'] === ['policy']
                 && ($request->data()['auth_context'] ?? null) === null
                 && $docIds === $expected;
+        });
+    }
+
+    public function test_query_for_application_without_read_permission_scopes_to_no_match(): void
+    {
+        config()->set('config.hawki_rag_bridge_url', 'http://bridge.test');
+        Http::fake([
+            'http://bridge.test/query' => Http::response([
+                'ok' => true,
+                'count' => 0,
+                'hits' => [],
+            ], 200),
+        ]);
+
+        ['token' => $token] = $this->issueApplicationToken([
+            'id' => 'decorative-app',
+            'tenant_id' => 'uni-hawk',
+            'permissions' => [],
+        ]);
+
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->postJson('/api/query', [
+                'query' => 'campus policy',
+            ])->assertOk();
+
+        Http::assertSent(function (Request $request): bool {
+            $filters = $request->data()['filters'] ?? [];
+            $docIds = array_map(
+                static fn (array $match): ?string => $match['match']['value'] ?? null,
+                is_array($filters['should'] ?? null) ? $filters['should'] : [],
+            );
+
+            return $request->url() === 'http://bridge.test/query'
+                && $docIds === ['__rawki_no_match__'];
         });
     }
 }

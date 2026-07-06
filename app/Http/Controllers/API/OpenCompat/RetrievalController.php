@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers\API\OpenCompat;
 
 use App\Http\Controllers\Controller;
+use App\Services\Authorization\ApplicationScopeResolver;
 use App\Services\Authorization\ApiActorResolver;
 use App\Services\Authorization\GatewaySearchFilterService;
 use App\Services\OpenCompat\OpenCompatService;
@@ -42,19 +43,25 @@ class RetrievalController extends Controller
         return $this->json($this->compat->retrieveDocs($input));
     }
 
-    public function searchDocuments(Request $request): JsonResponse
+    public function searchDocuments(Request $request, ApiActorResolver $actors, ApplicationScopeResolver $scopes): JsonResponse
     {
         $input = $request->validate([
             'query' => 'sometimes|string|max:1000',
             'q' => 'sometimes|string|max:1000',
             'filename' => 'sometimes|string|max:255',
             'limit' => 'sometimes|integer|min:1|max:250',
+            'user_identifier' => 'sometimes|string|max:255',
         ]);
+        $input['scope_filters'] = $scopes->resolve(
+            $actors->resolve($request),
+            $input['user_identifier'] ?? null,
+        )->repositoryFilters;
+        unset($input['user_identifier']);
 
         return $this->json($this->compat->searchDocuments($input));
     }
 
-    public function batchDocuments(Request $request): JsonResponse
+    public function batchDocuments(Request $request, ApiActorResolver $actors, ApplicationScopeResolver $scopes): JsonResponse
     {
         $input = $request->validate([
             'document_ids' => 'sometimes|array|max:250',
@@ -63,7 +70,13 @@ class RetrievalController extends Controller
             'documentIds.*' => 'string|max:255',
             'ids' => 'sometimes|array|max:250',
             'ids.*' => 'string|max:255',
+            'user_identifier' => 'sometimes|string|max:255',
         ]);
+        $input['scope_filters'] = $scopes->resolve(
+            $actors->resolve($request),
+            $input['user_identifier'] ?? null,
+        )->repositoryFilters;
+        unset($input['user_identifier']);
 
         return $this->json($this->compat->batchDocuments($input));
     }

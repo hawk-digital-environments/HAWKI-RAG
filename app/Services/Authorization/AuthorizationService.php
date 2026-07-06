@@ -7,7 +7,7 @@ namespace App\Services\Authorization;
 use App\Models\Document;
 use App\Models\User;
 use App\Services\Authorization\Contracts\PermissionGraphClient;
-use App\Services\Authorization\Repositories\AuthorizationIdentityRepository;
+use App\Services\Authorization\Repositories\UserIdentityRepository;
 use App\Services\Authorization\Values\RetrievalAuthorizationContext;
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Contracts\Config\Repository as ConfigRepository;
@@ -18,7 +18,7 @@ readonly class AuthorizationService
 {
     public function __construct(
         private ConfigRepository $config,
-        private AuthorizationIdentityRepository $identities,
+        private UserIdentityRepository $identities,
         private PermissionGraphClient $graph,
         private LoggerInterface $logger,
     ) {}

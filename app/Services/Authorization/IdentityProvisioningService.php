@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace App\Services\Authorization;
 
-use App\Models\AuthorizationIdentity;
 use App\Models\SpecV2\Application;
+use App\Models\UserIdentity;
 use App\Models\User;
-use App\Services\Authorization\Repositories\AuthorizationIdentityRepository;
+use App\Services\Authorization\Repositories\UserIdentityRepository;
 use App\Services\Authorization\Values\ResolvedUserIdentity;
 use App\Services\SpecV2\Repositories\ApplicationRepository;
 use App\Services\SpecV2\Repositories\InternalUserRepository;
@@ -21,20 +21,20 @@ readonly class IdentityProvisioningService
 {
     public function __construct(
         private ConfigRepository $config,
-        private AuthorizationIdentityRepository $identities,
+        private UserIdentityRepository $identities,
         private TenantRepository $tenants,
         private ApplicationRepository $applications,
         private InternalUserRepository $internalUsers,
     ) {}
 
-    public function actorForUser(?User $user): ?AuthorizationIdentity
+    public function actorForUser(?User $user): ?UserIdentity
     {
         if (! $user instanceof User) {
             return null;
         }
 
         $identity = $this->identities->findByUser($user);
-        if ($identity instanceof AuthorizationIdentity) {
+        if ($identity instanceof UserIdentity) {
             return $this->hydrateIdentityContext($identity);
         }
 
@@ -45,7 +45,7 @@ readonly class IdentityProvisioningService
         return $this->identities->upsertLocalUser($user, $tenantId, $applicationId, $internalUserId);
     }
 
-    public function upsertResolvedIdentity(ResolvedUserIdentity $identity): AuthorizationIdentity
+    public function upsertResolvedIdentity(ResolvedUserIdentity $identity, ?User $user = null): UserIdentity
     {
         $tenantId = $this->tenantIdFromClaims($identity->claims);
         $existing = $this->identities->findByIssuerAndSubject($identity->issuer, $identity->subject);
@@ -70,7 +70,7 @@ readonly class IdentityProvisioningService
             'tenant_id' => $tenantId,
             'application_id' => $applicationId,
             'internal_user_id' => $internalUserId,
-        ]);
+        ], $user);
     }
 
     /**
@@ -85,7 +85,7 @@ readonly class IdentityProvisioningService
         foreach ($identifiers as $identifier) {
             $identity = $this->identities->findByTenantAndIdentifiers($tenantId, [$identifier]);
 
-            if ($identity instanceof AuthorizationIdentity) {
+            if ($identity instanceof UserIdentity) {
                 $identity = $this->hydrateIdentityContext($identity, $tenantId, $resolvedApplicationId);
             } else {
                 $internalUserId = $this->ensureInternalUser($tenantId, null, [
@@ -107,10 +107,10 @@ readonly class IdentityProvisioningService
     }
 
     private function hydrateIdentityContext(
-        AuthorizationIdentity $identity,
+        UserIdentity $identity,
         ?string $preferredTenantId = null,
         ?string $preferredApplicationId = null,
-    ): AuthorizationIdentity {
+    ): UserIdentity {
         $tenantId = $identity->tenant_id
             ?? $preferredTenantId
             ?? $this->tenantIdFromClaims($identity->claims ?? []);

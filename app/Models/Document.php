@@ -55,11 +55,6 @@ class Document extends Model
         'metadata_json' => 'array',
     ];
 
-    public function dataset(): BelongsTo
-    {
-        return $this->belongsTo(Dataset::class, 'dataset_id', 'dataset_id');
-    }
-
     public function heap(): BelongsTo
     {
         return $this->belongsTo(Heap::class, 'dataset_id', 'dataset_id');

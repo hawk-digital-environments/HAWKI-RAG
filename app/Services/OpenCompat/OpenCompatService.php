@@ -227,7 +227,10 @@ readonly class OpenCompatService
     {
         $documents = array_map(
             fn (array $document): array => $this->documentShape($document),
-            $this->browser->list((int) ($input['limit'] ?? 100), ['search' => $input['query'] ?? $input['filename'] ?? $input['q'] ?? null]),
+            $this->browser->list((int) ($input['limit'] ?? 100), [
+                ...$this->array($input['scope_filters'] ?? []),
+                'search' => $input['query'] ?? $input['filename'] ?? $input['q'] ?? null,
+            ]),
         );
 
         return ['status' => 200, 'payload' => ['documents' => $documents, 'count' => count($documents)]];
@@ -240,11 +243,13 @@ readonly class OpenCompatService
     public function batchDocuments(array $input): array
     {
         $ids = array_values(array_filter(array_map('strval', $this->array($input['document_ids'] ?? $input['documentIds'] ?? $input['ids'] ?? []))));
+        $indexed = $this->documents->findManyByIds($ids, $this->array($input['scope_filters'] ?? []))
+            ->keyBy(fn (Document $document): string => (string) $document->id);
         $documents = [];
         foreach ($ids as $id) {
-            $document = $this->browser->show($id);
-            if ($document) {
-                $documents[] = $this->documentShape($document);
+            $document = $indexed->get($id);
+            if ($document instanceof Document) {
+                $documents[] = $this->documentShapeFromModel($document);
             }
         }
 

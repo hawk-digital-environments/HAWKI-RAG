@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 namespace App\Models\SpecV2;
 
-use App\Models\AuthorizationIdentity;
+use App\Models\UserIdentity;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -31,9 +31,9 @@ class InternalUser extends Model
         return $this->belongsTo(Tenant::class, 'tenant_id', 'id');
     }
 
-    public function identities(): HasMany
+    public function userIdentities(): HasMany
     {
-        return $this->hasMany(AuthorizationIdentity::class, 'internal_user_id', 'id');
+        return $this->hasMany(UserIdentity::class, 'internal_user_id', 'id');
     }
 
     public function groupMembers(): HasMany
