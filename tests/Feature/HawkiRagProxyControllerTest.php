@@ -106,7 +106,7 @@ class HawkiRagProxyControllerTest extends TestCase
         app(DocumentGrantRepository::class)->add((string) $protectedDocument->id, [$application->id.':course_design']);
 
         $this->withHeader('Authorization', 'Bearer '.$token)
-            ->postJson('/api/query', [
+            ->postJson('/api/search', [
                 'query' => 'campus policy',
                 'top_k' => 3,
                 'user_identifier' => 'learner-123',
@@ -152,7 +152,7 @@ class HawkiRagProxyControllerTest extends TestCase
         ]);
 
         $this->withHeader('Authorization', 'Bearer '.$token)
-            ->postJson('/api/query', [
+            ->postJson('/api/search', [
                 'query' => 'campus policy',
             ])->assertOk();
 

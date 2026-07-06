@@ -9,7 +9,7 @@ use Tests\TestCase;
 
 class SettingsDashboardTest extends TestCase
 {
-    public function test_settings_page_mounts_and_saves_converter_and_model_defaults(): void
+    public function test_settings_config_endpoint_saves_and_reads_converter_and_model_defaults(): void
     {
         $this->withoutVite();
         config()->set('config.operator_auth.bypass', true);
@@ -61,13 +61,15 @@ class SettingsDashboardTest extends TestCase
         $this->assertStringNotContainsString('secret-converter-key', $stored);
         $this->assertStringNotContainsString('openai-key', $stored);
 
-        $this->get('/settings')
+        $this->getJson('/settings/config')
             ->assertOk()
-            ->assertSee('HAWKI Settings')
-            ->assertSee('data-settings-dashboard', false)
-            ->assertSee('settings-dashboard-config', false)
-            ->assertSee('"apiKeySet":true', false)
-            ->assertDontSee('secret-converter-key', false);
+            ->assertJsonPath('customConverter.apiKeySet', true)
+            ->assertJsonPath('customConverter.startPath', '/extract')
+            ->assertJsonPath('models.provider', 'ollama')
+            ->assertJsonPath('models.graph_model', 'llama3.2:3b')
+            ->assertJsonPath('models.embedding_model', 'bge-m3')
+            ->assertDontSee('secret-converter-key', false)
+            ->assertDontSee('openai-key', false);
 
         File::delete($settingsPath);
     }

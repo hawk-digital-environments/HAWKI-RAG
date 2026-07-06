@@ -75,14 +75,21 @@ class DemoPipelineTask extends Command
         $renderer->planned($this, $taskId, $input->dataset, $urls, $taskInput);
 
         if ($input->dryRun) {
-            $renderer->dryRun($this, $urls, $support->dashboardUrls());
+            $renderer->dryRun($this, $urls, $support->swaggerUrls());
 
             return self::SUCCESS;
         }
 
         $task = $tasks->start($taskInput);
         $status = $tasks->show($task->task_id);
-        $renderer->created($this, $task, $status, $urls, $support->dashboardUrls());
+        $renderer->created(
+            $this,
+            $task,
+            $status,
+            $urls,
+            $support->taskStatusUrl($task->task_id),
+            $support->swaggerUrls(),
+        );
 
         return self::SUCCESS;
     }

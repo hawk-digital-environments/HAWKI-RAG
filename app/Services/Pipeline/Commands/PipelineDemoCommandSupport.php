@@ -61,17 +61,22 @@ readonly class PipelineDemoCommandSupport
     /**
      * @return list<string>
      */
-    public function dashboardUrls(): array
+    public function swaggerUrls(): array
     {
-        $dashboard = $this->urls->to('/pipeline-controller');
-        $urls = [$dashboard];
-        $mounted = $this->mountedDashboardUrl();
+        $swagger = $this->urls->to('/swagger');
+        $urls = [$swagger];
+        $mounted = $this->mountedSwaggerUrl();
 
-        if ($mounted !== null && $mounted !== $dashboard) {
+        if ($mounted !== null && $mounted !== $swagger) {
             $urls[] = $mounted;
         }
 
         return $urls;
+    }
+
+    public function taskStatusUrl(string $taskId): string
+    {
+        return $this->urls->to('/api/pipeline/tasks/'.$taskId);
     }
 
     /**
@@ -87,7 +92,7 @@ readonly class PipelineDemoCommandSupport
         return preg_split('/[\r\n,]+/', $configured) ?: [];
     }
 
-    private function mountedDashboardUrl(): ?string
+    private function mountedSwaggerUrl(): ?string
     {
         $appUrl = rtrim((string) $this->config->get('app.url'), '/');
         if ($appUrl === '') {
@@ -110,6 +115,6 @@ readonly class PipelineDemoCommandSupport
             return null;
         }
 
-        return $origin.'/'.trim($path.'/pipeline-controller', '/');
+        return $origin.'/'.trim($path.'/swagger', '/');
     }
 }

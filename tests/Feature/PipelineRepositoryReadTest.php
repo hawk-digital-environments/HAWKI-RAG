@@ -464,6 +464,60 @@ class PipelineRepositoryReadTest extends TestCase
         $this->assertNotNull(Corpus::query()->find($checksum));
     }
 
+    public function test_ingestion_repository_preserves_existing_upload_document_identity_and_metadata(): void
+    {
+        $task = $this->task('task-preserve-upload-identity');
+        $checksum = hash('sha256', 'preserve-upload-document');
+        $document = Document::query()->create([
+            'id' => 'doc-upload-preserve',
+            'external_id' => 'doc-upload-preserve',
+            'dataset_id' => $task->dataset_id,
+            'collection' => 'hawki_repository_read_dataset',
+            'source_type' => Document::SOURCE_UPLOAD,
+            'source_url' => 'upload://brief.pdf',
+            'original_filename' => 'brief.pdf',
+            'storage_path' => '/shared/upload/brief.pdf',
+            'mime_type' => 'application/pdf',
+            'file_size' => 123,
+            'checksum_sha256' => $checksum,
+            'title' => 'Original Brief',
+            'metadata_json' => [
+                'course' => 'design',
+                'task_id' => 'old-task',
+            ],
+            'status' => Document::STATUS_QUEUED,
+        ]);
+
+        $updated = app(PipelineIngestionRepository::class)->upsertIngestedDocument(
+            [
+                'event_id' => 'event-preserve-upload',
+                'task_id' => 'task-preserve-upload-identity',
+                'job_id' => 'job-preserve-upload',
+                'dataset_id' => $task->dataset_id,
+                'job_type' => PipelineJob::TYPE_INGEST,
+                'source_url' => 'upload://brief.pdf',
+            ],
+            [
+                'dataset_id' => $task->dataset_id,
+                'qdrant_collection' => 'hawki_repository_read_dataset',
+                'neo4j_namespace' => 'hawki_repository_read_dataset',
+            ],
+            storage_path('framework/testing/preserve-upload.md'),
+            $checksum,
+            456,
+            ['ok' => true, 'documents' => 1],
+        );
+
+        $this->assertSame($document->id, $updated->id);
+        $this->assertSame(Document::SOURCE_UPLOAD, $updated->source_type);
+        $this->assertSame('upload://brief.pdf', $updated->source_url);
+        $this->assertSame('brief.pdf', $updated->original_filename);
+        $this->assertSame('Original Brief', $updated->title);
+        $this->assertSame('design', $updated->metadata_json['course']);
+        $this->assertSame('job-preserve-upload', $updated->metadata_json['job_id']);
+        $this->assertSame(Document::STATUS_COMPLETED, $updated->status);
+    }
+
     public function test_scrape_history_repository_detects_completed_scrapes(): void
     {
         $repository = app(PipelineScrapeHistoryRepository::class);

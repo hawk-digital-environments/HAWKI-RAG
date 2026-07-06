@@ -125,7 +125,7 @@ class DocumentController extends Controller
     {
         return $this->json($this->unsupported(
             'documents/file',
-            'RAWKI file streaming is only supported for uploaded-source documents through /documents/uploads/download.',
+            'Legacy document file streaming is not exposed on the V2 branch.',
         ));
     }
 

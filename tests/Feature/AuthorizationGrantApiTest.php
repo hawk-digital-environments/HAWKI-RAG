@@ -88,7 +88,7 @@ class AuthorizationGrantApiTest extends TestCase
             ->assertJsonPath('users', []);
 
         $this->withHeader('Authorization', 'Bearer '.$token)
-            ->postJson('/api/query', [
+            ->postJson('/api/search', [
                 'query' => 'protected',
                 'user_identifier' => 'learner-123',
             ])->assertOk();
@@ -105,7 +105,7 @@ class AuthorizationGrantApiTest extends TestCase
         });
     }
 
-    public function test_document_grant_api_allows_document_browser_for_direct_user_grants(): void
+    public function test_document_grant_api_allows_auth_check_for_direct_user_grants(): void
     {
         config()->set('authz.enabled', true);
         ['token' => $token] = $this->issueApplicationToken([
@@ -150,10 +150,9 @@ class AuthorizationGrantApiTest extends TestCase
             ->assertJsonPath('groups', []);
 
         $this->withHeader('Authorization', 'Bearer '.$token)
-            ->getJson('/api/documents/'.$document->id.'?user_identifier='.urlencode($userIdentifier))
+            ->getJson('/api/auth/check?user_identifier='.urlencode($userIdentifier).'&document_id='.urlencode((string) $document->id))
             ->assertOk()
-            ->assertJsonPath('success', true)
-            ->assertJsonPath('document.id', $document->id);
+            ->assertJsonPath('permitted', true);
 
         $this->assertDatabaseHas('user_identities', [
             'tenant_id' => 'default',
@@ -307,7 +306,7 @@ class AuthorizationGrantApiTest extends TestCase
         ]);
 
         $this->withHeader('Authorization', 'Bearer '.$token)
-            ->postJson('/api/query', [
+            ->postJson('/api/search', [
                 'query' => 'design',
                 'filters' => [
                     'AND' => [

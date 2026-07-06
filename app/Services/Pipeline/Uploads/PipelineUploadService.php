@@ -179,7 +179,7 @@ class PipelineUploadService
             'workflow_id' => $job->temporal_workflow_id,
         ]);
 
-        return $this->results->success($task, $job);
+        return $this->results->success($task, $job, $storedUpload, $sourceId, $sourceUrl);
     }
 
     private function now(): Carbon

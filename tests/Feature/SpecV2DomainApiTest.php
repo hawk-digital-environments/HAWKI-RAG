@@ -11,6 +11,8 @@ use App\Models\SpecV2\GroupMember;
 use App\Models\UserIdentity;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request as ClientRequest;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
@@ -121,65 +123,6 @@ class SpecV2DomainApiTest extends TestCase
             ->assertJsonPath('documentCount', 1);
     }
 
-    public function test_existing_dataset_and_document_payloads_expose_heap_and_corpus_terms(): void
-    {
-        $this->actingAsApplication([
-            'id' => 'rawki-default',
-            'tenant_id' => 'default',
-        ]);
-
-        Dataset::query()->create([
-            'dataset_id' => 'dataset-v2',
-            'tenant_id' => 'default',
-            'owner_application_id' => 'rawki-default',
-            'name' => 'Dataset V2',
-            'status' => Dataset::STATUS_ACTIVE,
-            'visibility' => Dataset::VISIBILITY_DISCOVERABLE,
-            'protected' => false,
-            'metadata_json' => ['type' => 'wiki'],
-            'qdrant_collection' => 'hawki_dataset_v2',
-            'neo4j_namespace' => 'hawki_dataset_v2',
-        ]);
-
-        PipelineTask::query()->create([
-            'task_id' => 'task-v2',
-            'dataset_id' => 'dataset-v2',
-            'status' => PipelineTask::STATUS_COMPLETED,
-            'metadata' => [],
-        ]);
-
-        Corpus::query()->create([
-            'id' => hash('sha256', 'dataset-v2-doc'),
-            'content' => 'Dataset V2 corpus content.',
-            'reference_count' => 1,
-            'metadata_json' => [],
-        ]);
-
-        $document = Document::query()->create([
-            'dataset_id' => 'dataset-v2',
-            'corpus_id' => hash('sha256', 'dataset-v2-doc'),
-            'collection' => 'hawki_dataset_v2',
-            'source_type' => Document::SOURCE_API,
-            'source_url' => 'https://example.test/dataset-v2',
-            'storage_path' => storage_path('framework/testing/specv2/dataset-v2.md'),
-            'checksum_sha256' => hash('sha256', 'dataset-v2-doc'),
-            'status' => Document::STATUS_COMPLETED,
-            'metadata_json' => [],
-        ]);
-
-        $this->getJson('/api/datasets/dataset-v2')
-            ->assertOk()
-            ->assertJsonPath('dataset.heapId', 'dataset-v2')
-            ->assertJsonPath('dataset.tenantId', 'default')
-            ->assertJsonPath('dataset.ownerApp', 'rawki-default')
-            ->assertJsonPath('dataset.metadata.type', 'wiki');
-
-        $this->getJson('/api/documents/'.$document->id)
-            ->assertOk()
-            ->assertJsonPath('document.heapId', 'dataset-v2')
-            ->assertJsonPath('document.corpusId', hash('sha256', 'dataset-v2-doc'));
-    }
-
     public function test_canonical_v2_document_routes_create_update_and_delete_documents(): void
     {
         config()->set('config.hawki_rag_bridge_url', 'http://bridge.test');
@@ -250,6 +193,87 @@ class SpecV2DomainApiTest extends TestCase
         $this->assertDatabaseMissing('documents', [
             'id' => 'doc-spec-1',
         ]);
+    }
+
+    public function test_canonical_v2_document_route_accepts_file_uploads_and_tracks_pipeline_identity(): void
+    {
+        $root = storage_path('framework/testing/specv2-file-upload');
+        File::deleteDirectory($root);
+
+        config()->set('temporal.storage.shared_root', $root);
+        config()->set('file_converter.raganything_supported_extensions', ['pdf']);
+        config()->set('config.hawki_rag_bridge_url', 'http://bridge.test');
+
+        Http::fake([
+            'http://bridge.test/temporal/workflows/ingest' => Http::response([
+                'workflow_id' => 'ingest-source-spec-upload',
+                'run_id' => 'spec-upload-run-1',
+            ]),
+        ]);
+
+        ['token' => $token] = $this->issueApplicationToken([
+            'id' => 'rawki-default',
+            'tenant_id' => 'default',
+        ]);
+
+        Dataset::query()->create([
+            'dataset_id' => 'heap-upload-docs',
+            'tenant_id' => 'default',
+            'owner_application_id' => 'rawki-default',
+            'name' => 'Heap Upload Docs',
+            'status' => Dataset::STATUS_ACTIVE,
+            'visibility' => Dataset::VISIBILITY_DISCOVERABLE,
+            'protected' => false,
+            'metadata_json' => ['source' => 'upload'],
+            'qdrant_collection' => 'heap_upload_docs',
+            'neo4j_namespace' => 'heap_upload_docs',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $response = $this->withHeader('Authorization', 'Bearer '.$token)
+            ->post('/api/heaps/heap-upload-docs/documents', [
+                'document_id' => 'doc-upload-1',
+                'title' => 'Uploaded Spec Document',
+                'metadata' => ['course' => 'design'],
+                'file' => UploadedFile::fake()->create('brief.pdf', 12, 'application/pdf'),
+            ], [
+                'Accept' => 'application/json',
+            ]);
+
+        $response->assertCreated()
+            ->assertJsonPath('documentId', 'doc-upload-1')
+            ->assertJsonPath('heapId', 'heap-upload-docs')
+            ->assertJsonPath('sourceType', Document::SOURCE_UPLOAD)
+            ->assertJsonPath('status', Document::STATUS_QUEUED)
+            ->assertJsonPath('metadata.course', 'design')
+            ->assertJsonPath('taskId', $response->json('taskId'))
+            ->assertJsonPath('jobId', $response->json('jobId'))
+            ->assertJsonPath('sourceId', $response->json('sourceId'));
+
+        $document = Document::query()->findOrFail('doc-upload-1');
+
+        $this->assertSame(Document::SOURCE_UPLOAD, $document->source_type);
+        $this->assertSame(Document::STATUS_QUEUED, $document->status);
+        $this->assertNotNull($document->checksum_sha256);
+        $this->assertSame('design', $document->metadata_json['course']);
+        $this->assertSame($response->json('taskId'), $document->metadata_json['task_id']);
+        $this->assertSame($response->json('jobId'), $document->metadata_json['job_id']);
+        $this->assertSame($response->json('sourceId'), $document->metadata_json['upload']['source_id']);
+
+        $this->assertDatabaseHas('pipeline_jobs', [
+            'job_id' => $response->json('jobId'),
+            'task_id' => $response->json('taskId'),
+            'source_id' => $response->json('sourceId'),
+            'source_url' => 'upload://brief.pdf',
+            'status' => 'running',
+        ]);
+
+        Http::assertSent(fn (ClientRequest $request): bool => $request->url() === 'http://bridge.test/temporal/workflows/ingest'
+            && data_get($request->data(), 'workflow_input.upload.original_filename') === 'brief.pdf'
+            && data_get($request->data(), 'workflow_input.ingestion.graph') === false);
+
+        File::deleteDirectory($root);
     }
 
     public function test_application_actor_defaults_ownership_without_human_identity_provisioning(): void

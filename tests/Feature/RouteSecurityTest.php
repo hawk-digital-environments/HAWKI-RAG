@@ -13,12 +13,10 @@ class RouteSecurityTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_security_headers_are_added_to_web_responses(): void
+    public function test_security_headers_are_added_to_swagger_responses(): void
     {
-        $this->withoutVite();
-
-        $response = $this->get('/hawki-rag-playground')
-            ->assertOk()
+        $response = $this->get('/swagger')
+            ->assertRedirect('/swagger/index.html')
             ->assertHeader('X-Content-Type-Options', 'nosniff')
             ->assertHeader('X-Frame-Options', 'SAMEORIGIN')
             ->assertHeader('Referrer-Policy', 'strict-origin-when-cross-origin')
@@ -36,54 +34,19 @@ class RouteSecurityTest extends TestCase
         $response->assertDontSee('fonts.googleapis.com', false);
     }
 
-    public function test_web_ui_does_not_require_operator_secret(): void
+    public function test_removed_legacy_ui_surfaces_are_not_registered(): void
     {
-        $this->withoutVite();
-
-        $this->get('/pipeline-controller')
-            ->assertOk()
-            ->assertSee('Pipeline Controller');
+        foreach (['/admin', '/hawki-rag-playground', '/hawki-rag-search', '/pipeline-controller', '/neo4j-graph-explorer', '/heaps', '/datasets', '/settings'] as $path) {
+            $this->get($path)->assertNotFound();
+        }
     }
 
-    public function test_pipeline_controller_page_stays_idle_without_operator_access(): void
+    public function test_removed_legacy_api_aliases_are_not_registered(): void
     {
-        $this->withoutVite();
-        config()->set('config.operator_auth.bypass', false);
-
-        $this->get('/pipeline-controller')
-            ->assertOk()
-            ->assertSee('"operatorAuthorized":false', false)
-            ->assertDontSee('pipeline-task-select', false);
-    }
-
-    public function test_other_operator_dashboards_stay_idle_without_operator_access(): void
-    {
-        $this->withoutVite();
-        config()->set('config.operator_auth.bypass', false);
-
-        $this->get('/datasets')
-            ->assertOk()
-            ->assertSee('datasets-dashboard-config', false)
-            ->assertSee('"operatorAuthorized":false', false)
-            ->assertDontSee('datasets-document-search-form', false);
-
-        $this->get('/settings')
-            ->assertOk()
-            ->assertSee('settings-dashboard-config', false)
-            ->assertSee('"operatorAuthorized":false', false)
-            ->assertDontSee('settings-custom-converter-enabled', false);
-
-        $this->get('/hawki-rag-playground')
-            ->assertOk()
-            ->assertSee('hawki-rag-playground-config', false)
-            ->assertSee('"operatorAuthorized":false', false)
-            ->assertDontSee('query-form', false);
-
-        $this->get('/neo4j-graph-explorer')
-            ->assertOk()
-            ->assertSee('neo4j-graph-dashboard-config', false)
-            ->assertSee('"operatorAuthorized":false', false)
-            ->assertDontSee('graph-search-input', false);
+        $this->postJson('/api/query', ['query' => 'hello'])->assertNotFound();
+        $this->postJson('/api/retrieve/chunks', ['query' => 'hello'])->assertNotFound();
+        $this->getJson('/api/datasets')->assertNotFound();
+        $this->postJson('/api/ingest/text', ['text' => 'hello'])->assertNotFound();
     }
 
     public function test_internal_api_requires_sanctum_authentication(): void
@@ -119,15 +82,6 @@ class RouteSecurityTest extends TestCase
         config()->set('config.operator_auth.bypass', false);
 
         $this->getJson('/settings/config')
-            ->assertUnauthorized()
-            ->assertJsonPath('message', 'Operator authentication required.');
-
-        $this->getJson('/documents/uploads/download?source_url=upload%3A%2F%2Fsecret.pdf')
-            ->assertUnauthorized()
-            ->assertJsonPath('message', 'Operator authentication required.');
-
-        $this->withSession(['_token' => 'test-token'])
-            ->postJson('/query', ['query' => 'hello'], ['X-CSRF-TOKEN' => 'test-token'])
             ->assertUnauthorized()
             ->assertJsonPath('message', 'Operator authentication required.');
     }
@@ -181,7 +135,7 @@ class RouteSecurityTest extends TestCase
     {
         $this->actingAsApplication();
 
-        $this->postJson('/api/query', ['query' => str_repeat('x', 4001)])
+        $this->postJson('/api/search', ['query' => str_repeat('x', 4001)])
             ->assertUnprocessable()
             ->assertJsonValidationErrors('query');
     }

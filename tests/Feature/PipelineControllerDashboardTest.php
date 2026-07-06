@@ -24,25 +24,6 @@ class PipelineControllerDashboardTest extends TestCase
         $this->actingAsApiUser();
     }
 
-    public function test_pipeline_controller_has_its_own_page_and_is_removed_from_playground(): void
-    {
-        $this->withoutVite();
-
-        $this->get('/pipeline-controller')
-            ->assertOk()
-            ->assertSee('Pipeline Controller')
-            ->assertSee('data-pipeline-controller-dashboard', false)
-            ->assertSee('pipeline-controller-config', false)
-            ->assertSee('"operatorAuthorized":true', false)
-            ->assertDontSee('pipeline-task-select', false);
-
-        $this->get('/hawki-rag-playground')
-            ->assertOk()
-            ->assertDontSee('Scraper Pipeline')
-            ->assertDontSee('pipeline-file-form', false)
-            ->assertDontSee('pipeline-task-select', false);
-    }
-
     public function test_uploading_file_starts_temporal_ingest_workflow(): void
     {
         $root = storage_path('framework/testing/pipeline-controller');
@@ -157,7 +138,7 @@ class PipelineControllerDashboardTest extends TestCase
             ]);
         }
 
-        $this->getJson('/pipeline/tasks/task-scraper-stage-detail')
+        $this->getJson('/api/pipeline/tasks/task-scraper-stage-detail')
             ->assertOk()
             ->assertJsonPath('success', true)
             ->assertJsonPath('task.counters.scraped', 4)
@@ -391,7 +372,7 @@ class PipelineControllerDashboardTest extends TestCase
         ]);
 
         $this->withSession(['_token' => 'test-token'])
-            ->postJson('/pipeline/tasks/task-retry-temporal/retry-failed-jobs', [], ['X-CSRF-TOKEN' => 'test-token'])
+            ->postJson('/api/pipeline/tasks/task-retry-temporal/retry-failed-jobs', [], ['X-CSRF-TOKEN' => 'test-token'])
             ->assertOk()
             ->assertJsonPath('success', true);
 
@@ -431,55 +412,6 @@ class PipelineControllerDashboardTest extends TestCase
         $this->assertDatabaseCount('pipeline_jobs', 0);
 
         File::delete($root);
-    }
-
-    public function test_controller_file_input_exposes_raganything_and_converter_extension_lists(): void
-    {
-        $this->withoutVite();
-
-        config()->set('file_converter.raganything_supported_extensions', ['pdf', 'txt', 'png', 'webp']);
-        config()->set('file_converter.supported_extensions', ['zip']);
-
-        $this->get('/pipeline-controller')
-            ->assertOk()
-            ->assertSee('pipeline-controller-config', false)
-            ->assertSee('"nativeExtensions":["pdf","txt","png","webp"]', false)
-            ->assertSee('"customExtensions":["zip"]', false);
-    }
-
-    public function test_controller_config_uses_settings_converter_without_exposing_secret_fields(): void
-    {
-        $this->withoutVite();
-
-        $settingsPath = storage_path('framework/testing/pipeline-controller-config-settings.json');
-        File::delete($settingsPath);
-        config()->set('config.operator_settings_path', $settingsPath);
-
-        $this->withSession(['_token' => 'test-token'])
-            ->putJson('/settings/config', [
-                'customConverter' => [
-                    'enabled' => true,
-                    'supportedExtensions' => 'svg',
-                    'apiUrl' => 'https://converter.example.test',
-                    'startPath' => '/extract',
-                    'apiKey' => 'controller-config-secret',
-                ],
-                'models' => [
-                    'provider' => 'ollama',
-                    'graphModel' => 'llama3.2:3b',
-                    'embeddingModel' => 'bge-m3',
-                ],
-            ], ['X-CSRF-TOKEN' => 'test-token'])
-            ->assertOk();
-
-        $this->get('/pipeline-controller')
-            ->assertOk()
-            ->assertSee('"customConverter":{"enabled":true,"configured":true,"supported_extensions":["svg"]}', false)
-            ->assertDontSee('https://converter.example.test', false)
-            ->assertDontSee('controller-config-secret', false)
-            ->assertDontSee('/extract', false);
-
-        File::delete($settingsPath);
     }
 
     public function test_pipeline_task_cache_can_be_deleted(): void
@@ -537,7 +469,7 @@ class PipelineControllerDashboardTest extends TestCase
         ]);
 
         $this->withSession(['_token' => 'test-token'])
-            ->deleteJson('/pipeline/tasks/task-cache-delete', [], ['X-CSRF-TOKEN' => 'test-token'])
+            ->deleteJson('/api/pipeline/tasks/task-cache-delete', [], ['X-CSRF-TOKEN' => 'test-token'])
             ->assertOk()
             ->assertJsonPath('success', true)
             ->assertJsonPath('taskId', 'task-cache-delete')
@@ -610,7 +542,7 @@ class PipelineControllerDashboardTest extends TestCase
             'errors' => [],
         ]);
 
-        $response = $this->getJson('/pipeline/tasks/task-stage-logs/stages/scraper/logs')
+        $response = $this->getJson('/api/pipeline/tasks/task-stage-logs/stages/scraper/logs')
             ->assertOk()
             ->assertJsonPath('success', true)
             ->assertJsonPath('log.filename', 'scraper_log_logs-dataset.txt')
@@ -623,7 +555,7 @@ class PipelineControllerDashboardTest extends TestCase
         $this->assertStringNotContainsString('Job: job-stage-logs', $text);
         $this->assertStringNotContainsString('Crawler submitted pages.', $text);
 
-        $download = $this->get('/pipeline/tasks/task-stage-logs/stages/scraper/logs/download')
+        $download = $this->get('/api/pipeline/tasks/task-stage-logs/stages/scraper/logs/download')
             ->assertOk();
 
         $this->assertStringContainsString(
@@ -669,7 +601,7 @@ class PipelineControllerDashboardTest extends TestCase
             'metadata' => ['source_id' => 'source_scrape_direct'],
         ]);
 
-        $response = $this->getJson('/pipeline/tasks/task-direct-scrape-logs/stages/scrape/logs')
+        $response = $this->getJson('/api/pipeline/tasks/task-direct-scrape-logs/stages/scrape/logs')
             ->assertOk()
             ->assertJsonPath('success', true);
 
@@ -714,7 +646,7 @@ class PipelineControllerDashboardTest extends TestCase
             'metadata' => ['source_id' => 'source_convert_direct'],
         ]);
 
-        $response = $this->getJson('/pipeline/tasks/task-direct-convert-logs/stages/convert/logs')
+        $response = $this->getJson('/api/pipeline/tasks/task-direct-convert-logs/stages/convert/logs')
             ->assertOk()
             ->assertJsonPath('success', true);
 
@@ -760,7 +692,7 @@ class PipelineControllerDashboardTest extends TestCase
             'metadata' => ['source_id' => 'source_repeat_upload'],
         ]);
 
-        $response = $this->getJson('/pipeline/tasks/task-repeat-upload-ingest-logs/stages/ingest/logs')
+        $response = $this->getJson('/api/pipeline/tasks/task-repeat-upload-ingest-logs/stages/ingest/logs')
             ->assertOk()
             ->assertJsonPath('success', true);
 
@@ -834,7 +766,7 @@ class PipelineControllerDashboardTest extends TestCase
             'errors' => [],
         ]);
 
-        $response = $this->getJson('/pipeline/tasks/task-raganything-logs/stages/ingest/logs')
+        $response = $this->getJson('/api/pipeline/tasks/task-raganything-logs/stages/ingest/logs')
             ->assertOk()
             ->assertJsonPath('success', true);
 
@@ -855,7 +787,7 @@ class PipelineControllerDashboardTest extends TestCase
         $this->assertStringNotContainsString('doc_old_abc123', $text);
         $this->assertSame(1, substr_count($text, 'api:ingest request_id='.$operationId));
 
-        $download = $this->get('/pipeline/tasks/task-raganything-logs/stages/ingest/logs/download')
+        $download = $this->get('/api/pipeline/tasks/task-raganything-logs/stages/ingest/logs/download')
             ->assertOk();
         $downloadText = (string) $download->getContent();
         $this->assertStringContainsString('Ingest job and stage records', $downloadText);

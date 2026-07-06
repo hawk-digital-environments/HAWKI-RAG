@@ -13,17 +13,29 @@ By default this page loads:
 
 If your app is behind a different host/port, replace `localhost` accordingly.
 
+## What is documented
+
+The current `openapi.yaml` is centered on the canonical V2 application API:
+
+- tenants
+- applications
+- heaps
+- documents
+- corpora
+- groups
+- authorization grant endpoints
+
 ## About auth
 
-The current route map marks the following API groups as protected in code:
+These V2 endpoints use application bearer auth. Create an application first or
+use an existing token, then authorize in Swagger UI with:
 
-- `POST /api/query`
-- `GET /api/rag/*`
-
-You can add `Authorization: Bearer <token>` in Swagger UI once you log in with your normal app flow.
+```text
+Bearer <token>
+```
 
 ## Next steps
 
-- Extend `openapi.yaml` when request/response fields are known.
-- Add any missing endpoints from route files.
-- Optionally wire an OpenAPI generator once network/package install is available.
+- Keep `public/swagger/openapi.yaml` aligned with `routes/internal_api/spec_v2.php`.
+- Extend response detail when additional V2 fields become stable.
+- Optionally replace the handwritten contract with generator-backed OpenAPI later.

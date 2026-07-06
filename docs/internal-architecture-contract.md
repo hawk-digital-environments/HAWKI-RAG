@@ -18,6 +18,9 @@ denormalized payload writes.
 5. Qdrant payload mutation is a write-path concern. Controllers do not write
    Qdrant directly. Denormalized search payload sync belongs to dedicated
    Laravel services.
+6. No legacy compatibility API routes are registered on this branch. Shared
+   legacy-named services may remain only as internal adapters behind active
+   app-search, app-ingestion, or V2 flows.
 
 ## Allowed Responsibilities By File
 
@@ -27,29 +30,22 @@ denormalized payload writes.
 - `app/Http/Controllers/API/OpenCompat/RetrievalController.php`
   Builds application-visible document scope through Laravel policy services
   before delegating retrieval or compatibility reads.
-- `app/Http/Controllers/API/OpenCompat/DocumentController.php`
-  Handles only compatibility document HTTP validation and delegates document
-  reads or writes into the dedicated compatibility document service.
 - `app/Http/Controllers/SpecV2/DocumentController.php`
   Handles canonical V2 document HTTP validation and delegates heap-scoped
   document create, update, list, and delete flows into the dedicated V2
   document service.
-- `app/Http/Controllers/API/OpenCompat/IngestController.php`
-  Handles only compatibility ingest HTTP validation and delegates upload,
-  text-ingest, and requeue behavior into the dedicated compatibility ingest
-  service.
 - `app/Services/OpenCompat/OpenCompatDocumentService.php`
-  Owns compatibility document shaping, scoped document reads, and compatibility
-  document write adapters. It must not absorb ingestion, model settings, or
-  folder lifecycle responsibilities.
+  Owns shared retrieval-time document shaping and scoped document reads for
+  active app-search flows. It must not absorb ingestion, model settings, or
+  retired compatibility route concerns.
 - `app/Services/SpecV2/DocumentService.php`
   Owns canonical V2 document lifecycle orchestration, corpus synchronization,
   and bridge-backed text-ingest alignment. It must not absorb authorization
   policy resolution or compatibility response shaping.
 - `app/Services/OpenCompat/OpenCompatIngestService.php`
-  Owns compatibility ingest-to-pipeline and text-ingest bridge handoff. It
-  must not absorb document browsing, folder lifecycle, or model settings
-  responsibilities.
+  Owns shared ingest-to-pipeline and text-ingest bridge handoff for active
+  app-ingestion and V2 document flows. It must not absorb document browsing,
+  folder lifecycle, or retired compatibility route concerns.
 - `routes/internal_api/app_search.php`
   Application retrieval and search endpoints. Must stay on
   `auth:application-token`.

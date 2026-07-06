@@ -10,6 +10,9 @@ use App\Services\Authorization\ApiActorScopeService;
 use App\Services\Document\DocumentRepository;
 use App\Services\OpenCompat\OpenCompatBridgeClient;
 use App\Services\OpenCompat\OpenCompatIngestService;
+use App\Services\Pipeline\Uploads\PipelineUploadService;
+use App\Services\Pipeline\Values\PipelineUploadInput;
+use App\Services\Settings\SettingsService;
 use App\Services\SpecV2\Exceptions\AuthorizationGrantException;
 use App\Services\SpecV2\Exceptions\HeapNotFoundException;
 use App\Services\SpecV2\Repositories\CorpusRepository;
@@ -17,6 +20,7 @@ use App\Services\SpecV2\Repositories\HeapRepository;
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Filesystem\Filesystem;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Str;
 
 #[Singleton]
@@ -30,6 +34,8 @@ readonly class DocumentService
         private ApiActorScopeService $actors,
         private OpenCompatIngestService $ingest,
         private OpenCompatBridgeClient $bridge,
+        private PipelineUploadService $uploads,
+        private SettingsService $settings,
         private SpecIdentifierFactory $identifiers,
         private Filesystem $files,
     ) {}
@@ -46,11 +52,29 @@ readonly class DocumentService
 
     /**
      * @param array<string, mixed> $input
-     * @return array{document?: Document, is_duplicate?: bool, payload?: array<string, mixed>, status: int}
+     * @return array{document?: Document, is_duplicate?: bool, job_id?: string, payload?: array<string, mixed>, source_id?: string, status: int, task_id?: string}
      */
-    public function create(string $heapId, array $input, ?string $idempotencyKey = null): array
+    public function create(
+        string $heapId,
+        array $input,
+        ?UploadedFile $file = null,
+        ?string $idempotencyKey = null,
+    ): array
     {
         $heap = $this->requireOwnedHeap($heapId);
+        if ($file instanceof UploadedFile) {
+            return $this->createUploadedDocument($heap, $input, $file);
+        }
+
+        return $this->createTextDocument($heap, $input, $idempotencyKey);
+    }
+
+    /**
+     * @param array<string, mixed> $input
+     * @return array{document?: Document, is_duplicate?: bool, payload?: array<string, mixed>, status: int}
+     */
+    private function createTextDocument(Heap $heap, array $input, ?string $idempotencyKey = null): array
+    {
         $documentId = $this->identifiers->stringValue($input['document_id'] ?? $input['id'] ?? null) ?? (string) Str::uuid();
         $content = (string) $input['content'];
         $metadata = $this->metadata($input['metadata'] ?? []);
@@ -94,6 +118,72 @@ readonly class DocumentService
             'status' => 201,
             'document' => $document->fresh(),
             'is_duplicate' => $isDuplicate,
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $input
+     * @return array{document?: Document, is_duplicate?: bool, job_id?: string, payload?: array<string, mixed>, source_id?: string, status: int, task_id?: string}
+     */
+    private function createUploadedDocument(Heap $heap, array $input, UploadedFile $file): array
+    {
+        $documentId = $this->identifiers->stringValue($input['document_id'] ?? $input['id'] ?? null) ?? (string) Str::uuid();
+        $metadata = $this->metadata($input['metadata'] ?? []);
+        $collection = $this->collection($heap);
+        $originalFilename = $this->identifiers->stringValue($input['filename'] ?? null) ?? ($file->getClientOriginalName() ?: $documentId);
+        $mimeType = $this->identifiers->stringValue($file->getClientMimeType()) ?? 'application/octet-stream';
+        $fileSize = $file->getSize();
+        $title = $this->identifiers->stringValue($input['title'] ?? null) ?? pathinfo($originalFilename, PATHINFO_FILENAME);
+
+        $upload = $this->uploads->upload(
+            PipelineUploadInput::fromValidated([
+                'heap_id' => $heap->dataset_id,
+                'graph' => false,
+            ], $this->settings->customConverterUploadDefaults()),
+            $file,
+        );
+
+        if ($upload->status >= 400) {
+            return [
+                'status' => $upload->status,
+                'payload' => $upload->payload,
+            ];
+        }
+
+        $checksum = $this->identifiers->stringValue($upload->payload['contentHash'] ?? null);
+        if ($checksum === null) {
+            return [
+                'status' => 500,
+                'payload' => ['message' => 'Upload pipeline did not return a document checksum.'],
+            ];
+        }
+
+        $document = $this->documents->create([
+            'id' => $documentId,
+            'external_id' => $documentId,
+            'dataset_id' => $heap->dataset_id,
+            'collection' => $collection,
+            'source_type' => Document::SOURCE_UPLOAD,
+            'source_url' => $this->identifiers->stringValue($input['source_url'] ?? null)
+                ?? $this->identifiers->stringValue($upload->payload['sourceUrl'] ?? null)
+                ?? 'upload://'.$documentId,
+            'original_filename' => $originalFilename,
+            'storage_path' => $this->identifiers->stringValue($upload->payload['localPath'] ?? null),
+            'mime_type' => $mimeType,
+            'file_size' => is_int($fileSize) ? $fileSize : null,
+            'checksum_sha256' => $checksum,
+            'title' => $title,
+            'metadata_json' => $this->queuedUploadMetadata($metadata, $upload->payload),
+            'status' => Document::STATUS_QUEUED,
+        ]);
+
+        return [
+            'status' => 201,
+            'document' => $document->fresh(),
+            'is_duplicate' => $this->corpora->exists($checksum),
+            'task_id' => $this->identifiers->stringValue($upload->payload['taskId'] ?? null),
+            'job_id' => $this->identifiers->stringValue($upload->payload['jobId'] ?? null),
+            'source_id' => $this->identifiers->stringValue($upload->payload['sourceId'] ?? null),
         ];
     }
 
@@ -257,6 +347,29 @@ readonly class DocumentService
     private function collection(Heap $heap): string
     {
         return trim((string) ($heap->qdrant_collection ?: $heap->dataset_id));
+    }
+
+    /**
+     * @param array<string, mixed> $metadata
+     * @param array<string, mixed> $payload
+     * @return array<string, mixed>
+     */
+    private function queuedUploadMetadata(array $metadata, array $payload): array
+    {
+        $uploadMetadata = array_filter([
+            'local_path' => $this->identifiers->stringValue($payload['localPath'] ?? null),
+            'source_id' => $this->identifiers->stringValue($payload['sourceId'] ?? null),
+            'stored_filename' => $this->identifiers->stringValue($payload['storedFilename'] ?? null),
+            'original_filename' => $this->identifiers->stringValue($payload['originalFilename'] ?? null),
+            'content_hash' => $this->identifiers->stringValue($payload['contentHash'] ?? null),
+            'extension' => $this->identifiers->stringValue($payload['extension'] ?? null),
+        ], static fn (mixed $value): bool => $value !== null && $value !== '');
+
+        return array_replace($metadata, array_filter([
+            'task_id' => $this->identifiers->stringValue($payload['taskId'] ?? null),
+            'job_id' => $this->identifiers->stringValue($payload['jobId'] ?? null),
+            'upload' => $uploadMetadata === [] ? null : $uploadMetadata,
+        ], static fn (mixed $value): bool => $value !== null));
     }
 
     private function writeDocumentContent(string $heapId, string $documentId, string $content): string

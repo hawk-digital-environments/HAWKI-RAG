@@ -1,7 +1,5 @@
 <?php
 
-use App\Http\Controllers\API\OpenCompat\ApiKeyController as OpenCompatApiKeyController;
-use App\Http\Controllers\API\OpenCompat\SystemController as OpenCompatSystemController;
 use App\Http\Controllers\API\RagStatsController;
 use App\Http\Controllers\Graph\RagGraphController;
 use App\Http\Controllers\PipelineRecoveryController;
@@ -9,12 +7,6 @@ use App\Http\Controllers\PipelineTaskController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['auth:sanctum,oidc', 'throttle:hawki-api'])->group(function () {
-    Route::get('/api-keys', [OpenCompatApiKeyController::class, 'list']);
-    Route::post('/api-keys', [OpenCompatApiKeyController::class, 'save']);
-    Route::post('/migrate/document', [OpenCompatSystemController::class, 'migrateDocument'])->middleware('throttle:hawki-upload');
-    Route::get('/logs', [OpenCompatSystemController::class, 'logs']);
-    Route::get('/usage/app-storage', [OpenCompatSystemController::class, 'usage']);
-
     Route::prefix('pipeline/tasks')->group(function () {
         Route::get('/', [PipelineTaskController::class, 'index']);
         Route::get('/{taskId}', [PipelineTaskController::class, 'show']);
@@ -37,7 +29,6 @@ Route::middleware(['auth:sanctum,oidc', 'throttle:hawki-api'])->group(function (
         Route::post('/retry-all', [PipelineRecoveryController::class, 'retryAll'])->middleware('throttle:hawki-destructive');
         Route::post('/tasks/{taskId}/retry-failed', [PipelineRecoveryController::class, 'retryTask'])->middleware('throttle:hawki-destructive');
         Route::post('/heaps/{datasetId}/retry-failed', [PipelineRecoveryController::class, 'retryDataset'])->middleware('throttle:hawki-destructive');
-        Route::post('/datasets/{datasetId}/retry-failed', [PipelineRecoveryController::class, 'retryDataset'])->middleware('throttle:hawki-destructive');
     });
 
     Route::get('/rag/stats', [RagStatsController::class, 'show']);

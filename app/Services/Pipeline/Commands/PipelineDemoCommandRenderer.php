@@ -26,23 +26,29 @@ readonly class PipelineDemoCommandRenderer
 
     /**
      * @param list<string> $urls
-     * @param list<string> $dashboardUrls
+     * @param list<string> $swaggerUrls
      */
-    public function dryRun(Command $command, array $urls, array $dashboardUrls): void
+    public function dryRun(Command $command, array $urls, array $swaggerUrls): void
     {
         $command->warn('Dry run only. No task, jobs, or Temporal workflows were created.');
         $this->printUrls($command, $urls);
-        $this->printDashboardUrls($command, $dashboardUrls);
+        $this->printSwaggerUrls($command, $swaggerUrls);
         $this->printWorkerCommands($command);
     }
 
     /**
      * @param array<string, mixed> $status
      * @param list<string> $urls
-     * @param list<string> $dashboardUrls
+     * @param list<string> $swaggerUrls
      */
-    public function created(Command $command, PipelineTask $task, array $status, array $urls, array $dashboardUrls): void
-    {
+    public function created(
+        Command $command,
+        PipelineTask $task,
+        array $status,
+        array $urls,
+        string $taskStatusUrl,
+        array $swaggerUrls,
+    ): void {
         $jobsTotal = (int) ($status['counters']['jobs_total'] ?? count($urls));
         $queued = (int) ($status['counters']['queued'] ?? 0);
         $skipped = (int) ($status['counters']['skipped'] ?? 0);
@@ -55,7 +61,8 @@ readonly class PipelineDemoCommandRenderer
         $command->line("Temporal ingest workflows requested: {$queued}");
         $command->line("Skipped jobs: {$skipped}");
         $this->printUrls($command, $urls);
-        $this->printDashboardUrls($command, $dashboardUrls);
+        $this->printTaskStatusUrl($command, $taskStatusUrl);
+        $this->printSwaggerUrls($command, $swaggerUrls);
         $this->printWorkerCommands($command);
     }
 
@@ -71,14 +78,20 @@ readonly class PipelineDemoCommandRenderer
         }
     }
 
+    private function printTaskStatusUrl(Command $command, string $url): void
+    {
+        $command->newLine();
+        $command->line('Task status URL: '.$url);
+    }
+
     /**
      * @param list<string> $urls
      */
-    private function printDashboardUrls(Command $command, array $urls): void
+    private function printSwaggerUrls(Command $command, array $urls): void
     {
         $command->newLine();
         foreach ($urls as $index => $url) {
-            $command->line(($index === 0 ? 'Dashboard URL: ' : 'Mounted dashboard URL: ').$url);
+            $command->line(($index === 0 ? 'Swagger URL: ' : 'Mounted Swagger URL: ').$url);
         }
     }
 

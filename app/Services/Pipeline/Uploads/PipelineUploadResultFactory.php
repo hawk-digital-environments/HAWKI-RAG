@@ -8,6 +8,7 @@ use App\Models\PipelineJob;
 use App\Models\PipelineTask;
 use App\Services\Pipeline\Exceptions\PipelineUploadStorageException;
 use App\Services\Pipeline\Tasks\PipelineTaskService;
+use App\Services\Pipeline\Values\PipelineStoredUpload;
 use App\Services\Pipeline\Values\PipelineUploadInput;
 use App\Services\Pipeline\Values\PipelineUploadResult;
 use Illuminate\Container\Attributes\Singleton;
@@ -70,17 +71,30 @@ readonly class PipelineUploadResultFactory
         ], 500);
     }
 
-    public function success(PipelineTask $task, PipelineJob $job): PipelineUploadResult
+    public function success(
+        PipelineTask $task,
+        PipelineJob $job,
+        PipelineStoredUpload $storedUpload,
+        string $sourceId,
+        string $sourceUrl,
+    ): PipelineUploadResult
     {
         return PipelineUploadResult::fromPayload([
             'success' => true,
             'taskId' => $task->task_id,
             'jobId' => $job->job_id,
+            'sourceId' => $sourceId,
+            'sourceUrl' => $sourceUrl,
             'heapId' => $task->dataset_id,
             'datasetId' => $task->dataset_id,
+            'localPath' => $storedUpload->localPath,
+            'originalFilename' => $storedUpload->originalName,
+            'storedFilename' => $storedUpload->targetName,
+            'contentHash' => $storedUpload->contentHash,
+            'extension' => $storedUpload->extension,
             'task' => $this->tasks->show($task->task_id),
-            'dashboardUrl' => $this->urls->to('/pipeline-controller'),
-            'controllerUrl' => $this->urls->to('/pipeline-controller'),
+            'taskUrl' => $this->urls->to('/api/pipeline/tasks/'.$task->task_id),
+            'swaggerUrl' => $this->urls->to('/swagger'),
         ], 201);
     }
 }

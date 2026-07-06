@@ -1,653 +1,1446 @@
 openapi: 3.0.3
 info:
-  title: HAWKI RAG API
-  description: Local API reference generated from currently registered routes.
-  version: "1.0.0"
+  title: HAWKI RAG Canonical V2 API
+  description: >
+    Application-token API contract for the canonical HAWKI RAG V2 surface.
+    These endpoints cover tenants, applications, heaps, documents, corpora,
+    groups, and authorization grants.
+  version: "2.0.0"
 servers:
   - url: /api
     description: Laravel API base URL
+security:
+  - ApplicationBearerAuth: []
+tags:
+  - name: Tenants
+  - name: Applications
+  - name: Heaps
+  - name: Documents
+  - name: Corpora
+  - name: Groups
+  - name: Authorization
 paths:
-  /ping:
+  /tenants:
     get:
-      tags:
-        - Health
-      summary: Health ping
+      tags: [Tenants]
+      summary: List tenants
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PerPage"
       responses:
         "200":
-          description: Service is alive
+          description: Tenant list
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/PingResponse"
-              example:
-                pong: true
-  /datasets:
-    get:
-      tags:
-        - Datasets
-      summary: List datasets
-      security:
-        - {}
-      responses:
-        "200":
-          description: Datasets list
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  type: object
+                $ref: "#/components/schemas/PaginatedTenantResponse"
     post:
-      tags:
-        - Datasets
-      summary: Create dataset
+      tags: [Tenants]
+      summary: Create tenant
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
-              additionalProperties: true
+              $ref: "#/components/schemas/CreateTenantRequest"
       responses:
         "201":
-          description: Dataset created
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-  /datasets/{datasetId}:
-    parameters:
-      - in: path
-        name: datasetId
-        required: true
-        schema:
-          type: string
-    get:
-      tags:
-        - Datasets
-      summary: Get dataset
-      responses:
-        "200":
-          description: Dataset details
+          description: Tenant created
           content:
             application/json:
               schema:
-                type: object
+                $ref: "#/components/schemas/Tenant"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+  /tenants/{tenantId}:
+    parameters:
+      - $ref: "#/components/parameters/TenantId"
+    get:
+      tags: [Tenants]
+      summary: Get tenant
+      responses:
+        "200":
+          description: Tenant detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Tenant"
         "404":
           $ref: "#/components/responses/NotFound"
-  /documents:
+  /applications:
     get:
-      tags:
-        - Documents
-      summary: List documents
+      tags: [Applications]
+      summary: List applications
+      parameters:
+        - $ref: "#/components/parameters/TenantFilter"
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PerPage"
+      responses:
+        "200":
+          description: Application list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedApplicationResponse"
+    post:
+      tags: [Applications]
+      summary: Create application and issue bearer token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateApplicationRequest"
+      responses:
+        "201":
+          description: Application created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApplicationCreateResponse"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+  /applications/{applicationId}:
+    parameters:
+      - $ref: "#/components/parameters/ApplicationId"
+    get:
+      tags: [Applications]
+      summary: Get application
+      responses:
+        "200":
+          description: Application detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Application"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /heaps:
+    get:
+      tags: [Heaps]
+      summary: List heaps
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PerPage"
+        - $ref: "#/components/parameters/TenantFilter"
+        - $ref: "#/components/parameters/OwnerAppFilter"
+        - $ref: "#/components/parameters/VisibilityFilter"
+        - $ref: "#/components/parameters/ProtectedFilter"
+      responses:
+        "200":
+          description: Heap list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedHeapResponse"
+    post:
+      tags: [Heaps]
+      summary: Create heap
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateHeapRequest"
+      responses:
+        "201":
+          description: Heap created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Heap"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+  /heaps/{heapId}:
+    parameters:
+      - $ref: "#/components/parameters/HeapId"
+    get:
+      tags: [Heaps]
+      summary: Get heap
+      responses:
+        "200":
+          description: Heap detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Heap"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [Heaps]
+      summary: Update heap metadata or protection state
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateHeapRequest"
+      responses:
+        "200":
+          description: Heap updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Heap"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+    delete:
+      tags: [Heaps]
+      summary: Delete heap and storage backends
+      responses:
+        "200":
+          description: Heap deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HeapDeleteResponse"
+        "502":
+          description: Backend cleanup partially failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HeapDeleteResponse"
+  /heaps/{heapId}/documents:
+    parameters:
+      - $ref: "#/components/parameters/HeapId"
+    get:
+      tags: [Documents]
+      summary: List documents in a heap
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PerPage"
       responses:
         "200":
           description: Document list
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  type: object
-  /documents/{documentId}:
-    parameters:
-      - in: path
-        name: documentId
-        required: true
-        schema:
-          type: string
-    get:
-      tags:
-        - Documents
-      summary: Get document
-      responses:
-        "200":
-          description: Document
-          content:
-            application/json:
-              schema:
-                type: object
-  /pipeline/tasks:
-    get:
-      tags:
-        - Pipeline
-      summary: List pipeline tasks
-      responses:
-        "200":
-          description: Task list
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  type: object
-        "401":
-          $ref: "#/components/responses/Unauthorized"
+                $ref: "#/components/schemas/PaginatedDocumentResponse"
     post:
-      tags:
-        - Pipeline
-      summary: Start legacy pipeline task
+      tags: [Documents]
+      summary: Create document in a heap
+      description: >
+        Accepts either JSON text content or multipart file upload. File uploads
+        return a queued document plus pipeline task identifiers.
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
-      responses:
-        "201":
-          description: Task started
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-  /pipeline/tasks/start:
-    post:
-      tags:
-        - Pipeline
-      summary: Start pipeline task
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-      responses:
-        "201":
-          description: Task started
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-  /pipeline/tasks/{taskId}:
-    parameters:
-      - in: path
-        name: taskId
-        required: true
-        schema:
-          type: string
-    get:
-      tags:
-        - Pipeline
-      summary: Get task
-      responses:
-        "200":
-          description: Task details
-          content:
-            application/json:
-              schema:
-                type: object
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-  /pipeline/tasks/{taskId}/jobs:
-    parameters:
-      - in: path
-        name: taskId
-        required: true
-        schema:
-          type: string
-    get:
-      tags:
-        - Pipeline
-      summary: List task jobs
-      responses:
-        "200":
-          description: Jobs list
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  type: object
-    post:
-      tags:
-        - Pipeline
-      summary: Upsert a job
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-      responses:
-        "200":
-          description: Job upserted
-  /pipeline/tasks/{taskId}/failed-jobs:
-    parameters:
-      - in: path
-        name: taskId
-        required: true
-        schema:
-          type: string
-    get:
-      tags:
-        - Pipeline
-      summary: List failed jobs for task
-      responses:
-        "200":
-          description: Failed jobs
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  type: object
-  /pipeline/tasks/{taskId}/events:
-    parameters:
-      - in: path
-        name: taskId
-        required: true
-        schema:
-          type: string
-    get:
-      tags:
-        - Pipeline
-      summary: Stream/events for task
-      responses:
-        "200":
-          description: Event list
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  type: object
-  /pipeline/tasks/{taskId}/retry:
-    parameters:
-      - in: path
-        name: taskId
-        required: true
-        schema:
-          type: string
-    post:
-      tags:
-        - Pipeline
-      summary: Retry task
-      responses:
-        "200":
-          description: Retry initiated
-  /pipeline/tasks/{taskId}/retry-failed-jobs:
-    parameters:
-      - in: path
-        name: taskId
-        required: true
-        schema:
-          type: string
-    post:
-      tags:
-        - Pipeline
-      summary: Retry failed jobs of task
-      responses:
-        "200":
-          description: Retry initiated
-  /pipeline/tasks/{taskId}/cancel:
-    parameters:
-      - in: path
-        name: taskId
-        required: true
-        schema:
-          type: string
-    post:
-      tags:
-        - Pipeline
-      summary: Cancel task
-      responses:
-        "200":
-          description: Cancellation accepted
-  /pipeline/health:
-    get:
-      tags:
-        - Pipeline
-      summary: Pipeline health status
-      responses:
-        "200":
-          description: Pipeline health snapshot
-          content:
-            application/json:
-              schema:
-                type: object
-  /pipeline/controller/files:
-    post:
-      tags:
-        - Pipeline
-      summary: Upload pipeline control files
-      requestBody:
-        required: true
-        content:
+              $ref: "#/components/schemas/CreateDocumentTextRequest"
           multipart/form-data:
             schema:
-              type: object
-              properties:
-                file:
-                  type: string
-                  format: binary
+              $ref: "#/components/schemas/CreateDocumentFileRequest"
       responses:
         "201":
-          description: File received
-  /pipeline/recovery/failed-jobs:
-    get:
-      tags:
-        - Pipeline Recovery
-      summary: List failed jobs
-      responses:
-        "200":
-          description: Failed job list
+          description: Document created
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  type: object
-  /pipeline/recovery/jobs/retry-selected:
-    post:
-      tags:
-        - Pipeline Recovery
-      summary: Retry selected failed jobs
+                $ref: "#/components/schemas/DocumentCreateResponse"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+  /documents/{documentId}:
+    parameters:
+      - $ref: "#/components/parameters/DocumentId"
+    put:
+      tags: [Documents]
+      summary: Update a document
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
+              $ref: "#/components/schemas/UpdateDocumentRequest"
       responses:
         "200":
-          description: Retry queued
-  /pipeline/recovery/jobs/{jobId}/retry:
+          description: Document updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Document"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Documents]
+      summary: Delete a document
+      responses:
+        "204":
+          description: Document deleted
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /corpora:
+    get:
+      tags: [Corpora]
+      summary: List corpora
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PerPage"
+      responses:
+        "200":
+          description: Corpus list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedCorpusResponse"
+  /corpora/{corpusId}:
     parameters:
-      - in: path
-        name: jobId
-        required: true
-        schema:
-          type: string
-    post:
-      tags:
-        - Pipeline Recovery
-      summary: Retry single failed job
+      - $ref: "#/components/parameters/CorpusId"
+    get:
+      tags: [Corpora]
+      summary: Get corpus
       responses:
         "200":
-          description: Retry queued
-  /pipeline/recovery/retry-all:
-    post:
-      tags:
-        - Pipeline Recovery
-      summary: Retry all failed jobs
+          description: Corpus detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Corpus"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /groups:
+    get:
+      tags: [Groups]
+      summary: List groups
+      description: Alias for `/auth/groups`.
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PerPage"
       responses:
         "200":
-          description: Retry queued
-  /pipeline/recovery/tasks/{taskId}/retry-failed:
-    parameters:
-      - in: path
-        name: taskId
-        required: true
-        schema:
-          type: string
+          description: Group list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedGroupResponse"
     post:
-      tags:
-        - Pipeline Recovery
-      summary: Retry failed jobs for a task
-      responses:
-        "200":
-          description: Retry queued
-  /pipeline/recovery/datasets/{datasetId}/retry-failed:
-    parameters:
-      - in: path
-        name: datasetId
-        required: true
-        schema:
-          type: string
-    post:
-      tags:
-        - Pipeline Recovery
-      summary: Retry failed jobs for a dataset
-      responses:
-        "200":
-          description: Retry queued
-  /query:
-    post:
-      tags:
-        - Query
-      summary: Query RAG backend
-      security:
-        - BearerAuth: []
+      tags: [Groups]
+      summary: Create group
+      description: Alias for `/auth/groups`.
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/QueryRequest"
+              $ref: "#/components/schemas/CreateGroupRequest"
       responses:
-        "200":
-          description: Query response
+        "201":
+          description: Group created
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/QueryResponse"
-  /rag/health:
+                $ref: "#/components/schemas/Group"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+  /groups/{groupId}:
+    parameters:
+      - $ref: "#/components/parameters/GroupId"
     get:
-      tags:
-        - RAG
-      summary: Show RAG health
+      tags: [Groups]
+      summary: Get group
+      description: Alias for `/auth/groups/{groupId}`.
       responses:
         "200":
-          description: Health details
+          description: Group detail
           content:
             application/json:
               schema:
-                type: object
-  /rag/monitor:
+                $ref: "#/components/schemas/Group"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Groups]
+      summary: Delete group
+      description: Alias for `/auth/groups/{groupId}`.
+      responses:
+        "204":
+          description: Group deleted
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /groups/{groupId}/users:
+    parameters:
+      - $ref: "#/components/parameters/GroupId"
     get:
-      tags:
-        - RAG
-      summary: RAG monitor
+      tags: [Groups]
+      summary: List group members
+      description: Alias for `/auth/groups/{groupId}/users`.
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PerPage"
       responses:
         "200":
-          description: Monitor payload
+          description: Group member list
           content:
             application/json:
               schema:
-                type: object
-  /rag/stats:
-    get:
-      tags:
-        - RAG
-      summary: RAG statistics
+                $ref: "#/components/schemas/PaginatedIdentifierResponse"
+    put:
+      tags: [Groups]
+      summary: Replace group members
+      description: Alias for `/auth/groups/{groupId}/users`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReplaceUsersRequest"
       responses:
         "200":
-          description: Stats payload
+          description: Group members replaced
           content:
             application/json:
               schema:
-                type: object
-  /rag/neo4j/graph/overview:
-    get:
-      tags:
-        - Graph
-      summary: Get graph overview
+                $ref: "#/components/schemas/PaginatedIdentifierResponse"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+    patch:
+      tags: [Groups]
+      summary: Add and remove group members
+      description: Alias for `/auth/groups/{groupId}/users`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateUsersRequest"
       responses:
         "200":
-          description: Overview payload
+          description: Group members updated
           content:
             application/json:
               schema:
-                type: object
-  /rag/neo4j/graph/search:
+                $ref: "#/components/schemas/PaginatedIdentifierResponse"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+  /auth/check:
     get:
-      tags:
-        - Graph
-      summary: Search graph
+      tags: [Authorization]
+      summary: Check heap or document access for a user identifier
       parameters:
         - in: query
-          name: q
-          required: false
-          schema:
-            type: string
-      responses:
-        "200":
-          description: Search result
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  type: object
-  /rag/neo4j/graph/semantic-search:
-    get:
-      tags:
-        - Graph
-      summary: Graph semantic search
-      parameters:
-        - in: query
-          name: q
-          required: false
-          schema:
-            type: string
-      responses:
-        "200":
-          description: Search result
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  type: object
-  /rag/neo4j/graph/node:
-    get:
-      tags:
-        - Graph
-      summary: Get graph node
-      parameters:
-        - in: query
-          name: id
+          name: user_identifier
           required: true
           schema:
             type: string
+        - in: query
+          name: heap_id
+          schema:
+            type: string
+        - in: query
+          name: document_id
+          schema:
+            type: string
       responses:
         "200":
-          description: Node payload
+          description: Access check result
           content:
             application/json:
               schema:
-                type: object
-  /rag/neo4j/graph/expand:
-    post:
-      tags:
-        - Graph
-      summary: Expand graph node
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-      responses:
-        "200":
-          description: Expanded graph data
-  /rag/neo4j/graph/clear-view:
-    post:
-      tags:
-        - Graph
-      summary: Clear graph view
-      responses:
-        "200":
-          description: View cleared
-  /rag/neo4j/graph/snapshots:
+                $ref: "#/components/schemas/AccessCheckResponse"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+  /auth/users/by-identifier/heaps:
     get:
-      tags:
-        - Graph
-      summary: List graph snapshots
+      tags: [Authorization]
+      summary: List heap ids accessible to a user identifier
+      parameters:
+        - in: query
+          name: identifier
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PerPage"
       responses:
         "200":
-          description: Snapshot list
+          description: Accessible heap ids
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  type: object
+                $ref: "#/components/schemas/HeapsByIdentifierResponse"
+  /auth/groups:
+    get:
+      tags: [Groups]
+      summary: List groups
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PerPage"
+      responses:
+        "200":
+          description: Group list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedGroupResponse"
     post:
-      tags:
-        - Graph
-      summary: Save graph snapshot
+      tags: [Groups]
+      summary: Create group
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
+              $ref: "#/components/schemas/CreateGroupRequest"
       responses:
         "201":
-          description: Snapshot saved
-  /rag/neo4j/graph/snapshots/{id}:
-    parameters:
-      - in: path
-        name: id
-        required: true
-        schema:
-          type: string
-    get:
-      tags:
-        - Graph
-      summary: Load graph snapshot
-      responses:
-        "200":
-          description: Snapshot payload
+          description: Group created
           content:
             application/json:
               schema:
-                type: object
-    delete:
-      tags:
-        - Graph
-      summary: Delete snapshot
-      responses:
-        "204":
-          description: Deleted
-  /rag/neo4j/clear:
-    post:
-      tags:
-        - Graph
-      summary: Clear Neo4j graph content
+                $ref: "#/components/schemas/Group"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+  /auth/groups/{groupId}:
+    parameters:
+      - $ref: "#/components/parameters/GroupId"
+    get:
+      tags: [Groups]
+      summary: Get group
       responses:
         "200":
-          description: Graph cleared
+          description: Group detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Group"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Groups]
+      summary: Delete group
+      responses:
+        "204":
+          description: Group deleted
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /auth/groups/{groupId}/users:
+    parameters:
+      - $ref: "#/components/parameters/GroupId"
+    get:
+      tags: [Groups]
+      summary: List group members
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PerPage"
+      responses:
+        "200":
+          description: Group member list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedIdentifierResponse"
+    put:
+      tags: [Groups]
+      summary: Replace group members
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReplaceUsersRequest"
+      responses:
+        "200":
+          description: Group members replaced
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedIdentifierResponse"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+    patch:
+      tags: [Groups]
+      summary: Add and remove group members
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateUsersRequest"
+      responses:
+        "200":
+          description: Group members updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedIdentifierResponse"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+  /auth/heaps/{heapId}:
+    parameters:
+      - $ref: "#/components/parameters/HeapId"
+    get:
+      tags: [Authorization]
+      summary: Get heap grants
+      responses:
+        "200":
+          description: Heap grants
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GrantPayload"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      tags: [Authorization]
+      summary: Replace heap grants
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReplaceGrantAssignmentsRequest"
+      responses:
+        "200":
+          description: Heap grants replaced
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GrantPayload"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+    patch:
+      tags: [Authorization]
+      summary: Update heap grants
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateGrantAssignmentsRequest"
+      responses:
+        "200":
+          description: Heap grants updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GrantPayload"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+    delete:
+      tags: [Authorization]
+      summary: Delete heap grants and unprotect heap
+      responses:
+        "204":
+          description: Heap grants deleted
+  /auth/heaps/{heapId}/grants:
+    parameters:
+      - $ref: "#/components/parameters/HeapId"
+    get:
+      tags: [Authorization]
+      summary: Get heap grants alias
+      deprecated: true
+      responses:
+        "200":
+          description: Heap grants
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GrantPayload"
+    put:
+      tags: [Authorization]
+      summary: Replace heap grants alias
+      deprecated: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReplaceGrantAssignmentsRequest"
+      responses:
+        "200":
+          description: Heap grants replaced
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GrantPayload"
+    patch:
+      tags: [Authorization]
+      summary: Update heap grants alias
+      deprecated: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateGrantAssignmentsRequest"
+      responses:
+        "200":
+          description: Heap grants updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GrantPayload"
+    delete:
+      tags: [Authorization]
+      summary: Delete heap grants alias
+      deprecated: true
+      responses:
+        "204":
+          description: Heap grants deleted
+  /auth/documents/{documentId}:
+    parameters:
+      - $ref: "#/components/parameters/DocumentId"
+    get:
+      tags: [Authorization]
+      summary: Get document grants
+      responses:
+        "200":
+          description: Document grants
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GrantPayload"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      tags: [Authorization]
+      summary: Replace document grants
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReplaceGrantAssignmentsRequest"
+      responses:
+        "200":
+          description: Document grants replaced
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GrantPayload"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+    patch:
+      tags: [Authorization]
+      summary: Update document grants
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateGrantAssignmentsRequest"
+      responses:
+        "200":
+          description: Document grants updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GrantPayload"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+    delete:
+      tags: [Authorization]
+      summary: Delete document grants
+      responses:
+        "204":
+          description: Document grants deleted
+  /auth/documents/{documentId}/grants:
+    parameters:
+      - $ref: "#/components/parameters/DocumentId"
+    get:
+      tags: [Authorization]
+      summary: Get document grants alias
+      deprecated: true
+      responses:
+        "200":
+          description: Document grants
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GrantPayload"
+    put:
+      tags: [Authorization]
+      summary: Replace document grants alias
+      deprecated: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReplaceGrantAssignmentsRequest"
+      responses:
+        "200":
+          description: Document grants replaced
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GrantPayload"
+    patch:
+      tags: [Authorization]
+      summary: Update document grants alias
+      deprecated: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateGrantAssignmentsRequest"
+      responses:
+        "200":
+          description: Document grants updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GrantPayload"
+    delete:
+      tags: [Authorization]
+      summary: Delete document grants alias
+      deprecated: true
+      responses:
+        "204":
+          description: Document grants deleted
 components:
   securitySchemes:
-    BearerAuth:
+    ApplicationBearerAuth:
       type: http
       scheme: bearer
-      bearerFormat: JWT
+      bearerFormat: Token
+      description: Application bearer token issued by POST /api/applications.
+  parameters:
+    Page:
+      in: query
+      name: page
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    PerPage:
+      in: query
+      name: per_page
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 250
+        default: 25
+    TenantFilter:
+      in: query
+      name: tenant_id
+      schema:
+        type: string
+    OwnerAppFilter:
+      in: query
+      name: owner_application_id
+      schema:
+        type: string
+    VisibilityFilter:
+      in: query
+      name: visibility
+      schema:
+        type: string
+        enum: [discoverable, hidden]
+    ProtectedFilter:
+      in: query
+      name: protected
+      schema:
+        type: boolean
+    TenantId:
+      in: path
+      name: tenantId
+      required: true
+      schema:
+        type: string
+    ApplicationId:
+      in: path
+      name: applicationId
+      required: true
+      schema:
+        type: string
+    HeapId:
+      in: path
+      name: heapId
+      required: true
+      schema:
+        type: string
+    DocumentId:
+      in: path
+      name: documentId
+      required: true
+      schema:
+        type: string
+    GroupId:
+      in: path
+      name: groupId
+      required: true
+      schema:
+        type: string
+    CorpusId:
+      in: path
+      name: corpusId
+      required: true
+      schema:
+        type: string
   responses:
     Unauthorized:
-      description: Unauthorized
+      description: Missing or invalid application bearer token
       content:
         application/json:
           schema:
-            $ref: "#/components/schemas/Error"
+            $ref: "#/components/schemas/ErrorResponse"
     NotFound:
       description: Resource not found
       content:
         application/json:
           schema:
-            $ref: "#/components/schemas/Error"
+            $ref: "#/components/schemas/ErrorResponse"
+    ValidationError:
+      description: Validation failed
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ValidationErrorResponse"
   schemas:
-    Error:
+    Pagination:
+      type: object
+      properties:
+        page:
+          type: integer
+        per_page:
+          type: integer
+        total:
+          type: integer
+      required: [page, per_page, total]
+    ErrorResponse:
       type: object
       properties:
         message:
           type: string
-        status:
+      required: [message]
+    ValidationErrorResponse:
+      allOf:
+        - $ref: "#/components/schemas/ErrorResponse"
+        - type: object
+          properties:
+            errors:
+              type: object
+              additionalProperties:
+                type: array
+                items:
+                  type: string
+    Metadata:
+      type: object
+      additionalProperties: true
+    Tenant:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        metadata:
+          $ref: "#/components/schemas/Metadata"
+        applicationCount:
           type: integer
-    PingResponse:
-      type: object
-      properties:
-        pong:
-          type: boolean
-    QueryRequest:
-      type: object
-      required:
-        - query
-      properties:
-        query:
+        groupCount:
+          type: integer
+        heapCount:
+          type: integer
+        createdAt:
           type: string
-    QueryResponse:
+          format: date-time
+          nullable: true
+        updatedAt:
+          type: string
+          format: date-time
+          nullable: true
+      required: [id, name, metadata]
+    PaginatedTenantResponse:
       type: object
       properties:
-        answer:
-          type: string
-        sources:
+        data:
           type: array
           items:
-            type: object
+            $ref: "#/components/schemas/Tenant"
+        pagination:
+          $ref: "#/components/schemas/Pagination"
+      required: [data, pagination]
+    CreateTenantRequest:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        metadata:
+          $ref: "#/components/schemas/Metadata"
+      required: [name]
+    Application:
+      type: object
+      properties:
+        id:
+          type: string
+        tenantId:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        permissions:
+          type: array
+          items:
+            type: string
+            enum: [reads, reads-all-apps, reads-federated, reads-protected]
+        metadata:
+          $ref: "#/components/schemas/Metadata"
+        heapCount:
+          type: integer
+        groupCount:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+          nullable: true
+        updatedAt:
+          type: string
+          format: date-time
+          nullable: true
+      required: [id, tenantId, name, permissions, metadata]
+    ApplicationCreateResponse:
+      allOf:
+        - $ref: "#/components/schemas/Application"
+        - type: object
+          properties:
+            token:
+              type: string
+            tokenType:
+              type: string
+              example: Bearer
+          required: [token, tokenType]
+    PaginatedApplicationResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Application"
+        pagination:
+          $ref: "#/components/schemas/Pagination"
+      required: [data, pagination]
+    CreateApplicationRequest:
+      type: object
+      properties:
+        id:
+          type: string
+        tenant_id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        permissions:
+          type: array
+          items:
+            type: string
+            enum: [reads, reads-all-apps, reads-federated, reads-protected]
+        metadata:
+          $ref: "#/components/schemas/Metadata"
+      required: [name]
+    Heap:
+      type: object
+      properties:
+        id:
+          type: string
+        heapId:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        tenantId:
+          type: string
+        ownerApp:
+          type: string
+        visibility:
+          type: string
+          enum: [discoverable, hidden]
+        protected:
+          type: boolean
+        metadata:
+          $ref: "#/components/schemas/Metadata"
+        qdrantCollection:
+          type: string
+          nullable: true
+        neo4jNamespace:
+          type: string
+          nullable: true
+        documentCount:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+          nullable: true
+        updatedAt:
+          type: string
+          format: date-time
+          nullable: true
+      required: [id, heapId, name, tenantId, ownerApp, visibility, protected, metadata]
+    PaginatedHeapResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Heap"
+        pagination:
+          $ref: "#/components/schemas/Pagination"
+      required: [data, pagination]
+    CreateHeapRequest:
+      type: object
+      properties:
+        id:
+          type: string
+        heap_id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        owner_application_id:
+          type: string
+        visibility:
+          type: string
+          enum: [discoverable, hidden]
+        protected:
+          type: boolean
+        metadata:
+          $ref: "#/components/schemas/Metadata"
+      required: [name]
+    UpdateHeapRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        visibility:
+          type: string
+          enum: [discoverable, hidden]
+        protected:
+          type: boolean
+        metadata:
+          $ref: "#/components/schemas/Metadata"
+    Document:
+      type: object
+      properties:
+        id:
+          type: string
+        documentId:
+          type: string
+        heapId:
+          type: string
+        corpusId:
+          type: string
+          nullable: true
+        sourceUrl:
+          type: string
+          nullable: true
+        sourceType:
+          type: string
+          enum: [api, upload, scrape, manual]
+        originalFilename:
+          type: string
+          nullable: true
+        title:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [created, queued, processing, completed, failed, archived]
+        metadata:
+          $ref: "#/components/schemas/Metadata"
+        createdAt:
+          type: string
+          format: date-time
+          nullable: true
+        updatedAt:
+          type: string
+          format: date-time
+          nullable: true
+      required: [id, documentId, heapId, status, metadata]
+    PaginatedDocumentResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Document"
+        pagination:
+          $ref: "#/components/schemas/Pagination"
+      required: [data, pagination]
+    CreateDocumentTextRequest:
+      type: object
+      properties:
+        id:
+          type: string
+        document_id:
+          type: string
+        content:
+          type: string
+        metadata:
+          $ref: "#/components/schemas/Metadata"
+        source_url:
+          type: string
+        title:
+          type: string
+        filename:
+          type: string
+      required: [content]
+    CreateDocumentFileRequest:
+      type: object
+      properties:
+        id:
+          type: string
+        document_id:
+          type: string
+        file:
+          type: string
+          format: binary
+        metadata:
+          $ref: "#/components/schemas/Metadata"
+        source_url:
+          type: string
+        title:
+          type: string
+        filename:
+          type: string
+      required: [file]
+    DocumentCreateResponse:
+      allOf:
+        - $ref: "#/components/schemas/Document"
+        - type: object
+          properties:
+            isDuplicate:
+              type: boolean
+            taskId:
+              type: string
+              nullable: true
+            jobId:
+              type: string
+              nullable: true
+            sourceId:
+              type: string
+              nullable: true
+          required: [isDuplicate]
+    UpdateDocumentRequest:
+      type: object
+      properties:
+        content:
+          type: string
+        metadata:
+          $ref: "#/components/schemas/Metadata"
+        source_url:
+          type: string
+        title:
+          type: string
+        filename:
+          type: string
+    Corpus:
+      type: object
+      properties:
+        id:
+          type: string
+        referenceCount:
+          type: integer
+        documentCount:
+          type: integer
+        contentPreview:
+          type: string
+          nullable: true
+        metadata:
+          $ref: "#/components/schemas/Metadata"
+        createdAt:
+          type: string
+          format: date-time
+          nullable: true
+        updatedAt:
+          type: string
+          format: date-time
+          nullable: true
+      required: [id, referenceCount, documentCount, metadata]
+    PaginatedCorpusResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Corpus"
+        pagination:
+          $ref: "#/components/schemas/Pagination"
+      required: [data, pagination]
+    Group:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        tenantId:
+          type: string
+        ownerApp:
+          type: string
+        metadata:
+          $ref: "#/components/schemas/Metadata"
+        memberCount:
+          type: integer
+        assignedHeaps:
+          type: array
+          items:
+            type: string
+        members:
+          type: array
+          items:
+            type: string
+        createdAt:
+          type: string
+          format: date-time
+          nullable: true
+        updatedAt:
+          type: string
+          format: date-time
+          nullable: true
+      required: [id, name, tenantId, ownerApp, metadata, memberCount]
+    PaginatedGroupResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Group"
+        pagination:
+          $ref: "#/components/schemas/Pagination"
+      required: [data, pagination]
+    CreateGroupRequest:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        owner_application_id:
+          type: string
+        metadata:
+          $ref: "#/components/schemas/Metadata"
+      required: [name]
+    ReplaceUsersRequest:
+      type: object
+      properties:
+        users:
+          type: array
+          items:
+            type: string
+      required: [users]
+    UpdateUsersRequest:
+      type: object
+      properties:
+        add:
+          type: array
+          items:
+            type: string
+        remove:
+          type: array
+          items:
+            type: string
+    PaginatedIdentifierResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            type: string
+        pagination:
+          $ref: "#/components/schemas/Pagination"
+      required: [data, pagination]
+    ReplaceGrantAssignmentsRequest:
+      type: object
+      properties:
+        users:
+          type: array
+          items:
+            type: string
+        groups:
+          type: array
+          items:
+            type: string
+    UpdateGrantAssignmentsRequest:
+      type: object
+      properties:
+        add:
+          type: array
+          items:
+            type: string
+        remove:
+          type: array
+          items:
+            type: string
+        add_users:
+          type: array
+          items:
+            type: string
+        remove_users:
+          type: array
+          items:
+            type: string
+        add_groups:
+          type: array
+          items:
+            type: string
+        remove_groups:
+          type: array
+          items:
+            type: string
+    GrantPayload:
+      type: object
+      properties:
+        resourceType:
+          type: string
+          enum: [heap, document]
+        resourceId:
+          type: string
+        users:
+          type: array
+          items:
+            type: string
+        groups:
+          type: array
+          items:
+            type: string
+        protected:
+          type: boolean
+      required: [resourceType, resourceId, users, groups]
+    AccessCheckResponse:
+      type: object
+      properties:
+        permitted:
+          type: boolean
+      required: [permitted]
+    HeapsByIdentifierResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            type: string
+        pagination:
+          $ref: "#/components/schemas/Pagination"
+      required: [data, pagination]
+    HeapDeleteResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        cleanup:
+          type: object
+          additionalProperties: true
+      required: [success, cleanup]

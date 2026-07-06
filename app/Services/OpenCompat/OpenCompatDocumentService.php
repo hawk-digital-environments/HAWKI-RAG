@@ -254,19 +254,10 @@ readonly class OpenCompatDocumentService
             return $shown;
         }
 
-        $document = $shown['payload']['document'];
-        $sourceUrl = $document['metadata']['source_url'] ?? null;
-        if (! is_string($sourceUrl) || ! str_starts_with($sourceUrl, 'upload://')) {
-            return $this->unsupported('documents/download_url', 'Only uploaded-source documents have a RAWKI download URL.');
-        }
-
-        return [
-            'status' => 200,
-            'payload' => [
-                'document_id' => $documentId,
-                'download_url' => url('/documents/uploads/download?'.http_build_query(['source_url' => $sourceUrl])),
-            ],
-        ];
+        return $this->unsupported(
+            'documents/download_url',
+            'Legacy document download URLs are not exposed on the V2 branch.',
+        );
     }
 
     /**

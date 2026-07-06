@@ -112,7 +112,7 @@ class AuthorizationLmsNeutralTest extends TestCase
             'https://keycloak.example.test/certs' => Http::response(['keys' => [$jwk]]),
         ]);
 
-        $request = request()->create('/api/query', 'GET', server: [
+        $request = request()->create('/api/search', 'GET', server: [
             'HTTP_AUTHORIZATION' => 'Bearer '.$jwt,
         ]);
 
@@ -212,7 +212,7 @@ class AuthorizationLmsNeutralTest extends TestCase
         ], $document->toArray());
     }
 
-    public function test_document_show_is_denied_without_user_identifier_scope_on_app_requests(): void
+    public function test_legacy_document_show_route_is_not_registered_on_v2_branch(): void
     {
         $document = $this->documentWithUploadedFile();
         $this->actingAsApplication([
@@ -223,11 +223,10 @@ class AuthorizationLmsNeutralTest extends TestCase
         config()->set('authz.enabled', true);
 
         $this->getJson('/api/documents/'.$document->id)
-            ->assertForbidden()
-            ->assertJsonPath('success', false);
+            ->assertMethodNotAllowed();
     }
 
-    public function test_document_show_ignores_user_identifier_requirement_when_authorization_is_disabled(): void
+    public function test_legacy_document_show_route_stays_unavailable_when_authorization_is_disabled(): void
     {
         $document = $this->documentWithUploadedFile();
         $this->actingAsApplication([
@@ -239,11 +238,10 @@ class AuthorizationLmsNeutralTest extends TestCase
         config()->set('authz.document_api_enforced', true);
 
         $this->getJson('/api/documents/'.$document->id)
-            ->assertOk()
-            ->assertJsonPath('document.id', $document->id);
+            ->assertMethodNotAllowed();
     }
 
-    public function test_uploaded_document_download_is_denied_when_permission_graph_denies_access(): void
+    public function test_legacy_uploaded_document_download_route_is_not_registered(): void
     {
         $document = $this->documentWithUploadedFile();
         $this->actingAsApiUser();
@@ -253,8 +251,7 @@ class AuthorizationLmsNeutralTest extends TestCase
             'source_url' => $document->source_url,
             'content_hash' => $document->checksum_sha256,
         ]))
-            ->assertForbidden()
-            ->assertJsonPath('success', false);
+            ->assertNotFound();
     }
 
     private function denyPermissionGraph(): void

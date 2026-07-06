@@ -29,13 +29,27 @@ class DocumentController extends Controller
 
     public function store(string $heapId, CreateDocumentRequest $request): JsonResponse
     {
-        $result = $this->spec->documents->create($heapId, $request->validated(), $request->header('Idempotency-Key'));
+        $result = $this->spec->documents->create(
+            $heapId,
+            $request->validated(),
+            $request->uploadedFile(),
+            $request->header('Idempotency-Key'),
+        );
         if (! isset($result['document'])) {
             return response()->json($result['payload'] ?? ['message' => 'Document creation failed.'], $result['status']);
         }
 
         $payload = (new DocumentResource($result['document']))->resolve($request);
         $payload['isDuplicate'] = (bool) ($result['is_duplicate'] ?? false);
+        if (isset($result['task_id'])) {
+            $payload['taskId'] = $result['task_id'];
+        }
+        if (isset($result['job_id'])) {
+            $payload['jobId'] = $result['job_id'];
+        }
+        if (isset($result['source_id'])) {
+            $payload['sourceId'] = $result['source_id'];
+        }
 
         return response()->json($payload, $result['status']);
     }
