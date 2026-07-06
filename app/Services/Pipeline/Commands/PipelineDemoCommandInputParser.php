@@ -15,7 +15,7 @@ readonly class PipelineDemoCommandInputParser
      */
     public function parse(Command $command): array
     {
-        $dataset = $this->stringOption($command, 'dataset') ?: 'demo';
+        $heapId = $this->stringOption($command, 'heap') ?: 'demo';
         $limit = $this->integerOption($command, 'limit', 5);
         $graph = $this->booleanOption($command, 'graph', true);
         $dryRun = $this->booleanOption($command, 'dry-run', false);
@@ -39,7 +39,7 @@ readonly class PipelineDemoCommandInputParser
 
         return [
             'input' => new PipelineDemoCommandInput(
-                $dataset,
+                $heapId,
                 $limit,
                 $graph,
                 $dryRun,

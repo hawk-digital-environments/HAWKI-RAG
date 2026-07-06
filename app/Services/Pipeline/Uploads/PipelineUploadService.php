@@ -114,8 +114,7 @@ class PipelineUploadService
             'markdown_storage_path' => $storage['markdown'],
             'metadata' => [
                 'request' => $task->metadata['request'] ?? [],
-                'heap' => $task->metadata['heap'] ?? $task->metadata['dataset'] ?? [],
-                'dataset' => $task->metadata['heap'] ?? $task->metadata['dataset'] ?? [],
+                'heap' => $task->metadata['heap'] ?? [],
                 'upload' => [
                     'original_filename' => $storedUpload->originalName,
                     'target_name' => $storedUpload->targetName,
@@ -169,7 +168,7 @@ class PipelineUploadService
 
         $task = $this->refresher->recalculate($task);
 
-        $this->logger->info('Pipeline controller upload handed to Temporal.', [
+        $this->logger->info('Pipeline upload API handed file to Temporal.', [
             'task_id' => $task->task_id,
             'job_id' => $job->job_id,
             'heap_id' => $task->dataset_id,

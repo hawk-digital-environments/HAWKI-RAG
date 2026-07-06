@@ -6,7 +6,7 @@ namespace App\Services\SpecV2;
 
 use App\Models\Dataset;
 use App\Models\SpecV2\Heap;
-use App\Services\Dataset\DatasetStorageCleanupService;
+use App\Services\Heap\HeapStorageCleanupService;
 use App\Services\SpecV2\Repositories\HeapRepository;
 use Illuminate\Container\Attributes\Singleton;
 
@@ -15,7 +15,7 @@ readonly class HeapDeletionService
 {
     public function __construct(
         private HeapRepository $heaps,
-        private DatasetStorageCleanupService $storageCleanup,
+        private HeapStorageCleanupService $storageCleanup,
     ) {}
 
     /**

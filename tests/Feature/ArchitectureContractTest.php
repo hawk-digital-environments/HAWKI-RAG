@@ -345,8 +345,9 @@ class ArchitectureContractTest extends TestCase
         $this->assertStringNotContainsString('PipelineUploadInput', $compatDocumentService);
 
         $this->assertIsString($compatIngestService);
-        $this->assertStringContainsString('PipelineUploadInput', $compatIngestService);
+        $this->assertStringNotContainsString('PipelineUploadInput', $compatIngestService);
         $this->assertStringNotContainsString('LegacyDatasetService', $compatIngestService);
+        $this->assertStringContainsString('OpenCompatBridgeClient', $compatIngestService);
 
         $this->assertIsString($specDocuments);
         $this->assertStringContainsString('CorpusSyncService', $specDocuments);

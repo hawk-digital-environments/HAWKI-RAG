@@ -9,7 +9,5 @@ Route::middleware(['auth:application-token', 'throttle:hawki-api'])->group(funct
         Route::post('/start', [PipelineTaskController::class, 'start'])->middleware('throttle:hawki-upload');
     });
 
-    Route::prefix('pipeline/controller')->group(function () {
-        Route::post('/files', [PipelineControlController::class, 'uploadFile'])->middleware('throttle:hawki-upload');
-    });
+    Route::post('/pipeline/files', [PipelineControlController::class, 'uploadFile'])->middleware('throttle:hawki-upload');
 });

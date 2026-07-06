@@ -15,11 +15,11 @@ readonly class PipelineDemoCommandRenderer
      * @param list<string> $urls
      * @param array<string, mixed> $input
      */
-    public function planned(Command $command, string $taskId, string $dataset, array $urls, array $input): void
+    public function planned(Command $command, string $taskId, string $heapId, array $urls, array $input): void
     {
         $command->line('HAWKI RAG demo pipeline');
         $command->line('Task ID: '.$taskId);
-        $command->line('Dataset: '.$dataset);
+        $command->line('Heap: '.$heapId);
         $command->line('URL limit: '.count($urls));
         $command->line('Graph metadata: '.((bool) ($input['metadata']['graph'] ?? false) ? 'true' : 'false'));
     }

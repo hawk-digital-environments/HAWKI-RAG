@@ -5,8 +5,6 @@ namespace App\Services\Heap;
 
 use App\Models\Dataset;
 use App\Services\Authorization\ApiActorScopeService;
-use App\Services\Dataset\DatasetPayloadBuilder;
-use App\Services\Dataset\DatasetStorageCleanupService;
 use App\Services\Heap\Repositories\HeapCatalogRepository;
 use Illuminate\Container\Attributes\Singleton;
 use Psr\Clock\ClockInterface;
@@ -18,8 +16,8 @@ readonly class HeapCatalogService
     public function __construct(
         private HeapCatalogRepository $heaps,
         private HeapIdentifierFactory $identifiers,
-        private DatasetPayloadBuilder $payloads,
-        private DatasetStorageCleanupService $storageCleanup,
+        private HeapPayloadBuilder $payloads,
+        private HeapStorageCleanupService $storageCleanup,
         private ApiActorScopeService $actors,
         private ClockInterface $clock = new Clock,
     ) {}

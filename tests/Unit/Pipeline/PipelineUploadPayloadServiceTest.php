@@ -20,7 +20,7 @@ class PipelineUploadPayloadServiceTest extends TestCase
             $this->storedUpload(),
         );
 
-        $this->assertSame('pipeline-controller', $metadata['request']['source']);
+        $this->assertSame('pipeline-upload-api', $metadata['request']['source']);
         $this->assertSame('uploaded_file_convert_ingest', $metadata['request']['mode']);
         $this->assertSame('sample.pdf', $metadata['request']['metadata']['label']);
         $this->assertFalse($metadata['request']['metadata']['graph']);
@@ -30,7 +30,6 @@ class PipelineUploadPayloadServiceTest extends TestCase
             $metadata['temporal']['note'],
         );
         $this->assertSame('upload-dataset', $metadata['heap']['heap_id']);
-        $this->assertSame('upload-dataset', $metadata['dataset']['dataset_id']);
         $this->assertSame('/shared/uploads/sample.pdf', $metadata['upload']['local_path']);
     }
 
@@ -42,7 +41,7 @@ class PipelineUploadPayloadServiceTest extends TestCase
             $this->storedUpload(),
         );
 
-        $this->assertSame('pipeline-controller', $metadata['source']);
+        $this->assertSame('pipeline-upload-api', $metadata['source']);
         $this->assertSame('uploaded_file_convert_ingest', $metadata['mode']);
         $this->assertSame('File upload handed to Temporal for conversion and ingestion.', $metadata['status_note']);
         $this->assertSame('sample.pdf', $metadata['original_filename']);
@@ -51,7 +50,6 @@ class PipelineUploadPayloadServiceTest extends TestCase
         $this->assertSame('pdf', $metadata['extension']);
         $this->assertTrue($metadata['graph']);
         $this->assertSame('hawki_upload_dataset', $metadata['heap']['qdrant_collection']);
-        $this->assertSame('hawki_upload_dataset', $metadata['dataset']['qdrant_collection']);
     }
 
     public function test_it_builds_custom_converter_metadata_without_token(): void

@@ -9,7 +9,7 @@ class StartOrchestratedPipelineTask extends Command
 {
     protected $signature = 'pipeline:start-task
         {--task-id= : Optional explicit task ID}
-        {--dataset-id= : Dataset identifier}
+        {--heap-id= : Heap identifier}
         {--sitemap-url= : Remote sitemap URL}
         {--sitemap-path= : Local sitemap path}
         {--source-url= : Single source URL}
@@ -22,7 +22,7 @@ class StartOrchestratedPipelineTask extends Command
     {
         $input = [
             'task_id' => $this->option('task-id'),
-            'dataset_id' => $this->option('dataset-id'),
+            'heap_id' => $this->option('heap-id'),
             'sitemap_url' => $this->option('sitemap-url'),
             'sitemap_path' => $this->option('sitemap-path'),
             'source_url' => $this->option('source-url'),

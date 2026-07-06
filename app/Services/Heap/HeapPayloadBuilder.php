@@ -2,46 +2,46 @@
 
 declare(strict_types=1);
 
-namespace App\Services\Dataset;
+namespace App\Services\Heap;
 
 use App\Models\Dataset;
 use App\Models\Document;
 use App\Models\PipelineJob;
 use App\Models\PipelineTask;
+use App\Services\Heap\Repositories\HeapActivityRepository;
 use Illuminate\Container\Attributes\Singleton;
 
 #[Singleton]
-readonly class DatasetPayloadBuilder
+readonly class HeapPayloadBuilder
 {
     public function __construct(
-        private DatasetRepository $datasets,
-        private DatasetVectorStatsService $vectorStats,
-        private DatasetGraphStatsService $graphStats,
+        private HeapActivityRepository $heaps,
+        private HeapVectorStatsService $vectorStats,
+        private HeapGraphStatsService $graphStats,
     ) {
     }
 
     /**
      * @return array<string, mixed>
      */
-    public function payload(Dataset $dataset, bool $includeDetails): array
+    public function payload(Dataset $heap, bool $includeDetails): array
     {
-        $stats = $this->stats($dataset);
+        $stats = $this->stats($heap);
         $payload = [
-            'id' => $dataset->id,
-            'datasetId' => $dataset->dataset_id,
-            'heapId' => $dataset->dataset_id,
-            'name' => $dataset->name,
-            'description' => $dataset->description,
-            'status' => $dataset->status,
-            'tenantId' => $dataset->tenant_id,
-            'ownerApp' => $dataset->owner_application_id,
-            'visibility' => $dataset->visibility,
-            'protected' => (bool) $dataset->protected,
-            'metadata' => $dataset->metadata_json ?? [],
-            'qdrantCollection' => $dataset->qdrant_collection,
-            'neo4jNamespace' => $dataset->neo4j_namespace,
-            'createdAt' => $dataset->created_at?->format(DATE_ATOM),
-            'updatedAt' => $dataset->updated_at?->format(DATE_ATOM),
+            'id' => $heap->id,
+            'heapId' => $heap->dataset_id,
+            'name' => $heap->name,
+            'description' => $heap->description,
+            'status' => $heap->status,
+            'tenantId' => $heap->tenant_id,
+            'ownerApp' => $heap->owner_application_id,
+            'visibility' => $heap->visibility,
+            'protected' => (bool) $heap->protected,
+            'metadata' => $heap->metadata_json ?? [],
+            'qdrantCollection' => $heap->qdrant_collection,
+            'neo4jNamespace' => $heap->neo4j_namespace,
+            'createdAt' => $heap->created_at?->format(DATE_ATOM),
+            'updatedAt' => $heap->updated_at?->format(DATE_ATOM),
             'documentCount' => $stats['documents'],
             'taskCount' => $stats['tasks'],
             'lastIngestion' => $stats['lastIngestion'],
@@ -49,9 +49,9 @@ readonly class DatasetPayloadBuilder
         ];
 
         if ($includeDetails) {
-            $payload['tasks'] = $this->tasks($dataset);
-            $payload['documents'] = $this->documents($dataset);
-            $payload['ingestionHistory'] = $this->ingestionHistory($dataset);
+            $payload['tasks'] = $this->tasks($heap);
+            $payload['documents'] = $this->documents($heap);
+            $payload['ingestionHistory'] = $this->ingestionHistory($heap);
         }
 
         return $payload;
@@ -60,15 +60,15 @@ readonly class DatasetPayloadBuilder
     /**
      * @return array<string, mixed>
      */
-    private function stats(Dataset $dataset): array
+    private function stats(Dataset $heap): array
     {
         return [
-            'documents' => $this->datasets->documentCount($dataset),
-            'tasks' => $this->datasets->taskCount($dataset),
-            'lastIngestion' => $this->lastIngestion($dataset),
+            'documents' => $this->heaps->documentCount($heap),
+            'tasks' => $this->heaps->taskCount($heap),
+            'lastIngestion' => $this->lastIngestion($heap),
             'graph' => [
-                'qdrant' => $this->vectorStats->stats($dataset),
-                'neo4j' => $this->graphStats->stats($dataset),
+                'qdrant' => $this->vectorStats->stats($heap),
+                'neo4j' => $this->graphStats->stats($heap),
             ],
         ];
     }
@@ -76,12 +76,12 @@ readonly class DatasetPayloadBuilder
     /**
      * @return list<array<string, mixed>>
      */
-    private function tasks(Dataset $dataset): array
+    private function tasks(Dataset $heap): array
     {
-        return $this->datasets->recentTasks($dataset)
+        return $this->heaps->recentTasks($heap)
             ->map(fn (PipelineTask $task): array => [
                 'taskId' => $task->task_id,
-                'datasetId' => $task->dataset_id,
+                'heapId' => $task->dataset_id,
                 'status' => $task->status,
                 'counters' => $task->counters ?? [],
                 'startedAt' => $task->started_at?->format(DATE_ATOM),
@@ -93,12 +93,11 @@ readonly class DatasetPayloadBuilder
     /**
      * @return list<array<string, mixed>>
      */
-    private function documents(Dataset $dataset): array
+    private function documents(Dataset $heap): array
     {
-        return $this->datasets->recentDocuments($dataset)
+        return $this->heaps->recentDocuments($heap)
             ->map(fn (Document $document): array => [
                 'id' => $document->id,
-                'datasetId' => $document->dataset_id,
                 'heapId' => $document->dataset_id,
                 'corpusId' => $document->corpus_id,
                 'collection' => $document->collection,
@@ -118,9 +117,9 @@ readonly class DatasetPayloadBuilder
     /**
      * @return list<array<string, mixed>>
      */
-    private function ingestionHistory(Dataset $dataset): array
+    private function ingestionHistory(Dataset $heap): array
     {
-        return $this->datasets->recentIngestionJobs($dataset)
+        return $this->heaps->recentIngestionJobs($heap)
             ->map(fn (PipelineJob $job): array => [
                 'jobId' => $job->job_id,
                 'taskId' => $job->task_id,
@@ -137,9 +136,9 @@ readonly class DatasetPayloadBuilder
     /**
      * @return array<string, mixed>|null
      */
-    private function lastIngestion(Dataset $dataset): ?array
+    private function lastIngestion(Dataset $heap): ?array
     {
-        $job = $this->datasets->lastTerminalIngestionJob($dataset);
+        $job = $this->heaps->lastTerminalIngestionJob($heap);
 
         if (! $job) {
             return null;

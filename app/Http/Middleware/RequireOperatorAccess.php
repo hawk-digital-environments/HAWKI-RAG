@@ -20,7 +20,7 @@ readonly class RequireOperatorAccess
             return $next($request);
         }
 
-        if ($request->expectsJson() || $request->is('query', 'settings/config', 'rag/*', 'pipeline/*', 'scraper/*', 'datasets/data*', 'documents/data*')) {
+        if ($request->expectsJson() || $request->is('settings/config', 'rag/*', 'pipeline/*', 'scraper/*')) {
             return response()->json([
                 'message' => 'Operator authentication required.',
             ], 401);

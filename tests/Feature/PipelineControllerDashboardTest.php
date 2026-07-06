@@ -26,7 +26,7 @@ class PipelineControllerDashboardTest extends TestCase
 
     public function test_uploading_file_starts_temporal_ingest_workflow(): void
     {
-        $root = storage_path('framework/testing/pipeline-controller');
+        $root = storage_path('framework/testing/pipeline-upload-api');
         File::deleteDirectory($root);
         config()->set('temporal.storage.shared_root', $root);
         config()->set('file_converter.raganything_supported_extensions', ['pdf']);
@@ -39,7 +39,7 @@ class PipelineControllerDashboardTest extends TestCase
 
         $this->actingAsApplication();
 
-        $response = $this->post('/api/pipeline/controller/files', [
+        $response = $this->post('/api/pipeline/files', [
             'heap_id' => 'controller-test',
             'graph' => 'false',
             'file' => UploadedFile::fake()->create('sample.pdf', 12, 'application/pdf'),
@@ -162,7 +162,7 @@ class PipelineControllerDashboardTest extends TestCase
 
         $this->actingAsApplication();
 
-        $this->post('/api/pipeline/controller/files', [
+        $this->post('/api/pipeline/files', [
             'heap_id' => 'native-reject',
             'file' => UploadedFile::fake()->create('diagram.svg', 12, 'image/svg+xml'),
         ], [
@@ -179,7 +179,7 @@ class PipelineControllerDashboardTest extends TestCase
 
     public function test_custom_converter_upload_accepts_non_native_file_and_passes_profile_path(): void
     {
-        $root = storage_path('framework/testing/pipeline-controller-custom');
+        $root = storage_path('framework/testing/pipeline-upload-api-custom');
         File::deleteDirectory($root);
         config()->set('temporal.storage.shared_root', $root);
         config()->set('file_converter.raganything_supported_extensions', ['pdf']);
@@ -193,7 +193,7 @@ class PipelineControllerDashboardTest extends TestCase
 
         $this->actingAsApplication();
 
-        $response = $this->post('/api/pipeline/controller/files', [
+        $response = $this->post('/api/pipeline/files', [
             'heap_id' => 'custom-converter-test',
             'converter_mode' => 'custom',
             'converter_url' => 'https://converter.example.test',
@@ -239,8 +239,8 @@ class PipelineControllerDashboardTest extends TestCase
 
     public function test_custom_converter_upload_uses_saved_settings_without_sending_secret(): void
     {
-        $root = storage_path('framework/testing/pipeline-controller-settings');
-        $settingsPath = storage_path('framework/testing/pipeline-controller-settings.json');
+        $root = storage_path('framework/testing/pipeline-upload-api-settings');
+        $settingsPath = storage_path('framework/testing/pipeline-upload-api-settings.json');
         File::deleteDirectory($root);
         File::delete($settingsPath);
         config()->set('config.operator_settings_path', $settingsPath);
@@ -272,7 +272,7 @@ class PipelineControllerDashboardTest extends TestCase
 
         $this->actingAsApplication();
 
-        $this->post('/api/pipeline/controller/files', [
+        $this->post('/api/pipeline/files', [
             'heap_id' => 'saved-converter-test',
             'converter_mode' => 'custom',
             'file' => UploadedFile::fake()->create('diagram.svg', 12, 'image/svg+xml'),
@@ -383,7 +383,7 @@ class PipelineControllerDashboardTest extends TestCase
 
     public function test_failed_upload_storage_does_not_create_dataset_task_or_job(): void
     {
-        $root = storage_path('framework/testing/pipeline-controller-blocked');
+        $root = storage_path('framework/testing/pipeline-upload-api-blocked');
         File::deleteDirectory($root);
         File::ensureDirectoryExists(dirname($root));
         File::put($root, 'not a directory');
@@ -392,7 +392,7 @@ class PipelineControllerDashboardTest extends TestCase
 
         $this->actingAsApplication();
 
-        $this->post('/api/pipeline/controller/files', [
+        $this->post('/api/pipeline/files', [
             'heap_id' => 'blocked-controller-dataset',
             'file' => UploadedFile::fake()->create('blocked.pdf', 12, 'application/pdf'),
         ], [

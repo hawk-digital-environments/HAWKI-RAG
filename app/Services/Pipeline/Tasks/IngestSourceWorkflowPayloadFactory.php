@@ -30,9 +30,7 @@ readonly class IngestSourceWorkflowPayloadFactory
     {
         $metadata = $source->metadata ?? [];
         $refresh = is_array($metadata['refresh'] ?? null) ? $metadata['refresh'] : [];
-        $heap = is_array($metadata['heap'] ?? null)
-            ? $metadata['heap']
-            : (is_array($metadata['dataset'] ?? null) ? $metadata['dataset'] : []);
+        $heap = is_array($metadata['heap'] ?? null) ? $metadata['heap'] : [];
 
         $upload = is_array($metadata['upload'] ?? null) ? $metadata['upload'] : null;
         $customConverter = is_array($metadata['custom_converter'] ?? null)

@@ -28,11 +28,11 @@ readonly class PipelineUploadPayloadService
     ): array {
         return [
             'request' => [
-                'source' => 'pipeline-controller',
+                'source' => 'pipeline-upload-api',
                 'mode' => 'uploaded_file_convert_ingest',
                 'metadata' => [
                     'label' => $storedUpload->originalName,
-                    'source' => 'pipeline-controller',
+                    'source' => 'pipeline-upload-api',
                     'graph' => $input->graph,
                     'converter_mode' => $input->converterMode,
                 ],
@@ -42,7 +42,6 @@ readonly class PipelineUploadPayloadService
                 'note' => 'Uploaded files are handed to IngestSourceWorkflow through shared storage.',
             ],
             'heap' => $this->metadata->heap($dataset),
-            'dataset' => $this->metadata->dataset($dataset),
             'upload' => [
                 'original_filename' => $storedUpload->originalName,
                 'local_path' => $storedUpload->localPath,
@@ -62,7 +61,7 @@ readonly class PipelineUploadPayloadService
         ?string $customConverterProfilePath = null,
     ): array {
         return [
-            'source' => 'pipeline-controller',
+            'source' => 'pipeline-upload-api',
             'mode' => 'uploaded_file_convert_ingest',
             'status_note' => 'File upload handed to Temporal for conversion and ingestion.',
             'original_filename' => $storedUpload->originalName,
@@ -73,7 +72,6 @@ readonly class PipelineUploadPayloadService
             'converter_mode' => $input->converterMode,
             'custom_converter' => $this->customConverterMetadata($input, $customConverterProfilePath),
             'heap' => $this->metadata->heap($dataset),
-            'dataset' => $this->metadata->dataset($dataset),
         ];
     }
 

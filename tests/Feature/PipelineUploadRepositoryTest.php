@@ -23,7 +23,7 @@ class PipelineUploadRepositoryTest extends TestCase
         $startedAt = Carbon::parse('2026-06-08 12:00:00');
         $metadata = [
             'request' => [
-                'source' => 'pipeline-controller',
+                'source' => 'pipeline-upload-api',
                 'mode' => 'uploaded_file_convert_ingest',
             ],
             'upload' => [
@@ -58,7 +58,7 @@ class PipelineUploadRepositoryTest extends TestCase
             'task_for_convert_repository',
             $this->dataset(),
             Carbon::parse('2026-06-08 12:00:00'),
-            ['request' => ['source' => 'pipeline-controller']],
+            ['request' => ['source' => 'pipeline-upload-api']],
         );
         $startedAt = Carbon::parse('2026-06-08 12:05:00');
         $storedUpload = PipelineStoredUpload::fromStoredFile(
@@ -69,7 +69,7 @@ class PipelineUploadRepositoryTest extends TestCase
             'pdf',
         );
         $metadata = [
-            'source' => 'pipeline-controller',
+            'source' => 'pipeline-upload-api',
             'mode' => 'uploaded_file_convert_ingest',
             'graph' => true,
         ];

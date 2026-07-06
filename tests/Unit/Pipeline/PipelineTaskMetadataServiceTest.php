@@ -12,7 +12,7 @@ use Tests\TestCase;
 
 class PipelineTaskMetadataServiceTest extends TestCase
 {
-    public function test_it_shapes_heap_metadata_with_dataset_alias(): void
+    public function test_it_shapes_heap_metadata(): void
     {
         $metadata = app(PipelineTaskMetadataService::class)->heap(new Dataset([
             'dataset_id' => 'dataset-meta',
@@ -22,7 +22,6 @@ class PipelineTaskMetadataServiceTest extends TestCase
 
         $this->assertSame([
             'heap_id' => 'dataset-meta',
-            'dataset_id' => 'dataset-meta',
             'qdrant_collection' => 'hawki_dataset_meta',
             'neo4j_namespace' => 'hawki_dataset_meta',
         ], $metadata);
@@ -38,8 +37,8 @@ class PipelineTaskMetadataServiceTest extends TestCase
                         'max_pages' => 5,
                     ],
                 ],
-                'dataset' => [
-                    'dataset_id' => 'dataset-meta',
+                'heap' => [
+                    'heap_id' => 'dataset-meta',
                 ],
             ],
         ]);
@@ -48,8 +47,7 @@ class PipelineTaskMetadataServiceTest extends TestCase
 
         $this->assertSame('unit-test', $metadata['source']);
         $this->assertSame(5, $metadata['max_pages']);
-        $this->assertSame(['dataset_id' => 'dataset-meta'], $metadata['heap']);
-        $this->assertSame(['dataset_id' => 'dataset-meta'], $metadata['dataset']);
+        $this->assertSame(['heap_id' => 'dataset-meta'], $metadata['heap']);
     }
 
     public function test_it_appends_task_metadata_events(): void

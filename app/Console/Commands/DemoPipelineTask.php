@@ -13,7 +13,7 @@ use Illuminate\Console\Command;
 class DemoPipelineTask extends Command
 {
     protected $signature = 'pipeline:demo
-        {--dataset=demo : Dataset identifier for the demo run}
+        {--heap=demo : Heap identifier for the demo run}
         {--limit=5 : Number of demo URLs to queue}
         {--graph=true : Include graph ingestion metadata}
         {--dry-run=false : Print the planned demo without creating jobs}
@@ -56,7 +56,7 @@ class DemoPipelineTask extends Command
         $taskId = $support->taskId();
         $taskInput = [
             'task_id' => $taskId,
-            'dataset_id' => $input->dataset,
+            'heap_id' => $input->heapId,
             'urls' => $urls,
             'metadata' => [
                 'source' => 'pipeline-demo-command',
@@ -72,7 +72,7 @@ class DemoPipelineTask extends Command
         $taskInput['metadata']['graph'] = $input->graph;
         $taskInput['metadata']['rag_ingest_graph'] = $input->graph;
 
-        $renderer->planned($this, $taskId, $input->dataset, $urls, $taskInput);
+        $renderer->planned($this, $taskId, $input->heapId, $urls, $taskInput);
 
         if ($input->dryRun) {
             $renderer->dryRun($this, $urls, $support->swaggerUrls());

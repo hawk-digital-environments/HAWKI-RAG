@@ -165,8 +165,8 @@ class AppMetadataStore:
             return
 
         ingestion = workflow_input.get("ingestion") if isinstance(workflow_input.get("ingestion"), dict) else {}
-        dataset_id = str(workflow_input.get("dataset_id") or "default")
-        collection = str(ingestion.get("collection") or workflow_input.get("qdrant_collection") or dataset_id)
+        heap_id = str(workflow_input.get("heap_id") or workflow_input.get("dataset_id") or "default")
+        collection = str(ingestion.get("collection") or workflow_input.get("qdrant_collection") or heap_id)
         neo4j_namespace = str(ingestion.get("neo4j_namespace") or collection)
         source_id = str(workflow_input.get("source_id") or "")
         job_id = str(workflow_input.get("job_id") or "")
@@ -218,7 +218,7 @@ class AppMetadataStore:
                             insert into documents (
                                 id,
                                 external_id,
-                                dataset_id,
+                                heap_id,
                                 collection,
                                 source_type,
                                 source_url,
@@ -251,7 +251,7 @@ class AppMetadataStore:
                             (
                                 str(uuid5(NAMESPACE_URL, f"{collection}:{checksum}")),
                                 document_id or job_id or source_id or None,
-                                dataset_id,
+                                heap_id,
                                 collection,
                                 source_type,
                                 source_url or None,

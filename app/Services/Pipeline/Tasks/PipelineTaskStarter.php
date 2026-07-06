@@ -59,7 +59,6 @@ readonly class PipelineTaskStarter
                         'workflow_task_queue' => config('temporal.task_queues.workflow', 'rag-workflow-task-queue'),
                     ],
                     'heap' => $this->metadata->heap($heap),
-                    'dataset' => $this->metadata->dataset($heap),
                 ],
             );
 
@@ -95,12 +94,7 @@ readonly class PipelineTaskStarter
             'markdown_storage_path' => $storage['markdown'],
             'metadata' => [
                 'request' => $input,
-                'heap' => is_array($task->metadata['heap'] ?? null)
-                    ? $task->metadata['heap']
-                    : (is_array($task->metadata['dataset'] ?? null) ? $task->metadata['dataset'] : []),
-                'dataset' => is_array($task->metadata['heap'] ?? null)
-                    ? $task->metadata['heap']
-                    : (is_array($task->metadata['dataset'] ?? null) ? $task->metadata['dataset'] : []),
+                'heap' => is_array($task->metadata['heap'] ?? null) ? $task->metadata['heap'] : [],
                 'refresh' => $this->refreshMetadata($input),
             ],
         ]);

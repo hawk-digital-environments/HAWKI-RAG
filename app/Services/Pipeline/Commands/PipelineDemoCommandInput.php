@@ -10,7 +10,7 @@ readonly class PipelineDemoCommandInput
      * @param list<string> $urls
      */
     public function __construct(
-        public string $dataset,
+        public string $heapId,
         public int $limit,
         public bool $graph,
         public bool $dryRun,

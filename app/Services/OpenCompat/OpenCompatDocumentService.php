@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Services\OpenCompat;
 
 use App\Models\Document;
-use App\Services\Authorization\ApiActorScopeService;
 use App\Services\Document\DocumentBrowserService;
 use App\Services\Document\DocumentRepository;
 use Illuminate\Container\Attributes\Singleton;
@@ -17,7 +16,6 @@ readonly class OpenCompatDocumentService
         private DocumentBrowserService $browser,
         private DocumentRepository $documents,
         private OpenCompatBridgeClient $bridge,
-        private ApiActorScopeService $scopes,
     ) {}
 
     /**
@@ -62,7 +60,7 @@ readonly class OpenCompatDocumentService
      */
     public function searchDocuments(array $input): array
     {
-        $filters = $this->mergeScopeFilters($this->array($input['scope_filters'] ?? []));
+        $filters = $this->array($input['scope_filters'] ?? []);
         $documents = array_map(
             fn (array $document): array => $this->documentShape($document),
             $this->browser->list((int) ($input['limit'] ?? 100), [
@@ -81,7 +79,7 @@ readonly class OpenCompatDocumentService
     public function batchDocuments(array $input): array
     {
         $ids = array_values(array_filter(array_map('strval', $this->array($input['document_ids'] ?? $input['documentIds'] ?? $input['ids'] ?? []))));
-        $indexed = $this->documents->findManyByIds($ids, $this->mergeScopeFilters($this->array($input['scope_filters'] ?? [])))
+        $indexed = $this->documents->findManyByIds($ids, $this->array($input['scope_filters'] ?? []))
             ->keyBy(fn (Document $document): string => (string) $document->id);
         $documents = [];
         foreach ($ids as $id) {
@@ -92,203 +90,6 @@ readonly class OpenCompatDocumentService
         }
 
         return ['status' => 200, 'payload' => ['documents' => $documents, 'count' => count($documents)]];
-    }
-
-    /**
-     * @param array<string, mixed> $filters
-     * @return array{payload: array<string, mixed>, status: int}
-     */
-    public function listDocuments(array $filters, ?string $requestedUserIdentifier = null): array
-    {
-        $filters = $this->mergeScopeFilters($filters, $requestedUserIdentifier);
-        $documents = array_map(
-            fn (array $document): array => $this->documentShape($document),
-            $this->browser->list((int) ($filters['limit'] ?? 100), $filters, $requestedUserIdentifier),
-        );
-
-        return ['status' => 200, 'payload' => ['documents' => $documents, 'count' => count($documents)]];
-    }
-
-    /**
-     * @return array{payload: array<string, mixed>, status: int}
-     */
-    public function showDocument(string $documentId, ?string $requestedUserIdentifier = null): array
-    {
-        $document = $this->browser->show($documentId, $requestedUserIdentifier);
-        if (! $document) {
-            return ['status' => 404, 'payload' => $this->errorPayload('document_not_found', 'Document not found.')];
-        }
-
-        return ['status' => 200, 'payload' => ['document' => $this->documentShape($document)]];
-    }
-
-    /**
-     * @return array{payload: array<string, mixed>, status: int}
-     */
-    public function documentStatus(string $documentId, ?string $requestedUserIdentifier = null): array
-    {
-        $shown = $this->showDocument($documentId, $requestedUserIdentifier);
-        if ($shown['status'] !== 200) {
-            return $shown;
-        }
-
-        $document = $shown['payload']['document'];
-
-        return [
-            'status' => 200,
-            'payload' => [
-                'document_id' => $document['id'],
-                'status' => $document['status'],
-                'task_id' => $document['system_metadata']['task_id'] ?? null,
-                'job_id' => $document['system_metadata']['job_id'] ?? null,
-                'updated_at' => $document['updated_at'],
-            ],
-        ];
-    }
-
-    /**
-     * @param array<string, mixed> $input
-     * @return array{payload: array<string, mixed>, status: int}
-     */
-    public function updateDocumentMetadata(string $documentId, array $input, ?string $requestedUserIdentifier = null): array
-    {
-        if (! $this->scopes->currentCanReadDocument($documentId, $requestedUserIdentifier)) {
-            return ['status' => 404, 'payload' => $this->errorPayload('document_not_found', 'Document not found.')];
-        }
-
-        $document = $this->documents->findById($documentId);
-        if (! $document) {
-            return ['status' => 404, 'payload' => $this->errorPayload('document_not_found', 'Document not found.')];
-        }
-
-        $metadata = $document->metadata_json ?? [];
-        $document->metadata_json = array_replace_recursive($metadata, $this->array($input['metadata'] ?? $input));
-        $document->save();
-
-        return $this->showDocument($documentId, $requestedUserIdentifier);
-    }
-
-    /**
-     * @param array<string, mixed> $input
-     * @return array{payload: array<string, mixed>, status: int}
-     */
-    public function updateDocumentText(string $documentId, array $input, ?string $idempotencyKey = null, ?string $requestedUserIdentifier = null): array
-    {
-        if (! $this->scopes->currentCanReadDocument($documentId, $requestedUserIdentifier)) {
-            return ['status' => 404, 'payload' => $this->errorPayload('document_not_found', 'Document not found.')];
-        }
-
-        $document = $this->documents->findById($documentId);
-        if (! $document) {
-            return ['status' => 404, 'payload' => $this->errorPayload('document_not_found', 'Document not found.')];
-        }
-
-        $result = $this->bridge->put('/documents/'.rawurlencode($documentId), [
-            'text' => (string) $input['text'],
-            'payload' => $this->array($input['metadata'] ?? []),
-            'collection' => $this->string($input['collection'] ?? null) ?? $document->collection,
-            'graph' => filter_var($input['graph'] ?? false, FILTER_VALIDATE_BOOLEAN),
-        ], $idempotencyKey);
-
-        return [
-            'status' => $result['status'],
-            'payload' => [
-                'document_id' => $documentId,
-                'status' => $result['status'] < 400 ? 'updated' : 'failed',
-                'bridge_response' => $result['payload'],
-            ],
-        ];
-    }
-
-    /**
-     * @return array{payload: array<string, mixed>, status: int}
-     */
-    public function deleteDocument(string $documentId, ?string $idempotencyKey = null, ?string $requestedUserIdentifier = null): array
-    {
-        if (! $this->scopes->currentCanReadDocument($documentId, $requestedUserIdentifier)) {
-            return ['status' => 404, 'payload' => $this->errorPayload('document_not_found', 'Document not found.')];
-        }
-
-        $document = $this->documents->findById($documentId);
-        if (! $document) {
-            return ['status' => 404, 'payload' => $this->errorPayload('document_not_found', 'Document not found.')];
-        }
-
-        $bridge = $this->bridge->delete('/documents/'.rawurlencode($documentId), $idempotencyKey);
-        if ($bridge['status'] < 500) {
-            $document->delete();
-        }
-
-        return [
-            'status' => $bridge['status'] < 400 ? 200 : $bridge['status'],
-            'payload' => [
-                'deleted' => $bridge['status'] < 500,
-                'document_id' => $documentId,
-                'bridge_response' => $bridge['payload'],
-            ],
-        ];
-    }
-
-    /**
-     * @return array{payload: array<string, mixed>, status: int}
-     */
-    public function byFilename(string $filename, ?string $requestedUserIdentifier = null): array
-    {
-        $documents = $this->browser->list(2, ['search' => $filename], $requestedUserIdentifier);
-        foreach ($documents as $document) {
-            if (($document['originalFilename'] ?? null) === $filename || basename((string) ($document['sourceUrl'] ?? '')) === $filename) {
-                return ['status' => 200, 'payload' => ['document' => $this->documentShape($document)]];
-            }
-        }
-
-        return ['status' => 404, 'payload' => $this->errorPayload('document_not_found', 'Document not found.')];
-    }
-
-    /**
-     * @return array{payload: array<string, mixed>, status: int}
-     */
-    public function downloadUrl(string $documentId, ?string $requestedUserIdentifier = null): array
-    {
-        $shown = $this->showDocument($documentId, $requestedUserIdentifier);
-        if ($shown['status'] !== 200) {
-            return $shown;
-        }
-
-        return $this->unsupported(
-            'documents/download_url',
-            'Legacy document download URLs are not exposed on the V2 branch.',
-        );
-    }
-
-    /**
-     * @param array<string, mixed> $filters
-     * @return array<string, mixed>
-     */
-    private function mergeScopeFilters(array $filters, ?string $requestedUserIdentifier = null): array
-    {
-        $scope = $this->scopes->currentDocumentFilters($requestedUserIdentifier);
-        if ($scope === []) {
-            return $filters;
-        }
-
-        $scopedDocumentIds = is_array($scope['document_ids'] ?? null)
-            ? array_values(array_filter(array_map('strval', $scope['document_ids'])))
-            : [];
-
-        $requestedDocumentIds = is_array($filters['document_ids'] ?? null)
-            ? array_values(array_filter(array_map('strval', $filters['document_ids'])))
-            : (is_array($filters['documentIds'] ?? null)
-                ? array_values(array_filter(array_map('strval', $filters['documentIds'])))
-                : null);
-
-        if (is_array($requestedDocumentIds)) {
-            $scope['document_ids'] = array_values(array_intersect($requestedDocumentIds, $scopedDocumentIds));
-        }
-
-        return [
-            ...$filters,
-            ...$scope,
-        ];
     }
 
     /**
@@ -375,22 +176,6 @@ readonly class OpenCompatDocumentService
             'message' => $message,
             'details' => $details,
         ], static fn (mixed $value): bool => $value !== null);
-    }
-
-    /**
-     * @return array{payload: array<string, mixed>, status: int}
-     */
-    private function unsupported(string $endpoint, string $reason): array
-    {
-        return [
-            'status' => 501,
-            'payload' => [
-                'ok' => false,
-                'error' => 'unsupported',
-                'endpoint' => $endpoint,
-                'reason' => $reason,
-            ],
-        ];
     }
 
     /**

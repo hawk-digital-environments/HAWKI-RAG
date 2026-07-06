@@ -37,10 +37,6 @@ class IngestSourceWorkflowPayloadFactoryTest extends TestCase
                         'qdrant_collection' => 'hawki_dataset_a',
                         'neo4j_namespace' => 'hawki_dataset_a',
                     ],
-                    'dataset' => [
-                        'qdrant_collection' => 'hawki_dataset_a',
-                        'neo4j_namespace' => 'hawki_dataset_a',
-                    ],
                 ],
             ]),
             new PipelineJob([

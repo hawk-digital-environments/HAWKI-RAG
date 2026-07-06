@@ -2,19 +2,20 @@
 
 declare(strict_types=1);
 
-namespace App\Services\Dataset;
+namespace App\Services\Heap;
 
 use App\Models\Dataset;
 use App\Services\Graph\Neo4jQueryClient;
+use App\Services\Heap\Repositories\HeapActivityRepository;
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Contracts\Config\Repository as ConfigRepository;
 use Illuminate\Http\Client\Factory as HttpFactory;
 
 #[Singleton]
-readonly class DatasetStorageCleanupService
+readonly class HeapStorageCleanupService
 {
     public function __construct(
-        private DatasetRepository $datasets,
+        private HeapActivityRepository $heaps,
         private ConfigRepository $config,
         private HttpFactory $http,
         private Neo4jQueryClient $neo4j,
@@ -24,26 +25,26 @@ readonly class DatasetStorageCleanupService
     /**
      * @return array<string, mixed>
      */
-    public function deleteStorage(Dataset $dataset): array
+    public function deleteStorage(Dataset $heap): array
     {
         return [
-            'datasetId' => $dataset->dataset_id,
-            'qdrant' => $this->deleteQdrantCollection($dataset),
-            'neo4j' => $this->deleteNeo4jData($dataset),
+            'heapId' => $heap->dataset_id,
+            'qdrant' => $this->deleteQdrantCollection($heap),
+            'neo4j' => $this->deleteNeo4jData($heap),
         ];
     }
 
     /**
      * @return array<string, mixed>
      */
-    private function deleteQdrantCollection(Dataset $dataset): array
+    private function deleteQdrantCollection(Dataset $heap): array
     {
-        $collection = trim((string) $dataset->qdrant_collection);
+        $collection = trim((string) $heap->qdrant_collection);
         if ($collection === '') {
             return [
                 'ok' => true,
                 'collection' => '',
-                'message' => 'No Qdrant collection is recorded for this dataset.',
+                'message' => 'No Qdrant collection is recorded for this heap.',
             ];
         }
 
@@ -85,12 +86,12 @@ readonly class DatasetStorageCleanupService
     /**
      * @return array<string, mixed>
      */
-    private function deleteNeo4jData(Dataset $dataset): array
+    private function deleteNeo4jData(Dataset $heap): array
     {
-        $documentJobIds = $this->datasets->documentExternalIds($dataset);
+        $documentJobIds = $this->heaps->documentExternalIds($heap);
         $parameters = [
-            'dataset_id' => $dataset->dataset_id,
-            'namespace' => $dataset->neo4j_namespace,
+            'dataset_id' => $heap->dataset_id,
+            'namespace' => $heap->neo4j_namespace,
             'document_job_ids' => $documentJobIds,
         ];
 
@@ -181,7 +182,7 @@ CYPHER,
 
             return [
                 'ok' => true,
-                'namespace' => $dataset->neo4j_namespace,
+                'namespace' => $heap->neo4j_namespace,
                 'documentJobIds' => count($documentJobIds),
                 'relationships' => (int) ($payload['results'][0]['data'][0]['row'][0] ?? 0)
                     + (int) ($payload['results'][1]['data'][0]['row'][1] ?? 0),
@@ -191,7 +192,7 @@ CYPHER,
         } catch (\Throwable $exception) {
             return [
                 'ok' => false,
-                'namespace' => $dataset->neo4j_namespace,
+                'namespace' => $heap->neo4j_namespace,
                 'documentJobIds' => count($documentJobIds),
                 'nodes' => null,
                 'relationships' => null,

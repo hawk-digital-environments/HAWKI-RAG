@@ -2,18 +2,19 @@
 
 declare(strict_types=1);
 
-namespace App\Services\Dataset;
+namespace App\Services\Heap;
 
 use App\Models\Dataset;
+use App\Services\Heap\Repositories\HeapActivityRepository;
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Contracts\Config\Repository as ConfigRepository;
 use Illuminate\Http\Client\Factory as HttpFactory;
 
 #[Singleton]
-readonly class DatasetGraphStatsService
+readonly class HeapGraphStatsService
 {
     public function __construct(
-        private DatasetRepository $datasets,
+        private HeapActivityRepository $heaps,
         private ConfigRepository $config,
         private HttpFactory $http,
     ) {
@@ -22,12 +23,12 @@ readonly class DatasetGraphStatsService
     /**
      * @return array<string, mixed>
      */
-    public function stats(Dataset $dataset): array
+    public function stats(Dataset $heap): array
     {
         $baseUrl = rtrim((string) $this->config->get('config.neo4j_http_url', 'http://hawki_rag_neo4j:7474'), '/');
         $database = trim((string) $this->config->get('config.neo4j_database', 'neo4j')) ?: 'neo4j';
         $endpoint = $baseUrl.'/db/'.rawurlencode($database).'/tx/commit';
-        $documentJobIds = $this->datasets->documentExternalIds($dataset);
+        $documentJobIds = $this->heaps->documentExternalIds($heap);
 
         try {
             $response = $this->http->timeout(4)
@@ -52,8 +53,8 @@ WHERE r.dataset_id = $dataset_id
 RETURN nodes, count(r) AS relationships
 CYPHER,
                         'parameters' => [
-                            'dataset_id' => $dataset->dataset_id,
-                            'namespace' => $dataset->neo4j_namespace,
+                            'dataset_id' => $heap->dataset_id,
+                            'namespace' => $heap->neo4j_namespace,
                             'document_job_ids' => $documentJobIds,
                         ],
                     ]],
@@ -62,7 +63,7 @@ CYPHER,
             if (! $response->successful()) {
                 return [
                     'ok' => false,
-                    'namespace' => $dataset->neo4j_namespace,
+                    'namespace' => $heap->neo4j_namespace,
                     'nodes' => null,
                     'relationships' => null,
                     'error' => 'Neo4j HTTP '.$response->status(),
@@ -73,7 +74,7 @@ CYPHER,
             if ($errors !== []) {
                 return [
                     'ok' => false,
-                    'namespace' => $dataset->neo4j_namespace,
+                    'namespace' => $heap->neo4j_namespace,
                     'nodes' => null,
                     'relationships' => null,
                     'error' => $errors[0]['message'] ?? 'Neo4j query failed.',
@@ -84,14 +85,14 @@ CYPHER,
 
             return [
                 'ok' => true,
-                'namespace' => $dataset->neo4j_namespace,
+                'namespace' => $heap->neo4j_namespace,
                 'nodes' => (int) ($row[0] ?? 0),
                 'relationships' => (int) ($row[1] ?? 0),
             ];
         } catch (\Throwable $exception) {
             return [
                 'ok' => false,
-                'namespace' => $dataset->neo4j_namespace,
+                'namespace' => $heap->neo4j_namespace,
                 'nodes' => null,
                 'relationships' => null,
                 'error' => $exception->getMessage(),
