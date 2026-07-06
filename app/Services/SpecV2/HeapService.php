@@ -7,6 +7,7 @@ use App\Models\Dataset;
 use App\Models\SpecV2\Heap;
 use App\Services\Authorization\ApiActor;
 use App\Services\Authorization\ApiActorScopeService;
+use App\Services\Authorization\AuthorizationModeService;
 use App\Services\SpecV2\Events\HeapSearchPayloadChanged;
 use App\Services\Heap\HeapIdentifierFactory;
 use App\Services\SpecV2\Exceptions\ApplicationNotFoundException;
@@ -28,6 +29,7 @@ readonly class HeapService
         private SpecIdentifierFactory $identifiers,
         private HeapDeletionService $deletions,
         private ApiActorScopeService $actors,
+        private AuthorizationModeService $mode,
         private ClockInterface $clock = new Clock,
     ) {}
 
@@ -36,6 +38,8 @@ readonly class HeapService
      */
     public function list(array $filters, int $page, int $perPage): LengthAwarePaginator
     {
+        $filters = $this->mode->sanitizeHeapFilters($filters);
+
         return $this->heaps->paginate([
             ...$filters,
             ...$this->actors->currentHeapFilters(),
@@ -61,6 +65,7 @@ readonly class HeapService
      */
     public function create(array $input, ?ApiActor $actor = null): Heap
     {
+        $input = $this->mode->sanitizeHeapInput($input);
         $applicationId = $this->identifiers->stringValue($input['owner_application_id'] ?? null)
             ?? $actor?->applicationId()
             ?? 'rawki-default';
@@ -102,6 +107,7 @@ readonly class HeapService
      */
     public function update(string $heapId, array $input): Heap
     {
+        $input = $this->mode->sanitizeHeapInput($input);
         $heap = $this->heaps->findById($heapId);
         if (! $heap instanceof Heap) {
             throw HeapNotFoundException::withId($heapId);

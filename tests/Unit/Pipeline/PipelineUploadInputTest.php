@@ -8,25 +8,28 @@ use PHPUnit\Framework\TestCase;
 
 class PipelineUploadInputTest extends TestCase
 {
-    public function test_it_prefers_dataset_id_and_normalizes_graph_false(): void
+    public function test_it_prefers_heap_id_and_normalizes_graph_false(): void
     {
         $input = PipelineUploadInput::fromValidated([
+            'heap_id' => ' primary-heap ',
             'dataset_id' => ' primary-dataset ',
             'datasetId' => 'secondary-dataset',
             'graph' => 'false',
         ]);
 
-        $this->assertSame('primary-dataset', $input->datasetId);
+        $this->assertSame('primary-heap', $input->heapId);
+        $this->assertSame('primary-heap', $input->datasetId);
         $this->assertFalse($input->graph);
     }
 
-    public function test_it_accepts_dataset_id_camel_case(): void
+    public function test_it_accepts_heap_id_camel_case(): void
     {
         $input = PipelineUploadInput::fromValidated([
-            'datasetId' => 'camel-dataset',
+            'heapId' => 'camel-heap',
         ]);
 
-        $this->assertSame('camel-dataset', $input->datasetId);
+        $this->assertSame('camel-heap', $input->heapId);
+        $this->assertSame('camel-heap', $input->datasetId);
         $this->assertTrue($input->graph);
     }
 
@@ -37,6 +40,7 @@ class PipelineUploadInputTest extends TestCase
             'graph' => 'not-a-boolean',
         ]);
 
+        $this->assertSame('controller-uploads', $input->heapId);
         $this->assertSame('controller-uploads', $input->datasetId);
         $this->assertTrue($input->graph);
     }

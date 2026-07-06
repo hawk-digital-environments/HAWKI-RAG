@@ -8,7 +8,7 @@ use App\Http\Controllers\DatasetController;
 use App\Http\Controllers\DocumentBrowserController;
 use Illuminate\Support\Facades\Route;
 
-Route::middleware(['auth:application-token,sanctum,oidc', 'throttle:hawki-api'])->group(function () {
+Route::middleware(['auth:application-token', 'throttle:hawki-api'])->group(function () {
     Route::prefix('ingest')->group(function () {
         Route::post('/text', [OpenCompatIngestController::class, 'text'])->middleware('throttle:hawki-rag-query');
         Route::post('/file', [OpenCompatIngestController::class, 'file'])->middleware('throttle:hawki-upload');

@@ -188,6 +188,10 @@ class ArchitectureContractTest extends TestCase
             ->getJson('/api/corpora')
             ->assertOk()
             ->assertJsonPath('pagination.total', 2);
+        $this->withHeader('Authorization', 'Bearer '.$readsToken)
+            ->getJson('/api/heaps?protected=1')
+            ->assertOk()
+            ->assertJsonPath('pagination.total', 2);
     }
 
     public function test_permission_sync_projects_native_grants_and_runtime_scope_does_not_depend_on_event_rows(): void
@@ -310,6 +314,13 @@ class ArchitectureContractTest extends TestCase
         $contract = file_get_contents(base_path('docs/internal-architecture-contract.md'));
         $proxy = file_get_contents(app_path('Http/Controllers/API/HawkiRagProxyController.php'));
         $retrieval = file_get_contents(app_path('Http/Controllers/API/OpenCompat/RetrievalController.php'));
+        $compatDocuments = file_get_contents(app_path('Http/Controllers/API/OpenCompat/DocumentController.php'));
+        $compatDocumentService = file_get_contents(app_path('Services/OpenCompat/OpenCompatDocumentService.php'));
+        $appSearchRoutes = file_get_contents(base_path('routes/internal_api/app_search.php'));
+        $appIngestionRoutes = file_get_contents(base_path('routes/internal_api/app_ingestion.php'));
+        $compatibilityRoutes = file_get_contents(base_path('routes/internal_api/compatibility.php'));
+        $specRoutes = file_get_contents(base_path('routes/internal_api/spec_v2.php'));
+        $operatorRoutes = file_get_contents(base_path('routes/internal_api/operator.php'));
         $queryExecution = file_get_contents(base_path('python_rag/application/workflows/query_execution.py'));
         $payloadSync = file_get_contents(app_path('Services/SpecV2/DocumentSearchPayloadSyncService.php'));
 
@@ -317,6 +328,7 @@ class ArchitectureContractTest extends TestCase
         $this->assertStringContainsString('Laravel owns actor resolution', $contract);
         $this->assertStringContainsString('Python is a retrieval engine only', $contract);
         $this->assertStringContainsString('Qdrant payload mutation is a write-path concern', $contract);
+        $this->assertStringContainsString('App-facing internal APIs use application bearer tokens only', $contract);
 
         $this->assertIsString($proxy);
         $this->assertStringContainsString('GatewaySearchFilterService', $proxy);
@@ -324,6 +336,31 @@ class ArchitectureContractTest extends TestCase
 
         $this->assertIsString($retrieval);
         $this->assertStringContainsString('ApplicationReadPolicy', $retrieval);
+        $this->assertStringContainsString('OpenCompatDocumentService', $retrieval);
+
+        $this->assertIsString($compatDocuments);
+        $this->assertStringContainsString('OpenCompatDocumentService', $compatDocuments);
+        $this->assertStringNotContainsString('OpenCompatService', $compatDocuments);
+
+        $this->assertIsString($compatDocumentService);
+        $this->assertStringContainsString('DocumentBrowserService', $compatDocumentService);
+        $this->assertStringNotContainsString('PipelineUploadInput', $compatDocumentService);
+
+        $this->assertIsString($appSearchRoutes);
+        $this->assertStringContainsString('auth:application-token', $appSearchRoutes);
+        $this->assertStringNotContainsString('sanctum,oidc', $appSearchRoutes);
+        $this->assertIsString($appIngestionRoutes);
+        $this->assertStringContainsString('auth:application-token', $appIngestionRoutes);
+        $this->assertIsString($compatibilityRoutes);
+        $this->assertStringContainsString('auth:application-token', $compatibilityRoutes);
+        $this->assertStringNotContainsString('sanctum,oidc', $compatibilityRoutes);
+        $this->assertIsString($specRoutes);
+        $this->assertStringContainsString('auth:application-token', $specRoutes);
+        $this->assertStringNotContainsString('sanctum,oidc', $specRoutes);
+        $this->assertIsString($operatorRoutes);
+        $this->assertStringContainsString('auth:sanctum,oidc', $operatorRoutes);
+        $this->assertStringNotContainsString("Route::post('/start'", $operatorRoutes);
+        $this->assertStringNotContainsString("Route::post('/files'", $operatorRoutes);
 
         $this->assertIsString($queryExecution);
         $this->assertStringNotContainsString('auth_context', $queryExecution);

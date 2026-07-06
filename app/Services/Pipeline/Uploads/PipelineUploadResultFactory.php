@@ -47,6 +47,7 @@ readonly class PipelineUploadResultFactory
         return PipelineUploadResult::fromPayload([
             'success' => false,
             'message' => 'Custom converter profile could not be prepared for this upload.',
+            'heapId' => $input->heapId,
             'datasetId' => $input->datasetId,
             'taskId' => null,
             'jobId' => null,
@@ -61,6 +62,7 @@ readonly class PipelineUploadResultFactory
         return PipelineUploadResult::fromPayload([
             'success' => false,
             'message' => $exception->responseMessage(),
+            'heapId' => $input->heapId,
             'datasetId' => $input->datasetId,
             'taskId' => null,
             'jobId' => null,
@@ -74,6 +76,7 @@ readonly class PipelineUploadResultFactory
             'success' => true,
             'taskId' => $task->task_id,
             'jobId' => $job->job_id,
+            'heapId' => $task->dataset_id,
             'datasetId' => $task->dataset_id,
             'task' => $this->tasks->show($task->task_id),
             'dashboardUrl' => $this->urls->to('/pipeline-controller'),

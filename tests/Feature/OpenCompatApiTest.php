@@ -33,7 +33,7 @@ class OpenCompatApiTest extends TestCase
             ], 200),
         ]);
 
-        $this->actingAsApiUser();
+        $this->actingAsApplication();
 
         $this->postJson('/api/ingest/text', [
             'id' => 'doc-text-1',
@@ -78,7 +78,7 @@ class OpenCompatApiTest extends TestCase
             ], 200),
         ]);
 
-        $this->actingAsApiUser();
+        $this->actingAsApplication();
 
         $this->postJson('/api/retrieve/chunks', [
             'query' => 'matched',
@@ -235,7 +235,7 @@ class OpenCompatApiTest extends TestCase
             'metadata_json' => ['task_id' => 'task-1', 'job_id' => 'job-1'],
         ]);
 
-        $this->actingAsApiUser();
+        $this->actingAsApplication();
 
         $this->postJson('/api/documents/list_docs', [
             'dataset_id' => 'compat-dataset',
@@ -283,7 +283,7 @@ class OpenCompatApiTest extends TestCase
             'http://qdrant.test/*' => Http::response(['status' => 'ok', 'result' => ['status' => 'acknowledged']], 200),
         ]);
 
-        $this->actingAsApiUser();
+        $this->actingAsApplication();
 
         $this->postJson('/api/documents/'.$document->id.'/update_metadata', [
             'metadata' => ['topic' => 'after', 'level' => 'advanced'],

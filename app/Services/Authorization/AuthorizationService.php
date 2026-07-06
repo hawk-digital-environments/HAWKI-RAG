@@ -10,14 +10,13 @@ use App\Services\Authorization\Contracts\PermissionGraphClient;
 use App\Services\Authorization\Repositories\GrantAccessRepository;
 use App\Services\Authorization\Values\RetrievalAuthorizationContext;
 use Illuminate\Container\Attributes\Singleton;
-use Illuminate\Contracts\Config\Repository as ConfigRepository;
 use Psr\Log\LoggerInterface;
 
 #[Singleton]
 readonly class AuthorizationService
 {
     public function __construct(
-        private ConfigRepository $config,
+        private AuthorizationModeService $mode,
         private IdentityProvisioningService $identities,
         private GrantAccessRepository $grants,
         private PermissionGraphClient $graph,
@@ -26,7 +25,7 @@ readonly class AuthorizationService
 
     public function documentApiEnforced(): bool
     {
-        return (bool) $this->config->get('authz.document_api_enforced', false);
+        return $this->mode->documentApiEnforced();
     }
 
     public function canViewDocument(?User $user, string $documentId): bool

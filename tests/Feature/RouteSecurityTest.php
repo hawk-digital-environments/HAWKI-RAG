@@ -5,11 +5,14 @@ declare(strict_types=1);
 namespace Tests\Feature;
 
 use App\Models\User;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
 class RouteSecurityTest extends TestCase
 {
+    use RefreshDatabase;
+
     public function test_security_headers_are_added_to_web_responses(): void
     {
         $this->withoutVite();
@@ -176,11 +179,7 @@ class RouteSecurityTest extends TestCase
 
     public function test_query_payloads_are_size_limited(): void
     {
-        Sanctum::actingAs(new User([
-            'username' => 'api-test',
-            'email' => 'api-test@example.test',
-            'ip' => '127.0.0.1',
-        ]));
+        $this->actingAsApplication();
 
         $this->postJson('/api/query', ['query' => str_repeat('x', 4001)])
             ->assertUnprocessable()

@@ -20,13 +20,14 @@ class DocumentBrowserController extends Controller
     {
         return response()->json([
             'success' => true,
-            'documents' => $this->documents->list($request->limit(), $request->filters()),
+            'documents' => $this->documents->list($request->limit(), $request->filters(), $request->userIdentifier()),
         ]);
     }
 
-    public function show(string $documentId): JsonResponse
+    public function show(\Illuminate\Http\Request $request, string $documentId): JsonResponse
     {
-        $document = $this->documents->show($documentId);
+        $userIdentifier = $request->string('user_identifier')->trim()->value();
+        $document = $this->documents->show($documentId, $userIdentifier !== '' ? $userIdentifier : null);
         if ($document) {
             return response()->json([
                 'success' => true,

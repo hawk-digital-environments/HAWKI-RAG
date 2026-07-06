@@ -41,6 +41,7 @@ readonly class PipelineUploadPayloadService
             'temporal' => [
                 'note' => 'Uploaded files are handed to IngestSourceWorkflow through shared storage.',
             ],
+            'heap' => $this->metadata->heap($dataset),
             'dataset' => $this->metadata->dataset($dataset),
             'upload' => [
                 'original_filename' => $storedUpload->originalName,
@@ -71,6 +72,7 @@ readonly class PipelineUploadPayloadService
             'graph' => $input->graph,
             'converter_mode' => $input->converterMode,
             'custom_converter' => $this->customConverterMetadata($input, $customConverterProfilePath),
+            'heap' => $this->metadata->heap($dataset),
             'dataset' => $this->metadata->dataset($dataset),
         ];
     }

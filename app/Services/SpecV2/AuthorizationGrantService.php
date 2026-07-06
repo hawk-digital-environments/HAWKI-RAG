@@ -7,6 +7,7 @@ use App\Models\Document;
 use App\Models\SpecV2\Group;
 use App\Models\SpecV2\Heap;
 use App\Services\Document\DocumentRepository;
+use App\Services\Authorization\AuthorizationModeService;
 use App\Services\SpecV2\Exceptions\AuthorizationGrantException;
 use App\Services\SpecV2\Exceptions\GroupNotFoundException;
 use App\Services\SpecV2\Exceptions\HeapNotFoundException;
@@ -15,7 +16,6 @@ use App\Services\SpecV2\Repositories\GroupRepository;
 use App\Services\SpecV2\Repositories\HeapGrantRepository;
 use App\Services\SpecV2\Repositories\HeapRepository;
 use Illuminate\Container\Attributes\Singleton;
-use Illuminate\Contracts\Config\Repository as ConfigRepository;
 
 #[Singleton]
 readonly class AuthorizationGrantService
@@ -27,7 +27,7 @@ readonly class AuthorizationGrantService
         private DocumentGrantRepository $documentGrants,
         private DocumentRepository $documents,
         private SpecIdentifierFactory $identifiers,
-        private ConfigRepository $config,
+        private AuthorizationModeService $mode,
     ) {}
 
     public function heapGrants(string $heapId): array
@@ -184,6 +184,6 @@ readonly class AuthorizationGrantService
 
     private function enabled(): bool
     {
-        return (bool) $this->config->get('authz.enabled', false);
+        return $this->mode->enabled();
     }
 }

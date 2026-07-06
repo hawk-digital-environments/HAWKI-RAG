@@ -20,7 +20,11 @@ class SpecV2DomainApiTest extends TestCase
 
     public function test_v2_domain_endpoints_create_and_expose_spec_terms(): void
     {
-        $this->actingAsApiUser();
+        $this->actingAsApplication([
+            'id' => 'bootstrap-app',
+            'tenant_id' => 'bootstrap',
+            'permissions' => ['reads-federated'],
+        ]);
 
         $this->postJson('/api/tenants', [
             'id' => 'uni-hawk',
@@ -119,7 +123,10 @@ class SpecV2DomainApiTest extends TestCase
 
     public function test_existing_dataset_and_document_payloads_expose_heap_and_corpus_terms(): void
     {
-        $this->actingAsApiUser();
+        $this->actingAsApplication([
+            'id' => 'rawki-default',
+            'tenant_id' => 'default',
+        ]);
 
         Dataset::query()->create([
             'dataset_id' => 'dataset-v2',
@@ -173,9 +180,12 @@ class SpecV2DomainApiTest extends TestCase
             ->assertJsonPath('document.corpusId', hash('sha256', 'dataset-v2-doc'));
     }
 
-    public function test_local_actor_is_provisioned_into_v2_identity_context_for_default_ownership(): void
+    public function test_application_actor_defaults_ownership_without_human_identity_provisioning(): void
     {
-        $user = $this->actingAsApiUser();
+        $this->actingAsApplication([
+            'id' => 'rawki-default',
+            'tenant_id' => 'default',
+        ]);
 
         $this->postJson('/api/heaps', [
             'id' => 'heap-local',
@@ -190,24 +200,46 @@ class SpecV2DomainApiTest extends TestCase
         ])->assertCreated()
             ->assertJsonPath('ownerApp', 'rawki-default');
 
-        $identity = UserIdentity::query()
-            ->where('user_id', $user->id)
-            ->where('provider', 'local')
-            ->first();
+        $this->assertSame(0, UserIdentity::query()->count());
+    }
 
-        $this->assertNotNull($identity);
-        $this->assertSame('default', $identity->tenant_id);
-        $this->assertSame('rawki-default', $identity->application_id);
-        $this->assertNotNull($identity->internal_user_id);
-        $this->assertDatabaseHas('internal_users', [
-            'id' => $identity->internal_user_id,
+    public function test_heap_protected_inputs_are_ignored_when_authorization_is_disabled(): void
+    {
+        config()->set('authz.enabled', false);
+
+        $this->actingAsApplication([
+            'id' => 'rawki-default',
             'tenant_id' => 'default',
+        ]);
+
+        $this->postJson('/api/heaps', [
+            'id' => 'heap-no-authz',
+            'name' => 'Heap No Authz',
+            'protected' => true,
+        ])->assertCreated()
+            ->assertJsonPath('id', 'heap-no-authz')
+            ->assertJsonPath('protected', false);
+
+        $this->patchJson('/api/heaps/heap-no-authz', [
+            'protected' => true,
+        ])->assertOk()
+            ->assertJsonPath('id', 'heap-no-authz')
+            ->assertJsonPath('protected', false);
+
+        $this->assertDatabaseHas('datasets', [
+            'dataset_id' => 'heap-no-authz',
+            'protected' => false,
         ]);
     }
 
     public function test_heap_updates_propagate_document_search_context_and_qdrant_payloads(): void
     {
-        $this->actingAsApiUser();
+        config()->set('authz.enabled', true);
+
+        $this->actingAsApplication([
+            'id' => 'rawki-default',
+            'tenant_id' => 'default',
+        ]);
 
         config()->set('config.qdrant_http_url', 'http://qdrant.test');
 
@@ -256,7 +288,10 @@ class SpecV2DomainApiTest extends TestCase
 
     public function test_document_move_between_heaps_refreshes_canonical_search_payload_and_old_collection_cleanup(): void
     {
-        $this->actingAsApiUser();
+        $this->actingAsApplication([
+            'id' => 'rawki-default',
+            'tenant_id' => 'default',
+        ]);
 
         config()->set('config.qdrant_http_url', 'http://qdrant.test');
         Http::fake([

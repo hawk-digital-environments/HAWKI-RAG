@@ -34,6 +34,7 @@ class PipelineRecoveryPayloadServiceTest extends TestCase
         );
 
         $this->assertSame('task-recovery', $payload['taskId']);
+        $this->assertSame('dataset-recovery', $payload['heapId']);
         $this->assertSame('dataset-recovery', $payload['datasetId']);
         $this->assertSame('convert-recovery', $payload['jobId']);
         $this->assertSame(PipelineJob::TYPE_CONVERT, $payload['jobType']);

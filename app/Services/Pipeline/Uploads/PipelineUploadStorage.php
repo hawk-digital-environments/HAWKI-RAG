@@ -45,6 +45,7 @@ class PipelineUploadStorage
         }
 
         $localPath = $taskRoot.DIRECTORY_SEPARATOR.$targetName;
+        $this->ensureStoredFileExists($file, $taskRoot, $targetName, $localPath);
         $contentHash = $this->hasher->sha256($localPath);
 
         return PipelineStoredUpload::fromStoredFile(
@@ -74,5 +75,41 @@ class PipelineUploadStorage
         return rtrim((string) $this->config->get('temporal.storage.shared_root', '/shared'), DIRECTORY_SEPARATOR)
             .DIRECTORY_SEPARATOR
             .$taskId;
+    }
+
+    private function ensureStoredFileExists(UploadedFile $file, string $taskRoot, string $targetName, string $localPath): void
+    {
+        if ($this->files->exists($localPath)) {
+            return;
+        }
+
+        $sourcePath = $file->getRealPath();
+        if (! is_string($sourcePath) || $sourcePath === '' || ! $this->files->exists($sourcePath)) {
+            $this->files->deleteDirectory($taskRoot);
+
+            throw PipelineUploadStorageException::moveFailed(
+                $taskRoot,
+                $targetName,
+                new \RuntimeException('Uploaded file was not readable after move().'),
+            );
+        }
+
+        try {
+            $this->files->copy($sourcePath, $localPath);
+        } catch (\Throwable $exception) {
+            $this->files->deleteDirectory($taskRoot);
+
+            throw PipelineUploadStorageException::moveFailed($taskRoot, $targetName, $exception);
+        }
+
+        if (! $this->files->exists($localPath)) {
+            $this->files->deleteDirectory($taskRoot);
+
+            throw PipelineUploadStorageException::moveFailed(
+                $taskRoot,
+                $targetName,
+                new \RuntimeException('Uploaded file copy fallback did not create the stored file.'),
+            );
+        }
     }
 }

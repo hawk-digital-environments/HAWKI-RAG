@@ -7,13 +7,15 @@ denormalized payload writes.
 
 1. Laravel owns actor resolution, tenancy, application permissions, metadata
    validation, grant projection, and search-scope construction.
-2. Python is a retrieval engine only. It receives search inputs and filters. It
+2. App-facing internal APIs use application bearer tokens only. Human
+   `sanctum` or OIDC authentication is reserved for operator-only surfaces.
+3. Python is a retrieval engine only. It receives search inputs and filters. It
    must not resolve tenants, applications, user identities, or permission
    grants.
-3. The auth backend is optional infrastructure. When enabled, Laravel services
+4. The auth backend is optional infrastructure. When enabled, Laravel services
    may write or check graph relationships. When disabled, auth-shaped inputs
    are accepted and ignored without side effects.
-4. Qdrant payload mutation is a write-path concern. Controllers do not write
+5. Qdrant payload mutation is a write-path concern. Controllers do not write
    Qdrant directly. Denormalized search payload sync belongs to dedicated
    Laravel services.
 
@@ -25,6 +27,22 @@ denormalized payload writes.
 - `app/Http/Controllers/API/OpenCompat/RetrievalController.php`
   Builds application-visible document scope through Laravel policy services
   before delegating retrieval or compatibility reads.
+- `app/Http/Controllers/API/OpenCompat/DocumentController.php`
+  Handles only compatibility document HTTP validation and delegates document
+  reads or writes into the dedicated compatibility document service.
+- `app/Services/OpenCompat/OpenCompatDocumentService.php`
+  Owns compatibility document shaping, scoped document reads, and compatibility
+  document write adapters. It must not absorb ingestion, model settings, or
+  folder lifecycle responsibilities.
+- `routes/internal_api/app_search.php`
+  Application retrieval and search endpoints. Must stay on
+  `auth:application-token`.
+- `routes/internal_api/app_ingestion.php`
+  Application ingestion entrypoints such as task start and file upload. Must
+  stay on `auth:application-token`.
+- `routes/internal_api/operator.php`
+  Operator-only monitoring, recovery, graph, usage, and admin endpoints. Must
+  stay on `auth:sanctum,oidc`.
 - `app/Services/Authorization/ApplicationReadPolicy.php`
   The single policy layer for application read permissions across tenant,
   application, heap, group, corpus, and document reads.
@@ -51,6 +69,12 @@ denormalized payload writes.
     narrowing
 - Protected heaps and corpora are hidden from ordinary application reads when
   authorization is enabled and the caller lacks `reads-protected`.
+- When authorization is disabled:
+  - `document_api_enforced` is treated as off even if configured on
+  - heap `protected` write inputs are ignored
+  - heap `protected` list filters are ignored
+  - `user_identifier` may be accepted on request surfaces but must not narrow
+    access scope
 - Required denormalized payload fields on documents are:
   - `heap`
   - `document_id`

@@ -19,6 +19,7 @@ readonly class ApplicationReadPolicy
 
     public function __construct(
         private ConfigRepository $config,
+        private AuthorizationModeService $mode,
         private ApplicationScopeResolver $documents,
     ) {}
 
@@ -191,7 +192,7 @@ readonly class ApplicationReadPolicy
 
     private function authorizationAppliesToProtectedResources(ApiActor $actor): bool
     {
-        return (bool) $this->config->get('authz.enabled', false)
+        return $this->mode->enabled()
             && ! $actor->hasApplicationPermission(Application::PERMISSION_READS_PROTECTED);
     }
 

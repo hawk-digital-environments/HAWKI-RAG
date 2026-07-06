@@ -16,7 +16,7 @@ class PipelineUploadPayloadServiceTest extends TestCase
     {
         $metadata = app(PipelineUploadPayloadService::class)->taskMetadata(
             $this->dataset(),
-            PipelineUploadInput::fromValidated(['dataset_id' => 'upload-dataset', 'graph' => 'false']),
+            PipelineUploadInput::fromValidated(['heap_id' => 'upload-dataset', 'graph' => 'false']),
             $this->storedUpload(),
         );
 
@@ -29,6 +29,7 @@ class PipelineUploadPayloadServiceTest extends TestCase
             'Uploaded files are handed to IngestSourceWorkflow through shared storage.',
             $metadata['temporal']['note'],
         );
+        $this->assertSame('upload-dataset', $metadata['heap']['heap_id']);
         $this->assertSame('upload-dataset', $metadata['dataset']['dataset_id']);
         $this->assertSame('/shared/uploads/sample.pdf', $metadata['upload']['local_path']);
     }
@@ -37,7 +38,7 @@ class PipelineUploadPayloadServiceTest extends TestCase
     {
         $metadata = app(PipelineUploadPayloadService::class)->jobMetadata(
             $this->dataset(),
-            PipelineUploadInput::fromValidated(['dataset_id' => 'upload-dataset', 'graph' => 'true']),
+            PipelineUploadInput::fromValidated(['heap_id' => 'upload-dataset', 'graph' => 'true']),
             $this->storedUpload(),
         );
 
@@ -49,6 +50,7 @@ class PipelineUploadPayloadServiceTest extends TestCase
         $this->assertSame('sample-a1b2c3.pdf', $metadata['target_name']);
         $this->assertSame('pdf', $metadata['extension']);
         $this->assertTrue($metadata['graph']);
+        $this->assertSame('hawki_upload_dataset', $metadata['heap']['qdrant_collection']);
         $this->assertSame('hawki_upload_dataset', $metadata['dataset']['qdrant_collection']);
     }
 

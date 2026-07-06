@@ -30,6 +30,9 @@ readonly class IngestSourceWorkflowPayloadFactory
     {
         $metadata = $source->metadata ?? [];
         $refresh = is_array($metadata['refresh'] ?? null) ? $metadata['refresh'] : [];
+        $heap = is_array($metadata['heap'] ?? null)
+            ? $metadata['heap']
+            : (is_array($metadata['dataset'] ?? null) ? $metadata['dataset'] : []);
 
         $upload = is_array($metadata['upload'] ?? null) ? $metadata['upload'] : null;
         $customConverter = is_array($metadata['custom_converter'] ?? null)
@@ -42,6 +45,7 @@ readonly class IngestSourceWorkflowPayloadFactory
             'source_url' => $source->source_url,
             'task_id' => $task->task_id,
             'job_id' => $job->job_id,
+            'heap_id' => $task->dataset_id,
             'dataset_id' => $task->dataset_id,
             'upload' => $upload,
             'converter_mode' => $customConverter ? 'custom' : 'native',
@@ -76,8 +80,8 @@ readonly class IngestSourceWorkflowPayloadFactory
                 'graph_model' => $modelRuntime['graph_model'],
                 'embedding_model' => $modelRuntime['embedding_model'],
                 'graph' => $this->graphEnabled($metadata),
-                'collection' => $metadata['dataset']['qdrant_collection'] ?? null,
-                'neo4j_namespace' => $metadata['dataset']['neo4j_namespace'] ?? null,
+                'collection' => $heap['qdrant_collection'] ?? null,
+                'neo4j_namespace' => $heap['neo4j_namespace'] ?? null,
                 'chunk_chars' => (int) $this->config->get('config.chunk_size', env('CHUNK_SIZE', 1200)),
                 'chunk_overlap' => (int) $this->config->get('config.chunk_overlap_size', env('CHUNK_OVERLAP_SIZE', 250)),
                 'batch_size' => (int) $this->config->get('config.ingest_batch_size', 64),
@@ -86,9 +90,9 @@ readonly class IngestSourceWorkflowPayloadFactory
         ], static fn (mixed $value): bool => $value !== null);
     }
 
-    public function sourceId(string $datasetId, string $url): string
+    public function sourceId(string $heapId, string $url): string
     {
-        return 'source_'.substr(hash('sha256', $datasetId.'|'.$url), 0, 32);
+        return 'source_'.substr(hash('sha256', $heapId.'|'.$url), 0, 32);
     }
 
     public function workflowId(string $sourceId): string

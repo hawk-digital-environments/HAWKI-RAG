@@ -77,7 +77,7 @@ class DatasetManagementTest extends TestCase
             ->assertSee('HAWKI Heap Browser')
             ->assertSee('data-datasets-dashboard', false);
 
-        $this->actingAsApiUser();
+        $this->actingAsApplication();
 
         $this->getJson('/api/datasets')
             ->assertOk()
@@ -101,14 +101,15 @@ class DatasetManagementTest extends TestCase
 
     public function test_starting_pipeline_task_creates_and_uses_dataset(): void
     {
-        $this->actingAsApiUser();
+        $this->actingAsApplication();
 
         $this->postJson('/api/pipeline/tasks/start', [
             'task_id' => 'task-dataset-start',
-            'dataset_id' => 'dataset-start',
+            'heap_id' => 'dataset-start',
             'urls' => ['https://example.test/start'],
         ])
             ->assertCreated()
+            ->assertJsonPath('task.heapId', 'dataset-start')
             ->assertJsonPath('task.datasetId', 'dataset-start');
 
         $this->assertDatabaseHas('datasets', [
@@ -125,6 +126,7 @@ class DatasetManagementTest extends TestCase
             ->where('task_id', 'task-dataset-start')
             ->firstOrFail();
         $this->assertSame('dataset-start', $job->task->dataset_id);
+        $this->assertSame('dataset-start', $job->metadata['heap']['heap_id'] ?? null);
         $this->assertSame('hawki_dataset_start', $job->metadata['dataset']['qdrant_collection'] ?? null);
         $this->assertSame('hawki_dataset_start', $job->metadata['dataset']['neo4j_namespace'] ?? null);
     }
@@ -166,7 +168,7 @@ class DatasetManagementTest extends TestCase
             'metadata' => [],
         ]);
 
-        $this->actingAsApiUser();
+        $this->actingAsApplication();
 
         $this->getJson('/api/datasets/empty-dataset')
             ->assertOk()
@@ -214,7 +216,7 @@ class DatasetManagementTest extends TestCase
             'status' => Document::STATUS_COMPLETED,
         ]);
 
-        $this->actingAsApiUser();
+        $this->actingAsApplication();
 
         $this->deleteJson('/api/datasets/delete-dataset/storage')
             ->assertOk()

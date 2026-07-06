@@ -10,13 +10,12 @@ use App\Services\Authorization\Repositories\PermissionEventRepository;
 use App\Services\Authorization\Values\LmsDocumentRelation;
 use App\Services\Authorization\Values\LmsMembership;
 use Illuminate\Container\Attributes\Singleton;
-use Illuminate\Contracts\Config\Repository as ConfigRepository;
 
 #[Singleton]
 readonly class PermissionSyncService
 {
     public function __construct(
-        private ConfigRepository $config,
+        private AuthorizationModeService $mode,
         private PermissionGraphClient $graph,
         private PermissionGraphRelationshipFactory $relationships,
         private PermissionEventRepository $events,
@@ -79,6 +78,6 @@ readonly class PermissionSyncService
 
     private function enabled(): bool
     {
-        return (bool) $this->config->get('authz.enabled', false);
+        return $this->mode->enabled();
     }
 }

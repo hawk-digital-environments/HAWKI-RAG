@@ -25,10 +25,24 @@ class AuthorizationServiceTest extends TestCase
 
     public function test_document_access_fails_closed_for_missing_user_when_api_enforcement_is_enabled(): void
     {
+        config()->set('authz.enabled', true);
         config()->set('authz.document_api_enforced', true);
         Http::fake();
 
         $this->assertFalse(app(AuthorizationService::class)->canViewDocument(null, 'doc-1'));
+        Http::assertNothingSent();
+    }
+
+    public function test_document_api_enforcement_is_ignored_when_authorization_is_disabled(): void
+    {
+        config()->set('authz.enabled', false);
+        config()->set('authz.document_api_enforced', true);
+        Http::fake();
+
+        $service = app(AuthorizationService::class);
+
+        $this->assertFalse($service->documentApiEnforced());
+        $this->assertTrue($service->canViewDocument(null, 'doc-1'));
         Http::assertNothingSent();
     }
 

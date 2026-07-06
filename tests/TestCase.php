@@ -28,6 +28,22 @@ abstract class TestCase extends BaseTestCase
      * @param array<string, mixed> $attributes
      * @return array{application: Application, token: string}
      */
+    protected function actingAsApplication(array $attributes = []): array
+    {
+        $issued = $this->issueApplicationToken([
+            'id' => 'rawki-default',
+            'tenant_id' => 'default',
+            ...$attributes,
+        ]);
+        $this->withHeader('Authorization', 'Bearer '.$issued['token']);
+
+        return $issued;
+    }
+
+    /**
+     * @param array<string, mixed> $attributes
+     * @return array{application: Application, token: string}
+     */
     protected function issueApplicationToken(array $attributes = []): array
     {
         $tenantId = (string) ($attributes['tenant_id'] ?? 'default');

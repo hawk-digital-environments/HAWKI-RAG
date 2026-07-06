@@ -24,7 +24,7 @@ class DocumentBrowserTest extends TestCase
         $this->get('/documents')
             ->assertRedirect('/heaps');
 
-        $this->actingAsApiUser();
+        $this->actingAsApplication();
 
         $this->getJson('/api/documents?dataset_id=browser-dataset')
             ->assertOk()
@@ -43,7 +43,7 @@ class DocumentBrowserTest extends TestCase
     {
         $document = $this->createIngestedDocument();
 
-        $this->actingAsApiUser();
+        $this->actingAsApplication();
 
         $this->getJson("/api/documents/{$document->id}")
             ->assertOk()
@@ -94,7 +94,7 @@ class DocumentBrowserTest extends TestCase
         ]);
         config()->set('config.neo4j_http_url', 'http://neo4j.test');
 
-        $this->actingAsApiUser();
+        $this->actingAsApplication();
 
         $this->getJson("/api/documents/{$document->id}")
             ->assertOk()
@@ -105,7 +105,7 @@ class DocumentBrowserTest extends TestCase
 
     public function test_document_detail_returns_not_found_for_non_numeric_placeholder_id(): void
     {
-        $this->actingAsApiUser();
+        $this->actingAsApplication();
 
         $this->getJson('/api/documents/sample-document-id')
             ->assertNotFound()

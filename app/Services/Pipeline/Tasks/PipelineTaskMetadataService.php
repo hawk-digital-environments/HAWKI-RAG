@@ -20,13 +20,22 @@ readonly class PipelineTaskMetadataService
     /**
      * @return array<string, string>
      */
-    public function dataset(Dataset $dataset): array
+    public function heap(Dataset $heap): array
     {
         return [
-            'dataset_id' => $dataset->dataset_id,
-            'qdrant_collection' => $dataset->qdrant_collection,
-            'neo4j_namespace' => $dataset->neo4j_namespace,
+            'heap_id' => $heap->dataset_id,
+            'dataset_id' => $heap->dataset_id,
+            'qdrant_collection' => $heap->qdrant_collection,
+            'neo4j_namespace' => $heap->neo4j_namespace,
         ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function dataset(Dataset $dataset): array
+    {
+        return $this->heap($dataset);
     }
 
     /**
@@ -37,9 +46,13 @@ readonly class PipelineTaskMetadataService
         $metadata = $task->metadata ?? [];
         $request = is_array($metadata['request'] ?? null) ? $metadata['request'] : [];
         $requestMetadata = is_array($request['metadata'] ?? null) ? $request['metadata'] : [];
+        $heap = is_array($metadata['heap'] ?? null)
+            ? $metadata['heap']
+            : (is_array($metadata['dataset'] ?? null) ? $metadata['dataset'] : []);
 
         return array_merge($requestMetadata, [
-            'dataset' => is_array($metadata['dataset'] ?? null) ? $metadata['dataset'] : [],
+            'heap' => $heap,
+            'dataset' => $heap,
         ]);
     }
 

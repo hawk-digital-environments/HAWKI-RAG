@@ -4,7 +4,6 @@ use App\Http\Controllers\API\OpenCompat\ApiKeyController as OpenCompatApiKeyCont
 use App\Http\Controllers\API\OpenCompat\SystemController as OpenCompatSystemController;
 use App\Http\Controllers\API\RagStatsController;
 use App\Http\Controllers\Graph\RagGraphController;
-use App\Http\Controllers\PipelineControlController;
 use App\Http\Controllers\PipelineRecoveryController;
 use App\Http\Controllers\PipelineTaskController;
 use Illuminate\Support\Facades\Route;
@@ -18,7 +17,6 @@ Route::middleware(['auth:sanctum,oidc', 'throttle:hawki-api'])->group(function (
 
     Route::prefix('pipeline/tasks')->group(function () {
         Route::get('/', [PipelineTaskController::class, 'index']);
-        Route::post('/start', [PipelineTaskController::class, 'start'])->middleware('throttle:hawki-upload');
         Route::get('/{taskId}', [PipelineTaskController::class, 'show']);
         Route::get('/{taskId}/jobs', [PipelineTaskController::class, 'jobs']);
         Route::get('/{taskId}/failed-jobs', [PipelineTaskController::class, 'failedJobs']);
@@ -30,10 +28,6 @@ Route::middleware(['auth:sanctum,oidc', 'throttle:hawki-api'])->group(function (
         Route::post('/{taskId}/retry-failed-jobs', [PipelineTaskController::class, 'retryFailedJobs'])->middleware('throttle:hawki-destructive');
         Route::post('/{taskId}/cancel', [PipelineTaskController::class, 'cancel'])->middleware('throttle:hawki-destructive');
         Route::delete('/{taskId}', [PipelineTaskController::class, 'destroy'])->middleware('throttle:hawki-destructive');
-    });
-
-    Route::prefix('pipeline/controller')->group(function () {
-        Route::post('/files', [PipelineControlController::class, 'uploadFile'])->middleware('throttle:hawki-upload');
     });
 
     Route::prefix('pipeline/recovery')->group(function () {

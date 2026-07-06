@@ -8,13 +8,17 @@ use App\Http\Controllers\Controller;
 use App\Services\Authorization\ApplicationReadPolicy;
 use App\Services\Authorization\ApiActorResolver;
 use App\Services\Authorization\GatewaySearchFilterService;
+use App\Services\OpenCompat\OpenCompatDocumentService;
 use App\Services\OpenCompat\OpenCompatService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class RetrievalController extends Controller
 {
-    public function __construct(private readonly OpenCompatService $compat) {}
+    public function __construct(
+        private readonly OpenCompatService $compat,
+        private readonly OpenCompatDocumentService $documents,
+    ) {}
 
     public function chunks(Request $request, ApiActorResolver $actors, GatewaySearchFilterService $filters): JsonResponse
     {
@@ -40,7 +44,7 @@ class RetrievalController extends Controller
         $input['filters'] = $filters->build($input['filters'] ?? [], $actors->resolve($request), $input['user_identifier'] ?? null);
         unset($input['user_identifier']);
 
-        return $this->json($this->compat->retrieveDocs($input));
+        return $this->json($this->documents->retrieveDocs($input));
     }
 
     public function searchDocuments(Request $request, ApiActorResolver $actors, ApplicationReadPolicy $policy): JsonResponse
@@ -58,7 +62,7 @@ class RetrievalController extends Controller
         )->repositoryFilters;
         unset($input['user_identifier']);
 
-        return $this->json($this->compat->searchDocuments($input));
+        return $this->json($this->documents->searchDocuments($input));
     }
 
     public function batchDocuments(Request $request, ApiActorResolver $actors, ApplicationReadPolicy $policy): JsonResponse
@@ -78,7 +82,7 @@ class RetrievalController extends Controller
         )->repositoryFilters;
         unset($input['user_identifier']);
 
-        return $this->json($this->compat->batchDocuments($input));
+        return $this->json($this->documents->batchDocuments($input));
     }
 
     public function batchChunks(Request $request, ApiActorResolver $actors, GatewaySearchFilterService $filters): JsonResponse

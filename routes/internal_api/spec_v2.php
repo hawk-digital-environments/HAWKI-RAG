@@ -8,7 +8,7 @@ use App\Http\Controllers\SpecV2\HeapController as SpecHeapController;
 use App\Http\Controllers\SpecV2\TenantController as SpecTenantController;
 use Illuminate\Support\Facades\Route;
 
-Route::middleware(['auth:application-token,sanctum,oidc', 'throttle:hawki-api'])->group(function () {
+Route::middleware(['auth:application-token', 'throttle:hawki-api'])->group(function () {
     Route::prefix('tenants')->group(function () {
         Route::get('/', [SpecTenantController::class, 'index']);
         Route::post('/', [SpecTenantController::class, 'store']);

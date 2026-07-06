@@ -17,12 +17,12 @@ readonly class DocumentBrowserService
         private ApiActorScopeService $actors,
     ) {}
 
-    public function list(int $limit = 100, array $filters = []): array
+    public function list(int $limit = 100, array $filters = [], ?string $requestedUserIdentifier = null): array
     {
         $limit = max(1, min(250, $limit));
         $filters = [
             ...$filters,
-            ...$this->actors->currentDocumentFilters(),
+            ...$this->actors->currentDocumentFilters($requestedUserIdentifier),
         ];
 
         return $this->documents->list($filters, $limit)
@@ -30,9 +30,9 @@ readonly class DocumentBrowserService
             ->all();
     }
 
-    public function show(string $documentId): ?array
+    public function show(string $documentId, ?string $requestedUserIdentifier = null): ?array
     {
-        if (! $this->actors->currentCanReadDocument($documentId)) {
+        if (! $this->actors->currentCanReadDocument($documentId, $requestedUserIdentifier)) {
             return null;
         }
 

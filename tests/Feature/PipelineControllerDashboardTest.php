@@ -56,10 +56,10 @@ class PipelineControllerDashboardTest extends TestCase
             ]),
         ]);
 
-        $this->actingAsApiUser();
+        $this->actingAsApplication();
 
         $response = $this->post('/api/pipeline/controller/files', [
-            'dataset_id' => 'controller-test',
+            'heap_id' => 'controller-test',
             'graph' => 'false',
             'file' => UploadedFile::fake()->create('sample.pdf', 12, 'application/pdf'),
         ], [
@@ -69,6 +69,7 @@ class PipelineControllerDashboardTest extends TestCase
         $response
             ->assertCreated()
             ->assertJsonPath('success', true)
+            ->assertJsonPath('heapId', 'controller-test')
             ->assertJsonPath('datasetId', 'controller-test')
             ->assertJsonPath('task.stages.scrape.status', 'n/a')
             ->assertJsonPath('task.stages.convert.status', 'processing')
@@ -178,10 +179,10 @@ class PipelineControllerDashboardTest extends TestCase
     {
         config()->set('file_converter.raganything_supported_extensions', ['pdf']);
 
-        $this->actingAsApiUser();
+        $this->actingAsApplication();
 
         $this->post('/api/pipeline/controller/files', [
-            'dataset_id' => 'native-reject',
+            'heap_id' => 'native-reject',
             'file' => UploadedFile::fake()->create('diagram.svg', 12, 'image/svg+xml'),
         ], [
             'Accept' => 'application/json',
@@ -209,10 +210,10 @@ class PipelineControllerDashboardTest extends TestCase
             ]),
         ]);
 
-        $this->actingAsApiUser();
+        $this->actingAsApplication();
 
         $response = $this->post('/api/pipeline/controller/files', [
-            'dataset_id' => 'custom-converter-test',
+            'heap_id' => 'custom-converter-test',
             'converter_mode' => 'custom',
             'converter_url' => 'https://converter.example.test',
             'converter_token' => 'secret-user-api-key',
@@ -224,6 +225,7 @@ class PipelineControllerDashboardTest extends TestCase
         ])
             ->assertCreated()
             ->assertJsonPath('success', true)
+            ->assertJsonPath('heapId', 'custom-converter-test')
             ->assertJsonPath('datasetId', 'custom-converter-test');
 
         $profilePath = null;
@@ -287,10 +289,10 @@ class PipelineControllerDashboardTest extends TestCase
             ], ['X-CSRF-TOKEN' => 'test-token'])
             ->assertOk();
 
-        $this->actingAsApiUser();
+        $this->actingAsApplication();
 
         $this->post('/api/pipeline/controller/files', [
-            'dataset_id' => 'saved-converter-test',
+            'heap_id' => 'saved-converter-test',
             'converter_mode' => 'custom',
             'file' => UploadedFile::fake()->create('diagram.svg', 12, 'image/svg+xml'),
         ], [
@@ -298,6 +300,7 @@ class PipelineControllerDashboardTest extends TestCase
         ])
             ->assertCreated()
             ->assertJsonPath('success', true)
+            ->assertJsonPath('heapId', 'saved-converter-test')
             ->assertJsonPath('datasetId', 'saved-converter-test');
 
         $profilePath = null;
@@ -406,16 +409,17 @@ class PipelineControllerDashboardTest extends TestCase
         config()->set('temporal.storage.shared_root', $root);
         config()->set('file_converter.raganything_supported_extensions', ['pdf']);
 
-        $this->actingAsApiUser();
+        $this->actingAsApplication();
 
         $this->post('/api/pipeline/controller/files', [
-            'dataset_id' => 'blocked-controller-dataset',
+            'heap_id' => 'blocked-controller-dataset',
             'file' => UploadedFile::fake()->create('blocked.pdf', 12, 'application/pdf'),
         ], [
             'Accept' => 'application/json',
         ])
             ->assertStatus(500)
             ->assertJsonPath('success', false)
+            ->assertJsonPath('heapId', 'blocked-controller-dataset')
             ->assertJsonPath('datasetId', 'blocked-controller-dataset')
             ->assertJsonPath('taskId', null)
             ->assertJsonPath('jobId', null);

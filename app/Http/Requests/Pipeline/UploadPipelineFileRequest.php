@@ -20,6 +20,8 @@ class UploadPipelineFileRequest extends FormRequest
     {
         return [
             'file' => 'required|file|max:102400',
+            'heap_id' => 'nullable|string|max:160|regex:/\A[A-Za-z0-9][A-Za-z0-9._:-]{0,159}\z/',
+            'heapId' => 'nullable|string|max:160|regex:/\A[A-Za-z0-9][A-Za-z0-9._:-]{0,159}\z/',
             'dataset_id' => 'nullable|string|max:160|regex:/\A[A-Za-z0-9][A-Za-z0-9._:-]{0,159}\z/',
             'datasetId' => 'nullable|string|max:160|regex:/\A[A-Za-z0-9][A-Za-z0-9._:-]{0,159}\z/',
             'graph' => 'nullable',

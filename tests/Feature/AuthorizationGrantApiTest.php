@@ -79,8 +79,8 @@ class AuthorizationGrantApiTest extends TestCase
             'internal_user_id' => $assignments[0]->internalUserId,
         ]);
 
-        $this->actingAsApiUser();
-        $this->putJson('/api/auth/heaps/heap-protected/grants', [
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->putJson('/api/auth/heaps/heap-protected/grants', [
             'groups' => [$application->id.':design_students'],
         ])->assertOk()
             ->assertJsonPath('count', 1)
@@ -104,17 +104,13 @@ class AuthorizationGrantApiTest extends TestCase
         });
     }
 
-    public function test_document_grant_api_allows_document_browser_when_graph_denies(): void
+    public function test_document_grant_api_allows_document_browser_for_user_identifier_scoped_app_requests(): void
     {
         config()->set('authz.enabled', true);
-        config()->set('authz.document_api_enforced', true);
-        config()->set('authz.graph.backend', 'spicedb');
-        config()->set('authz.graph.spicedb.api_url', 'http://spicedb.test');
-        config()->set('authz.graph.spicedb.preshared_key', 'secret-token');
-        Http::fake([
-            'http://spicedb.test/v1/permissions/checkbulk' => Http::response([
-                'pairs' => [['item' => ['permissionship' => 'PERMISSIONSHIP_NO_PERMISSION']]],
-            ]),
+        ['token' => $token] = $this->issueApplicationToken([
+            'id' => 'rawki-default',
+            'tenant_id' => 'default',
+            'permissions' => ['reads'],
         ]);
 
         Dataset::query()->create([
@@ -143,8 +139,12 @@ class AuthorizationGrantApiTest extends TestCase
             'metadata_json' => [],
         ]);
 
-        $user = $this->actingAsApiUser();
-        $identity = app(IdentityProvisioningService::class)->actorForUser($user);
+        $userIdentifier = 'reader@example.test';
+        $assignments = app(IdentityProvisioningService::class)->groupMemberAssignments(
+            'default',
+            'rawki-default',
+            [$userIdentifier],
+        );
 
         Group::query()->create([
             'id' => 'rawki-default:direct_doc_readers',
@@ -155,16 +155,18 @@ class AuthorizationGrantApiTest extends TestCase
         ]);
         GroupMember::query()->create([
             'group_id' => 'rawki-default:direct_doc_readers',
-            'user_identifier' => $user->email,
-            'internal_user_id' => $identity?->internal_user_id,
+            'user_identifier' => $userIdentifier,
+            'internal_user_id' => $assignments[0]->internalUserId,
         ]);
 
-        $this->putJson('/api/auth/documents/'.$document->id.'/grants', [
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->putJson('/api/auth/documents/'.$document->id.'/grants', [
             'groups' => ['rawki-default:direct_doc_readers'],
         ])->assertOk()
             ->assertJsonPath('count', 1);
 
-        $this->getJson('/api/documents/'.$document->id)
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->getJson('/api/documents/'.$document->id.'?user_identifier='.urlencode($userIdentifier))
             ->assertOk()
             ->assertJsonPath('success', true)
             ->assertJsonPath('document.id', $document->id);
@@ -172,7 +174,10 @@ class AuthorizationGrantApiTest extends TestCase
 
     public function test_heap_metadata_rejects_reserved_keys(): void
     {
-        $this->actingAsApiUser();
+        $this->actingAsApplication([
+            'id' => 'rawki-default',
+            'tenant_id' => 'default',
+        ]);
 
         $this->postJson('/api/heaps', [
             'id' => 'heap-invalid',
@@ -307,7 +312,10 @@ class AuthorizationGrantApiTest extends TestCase
             'metadata_json' => [],
         ]);
 
-        $this->actingAsApiUser();
+        $this->actingAsApplication([
+            'id' => 'rawki-default',
+            'tenant_id' => 'default',
+        ]);
 
         $this->putJson('/api/auth/heaps/heap-disabled-authz/grants', [
             'groups' => ['missing-group'],

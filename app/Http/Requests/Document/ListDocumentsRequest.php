@@ -19,6 +19,7 @@ class ListDocumentsRequest extends FormRequest
             'heapId' => 'nullable|string|max:191',
             'dataset_id' => 'nullable|string|max:191',
             'datasetId' => 'nullable|string|max:191',
+            'user_identifier' => 'nullable|string|max:255',
             'q' => 'nullable|string|max:255',
             'search' => 'nullable|string|max:255',
             'limit' => 'nullable|integer|min:1|max:250',
@@ -33,8 +34,15 @@ class ListDocumentsRequest extends FormRequest
     public function filters(): array
     {
         $validated = $this->validated();
-        unset($validated['limit']);
+        unset($validated['limit'], $validated['user_identifier']);
 
         return $validated;
+    }
+
+    public function userIdentifier(): ?string
+    {
+        $value = $this->validated('user_identifier');
+
+        return is_string($value) && trim($value) !== '' ? trim($value) : null;
     }
 }

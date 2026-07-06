@@ -18,6 +18,7 @@ readonly class ApplicationScopeResolver
 {
     public function __construct(
         private ConfigRepository $config,
+        private AuthorizationModeService $mode,
         private UserIdentityRepository $identities,
         private GrantAccessRepository $grants,
     ) {}
@@ -81,7 +82,7 @@ readonly class ApplicationScopeResolver
 
     private function authorizationApplies(ApiActor $actor): bool
     {
-        return (bool) $this->config->get('authz.enabled', false)
+        return $this->mode->enabled()
             && ! $actor->hasApplicationPermission(Application::PERMISSION_READS_PROTECTED);
     }
 

@@ -45,10 +45,10 @@ readonly class PipelineTaskStarter
     public function start(array $input): PipelineTask
     {
         $task = $this->transactions->run(function () use ($input): PipelineTask {
-            $dataset = $this->heaps->ensure($input);
+            $heap = $this->heaps->ensure($input);
             $task = $this->taskRepository->createRunningTask(
                 $this->input->taskId($input),
-                $dataset,
+                $heap,
                 $this->now(),
                 $this->counters->defaults(),
                 [
@@ -58,7 +58,8 @@ readonly class PipelineTaskStarter
                         'workflow_type' => config('temporal.workflow.type', 'IngestSourceWorkflow'),
                         'workflow_task_queue' => config('temporal.task_queues.workflow', 'rag-workflow-task-queue'),
                     ],
-                    'dataset' => $this->metadata->dataset($dataset),
+                    'heap' => $this->metadata->heap($heap),
+                    'dataset' => $this->metadata->dataset($heap),
                 ],
             );
 
@@ -94,13 +95,19 @@ readonly class PipelineTaskStarter
             'markdown_storage_path' => $storage['markdown'],
             'metadata' => [
                 'request' => $input,
-                'dataset' => is_array($task->metadata['dataset'] ?? null) ? $task->metadata['dataset'] : [],
+                'heap' => is_array($task->metadata['heap'] ?? null)
+                    ? $task->metadata['heap']
+                    : (is_array($task->metadata['dataset'] ?? null) ? $task->metadata['dataset'] : []),
+                'dataset' => is_array($task->metadata['heap'] ?? null)
+                    ? $task->metadata['heap']
+                    : (is_array($task->metadata['dataset'] ?? null) ? $task->metadata['dataset'] : []),
                 'refresh' => $this->refreshMetadata($input),
             ],
         ]);
 
         $metadata = array_merge($this->metadata->taskJob($task), [
             'reason' => 'Started IngestSourceWorkflow through Temporal.',
+            'heap_id' => $task->dataset_id,
             'dataset_id' => $task->dataset_id,
             'source_id' => $sourceId,
             'raw_storage_path' => $storage['raw'],

@@ -51,6 +51,7 @@ class PipelineTaskPayloadServiceTest extends TestCase
         $payload = app(PipelineTaskPayloadService::class)->detail($task, 1, ['jobs_total' => 0]);
 
         $this->assertSame('task-payload', $payload['taskId']);
+        $this->assertSame('dataset-payload', $payload['heapId']);
         $this->assertSame('dataset-payload', $payload['datasetId']);
         $this->assertSame(PipelineTask::STATUS_RUNNING, $payload['status']);
         $this->assertSame(['jobs_total' => 1], $payload['counters']);

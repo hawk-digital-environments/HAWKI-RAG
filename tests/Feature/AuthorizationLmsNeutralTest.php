@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\Dataset;
 use App\Models\Document;
 use App\Models\User;
 use App\Services\Authorization\IdentityProvisioningService;
@@ -211,15 +212,35 @@ class AuthorizationLmsNeutralTest extends TestCase
         ], $document->toArray());
     }
 
-    public function test_document_show_is_denied_when_permission_graph_denies_viewer_relation(): void
+    public function test_document_show_is_denied_without_user_identifier_scope_on_app_requests(): void
     {
         $document = $this->documentWithUploadedFile();
-        $this->actingAsApiUser();
-        $this->denyPermissionGraph();
+        $this->actingAsApplication([
+            'id' => 'rawki-default',
+            'tenant_id' => 'default',
+            'permissions' => ['reads'],
+        ]);
+        config()->set('authz.enabled', true);
 
         $this->getJson('/api/documents/'.$document->id)
             ->assertForbidden()
             ->assertJsonPath('success', false);
+    }
+
+    public function test_document_show_ignores_user_identifier_requirement_when_authorization_is_disabled(): void
+    {
+        $document = $this->documentWithUploadedFile();
+        $this->actingAsApplication([
+            'id' => 'rawki-default',
+            'tenant_id' => 'default',
+            'permissions' => ['reads'],
+        ]);
+        config()->set('authz.enabled', false);
+        config()->set('authz.document_api_enforced', true);
+
+        $this->getJson('/api/documents/'.$document->id)
+            ->assertOk()
+            ->assertJsonPath('document.id', $document->id);
     }
 
     public function test_uploaded_document_download_is_denied_when_permission_graph_denies_access(): void
@@ -238,6 +259,7 @@ class AuthorizationLmsNeutralTest extends TestCase
 
     private function denyPermissionGraph(): void
     {
+        config()->set('authz.enabled', true);
         config()->set('authz.document_api_enforced', true);
         config()->set('authz.graph.backend', 'spicedb');
         config()->set('authz.graph.spicedb.api_url', 'http://spicedb.test');
@@ -260,6 +282,19 @@ class AuthorizationLmsNeutralTest extends TestCase
 
         $path = $root.'/task-upload/authz.pdf';
         File::put($path, '%PDF authz');
+
+        Dataset::query()->create([
+            'dataset_id' => 'authz-dataset',
+            'tenant_id' => 'default',
+            'owner_application_id' => 'rawki-default',
+            'name' => 'Authz Dataset',
+            'status' => Dataset::STATUS_ACTIVE,
+            'visibility' => Dataset::VISIBILITY_DISCOVERABLE,
+            'protected' => true,
+            'metadata_json' => [],
+            'qdrant_collection' => 'hawki_authz',
+            'neo4j_namespace' => 'hawki_authz',
+        ]);
 
         return Document::query()->create([
             'dataset_id' => 'authz-dataset',

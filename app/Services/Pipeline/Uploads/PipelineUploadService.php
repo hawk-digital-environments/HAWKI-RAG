@@ -62,6 +62,7 @@ class PipelineUploadService
             $storedUpload = $this->storage->store($taskId, $file, $extension);
         } catch (PipelineUploadStorageException $exception) {
             $this->logger->warning($exception->logMessage(), array_merge([
+                'heap_id' => $input->heapId,
                 'dataset_id' => $input->datasetId,
                 'task_id' => $taskId,
                 'error' => $exception->getMessage(),
@@ -72,7 +73,7 @@ class PipelineUploadService
 
         $sourceUrl = $this->identifiers->sourceUrl($storedUpload);
         $sourceId = $this->workflowPayloads->sourceId(
-            $input->datasetId,
+            $input->heapId,
             $sourceUrl.'|'.$storedUpload->contentHash,
         );
         $storage = $this->workflowPayloads->storagePaths($sourceId);
@@ -81,6 +82,7 @@ class PipelineUploadService
             $customConverterProfilePath = $this->customConverterProfiles->write($sourceId, $input, $storage);
         } catch (\Throwable $exception) {
             $this->logger->warning('Custom converter profile could not be prepared.', [
+                'heap_id' => $input->heapId,
                 'dataset_id' => $input->datasetId,
                 'task_id' => $taskId,
                 'source_id' => $sourceId,
@@ -90,14 +92,14 @@ class PipelineUploadService
             return $this->results->customConverterProfileFailure($input, $exception);
         }
 
-        $dataset = $this->heaps->ensure($input->datasetId);
+        $heap = $this->heaps->ensure($input->heapId);
         $now = $this->now();
 
         $task = $this->taskRepository->createUploadTask(
             $taskId,
-            $dataset,
+            $heap,
             $now,
-            $this->payloads->taskMetadata($dataset, $input, $storedUpload, $customConverterProfilePath),
+            $this->payloads->taskMetadata($heap, $input, $storedUpload, $customConverterProfilePath),
         );
 
         $jobId = $this->identifiers->ingestJobId($taskId, $sourceId);
@@ -112,7 +114,8 @@ class PipelineUploadService
             'markdown_storage_path' => $storage['markdown'],
             'metadata' => [
                 'request' => $task->metadata['request'] ?? [],
-                'dataset' => $task->metadata['dataset'] ?? [],
+                'heap' => $task->metadata['heap'] ?? $task->metadata['dataset'] ?? [],
+                'dataset' => $task->metadata['heap'] ?? $task->metadata['dataset'] ?? [],
                 'upload' => [
                     'original_filename' => $storedUpload->originalName,
                     'target_name' => $storedUpload->targetName,
@@ -124,8 +127,9 @@ class PipelineUploadService
             ],
         ]);
 
-        $metadata = array_merge($this->payloads->jobMetadata($dataset, $input, $storedUpload, $customConverterProfilePath), [
+        $metadata = array_merge($this->payloads->jobMetadata($heap, $input, $storedUpload, $customConverterProfilePath), [
             'reason' => 'Started upload IngestSourceWorkflow through Temporal.',
+            'heap_id' => $task->dataset_id,
             'dataset_id' => $task->dataset_id,
             'source_id' => $sourceId,
             'raw_storage_path' => $storage['raw'],
@@ -168,6 +172,7 @@ class PipelineUploadService
         $this->logger->info('Pipeline controller upload handed to Temporal.', [
             'task_id' => $task->task_id,
             'job_id' => $job->job_id,
+            'heap_id' => $task->dataset_id,
             'source_id' => $sourceId,
             'source_url' => $sourceUrl,
             'local_path' => $storedUpload->localPath,

@@ -32,6 +32,11 @@ class IngestSourceWorkflowPayloadFactoryTest extends TestCase
                 'task_id' => 'task-a',
                 'dataset_id' => 'dataset-a',
                 'metadata' => [
+                    'heap' => [
+                        'heap_id' => 'dataset-a',
+                        'qdrant_collection' => 'hawki_dataset_a',
+                        'neo4j_namespace' => 'hawki_dataset_a',
+                    ],
                     'dataset' => [
                         'qdrant_collection' => 'hawki_dataset_a',
                         'neo4j_namespace' => 'hawki_dataset_a',
@@ -58,6 +63,8 @@ class IngestSourceWorkflowPayloadFactoryTest extends TestCase
 
         $this->assertSame($sourceId, $payload['source_id']);
         $this->assertSame('https://example.edu', $payload['source_url']);
+        $this->assertSame('dataset-a', $payload['heap_id']);
+        $this->assertSame('dataset-a', $payload['dataset_id']);
         $this->assertSame('/shared/sources/'.$sourceId.'/raw/', $payload['raw_output_path']);
         $this->assertSame('/shared/sources/'.$sourceId.'/markdown/', $payload['markdown_output_path']);
         $this->assertSame('/shared/sources/'.$sourceId.'/ingest/manifest.json', $payload['ingest_manifest_path']);
@@ -120,6 +127,7 @@ class IngestSourceWorkflowPayloadFactoryTest extends TestCase
         );
 
         $this->assertSame('/shared/task/sample-upload.pdf', $payload['upload']['local_path']);
+        $this->assertSame('dataset-upload', $payload['heap_id']);
         $this->assertSame('sample-upload.pdf', $payload['upload']['target_name']);
         $this->assertSame('native', $payload['converter_mode']);
         $this->assertFalse($payload['ingestion']['graph']);

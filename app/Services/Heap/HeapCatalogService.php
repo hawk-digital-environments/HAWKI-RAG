@@ -6,8 +6,8 @@ namespace App\Services\Heap;
 use App\Models\Dataset;
 use App\Services\Authorization\ApiActorScopeService;
 use App\Services\Dataset\DatasetPayloadBuilder;
-use App\Services\Dataset\DatasetRepository;
 use App\Services\Dataset\DatasetStorageCleanupService;
+use App\Services\Heap\Repositories\HeapCatalogRepository;
 use Illuminate\Container\Attributes\Singleton;
 use Psr\Clock\ClockInterface;
 use Symfony\Component\Clock\Clock;
@@ -16,7 +16,7 @@ use Symfony\Component\Clock\Clock;
 readonly class HeapCatalogService
 {
     public function __construct(
-        private DatasetRepository $heaps,
+        private HeapCatalogRepository $heaps,
         private HeapIdentifierFactory $identifiers,
         private DatasetPayloadBuilder $payloads,
         private DatasetStorageCleanupService $storageCleanup,
@@ -42,7 +42,7 @@ readonly class HeapCatalogService
      */
     public function show(string $heapId): ?array
     {
-        $heap = $this->heaps->findByDatasetId($heapId);
+        $heap = $this->heaps->findByHeapId($heapId);
         if (! $heap instanceof Dataset || ! $this->actors->currentCanReadDataset($heap)) {
             return null;
         }
@@ -109,7 +109,7 @@ readonly class HeapCatalogService
      */
     public function delete(string $heapId): ?array
     {
-        $heap = $this->heaps->findByDatasetId($heapId);
+        $heap = $this->heaps->findByHeapId($heapId);
 
         if (! $heap instanceof Dataset || ! $this->actors->currentCanReadDataset($heap)) {
             return null;
