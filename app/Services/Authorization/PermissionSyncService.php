@@ -10,11 +10,13 @@ use App\Services\Authorization\Repositories\PermissionEventRepository;
 use App\Services\Authorization\Values\LmsDocumentRelation;
 use App\Services\Authorization\Values\LmsMembership;
 use Illuminate\Container\Attributes\Singleton;
+use Illuminate\Contracts\Config\Repository as ConfigRepository;
 
 #[Singleton]
 readonly class PermissionSyncService
 {
     public function __construct(
+        private ConfigRepository $config,
         private PermissionGraphClient $graph,
         private PermissionGraphRelationshipFactory $relationships,
         private PermissionEventRepository $events,
@@ -27,6 +29,21 @@ readonly class PermissionSyncService
      */
     public function sync(iterable $memberships, iterable $documentRelations): array
     {
+        if (! $this->enabled()) {
+            return [
+                'relationships' => [],
+                'graph' => [
+                    'enabled' => false,
+                    'ignored' => true,
+                    'written' => 0,
+                ],
+                'reconciliation' => [
+                    'strategy' => 'no-op',
+                    'stale_cleanup' => 'Authorization is disabled; connector inputs are accepted and ignored.',
+                ],
+            ];
+        }
+
         $relationships = [];
 
         foreach ($memberships as $membership) {
@@ -47,5 +64,10 @@ readonly class PermissionSyncService
                 'stale_cleanup' => 'Keep source_updated_at per normalized event; scheduled reconciliation can remove relationships absent from the latest connector snapshot.',
             ],
         ];
+    }
+
+    private function enabled(): bool
+    {
+        return (bool) $this->config->get('authz.enabled', false);
     }
 }

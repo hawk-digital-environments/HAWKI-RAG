@@ -19,6 +19,7 @@ class AuthorizationPermissionSyncTest extends TestCase
 
     public function test_permission_sync_records_normalized_events_and_writes_permission_graph_relationships(): void
     {
+        config()->set('authz.enabled', true);
         config()->set('authz.graph.backend', 'spicedb');
         config()->set('authz.graph.spicedb.api_url', 'http://spicedb.test');
         config()->set('authz.graph.spicedb.preshared_key', 'secret-token');
@@ -94,6 +95,7 @@ class AuthorizationPermissionSyncTest extends TestCase
 
     public function test_permission_sync_is_idempotent_for_repeated_connector_snapshots(): void
     {
+        config()->set('authz.enabled', true);
         config()->set('authz.graph.backend', 'spicedb');
         config()->set('authz.graph.spicedb.api_url', 'http://spicedb.test');
         config()->set('authz.graph.spicedb.preshared_key', 'secret-token');
@@ -109,5 +111,25 @@ class AuthorizationPermissionSyncTest extends TestCase
 
         $this->assertSame(2, AuthorizationPermissionEvent::query()->count());
         Http::assertSentCount(2);
+    }
+
+    public function test_permission_sync_is_a_no_op_when_authorization_is_disabled(): void
+    {
+        config()->set('authz.enabled', false);
+        Http::fake();
+
+        $result = app(PermissionSyncService::class)->sync(
+            [new LmsMembership('local', 'user-1', 'course-1', 'teacher')],
+            [new LmsDocumentRelation('local', 'course-1', 'doc-1')],
+        );
+
+        $this->assertSame([], $result['relationships']);
+        $this->assertSame([
+            'enabled' => false,
+            'ignored' => true,
+            'written' => 0,
+        ], $result['graph']);
+        $this->assertDatabaseCount('authorization_permission_events', 0);
+        Http::assertNothingSent();
     }
 }

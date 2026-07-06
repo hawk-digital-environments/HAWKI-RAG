@@ -22,8 +22,11 @@ readonly class ApiActorResolver
 
     public function resolve(Request $request): ApiActor
     {
-        $principal = $request->user();
+        return $this->resolvePrincipal($request->user());
+    }
 
+    public function resolvePrincipal(mixed $principal): ApiActor
+    {
         if ($principal instanceof Application) {
             return ApiActor::forApplication($principal);
         }

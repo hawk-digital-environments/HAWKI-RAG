@@ -109,10 +109,22 @@ readonly class ApplicationScopeResolver
         }
 
         if ($actor->hasApplicationPermission(Application::PERMISSION_READS_ALL_APPS)) {
-            return $query->where('heaps.tenant_id', $actor->tenantId());
+            return $query->where(function (Builder $inner) use ($actor): void {
+                $inner->where('heaps.tenant_id', $actor->tenantId());
+
+                if ($actor->tenantId() === $this->defaultTenantId()) {
+                    $inner->orWhereNull('heaps.tenant_id');
+                }
+            });
         }
 
-        return $query->where('heaps.owner_application_id', $actor->applicationId());
+        return $query->where(function (Builder $inner) use ($actor): void {
+            $inner->where('heaps.owner_application_id', $actor->applicationId());
+
+            if ($actor->applicationId() === $this->defaultApplicationId()) {
+                $inner->orWhereNull('heaps.owner_application_id');
+            }
+        });
     }
 
     /**
@@ -169,5 +181,15 @@ readonly class ApplicationScopeResolver
     private function stringValue(?string $value): ?string
     {
         return is_string($value) && trim($value) !== '' ? trim($value) : null;
+    }
+
+    private function defaultTenantId(): string
+    {
+        return (string) $this->config->get('authz.identity_bridge.default_tenant_id', 'default');
+    }
+
+    private function defaultApplicationId(): string
+    {
+        return (string) $this->config->get('authz.identity_bridge.default_application_id', 'rawki-default');
     }
 }

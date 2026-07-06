@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Dataset;
 
 use App\Models\Dataset;
+use App\Services\Authorization\ApiActorScopeService;
 use Illuminate\Container\Attributes\Singleton;
 use Psr\Clock\ClockInterface;
 use Symfony\Component\Clock\Clock;
@@ -17,6 +18,7 @@ readonly class DatasetService
         private DatasetIdentifierFactory $identifiers,
         private DatasetPayloadBuilder $payloads,
         private DatasetStorageCleanupService $storageCleanup,
+        private ApiActorScopeService $actors,
         private ClockInterface $clock = new Clock,
     ) {}
 
@@ -25,6 +27,7 @@ readonly class DatasetService
         $limit = max(1, min(250, $limit));
 
         return $this->datasets->recentWithTasks($limit)
+            ->filter(fn (Dataset $dataset): bool => $this->actors->currentCanReadDataset($dataset))
             ->map(fn (Dataset $dataset): array => $this->payloads->payload($dataset, includeDetails: false))
             ->all();
     }
@@ -32,6 +35,9 @@ readonly class DatasetService
     public function show(string $datasetId): ?array
     {
         $dataset = $this->datasets->findByDatasetId($datasetId);
+        if (! $dataset instanceof Dataset || ! $this->actors->currentCanReadDataset($dataset)) {
+            return null;
+        }
 
         return $dataset ? $this->payloads->payload($dataset, includeDetails: true) : null;
     }
@@ -40,11 +46,12 @@ readonly class DatasetService
     {
         $datasetId = $this->identifiers->datasetId($input['heap_id'] ?? $input['heapId'] ?? $input['dataset_id'] ?? $input['datasetId'] ?? null);
         $safe = $this->identifiers->safeName($datasetId);
+        $defaults = $this->actors->currentOwnershipDefaults();
 
         return $this->datasets->create([
             'dataset_id' => $datasetId,
-            'tenant_id' => $this->identifiers->stringValue($input['tenant_id'] ?? null) ?? 'default',
-            'owner_application_id' => $this->identifiers->stringValue($input['owner_application_id'] ?? null) ?? 'rawki-default',
+            'tenant_id' => $this->identifiers->stringValue($input['tenant_id'] ?? null) ?? $defaults['tenant_id'],
+            'owner_application_id' => $this->identifiers->stringValue($input['owner_application_id'] ?? null) ?? $defaults['owner_application_id'],
             'name' => $this->identifiers->displayName($datasetId, $input['name'] ?? null),
             'description' => $this->identifiers->stringValue($input['description'] ?? null),
             'status' => $this->identifiers->stringValue($input['status'] ?? null) ?? Dataset::STATUS_ACTIVE,
@@ -69,13 +76,14 @@ readonly class DatasetService
 
         $datasetId = $this->identifiers->datasetId($dataset ?? $input['heap_id'] ?? $input['heapId'] ?? $input['dataset_id'] ?? $input['datasetId'] ?? null);
         $safe = $this->identifiers->safeName($datasetId);
+        $defaults = $this->actors->currentOwnershipDefaults();
 
         return $this->datasets->firstOrCreate($datasetId, [
             'name' => $this->identifiers->displayName($datasetId, $input['name'] ?? null),
             'description' => $this->identifiers->stringValue($input['description'] ?? null),
             'status' => Dataset::STATUS_ACTIVE,
-            'tenant_id' => $this->identifiers->stringValue($input['tenant_id'] ?? null) ?? 'default',
-            'owner_application_id' => $this->identifiers->stringValue($input['owner_application_id'] ?? null) ?? 'rawki-default',
+            'tenant_id' => $this->identifiers->stringValue($input['tenant_id'] ?? null) ?? $defaults['tenant_id'],
+            'owner_application_id' => $this->identifiers->stringValue($input['owner_application_id'] ?? null) ?? $defaults['owner_application_id'],
             'visibility' => Dataset::VISIBILITY_DISCOVERABLE,
             'protected' => false,
             'metadata_json' => $input['metadata'] ?? $input['metadata_json'] ?? null,
@@ -95,7 +103,7 @@ readonly class DatasetService
     {
         $dataset = $this->datasets->findByDatasetId($datasetId);
 
-        if (! $dataset) {
+        if (! $dataset instanceof Dataset || ! $this->actors->currentCanReadDataset($dataset)) {
             return null;
         }
 

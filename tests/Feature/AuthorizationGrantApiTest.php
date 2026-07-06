@@ -106,6 +106,7 @@ class AuthorizationGrantApiTest extends TestCase
 
     public function test_document_grant_api_allows_document_browser_when_graph_denies(): void
     {
+        config()->set('authz.enabled', true);
         config()->set('authz.document_api_enforced', true);
         config()->set('authz.graph.backend', 'spicedb');
         config()->set('authz.graph.spicedb.api_url', 'http://spicedb.test');
@@ -274,5 +275,53 @@ class AuthorizationGrantApiTest extends TestCase
             return $request->url() === 'http://bridge.test/query'
                 && $docIds === [$matching->id];
         });
+    }
+
+    public function test_grant_endpoints_ignore_inputs_without_side_effects_when_authorization_is_disabled(): void
+    {
+        config()->set('authz.enabled', false);
+
+        Dataset::query()->create([
+            'dataset_id' => 'heap-disabled-authz',
+            'tenant_id' => 'default',
+            'owner_application_id' => 'rawki-default',
+            'name' => 'Disabled Auth Heap',
+            'status' => Dataset::STATUS_ACTIVE,
+            'visibility' => Dataset::VISIBILITY_DISCOVERABLE,
+            'protected' => false,
+            'metadata_json' => [],
+            'qdrant_collection' => 'disabled_auth_heap',
+            'neo4j_namespace' => 'disabled_auth_heap',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $document = Document::query()->create([
+            'dataset_id' => 'heap-disabled-authz',
+            'collection' => 'disabled_auth_heap',
+            'source_type' => Document::SOURCE_API,
+            'source_url' => 'https://example.test/disabled-auth',
+            'storage_path' => '/tmp/disabled-auth.md',
+            'checksum_sha256' => hash('sha256', 'disabled-auth'),
+            'status' => Document::STATUS_COMPLETED,
+            'metadata_json' => [],
+        ]);
+
+        $this->actingAsApiUser();
+
+        $this->putJson('/api/auth/heaps/heap-disabled-authz/grants', [
+            'groups' => ['missing-group'],
+        ])->assertOk()
+            ->assertJsonPath('count', 0)
+            ->assertJsonPath('grants', []);
+
+        $this->putJson('/api/auth/documents/'.$document->id.'/grants', [
+            'groups' => ['missing-group'],
+        ])->assertOk()
+            ->assertJsonPath('count', 0)
+            ->assertJsonPath('grants', []);
+
+        $this->assertDatabaseCount('heap_grants', 0);
+        $this->assertDatabaseCount('document_grants', 0);
     }
 }

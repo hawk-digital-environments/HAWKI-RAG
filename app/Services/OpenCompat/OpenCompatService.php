@@ -6,6 +6,7 @@ namespace App\Services\OpenCompat;
 
 use App\Models\Document;
 use App\Models\PipelineTask;
+use App\Services\Authorization\ApiActorScopeService;
 use App\Services\Dataset\DatasetService;
 use App\Services\Document\DocumentBrowserService;
 use App\Services\Document\DocumentRepository;
@@ -31,6 +32,7 @@ readonly class OpenCompatService
         private RagStatsService $stats,
         private SettingsService $settings,
         private OpenCompatBridgeClient $bridge,
+        private ApiActorScopeService $scopes,
         private ConfigRepository $config,
     ) {}
 
@@ -225,10 +227,11 @@ readonly class OpenCompatService
      */
     public function searchDocuments(array $input): array
     {
+        $filters = $this->mergeScopeFilters($this->array($input['scope_filters'] ?? []));
         $documents = array_map(
             fn (array $document): array => $this->documentShape($document),
             $this->browser->list((int) ($input['limit'] ?? 100), [
-                ...$this->array($input['scope_filters'] ?? []),
+                ...$filters,
                 'search' => $input['query'] ?? $input['filename'] ?? $input['q'] ?? null,
             ]),
         );
@@ -243,7 +246,7 @@ readonly class OpenCompatService
     public function batchDocuments(array $input): array
     {
         $ids = array_values(array_filter(array_map('strval', $this->array($input['document_ids'] ?? $input['documentIds'] ?? $input['ids'] ?? []))));
-        $indexed = $this->documents->findManyByIds($ids, $this->array($input['scope_filters'] ?? []))
+        $indexed = $this->documents->findManyByIds($ids, $this->mergeScopeFilters($this->array($input['scope_filters'] ?? [])))
             ->keyBy(fn (Document $document): string => (string) $document->id);
         $documents = [];
         foreach ($ids as $id) {
@@ -275,6 +278,7 @@ readonly class OpenCompatService
      */
     public function listDocuments(array $filters): array
     {
+        $filters = $this->mergeScopeFilters($filters);
         $documents = array_map(
             fn (array $document): array => $this->documentShape($document),
             $this->browser->list((int) ($filters['limit'] ?? 100), $filters),
@@ -326,6 +330,10 @@ readonly class OpenCompatService
      */
     public function updateDocumentMetadata(string $documentId, array $input): array
     {
+        if (! $this->scopes->currentCanReadDocument($documentId)) {
+            return ['status' => 404, 'payload' => $this->errorPayload('document_not_found', 'Document not found.')];
+        }
+
         $document = $this->documents->findById($documentId);
         if (! $document) {
             return ['status' => 404, 'payload' => $this->errorPayload('document_not_found', 'Document not found.')];
@@ -344,6 +352,10 @@ readonly class OpenCompatService
      */
     public function updateDocumentText(string $documentId, array $input, ?string $idempotencyKey = null): array
     {
+        if (! $this->scopes->currentCanReadDocument($documentId)) {
+            return ['status' => 404, 'payload' => $this->errorPayload('document_not_found', 'Document not found.')];
+        }
+
         $document = $this->documents->findById($documentId);
         if (! $document) {
             return ['status' => 404, 'payload' => $this->errorPayload('document_not_found', 'Document not found.')];
@@ -371,6 +383,10 @@ readonly class OpenCompatService
      */
     public function deleteDocument(string $documentId, ?string $idempotencyKey = null): array
     {
+        if (! $this->scopes->currentCanReadDocument($documentId)) {
+            return ['status' => 404, 'payload' => $this->errorPayload('document_not_found', 'Document not found.')];
+        }
+
         $document = $this->documents->findById($documentId);
         if (! $document) {
             return ['status' => 404, 'payload' => $this->errorPayload('document_not_found', 'Document not found.')];
@@ -621,6 +637,37 @@ readonly class OpenCompatService
                 'endpoint' => $endpoint,
                 'reason' => $reason,
             ],
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $filters
+     * @return array<string, mixed>
+     */
+    private function mergeScopeFilters(array $filters): array
+    {
+        $scope = $this->scopes->currentDocumentFilters();
+        if ($scope === []) {
+            return $filters;
+        }
+
+        $scopedDocumentIds = is_array($scope['document_ids'] ?? null)
+            ? array_values(array_filter(array_map('strval', $scope['document_ids'])))
+            : [];
+
+        $requestedDocumentIds = is_array($filters['document_ids'] ?? null)
+            ? array_values(array_filter(array_map('strval', $filters['document_ids'])))
+            : (is_array($filters['documentIds'] ?? null)
+                ? array_values(array_filter(array_map('strval', $filters['documentIds'])))
+                : null);
+
+        if (is_array($requestedDocumentIds)) {
+            $scope['document_ids'] = array_values(array_intersect($requestedDocumentIds, $scopedDocumentIds));
+        }
+
+        return [
+            ...$filters,
+            ...$scope,
         ];
     }
 

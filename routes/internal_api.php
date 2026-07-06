@@ -90,7 +90,7 @@ Route::middleware(['auth:application-token,sanctum,oidc', 'throttle:hawki-api'])
     Route::post('/query', [HawkiRagProxyController::class, 'query'])->middleware('throttle:hawki-rag-query');
 });
 
-Route::middleware(['auth:sanctum,oidc', 'throttle:hawki-api'])->group(function () {
+Route::middleware(['auth:application-token,sanctum,oidc', 'throttle:hawki-api'])->group(function () {
     Route::prefix('ingest')->group(function () {
         Route::post('/text', [OpenCompatIngestController::class, 'text'])->middleware('throttle:hawki-rag-query');
         Route::post('/file', [OpenCompatIngestController::class, 'file'])->middleware('throttle:hawki-upload');
@@ -143,6 +143,53 @@ Route::middleware(['auth:sanctum,oidc', 'throttle:hawki-api'])->group(function (
     Route::post('/models', [OpenCompatModelController::class, 'unsupported']);
     Route::get('/models/custom', [OpenCompatModelController::class, 'unsupported']);
     Route::delete('/models/{modelId}', [OpenCompatModelController::class, 'unsupported'])->middleware('throttle:hawki-destructive');
+
+    Route::prefix('tenants')->group(function () {
+        Route::get('/', [SpecTenantController::class, 'index']);
+        Route::post('/', [SpecTenantController::class, 'store']);
+        Route::get('/{tenantId}', [SpecTenantController::class, 'show']);
+    });
+
+    Route::prefix('applications')->group(function () {
+        Route::get('/', [SpecApplicationController::class, 'index']);
+        Route::post('/', [SpecApplicationController::class, 'store']);
+        Route::get('/{applicationId}', [SpecApplicationController::class, 'show']);
+    });
+
+    Route::prefix('heaps')->group(function () {
+        Route::get('/', [SpecHeapController::class, 'index']);
+        Route::post('/', [SpecHeapController::class, 'store']);
+        Route::get('/{heapId}', [SpecHeapController::class, 'show']);
+        Route::patch('/{heapId}', [SpecHeapController::class, 'update']);
+        Route::delete('/{heapId}', [SpecHeapController::class, 'destroy'])->middleware('throttle:hawki-destructive');
+    });
+
+    Route::prefix('corpora')->group(function () {
+        Route::get('/', [SpecCorpusController::class, 'index']);
+        Route::get('/{corpusId}', [SpecCorpusController::class, 'show']);
+    });
+
+    Route::prefix('groups')->group(function () {
+        Route::get('/', [SpecGroupController::class, 'index']);
+        Route::post('/', [SpecGroupController::class, 'store']);
+        Route::get('/{groupId}/users', [SpecGroupController::class, 'users'])->where('groupId', '.*');
+        Route::put('/{groupId}/users', [SpecGroupController::class, 'replaceUsers'])->where('groupId', '.*');
+        Route::patch('/{groupId}/users', [SpecGroupController::class, 'updateUsers'])->where('groupId', '.*');
+        Route::get('/{groupId}', [SpecGroupController::class, 'show'])->where('groupId', '.*');
+        Route::delete('/{groupId}', [SpecGroupController::class, 'destroy'])->where('groupId', '.*')->middleware('throttle:hawki-destructive');
+    });
+
+    Route::prefix('auth')->group(function () {
+        Route::get('/heaps/{heapId}/grants', [SpecAuthorizationController::class, 'heapGrants']);
+        Route::put('/heaps/{heapId}/grants', [SpecAuthorizationController::class, 'replaceHeapGrants']);
+        Route::patch('/heaps/{heapId}/grants', [SpecAuthorizationController::class, 'updateHeapGrants']);
+        Route::get('/documents/{documentId}/grants', [SpecAuthorizationController::class, 'documentGrants']);
+        Route::put('/documents/{documentId}/grants', [SpecAuthorizationController::class, 'replaceDocumentGrants']);
+        Route::patch('/documents/{documentId}/grants', [SpecAuthorizationController::class, 'updateDocumentGrants']);
+    });
+});
+
+Route::middleware(['auth:sanctum,oidc', 'throttle:hawki-api'])->group(function () {
     Route::get('/api-keys', [OpenCompatApiKeyController::class, 'list']);
     Route::post('/api-keys', [OpenCompatApiKeyController::class, 'save']);
     Route::post('/migrate/document', [OpenCompatSystemController::class, 'migrateDocument'])->middleware('throttle:hawki-upload');
@@ -192,48 +239,4 @@ Route::middleware(['auth:sanctum,oidc', 'throttle:hawki-api'])->group(function (
     Route::get('/rag/neo4j/graph/snapshots/{id}', [RagGraphController::class, 'loadSnapshot']);
     Route::delete('/rag/neo4j/graph/snapshots/{id}', [RagGraphController::class, 'deleteSnapshot']);
     Route::post('/rag/neo4j/clear', [RagGraphController::class, 'clearNeo4j'])->middleware('throttle:hawki-destructive');
-
-    Route::prefix('tenants')->group(function () {
-        Route::get('/', [SpecTenantController::class, 'index']);
-        Route::post('/', [SpecTenantController::class, 'store']);
-        Route::get('/{tenantId}', [SpecTenantController::class, 'show']);
-    });
-
-    Route::prefix('applications')->group(function () {
-        Route::get('/', [SpecApplicationController::class, 'index']);
-        Route::post('/', [SpecApplicationController::class, 'store']);
-        Route::get('/{applicationId}', [SpecApplicationController::class, 'show']);
-    });
-
-    Route::prefix('heaps')->group(function () {
-        Route::get('/', [SpecHeapController::class, 'index']);
-        Route::post('/', [SpecHeapController::class, 'store']);
-        Route::get('/{heapId}', [SpecHeapController::class, 'show']);
-        Route::patch('/{heapId}', [SpecHeapController::class, 'update']);
-        Route::delete('/{heapId}', [SpecHeapController::class, 'destroy'])->middleware('throttle:hawki-destructive');
-    });
-
-    Route::prefix('corpora')->group(function () {
-        Route::get('/', [SpecCorpusController::class, 'index']);
-        Route::get('/{corpusId}', [SpecCorpusController::class, 'show']);
-    });
-
-    Route::prefix('groups')->group(function () {
-        Route::get('/', [SpecGroupController::class, 'index']);
-        Route::post('/', [SpecGroupController::class, 'store']);
-        Route::get('/{groupId}/users', [SpecGroupController::class, 'users'])->where('groupId', '.*');
-        Route::put('/{groupId}/users', [SpecGroupController::class, 'replaceUsers'])->where('groupId', '.*');
-        Route::patch('/{groupId}/users', [SpecGroupController::class, 'updateUsers'])->where('groupId', '.*');
-        Route::get('/{groupId}', [SpecGroupController::class, 'show'])->where('groupId', '.*');
-        Route::delete('/{groupId}', [SpecGroupController::class, 'destroy'])->where('groupId', '.*')->middleware('throttle:hawki-destructive');
-    });
-
-    Route::prefix('auth')->group(function () {
-        Route::get('/heaps/{heapId}/grants', [SpecAuthorizationController::class, 'heapGrants']);
-        Route::put('/heaps/{heapId}/grants', [SpecAuthorizationController::class, 'replaceHeapGrants']);
-        Route::patch('/heaps/{heapId}/grants', [SpecAuthorizationController::class, 'updateHeapGrants']);
-        Route::get('/documents/{documentId}/grants', [SpecAuthorizationController::class, 'documentGrants']);
-        Route::put('/documents/{documentId}/grants', [SpecAuthorizationController::class, 'replaceDocumentGrants']);
-        Route::patch('/documents/{documentId}/grants', [SpecAuthorizationController::class, 'updateDocumentGrants']);
-    });
 });

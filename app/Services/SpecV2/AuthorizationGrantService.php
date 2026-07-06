@@ -15,6 +15,7 @@ use App\Services\SpecV2\Repositories\GroupRepository;
 use App\Services\SpecV2\Repositories\HeapGrantRepository;
 use App\Services\SpecV2\Repositories\HeapRepository;
 use Illuminate\Container\Attributes\Singleton;
+use Illuminate\Contracts\Config\Repository as ConfigRepository;
 
 #[Singleton]
 readonly class AuthorizationGrantService
@@ -26,11 +27,16 @@ readonly class AuthorizationGrantService
         private DocumentGrantRepository $documentGrants,
         private DocumentRepository $documents,
         private SpecIdentifierFactory $identifiers,
+        private ConfigRepository $config,
     ) {}
 
     public function heapGrants(string $heapId): array
     {
         $heap = $this->requireHeap($heapId);
+
+        if (! $this->enabled()) {
+            return $this->grantPayload('heap', $heap->dataset_id, []);
+        }
 
         return $this->grantPayload('heap', $heap->dataset_id, $this->heapGrants->listForHeap($heap->dataset_id)->pluck('group_id')->all());
     }
@@ -41,6 +47,10 @@ readonly class AuthorizationGrantService
     public function replaceHeapGrants(string $heapId, array $groupIds): array
     {
         $heap = $this->requireHeap($heapId);
+        if (! $this->enabled()) {
+            return $this->grantPayload('heap', $heap->dataset_id, []);
+        }
+
         $resolved = $this->validatedGroupIds($groupIds, $heap->tenant_id, $heap->dataset_id);
         $this->heapGrants->replace($heap->dataset_id, $resolved);
 
@@ -54,6 +64,10 @@ readonly class AuthorizationGrantService
     public function updateHeapGrants(string $heapId, array $add, array $remove): array
     {
         $heap = $this->requireHeap($heapId);
+        if (! $this->enabled()) {
+            return $this->grantPayload('heap', $heap->dataset_id, []);
+        }
+
         $this->heapGrants->add($heap->dataset_id, $this->validatedGroupIds($add, $heap->tenant_id, $heap->dataset_id));
         $this->heapGrants->remove($heap->dataset_id, $this->identifiers->stringList($remove));
 
@@ -64,6 +78,10 @@ readonly class AuthorizationGrantService
     {
         $document = $this->requireDocument($documentId);
 
+        if (! $this->enabled()) {
+            return $this->grantPayload('document', (string) $document->id, []);
+        }
+
         return $this->grantPayload('document', (string) $document->id, $this->documentGrants->listForDocument((string) $document->id)->pluck('group_id')->all());
     }
 
@@ -73,6 +91,10 @@ readonly class AuthorizationGrantService
     public function replaceDocumentGrants(string $documentId, array $groupIds): array
     {
         $document = $this->requireDocument($documentId);
+        if (! $this->enabled()) {
+            return $this->grantPayload('document', (string) $document->id, []);
+        }
+
         $this->documentGrants->replace((string) $document->id, $this->validatedGroupIds(
             $groupIds,
             (string) $document->heap?->tenant_id,
@@ -89,6 +111,10 @@ readonly class AuthorizationGrantService
     public function updateDocumentGrants(string $documentId, array $add, array $remove): array
     {
         $document = $this->requireDocument($documentId);
+        if (! $this->enabled()) {
+            return $this->grantPayload('document', (string) $document->id, []);
+        }
+
         $tenantId = (string) $document->heap?->tenant_id;
         $this->documentGrants->add((string) $document->id, $this->validatedGroupIds($add, $tenantId, (string) $document->id));
         $this->documentGrants->remove((string) $document->id, $this->identifiers->stringList($remove));
@@ -154,5 +180,10 @@ readonly class AuthorizationGrantService
             'grants' => array_map(static fn (string $groupId): array => ['groupId' => $groupId], $groupIds),
             'count' => count($groupIds),
         ];
+    }
+
+    private function enabled(): bool
+    {
+        return (bool) $this->config->get('authz.enabled', false);
     }
 }
