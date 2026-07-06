@@ -30,10 +30,26 @@ denormalized payload writes.
 - `app/Http/Controllers/API/OpenCompat/DocumentController.php`
   Handles only compatibility document HTTP validation and delegates document
   reads or writes into the dedicated compatibility document service.
+- `app/Http/Controllers/SpecV2/DocumentController.php`
+  Handles canonical V2 document HTTP validation and delegates heap-scoped
+  document create, update, list, and delete flows into the dedicated V2
+  document service.
+- `app/Http/Controllers/API/OpenCompat/IngestController.php`
+  Handles only compatibility ingest HTTP validation and delegates upload,
+  text-ingest, and requeue behavior into the dedicated compatibility ingest
+  service.
 - `app/Services/OpenCompat/OpenCompatDocumentService.php`
   Owns compatibility document shaping, scoped document reads, and compatibility
   document write adapters. It must not absorb ingestion, model settings, or
   folder lifecycle responsibilities.
+- `app/Services/SpecV2/DocumentService.php`
+  Owns canonical V2 document lifecycle orchestration, corpus synchronization,
+  and bridge-backed text-ingest alignment. It must not absorb authorization
+  policy resolution or compatibility response shaping.
+- `app/Services/OpenCompat/OpenCompatIngestService.php`
+  Owns compatibility ingest-to-pipeline and text-ingest bridge handoff. It
+  must not absorb document browsing, folder lifecycle, or model settings
+  responsibilities.
 - `routes/internal_api/app_search.php`
   Application retrieval and search endpoints. Must stay on
   `auth:application-token`.
@@ -49,6 +65,10 @@ denormalized payload writes.
 - `app/Services/Authorization/ApplicationScopeResolver.php`
   Resolves document-level access scope for Laravel. It may use native grants
   and identity mappings, but not Python.
+- `app/Services/SpecV2/AuthorizationGrantService.php`
+  Owns canonical auth grant CRUD, direct user-grant persistence, and auth
+  utility lookups. It must not delegate authorization grant writes back into
+  connector event rows.
 - `app/Services/Authorization/PermissionSyncService.php`
   Accepts connector-shaped inputs, projects them into native groups and grants,
   and optionally mirrors them into the auth backend.

@@ -12,6 +12,7 @@ readonly class SpecV2Service
         public TenantService $tenants,
         public ApplicationService $applications,
         public HeapService $heaps,
+        public DocumentService $documents,
         public CorpusService $corpora,
         public GroupService $groups,
         public AuthorizationGrantService $auth,

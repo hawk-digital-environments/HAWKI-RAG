@@ -57,6 +57,11 @@ readonly class CorpusRepository
         return Corpus::query()->firstOrNew(['id' => $corpusId]);
     }
 
+    public function exists(string $corpusId): bool
+    {
+        return Corpus::query()->where('id', $corpusId)->exists();
+    }
+
     public function referenceCount(string $corpusId): int
     {
         return Document::query()
@@ -67,5 +72,22 @@ readonly class CorpusRepository
     public function save(Corpus $corpus): bool
     {
         return $corpus->save();
+    }
+
+    public function refreshReferenceCount(string $corpusId): void
+    {
+        $corpus = Corpus::query()->where('id', $corpusId)->first();
+        if (! $corpus instanceof Corpus) {
+            return;
+        }
+
+        $corpus->reference_count = $this->referenceCount($corpusId);
+
+        if ($corpus->reference_count < 1) {
+            $corpus->delete();
+            return;
+        }
+
+        $corpus->save();
     }
 }

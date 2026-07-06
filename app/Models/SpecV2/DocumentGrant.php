@@ -14,6 +14,8 @@ class DocumentGrant extends Model
     protected $fillable = [
         'document_id',
         'group_id',
+        'user_identifier',
+        'internal_user_id',
     ];
 
     public function document(): BelongsTo
@@ -24,5 +26,10 @@ class DocumentGrant extends Model
     public function group(): BelongsTo
     {
         return $this->belongsTo(Group::class, 'group_id', 'id');
+    }
+
+    public function internalUser(): BelongsTo
+    {
+        return $this->belongsTo(InternalUser::class, 'internal_user_id', 'id');
     }
 }

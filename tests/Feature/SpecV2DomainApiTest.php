@@ -180,6 +180,78 @@ class SpecV2DomainApiTest extends TestCase
             ->assertJsonPath('document.corpusId', hash('sha256', 'dataset-v2-doc'));
     }
 
+    public function test_canonical_v2_document_routes_create_update_and_delete_documents(): void
+    {
+        config()->set('config.hawki_rag_bridge_url', 'http://bridge.test');
+        Http::fake([
+            'http://bridge.test/ingest' => Http::response(['ok' => true], 200),
+            'http://bridge.test/documents/*' => Http::response(['ok' => true], 200),
+        ]);
+
+        ['token' => $token] = $this->issueApplicationToken([
+            'id' => 'rawki-default',
+            'tenant_id' => 'default',
+        ]);
+
+        Dataset::query()->create([
+            'dataset_id' => 'heap-spec-docs',
+            'tenant_id' => 'default',
+            'owner_application_id' => 'rawki-default',
+            'name' => 'Heap Spec Docs',
+            'status' => Dataset::STATUS_ACTIVE,
+            'visibility' => Dataset::VISIBILITY_DISCOVERABLE,
+            'protected' => false,
+            'metadata_json' => ['source' => 'api'],
+            'qdrant_collection' => 'heap_spec_docs',
+            'neo4j_namespace' => 'heap_spec_docs',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $create = $this->withHeader('Authorization', 'Bearer '.$token)
+            ->postJson('/api/heaps/heap-spec-docs/documents', [
+                'document_id' => 'doc-spec-1',
+                'content' => 'Initial design guidance.',
+                'metadata' => ['course' => 'design'],
+                'source_url' => 'https://example.test/spec-doc-1',
+                'title' => 'Spec Document',
+            ])->assertCreated()
+            ->assertJsonPath('documentId', 'doc-spec-1')
+            ->assertJsonPath('heapId', 'heap-spec-docs')
+            ->assertJsonPath('metadata.course', 'design')
+            ->assertJsonPath('isDuplicate', false);
+
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->getJson('/api/heaps/heap-spec-docs/documents')
+            ->assertOk()
+            ->assertJsonPath('pagination.total', 1)
+            ->assertJsonPath('data.0.documentId', 'doc-spec-1');
+
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->putJson('/api/documents/doc-spec-1', [
+                'content' => 'Updated design guidance.',
+                'metadata' => ['course' => 'ux'],
+                'title' => 'Updated Spec Document',
+            ])->assertOk()
+            ->assertJsonPath('documentId', 'doc-spec-1')
+            ->assertJsonPath('metadata.course', 'ux')
+            ->assertJsonPath('title', 'Updated Spec Document');
+
+        $this->assertDatabaseHas('documents', [
+            'id' => 'doc-spec-1',
+            'dataset_id' => 'heap-spec-docs',
+            'title' => 'Updated Spec Document',
+        ]);
+
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->delete('/api/documents/doc-spec-1')
+            ->assertNoContent();
+
+        $this->assertDatabaseMissing('documents', [
+            'id' => 'doc-spec-1',
+        ]);
+    }
+
     public function test_application_actor_defaults_ownership_without_human_identity_provisioning(): void
     {
         $this->actingAsApplication([

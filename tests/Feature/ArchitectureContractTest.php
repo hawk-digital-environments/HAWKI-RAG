@@ -315,7 +315,10 @@ class ArchitectureContractTest extends TestCase
         $proxy = file_get_contents(app_path('Http/Controllers/API/HawkiRagProxyController.php'));
         $retrieval = file_get_contents(app_path('Http/Controllers/API/OpenCompat/RetrievalController.php'));
         $compatDocuments = file_get_contents(app_path('Http/Controllers/API/OpenCompat/DocumentController.php'));
+        $compatIngest = file_get_contents(app_path('Http/Controllers/API/OpenCompat/IngestController.php'));
         $compatDocumentService = file_get_contents(app_path('Services/OpenCompat/OpenCompatDocumentService.php'));
+        $compatIngestService = file_get_contents(app_path('Services/OpenCompat/OpenCompatIngestService.php'));
+        $specDocuments = file_get_contents(app_path('Services/SpecV2/DocumentService.php'));
         $appSearchRoutes = file_get_contents(base_path('routes/internal_api/app_search.php'));
         $appIngestionRoutes = file_get_contents(base_path('routes/internal_api/app_ingestion.php'));
         $compatibilityRoutes = file_get_contents(base_path('routes/internal_api/compatibility.php'));
@@ -342,9 +345,21 @@ class ArchitectureContractTest extends TestCase
         $this->assertStringContainsString('OpenCompatDocumentService', $compatDocuments);
         $this->assertStringNotContainsString('OpenCompatService', $compatDocuments);
 
+        $this->assertIsString($compatIngest);
+        $this->assertStringContainsString('OpenCompatIngestService', $compatIngest);
+        $this->assertStringNotContainsString('OpenCompatService', $compatIngest);
+
         $this->assertIsString($compatDocumentService);
         $this->assertStringContainsString('DocumentBrowserService', $compatDocumentService);
         $this->assertStringNotContainsString('PipelineUploadInput', $compatDocumentService);
+
+        $this->assertIsString($compatIngestService);
+        $this->assertStringContainsString('PipelineUploadInput', $compatIngestService);
+        $this->assertStringNotContainsString('LegacyDatasetService', $compatIngestService);
+
+        $this->assertIsString($specDocuments);
+        $this->assertStringContainsString('CorpusSyncService', $specDocuments);
+        $this->assertStringContainsString('OpenCompatIngestService', $specDocuments);
 
         $this->assertIsString($appSearchRoutes);
         $this->assertStringContainsString('auth:application-token', $appSearchRoutes);
@@ -357,6 +372,9 @@ class ArchitectureContractTest extends TestCase
         $this->assertIsString($specRoutes);
         $this->assertStringContainsString('auth:application-token', $specRoutes);
         $this->assertStringNotContainsString('sanctum,oidc', $specRoutes);
+        $this->assertStringContainsString("/{heapId}/documents", $specRoutes);
+        $this->assertStringContainsString("Route::get('/check'", $specRoutes);
+        $this->assertStringContainsString("Route::prefix('groups')", $specRoutes);
         $this->assertIsString($operatorRoutes);
         $this->assertStringContainsString('auth:sanctum,oidc', $operatorRoutes);
         $this->assertStringNotContainsString("Route::post('/start'", $operatorRoutes);

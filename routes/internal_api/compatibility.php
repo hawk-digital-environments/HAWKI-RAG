@@ -38,7 +38,6 @@ Route::middleware(['auth:application-token', 'throttle:hawki-api'])->group(funct
         Route::post('/{documentId}/update_text', [OpenCompatDocumentController::class, 'updateText'])->middleware('throttle:hawki-upload');
         Route::post('/{documentId}/update_file', [OpenCompatDocumentController::class, 'updateFile'])->middleware('throttle:hawki-upload');
         Route::post('/{documentId}/update_metadata', [OpenCompatDocumentController::class, 'updateMetadata']);
-        Route::delete('/{documentId}', [OpenCompatDocumentController::class, 'delete'])->middleware('throttle:hawki-destructive');
         Route::get('/{documentId}', [DocumentBrowserController::class, 'show']);
     });
 

@@ -14,4 +14,9 @@ class AuthorizationGrantException extends \RuntimeException
     {
         return new self("All granted groups for {$resourceId} must belong to tenant {$tenantId}.");
     }
+
+    public static function invalidPermissionCheckTarget(): self
+    {
+        return new self('Provide exactly one of heap_id or document_id.');
+    }
 }

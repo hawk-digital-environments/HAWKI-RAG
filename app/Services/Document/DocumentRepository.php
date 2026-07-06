@@ -8,6 +8,7 @@ use App\Models\Document;
 use App\Models\PipelineJob;
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
 
 #[Singleton]
@@ -20,6 +21,24 @@ readonly class DocumentRepository
         }
 
         return Document::query()->where('id', $documentId)->first();
+    }
+
+    /**
+     * @param array<string, mixed> $attributes
+     */
+    public function create(array $attributes): Document
+    {
+        return Document::query()->create($attributes);
+    }
+
+    public function save(Document $document): bool
+    {
+        return $document->save();
+    }
+
+    public function delete(Document $document): bool
+    {
+        return (bool) $document->delete();
     }
 
     public function latestCompleted(): ?Document
@@ -82,6 +101,17 @@ readonly class DocumentRepository
             ->orderByDesc('created_at')
             ->limit($limit)
             ->get();
+    }
+
+    /**
+     * @param array<string, mixed> $filters
+     */
+    public function paginate(array $filters, int $perPage, int $page): LengthAwarePaginator
+    {
+        return $this->filteredQuery($filters)
+            ->orderByDesc('updated_at')
+            ->orderByDesc('created_at')
+            ->paginate($perPage, ['documents.*'], 'page', $page);
     }
 
     /**

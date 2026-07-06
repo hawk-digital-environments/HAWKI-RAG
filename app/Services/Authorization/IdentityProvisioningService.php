@@ -75,6 +75,15 @@ readonly class IdentityProvisioningService
      */
     public function groupMemberAssignments(string $tenantId, string $applicationId, array $identifiers): array
     {
+        return $this->userAssignments($tenantId, $applicationId, $identifiers);
+    }
+
+    /**
+     * @param list<string> $identifiers
+     * @return list<GroupMemberAssignment>
+     */
+    public function userAssignments(string $tenantId, string $applicationId, array $identifiers): array
+    {
         $resolvedApplicationId = $this->context->ensureApplication($tenantId, $applicationId);
         $assignments = [];
 

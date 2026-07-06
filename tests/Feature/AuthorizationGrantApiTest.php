@@ -80,11 +80,12 @@ class AuthorizationGrantApiTest extends TestCase
         ]);
 
         $this->withHeader('Authorization', 'Bearer '.$token)
-            ->putJson('/api/auth/heaps/heap-protected/grants', [
+            ->putJson('/api/auth/heaps/heap-protected', [
             'groups' => [$application->id.':design_students'],
         ])->assertOk()
             ->assertJsonPath('count', 1)
-            ->assertJsonPath('grants.0.groupId', $application->id.':design_students');
+            ->assertJsonPath('groups.0', $application->id.':design_students')
+            ->assertJsonPath('users', []);
 
         $this->withHeader('Authorization', 'Bearer '.$token)
             ->postJson('/api/query', [
@@ -104,7 +105,7 @@ class AuthorizationGrantApiTest extends TestCase
         });
     }
 
-    public function test_document_grant_api_allows_document_browser_for_user_identifier_scoped_app_requests(): void
+    public function test_document_grant_api_allows_document_browser_for_direct_user_grants(): void
     {
         config()->set('authz.enabled', true);
         ['token' => $token] = $this->issueApplicationToken([
@@ -140,36 +141,83 @@ class AuthorizationGrantApiTest extends TestCase
         ]);
 
         $userIdentifier = 'reader@example.test';
-        $assignments = app(IdentityProvisioningService::class)->groupMemberAssignments(
-            'default',
-            'rawki-default',
-            [$userIdentifier],
-        );
-
-        Group::query()->create([
-            'id' => 'rawki-default:direct_doc_readers',
-            'tenant_id' => 'default',
-            'owner_application_id' => 'rawki-default',
-            'name' => 'Direct Doc Readers',
-            'metadata_json' => [],
-        ]);
-        GroupMember::query()->create([
-            'group_id' => 'rawki-default:direct_doc_readers',
-            'user_identifier' => $userIdentifier,
-            'internal_user_id' => $assignments[0]->internalUserId,
-        ]);
-
         $this->withHeader('Authorization', 'Bearer '.$token)
-            ->putJson('/api/auth/documents/'.$document->id.'/grants', [
-            'groups' => ['rawki-default:direct_doc_readers'],
+            ->putJson('/api/auth/documents/'.$document->id, [
+            'users' => [$userIdentifier],
         ])->assertOk()
-            ->assertJsonPath('count', 1);
+            ->assertJsonPath('count', 1)
+            ->assertJsonPath('users.0', $userIdentifier)
+            ->assertJsonPath('groups', []);
 
         $this->withHeader('Authorization', 'Bearer '.$token)
             ->getJson('/api/documents/'.$document->id.'?user_identifier='.urlencode($userIdentifier))
             ->assertOk()
             ->assertJsonPath('success', true)
             ->assertJsonPath('document.id', $document->id);
+
+        $this->assertDatabaseHas('user_identities', [
+            'tenant_id' => 'default',
+            'application_id' => 'rawki-default',
+            'external_user_id' => $userIdentifier,
+        ]);
+    }
+
+    public function test_auth_group_aliases_and_utilities_follow_the_spec_surface(): void
+    {
+        config()->set('authz.enabled', true);
+
+        ['application' => $application, 'token' => $token] = $this->issueApplicationToken([
+            'id' => 'hawki-web',
+            'tenant_id' => 'uni-hawk',
+            'permissions' => ['reads-all-apps'],
+        ]);
+
+        Dataset::query()->create([
+            'dataset_id' => 'heap-utility',
+            'tenant_id' => 'uni-hawk',
+            'owner_application_id' => $application->id,
+            'name' => 'Utility Heap',
+            'status' => Dataset::STATUS_ACTIVE,
+            'visibility' => Dataset::VISIBILITY_DISCOVERABLE,
+            'protected' => true,
+            'metadata_json' => [],
+            'qdrant_collection' => 'utility_heap',
+            'neo4j_namespace' => 'utility_heap',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->postJson('/api/auth/groups', [
+                'id' => 'design_students',
+                'name' => 'Design Students',
+                'owner_application_id' => $application->id,
+            ])->assertCreated()
+            ->assertJsonPath('id', $application->id.':design_students');
+
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->putJson('/api/auth/groups/'.$application->id.':design_students/users', [
+                'users' => ['alice@hawk.de'],
+            ])->assertOk()
+            ->assertJsonPath('data.0', 'alice@hawk.de');
+
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->putJson('/api/auth/heaps/heap-utility', [
+                'groups' => [$application->id.':design_students'],
+            ])->assertOk()
+            ->assertJsonPath('groups.0', $application->id.':design_students')
+            ->assertJsonPath('protected', true);
+
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->getJson('/api/auth/check?user_identifier='.urlencode('alice@hawk.de').'&heap_id=heap-utility')
+            ->assertOk()
+            ->assertJsonPath('permitted', true);
+
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->getJson('/api/auth/users/by-identifier/heaps?identifier='.urlencode('alice@hawk.de'))
+            ->assertOk()
+            ->assertJsonPath('data.0', 'heap-utility')
+            ->assertJsonPath('pagination.total', 1);
     }
 
     public function test_heap_metadata_rejects_reserved_keys(): void
@@ -317,17 +365,19 @@ class AuthorizationGrantApiTest extends TestCase
             'tenant_id' => 'default',
         ]);
 
-        $this->putJson('/api/auth/heaps/heap-disabled-authz/grants', [
+        $this->putJson('/api/auth/heaps/heap-disabled-authz', [
             'groups' => ['missing-group'],
         ])->assertOk()
             ->assertJsonPath('count', 0)
-            ->assertJsonPath('grants', []);
+            ->assertJsonPath('groups', [])
+            ->assertJsonPath('users', []);
 
-        $this->putJson('/api/auth/documents/'.$document->id.'/grants', [
+        $this->putJson('/api/auth/documents/'.$document->id, [
             'groups' => ['missing-group'],
         ])->assertOk()
             ->assertJsonPath('count', 0)
-            ->assertJsonPath('grants', []);
+            ->assertJsonPath('groups', [])
+            ->assertJsonPath('users', []);
 
         $this->assertDatabaseCount('heap_grants', 0);
         $this->assertDatabaseCount('document_grants', 0);

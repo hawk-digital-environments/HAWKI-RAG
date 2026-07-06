@@ -5,13 +5,13 @@ declare(strict_types=1);
 namespace App\Http\Controllers\API\OpenCompat;
 
 use App\Http\Controllers\Controller;
-use App\Services\OpenCompat\OpenCompatService;
+use App\Services\OpenCompat\OpenCompatIngestService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class IngestController extends Controller
 {
-    public function __construct(private readonly OpenCompatService $compat) {}
+    public function __construct(private readonly OpenCompatIngestService $ingest) {}
 
     public function text(Request $request): JsonResponse
     {
@@ -41,7 +41,7 @@ class IngestController extends Controller
             'dry_run' => 'sometimes|boolean',
         ]);
 
-        return $this->json($this->compat->ingestText($input, $request->header('Idempotency-Key')));
+        return $this->json($this->ingest->ingestText($input, $request->header('Idempotency-Key')));
     }
 
     public function file(Request $request): JsonResponse
@@ -63,7 +63,7 @@ class IngestController extends Controller
             'converterStartPath' => 'sometimes|string|max:255',
         ]);
 
-        return $this->json($this->compat->ingestFile($input, $request->file('file')));
+        return $this->json($this->ingest->ingestFile($input, $request->file('file')));
     }
 
     public function files(Request $request): JsonResponse
@@ -78,17 +78,17 @@ class IngestController extends Controller
             'graph' => 'sometimes|boolean',
         ]);
 
-        return $this->json($this->compat->ingestFiles($request->file('files', []), $input));
+        return $this->json($this->ingest->ingestFiles($request->file('files', []), $input));
     }
 
     public function requeue(Request $request): JsonResponse
     {
-        return $this->json($this->compat->requeue($request->all()));
+        return $this->json($this->ingest->requeue($request->all()));
     }
 
     public function documentQuery(): JsonResponse
     {
-        return $this->json($this->compat->unsupported(
+        return $this->json($this->unsupported(
             'ingest/document/query',
             'RAWKI does not currently expose a temporary document query workflow without persistence.',
         ));
@@ -100,5 +100,21 @@ class IngestController extends Controller
     private function json(array $result): JsonResponse
     {
         return response()->json($result['payload'], $result['status']);
+    }
+
+    /**
+     * @return array{payload: array<string, mixed>, status: int}
+     */
+    private function unsupported(string $endpoint, string $reason): array
+    {
+        return [
+            'status' => 501,
+            'payload' => [
+                'ok' => false,
+                'error' => 'unsupported',
+                'endpoint' => $endpoint,
+                'reason' => $reason,
+            ],
+        ];
     }
 }

@@ -20,6 +20,8 @@ class PipelineUploadStorageTest extends TestCase
 
         $this->root = storage_path('framework/testing/pipeline-upload-storage');
         File::deleteDirectory($this->root);
+        File::ensureDirectoryExists(dirname($this->root));
+        File::ensureDirectoryExists($this->root);
         config()->set('temporal.storage.shared_root', $this->root);
     }
 

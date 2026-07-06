@@ -13,6 +13,8 @@ class HeapGrant extends Model
     protected $fillable = [
         'heap_id',
         'group_id',
+        'user_identifier',
+        'internal_user_id',
     ];
 
     public function heap(): BelongsTo
@@ -23,5 +25,10 @@ class HeapGrant extends Model
     public function group(): BelongsTo
     {
         return $this->belongsTo(Group::class, 'group_id', 'id');
+    }
+
+    public function internalUser(): BelongsTo
+    {
+        return $this->belongsTo(InternalUser::class, 'internal_user_id', 'id');
     }
 }
