@@ -18,10 +18,10 @@ use Illuminate\Support\Facades\Route;
 
 /*
 |--------------------------------------------------------------------------
-| RAG Bridge and Vector Operations
+| Search Bridge and Vector Operations
 |--------------------------------------------------------------------------
-| HawkiRagProxyController: forwards query requests to the RAG bridge.
-| RagStatsController: exposes vector/Qdrant stats and collection cleanup.
+| HawkiRagProxyController: forwards search requests to the RAG bridge.
+| RagStatsController: exposes vector/Qdrant stats and vector cleanup.
 */
 use App\Http\Controllers\API\HawkiRagProxyController;
 use App\Http\Controllers\API\OpenCompat\ApiKeyController as OpenCompatApiKeyController;
@@ -48,10 +48,10 @@ use App\Http\Controllers\Graph\RagGraphController;
 
 /*
 |--------------------------------------------------------------------------
-| Dataset and Document API
+| Heap and Document API
 |--------------------------------------------------------------------------
-| DatasetController: lists, creates, shows, and cleans dataset storage.
-| DocumentBrowserController: lists and shows documents inside datasets.
+| DatasetController: compatibility layer for heap browser storage operations.
+| DocumentBrowserController: lists and shows documents inside heaps.
 */
 use App\Http\Controllers\DatasetController;
 use App\Http\Controllers\DocumentBrowserController;
@@ -61,13 +61,33 @@ use App\Http\Controllers\DocumentBrowserController;
 | Pipeline API
 |--------------------------------------------------------------------------
 | PipelineControlController: receives file uploads for ingestion.
-| PipelineRecoveryController: retries failed jobs, tasks, and datasets.
+| PipelineRecoveryController: retries failed jobs, tasks, and heaps.
 | PipelineTaskController: manages task status, jobs, events, retries, cancel,
 | and cache/history deletion.
 */
 use App\Http\Controllers\PipelineControlController;
 use App\Http\Controllers\PipelineRecoveryController;
 use App\Http\Controllers\PipelineTaskController;
+
+Route::middleware(['auth:application-token,sanctum,oidc', 'throttle:hawki-api'])->group(function () {
+    Route::prefix('search')->group(function () {
+        Route::post('/', [HawkiRagProxyController::class, 'query'])->middleware('throttle:hawki-rag-query');
+        Route::post('/chunks', [OpenCompatRetrievalController::class, 'chunks'])->middleware('throttle:hawki-rag-query');
+        Route::post('/chunks/grouped', [OpenCompatRetrievalController::class, 'groupedChunks'])->middleware('throttle:hawki-rag-query');
+    });
+
+    Route::prefix('retrieve')->group(function () {
+        Route::post('/chunks', [OpenCompatRetrievalController::class, 'chunks'])->middleware('throttle:hawki-rag-query');
+        Route::post('/chunks/grouped', [OpenCompatRetrievalController::class, 'groupedChunks'])->middleware('throttle:hawki-rag-query');
+        Route::post('/docs', [OpenCompatRetrievalController::class, 'docs'])->middleware('throttle:hawki-rag-query');
+    });
+    Route::post('/batch/chunks', [OpenCompatRetrievalController::class, 'batchChunks'])->middleware('throttle:hawki-rag-query');
+    Route::post('/search/documents', [OpenCompatRetrievalController::class, 'searchDocuments']);
+    Route::post('/batch/documents', [OpenCompatRetrievalController::class, 'batchDocuments']);
+
+    Route::post('/search', [HawkiRagProxyController::class, 'query'])->middleware('throttle:hawki-rag-query');
+    Route::post('/query', [HawkiRagProxyController::class, 'query'])->middleware('throttle:hawki-rag-query');
+});
 
 Route::middleware(['auth:sanctum,oidc', 'throttle:hawki-api'])->group(function () {
     Route::prefix('ingest')->group(function () {
@@ -78,55 +98,11 @@ Route::middleware(['auth:sanctum,oidc', 'throttle:hawki-api'])->group(function (
         Route::post('/document/query', [OpenCompatIngestController::class, 'documentQuery'])->middleware('throttle:hawki-upload');
     });
 
-    Route::prefix('retrieve')->group(function () {
-        Route::post('/chunks', [OpenCompatRetrievalController::class, 'chunks'])->middleware('throttle:hawki-rag-query');
-        Route::post('/chunks/grouped', [OpenCompatRetrievalController::class, 'groupedChunks'])->middleware('throttle:hawki-rag-query');
-        Route::post('/docs', [OpenCompatRetrievalController::class, 'docs'])->middleware('throttle:hawki-rag-query');
-    });
-    Route::post('/search/documents', [OpenCompatRetrievalController::class, 'searchDocuments']);
-    Route::post('/batch/documents', [OpenCompatRetrievalController::class, 'batchDocuments']);
-    Route::post('/batch/chunks', [OpenCompatRetrievalController::class, 'batchChunks'])->middleware('throttle:hawki-rag-query');
-
     Route::prefix('datasets')->group(function () {
         Route::get('/', [DatasetController::class, 'index']);
         Route::post('/', [DatasetController::class, 'store']);
         Route::get('/{datasetId}', [DatasetController::class, 'show']);
         Route::delete('/{datasetId}/storage', [DatasetController::class, 'destroyStorage']);
-    });
-
-    Route::prefix('tenants')->group(function () {
-        Route::get('/', [SpecTenantController::class, 'index']);
-        Route::post('/', [SpecTenantController::class, 'store']);
-        Route::get('/{tenantId}', [SpecTenantController::class, 'show']);
-    });
-
-    Route::prefix('applications')->group(function () {
-        Route::get('/', [SpecApplicationController::class, 'index']);
-        Route::post('/', [SpecApplicationController::class, 'store']);
-        Route::get('/{applicationId}', [SpecApplicationController::class, 'show']);
-    });
-
-    Route::prefix('heaps')->group(function () {
-        Route::get('/', [SpecHeapController::class, 'index']);
-        Route::post('/', [SpecHeapController::class, 'store']);
-        Route::get('/{heapId}', [SpecHeapController::class, 'show']);
-        Route::patch('/{heapId}', [SpecHeapController::class, 'update']);
-        Route::delete('/{heapId}', [SpecHeapController::class, 'destroy'])->middleware('throttle:hawki-destructive');
-    });
-
-    Route::prefix('corpora')->group(function () {
-        Route::get('/', [SpecCorpusController::class, 'index']);
-        Route::get('/{corpusId}', [SpecCorpusController::class, 'show']);
-    });
-
-    Route::prefix('groups')->group(function () {
-        Route::get('/', [SpecGroupController::class, 'index']);
-        Route::post('/', [SpecGroupController::class, 'store']);
-        Route::get('/{groupId}/users', [SpecGroupController::class, 'users'])->where('groupId', '.*');
-        Route::put('/{groupId}/users', [SpecGroupController::class, 'replaceUsers'])->where('groupId', '.*');
-        Route::patch('/{groupId}/users', [SpecGroupController::class, 'updateUsers'])->where('groupId', '.*');
-        Route::get('/{groupId}', [SpecGroupController::class, 'show'])->where('groupId', '.*');
-        Route::delete('/{groupId}', [SpecGroupController::class, 'destroy'])->where('groupId', '.*')->middleware('throttle:hawki-destructive');
     });
 
     Route::prefix('documents')->group(function () {
@@ -198,10 +174,10 @@ Route::middleware(['auth:sanctum,oidc', 'throttle:hawki-api'])->group(function (
         Route::post('/jobs/{jobId}/retry', [PipelineRecoveryController::class, 'retryJob'])->middleware('throttle:hawki-destructive');
         Route::post('/retry-all', [PipelineRecoveryController::class, 'retryAll'])->middleware('throttle:hawki-destructive');
         Route::post('/tasks/{taskId}/retry-failed', [PipelineRecoveryController::class, 'retryTask'])->middleware('throttle:hawki-destructive');
+        Route::post('/heaps/{datasetId}/retry-failed', [PipelineRecoveryController::class, 'retryDataset'])->middleware('throttle:hawki-destructive');
         Route::post('/datasets/{datasetId}/retry-failed', [PipelineRecoveryController::class, 'retryDataset'])->middleware('throttle:hawki-destructive');
     });
 
-    Route::post('/query', [HawkiRagProxyController::class, 'query'])->middleware('throttle:hawki-rag-query');
     Route::get('/rag/stats', [RagStatsController::class, 'show']);
     Route::delete('/rag/qdrant/collections/{collection}', [RagStatsController::class, 'destroyQdrantCollection'])->middleware('throttle:hawki-destructive');
     Route::get('/rag/neo4j/graph/overview', [RagGraphController::class, 'overview']);
@@ -215,4 +191,39 @@ Route::middleware(['auth:sanctum,oidc', 'throttle:hawki-api'])->group(function (
     Route::get('/rag/neo4j/graph/snapshots/{id}', [RagGraphController::class, 'loadSnapshot']);
     Route::delete('/rag/neo4j/graph/snapshots/{id}', [RagGraphController::class, 'deleteSnapshot']);
     Route::post('/rag/neo4j/clear', [RagGraphController::class, 'clearNeo4j'])->middleware('throttle:hawki-destructive');
+
+    Route::prefix('tenants')->group(function () {
+        Route::get('/', [SpecTenantController::class, 'index']);
+        Route::post('/', [SpecTenantController::class, 'store']);
+        Route::get('/{tenantId}', [SpecTenantController::class, 'show']);
+    });
+
+    Route::prefix('applications')->group(function () {
+        Route::get('/', [SpecApplicationController::class, 'index']);
+        Route::post('/', [SpecApplicationController::class, 'store']);
+        Route::get('/{applicationId}', [SpecApplicationController::class, 'show']);
+    });
+
+    Route::prefix('heaps')->group(function () {
+        Route::get('/', [SpecHeapController::class, 'index']);
+        Route::post('/', [SpecHeapController::class, 'store']);
+        Route::get('/{heapId}', [SpecHeapController::class, 'show']);
+        Route::patch('/{heapId}', [SpecHeapController::class, 'update']);
+        Route::delete('/{heapId}', [SpecHeapController::class, 'destroy'])->middleware('throttle:hawki-destructive');
+    });
+
+    Route::prefix('corpora')->group(function () {
+        Route::get('/', [SpecCorpusController::class, 'index']);
+        Route::get('/{corpusId}', [SpecCorpusController::class, 'show']);
+    });
+
+    Route::prefix('groups')->group(function () {
+        Route::get('/', [SpecGroupController::class, 'index']);
+        Route::post('/', [SpecGroupController::class, 'store']);
+        Route::get('/{groupId}/users', [SpecGroupController::class, 'users'])->where('groupId', '.*');
+        Route::put('/{groupId}/users', [SpecGroupController::class, 'replaceUsers'])->where('groupId', '.*');
+        Route::patch('/{groupId}/users', [SpecGroupController::class, 'updateUsers'])->where('groupId', '.*');
+        Route::get('/{groupId}', [SpecGroupController::class, 'show'])->where('groupId', '.*');
+        Route::delete('/{groupId}', [SpecGroupController::class, 'destroy'])->where('groupId', '.*')->middleware('throttle:hawki-destructive');
+    });
 });

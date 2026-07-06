@@ -5,7 +5,8 @@ declare(strict_types=1);
 namespace App\Http\Controllers\API\OpenCompat;
 
 use App\Http\Controllers\Controller;
-use App\Services\Authorization\AuthorizationService;
+use App\Services\Authorization\ApiActorResolver;
+use App\Services\Authorization\GatewaySearchFilterService;
 use App\Services\OpenCompat\OpenCompatService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -14,25 +15,31 @@ class RetrievalController extends Controller
 {
     public function __construct(private readonly OpenCompatService $compat) {}
 
-    public function chunks(Request $request, AuthorizationService $authorization): JsonResponse
+    public function chunks(Request $request, ApiActorResolver $actors, GatewaySearchFilterService $filters): JsonResponse
     {
         $input = $this->validateQuery($request);
+        $input['filters'] = $filters->build($input['filters'] ?? [], $actors->resolve($request), $input['user_identifier'] ?? null);
+        unset($input['user_identifier']);
 
-        return $this->json($this->compat->retrieveChunks($input, $authorization->retrievalContextFor($request->user())));
+        return $this->json($this->compat->retrieveChunks($input));
     }
 
-    public function groupedChunks(Request $request, AuthorizationService $authorization): JsonResponse
+    public function groupedChunks(Request $request, ApiActorResolver $actors, GatewaySearchFilterService $filters): JsonResponse
     {
         $input = $this->validateQuery($request);
+        $input['filters'] = $filters->build($input['filters'] ?? [], $actors->resolve($request), $input['user_identifier'] ?? null);
+        unset($input['user_identifier']);
 
-        return $this->json($this->compat->retrieveChunks($input, $authorization->retrievalContextFor($request->user()), grouped: true));
+        return $this->json($this->compat->retrieveChunks($input, grouped: true));
     }
 
-    public function docs(Request $request, AuthorizationService $authorization): JsonResponse
+    public function docs(Request $request, ApiActorResolver $actors, GatewaySearchFilterService $filters): JsonResponse
     {
         $input = $this->validateQuery($request);
+        $input['filters'] = $filters->build($input['filters'] ?? [], $actors->resolve($request), $input['user_identifier'] ?? null);
+        unset($input['user_identifier']);
 
-        return $this->json($this->compat->retrieveDocs($input, $authorization->retrievalContextFor($request->user())));
+        return $this->json($this->compat->retrieveDocs($input));
     }
 
     public function searchDocuments(Request $request): JsonResponse
@@ -61,7 +68,7 @@ class RetrievalController extends Controller
         return $this->json($this->compat->batchDocuments($input));
     }
 
-    public function batchChunks(Request $request, AuthorizationService $authorization): JsonResponse
+    public function batchChunks(Request $request, ApiActorResolver $actors, GatewaySearchFilterService $filters): JsonResponse
     {
         $input = $request->validate([
             'query' => 'sometimes|string|max:4000',
@@ -71,9 +78,13 @@ class RetrievalController extends Controller
             'chunk_ids.*' => 'string|max:255',
             'chunkIds' => 'sometimes|array|max:250',
             'chunkIds.*' => 'string|max:255',
+            'filters' => 'sometimes|array',
+            'user_identifier' => 'sometimes|string|max:255',
         ]);
+        $input['filters'] = $filters->build($input['filters'] ?? [], $actors->resolve($request), $input['user_identifier'] ?? null);
+        unset($input['user_identifier']);
 
-        return $this->json($this->compat->batchChunks($input, $authorization->retrievalContextFor($request->user())));
+        return $this->json($this->compat->batchChunks($input));
     }
 
     /**
@@ -86,6 +97,7 @@ class RetrievalController extends Controller
             'top_k' => 'sometimes|integer|min:1|max:100',
             'k' => 'sometimes|integer|min:1|max:100',
             'filters' => 'sometimes|array',
+            'user_identifier' => 'sometimes|string|max:255',
             'preferred_tags' => 'sometimes|array|max:20',
             'preferred_tags.*' => 'string|max:80',
             'fast_mode' => 'sometimes|boolean',

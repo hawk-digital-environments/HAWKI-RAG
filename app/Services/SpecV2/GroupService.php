@@ -3,8 +3,8 @@ declare(strict_types=1);
 
 namespace App\Services\SpecV2;
 
-use App\Models\User;
 use App\Models\SpecV2\Group;
+use App\Services\Authorization\ApiActor;
 use App\Services\Authorization\IdentityProvisioningService;
 use App\Services\SpecV2\Exceptions\ApplicationNotFoundException;
 use App\Services\SpecV2\Exceptions\GroupNotFoundException;
@@ -57,10 +57,10 @@ readonly class GroupService
     /**
      * @param array<string, mixed> $input
      */
-    public function create(array $input, ?User $actor = null): array
+    public function create(array $input, ?ApiActor $actor = null): array
     {
         $applicationId = $this->identifiers->stringValue($input['owner_application_id'] ?? null)
-            ?? $this->identityProvisioning->actorForUser($actor)?->application_id
+            ?? $actor?->applicationId()
             ?? 'rawki-default';
         $application = $this->applications->findById($applicationId);
 

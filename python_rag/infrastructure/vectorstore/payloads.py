@@ -14,7 +14,9 @@ def iter_batches(items: Sequence[Any], batch_size: int) -> Iterator[list[Any]]:
 def build_match_filter(filters: Optional[dict[str, Any]]) -> dict[str, Any]:
     if not filters:
         return {}
-    return {"must": [{"key": key, "match": {"value": value}} for key, value in filters.items()]}
+    if any(key in filters for key in ("must", "should", "must_not")):
+        return dict(filters)
+    return {"must": [{"key": ("doc_id" if key == "document_id" else key), "match": {"value": value}} for key, value in filters.items()]}
 
 
 def build_keyword_should_filter(

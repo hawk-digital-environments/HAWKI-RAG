@@ -60,7 +60,7 @@
         },
         {
             state: 'Graph',
-            label: 'Retrieval assets',
+            label: 'Search assets',
             copy: 'Prepare data for vector search and graph exploration.',
             tone: 'next',
         },
@@ -106,7 +106,7 @@
 
     <section class="hawki-rag-page-signal hawki-rag-page-signal--pipeline" aria-label="Ingestion Control route context">
         <div class="hawki-rag-page-signal__copy">
-            <p class="hawki-rag-page-signal__kicker">Search. Retrieve. Explore.</p>
+            <p class="hawki-rag-page-signal__kicker">Search. Ask. Explore.</p>
             <h2>Ingestion Control</h2>
             <p>Turn files and crawler runs into searchable Qdrant vectors and Neo4j graph signals.</p>
         </div>

@@ -3,9 +3,9 @@ declare(strict_types=1);
 
 namespace App\Services\SpecV2;
 
-use App\Models\User;
 use App\Models\SpecV2\Application;
-use App\Services\Authorization\IdentityProvisioningService;
+use App\Services\Authorization\ApiActor;
+use App\Services\Authorization\ApplicationTokenService;
 use App\Services\SpecV2\Exceptions\ApplicationNotFoundException;
 use App\Services\SpecV2\Exceptions\TenantNotFoundException;
 use App\Services\SpecV2\Payloads\ApplicationPayloadBuilder;
@@ -20,7 +20,7 @@ readonly class ApplicationService
     public function __construct(
         private ApplicationRepository $applications,
         private TenantRepository $tenants,
-        private IdentityProvisioningService $identityProvisioning,
+        private ApplicationTokenService $tokens,
         private SpecIdentifierFactory $identifiers,
         private ApplicationPayloadBuilder $payloads,
         private PaginationPayloadBuilder $pagination,
@@ -49,10 +49,10 @@ readonly class ApplicationService
     /**
      * @param array<string, mixed> $input
      */
-    public function create(array $input, ?User $actor = null): array
+    public function create(array $input, ?ApiActor $actor = null): array
     {
         $tenantId = $this->identifiers->stringValue($input['tenant_id'] ?? null)
-            ?? $this->identityProvisioning->actorForUser($actor)?->tenant_id
+            ?? $actor?->tenantId()
             ?? 'default';
         if ($this->tenants->findById($tenantId) === null) {
             throw TenantNotFoundException::withId($tenantId);
@@ -72,8 +72,12 @@ readonly class ApplicationService
         ]);
 
         $application->loadCount(['heaps', 'groups']);
+        $token = $this->tokens->issue($application);
 
-        return $this->payloads->payload($application);
+        return array_merge($this->payloads->payload($application), [
+            'token' => $token,
+            'tokenType' => 'Bearer',
+        ]);
     }
 
     /**

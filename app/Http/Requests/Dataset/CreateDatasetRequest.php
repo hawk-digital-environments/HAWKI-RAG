@@ -15,6 +15,8 @@ class CreateDatasetRequest extends FormRequest
     public function rules(): array
     {
         return [
+            'heap_id' => 'nullable|string|max:191',
+            'heapId' => 'nullable|string|max:191',
             'dataset_id' => 'nullable|string|max:191',
             'datasetId' => 'nullable|string|max:191',
             'tenant_id' => 'nullable|string|max:191',

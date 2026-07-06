@@ -16,7 +16,7 @@ readonly class HeapPayloadBuilder
     {
         return [
             'id' => $heap->dataset_id,
-            'datasetId' => $heap->dataset_id,
+            'heapId' => $heap->dataset_id,
             'name' => $heap->name,
             'description' => $heap->description,
             'tenantId' => $heap->tenant_id,

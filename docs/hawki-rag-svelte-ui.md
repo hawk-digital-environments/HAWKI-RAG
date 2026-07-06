@@ -1,4 +1,4 @@
-# HAWKI-RAG Svelte UI Boundary
+# HAWKI RAG Svelte UI Boundary
 
 This document describes the browser experience added on top of the existing
 Laravel and RAG services. The current implementation uses Svelte page components
@@ -9,7 +9,7 @@ router.
 
 | Surface | Browser route | Job |
 | --- | --- | --- |
-| Operator World | `/admin` | Admin/developer entry point for ingestion, datasets, graph, analytics, and repair. |
+| Operator World | `/admin` | Admin/developer entry point for ingestion, heaps, graph, analytics, and repair. |
 | Graph World | `/neo4j-graph-explorer` | Live Neo4j/Qdrant graph exploration with the Svelte graph shell and Cytoscape drawer. |
 | Health/Repair | `/pipeline-health` and `/health/system-gate` | System diagnosis, blocking repair overlay, and troubleshoot progress states. |
 
@@ -19,8 +19,11 @@ router.
 | --- | --- | --- |
 | `/admin` | Svelte experience hub | Ready |
 | `/admin/pipeline` | `/pipeline-controller` | Ready |
-| `/admin/datasets` | `/datasets` | Ready |
+| `/admin/heaps` | `/heaps` | Ready |
+| `/admin/datasets` | `/heaps` | Compatibility alias |
 | `/admin/graph` | `/neo4j-graph-explorer` | Ready |
+| `/admin/search` | `/hawki-rag-search` | Ready |
+| `/admin/retrieve` | `/hawki-rag-search` | Compatibility alias |
 | `/admin/analytics` | Svelte experience hub | Planned product surface |
 | `/admin/health-repair` | `/pipeline-health` | Ready |
 
@@ -29,15 +32,15 @@ router.
 | File | Job |
 | --- | --- |
 | `routes/web_ui.php` | Browser pages and UI-facing route aliases. |
-| `routes/internal_api.php` | Sanctum-protected internal API routes for scripts, Bruno, and service clients. |
+| `routes/internal_api.php` | Human-authenticated and bearer-app internal API routes for scripts, Bruno, and service clients. |
 | `routes/health.php` | Separate health/monitoring/repair boundary. |
 | `resources/views/svelte-page.blade.php` | Shared Blade document shell for CSRF, base path metadata, Vite tags, and initial JSON config. |
 | `resources/js/hawki-rag-experience.js` | Vite entry that mounts the Svelte experience and the global troubleshoot button. |
 | `resources/js/svelte/apps/HawkiRagExperience.svelte` | Product-level route map for operator tabs. |
-| `resources/js/hawki-rag-playground.js` | Vite entry that mounts the Svelte retrieval console. |
+| `resources/js/hawki-rag-playground.js` | Vite entry that mounts the Svelte search console. |
 | `resources/js/svelte/apps/HawkiRagPlayground.svelte` | Query composer, evidence board, graph facts, and live RAG signals. |
 | `resources/js/svelte/apps/GraphExplorerPage.svelte` | Graph explorer Svelte page shell. |
-| `resources/js/svelte/apps/DatasetsDashboardPage.svelte` | Data Browser page shell. |
+| `resources/js/svelte/apps/DatasetsDashboardPage.svelte` | Heap Browser page shell. |
 | `resources/js/svelte/apps/PipelineControllerPage.svelte` | Pipeline Controller page shell. |
 | `resources/js/svelte/apps/PipelineHealthDashboardPage.svelte` | Pipeline Health page shell. |
 | `resources/js/svelte/components/DashboardHeader.svelte` | Shared dashboard header and route navigation. |
@@ -47,9 +50,9 @@ router.
 
 | Service | Meaning |
 | --- | --- |
-| Retrieval | RAG-Anything style retrieval over Qdrant. |
-| Graph Retrieval | Qdrant plus Neo4j entity/relation retrieval. |
-| HAWKI-RAG-PRO | Future Proxy Pointer retrieval path for faster lookups. |
+| Search | RAG-Anything style search over Qdrant. |
+| Graph Search | Qdrant plus Neo4j entity/relation search. |
+| HAWKI-RAG-PRO | Future Proxy Pointer search path for faster lookups. |
 | Analytics | Future graph/topic/source analysis surfaces. |
 | Health/Repair | RAG bridge, Qdrant, Neo4j, pipeline, workers, and storage diagnosis. |
 

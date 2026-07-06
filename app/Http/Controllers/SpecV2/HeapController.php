@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\SpecV2\CreateHeapRequest;
 use App\Http\Requests\SpecV2\ListHeapsRequest;
 use App\Http\Requests\SpecV2\UpdateHeapRequest;
+use App\Services\Authorization\ApiActorResolver;
 use App\Services\SpecV2\Exceptions\ApplicationNotFoundException;
 use App\Services\SpecV2\Exceptions\HeapNotFoundException;
 use App\Services\SpecV2\SpecV2Service;
@@ -23,10 +24,10 @@ class HeapController extends Controller
         return response()->json($this->spec->heaps->list($request->filters(), $request->page(), $request->perPage()));
     }
 
-    public function store(CreateHeapRequest $request): JsonResponse
+    public function store(CreateHeapRequest $request, ApiActorResolver $actors): JsonResponse
     {
         try {
-            $heap = $this->spec->heaps->create($request->validated(), $request->user());
+            $heap = $this->spec->heaps->create($request->validated(), $actors->resolve($request));
         } catch (ApplicationNotFoundException $e) {
             return response()->json(['message' => $e->getMessage()], 422);
         }

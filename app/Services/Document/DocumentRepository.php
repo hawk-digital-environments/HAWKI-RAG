@@ -95,7 +95,7 @@ readonly class DocumentRepository
     private function filteredQuery(array $filters): Builder
     {
         $query = Document::query();
-        $datasetId = $this->stringValue($filters['dataset_id'] ?? $filters['datasetId'] ?? null);
+        $datasetId = $this->stringValue($filters['heap_id'] ?? $filters['heapId'] ?? $filters['dataset_id'] ?? $filters['datasetId'] ?? null);
         $search = $this->stringValue($filters['q'] ?? $filters['search'] ?? null);
 
         if ($datasetId) {

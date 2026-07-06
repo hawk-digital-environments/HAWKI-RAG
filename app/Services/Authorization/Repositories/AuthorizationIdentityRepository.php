@@ -8,6 +8,7 @@ use App\Models\AuthorizationIdentity;
 use App\Models\User;
 use App\Services\Authorization\Values\ResolvedUserIdentity;
 use Illuminate\Container\Attributes\Singleton;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 
 #[Singleton]
@@ -59,6 +60,36 @@ readonly class AuthorizationIdentityRepository
             ->first();
 
         return $identity instanceof AuthorizationIdentity ? $identity : null;
+    }
+
+    /**
+     * @param list<string|null> $identifiers
+     * @param list<string>|null $tenantIds
+     * @return Collection<int, AuthorizationIdentity>
+     */
+    public function findAllByIdentifiers(array $identifiers, ?array $tenantIds = null): Collection
+    {
+        $candidates = array_values(array_unique(array_filter(
+            array_map(fn (?string $value): ?string => $this->stringValue($value), $identifiers),
+        )));
+
+        if ($candidates === []) {
+            return collect();
+        }
+
+        return AuthorizationIdentity::query()
+            ->when(
+                $tenantIds !== null && $tenantIds !== [],
+                fn ($query) => $query->whereIn('tenant_id', $tenantIds),
+            )
+            ->where(function ($query) use ($candidates): void {
+                $query->whereIn('external_user_id', $candidates)
+                    ->orWhereIn('email', $candidates)
+                    ->orWhereIn('username', $candidates);
+            })
+            ->orderByDesc('updated_at')
+            ->orderByDesc('id')
+            ->get();
     }
 
     /**

@@ -8,9 +8,9 @@ export interface DashboardNavItem {
 
 export function dashboardNavItems(): DashboardNavItem[] {
     return [
-        {key: 'datasets', label: 'Data Browser', href: pageUrl('/datasets')},
+        {key: 'heaps', label: 'Heap Browser', href: pageUrl('/heaps')},
         {key: 'controller', label: 'Controller', href: pageUrl('/pipeline-controller')},
         {key: 'graph', label: 'Neo4j Graph', href: pageUrl('/neo4j-graph-explorer')},
-        {key: 'playground', label: 'Playground', href: pageUrl('/hawki-rag-playground')},
+        {key: 'search', label: 'Search Console', href: pageUrl('/hawki-rag-search')},
     ];
 }

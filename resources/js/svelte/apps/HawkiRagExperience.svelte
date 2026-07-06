@@ -25,11 +25,11 @@
         ...restProps
     }: Props = $props();
 
-    const visibleRoutes = $derived(operatorRoutes.filter((route) => ['pipeline', 'datasets', 'graph', 'retrieve'].includes(route.key)));
+    const visibleRoutes = $derived(operatorRoutes.filter((route) => ['pipeline', 'heaps', 'graph', 'search'].includes(route.key)));
 
     function cardAccent(key: string): string {
         if (key === 'pipeline') return 'green';
-        if (key === 'datasets') return 'blue';
+        if (key === 'heaps') return 'blue';
         if (key === 'graph') return 'amber';
         return 'cyan';
     }
@@ -39,9 +39,9 @@
     <HawkiRagBackground />
 
     <DashboardHeader
-        eyebrow="HAWKI-RAG admin"
+        eyebrow="HAWKI RAG admin"
         title="Admin Dashboard"
-        copy="Open the primary HAWKI-RAG workspaces from one compact control surface."
+        copy="Open the primary HAWKI RAG workspaces from one compact control surface."
         active=""
     />
 

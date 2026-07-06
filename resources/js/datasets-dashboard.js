@@ -17,7 +17,7 @@ function readConfig() {
     try {
         return JSON.parse(configElement.textContent);
     } catch (error) {
-        console.error('Invalid datasets dashboard config.', error);
+        console.error('Invalid heap browser config.', error);
         return {
             operatorAuthorized: false,
         };
@@ -67,7 +67,7 @@ function bootDatasetsDashboard() {
     };
 
     const state = {
-        selectedDatasetId: query.get('dataset_id') || query.get('datasetId') || localStorage.getItem('hawkiDatasetsDashboardDatasetId') || '',
+        selectedDatasetId: query.get('heap_id') || query.get('heapId') || query.get('dataset_id') || query.get('datasetId') || localStorage.getItem('hawkiDatasetsDashboardDatasetId') || '',
         selectedDocumentId: query.get('document_id') || query.get('documentId') || localStorage.getItem('hawkiDatasetsDashboardDocumentId') || '',
         documentSearch: query.get('q') || '',
         datasets: [],
@@ -174,7 +174,7 @@ function bootDatasetsDashboard() {
     function syncUrl() {
         const next = new URL(window.location.href);
         next.search = '';
-        if (state.selectedDatasetId) next.searchParams.set('dataset_id', state.selectedDatasetId);
+        if (state.selectedDatasetId) next.searchParams.set('heap_id', state.selectedDatasetId);
         if (state.selectedDocumentId) next.searchParams.set('document_id', state.selectedDocumentId);
         if (state.documentSearch) next.searchParams.set('q', state.documentSearch);
         window.history.replaceState({}, '', next.toString());
@@ -250,10 +250,10 @@ function bootDatasetsDashboard() {
     function renderDatasets(datasets) {
         if (!els.list) return;
         els.list.innerHTML = '';
-        setText(els.count, `${datasets.length} dataset${datasets.length === 1 ? '' : 's'}`);
+        setText(els.count, `${datasets.length} heap${datasets.length === 1 ? '' : 's'}`);
 
         if (datasets.length === 0) {
-            renderEmpty(els.list, 'No datasets yet.');
+            renderEmpty(els.list, 'No heaps yet.');
             return;
         }
 
@@ -296,13 +296,13 @@ function bootDatasetsDashboard() {
             deleteButton.type = 'button';
             deleteButton.className = 'dataset-delete-button';
             deleteButton.textContent = 'Delete';
-            deleteButton.title = 'Delete this dataset Qdrant collection and Neo4j graph data';
+            deleteButton.title = 'Delete this heap Qdrant collection and Neo4j graph data';
             deleteButton.addEventListener('click', async () => {
                 deleteButton.disabled = true;
                 try {
                     await deleteDatasetStorage(dataset);
                 } catch (error) {
-                    setStatus(error.message || 'Dataset storage delete failed.', 'error');
+                    setStatus(error.message || 'Heap storage delete failed.', 'error');
                 } finally {
                     deleteButton.disabled = false;
                 }
@@ -315,7 +315,7 @@ function bootDatasetsDashboard() {
 
     function renderDataset(dataset) {
         setText(els.updated, `Updated ${formatDate(new Date().toISOString())}`);
-        setStatus(`Showing dataset ${dataset.datasetId}.`);
+        setStatus(`Showing heap ${dataset.heapId || dataset.datasetId}.`);
 
         renderInfo(dataset);
         renderMetrics(dataset);
@@ -327,7 +327,7 @@ function bootDatasetsDashboard() {
         els.info.innerHTML = '';
         [
             ['Name', dataset.name],
-            ['Dataset ID', dataset.datasetId],
+            ['Heap ID', dataset.heapId || dataset.datasetId],
             ['Qdrant collection', dataset.qdrantCollection],
             ['Neo4j namespace', dataset.neo4jNamespace],
             ['Last ingestion', lastIngestionLabel(dataset.lastIngestion) || '-'],
@@ -389,7 +389,7 @@ function bootDatasetsDashboard() {
             document.sourceUrl,
             formatDate(document.updatedAt || document.createdAt),
             openDocumentButton(document),
-        ], 'No documents found for this dataset.');
+        ], 'No documents found for this heap.');
     }
 
     function renderDocument(doc) {
@@ -413,7 +413,7 @@ function bootDatasetsDashboard() {
 
         [
             ['Document', doc.title || doc.originalFilename || doc.id],
-            ['Dataset ID', makeLink(`/datasets?dataset_id=${encodeURIComponent(doc.datasetId || '')}`, doc.datasetId)],
+            ['Heap ID', makeLink(`/heaps?heap_id=${encodeURIComponent(doc.heapId || doc.datasetId || '')}`, doc.heapId || doc.datasetId)],
             ['Status', statusPill(doc.status)],
             ['Source URL', doc.sourceUrl],
             ['Content type', doc.contentType],
@@ -578,7 +578,7 @@ function bootDatasetsDashboard() {
 
     async function loadDatasets({ keepSelection = true } = {}) {
         const requestId = ++state.requestId;
-        const data = await requestJson('datasets/data?limit=100');
+        const data = await requestJson('/heaps/data?limit=100');
         if (requestId !== state.requestId) return;
 
         state.datasets = Array.isArray(data.datasets) ? data.datasets : [];
@@ -605,10 +605,10 @@ function bootDatasetsDashboard() {
             state.selectedDocumentId = '';
             localStorage.removeItem('hawkiDatasetsDashboardDocumentId');
         }
-        setStatus(`Loading dataset ${datasetId}...`);
+        setStatus(`Loading heap ${datasetId}...`);
         setDocumentsLoading();
 
-        const data = await requestJson(`datasets/data/${encodeURIComponent(datasetId)}`);
+        const data = await requestJson(`/heaps/data/${encodeURIComponent(datasetId)}`);
         renderDataset(data.dataset);
 
         if (renderList) {
@@ -632,7 +632,7 @@ function bootDatasetsDashboard() {
 
         const requestId = ++state.documentRequestId;
         const params = new URLSearchParams({
-            dataset_id: state.selectedDatasetId,
+            heap_id: state.selectedDatasetId,
             limit: '150',
         });
         if (state.documentSearch) {
@@ -697,12 +697,12 @@ function bootDatasetsDashboard() {
         const qdrant = dataset.qdrantCollection || 'the linked Qdrant collection';
         const neo4j = dataset.neo4jNamespace || 'the linked Neo4j namespace';
         const confirmed = window.confirm(
-            `Delete dataset ${dataset.datasetId}?\n\nThis deletes Qdrant collection "${qdrant}", Neo4j graph data for "${neo4j}", and removes the dataset from this browser. Historical task and document records stay in the database.`,
+            `Delete heap ${dataset.heapId || dataset.datasetId}?\n\nThis deletes Qdrant collection "${qdrant}", Neo4j graph data for "${neo4j}", and removes the heap from this browser. Historical task and document records stay in the database.`,
         );
         if (!confirmed) return;
 
-        setStatus(`Deleting dataset ${dataset.datasetId}...`);
-        const data = await requestJson(`datasets/data/${encodeURIComponent(dataset.datasetId)}/storage`, { method: 'DELETE' });
+        setStatus(`Deleting heap ${dataset.heapId || dataset.datasetId}...`);
+        const data = await requestJson(`/heaps/data/${encodeURIComponent(dataset.datasetId)}/storage`, { method: 'DELETE' });
         const qdrantMessage = data.cleanup?.qdrant?.message || 'Qdrant cleanup finished.';
         const neo4jNodes = data.cleanup?.neo4j?.nodes ?? 0;
         const neo4jRelationships = data.cleanup?.neo4j?.relationships ?? 0;
@@ -715,7 +715,7 @@ function bootDatasetsDashboard() {
         }
 
         await loadDatasets({ keepSelection: false });
-        setStatus(`Deleted ${dataset.datasetId}. ${qdrantMessage} Neo4j deleted ${neo4jNodes} nodes and ${neo4jRelationships} relationships.`, 'success');
+        setStatus(`Deleted ${dataset.heapId || dataset.datasetId}. ${qdrantMessage} Neo4j deleted ${neo4jNodes} nodes and ${neo4jRelationships} relationships.`, 'success');
     }
 
     function clearDocumentDetail() {
@@ -738,8 +738,8 @@ function bootDatasetsDashboard() {
     }
 
     function clearDetail() {
-        setStatus('No datasets found.');
-        setText(els.updated, 'No dataset loaded.');
+        setStatus('No heaps found.');
+        setText(els.updated, 'No heap loaded.');
         [els.info, els.metrics, els.tasks, els.documents, els.ingestionHistory]
             .filter(Boolean)
             .forEach((container) => {

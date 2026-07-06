@@ -1,12 +1,12 @@
-# LMS-neutral RAG authorization
+# HAWKI RAG authorization
 
-RAWKI authorization is intentionally split into independent layers:
+HAWKI RAG authorization is intentionally split into independent layers:
 
 1. Keycloak or another OIDC issuer provides a JWT.
-2. Laravel validates the JWT through JWKS and resolves a stable internal user.
-3. An LMS connector emits normalized membership and document relation events.
+2. Laravel validates either a human JWT/session or an application bearer token and resolves an explicit actor context.
+3. An LMS adapter emits normalized membership and document relation events.
 4. `PermissionSyncService` writes idempotent relationships to the configured permission graph.
-5. Python retrieval gets candidate chunks, checks document access through the permission graph, and builds LLM context only from authorized chunks.
+5. Laravel computes the merged retrieval filter from application scope, protected-heap access, and client filters before forwarding the search to Python.
 
 The authorization core depends on `PermissionGraphClient`, not on a specific graph product. SpiceDB is the default backend.
 
@@ -61,27 +61,28 @@ STATIC_LMS_MEMBERSHIPS="1:course-a:member"
 STATIC_LMS_DOCUMENTS="course-a:<document-uuid>"
 ```
 
-## Connector contract
+## Adapter contract
 
-Connectors implement `App\Services\Authorization\Contracts\LmsPermissionConnector`.
-The core only consumes `LmsUserIdentity`, `LmsMembership`, and `LmsDocumentRelation` values, so campus-specific systems remain plugins. Current implementations:
+Adapters implement `App\Services\Authorization\Contracts\LmsPermissionConnector`.
+The core only consumes `LmsUserIdentity`, `LmsMembership`, and `LmsDocumentRelation` values, so campus-specific systems remain isolated adapters. Current implementations:
 
 - `StaticLmsPermissionConnector`: local development and tests.
 - `StudIpLmsPermissionConnector`: scaffold for a site-specific plugin.
 - Moodle, ILIAS, Canvas: extension placeholders returning no permissions until implemented.
 
-## Retrieval enforcement
+## Search enforcement
 
-Laravel sends `auth_context` to the Python RAG bridge for authenticated users. When `AUTHZ_ENABLED=true`, Python:
+Laravel now owns search scoping. For `/api/search` and `/api/search/*`, it:
 
-1. Retrieves candidate hits.
-2. Collects unique `doc_id`/`document_id` values.
-3. Calls the configured permission graph for `viewer document:<document_id>`.
-4. Discards unauthorized hits.
-5. Repeats high-recall retrieval once if too few authorized hits remain.
-6. Builds prompt context only from the filtered hit list.
+1. Resolves the application actor from the bearer token or falls back to the authenticated human actor.
+2. Computes application scope from `reads`, `reads-all-apps`, `reads-federated`, and `reads-protected`.
+3. Resolves protected-document access from the synced permission event store when authorization is enabled.
+4. Merges the resulting allow filter with any client metadata filters.
+5. Forwards only `query`, `filters`, and search options to the Python bridge.
 
-If authorization is enabled and no auth context or permission graph backend is available, retrieval denies all chunks.
+Python executes the filter against Qdrant and never receives application identity, tenant context, permissions, or user identifiers.
+
+The document API still performs direct point checks through `AuthorizationService` when `AUTHZ_DOCUMENT_API_ENFORCED=true`.
 
 ## Alternate graph backend
 

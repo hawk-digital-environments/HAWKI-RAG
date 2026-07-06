@@ -11,19 +11,19 @@
 
 /*
 |--------------------------------------------------------------------------
-| RAG Playground UI Endpoints
+| Search Console UI Endpoints
 |--------------------------------------------------------------------------
-| HawkiRagProxyController: sendet Benutzeranfragen aus der UI an die RAG-Bridge.
-| RagStatsController: liefert Vektor-/Qdrant-Statistiken und kuemmert sich um Collection Cleanup.
+| HawkiRagProxyController: sendet Suchanfragen aus der UI an die RAG-Bridge.
+| RagStatsController: liefert Vektor-/Qdrant-Statistiken und kuemmert sich um Vector Cleanup.
 */
 use App\Http\Controllers\API\HawkiRagProxyController;
 use App\Http\Controllers\API\RagStatsController;
 
 /*
 |--------------------------------------------------------------------------
-| Dataset and Document UI Endpoints
+| Heap and Document UI Endpoints
 |--------------------------------------------------------------------------
-| DatasetController: versorgt Dataset-Seiten und Storage Cleanup Actions.
+| DatasetController: versorgt Heap-Seiten und Storage Cleanup Actions.
 | DocumentBrowserController: versorgt Dokumentlisten und Document Detail Drawers.
 */
 use App\Http\Controllers\DatasetController;
@@ -87,12 +87,12 @@ $hawkiRagExperienceConfig = static function (string $section = 'operator'): arra
                 'state' => 'live',
             ],
             [
-                'key' => 'datasets',
-                'label' => 'Datasets',
-                'title' => 'Dataset Browser',
-                'href' => '/admin/datasets',
-                'summary' => 'Browse stored documents, datasets, sources, and recovery context.',
-                'service' => 'Dataset browser',
+                'key' => 'heaps',
+                'label' => 'Heaps',
+                'title' => 'Heap Browser',
+                'href' => '/admin/heaps',
+                'summary' => 'Browse heaps, documents, sources, and recovery context.',
+                'service' => 'Heap browser',
                 'state' => 'ready',
             ],
             [
@@ -105,12 +105,12 @@ $hawkiRagExperienceConfig = static function (string $section = 'operator'): arra
                 'state' => 'live',
             ],
             [
-                'key' => 'retrieve',
-                'label' => 'Retrieve',
-                'title' => 'Retrieval Playground',
-                'href' => '/admin/retrieve',
+                'key' => 'search',
+                'label' => 'Search',
+                'title' => 'Search Console',
+                'href' => '/admin/search',
                 'summary' => 'Ask questions, compare vector and graph answers, and inspect evidence.',
-                'service' => 'Retrieval console',
+                'service' => 'Search console',
                 'state' => 'live',
             ],
         ],
@@ -164,9 +164,11 @@ Route::get('/admin', fn () => view('svelte-page', [
 | und leiten auf die produktiven Dashboards.
 */
 Route::get('/admin/pipeline', fn () => redirect('/pipeline-controller'));
-Route::get('/admin/datasets', fn () => redirect('/datasets'));
+Route::get('/admin/heaps', fn () => redirect('/heaps'));
+Route::get('/admin/datasets', fn () => redirect('/heaps'));
 Route::get('/admin/graph', fn () => redirect('/neo4j-graph-explorer'));
-Route::get('/admin/retrieve', fn () => redirect('/hawki-rag-playground'));
+Route::get('/admin/search', fn () => redirect('/hawki-rag-search'));
+Route::get('/admin/retrieve', fn () => redirect('/hawki-rag-search'));
 Route::get('/admin/settings', fn () => redirect('/settings'));
 Route::get('/admin/analytics', fn () => view('svelte-page', [
     'title' => 'HAWKI-RAG Operator',
@@ -191,13 +193,13 @@ Route::middleware('operator')->group(function (): void {
 
 /*
 |--------------------------------------------------------------------------
-| UI Page: HAWKI RAG Playground (/hawki-rag-playground)
+| UI Page: HAWKI RAG Search Console (/hawki-rag-search)
 |--------------------------------------------------------------------------
-| Chat, RAG Status Cards, Qdrant Stats und die zentrale Playground Shell.
+| Chat, Search Status Cards, Qdrant Stats und die zentrale Search Shell.
 */
-Route::get('/hawki-rag-playground', function (\Illuminate\Http\Request $request, OperatorAccessService $operatorAccess) {
+$searchConsolePage = function (\Illuminate\Http\Request $request, OperatorAccessService $operatorAccess) {
     return view('svelte-page', [
-        'title' => 'HAWKI-RAG Console',
+        'title' => 'HAWKI RAG Search Console',
         'vite' => 'resources/js/hawki-rag-playground.js',
         'configScriptId' => 'hawki-rag-playground-config',
         'config' => [
@@ -205,8 +207,11 @@ Route::get('/hawki-rag-playground', function (\Illuminate\Http\Request $request,
         ],
         'rootAttributes' => ['data-hawki-rag-playground' => true],
     ]);
-});
+};
+Route::get('/hawki-rag-search', $searchConsolePage);
+Route::get('/hawki-rag-playground', $searchConsolePage);
 Route::middleware('operator')->group(function (): void {
+    Route::post('/search', [HawkiRagProxyController::class, 'query'])->middleware('throttle:hawki-rag-query');
     Route::post('/query', [HawkiRagProxyController::class, 'query'])->middleware('throttle:hawki-rag-query');
     Route::get('/rag/stats', [RagStatsController::class, 'show']);
     Route::delete('/rag/qdrant/collections/{collection}', [RagStatsController::class, 'destroyQdrantCollection'])->middleware('throttle:hawki-destructive');
@@ -248,7 +253,7 @@ Route::middleware('operator')->group(function (): void {
 | UI Page: Pipeline Controller (/pipeline-controller)
 |--------------------------------------------------------------------------
 | File Upload Ingestion, Scraper Task Selection und die Pipeline Task Run List.
-| Pipeline Task Endpoints werden von Controller, Dataset Browser und Recovery Controls genutzt.
+| Pipeline Task Endpoints werden von Controller, Heap Browser und Recovery Controls genutzt.
 */
 Route::get('/pipeline-controller', function (\Illuminate\Http\Request $request, OperatorAccessService $operatorAccess) use ($pipelineControllerConfig) {
     return view('svelte-page', [
@@ -291,14 +296,14 @@ Route::any('/ui/{path?}', ScrapeTaskUiProxyController::class)
 
 /*
 |--------------------------------------------------------------------------
-| UI Page: Datasets Dashboard (/datasets)
+| UI Page: Heap Browser (/heaps)
 |--------------------------------------------------------------------------
-| Dataset Browser, Document Browser Drawer, Dataset Storage Cleanup und
-| Retry Actions aus Dataset-/Task-Details.
+| Heap Browser, Document Browser Drawer, Heap Storage Cleanup und
+| Retry Actions aus Heap-/Task-Details.
 */
-Route::get('/datasets', function (\Illuminate\Http\Request $request, OperatorAccessService $operatorAccess) {
+$heapBrowserPage = function (\Illuminate\Http\Request $request, OperatorAccessService $operatorAccess) {
     return view('svelte-page', [
-        'title' => 'HAWKI Data Browser',
+        'title' => 'HAWKI Heap Browser',
         'vite' => ['resources/css/datasets-dashboard.css', 'resources/css/dashboard-dark-theme.css', 'resources/css/hawki-rag-theme.css', 'resources/js/datasets-dashboard.js'],
         'configScriptId' => 'datasets-dashboard-config',
         'config' => [
@@ -306,8 +311,13 @@ Route::get('/datasets', function (\Illuminate\Http\Request $request, OperatorAcc
         ],
         'rootAttributes' => ['data-datasets-dashboard' => true],
     ]);
-});
+};
+Route::get('/heaps', $heapBrowserPage);
+Route::get('/datasets', $heapBrowserPage);
 Route::middleware('operator')->group(function (): void {
+    Route::get('/heaps/data', [DatasetController::class, 'index']);
+    Route::get('/heaps/data/{datasetId}', [DatasetController::class, 'show']);
+    Route::delete('/heaps/data/{datasetId}/storage', [DatasetController::class, 'destroyStorage'])->middleware('throttle:hawki-destructive');
     Route::get('/datasets/data', [DatasetController::class, 'index']);
     Route::get('/datasets/data/{datasetId}', [DatasetController::class, 'show']);
     Route::delete('/datasets/data/{datasetId}/storage', [DatasetController::class, 'destroyStorage'])->middleware('throttle:hawki-destructive');
@@ -315,7 +325,7 @@ Route::middleware('operator')->group(function (): void {
 Route::get('/documents', function (\Illuminate\Http\Request $request) {
     $query = $request->getQueryString();
 
-    return redirect('/datasets'.($query ? '?'.$query : ''));
+    return redirect('/heaps'.($query ? '?'.$query : ''));
 });
 Route::middleware('operator')->group(function (): void {
     Route::get('/documents/data', [DocumentBrowserController::class, 'index']);
@@ -328,7 +338,7 @@ Route::middleware('operator')->group(function (): void {
 |--------------------------------------------------------------------------
 | Shared UI APIs: Pipeline Recovery and Task Manager
 |--------------------------------------------------------------------------
-| Wird von den Retry Controls im Dataset Browser und von Recovery-Actions genutzt.
+| Wird von den Retry Controls im Heap Browser und von Recovery-Actions genutzt.
 */
 Route::middleware('operator')->group(function (): void {
     Route::get('/pipeline/recovery/failed-jobs', [PipelineRecoveryController::class, 'failedJobs']);
@@ -336,6 +346,7 @@ Route::middleware('operator')->group(function (): void {
     Route::post('/pipeline/recovery/jobs/{jobId}/retry', [PipelineRecoveryController::class, 'retryJob'])->middleware('throttle:hawki-destructive');
     Route::post('/pipeline/recovery/retry-all', [PipelineRecoveryController::class, 'retryAll'])->middleware('throttle:hawki-destructive');
     Route::post('/pipeline/recovery/tasks/{taskId}/retry-failed', [PipelineRecoveryController::class, 'retryTask'])->middleware('throttle:hawki-destructive');
+    Route::post('/pipeline/recovery/heaps/{datasetId}/retry-failed', [PipelineRecoveryController::class, 'retryDataset'])->middleware('throttle:hawki-destructive');
     Route::post('/pipeline/recovery/datasets/{datasetId}/retry-failed', [PipelineRecoveryController::class, 'retryDataset'])->middleware('throttle:hawki-destructive');
 });
 

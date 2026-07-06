@@ -6,6 +6,7 @@ namespace App\Http\Controllers\SpecV2;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\SpecV2\CreateApplicationRequest;
 use App\Http\Requests\SpecV2\ListApplicationsRequest;
+use App\Services\Authorization\ApiActorResolver;
 use App\Services\SpecV2\Exceptions\ApplicationNotFoundException;
 use App\Services\SpecV2\Exceptions\TenantNotFoundException;
 use App\Services\SpecV2\SpecV2Service;
@@ -22,10 +23,10 @@ class ApplicationController extends Controller
         return response()->json($this->spec->applications->list($request->tenantId(), $request->page(), $request->perPage()));
     }
 
-    public function store(CreateApplicationRequest $request): JsonResponse
+    public function store(CreateApplicationRequest $request, ApiActorResolver $actors): JsonResponse
     {
         try {
-            $application = $this->spec->applications->create($request->validated(), $request->user());
+            $application = $this->spec->applications->create($request->validated(), $actors->resolve($request));
         } catch (TenantNotFoundException $e) {
             return response()->json(['message' => $e->getMessage()], 422);
         }

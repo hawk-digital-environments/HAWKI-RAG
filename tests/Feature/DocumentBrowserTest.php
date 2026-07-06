@@ -22,7 +22,7 @@ class DocumentBrowserTest extends TestCase
         $document = $this->createIngestedDocument();
 
         $this->get('/documents')
-            ->assertRedirect('/datasets');
+            ->assertRedirect('/heaps');
 
         $this->actingAsApiUser();
 

@@ -174,10 +174,9 @@ def test_batch_check_documents_can_use_openfga_backend_when_configured(monkeypat
     assert captured["token"] == "secret-token"
 
 
-def test_query_context_is_built_only_from_authorized_hits(monkeypatch) -> None:
+def test_query_context_is_built_from_final_hits(monkeypatch) -> None:
     from application.workflows.query_execution import run_query_documents
 
-    monkeypatch.setenv("AUTHZ_ENABLED", "true")
     seen_context_hits: list[dict[str, object]] = []
 
     body = SimpleNamespace(
@@ -195,7 +194,6 @@ def test_query_context_is_built_only_from_authorized_hits(monkeypatch) -> None:
         rerank_top_n=10,
         mix_mode=False,
         mix_weight=0.5,
-        auth_context={"provider": "local", "user_id": "u1"},
     )
 
     class Provider:
@@ -232,19 +230,15 @@ def test_query_context_is_built_only_from_authorized_hits(monkeypatch) -> None:
         score_thresholds_fn=lambda: (0.0, 0.0),
         generation_enabled_fn=lambda: False,
         configured_search_top_k_fn=lambda top_k: top_k,
-        authorize_hits_fn=lambda hits, auth_context: [
-            hit for hit in hits if hit["payload"]["doc_id"] == "doc-allowed"
-        ],
     )
 
-    assert result["count"] == 1
-    assert [hit["payload"]["doc_id"] for hit in seen_context_hits] == ["doc-allowed"]
+    assert result["count"] == 2
+    assert [hit["payload"]["doc_id"] for hit in seen_context_hits] == ["doc-allowed", "doc-denied"]
 
 
-def test_query_retries_high_recall_once_when_authorized_hits_are_too_few(monkeypatch) -> None:
+def test_query_retries_high_recall_once_when_initial_hits_are_too_few(monkeypatch) -> None:
     from application.workflows.query_execution import run_query_documents
 
-    monkeypatch.setenv("AUTHZ_ENABLED", "true")
     high_recall_calls = 0
     seen_context_hits: list[dict[str, object]] = []
 
@@ -263,7 +257,6 @@ def test_query_retries_high_recall_once_when_authorized_hits_are_too_few(monkeyp
         rerank_top_n=10,
         mix_mode=False,
         mix_weight=0.5,
-        auth_context={"provider": "local", "user_id": "u1"},
     )
 
     class Provider:
@@ -299,7 +292,7 @@ def test_query_retries_high_recall_once_when_authorized_hits_are_too_few(monkeyp
             {"id": "point-1", "score": 0.9, "payload": {"doc_id": "doc-denied", "content": "denied", "component_type": "chunk"}},
         ],
         run_high_recall_fn=run_high_recall,
-        merge_hits_fn=lambda primary, secondary, limit: primary + secondary,
+        merge_hits_fn=lambda primary, secondary, limit: secondary,
         build_fused_hits_fn=lambda sem_hits, struct_hits, sem_weight=0.0, str_weight=0.0: sem_hits + struct_hits,
         rerank_and_filter_hits_fn=lambda hits, **kwargs: hits,
         prepare_context_fn=prepare_context,
@@ -307,9 +300,6 @@ def test_query_retries_high_recall_once_when_authorized_hits_are_too_few(monkeyp
         score_thresholds_fn=lambda: (0.0, 0.0),
         generation_enabled_fn=lambda: False,
         configured_search_top_k_fn=lambda top_k: top_k,
-        authorize_hits_fn=lambda hits, auth_context: [
-            hit for hit in hits if str(hit["payload"]["doc_id"]).startswith("doc-allowed")
-        ],
     )
 
     assert high_recall_calls == 1

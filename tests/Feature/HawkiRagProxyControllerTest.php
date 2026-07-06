@@ -3,6 +3,10 @@
 namespace Tests\Feature;
 
 use App\Models\AuthorizationIdentity;
+use App\Models\AuthorizationPermissionEvent;
+use App\Models\Dataset;
+use App\Models\Document;
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
@@ -12,9 +16,10 @@ class HawkiRagProxyControllerTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_query_forwards_typed_authorization_context_to_bridge(): void
+    public function test_query_forwards_gateway_filters_to_bridge_for_application_tokens(): void
     {
         config()->set('config.hawki_rag_bridge_url', 'http://bridge.test');
+        config()->set('authz.enabled', true);
         Http::fake([
             'http://bridge.test/query' => Http::response([
                 'ok' => true,
@@ -23,27 +28,120 @@ class HawkiRagProxyControllerTest extends TestCase
             ], 200),
         ]);
 
-        $user = $this->actingAsApiUser();
-        AuthorizationIdentity::query()->create([
-            'user_id' => $user->id,
-            'issuer' => 'https://issuer.test',
-            'subject' => 'subject-777',
-            'provider' => 'keycloak',
-            'external_user_id' => 'student-777',
+        ['application' => $application, 'token' => $token] = $this->issueApplicationToken([
+            'id' => 'hawki-web',
+            'tenant_id' => 'uni-hawk',
+            'permissions' => ['reads'],
         ]);
 
-        $this->postJson('/api/query', [
-            'query' => 'campus policy',
-            'top_k' => 3,
-            'preferred_tags' => ['policy'],
-        ])->assertOk();
+        Dataset::query()->create([
+            'dataset_id' => 'heap-public',
+            'tenant_id' => 'uni-hawk',
+            'owner_application_id' => $application->id,
+            'name' => 'Public Heap',
+            'status' => Dataset::STATUS_ACTIVE,
+            'visibility' => Dataset::VISIBILITY_DISCOVERABLE,
+            'protected' => false,
+            'metadata_json' => [],
+            'qdrant_collection' => 'hawki_heap_public',
+            'neo4j_namespace' => 'hawki_heap_public',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
 
-        Http::assertSent(fn (Request $request): bool => $request->url() === 'http://bridge.test/query'
-            && $request->data()['top_k'] === 3
-            && $request->data()['preferred_tags'] === ['policy']
-            && ($request->data()['auth_context'] ?? null) === [
-                'provider' => 'keycloak',
-                'user_id' => 'student-777',
-            ]);
+        Dataset::query()->create([
+            'dataset_id' => 'heap-protected',
+            'tenant_id' => 'uni-hawk',
+            'owner_application_id' => $application->id,
+            'name' => 'Protected Heap',
+            'status' => Dataset::STATUS_ACTIVE,
+            'visibility' => Dataset::VISIBILITY_DISCOVERABLE,
+            'protected' => true,
+            'metadata_json' => [],
+            'qdrant_collection' => 'hawki_heap_protected',
+            'neo4j_namespace' => 'hawki_heap_protected',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $publicDocument = Document::query()->create([
+            'dataset_id' => 'heap-public',
+            'collection' => 'hawki_heap_public',
+            'source_type' => Document::SOURCE_API,
+            'source_url' => 'https://example.test/public',
+            'storage_path' => '/tmp/public.md',
+            'checksum_sha256' => hash('sha256', 'public'),
+            'status' => Document::STATUS_COMPLETED,
+        ]);
+
+        $protectedDocument = Document::query()->create([
+            'dataset_id' => 'heap-protected',
+            'collection' => 'hawki_heap_protected',
+            'source_type' => Document::SOURCE_API,
+            'source_url' => 'https://example.test/protected',
+            'storage_path' => '/tmp/protected.md',
+            'checksum_sha256' => hash('sha256', 'protected'),
+            'status' => Document::STATUS_COMPLETED,
+        ]);
+
+        $identityUser = User::query()->create([
+            'username' => 'learner-123',
+            'email' => 'learner-123@example.test',
+            'ip' => '127.0.0.25',
+        ]);
+
+        AuthorizationIdentity::query()->create([
+            'user_id' => $identityUser->id,
+            'provider' => 'keycloak',
+            'external_user_id' => 'learner-123',
+            'tenant_id' => 'uni-hawk',
+            'application_id' => $application->id,
+            'issuer' => 'https://issuer.test',
+            'subject' => 'subject-123',
+        ]);
+        AuthorizationPermissionEvent::query()->create([
+            'provider' => 'keycloak',
+            'external_user_id' => 'learner-123',
+            'course_id' => 'course-design',
+            'role' => 'member',
+            'document_id' => null,
+            'payload' => ['type' => 'membership'],
+        ]);
+        AuthorizationPermissionEvent::query()->create([
+            'provider' => 'keycloak',
+            'external_user_id' => null,
+            'course_id' => 'course-design',
+            'role' => null,
+            'document_id' => $protectedDocument->id,
+            'payload' => ['type' => 'document_relation'],
+        ]);
+
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->postJson('/api/query', [
+                'query' => 'campus policy',
+                'top_k' => 3,
+                'user_identifier' => 'learner-123',
+                'preferred_tags' => ['policy'],
+            ])->assertOk();
+
+        Http::assertSent(function (Request $request) use ($publicDocument, $protectedDocument): bool {
+            if ($request->url() !== 'http://bridge.test/query') {
+                return false;
+            }
+
+            $filters = $request->data()['filters'] ?? [];
+            $docIds = array_map(
+                static fn (array $match): ?string => $match['match']['value'] ?? null,
+                is_array($filters['should'] ?? null) ? $filters['should'] : [],
+            );
+            sort($docIds);
+            $expected = [$protectedDocument->id, $publicDocument->id];
+            sort($expected);
+
+            return $request->data()['top_k'] === 3
+                && $request->data()['preferred_tags'] === ['policy']
+                && ($request->data()['auth_context'] ?? null) === null
+                && $docIds === $expected;
+        });
     }
 }

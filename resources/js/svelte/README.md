@@ -22,10 +22,10 @@ temporarily only when they are loaded after a Svelte page shell mounts.
 Current product islands:
 
 - `apps/HawkiRagExperience.svelte`: `/admin` minimal operator landing page.
-- `apps/HawkiRagPlayground.svelte`: `/hawki-rag-playground` retrieval console.
+- `apps/HawkiRagPlayground.svelte`: `/hawki-rag-search` search console.
 - `apps/SystemTroubleshooter.svelte`: global Health/Repair troubleshoot button.
 - `apps/GraphExplorerPage.svelte`: Neo4j graph explorer page shell.
-- `apps/DatasetsDashboardPage.svelte`: `/datasets` page shell.
+- `apps/DatasetsDashboardPage.svelte`: `/heaps` page shell.
 - `apps/PipelineControllerPage.svelte`: `/pipeline-controller` page shell.
 - `apps/PipelineHealthDashboardPage.svelte`: `/pipeline-health` page shell.
 

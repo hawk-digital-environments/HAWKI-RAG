@@ -3,11 +3,11 @@ declare(strict_types=1);
 
 namespace App\Models\SpecV2;
 
-use Illuminate\Database\Eloquent\Model;
+use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-class Application extends Model
+class Application extends Authenticatable
 {
     public const PERMISSION_READS = 'reads';
     public const PERMISSION_READS_ALL_APPS = 'reads-all-apps';
@@ -33,6 +33,10 @@ class Application extends Model
     protected $casts = [
         'permissions' => 'array',
         'metadata_json' => 'array',
+    ];
+
+    protected $hidden = [
+        'token_hash',
     ];
 
     public function tenant(): BelongsTo

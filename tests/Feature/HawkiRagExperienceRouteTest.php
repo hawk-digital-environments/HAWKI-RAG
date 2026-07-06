@@ -24,9 +24,9 @@ class HawkiRagExperienceRouteTest extends TestCase
             ->assertSee('data-hawki-rag-experience', false)
             ->assertSee('"operatorRoutes"', false)
             ->assertSee('"key":"pipeline"', false)
-            ->assertSee('"key":"datasets"', false)
+            ->assertSee('"key":"heaps"', false)
             ->assertSee('"key":"graph"', false)
-            ->assertSee('"key":"retrieve"', false)
+            ->assertSee('"key":"search"', false)
             ->assertDontSee('"key":"operator"', false)
             ->assertDontSee('"key":"analytics"', false)
             ->assertDontSee('"key":"health"', false)
@@ -45,14 +45,20 @@ class HawkiRagExperienceRouteTest extends TestCase
         $this->get('/admin/pipeline')
             ->assertRedirect('/pipeline-controller');
 
+        $this->get('/admin/heaps')
+            ->assertRedirect('/heaps');
+
         $this->get('/admin/datasets')
-            ->assertRedirect('/datasets');
+            ->assertRedirect('/heaps');
 
         $this->get('/admin/graph')
             ->assertRedirect('/neo4j-graph-explorer');
 
+        $this->get('/admin/search')
+            ->assertRedirect('/hawki-rag-search');
+
         $this->get('/admin/retrieve')
-            ->assertRedirect('/hawki-rag-playground');
+            ->assertRedirect('/hawki-rag-search');
 
         $this->get('/admin/health-repair')
             ->assertRedirect('/pipeline-health');

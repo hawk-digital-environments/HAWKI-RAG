@@ -6,7 +6,6 @@ namespace App\Services\OpenCompat;
 
 use App\Models\Document;
 use App\Models\PipelineTask;
-use App\Services\Authorization\Values\RetrievalAuthorizationContext;
 use App\Services\Dataset\DatasetService;
 use App\Services\Document\DocumentBrowserService;
 use App\Services\Document\DocumentRepository;
@@ -163,21 +162,18 @@ readonly class OpenCompatService
      */
     public function retrieveChunks(
         array $input,
-        ?RetrievalAuthorizationContext $authContext = null,
         bool $grouped = false,
     ): array
     {
         $payload = [
             'query' => (string) ($input['query'] ?? ''),
             'top_k' => (int) ($input['top_k'] ?? $input['k'] ?? 5),
+            'filters' => is_array($input['filters'] ?? null) ? $input['filters'] : [],
             'generate' => false,
             'fast_mode' => filter_var($input['fast_mode'] ?? true, FILTER_VALIDATE_BOOLEAN),
             'smart_lookup' => filter_var($input['smart_lookup'] ?? false, FILTER_VALIDATE_BOOLEAN),
             'preferred_tags' => $input['preferred_tags'] ?? null,
         ];
-        if ($authContext !== null) {
-            $payload['auth_context'] = $authContext->toArray();
-        }
 
         $result = $this->bridge->post('/query', $payload);
 
@@ -204,9 +200,9 @@ readonly class OpenCompatService
      * @param array<string, mixed> $input
      * @return array{payload: array<string, mixed>, status: int}
      */
-    public function retrieveDocs(array $input, ?RetrievalAuthorizationContext $authContext = null): array
+    public function retrieveDocs(array $input): array
     {
-        $chunks = $this->retrieveChunks($input, $authContext)['payload']['chunks'] ?? [];
+        $chunks = $this->retrieveChunks($input)['payload']['chunks'] ?? [];
         $ids = [];
         foreach ($chunks as $chunk) {
             $id = $this->string($chunk['document_id'] ?? null);
@@ -259,13 +255,13 @@ readonly class OpenCompatService
      * @param array<string, mixed> $input
      * @return array{payload: array<string, mixed>, status: int}
      */
-    public function batchChunks(array $input, ?RetrievalAuthorizationContext $authContext = null): array
+    public function batchChunks(array $input): array
     {
         if ($this->string($input['query'] ?? null) === null) {
             return $this->unsupported('batch/chunks', 'RAWKI does not expose chunk lookup by external chunk IDs; provide query to use retrieval-backed chunks.');
         }
 
-        return $this->retrieveChunks($input, $authContext);
+        return $this->retrieveChunks($input);
     }
 
     /**

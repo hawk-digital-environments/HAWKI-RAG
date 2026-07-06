@@ -38,7 +38,7 @@ readonly class DatasetService
 
     public function create(array $input): Dataset
     {
-        $datasetId = $this->identifiers->datasetId($input['dataset_id'] ?? $input['datasetId'] ?? null);
+        $datasetId = $this->identifiers->datasetId($input['heap_id'] ?? $input['heapId'] ?? $input['dataset_id'] ?? $input['datasetId'] ?? null);
         $safe = $this->identifiers->safeName($datasetId);
 
         return $this->datasets->create([
@@ -67,7 +67,7 @@ readonly class DatasetService
             $dataset = null;
         }
 
-        $datasetId = $this->identifiers->datasetId($dataset ?? $input['dataset_id'] ?? $input['datasetId'] ?? null);
+        $datasetId = $this->identifiers->datasetId($dataset ?? $input['heap_id'] ?? $input['heapId'] ?? $input['dataset_id'] ?? $input['datasetId'] ?? null);
         $safe = $this->identifiers->safeName($datasetId);
 
         return $this->datasets->firstOrCreate($datasetId, [

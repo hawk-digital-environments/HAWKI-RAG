@@ -9,6 +9,7 @@ use App\Http\Requests\SpecV2\ListGroupsRequest;
 use App\Http\Requests\SpecV2\PaginatedSpecRequest;
 use App\Http\Requests\SpecV2\ReplaceGroupMembersRequest;
 use App\Http\Requests\SpecV2\UpdateGroupMembersRequest;
+use App\Services\Authorization\ApiActorResolver;
 use App\Services\SpecV2\Exceptions\ApplicationNotFoundException;
 use App\Services\SpecV2\Exceptions\GroupNotFoundException;
 use App\Services\SpecV2\Exceptions\InvalidGroupIdentifierException;
@@ -26,10 +27,10 @@ class GroupController extends Controller
         return response()->json($this->spec->groups->list($request->filters(), $request->page(), $request->perPage()));
     }
 
-    public function store(CreateGroupRequest $request): JsonResponse
+    public function store(CreateGroupRequest $request, ApiActorResolver $actors): JsonResponse
     {
         try {
-            $group = $this->spec->groups->create($request->validated(), $request->user());
+            $group = $this->spec->groups->create($request->validated(), $actors->resolve($request));
         } catch (ApplicationNotFoundException|InvalidGroupIdentifierException $e) {
             return response()->json(['message' => $e->getMessage()], 422);
         }

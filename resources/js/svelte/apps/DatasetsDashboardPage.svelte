@@ -1,5 +1,5 @@
 <!--
-  @component Svelte-owned shell for the dataset and document browser dashboard.
+  @component Svelte-owned shell for the heap and document browser dashboard.
 -->
 <script lang="ts">
     import {onMount} from 'svelte';
@@ -30,41 +30,41 @@
     <HawkiRagBackground />
 
     <DashboardHeader
-        eyebrow="HAWKI RAG data"
-        title="Data Browser"
-        copy="Dataset-scoped tasks, documents, ingestion, preview, and graph storage."
-        active="datasets"
+        eyebrow="HAWKI RAG heaps"
+        title="Heap Browser"
+        copy="Heap-scoped tasks, documents, ingestion, preview, and graph storage."
+        active="heaps"
     />
 
     {#if operatorAuthorized}
     <div class="dashboard-grid">
-        <aside class="dataset-sidebar" aria-label="Datasets">
+        <aside class="dataset-sidebar" aria-label="Heaps">
             <div class="section-head">
                 <div>
-                    <h2>Dataset list</h2>
-                    <p id="datasets-count">Loading datasets...</p>
+                    <h2>Heap list</h2>
+                    <p id="datasets-count">Loading heaps...</p>
                 </div>
             </div>
             <div class="dataset-list" id="datasets-list" aria-live="polite"></div>
         </aside>
 
         <section class="dataset-detail" aria-live="polite">
-            <div class="detail-status" id="datasets-status">Loading datasets...</div>
+            <div class="detail-status" id="datasets-status">Loading heaps...</div>
 
             <section class="panel overview-panel">
                 <div class="section-head">
                     <div>
-                        <h2>Selected data pool</h2>
-                        <p id="datasets-updated">No dataset loaded.</p>
+                        <h2>Selected heap</h2>
+                        <p id="datasets-updated">No heap loaded.</p>
                     </div>
                 </div>
                 <div class="overview-grid">
                     <div class="overview-block">
-                        <h3>Dataset</h3>
+                        <h3>Heap</h3>
                         <dl class="dataset-info-grid compact-info-grid" id="datasets-info"></dl>
                     </div>
                     <div class="overview-block">
-                        <h3>Retrieval evidence</h3>
+                        <h3>Search evidence</h3>
                         <div class="metric-grid compact-metric-grid" id="datasets-metrics"></div>
                     </div>
                 </div>
@@ -77,7 +77,7 @@
                         <p id="datasets-document-count">0 documents</p>
                     </div>
                     <form class="document-search" id="datasets-document-search-form">
-                        <input id="datasets-document-search" type="search" placeholder="Search documents" autocomplete="off" />
+                        <input id="datasets-document-search" type="search" placeholder="Search documents in this heap" autocomplete="off" />
                         <button type="submit" class="secondary-button">Search</button>
                     </form>
                 </div>
@@ -144,8 +144,8 @@
     {:else}
     <section class="datasets-auth-panel" aria-labelledby="datasets-auth-required-title">
         <span class="datasets-auth-kicker">Operator access required</span>
-        <h2 id="datasets-auth-required-title">Dataset controls are locked.</h2>
-        <p>Sign in with an operator account or enable the explicit local bypass before loading datasets, documents, and recovery actions.</p>
+        <h2 id="datasets-auth-required-title">Heap controls are locked.</h2>
+        <p>Sign in with an operator account or enable the explicit local bypass before loading heaps, documents, and recovery actions.</p>
     </section>
     {/if}
 </main>

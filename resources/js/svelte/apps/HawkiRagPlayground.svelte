@@ -437,12 +437,12 @@
             hits = asArray(payload.hits).map(normalizeHit);
             kgFacts = asArray(payload.kg).map(normalizeKgFact);
             answer = textValue(payload.answer || payload.response || payload.generated_answer);
-            status = `${hits.length} sources retrieved in ${elapsedMs} ms`;
-            pushActivity('Retrieval', `${hits.length} sources, ${kgFacts.length} graph facts, ${elapsedMs} ms`, 'ready');
+            status = `${hits.length} sources returned in ${elapsedMs} ms`;
+            pushActivity('Search', `${hits.length} sources, ${kgFacts.length} graph facts, ${elapsedMs} ms`, 'ready');
         } catch (error) {
-            errorMessage = error instanceof Error ? error.message : 'Retrieval failed.';
+            errorMessage = error instanceof Error ? error.message : 'Search failed.';
             status = errorMessage;
-            pushActivity('Retrieval', errorMessage, 'fail');
+            pushActivity('Search', errorMessage, 'fail');
         } finally {
             busy = false;
         }
@@ -577,14 +577,14 @@
     <HawkiRagBackground />
 
     <DashboardHeader
-        eyebrow="HAWKI RAG retrieval"
-        title="Retrieval Console"
+        eyebrow="HAWKI RAG search"
+        title="Search Console"
         copy="Ask questions, inspect evidence, and compare vector or graph-backed answers."
-        active="playground"
+        active="search"
     />
 
     {#if operatorAuthorized}
-    <section class="signal-strip" aria-label="Live retrieval state">
+    <section class="signal-strip" aria-label="Live search state">
         {#each systemSignals as signal}
             <article data-tone={signal.tone}>
                 <span>{signal.label}</span>
@@ -608,7 +608,7 @@
                 <textarea
                     id="hawki-question"
                     bind:value={question}
-                    placeholder="Ask about your documents, datasets, topics, or graph evidence..."
+                    placeholder="Ask about your documents, heaps, topics, or graph evidence..."
                     required
                 ></textarea>
 
@@ -620,7 +620,7 @@
 
                 <div class="control-grid">
                     <fieldset>
-                        <legend>Retrieval mode</legend>
+                        <legend>Search mode</legend>
                         <div class="segmented">
                             <button
                                 type="button"
@@ -653,7 +653,7 @@
                 </div>
 
                 <button type="submit" class="run-button" disabled={busy || !question.trim()}>
-                    {busy ? 'Retrieving...' : 'Run retrieval'}
+                    {busy ? 'Searching...' : 'Run search'}
                 </button>
             </form>
 
@@ -694,7 +694,7 @@
             {#if !hasResult && !errorMessage}
                 <div class="empty-result">
                     <strong>Ready for a grounded question.</strong>
-                    <span>Sources, graph facts, and raw retrieval data will appear here.</span>
+                    <span>Sources, graph facts, and raw search data will appear here.</span>
                 </div>
             {/if}
 
@@ -770,7 +770,7 @@
                                 <p>{selectedHit.parent || hitSourceLabel(selectedHit) || 'No parent source recorded.'}</p>
                             {:else}
                                 <strong>No selected source</strong>
-                                <p>Run retrieval to inspect the strongest evidence.</p>
+                                <p>Run search to inspect the strongest evidence.</p>
                             {/if}
                         </aside>
                     </div>
@@ -819,7 +819,7 @@
                         <dd>{monitor.embeddingModel}</dd>
                     </div>
                     <div>
-                        <dt>Latest dataset</dt>
+                        <dt>Latest heap</dt>
                         <dd>{monitor.latestDataset}</dd>
                     </div>
                 </dl>
@@ -879,8 +879,8 @@
     {:else}
     <section class="playground-auth-panel" aria-labelledby="playground-auth-required-title">
         <span class="playground-auth-kicker">Operator access required</span>
-        <h2 id="playground-auth-required-title">Retrieval controls are locked.</h2>
-        <p>Sign in with an operator account or enable the explicit local bypass before running retrieval, viewing operator stats, or clearing graph storage.</p>
+        <h2 id="playground-auth-required-title">Search controls are locked.</h2>
+        <p>Sign in with an operator account or enable the explicit local bypass before running search, viewing operator stats, or clearing graph storage.</p>
     </section>
     {/if}
 </div>

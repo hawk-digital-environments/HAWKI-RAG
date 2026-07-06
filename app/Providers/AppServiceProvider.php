@@ -4,12 +4,14 @@ declare(strict_types=1);
 
 namespace App\Providers;
 
+use App\Models\SpecV2\Application as AuthenticatedApplication;
 use App\Services\Storage\StorageService;
 use App\Services\Storage\StorageElementReader;
 use App\Services\Storage\StorageJobReportReader;
 use App\Services\Storage\StoragePathBuilder;
 use App\Services\Storage\UrlGenerator;
 use App\Services\Authorization\Contracts\PermissionGraphClient;
+use App\Services\Authorization\ApplicationTokenService;
 use App\Services\Authorization\Oidc\OidcUserResolver;
 use App\Services\Authorization\PermissionGraph\OpenFgaPermissionGraphClient;
 use App\Services\Authorization\PermissionGraph\SpiceDbPermissionGraphClient;
@@ -93,10 +95,25 @@ class AppServiceProvider extends ServiceProvider
         $url = $this->app->make('url');
         $url->useOrigin((string) $config->get('app.url'));
 
+        $this->loadMigrationsFrom([
+            database_path('migrations/auth'),
+            database_path('migrations/documents'),
+            database_path('migrations/framework'),
+            database_path('migrations/pipeline'),
+        ]);
+
         $this->configureViteAssetPaths($config);
+        $this->registerApplicationTokenGuard();
         $this->registerOidcGuard();
         $this->registerRouteConstraints();
         $this->registerRateLimits();
+    }
+
+    private function registerApplicationTokenGuard(): void
+    {
+        Auth::viaRequest('application-token', function (Request $request) {
+            return $this->app->make(ApplicationTokenService::class)->authenticate($request->bearerToken());
+        });
     }
 
     private function registerOidcGuard(): void
@@ -136,6 +153,10 @@ class AppServiceProvider extends ServiceProvider
     private function rateLimitKey(Request $request): string
     {
         $user = $request->user();
+        if ($user instanceof AuthenticatedApplication) {
+            return 'application:'.$user->getAuthIdentifier();
+        }
+
         if ($user !== null) {
             return 'user:'.$user->getAuthIdentifier();
         }

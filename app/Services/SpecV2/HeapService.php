@@ -4,9 +4,8 @@ declare(strict_types=1);
 namespace App\Services\SpecV2;
 
 use App\Models\Dataset;
-use App\Models\User;
 use App\Models\SpecV2\Heap;
-use App\Services\Authorization\IdentityProvisioningService;
+use App\Services\Authorization\ApiActor;
 use App\Services\Dataset\DatasetIdentifierFactory;
 use App\Services\Dataset\DatasetService;
 use App\Services\SpecV2\Exceptions\ApplicationNotFoundException;
@@ -25,7 +24,6 @@ readonly class HeapService
     public function __construct(
         private HeapRepository $heaps,
         private ApplicationRepository $applications,
-        private IdentityProvisioningService $identityProvisioning,
         private DatasetIdentifierFactory $datasetIdentifiers,
         private SpecIdentifierFactory $identifiers,
         private DatasetService $datasets,
@@ -60,10 +58,10 @@ readonly class HeapService
     /**
      * @param array<string, mixed> $input
      */
-    public function create(array $input, ?User $actor = null): array
+    public function create(array $input, ?ApiActor $actor = null): array
     {
         $applicationId = $this->identifiers->stringValue($input['owner_application_id'] ?? null)
-            ?? $this->identityProvisioning->actorForUser($actor)?->application_id
+            ?? $actor?->applicationId()
             ?? 'rawki-default';
         $application = $this->applications->findById($applicationId);
 

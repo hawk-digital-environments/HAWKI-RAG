@@ -40,6 +40,9 @@ return [
             'driver' => 'session',
             'provider' => 'users',
         ],
+        'application-token' => [
+            'driver' => 'application-token',
+        ],
         'oidc' => [
             'driver' => 'oidc',
         ],

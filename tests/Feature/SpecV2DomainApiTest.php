@@ -36,7 +36,8 @@ class SpecV2DomainApiTest extends TestCase
         ])->assertCreated()
             ->assertJsonPath('id', 'hawki-web')
             ->assertJsonPath('tenantId', 'uni-hawk')
-            ->assertJsonPath('permissions.0', 'reads-all-apps');
+            ->assertJsonPath('permissions.0', 'reads-all-apps')
+            ->assertJsonPath('tokenType', 'Bearer');
 
         $this->postJson('/api/heaps', [
             'id' => 'heap-design',

@@ -72,9 +72,9 @@ class DatasetManagementTest extends TestCase
             'created_at' => now(),
         ]);
 
-        $this->get('/datasets')
+        $this->get('/heaps')
             ->assertOk()
-            ->assertSee('HAWKI Data Browser')
+            ->assertSee('HAWKI Heap Browser')
             ->assertSee('data-datasets-dashboard', false);
 
         $this->actingAsApiUser();

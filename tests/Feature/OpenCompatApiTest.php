@@ -92,15 +92,74 @@ class OpenCompatApiTest extends TestCase
             && $request->data()['generate'] === false);
     }
 
-    public function test_retrieve_chunks_sends_authorization_context_from_identity_mapping(): void
+    public function test_retrieve_chunks_sends_gateway_filters_from_user_identity_mapping(): void
     {
         config()->set('config.hawki_rag_bridge_url', 'http://bridge.test');
+        config()->set('authz.enabled', true);
         Http::fake([
             'http://bridge.test/query' => Http::response([
                 'ok' => true,
                 'count' => 0,
                 'hits' => [],
             ], 200),
+        ]);
+
+        $this->issueApplicationToken([
+            'id' => 'rawki-default',
+            'tenant_id' => 'default',
+            'permissions' => ['reads'],
+        ]);
+
+        Dataset::query()->create([
+            'dataset_id' => 'compat-public',
+            'tenant_id' => 'default',
+            'owner_application_id' => 'rawki-default',
+            'name' => 'Compat Public',
+            'status' => Dataset::STATUS_ACTIVE,
+            'visibility' => Dataset::VISIBILITY_DISCOVERABLE,
+            'protected' => false,
+            'metadata_json' => [],
+            'qdrant_collection' => 'compat_public',
+            'neo4j_namespace' => 'compat_public',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        Dataset::query()->create([
+            'dataset_id' => 'compat-protected',
+            'tenant_id' => 'default',
+            'owner_application_id' => 'rawki-default',
+            'name' => 'Compat Protected',
+            'status' => Dataset::STATUS_ACTIVE,
+            'visibility' => Dataset::VISIBILITY_DISCOVERABLE,
+            'protected' => true,
+            'metadata_json' => [],
+            'qdrant_collection' => 'compat_protected',
+            'neo4j_namespace' => 'compat_protected',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $publicDocument = Document::query()->create([
+            'dataset_id' => 'compat-public',
+            'collection' => 'compat_public',
+            'source_type' => Document::SOURCE_API,
+            'source_url' => 'https://example.test/public',
+            'storage_path' => '/tmp/public.txt',
+            'checksum_sha256' => hash('sha256', 'compat-public'),
+            'status' => Document::STATUS_COMPLETED,
+            'metadata_json' => [],
+        ]);
+
+        $protectedDocument = Document::query()->create([
+            'dataset_id' => 'compat-protected',
+            'collection' => 'compat_protected',
+            'source_type' => Document::SOURCE_API,
+            'source_url' => 'https://example.test/protected',
+            'storage_path' => '/tmp/protected.txt',
+            'checksum_sha256' => hash('sha256', 'compat-protected'),
+            'status' => Document::STATUS_COMPLETED,
+            'metadata_json' => [],
         ]);
 
         $user = $this->actingAsApiUser();
@@ -110,6 +169,24 @@ class OpenCompatApiTest extends TestCase
             'subject' => 'subject-123',
             'provider' => 'keycloak',
             'external_user_id' => 'learner-123',
+            'tenant_id' => 'default',
+            'application_id' => 'rawki-default',
+        ]);
+        \App\Models\AuthorizationPermissionEvent::query()->create([
+            'provider' => 'keycloak',
+            'external_user_id' => 'learner-123',
+            'course_id' => 'course-a',
+            'role' => 'member',
+            'document_id' => null,
+            'payload' => ['type' => 'membership'],
+        ]);
+        \App\Models\AuthorizationPermissionEvent::query()->create([
+            'provider' => 'keycloak',
+            'external_user_id' => null,
+            'course_id' => 'course-a',
+            'role' => null,
+            'document_id' => $protectedDocument->id,
+            'payload' => ['type' => 'document_relation'],
         ]);
 
         $this->postJson('/api/retrieve/chunks', [
@@ -117,11 +194,23 @@ class OpenCompatApiTest extends TestCase
             'top_k' => 1,
         ])->assertOk();
 
-        Http::assertSent(fn (Request $request): bool => $request->url() === 'http://bridge.test/query'
-            && ($request->data()['auth_context'] ?? null) === [
-                'provider' => 'keycloak',
-                'user_id' => 'learner-123',
-            ]);
+        Http::assertSent(function (Request $request) use ($protectedDocument, $publicDocument): bool {
+            if ($request->url() !== 'http://bridge.test/query') {
+                return false;
+            }
+
+            $filters = $request->data()['filters'] ?? [];
+            $docIds = array_map(
+                static fn (array $match): ?string => $match['match']['value'] ?? null,
+                is_array($filters['should'] ?? null) ? $filters['should'] : [],
+            );
+            sort($docIds);
+            $expected = [$protectedDocument->id, $publicDocument->id];
+            sort($expected);
+
+            return ($request->data()['auth_context'] ?? null) === null
+                && $docIds === $expected;
+        });
     }
 
     public function test_documents_list_docs_returns_compat_shape_without_rawki_wrapper(): void
