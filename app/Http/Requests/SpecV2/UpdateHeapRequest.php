@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace App\Http\Requests\SpecV2;
 
 use App\Models\SpecV2\Heap;
+use App\Rules\DisallowReservedMetadataKeys;
 use Illuminate\Foundation\Http\FormRequest;
 
 class UpdateHeapRequest extends FormRequest
@@ -20,7 +21,7 @@ class UpdateHeapRequest extends FormRequest
             'description' => 'sometimes|nullable|string',
             'visibility' => 'sometimes|string|in:'.Heap::VISIBILITY_DISCOVERABLE.','.Heap::VISIBILITY_HIDDEN,
             'protected' => 'sometimes|boolean',
-            'metadata' => 'sometimes|nullable|array',
+            'metadata' => ['sometimes', 'nullable', 'array', new DisallowReservedMetadataKeys],
         ];
     }
 }

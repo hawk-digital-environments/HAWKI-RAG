@@ -7,7 +7,7 @@ namespace App\Services\Authorization;
 use App\Models\Document;
 use App\Models\User;
 use App\Services\Authorization\Contracts\PermissionGraphClient;
-use App\Services\Authorization\Repositories\UserIdentityRepository;
+use App\Services\Authorization\Repositories\GrantAccessRepository;
 use App\Services\Authorization\Values\RetrievalAuthorizationContext;
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Contracts\Config\Repository as ConfigRepository;
@@ -18,7 +18,8 @@ readonly class AuthorizationService
 {
     public function __construct(
         private ConfigRepository $config,
-        private UserIdentityRepository $identities,
+        private IdentityProvisioningService $identities,
+        private GrantAccessRepository $grants,
         private PermissionGraphClient $graph,
         private LoggerInterface $logger,
     ) {}
@@ -42,7 +43,16 @@ readonly class AuthorizationService
             return false;
         }
 
-        $context = $this->retrievalContextFor($user);
+        $identity = $this->identities->actorForUser($user);
+        if ($identity !== null && $identity->internal_user_id !== null && $this->grants->canViewDocument($documentId, [(string) $identity->internal_user_id])) {
+            $this->audit('allowed', $user, $documentId, 'grant_allowed');
+
+            return true;
+        }
+
+        $context = $identity !== null
+            ? RetrievalAuthorizationContext::fromIdentity($identity)
+            : $this->retrievalContextFor($user);
         if ($context === null) {
             $this->audit('denied', $user, $documentId, 'missing_auth_context');
 
@@ -66,7 +76,7 @@ readonly class AuthorizationService
             return null;
         }
 
-        $identity = $this->identities->findByUser($user);
+        $identity = $this->identities->actorForUser($user);
         if ($identity !== null) {
             return RetrievalAuthorizationContext::fromIdentity($identity);
         }

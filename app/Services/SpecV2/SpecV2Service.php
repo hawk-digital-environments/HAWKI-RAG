@@ -14,5 +14,6 @@ readonly class SpecV2Service
         public HeapService $heaps,
         public CorpusService $corpora,
         public GroupService $groups,
+        public AuthorizationGrantService $auth,
     ) {}
 }

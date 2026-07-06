@@ -33,6 +33,7 @@ use App\Http\Controllers\API\OpenCompat\RetrievalController as OpenCompatRetriev
 use App\Http\Controllers\API\OpenCompat\SystemController as OpenCompatSystemController;
 use App\Http\Controllers\API\RagStatsController;
 use App\Http\Controllers\SpecV2\ApplicationController as SpecApplicationController;
+use App\Http\Controllers\SpecV2\AuthorizationController as SpecAuthorizationController;
 use App\Http\Controllers\SpecV2\CorpusController as SpecCorpusController;
 use App\Http\Controllers\SpecV2\GroupController as SpecGroupController;
 use App\Http\Controllers\SpecV2\HeapController as SpecHeapController;
@@ -225,5 +226,14 @@ Route::middleware(['auth:sanctum,oidc', 'throttle:hawki-api'])->group(function (
         Route::patch('/{groupId}/users', [SpecGroupController::class, 'updateUsers'])->where('groupId', '.*');
         Route::get('/{groupId}', [SpecGroupController::class, 'show'])->where('groupId', '.*');
         Route::delete('/{groupId}', [SpecGroupController::class, 'destroy'])->where('groupId', '.*')->middleware('throttle:hawki-destructive');
+    });
+
+    Route::prefix('auth')->group(function () {
+        Route::get('/heaps/{heapId}/grants', [SpecAuthorizationController::class, 'heapGrants']);
+        Route::put('/heaps/{heapId}/grants', [SpecAuthorizationController::class, 'replaceHeapGrants']);
+        Route::patch('/heaps/{heapId}/grants', [SpecAuthorizationController::class, 'updateHeapGrants']);
+        Route::get('/documents/{documentId}/grants', [SpecAuthorizationController::class, 'documentGrants']);
+        Route::put('/documents/{documentId}/grants', [SpecAuthorizationController::class, 'replaceDocumentGrants']);
+        Route::patch('/documents/{documentId}/grants', [SpecAuthorizationController::class, 'updateDocumentGrants']);
     });
 });

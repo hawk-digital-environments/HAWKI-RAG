@@ -127,7 +127,7 @@ readonly class ApplicationScopeResolver
     }
 
     /**
-     * @return list<array{provider: string, user_id: string}>
+     * @return list<array{provider?: string, user_id?: string, internal_user_id?: string}>
      */
     private function authorizationSubjects(ApiActor $actor, ?string $requestedUserIdentifier): array
     {
@@ -140,6 +140,7 @@ readonly class ApplicationScopeResolver
             return [[
                 'provider' => $identity->provider,
                 'user_id' => $identity->external_user_id,
+                'internal_user_id' => $identity->internal_user_id,
             ]];
         }
 
@@ -158,8 +159,9 @@ readonly class ApplicationScopeResolver
             ->map(fn ($identity): array => [
                 'provider' => (string) $identity->provider,
                 'user_id' => (string) $identity->external_user_id,
+                'internal_user_id' => (string) $identity->internal_user_id,
             ])
-            ->unique(fn (array $subject): string => $subject['provider'].'|'.$subject['user_id'])
+            ->unique(fn (array $subject): string => $subject['provider'].'|'.$subject['user_id'].'|'.($subject['internal_user_id'] ?? ''))
             ->values()
             ->all();
     }

@@ -6,6 +6,7 @@ namespace App\Services\SpecV2\Repositories;
 use App\Models\SpecV2\Group;
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Collection;
 
 #[Singleton]
 readonly class GroupRepository
@@ -31,6 +32,17 @@ readonly class GroupRepository
             ->withCount('members')
             ->where('id', $groupId)
             ->first();
+    }
+
+    /**
+     * @param list<string> $groupIds
+     * @return Collection<int, Group>
+     */
+    public function findByIds(array $groupIds): Collection
+    {
+        return Group::query()
+            ->whereIn('id', $groupIds)
+            ->get();
     }
 
     /**
