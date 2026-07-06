@@ -6,14 +6,14 @@ namespace App\Services\SpecV2;
 use App\Models\Dataset;
 use App\Models\SpecV2\Heap;
 use App\Services\Authorization\ApiActor;
+use App\Services\SpecV2\Events\HeapSearchPayloadChanged;
 use App\Services\Dataset\DatasetIdentifierFactory;
 use App\Services\SpecV2\Exceptions\ApplicationNotFoundException;
 use App\Services\SpecV2\Exceptions\HeapNotFoundException;
-use App\Services\SpecV2\Payloads\HeapPayloadBuilder;
-use App\Services\SpecV2\Payloads\PaginationPayloadBuilder;
 use App\Services\SpecV2\Repositories\ApplicationRepository;
 use App\Services\SpecV2\Repositories\HeapRepository;
 use Illuminate\Container\Attributes\Singleton;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Psr\Clock\ClockInterface;
 use Symfony\Component\Clock\Clock;
 
@@ -26,38 +26,31 @@ readonly class HeapService
         private DatasetIdentifierFactory $datasetIdentifiers,
         private SpecIdentifierFactory $identifiers,
         private HeapDeletionService $deletions,
-        private HeapPayloadBuilder $payloads,
-        private PaginationPayloadBuilder $pagination,
         private ClockInterface $clock = new Clock,
     ) {}
 
     /**
      * @param array<string, mixed> $filters
      */
-    public function list(array $filters, int $page, int $perPage): array
+    public function list(array $filters, int $page, int $perPage): LengthAwarePaginator
     {
-        $heaps = $this->heaps->paginate($filters, $perPage, $page);
-
-        return [
-            'data' => $heaps->getCollection()->map(fn (Heap $heap): array => $this->payloads->payload($heap))->all(),
-            'pagination' => $this->pagination->payload($heaps),
-        ];
+        return $this->heaps->paginate($filters, $perPage, $page);
     }
 
-    public function show(string $heapId): array
+    public function show(string $heapId): Heap
     {
         $heap = $this->heaps->findById($heapId);
         if (! $heap instanceof Heap) {
             throw HeapNotFoundException::withId($heapId);
         }
 
-        return $this->payloads->payload($heap);
+        return $heap;
     }
 
     /**
      * @param array<string, mixed> $input
      */
-    public function create(array $input, ?ApiActor $actor = null): array
+    public function create(array $input, ?ApiActor $actor = null): Heap
     {
         $applicationId = $this->identifiers->stringValue($input['owner_application_id'] ?? null)
             ?? $actor?->applicationId()
@@ -92,18 +85,20 @@ readonly class HeapService
         $heap->load(['tenant', 'ownerApplication']);
         $heap->loadCount('documents');
 
-        return $this->payloads->payload($heap);
+        return $heap;
     }
 
     /**
      * @param array<string, mixed> $input
      */
-    public function update(string $heapId, array $input): array
+    public function update(string $heapId, array $input): Heap
     {
         $heap = $this->heaps->findById($heapId);
         if (! $heap instanceof Heap) {
             throw HeapNotFoundException::withId($heapId);
         }
+
+        $previousMetadataKeys = array_keys(is_array($heap->metadata_json) ? $heap->metadata_json : []);
 
         if (array_key_exists('name', $input)) {
             $heap->name = $this->identifiers->displayName($heap->dataset_id, $input['name']);
@@ -130,7 +125,11 @@ readonly class HeapService
         $heap->load(['tenant', 'ownerApplication']);
         $heap->loadCount('documents');
 
-        return $this->payloads->payload($heap);
+        if ($heap->wasChanged(['metadata_json', 'visibility', 'protected'])) {
+            event(new HeapSearchPayloadChanged($heap->dataset_id, $previousMetadataKeys));
+        }
+
+        return $heap;
     }
 
     public function delete(string $heapId): array

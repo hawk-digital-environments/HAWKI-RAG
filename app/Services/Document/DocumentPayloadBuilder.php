@@ -6,6 +6,7 @@ namespace App\Services\Document;
 
 use App\Models\Document;
 use App\Models\PipelineJob;
+use App\Services\SpecV2\DocumentSearchPayloadFactory;
 use Illuminate\Container\Attributes\Singleton;
 
 #[Singleton]
@@ -16,6 +17,7 @@ readonly class DocumentPayloadBuilder
         private DocumentMarkdownPreviewReader $previews,
         private DocumentIngestionStatusResolver $statuses,
         private DocumentGraphStatsService $graphStats,
+        private DocumentSearchPayloadFactory $searchPayloads,
     ) {
     }
 
@@ -24,7 +26,7 @@ readonly class DocumentPayloadBuilder
      */
     public function payload(Document $document, bool $includeDetails): array
     {
-        $metadata = $this->arrayValue($document->metadata_json);
+        $metadata = $this->searchPayloads->publicMetadata($document->metadata_json);
         $bridgeResponse = $this->arrayValue($metadata['bridge_response'] ?? null);
         $taskId = $this->stringValue($metadata['task_id'] ?? null);
         $jobId = $this->stringValue($metadata['job_id'] ?? null) ?? $this->stringValue($document->external_id);

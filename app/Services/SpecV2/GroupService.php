@@ -8,12 +8,12 @@ use App\Services\Authorization\ApiActor;
 use App\Services\Authorization\IdentityProvisioningService;
 use App\Services\SpecV2\Exceptions\ApplicationNotFoundException;
 use App\Services\SpecV2\Exceptions\GroupNotFoundException;
-use App\Services\SpecV2\Payloads\GroupPayloadBuilder;
 use App\Services\SpecV2\Payloads\PaginationPayloadBuilder;
 use App\Services\SpecV2\Repositories\ApplicationRepository;
 use App\Services\SpecV2\Repositories\GroupMemberRepository;
 use App\Services\SpecV2\Repositories\GroupRepository;
 use Illuminate\Container\Attributes\Singleton;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 
 #[Singleton]
 readonly class GroupService
@@ -24,24 +24,18 @@ readonly class GroupService
         private ApplicationRepository $applications,
         private IdentityProvisioningService $identityProvisioning,
         private SpecIdentifierFactory $identifiers,
-        private GroupPayloadBuilder $payloads,
         private PaginationPayloadBuilder $pagination,
     ) {}
 
     /**
      * @param array<string, mixed> $filters
      */
-    public function list(array $filters, int $page, int $perPage): array
+    public function list(array $filters, int $page, int $perPage): LengthAwarePaginator
     {
-        $groups = $this->groups->paginate($filters, $perPage, $page);
-
-        return [
-            'data' => $groups->getCollection()->map(fn (Group $group): array => $this->payloads->payload($group))->all(),
-            'pagination' => $this->pagination->payload($groups),
-        ];
+        return $this->groups->paginate($filters, $perPage, $page);
     }
 
-    public function show(string $groupId): array
+    public function show(string $groupId): Group
     {
         $group = $this->groups->findById($groupId);
         if ($group instanceof Group) {
@@ -51,13 +45,13 @@ readonly class GroupService
             throw GroupNotFoundException::withId($groupId);
         }
 
-        return $this->payloads->payload($group, includeMembers: true);
+        return $group;
     }
 
     /**
      * @param array<string, mixed> $input
      */
-    public function create(array $input, ?ApiActor $actor = null): array
+    public function create(array $input, ?ApiActor $actor = null): Group
     {
         $applicationId = $this->identifiers->stringValue($input['owner_application_id'] ?? null)
             ?? $actor?->applicationId()
@@ -82,8 +76,9 @@ readonly class GroupService
 
         $group->load(['tenant', 'ownerApplication']);
         $group->loadCount('members');
+        $group->load('members');
 
-        return $this->payloads->payload($group, includeMembers: true);
+        return $group;
     }
 
     public function delete(string $groupId): void

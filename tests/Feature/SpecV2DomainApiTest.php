@@ -10,6 +10,8 @@ use App\Models\SpecV2\Corpus;
 use App\Models\SpecV2\GroupMember;
 use App\Models\UserIdentity;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\Request as ClientRequest;
+use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
 class SpecV2DomainApiTest extends TestCase
@@ -195,5 +197,74 @@ class SpecV2DomainApiTest extends TestCase
             'id' => $identity->internal_user_id,
             'tenant_id' => 'default',
         ]);
+    }
+
+    public function test_heap_updates_propagate_document_search_context_and_qdrant_payloads(): void
+    {
+        $this->actingAsApiUser();
+
+        config()->set('config.qdrant_http_url', 'http://qdrant.test');
+        Http::fake([
+            'http://qdrant.test/*' => Http::response(['status' => 'ok', 'result' => ['status' => 'acknowledged']], 200),
+        ]);
+
+        Dataset::query()->create([
+            'dataset_id' => 'heap-sync',
+            'tenant_id' => 'default',
+            'owner_application_id' => 'rawki-default',
+            'name' => 'Heap Sync',
+            'status' => Dataset::STATUS_ACTIVE,
+            'visibility' => Dataset::VISIBILITY_DISCOVERABLE,
+            'protected' => false,
+            'metadata_json' => ['course' => 'design'],
+            'qdrant_collection' => 'heap_sync',
+            'neo4j_namespace' => 'heap_sync',
+        ]);
+
+        $document = Document::query()->create([
+            'dataset_id' => 'heap-sync',
+            'collection' => 'heap_sync',
+            'source_type' => Document::SOURCE_API,
+            'source_url' => 'https://example.test/heap-sync',
+            'storage_path' => '/tmp/heap-sync.md',
+            'checksum_sha256' => hash('sha256', 'heap-sync'),
+            'status' => Document::STATUS_COMPLETED,
+            'metadata_json' => ['document_topic' => 'studio'],
+        ]);
+
+        $this->patchJson('/api/heaps/heap-sync', [
+            'visibility' => 'hidden',
+            'protected' => true,
+            'metadata' => ['course' => 'architecture'],
+        ])->assertOk()
+            ->assertJsonPath('visibility', 'hidden')
+            ->assertJsonPath('protected', true)
+            ->assertJsonPath('metadata.course', 'architecture');
+
+        $document->refresh();
+
+        $this->assertSame('studio', $document->metadata_json['document_topic']);
+        $this->assertSame('heap-sync', $document->metadata_json['__rawki']['heap_context']['heap']);
+        $this->assertSame('hidden', $document->metadata_json['__rawki']['search_payload']['visibility']);
+        $this->assertTrue($document->metadata_json['__rawki']['search_payload']['protected']);
+        $this->assertSame('architecture', $document->metadata_json['__rawki']['search_payload']['course']);
+
+        Http::assertSent(function (ClientRequest $request) use ($document): bool {
+            return $request->method() === 'POST'
+                && $request->url() === 'http://qdrant.test/collections/heap_sync/points/payload/delete'
+                && ($request['filter']['must'][0]['match']['value'] ?? null) === $document->id
+                && ($request['keys'] ?? null) === ['course', 'heap', 'document_id', 'owner_app', 'visibility', 'protected'];
+        });
+
+        Http::assertSent(function (ClientRequest $request) use ($document): bool {
+            return $request->method() === 'POST'
+                && $request->url() === 'http://qdrant.test/collections/heap_sync/points/payload'
+                && ($request['filter']['must'][0]['match']['value'] ?? null) === $document->id
+                && ($request['payload']['heap'] ?? null) === 'heap-sync'
+                && ($request['payload']['document_id'] ?? null) === $document->id
+                && ($request['payload']['visibility'] ?? null) === 'hidden'
+                && ($request['payload']['protected'] ?? null) === true
+                && ($request['payload']['course'] ?? null) === 'architecture';
+        });
     }
 }

@@ -2,6 +2,12 @@
 
 use App\Http\Middleware\RequireOperatorAccess;
 use App\Http\Middleware\SecurityHeaders;
+use App\Services\SpecV2\Exceptions\ApplicationNotFoundException;
+use App\Services\SpecV2\Exceptions\AuthorizationGrantException;
+use App\Services\SpecV2\Exceptions\CorpusNotFoundException;
+use App\Services\SpecV2\Exceptions\GroupNotFoundException;
+use App\Services\SpecV2\Exceptions\HeapNotFoundException;
+use App\Services\SpecV2\Exceptions\InvalidGroupIdentifierException;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -30,4 +36,15 @@ return Application::configure(basePath: dirname(__DIR__))
         $exceptions->shouldRenderJsonWhen(
             fn (Request $request, \Throwable $exception): bool => $request->is('api/*') || $request->expectsJson()
         );
+        $exceptions->render(function (ApplicationNotFoundException|InvalidGroupIdentifierException $exception) {
+            return response()->json(['message' => $exception->getMessage()], 422);
+        });
+        $exceptions->render(function (HeapNotFoundException|GroupNotFoundException|CorpusNotFoundException $exception) {
+            return response()->json(['message' => $exception->getMessage()], 404);
+        });
+        $exceptions->render(function (AuthorizationGrantException $exception) {
+            $status = str_contains($exception->getMessage(), 'was not found.') ? 404 : 422;
+
+            return response()->json(['message' => $exception->getMessage()], $status);
+        });
     })->create();

@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Providers;
 
 use App\Models\SpecV2\Application as AuthenticatedApplication;
+use App\Listeners\SpecV2\PropagateHeapSearchPayload;
+use App\Services\SpecV2\Events\HeapSearchPayloadChanged;
 use App\Services\Storage\StorageService;
 use App\Services\Storage\StorageElementReader;
 use App\Services\Storage\StorageJobReportReader;
@@ -30,6 +32,7 @@ use Illuminate\Routing\UrlGenerator as LaravelUrlGenerator;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Vite;
 use Psr\Clock\ClockInterface;
 use Illuminate\Support\ServiceProvider;
@@ -105,6 +108,7 @@ class AppServiceProvider extends ServiceProvider
         $this->configureViteAssetPaths($config);
         $this->registerApplicationTokenGuard();
         $this->registerOidcGuard();
+        $this->registerDomainListeners();
         $this->registerRouteConstraints();
         $this->registerRateLimits();
     }
@@ -121,6 +125,11 @@ class AppServiceProvider extends ServiceProvider
         Auth::viaRequest('oidc', function (Request $request) {
             return $this->app->make(OidcUserResolver::class)->userFromRequest($request);
         });
+    }
+
+    private function registerDomainListeners(): void
+    {
+        Event::listen(HeapSearchPayloadChanged::class, PropagateHeapSearchPayload::class);
     }
 
     private function configureViteAssetPaths(ConfigRepository $config): void

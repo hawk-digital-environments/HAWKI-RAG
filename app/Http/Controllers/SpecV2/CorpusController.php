@@ -5,9 +5,11 @@ namespace App\Http\Controllers\SpecV2;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\SpecV2\PaginatedSpecRequest;
-use App\Services\SpecV2\Exceptions\CorpusNotFoundException;
+use App\Http\Resources\SpecV2\CorpusCollection;
+use App\Http\Resources\SpecV2\CorpusResource;
 use App\Services\SpecV2\SpecV2Service;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 
 class CorpusController extends Controller
 {
@@ -17,15 +19,14 @@ class CorpusController extends Controller
 
     public function index(PaginatedSpecRequest $request): JsonResponse
     {
-        return response()->json($this->spec->corpora->list($request->page(), $request->perPage()));
+        return response()->json(
+            (new CorpusCollection($this->spec->corpora->list($request->page(), $request->perPage())))
+                ->resolve($request)
+        );
     }
 
-    public function show(string $corpusId): JsonResponse
+    public function show(Request $request, string $corpusId): JsonResponse
     {
-        try {
-            return response()->json($this->spec->corpora->show($corpusId));
-        } catch (CorpusNotFoundException $e) {
-            return response()->json(['message' => $e->getMessage()], 404);
-        }
+        return response()->json((new CorpusResource($this->spec->corpora->show($corpusId)))->resolve($request));
     }
 }

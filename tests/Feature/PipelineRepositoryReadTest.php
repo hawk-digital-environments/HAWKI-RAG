@@ -9,6 +9,7 @@ use App\Models\Document;
 use App\Models\PipelineJob;
 use App\Models\PipelineTask;
 use App\Models\ScrapedElement;
+use App\Models\SpecV2\Corpus;
 use App\Services\Pipeline\Repositories\PipelineIngestionRepository;
 use App\Services\Pipeline\Repositories\PipelineJobCreationRepository;
 use App\Services\Pipeline\Repositories\PipelineJobRecoveryRepository;
@@ -446,6 +447,9 @@ class PipelineRepositoryReadTest extends TestCase
         $this->assertSame($checksum, $document->checksum_sha256);
         $this->assertSame(Document::STATUS_COMPLETED, $document->status);
         $this->assertSame('ingest-repository-job', $document->metadata_json['job_id']);
+        $this->assertSame($task->dataset_id, $document->metadata_json['__rawki']['heap_context']['heap']);
+        $this->assertSame($document->id, $document->metadata_json['__rawki']['search_payload']['document_id']);
+        $this->assertSame($checksum, $document->corpus_id);
         $this->assertDatabaseHas('documents', [
             'id' => $document->id,
             'dataset_id' => $task->dataset_id,
@@ -453,6 +457,11 @@ class PipelineRepositoryReadTest extends TestCase
             'checksum_sha256' => $checksum,
             'status' => Document::STATUS_COMPLETED,
         ]);
+        $this->assertDatabaseHas('corpora', [
+            'id' => $checksum,
+            'reference_count' => 1,
+        ]);
+        $this->assertNotNull(Corpus::query()->find($checksum));
     }
 
     public function test_scrape_history_repository_detects_completed_scrapes(): void

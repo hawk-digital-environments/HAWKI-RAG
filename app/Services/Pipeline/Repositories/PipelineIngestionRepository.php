@@ -4,14 +4,16 @@ declare(strict_types=1);
 namespace App\Services\Pipeline\Repositories;
 
 use App\Models\Document;
-use App\Services\SpecV2\Repositories\CorpusRepository;
+use App\Services\SpecV2\CorpusSyncService;
+use App\Services\SpecV2\DocumentSearchPayloadSyncService;
 use Illuminate\Container\Attributes\Singleton;
 
 #[Singleton]
 readonly class PipelineIngestionRepository
 {
     public function __construct(
-        private CorpusRepository $corpora,
+        private CorpusSyncService $corpora,
+        private DocumentSearchPayloadSyncService $documents,
     ) {}
 
     /**
@@ -54,6 +56,7 @@ readonly class PipelineIngestionRepository
         );
 
         $this->corpora->syncFromDocument($document);
+        $this->documents->syncStoredMetadata($document);
 
         return $document;
     }

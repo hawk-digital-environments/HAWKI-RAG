@@ -7,11 +7,12 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\SpecV2\CreateHeapRequest;
 use App\Http\Requests\SpecV2\ListHeapsRequest;
 use App\Http\Requests\SpecV2\UpdateHeapRequest;
+use App\Http\Resources\SpecV2\HeapCollection;
+use App\Http\Resources\SpecV2\HeapResource;
 use App\Services\Authorization\ApiActorResolver;
-use App\Services\SpecV2\Exceptions\ApplicationNotFoundException;
-use App\Services\SpecV2\Exceptions\HeapNotFoundException;
 use App\Services\SpecV2\SpecV2Service;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 
 class HeapController extends Controller
 {
@@ -21,45 +22,32 @@ class HeapController extends Controller
 
     public function index(ListHeapsRequest $request): JsonResponse
     {
-        return response()->json($this->spec->heaps->list($request->filters(), $request->page(), $request->perPage()));
+        return response()->json(
+            (new HeapCollection($this->spec->heaps->list($request->filters(), $request->page(), $request->perPage())))
+                ->resolve($request)
+        );
     }
 
     public function store(CreateHeapRequest $request, ApiActorResolver $actors): JsonResponse
     {
-        try {
-            $heap = $this->spec->heaps->create($request->validated(), $actors->resolve($request));
-        } catch (ApplicationNotFoundException $e) {
-            return response()->json(['message' => $e->getMessage()], 422);
-        }
+        $heap = $this->spec->heaps->create($request->validated(), $actors->resolve($request));
 
-        return response()->json($heap, 201);
+        return response()->json((new HeapResource($heap))->resolve($request), 201);
     }
 
-    public function show(string $heapId): JsonResponse
+    public function show(Request $request, string $heapId): JsonResponse
     {
-        try {
-            return response()->json($this->spec->heaps->show($heapId));
-        } catch (HeapNotFoundException $e) {
-            return response()->json(['message' => $e->getMessage()], 404);
-        }
+        return response()->json((new HeapResource($this->spec->heaps->show($heapId)))->resolve($request));
     }
 
     public function update(string $heapId, UpdateHeapRequest $request): JsonResponse
     {
-        try {
-            return response()->json($this->spec->heaps->update($heapId, $request->validated()));
-        } catch (HeapNotFoundException $e) {
-            return response()->json(['message' => $e->getMessage()], 404);
-        }
+        return response()->json((new HeapResource($this->spec->heaps->update($heapId, $request->validated())))->resolve($request));
     }
 
     public function destroy(string $heapId): JsonResponse
     {
-        try {
-            $deleted = $this->spec->heaps->delete($heapId);
-        } catch (HeapNotFoundException $e) {
-            return response()->json(['message' => $e->getMessage()], 404);
-        }
+        $deleted = $this->spec->heaps->delete($heapId);
 
         $ok = ($deleted['qdrant']['ok'] ?? false) && ($deleted['neo4j']['ok'] ?? false) && ($deleted['datasetDeleted'] ?? false);
 

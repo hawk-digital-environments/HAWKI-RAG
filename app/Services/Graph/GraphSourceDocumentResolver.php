@@ -8,6 +8,8 @@ use App\Models\Document;
 use App\Services\Document\DocumentMarkdownPreviewReader;
 use App\Services\Document\DocumentRepository;
 use Illuminate\Container\Attributes\Singleton;
+use Illuminate\Database\QueryException;
+use Psr\Log\LoggerInterface;
 
 #[Singleton]
 readonly class GraphSourceDocumentResolver
@@ -15,6 +17,7 @@ readonly class GraphSourceDocumentResolver
     public function __construct(
         private DocumentRepository $documents,
         private DocumentMarkdownPreviewReader $previews,
+        private LoggerInterface $logger,
     ) {
     }
 
@@ -31,8 +34,15 @@ readonly class GraphSourceDocumentResolver
             }
         }
 
-        $documents = $this->documents->findByExternalIds($docIds)
-            ->keyBy(fn (Document $document): string => (string) $document->external_id);
+        try {
+            $documents = $this->documents->findByExternalIds($docIds)
+                ->keyBy(fn (Document $document): string => (string) $document->external_id);
+        } catch (QueryException $e) {
+            $this->logger->warning('Graph source document lookup skipped because documents storage is unavailable.', [
+                'exception' => $e,
+            ]);
+            $documents = collect();
+        }
 
         foreach ($nodes as &$node) {
             $label = $this->stringValue($node['label'] ?? null);
