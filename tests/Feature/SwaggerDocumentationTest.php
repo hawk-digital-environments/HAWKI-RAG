@@ -38,6 +38,13 @@ class SwaggerDocumentationTest extends TestCase
         $this->assertSame('#/components/schemas/CreateDocumentFileRequest', $multipart['$ref'] ?? null);
         $this->assertSame('#/components/schemas/SearchRequest', $paths['/search']['post']['requestBody']['content']['application/json']['schema']['$ref'] ?? null);
         $this->assertSame('#/components/schemas/CanonicalFilterExpression', $spec['components']['schemas']['SearchRequest']['properties']['filters']['$ref'] ?? null);
+        $this->assertArrayNotHasKey('protected', $spec['components']['schemas']['CreateHeapRequest']['properties'] ?? []);
+        $this->assertArrayNotHasKey('protected', $spec['components']['schemas']['UpdateHeapRequest']['properties'] ?? []);
+        $this->assertArrayNotHasKey('GrantPayload', $spec['components']['schemas'] ?? []);
+        $this->assertSame('#/components/schemas/HeapGrantPayload', $paths['/auth/heaps/{heapId}']['get']['responses']['200']['content']['application/json']['schema']['$ref'] ?? null);
+        $this->assertArrayHasKey('201', $paths['/auth/heaps/{heapId}']['put']['responses'] ?? []);
+        $this->assertSame('#/components/schemas/DocumentGrantPayload', $paths['/auth/documents/{documentId}']['get']['responses']['200']['content']['application/json']['schema']['$ref'] ?? null);
+        $this->assertArrayHasKey('201', $paths['/auth/documents/{documentId}']['put']['responses'] ?? []);
 
         $securityScheme = $spec['components']['securitySchemes']['ApplicationBearerAuth'] ?? [];
         $this->assertSame('http', $securityScheme['type'] ?? null);

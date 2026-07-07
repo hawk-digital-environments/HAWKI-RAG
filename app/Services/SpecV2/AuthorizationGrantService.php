@@ -18,10 +18,12 @@ use App\Services\SpecV2\Exceptions\AccessDeniedException;
 use App\Services\SpecV2\Exceptions\AuthorizationGrantException;
 use App\Services\SpecV2\Exceptions\GroupNotFoundException;
 use App\Services\SpecV2\Exceptions\HeapNotFoundException;
+use App\Services\SpecV2\Events\HeapSearchPayloadChanged;
 use App\Services\SpecV2\Repositories\DocumentGrantRepository;
 use App\Services\SpecV2\Repositories\GroupRepository;
 use App\Services\SpecV2\Repositories\HeapGrantRepository;
 use App\Services\SpecV2\Repositories\HeapRepository;
+use App\Services\SpecV2\Values\GrantMutationResult;
 use Illuminate\Container\Attributes\Singleton;
 
 #[Singleton]
@@ -46,7 +48,7 @@ readonly class AuthorizationGrantService
         $heap = $this->readableHeap($heapId);
 
         if (! $this->enabled()) {
-            return $this->grantPayload('heap', $heap->heapId(), [], [], (bool) $heap->protected);
+            return $this->heapGrantPayloadFromLists($heap, [], []);
         }
 
         return $this->heapGrantPayload($heap);
@@ -56,22 +58,22 @@ readonly class AuthorizationGrantService
      * @param list<mixed> $users
      * @param list<mixed> $groups
      */
-    public function replaceHeapGrants(string $heapId, array $users, array $groups): array
+    public function replaceHeapGrants(string $heapId, array $users, array $groups): GrantMutationResult
     {
         $heap = $this->ownedHeap($heapId);
         if (! $this->enabled()) {
-            return $this->grantPayload('heap', $heap->heapId(), [], [], (bool) $heap->protected);
+            return new GrantMutationResult($this->heapGrantPayloadFromLists($heap, [], []), 200);
         }
 
-        $heap->protected = true;
-        $this->heaps->save($heap);
+        $created = ! $this->heapGrants->existsForHeap($heap->heapId());
+        $this->protectHeap($heap);
         $this->heapGrants->replaceUsers(
             $heap->heapId(),
             $this->identityProvisioning->userAssignments($heap->tenant_id, $heap->owner_application_id, $this->identifiers->stringList($users)),
         );
         $this->heapGrants->replaceGroups($heap->heapId(), $this->validatedGroupIds($groups, $heap->tenant_id, $heap->heapId()));
 
-        return $this->heapGrantPayload($heap);
+        return new GrantMutationResult($this->heapGrantPayload($heap), $created ? 201 : 200);
     }
 
     /**
@@ -84,11 +86,10 @@ readonly class AuthorizationGrantService
     {
         $heap = $this->ownedHeap($heapId);
         if (! $this->enabled()) {
-            return $this->grantPayload('heap', $heap->heapId(), [], [], (bool) $heap->protected);
+            return $this->heapGrantPayloadFromLists($heap, [], []);
         }
 
-        $heap->protected = true;
-        $this->heaps->save($heap);
+        $this->protectHeap($heap);
         $this->heapGrants->addUsers(
             $heap->heapId(),
             $this->identityProvisioning->userAssignments($heap->tenant_id, $heap->owner_application_id, $this->identifiers->stringList($addUsers)),
@@ -105,7 +106,7 @@ readonly class AuthorizationGrantService
         $document = $this->readableDocument($documentId);
 
         if (! $this->enabled()) {
-            return $this->grantPayload('document', (string) $document->id, [], []);
+            return $this->documentGrantPayloadFromLists($document, [], []);
         }
 
         return $this->documentGrantPayload($document);
@@ -115,13 +116,14 @@ readonly class AuthorizationGrantService
      * @param list<mixed> $users
      * @param list<mixed> $groups
      */
-    public function replaceDocumentGrants(string $documentId, array $users, array $groups): array
+    public function replaceDocumentGrants(string $documentId, array $users, array $groups): GrantMutationResult
     {
         $document = $this->ownedDocument($documentId);
         if (! $this->enabled()) {
-            return $this->grantPayload('document', (string) $document->id, [], []);
+            return new GrantMutationResult($this->documentGrantPayloadFromLists($document, [], []), 200);
         }
 
+        $created = ! $this->documentGrants->existsForDocument((string) $document->id);
         $this->documentGrants->replaceUsers(
             (string) $document->id,
             $this->identityProvisioning->userAssignments(
@@ -136,7 +138,7 @@ readonly class AuthorizationGrantService
             (string) $document->id,
         ));
 
-        return $this->documentGrantPayload($document);
+        return new GrantMutationResult($this->documentGrantPayload($document), $created ? 201 : 200);
     }
 
     /**
@@ -149,7 +151,7 @@ readonly class AuthorizationGrantService
     {
         $document = $this->ownedDocument($documentId);
         if (! $this->enabled()) {
-            return $this->grantPayload('document', (string) $document->id, [], []);
+            return $this->documentGrantPayloadFromLists($document, [], []);
         }
 
         $tenantId = (string) $document->heap?->tenant_id;
@@ -176,8 +178,7 @@ readonly class AuthorizationGrantService
         }
 
         $this->heapGrants->clear($heap->heapId());
-        $heap->protected = false;
-        $this->heaps->save($heap);
+        $this->unprotectHeap($heap);
     }
 
     public function deleteDocumentGrants(string $documentId): void
@@ -362,35 +363,6 @@ readonly class AuthorizationGrantService
         )->all())));
     }
 
-    /**
-     * @param list<string> $users
-     * @param list<string> $groups
-     * @return array<string, mixed>
-     */
-    private function grantPayload(string $resourceType, string $resourceId, array $users, array $groups, ?bool $protected = null): array
-    {
-        $users = array_values(array_unique(array_filter(array_map('strval', $users))));
-        $groups = array_values(array_unique(array_filter(array_map('strval', $groups))));
-
-        $payload = [
-            'resourceType' => $resourceType,
-            'resourceId' => $resourceId,
-            'users' => $users,
-            'groups' => $groups,
-            'grants' => [
-                'users' => $users,
-                'groups' => $groups,
-            ],
-            'count' => count($users) + count($groups),
-        ];
-
-        if ($protected !== null) {
-            $payload['protected'] = $protected;
-        }
-
-        return $payload;
-    }
-
     private function enabled(): bool
     {
         return $this->mode->enabled();
@@ -398,23 +370,104 @@ readonly class AuthorizationGrantService
 
     private function heapGrantPayload(Heap $heap): array
     {
-        return $this->grantPayload(
-            'heap',
-            $heap->heapId(),
-            $this->grantedUsers($this->heapGrants->listForHeap($heap->heapId())),
-            $this->grantedGroups($this->heapGrants->listForHeap($heap->heapId())),
-            (bool) $heap->protected,
+        $grants = $this->heapGrants->listForHeap($heap->heapId());
+
+        return $this->heapGrantPayloadFromLists(
+            $heap,
+            $this->grantedUsers($grants),
+            $this->grantedGroups($grants),
         );
     }
 
     private function documentGrantPayload(Document $document): array
     {
-        return $this->grantPayload(
-            'document',
-            (string) $document->id,
-            $this->grantedUsers($this->documentGrants->listForDocument((string) $document->id)),
-            $this->grantedGroups($this->documentGrants->listForDocument((string) $document->id)),
+        $grants = $this->documentGrants->listForDocument((string) $document->id);
+
+        return $this->documentGrantPayloadFromLists(
+            $document,
+            $this->grantedUsers($grants),
+            $this->grantedGroups($grants),
         );
+    }
+
+    /**
+     * @param list<string> $users
+     * @param list<string> $groups
+     * @return array<string, mixed>
+     */
+    private function heapGrantPayloadFromLists(Heap $heap, array $users, array $groups): array
+    {
+        $users = $this->normalizedGrantList($users);
+        $groups = $this->normalizedGrantList($groups);
+
+        return [
+            'heapId' => $heap->heapId(),
+            'protected' => (bool) $heap->protected,
+            'users' => $users,
+            'groups' => $groups,
+            'count' => count($users) + count($groups),
+        ];
+    }
+
+    /**
+     * @param list<string> $users
+     * @param list<string> $groups
+     * @return array<string, mixed>
+     */
+    private function documentGrantPayloadFromLists(Document $document, array $users, array $groups): array
+    {
+        $users = $this->normalizedGrantList($users);
+        $groups = $this->normalizedGrantList($groups);
+
+        return [
+            'documentId' => (string) $document->id,
+            'users' => $users,
+            'groups' => $groups,
+            'count' => count($users) + count($groups),
+        ];
+    }
+
+    /**
+     * @param list<string> $values
+     * @return list<string>
+     */
+    private function normalizedGrantList(array $values): array
+    {
+        return array_values(array_unique(array_filter(array_map('strval', $values))));
+    }
+
+    private function protectHeap(Heap $heap): void
+    {
+        if ((bool) $heap->protected) {
+            return;
+        }
+
+        $previousMetadataKeys = $this->heapMetadataKeys($heap);
+        $heap->protected = true;
+        $this->heaps->save($heap);
+
+        event(new HeapSearchPayloadChanged($heap->heapId(), $previousMetadataKeys));
+    }
+
+    private function unprotectHeap(Heap $heap): void
+    {
+        if (! (bool) $heap->protected) {
+            return;
+        }
+
+        $previousMetadataKeys = $this->heapMetadataKeys($heap);
+        $heap->protected = false;
+        $this->heaps->save($heap);
+
+        event(new HeapSearchPayloadChanged($heap->heapId(), $previousMetadataKeys));
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function heapMetadataKeys(Heap $heap): array
+    {
+        return array_values(array_map('strval', array_keys(is_array($heap->metadata_json) ? $heap->metadata_json : [])));
     }
 
     /**

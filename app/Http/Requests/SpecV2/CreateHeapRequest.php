@@ -23,7 +23,6 @@ class CreateHeapRequest extends FormRequest
             'description' => 'nullable|string',
             'owner_application_id' => 'nullable|string|max:191',
             'visibility' => 'nullable|string|in:'.Heap::VISIBILITY_DISCOVERABLE.','.Heap::VISIBILITY_HIDDEN,
-            'protected' => 'nullable|boolean',
             'metadata' => ['nullable', 'array', new DisallowReservedMetadataKeys],
         ];
     }

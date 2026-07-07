@@ -416,9 +416,9 @@ class SpecV2DomainApiTest extends TestCase
         $this->assertSame(0, UserIdentity::query()->count());
     }
 
-    public function test_heap_protected_inputs_are_ignored_when_authorization_is_disabled(): void
+    public function test_heap_protected_inputs_are_ignored_on_general_heap_write_apis(): void
     {
-        config()->set('authz.enabled', false);
+        config()->set('authz.enabled', true);
 
         $this->actingAsApplication([
             'id' => 'rawki-default',
@@ -427,7 +427,7 @@ class SpecV2DomainApiTest extends TestCase
 
         $this->postJson('/api/heaps', [
             'id' => 'heap-no-authz',
-            'name' => 'Heap No Authz',
+            'name' => 'Heap Protected Input',
             'protected' => true,
         ])->assertCreated()
             ->assertJsonPath('id', 'heap-no-authz')
@@ -555,10 +555,15 @@ class SpecV2DomainApiTest extends TestCase
         ]);
 
         $this->patchJson('/api/heaps/heap-protection', [
-            'protected' => true,
             'visibility' => 'hidden',
         ])->assertOk()
             ->assertJsonPath('visibility', 'hidden')
+            ->assertJsonPath('protected', false);
+
+        $this->putJson('/api/auth/heaps/heap-protection', [
+            'users' => ['reader@example.test'],
+        ])->assertCreated()
+            ->assertJsonPath('heapId', 'heap-protection')
             ->assertJsonPath('protected', true);
 
         $document->refresh();

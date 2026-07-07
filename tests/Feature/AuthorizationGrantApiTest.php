@@ -82,7 +82,8 @@ class AuthorizationGrantApiTest extends TestCase
         $this->withHeader('Authorization', 'Bearer '.$token)
             ->putJson('/api/auth/heaps/heap-protected', [
             'groups' => [$application->id.':design_students'],
-        ])->assertOk()
+        ])->assertCreated()
+            ->assertJsonPath('heapId', 'heap-protected')
             ->assertJsonPath('count', 1)
             ->assertJsonPath('groups.0', $application->id.':design_students')
             ->assertJsonPath('users', []);
@@ -145,7 +146,8 @@ class AuthorizationGrantApiTest extends TestCase
         $this->withHeader('Authorization', 'Bearer '.$token)
             ->putJson('/api/auth/documents/'.$document->id, [
             'users' => [$userIdentifier],
-        ])->assertOk()
+        ])->assertCreated()
+            ->assertJsonPath('documentId', (string) $document->id)
             ->assertJsonPath('count', 1)
             ->assertJsonPath('users.0', $userIdentifier)
             ->assertJsonPath('groups', []);
@@ -204,9 +206,15 @@ class AuthorizationGrantApiTest extends TestCase
         $this->withHeader('Authorization', 'Bearer '.$token)
             ->putJson('/api/auth/heaps/heap-utility', [
                 'groups' => [$application->id.':design_students'],
-            ])->assertOk()
+            ])->assertCreated()
+            ->assertJsonPath('heapId', 'heap-utility')
             ->assertJsonPath('groups.0', $application->id.':design_students')
             ->assertJsonPath('protected', true);
+
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->getJson('/api/auth/groups/'.$application->id.':design_students')
+            ->assertOk()
+            ->assertJsonPath('assignedHeaps.0', 'heap-utility');
 
         $this->withHeader('Authorization', 'Bearer '.$token)
             ->getJson('/api/auth/check?user_identifier='.urlencode('alice@hawk.de').'&heap_id=heap-utility')
@@ -218,6 +226,98 @@ class AuthorizationGrantApiTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.0', 'heap-utility')
             ->assertJsonPath('pagination.total', 1);
+    }
+
+    public function test_grant_replacement_lifecycle_statuses_and_unprotect_flow(): void
+    {
+        config()->set('authz.enabled', true);
+        config()->set('config.qdrant_http_url', 'http://qdrant.test');
+        Http::fake([
+            'http://qdrant.test/*' => Http::response(['status' => 'ok'], 200),
+        ]);
+
+        ['token' => $token] = $this->issueApplicationToken([
+            'id' => 'rawki-default',
+            'tenant_id' => 'default',
+            'permissions' => ['reads'],
+        ]);
+
+        Dataset::query()->create([
+            'dataset_id' => 'heap-lifecycle',
+            'tenant_id' => 'default',
+            'owner_application_id' => 'rawki-default',
+            'name' => 'Grant Lifecycle',
+            'status' => Dataset::STATUS_ACTIVE,
+            'visibility' => Dataset::VISIBILITY_DISCOVERABLE,
+            'protected' => false,
+            'metadata_json' => [],
+            'qdrant_collection' => 'heap_lifecycle',
+            'neo4j_namespace' => 'heap_lifecycle',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $document = Document::query()->create([
+            'dataset_id' => 'heap-lifecycle',
+            'collection' => 'heap_lifecycle',
+            'source_type' => Document::SOURCE_API,
+            'source_url' => 'https://example.test/grant-lifecycle',
+            'storage_path' => '/tmp/grant-lifecycle.md',
+            'checksum_sha256' => hash('sha256', 'grant-lifecycle'),
+            'status' => Document::STATUS_COMPLETED,
+            'metadata_json' => [],
+        ]);
+
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->putJson('/api/auth/heaps/heap-lifecycle', [
+                'users' => ['first@example.test'],
+            ])->assertCreated()
+            ->assertJsonPath('heapId', 'heap-lifecycle')
+            ->assertJsonPath('protected', true)
+            ->assertJsonPath('count', 1);
+
+        $this->assertDatabaseHas('datasets', [
+            'dataset_id' => 'heap-lifecycle',
+            'protected' => true,
+        ]);
+
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->putJson('/api/auth/heaps/heap-lifecycle', [
+                'users' => ['second@example.test'],
+            ])->assertOk()
+            ->assertJsonPath('users.0', 'second@example.test')
+            ->assertJsonPath('count', 1);
+
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->deleteJson('/api/auth/heaps/heap-lifecycle')
+            ->assertNoContent();
+
+        $this->assertDatabaseCount('heap_grants', 0);
+        $this->assertDatabaseHas('datasets', [
+            'dataset_id' => 'heap-lifecycle',
+            'protected' => false,
+        ]);
+
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->putJson('/api/auth/documents/'.$document->id, [
+                'users' => ['reader@example.test'],
+            ])->assertCreated()
+            ->assertJsonPath('documentId', (string) $document->id)
+            ->assertJsonPath('count', 1);
+
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->putJson('/api/auth/documents/'.$document->id, [
+                'groups' => [],
+                'users' => ['replacement@example.test'],
+            ])->assertOk()
+            ->assertJsonPath('users.0', 'replacement@example.test')
+            ->assertJsonPath('count', 1);
+
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->deleteJson('/api/auth/documents/'.$document->id)
+            ->assertNoContent();
+
+        $this->assertDatabaseCount('document_grants', 0);
     }
 
     public function test_grant_read_paths_use_403_for_scope_denials_and_404_for_missing_resources(): void
@@ -534,6 +634,7 @@ class AuthorizationGrantApiTest extends TestCase
         $this->putJson('/api/auth/heaps/heap-disabled-authz', [
             'groups' => ['missing-group'],
         ])->assertOk()
+            ->assertJsonPath('heapId', 'heap-disabled-authz')
             ->assertJsonPath('count', 0)
             ->assertJsonPath('groups', [])
             ->assertJsonPath('users', []);
@@ -541,12 +642,22 @@ class AuthorizationGrantApiTest extends TestCase
         $this->putJson('/api/auth/documents/'.$document->id, [
             'groups' => ['missing-group'],
         ])->assertOk()
+            ->assertJsonPath('documentId', (string) $document->id)
             ->assertJsonPath('count', 0)
             ->assertJsonPath('groups', [])
             ->assertJsonPath('users', []);
 
+        $this->deleteJson('/api/auth/heaps/heap-disabled-authz')
+            ->assertNoContent();
+        $this->deleteJson('/api/auth/documents/'.$document->id)
+            ->assertNoContent();
+
         $this->assertDatabaseCount('heap_grants', 0);
         $this->assertDatabaseCount('document_grants', 0);
+        $this->assertDatabaseHas('datasets', [
+            'dataset_id' => 'heap-disabled-authz',
+            'protected' => false,
+        ]);
     }
 
     /**

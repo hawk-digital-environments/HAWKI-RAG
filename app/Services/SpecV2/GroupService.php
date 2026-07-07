@@ -45,7 +45,7 @@ readonly class GroupService
     {
         $group = $this->groups->findById($groupId);
         if ($group instanceof Group) {
-            $group->load('members');
+            $group->load(['members', 'heapGrants']);
         }
         if (! $group instanceof Group) {
             throw GroupNotFoundException::withId($groupId);

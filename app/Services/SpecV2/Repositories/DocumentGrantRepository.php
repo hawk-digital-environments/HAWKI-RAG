@@ -24,6 +24,11 @@ readonly class DocumentGrantRepository
             ->get();
     }
 
+    public function existsForDocument(string $documentId): bool
+    {
+        return DocumentGrant::query()->where('document_id', $documentId)->exists();
+    }
+
     /**
      * @param list<string> $groupIds
      */

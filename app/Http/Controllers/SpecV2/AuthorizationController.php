@@ -9,6 +9,7 @@ use App\Http\Requests\SpecV2\UpdateGrantAssignmentsRequest;
 use App\Services\SpecV2\SpecV2Service;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 
 class AuthorizationController extends Controller
 {
@@ -24,12 +25,13 @@ class AuthorizationController extends Controller
     public function replaceHeapGrants(string $heapId, ReplaceGrantAssignmentsRequest $request): JsonResponse
     {
         $payload = $request->validated();
-
-        return response()->json($this->spec->auth->replaceHeapGrants(
+        $result = $this->spec->auth->replaceHeapGrants(
             $heapId,
             $payload['users'] ?? [],
             $payload['groups'] ?? [],
-        ));
+        );
+
+        return response()->json($result->payload, $result->status);
     }
 
     public function updateHeapGrants(string $heapId, UpdateGrantAssignmentsRequest $request): JsonResponse
@@ -45,7 +47,7 @@ class AuthorizationController extends Controller
         ));
     }
 
-    public function deleteHeapGrants(string $heapId): JsonResponse
+    public function deleteHeapGrants(string $heapId): Response
     {
         $this->spec->auth->deleteHeapGrants($heapId);
 
@@ -60,12 +62,13 @@ class AuthorizationController extends Controller
     public function replaceDocumentGrants(string $documentId, ReplaceGrantAssignmentsRequest $request): JsonResponse
     {
         $payload = $request->validated();
-
-        return response()->json($this->spec->auth->replaceDocumentGrants(
+        $result = $this->spec->auth->replaceDocumentGrants(
             $documentId,
             $payload['users'] ?? [],
             $payload['groups'] ?? [],
-        ));
+        );
+
+        return response()->json($result->payload, $result->status);
     }
 
     public function updateDocumentGrants(string $documentId, UpdateGrantAssignmentsRequest $request): JsonResponse
@@ -81,7 +84,7 @@ class AuthorizationController extends Controller
         ));
     }
 
-    public function deleteDocumentGrants(string $documentId): JsonResponse
+    public function deleteDocumentGrants(string $documentId): Response
     {
         $this->spec->auth->deleteDocumentGrants($documentId);
 

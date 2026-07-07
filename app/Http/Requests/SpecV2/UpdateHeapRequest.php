@@ -20,7 +20,6 @@ class UpdateHeapRequest extends FormRequest
             'name' => 'sometimes|string|max:255',
             'description' => 'sometimes|nullable|string',
             'visibility' => 'sometimes|string|in:'.Heap::VISIBILITY_DISCOVERABLE.','.Heap::VISIBILITY_HIDDEN,
-            'protected' => 'sometimes|boolean',
             'metadata' => ['sometimes', 'nullable', 'array', new DisallowReservedMetadataKeys],
         ];
     }

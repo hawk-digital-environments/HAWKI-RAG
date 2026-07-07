@@ -24,6 +24,11 @@ readonly class HeapGrantRepository
             ->get();
     }
 
+    public function existsForHeap(string $heapId): bool
+    {
+        return HeapGrant::query()->where('heap_id', $heapId)->exists();
+    }
+
     /**
      * @param list<string> $groupIds
      */

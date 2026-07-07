@@ -88,7 +88,7 @@ readonly class HeapService
             'description' => $this->identifiers->stringValue($input['description'] ?? null),
             'status' => Heap::STATUS_ACTIVE,
             'visibility' => $this->visibility($input['visibility'] ?? null),
-            'protected' => (bool) ($input['protected'] ?? false),
+            'protected' => false,
             'metadata_json' => $input['metadata'] ?? null,
             'qdrant_collection' => $this->heapIdentifiers->qdrantCollection($safe),
             'neo4j_namespace' => $this->heapIdentifiers->neo4jNamespace($safe),
@@ -131,10 +131,6 @@ readonly class HeapService
             $heap->visibility = $this->visibility($input['visibility']);
         }
 
-        if (array_key_exists('protected', $input)) {
-            $heap->protected = (bool) $input['protected'];
-        }
-
         if (array_key_exists('metadata', $input)) {
             $heap->metadata_json = $input['metadata'];
         }
@@ -144,7 +140,7 @@ readonly class HeapService
         $heap->load(['tenant', 'ownerApplication']);
         $heap->loadCount('documents');
 
-        if ($heap->wasChanged(['metadata_json', 'visibility', 'protected'])) {
+        if ($heap->wasChanged(['metadata_json', 'visibility'])) {
             event(new HeapSearchPayloadChanged($heap->heapId(), $previousMetadataKeys));
         }
 

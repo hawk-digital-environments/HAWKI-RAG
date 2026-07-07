@@ -33,6 +33,15 @@ class GroupResource extends JsonResource
             $payload['members'] = $this->members->pluck('user_identifier')->values()->all();
         }
 
+        if ($this->relationLoaded('heapGrants')) {
+            $payload['assignedHeaps'] = $this->heapGrants
+                ->pluck('heap_id')
+                ->filter()
+                ->unique()
+                ->values()
+                ->all();
+        }
+
         return $payload;
     }
 }

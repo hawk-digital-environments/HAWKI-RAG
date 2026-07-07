@@ -45,10 +45,6 @@ readonly class AuthorizationModeService
      */
     public function sanitizeHeapInput(array $input): array
     {
-        if ($this->enabled()) {
-            return $input;
-        }
-
         unset($input['protected']);
 
         return $input;

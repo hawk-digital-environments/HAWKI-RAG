@@ -42,4 +42,9 @@ class Group extends Model
     {
         return $this->hasMany(GroupMember::class, 'group_id', 'id');
     }
+
+    public function heapGrants(): HasMany
+    {
+        return $this->hasMany(HeapGrant::class, 'group_id', 'id');
+    }
 }
