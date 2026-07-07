@@ -15,6 +15,7 @@ use App\Services\Authorization\Values\LmsMembership;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Route;
 use Tests\TestCase;
 
 class ArchitectureContractTest extends TestCase
@@ -82,7 +83,7 @@ class ArchitectureContractTest extends TestCase
             ->assertJsonPath('pagination.total', 1)
             ->assertJsonPath('data.0.id', 'heap-owned');
         $this->withHeader('Authorization', 'Bearer '.$readsToken)
-            ->getJson('/api/groups')
+            ->getJson('/api/auth/groups')
             ->assertOk()
             ->assertJsonPath('pagination.total', 1)
             ->assertJsonPath('data.0.id', 'group-owned');
@@ -257,12 +258,12 @@ class ArchitectureContractTest extends TestCase
             }
 
             $filters = $request->data()['filters'] ?? [];
-            $docIds = array_map(
-                static fn (array $match): ?string => $match['match']['value'] ?? null,
-                is_array($filters['should'] ?? null) ? $filters['should'] : [],
-            );
 
-            return in_array($document->id, $docIds, true);
+            return $request->data()['limit'] === 5
+                && ($request->data()['auth_context'] ?? null) === null
+                && $this->filterContains($filters, 'protected', true)
+                && ($this->filterContains($filters, 'heap', 'heap-protected')
+                    || $this->filterContainsDocumentId($filters, (string) $document->id));
         });
     }
 
@@ -314,7 +315,7 @@ class ArchitectureContractTest extends TestCase
         $contract = file_get_contents(base_path('docs/internal-architecture-contract.md'));
         $proxy = file_get_contents(app_path('Http/Controllers/API/HawkiRagProxyController.php'));
         $retrieval = file_get_contents(app_path('Http/Controllers/API/OpenCompat/RetrievalController.php'));
-        $compatDocumentService = file_get_contents(app_path('Services/OpenCompat/OpenCompatDocumentService.php'));
+        $compatService = file_get_contents(app_path('Services/OpenCompat/OpenCompatService.php'));
         $compatIngestService = file_get_contents(app_path('Services/OpenCompat/OpenCompatIngestService.php'));
         $specDocuments = file_get_contents(app_path('Services/SpecV2/DocumentService.php'));
         $internalApiRoutes = file_get_contents(base_path('routes/internal_api.php'));
@@ -337,12 +338,15 @@ class ArchitectureContractTest extends TestCase
         $this->assertStringNotContainsString('PermissionGraphClient', $proxy);
 
         $this->assertIsString($retrieval);
-        $this->assertStringContainsString('ApplicationReadPolicy', $retrieval);
-        $this->assertStringContainsString('OpenCompatDocumentService', $retrieval);
+        $this->assertStringContainsString('GatewaySearchFilterService', $retrieval);
+        $this->assertStringContainsString('OpenCompatService', $retrieval);
+        $this->assertStringNotContainsString('OpenCompatDocumentService', $retrieval);
+        $this->assertStringNotContainsString('searchDocuments(', $retrieval);
+        $this->assertStringNotContainsString('batchDocuments(', $retrieval);
 
-        $this->assertIsString($compatDocumentService);
-        $this->assertStringContainsString('DocumentBrowserService', $compatDocumentService);
-        $this->assertStringNotContainsString('PipelineUploadInput', $compatDocumentService);
+        $this->assertIsString($compatService);
+        $this->assertStringContainsString("'limit' =>", $compatService);
+        $this->assertStringNotContainsString("'top_k' =>", $compatService);
 
         $this->assertIsString($compatIngestService);
         $this->assertStringNotContainsString('PipelineUploadInput', $compatIngestService);
@@ -361,6 +365,7 @@ class ArchitectureContractTest extends TestCase
         $this->assertStringContainsString("Route::prefix('search')", $appSearchRoutes);
         $this->assertStringNotContainsString("Route::prefix('retrieve')", $appSearchRoutes);
         $this->assertStringNotContainsString("Route::post('/query'", $appSearchRoutes);
+        $this->assertStringNotContainsString("Route::post('/documents'", $appSearchRoutes);
         $this->assertStringNotContainsString("Route::post('/batch/chunks'", $appSearchRoutes);
         $this->assertIsString($appIngestionRoutes);
         $this->assertStringContainsString('auth:application-token', $appIngestionRoutes);
@@ -384,6 +389,73 @@ class ArchitectureContractTest extends TestCase
 
         $this->assertIsString($payloadSync);
         $this->assertStringContainsString('syncQdrantPayload', $payloadSync);
+    }
+
+    public function test_application_facing_routes_are_only_registered_on_approved_v2_and_shared_app_surfaces(): void
+    {
+        $allowedUris = [
+            'api/applications',
+            'api/applications/{applicationId}',
+            'api/auth/check',
+            'api/auth/documents/{documentId}',
+            'api/auth/groups',
+            'api/auth/groups/{groupId}',
+            'api/auth/groups/{groupId}/users',
+            'api/auth/heaps/{heapId}',
+            'api/auth/users/by-identifier/heaps',
+            'api/corpora',
+            'api/corpora/{corpusId}',
+            'api/documents/{documentId}',
+            'api/heaps',
+            'api/heaps/{heapId}',
+            'api/heaps/{heapId}/documents',
+            'api/pipeline/files',
+            'api/pipeline/tasks/start',
+            'api/search',
+            'api/search/chunks',
+            'api/search/chunks/grouped',
+            'api/tenants',
+            'api/tenants/{tenantId}',
+        ];
+
+        $uris = collect(Route::getRoutes()->getRoutes())
+            ->filter(fn (\Illuminate\Routing\Route $route): bool => in_array('auth:application-token', $route->gatherMiddleware(), true))
+            ->map(fn (\Illuminate\Routing\Route $route): string => $route->uri())
+            ->unique()
+            ->sort()
+            ->values()
+            ->all();
+
+        sort($allowedUris);
+
+        $this->assertSame($allowedUris, $uris);
+    }
+
+    /**
+     * @param array<string, mixed> $filter
+     */
+    private function filterContains(array $filter, string $key, mixed $value): bool
+    {
+        if (($filter['key'] ?? null) === $key && (($filter['match']['value'] ?? null) === $value)) {
+            return true;
+        }
+
+        foreach ($filter as $candidate) {
+            if (is_array($candidate) && $this->filterContains($candidate, $key, $value)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param array<string, mixed> $filter
+     */
+    private function filterContainsDocumentId(array $filter, string $documentId): bool
+    {
+        return $this->filterContains($filter, 'document_id', $documentId)
+            || $this->filterContains($filter, 'doc_id', $documentId);
     }
 
     private function seedHeapCorpusAndGroup(

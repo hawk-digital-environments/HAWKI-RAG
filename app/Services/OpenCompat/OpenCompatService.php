@@ -24,7 +24,7 @@ readonly class OpenCompatService
     {
         $payload = [
             'query' => (string) ($input['query'] ?? ''),
-            'top_k' => (int) ($input['top_k'] ?? $input['k'] ?? 5),
+            'limit' => (int) ($input['limit'] ?? 5),
             'filters' => is_array($input['filters'] ?? null) ? $input['filters'] : [],
             'generate' => false,
             'fast_mode' => filter_var($input['fast_mode'] ?? true, FILTER_VALIDATE_BOOLEAN),
@@ -51,35 +51,6 @@ readonly class OpenCompatService
         }
 
         return ['status' => 200, 'payload' => ['groups' => array_values($groups), 'count' => count($groups)]];
-    }
-
-    /**
-     * @param array<string, mixed> $input
-     * @return array{payload: array<string, mixed>, status: int}
-     */
-    public function batchChunks(array $input): array
-    {
-        if ($this->string($input['query'] ?? null) === null) {
-            return $this->unsupported('batch/chunks', 'RAWKI does not expose chunk lookup by external chunk IDs; provide query to use retrieval-backed chunks.');
-        }
-
-        return $this->retrieveChunks($input);
-    }
-
-    /**
-     * @return array{payload: array<string, mixed>, status: int}
-     */
-    public function unsupported(string $endpoint, string $reason): array
-    {
-        return [
-            'status' => 501,
-            'payload' => [
-                'ok' => false,
-                'error' => 'unsupported',
-                'endpoint' => $endpoint,
-                'reason' => $reason,
-            ],
-        ];
     }
 
     /**

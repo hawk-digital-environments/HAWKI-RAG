@@ -4,11 +4,13 @@ declare(strict_types=1);
 
 namespace App\Services\Authorization;
 
+use App\Models\Dataset;
 use App\Models\Document;
 use App\Models\SpecV2\Application;
 use App\Services\Authorization\Repositories\GrantAccessRepository;
 use App\Services\Authorization\Repositories\UserIdentityRepository;
 use App\Services\Authorization\Values\ApplicationDocumentScope;
+use App\Services\Rag\Values\FilterExpression;
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Contracts\Config\Repository as ConfigRepository;
 use Illuminate\Database\Eloquent\Builder;
@@ -16,6 +18,8 @@ use Illuminate\Database\Eloquent\Builder;
 #[Singleton]
 readonly class ApplicationScopeResolver
 {
+    private const NO_MATCH_DOCUMENT_ID = '__rawki_no_match__';
+
     public function __construct(
         private ConfigRepository $config,
         private AuthorizationModeService $mode,
@@ -29,15 +33,22 @@ readonly class ApplicationScopeResolver
             return ApplicationDocumentScope::none();
         }
 
+        $baseHeapIds = $this->baseScopedHeapIds($actor);
+
         if ($this->isGloballyReadable($actor) && ! $this->authorizationApplies($actor)) {
             return ApplicationDocumentScope::unrestricted();
         }
 
         $baseFilters = $this->baseRepositoryFilters($actor);
         $scope = $this->baseScopedDocumentsQuery($actor);
+        $baseSearchExpression = $this->baseSearchExpression($actor, $baseHeapIds);
 
         if (! $this->authorizationApplies($actor)) {
-            return ApplicationDocumentScope::constrained($baseFilters, $this->pluckDocumentIds($scope));
+            return ApplicationDocumentScope::constrained(
+                $baseFilters,
+                $this->pluckDocumentIds($scope),
+                $baseSearchExpression,
+            );
         }
 
         $public = $this->pluckDocumentIds(
@@ -46,15 +57,26 @@ readonly class ApplicationScopeResolver
                     ->orWhereNull('heaps.protected');
             }),
         );
+        $publicSearchExpression = $this->and([
+            $baseSearchExpression,
+            FilterExpression::leaf('protected', false),
+        ]);
 
         $internalUserIds = $this->authorizedInternalUserIds($actor, $requestedUserIdentifier);
         if ($internalUserIds === []) {
-            return ApplicationDocumentScope::constrained(['document_ids' => $public], $public);
+            return ApplicationDocumentScope::constrained(['document_ids' => $public], $public, $publicSearchExpression);
         }
+
+        $heapGrantIds = $this->grants->heapGrantedHeapIdsForInternalUsers($internalUserIds);
+        $documentGrantIds = $this->grants->documentGrantedDocumentIdsForInternalUsers($internalUserIds);
+        $searchExpression = $this->or([
+            $publicSearchExpression,
+            ...$this->protectedSearchExpressions($baseSearchExpression, $heapGrantIds, $documentGrantIds),
+        ]);
 
         $accessibleProtectedIds = $this->grants->accessibleDocumentIdsForInternalUsers($internalUserIds);
         if ($accessibleProtectedIds === []) {
-            return ApplicationDocumentScope::constrained(['document_ids' => $public], $public);
+            return ApplicationDocumentScope::constrained(['document_ids' => $public], $public, $searchExpression);
         }
 
         $protected = $this->pluckDocumentIds(
@@ -65,7 +87,7 @@ readonly class ApplicationScopeResolver
 
         $documentIds = array_values(array_unique([...$public, ...$protected]));
 
-        return ApplicationDocumentScope::constrained(['document_ids' => $documentIds], $documentIds);
+        return ApplicationDocumentScope::constrained(['document_ids' => $documentIds], $documentIds, $searchExpression);
     }
 
     private function canReadAnyDocuments(ApiActor $actor): bool
@@ -129,6 +151,34 @@ readonly class ApplicationScopeResolver
     }
 
     /**
+     * @return list<string>|null
+     */
+    private function baseScopedHeapIds(ApiActor $actor): ?array
+    {
+        if ($actor->hasApplicationPermission(Application::PERMISSION_READS_FEDERATED)) {
+            return null;
+        }
+
+        if (! $actor->hasApplicationPermission(Application::PERMISSION_READS_ALL_APPS)) {
+            return null;
+        }
+
+        return Dataset::query()
+            ->select('dataset_id')
+            ->where(function (Builder $inner) use ($actor): void {
+                $inner->where('tenant_id', $actor->tenantId());
+
+                if ($actor->tenantId() === $this->defaultTenantId()) {
+                    $inner->orWhereNull('tenant_id');
+                }
+            })
+            ->pluck('dataset_id')
+            ->filter(fn (mixed $heapId): bool => is_string($heapId) && trim($heapId) !== '')
+            ->values()
+            ->all();
+    }
+
+    /**
      * @return list<string>
      */
     private function pluckDocumentIds(Builder $query): array
@@ -169,6 +219,94 @@ readonly class ApplicationScopeResolver
             ->unique()
             ->values()
             ->all();
+    }
+
+    private function baseSearchExpression(ApiActor $actor, ?array $baseHeapIds): FilterExpression
+    {
+        if ($actor->hasApplicationPermission(Application::PERMISSION_READS_FEDERATED)) {
+            return FilterExpression::empty();
+        }
+
+        if ($actor->hasApplicationPermission(Application::PERMISSION_READS_ALL_APPS)) {
+            if ($baseHeapIds === []) {
+                return $this->noMatchExpression();
+            }
+
+            return FilterExpression::leaf('heap', $baseHeapIds ?? []);
+        }
+
+        return FilterExpression::leaf('owner_app', $actor->applicationId());
+    }
+
+    /**
+     * @param list<string> $heapGrantIds
+     * @param list<string> $documentGrantIds
+     * @return list<FilterExpression>
+     */
+    private function protectedSearchExpressions(FilterExpression $baseSearchExpression, array $heapGrantIds, array $documentGrantIds): array
+    {
+        $expressions = [];
+
+        if ($heapGrantIds !== []) {
+            $expressions[] = $this->and([
+                $baseSearchExpression,
+                FilterExpression::leaf('protected', true),
+                FilterExpression::leaf('heap', $heapGrantIds),
+            ]);
+        }
+
+        if ($documentGrantIds !== []) {
+            $expressions[] = $this->and([
+                $baseSearchExpression,
+                FilterExpression::leaf('protected', true),
+                FilterExpression::leaf('document_id', $documentGrantIds),
+            ]);
+        }
+
+        return $expressions;
+    }
+
+    /**
+     * @param list<FilterExpression> $expressions
+     */
+    private function and(array $expressions): FilterExpression
+    {
+        $expressions = array_values(array_filter(
+            $expressions,
+            static fn (FilterExpression $expression): bool => ! $expression->isEmpty(),
+        ));
+
+        if ($expressions === []) {
+            return FilterExpression::empty();
+        }
+
+        return count($expressions) === 1
+            ? $expressions[0]
+            : FilterExpression::group('AND', $expressions);
+    }
+
+    /**
+     * @param list<FilterExpression> $expressions
+     */
+    private function or(array $expressions): FilterExpression
+    {
+        $expressions = array_values(array_filter(
+            $expressions,
+            static fn (FilterExpression $expression): bool => ! $expression->isEmpty(),
+        ));
+
+        if ($expressions === []) {
+            return $this->noMatchExpression();
+        }
+
+        return count($expressions) === 1
+            ? $expressions[0]
+            : FilterExpression::group('OR', $expressions);
+    }
+
+    private function noMatchExpression(): FilterExpression
+    {
+        return FilterExpression::leaf('document_id', self::NO_MATCH_DOCUMENT_ID);
     }
 
     private function stringValue(?string $value): ?string

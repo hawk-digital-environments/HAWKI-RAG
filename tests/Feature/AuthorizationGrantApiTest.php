@@ -95,13 +95,13 @@ class AuthorizationGrantApiTest extends TestCase
 
         Http::assertSent(function (Request $request) use ($document): bool {
             $filters = $request->data()['filters'] ?? [];
-            $docIds = array_map(
-                static fn (array $match): ?string => $match['match']['value'] ?? null,
-                is_array($filters['should'] ?? null) ? $filters['should'] : [],
-            );
 
             return $request->url() === 'http://bridge.test/query'
-                && $docIds === [$document->id];
+                && $request->data()['limit'] === 5
+                && $this->filterContains($filters, 'owner_app', 'hawki-web')
+                && $this->filterContains($filters, 'protected', true)
+                && $this->filterContains($filters, 'heap', 'heap-protected')
+                && ! $this->filterContainsDocumentId($filters, (string) $document->id);
         });
     }
 
@@ -319,13 +319,13 @@ class AuthorizationGrantApiTest extends TestCase
 
         Http::assertSent(function (Request $request) use ($matching): bool {
             $filters = $request->data()['filters'] ?? [];
-            $docIds = array_map(
-                static fn (array $match): ?string => $match['match']['value'] ?? null,
-                is_array($filters['should'] ?? null) ? $filters['should'] : [],
-            );
 
             return $request->url() === 'http://bridge.test/query'
-                && $docIds === [$matching->id];
+                && $this->filterContains($filters, 'owner_app', 'hawki-web')
+                && $this->filterContains($filters, 'heap', 'heap-design')
+                && $this->filterContains($filters, 'visibility', 'hidden')
+                && $this->filterContains($filters, 'course', 'design')
+                && ! $this->filterContainsDocumentId($filters, (string) $matching->id);
         });
     }
 
@@ -380,5 +380,32 @@ class AuthorizationGrantApiTest extends TestCase
 
         $this->assertDatabaseCount('heap_grants', 0);
         $this->assertDatabaseCount('document_grants', 0);
+    }
+
+    /**
+     * @param array<string, mixed> $filter
+     */
+    private function filterContains(array $filter, string $key, mixed $value): bool
+    {
+        if (($filter['key'] ?? null) === $key && (($filter['match']['value'] ?? null) === $value)) {
+            return true;
+        }
+
+        foreach ($filter as $candidate) {
+            if (is_array($candidate) && $this->filterContains($candidate, $key, $value)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param array<string, mixed> $filter
+     */
+    private function filterContainsDocumentId(array $filter, string $documentId): bool
+    {
+        return $this->filterContains($filter, 'document_id', $documentId)
+            || $this->filterContains($filter, 'doc_id', $documentId);
     }
 }

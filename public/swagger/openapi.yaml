@@ -1,6 +1,6 @@
 openapi: 3.0.3
 info:
-  title: HAWKI RAG Canonical V2 API
+  title: HAWKI RAG V2
   description: >
     Application-token API contract for the canonical HAWKI RAG V2 surface.
     These endpoints cover tenants, applications, heaps, documents, corpora,
@@ -300,120 +300,6 @@ paths:
                 $ref: "#/components/schemas/Corpus"
         "404":
           $ref: "#/components/responses/NotFound"
-  /groups:
-    get:
-      tags: [Groups]
-      summary: List groups
-      description: Alias for `/auth/groups`.
-      parameters:
-        - $ref: "#/components/parameters/Page"
-        - $ref: "#/components/parameters/PerPage"
-      responses:
-        "200":
-          description: Group list
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/PaginatedGroupResponse"
-    post:
-      tags: [Groups]
-      summary: Create group
-      description: Alias for `/auth/groups`.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/CreateGroupRequest"
-      responses:
-        "201":
-          description: Group created
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Group"
-        "422":
-          $ref: "#/components/responses/ValidationError"
-  /groups/{groupId}:
-    parameters:
-      - $ref: "#/components/parameters/GroupId"
-    get:
-      tags: [Groups]
-      summary: Get group
-      description: Alias for `/auth/groups/{groupId}`.
-      responses:
-        "200":
-          description: Group detail
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Group"
-        "404":
-          $ref: "#/components/responses/NotFound"
-    delete:
-      tags: [Groups]
-      summary: Delete group
-      description: Alias for `/auth/groups/{groupId}`.
-      responses:
-        "204":
-          description: Group deleted
-        "404":
-          $ref: "#/components/responses/NotFound"
-  /groups/{groupId}/users:
-    parameters:
-      - $ref: "#/components/parameters/GroupId"
-    get:
-      tags: [Groups]
-      summary: List group members
-      description: Alias for `/auth/groups/{groupId}/users`.
-      parameters:
-        - $ref: "#/components/parameters/Page"
-        - $ref: "#/components/parameters/PerPage"
-      responses:
-        "200":
-          description: Group member list
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/PaginatedIdentifierResponse"
-    put:
-      tags: [Groups]
-      summary: Replace group members
-      description: Alias for `/auth/groups/{groupId}/users`.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/ReplaceUsersRequest"
-      responses:
-        "200":
-          description: Group members replaced
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/PaginatedIdentifierResponse"
-        "422":
-          $ref: "#/components/responses/ValidationError"
-    patch:
-      tags: [Groups]
-      summary: Add and remove group members
-      description: Alias for `/auth/groups/{groupId}/users`.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/UpdateUsersRequest"
-      responses:
-        "200":
-          description: Group members updated
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/PaginatedIdentifierResponse"
-        "422":
-          $ref: "#/components/responses/ValidationError"
   /auth/check:
     get:
       tags: [Authorization]
@@ -624,61 +510,6 @@ paths:
       responses:
         "204":
           description: Heap grants deleted
-  /auth/heaps/{heapId}/grants:
-    parameters:
-      - $ref: "#/components/parameters/HeapId"
-    get:
-      tags: [Authorization]
-      summary: Get heap grants alias
-      deprecated: true
-      responses:
-        "200":
-          description: Heap grants
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/GrantPayload"
-    put:
-      tags: [Authorization]
-      summary: Replace heap grants alias
-      deprecated: true
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/ReplaceGrantAssignmentsRequest"
-      responses:
-        "200":
-          description: Heap grants replaced
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/GrantPayload"
-    patch:
-      tags: [Authorization]
-      summary: Update heap grants alias
-      deprecated: true
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/UpdateGrantAssignmentsRequest"
-      responses:
-        "200":
-          description: Heap grants updated
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/GrantPayload"
-    delete:
-      tags: [Authorization]
-      summary: Delete heap grants alias
-      deprecated: true
-      responses:
-        "204":
-          description: Heap grants deleted
   /auth/documents/{documentId}:
     parameters:
       - $ref: "#/components/parameters/DocumentId"
@@ -733,61 +564,6 @@ paths:
     delete:
       tags: [Authorization]
       summary: Delete document grants
-      responses:
-        "204":
-          description: Document grants deleted
-  /auth/documents/{documentId}/grants:
-    parameters:
-      - $ref: "#/components/parameters/DocumentId"
-    get:
-      tags: [Authorization]
-      summary: Get document grants alias
-      deprecated: true
-      responses:
-        "200":
-          description: Document grants
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/GrantPayload"
-    put:
-      tags: [Authorization]
-      summary: Replace document grants alias
-      deprecated: true
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/ReplaceGrantAssignmentsRequest"
-      responses:
-        "200":
-          description: Document grants replaced
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/GrantPayload"
-    patch:
-      tags: [Authorization]
-      summary: Update document grants alias
-      deprecated: true
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/UpdateGrantAssignmentsRequest"
-      responses:
-        "200":
-          description: Document grants updated
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/GrantPayload"
-    delete:
-      tags: [Authorization]
-      summary: Delete document grants alias
-      deprecated: true
       responses:
         "204":
           description: Document grants deleted

@@ -12,7 +12,7 @@ readonly class RagQueryPayload
      */
     public function __construct(
         public string $query,
-        public int $topK = 5,
+        public int $limit = 5,
         public ?array $filters = null,
         public bool $isOptimized = false,
         public bool $generate = true,
@@ -28,7 +28,7 @@ readonly class RagQueryPayload
     {
         return new self(
             query: (string) $input['query'],
-            topK: (int) ($input['top_k'] ?? 5),
+            limit: (int) ($input['limit'] ?? $input['top_k'] ?? 5),
             filters: is_array($input['filters'] ?? null) ? $input['filters'] : null,
             isOptimized: (bool) ($input['is_optimized'] ?? false),
             generate: (bool) ($input['generate'] ?? true),
@@ -45,7 +45,7 @@ readonly class RagQueryPayload
     {
         $payload = [
             'query' => $this->query,
-            'top_k' => $this->topK,
+            'limit' => $this->limit,
             'filters' => $this->filters ?? [],
             'is_optimized' => $this->isOptimized,
             'generate' => $this->generate,

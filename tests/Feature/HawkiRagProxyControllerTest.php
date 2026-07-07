@@ -6,7 +6,6 @@ use App\Models\Dataset;
 use App\Models\Document;
 use App\Models\SpecV2\Group;
 use App\Models\SpecV2\GroupMember;
-use App\Models\User;
 use App\Services\Authorization\IdentityProvisioningService;
 use App\Services\SpecV2\Repositories\DocumentGrantRepository;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -108,7 +107,7 @@ class HawkiRagProxyControllerTest extends TestCase
         $this->withHeader('Authorization', 'Bearer '.$token)
             ->postJson('/api/search', [
                 'query' => 'campus policy',
-                'top_k' => 3,
+                'limit' => 3,
                 'user_identifier' => 'learner-123',
                 'preferred_tags' => ['policy'],
             ])->assertOk();
@@ -119,18 +118,14 @@ class HawkiRagProxyControllerTest extends TestCase
             }
 
             $filters = $request->data()['filters'] ?? [];
-            $docIds = array_map(
-                static fn (array $match): ?string => $match['match']['value'] ?? null,
-                is_array($filters['should'] ?? null) ? $filters['should'] : [],
-            );
-            sort($docIds);
-            $expected = [$protectedDocument->id, $publicDocument->id];
-            sort($expected);
-
-            return $request->data()['top_k'] === 3
+            return $request->data()['limit'] === 3
+                && ! array_key_exists('top_k', $request->data())
                 && $request->data()['preferred_tags'] === ['policy']
                 && ($request->data()['auth_context'] ?? null) === null
-                && $docIds === $expected;
+                && $this->filterContains($filters, 'owner_app', 'hawki-web')
+                && $this->filterContains($filters, 'protected', false)
+                && $this->filterContainsDocumentId($filters, (string) $protectedDocument->id)
+                && ! $this->filterContainsDocumentId($filters, (string) $publicDocument->id);
         });
     }
 
@@ -158,13 +153,164 @@ class HawkiRagProxyControllerTest extends TestCase
 
         Http::assertSent(function (Request $request): bool {
             $filters = $request->data()['filters'] ?? [];
-            $docIds = array_map(
-                static fn (array $match): ?string => $match['match']['value'] ?? null,
-                is_array($filters['should'] ?? null) ? $filters['should'] : [],
-            );
 
             return $request->url() === 'http://bridge.test/query'
-                && $docIds === ['__rawki_no_match__'];
+                && $request->data()['limit'] === 5
+                && ! array_key_exists('top_k', $request->data())
+                && $this->filterContainsDocumentId($filters, '__rawki_no_match__');
         });
+    }
+
+    public function test_chunk_search_forwards_retrieval_only_payload_to_bridge(): void
+    {
+        config()->set('config.hawki_rag_bridge_url', 'http://bridge.test');
+        config()->set('authz.enabled', true);
+        Http::fake([
+            'http://bridge.test/query' => Http::response([
+                'hits' => [
+                    [
+                        'id' => 'chunk-1',
+                        'score' => 0.9,
+                        'payload' => [
+                            'document_id' => 'doc-1',
+                            'content' => 'Chunk body',
+                        ],
+                    ],
+                ],
+            ], 200),
+        ]);
+
+        ['token' => $token] = $this->issueApplicationToken([
+            'id' => 'hawki-web',
+            'tenant_id' => 'uni-hawk',
+            'permissions' => ['reads'],
+        ]);
+
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->postJson('/api/search/chunks', [
+                'query' => 'campus policy',
+                'top_k' => 4,
+                'user_identifier' => 'learner-123',
+                'preferred_tags' => ['policy'],
+                'filters' => ['visibility' => 'discoverable'],
+            ])
+            ->assertOk()
+            ->assertJsonPath('count', 1)
+            ->assertJsonPath('chunks.0.id', 'chunk-1');
+
+        Http::assertSent(function (Request $request): bool {
+            if ($request->url() !== 'http://bridge.test/query') {
+                return false;
+            }
+
+            $payload = $request->data();
+            $filters = $payload['filters'] ?? [];
+
+            return $payload['query'] === 'campus policy'
+                && $payload['limit'] === 4
+                && ! array_key_exists('top_k', $payload)
+                && ($payload['generate'] ?? null) === false
+                && ($payload['preferred_tags'] ?? null) === ['policy']
+                && ! array_key_exists('user_identifier', $payload)
+                && ! array_key_exists('auth_context', $payload)
+                && ! array_key_exists('tenant_id', $payload)
+                && ! array_key_exists('application_id', $payload)
+                && ! array_key_exists('internal_user_id', $payload)
+                && $this->filterContains($filters, 'owner_app', 'hawki-web')
+                && $this->filterContains($filters, 'protected', false)
+                && $this->filterContains($filters, 'visibility', 'discoverable');
+        });
+    }
+
+    public function test_grouped_chunk_search_forwards_canonical_limit_without_authorization_payload_fields(): void
+    {
+        config()->set('config.hawki_rag_bridge_url', 'http://bridge.test');
+        Http::fake([
+            'http://bridge.test/query' => Http::response([
+                'hits' => [
+                    [
+                        'id' => 'chunk-1',
+                        'score' => 0.9,
+                        'payload' => [
+                            'document_id' => 'doc-1',
+                            'content' => 'Chunk body',
+                        ],
+                    ],
+                    [
+                        'id' => 'chunk-2',
+                        'score' => 0.8,
+                        'payload' => [
+                            'document_id' => 'doc-1',
+                            'content' => 'Chunk body 2',
+                        ],
+                    ],
+                ],
+            ], 200),
+        ]);
+
+        ['token' => $token] = $this->issueApplicationToken([
+            'id' => 'hawki-web',
+            'tenant_id' => 'uni-hawk',
+            'permissions' => ['reads'],
+        ]);
+
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->postJson('/api/search/chunks/grouped', [
+                'query' => 'studio design',
+                'limit' => 2,
+                'user_identifier' => 'learner-456',
+                'fast_mode' => false,
+                'smart_lookup' => true,
+            ])
+            ->assertOk()
+            ->assertJsonPath('count', 1)
+            ->assertJsonPath('groups.0.document_id', 'doc-1')
+            ->assertJsonCount(2, 'groups.0.chunks');
+
+        Http::assertSent(function (Request $request): bool {
+            if ($request->url() !== 'http://bridge.test/query') {
+                return false;
+            }
+
+            $payload = $request->data();
+
+            return $payload['query'] === 'studio design'
+                && $payload['limit'] === 2
+                && ! array_key_exists('top_k', $payload)
+                && ($payload['fast_mode'] ?? null) === false
+                && ($payload['smart_lookup'] ?? null) === true
+                && ! array_key_exists('user_identifier', $payload)
+                && ! array_key_exists('auth_context', $payload)
+                && ! array_key_exists('tenant_id', $payload)
+                && ! array_key_exists('application_id', $payload)
+                && ! array_key_exists('internal_user_id', $payload);
+        });
+    }
+
+    /**
+     * @param array<string, mixed> $filter
+     */
+    private function filterContains(array $filter, string $key, mixed $value): bool
+    {
+        if (($filter['key'] ?? null) === $key && (($filter['match']['value'] ?? null) === $value)) {
+            return true;
+        }
+
+        foreach ($filter as $candidate) {
+            if (is_array($candidate) && $this->filterContains($candidate, $key, $value)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param array<string, mixed> $filter
+     */
+    private function filterContainsDocumentId(array $filter, string $documentId): bool
+    {
+        return $this->filterContains($filter, 'document_id', $documentId)
+            || $this->filterContains($filter, 'doc_id', $documentId);
     }
 }

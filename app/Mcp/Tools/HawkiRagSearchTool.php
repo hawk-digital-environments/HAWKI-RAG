@@ -4,9 +4,7 @@ declare(strict_types=1);
 namespace App\Mcp\Tools;
 
 use App\Services\RagSearch\RagSearcher;
-use Exception;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
-use Illuminate\Support\Facades\Http;
 use Laravel\Mcp\Request;
 use Laravel\Mcp\Response;
 use Laravel\Mcp\ResponseFactory;
@@ -15,6 +13,7 @@ use Laravel\Mcp\Server\Attributes\Name;
 use Laravel\Mcp\Server\Attributes\Title;
 use Laravel\Mcp\Server\Tool;
 use Psr\Log\LoggerInterface;
+use RuntimeException;
 
 /**
  * Summary: MCP tool that queries the HAWKI RAG bridge with depth-aware search.
@@ -44,7 +43,7 @@ class HawkiRagSearchTool extends Tool
                 Avoid vague or generic wording.
                 The tool returns the most relevant structured results for downstream answer generation, reranking, or reasoning.')
                 ->required(),
-            'top_k' => $schema->integer()
+            'limit' => $schema->integer()
                 ->description('Number of chunks to retrieve')
         ];
     }
@@ -61,17 +60,21 @@ class HawkiRagSearchTool extends Tool
     {
         $validated = $request->validate([
             'query' => 'required|string',
+            'limit' => 'integer|min:1|max:50',
             'top_k' => 'integer|min:1|max:50',
         ]);
 
+        if (isset($validated['limit'], $validated['top_k']) && (int) $validated['limit'] !== (int) $validated['top_k']) {
+            throw new RuntimeException('limit and top_k must match when both are provided.');
+        }
+
         $query = $validated['query'];
-        // Validation gives us a numeric string; cast to int to satisfy the strict signature.
-        $topK = isset($validated['top_k']) ? (int) $validated['top_k'] : 5;
+        $limit = isset($validated['limit']) ? (int) $validated['limit'] : (isset($validated['top_k']) ? (int) $validated['top_k'] : 5);
 
         try {
             $response = $this->searcher
                 ->withQuery($query)
-                ->withTopK($topK)
+                ->withTopK($limit)
                 ->execute();
 
             return Response::structured([

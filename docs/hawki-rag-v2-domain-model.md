@@ -40,10 +40,9 @@ This is a terminology and surface-alignment step, not a full storage rewrite.
 - `GET|PATCH|DELETE /api/heaps/{heap_id}`
 - `GET /api/corpora`
 - `GET /api/corpora/{corpus_id}`
-- `GET|POST /api/groups`
-- `GET|DELETE /api/groups/{group_id}`
-- `GET|PUT|PATCH /api/groups/{group_id}/users`
+- `GET|POST /api/auth/groups`
+- `GET|DELETE /api/auth/groups/{group_id}`
+- `GET|PUT|PATCH /api/auth/groups/{group_id}/users`
 - `POST /api/search`
 - `POST /api/search/chunks`
 - `POST /api/search/chunks/grouped`
-- `POST /api/search/documents`

@@ -13,7 +13,7 @@ class SwaggerDocumentationTest extends TestCase
         $spec = Yaml::parseFile(public_path('swagger/openapi.yaml'));
 
         $this->assertSame('3.0.3', $spec['openapi'] ?? null);
-        $this->assertSame('HAWKI RAG Canonical V2 API', $spec['info']['title'] ?? null);
+        $this->assertSame('HAWKI RAG V2', $spec['info']['title'] ?? null);
 
         $paths = $spec['paths'] ?? [];
         $this->assertArrayHasKey('/tenants', $paths);
@@ -25,6 +25,11 @@ class SwaggerDocumentationTest extends TestCase
         $this->assertArrayHasKey('/auth/groups', $paths);
         $this->assertArrayHasKey('/auth/heaps/{heapId}', $paths);
         $this->assertArrayHasKey('/auth/documents/{documentId}', $paths);
+        $this->assertArrayNotHasKey('/groups', $paths);
+        $this->assertArrayNotHasKey('/groups/{groupId}', $paths);
+        $this->assertArrayNotHasKey('/groups/{groupId}/users', $paths);
+        $this->assertArrayNotHasKey('/auth/heaps/{heapId}/grants', $paths);
+        $this->assertArrayNotHasKey('/auth/documents/{documentId}/grants', $paths);
 
         $multipart = $paths['/heaps/{heapId}/documents']['post']['requestBody']['content']['multipart/form-data']['schema'] ?? null;
         $this->assertSame('#/components/schemas/CreateDocumentFileRequest', $multipart['$ref'] ?? null);

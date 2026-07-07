@@ -17,7 +17,7 @@ readonly class GrantAccessRepository
      * @param list<string> $internalUserIds
      * @return list<string>
      */
-    public function accessibleDocumentIdsForInternalUsers(array $internalUserIds): array
+    public function documentGrantedDocumentIdsForInternalUsers(array $internalUserIds): array
     {
         $internalUserIds = $this->normalizedIds($internalUserIds);
         if ($internalUserIds === []) {
@@ -35,28 +35,64 @@ readonly class GrantAccessRepository
             ->pluck('document_grants.document_id')
             ->all();
 
-        $groupHeapDocumentIds = Document::query()
-            ->select('documents.id')
-            ->distinct()
-            ->join('heap_grants', 'heap_grants.heap_id', '=', 'documents.dataset_id')
+        return array_values(array_unique(array_filter([
+            ...$groupDocumentIds,
+            ...$directDocumentIds,
+        ], fn (mixed $id): bool => is_string($id) && trim($id) !== '')));
+    }
+
+    /**
+     * @param list<string> $internalUserIds
+     * @return list<string>
+     */
+    public function heapGrantedHeapIdsForInternalUsers(array $internalUserIds): array
+    {
+        $internalUserIds = $this->normalizedIds($internalUserIds);
+        if ($internalUserIds === []) {
+            return [];
+        }
+
+        $groupHeapIds = HeapGrant::query()
             ->join('group_members', 'group_members.group_id', '=', 'heap_grants.group_id')
             ->whereIn('group_members.internal_user_id', $internalUserIds)
-            ->pluck('documents.id')
+            ->pluck('heap_grants.heap_id')
             ->all();
 
-        $directHeapDocumentIds = Document::query()
+        $directHeapIds = HeapGrant::query()
+            ->whereIn('internal_user_id', $internalUserIds)
+            ->pluck('heap_id')
+            ->all();
+
+        return array_values(array_unique(array_filter([
+            ...$groupHeapIds,
+            ...$directHeapIds,
+        ], fn (mixed $id): bool => is_string($id) && trim($id) !== '')));
+    }
+
+    /**
+     * @param list<string> $internalUserIds
+     * @return list<string>
+     */
+    public function accessibleDocumentIdsForInternalUsers(array $internalUserIds): array
+    {
+        $internalUserIds = $this->normalizedIds($internalUserIds);
+        if ($internalUserIds === []) {
+            return [];
+        }
+
+        $documentGrantIds = $this->documentGrantedDocumentIdsForInternalUsers($internalUserIds);
+        $heapGrantIds = $this->heapGrantedHeapIdsForInternalUsers($internalUserIds);
+
+        $heapGrantDocumentIds = Document::query()
             ->select('documents.id')
             ->distinct()
-            ->join('heap_grants', 'heap_grants.heap_id', '=', 'documents.dataset_id')
-            ->whereIn('heap_grants.internal_user_id', $internalUserIds)
+            ->whereIn('documents.dataset_id', $heapGrantIds)
             ->pluck('documents.id')
             ->all();
 
         return array_values(array_unique(array_filter([
-            ...$groupDocumentIds,
-            ...$directDocumentIds,
-            ...$groupHeapDocumentIds,
-            ...$directHeapDocumentIds,
+            ...$documentGrantIds,
+            ...$heapGrantDocumentIds,
         ], fn (mixed $id): bool => is_string($id) && trim($id) !== '')));
     }
 
@@ -118,39 +154,19 @@ readonly class GrantAccessRepository
             return [];
         }
 
-        $groupHeapIds = HeapGrant::query()
-            ->join('group_members', 'group_members.group_id', '=', 'heap_grants.group_id')
-            ->whereIn('group_members.internal_user_id', $internalUserIds)
-            ->pluck('heap_grants.heap_id')
-            ->all();
-
-        $directHeapIds = HeapGrant::query()
-            ->whereIn('internal_user_id', $internalUserIds)
-            ->pluck('heap_id')
-            ->all();
+        $heapGrantIds = $this->heapGrantedHeapIdsForInternalUsers($internalUserIds);
+        $documentGrantIds = $this->documentGrantedDocumentIdsForInternalUsers($internalUserIds);
 
         $documentHeapIds = Document::query()
             ->select('documents.dataset_id')
             ->distinct()
-            ->join('document_grants', 'document_grants.document_id', '=', 'documents.id')
-            ->whereIn('document_grants.internal_user_id', $internalUserIds)
-            ->pluck('documents.dataset_id')
-            ->all();
-
-        $groupDocumentHeapIds = Document::query()
-            ->select('documents.dataset_id')
-            ->distinct()
-            ->join('document_grants', 'document_grants.document_id', '=', 'documents.id')
-            ->join('group_members', 'group_members.group_id', '=', 'document_grants.group_id')
-            ->whereIn('group_members.internal_user_id', $internalUserIds)
+            ->whereIn('documents.id', $documentGrantIds)
             ->pluck('documents.dataset_id')
             ->all();
 
         return array_values(array_unique(array_filter([
-            ...$groupHeapIds,
-            ...$directHeapIds,
+            ...$heapGrantIds,
             ...$documentHeapIds,
-            ...$groupDocumentHeapIds,
         ], fn (mixed $id): bool => is_string($id) && trim($id) !== '')));
     }
 

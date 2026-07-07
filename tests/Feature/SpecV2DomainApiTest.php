@@ -63,7 +63,7 @@ class SpecV2DomainApiTest extends TestCase
             ->assertJsonPath('metadata.course', 'design');
 
         $this->withHeader('Authorization', 'Bearer '.$token)
-            ->postJson('/api/groups', [
+            ->postJson('/api/auth/groups', [
             'id' => 'design_students',
             'name' => 'Design Students',
             'owner_application_id' => 'hawki-web',
@@ -72,7 +72,7 @@ class SpecV2DomainApiTest extends TestCase
             ->assertJsonPath('ownerApp', 'hawki-web');
 
         $this->withHeader('Authorization', 'Bearer '.$token)
-            ->putJson('/api/groups/hawki-web:design_students/users', [
+            ->putJson('/api/auth/groups/hawki-web:design_students/users', [
                 'users' => ['alice@hawk.de', 'bob@hawk.de'],
             ])->assertOk()
             ->assertJsonPath('data.0', 'alice@hawk.de')
@@ -290,7 +290,7 @@ class SpecV2DomainApiTest extends TestCase
             ->assertJsonPath('tenantId', 'default')
             ->assertJsonPath('ownerApp', 'rawki-default');
 
-        $this->postJson('/api/groups', [
+        $this->postJson('/api/auth/groups', [
             'id' => 'local_team',
             'name' => 'Local Team',
         ])->assertCreated()

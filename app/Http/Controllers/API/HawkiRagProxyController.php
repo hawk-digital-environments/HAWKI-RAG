@@ -11,6 +11,7 @@ use App\Services\Rag\RagProxyService;
 use App\Services\Rag\RagQueryPayloadFactory;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 
 class HawkiRagProxyController extends Controller
 {
@@ -24,6 +25,7 @@ class HawkiRagProxyController extends Controller
     {
         $data = $request->validate([
             'query'           => 'required|string|max:4000',
+            'limit'           => 'sometimes|integer|min:1|max:100',
             'top_k'           => 'sometimes|integer|min:1|max:100',
             'filters'         => 'sometimes|array',
             'is_optimized'    => 'sometimes|boolean',
@@ -34,6 +36,18 @@ class HawkiRagProxyController extends Controller
             'preferred_tags'  => 'sometimes|array|max:20',
             'preferred_tags.*'=> 'string|max:80',
         ]);
+
+        if (isset($data['limit'], $data['top_k']) && (int) $data['limit'] !== (int) $data['top_k']) {
+            throw ValidationException::withMessages([
+                'limit' => ['Provide only one search limit value. limit and top_k must match when both are sent.'],
+            ]);
+        }
+
+        if (! isset($data['limit']) && isset($data['top_k'])) {
+            $data['limit'] = (int) $data['top_k'];
+        }
+
+        unset($data['top_k']);
 
         $actor = $actors->resolve($request);
         $data['filters'] = $filters->build($data['filters'] ?? [], $actor, $data['user_identifier'] ?? null);

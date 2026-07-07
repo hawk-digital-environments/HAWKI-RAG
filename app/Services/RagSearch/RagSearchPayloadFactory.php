@@ -17,13 +17,13 @@ readonly class RagSearchPayloadFactory
     /**
      * @return array<string, mixed>
      */
-    public function make(string $query, int $topK): array
+    public function make(string $query, int $limit): array
     {
         $modelRuntime = $this->settings->modelRuntime();
 
         return array_filter([
             'query' => $query,
-            'top_k' => $topK,
+            'limit' => $limit,
             'provider' => $modelRuntime['provider'],
             'generate' => false,
             'reranker' => 'external',

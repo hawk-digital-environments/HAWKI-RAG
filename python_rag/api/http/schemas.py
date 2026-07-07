@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field
 
 from api.settings import AppSettings
 
@@ -51,7 +51,7 @@ def apply_ingest_request_settings(body: IngestRequest, settings: AppSettings) ->
 
 class QueryRequest(BaseModel):
     query: str
-    top_k: int = 5
+    limit: int = Field(default=5, validation_alias=AliasChoices("limit", "top_k"))
     provider: str = "ollama"
     filters: dict[str, Any] = Field(default_factory=dict)
     generate: bool = True
@@ -66,6 +66,10 @@ class QueryRequest(BaseModel):
     # Mix mode: blend original vector score with reranker score
     mix_mode: bool = True
     mix_weight: float = 0.5  # 0..1, weight on original score
+
+    @property
+    def top_k(self) -> int:
+        return int(self.limit)
 
 
 def apply_query_request_settings(body: QueryRequest, settings: AppSettings) -> QueryRequest:

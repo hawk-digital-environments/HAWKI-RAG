@@ -26,8 +26,8 @@ def build_query_router(*, logger: logging.Logger, rag_service: Any, app_settings
         body = apply_query_request_settings(body, app_settings)
 
         logger.info(
-            "api:query top_k=%s fast=%s smart=%s",
-            body.top_k,
+            "api:query limit=%s fast=%s smart=%s",
+            body.limit,
             body.fast_mode,
             body.smart_lookup,
         )

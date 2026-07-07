@@ -28,7 +28,7 @@ This document tracks the canonical V2 surface now expected across HAWKI RAG.
 | Group | Exists | First-class API surface and membership management. |
 | Metadata | Partial | Exposed on heaps and documents; reserved-keyword enforcement remains future work. |
 | Filter | Partial | Gateway-built filters are active; richer boolean grammar remains future work. |
-| Search API | Exists | Canonical search routes are `/api/search`, `/api/search/chunks`, `/api/search/chunks/grouped`, and `/api/search/documents`. |
+| Search API | Exists | Canonical search routes are `/api/search`, `/api/search/chunks`, and `/api/search/chunks/grouped`. |
 
 ## Architecture summary
 
@@ -39,4 +39,4 @@ This document tracks the canonical V2 surface now expected across HAWKI RAG.
 
 ## Compatibility boundary
 
-Compatibility routes and compatibility-era storage symbols still exist internally for migration safety. They should not be treated as the canonical product language in new docs, new UI surfaces, or new API guidance.
+Compatibility-only public routes are removed from this branch. Some internal legacy-named adapter classes still exist where they back active V2 or shared app-search and app-ingestion flows, but they are not part of the product surface.

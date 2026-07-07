@@ -28,16 +28,17 @@ denormalized payload writes.
   Validates requests and delegates to Laravel-owned scope filtering plus the
   bridge client. Must not talk to the auth backend or Qdrant directly.
 - `app/Http/Controllers/API/OpenCompat/RetrievalController.php`
-  Builds application-visible document scope through Laravel policy services
-  before delegating retrieval or compatibility reads.
+  Builds application-visible search scope through Laravel policy services
+  before delegating shared chunk retrieval for `/api/search/chunks` and
+  `/api/search/chunks/grouped`.
+- `app/Services/OpenCompat/OpenCompatService.php`
+  Owns shared chunk response shaping for active app-search flows. It must not
+  absorb document browsing, ingestion orchestration, or retired compatibility
+  route concerns.
 - `app/Http/Controllers/SpecV2/DocumentController.php`
   Handles canonical V2 document HTTP validation and delegates heap-scoped
   document create, update, list, and delete flows into the dedicated V2
   document service.
-- `app/Services/OpenCompat/OpenCompatDocumentService.php`
-  Owns shared retrieval-time document shaping and scoped document reads for
-  active app-search flows. It must not absorb ingestion, model settings, or
-  retired compatibility route concerns.
 - `app/Services/SpecV2/DocumentService.php`
   Owns canonical V2 document lifecycle orchestration, corpus synchronization,
   and bridge-backed text-ingest alignment. It must not absorb authorization

@@ -45,8 +45,11 @@ class RouteSecurityTest extends TestCase
     {
         $this->postJson('/api/query', ['query' => 'hello'])->assertNotFound();
         $this->postJson('/api/retrieve/chunks', ['query' => 'hello'])->assertNotFound();
+        $this->postJson('/api/search/documents', ['query' => 'hello'])->assertNotFound();
         $this->getJson('/api/datasets')->assertNotFound();
         $this->postJson('/api/ingest/text', ['text' => 'hello'])->assertNotFound();
+        $this->getJson('/api/auth/heaps/heap-1/grants')->assertNotFound();
+        $this->getJson('/api/auth/documents/doc-1/grants')->assertNotFound();
     }
 
     public function test_internal_api_requires_sanctum_authentication(): void
