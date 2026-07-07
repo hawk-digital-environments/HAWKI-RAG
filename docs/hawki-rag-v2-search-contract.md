@@ -17,12 +17,9 @@ Accepted request fields:
 - `filters`: optional canonical filter expression
 - `user_identifier`: optional opaque external user identifier used only by Laravel when authorization is enabled
 
-Accepted limit aliases:
-
-- `top_k`
-- `k`
-
-Laravel normalizes those aliases into `limit` before any bridge call.
+Deprecated limit aliases such as `top_k` and `k` are not accepted on the V2
+application-facing API. Compatibility clients must translate those names before
+calling V2.
 
 ## User Identifier Contract
 
@@ -47,27 +44,33 @@ The canonical filter language is structural and backend-agnostic.
 Leaf field match:
 
 ```json
-{ "heap": "heap-design" }
+["heap", "heap-design"]
 ```
 
 Leaf arrays mean logical OR across values:
 
 ```json
-{ "document_id": ["doc-1", "doc-2"] }
+["document_id", ["doc-1", "doc-2"]]
 ```
 
 Boolean groups:
 
 ```json
-{ "AND": [{ "owner_app": "hawki-web" }, { "visibility": "discoverable" }] }
+{ "AND": [["owner_app", "hawki-web"], ["visibility", "discoverable"]] }
 ```
 
 ```json
-{ "OR": [{ "heap": "heap-a" }, { "heap": "heap-b" }] }
+{ "OR": [["heap", "heap-a"], ["heap", "heap-b"]] }
 ```
 
 ```json
-{ "NOT": { "protected": true } }
+{ "NOT": ["protected", true] }
+```
+
+Sibling expressions at the root are treated as an implicit `AND`:
+
+```json
+[["heap", "heap-design"], ["course", "architecture"]]
 ```
 
 Reserved system fields are:
@@ -91,8 +94,8 @@ The Python bridge request contains exactly:
   "limit": 5,
   "filters": {
     "AND": [
-      { "owner_app": "hawki-web" },
-      { "protected": false }
+      ["owner_app", "hawki-web"],
+      ["protected", false]
     ]
   }
 }

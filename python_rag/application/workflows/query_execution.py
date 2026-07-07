@@ -119,7 +119,7 @@ def run_query_documents(
         raise HTTPException(status_code=500, detail=f"Embedding failed: {exc}") from exc
     timings["embed_ms"] = (time.perf_counter() - t_embed_start) * 1000
 
-    filters = dict(body.filters) if body.filters else None
+    filters = body.filters if body.filters else None
     t_qdrant_start = time.perf_counter()
     keyword_fields = ["title", "page_url", "source_url", "canonical_url", "tags", "content", "pdfs"]
     search_top_k = configured_search_top_k_fn(body.top_k)

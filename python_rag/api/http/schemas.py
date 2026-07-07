@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import AliasChoices, BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from api.settings import AppSettings
 
@@ -53,8 +53,8 @@ class QueryRequest(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     query: str
-    limit: int = Field(default=5, validation_alias=AliasChoices("limit", "top_k"))
-    filters: dict[str, Any] = Field(default_factory=dict)
+    limit: int = 5
+    filters: dict[str, Any] | list[Any] = Field(default_factory=dict)
 
     @property
     def top_k(self) -> int:
@@ -65,7 +65,7 @@ class ResolvedQueryRequest(BaseModel):
     query: str
     limit: int = 5
     provider: str = "ollama"
-    filters: dict[str, Any] = Field(default_factory=dict)
+    filters: dict[str, Any] | list[Any] = Field(default_factory=dict)
     generate: bool = True
     is_optimized: bool = False
     fast_mode: bool = False
@@ -86,7 +86,7 @@ def apply_query_request_settings(body: QueryRequest, settings: AppSettings) -> R
     return ResolvedQueryRequest(
         query=body.query,
         limit=body.limit,
-        filters=dict(body.filters),
+        filters=body.filters,
         provider=settings.rag_default_provider,
         reranker=settings.reranker_mode,
         mix_mode=settings.reranker_mix_mode,

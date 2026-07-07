@@ -11,27 +11,37 @@ def iter_batches(items: Sequence[Any], batch_size: int) -> Iterator[list[Any]]:
         yield list(items[index:index + size])
 
 
-def build_match_filter(filters: Optional[dict[str, Any]]) -> dict[str, Any]:
+def build_match_filter(filters: Optional[dict[str, Any] | list[Any]]) -> dict[str, Any]:
     if not filters:
         return {}
-    if any(key in filters for key in ("must", "should", "must_not")):
-        return dict(filters)
     match_filter = _build_canonical_filter(filters)
     if "key" in match_filter and "match" in match_filter:
         return {"must": [match_filter]}
     return match_filter
 
 
-def _build_canonical_filter(node: dict[str, Any]) -> dict[str, Any]:
+def _build_canonical_filter(node: dict[str, Any] | list[Any]) -> dict[str, Any]:
     if not node:
         return {}
+
+    if isinstance(node, list):
+        if _is_leaf_node(node):
+            return _build_leaf_clause(str(node[0]), node[1])
+
+        clauses = [
+            _build_canonical_filter(child)
+            for child in node
+            if isinstance(child, (dict, list))
+        ]
+        clauses = [clause for clause in clauses if clause]
+        return {"must": clauses} if clauses else {}
 
     operators = [key for key in ("AND", "OR", "NOT") if key in node]
     if operators:
         operator = operators[0]
         if operator == "NOT":
             child = node.get("NOT")
-            if not isinstance(child, dict):
+            if not isinstance(child, (dict, list)):
                 return {}
             clause = _build_canonical_filter(child)
             return {"must_not": [clause]} if clause else {}
@@ -39,7 +49,7 @@ def _build_canonical_filter(node: dict[str, Any]) -> dict[str, Any]:
         clauses = [
             _build_canonical_filter(child)
             for child in node.get(operator, [])
-            if isinstance(child, dict)
+            if isinstance(child, (dict, list))
         ]
         clauses = [clause for clause in clauses if clause]
         if not clauses:
@@ -53,6 +63,10 @@ def _build_canonical_filter(node: dict[str, Any]) -> dict[str, Any]:
     if len(clauses) == 1:
         return clauses[0]
     return {"must": clauses}
+
+
+def _is_leaf_node(node: list[Any]) -> bool:
+    return len(node) == 2 and isinstance(node[0], str)
 
 
 def _build_leaf_clause(field: str, value: Any) -> dict[str, Any]:
@@ -125,7 +139,7 @@ def build_search_body(
     vector: list[float],
     *,
     top_k: int,
-    filters: Optional[dict[str, Any]] = None,
+    filters: Optional[dict[str, Any] | list[Any]] = None,
     score_threshold: Optional[float] = None,
     params: Optional[dict[str, Any]] = None,
     with_payload: bool = True,

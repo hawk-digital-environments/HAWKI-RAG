@@ -36,42 +36,38 @@ readonly class FilterLanguageParser
             return FilterExpression::empty();
         }
 
+        if ($this->isLeafNode($node)) {
+            return $this->parseLeaf((string) $node[0], $node[1]);
+        }
+
+        if (array_is_list($node)) {
+            return $this->parseImplicitAnd($node);
+        }
+
         $operators = $this->operatorKeys($node);
-        if (count($operators) > 1) {
+        if (count($operators) !== 1 || count($node) !== 1) {
             throw ValidationException::withMessages([
-                'filters' => ['A filter node may only contain one boolean operator.'],
+                'filters' => ['Filter objects may only contain one boolean operator. Use ["field", value] for leaf filters.'],
             ]);
         }
 
-        if ($operators !== []) {
-            $operator = $operators[0];
-            return match ($operator) {
-                'AND', 'OR' => $this->parseGroupOperator($operator, $node[$this->matchingKey($node, $operator)]),
-                'NOT' => $this->parseNotOperator($node[$this->matchingKey($node, $operator)]),
-            };
-        }
+        $operator = $operators[0];
 
-        if ($this->looksLikeLegacyFilterBody($node)) {
-            return $this->parseLegacyFilterBody($node);
-        }
-
-        $children = [];
-        foreach ($node as $field => $value) {
-            if (! is_string($field)) {
-                throw ValidationException::withMessages([
-                    'filters' => ['Filter field names must be strings.'],
-                ]);
-            }
-
-            $children[] = $this->parseLeaf($field, $value);
-        }
-
-        return count($children) === 1 ? $children[0] : FilterExpression::group('AND', $children);
+        return match ($operator) {
+            'AND', 'OR' => $this->parseGroupOperator($operator, $node[$this->matchingKey($node, $operator)]),
+            'NOT' => $this->parseNotOperator($node[$this->matchingKey($node, $operator)]),
+        };
     }
 
     private function parseLeaf(string $field, mixed $value): FilterExpression
     {
         $normalizedField = $this->normalizeField($field);
+
+        if ($normalizedField === '') {
+            throw ValidationException::withMessages([
+                'filters' => ['Filter field names must be non-empty strings.'],
+            ]);
+        }
 
         if ($value === null || $value === '') {
             throw ValidationException::withMessages([
@@ -85,6 +81,16 @@ readonly class FilterLanguageParser
             ]);
         }
 
+        if (is_array($value)) {
+            foreach ($value as $candidate) {
+                if (is_array($candidate) || $candidate === null || $candidate === '') {
+                    throw ValidationException::withMessages([
+                        'filters' => ["The filter field {$field} contains an invalid empty or nested value."],
+                    ]);
+                }
+            }
+        }
+
         if (! $this->isSystemField($normalizedField) && ReservedMetadataKeySet::contains($normalizedField)) {
             throw ValidationException::withMessages([
                 'filters' => ["The metadata field {$field} is reserved."],
@@ -96,17 +102,17 @@ readonly class FilterLanguageParser
 
     private function parseGroupOperator(string $operator, mixed $value): FilterExpression
     {
-        if (! is_array($value)) {
+        if (! is_array($value) || ! array_is_list($value) || $value === []) {
             throw ValidationException::withMessages([
-                'filters' => ["The {$operator} operator requires an array of child filters."],
+                'filters' => ["The {$operator} operator requires a non-empty array of child filter expressions."],
             ]);
         }
 
         $children = [];
         foreach ($value as $child) {
-            if (! is_array($child)) {
+            if (! is_array($child) || $child === []) {
                 throw ValidationException::withMessages([
-                    'filters' => ["The {$operator} operator only accepts object children."],
+                    'filters' => ["The {$operator} operator only accepts child filter expressions."],
                 ]);
             }
 
@@ -120,7 +126,13 @@ readonly class FilterLanguageParser
     {
         if (! is_array($value)) {
             throw ValidationException::withMessages([
-                'filters' => ['The NOT operator requires a single child filter object.'],
+                'filters' => ['The NOT operator requires a single child filter expression.'],
+            ]);
+        }
+
+        if (array_is_list($value) && ! $this->isLeafNode($value)) {
+            throw ValidationException::withMessages([
+                'filters' => ['The NOT operator requires a single child filter expression, not a list of siblings.'],
             ]);
         }
 
@@ -128,53 +140,33 @@ readonly class FilterLanguageParser
     }
 
     /**
-     * @param array<mixed> $filter
+     * @param list<mixed> $node
      */
-    private function parseLegacyFilterBody(array $filter): FilterExpression
+    private function parseImplicitAnd(array $node): FilterExpression
     {
         $children = [];
 
-        foreach ($filter['must'] ?? [] as $must) {
-            $children[] = $this->parseLegacyNode($must);
+        foreach ($node as $child) {
+            if (! is_array($child) || $child === []) {
+                throw ValidationException::withMessages([
+                    'filters' => ['Implicit AND filters only accept child filter expressions.'],
+                ]);
+            }
+
+            $children[] = $this->parseNode($child);
         }
 
-        if (isset($filter['should'])) {
-            $children[] = FilterExpression::group('OR', array_map(
-                fn (array $item): FilterExpression => $this->parseLegacyNode($item),
-                array_values(array_filter($filter['should'], 'is_array')),
-            ));
-        }
-
-        foreach ($filter['must_not'] ?? [] as $mustNot) {
-            $children[] = FilterExpression::group('NOT', [$this->parseLegacyNode($mustNot)]);
-        }
-
-        return $children === [] ? FilterExpression::empty() : FilterExpression::group('AND', $children);
+        return count($children) === 1 ? $children[0] : FilterExpression::group('AND', $children);
     }
 
     /**
      * @param array<mixed> $node
      */
-    private function parseLegacyNode(array $node): FilterExpression
+    private function isLeafNode(array $node): bool
     {
-        if ($this->looksLikeLegacyFilterBody($node)) {
-            return $this->parseLegacyFilterBody($node);
-        }
-
-        $field = $node['key'] ?? null;
-        if (! is_string($field) || trim($field) === '') {
-            throw ValidationException::withMessages([
-                'filters' => ['Legacy filter nodes require a key.'],
-            ]);
-        }
-
-        if (isset($node['match']) && is_array($node['match']) && array_key_exists('value', $node['match'])) {
-            return $this->parseLeaf($field, $node['match']['value']);
-        }
-
-        throw ValidationException::withMessages([
-            'filters' => ['Legacy filter nodes currently support match.value only.'],
-        ]);
+        return array_is_list($node)
+            && count($node) === 2
+            && is_string($node[0] ?? null);
     }
 
     /**
@@ -212,29 +204,9 @@ readonly class FilterLanguageParser
         return $operator;
     }
 
-    /**
-     * @param array<mixed> $node
-     */
-    private function looksLikeLegacyFilterBody(array $node): bool
-    {
-        return array_key_exists('must', $node)
-            || array_key_exists('should', $node)
-            || array_key_exists('must_not', $node);
-    }
-
     private function normalizeField(string $field): string
     {
-        $trimmed = trim($field);
-
-        if (str_starts_with($trimmed, 'metadata.')) {
-            return substr($trimmed, strlen('metadata.'));
-        }
-
-        if ($trimmed === 'doc_id') {
-            return 'document_id';
-        }
-
-        return $trimmed;
+        return trim($field);
     }
 
     private function isSystemField(string $field): bool

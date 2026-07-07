@@ -27,7 +27,7 @@ This document tracks the canonical V2 surface now expected across HAWKI RAG.
 | Chunk | Partial | Operational in the vector layer; not directly exposed as a Laravel model. |
 | Group | Exists | First-class API surface and membership management. |
 | Metadata | Partial | Exposed on heaps and documents; reserved-keyword enforcement remains future work. |
-| Filter | Partial | Gateway-built filters are active; richer boolean grammar remains future work. |
+| Filter | Exists | Gateway-built filters use the V2 tuple-leaf grammar with boolean operators and `limit` search requests. |
 | Search API | Exists | Canonical search routes are `/api/search`, `/api/search/chunks`, and `/api/search/chunks/grouped`. |
 
 ## Architecture summary

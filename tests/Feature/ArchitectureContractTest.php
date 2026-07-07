@@ -1127,14 +1127,14 @@ class ArchitectureContractTest extends TestCase
      */
     private function filterContains(array $filter, string $key, mixed $value): bool
     {
+        if ($this->isFilterLeaf($filter)) {
+            return $filter[0] === $key && $this->filterValueMatches($filter[1], $value);
+        }
+
         if (array_key_exists($key, $filter)) {
             $candidate = $filter[$key];
 
-            if (is_array($candidate)) {
-                return in_array($value, $candidate, true);
-            }
-
-            return $candidate === $value;
+            return $this->filterValueMatches($candidate, $value);
         }
 
         foreach (['AND', 'OR'] as $operator) {
@@ -1181,6 +1181,22 @@ class ArchitectureContractTest extends TestCase
         sort($keys);
 
         return $keys === ['filters', 'limit', 'query'];
+    }
+
+    private function isFilterLeaf(array $filter): bool
+    {
+        return array_is_list($filter)
+            && count($filter) === 2
+            && is_string($filter[0] ?? null);
+    }
+
+    private function filterValueMatches(mixed $candidate, mixed $value): bool
+    {
+        if (is_array($candidate)) {
+            return in_array($value, $candidate, true);
+        }
+
+        return $candidate === $value;
     }
 
     private function seedHeapCorpusAndGroup(

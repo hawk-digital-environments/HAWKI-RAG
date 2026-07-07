@@ -38,6 +38,11 @@ class SwaggerDocumentationTest extends TestCase
         $this->assertSame('#/components/schemas/CreateDocumentFileRequest', $multipart['$ref'] ?? null);
         $this->assertSame('#/components/schemas/SearchRequest', $paths['/search']['post']['requestBody']['content']['application/json']['schema']['$ref'] ?? null);
         $this->assertSame('#/components/schemas/CanonicalFilterExpression', $spec['components']['schemas']['SearchRequest']['properties']['filters']['$ref'] ?? null);
+        $this->assertArrayHasKey('limit', $spec['components']['schemas']['SearchRequest']['properties'] ?? []);
+        $this->assertArrayNotHasKey('top_k', $spec['components']['schemas']['SearchRequest']['properties'] ?? []);
+        $this->assertSame('array', $spec['components']['schemas']['CanonicalFilterLeaf']['type'] ?? null);
+        $this->assertSame(2, $spec['components']['schemas']['CanonicalFilterLeaf']['minItems'] ?? null);
+        $this->assertArrayHasKey('CanonicalFilterImplicitAnd', $spec['components']['schemas'] ?? []);
         $this->assertArrayNotHasKey('protected', $spec['components']['schemas']['CreateHeapRequest']['properties'] ?? []);
         $this->assertArrayNotHasKey('protected', $spec['components']['schemas']['UpdateHeapRequest']['properties'] ?? []);
         $this->assertArrayNotHasKey('GrantPayload', $spec['components']['schemas'] ?? []);

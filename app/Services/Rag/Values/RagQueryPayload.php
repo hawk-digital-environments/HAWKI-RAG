@@ -19,7 +19,7 @@ readonly class RagQueryPayload
     {
         return new self(
             query: (string) $input['query'],
-            limit: (int) ($input['limit'] ?? $input['top_k'] ?? 5),
+            limit: (int) ($input['limit'] ?? 5),
             filters: is_array($input['filters'] ?? null) ? $input['filters'] : null,
         );
     }

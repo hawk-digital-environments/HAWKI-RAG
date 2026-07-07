@@ -19,8 +19,8 @@ readonly class GatewaySearchFilterService
     ) {}
 
     /**
-     * @param array<string, mixed> $clientFilters
-     * @return array<string, mixed>
+     * @param array<mixed> $clientFilters
+     * @return array<mixed>
      */
     public function build(array $clientFilters, ApiActor $actor, ?string $requestedUserIdentifier = null): array
     {

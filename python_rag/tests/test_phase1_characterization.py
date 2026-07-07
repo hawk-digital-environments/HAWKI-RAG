@@ -3185,9 +3185,9 @@ class ApiAndVectorValidationTests(unittest.TestCase):
 
         query_body = QueryRequest(
             query="Why wooden toys are safe?",
-            top_k=4,
+            limit=4,
             provider="query-provider",
-            filters={"source_format": "markdown"},
+            filters=["source_format", "markdown"],
             generate=False,
             is_optimized=True,
             fast_mode=True,
@@ -3411,7 +3411,7 @@ class ApiAndVectorValidationTests(unittest.TestCase):
             build_search_body(
                 [0.1, 0.2],
                 top_k=3,
-                filters={"source_format": "markdown"},
+                filters=["source_format", "markdown"],
                 with_payload=True,
                 with_vector=False,
                 keyword_terms=["toys"],
@@ -3433,11 +3433,11 @@ class ApiAndVectorValidationTests(unittest.TestCase):
             build_match_filter(
                 {
                     "AND": [
-                        {"owner_app": "hawki-web"},
+                        ["owner_app", "hawki-web"],
                         {
                             "OR": [
-                                {"protected": False},
-                                {"document_id": ["doc-1", "doc-2"]},
+                                ["protected", False],
+                                ["document_id", ["doc-1", "doc-2"]],
                             ]
                         },
                     ]
@@ -3459,6 +3459,18 @@ class ApiAndVectorValidationTests(unittest.TestCase):
                             },
                         ]
                     },
+                ]
+            },
+        )
+        self.assertEqual(
+            build_match_filter([
+                ["heap", "heap-design"],
+                ["course", "architecture"],
+            ]),
+            {
+                "must": [
+                    {"key": "heap", "match": {"value": "heap-design"}},
+                    {"key": "course", "match": {"value": "architecture"}},
                 ]
             },
         )

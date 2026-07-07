@@ -13,7 +13,6 @@ use Laravel\Mcp\Server\Attributes\Name;
 use Laravel\Mcp\Server\Attributes\Title;
 use Laravel\Mcp\Server\Tool;
 use Psr\Log\LoggerInterface;
-use RuntimeException;
 
 /**
  * Summary: MCP tool that queries the HAWKI RAG bridge with depth-aware search.
@@ -61,15 +60,10 @@ class HawkiRagSearchTool extends Tool
         $validated = $request->validate([
             'query' => 'required|string',
             'limit' => 'integer|min:1|max:50',
-            'top_k' => 'integer|min:1|max:50',
         ]);
 
-        if (isset($validated['limit'], $validated['top_k']) && (int) $validated['limit'] !== (int) $validated['top_k']) {
-            throw new RuntimeException('limit and top_k must match when both are provided.');
-        }
-
         $query = $validated['query'];
-        $limit = isset($validated['limit']) ? (int) $validated['limit'] : (isset($validated['top_k']) ? (int) $validated['top_k'] : 5);
+        $limit = isset($validated['limit']) ? (int) $validated['limit'] : 5;
 
         try {
             $response = $this->searcher

@@ -188,10 +188,10 @@ class HawkiRagProxyControllerTest extends TestCase
         $this->withHeader('Authorization', 'Bearer '.$token)
             ->postJson('/api/search/chunks', [
                 'query' => 'campus policy',
-                'top_k' => 4,
+                'limit' => 4,
                 'user_identifier' => 'learner-123',
                 'preferred_tags' => ['policy'],
-                'filters' => ['visibility' => 'discoverable'],
+                'filters' => ['visibility', 'discoverable'],
             ])
             ->assertOk()
             ->assertJsonPath('count', 1)
@@ -273,19 +273,97 @@ class HawkiRagProxyControllerTest extends TestCase
         });
     }
 
+    public function test_search_request_rejects_top_k_alias_and_invalid_filter_shapes(): void
+    {
+        ['token' => $token] = $this->issueApplicationToken([
+            'id' => 'hawki-web',
+            'tenant_id' => 'uni-hawk',
+            'permissions' => ['reads'],
+        ]);
+
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->postJson('/api/search', [
+                'query' => 'campus policy',
+                'top_k' => 4,
+            ])->assertStatus(422)
+            ->assertJsonValidationErrors(['top_k']);
+
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->postJson('/api/search', [
+                'query' => 'campus policy',
+                'filters' => ['visibility' => 'discoverable'],
+            ])->assertStatus(422)
+            ->assertJsonValidationErrors(['filters']);
+
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->postJson('/api/search', [
+                'query' => 'campus policy',
+                'filters' => ['must' => [['key' => 'visibility', 'match' => ['value' => 'discoverable']]]],
+            ])->assertStatus(422)
+            ->assertJsonValidationErrors(['filters']);
+
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->postJson('/api/search', [
+                'query' => 'campus policy',
+                'filters' => ['course', ''],
+            ])->assertStatus(422)
+            ->assertJsonValidationErrors(['filters']);
+
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->postJson('/api/search', [
+                'query' => 'campus policy',
+                'filters' => ['__rawki', 'forged'],
+            ])->assertStatus(422)
+            ->assertJsonValidationErrors(['filters']);
+    }
+
+    public function test_search_request_accepts_not_filter_in_spec_tuple_grammar(): void
+    {
+        config()->set('config.hawki_rag_bridge_url', 'http://bridge.test');
+        Http::fake([
+            'http://bridge.test/query' => Http::response([
+                'ok' => true,
+                'count' => 0,
+                'hits' => [],
+            ], 200),
+        ]);
+
+        ['token' => $token] = $this->issueApplicationToken([
+            'id' => 'hawki-web',
+            'tenant_id' => 'uni-hawk',
+            'permissions' => ['reads'],
+        ]);
+
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->postJson('/api/search', [
+                'query' => 'campus policy',
+                'limit' => 6,
+                'filters' => ['NOT' => ['visibility', 'hidden']],
+            ])->assertOk();
+
+        Http::assertSent(function (Request $request): bool {
+            $filters = $request->data()['filters'] ?? [];
+
+            return $request->url() === 'http://bridge.test/query'
+                && $request->data()['limit'] === 6
+                && $this->filterContains($filters, 'owner_app', 'hawki-web')
+                && $this->filterContainsNot($filters, 'visibility', 'hidden');
+        });
+    }
+
     /**
      * @param array<string, mixed> $filter
      */
     private function filterContains(array $filter, string $key, mixed $value): bool
     {
+        if ($this->isFilterLeaf($filter)) {
+            return $filter[0] === $key && $this->filterValueMatches($filter[1], $value);
+        }
+
         if (array_key_exists($key, $filter)) {
             $candidate = $filter[$key];
 
-            if (is_array($candidate)) {
-                return in_array($value, $candidate, true);
-            }
-
-            return $candidate === $value;
+            return $this->filterValueMatches($candidate, $value);
         }
 
         foreach (['AND', 'OR'] as $operator) {
@@ -315,6 +393,29 @@ class HawkiRagProxyControllerTest extends TestCase
         return false;
     }
 
+    private function filterContainsNot(array $filter, string $key, mixed $value): bool
+    {
+        $not = $filter['NOT'] ?? null;
+        if (is_array($not) && $this->filterContains($not, $key, $value)) {
+            return true;
+        }
+
+        foreach (['AND', 'OR'] as $operator) {
+            $children = $filter[$operator] ?? null;
+            if (! is_array($children)) {
+                continue;
+            }
+
+            foreach ($children as $child) {
+                if (is_array($child) && $this->filterContainsNot($child, $key, $value)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
     /**
      * @param array<string, mixed> $filter
      */
@@ -332,5 +433,21 @@ class HawkiRagProxyControllerTest extends TestCase
         sort($keys);
 
         return $keys === ['filters', 'limit', 'query'];
+    }
+
+    private function isFilterLeaf(array $filter): bool
+    {
+        return array_is_list($filter)
+            && count($filter) === 2
+            && is_string($filter[0] ?? null);
+    }
+
+    private function filterValueMatches(mixed $candidate, mixed $value): bool
+    {
+        if (is_array($candidate)) {
+            return in_array($value, $candidate, true);
+        }
+
+        return $candidate === $value;
     }
 }

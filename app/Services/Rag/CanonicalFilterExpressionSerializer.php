@@ -11,7 +11,7 @@ use Illuminate\Container\Attributes\Singleton;
 readonly class CanonicalFilterExpressionSerializer
 {
     /**
-     * @return array<string, mixed>
+     * @return array<mixed>
      */
     public function serialize(FilterExpression $expression): array
     {
@@ -23,13 +23,14 @@ readonly class CanonicalFilterExpressionSerializer
     }
 
     /**
-     * @return array<string, mixed>
+     * @return array<mixed>
      */
     private function node(FilterExpression $expression): array
     {
         if ($expression->isLeaf()) {
             return [
-                (string) $expression->field => $this->normalizeValue($expression->value),
+                (string) $expression->field,
+                $this->normalizeValue($expression->value),
             ];
         }
 

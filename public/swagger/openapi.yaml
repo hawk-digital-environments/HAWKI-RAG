@@ -1113,13 +1113,26 @@ components:
           items:
             $ref: "#/components/schemas/CanonicalFilterScalar"
     CanonicalFilterLeaf:
-      type: object
-      description: Field/value filter leaf. Array values mean logical OR.
-      additionalProperties:
-        $ref: "#/components/schemas/CanonicalFilterValue"
+      type: array
+      minItems: 2
+      maxItems: 2
+      description: >
+        Field/value filter leaf in the form ["field", value]. The first item is
+        the field name and the second item is a scalar or scalar array. Array
+        values mean logical OR across values.
+      items:
+        oneOf:
+          - type: string
+          - $ref: "#/components/schemas/CanonicalFilterValue"
+    CanonicalFilterImplicitAnd:
+      type: array
+      description: Root-level sibling expressions are treated as an implicit AND.
+      items:
+        $ref: "#/components/schemas/CanonicalFilterExpression"
     CanonicalFilterExpression:
       oneOf:
         - $ref: "#/components/schemas/CanonicalFilterLeaf"
+        - $ref: "#/components/schemas/CanonicalFilterImplicitAnd"
         - type: object
           properties:
             AND:

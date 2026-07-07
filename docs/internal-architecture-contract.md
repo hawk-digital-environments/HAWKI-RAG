@@ -37,7 +37,8 @@ denormalized payload writes.
   bridge client. Must not talk to the auth backend or Qdrant directly.
 - `app/Http/Requests/Search/SearchQueryRequest.php`
   Owns the canonical Laravel request contract for application-facing search
-  endpoints and normalizes `top_k` or `k` into `limit`.
+  endpoints. It accepts `limit` only and rejects deprecated `top_k` or `k`
+  aliases on the V2 surface.
 - `app/Http/Controllers/API/OpenCompat/RetrievalController.php`
   Builds application-visible search scope through Laravel policy services
   before delegating shared chunk retrieval for `/api/search/chunks` and
