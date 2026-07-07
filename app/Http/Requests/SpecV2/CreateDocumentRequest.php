@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 namespace App\Http\Requests\SpecV2;
 
+use App\Rules\DisallowReservedMetadataKeys;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Validation\Validator;
@@ -21,7 +22,7 @@ class CreateDocumentRequest extends FormRequest
             'document_id' => 'sometimes|string|max:255',
             'content' => 'sometimes|string',
             'file' => 'sometimes|file|max:102400',
-            'metadata' => 'sometimes|array',
+            'metadata' => ['sometimes', 'array', new DisallowReservedMetadataKeys],
             'source_url' => 'sometimes|string|max:1000',
             'title' => 'sometimes|string|max:255',
             'filename' => 'sometimes|string|max:255',

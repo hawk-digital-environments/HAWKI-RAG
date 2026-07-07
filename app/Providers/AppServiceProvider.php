@@ -135,7 +135,13 @@ class AppServiceProvider extends ServiceProvider
 
     private function registerRouteConstraints(): void
     {
-        foreach (['collection', 'datasetId', 'documentId', 'id', 'jobId', 'taskId'] as $parameter) {
+        foreach ([
+            'collection',
+            'documentId',
+            'id',
+            'jobId',
+            'taskId',
+        ] as $parameter) {
             Route::pattern($parameter, self::SAFE_ROUTE_IDENTIFIER);
         }
     }

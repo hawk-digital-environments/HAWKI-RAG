@@ -19,6 +19,7 @@ final class ReservedMetadataKeySet
             'owner_app',
             'visibility',
             'protected',
+            '__rawki',
         ];
     }
 

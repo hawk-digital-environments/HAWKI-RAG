@@ -322,6 +322,84 @@ class AuthorizationGrantApiTest extends TestCase
             ],
         ])->assertStatus(422)
             ->assertJsonValidationErrors(['metadata']);
+
+        $this->postJson('/api/heaps', [
+            'id' => 'heap-invalid-internal',
+            'name' => 'Invalid Internal Heap',
+            'metadata' => [
+                '__rawki' => ['audit' => ['schema' => 999]],
+            ],
+        ])->assertStatus(422)
+            ->assertJsonValidationErrors(['metadata']);
+
+        $this->postJson('/api/heaps', [
+            'id' => 'heap-valid',
+            'name' => 'Valid Heap',
+            'metadata' => [
+                'topic' => 'design',
+            ],
+        ])->assertCreated();
+
+        $this->patchJson('/api/heaps/heap-valid', [
+            'metadata' => [
+                '__rawki' => ['audit' => ['schema' => 999]],
+            ],
+        ])->assertStatus(422)
+            ->assertJsonValidationErrors(['metadata']);
+    }
+
+    public function test_document_metadata_rejects_reserved_keys_on_create_and_update(): void
+    {
+        config()->set('config.hawki_rag_bridge_url', 'http://bridge.test');
+        Http::fake([
+            'http://bridge.test/ingest' => Http::response(['ok' => true], 200),
+        ]);
+
+        ['token' => $token] = $this->issueApplicationToken([
+            'id' => 'rawki-default',
+            'tenant_id' => 'default',
+        ]);
+
+        $this->withHeaders(['Authorization' => 'Bearer '.$token])
+            ->postJson('/api/heaps', [
+                'id' => 'heap-reserved-docs',
+                'name' => 'Reserved Docs',
+            ])->assertCreated();
+
+        $this->withHeaders(['Authorization' => 'Bearer '.$token])
+            ->postJson('/api/heaps/heap-reserved-docs/documents', [
+                'document_id' => 'doc-reserved-create',
+                'content' => 'forbidden key',
+                'metadata' => ['visibility' => true],
+            ])->assertStatus(422)
+            ->assertJsonValidationErrors(['metadata']);
+
+        $this->withHeaders(['Authorization' => 'Bearer '.$token])
+            ->postJson('/api/heaps/heap-reserved-docs/documents', [
+                'document_id' => 'doc-reserved-internal',
+                'content' => 'forbidden internal key',
+                'metadata' => ['__rawki' => ['audit' => ['schema' => 999]]],
+            ])->assertStatus(422)
+            ->assertJsonValidationErrors(['metadata']);
+
+        $this->withHeaders(['Authorization' => 'Bearer '.$token])
+            ->postJson('/api/heaps/heap-reserved-docs/documents', [
+                'document_id' => 'doc-reserved-update',
+                'content' => 'allowed key',
+                'metadata' => ['topic' => 'design'],
+            ])->assertCreated();
+
+        $this->withHeaders(['Authorization' => 'Bearer '.$token])
+            ->putJson('/api/documents/doc-reserved-update', [
+                'metadata' => ['protected' => true],
+            ])->assertStatus(422)
+            ->assertJsonValidationErrors(['metadata']);
+
+        $this->withHeaders(['Authorization' => 'Bearer '.$token])
+            ->putJson('/api/documents/doc-reserved-update', [
+                'metadata' => ['__rawki' => ['search_payload' => ['heap' => 'forged']]],
+            ])->assertStatus(422)
+            ->assertJsonValidationErrors(['metadata']);
     }
 
     public function test_query_filter_language_filters_by_reserved_fields_and_metadata(): void

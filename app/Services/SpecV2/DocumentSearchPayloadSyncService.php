@@ -38,11 +38,6 @@ readonly class DocumentSearchPayloadSyncService
         }
 
         $payload = $this->payloads->build($document, $document->heap);
-        $document->metadata_json = $payload->storedMetadata;
-
-        if ($document->isDirty('metadata_json')) {
-            $document->saveQuietly();
-        }
 
         $this->syncQdrantPayload(
             $document,

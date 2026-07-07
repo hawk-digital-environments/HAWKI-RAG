@@ -394,8 +394,11 @@ class PipelineRepositoryReadTest extends TestCase
         $this->assertSame($checksum, $document->checksum_sha256);
         $this->assertSame(Document::STATUS_COMPLETED, $document->status);
         $this->assertSame('ingest-repository-job', $document->metadata_json['job_id']);
-        $this->assertSame($task->dataset_id, $document->metadata_json['__rawki']['heap_context']['heap']);
-        $this->assertSame($document->id, $document->metadata_json['__rawki']['search_payload']['document_id']);
+        $this->assertArrayNotHasKey('document_id', $document->metadata_json);
+        $this->assertArrayNotHasKey('heap', $document->metadata_json);
+        $this->assertArrayNotHasKey('owner_app', $document->metadata_json);
+        $this->assertArrayNotHasKey('visibility', $document->metadata_json);
+        $this->assertArrayNotHasKey('protected', $document->metadata_json);
         $this->assertSame($checksum, $document->corpus_id);
         $this->assertDatabaseHas('documents', [
             'id' => $document->id,

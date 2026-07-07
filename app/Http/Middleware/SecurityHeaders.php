@@ -80,7 +80,6 @@ readonly class SecurityHeaders
     {
         return $request->is(
             'api/*',
-            'datasets*',
             'documents*',
             'health/*',
             'pipeline/*',

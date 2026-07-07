@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 namespace App\Http\Requests\SpecV2;
 
+use App\Rules\DisallowReservedMetadataKeys;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Validator;
 
@@ -17,7 +18,7 @@ class UpdateDocumentRequest extends FormRequest
     {
         return [
             'content' => 'sometimes|string',
-            'metadata' => 'sometimes|array',
+            'metadata' => ['sometimes', 'array', new DisallowReservedMetadataKeys],
             'source_url' => 'sometimes|string|max:1000',
             'title' => 'sometimes|string|max:255',
             'filename' => 'sometimes|string|max:255',

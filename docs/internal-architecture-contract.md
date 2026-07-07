@@ -19,8 +19,9 @@ denormalized payload writes.
    may write or check graph relationships. When disabled, auth-shaped inputs
    are accepted and ignored without side effects.
 6. Qdrant payload mutation is a write-path concern. Controllers do not write
-   Qdrant directly. Denormalized search payload sync belongs to dedicated
-   Laravel services.
+   Qdrant directly. Relational `documents.metadata_json` holds caller metadata
+   plus internal audit (`__rawki.audit`) only. Denormalized payload composition
+   and Qdrant sync belongs to dedicated Laravel services.
 7. No legacy compatibility API routes are registered on this branch. Shared
    legacy-named services may remain only as internal adapters behind active
    app-search, app-ingestion, or V2 flows.
@@ -117,6 +118,13 @@ denormalized payload writes.
   - `owner_app`
   - `visibility`
   - `protected`
+- Stored relational document metadata means:
+  - caller metadata keys remain top-level in `documents.metadata_json`
+  - the only internal relational block is `__rawki.audit`
+  - clients may not submit `__rawki`, `heap`, `document_id`, `owner_app`,
+    `visibility`, or `protected` as metadata
+  - merged heap metadata and system payloads are generated for Qdrant/search
+    sync only
 
 ## Non-Goals
 

@@ -846,19 +846,22 @@ class ArchitectureContractTest extends TestCase
             'metadata_json' => ['topic' => 'studio'],
         ]);
 
-        $payload = $document->fresh()->metadata_json['__rawki']['search_payload'] ?? [];
+        $document = $document->fresh();
+        $payload = $document->metadata_json;
 
-        foreach (['heap', 'document_id', 'owner_app', 'visibility', 'protected'] as $field) {
-            $this->assertArrayHasKey($field, $payload);
-        }
-
-        $this->assertSame('heap-design', $payload['heap']);
-        $this->assertSame((string) $document->id, $payload['document_id']);
-        $this->assertSame('app-owned', $payload['owner_app']);
-        $this->assertSame('hidden', $payload['visibility']);
-        $this->assertTrue($payload['protected']);
         $this->assertSame('studio', $payload['topic']);
-        $this->assertSame('design', $payload['course']);
+        $this->assertArrayNotHasKey('course', $payload);
+        $this->assertArrayNotHasKey('heap', $payload);
+        $this->assertArrayNotHasKey('document_id', $payload);
+        $this->assertArrayNotHasKey('owner_app', $payload);
+        $this->assertArrayNotHasKey('visibility', $payload);
+        $this->assertArrayNotHasKey('protected', $payload);
+
+        $this->assertArrayHasKey('__rawki', $payload);
+        $this->assertArrayHasKey('audit', $payload['__rawki']);
+        $this->assertSame(1, $payload['__rawki']['audit']['schema']);
+        $this->assertSame('heap-design', $payload['__rawki']['audit']['heap']);
+        $this->assertSame((string) $document->id, $payload['__rawki']['audit']['documentId']);
     }
 
     public function test_internal_architecture_contract_and_critical_files_match_boundary_rules(): void
@@ -878,6 +881,7 @@ class ArchitectureContractTest extends TestCase
         $specRoutes = file_get_contents(base_path('routes/internal_api/spec_v2.php'));
         $operatorRoutes = file_get_contents(base_path('routes/internal_api/operator.php'));
         $queryExecution = file_get_contents(base_path('python_rag/application/workflows/query_execution.py'));
+        $payloadFactory = file_get_contents(app_path('Services/SpecV2/DocumentSearchPayloadFactory.php'));
         $payloadSync = file_get_contents(app_path('Services/SpecV2/DocumentSearchPayloadSyncService.php'));
 
         $this->assertIsString($contract);
@@ -959,6 +963,11 @@ class ArchitectureContractTest extends TestCase
         $this->assertStringNotContainsString('auth_context', $queryExecution);
         $this->assertStringNotContainsString('user_identifier', $queryExecution);
 
+        $this->assertIsString($payloadFactory);
+        $this->assertStringContainsString('DocumentStoredMetadata', $payloadFactory);
+        $this->assertStringNotContainsString("'search_payload'", $payloadFactory);
+        $this->assertStringNotContainsString("'heap_context'", $payloadFactory);
+
         $this->assertIsString($payloadSync);
         $this->assertStringContainsString('syncQdrantPayload', $payloadSync);
     }
@@ -1010,12 +1019,18 @@ class ArchitectureContractTest extends TestCase
             base_path('routes/internal_api/app_search.php'),
             base_path('routes/internal_api/operator.php'),
             app_path('Http/Requests/Search/SearchQueryRequest.php'),
+            app_path('Http/Middleware/SecurityHeaders.php'),
+            app_path('Providers/AppServiceProvider.php'),
+            app_path('Http/Controllers/SpecV2/ApplicationController.php'),
             app_path('Http/Controllers/SpecV2/HeapController.php'),
+            app_path('Http/Controllers/SpecV2/TenantController.php'),
             app_path('Http/Requests/Document/ListDocumentsRequest.php'),
             app_path('Http/Requests/Pipeline/UploadPipelineFileRequest.php'),
             app_path('Http/Requests/Pipeline/ListFailedPipelineJobsRequest.php'),
+            app_path('Http/Resources/SpecV2/ApplicationResource.php'),
             app_path('Http/Resources/SpecV2/HeapResource.php'),
             app_path('Http/Resources/SpecV2/DocumentResource.php'),
+            app_path('Http/Resources/SpecV2/TenantResource.php'),
             app_path('Services/Authorization/ApiActorScopeService.php'),
             app_path('Services/Authorization/ApplicationReadPolicy.php'),
             app_path('Services/Authorization/Repositories/GrantAccessRepository.php'),
@@ -1040,6 +1055,8 @@ class ArchitectureContractTest extends TestCase
             'datasetId',
             'dataset_id',
             'datasetDeleted',
+            'datasets*',
+            '/datasets',
             '{datasetId}',
             'currentCanReadDataset',
             'currentDatasetFilters',
@@ -1074,6 +1091,35 @@ class ArchitectureContractTest extends TestCase
             ->implode("\n");
 
         $this->assertStringNotContainsString('dataset', $applicationUris);
+    }
+
+    public function test_spec_v2_http_responses_use_resources_instead_of_stale_payload_builders(): void
+    {
+        foreach ([
+            app_path('Services/SpecV2/Payloads/ApplicationPayloadBuilder.php'),
+            app_path('Services/SpecV2/Payloads/CorpusPayloadBuilder.php'),
+            app_path('Services/SpecV2/Payloads/GroupPayloadBuilder.php'),
+            app_path('Services/SpecV2/Payloads/HeapPayloadBuilder.php'),
+            app_path('Services/SpecV2/Payloads/TenantPayloadBuilder.php'),
+        ] as $removedPayloadBuilder) {
+            $this->assertFileDoesNotExist($removedPayloadBuilder);
+        }
+
+        foreach ([
+            app_path('Http/Controllers/SpecV2/ApplicationController.php') => ['ApplicationResource', 'ApplicationCollection'],
+            app_path('Http/Controllers/SpecV2/CorpusController.php') => ['CorpusResource', 'CorpusCollection'],
+            app_path('Http/Controllers/SpecV2/GroupController.php') => ['GroupResource', 'GroupCollection'],
+            app_path('Http/Controllers/SpecV2/HeapController.php') => ['HeapResource', 'HeapCollection'],
+            app_path('Http/Controllers/SpecV2/TenantController.php') => ['TenantResource', 'TenantCollection'],
+        ] as $controller => $resourceNames) {
+            $contents = file_get_contents($controller);
+            $this->assertIsString($contents, 'Unable to read '.$controller);
+            $this->assertStringNotContainsString('PayloadBuilder', $contents, $controller.' should serialize through API resources.');
+
+            foreach ($resourceNames as $resourceName) {
+                $this->assertStringContainsString($resourceName, $contents, $controller.' should serialize through '.$resourceName.'.');
+            }
+        }
     }
 
     /**

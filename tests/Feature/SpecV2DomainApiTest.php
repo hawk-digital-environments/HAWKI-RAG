@@ -173,6 +173,16 @@ class SpecV2DomainApiTest extends TestCase
             ->assertJsonPath('heapId', 'heap-spec-docs')
             ->assertJsonPath('metadata.course', 'design');
 
+        $document = Document::query()->findOrFail('doc-spec-1');
+        $this->assertSame('design', $document->metadata_json['course']);
+        $this->assertSame(['source' => 'api'], $document->heap->metadata_json ?? []);
+        $this->assertArrayHasKey('__rawki', $document->metadata_json);
+        $this->assertSame([
+            'schema' => 1,
+            'heap' => 'heap-spec-docs',
+            'documentId' => 'doc-spec-1',
+        ], $document->metadata_json['__rawki']['audit']);
+
         $this->withHeaders($auth)
             ->getJson('/api/heaps/heap-spec-docs/documents')
             ->assertOk()
@@ -188,6 +198,15 @@ class SpecV2DomainApiTest extends TestCase
             ->assertJsonPath('documentId', 'doc-spec-1')
             ->assertJsonPath('metadata.course', 'ux')
             ->assertJsonPath('title', 'Updated Spec Document');
+
+        $document->refresh();
+        $this->assertSame('ux', $document->metadata_json['course']);
+        $this->assertArrayNotHasKey('heap', $document->metadata_json);
+        $this->assertArrayNotHasKey('document_id', $document->metadata_json);
+        $this->assertArrayNotHasKey('owner_app', $document->metadata_json);
+        $this->assertArrayNotHasKey('visibility', $document->metadata_json);
+        $this->assertArrayNotHasKey('protected', $document->metadata_json);
+        $this->assertSame('doc-spec-1', $document->metadata_json['__rawki']['audit']['documentId']);
 
         $this->assertDatabaseHas('documents', [
             'id' => 'doc-spec-1',
@@ -436,6 +455,9 @@ class SpecV2DomainApiTest extends TestCase
         ]);
 
         config()->set('config.qdrant_http_url', 'http://qdrant.test');
+        Http::fake([
+            'http://qdrant.test/*' => Http::response(['status' => 'ok', 'result' => ['status' => 'acknowledged']], 200),
+        ]);
 
         Dataset::query()->create([
             'dataset_id' => 'heap-sync',
@@ -469,14 +491,29 @@ class SpecV2DomainApiTest extends TestCase
         $document->refresh();
 
         $this->assertSame('studio', $document->metadata_json['document_topic']);
-        $this->assertSame('heap-sync', $document->metadata_json['__rawki']['heap_context']['heap']);
-        $this->assertSame('discoverable', $document->metadata_json['__rawki']['search_payload']['visibility']);
-        $this->assertFalse($document->metadata_json['__rawki']['search_payload']['protected']);
-        $this->assertSame('architecture', $document->metadata_json['__rawki']['search_payload']['course']);
-        $this->assertCanonicalSearchPayloadKeys(
-            $document->metadata_json['__rawki']['search_payload'],
-            ['course', 'document_topic'],
-        );
+        $this->assertSame('heap-sync', $document->metadata_json['__rawki']['audit']['heap']);
+        $this->assertSame((string) $document->id, $document->metadata_json['__rawki']['audit']['documentId']);
+        $this->assertSame(1, $document->metadata_json['__rawki']['audit']['schema']);
+        $this->assertArrayNotHasKey('search_payload', $document->metadata_json['__rawki']);
+        $this->assertArrayNotHasKey('heap_context', $document->metadata_json['__rawki']);
+        $this->assertArrayNotHasKey('course', $document->metadata_json);
+        $this->assertSame('architecture', $document->heap->metadata_json['course']);
+
+        Http::assertSent(function (ClientRequest $request) use ($document): bool {
+            $payloadKeys = array_keys($request['payload'] ?? []);
+            sort($payloadKeys);
+            $expectedKeys = ['course', 'document_id', 'document_topic', 'heap', 'owner_app', 'protected', 'visibility'];
+            sort($expectedKeys);
+
+            return $request->method() === 'POST'
+                && $request->url() === 'http://qdrant.test/collections/heap_sync/points/payload'
+                && ($request['filter']['must'][0]['match']['value'] ?? null) === $document->id
+                && $payloadKeys === $expectedKeys
+                && ($request['payload']['course'] ?? null) === 'architecture'
+                && ($request['payload']['document_topic'] ?? null) === 'studio'
+                && ($request['payload']['visibility'] ?? null) === 'discoverable'
+                && ($request['payload']['protected'] ?? null) === false;
+        });
     }
 
     public function test_heap_protection_change_preserves_denormalized_search_payload_contract(): void
@@ -486,6 +523,11 @@ class SpecV2DomainApiTest extends TestCase
         $this->actingAsApplication([
             'id' => 'rawki-default',
             'tenant_id' => 'default',
+        ]);
+
+        config()->set('config.qdrant_http_url', 'http://qdrant.test');
+        Http::fake([
+            'http://qdrant.test/*' => Http::response(['status' => 'ok', 'result' => ['status' => 'acknowledged']], 200),
         ]);
 
         Dataset::query()->create([
@@ -521,14 +563,30 @@ class SpecV2DomainApiTest extends TestCase
 
         $document->refresh();
 
-        $this->assertSame('design', $document->metadata_json['__rawki']['search_payload']['course']);
-        $this->assertSame('hidden', $document->metadata_json['__rawki']['search_payload']['visibility']);
-        $this->assertTrue($document->metadata_json['__rawki']['search_payload']['protected']);
-        $this->assertCanonicalSearchPayloadKeys(
-            $document->metadata_json['__rawki']['search_payload'],
-            ['course', 'document_topic'],
-        );
+        $this->assertSame('studio', $document->metadata_json['document_topic']);
+        $this->assertSame('heap-protection', $document->metadata_json['__rawki']['audit']['heap']);
+        $this->assertSame((string) $document->id, $document->metadata_json['__rawki']['audit']['documentId']);
+        $this->assertSame(1, $document->metadata_json['__rawki']['audit']['schema']);
+        $this->assertArrayNotHasKey('search_payload', $document->metadata_json['__rawki']);
+        $this->assertArrayNotHasKey('document_id', $document->metadata_json);
+        $this->assertArrayNotHasKey('heap', $document->metadata_json);
+        $this->assertArrayNotHasKey('owner_app', $document->metadata_json);
+        $this->assertArrayNotHasKey('visibility', $document->metadata_json);
+        $this->assertArrayNotHasKey('protected', $document->metadata_json);
 
+        Http::assertSent(function (ClientRequest $request) use ($document): bool {
+            if ($request->method() !== 'POST' || $request->url() !== 'http://qdrant.test/collections/heap_protection/points/payload') {
+                return false;
+            }
+
+            $payload = $request['payload'] ?? [];
+            return is_array($payload)
+                && ($request['filter']['must'][0]['match']['value'] ?? null) === $document->id
+                && ($payload['visibility'] ?? null) === 'hidden'
+                && ($payload['protected'] ?? null) === true
+                && ($payload['course'] ?? null) === 'design'
+                && ($payload['document_topic'] ?? null) === 'studio';
+        });
     }
 
     public function test_document_move_between_heaps_refreshes_canonical_search_payload_and_old_collection_cleanup(): void
@@ -589,40 +647,23 @@ class SpecV2DomainApiTest extends TestCase
         $document->save();
         $document->refresh();
 
-        $this->assertSame('heap-target', $document->metadata_json['__rawki']['heap_context']['heap']);
-        $this->assertSame('target', $document->metadata_json['__rawki']['search_payload']['course']);
-        $this->assertTrue($document->metadata_json['__rawki']['search_payload']['protected']);
-        $this->assertCanonicalSearchPayloadKeys(
-            $document->metadata_json['__rawki']['search_payload'],
-            ['course', 'topic'],
-        );
+        $this->assertSame('heap-target', $document->metadata_json['__rawki']['audit']['heap']);
+        $this->assertSame((string) $document->id, $document->metadata_json['__rawki']['audit']['documentId']);
+        $this->assertSame(1, $document->metadata_json['__rawki']['audit']['schema']);
+        $this->assertSame('target', $document->heap->metadata_json['course']);
+        $this->assertSame('migration', $document->metadata_json['topic']);
+        $this->assertArrayNotHasKey('search_payload', $document->metadata_json['__rawki']);
 
         Http::assertSent(function (ClientRequest $request) use ($document): bool {
-            $keys = $request['keys'] ?? null;
-            if (! is_array($keys)) {
-                return false;
-            }
-
-            sort($keys);
-            $expected = ['course', 'document_id', 'heap', 'owner_app', 'protected', 'topic', 'visibility'];
-            sort($expected);
-
             return $request->method() === 'POST'
                 && $request->url() === 'http://qdrant.test/collections/heap_source/points/payload/delete'
-                && ($request['filter']['must'][0]['match']['value'] ?? null) === $document->id
-                && $keys === $expected;
+                && ($request['filter']['must'][0]['match']['value'] ?? null) === $document->id;
         });
 
         Http::assertSent(function (ClientRequest $request) use ($document): bool {
-            $payloadKeys = array_keys($request['payload'] ?? []);
-            sort($payloadKeys);
-            $expectedKeys = ['course', 'document_id', 'heap', 'owner_app', 'protected', 'topic', 'visibility'];
-            sort($expectedKeys);
-
             return $request->method() === 'POST'
                 && $request->url() === 'http://qdrant.test/collections/heap_target/points/payload'
                 && ($request['filter']['must'][0]['match']['value'] ?? null) === $document->id
-                && $payloadKeys === $expectedKeys
                 && ($request['payload']['heap'] ?? null) === 'heap-target'
                 && ($request['payload']['course'] ?? null) === 'target'
                 && ($request['payload']['topic'] ?? null) === 'migration'
@@ -630,24 +671,4 @@ class SpecV2DomainApiTest extends TestCase
         });
     }
 
-    /**
-     * @param array<string, mixed> $payload
-     * @param list<string> $extraKeys
-     */
-    private function assertCanonicalSearchPayloadKeys(array $payload, array $extraKeys = []): void
-    {
-        $keys = array_keys($payload);
-        sort($keys);
-
-        $expected = array_merge([
-            'document_id',
-            'heap',
-            'owner_app',
-            'protected',
-            'visibility',
-        ], $extraKeys);
-        sort($expected);
-
-        $this->assertSame($expected, $keys);
-    }
 }
