@@ -374,6 +374,10 @@ paths:
     get:
       tags: [Authorization]
       summary: Check heap or document access for a user identifier
+      description: >
+        Returns the permission decision for exactly one heap or document. When
+        authorization is disabled in this branch, scoped resources are treated
+        as permitted and no authorization side effects occur.
       parameters:
         - in: query
           name: user_identifier
@@ -402,6 +406,10 @@ paths:
     get:
       tags: [Authorization]
       summary: List heap ids accessible to a user identifier
+      description: >
+        Returns heap ids granted to the external user identifier. When
+        authorization is disabled in this branch, the endpoint is accepted as a
+        no-op and returns an empty page.
       parameters:
         - in: query
           name: identifier
@@ -543,6 +551,9 @@ paths:
     put:
       tags: [Authorization]
       summary: Replace heap grants
+      description: >
+        Creates or replaces heap grants. When authorization is disabled, the
+        request is accepted and returns an empty grant set without side effects.
       requestBody:
         required: true
         content:
@@ -606,12 +617,17 @@ paths:
     put:
       tags: [Authorization]
       summary: Replace document grants
+      description: >
+        Creates or replaces direct document user grants. Document grants are
+        user-only in the canonical V2 auth API. When authorization is disabled,
+        the request is accepted and returns an empty grant set without side
+        effects.
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/ReplaceGrantAssignmentsRequest"
+              $ref: "#/components/schemas/ReplaceDocumentGrantAssignmentsRequest"
       responses:
         "201":
           description: Document grants created
@@ -630,12 +646,13 @@ paths:
     patch:
       tags: [Authorization]
       summary: Update document grants
+      description: Direct document grant deltas are user-only.
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/UpdateGrantAssignmentsRequest"
+              $ref: "#/components/schemas/UpdateDocumentGrantAssignmentsRequest"
       responses:
         "200":
           description: Document grants updated
@@ -1291,15 +1308,15 @@ components:
         description:
           type: string
           nullable: true
-        tenantId:
+        tenant_id:
           type: string
-        ownerApp:
+        owner_app:
           type: string
         metadata:
           $ref: "#/components/schemas/Metadata"
-        memberCount:
+        member_count:
           type: integer
-        assignedHeaps:
+        assigned_heaps:
           type: array
           items:
             type: string
@@ -1307,15 +1324,15 @@ components:
           type: array
           items:
             type: string
-        createdAt:
+        created_at:
           type: string
           format: date-time
           nullable: true
-        updatedAt:
+        updated_at:
           type: string
           format: date-time
           nullable: true
-      required: [id, name, tenantId, ownerApp, metadata, memberCount]
+      required: [id, name, tenant_id, owner_app, metadata, member_count]
     PaginatedGroupResponse:
       type: object
       properties:
@@ -1384,14 +1401,6 @@ components:
     UpdateGrantAssignmentsRequest:
       type: object
       properties:
-        add:
-          type: array
-          items:
-            type: string
-        remove:
-          type: array
-          items:
-            type: string
         add_users:
           type: array
           items:
@@ -1408,40 +1417,66 @@ components:
           type: array
           items:
             type: string
+    ReplaceDocumentGrantAssignmentsRequest:
+      type: object
+      properties:
+        users:
+          type: array
+          minItems: 1
+          items:
+            type: string
+      required: [users]
+      additionalProperties: false
+    UpdateDocumentGrantAssignmentsRequest:
+      type: object
+      properties:
+        add_users:
+          type: array
+          items:
+            type: string
+        remove_users:
+          type: array
+          items:
+            type: string
+      additionalProperties: false
+    GrantLists:
+      type: object
+      properties:
+        users:
+          type: array
+          items:
+            type: string
+        groups:
+          type: array
+          items:
+            type: string
+      required: [users, groups]
+    DocumentGrantLists:
+      type: object
+      properties:
+        users:
+          type: array
+          items:
+            type: string
+      required: [users]
     HeapGrantPayload:
       type: object
       properties:
-        heapId:
+        heap_id:
           type: string
         protected:
           type: boolean
-        users:
-          type: array
-          items:
-            type: string
-        groups:
-          type: array
-          items:
-            type: string
-        count:
-          type: integer
-      required: [heapId, protected, users, groups, count]
+        grants:
+          $ref: "#/components/schemas/GrantLists"
+      required: [heap_id, protected, grants]
     DocumentGrantPayload:
       type: object
       properties:
-        documentId:
+        document_id:
           type: string
-        users:
-          type: array
-          items:
-            type: string
-        groups:
-          type: array
-          items:
-            type: string
-        count:
-          type: integer
-      required: [documentId, users, groups, count]
+        grants:
+          $ref: "#/components/schemas/DocumentGrantLists"
+      required: [document_id, grants]
     AccessCheckResponse:
       type: object
       properties:

@@ -6,7 +6,7 @@ namespace App\Http\Requests\SpecV2;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Validator;
 
-class UpdateGrantAssignmentsRequest extends FormRequest
+class UpdateDocumentGrantAssignmentsRequest extends FormRequest
 {
     public function authorize(): bool
     {
@@ -20,24 +20,25 @@ class UpdateGrantAssignmentsRequest extends FormRequest
             'add_users.*' => 'string|max:255',
             'remove_users' => 'sometimes|array|max:250',
             'remove_users.*' => 'string|max:255',
-            'add_groups' => 'sometimes|array|max:250',
-            'add_groups.*' => 'string|max:191',
-            'remove_groups' => 'sometimes|array|max:250',
-            'remove_groups.*' => 'string|max:191',
+            'groups' => 'prohibited',
+            'add' => 'prohibited',
+            'remove' => 'prohibited',
+            'add_groups' => 'prohibited',
+            'remove_groups' => 'prohibited',
         ];
     }
 
     public function withValidator(Validator $validator): void
     {
         $validator->after(function (Validator $validator): void {
-            foreach (['add_users', 'remove_users', 'add_groups', 'remove_groups'] as $field) {
+            foreach (['add_users', 'remove_users'] as $field) {
                 $value = $this->input($field);
                 if (is_array($value) && $value !== []) {
                     return;
                 }
             }
 
-            $validator->errors()->add('add_users', 'Provide at least one grant delta.');
+            $validator->errors()->add('add_users', 'Provide at least one document grant delta.');
         });
     }
 }

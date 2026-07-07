@@ -106,7 +106,7 @@ readonly class AuthorizationGrantService
         $document = $this->readableDocument($documentId);
 
         if (! $this->enabled()) {
-            return $this->documentGrantPayloadFromLists($document, [], []);
+            return $this->documentGrantPayloadFromLists($document, []);
         }
 
         return $this->documentGrantPayload($document);
@@ -114,13 +114,12 @@ readonly class AuthorizationGrantService
 
     /**
      * @param list<mixed> $users
-     * @param list<mixed> $groups
      */
-    public function replaceDocumentGrants(string $documentId, array $users, array $groups): GrantMutationResult
+    public function replaceDocumentGrants(string $documentId, array $users): GrantMutationResult
     {
         $document = $this->ownedDocument($documentId);
         if (! $this->enabled()) {
-            return new GrantMutationResult($this->documentGrantPayloadFromLists($document, [], []), 200);
+            return new GrantMutationResult($this->documentGrantPayloadFromLists($document, []), 200);
         }
 
         $created = ! $this->documentGrants->existsForDocument((string) $document->id);
@@ -132,11 +131,6 @@ readonly class AuthorizationGrantService
                 $this->identifiers->stringList($users),
             ),
         );
-        $this->documentGrants->replaceGroups((string) $document->id, $this->validatedGroupIds(
-            $groups,
-            (string) $document->heap?->tenant_id,
-            (string) $document->id,
-        ));
 
         return new GrantMutationResult($this->documentGrantPayload($document), $created ? 201 : 200);
     }
@@ -144,28 +138,23 @@ readonly class AuthorizationGrantService
     /**
      * @param list<mixed> $addUsers
      * @param list<mixed> $removeUsers
-     * @param list<mixed> $addGroups
-     * @param list<mixed> $removeGroups
      */
-    public function updateDocumentGrants(string $documentId, array $addUsers, array $removeUsers, array $addGroups, array $removeGroups): array
+    public function updateDocumentGrants(string $documentId, array $addUsers, array $removeUsers): array
     {
         $document = $this->ownedDocument($documentId);
         if (! $this->enabled()) {
-            return $this->documentGrantPayloadFromLists($document, [], []);
+            return $this->documentGrantPayloadFromLists($document, []);
         }
 
-        $tenantId = (string) $document->heap?->tenant_id;
         $this->documentGrants->addUsers(
             (string) $document->id,
             $this->identityProvisioning->userAssignments(
-                $tenantId,
+                (string) $document->heap?->tenant_id,
                 (string) $document->heap?->owner_application_id,
                 $this->identifiers->stringList($addUsers),
             ),
         );
         $this->documentGrants->removeUsers((string) $document->id, $this->identifiers->stringList($removeUsers));
-        $this->documentGrants->addGroups((string) $document->id, $this->validatedGroupIds($addGroups, $tenantId, (string) $document->id));
-        $this->documentGrants->removeGroups((string) $document->id, $this->identifiers->stringList($removeGroups));
 
         return $this->documentGrantPayload($document);
     }
@@ -386,7 +375,6 @@ readonly class AuthorizationGrantService
         return $this->documentGrantPayloadFromLists(
             $document,
             $this->grantedUsers($grants),
-            $this->grantedGroups($grants),
         );
     }
 
@@ -401,29 +389,28 @@ readonly class AuthorizationGrantService
         $groups = $this->normalizedGrantList($groups);
 
         return [
-            'heapId' => $heap->heapId(),
+            'heap_id' => $heap->heapId(),
             'protected' => (bool) $heap->protected,
-            'users' => $users,
-            'groups' => $groups,
-            'count' => count($users) + count($groups),
+            'grants' => [
+                'users' => $users,
+                'groups' => $groups,
+            ],
         ];
     }
 
     /**
      * @param list<string> $users
-     * @param list<string> $groups
      * @return array<string, mixed>
      */
-    private function documentGrantPayloadFromLists(Document $document, array $users, array $groups): array
+    private function documentGrantPayloadFromLists(Document $document, array $users): array
     {
         $users = $this->normalizedGrantList($users);
-        $groups = $this->normalizedGrantList($groups);
 
         return [
-            'documentId' => (string) $document->id,
-            'users' => $users,
-            'groups' => $groups,
-            'count' => count($users) + count($groups),
+            'document_id' => (string) $document->id,
+            'grants' => [
+                'users' => $users,
+            ],
         ];
     }
 

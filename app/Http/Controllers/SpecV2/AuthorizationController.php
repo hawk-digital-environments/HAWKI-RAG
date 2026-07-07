@@ -4,7 +4,9 @@ declare(strict_types=1);
 namespace App\Http\Controllers\SpecV2;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\SpecV2\ReplaceDocumentGrantAssignmentsRequest;
 use App\Http\Requests\SpecV2\ReplaceGrantAssignmentsRequest;
+use App\Http\Requests\SpecV2\UpdateDocumentGrantAssignmentsRequest;
 use App\Http\Requests\SpecV2\UpdateGrantAssignmentsRequest;
 use App\Services\SpecV2\SpecV2Service;
 use Illuminate\Http\JsonResponse;
@@ -42,8 +44,8 @@ class AuthorizationController extends Controller
             $heapId,
             $payload['add_users'] ?? [],
             $payload['remove_users'] ?? [],
-            $payload['add_groups'] ?? $payload['add'] ?? [],
-            $payload['remove_groups'] ?? $payload['remove'] ?? [],
+            $payload['add_groups'] ?? [],
+            $payload['remove_groups'] ?? [],
         ));
     }
 
@@ -59,19 +61,18 @@ class AuthorizationController extends Controller
         return response()->json($this->spec->auth->documentGrants($documentId));
     }
 
-    public function replaceDocumentGrants(string $documentId, ReplaceGrantAssignmentsRequest $request): JsonResponse
+    public function replaceDocumentGrants(string $documentId, ReplaceDocumentGrantAssignmentsRequest $request): JsonResponse
     {
         $payload = $request->validated();
         $result = $this->spec->auth->replaceDocumentGrants(
             $documentId,
             $payload['users'] ?? [],
-            $payload['groups'] ?? [],
         );
 
         return response()->json($result->payload, $result->status);
     }
 
-    public function updateDocumentGrants(string $documentId, UpdateGrantAssignmentsRequest $request): JsonResponse
+    public function updateDocumentGrants(string $documentId, UpdateDocumentGrantAssignmentsRequest $request): JsonResponse
     {
         $payload = $request->validated();
 
@@ -79,8 +80,6 @@ class AuthorizationController extends Controller
             $documentId,
             $payload['add_users'] ?? [],
             $payload['remove_users'] ?? [],
-            $payload['add_groups'] ?? $payload['add'] ?? [],
-            $payload['remove_groups'] ?? $payload['remove'] ?? [],
         ));
     }
 

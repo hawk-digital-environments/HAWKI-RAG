@@ -21,12 +21,12 @@ class GroupResource extends JsonResource
             'id' => $this->id,
             'name' => $this->name,
             'description' => $this->description,
-            'tenantId' => $this->tenant_id,
-            'ownerApp' => $this->owner_application_id,
+            'tenant_id' => $this->tenant_id,
+            'owner_app' => $this->owner_application_id,
             'metadata' => is_array($this->metadata_json) ? $this->metadata_json : [],
-            'memberCount' => (int) ($this->members_count ?? 0),
-            'createdAt' => $this->created_at?->toIso8601String(),
-            'updatedAt' => $this->updated_at?->toIso8601String(),
+            'member_count' => (int) ($this->members_count ?? 0),
+            'created_at' => $this->created_at?->toIso8601String(),
+            'updated_at' => $this->updated_at?->toIso8601String(),
         ];
 
         if ($this->relationLoaded('members')) {
@@ -34,7 +34,7 @@ class GroupResource extends JsonResource
         }
 
         if ($this->relationLoaded('heapGrants')) {
-            $payload['assignedHeaps'] = $this->heapGrants
+            $payload['assigned_heaps'] = $this->heapGrants
                 ->pluck('heap_id')
                 ->filter()
                 ->unique()

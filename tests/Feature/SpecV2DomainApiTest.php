@@ -69,7 +69,7 @@ class SpecV2DomainApiTest extends TestCase
             'owner_application_id' => 'hawki-web',
         ])->assertCreated()
             ->assertJsonPath('id', 'hawki-web:design_students')
-            ->assertJsonPath('ownerApp', 'hawki-web');
+            ->assertJsonPath('owner_app', 'hawki-web');
 
         $this->withHeader('Authorization', 'Bearer '.$token)
             ->putJson('/api/auth/groups/hawki-web:design_students/users', [
@@ -460,7 +460,7 @@ class SpecV2DomainApiTest extends TestCase
             'id' => 'local_team',
             'name' => 'Local Team',
         ])->assertCreated()
-            ->assertJsonPath('ownerApp', 'rawki-default');
+            ->assertJsonPath('owner_app', 'rawki-default');
 
         $this->assertSame(0, UserIdentity::query()->count());
     }
@@ -612,7 +612,7 @@ class SpecV2DomainApiTest extends TestCase
         $this->putJson('/api/auth/heaps/heap-protection', [
             'users' => ['reader@example.test'],
         ])->assertCreated()
-            ->assertJsonPath('heapId', 'heap-protection')
+            ->assertJsonPath('heap_id', 'heap-protection')
             ->assertJsonPath('protected', true);
 
         $document->refresh();
