@@ -10,6 +10,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Heap extends Model
 {
+    public const STATUS_ACTIVE = 'active';
+    public const STATUS_ARCHIVED = 'archived';
     public const VISIBILITY_DISCOVERABLE = 'discoverable';
     public const VISIBILITY_HIDDEN = 'hidden';
 
@@ -23,6 +25,7 @@ class Heap extends Model
 
     protected $fillable = [
         'dataset_id',
+        'heap_id',
         'tenant_id',
         'owner_application_id',
         'name',
@@ -57,5 +60,25 @@ class Heap extends Model
     public function documents(): HasMany
     {
         return $this->hasMany(Document::class, 'dataset_id', 'dataset_id');
+    }
+
+    public function heapId(): string
+    {
+        return (string) $this->dataset_id;
+    }
+
+    public function storageKeyName(): string
+    {
+        return $this->getKeyName();
+    }
+
+    public function getHeapIdAttribute(): string
+    {
+        return $this->heapId();
+    }
+
+    public function setHeapIdAttribute(string $value): void
+    {
+        $this->attributes['dataset_id'] = $value;
     }
 }

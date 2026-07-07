@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace App\Services\Authorization;
 
+use App\Services\Rag\CanonicalFilterExpressionSerializer;
 use App\Services\Rag\FilterLanguageParser;
-use App\Services\Rag\QdrantFilterExpressionSerializer;
 use App\Services\Rag\Values\FilterExpression;
 use Illuminate\Container\Attributes\Singleton;
 
@@ -15,7 +15,7 @@ readonly class GatewaySearchFilterService
     public function __construct(
         private ApplicationReadPolicy $policy,
         private FilterLanguageParser $filters,
-        private QdrantFilterExpressionSerializer $serializer,
+        private CanonicalFilterExpressionSerializer $serializer,
     ) {}
 
     /**

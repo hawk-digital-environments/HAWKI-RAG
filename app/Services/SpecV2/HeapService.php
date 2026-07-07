@@ -3,7 +3,6 @@ declare(strict_types=1);
 
 namespace App\Services\SpecV2;
 
-use App\Models\Dataset;
 use App\Models\SpecV2\Heap;
 use App\Services\Authorization\ApiActor;
 use App\Services\Authorization\ApiActorScopeService;
@@ -53,7 +52,7 @@ readonly class HeapService
             throw HeapNotFoundException::withId($heapId);
         }
 
-        if (! $this->actors->currentCanReadDataset($heap)) {
+        if (! $this->actors->currentCanReadHeap($heap)) {
             throw HeapNotFoundException::withId($heapId);
         }
 
@@ -81,12 +80,12 @@ readonly class HeapService
         $safe = $this->heapIdentifiers->safeName($heapId);
 
         $heap = $this->heaps->create([
-            'dataset_id' => $heapId,
+            'heap_id' => $heapId,
             'tenant_id' => $application->tenant_id,
             'owner_application_id' => $application->id,
             'name' => $this->identifiers->displayName($heapId, $input['name'] ?? null),
             'description' => $this->identifiers->stringValue($input['description'] ?? null),
-            'status' => Dataset::STATUS_ACTIVE,
+            'status' => Heap::STATUS_ACTIVE,
             'visibility' => $this->visibility($input['visibility'] ?? null),
             'protected' => (bool) ($input['protected'] ?? false),
             'metadata_json' => $input['metadata'] ?? null,
@@ -113,14 +112,14 @@ readonly class HeapService
             throw HeapNotFoundException::withId($heapId);
         }
 
-        if (! $this->actors->currentCanReadDataset($heap)) {
+        if (! $this->actors->currentCanReadHeap($heap)) {
             throw HeapNotFoundException::withId($heapId);
         }
 
         $previousMetadataKeys = array_keys(is_array($heap->metadata_json) ? $heap->metadata_json : []);
 
         if (array_key_exists('name', $input)) {
-            $heap->name = $this->identifiers->displayName($heap->dataset_id, $input['name']);
+            $heap->name = $this->identifiers->displayName($heap->heapId(), $input['name']);
         }
 
         if (array_key_exists('description', $input)) {
@@ -145,7 +144,7 @@ readonly class HeapService
         $heap->loadCount('documents');
 
         if ($heap->wasChanged(['metadata_json', 'visibility', 'protected'])) {
-            event(new HeapSearchPayloadChanged($heap->dataset_id, $previousMetadataKeys));
+            event(new HeapSearchPayloadChanged($heap->heapId(), $previousMetadataKeys));
         }
 
         return $heap;
@@ -158,7 +157,7 @@ readonly class HeapService
             throw HeapNotFoundException::withId($heapId);
         }
 
-        if (! $this->actors->currentCanReadDataset($heap)) {
+        if (! $this->actors->currentCanReadHeap($heap)) {
             throw HeapNotFoundException::withId($heapId);
         }
 

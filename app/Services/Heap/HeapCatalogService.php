@@ -16,6 +16,7 @@ readonly class HeapCatalogService
     public function __construct(
         private HeapCatalogRepository $heaps,
         private HeapIdentifierFactory $identifiers,
+        private LegacyDatasetHeapAdapter $legacyHeaps,
         private HeapPayloadBuilder $payloads,
         private HeapStorageCleanupService $storageCleanup,
         private ApiActorScopeService $actors,
@@ -30,7 +31,7 @@ readonly class HeapCatalogService
         $limit = max(1, min(250, $limit));
 
         return $this->heaps->recentWithTasks($limit)
-            ->filter(fn (Dataset $heap): bool => $this->actors->currentCanReadDataset($heap))
+            ->filter(fn (Dataset $heap): bool => $this->actors->currentCanReadHeap($this->legacyHeaps->toHeap($heap)))
             ->map(fn (Dataset $heap): array => $this->payloads->payload($heap, includeDetails: false))
             ->all();
     }
@@ -41,7 +42,7 @@ readonly class HeapCatalogService
     public function show(string $heapId): ?array
     {
         $heap = $this->heaps->findByHeapId($heapId);
-        if (! $heap instanceof Dataset || ! $this->actors->currentCanReadDataset($heap)) {
+        if (! $heap instanceof Dataset || ! $this->actors->currentCanReadHeap($this->legacyHeaps->toHeap($heap))) {
             return null;
         }
 
@@ -50,7 +51,7 @@ readonly class HeapCatalogService
 
     public function create(array $input): Dataset
     {
-        $heapId = $this->identifiers->heapId($input['heap_id'] ?? $input['heapId'] ?? $input['dataset_id'] ?? $input['datasetId'] ?? null);
+        $heapId = $this->identifiers->heapId($input['heap_id'] ?? $input['heapId'] ?? null);
         $safe = $this->identifiers->safeName($heapId);
         $defaults = $this->actors->currentOwnershipDefaults();
 
@@ -80,7 +81,7 @@ readonly class HeapCatalogService
             $heap = null;
         }
 
-        $heapId = $this->identifiers->heapId($heap ?? $input['heap_id'] ?? $input['heapId'] ?? $input['dataset_id'] ?? $input['datasetId'] ?? null);
+        $heapId = $this->identifiers->heapId($heap ?? $input['heap_id'] ?? $input['heapId'] ?? null);
         $safe = $this->identifiers->safeName($heapId);
         $defaults = $this->actors->currentOwnershipDefaults();
 
@@ -109,7 +110,7 @@ readonly class HeapCatalogService
     {
         $heap = $this->heaps->findByHeapId($heapId);
 
-        if (! $heap instanceof Dataset || ! $this->actors->currentCanReadDataset($heap)) {
+        if (! $heap instanceof Dataset || ! $this->actors->currentCanReadHeap($this->legacyHeaps->toHeap($heap))) {
             return null;
         }
 

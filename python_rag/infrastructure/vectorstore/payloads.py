@@ -16,7 +16,74 @@ def build_match_filter(filters: Optional[dict[str, Any]]) -> dict[str, Any]:
         return {}
     if any(key in filters for key in ("must", "should", "must_not")):
         return dict(filters)
-    return {"must": [{"key": ("doc_id" if key == "document_id" else key), "match": {"value": value}} for key, value in filters.items()]}
+    match_filter = _build_canonical_filter(filters)
+    if "key" in match_filter and "match" in match_filter:
+        return {"must": [match_filter]}
+    return match_filter
+
+
+def _build_canonical_filter(node: dict[str, Any]) -> dict[str, Any]:
+    if not node:
+        return {}
+
+    operators = [key for key in ("AND", "OR", "NOT") if key in node]
+    if operators:
+        operator = operators[0]
+        if operator == "NOT":
+            child = node.get("NOT")
+            if not isinstance(child, dict):
+                return {}
+            clause = _build_canonical_filter(child)
+            return {"must_not": [clause]} if clause else {}
+
+        clauses = [
+            _build_canonical_filter(child)
+            for child in node.get(operator, [])
+            if isinstance(child, dict)
+        ]
+        clauses = [clause for clause in clauses if clause]
+        if not clauses:
+            return {}
+        return {"must" if operator == "AND" else "should": clauses}
+
+    clauses = [_build_leaf_clause(key, value) for key, value in node.items()]
+    clauses = [clause for clause in clauses if clause]
+    if not clauses:
+        return {}
+    if len(clauses) == 1:
+        return clauses[0]
+    return {"must": clauses}
+
+
+def _build_leaf_clause(field: str, value: Any) -> dict[str, Any]:
+    if isinstance(value, list):
+        conditions: list[dict[str, Any]] = []
+        for candidate in value:
+            conditions.extend(_conditions_for_field(field, candidate))
+        return {"should": conditions} if conditions else {}
+
+    conditions = _conditions_for_field(field, value)
+    if not conditions:
+        return {}
+    if len(conditions) == 1:
+        return conditions[0]
+    return {"should": conditions}
+
+
+def _conditions_for_field(field: str, value: Any) -> list[dict[str, Any]]:
+    normalized_value = _normalize_scalar(value)
+    if field == "document_id":
+        return [
+            {"key": "document_id", "match": {"value": normalized_value}},
+            {"key": "doc_id", "match": {"value": normalized_value}},
+        ]
+    return [{"key": field, "match": {"value": normalized_value}}]
+
+
+def _normalize_scalar(value: Any) -> Any:
+    if isinstance(value, (bool, int, float)) or value is None:
+        return value
+    return str(value)
 
 
 def build_keyword_should_filter(

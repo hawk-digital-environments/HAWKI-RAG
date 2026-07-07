@@ -21,6 +21,7 @@ class PipelineTask extends Model
     protected $fillable = [
         'task_id',
         'dataset_id',
+        'heap_id',
         'status',
         'started_at',
         'finished_at',
@@ -40,8 +41,28 @@ class PipelineTask extends Model
         return $this->hasMany(PipelineJob::class, 'task_id', 'task_id');
     }
 
-    public function dataset(): BelongsTo
+    public function heap(): BelongsTo
     {
         return $this->belongsTo(Dataset::class, 'dataset_id', 'dataset_id');
+    }
+
+    public function dataset(): BelongsTo
+    {
+        return $this->heap();
+    }
+
+    public function heapId(): ?string
+    {
+        return is_scalar($this->dataset_id) ? (string) $this->dataset_id : null;
+    }
+
+    public function getHeapIdAttribute(): ?string
+    {
+        return $this->heapId();
+    }
+
+    public function setHeapIdAttribute(?string $value): void
+    {
+        $this->attributes['dataset_id'] = $value;
     }
 }

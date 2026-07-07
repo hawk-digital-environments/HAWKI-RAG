@@ -259,8 +259,8 @@ class ArchitectureContractTest extends TestCase
 
             $filters = $request->data()['filters'] ?? [];
 
-            return $request->data()['limit'] === 5
-                && ($request->data()['auth_context'] ?? null) === null
+            return $this->payloadHasOnlyBridgeKeys($request->data())
+                && $request->data()['limit'] === 5
                 && $this->filterContains($filters, 'protected', true)
                 && ($this->filterContains($filters, 'heap', 'heap-protected')
                     || $this->filterContainsDocumentId($filters, (string) $document->id));
@@ -313,6 +313,7 @@ class ArchitectureContractTest extends TestCase
     public function test_internal_architecture_contract_and_critical_files_match_boundary_rules(): void
     {
         $contract = file_get_contents(base_path('docs/internal-architecture-contract.md'));
+        $searchContract = file_get_contents(base_path('docs/hawki-rag-v2-search-contract.md'));
         $proxy = file_get_contents(app_path('Http/Controllers/API/HawkiRagProxyController.php'));
         $retrieval = file_get_contents(app_path('Http/Controllers/API/OpenCompat/RetrievalController.php'));
         $compatService = file_get_contents(app_path('Services/OpenCompat/OpenCompatService.php'));
@@ -332,12 +333,22 @@ class ArchitectureContractTest extends TestCase
         $this->assertStringContainsString('Qdrant payload mutation is a write-path concern', $contract);
         $this->assertStringContainsString('App-facing internal APIs use application bearer tokens only', $contract);
         $this->assertStringContainsString('No legacy compatibility API routes are registered', $contract);
+        $this->assertStringContainsString('receives only `query`, `limit`, and a', $contract);
+
+        $this->assertIsString($searchContract);
+        $this->assertStringContainsString('The Python bridge request contains exactly', $searchContract);
+        $this->assertStringContainsString('"query"', $searchContract);
+        $this->assertStringContainsString('"limit"', $searchContract);
+        $this->assertStringContainsString('"filters"', $searchContract);
+        $this->assertStringContainsString('Python must not receive', $searchContract);
 
         $this->assertIsString($proxy);
+        $this->assertStringContainsString('SearchQueryRequest', $proxy);
         $this->assertStringContainsString('GatewaySearchFilterService', $proxy);
         $this->assertStringNotContainsString('PermissionGraphClient', $proxy);
 
         $this->assertIsString($retrieval);
+        $this->assertStringContainsString('SearchQueryRequest', $retrieval);
         $this->assertStringContainsString('GatewaySearchFilterService', $retrieval);
         $this->assertStringContainsString('OpenCompatService', $retrieval);
         $this->assertStringNotContainsString('OpenCompatDocumentService', $retrieval);
@@ -345,8 +356,9 @@ class ArchitectureContractTest extends TestCase
         $this->assertStringNotContainsString('batchDocuments(', $retrieval);
 
         $this->assertIsString($compatService);
-        $this->assertStringContainsString("'limit' =>", $compatService);
-        $this->assertStringNotContainsString("'top_k' =>", $compatService);
+        $this->assertStringContainsString('RagQueryPayloadFactory', $compatService);
+        $this->assertStringNotContainsString("'generate' =>", $compatService);
+        $this->assertStringNotContainsString("'preferred_tags' =>", $compatService);
 
         $this->assertIsString($compatIngestService);
         $this->assertStringNotContainsString('PipelineUploadInput', $compatIngestService);
@@ -431,12 +443,111 @@ class ArchitectureContractTest extends TestCase
         $this->assertSame($allowedUris, $uris);
     }
 
+    public function test_core_v2_and_app_contract_files_do_not_reintroduce_legacy_dataset_terms(): void
+    {
+        $contractFiles = [
+            base_path('routes/internal_api/spec_v2.php'),
+            base_path('routes/internal_api/app_ingestion.php'),
+            base_path('routes/internal_api/app_search.php'),
+            base_path('routes/internal_api/operator.php'),
+            app_path('Http/Requests/Search/SearchQueryRequest.php'),
+            app_path('Http/Controllers/SpecV2/HeapController.php'),
+            app_path('Http/Requests/Document/ListDocumentsRequest.php'),
+            app_path('Http/Requests/Pipeline/UploadPipelineFileRequest.php'),
+            app_path('Http/Requests/Pipeline/StartPipelineTaskRequest.php'),
+            app_path('Http/Requests/Pipeline/ListFailedPipelineJobsRequest.php'),
+            app_path('Http/Resources/SpecV2/HeapResource.php'),
+            app_path('Http/Resources/SpecV2/DocumentResource.php'),
+            app_path('Services/Authorization/ApiActorScopeService.php'),
+            app_path('Services/Authorization/ApplicationReadPolicy.php'),
+            app_path('Services/Authorization/Repositories/GrantAccessRepository.php'),
+            app_path('Services/Document/DocumentPayloadBuilder.php'),
+            app_path('Services/Document/DocumentRepository.php'),
+            app_path('Services/Graph/GraphSourceDocumentResolver.php'),
+            app_path('Services/Pipeline/Exceptions/PipelineUploadStorageException.php'),
+            app_path('Services/Pipeline/Recovery/PipelineRecoveryInputNormalizer.php'),
+            app_path('Services/Pipeline/Recovery/PipelineRecoveryPayloadService.php'),
+            app_path('Services/Pipeline/Tasks/PipelineTaskPayloadService.php'),
+            app_path('Services/Pipeline/Uploads/PipelineUploadResultFactory.php'),
+            app_path('Services/Pipeline/Values/PipelineUploadInput.php'),
+            app_path('Services/SpecV2/AuthorizationGrantService.php'),
+            app_path('Services/SpecV2/DocumentSearchPayloadFactory.php'),
+            app_path('Services/SpecV2/DocumentService.php'),
+            app_path('Services/SpecV2/HeapDeletionService.php'),
+            app_path('Services/SpecV2/HeapService.php'),
+            app_path('Services/SpecV2/Repositories/HeapRepository.php'),
+        ];
+
+        $forbiddenTerms = [
+            'datasetId',
+            'dataset_id',
+            'datasetDeleted',
+            '{datasetId}',
+            'currentCanReadDataset',
+            'currentDatasetFilters',
+            'retryDataset',
+        ];
+
+        foreach ($contractFiles as $file) {
+            $contents = file_get_contents($file);
+            $this->assertIsString($contents, 'Unable to read '.$file);
+
+            foreach ($forbiddenTerms as $term) {
+                $this->assertStringNotContainsString($term, $contents, $file.' still exposes legacy terminology: '.$term);
+            }
+        }
+
+        $this->assertFileExists(app_path('Services/Heap/LegacyDatasetHeapAdapter.php'));
+
+        foreach ([
+            app_path('Services/Authorization/ApiActorScopeService.php'),
+            app_path('Services/Authorization/ApplicationReadPolicy.php'),
+            app_path('Services/SpecV2/HeapDeletionService.php'),
+        ] as $file) {
+            $contents = file_get_contents($file);
+            $this->assertIsString($contents, 'Unable to read '.$file);
+            $this->assertStringNotContainsString('use App\Models\Dataset;', $contents, $file.' should use the explicit legacy heap adapter instead of the dataset model directly.');
+            $this->assertStringNotContainsString('new Dataset(', $contents, $file.' should use the explicit legacy heap adapter instead of constructing dataset models directly.');
+        }
+
+        $applicationUris = collect(Route::getRoutes()->getRoutes())
+            ->filter(fn (\Illuminate\Routing\Route $route): bool => in_array('auth:application-token', $route->gatherMiddleware(), true))
+            ->map(fn (\Illuminate\Routing\Route $route): string => $route->uri())
+            ->implode("\n");
+
+        $this->assertStringNotContainsString('dataset', $applicationUris);
+    }
+
     /**
      * @param array<string, mixed> $filter
      */
     private function filterContains(array $filter, string $key, mixed $value): bool
     {
-        if (($filter['key'] ?? null) === $key && (($filter['match']['value'] ?? null) === $value)) {
+        if (array_key_exists($key, $filter)) {
+            $candidate = $filter[$key];
+
+            if (is_array($candidate)) {
+                return in_array($value, $candidate, true);
+            }
+
+            return $candidate === $value;
+        }
+
+        foreach (['AND', 'OR'] as $operator) {
+            $children = $filter[$operator] ?? null;
+            if (! is_array($children)) {
+                continue;
+            }
+
+            foreach ($children as $child) {
+                if (is_array($child) && $this->filterContains($child, $key, $value)) {
+                    return true;
+                }
+            }
+        }
+
+        $not = $filter['NOT'] ?? null;
+        if (is_array($not) && $this->filterContains($not, $key, $value)) {
             return true;
         }
 
@@ -454,8 +565,18 @@ class ArchitectureContractTest extends TestCase
      */
     private function filterContainsDocumentId(array $filter, string $documentId): bool
     {
-        return $this->filterContains($filter, 'document_id', $documentId)
-            || $this->filterContains($filter, 'doc_id', $documentId);
+        return $this->filterContains($filter, 'document_id', $documentId);
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     */
+    private function payloadHasOnlyBridgeKeys(array $payload): bool
+    {
+        $keys = array_keys($payload);
+        sort($keys);
+
+        return $keys === ['filters', 'limit', 'query'];
     }
 
     private function seedHeapCorpusAndGroup(

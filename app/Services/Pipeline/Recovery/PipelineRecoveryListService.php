@@ -27,7 +27,7 @@ readonly class PipelineRecoveryListService
         $filters = $this->input->filters($filters);
 
         return $this->failedJobs
-            ->forRecoveryList($filters['task_id'], $filters['dataset_id'], $filters['limit'])
+            ->forRecoveryList($filters['task_id'], $filters['heap_id'], $filters['limit'])
             ->map(fn (PipelineJob $job): array => $this->presenter->present($job))
             ->all();
     }

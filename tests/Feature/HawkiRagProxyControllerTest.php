@@ -118,10 +118,9 @@ class HawkiRagProxyControllerTest extends TestCase
             }
 
             $filters = $request->data()['filters'] ?? [];
-            return $request->data()['limit'] === 3
-                && ! array_key_exists('top_k', $request->data())
-                && $request->data()['preferred_tags'] === ['policy']
-                && ($request->data()['auth_context'] ?? null) === null
+            return $this->payloadHasOnlyBridgeKeys($request->data())
+                && $request->data()['query'] === 'campus policy'
+                && $request->data()['limit'] === 3
                 && $this->filterContains($filters, 'owner_app', 'hawki-web')
                 && $this->filterContains($filters, 'protected', false)
                 && $this->filterContainsDocumentId($filters, (string) $protectedDocument->id)
@@ -155,8 +154,8 @@ class HawkiRagProxyControllerTest extends TestCase
             $filters = $request->data()['filters'] ?? [];
 
             return $request->url() === 'http://bridge.test/query'
+                && $this->payloadHasOnlyBridgeKeys($request->data())
                 && $request->data()['limit'] === 5
-                && ! array_key_exists('top_k', $request->data())
                 && $this->filterContainsDocumentId($filters, '__rawki_no_match__');
         });
     }
@@ -207,15 +206,8 @@ class HawkiRagProxyControllerTest extends TestCase
             $filters = $payload['filters'] ?? [];
 
             return $payload['query'] === 'campus policy'
+                && $this->payloadHasOnlyBridgeKeys($payload)
                 && $payload['limit'] === 4
-                && ! array_key_exists('top_k', $payload)
-                && ($payload['generate'] ?? null) === false
-                && ($payload['preferred_tags'] ?? null) === ['policy']
-                && ! array_key_exists('user_identifier', $payload)
-                && ! array_key_exists('auth_context', $payload)
-                && ! array_key_exists('tenant_id', $payload)
-                && ! array_key_exists('application_id', $payload)
-                && ! array_key_exists('internal_user_id', $payload)
                 && $this->filterContains($filters, 'owner_app', 'hawki-web')
                 && $this->filterContains($filters, 'protected', false)
                 && $this->filterContains($filters, 'visibility', 'discoverable');
@@ -275,15 +267,9 @@ class HawkiRagProxyControllerTest extends TestCase
             $payload = $request->data();
 
             return $payload['query'] === 'studio design'
+                && $this->payloadHasOnlyBridgeKeys($payload)
                 && $payload['limit'] === 2
-                && ! array_key_exists('top_k', $payload)
-                && ($payload['fast_mode'] ?? null) === false
-                && ($payload['smart_lookup'] ?? null) === true
-                && ! array_key_exists('user_identifier', $payload)
-                && ! array_key_exists('auth_context', $payload)
-                && ! array_key_exists('tenant_id', $payload)
-                && ! array_key_exists('application_id', $payload)
-                && ! array_key_exists('internal_user_id', $payload);
+                && $this->filterContains($payload['filters'] ?? [], 'owner_app', 'hawki-web');
         });
     }
 
@@ -292,7 +278,31 @@ class HawkiRagProxyControllerTest extends TestCase
      */
     private function filterContains(array $filter, string $key, mixed $value): bool
     {
-        if (($filter['key'] ?? null) === $key && (($filter['match']['value'] ?? null) === $value)) {
+        if (array_key_exists($key, $filter)) {
+            $candidate = $filter[$key];
+
+            if (is_array($candidate)) {
+                return in_array($value, $candidate, true);
+            }
+
+            return $candidate === $value;
+        }
+
+        foreach (['AND', 'OR'] as $operator) {
+            $children = $filter[$operator] ?? null;
+            if (! is_array($children)) {
+                continue;
+            }
+
+            foreach ($children as $child) {
+                if (is_array($child) && $this->filterContains($child, $key, $value)) {
+                    return true;
+                }
+            }
+        }
+
+        $not = $filter['NOT'] ?? null;
+        if (is_array($not) && $this->filterContains($not, $key, $value)) {
             return true;
         }
 
@@ -310,7 +320,17 @@ class HawkiRagProxyControllerTest extends TestCase
      */
     private function filterContainsDocumentId(array $filter, string $documentId): bool
     {
-        return $this->filterContains($filter, 'document_id', $documentId)
-            || $this->filterContains($filter, 'doc_id', $documentId);
+        return $this->filterContains($filter, 'document_id', $documentId);
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     */
+    private function payloadHasOnlyBridgeKeys(array $payload): bool
+    {
+        $keys = array_keys($payload);
+        sort($keys);
+
+        return $keys === ['filters', 'limit', 'query'];
     }
 }

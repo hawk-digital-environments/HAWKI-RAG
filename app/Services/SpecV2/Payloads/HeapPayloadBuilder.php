@@ -15,8 +15,8 @@ readonly class HeapPayloadBuilder
     public function payload(Heap $heap): array
     {
         return [
-            'id' => $heap->dataset_id,
-            'heapId' => $heap->dataset_id,
+            'id' => $heap->heapId(),
+            'heapId' => $heap->heapId(),
             'name' => $heap->name,
             'description' => $heap->description,
             'tenantId' => $heap->tenant_id,

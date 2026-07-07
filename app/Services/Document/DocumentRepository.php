@@ -6,6 +6,7 @@ namespace App\Services\Document;
 
 use App\Models\Document;
 use App\Models\PipelineJob;
+use App\Models\SpecV2\Heap;
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -145,8 +146,13 @@ readonly class DocumentRepository
 
     private function filteredQuery(array $filters): Builder
     {
-        $query = Document::query()->select('documents.*');
-        $datasetId = $this->stringValue($filters['heap_id'] ?? $filters['heapId'] ?? $filters['dataset_id'] ?? $filters['datasetId'] ?? null);
+        $document = new Document();
+        $heap = new Heap();
+        $documentTable = $document->getTable();
+        $heapStorageColumn = $document->heapStorageColumn();
+
+        $query = Document::query()->select($documentTable.'.*');
+        $heapId = $this->stringValue($filters['heap_id'] ?? $filters['heapId'] ?? null);
         $tenantId = $this->stringValue($filters['tenant_id'] ?? null);
         $ownerApplicationId = $this->stringValue($filters['owner_application_id'] ?? null);
         $search = $this->stringValue($filters['q'] ?? $filters['search'] ?? null);
@@ -156,11 +162,11 @@ readonly class DocumentRepository
         )));
 
         if ($tenantId !== null || $ownerApplicationId !== null) {
-            $query->join('datasets as heaps', 'heaps.dataset_id', '=', 'documents.dataset_id');
+            $query->join($heap->getTable().' as heaps', 'heaps.'.$heap->storageKeyName(), '=', $documentTable.'.'.$heapStorageColumn);
         }
 
-        if ($datasetId) {
-            $query->where('documents.dataset_id', $datasetId);
+        if ($heapId) {
+            $query->where($documentTable.'.'.$heapStorageColumn, $heapId);
         }
 
         if ($tenantId !== null) {
@@ -175,7 +181,7 @@ readonly class DocumentRepository
             if ($documentIds === []) {
                 $query->whereRaw('1 = 0');
             } else {
-                $query->whereIn('documents.id', $documentIds);
+                $query->whereIn($documentTable.'.id', $documentIds);
             }
         }
 

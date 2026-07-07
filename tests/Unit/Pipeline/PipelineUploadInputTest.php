@@ -12,13 +12,11 @@ class PipelineUploadInputTest extends TestCase
     {
         $input = PipelineUploadInput::fromValidated([
             'heap_id' => ' primary-heap ',
-            'dataset_id' => ' primary-dataset ',
-            'datasetId' => 'secondary-dataset',
             'graph' => 'false',
         ]);
 
         $this->assertSame('primary-heap', $input->heapId);
-        $this->assertSame('primary-heap', $input->datasetId);
+        $this->assertSame('primary-heap', $input->heapIdentifier());
         $this->assertFalse($input->graph);
     }
 
@@ -29,19 +27,19 @@ class PipelineUploadInputTest extends TestCase
         ]);
 
         $this->assertSame('camel-heap', $input->heapId);
-        $this->assertSame('camel-heap', $input->datasetId);
+        $this->assertSame('camel-heap', $input->heapIdentifier());
         $this->assertTrue($input->graph);
     }
 
-    public function test_it_defaults_blank_dataset_and_invalid_graph(): void
+    public function test_it_defaults_blank_heap_and_invalid_graph(): void
     {
         $input = PipelineUploadInput::fromValidated([
-            'dataset_id' => '   ',
+            'heap_id' => '   ',
             'graph' => 'not-a-boolean',
         ]);
 
         $this->assertSame('controller-uploads', $input->heapId);
-        $this->assertSame('controller-uploads', $input->datasetId);
+        $this->assertSame('controller-uploads', $input->heapIdentifier());
         $this->assertTrue($input->graph);
     }
 

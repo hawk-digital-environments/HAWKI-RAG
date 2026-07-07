@@ -17,6 +17,7 @@ tags:
   - name: Heaps
   - name: Documents
   - name: Corpora
+  - name: Search
   - name: Groups
   - name: Authorization
 paths:
@@ -300,6 +301,67 @@ paths:
                 $ref: "#/components/schemas/Corpus"
         "404":
           $ref: "#/components/responses/NotFound"
+  /search:
+    post:
+      tags: [Search]
+      summary: Search documents
+      description: >
+        Laravel resolves application scope and optional user-based grant scope,
+        merges them with the client filter expression, and forwards only the
+        canonical bridge payload to Python.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SearchRequest"
+      responses:
+        "200":
+          description: Search results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SearchResponse"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+  /search/chunks:
+    post:
+      tags: [Search]
+      summary: Search and return chunk-shaped results
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SearchRequest"
+      responses:
+        "200":
+          description: Chunk search results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChunkSearchResponse"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+  /search/chunks/grouped:
+    post:
+      tags: [Search]
+      summary: Search and group chunks by document
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SearchRequest"
+      responses:
+        "200":
+          description: Grouped chunk search results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GroupedChunkSearchResponse"
+        "422":
+          $ref: "#/components/responses/ValidationError"
   /auth/check:
     get:
       tags: [Authorization]
@@ -1016,6 +1078,143 @@ components:
           type: string
         filename:
           type: string
+    CanonicalFilterScalar:
+      oneOf:
+        - type: string
+        - type: boolean
+        - type: integer
+        - type: number
+    CanonicalFilterValue:
+      oneOf:
+        - $ref: "#/components/schemas/CanonicalFilterScalar"
+        - type: array
+          items:
+            $ref: "#/components/schemas/CanonicalFilterScalar"
+    CanonicalFilterLeaf:
+      type: object
+      description: Field/value filter leaf. Array values mean logical OR.
+      additionalProperties:
+        $ref: "#/components/schemas/CanonicalFilterValue"
+    CanonicalFilterExpression:
+      oneOf:
+        - $ref: "#/components/schemas/CanonicalFilterLeaf"
+        - type: object
+          properties:
+            AND:
+              type: array
+              items:
+                $ref: "#/components/schemas/CanonicalFilterExpression"
+          additionalProperties: false
+        - type: object
+          properties:
+            OR:
+              type: array
+              items:
+                $ref: "#/components/schemas/CanonicalFilterExpression"
+          additionalProperties: false
+        - type: object
+          properties:
+            NOT:
+              $ref: "#/components/schemas/CanonicalFilterExpression"
+          additionalProperties: false
+    SearchRequest:
+      type: object
+      properties:
+        query:
+          type: string
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 5
+        filters:
+          $ref: "#/components/schemas/CanonicalFilterExpression"
+        user_identifier:
+          type: string
+          description: >
+            Optional external user identifier used by Laravel for grant-based
+            narrowing when authorization is enabled. Never forwarded to Python.
+      required: [query]
+      additionalProperties: false
+    SearchHit:
+      type: object
+      properties:
+        id:
+          oneOf:
+            - type: string
+            - type: integer
+        score:
+          type: number
+          nullable: true
+        payload:
+          $ref: "#/components/schemas/Metadata"
+      required: [payload]
+    SearchResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        count:
+          type: integer
+        hits:
+          type: array
+          items:
+            $ref: "#/components/schemas/SearchHit"
+        kg:
+          type: array
+          items:
+            $ref: "#/components/schemas/Metadata"
+        answer:
+          type: string
+        retrieval:
+          $ref: "#/components/schemas/Metadata"
+      required: [ok, count, hits]
+    SearchChunk:
+      type: object
+      properties:
+        id:
+          type: string
+        document_id:
+          type: string
+          nullable: true
+        content:
+          type: string
+        score:
+          type: number
+          nullable: true
+        metadata:
+          $ref: "#/components/schemas/Metadata"
+      required: [id, content, metadata]
+    ChunkSearchResponse:
+      type: object
+      properties:
+        count:
+          type: integer
+        chunks:
+          type: array
+          items:
+            $ref: "#/components/schemas/SearchChunk"
+      required: [count, chunks]
+    SearchChunkGroup:
+      type: object
+      properties:
+        document_id:
+          type: string
+        chunks:
+          type: array
+          items:
+            $ref: "#/components/schemas/SearchChunk"
+      required: [document_id, chunks]
+    GroupedChunkSearchResponse:
+      type: object
+      properties:
+        count:
+          type: integer
+        groups:
+          type: array
+          items:
+            $ref: "#/components/schemas/SearchChunkGroup"
+      required: [count, groups]
     Corpus:
       type: object
       properties:

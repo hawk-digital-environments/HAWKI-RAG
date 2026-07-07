@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import AliasChoices, BaseModel, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 from api.settings import AppSettings
 
@@ -50,8 +50,20 @@ def apply_ingest_request_settings(body: IngestRequest, settings: AppSettings) ->
 
 
 class QueryRequest(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
     query: str
     limit: int = Field(default=5, validation_alias=AliasChoices("limit", "top_k"))
+    filters: dict[str, Any] = Field(default_factory=dict)
+
+    @property
+    def top_k(self) -> int:
+        return int(self.limit)
+
+
+class ResolvedQueryRequest(BaseModel):
+    query: str
+    limit: int = 5
     provider: str = "ollama"
     filters: dict[str, Any] = Field(default_factory=dict)
     generate: bool = True
@@ -60,25 +72,26 @@ class QueryRequest(BaseModel):
     smart_lookup: bool = False
     structural_hops: int | None = None
     preferred_tags: list[str] | None = None
-    # Reranker options: none | cosine | external | jina
     reranker: str = "none"
     rerank_top_n: int = 20
-    # Mix mode: blend original vector score with reranker score
     mix_mode: bool = True
-    mix_weight: float = 0.5  # 0..1, weight on original score
+    mix_weight: float = 0.5
 
     @property
     def top_k(self) -> int:
         return int(self.limit)
 
 
-def apply_query_request_settings(body: QueryRequest, settings: AppSettings) -> QueryRequest:
-    updates: dict[str, object] = {}
-    _apply_if_absent(body, "provider", settings.rag_default_provider, updates)
-    _apply_if_absent(body, "reranker", settings.reranker_mode, updates)
-    _apply_if_absent(body, "mix_mode", settings.reranker_mix_mode, updates)
-    _apply_if_absent(body, "mix_weight", settings.reranker_mix_weight, updates)
-    return body.model_copy(update=updates)
+def apply_query_request_settings(body: QueryRequest, settings: AppSettings) -> ResolvedQueryRequest:
+    return ResolvedQueryRequest(
+        query=body.query,
+        limit=body.limit,
+        filters=dict(body.filters),
+        provider=settings.rag_default_provider,
+        reranker=settings.reranker_mode,
+        mix_mode=settings.reranker_mix_mode,
+        mix_weight=settings.reranker_mix_weight,
+    )
 
 
 class GraphRequest(BaseModel):

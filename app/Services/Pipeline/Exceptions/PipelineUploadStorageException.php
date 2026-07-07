@@ -22,7 +22,7 @@ class PipelineUploadStorageException extends \RuntimeException implements Pipeli
     {
         return new self(
             "Upload task directory is not writable: {$taskRoot}",
-            'The upload storage path is not writable. No dataset, task, or job was created.',
+            'The upload storage path is not writable. No heap, task, or job was created.',
             'Pipeline controller could not prepare upload storage.',
             ['task_root' => $taskRoot],
             $previous,
@@ -33,7 +33,7 @@ class PipelineUploadStorageException extends \RuntimeException implements Pipeli
     {
         return new self(
             'Uploaded file could not be moved into pipeline storage: ' . $previous->getMessage(),
-            'The uploaded file could not be stored. No dataset, task, or job was created.',
+            'The uploaded file could not be stored. No heap, task, or job was created.',
             'Pipeline controller could not move uploaded file.',
             [
                 'task_root' => $taskRoot,

@@ -9,9 +9,9 @@ denormalized payload writes.
    validation, grant projection, and search-scope construction.
 2. App-facing internal APIs use application bearer tokens only. Human
    `sanctum` or OIDC authentication is reserved for operator-only surfaces.
-3. Python is a retrieval engine only. It receives search inputs and filters. It
-   must not resolve tenants, applications, user identities, or permission
-   grants.
+3. Python is a retrieval engine only. It receives only `query`, `limit`, and a
+   canonical `filters` expression from Laravel. It must not resolve tenants,
+   applications, user identities, or permission grants.
 4. The auth backend is optional infrastructure. When enabled, Laravel services
    may write or check graph relationships. When disabled, auth-shaped inputs
    are accepted and ignored without side effects.
@@ -27,6 +27,9 @@ denormalized payload writes.
 - `app/Http/Controllers/API/HawkiRagProxyController.php`
   Validates requests and delegates to Laravel-owned scope filtering plus the
   bridge client. Must not talk to the auth backend or Qdrant directly.
+- `app/Http/Requests/Search/SearchQueryRequest.php`
+  Owns the canonical Laravel request contract for application-facing search
+  endpoints and normalizes `top_k` or `k` into `limit`.
 - `app/Http/Controllers/API/OpenCompat/RetrievalController.php`
   Builds application-visible search scope through Laravel policy services
   before delegating shared chunk retrieval for `/api/search/chunks` and
@@ -75,6 +78,10 @@ denormalized payload writes.
 - `python_rag/application/workflows/query_execution.py`
   Executes retrieval and ranking only. It must not consume `auth_context`,
   resolve user identity, or call authorization backends.
+- `docs/hawki-rag-v2-search-contract.md`
+  The single documentation source for the public Laravel search request,
+  Laravel-to-Python bridge payload, canonical filter grammar, and search
+  response shapes.
 
 ## Enforcement Notes
 

@@ -28,10 +28,12 @@ readonly class HeapRepository
 
     public function findById(string $heapId): ?Heap
     {
+        $heap = new Heap();
+
         return Heap::query()
             ->with(['tenant', 'ownerApplication'])
             ->withCount('documents')
-            ->where('dataset_id', $heapId)
+            ->where($heap->storageKeyName(), $heapId)
             ->first();
     }
 

@@ -42,8 +42,7 @@ readonly class PipelineTaskPayloadService
     {
         return [
             'taskId' => $task->task_id,
-            'heapId' => $task->dataset_id,
-            'datasetId' => $task->dataset_id,
+            'heapId' => $task->heapId(),
             'status' => $task->status,
             'startedAt' => $this->dateValue($task->started_at),
             'finishedAt' => $this->dateValue($task->finished_at),

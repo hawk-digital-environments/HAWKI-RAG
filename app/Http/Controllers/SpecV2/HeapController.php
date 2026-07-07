@@ -49,7 +49,7 @@ class HeapController extends Controller
     {
         $deleted = $this->spec->heaps->delete($heapId);
 
-        $ok = ($deleted['qdrant']['ok'] ?? false) && ($deleted['neo4j']['ok'] ?? false) && ($deleted['datasetDeleted'] ?? false);
+        $ok = ($deleted['qdrant']['ok'] ?? false) && ($deleted['neo4j']['ok'] ?? false) && ($deleted['heapDeleted'] ?? false);
 
         return response()->json([
             'success' => $ok,

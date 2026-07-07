@@ -41,11 +41,11 @@ readonly class FailedPipelineJobsQuery
     /**
      * @return Collection<int, PipelineJob>
      */
-    public function forRecoveryList(?string $taskId, ?string $datasetId, int $limit): Collection
+    public function forRecoveryList(?string $taskId, ?string $heapId, int $limit): Collection
     {
         $limit = max(1, min(500, $limit));
 
-        return $this->forRecoveryQuery($taskId, $datasetId)
+        return $this->forRecoveryQuery($taskId, $heapId)
             ->with('task')
             ->orderByDesc('finished_at')
             ->orderByDesc('updated_at')
@@ -57,16 +57,16 @@ readonly class FailedPipelineJobsQuery
     /**
      * @return Collection<int, PipelineJob>
      */
-    public function forRecovery(?string $taskId = null, ?string $datasetId = null): Collection
+    public function forRecovery(?string $taskId = null, ?string $heapId = null): Collection
     {
-        return $this->forRecoveryQuery($taskId, $datasetId)->get();
+        return $this->forRecoveryQuery($taskId, $heapId)->get();
     }
 
-    private function forRecoveryQuery(?string $taskId, ?string $datasetId): Builder
+    private function forRecoveryQuery(?string $taskId, ?string $heapId): Builder
     {
         return PipelineJob::query()
             ->where('status', PipelineJob::STATUS_FAILED)
             ->when($taskId, fn ($query) => $query->where('task_id', $taskId))
-            ->when($datasetId, fn ($query) => $query->whereHas('task', fn ($taskQuery) => $taskQuery->where('dataset_id', $datasetId)));
+            ->when($heapId, fn ($query) => $query->whereHas('task', fn ($taskQuery) => $taskQuery->where('dataset_id', $heapId)));
     }
 }

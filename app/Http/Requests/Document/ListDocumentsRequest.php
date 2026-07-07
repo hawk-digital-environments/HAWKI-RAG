@@ -17,8 +17,6 @@ class ListDocumentsRequest extends FormRequest
         return [
             'heap_id' => 'nullable|string|max:191',
             'heapId' => 'nullable|string|max:191',
-            'dataset_id' => 'nullable|string|max:191',
-            'datasetId' => 'nullable|string|max:191',
             'user_identifier' => 'nullable|string|max:255',
             'q' => 'nullable|string|max:255',
             'search' => 'nullable|string|max:255',

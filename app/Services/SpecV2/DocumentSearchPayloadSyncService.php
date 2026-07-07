@@ -26,7 +26,7 @@ readonly class DocumentSearchPayloadSyncService
     {
         if ($document->relationLoaded('heap')) {
             $heap = $document->getRelation('heap');
-            if (! $heap instanceof Heap || $heap->dataset_id !== $document->dataset_id) {
+            if (! $heap instanceof Heap || $heap->heapId() !== $document->heapId()) {
                 $document->unsetRelation('heap');
             }
         }

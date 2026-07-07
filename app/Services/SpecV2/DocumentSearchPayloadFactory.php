@@ -58,7 +58,7 @@ readonly class DocumentSearchPayloadFactory
 
         $publicMetadata[self::INTERNAL_KEY] = [
             'heap_context' => [
-                'heap' => $heap->dataset_id,
+                'heap' => $heap->heapId(),
                 'owner_app' => $heap->owner_application_id,
                 'visibility' => $heap->visibility ?? Heap::VISIBILITY_DISCOVERABLE,
                 'protected' => (bool) $heap->protected,
@@ -95,7 +95,7 @@ readonly class DocumentSearchPayloadFactory
     private function systemPayload(Document $document, Heap $heap): array
     {
         return [
-            'heap' => $heap->dataset_id,
+            'heap' => $heap->heapId(),
             'document_id' => (string) $document->id,
             'owner_app' => $heap->owner_application_id,
             'visibility' => $heap->visibility ?? Heap::VISIBILITY_DISCOVERABLE,

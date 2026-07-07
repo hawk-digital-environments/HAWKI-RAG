@@ -51,10 +51,10 @@ class PipelineControllerDashboardTest extends TestCase
             ->assertCreated()
             ->assertJsonPath('success', true)
             ->assertJsonPath('heapId', 'controller-test')
-            ->assertJsonPath('datasetId', 'controller-test')
             ->assertJsonPath('task.stages.scrape.status', 'n/a')
             ->assertJsonPath('task.stages.convert.status', 'processing')
             ->assertJsonPath('task.stages.ingest.status', PipelineJob::STATUS_QUEUED);
+        $this->assertArrayNotHasKey('datasetId', $response->json());
 
         $taskId = $response->json('taskId');
         $jobId = $response->json('jobId');
@@ -206,8 +206,8 @@ class PipelineControllerDashboardTest extends TestCase
         ])
             ->assertCreated()
             ->assertJsonPath('success', true)
-            ->assertJsonPath('heapId', 'custom-converter-test')
-            ->assertJsonPath('datasetId', 'custom-converter-test');
+            ->assertJsonPath('heapId', 'custom-converter-test');
+        $this->assertArrayNotHasKey('datasetId', $response->json());
 
         $profilePath = null;
         Http::assertSent(function ($request) use (&$profilePath): bool {
@@ -272,17 +272,19 @@ class PipelineControllerDashboardTest extends TestCase
 
         $this->actingAsApplication();
 
-        $this->post('/api/pipeline/files', [
+        $response = $this->post('/api/pipeline/files', [
             'heap_id' => 'saved-converter-test',
             'converter_mode' => 'custom',
             'file' => UploadedFile::fake()->create('diagram.svg', 12, 'image/svg+xml'),
         ], [
             'Accept' => 'application/json',
-        ])
+        ]);
+
+        $response
             ->assertCreated()
             ->assertJsonPath('success', true)
-            ->assertJsonPath('heapId', 'saved-converter-test')
-            ->assertJsonPath('datasetId', 'saved-converter-test');
+            ->assertJsonPath('heapId', 'saved-converter-test');
+        $this->assertArrayNotHasKey('datasetId', $response->json());
 
         $profilePath = null;
         Http::assertSent(function ($request) use (&$profilePath): bool {
@@ -381,7 +383,7 @@ class PipelineControllerDashboardTest extends TestCase
             && data_get($request->data(), 'workflow_input.metadata.request.metadata.max_pages') === 1);
     }
 
-    public function test_failed_upload_storage_does_not_create_dataset_task_or_job(): void
+    public function test_failed_upload_storage_does_not_create_heap_task_or_job(): void
     {
         $root = storage_path('framework/testing/pipeline-upload-api-blocked');
         File::deleteDirectory($root);
@@ -392,18 +394,20 @@ class PipelineControllerDashboardTest extends TestCase
 
         $this->actingAsApplication();
 
-        $this->post('/api/pipeline/files', [
+        $response = $this->post('/api/pipeline/files', [
             'heap_id' => 'blocked-controller-dataset',
             'file' => UploadedFile::fake()->create('blocked.pdf', 12, 'application/pdf'),
         ], [
             'Accept' => 'application/json',
-        ])
-            ->assertStatus(500)
+        ]);
+
+        $response->assertStatus(500)
             ->assertJsonPath('success', false)
             ->assertJsonPath('heapId', 'blocked-controller-dataset')
-            ->assertJsonPath('datasetId', 'blocked-controller-dataset')
+            ->assertJsonPath('message', 'The upload storage path is not writable. No heap, task, or job was created.')
             ->assertJsonPath('taskId', null)
             ->assertJsonPath('jobId', null);
+        $this->assertArrayNotHasKey('datasetId', $response->json());
 
         $this->assertDatabaseMissing('datasets', [
             'dataset_id' => 'blocked-controller-dataset',

@@ -78,7 +78,7 @@ Laravel now owns search scoping. For `/api/search` and `/api/search/*`, it:
 2. Computes application scope from `reads`, `reads-all-apps`, `reads-federated`, and `reads-protected`.
 3. Resolves protected-document access from the synced permission event store when authorization is enabled.
 4. Builds a canonical structural filter for heap scope, protection rules, direct document grants, and client metadata filters.
-5. Forwards only `query`, `filters`, `limit`, and search options to the Python bridge.
+5. Forwards only `query`, `filters`, and `limit` to the Python bridge.
 
 Python executes the filter against Qdrant and never receives application identity, tenant context, permissions, or user identifiers.
 

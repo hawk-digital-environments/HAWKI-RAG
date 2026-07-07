@@ -328,7 +328,7 @@ class SpecV2DomainApiTest extends TestCase
         ]);
     }
 
-    public function test_heap_updates_propagate_document_search_context_and_qdrant_payloads(): void
+    public function test_heap_metadata_change_preserves_denormalized_search_payload_contract(): void
     {
         config()->set('authz.enabled', true);
 
@@ -364,21 +364,72 @@ class SpecV2DomainApiTest extends TestCase
         ]);
 
         $this->patchJson('/api/heaps/heap-sync', [
-            'visibility' => 'hidden',
-            'protected' => true,
             'metadata' => ['course' => 'architecture'],
         ])->assertOk()
-            ->assertJsonPath('visibility', 'hidden')
-            ->assertJsonPath('protected', true)
             ->assertJsonPath('metadata.course', 'architecture');
 
         $document->refresh();
 
         $this->assertSame('studio', $document->metadata_json['document_topic']);
         $this->assertSame('heap-sync', $document->metadata_json['__rawki']['heap_context']['heap']);
+        $this->assertSame('discoverable', $document->metadata_json['__rawki']['search_payload']['visibility']);
+        $this->assertFalse($document->metadata_json['__rawki']['search_payload']['protected']);
+        $this->assertSame('architecture', $document->metadata_json['__rawki']['search_payload']['course']);
+        $this->assertCanonicalSearchPayloadKeys(
+            $document->metadata_json['__rawki']['search_payload'],
+            ['course', 'document_topic'],
+        );
+    }
+
+    public function test_heap_protection_change_preserves_denormalized_search_payload_contract(): void
+    {
+        config()->set('authz.enabled', true);
+
+        $this->actingAsApplication([
+            'id' => 'rawki-default',
+            'tenant_id' => 'default',
+        ]);
+
+        Dataset::query()->create([
+            'dataset_id' => 'heap-protection',
+            'tenant_id' => 'default',
+            'owner_application_id' => 'rawki-default',
+            'name' => 'Heap Protection',
+            'status' => Dataset::STATUS_ACTIVE,
+            'visibility' => Dataset::VISIBILITY_DISCOVERABLE,
+            'protected' => false,
+            'metadata_json' => ['course' => 'design'],
+            'qdrant_collection' => 'heap_protection',
+            'neo4j_namespace' => 'heap_protection',
+        ]);
+
+        $document = Document::query()->create([
+            'dataset_id' => 'heap-protection',
+            'collection' => 'heap_protection',
+            'source_type' => Document::SOURCE_API,
+            'source_url' => 'https://example.test/heap-protection',
+            'storage_path' => '/tmp/heap-protection.md',
+            'checksum_sha256' => hash('sha256', 'heap-protection'),
+            'status' => Document::STATUS_COMPLETED,
+            'metadata_json' => ['document_topic' => 'studio'],
+        ]);
+
+        $this->patchJson('/api/heaps/heap-protection', [
+            'protected' => true,
+            'visibility' => 'hidden',
+        ])->assertOk()
+            ->assertJsonPath('visibility', 'hidden')
+            ->assertJsonPath('protected', true);
+
+        $document->refresh();
+
+        $this->assertSame('design', $document->metadata_json['__rawki']['search_payload']['course']);
         $this->assertSame('hidden', $document->metadata_json['__rawki']['search_payload']['visibility']);
         $this->assertTrue($document->metadata_json['__rawki']['search_payload']['protected']);
-        $this->assertSame('architecture', $document->metadata_json['__rawki']['search_payload']['course']);
+        $this->assertCanonicalSearchPayloadKeys(
+            $document->metadata_json['__rawki']['search_payload'],
+            ['course', 'document_topic'],
+        );
 
     }
 
@@ -443,6 +494,10 @@ class SpecV2DomainApiTest extends TestCase
         $this->assertSame('heap-target', $document->metadata_json['__rawki']['heap_context']['heap']);
         $this->assertSame('target', $document->metadata_json['__rawki']['search_payload']['course']);
         $this->assertTrue($document->metadata_json['__rawki']['search_payload']['protected']);
+        $this->assertCanonicalSearchPayloadKeys(
+            $document->metadata_json['__rawki']['search_payload'],
+            ['course', 'topic'],
+        );
 
         Http::assertSent(function (ClientRequest $request) use ($document): bool {
             $keys = $request['keys'] ?? null;
@@ -461,13 +516,40 @@ class SpecV2DomainApiTest extends TestCase
         });
 
         Http::assertSent(function (ClientRequest $request) use ($document): bool {
+            $payloadKeys = array_keys($request['payload'] ?? []);
+            sort($payloadKeys);
+            $expectedKeys = ['course', 'document_id', 'heap', 'owner_app', 'protected', 'topic', 'visibility'];
+            sort($expectedKeys);
+
             return $request->method() === 'POST'
                 && $request->url() === 'http://qdrant.test/collections/heap_target/points/payload'
                 && ($request['filter']['must'][0]['match']['value'] ?? null) === $document->id
+                && $payloadKeys === $expectedKeys
                 && ($request['payload']['heap'] ?? null) === 'heap-target'
                 && ($request['payload']['course'] ?? null) === 'target'
                 && ($request['payload']['topic'] ?? null) === 'migration'
                 && ($request['payload']['protected'] ?? null) === true;
         });
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     * @param list<string> $extraKeys
+     */
+    private function assertCanonicalSearchPayloadKeys(array $payload, array $extraKeys = []): void
+    {
+        $keys = array_keys($payload);
+        sort($keys);
+
+        $expected = array_merge([
+            'document_id',
+            'heap',
+            'owner_app',
+            'protected',
+            'visibility',
+        ], $extraKeys);
+        sort($expected);
+
+        $this->assertSame($expected, $keys);
     }
 }

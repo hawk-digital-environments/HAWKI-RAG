@@ -20,8 +20,7 @@ readonly class PipelineRecoveryPayloadService
 
         return [
             'taskId' => $job->task_id,
-            'heapId' => $task?->dataset_id,
-            'datasetId' => $task?->dataset_id,
+            'heapId' => $task?->heapId(),
             'jobId' => $job->job_id,
             'jobType' => $job->job_type,
             'sourceId' => $job->source_id,

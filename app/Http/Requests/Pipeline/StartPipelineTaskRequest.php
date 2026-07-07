@@ -19,8 +19,6 @@ class StartPipelineTaskRequest extends FormRequest
             'taskId' => 'nullable|string',
             'heap_id' => 'nullable|string',
             'heapId' => 'nullable|string',
-            'dataset_id' => 'nullable|string',
-            'datasetId' => 'nullable|string',
             'sitemap_url' => 'nullable|string',
             'sitemapUrl' => 'nullable|string',
             'sitemap_path' => 'nullable|string',

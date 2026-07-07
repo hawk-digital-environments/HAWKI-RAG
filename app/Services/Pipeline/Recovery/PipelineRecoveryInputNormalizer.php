@@ -11,14 +11,14 @@ readonly class PipelineRecoveryInputNormalizer
 {
     /**
      * @param  array<string, mixed>  $filters
-     * @return array{limit: int, task_id: string|null, dataset_id: string|null}
+     * @return array{limit: int, task_id: string|null, heap_id: string|null}
      */
     public function filters(array $filters): array
     {
         return [
             'limit' => max(1, min(500, (int) ($filters['limit'] ?? 200))),
             'task_id' => $this->stringValue($filters['task_id'] ?? $filters['taskId'] ?? null),
-            'dataset_id' => $this->stringValue($filters['dataset_id'] ?? $filters['datasetId'] ?? null),
+            'heap_id' => $this->stringValue($filters['heap_id'] ?? $filters['heapId'] ?? null),
         ];
     }
 

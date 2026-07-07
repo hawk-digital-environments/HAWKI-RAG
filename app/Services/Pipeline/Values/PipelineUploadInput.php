@@ -7,7 +7,6 @@ readonly class PipelineUploadInput
 {
     private function __construct(
         public string $heapId,
-        public string $datasetId,
         public bool $graph,
         public string $converterMode,
         public ?string $customConverterUrl,
@@ -22,7 +21,6 @@ readonly class PipelineUploadInput
     public static function fromValidated(array $validated, array $customConverterDefaults = []): self
     {
         $heapId = self::stringValue($validated['heap_id'] ?? $validated['heapId'] ?? null)
-            ?? self::stringValue($validated['dataset_id'] ?? $validated['datasetId'] ?? null)
             ?? 'controller-uploads';
         $graph = filter_var($validated['graph'] ?? true, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
         $converterMode = self::stringValue($validated['converter_mode'] ?? $validated['converterMode'] ?? null);
@@ -31,7 +29,6 @@ readonly class PipelineUploadInput
         $defaultStartPath = self::pathValue($customConverterDefaults['start_path'] ?? null) ?? '/extract';
 
         return new self(
-            $heapId,
             $heapId,
             $graph ?? true,
             $converterMode,

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\OpenCompat;
 
+use App\Services\Rag\RagQueryPayloadFactory;
 use Illuminate\Container\Attributes\Singleton;
 
 #[Singleton]
@@ -11,6 +12,7 @@ readonly class OpenCompatService
 {
     public function __construct(
         private OpenCompatBridgeClient $bridge,
+        private RagQueryPayloadFactory $payloads,
     ) {}
 
     /**
@@ -22,15 +24,7 @@ readonly class OpenCompatService
         bool $grouped = false,
     ): array
     {
-        $payload = [
-            'query' => (string) ($input['query'] ?? ''),
-            'limit' => (int) ($input['limit'] ?? 5),
-            'filters' => is_array($input['filters'] ?? null) ? $input['filters'] : [],
-            'generate' => false,
-            'fast_mode' => filter_var($input['fast_mode'] ?? true, FILTER_VALIDATE_BOOLEAN),
-            'smart_lookup' => filter_var($input['smart_lookup'] ?? false, FILTER_VALIDATE_BOOLEAN),
-            'preferred_tags' => $input['preferred_tags'] ?? null,
-        ];
+        $payload = $this->payloads->make($input)->toArray();
 
         $result = $this->bridge->post('/query', $payload);
 

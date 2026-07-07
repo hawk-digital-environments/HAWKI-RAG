@@ -80,14 +80,17 @@ readonly class GrantAccessRepository
             return [];
         }
 
+        $document = new Document();
+        $documentTable = $document->getTable();
+        $heapStorageColumn = $document->heapStorageColumn();
         $documentGrantIds = $this->documentGrantedDocumentIdsForInternalUsers($internalUserIds);
         $heapGrantIds = $this->heapGrantedHeapIdsForInternalUsers($internalUserIds);
 
         $heapGrantDocumentIds = Document::query()
-            ->select('documents.id')
+            ->select($documentTable.'.id')
             ->distinct()
-            ->whereIn('documents.dataset_id', $heapGrantIds)
-            ->pluck('documents.id')
+            ->whereIn($documentTable.'.'.$heapStorageColumn, $heapGrantIds)
+            ->pluck($documentTable.'.id')
             ->all();
 
         return array_values(array_unique(array_filter([
@@ -106,6 +109,9 @@ readonly class GrantAccessRepository
             return false;
         }
 
+        $document = new Document();
+        $documentTable = $document->getTable();
+        $heapStorageColumn = $document->heapStorageColumn();
         $hasGroupDocumentGrant = DocumentGrant::query()
             ->join('group_members', 'group_members.group_id', '=', 'document_grants.group_id')
             ->where('document_grants.document_id', $documentId)
@@ -126,9 +132,9 @@ readonly class GrantAccessRepository
         }
 
         $hasGroupHeapGrant = Document::query()
-            ->join('heap_grants', 'heap_grants.heap_id', '=', 'documents.dataset_id')
+            ->join('heap_grants', 'heap_grants.heap_id', '=', $documentTable.'.'.$heapStorageColumn)
             ->join('group_members', 'group_members.group_id', '=', 'heap_grants.group_id')
-            ->where('documents.id', $documentId)
+            ->where($documentTable.'.id', $documentId)
             ->whereIn('group_members.internal_user_id', $internalUserIds)
             ->exists();
 
@@ -137,8 +143,8 @@ readonly class GrantAccessRepository
         }
 
         return Document::query()
-            ->join('heap_grants', 'heap_grants.heap_id', '=', 'documents.dataset_id')
-            ->where('documents.id', $documentId)
+            ->join('heap_grants', 'heap_grants.heap_id', '=', $documentTable.'.'.$heapStorageColumn)
+            ->where($documentTable.'.id', $documentId)
             ->whereIn('heap_grants.internal_user_id', $internalUserIds)
             ->exists();
     }
@@ -154,14 +160,17 @@ readonly class GrantAccessRepository
             return [];
         }
 
+        $document = new Document();
+        $documentTable = $document->getTable();
+        $heapStorageColumn = $document->heapStorageColumn();
         $heapGrantIds = $this->heapGrantedHeapIdsForInternalUsers($internalUserIds);
         $documentGrantIds = $this->documentGrantedDocumentIdsForInternalUsers($internalUserIds);
 
         $documentHeapIds = Document::query()
-            ->select('documents.dataset_id')
+            ->select($documentTable.'.'.$heapStorageColumn)
             ->distinct()
-            ->whereIn('documents.id', $documentGrantIds)
-            ->pluck('documents.dataset_id')
+            ->whereIn($documentTable.'.id', $documentGrantIds)
+            ->pluck($documentTable.'.'.$heapStorageColumn)
             ->all();
 
         return array_values(array_unique(array_filter([
@@ -180,6 +189,9 @@ readonly class GrantAccessRepository
             return false;
         }
 
+        $document = new Document();
+        $documentTable = $document->getTable();
+        $heapStorageColumn = $document->heapStorageColumn();
         $hasGroupHeapGrant = HeapGrant::query()
             ->join('group_members', 'group_members.group_id', '=', 'heap_grants.group_id')
             ->where('heap_grants.heap_id', $heapId)
@@ -201,7 +213,7 @@ readonly class GrantAccessRepository
 
         $hasDirectDocumentInHeap = Document::query()
             ->join('document_grants', 'document_grants.document_id', '=', 'documents.id')
-            ->where('documents.dataset_id', $heapId)
+            ->where($documentTable.'.'.$heapStorageColumn, $heapId)
             ->whereIn('document_grants.internal_user_id', $internalUserIds)
             ->exists();
 
@@ -212,7 +224,7 @@ readonly class GrantAccessRepository
         return Document::query()
             ->join('document_grants', 'document_grants.document_id', '=', 'documents.id')
             ->join('group_members', 'group_members.group_id', '=', 'document_grants.group_id')
-            ->where('documents.dataset_id', $heapId)
+            ->where($documentTable.'.'.$heapStorageColumn, $heapId)
             ->whereIn('group_members.internal_user_id', $internalUserIds)
             ->exists();
     }

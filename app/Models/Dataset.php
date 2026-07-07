@@ -59,4 +59,14 @@ class Dataset extends Model
     {
         return $this->belongsTo(Application::class, 'owner_application_id', 'id');
     }
+
+    public function heapId(): string
+    {
+        return (string) $this->dataset_id;
+    }
+
+    public function getHeapIdAttribute(): string
+    {
+        return $this->heapId();
+    }
 }

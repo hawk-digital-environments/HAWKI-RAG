@@ -60,8 +60,8 @@ readonly class PipelineRecoveryService
     /**
      * @return array<string, mixed>
      */
-    public function retryDataset(string $datasetId): array
+    public function retryHeap(string $heapId): array
     {
-        return $this->retries->retryDataset($datasetId);
+        return $this->retries->retryHeap($heapId);
     }
 }

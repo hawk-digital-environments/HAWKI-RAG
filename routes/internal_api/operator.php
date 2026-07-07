@@ -28,7 +28,7 @@ Route::middleware(['auth:sanctum,oidc', 'throttle:hawki-api'])->group(function (
         Route::post('/jobs/{jobId}/retry', [PipelineRecoveryController::class, 'retryJob'])->middleware('throttle:hawki-destructive');
         Route::post('/retry-all', [PipelineRecoveryController::class, 'retryAll'])->middleware('throttle:hawki-destructive');
         Route::post('/tasks/{taskId}/retry-failed', [PipelineRecoveryController::class, 'retryTask'])->middleware('throttle:hawki-destructive');
-        Route::post('/heaps/{datasetId}/retry-failed', [PipelineRecoveryController::class, 'retryDataset'])->middleware('throttle:hawki-destructive');
+        Route::post('/heaps/{heapId}/retry-failed', [PipelineRecoveryController::class, 'retryHeap'])->middleware('throttle:hawki-destructive');
     });
 
     Route::get('/rag/stats', [RagStatsController::class, 'show']);

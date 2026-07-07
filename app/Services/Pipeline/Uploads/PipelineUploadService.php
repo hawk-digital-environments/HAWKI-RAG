@@ -63,7 +63,7 @@ class PipelineUploadService
         } catch (PipelineUploadStorageException $exception) {
             $this->logger->warning($exception->logMessage(), array_merge([
                 'heap_id' => $input->heapId,
-                'dataset_id' => $input->datasetId,
+                'dataset_id' => $input->heapId,
                 'task_id' => $taskId,
                 'error' => $exception->getMessage(),
             ], $exception->logContext()));
@@ -83,7 +83,7 @@ class PipelineUploadService
         } catch (\Throwable $exception) {
             $this->logger->warning('Custom converter profile could not be prepared.', [
                 'heap_id' => $input->heapId,
-                'dataset_id' => $input->datasetId,
+                'dataset_id' => $input->heapId,
                 'task_id' => $taskId,
                 'source_id' => $sourceId,
                 'error' => $exception->getMessage(),

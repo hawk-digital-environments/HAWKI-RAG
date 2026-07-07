@@ -46,7 +46,7 @@ readonly class DocumentService
 
         return $this->documents->paginate([
             ...$filters,
-            'heap_id' => $heap->dataset_id,
+            'heap_id' => $heap->heapId(),
         ], $perPage, $page);
     }
 
@@ -94,11 +94,11 @@ readonly class DocumentService
             return $bridge;
         }
 
-        $storagePath = $this->writeDocumentContent($heap->dataset_id, $documentId, $content);
+        $storagePath = $this->writeDocumentContent($heap->heapId(), $documentId, $content);
         $document = $this->documents->create([
             'id' => $documentId,
             'external_id' => $documentId,
-            'dataset_id' => $heap->dataset_id,
+            'heap_id' => $heap->heapId(),
             'collection' => $collection,
             'source_type' => Document::SOURCE_API,
             'source_url' => $this->identifiers->stringValue($input['source_url'] ?? null) ?? 'spec://'.$documentId,
@@ -137,7 +137,7 @@ readonly class DocumentService
 
         $upload = $this->uploads->upload(
             PipelineUploadInput::fromValidated([
-                'heap_id' => $heap->dataset_id,
+                'heap_id' => $heap->heapId(),
                 'graph' => false,
             ], $this->settings->customConverterUploadDefaults()),
             $file,
@@ -161,7 +161,7 @@ readonly class DocumentService
         $document = $this->documents->create([
             'id' => $documentId,
             'external_id' => $documentId,
-            'dataset_id' => $heap->dataset_id,
+            'heap_id' => $heap->heapId(),
             'collection' => $collection,
             'source_type' => Document::SOURCE_UPLOAD,
             'source_url' => $this->identifiers->stringValue($input['source_url'] ?? null)
@@ -209,7 +209,7 @@ readonly class DocumentService
                 return $bridge;
             }
 
-            $storagePath = $this->writeDocumentContent($document->dataset_id, (string) $document->id, $content);
+            $storagePath = $this->writeDocumentContent((string) $document->heapId(), (string) $document->id, $content);
             $document->storage_path = $storagePath;
             $document->mime_type = 'text/plain';
             $document->file_size = strlen($content);
@@ -346,7 +346,7 @@ readonly class DocumentService
 
     private function collection(Heap $heap): string
     {
-        return trim((string) ($heap->qdrant_collection ?: $heap->dataset_id));
+        return trim((string) ($heap->qdrant_collection ?: $heap->heapId()));
     }
 
     /**

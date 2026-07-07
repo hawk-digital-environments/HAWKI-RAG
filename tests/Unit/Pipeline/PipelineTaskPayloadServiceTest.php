@@ -52,7 +52,7 @@ class PipelineTaskPayloadServiceTest extends TestCase
 
         $this->assertSame('task-payload', $payload['taskId']);
         $this->assertSame('dataset-payload', $payload['heapId']);
-        $this->assertSame('dataset-payload', $payload['datasetId']);
+        $this->assertArrayNotHasKey('datasetId', $payload);
         $this->assertSame(PipelineTask::STATUS_RUNNING, $payload['status']);
         $this->assertSame(['jobs_total' => 1], $payload['counters']);
         $this->assertSame(['source' => 'unit-test'], $payload['metadata']);

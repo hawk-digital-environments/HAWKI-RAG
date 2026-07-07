@@ -23,7 +23,7 @@ class DocumentResource extends JsonResource
         return [
             'id' => (string) $this->id,
             'documentId' => (string) $this->id,
-            'heapId' => $this->dataset_id,
+            'heapId' => $this->heapId(),
             'corpusId' => $this->corpus_id,
             'sourceUrl' => $this->source_url,
             'sourceType' => $this->source_type,

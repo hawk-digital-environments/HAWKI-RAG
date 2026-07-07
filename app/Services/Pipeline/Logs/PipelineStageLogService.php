@@ -133,7 +133,7 @@ readonly class PipelineStageLogService
 
         return [
             'taskId' => $task->task_id,
-            'datasetId' => $task->dataset_id,
+            'heapId' => $task->heapId(),
             'stage' => $canonicalStage,
             'label' => self::STAGE_LABELS[$canonicalStage],
             'filename' => $this->filename($task, $canonicalStage),

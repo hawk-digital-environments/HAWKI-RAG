@@ -97,6 +97,7 @@ class AuthorizationGrantApiTest extends TestCase
             $filters = $request->data()['filters'] ?? [];
 
             return $request->url() === 'http://bridge.test/query'
+                && $this->payloadHasOnlyBridgeKeys($request->data())
                 && $request->data()['limit'] === 5
                 && $this->filterContains($filters, 'owner_app', 'hawki-web')
                 && $this->filterContains($filters, 'protected', true)
@@ -321,6 +322,7 @@ class AuthorizationGrantApiTest extends TestCase
             $filters = $request->data()['filters'] ?? [];
 
             return $request->url() === 'http://bridge.test/query'
+                && $this->payloadHasOnlyBridgeKeys($request->data())
                 && $this->filterContains($filters, 'owner_app', 'hawki-web')
                 && $this->filterContains($filters, 'heap', 'heap-design')
                 && $this->filterContains($filters, 'visibility', 'hidden')
@@ -387,7 +389,31 @@ class AuthorizationGrantApiTest extends TestCase
      */
     private function filterContains(array $filter, string $key, mixed $value): bool
     {
-        if (($filter['key'] ?? null) === $key && (($filter['match']['value'] ?? null) === $value)) {
+        if (array_key_exists($key, $filter)) {
+            $candidate = $filter[$key];
+
+            if (is_array($candidate)) {
+                return in_array($value, $candidate, true);
+            }
+
+            return $candidate === $value;
+        }
+
+        foreach (['AND', 'OR'] as $operator) {
+            $children = $filter[$operator] ?? null;
+            if (! is_array($children)) {
+                continue;
+            }
+
+            foreach ($children as $child) {
+                if (is_array($child) && $this->filterContains($child, $key, $value)) {
+                    return true;
+                }
+            }
+        }
+
+        $not = $filter['NOT'] ?? null;
+        if (is_array($not) && $this->filterContains($not, $key, $value)) {
             return true;
         }
 
@@ -405,7 +431,17 @@ class AuthorizationGrantApiTest extends TestCase
      */
     private function filterContainsDocumentId(array $filter, string $documentId): bool
     {
-        return $this->filterContains($filter, 'document_id', $documentId)
-            || $this->filterContains($filter, 'doc_id', $documentId);
+        return $this->filterContains($filter, 'document_id', $documentId);
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     */
+    private function payloadHasOnlyBridgeKeys(array $payload): bool
+    {
+        $keys = array_keys($payload);
+        sort($keys);
+
+        return $keys === ['filters', 'limit', 'query'];
     }
 }

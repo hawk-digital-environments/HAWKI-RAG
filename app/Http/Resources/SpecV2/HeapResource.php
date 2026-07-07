@@ -18,8 +18,8 @@ class HeapResource extends JsonResource
     public function toArray(Request $request): array
     {
         return [
-            'id' => $this->dataset_id,
-            'heapId' => $this->dataset_id,
+            'id' => $this->heapId(),
+            'heapId' => $this->heapId(),
             'name' => $this->name,
             'description' => $this->description,
             'tenantId' => $this->tenant_id,

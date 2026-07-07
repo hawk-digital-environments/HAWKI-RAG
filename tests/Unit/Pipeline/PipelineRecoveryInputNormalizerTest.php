@@ -14,22 +14,22 @@ class PipelineRecoveryInputNormalizerTest extends TestCase
         $filters = app(PipelineRecoveryInputNormalizer::class)->filters([
             'limit' => 800,
             'taskId' => ' task-recovery ',
-            'dataset_id' => ' dataset-recovery ',
+            'heap_id' => ' dataset-recovery ',
         ]);
 
         $this->assertSame(500, $filters['limit']);
         $this->assertSame('task-recovery', $filters['task_id']);
-        $this->assertSame('dataset-recovery', $filters['dataset_id']);
+        $this->assertSame('dataset-recovery', $filters['heap_id']);
 
         $filters = app(PipelineRecoveryInputNormalizer::class)->filters([
             'limit' => -5,
             'task_id' => ' ',
-            'datasetId' => ['invalid'],
+            'heapId' => ['invalid'],
         ]);
 
         $this->assertSame(1, $filters['limit']);
         $this->assertNull($filters['task_id']);
-        $this->assertNull($filters['dataset_id']);
+        $this->assertNull($filters['heap_id']);
     }
 
     public function test_it_normalizes_selected_job_ids(): void

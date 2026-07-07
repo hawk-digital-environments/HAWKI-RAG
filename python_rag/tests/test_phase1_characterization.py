@@ -2889,21 +2889,26 @@ class ApiAndVectorValidationTests(unittest.TestCase):
         self.assertEqual(apply_ingest_request_settings(ingest, settings), ingest)
 
         patched_query = apply_query_request_settings(query, settings)
+        self.assertEqual(type(patched_query).__name__, "ResolvedQueryRequest")
         self.assertEqual(patched_query.provider, settings.rag_default_provider)
         self.assertEqual(patched_query.reranker, settings.reranker_mode)
         self.assertEqual(patched_query.mix_mode, settings.reranker_mix_mode)
         self.assertEqual(patched_query.mix_weight, settings.reranker_mix_weight)
 
-        custom_query = QueryRequest(
+        legacy_shaped_query = QueryRequest(
             query="Which toys are wooden?",
             provider="query-provider",
             reranker="cosine",
             mix_mode=False,
         )
-        patched = apply_query_request_settings(custom_query, settings)
-        self.assertEqual(patched.provider, "query-provider")
-        self.assertEqual(patched.reranker, "cosine")
-        self.assertFalse(patched.mix_mode)
+        self.assertEqual(
+            legacy_shaped_query.model_dump(),
+            {"query": "Which toys are wooden?", "limit": 5, "filters": {}},
+        )
+        patched = apply_query_request_settings(legacy_shaped_query, settings)
+        self.assertEqual(patched.provider, settings.rag_default_provider)
+        self.assertEqual(patched.reranker, settings.reranker_mode)
+        self.assertEqual(patched.mix_mode, settings.reranker_mix_mode)
 
         custom_ingest = IngestRequest(
             docs=[IngestDoc(id="doc-1", text="x", payload={})],
@@ -3168,6 +3173,7 @@ class ApiAndVectorValidationTests(unittest.TestCase):
     def test_app_query_route_uses_injected_dependencies(self) -> None:
         from api.factory import build_app
         from api.http.schemas import QueryRequest
+        from api.settings import load_app_settings
 
         class FakeService:
             def __init__(self) -> None:
@@ -3193,10 +3199,11 @@ class ApiAndVectorValidationTests(unittest.TestCase):
             mix_mode=False,
             mix_weight=0.4,
         )
+        app_settings = load_app_settings()
         captured: dict[str, object] = {}
 
         def fake_query_documents(
-            body: QueryRequest,
+            body: object,
             rag_service: object,
             get_provider,
         ) -> dict[str, object]:
@@ -3230,13 +3237,13 @@ class ApiAndVectorValidationTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), {"ok": True, "query": query_body.query, "top_k": 4})
-        self.assertEqual(captured["body_type"], "QueryRequest")
-        self.assertEqual(captured["body_provider"], query_body.provider)
+        self.assertEqual(captured["body_type"], "ResolvedQueryRequest")
+        self.assertEqual(captured["body_provider"], app_settings.rag_default_provider)
         self.assertEqual(captured["body_top_k"], 4)
         self.assertEqual(captured["provider_fn_called"], True)
         self.assertEqual(captured["service_is_injected"], True)
         self.assertEqual(captured["provider_value"].embed_model, "query-embed")
-        self.assertEqual(service.provider_calls, [query_body.provider])
+        self.assertEqual(service.provider_calls, [app_settings.rag_default_provider])
 
     def test_app_ingest_route_delegates_with_injected_dependencies(self) -> None:
         from api.factory import build_app
@@ -3370,6 +3377,7 @@ class ApiAndVectorValidationTests(unittest.TestCase):
     def test_qdrant_payload_helpers_build_expected_filters_and_batches(self) -> None:
         from infrastructure.vectorstore.payloads import (
             build_delete_filter,
+            build_match_filter,
             build_search_body,
             build_text_filter,
             iter_batches,
@@ -3419,6 +3427,39 @@ class ApiAndVectorValidationTests(unittest.TestCase):
                     "must": [{"key": "source_format", "match": {"value": "markdown"}}],
                     "should": [{"key": "content", "match": {"value": "toys"}}],
                 },
+            },
+        )
+        self.assertEqual(
+            build_match_filter(
+                {
+                    "AND": [
+                        {"owner_app": "hawki-web"},
+                        {
+                            "OR": [
+                                {"protected": False},
+                                {"document_id": ["doc-1", "doc-2"]},
+                            ]
+                        },
+                    ]
+                }
+            ),
+            {
+                "must": [
+                    {"key": "owner_app", "match": {"value": "hawki-web"}},
+                    {
+                        "should": [
+                            {"key": "protected", "match": {"value": False}},
+                            {
+                                "should": [
+                                    {"key": "document_id", "match": {"value": "doc-1"}},
+                                    {"key": "doc_id", "match": {"value": "doc-1"}},
+                                    {"key": "document_id", "match": {"value": "doc-2"}},
+                                    {"key": "doc_id", "match": {"value": "doc-2"}},
+                                ]
+                            },
+                        ]
+                    },
+                ]
             },
         )
 

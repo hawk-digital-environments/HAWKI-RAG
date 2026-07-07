@@ -77,7 +77,7 @@ readonly class GraphSourceDocumentResolver
         return [
             'docId' => $docId,
             'documentId' => $document->id,
-            'datasetId' => $document->dataset_id,
+            'heapId' => $document->heapId(),
             'label' => $this->displayLabel($document, $docId),
             'title' => $document->title,
             'sourceType' => $document->source_type,

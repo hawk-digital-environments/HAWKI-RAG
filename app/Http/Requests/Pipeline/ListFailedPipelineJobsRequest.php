@@ -18,8 +18,8 @@ class ListFailedPipelineJobsRequest extends FormRequest
             'limit' => 'nullable|integer|min:1|max:500',
             'task_id' => 'nullable|string',
             'taskId' => 'nullable|string',
-            'dataset_id' => 'nullable|string',
-            'datasetId' => 'nullable|string',
+            'heap_id' => 'nullable|string',
+            'heapId' => 'nullable|string',
         ];
     }
 

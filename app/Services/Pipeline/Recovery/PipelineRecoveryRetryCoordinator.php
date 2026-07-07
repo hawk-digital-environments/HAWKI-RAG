@@ -65,9 +65,9 @@ readonly class PipelineRecoveryRetryCoordinator
     /**
      * @return array<string, mixed>
      */
-    public function retryDataset(string $datasetId): array
+    public function retryHeap(string $heapId): array
     {
-        return $this->retryJobs($this->failedJobs->forRecovery(null, $datasetId), 'dataset', $datasetId);
+        return $this->retryJobs($this->failedJobs->forRecovery(null, $heapId), 'heap', $heapId);
     }
 
     /**

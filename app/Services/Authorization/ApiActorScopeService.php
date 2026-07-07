@@ -3,7 +3,6 @@ declare(strict_types=1);
 
 namespace App\Services\Authorization;
 
-use App\Models\Dataset;
 use App\Models\SpecV2\Application;
 use App\Models\SpecV2\Corpus;
 use App\Models\SpecV2\Group;
@@ -51,7 +50,7 @@ readonly class ApiActorScopeService
     /**
      * @return array{tenant_id?: string, owner_application_id?: string}
      */
-    public function currentDatasetFilters(): array
+    public function currentHeapFilters(): array
     {
         $actor = $this->currentActor();
         if (! $actor instanceof ApiActor) {
@@ -61,14 +60,14 @@ readonly class ApiActorScopeService
         return $this->policy->heapFilters($actor);
     }
 
-    public function currentCanReadDataset(Dataset|Heap $dataset): bool
+    public function currentCanReadHeap(Heap $heap): bool
     {
         $actor = $this->currentActor();
         if (! $actor instanceof ApiActor) {
             return false;
         }
 
-        return $this->policy->canReadHeap($actor, $dataset);
+        return $this->policy->canReadHeap($actor, $heap);
     }
 
     /**
@@ -100,14 +99,6 @@ readonly class ApiActorScopeService
 
         return $scope->unrestricted
             || in_array($documentId, $scope->documentIds ?? [], true);
-    }
-
-    /**
-     * @return array<array-key, mixed>
-     */
-    public function currentHeapFilters(): array
-    {
-        return $this->currentDatasetFilters();
     }
 
     /**

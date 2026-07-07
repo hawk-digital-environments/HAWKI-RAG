@@ -65,7 +65,7 @@ class PipelineUploadStorageTest extends TestCase
             $this->fail('Expected upload storage to throw when the task path is blocked.');
         } catch (PipelineUploadStorageException $exception) {
             $this->assertSame(
-                'The upload storage path is not writable. No dataset, task, or job was created.',
+                'The upload storage path is not writable. No heap, task, or job was created.',
                 $exception->responseMessage(),
             );
             $this->assertSame('Pipeline controller could not prepare upload storage.', $exception->logMessage());

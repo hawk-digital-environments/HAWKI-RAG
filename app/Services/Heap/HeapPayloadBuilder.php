@@ -29,7 +29,7 @@ readonly class HeapPayloadBuilder
         $stats = $this->stats($heap);
         $payload = [
             'id' => $heap->id,
-            'heapId' => $heap->dataset_id,
+            'heapId' => $heap->heapId(),
             'name' => $heap->name,
             'description' => $heap->description,
             'status' => $heap->status,
@@ -98,7 +98,7 @@ readonly class HeapPayloadBuilder
         return $this->heaps->recentDocuments($heap)
             ->map(fn (Document $document): array => [
                 'id' => $document->id,
-                'heapId' => $document->dataset_id,
+                'heapId' => $document->heapId(),
                 'corpusId' => $document->corpus_id,
                 'collection' => $document->collection,
                 'sourceType' => $document->source_type,

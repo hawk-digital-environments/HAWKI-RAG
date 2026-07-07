@@ -21,6 +21,9 @@ class SwaggerDocumentationTest extends TestCase
         $this->assertArrayHasKey('/heaps', $paths);
         $this->assertArrayHasKey('/heaps/{heapId}/documents', $paths);
         $this->assertArrayHasKey('/documents/{documentId}', $paths);
+        $this->assertArrayHasKey('/search', $paths);
+        $this->assertArrayHasKey('/search/chunks', $paths);
+        $this->assertArrayHasKey('/search/chunks/grouped', $paths);
         $this->assertArrayHasKey('/auth/check', $paths);
         $this->assertArrayHasKey('/auth/groups', $paths);
         $this->assertArrayHasKey('/auth/heaps/{heapId}', $paths);
@@ -33,6 +36,8 @@ class SwaggerDocumentationTest extends TestCase
 
         $multipart = $paths['/heaps/{heapId}/documents']['post']['requestBody']['content']['multipart/form-data']['schema'] ?? null;
         $this->assertSame('#/components/schemas/CreateDocumentFileRequest', $multipart['$ref'] ?? null);
+        $this->assertSame('#/components/schemas/SearchRequest', $paths['/search']['post']['requestBody']['content']['application/json']['schema']['$ref'] ?? null);
+        $this->assertSame('#/components/schemas/CanonicalFilterExpression', $spec['components']['schemas']['SearchRequest']['properties']['filters']['$ref'] ?? null);
 
         $securityScheme = $spec['components']['securitySchemes']['ApplicationBearerAuth'] ?? [];
         $this->assertSame('http', $securityScheme['type'] ?? null);

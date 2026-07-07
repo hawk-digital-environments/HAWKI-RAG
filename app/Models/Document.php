@@ -32,6 +32,7 @@ class Document extends Model
         'id',
         'external_id',
         'dataset_id',
+        'heap_id',
         'corpus_id',
         'collection',
         'source_type',
@@ -58,6 +59,31 @@ class Document extends Model
     public function heap(): BelongsTo
     {
         return $this->belongsTo(Heap::class, 'dataset_id', 'dataset_id');
+    }
+
+    public function heapId(): ?string
+    {
+        return is_scalar($this->dataset_id) ? (string) $this->dataset_id : null;
+    }
+
+    public function heapStorageColumn(): string
+    {
+        return 'dataset_id';
+    }
+
+    public function moveToHeap(string|Heap $heap): void
+    {
+        $this->attributes['dataset_id'] = $heap instanceof Heap ? $heap->heapId() : $heap;
+    }
+
+    public function getHeapIdAttribute(): ?string
+    {
+        return $this->heapId();
+    }
+
+    public function setHeapIdAttribute(?string $value): void
+    {
+        $this->attributes['dataset_id'] = $value;
     }
 
     public function corpus(): BelongsTo

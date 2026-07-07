@@ -55,11 +55,11 @@ class PipelineRecoveryController extends Controller
         ]);
     }
 
-    public function retryDataset(string $datasetId): JsonResponse
+    public function retryHeap(string $heapId): JsonResponse
     {
         return response()->json([
             'success' => true,
-            'recovery' => $this->pipeline->recovery->retryDataset($datasetId),
+            'recovery' => $this->pipeline->recovery->retryHeap($heapId),
         ]);
     }
 }

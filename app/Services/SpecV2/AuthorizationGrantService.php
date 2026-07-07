@@ -45,14 +45,14 @@ readonly class AuthorizationGrantService
         $heap = $this->readableHeap($heapId);
 
         if (! $this->enabled()) {
-            return $this->grantPayload('heap', $heap->dataset_id, [], [], (bool) $heap->protected);
+            return $this->grantPayload('heap', $heap->heapId(), [], [], (bool) $heap->protected);
         }
 
         return $this->grantPayload(
             'heap',
-            $heap->dataset_id,
-            $this->grantedUsers($this->heapGrants->listForHeap($heap->dataset_id)),
-            $this->grantedGroups($this->heapGrants->listForHeap($heap->dataset_id)),
+            $heap->heapId(),
+            $this->grantedUsers($this->heapGrants->listForHeap($heap->heapId())),
+            $this->grantedGroups($this->heapGrants->listForHeap($heap->heapId())),
             (bool) $heap->protected,
         );
     }
@@ -65,18 +65,18 @@ readonly class AuthorizationGrantService
     {
         $heap = $this->ownedHeap($heapId);
         if (! $this->enabled()) {
-            return $this->grantPayload('heap', $heap->dataset_id, [], [], (bool) $heap->protected);
+            return $this->grantPayload('heap', $heap->heapId(), [], [], (bool) $heap->protected);
         }
 
         $heap->protected = true;
         $this->heaps->save($heap);
         $this->heapGrants->replaceUsers(
-            $heap->dataset_id,
+            $heap->heapId(),
             $this->identityProvisioning->userAssignments($heap->tenant_id, $heap->owner_application_id, $this->identifiers->stringList($users)),
         );
-        $this->heapGrants->replaceGroups($heap->dataset_id, $this->validatedGroupIds($groups, $heap->tenant_id, $heap->dataset_id));
+        $this->heapGrants->replaceGroups($heap->heapId(), $this->validatedGroupIds($groups, $heap->tenant_id, $heap->heapId()));
 
-        return $this->heapGrants($heap->dataset_id);
+        return $this->heapGrants($heap->heapId());
     }
 
     /**
@@ -89,20 +89,20 @@ readonly class AuthorizationGrantService
     {
         $heap = $this->ownedHeap($heapId);
         if (! $this->enabled()) {
-            return $this->grantPayload('heap', $heap->dataset_id, [], [], (bool) $heap->protected);
+            return $this->grantPayload('heap', $heap->heapId(), [], [], (bool) $heap->protected);
         }
 
         $heap->protected = true;
         $this->heaps->save($heap);
         $this->heapGrants->addUsers(
-            $heap->dataset_id,
+            $heap->heapId(),
             $this->identityProvisioning->userAssignments($heap->tenant_id, $heap->owner_application_id, $this->identifiers->stringList($addUsers)),
         );
-        $this->heapGrants->removeUsers($heap->dataset_id, $this->identifiers->stringList($removeUsers));
-        $this->heapGrants->addGroups($heap->dataset_id, $this->validatedGroupIds($addGroups, $heap->tenant_id, $heap->dataset_id));
-        $this->heapGrants->removeGroups($heap->dataset_id, $this->identifiers->stringList($removeGroups));
+        $this->heapGrants->removeUsers($heap->heapId(), $this->identifiers->stringList($removeUsers));
+        $this->heapGrants->addGroups($heap->heapId(), $this->validatedGroupIds($addGroups, $heap->tenant_id, $heap->heapId()));
+        $this->heapGrants->removeGroups($heap->heapId(), $this->identifiers->stringList($removeGroups));
 
-        return $this->heapGrants($heap->dataset_id);
+        return $this->heapGrants($heap->heapId());
     }
 
     public function documentGrants(string $documentId): array
@@ -185,7 +185,7 @@ readonly class AuthorizationGrantService
             return;
         }
 
-        $this->heapGrants->clear($heap->dataset_id);
+        $this->heapGrants->clear($heap->heapId());
         $heap->protected = false;
         $this->heaps->save($heap);
     }
@@ -242,7 +242,7 @@ readonly class AuthorizationGrantService
         foreach ($this->grantAccess->accessibleHeapIdsForInternalUsers($internalUserIds) as $heapId) {
             $heap = $this->heaps->findById($heapId);
             if ($heap instanceof Heap && $this->currentCanScopeHeap($heap)) {
-                $heapIds[] = $heap->dataset_id;
+                $heapIds[] = $heap->heapId();
             }
         }
 
@@ -422,7 +422,7 @@ readonly class AuthorizationGrantService
             return true;
         }
 
-        return $this->grantAccess->canViewHeap($heap->dataset_id, $this->resolvedInternalUserIds($userIdentifier));
+        return $this->grantAccess->canViewHeap($heap->heapId(), $this->resolvedInternalUserIds($userIdentifier));
     }
 
     private function permittedDocument(Document $document, string $userIdentifier): bool

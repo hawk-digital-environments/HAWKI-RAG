@@ -3,7 +3,6 @@ declare(strict_types=1);
 
 namespace App\Services\Authorization;
 
-use App\Models\Dataset;
 use App\Models\SpecV2\Application;
 use App\Models\SpecV2\Group;
 use App\Models\SpecV2\Heap;
@@ -122,7 +121,7 @@ readonly class ApplicationReadPolicy
         );
     }
 
-    public function canReadHeap(ApiActor $actor, Dataset|Heap $heap): bool
+    public function canReadHeap(ApiActor $actor, Heap $heap): bool
     {
         if (! $this->matchesBaseScope(
             $actor,

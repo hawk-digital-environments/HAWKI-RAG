@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace App\Services\Authorization;
 
-use App\Models\Dataset;
 use App\Models\Document;
 use App\Models\SpecV2\Application;
+use App\Models\SpecV2\Heap;
 use App\Services\Authorization\Repositories\GrantAccessRepository;
 use App\Services\Authorization\Repositories\UserIdentityRepository;
 use App\Services\Authorization\Values\ApplicationDocumentScope;
@@ -122,10 +122,13 @@ readonly class ApplicationScopeResolver
 
     private function baseScopedDocumentsQuery(ApiActor $actor): Builder
     {
+        $heap = new Heap();
+        $document = new Document();
+
         $query = Document::query()
             ->select('documents.id')
             ->distinct()
-            ->join('datasets as heaps', 'heaps.dataset_id', '=', 'documents.dataset_id');
+            ->join($heap->getTable().' as heaps', 'heaps.'.$heap->storageKeyName(), '=', $document->getTable().'.'.$document->heapStorageColumn());
 
         if ($actor->hasApplicationPermission(Application::PERMISSION_READS_FEDERATED)) {
             return $query;
@@ -155,6 +158,8 @@ readonly class ApplicationScopeResolver
      */
     private function baseScopedHeapIds(ApiActor $actor): ?array
     {
+        $heap = new Heap();
+
         if ($actor->hasApplicationPermission(Application::PERMISSION_READS_FEDERATED)) {
             return null;
         }
@@ -163,8 +168,8 @@ readonly class ApplicationScopeResolver
             return null;
         }
 
-        return Dataset::query()
-            ->select('dataset_id')
+        return Heap::query()
+            ->select($heap->storageKeyName())
             ->where(function (Builder $inner) use ($actor): void {
                 $inner->where('tenant_id', $actor->tenantId());
 
@@ -172,7 +177,7 @@ readonly class ApplicationScopeResolver
                     $inner->orWhereNull('tenant_id');
                 }
             })
-            ->pluck('dataset_id')
+            ->pluck($heap->storageKeyName())
             ->filter(fn (mixed $heapId): bool => is_string($heapId) && trim($heapId) !== '')
             ->values()
             ->all();
