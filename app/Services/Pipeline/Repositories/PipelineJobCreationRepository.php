@@ -68,59 +68,6 @@ readonly class PipelineJobCreationRepository
     }
 
     /**
-     * @param array<string, mixed> $metadata
-     */
-    public function createScrapeJob(
-        string $jobId,
-        PipelineTask $task,
-        string $sourceUrl,
-        string $contentHash,
-        string $status,
-        Carbon $startedAt,
-        ?Carbon $finishedAt,
-        array $metadata,
-    ): PipelineJob {
-        return PipelineJob::query()->create([
-            'job_id' => $jobId,
-            'task_id' => $task->task_id,
-            'job_type' => PipelineJob::TYPE_SCRAPE,
-            'source_url' => $sourceUrl,
-            'content_hash' => $contentHash,
-            'status' => $status,
-            'started_at' => $startedAt,
-            'finished_at' => $finishedAt,
-            'metadata' => $metadata,
-        ]);
-    }
-
-    /**
-     * @param array<string, mixed> $metadata
-     */
-    public function createTemporalSourceJob(
-        string $jobId,
-        PipelineTask $task,
-        string $sourceId,
-        string $sourceUrl,
-        string $contentHash,
-        Carbon $startedAt,
-        array $metadata,
-    ): PipelineJob {
-        return PipelineJob::query()->create([
-            'job_id' => $jobId,
-            'task_id' => $task->task_id,
-            'source_id' => $sourceId,
-            'job_type' => PipelineJob::TYPE_INGEST,
-            'source_url' => $sourceUrl,
-            'content_hash' => $contentHash,
-            'status' => PipelineJob::STATUS_RUNNING,
-            'current_stage' => 'temporal.workflow_started',
-            'index_status' => 'running',
-            'started_at' => $startedAt,
-            'metadata' => $metadata,
-        ]);
-    }
-
-    /**
      * @param array<string, mixed> $attributes
      */
     public function ensureStateJob(

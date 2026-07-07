@@ -275,33 +275,6 @@ services:
       - default
       - hawki-network
 
-  hawki-rag-temporal-scraper-worker:
-    image: hawki-rag-python:local
-    pull_policy: never
-    container_name: hawki_rag_temporal_scraper_worker
-    env_file:
-      - ./.env
-    environment:
-      TEMPORAL_ADDRESS: temporal:7233
-      TEMPORAL_NAMESPACE: ${TEMPORAL_NAMESPACE:-default}
-      DB_CONNECTION: pgsql
-      DB_HOST: postgres
-      DB_PORT: 5432
-      HAWKI_RAG_TEMPORAL_SCRAPER_LOG_PATH: /shared/logs/scraper_worker.log
-    volumes:
-      - ./python_rag:/app
-      - shared_storage:/shared
-    command: ["python", "-m", "temporal_rag.worker_scraper"]
-    depends_on:
-      temporal:
-        condition: service_started
-      postgres:
-        condition: service_healthy
-    restart: unless-stopped
-    networks:
-      - default
-      - hawki-network
-
   hawki-rag-temporal-converter-worker:
     image: hawki-rag-python:local
     pull_policy: never

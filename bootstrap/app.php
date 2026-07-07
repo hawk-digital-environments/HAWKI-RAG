@@ -17,7 +17,6 @@ use Illuminate\Http\Request;
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
         api: __DIR__.'/../routes/internal_api.php',
-        web: __DIR__.'/../routes/web_ui.php',
         then: function (): void {
             require __DIR__.'/../routes/health.php';
         },

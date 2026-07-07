@@ -18,8 +18,6 @@ use Psr\Clock\ClockInterface;
 readonly class PipelineStageLogService
 {
     private const STAGE_ALIASES = [
-        'scrape' => 'scrape',
-        'scraper' => 'scrape',
         'convert' => 'convert',
         'converter' => 'convert',
         'ingest' => 'ingest',
@@ -27,13 +25,11 @@ readonly class PipelineStageLogService
     ];
 
     private const DOWNLOAD_PREFIXES = [
-        'scrape' => 'scraper',
         'convert' => 'converter',
         'ingest' => 'ingest',
     ];
 
     private const STAGE_LABELS = [
-        'scrape' => 'Scraper',
         'convert' => 'Converter',
         'ingest' => 'Ingest',
     ];
@@ -57,12 +53,6 @@ readonly class PipelineStageLogService
     ];
 
     private const STAGE_RUNTIME_LOG_HINTS = [
-        'scrape' => [
-            'scrape_source',
-            'rag-scraper-task-queue',
-            'crawler',
-            'scraper',
-        ],
         'convert' => [
             'inspect_and_convert_files',
             'rag-converter-task-queue',
@@ -165,7 +155,7 @@ readonly class PipelineStageLogService
     private function jobMatchesStage(PipelineTask $task, PipelineJob $job, string $stage): bool
     {
         $type = (string) $job->job_type;
-        if ($type === $stage || ($stage === 'scrape' && $type === 'scraper')) {
+        if ($type === $stage) {
             return true;
         }
 
@@ -184,7 +174,6 @@ readonly class PipelineStageLogService
         $currentStage = strtolower((string) $job->current_stage);
 
         return match ($stage) {
-            'scrape' => str_contains($currentStage, 'scrape'),
             'convert' => str_contains($currentStage, 'convert') || str_contains($currentStage, 'inspect'),
             'ingest' => str_contains($currentStage, 'ingest') || str_contains($currentStage, 'ready'),
             default => false,
@@ -239,17 +228,6 @@ readonly class PipelineStageLogService
      */
     private function appendDirectStageLogSection(array &$lines, PipelineTask $task, Collection $jobs, string $stage): void
     {
-        if ($stage === 'scrape') {
-            $this->appendLogEntriesSection(
-                $lines,
-                'Scraper crawler.log entries',
-                $this->scraperCrawlerLogEntries($task, $jobs),
-                'No matching scraper crawler.log entries were found yet.'
-            );
-
-            return;
-        }
-
         if ($stage === 'convert') {
             $this->appendStageRuntimeLogSection($lines, $task, $jobs, $stage, 'Converter worker log entries');
 
@@ -513,33 +491,6 @@ readonly class PipelineStageLogService
     }
 
     /**
-     * @param Collection<int, PipelineJob> $jobs
-     * @return list<string>
-     */
-    private function scraperCrawlerLogEntries(PipelineTask $task, Collection $jobs): array
-    {
-        $paths = $this->scraperCrawlerLogPaths($task, $jobs);
-        if ($paths === []) {
-            return [];
-        }
-
-        $selected = [];
-        $entries = [];
-
-        foreach ($paths as $path) {
-            if (! $this->files->isFile($path)) {
-                continue;
-            }
-
-            foreach ($this->runtimeLogLines($path) as $line) {
-                $this->appendRuntimeEntry($entries, $selected, $path, $line['number'], $line['text']);
-            }
-        }
-
-        return $this->sortRuntimeEntries($entries);
-    }
-
-    /**
      * @param list<string> $entries
      * @return list<string>
      */
@@ -562,40 +513,6 @@ readonly class PipelineStageLogService
         }
 
         return [$entry, 0];
-    }
-
-    /**
-     * @param Collection<int, PipelineJob> $jobs
-     * @return list<string>
-     */
-    private function scraperCrawlerLogPaths(PipelineTask $task, Collection $jobs): array
-    {
-        $sharedRoot = rtrim((string) $this->config->get('temporal.storage.shared_root', '/shared'), '/');
-        $candidates = [];
-
-        if (is_scalar($task->task_id) && trim((string) $task->task_id) !== '') {
-            $this->appendPathCandidate($candidates, $sharedRoot.'/'.$task->task_id);
-        }
-
-        if (is_scalar($task->dataset_id) && trim((string) $task->dataset_id) !== '') {
-            $this->appendPathCandidate($candidates, $sharedRoot.'/'.$task->dataset_id);
-        }
-
-        $jobs->each(function (PipelineJob $job) use (&$candidates, $sharedRoot): void {
-            $this->appendPathCandidate($candidates, $job->local_path);
-            if (is_scalar($job->job_id) && trim((string) $job->job_id) !== '') {
-                $this->appendPathCandidate($candidates, $sharedRoot.'/'.$job->job_id);
-            }
-
-            if (is_scalar($job->source_id) && trim((string) $job->source_id) !== '') {
-                $this->appendPathCandidate($candidates, $sharedRoot.'/sources/'.$job->source_id.'/raw');
-            }
-
-            $metadata = is_array($job->metadata) ? $job->metadata : [];
-            $this->appendLogPathCandidatesFromPayload($candidates, $metadata);
-        });
-
-        return $this->resolveLogPaths($candidates, 'crawler.log');
     }
 
     /**
@@ -992,97 +909,6 @@ readonly class PipelineStageLogService
         return collect($needles)
             ->filter(fn (string $needle): bool => strlen(trim($needle)) >= 6)
             ->map(fn (string $needle): string => trim($needle))
-            ->unique()
-            ->values()
-            ->all();
-    }
-
-    /**
-     * @param list<string> $candidates
-     * @param array<string, mixed> $payload
-     */
-    private function appendLogPathCandidatesFromPayload(array &$candidates, array $payload, int $depth = 0): void
-    {
-        if ($depth > 3) {
-            return;
-        }
-
-        $pathKeys = [
-            'crawler_log',
-            'crawler_log_path',
-            'dataset_path',
-            'local_path',
-            'log_path',
-            'markdown_dir',
-            'markdown_output_path',
-            'output_path',
-            'raw_dir',
-            'raw_output_path',
-        ];
-
-        foreach ($payload as $key => $value) {
-            if (is_string($key) && in_array($key, $pathKeys, true)) {
-                $this->appendPathCandidate($candidates, $value);
-            }
-
-            if (is_array($value)) {
-                $this->appendLogPathCandidatesFromPayload($candidates, $value, $depth + 1);
-            }
-        }
-    }
-
-    /**
-     * @param list<string> $candidates
-     */
-    private function appendPathCandidate(array &$candidates, mixed $value): void
-    {
-        if (is_array($value)) {
-            foreach ($value as $item) {
-                $this->appendPathCandidate($candidates, $item);
-            }
-
-            return;
-        }
-
-        if (! is_scalar($value)) {
-            return;
-        }
-
-        $path = trim((string) $value);
-        if ($path === '') {
-            return;
-        }
-
-        if (str_starts_with($path, 'file://')) {
-            $path = substr($path, 7);
-        }
-
-        if ($path !== '') {
-            $candidates[] = $path;
-        }
-    }
-
-    /**
-     * @param list<string> $candidates
-     * @return list<string>
-     */
-    private function resolveLogPaths(array $candidates, string $fileName): array
-    {
-        $paths = [];
-
-        foreach ($candidates as $candidate) {
-            if ($this->files->isFile($candidate)) {
-                $paths[] = $candidate;
-                continue;
-            }
-
-            if ($this->files->isDirectory($candidate)) {
-                $paths[] = rtrim($candidate, DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR.$fileName;
-            }
-        }
-
-        return collect($paths)
-            ->filter(fn (string $path): bool => $this->files->isFile($path))
             ->unique()
             ->values()
             ->all();

@@ -85,8 +85,6 @@ readonly class SecurityHeaders
             'health/*',
             'pipeline/*',
             'rag/*',
-            'scraper/*',
-            'settings*',
             'query'
         );
     }

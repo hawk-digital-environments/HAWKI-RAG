@@ -5,7 +5,7 @@
 ### Application
 | Variable | Default Value | Description |
 | --- | --- | --- |
-| `APP_NAME` | `HAWKI RAG` | Name displayed in the Laravel UI and metadata. |
+| `APP_NAME` | `HAWKI RAG` | Name displayed in API metadata and operational outputs. |
 | `APP_URL` | `http://localhost:8080` | Public URL Laravel uses for generated links; normally replaced by your reverse-proxy domain. |
 | `APP_KEY` | _Must be set_ | Laravel encryption/session secret; generate once and keep private. |
 
@@ -26,7 +26,7 @@
 | Variable | Default Value | Description |
 | --- | --- | --- |
 | `HAWKI_RAG_BRIDGE_URL` | _From `.env`_ | HAWKI-RAG bridge base URL used for query, ingest, health, and graph cache operations. |
-| `HAWKI_RAG_TEMPORAL_SHARED_ROOT` | `/shared` | Shared files path used for Temporal scraper/converter/ingestion handoff. |
+| `HAWKI_RAG_TEMPORAL_SHARED_ROOT` | `/shared` | Shared files path used for Temporal converter/ingestion handoff. |
 
 ### Temporal ingestion
 | Variable | Default Value | Description |
@@ -34,13 +34,11 @@
 | `TEMPORAL_ADDRESS` | `temporal:7233` | Temporal frontend address from Docker containers. Do not use `localhost:7233` inside containers. |
 | `TEMPORAL_NAMESPACE` | `default` | Local Temporal namespace. |
 | `TEMPORAL_RAG_WORKFLOW_TASK_QUEUE` | `rag-workflow-task-queue` | Task queue for `IngestSourceWorkflow`. |
-| `TEMPORAL_RAG_SCRAPER_TASK_QUEUE` | `rag-scraper-task-queue` | Task queue for `scrape_source`. |
 | `TEMPORAL_RAG_CONVERTER_TASK_QUEUE` | `rag-converter-task-queue` | Task queue for `inspect_and_convert_files`. |
 | `TEMPORAL_RAG_INGESTION_TASK_QUEUE` | `rag-ingestion-task-queue` | Task queue for `ingest_markdown_files` and `mark_source_ready`. |
 | `TEMPORAL_RAG_DAILY_CRON` | `0 2 * * *` | Cron used when source refresh cadence is `daily`. |
 | `TEMPORAL_RAG_WEEKLY_CRON` | `0 2 * * 0` | Cron used when source refresh cadence is `weekly`. |
 | `TEMPORAL_RAG_MONTHLY_CRON` | `0 2 1 * *` | Cron used when source refresh cadence is `monthly`. |
-| `EXTERNAL_SCRAPER_URL` | `http://crawler:8000` | External scraper service base URL; worker calls its start/status endpoints. |
 | `EXTERNAL_CONVERTER_URL` | `http://file-converter:8000` | External converter service base URL; worker calls its start/status endpoints. |
 
 ### Ollama and models
@@ -63,7 +61,7 @@
 | `DB_PASSWORD` | _From `.env`_ | Password for migration user. |
 
 :::tip "Important"
-    Run migrations with `php artisan migrate`; without it, Laravel cannot store jobs/sessions used by the UI.
+    Run migrations with `php artisan migrate`; without it, Laravel cannot store application and pipeline metadata.
 :::
 
 ## Temporal setup
@@ -76,7 +74,7 @@ Start the stack:
 
 ```bash
 docker compose up -d postgres temporal temporal-ui hawki_rag_app hawki_rag_bridge qdrant hawki_rag_neo4j
-docker compose up -d hawki-rag-temporal-workflow-worker hawki-rag-temporal-scraper-worker hawki-rag-temporal-converter-worker hawki-rag-temporal-ingestion-worker
+docker compose up -d hawki-rag-temporal-workflow-worker hawki-rag-temporal-converter-worker hawki-rag-temporal-ingestion-worker
 ```
 
 Temporal UI is exposed on `http://localhost:8081` by default.

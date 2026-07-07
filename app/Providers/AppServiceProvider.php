@@ -35,7 +35,6 @@ use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Event;
-use Illuminate\Support\Facades\Vite;
 use Psr\Clock\ClockInterface;
 use Illuminate\Support\ServiceProvider;
 
@@ -107,7 +106,6 @@ class AppServiceProvider extends ServiceProvider
             database_path('migrations/pipeline'),
         ]);
 
-        $this->configureViteAssetPaths($config);
         $this->registerApplicationTokenGuard();
         $this->registerOidcGuard();
         $this->registerDomainListeners();
@@ -135,16 +133,6 @@ class AppServiceProvider extends ServiceProvider
         Event::listen(HeapSearchPayloadChanged::class, PropagateHeapSearchPayload::class);
     }
 
-    private function configureViteAssetPaths(ConfigRepository $config): void
-    {
-        $basePath = '/' . trim((string) $config->get('app.asset_base_path', '/'), '/');
-        $basePath = $basePath === '/' ? '' : $basePath;
-
-        Vite::createAssetPathsUsing(
-            fn (string $path, ?bool $secure = null): string => $basePath . '/' . ltrim($path, '/')
-        );
-    }
-
     private function registerRouteConstraints(): void
     {
         foreach (['collection', 'datasetId', 'documentId', 'id', 'jobId', 'taskId'] as $parameter) {
@@ -154,7 +142,6 @@ class AppServiceProvider extends ServiceProvider
 
     private function registerRateLimits(): void
     {
-        RateLimiter::for('hawki-ui', fn (Request $request): Limit => Limit::perMinute(240)->by($this->rateLimitKey($request)));
         RateLimiter::for('hawki-health', fn (Request $request): Limit => Limit::perMinute(120)->by($this->rateLimitKey($request)));
         RateLimiter::for('hawki-api', fn (Request $request): Limit => Limit::perMinute(180)->by($this->rateLimitKey($request)));
         RateLimiter::for('hawki-rag-query', fn (Request $request): Limit => Limit::perMinute(30)->by($this->rateLimitKey($request)));

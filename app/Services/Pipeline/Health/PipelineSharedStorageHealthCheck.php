@@ -26,7 +26,6 @@ readonly class PipelineSharedStorageHealthCheck
     {
         $paths = array_values(array_unique(array_filter([
             (string) $this->config->get('temporal.storage.shared_root'),
-            (string) $this->config->get('scraper.storage_path'),
             (string) $this->config->get('config.shared_root'),
         ])));
 
@@ -43,7 +42,7 @@ readonly class PipelineSharedStorageHealthCheck
                 return $this->failureResult(
                     'Shared storage',
                     "Path is not writable: {$path}.",
-                    'Fix permissions with chown -R www-data:www-data /shared && chmod -R ug+rwX /shared, then verify HAWKI_RAG_TEMPORAL_SHARED_ROOT, SCRAPE_STORAGE_PATH, and HAWKI_RAG_PIPELINE_ROOT.',
+                    'Fix permissions with chown -R www-data:www-data /shared && chmod -R ug+rwX /shared, then verify HAWKI_RAG_TEMPORAL_SHARED_ROOT and HAWKI_RAG_PIPELINE_ROOT.',
                 );
             }
 

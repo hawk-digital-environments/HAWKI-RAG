@@ -320,7 +320,6 @@ class AppMetadataStore:
     @staticmethod
     def _ui_stage(phase: str) -> str:
         return {
-            "scrape_source": "scrape",
             "inspect_and_convert_files": "convert",
             "ingest_markdown_files": "ingest",
             "mark_source_ready": "ingest",
@@ -335,7 +334,6 @@ class AppMetadataStore:
         if status not in {"success", "completed"}:
             return None
         return {
-            "scrape_source": "convert",
             "inspect_and_convert_files": "ingest",
         }.get(phase)
 

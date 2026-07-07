@@ -38,16 +38,11 @@ class TemporalRagSettings:
     temporal_namespace: str
     workflow_type: str
     workflow_task_queue: str
-    scraper_task_queue: str
     converter_task_queue: str
     ingestion_task_queue: str
     workflow_execution_timeout_seconds: int
     workflow_run_timeout_seconds: int
     workflow_task_timeout_seconds: int
-    scraper_url: str
-    scraper_start_path: str
-    scraper_status_path: str
-    scraper_token: str
     converter_url: str
     converter_start_path: str
     converter_status_path: str
@@ -71,16 +66,11 @@ class TemporalRagSettings:
             temporal_namespace=_env("TEMPORAL_NAMESPACE", "default"),
             workflow_type=_env("TEMPORAL_INGEST_WORKFLOW_TYPE", "IngestSourceWorkflow"),
             workflow_task_queue=_env("TEMPORAL_RAG_WORKFLOW_TASK_QUEUE", "rag-workflow-task-queue"),
-            scraper_task_queue=_env("TEMPORAL_RAG_SCRAPER_TASK_QUEUE", "rag-scraper-task-queue"),
             converter_task_queue=_env("TEMPORAL_RAG_CONVERTER_TASK_QUEUE", "rag-converter-task-queue"),
             ingestion_task_queue=_env("TEMPORAL_RAG_INGESTION_TASK_QUEUE", "rag-ingestion-task-queue"),
             workflow_execution_timeout_seconds=_duration_seconds("TEMPORAL_WORKFLOW_EXECUTION_TIMEOUT", 86400),
             workflow_run_timeout_seconds=_duration_seconds("TEMPORAL_WORKFLOW_RUN_TIMEOUT", 21600),
             workflow_task_timeout_seconds=_duration_seconds("TEMPORAL_WORKFLOW_TASK_TIMEOUT", 30),
-            scraper_url=_env("EXTERNAL_SCRAPER_URL", _env("CUSTOM_CRAWLER_URL", "http://crawler:8000")),
-            scraper_start_path=_env("EXTERNAL_SCRAPER_START_PATH", "/api/scrape/start"),
-            scraper_status_path=_env("EXTERNAL_SCRAPER_STATUS_PATH", "/api/scrape/jobs/{job_id}"),
-            scraper_token=_env("EXTERNAL_SCRAPER_TOKEN", _env("CUSTOM_CRAWLER_API_KEY", "")),
             converter_url=_env("EXTERNAL_CONVERTER_URL", _env("FILE_CONVERTER_BASE_URL", "http://file-converter:8000")),
             converter_start_path=_env("EXTERNAL_CONVERTER_START_PATH", "/extract"),
             converter_status_path=_env("EXTERNAL_CONVERTER_STATUS_PATH", ""),

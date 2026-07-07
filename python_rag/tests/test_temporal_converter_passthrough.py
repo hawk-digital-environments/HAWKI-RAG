@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import sys
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from temporal_rag import activities
 
@@ -24,133 +27,6 @@ class _UnsupportedResponse:
 
 
 class TemporalConverterPassthroughTests(unittest.TestCase):
-    def test_scraper_start_payload_matches_custom_crawler_contract(self) -> None:
-        payload = activities._scraper_start_payload(
-            {
-                "job_id": "ingest_lubeck",
-                "source_url": "https://uni-luebeck.de",
-                "metadata": {
-                    "request": {
-                        "sitemapUrl": "https://uni-luebeck.de/sitemap.xml",
-                        "metadata": {
-                            "site_profile_path": "/var/www/html/profiles/Lubeck.json",
-                            "max_pages": 25,
-                            "max_concurrency": 1,
-                            "max_rpm": 60,
-                            "skip_images": True,
-                            "discovery_mode": False,
-                        },
-                    },
-                },
-            },
-            "source_lubeck",
-            "/shared/sources/source_lubeck/raw/",
-        )
-
-        self.assertEqual(payload["job_id"], "ingest_lubeck")
-        self.assertEqual(payload["url"], "https://uni-luebeck.de")
-        self.assertEqual(payload["output_dir"], "/shared/sources/source_lubeck/raw/")
-        self.assertEqual(payload["source_id"], "source_lubeck")
-        self.assertEqual(payload["source_url"], "https://uni-luebeck.de")
-        self.assertEqual(payload["site_profile_path"], "/var/www/html/profiles/Lubeck.json")
-        self.assertIs(payload["sitemap"], True)
-        self.assertEqual(payload["sitemap_base"], "https://uni-luebeck.de/sitemap.xml")
-        self.assertEqual(payload["max_pages"], 25)
-        self.assertEqual(payload["max_concurrency"], 1)
-        self.assertEqual(payload["max_rpm"], 60)
-        self.assertIs(payload["skip_images"], True)
-        self.assertIs(payload["discovery_mode"], False)
-
-    def test_crawler_output_directory_is_mapped_to_worker_shared_path(self) -> None:
-        self.assertEqual(
-            activities._shared_worker_path("/var/www/html/shared/ingest_lubeck"),
-            "/shared/ingest_lubeck",
-        )
-        self.assertEqual(
-            activities._shared_worker_path("/app/shared/sources/source_lubeck/raw"),
-            "/shared/sources/source_lubeck/raw",
-        )
-        self.assertEqual(
-            activities._shared_worker_path("/shared/sources/source_lubeck/raw"),
-            "/shared/sources/source_lubeck/raw",
-        )
-
-    def test_scrape_result_fails_when_scraper_only_writes_bookkeeping_files(self) -> None:
-        with TemporaryDirectory() as tmp:
-            raw_dir = Path(tmp)
-            (raw_dir / "job_state.json").write_text('{"completed_urls": 0}', encoding="utf-8")
-            (raw_dir / "urls_index.json").write_text('{"total_entries": 0}', encoding="utf-8")
-            (raw_dir / "summary.json").write_text('{"status": "completed"}', encoding="utf-8")
-            (raw_dir / "crawler.log").write_text("completed\n", encoding="utf-8")
-
-            result = activities._scrape_result(
-                {
-                    "status": "completed",
-                    "output_directory": str(raw_dir),
-                    "external_job_id": "scrape-empty",
-                },
-                {"max_pages": 300},
-                "source_empty",
-                str(raw_dir),
-            )
-
-        self.assertEqual(result["status"], "failed")
-        self.assertEqual(result["pages_crawled"], 0)
-        self.assertEqual(result["files_found"], 0)
-        self.assertEqual(result["raw_files_found"], 0)
-        self.assertEqual(result["max_pages"], 300)
-        self.assertIn("without crawled page files", result["error_details"])
-
-    def test_scrape_result_uses_real_output_files_when_scraper_omits_counts(self) -> None:
-        with TemporaryDirectory() as tmp:
-            raw_dir = Path(tmp)
-            (raw_dir / "job_state.json").write_text('{"completed_urls": 1}', encoding="utf-8")
-            page = raw_dir / "pages" / "home.md"
-            page.parent.mkdir()
-            page.write_text("# Home", encoding="utf-8")
-
-            result = activities._scrape_result(
-                {
-                    "status": "completed",
-                    "output_directory": str(raw_dir),
-                    "external_job_id": "scrape-one-page",
-                },
-                {"max_pages": 1},
-                "source_page",
-                str(raw_dir),
-            )
-
-        self.assertEqual(result["status"], "success")
-        self.assertEqual(result["pages_crawled"], 1)
-        self.assertEqual(result["files_found"], 1)
-        self.assertEqual(result["raw_files_found"], 1)
-        self.assertEqual(result["max_pages"], 1)
-
-    def test_scrape_result_fails_when_scraper_stops_before_page_limit(self) -> None:
-        with TemporaryDirectory() as tmp:
-            raw_dir = Path(tmp)
-            page = raw_dir / "pages" / "home.md"
-            page.parent.mkdir()
-            page.write_text("# Home", encoding="utf-8")
-
-            result = activities._scrape_result(
-                {
-                    "status": "completed",
-                    "output_directory": str(raw_dir),
-                    "external_job_id": "scrape-short",
-                },
-                {"max_pages": 300},
-                "source_short",
-                str(raw_dir),
-            )
-
-        self.assertEqual(result["status"], "failed")
-        self.assertEqual(result["pages_crawled"], 1)
-        self.assertEqual(result["files_found"], 1)
-        self.assertEqual(result["raw_files_found"], 1)
-        self.assertEqual(result["max_pages"], 300)
-        self.assertIn("1/300 pages", result["error_details"])
-
     def test_custom_converter_profile_overrides_converter_service_config(self) -> None:
         with TemporaryDirectory() as tmp:
             profile = Path(tmp) / "custom_converter.json"
@@ -173,7 +49,6 @@ class TemporalConverterPassthroughTests(unittest.TestCase):
                         "converter_start_path": "/extract",
                     },
                 },
-                "converter",
                 _settings(),
             )
 
@@ -184,11 +59,7 @@ class TemporalConverterPassthroughTests(unittest.TestCase):
 
     def test_custom_converter_mode_requires_profile_path(self) -> None:
         with self.assertRaisesRegex(RuntimeError, "without a converter profile path"):
-            activities._service_config(
-                {"converter_mode": "custom"},
-                "converter",
-                _settings(),
-            )
+            activities._service_config({"converter_mode": "custom"}, _settings())
 
     def test_direct_extract_unsupported_image_creates_raganything_passthrough(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -234,13 +105,13 @@ class TemporalConverterPassthroughTests(unittest.TestCase):
             loaded = activities._load_passthrough_metadata(str(handoff))
             self.assertEqual(loaded["file_path"], str(image.resolve()))
 
-    def test_direct_extract_skips_scraper_bookkeeping_files(self) -> None:
+    def test_direct_extract_skips_raw_directory_bookkeeping_files(self) -> None:
         with TemporaryDirectory() as tmp:
             root = Path(tmp)
             raw_dir = root / "raw"
             markdown_dir = root / "markdown"
             raw_dir.mkdir()
-            for name in activities.SCRAPER_BOOKKEEPING_FILENAMES:
+            for name in activities.RAW_DIRECTORY_BOOKKEEPING_FILENAMES:
                 (raw_dir / name).write_text("{}", encoding="utf-8")
 
             result = activities._convert_files_with_extract_api(
@@ -269,7 +140,7 @@ class TemporalConverterPassthroughTests(unittest.TestCase):
 
         with patch("temporal_rag.activities._bridge_request", return_value={"ok": True}) as bridge:
             activities._post_ingest(
-                object(),  # _bridge_request is mocked, so no settings fields are read.
+                object(),
                 {"source_id": "source_image", "job_id": "job_image"},
                 {"graph": False},
                 docs,
@@ -285,10 +156,6 @@ class TemporalConverterPassthroughTests(unittest.TestCase):
 
 def _settings() -> SimpleNamespace:
     return SimpleNamespace(
-        scraper_url="http://scraper.test",
-        scraper_start_path="/api/scrape/start",
-        scraper_status_path="/api/scrape/jobs/{job_id}",
-        scraper_token="",
         converter_url="http://converter.test",
         converter_start_path="/extract",
         converter_status_path="",

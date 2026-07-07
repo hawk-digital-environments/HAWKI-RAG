@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Dataset;
 use App\Models\Document;
 use App\Models\User;
+use App\Models\UserIdentity;
 use App\Services\Authorization\IdentityProvisioningService;
 use App\Services\Authorization\Connectors\StaticLmsPermissionConnector;
 use App\Services\Authorization\Oidc\OidcJwtValidator;
@@ -60,7 +61,7 @@ class AuthorizationLmsNeutralTest extends TestCase
         $this->assertDatabaseHas('internal_users', ['id' => $record->internal_user_id, 'tenant_id' => 'uni-hawk']);
     }
 
-    public function test_group_member_identity_mapping_reuses_internal_user_for_later_oidc_login(): void
+    public function test_group_member_identity_mapping_does_not_merge_later_oidc_identity_by_email_fallback(): void
     {
         $assignments = app(IdentityProvisioningService::class)->groupMemberAssignments(
             'uni-hawk',
@@ -83,10 +84,80 @@ class AuthorizationLmsNeutralTest extends TestCase
             ),
         );
 
-        $this->assertSame($assignments[0]->internalUserId, $record->internal_user_id);
+        $this->assertNotSame($assignments[0]->internalUserId, $record->internal_user_id);
         $this->assertSame('uni-hawk', $record->tenant_id);
         $this->assertSame('hawki-web', $record->application_id);
+        $this->assertDatabaseHas('user_identities', [
+            'tenant_id' => 'uni-hawk',
+            'provider' => UserIdentity::PROVIDER_TENANT_IDENTITY,
+            'external_user_id' => 'alice@hawk.de',
+            'internal_user_id' => $assignments[0]->internalUserId,
+        ]);
+        $this->assertDatabaseHas('user_identities', [
+            'tenant_id' => 'uni-hawk',
+            'provider' => 'keycloak',
+            'external_user_id' => 'subject-999',
+            'internal_user_id' => $record->internal_user_id,
+        ]);
         $this->assertDatabaseCount('users', 0);
+    }
+
+    public function test_duplicate_external_identifier_values_across_tenants_create_separate_internal_users(): void
+    {
+        $tenantA = app(IdentityProvisioningService::class)->userAssignments(
+            'tenant-a',
+            'app-a',
+            ['shared-user'],
+        );
+        $tenantB = app(IdentityProvisioningService::class)->userAssignments(
+            'tenant-b',
+            'app-b',
+            ['shared-user'],
+        );
+
+        $this->assertNotSame($tenantA[0]->internalUserId, $tenantB[0]->internalUserId);
+        $this->assertDatabaseHas('user_identities', [
+            'tenant_id' => 'tenant-a',
+            'provider' => UserIdentity::PROVIDER_TENANT_IDENTITY,
+            'external_user_id' => 'shared-user',
+            'internal_user_id' => $tenantA[0]->internalUserId,
+        ]);
+        $this->assertDatabaseHas('user_identities', [
+            'tenant_id' => 'tenant-b',
+            'provider' => UserIdentity::PROVIDER_TENANT_IDENTITY,
+            'external_user_id' => 'shared-user',
+            'internal_user_id' => $tenantB[0]->internalUserId,
+        ]);
+    }
+
+    public function test_duplicate_external_identifier_values_across_providers_within_one_tenant_remain_separate(): void
+    {
+        $moodle = app(IdentityProvisioningService::class)->connectorMemberAssignments(
+            'uni-hawk',
+            'hawki-web',
+            'moodle',
+            ['shared-user'],
+        );
+        $studip = app(IdentityProvisioningService::class)->connectorMemberAssignments(
+            'uni-hawk',
+            'hawki-web',
+            'studip',
+            ['shared-user'],
+        );
+
+        $this->assertNotSame($moodle[0]->internalUserId, $studip[0]->internalUserId);
+        $this->assertDatabaseHas('user_identities', [
+            'tenant_id' => 'uni-hawk',
+            'provider' => 'moodle',
+            'external_user_id' => 'shared-user',
+            'internal_user_id' => $moodle[0]->internalUserId,
+        ]);
+        $this->assertDatabaseHas('user_identities', [
+            'tenant_id' => 'uni-hawk',
+            'provider' => 'studip',
+            'external_user_id' => 'shared-user',
+            'internal_user_id' => $studip[0]->internalUserId,
+        ]);
     }
 
     public function test_oidc_request_resolution_creates_human_user_and_links_identity(): void

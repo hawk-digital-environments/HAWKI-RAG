@@ -17,7 +17,6 @@ class IngestSourceWorkflowPayloadFactoryTest extends TestCase
         config()->set('temporal.storage.mode', 'shared');
         config()->set('temporal.storage.shared_root', '/shared');
         config()->set('temporal.task_queues.workflow', 'rag-workflow-task-queue');
-        config()->set('temporal.task_queues.scraper', 'rag-scraper-task-queue');
         config()->set('temporal.task_queues.converter', 'rag-converter-task-queue');
         config()->set('temporal.task_queues.ingestion', 'rag-ingestion-task-queue');
         config()->set('temporal.ingestion.provider', 'ollama');
@@ -68,7 +67,6 @@ class IngestSourceWorkflowPayloadFactoryTest extends TestCase
         $this->assertSame('daily', $payload['refresh']['cadence']);
         $this->assertSame('etag-a', $payload['refresh']['etag']);
         $this->assertSame('rag-workflow-task-queue', $payload['task_queues']['workflow']);
-        $this->assertSame('rag-scraper-task-queue', $payload['task_queues']['scraper']);
         $this->assertSame('rag-converter-task-queue', $payload['task_queues']['converter']);
         $this->assertSame('rag-ingestion-task-queue', $payload['task_queues']['ingestion']);
         $this->assertSame('ollama', $payload['ingestion']['provider']);
@@ -171,46 +169,4 @@ class IngestSourceWorkflowPayloadFactoryTest extends TestCase
         $this->assertStringNotContainsString('converter.example.test', json_encode($payload, JSON_THROW_ON_ERROR));
     }
 
-    public function test_it_carries_scraper_request_metadata_for_temporal_scraper_payload(): void
-    {
-        config()->set('temporal.storage.mode', 'shared');
-        config()->set('temporal.storage.shared_root', '/shared');
-
-        $factory = app(IngestSourceWorkflowPayloadFactory::class);
-        $sourceId = $factory->sourceId('lubeck', 'https://uni-luebeck.de');
-        $paths = $factory->storagePaths($sourceId);
-
-        $payload = $factory->input(
-            new PipelineTask([
-                'task_id' => 'task-lubeck',
-                'dataset_id' => 'lubeck',
-            ]),
-            new PipelineJob([
-                'job_id' => 'ingest-lubeck',
-                'job_type' => PipelineJob::TYPE_INGEST,
-            ]),
-            new IngestionSource([
-                'source_id' => $sourceId,
-                'source_url' => 'https://uni-luebeck.de',
-                'content_hash' => 'hash',
-                'raw_storage_path' => $paths['raw'],
-                'markdown_storage_path' => $paths['markdown'],
-                'metadata' => [
-                    'request' => [
-                        'metadata' => [
-                            'source' => 'scraper-task-ui',
-                            'catalog_task_id' => 'lubeck-1782475438791',
-                            'site_profile_path' => '/var/www/html/profiles/Lubeck.json',
-                            'max_pages' => 25,
-                        ],
-                    ],
-                ],
-            ]),
-        );
-
-        $this->assertSame('scraper-task-ui', $payload['metadata']['request']['metadata']['source']);
-        $this->assertSame('lubeck-1782475438791', $payload['metadata']['request']['metadata']['catalog_task_id']);
-        $this->assertSame('/var/www/html/profiles/Lubeck.json', $payload['metadata']['request']['metadata']['site_profile_path']);
-        $this->assertSame(25, $payload['metadata']['request']['metadata']['max_pages']);
-    }
 }

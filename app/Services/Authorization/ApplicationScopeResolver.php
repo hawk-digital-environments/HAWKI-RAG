@@ -215,7 +215,7 @@ readonly class ApplicationScopeResolver
             ? null
             : [$actor->tenantId()];
 
-        $identities = $this->identities->findAllByIdentifiers([$identifier], $tenantIds);
+        $identities = $this->identities->findAllSupportedByExternalUserIds([$identifier], $tenantIds);
 
         return $identities
             ->pluck('internal_user_id')

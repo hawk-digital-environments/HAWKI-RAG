@@ -47,23 +47,9 @@ class IngestSourceWorkflow:
         workflow.logger.info("IngestSourceWorkflow started source_id=%s", source_id)
         retry_policy = _retry_policy()
 
-        scrape_result = await workflow.execute_activity(
-            "scrape_source",
-            workflow_input,
-            task_queue=_task_queue(workflow_input, "scraper", "rag-scraper-task-queue"),
-            start_to_close_timeout=timedelta(hours=2),
-            schedule_to_close_timeout=timedelta(hours=3),
-            retry_policy=retry_policy,
-        )
-        if scrape_result.get("status") != "success":
-            return _failed_result(workflow_input, "scrape_source", scrape_result)
-
         convert_result = await workflow.execute_activity(
             "inspect_and_convert_files",
-            {
-                "workflow_input": workflow_input,
-                "scrape_result": scrape_result,
-            },
+            {"workflow_input": workflow_input},
             task_queue=_task_queue(workflow_input, "converter", "rag-converter-task-queue"),
             start_to_close_timeout=timedelta(hours=2),
             schedule_to_close_timeout=timedelta(hours=3),
@@ -76,7 +62,6 @@ class IngestSourceWorkflow:
             "ingest_markdown_files",
             {
                 "workflow_input": workflow_input,
-                "scrape_result": scrape_result,
                 "convert_result": convert_result,
             },
             task_queue=_task_queue(workflow_input, "ingestion", "rag-ingestion-task-queue"),

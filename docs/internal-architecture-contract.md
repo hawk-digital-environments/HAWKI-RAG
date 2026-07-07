@@ -24,6 +24,10 @@ denormalized payload writes.
 7. No legacy compatibility API routes are registered on this branch. Shared
    legacy-named services may remain only as internal adapters behind active
    app-search, app-ingestion, or V2 flows.
+8. `user_identifier` is an opaque Laravel-only lookup value. Scope resolution
+   matches it exactly against `user_identities.external_user_id`, never through
+   `email` or `username`, and excludes ambiguous multi-provider matches within
+   one tenant from federated unioning.
 
 ## Allowed Responsibilities By File
 
@@ -94,6 +98,11 @@ denormalized payload writes.
   - `reads-federated`: all tenants
   - `reads-protected`: protected resources are readable without grant-based
     narrowing
+- Federated identity union means:
+  - same exact `external_user_id` may union across tenants
+  - `tenant + provider + external_user_id` is the supported uniqueness key
+  - one tenant must not contribute scope when that exact external id exists
+    under multiple providers in that same tenant
 - Protected heaps and corpora are hidden from ordinary application reads when
   authorization is enabled and the caller lacks `reads-protected`.
 - When authorization is disabled:

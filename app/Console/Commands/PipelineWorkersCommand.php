@@ -28,7 +28,7 @@ class PipelineWorkersCommand extends Command
         $this->newLine();
 
         $this->line('Start all Temporal workers:');
-        $this->line('  docker compose up -d hawki-rag-temporal-workflow-worker hawki-rag-temporal-scraper-worker hawki-rag-temporal-converter-worker hawki-rag-temporal-ingestion-worker');
+        $this->line('  docker compose up -d hawki-rag-temporal-workflow-worker hawki-rag-temporal-converter-worker hawki-rag-temporal-ingestion-worker');
         $this->newLine();
 
         $this->table(['Worker', 'Container', 'Task queue', 'Registers'], [
@@ -37,12 +37,6 @@ class PipelineWorkersCommand extends Command
                 'hawki-rag-temporal-workflow-worker',
                 (string) ($queues['workflow'] ?? 'rag-workflow-task-queue'),
                 'IngestSourceWorkflow',
-            ],
-            [
-                'scraper adapter',
-                'hawki-rag-temporal-scraper-worker',
-                (string) ($queues['scraper'] ?? 'rag-scraper-task-queue'),
-                'scrape_source',
             ],
             [
                 'converter adapter',

@@ -372,6 +372,7 @@ paths:
           required: true
           schema:
             type: string
+          description: Opaque external user identifier matched exactly by Laravel.
         - in: query
           name: heap_id
           schema:
@@ -399,6 +400,7 @@ paths:
           required: true
           schema:
             type: string
+          description: Opaque external user identifier matched exactly by Laravel.
         - $ref: "#/components/parameters/Page"
         - $ref: "#/components/parameters/PerPage"
       responses:
@@ -980,7 +982,7 @@ components:
           nullable: true
         sourceType:
           type: string
-          enum: [api, upload, scrape, manual]
+          enum: [api, upload, manual]
         originalFilename:
           type: string
           nullable: true
@@ -1132,8 +1134,10 @@ components:
         user_identifier:
           type: string
           description: >
-            Optional external user identifier used by Laravel for grant-based
-            narrowing when authorization is enabled. Never forwarded to Python.
+            Optional opaque external user identifier used by Laravel for
+            grant-based narrowing when authorization is enabled. It matches
+            exactly against external_user_id, never falls back through email or
+            username, and is never forwarded to Python.
       required: [query]
       additionalProperties: false
     SearchHit:

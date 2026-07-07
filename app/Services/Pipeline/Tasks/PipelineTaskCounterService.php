@@ -20,10 +20,6 @@ readonly class PipelineTaskCounterService
     {
         $byStatus = $jobs->countBy('status');
         $running = $this->runningCount($jobs);
-        $completedScrapeJobs = $jobs
-            ->where('job_type', PipelineJob::TYPE_SCRAPE)
-            ->where('status', PipelineJob::STATUS_COMPLETED)
-            ->count();
         $convertJobs = $jobs
             ->where('job_type', PipelineJob::TYPE_CONVERT)
             ->count();
@@ -31,12 +27,10 @@ readonly class PipelineTaskCounterService
             ->where('job_type', PipelineJob::TYPE_CONVERT)
             ->where('status', PipelineJob::STATUS_COMPLETED)
             ->count();
-        $scrapeStageRows = $this->stageCount($jobs, 'scrape');
         $convertStageRows = $this->stageCount($jobs, 'convert');
 
         $counters = [
             'queued' => (int) ($byStatus[PipelineJob::STATUS_QUEUED] ?? 0),
-            'scraped' => $completedScrapeJobs > 0 ? $completedScrapeJobs : $this->stageProcessedCount($jobs, 'scrape'),
             'files_found' => $convertJobs > 0 ? $convertJobs : $this->stageTotalCount($jobs, 'convert'),
             'converted' => $completedConvertJobs > 0 ? $completedConvertJobs : $this->stageProcessedCount($jobs, 'convert'),
             'ingested' => $jobs
@@ -56,7 +50,6 @@ readonly class PipelineTaskCounterService
             'jobs_completed' => (int) ($byStatus[PipelineJob::STATUS_COMPLETED] ?? 0),
             'jobs_failed' => $counters['failed'],
             'jobs_skipped' => $counters['skipped'],
-            'scrape_jobs' => $jobs->where('job_type', PipelineJob::TYPE_SCRAPE)->count() ?: $scrapeStageRows,
             'convert_jobs' => $convertJobs ?: $convertStageRows,
             'ingest_jobs' => $jobs->where('job_type', PipelineJob::TYPE_INGEST)->count(),
         ]);
@@ -69,7 +62,6 @@ readonly class PipelineTaskCounterService
     {
         return [
             'queued' => 0,
-            'scraped' => 0,
             'files_found' => 0,
             'converted' => 0,
             'ingested' => 0,
@@ -83,7 +75,6 @@ readonly class PipelineTaskCounterService
             'jobs_completed' => 0,
             'jobs_failed' => 0,
             'jobs_skipped' => 0,
-            'scrape_jobs' => 0,
             'convert_jobs' => 0,
             'ingest_jobs' => 0,
         ];

@@ -15,7 +15,7 @@ Accepted request fields:
 - `query`: required string
 - `limit`: optional integer
 - `filters`: optional canonical filter expression
-- `user_identifier`: optional string used only by Laravel when authorization is enabled
+- `user_identifier`: optional opaque external user identifier used only by Laravel when authorization is enabled
 
 Accepted limit aliases:
 
@@ -23,6 +23,22 @@ Accepted limit aliases:
 - `k`
 
 Laravel normalizes those aliases into `limit` before any bridge call.
+
+## User Identifier Contract
+
+When present, `user_identifier` follows one strict contract:
+
+- it is treated as an opaque string
+- matching is exact against `user_identities.external_user_id`
+- Laravel does not fall back through `email` or `username`
+- uniqueness is scoped by `tenant + provider + external_user_id`
+- federated reads union only unambiguous exact matches
+
+Unsupported ambiguity case:
+
+- if the same `external_user_id` exists under more than one provider inside the
+  same tenant, that tenant does not contribute access scope for that identifier
+  until the ambiguity is resolved
 
 ## Canonical Filter Expression
 

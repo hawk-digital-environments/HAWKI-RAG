@@ -113,7 +113,6 @@ health:
 	check_running hawki_rag_bridge 0; \
 	check_running hawki_rag_rerank 0; \
 	check_running hawki_rag_temporal_workflow_worker 0; \
-	check_running hawki_rag_temporal_scraper_worker 0; \
 	check_running hawki_rag_temporal_converter_worker 0; \
 	check_running hawki_rag_temporal_ingestion_worker 0; \
 	echo ""; \

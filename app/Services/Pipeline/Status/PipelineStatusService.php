@@ -13,7 +13,6 @@ use Symfony\Component\Clock\Clock;
 readonly class PipelineStatusService
 {
     public function __construct(
-        private PipelineScrapeStatusService $scrapeStatuses,
         private PipelineConversionStatusService $conversionStatuses,
         private PipelineIngestStatusService $ingestStatuses,
         private PipelineStateService $pipelineState,
@@ -29,8 +28,7 @@ readonly class PipelineStatusService
     public function show(string $jobId): array
     {
         $tracked = $this->pipelineState->status($jobId);
-        $scrape = $this->scrapeStatuses->stage($jobId);
-        $datasetPath = $tracked['datasetPath'] ?? $scrape['datasetPath'] ?? null;
+        $datasetPath = $tracked['datasetPath'] ?? null;
         $convert = $this->convertStage($jobId, $datasetPath);
         $ingest = $this->ingestStatuses->stage($jobId, $datasetPath);
         $tracked = $this->pipelineState->status($jobId);
@@ -39,11 +37,10 @@ readonly class PipelineStatusService
             'success' => true,
             'jobId' => $jobId,
             'datasetPath' => $datasetPath,
-            'currentStage' => $tracked['currentStage'] ?? $this->stageMerger->currentStage($scrape, $convert, $ingest),
-            'status' => $tracked['status'] ?? $this->stageMerger->overallStatus($scrape, $convert, $ingest),
+            'currentStage' => $tracked['currentStage'] ?? $this->stageMerger->currentStage($convert, $ingest),
+            'status' => $tracked['status'] ?? $this->stageMerger->overallStatus($convert, $ingest),
             'documentCounts' => $tracked['documentCounts'] ?? null,
             'stages' => [
-                'scrape' => $this->stageMerger->mergeTrackedStage($scrape, $tracked['stages']['scrape'] ?? null),
                 'convert' => $this->stageMerger->mergeTrackedStage($convert, $tracked['stages']['convert'] ?? null),
                 'ingest' => $this->stageMerger->mergeTrackedStage($ingest, $tracked['stages']['ingest'] ?? null),
             ],

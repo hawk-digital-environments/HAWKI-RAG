@@ -18,7 +18,6 @@ class PipelineSharedStorageHealthCheckTest extends TestCase
 
         config()->set('temporal.storage.shared_root', $path);
         config()->set('temporal.storage.shared_storage_web_user', '');
-        config()->set('scraper.storage_path', $path);
         config()->set('config.shared_root', $path);
 
         try {

@@ -34,24 +34,21 @@ readonly class UserIdentityRepository
         return $identity instanceof UserIdentity ? $identity : null;
     }
 
-    /**
-     * @param list<string|null> $identifiers
-     */
-    public function findByTenantAndIdentifiers(string $tenantId, array $identifiers): ?UserIdentity
+    public function findByTenantAndProviderAndExternalUserId(
+        string $tenantId,
+        string $provider,
+        string $externalUserId,
+    ): ?UserIdentity
     {
-        $candidates = $this->normalizedIdentifiers($identifiers);
-
-        if ($candidates === []) {
+        $resolvedExternalUserId = $this->stringValue($externalUserId);
+        if ($resolvedExternalUserId === null) {
             return null;
         }
 
         $identity = UserIdentity::query()
             ->where('tenant_id', $tenantId)
-            ->where(function ($query) use ($candidates): void {
-                $query->whereIn('external_user_id', $candidates)
-                    ->orWhereIn('email', $candidates)
-                    ->orWhereIn('username', $candidates);
-            })
+            ->where('provider', $provider)
+            ->where('external_user_id', $resolvedExternalUserId)
             ->orderByDesc('updated_at')
             ->orderByDesc('id')
             ->first();
@@ -64,7 +61,7 @@ readonly class UserIdentityRepository
      * @param list<string>|null $tenantIds
      * @return Collection<int, UserIdentity>
      */
-    public function findAllByIdentifiers(array $identifiers, ?array $tenantIds = null): Collection
+    public function findAllSupportedByExternalUserIds(array $identifiers, ?array $tenantIds = null): Collection
     {
         $candidates = $this->normalizedIdentifiers($identifiers);
 
@@ -77,14 +74,31 @@ readonly class UserIdentityRepository
                 $tenantIds !== null && $tenantIds !== [],
                 fn ($query) => $query->whereIn('tenant_id', $tenantIds),
             )
-            ->where(function ($query) use ($candidates): void {
-                $query->whereIn('external_user_id', $candidates)
-                    ->orWhereIn('email', $candidates)
-                    ->orWhereIn('username', $candidates);
-            })
+            ->whereIn('external_user_id', $candidates)
+            ->orderBy('tenant_id')
+            ->orderBy('external_user_id')
             ->orderByDesc('updated_at')
             ->orderByDesc('id')
-            ->get();
+            ->get()
+            ->groupBy(function (UserIdentity $identity): string {
+                return (string) $identity->tenant_id.'|'.(string) $identity->external_user_id;
+            })
+            ->map(function (Collection $identities): ?UserIdentity {
+                $providers = $identities->pluck('provider')
+                    ->filter(fn (mixed $provider): bool => is_string($provider) && trim($provider) !== '')
+                    ->unique()
+                    ->values();
+
+                if ($providers->count() !== 1) {
+                    return null;
+                }
+
+                $identity = $identities->first();
+
+                return $identity instanceof UserIdentity ? $identity : null;
+            })
+            ->filter(fn (mixed $identity): bool => $identity instanceof UserIdentity)
+            ->values();
     }
 
     /**
@@ -96,6 +110,15 @@ readonly class UserIdentityRepository
         ?User $user = null,
     ): UserIdentity {
         $record = $this->findByIssuerAndSubject($identity->issuer, $identity->subject);
+        $tenantId = isset($context['tenant_id']) && is_string($context['tenant_id']) ? trim($context['tenant_id']) : null;
+
+        if (! $record instanceof UserIdentity && $tenantId !== null && $tenantId !== '') {
+            $record = $this->findByTenantAndProviderAndExternalUserId(
+                $tenantId,
+                $identity->provider,
+                $identity->externalUserId,
+            );
+        }
 
         if (! $record instanceof UserIdentity) {
             $record = new UserIdentity([
@@ -133,7 +156,7 @@ readonly class UserIdentityRepository
 
         $record->fill([
             'user_id' => $user->id,
-            'provider' => 'local',
+            'provider' => UserIdentity::PROVIDER_LOCAL,
             'external_user_id' => (string) $user->id,
             'email' => $user->email,
             'username' => $user->username,
@@ -156,10 +179,12 @@ readonly class UserIdentityRepository
         string $applicationId,
         string $internalUserId,
         string $identifier,
+        string $provider = UserIdentity::PROVIDER_TENANT_IDENTITY,
+        string $source = 'group-member',
     ): UserIdentity {
-        $issuer = 'rawki://identity/'.$tenantId;
-        $subject = 'identifier:'.hash('sha256', $identifier);
-        $record = $this->findByIssuerAndSubject($issuer, $subject);
+        $issuer = 'rawki://identity/'.$tenantId.'/'.$provider;
+        $subject = 'identifier:'.hash('sha256', $provider.'|'.$identifier);
+        $record = $this->findByTenantAndProviderAndExternalUserId($tenantId, $provider, $identifier);
 
         if (! $record instanceof UserIdentity) {
             $record = new UserIdentity([
@@ -169,14 +194,15 @@ readonly class UserIdentityRepository
         }
 
         $record->fill([
-            'provider' => 'tenant-identity',
+            'provider' => $provider,
             'external_user_id' => $identifier,
-            'email' => filter_var($identifier, FILTER_VALIDATE_EMAIL) ? $identifier : null,
-            'username' => $identifier,
+            'email' => null,
+            'username' => null,
             'claims' => [
-                'source' => 'group-member',
+                'source' => $source,
                 'tenant_id' => $tenantId,
                 'application_id' => $applicationId,
+                'provider' => $provider,
             ],
             'tenant_id' => $tenantId,
             'application_id' => $applicationId,

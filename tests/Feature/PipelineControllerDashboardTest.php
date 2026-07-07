@@ -51,7 +51,6 @@ class PipelineControllerDashboardTest extends TestCase
             ->assertCreated()
             ->assertJsonPath('success', true)
             ->assertJsonPath('heapId', 'controller-test')
-            ->assertJsonPath('task.stages.scrape.status', 'n/a')
             ->assertJsonPath('task.stages.convert.status', 'processing')
             ->assertJsonPath('task.stages.ingest.status', PipelineJob::STATUS_QUEUED);
         $this->assertArrayNotHasKey('datasetId', $response->json());
@@ -91,69 +90,6 @@ class PipelineControllerDashboardTest extends TestCase
             && data_get($request->data(), 'workflow_input.ingestion.graph') === false);
 
         File::deleteDirectory($root);
-    }
-
-    public function test_scraper_task_detail_includes_temporal_stage_rows(): void
-    {
-        $task = PipelineTask::query()->create([
-            'task_id' => 'task-scraper-stage-detail',
-            'dataset_id' => 'lubeck',
-            'status' => PipelineTask::STATUS_COMPLETED,
-            'started_at' => now()->subMinute(),
-            'finished_at' => now(),
-            'counters' => ['jobs_total' => 1],
-            'metadata' => [
-                'request' => [
-                    'metadata' => [
-                        'source' => 'scraper-task-ui',
-                        'max_pages' => 300,
-                    ],
-                ],
-            ],
-        ]);
-        $job = PipelineJob::query()->create([
-            'job_id' => 'ingest-scraper-stage-detail',
-            'task_id' => $task->task_id,
-            'job_type' => PipelineJob::TYPE_INGEST,
-            'status' => PipelineJob::STATUS_COMPLETED,
-            'source_url' => 'https://uni-luebeck.de',
-            'started_at' => now()->subMinute(),
-            'finished_at' => now(),
-        ]);
-
-        foreach ([
-            ['stage' => 'scrape', 'counts' => ['total' => 4, 'processed' => 4]],
-            ['stage' => 'convert', 'counts' => ['total' => 21, 'processed' => 21]],
-            ['stage' => 'ingest', 'counts' => ['total' => 21, 'processed' => 21]],
-        ] as $stage) {
-            PipelineStageState::query()->create([
-                'pipeline_job_id' => $job->id,
-                'job_id' => $job->job_id,
-                'stage' => $stage['stage'],
-                'status' => PipelineJob::STATUS_COMPLETED,
-                'counts' => $stage['counts'],
-                'metadata' => [],
-                'errors' => [],
-                'warnings' => [],
-            ]);
-        }
-
-        $this->getJson('/api/pipeline/tasks/task-scraper-stage-detail')
-            ->assertOk()
-            ->assertJsonPath('success', true)
-            ->assertJsonPath('task.counters.scraped', 4)
-            ->assertJsonPath('task.counters.files_found', 21)
-            ->assertJsonPath('task.counters.converted', 21)
-            ->assertJsonPath('task.stages.scrape.status', PipelineJob::STATUS_FAILED)
-            ->assertJsonPath('task.stages.scrape.counts.pagesCrawled', 4)
-            ->assertJsonPath('task.stages.scrape.counts.totalPages', 300)
-            ->assertJsonPath('task.stages.scrape.counts.pageLimit', 300)
-            ->assertJsonPath('task.stages.scrape.errors.0', 'Scraper stopped at 4/300 pages before reaching the configured page limit.')
-            ->assertJsonPath('task.stages.convert.status', PipelineJob::STATUS_COMPLETED)
-            ->assertJsonPath('task.stages.convert.counts.convertedFiles', 21)
-            ->assertJsonPath('task.stages.convert.counts.sourceFiles', 21)
-            ->assertJsonPath('task.stages.ingest.status', PipelineJob::STATUS_COMPLETED)
-            ->assertJsonPath('task.stages.ingest.counts.completed', 21);
     }
 
     public function test_native_upload_rejects_non_raganything_file_type(): void
@@ -237,79 +173,6 @@ class PipelineControllerDashboardTest extends TestCase
         File::deleteDirectory($root);
     }
 
-    public function test_custom_converter_upload_uses_saved_settings_without_sending_secret(): void
-    {
-        $root = storage_path('framework/testing/pipeline-upload-api-settings');
-        $settingsPath = storage_path('framework/testing/pipeline-upload-api-settings.json');
-        File::deleteDirectory($root);
-        File::delete($settingsPath);
-        config()->set('config.operator_settings_path', $settingsPath);
-        config()->set('temporal.storage.shared_root', $root);
-        config()->set('file_converter.raganything_supported_extensions', ['pdf']);
-        Http::fake([
-            '*temporal/workflows/ingest' => Http::response([
-                'workflow_id' => 'ingest-source-settings-workflow',
-                'run_id' => 'upload-settings-run-1',
-            ]),
-        ]);
-
-        $this->withSession(['_token' => 'test-token'])
-            ->putJson('/settings/config', [
-                'customConverter' => [
-                    'enabled' => true,
-                    'supportedExtensions' => '',
-                    'apiUrl' => 'https://converter.example.test',
-                    'startPath' => '/extract',
-                    'apiKey' => 'stored-converter-key',
-                ],
-                'models' => [
-                    'provider' => 'ollama',
-                    'graphModel' => 'llama3.2:3b',
-                    'embeddingModel' => 'bge-m3',
-                ],
-            ], ['X-CSRF-TOKEN' => 'test-token'])
-            ->assertOk();
-
-        $this->actingAsApplication();
-
-        $response = $this->post('/api/pipeline/files', [
-            'heap_id' => 'saved-converter-test',
-            'converter_mode' => 'custom',
-            'file' => UploadedFile::fake()->create('diagram.svg', 12, 'image/svg+xml'),
-        ], [
-            'Accept' => 'application/json',
-        ]);
-
-        $response
-            ->assertCreated()
-            ->assertJsonPath('success', true)
-            ->assertJsonPath('heapId', 'saved-converter-test');
-        $this->assertArrayNotHasKey('datasetId', $response->json());
-
-        $profilePath = null;
-        Http::assertSent(function ($request) use (&$profilePath): bool {
-            $data = $request->data();
-            $profilePath = data_get($data, 'workflow_input.custom_converter_profile_path');
-
-            return $request->url() === config('config.hawki_rag_bridge_url').'/temporal/workflows/ingest'
-                && data_get($data, 'workflow_input.converter_mode') === 'custom'
-                && data_get($data, 'workflow_input.ingestion.provider') === 'ollama'
-                && data_get($data, 'workflow_input.ingestion.graph_model') === 'llama3.2:3b'
-                && data_get($data, 'workflow_input.ingestion.embedding_model') === 'bge-m3'
-                && is_string($profilePath)
-                && ! str_contains(json_encode($data, JSON_UNESCAPED_SLASHES), 'stored-converter-key');
-        });
-
-        $this->assertIsString($profilePath);
-        $profile = json_decode(File::get($profilePath), true);
-        $this->assertSame('https://converter.example.test', $profile['converter_url']);
-        $this->assertSame('/extract', $profile['converter_start_path']);
-        $this->assertSame('stored-converter-key', $profile['converter_token']);
-
-        File::deleteDirectory($root);
-        File::delete($settingsPath);
-    }
-
     public function test_retry_failed_temporal_job_uses_unique_retry_workflow_id(): void
     {
         Http::fake([
@@ -349,7 +212,7 @@ class PipelineControllerDashboardTest extends TestCase
             'metadata' => [
                 'request' => [
                     'metadata' => [
-                        'source' => 'scraper-task-ui',
+                        'source' => 'pipeline-upload',
                         'max_pages' => 1,
                     ],
                 ],
@@ -497,126 +360,6 @@ class PipelineControllerDashboardTest extends TestCase
         $this->assertDirectoryDoesNotExist($sourceRoot);
 
         File::deleteDirectory($root);
-    }
-
-    public function test_pipeline_stage_logs_can_be_viewed_and_downloaded(): void
-    {
-        $logPath = storage_path('framework/testing/pipeline-stage-logs/comm_logs.json');
-        File::ensureDirectoryExists(dirname($logPath));
-        File::put($logPath, json_encode([
-            'message' => 'pipeline.stage',
-            'context' => [
-                'event' => 'pipeline.stage',
-                'stage' => 'scrape',
-                'status' => 'success',
-                'job_id' => 'job-stage-logs',
-                'pipeline_stage' => 'execution',
-                'message' => 'Crawler submitted pages.',
-            ],
-            'level_name' => 'INFO',
-            'datetime' => '2026-06-19T12:00:00+00:00',
-        ], JSON_UNESCAPED_SLASHES).PHP_EOL);
-        config()->set('logging.channels.communication.path', $logPath);
-
-        $task = PipelineTask::query()->create([
-            'task_id' => 'task-stage-logs',
-            'dataset_id' => 'logs-dataset',
-            'status' => PipelineTask::STATUS_RUNNING,
-            'started_at' => now(),
-            'counters' => ['jobs_total' => 1],
-            'metadata' => ['request' => ['mode' => 'scrape_convert_ingest']],
-        ]);
-        $job = PipelineJob::query()->create([
-            'job_id' => 'job-stage-logs',
-            'task_id' => $task->task_id,
-            'job_type' => PipelineJob::TYPE_SCRAPE,
-            'status' => PipelineJob::STATUS_COMPLETED,
-            'source_url' => 'https://example.test/logs',
-            'local_path' => '/app/shared/logs-dataset',
-            'metadata' => ['events' => []],
-        ]);
-        PipelineStageState::query()->create([
-            'pipeline_job_id' => $job->id,
-            'job_id' => $job->job_id,
-            'stage' => 'scrape',
-            'status' => PipelineJob::STATUS_COMPLETED,
-            'counts' => ['pages' => 3],
-            'metadata' => ['worker' => 'scraper'],
-            'warnings' => [],
-            'errors' => [],
-        ]);
-
-        $response = $this->getJson('/api/pipeline/tasks/task-stage-logs/stages/scraper/logs')
-            ->assertOk()
-            ->assertJsonPath('success', true)
-            ->assertJsonPath('log.filename', 'scraper_log_logs-dataset.txt')
-            ->assertJsonPath('log.stage', 'scrape')
-            ->assertJsonPath('log.label', 'Scraper');
-
-        $text = (string) $response->json('log.text');
-        $this->assertStringContainsString('Scraper crawler.log entries', $text);
-        $this->assertStringNotContainsString('HAWKI-RAG Scraper stage log', $text);
-        $this->assertStringNotContainsString('Job: job-stage-logs', $text);
-        $this->assertStringNotContainsString('Crawler submitted pages.', $text);
-
-        $download = $this->get('/api/pipeline/tasks/task-stage-logs/stages/scraper/logs/download')
-            ->assertOk();
-
-        $this->assertStringContainsString(
-            'filename="scraper_log_logs-dataset.txt"',
-            (string) $download->headers->get('content-disposition')
-        );
-        $downloadText = (string) $download->getContent();
-        $this->assertStringContainsString('HAWKI-RAG Scraper stage log', $downloadText);
-        $this->assertStringContainsString('Job: job-stage-logs', $downloadText);
-        $this->assertStringContainsString('Crawler submitted pages.', $downloadText);
-
-        File::deleteDirectory(dirname($logPath));
-    }
-
-    public function test_scrape_stage_log_excludes_direct_scraper_worker_entries(): void
-    {
-        $runtimeRoot = storage_path('framework/testing/pipeline-stage-runtime-scrape');
-        $runtimeLogPath = $runtimeRoot.'/scraper_worker.log';
-        File::ensureDirectoryExists($runtimeRoot);
-        File::put($runtimeLogPath, implode(PHP_EOL, [
-            "2026-06-21 10:00:00 INFO temporal_rag.activities scrape_source:start {'source_id': 'source_scrape_direct', 'raw_dir': '/shared/sources/source_scrape_direct/raw', 'task_queue': 'rag-scraper-task-queue'}",
-            "2026-06-21 10:00:01 INFO temporal_rag.activities scrape_source:end {'source_id': 'source_other', 'raw_dir': '/shared/sources/source_other/raw', 'task_queue': 'rag-scraper-task-queue'}",
-        ]).PHP_EOL);
-        config()->set('config.pipeline_stage_runtime_log_paths.scrape', [$runtimeLogPath]);
-
-        $task = PipelineTask::query()->create([
-            'task_id' => 'task-direct-scrape-logs',
-            'dataset_id' => 'direct-scrape-dataset',
-            'status' => PipelineTask::STATUS_RUNNING,
-            'started_at' => now(),
-            'counters' => ['jobs_total' => 1],
-            'metadata' => ['request' => ['mode' => 'scrape_convert_ingest']],
-        ]);
-        PipelineJob::query()->create([
-            'job_id' => 'job-direct-scrape',
-            'task_id' => $task->task_id,
-            'source_id' => 'source_scrape_direct',
-            'job_type' => PipelineJob::TYPE_SCRAPE,
-            'status' => PipelineJob::STATUS_RUNNING,
-            'current_stage' => 'scrape_source',
-            'source_url' => 'https://example.test/direct-scrape',
-            'local_path' => '/shared/sources/source_scrape_direct/raw',
-            'metadata' => ['source_id' => 'source_scrape_direct'],
-        ]);
-
-        $response = $this->getJson('/api/pipeline/tasks/task-direct-scrape-logs/stages/scrape/logs')
-            ->assertOk()
-            ->assertJsonPath('success', true);
-
-        $text = (string) $response->json('log.text');
-        $this->assertStringNotContainsString('Scraper worker log entries', $text);
-        $this->assertStringNotContainsString('scraper_worker.log', $text);
-        $this->assertStringNotContainsString('scrape_source:start', $text);
-        $this->assertStringNotContainsString('source_scrape_direct', $text);
-        $this->assertStringNotContainsString('source_other', $text);
-
-        File::deleteDirectory($runtimeRoot);
     }
 
     public function test_convert_stage_log_includes_direct_converter_worker_entries(): void

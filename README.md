@@ -1,7 +1,7 @@
 # HAWKI RAG
 
 HAWKI RAG is HAWKI's retrieval service for searchable, grounded answers over managed
-content. It ships as a Docker stack with the web app, ingestion pipeline, search
+content. It ships as a Docker stack with the API app, ingestion pipeline, search
 databases, workflow engine, and local AI models included.
 
 You do not need to install PHP, Python, PostgreSQL, Qdrant, Neo4j, or Ollama manually.
@@ -32,10 +32,8 @@ Start HAWKI RAG:
 make up-core
 ```
 
-This starts the full local experience, including the Laravel UI, RAG services,
-Temporal workers, Temporal UI/devtools, Qdrant, Neo4j, Ollama, reranker, and
-fresh Vite/Svelte UI assets.
-Use `make up-core` for the local full-stack experience.
+This starts the local API and pipeline stack, including Laravel, the retrieval
+bridge, Temporal workers, Temporal UI/devtools, Qdrant, Neo4j, Ollama, and the reranker.
 
 Generate the application key once:
 
@@ -49,7 +47,7 @@ Check that everything is running:
 make health
 ```
 
-Open the app:
+Open the API host:
 
 ```text
 http://localhost:8080
@@ -61,30 +59,15 @@ Temporal UI:
 http://localhost:8081
 ```
 
-## Main Pages
+Swagger UI:
 
-- Experience hub: `http://localhost:8080/hawki-rag`
-- Admin hub: `http://localhost:8080/admin`
-- Playground: `http://localhost:8080/hawki-rag-playground`
-- Upload/control page: `http://localhost:8080/pipeline-controller`
-- Documents: `http://localhost:8080/documents`
-- Graph explorer: `http://localhost:8080/neo4j-graph-explorer`
+```text
+http://localhost:8080/swagger/index.html
+```
 
 ## Add Content
 
-Use the upload/control page when possible. For a direct import, run:
-
-```bash
-docker compose exec hawki_rag_app php artisan pipeline:start-task --source-url=https://example.edu
-```
-
-For repeated imports, add one of `daily`, `weekly`, or `monthly`:
-
-```bash
-docker compose exec hawki_rag_app php artisan pipeline:start-task --source-url=https://example.edu --refresh-cadence=daily
-```
-
-Before important imports, check the ingestion services:
+Use the canonical V2 endpoints from Swagger or your application client. Before important imports, check the ingestion services:
 
 ```bash
 docker compose exec hawki_rag_app php artisan pipeline:health
@@ -113,15 +96,14 @@ Production checklist:
 - Keep `.env` private.
 - Use HTTPS through a trusted reverse proxy.
 - Change all default passwords and tokens.
-- Configure the scraper and file-converter service URLs in `.env`.
+- Configure the file-converter service URLs in `.env`.
 - Back up PostgreSQL, Qdrant, Neo4j, and the shared storage volume.
-- Monitor disk usage as crawled files and embeddings grow over time.
+- Monitor disk usage as uploaded files, converted markdown, and embeddings grow over time.
 - Run `make health` after deployments or configuration changes.
 
 Required external services for ingestion:
 
 ```env
-EXTERNAL_SCRAPER_URL=http://crawl4ai-service
 EXTERNAL_CONVERTER_URL=http://hawki-toolkit-file-converter-file-converter-1
 ```
 

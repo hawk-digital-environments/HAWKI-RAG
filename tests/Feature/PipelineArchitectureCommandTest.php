@@ -16,7 +16,6 @@ class PipelineArchitectureCommandTest extends TestCase
         $this->assertSame(0, $exitCode);
         $this->assertStringContainsString('Temporal RAG ingestion architecture', $output);
         $this->assertStringContainsString('IngestSourceWorkflow', $output);
-        $this->assertStringContainsString('scrape_source', $output);
         $this->assertStringContainsString('inspect_and_convert_files', $output);
         $this->assertStringContainsString('ingest_markdown_files', $output);
         $this->assertStringContainsString('Persistence map', $output);

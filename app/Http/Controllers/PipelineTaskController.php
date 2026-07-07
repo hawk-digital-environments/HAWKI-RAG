@@ -6,7 +6,6 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\Pipeline\ListPipelineTaskEventsRequest;
 use App\Http\Requests\Pipeline\ListPipelineTasksRequest;
-use App\Http\Requests\Pipeline\StartPipelineTaskRequest;
 use App\Http\Requests\Pipeline\UpsertPipelineJobRequest;
 use App\Services\Pipeline\PipelineService;
 use Illuminate\Http\JsonResponse;
@@ -24,18 +23,6 @@ class PipelineTaskController extends Controller
             'success' => true,
             'tasks' => $this->pipeline->tasks->list($request->limit()),
         ]);
-    }
-
-    public function start(StartPipelineTaskRequest $request): JsonResponse
-    {
-        $task = $this->pipeline->tasks->start($request->validated());
-        $payload = $this->pipeline->tasks->show($task->task_id);
-
-        return response()->json([
-            'success' => true,
-            'taskId' => $task->task_id,
-            'task' => $payload,
-        ], 201);
     }
 
     public function show(string $taskId): JsonResponse

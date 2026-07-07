@@ -17,7 +17,6 @@ class PipelineTaskService
     public function __construct(
         private readonly PipelineTaskCounterService $counters,
         private readonly PipelineTaskPayloadService $payloads,
-        private readonly PipelineTaskStarter $starter,
         private readonly PipelineTaskJobUpdater $updater,
         private readonly PipelineTaskRetryService $retries,
         private readonly PipelineTaskCancellationService $cancellations,
@@ -28,11 +27,6 @@ class PipelineTaskService
         private readonly PipelineTaskJobsQuery $taskJobs,
         private readonly FailedPipelineJobsQuery $failedJobs,
     ) {}
-
-    public function start(array $input): PipelineTask
-    {
-        return $this->starter->start($input);
-    }
 
     public function show(string $taskId): ?array
     {

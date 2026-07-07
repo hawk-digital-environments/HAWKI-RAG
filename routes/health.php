@@ -41,20 +41,11 @@ Route::get('/up', fn () => response()->noContent())->middleware('throttle:hawki-
 
 /*
 |--------------------------------------------------------------------------
-| Web Health Surface
+| Public Health Surface
 |--------------------------------------------------------------------------
-| Browser/UI Health Add-ons. Die URLs bleiben bewusst stabil, damit bestehende
-| Dashboards und Frontend Polling ohne Umbau weiterlaufen.
+| Health Endpoints bleiben als einfache HTTP/JSON-Surfaces verfuegbar.
 */
-Route::middleware(['web', 'throttle:hawki-health'])->group(function () {
-    Route::get('/pipeline-health', function () {
-        return view('svelte-page', [
-            'title' => 'HAWKI Pipeline Health',
-            'vite' => ['resources/css/pipeline-health-dashboard.css', 'resources/css/dashboard-dark-theme.css', 'resources/js/pipeline-health-dashboard.js'],
-            'rootAttributes' => ['data-pipeline-health-dashboard' => true],
-        ]);
-    });
-
+Route::middleware(['throttle:hawki-health'])->group(function () {
     Route::get('/pipeline/health', [PipelineHealthController::class, 'show']);
     Route::get('/rag/health', [RagHealthController::class, 'show']);
     Route::get('/rag/monitor', [RagMonitorController::class, 'show']);
@@ -65,7 +56,7 @@ Route::middleware(['web', 'throttle:hawki-health'])->group(function () {
 |--------------------------------------------------------------------------
 | Internal API Health Surface
 |--------------------------------------------------------------------------
-| Token-geschuetzte Health Checks fuer interne Clients, Bruno, Scripts und
+| Token-geschuetzte Health Checks fuer interne Clients, Scripts und
 | System-to-System Calls. Laravel mountet diese Gruppe weiterhin unter /api.
 */
 Route::middleware(['api', 'auth:sanctum,oidc', 'throttle:hawki-api'])->prefix('api')->group(function () {

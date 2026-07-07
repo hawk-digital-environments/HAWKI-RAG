@@ -29,10 +29,9 @@ class PipelineArchitectureCommand extends Command
             ['Order', 'Workflow/activity', 'Task queue', 'Worker/container'],
             [
                 ['1', 'IngestSourceWorkflow', (string) ($queues['workflow'] ?? 'rag-workflow-task-queue'), 'hawki-rag-temporal-workflow-worker'],
-                ['2', 'scrape_source', (string) ($queues['scraper'] ?? 'rag-scraper-task-queue'), 'hawki-rag-temporal-scraper-worker'],
-                ['3', 'inspect_and_convert_files', (string) ($queues['converter'] ?? 'rag-converter-task-queue'), 'hawki-rag-temporal-converter-worker'],
-                ['4', 'ingest_markdown_files', (string) ($queues['ingestion'] ?? 'rag-ingestion-task-queue'), 'hawki-rag-temporal-ingestion-worker'],
-                ['5', 'mark_source_ready', (string) ($queues['ingestion'] ?? 'rag-ingestion-task-queue'), 'hawki-rag-temporal-ingestion-worker'],
+                ['2', 'inspect_and_convert_files', (string) ($queues['converter'] ?? 'rag-converter-task-queue'), 'hawki-rag-temporal-converter-worker'],
+                ['3', 'ingest_markdown_files', (string) ($queues['ingestion'] ?? 'rag-ingestion-task-queue'), 'hawki-rag-temporal-ingestion-worker'],
+                ['4', 'mark_source_ready', (string) ($queues['ingestion'] ?? 'rag-ingestion-task-queue'), 'hawki-rag-temporal-ingestion-worker'],
             ],
         );
 
@@ -45,7 +44,7 @@ class PipelineArchitectureCommand extends Command
                 ['PostgreSQL Temporal tables', 'Temporal server only', 'workflow history, state, retries, timers, schedules'],
                 ['Qdrant', 'ingest_markdown_files activity via RAG bridge', 'chunk embeddings and vector payload metadata'],
                 ['Neo4j', 'ingest_markdown_files activity via RAG bridge', 'entities, relationships, document graph, URL/source links'],
-                ['Shared/object storage', 'external scraper/converter and ingestion worker', 'raw files, Markdown files, ingest manifest'],
+                ['Shared/object storage', 'converter and ingestion workers', 'uploaded source files, Markdown files, ingest manifest'],
             ],
         );
 

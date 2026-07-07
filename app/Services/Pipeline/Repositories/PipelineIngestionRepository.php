@@ -78,7 +78,7 @@ readonly class PipelineIngestionRepository
 
     private function sourceType(Document $document): string
     {
-        return $this->stringValue($document->source_type) ?? Document::SOURCE_SCRAPE;
+        return $this->stringValue($document->source_type) ?? Document::SOURCE_UPLOAD;
     }
 
     private function stringValue(mixed $value): ?string

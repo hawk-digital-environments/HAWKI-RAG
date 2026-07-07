@@ -9,7 +9,7 @@ use Illuminate\Container\Attributes\Singleton;
 #[Singleton]
 readonly class PipelineStageStatusMerger
 {
-    public function currentStage(array $scrape, array $convert, array $ingest): string
+    public function currentStage(array $convert, array $ingest): string
     {
         if (! in_array($ingest['status'], ['unknown', 'pending', 'skipped', 'completed'], true)) {
             return 'ingest';
@@ -17,28 +17,22 @@ readonly class PipelineStageStatusMerger
         if (! in_array($convert['status'], ['unknown', 'pending', 'skipped', 'completed'], true)) {
             return 'convert';
         }
-        if (! in_array($scrape['status'], ['unknown', 'completed'], true)) {
-            return 'scrape';
-        }
         if ($ingest['status'] === 'completed') {
             return 'ingest';
         }
         if (in_array($convert['status'], ['completed', 'skipped'], true) && in_array($ingest['status'], ['unknown', 'pending'], true)) {
             return 'ingest';
         }
-        if ($scrape['status'] === 'completed' && in_array($convert['status'], ['unknown', 'pending', 'skipped'], true)) {
-            return 'convert';
-        }
         if ($convert['status'] === 'completed') {
             return 'convert';
         }
 
-        return 'scrape';
+        return 'convert';
     }
 
-    public function overallStatus(array $scrape, array $convert, array $ingest): string
+    public function overallStatus(array $convert, array $ingest): string
     {
-        $statuses = [$scrape['status'], $convert['status'], $ingest['status']];
+        $statuses = [$convert['status'], $ingest['status']];
         if (in_array('failed', $statuses, true)) {
             return 'failed';
         }
@@ -48,7 +42,7 @@ readonly class PipelineStageStatusMerger
         if (in_array('running', $statuses, true) || in_array('processing', $statuses, true) || in_array('received', $statuses, true)) {
             return 'running';
         }
-        if ($scrape['status'] === 'completed' && $convert['status'] === 'completed' && $ingest['status'] === 'completed') {
+        if ($convert['status'] === 'completed' && $ingest['status'] === 'completed') {
             return 'completed';
         }
 

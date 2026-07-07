@@ -18,7 +18,6 @@
 | `app/Http/Controllers/Health/` | Health and monitoring HTTP controllers, separated from core UI/API controllers. |
 | `app/Services/GraphService/Neo4jAdmin.php` | Clears all nodes/edges in Neo4j. |
 | `config/config.php` | App config mapping for endpoint URLs, model defaults, and ingest/log paths (keys listed below). |
-| `routes/web_ui.php` | Browser-facing UI pages and UI-consumed RAG endpoints. |
 | `routes/internal_api.php` | Token-authenticated internal/API-client endpoints mounted under `/api`. |
 | `routes/health.php` | Separate health and monitoring route sector for RAG monitor, ping, and pipeline health surfaces. |
 | `storage/` | Logs (`storage/logs`) and shared files (`storage/app/public`, bound to shared volume). |
@@ -51,7 +50,6 @@
 | `python_rag/` | Python RAG stack containing the FastAPI bridge, RAG API components, and reranker code. |
 | `python_rag/app/` | FastAPI entrypoints and route modules (`main.py`, `query.py`, `ingest.py`). |
 | `python_rag/temporal_rag/` | Temporal workflows, activities, adapters, and worker entrypoints for source ingestion. |
-| `python_rag/pipeline/` | Query and ingest pipeline logic/helpers. |
 | `python_rag/infrastructure/rerank/` | Local reranker adapter service. |
 | `python_rag/requirements.txt` | Python dependency manifest. |
 | `rag_storage/` | Local repo directory; in Compose, the RAG API working directory is the named volume `rag_storage` mounted at `/app/rag_storage` for `raganything_api_gpu` (GPU profile). `hawki_rag_bridge` uses `./python_rag:/app` and `shared_storage:/app/shared`. |
@@ -59,7 +57,7 @@
 ## Assets and build
 | Path | Description |
 |---|---|
-| `resources/` | Standard Laravel frontend resources (views/assets). |
+| `resources/` | Backend-owned resources that remain after UI removal. |
 | `public/` | Laravel public web root served by the web stack/reverse proxy. |
 
 ## Volumes (from compose)
@@ -72,5 +70,5 @@
 | Item | Location/Command |
 |---|---|
 | Laravel logs | `storage/logs/laravel.log` |
-| Temporal worker logs | `docker compose logs -f hawki-rag-temporal-workflow-worker hawki-rag-temporal-scraper-worker hawki-rag-temporal-converter-worker hawki-rag-temporal-ingestion-worker` |
+| Temporal worker logs | `docker compose logs -f hawki-rag-temporal-workflow-worker hawki-rag-temporal-converter-worker hawki-rag-temporal-ingestion-worker` |
 | Bridge/RAG API runtime logs | `docker logs <container>` |

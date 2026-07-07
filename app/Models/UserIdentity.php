@@ -12,6 +12,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class UserIdentity extends Model
 {
+    public const PROVIDER_LOCAL = 'local';
+    public const PROVIDER_TENANT_IDENTITY = 'tenant-identity';
+
     protected $table = 'user_identities';
 
     protected $fillable = [

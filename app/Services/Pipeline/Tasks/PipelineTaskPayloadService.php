@@ -141,7 +141,7 @@ readonly class PipelineTaskPayloadService
         }
 
         if (! $this->isUploadedFileTask($task)) {
-            return $this->trackedStages($job, $this->scrapePageLimit($task, $job));
+            return $this->trackedStages($job);
         }
 
         return $this->uploadedFileStages($job);
@@ -166,11 +166,6 @@ readonly class PipelineTaskPayloadService
         $tracked = $this->trackedStages($job);
 
         return [
-            'scrape' => [
-                'status' => 'n/a',
-                'message' => 'Mode not available for uploaded files.',
-                'counts' => [],
-            ],
             'convert' => [
                 'status' => $tracked['convert']['status'] ?? $convertStatus,
                 'message' => $this->stageMessage($convertStatus, [
@@ -223,7 +218,7 @@ readonly class PipelineTaskPayloadService
             return PipelineJob::STATUS_COMPLETED;
         }
 
-        if (in_array($phase, ['convert', 'temporal.workflow_starting', 'temporal.workflow_started', 'scrape_source', 'inspect_and_convert_files'], true)) {
+        if (in_array($phase, ['convert', 'temporal.workflow_starting', 'temporal.workflow_started', 'inspect_and_convert_files'], true)) {
             return 'processing';
         }
 
@@ -285,27 +280,23 @@ readonly class PipelineTaskPayloadService
     /**
      * @return array<string, array<string, mixed>>
      */
-    private function trackedStages(PipelineJob $job, ?int $scrapePageLimit = null): array
+    private function trackedStages(PipelineJob $job): array
     {
         if (! $job->relationLoaded('stages')) {
             return [];
         }
 
         return $job->stages
-            ->mapWithKeys(function (PipelineStageState $stage) use ($scrapePageLimit): array {
-                $counts = $this->stageCounts(
-                    (string) $stage->stage,
-                    is_array($stage->counts) ? $stage->counts : [],
-                    $scrapePageLimit,
-                );
+            ->mapWithKeys(function (PipelineStageState $stage): array {
+                $counts = $this->stageCounts((string) $stage->stage, is_array($stage->counts) ? $stage->counts : []);
 
                 return [
                     $stage->stage => [
-                        'status' => $this->stageStatus($stage, $counts),
+                        'status' => (string) $stage->status,
                         'startedAt' => $this->dateValue($stage->started_at),
                         'completedAt' => $this->dateValue($stage->completed_at),
                         'counts' => $counts,
-                        'errors' => $this->stageErrors($stage, $counts),
+                        'errors' => is_array($stage->errors) ? $stage->errors : [],
                     ],
                 ];
             })
@@ -316,29 +307,8 @@ readonly class PipelineTaskPayloadService
      * @param array<string, mixed> $counts
      * @return array<string, int>
      */
-    private function stageCounts(string $stage, array $counts, ?int $scrapePageLimit = null): array
+    private function stageCounts(string $stage, array $counts): array
     {
-        if ($stage === 'scrape') {
-            $pagesCrawled = (int) ($counts['pagesCrawled'] ?? $counts['processed'] ?? $counts['completed'] ?? 0);
-            $pageLimit = $this->positiveInt(
-                $counts['pageLimit'] ?? $counts['max_pages'] ?? $counts['maxPages'] ?? null,
-            ) ?? $scrapePageLimit;
-            $totalPages = $pageLimit
-                ?? (int) ($counts['totalPages'] ?? $counts['total'] ?? $pagesCrawled);
-
-            $normalized = array_merge($counts, [
-                'pagesCrawled' => $pagesCrawled,
-                'totalPages' => max($pagesCrawled, $totalPages),
-            ]);
-
-            if ($pageLimit !== null) {
-                $normalized['pageLimit'] = $pageLimit;
-                $normalized['totalPages'] = max($pagesCrawled, $pageLimit);
-            }
-
-            return $normalized;
-        }
-
         if ($stage === 'convert') {
             $convertedFiles = (int) ($counts['convertedFiles'] ?? $counts['processed'] ?? $counts['completed'] ?? 0);
             $sourceFiles = (int) ($counts['sourceFiles'] ?? $counts['total'] ?? $convertedFiles);
@@ -360,101 +330,6 @@ readonly class PipelineTaskPayloadService
         }
 
         return $counts;
-    }
-
-    /**
-     * @param array<string, mixed> $counts
-     */
-    private function stageStatus(PipelineStageState $stage, array $counts): string
-    {
-        $status = (string) $stage->status;
-        if ((string) $stage->stage === 'scrape'
-            && $status === PipelineJob::STATUS_COMPLETED
-            && $this->scrapeStoppedBeforeLimit($counts)) {
-            return PipelineJob::STATUS_FAILED;
-        }
-
-        return $status;
-    }
-
-    /**
-     * @param array<string, mixed> $counts
-     * @return list<mixed>
-     */
-    private function stageErrors(PipelineStageState $stage, array $counts): array
-    {
-        $errors = is_array($stage->errors) ? $stage->errors : [];
-        if ((string) $stage->stage === 'scrape'
-            && (string) $stage->status === PipelineJob::STATUS_COMPLETED
-            && $this->scrapeStoppedBeforeLimit($counts)
-            && $errors === []) {
-            $errors[] = sprintf(
-                'Scraper stopped at %d/%d pages before reaching the configured page limit.',
-                $this->countValue($counts['pagesCrawled'] ?? null),
-                $this->countValue($counts['pageLimit'] ?? null),
-            );
-        }
-
-        return $errors;
-    }
-
-    /**
-     * @param array<string, mixed> $counts
-     */
-    private function scrapeStoppedBeforeLimit(array $counts): bool
-    {
-        $pageLimit = $this->positiveInt($counts['pageLimit'] ?? null);
-        if ($pageLimit === null) {
-            return false;
-        }
-
-        return $this->countValue($counts['pagesCrawled'] ?? null) < $pageLimit;
-    }
-
-    private function scrapePageLimit(PipelineTask $task, PipelineJob $job): ?int
-    {
-        $taskMetadata = is_array($task->metadata) ? $task->metadata : [];
-        $taskRequest = is_array($taskMetadata['request'] ?? null) ? $taskMetadata['request'] : [];
-        $taskRequestMetadata = is_array($taskRequest['metadata'] ?? null) ? $taskRequest['metadata'] : [];
-        $jobMetadata = is_array($job->metadata) ? $job->metadata : [];
-        $jobRequest = is_array($jobMetadata['request'] ?? null) ? $jobMetadata['request'] : [];
-        $jobRequestMetadata = is_array($jobRequest['metadata'] ?? null) ? $jobRequest['metadata'] : [];
-
-        foreach ([
-            $taskRequestMetadata['max_pages'] ?? null,
-            $taskRequestMetadata['maxPages'] ?? null,
-            $jobMetadata['max_pages'] ?? null,
-            $jobMetadata['maxPages'] ?? null,
-            $jobRequestMetadata['max_pages'] ?? null,
-            $jobRequestMetadata['maxPages'] ?? null,
-        ] as $candidate) {
-            $limit = $this->positiveInt($candidate);
-            if ($limit !== null) {
-                return $limit;
-            }
-        }
-
-        return null;
-    }
-
-    private function positiveInt(mixed $value): ?int
-    {
-        if (! is_int($value) && ! is_float($value) && ! is_string($value)) {
-            return null;
-        }
-
-        $integer = (int) $value;
-
-        return $integer > 0 ? $integer : null;
-    }
-
-    private function countValue(mixed $value): int
-    {
-        if (! is_int($value) && ! is_float($value) && ! is_string($value)) {
-            return 0;
-        }
-
-        return max(0, (int) $value);
     }
 
     /**

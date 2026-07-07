@@ -37,7 +37,7 @@ class PipelineTaskPayloadServiceTest extends TestCase
                 'job_id' => 'job-payload',
                 'task_id' => 'task-payload',
                 'parent_job_id' => 'parent-job',
-                'job_type' => PipelineJob::TYPE_SCRAPE,
+                'job_type' => PipelineJob::TYPE_CONVERT,
                 'source_url' => 'https://example.test/page',
                 'local_path' => '/tmp/page.md',
                 'content_hash' => 'hash-payload',
@@ -95,8 +95,6 @@ class PipelineTaskPayloadServiceTest extends TestCase
 
         $payload = app(PipelineTaskPayloadService::class)->detail($task, 1, ['jobs_total' => 0]);
 
-        $this->assertSame('n/a', $payload['stages']['scrape']['status']);
-        $this->assertSame('Mode not available for uploaded files.', $payload['stages']['scrape']['message']);
         $this->assertSame('processing', $payload['stages']['convert']['status']);
         $this->assertSame(PipelineJob::STATUS_QUEUED, $payload['stages']['ingest']['status']);
         $this->assertSame('Waiting for converter to finish.', $payload['stages']['ingest']['message']);
@@ -135,60 +133,6 @@ class PipelineTaskPayloadServiceTest extends TestCase
         $this->assertSame(1, $payload['stages']['convert']['counts']['convertedFiles']);
         $this->assertSame('processing', $payload['stages']['ingest']['status']);
         $this->assertSame('Ingestion processing.', $payload['stages']['ingest']['message']);
-    }
-
-    public function test_it_builds_scraper_task_stage_payload_from_temporal_stage_rows(): void
-    {
-        $task = new PipelineTask([
-            'task_id' => 'task-scraper',
-            'dataset_id' => 'lubeck',
-            'status' => PipelineTask::STATUS_COMPLETED,
-            'metadata' => [
-                'request' => [
-                    'metadata' => [
-                        'source' => 'scraper-task-ui',
-                    ],
-                ],
-            ],
-        ]);
-
-        $job = new PipelineJob([
-            'job_id' => 'ingest-lubeck',
-            'task_id' => 'task-scraper',
-            'job_type' => PipelineJob::TYPE_INGEST,
-            'status' => PipelineJob::STATUS_COMPLETED,
-            'current_stage' => 'ingest',
-        ]);
-        $job->setRelation('stages', collect([
-            new PipelineStageState([
-                'stage' => 'scrape',
-                'status' => PipelineJob::STATUS_COMPLETED,
-                'counts' => ['total' => 1, 'processed' => 1],
-            ]),
-            new PipelineStageState([
-                'stage' => 'convert',
-                'status' => PipelineJob::STATUS_COMPLETED,
-                'counts' => ['total' => 21, 'processed' => 21, 'convertedFiles' => 21],
-            ]),
-            new PipelineStageState([
-                'stage' => 'ingest',
-                'status' => PipelineJob::STATUS_COMPLETED,
-                'counts' => ['total' => 21, 'processed' => 21],
-            ]),
-        ]));
-        $task->setRelation('jobs', collect([$job]));
-
-        $payload = app(PipelineTaskPayloadService::class)->detail($task, 0, ['jobs_total' => 1]);
-
-        $this->assertSame(PipelineJob::STATUS_COMPLETED, $payload['stages']['scrape']['status']);
-        $this->assertSame(1, $payload['stages']['scrape']['counts']['pagesCrawled']);
-        $this->assertSame(1, $payload['stages']['scrape']['counts']['totalPages']);
-        $this->assertSame(PipelineJob::STATUS_COMPLETED, $payload['stages']['convert']['status']);
-        $this->assertSame(21, $payload['stages']['convert']['counts']['convertedFiles']);
-        $this->assertSame(21, $payload['stages']['convert']['counts']['sourceFiles']);
-        $this->assertSame(PipelineJob::STATUS_COMPLETED, $payload['stages']['ingest']['status']);
-        $this->assertSame(21, $payload['stages']['ingest']['counts']['completed']);
-        $this->assertSame(21, $payload['stages']['ingest']['counts']['total']);
     }
 
     public function test_it_builds_fallback_event_payloads_from_job_metadata(): void
@@ -231,7 +175,7 @@ class PipelineTaskPayloadServiceTest extends TestCase
         $job = new PipelineJob([
             'job_id' => 'job-no-history',
             'task_id' => 'task-events',
-            'job_type' => PipelineJob::TYPE_SCRAPE,
+            'job_type' => PipelineJob::TYPE_CONVERT,
             'status' => PipelineJob::STATUS_RUNNING,
             'started_at' => Carbon::parse('2026-06-08 11:05:00'),
         ]);

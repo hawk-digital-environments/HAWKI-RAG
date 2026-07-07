@@ -70,15 +70,12 @@ return [
         storage_path('logs/raganything_runtime.log'),
     ], static fn ($path) => is_string($path) && trim($path) !== ''))),
     'pipeline_stage_runtime_log_paths' => [
-        'scrape' => $stageRuntimeLogPaths('scraper', 'scraper_worker.log'),
         'convert' => $stageRuntimeLogPaths('converter', 'converter_worker.log'),
         'ingest' => $stageRuntimeLogPaths('ingestion', 'ingestion_worker.log'),
     ],
     'pipeline_proof_log_globs' => [
         storage_path('logs/laravel-*.log'),
     ],
-    'pipeline_demo_urls' => env('PIPELINE_DEMO_URLS', ''),
-    'docker_project_path' => env('DOCKER_PROJECT_PATH', ''),
     'virtual_path' => env('VIRTUAL_PATH', ''),
     'health_gate' => [
         'enabled' => filter_var(env('HAWKI_RAG_HEALTH_GATE_ENABLED', true), FILTER_VALIDATE_BOOLEAN),

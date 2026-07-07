@@ -30,7 +30,6 @@ readonly class PipelineHealthService
             $this->database->check(),
             $this->temporal->check(),
             $this->workers->workflow(),
-            $this->workers->scraper($timeout),
             $this->workers->converter($timeout),
             $this->workers->ingestion($timeout),
             $this->qdrant->check($timeout),

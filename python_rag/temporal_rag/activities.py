@@ -32,7 +32,7 @@ from temporal_rag.storage import (
 logger = logging.getLogger(__name__)
 
 PASSTHROUGH_METADATA_FILENAME = "rawki_passthrough.json"
-SCRAPER_BOOKKEEPING_FILENAMES = frozenset({
+RAW_DIRECTORY_BOOKKEEPING_FILENAMES = frozenset({
     "crawler.log",
     "job_state.json",
     "summary.json",
@@ -43,50 +43,21 @@ SCRAPER_BOOKKEEPING_FILENAMES = frozenset({
 class DirectExtractUnsupportedFileError(RuntimeError):
     """The direct converter rejected a file type that RAG-Anything may still parse."""
 
-@activity.defn(name="scrape_source")
-def scrape_source(workflow_input: dict[str, Any]) -> dict[str, Any]:
-    settings = TemporalRagSettings.from_env()
-    metadata = AppMetadataStore(settings)
-    source_id = str(workflow_input["source_id"])
-    raw_dir = str(workflow_input["raw_output_path"])
-    service_config = _service_config(workflow_input, "scraper", settings)
-    metadata.mark_phase(workflow_input, "scrape_source", "started", {"raw_dir": raw_dir})
-    log_event(logger, "scrape_source:start", source_id=source_id, raw_dir=raw_dir, task_queue=settings.scraper_task_queue)
-
-    upload_result = _scrape_uploaded_file(workflow_input, source_id, raw_dir)
-    if upload_result is not None:
-        metadata.mark_phase(workflow_input, "scrape_source", "success", upload_result)
-        log_event(logger, "scrape_source:uploaded_file", **upload_result, task_queue=settings.scraper_task_queue)
-        return upload_result
-
-    try:
-        client = ExternalJobClient(**service_config)
-        start_payload = _scraper_start_payload(workflow_input, source_id, raw_dir)
-        response = client.start_and_wait(start_payload)
-    except Exception as exc:
-        _record_activity_exception(metadata, workflow_input, "scrape_source", exc, raw_dir=raw_dir)
-        raise
-
-    result = _scrape_result(response, start_payload, source_id, raw_dir)
-    metadata.mark_phase(workflow_input, "scrape_source", str(result["status"]), result)
-    log_event(logger, "scrape_source:end", **result, task_queue=settings.scraper_task_queue)
-    return result
-
 
 @activity.defn(name="inspect_and_convert_files")
 def inspect_and_convert_files(payload: dict[str, Any]) -> dict[str, Any]:
     workflow_input = dict(payload["workflow_input"])
-    scrape_result = dict(payload["scrape_result"])
     settings = TemporalRagSettings.from_env()
     metadata = AppMetadataStore(settings)
     source_id = str(workflow_input["source_id"])
-    raw_dir = str(scrape_result.get("raw_dir") or workflow_input["raw_output_path"])
+    raw_dir = str(workflow_input["raw_output_path"])
     markdown_dir = str(workflow_input["markdown_output_path"])
-    service_config = _service_config(workflow_input, "converter", settings)
+    service_config = _service_config(workflow_input, settings)
     metadata.mark_phase(workflow_input, "inspect_and_convert_files", "started", {"raw_dir": raw_dir, "markdown_dir": markdown_dir})
     log_event(logger, "inspect_and_convert_files:start", source_id=source_id, raw_dir=raw_dir, markdown_dir=markdown_dir, task_queue=settings.converter_task_queue)
 
     try:
+        _prepare_uploaded_file(workflow_input, source_id, raw_dir)
         if _uses_direct_converter(service_config):
             response = _convert_files_with_extract_api(service_config, source_id, raw_dir, markdown_dir)
         else:
@@ -127,146 +98,6 @@ def inspect_and_convert_files(payload: dict[str, Any]) -> dict[str, Any]:
     metadata.mark_phase(workflow_input, "inspect_and_convert_files", status, result)
     log_event(logger, "inspect_and_convert_files:end", **result, task_queue=settings.converter_task_queue)
     return result
-
-
-def _scraper_start_payload(workflow_input: dict[str, Any], source_id: str, raw_dir: str) -> dict[str, Any]:
-    metadata = workflow_input.get("metadata")
-    request = workflow_input.get("request")
-    if not isinstance(request, dict) and isinstance(metadata, dict):
-        request = metadata.get("request")
-    if not isinstance(request, dict):
-        request = {}
-
-    request_metadata = request.get("metadata")
-    if not isinstance(request_metadata, dict):
-        request_metadata = {}
-
-    payload: dict[str, Any] = {
-        "job_id": str(workflow_input.get("job_id") or source_id),
-        "url": str(workflow_input.get("source_url") or ""),
-        "output_dir": raw_dir,
-        "source_id": source_id,
-        "source_url": workflow_input.get("source_url"),
-    }
-
-    if request_metadata.get("site_profile_path"):
-        payload["site_profile_path"] = request_metadata["site_profile_path"]
-
-    sitemap_url = _string_value(request.get("sitemapUrl") or request.get("sitemap_url") or request_metadata.get("sitemap_url"))
-    if sitemap_url:
-        payload["sitemap"] = True
-        payload["sitemap_base"] = sitemap_url
-
-    for key in (
-        "rescrape_failed",
-        "max_pages",
-        "max_concurrency",
-        "max_rpm",
-        "skip_images",
-        "max_images_per_page",
-        "max_link_density",
-        "discovery_mode",
-        "wait_until",
-        "page_timeout_ms",
-    ):
-        if key in request_metadata and request_metadata[key] is not None:
-            payload[key] = request_metadata[key]
-
-    return payload
-
-
-def _shared_worker_path(value: Any) -> str | None:
-    if not isinstance(value, str) or not value.strip():
-        return None
-
-    path = value.strip()
-    for prefix in ("/var/www/html/shared", "/app/shared"):
-        if path == prefix:
-            return "/shared"
-        if path.startswith(prefix + "/"):
-            return "/shared/" + path[len(prefix) + 1:]
-
-    return path
-
-
-def _string_value(value: Any) -> str:
-    if isinstance(value, (str, int, float)) and str(value).strip():
-        return str(value).strip()
-
-    return ""
-
-
-def _scrape_result(
-    response: dict[str, Any],
-    start_payload: dict[str, Any],
-    source_id: str,
-    raw_dir: str,
-) -> dict[str, Any]:
-    status = _status(response)
-    crawler_raw_dir = _shared_worker_path(
-        response.get("raw_dir") or response.get("raw_output_path") or response.get("output_directory")
-    )
-    output_dir = crawler_raw_dir or raw_dir
-    crawled_file_count = _crawled_output_file_count(output_dir)
-    pages_crawled = (
-        _positive_int(response.get("pages_crawled"))
-        or _positive_int(response.get("files_found"))
-        or _positive_int(response.get("file_count"))
-        or crawled_file_count
-        or 0
-    )
-    page_limit = _positive_int(start_payload.get("max_pages"))
-    error_details = response.get("error") or response.get("error_details")
-    if status == "success" and pages_crawled <= 0:
-        status = "failed"
-        error_details = error_details or "Scraper completed without crawled page files."
-    elif status == "success" and page_limit is not None and pages_crawled < page_limit:
-        status = "failed"
-        error_details = error_details or (
-            f"Scraper stopped at {pages_crawled}/{page_limit} pages before reaching the configured page limit."
-        )
-
-    result = {
-        "source_id": source_id,
-        "external_job_id": response.get("external_job_id"),
-        "raw_dir": output_dir,
-        "files_found": pages_crawled,
-        "pages_crawled": pages_crawled,
-        "raw_files_found": crawled_file_count,
-        "status": status,
-        "error_details": error_details,
-    }
-
-    if page_limit is not None:
-        result["max_pages"] = page_limit
-
-    return result
-
-
-def _crawled_output_file_count(raw_dir: str) -> int:
-    if is_object_prefix(raw_dir):
-        return 0
-
-    root = Path(raw_dir.removeprefix("file://")).expanduser()
-    if not root.is_dir():
-        return 0
-
-    return sum(1 for path in root.rglob("*") if path.is_file() and path.name not in SCRAPER_BOOKKEEPING_FILENAMES)
-
-
-def _positive_int(value: Any) -> int | None:
-    if isinstance(value, bool):
-        return None
-
-    if isinstance(value, (int, float)):
-        integer = int(value)
-        return integer if integer > 0 else None
-
-    if isinstance(value, str) and value.strip().isdigit():
-        integer = int(value.strip())
-        return integer if integer > 0 else None
-
-    return None
 
 
 @activity.defn(name="ingest_markdown_files")
@@ -389,18 +220,12 @@ def mark_source_ready(payload: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
-def _service_config(workflow_input: dict[str, Any], service: str, settings: TemporalRagSettings) -> dict[str, Any]:
+def _service_config(workflow_input: dict[str, Any], settings: TemporalRagSettings) -> dict[str, Any]:
     external = dict(workflow_input.get("external_services") or {})
-    if service == "scraper":
-        base_url = str(external.get("scraper_url") or settings.scraper_url)
-        start_path = str(external.get("scraper_start_path") or settings.scraper_start_path)
-        status_path = str(external.get("scraper_status_path") or settings.scraper_status_path)
-        token = str(external.get("scraper_token") or settings.scraper_token)
-    else:
-        base_url = str(external.get("converter_url") or settings.converter_url)
-        start_path = str(external.get("converter_start_path") or settings.converter_start_path)
-        status_path = str(external.get("converter_status_path") or settings.converter_status_path)
-        token = str(external.get("converter_token") or settings.converter_token)
+    base_url = str(external.get("converter_url") or settings.converter_url)
+    start_path = str(external.get("converter_start_path") or settings.converter_start_path)
+    status_path = str(external.get("converter_status_path") or settings.converter_status_path)
+    token = str(external.get("converter_token") or settings.converter_token)
 
     config = {
         "base_url": base_url,
@@ -412,9 +237,7 @@ def _service_config(workflow_input: dict[str, Any], service: str, settings: Temp
         "poll_interval_seconds": settings.poll_interval_seconds,
         "poll_timeout_seconds": settings.poll_timeout_seconds,
     }
-
-    if service == "converter":
-        config.update(_custom_converter_profile_config(workflow_input))
+    config.update(_custom_converter_profile_config(workflow_input))
 
     return config
 
@@ -494,7 +317,7 @@ def _record_activity_exception(
     log_event(logger, f"{phase}:error", **result)
 
 
-def _scrape_uploaded_file(workflow_input: dict[str, Any], source_id: str, raw_dir: str) -> dict[str, Any] | None:
+def _prepare_uploaded_file(workflow_input: dict[str, Any], source_id: str, raw_dir: str) -> dict[str, Any] | None:
     upload = workflow_input.get("upload")
     if not isinstance(upload, dict):
         return None
@@ -769,12 +592,12 @@ def _local_directory(path: str, label: str, *, must_exist: bool = True) -> Path:
 
 
 def _raw_conversion_candidates(raw_root: Path) -> list[Path]:
-    skip_bookkeeping = _looks_like_scraper_output_dir(raw_root)
+    skip_bookkeeping = _looks_like_crawler_output_dir(raw_root)
 
     return [
         path
         for path in sorted(raw_root.rglob("*"))
-        if path.is_file() and (not skip_bookkeeping or path.name not in SCRAPER_BOOKKEEPING_FILENAMES)
+        if path.is_file() and (not skip_bookkeeping or path.name not in RAW_DIRECTORY_BOOKKEEPING_FILENAMES)
     ]
 
 
@@ -789,7 +612,7 @@ def _display_candidate_path(raw_file: Path, raw_root: Path, raw_dir: str) -> str
     return str(requested_root / relative_path)
 
 
-def _looks_like_scraper_output_dir(raw_root: Path) -> bool:
+def _looks_like_crawler_output_dir(raw_root: Path) -> bool:
     return (raw_root / "job_state.json").is_file() or (raw_root / "urls_index.json").is_file()
 
 
@@ -925,5 +748,4 @@ __all__ = [
     "inspect_and_convert_files",
     "ingest_markdown_files",
     "mark_source_ready",
-    "scrape_source",
 ]

@@ -57,7 +57,7 @@ What `make up-core` does:
 | Compose context | Uses computed `COMPOSE_FILE` with `ENV_FILE` and optional `COMPOSE_PROFILES`. |
 | Launch preview | Prints selected compose files before startup. |
 | Model readiness | Pulls Ollama models: `bge-m3`, `llama3.1:8b`, `llama3.2:1b`, `qwen2.5vl:7b`. |
-| UI readiness | Builds Vite/Svelte assets and publishes them into the running Laravel app. |
+| Service readiness | Starts the API, workers, and supporting services defined by Compose. |
 
 ## Model pulls (Ollama)
 - Default pulls: `bge-m3`, `llama3.1:8b`, `llama3.2:1b`, `qwen2.5vl:7b`.
@@ -80,14 +80,7 @@ make clean
 
 This clears `__pycache__`, `*.py[cod]`, `*.log`, `.pytest_cache`, `.ruff_cache`, `.mypy_cache`, `.coverage*`, `.tox`, `.venv`, `dist`, `build`.
 
-## Start source ingestion
-```bash
-docker exec -it hawki_rag_app php artisan pipeline:start-task \
-  --source-url=https://example.edu \
-  --refresh-cadence=daily
-```
-
-Laravel starts `IngestSourceWorkflow`; Temporal then coordinates scraper, converter, and ingestion workers.
+Laravel starts `IngestSourceWorkflow` for uploaded files; Temporal then coordinates converter and ingestion workers.
 
 ### Shared volume path mapping
 Path mapping: `rawki_shared_storage` (Docker volume) -> `/app/shared` (bridge and Laravel app).

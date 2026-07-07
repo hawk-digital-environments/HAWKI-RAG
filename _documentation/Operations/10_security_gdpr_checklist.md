@@ -79,7 +79,7 @@ Use GitHub checklists as developer inspiration. Treat official EU/German guidanc
    Every route must validate IDs, URLs, collection names, upload names, limits, and booleans before work starts.
 
 5. Filesystem boundaries.
-   Local scraper files and output directories must stay inside configured HAWKI-RAG storage roots.
+   Local pipeline files and conversion output directories must stay inside configured HAWKI-RAG storage roots.
 
 6. Token lifecycle.
    Use prefixed Sanctum tokens, expiration, revocation, and per-environment secrets.

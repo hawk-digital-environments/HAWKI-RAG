@@ -12,17 +12,15 @@ class PipelineStageStatusMergerTest extends TestCase
     public function test_it_selects_current_stage_and_overall_status(): void
     {
         $merger = app(PipelineStageStatusMerger::class);
-        $scrape = ['status' => 'completed'];
         $convert = ['status' => 'running'];
         $ingest = ['status' => 'pending'];
 
-        $this->assertSame('convert', $merger->currentStage($scrape, $convert, $ingest));
-        $this->assertSame('running', $merger->overallStatus($scrape, $convert, $ingest));
+        $this->assertSame('convert', $merger->currentStage($convert, $ingest));
+        $this->assertSame('running', $merger->overallStatus($convert, $ingest));
 
         $this->assertSame(
             'completed',
             $merger->overallStatus(
-                ['status' => 'completed'],
                 ['status' => 'completed'],
                 ['status' => 'completed'],
             ),

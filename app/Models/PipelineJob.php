@@ -30,7 +30,6 @@ class PipelineJob extends Model
         self::STATUS_FAILED,
     ];
 
-    public const TYPE_SCRAPE = 'scrape';
     public const TYPE_CONVERT = 'convert';
     public const TYPE_INGEST = 'ingest';
     public const TYPE_GRAPH = 'graph';

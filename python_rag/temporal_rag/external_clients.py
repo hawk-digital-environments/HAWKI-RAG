@@ -1,4 +1,4 @@
-"""Adapters around external scraper and converter services."""
+"""Adapters around external conversion services."""
 
 from __future__ import annotations
 

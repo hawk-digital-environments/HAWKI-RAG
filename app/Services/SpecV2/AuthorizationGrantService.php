@@ -431,7 +431,7 @@ readonly class AuthorizationGrantService
             ? null
             : [$actor->tenantId()];
 
-        return $this->identities->findAllByIdentifiers([$identifier], $tenantIds)
+        return $this->identities->findAllSupportedByExternalUserIds([$identifier], $tenantIds)
             ->pluck('internal_user_id')
             ->filter(fn (mixed $internalUserId): bool => is_string($internalUserId) && trim($internalUserId) !== '')
             ->map(fn (string $internalUserId): string => trim($internalUserId))

@@ -7,7 +7,7 @@ Quick command reference for the HAWKI RAG local stack after the Temporal migrati
 ```bash
 docker compose ps
 docker compose ps postgres temporal hawki_rag_app qdrant hawki_rag_neo4j
-docker compose ps hawki-rag-temporal-workflow-worker hawki-rag-temporal-scraper-worker hawki-rag-temporal-converter-worker hawki-rag-temporal-ingestion-worker
+docker compose ps hawki-rag-temporal-workflow-worker hawki-rag-temporal-converter-worker hawki-rag-temporal-ingestion-worker
 docker compose --profile devtools ps temporal-ui
 ```
 
@@ -48,7 +48,6 @@ docker compose exec temporal-admin-tools temporal schedule list --namespace "${T
 Expected task queues:
 
 - `rag-workflow-task-queue`
-- `rag-scraper-task-queue`
 - `rag-converter-task-queue`
 - `rag-ingestion-task-queue`
 
@@ -56,7 +55,6 @@ Expected task queues:
 
 ```bash
 docker compose logs -f hawki-rag-temporal-workflow-worker
-docker compose logs -f hawki-rag-temporal-scraper-worker
 docker compose logs -f hawki-rag-temporal-converter-worker
 docker compose logs -f hawki-rag-temporal-ingestion-worker
 ```

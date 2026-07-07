@@ -17,7 +17,6 @@ Open `.env` in an editor and set:
 | `APP_KEY` | Yes | Always |
 | `DB_PASSWORD` | Yes | Always |
 | `NEO4J_PASSWORD` | Yes | Always |
-| `EXTERNAL_SCRAPER_URL` | Yes | When starting source ingestion workflows |
 | `EXTERNAL_CONVERTER_URL` | Yes | When starting source ingestion workflows |
 | `FILE_CONVERTER_TOKEN` | Optional | If you use file conversion |
 | `TAVILY_SEARCH_API_KEY` | Optional | If `WEB_SEARCH_PROVIDER=tavily` |

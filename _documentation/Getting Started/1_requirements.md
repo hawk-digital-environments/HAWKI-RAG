@@ -46,7 +46,7 @@
 
 
 ## Environment files
-- App/Laravel: copy `.env.example` → `.env`, fill secrets (DB, Temporal, external scraper/converter, keys).
+- App/Laravel: copy `.env.example` → `.env`, fill secrets (DB, Temporal, external converter, keys).
 
 ## Checklist before first run
 - Docker running and `docker ps` works.

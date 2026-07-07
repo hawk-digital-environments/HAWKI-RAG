@@ -7,12 +7,15 @@ use App\Models\Dataset;
 use App\Models\Document;
 use App\Models\SpecV2\Application;
 use App\Services\Authorization\ApiActorScopeService;
+use App\Models\UserIdentity;
 use App\Models\SpecV2\Group;
 use App\Models\SpecV2\Tenant;
 use App\Models\SpecV2\Corpus;
+use App\Services\Authorization\IdentityProvisioningService;
 use App\Services\Authorization\PermissionSyncService;
 use App\Services\Authorization\Values\LmsDocumentRelation;
 use App\Services\Authorization\Values\LmsMembership;
+use App\Services\SpecV2\Repositories\HeapGrantRepository;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request as ClientRequest;
 use Illuminate\Http\Request as HttpRequest;
@@ -267,6 +270,133 @@ class ArchitectureContractTest extends TestCase
                 && ($this->filterContains($filters, 'heap', 'heap-protected')
                     || $this->filterContainsDocumentId($filters, (string) $document->id));
         });
+    }
+
+    public function test_reads_federated_unions_only_supported_exact_identifier_matches(): void
+    {
+        config()->set('authz.enabled', true);
+        config()->set('config.hawki_rag_bridge_url', 'http://bridge.test');
+
+        Tenant::query()->create(['id' => 'tenant-a', 'name' => 'Tenant A', 'metadata_json' => []]);
+        Tenant::query()->create(['id' => 'tenant-b', 'name' => 'Tenant B', 'metadata_json' => []]);
+        Tenant::query()->create(['id' => 'tenant-c', 'name' => 'Tenant C', 'metadata_json' => []]);
+
+        Application::query()->create([
+            'id' => 'app-a',
+            'tenant_id' => 'tenant-a',
+            'name' => 'App A',
+            'permissions' => [Application::PERMISSION_READS],
+            'token_hash' => null,
+            'metadata_json' => [],
+        ]);
+        Application::query()->create([
+            'id' => 'app-b',
+            'tenant_id' => 'tenant-b',
+            'name' => 'App B',
+            'permissions' => [Application::PERMISSION_READS],
+            'token_hash' => null,
+            'metadata_json' => [],
+        ]);
+        Application::query()->create([
+            'id' => 'app-c',
+            'tenant_id' => 'tenant-c',
+            'name' => 'App C',
+            'permissions' => [Application::PERMISSION_READS],
+            'token_hash' => null,
+            'metadata_json' => [],
+        ]);
+
+        $this->seedHeapCorpusAndGroup('heap-fed-a', 'tenant-a', 'app-a', 'corpus-fed-a', 'group-fed-a', true, 'doc-fed-a');
+        $this->seedHeapCorpusAndGroup('heap-fed-b', 'tenant-b', 'app-b', 'corpus-fed-b', 'group-fed-b', true, 'doc-fed-b');
+        $this->seedHeapCorpusAndGroup('heap-ambiguous-a', 'tenant-c', 'app-c', 'corpus-ambiguous-a', 'group-ambiguous-a', true, 'doc-ambiguous-a');
+        $this->seedHeapCorpusAndGroup('heap-ambiguous-b', 'tenant-c', 'app-c', 'corpus-ambiguous-b', 'group-ambiguous-b', true, 'doc-ambiguous-b');
+
+        $supportedA = app(IdentityProvisioningService::class)->userAssignments('tenant-a', 'app-a', ['shared-user']);
+        $supportedB = app(IdentityProvisioningService::class)->userAssignments('tenant-b', 'app-b', ['shared-user']);
+        $ambiguousMoodle = app(IdentityProvisioningService::class)->connectorMemberAssignments('tenant-c', 'app-c', 'moodle', ['ambiguous-user']);
+        $ambiguousStudip = app(IdentityProvisioningService::class)->connectorMemberAssignments('tenant-c', 'app-c', 'studip', ['ambiguous-user']);
+
+        app(HeapGrantRepository::class)->replaceUsers('heap-fed-a', $supportedA);
+        app(HeapGrantRepository::class)->replaceUsers('heap-fed-b', $supportedB);
+        app(HeapGrantRepository::class)->replaceUsers('heap-ambiguous-a', $ambiguousMoodle);
+        app(HeapGrantRepository::class)->replaceUsers('heap-ambiguous-b', $ambiguousStudip);
+
+        ['token' => $federatedToken] = $this->issueApplicationToken([
+            'id' => 'federated-reader',
+            'tenant_id' => 'tenant-a',
+            'permissions' => [Application::PERMISSION_READS_FEDERATED],
+        ]);
+
+        $sharedHeaps = $this->withHeader('Authorization', 'Bearer '.$federatedToken)
+            ->getJson('/api/auth/users/by-identifier/heaps?identifier='.urlencode('shared-user'))
+            ->assertOk();
+
+        $this->assertSame(['heap-fed-a', 'heap-fed-b'], $sharedHeaps->json('data'));
+        $this->assertSame(2, $sharedHeaps->json('pagination.total'));
+
+        $ambiguousHeaps = $this->withHeader('Authorization', 'Bearer '.$federatedToken)
+            ->getJson('/api/auth/users/by-identifier/heaps?identifier='.urlencode('ambiguous-user'))
+            ->assertOk();
+
+        $this->assertSame([], $ambiguousHeaps->json('data'));
+        $this->assertSame(0, $ambiguousHeaps->json('pagination.total'));
+
+        Http::fake([
+            'http://bridge.test/query' => Http::response(['ok' => true, 'count' => 0, 'hits' => []], 200),
+        ]);
+
+        $this->withHeader('Authorization', 'Bearer '.$federatedToken)
+            ->postJson('/api/search', [
+                'query' => 'shared',
+                'user_identifier' => 'shared-user',
+            ])->assertOk();
+
+        Http::assertSent(function (ClientRequest $request): bool {
+            if ($request->url() !== 'http://bridge.test/query') {
+                return false;
+            }
+
+            $filters = $request->data()['filters'] ?? [];
+
+            return $this->payloadHasOnlyBridgeKeys($request->data())
+                && $this->filterContains($filters, 'heap', 'heap-fed-a')
+                && $this->filterContains($filters, 'heap', 'heap-fed-b')
+                && ! $this->filterContains($filters, 'heap', 'heap-ambiguous-a')
+                && ! $this->filterContains($filters, 'heap', 'heap-ambiguous-b');
+        });
+
+        Http::fake([
+            'http://bridge.test/query' => Http::response(['ok' => true, 'count' => 0, 'hits' => []], 200),
+        ]);
+
+        $this->withHeader('Authorization', 'Bearer '.$federatedToken)
+            ->postJson('/api/search', [
+                'query' => 'ambiguous',
+                'user_identifier' => 'ambiguous-user',
+            ])->assertOk();
+
+        Http::assertSent(function (ClientRequest $request): bool {
+            if ($request->url() !== 'http://bridge.test/query') {
+                return false;
+            }
+
+            $filters = $request->data()['filters'] ?? [];
+
+            return $this->payloadHasOnlyBridgeKeys($request->data())
+                && ! $this->filterContains($filters, 'heap', 'heap-ambiguous-a')
+                && ! $this->filterContains($filters, 'heap', 'heap-ambiguous-b');
+        });
+
+        $this->assertDatabaseHas('user_identities', [
+            'tenant_id' => 'tenant-a',
+            'provider' => UserIdentity::PROVIDER_TENANT_IDENTITY,
+            'external_user_id' => 'shared-user',
+        ]);
+        $this->assertDatabaseHas('user_identities', [
+            'tenant_id' => 'tenant-b',
+            'provider' => UserIdentity::PROVIDER_TENANT_IDENTITY,
+            'external_user_id' => 'shared-user',
+        ]);
     }
 
     public function test_application_permission_matrix_covers_read_surfaces_consistently(): void
@@ -852,7 +982,6 @@ class ArchitectureContractTest extends TestCase
             'api/heaps/{heapId}',
             'api/heaps/{heapId}/documents',
             'api/pipeline/files',
-            'api/pipeline/tasks/start',
             'api/search',
             'api/search/chunks',
             'api/search/chunks/grouped',
@@ -884,7 +1013,6 @@ class ArchitectureContractTest extends TestCase
             app_path('Http/Controllers/SpecV2/HeapController.php'),
             app_path('Http/Requests/Document/ListDocumentsRequest.php'),
             app_path('Http/Requests/Pipeline/UploadPipelineFileRequest.php'),
-            app_path('Http/Requests/Pipeline/StartPipelineTaskRequest.php'),
             app_path('Http/Requests/Pipeline/ListFailedPipelineJobsRequest.php'),
             app_path('Http/Resources/SpecV2/HeapResource.php'),
             app_path('Http/Resources/SpecV2/DocumentResource.php'),

@@ -20,29 +20,12 @@ readonly class PipelineWorkerHealthCheck
     /**
      * @return array{name:string,status:string,detail:string,fix:string}
      */
-    public function scraper(int $timeout): array
-    {
-        $url = rtrim((string) $this->config->get('temporal.external_services.scraper_url'), '/').'/health';
-        $taskQueue = (string) $this->config->get('temporal.task_queues.scraper', 'rag-scraper-task-queue');
-
-        return $this->httpChecks->reachabilityCheck(
-            'Scraper adapter worker',
-            $url,
-            $timeout,
-            sprintf('Temporal activity task queue %s calls the external scraper service.', $taskQueue),
-            'Start hawki-rag-temporal-scraper-worker and verify EXTERNAL_SCRAPER_URL or CUSTOM_CRAWLER_URL.',
-        );
-    }
-
-    /**
-     * @return array{name:string,status:string,detail:string,fix:string}
-     */
     public function workflow(): array
     {
         return $this->results->ok(
             'Workflow worker',
             sprintf(
-                'IngestSourceWorkflow listens on Temporal task queue %s and coordinates scrape, conversion, ingestion, and readiness.',
+                'IngestSourceWorkflow listens on Temporal task queue %s and coordinates conversion, ingestion, and readiness.',
                 $this->config->get('temporal.task_queues.workflow', 'rag-workflow-task-queue'),
             ),
         );

@@ -8,12 +8,10 @@ use App\Models\Dataset;
 use App\Models\Document;
 use App\Models\PipelineJob;
 use App\Models\PipelineTask;
-use App\Models\ScrapedElement;
 use App\Models\SpecV2\Corpus;
 use App\Services\Pipeline\Repositories\PipelineIngestionRepository;
 use App\Services\Pipeline\Repositories\PipelineJobCreationRepository;
 use App\Services\Pipeline\Repositories\PipelineJobRecoveryRepository;
-use App\Services\Pipeline\Repositories\PipelineScrapeHistoryRepository;
 use App\Services\Pipeline\Repositories\PipelineTaskRepository;
 use App\Services\Pipeline\Repositories\Queries\ActivePipelineJobsQuery;
 use App\Services\Pipeline\Repositories\Queries\FailedPipelineJobsQuery;
@@ -21,7 +19,6 @@ use App\Services\Pipeline\Repositories\Queries\PipelineTaskJobsQuery;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
-use Illuminate\Support\Str;
 use Tests\TestCase;
 
 class PipelineRepositoryReadTest extends TestCase
@@ -308,45 +305,6 @@ class PipelineRepositoryReadTest extends TestCase
         ]);
     }
 
-    public function test_job_repository_creates_scrape_jobs(): void
-    {
-        $task = $this->task('task-create-scrape-job');
-        $startedAt = Carbon::parse('2026-06-08 15:30:00');
-        $finishedAt = Carbon::parse('2026-06-08 15:31:00');
-        $metadata = [
-            'reason' => 'URL was already scraped by Laravel.',
-            'dataset_id' => $task->dataset_id,
-        ];
-
-        $job = app(PipelineJobCreationRepository::class)->createScrapeJob(
-            'scrape-create-job',
-            $task,
-            'https://example.test/scrape',
-            'hash-create-scrape-job',
-            PipelineJob::STATUS_SKIPPED,
-            $startedAt,
-            $finishedAt,
-            $metadata,
-        );
-
-        $this->assertSame('scrape-create-job', $job->job_id);
-        $this->assertSame($task->task_id, $job->task_id);
-        $this->assertSame(PipelineJob::TYPE_SCRAPE, $job->job_type);
-        $this->assertSame('https://example.test/scrape', $job->source_url);
-        $this->assertSame('hash-create-scrape-job', $job->content_hash);
-        $this->assertSame(PipelineJob::STATUS_SKIPPED, $job->status);
-        $this->assertTrue($startedAt->equalTo($job->started_at));
-        $this->assertTrue($finishedAt->equalTo($job->finished_at));
-        $this->assertSame($metadata, $job->metadata);
-
-        $this->assertDatabaseHas('pipeline_jobs', [
-            'job_id' => 'scrape-create-job',
-            'task_id' => 'task-create-scrape-job',
-            'job_type' => PipelineJob::TYPE_SCRAPE,
-            'status' => PipelineJob::STATUS_SKIPPED,
-        ]);
-    }
-
     public function test_job_repository_detects_completed_or_skipped_conversions(): void
     {
         $repository = app(ActivePipelineJobsQuery::class);
@@ -354,7 +312,6 @@ class PipelineRepositoryReadTest extends TestCase
         $completedPath = '/tmp/pipeline-history/completed.pdf';
         $skippedPath = '/tmp/pipeline-history/skipped.pdf';
         $failedPath = '/tmp/pipeline-history/failed.pdf';
-        $scrapeOnlyPath = '/tmp/pipeline-history/scrape-only.pdf';
 
         $this->job(
             $task,
@@ -383,15 +340,6 @@ class PipelineRepositoryReadTest extends TestCase
             $failedPath,
             'hash-conversion-failed',
         );
-        $this->job(
-            $task,
-            'job-scrape-completed',
-            PipelineJob::STATUS_COMPLETED,
-            null,
-            PipelineJob::TYPE_SCRAPE,
-            $scrapeOnlyPath,
-            'hash-scrape-completed',
-        );
 
         $this->assertTrue($repository->hasCompletedOrSkippedConversion($completedPath, 'missing-hash'));
         $this->assertTrue($repository->hasCompletedOrSkippedConversion(
@@ -400,7 +348,6 @@ class PipelineRepositoryReadTest extends TestCase
         ));
         $this->assertTrue($repository->hasCompletedOrSkippedConversion($skippedPath, 'missing-hash'));
         $this->assertFalse($repository->hasCompletedOrSkippedConversion($failedPath, 'hash-conversion-failed'));
-        $this->assertFalse($repository->hasCompletedOrSkippedConversion($scrapeOnlyPath, 'hash-scrape-completed'));
         $this->assertFalse($repository->hasCompletedOrSkippedConversion(
             '/tmp/pipeline-history/missing.pdf',
             'missing-hash',
@@ -516,44 +463,6 @@ class PipelineRepositoryReadTest extends TestCase
         $this->assertSame('design', $updated->metadata_json['course']);
         $this->assertSame('job-preserve-upload', $updated->metadata_json['job_id']);
         $this->assertSame(Document::STATUS_COMPLETED, $updated->status);
-    }
-
-    public function test_scrape_history_repository_detects_completed_scrapes(): void
-    {
-        $repository = app(PipelineScrapeHistoryRepository::class);
-        $scrapedElementUrl = 'https://history.example/scraped-element';
-        $completedJobUrl = 'https://history.example/completed-job';
-        $completedScrapeJobUrl = 'https://history.example/completed-scrape-job';
-        $completedConvertJobUrl = 'https://history.example/completed-convert-job';
-        $failedJobUrl = 'https://history.example/failed-job';
-
-        $this->assertFalse($repository->hasCompletedScrape($scrapedElementUrl, hash('sha256', $scrapedElementUrl)));
-
-        ScrapedElement::query()->create([
-            'uuid' => (string) Str::uuid(),
-            'title' => 'Already scraped',
-            'page_url' => $scrapedElementUrl,
-            'page_url_hash' => hash('sha256', $scrapedElementUrl),
-            'content_hash' => hash('sha256', $scrapedElementUrl),
-            'job_id' => 'existing-scrape-job',
-        ]);
-
-        $task = $this->task('task-scrape-history');
-        $this->job($task, 'job-history-completed', PipelineJob::STATUS_COMPLETED, $completedJobUrl);
-        $this->job($task, 'job-history-scrape-completed', PipelineJob::STATUS_COMPLETED, $completedScrapeJobUrl, PipelineJob::TYPE_SCRAPE);
-        $this->job($task, 'job-history-convert-completed', PipelineJob::STATUS_COMPLETED, $completedConvertJobUrl);
-        $this->job($task, 'job-history-failed', PipelineJob::STATUS_FAILED, $failedJobUrl);
-
-        $this->assertTrue($repository->hasCompletedScrape($scrapedElementUrl, hash('sha256', $scrapedElementUrl)));
-        $this->assertTrue($repository->hasCompletedScraperOutput($scrapedElementUrl, hash('sha256', $scrapedElementUrl)));
-        $this->assertTrue($repository->hasScrapedElement($scrapedElementUrl, hash('sha256', $scrapedElementUrl)));
-        $this->assertTrue($repository->hasCompletedOrSkippedJob($completedJobUrl));
-        $this->assertTrue($repository->hasCompletedOrSkippedScrapeJob($completedScrapeJobUrl));
-        $this->assertTrue($repository->hasCompletedScraperOutput($completedScrapeJobUrl, 'missing-hash'));
-        $this->assertFalse($repository->hasCompletedOrSkippedScrapeJob($completedConvertJobUrl));
-        $this->assertFalse($repository->hasCompletedScraperOutput($completedConvertJobUrl, 'missing-hash'));
-        $this->assertFalse($repository->hasCompletedOrSkippedJob($failedJobUrl));
-        $this->assertFalse($repository->hasCompletedScrape('https://history.example/missing', 'missing-hash'));
     }
 
     private function task(

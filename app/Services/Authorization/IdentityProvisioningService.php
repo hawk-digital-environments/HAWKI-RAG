@@ -42,11 +42,11 @@ readonly class IdentityProvisioningService
     {
         $tenantId = $this->context->tenantIdFromClaims($identity->claims);
         $existing = $this->identities->findByIssuerAndSubject($identity->issuer, $identity->subject);
-        $candidate = $this->identities->findByTenantAndIdentifiers($tenantId, [
+        $candidate = $this->identities->findByTenantAndProviderAndExternalUserId(
+            $tenantId,
+            $identity->provider,
             $identity->externalUserId,
-            $identity->email,
-            $identity->username,
-        ]);
+        );
 
         $applicationId = $this->context->ensureApplication(
             $tenantId,
@@ -84,24 +84,62 @@ readonly class IdentityProvisioningService
      */
     public function userAssignments(string $tenantId, string $applicationId, array $identifiers): array
     {
+        return $this->externalAssignments(
+            $tenantId,
+            $applicationId,
+            UserIdentity::PROVIDER_TENANT_IDENTITY,
+            $identifiers,
+            'group-member',
+        );
+    }
+
+    /**
+     * @param list<string> $identifiers
+     * @return list<GroupMemberAssignment>
+     */
+    public function connectorMemberAssignments(string $tenantId, string $applicationId, string $provider, array $identifiers): array
+    {
+        return $this->externalAssignments(
+            $tenantId,
+            $applicationId,
+            $provider,
+            $identifiers,
+            'permission-sync',
+        );
+    }
+
+    /**
+     * @param list<string> $identifiers
+     * @return list<GroupMemberAssignment>
+     */
+    private function externalAssignments(
+        string $tenantId,
+        string $applicationId,
+        string $provider,
+        array $identifiers,
+        string $source,
+    ): array {
         $resolvedApplicationId = $this->context->ensureApplication($tenantId, $applicationId);
         $assignments = [];
 
         foreach ($identifiers as $identifier) {
-            $identity = $this->identities->findByTenantAndIdentifiers($tenantId, [$identifier]);
+            $identity = $this->identities->findByTenantAndProviderAndExternalUserId($tenantId, $provider, $identifier);
 
             if ($identity instanceof UserIdentity) {
                 $identity = $this->hydrateIdentityContext($identity, $tenantId, $resolvedApplicationId);
             } else {
                 $internalUserId = $this->internalUsers->ensure($tenantId, null, [
-                    'source' => 'group-member',
+                    'source' => $source,
                     'application_id' => $resolvedApplicationId,
+                    'provider' => $provider,
                 ]);
                 $identity = $this->identities->upsertExternalIdentifier(
                     $tenantId,
                     $resolvedApplicationId,
                     $internalUserId,
                     $identifier,
+                    $provider,
+                    $source,
                 );
             }
 

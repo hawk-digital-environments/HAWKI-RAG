@@ -13,7 +13,6 @@ class Document extends Model
     use HasUuids;
 
     public const SOURCE_UPLOAD = 'upload';
-    public const SOURCE_SCRAPE = 'scrape';
     public const SOURCE_API = 'api';
     public const SOURCE_MANUAL = 'manual';
 

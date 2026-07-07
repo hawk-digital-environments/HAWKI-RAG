@@ -69,7 +69,6 @@ readonly class IngestSourceWorkflowPayloadFactory
             ],
             'task_queues' => [
                 'workflow' => $this->config->get('temporal.task_queues.workflow', 'rag-workflow-task-queue'),
-                'scraper' => $this->config->get('temporal.task_queues.scraper', 'rag-scraper-task-queue'),
                 'converter' => $this->config->get('temporal.task_queues.converter', 'rag-converter-task-queue'),
                 'ingestion' => $this->config->get('temporal.task_queues.ingestion', 'rag-ingestion-task-queue'),
             ],

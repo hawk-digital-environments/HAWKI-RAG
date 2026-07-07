@@ -101,9 +101,10 @@ readonly class NativeGrantProjectionService
                     continue;
                 }
 
-                $assignments = $this->identities->groupMemberAssignments(
+                $assignments = $this->identities->connectorMemberAssignments(
                     (string) $group->tenant_id,
                     (string) $group->owner_application_id,
+                    $membership->provider,
                     [$membership->externalUserId],
                 );
 

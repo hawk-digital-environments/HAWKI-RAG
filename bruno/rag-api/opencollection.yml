@@ -1,8 +1,0 @@
-opencollection: 1.0.0
-info:
-  name: RAWKI RAG API
-extensions:
-  bruno:
-    ignore:
-      - node_modules
-      - .git

@@ -9,7 +9,7 @@
 - Add graph-only ingestion mode for writing Neo4j triplets without running the full vector embedding flow.
 - Add document and pipeline state persistence foundations with new `documents` and `job_processing_state` models and migrations.
 - Add Temporal Server and Temporal UI to the core Docker stack.
-- Add independently scalable Temporal workflow, scraper, converter, and ingestion workers.
+- Add independently scalable Temporal workflow, converter, and ingestion workers.
 
 ### Quality of Life
 
@@ -25,7 +25,6 @@
 
 - Fix ARM compatibility issues in Docker builds, including Ollama and database admin tooling.
 - Fix gateway/Laravel URL handling by making `DOCKER_PROJECT_PROTOCOL`, `APP_URL`, and `ASSET_URL` configurable from Docker build args.
-- Fix Vite asset base path generation so assets resolve correctly when the app is mounted under a sub-path.
 - Fix RAG health fallback behavior when one or more backend health endpoints are unavailable.
 - Fix Ollama health checks in the Docker stack.
 - Fix conversion handoff issues by validating converted output, normalizing conversion metadata, and writing converted files more safely.
@@ -40,7 +39,7 @@
 
 [//]: # (- Changes that are mostly relevant to maintainers and contributors, such as refactors, dependency updates, CI changes, etc.)
 - Refactor RAG orchestration from the older communication service abstraction into Laravel-owned Temporal workflow/schedule services and commands.
-- Add Temporal workflow payload factories and external service adapter workers for scraper/converter/ingestion handoff.
+- Add Temporal workflow payload factories and external service adapter workers for converter/ingestion handoff.
 - Add pipeline validation and structured pipeline logging helpers for conversion and ingestion stages.
 - Remove previously tracked Python cache files and generated JSON artifacts from the repository.
 - Clean up Laravel migrations by removing obsolete cache/session/scrape table migrations and adding operational state tables for the new pipeline.

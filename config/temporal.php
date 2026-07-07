@@ -27,7 +27,6 @@ return [
 
     'task_queues' => [
         'workflow' => env('TEMPORAL_RAG_WORKFLOW_TASK_QUEUE', 'rag-workflow-task-queue'),
-        'scraper' => env('TEMPORAL_RAG_SCRAPER_TASK_QUEUE', 'rag-scraper-task-queue'),
         'converter' => env('TEMPORAL_RAG_CONVERTER_TASK_QUEUE', 'rag-converter-task-queue'),
         'ingestion' => env('TEMPORAL_RAG_INGESTION_TASK_QUEUE', 'rag-ingestion-task-queue'),
     ],
@@ -52,10 +51,6 @@ return [
     ],
 
     'external_services' => [
-        'scraper_url' => env('EXTERNAL_SCRAPER_URL', env('CUSTOM_CRAWLER_URL', 'http://crawler:8000')),
-        'scraper_start_path' => env('EXTERNAL_SCRAPER_START_PATH', '/api/scrape/start'),
-        'scraper_status_path' => env('EXTERNAL_SCRAPER_STATUS_PATH', '/api/scrape/jobs/{job_id}'),
-        'scraper_token' => env('EXTERNAL_SCRAPER_TOKEN', env('CUSTOM_CRAWLER_API_KEY', '')),
         'converter_url' => env('EXTERNAL_CONVERTER_URL', env('FILE_CONVERTER_BASE_URL', 'http://file-converter:8000')),
         'converter_start_path' => env('EXTERNAL_CONVERTER_START_PATH', '/extract'),
         'converter_status_path' => env('EXTERNAL_CONVERTER_STATUS_PATH', ''),
