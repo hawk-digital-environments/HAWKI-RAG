@@ -211,13 +211,14 @@ readonly class DocumentService
     {
         $document = $this->requireOwnedDocument($documentId);
         $oldChecksum = $this->identifiers->stringValue($document->checksum_sha256);
+        $targetHeap = $this->targetHeap($input);
 
         $content = $this->identifiers->stringValue($input['content'] ?? null);
         if ($content !== null) {
             $bridge = $this->bridge->put('/documents/'.rawurlencode($documentId), [
                 'text' => $content,
                 'payload' => $this->metadata($input['metadata'] ?? $document->metadata_json ?? []),
-                'collection' => $document->collection,
+                'collection' => $targetHeap instanceof Heap ? $this->collection($targetHeap) : $document->collection,
                 'graph' => false,
             ], $idempotencyKey);
 
@@ -225,12 +226,22 @@ readonly class DocumentService
                 return $bridge;
             }
 
-            $storagePath = $this->writeDocumentContent((string) $document->heapId(), (string) $document->id, $content);
+            $storagePath = $this->writeDocumentContent(
+                $targetHeap instanceof Heap ? $targetHeap->heapId() : (string) $document->heapId(),
+                (string) $document->id,
+                $content,
+            );
             $document->storage_path = $storagePath;
             $document->mime_type = 'text/plain';
             $document->file_size = strlen($content);
             $document->checksum_sha256 = hash('sha256', $content);
             $document->corpus_id = null;
+        }
+
+        if ($targetHeap instanceof Heap && $targetHeap->heapId() !== $document->heapId()) {
+            $document->moveToHeap($targetHeap);
+            $document->collection = $this->collection($targetHeap);
+            $document->unsetRelation('heap');
         }
 
         if (array_key_exists('metadata', $input)) {
@@ -262,6 +273,20 @@ readonly class DocumentService
             'status' => 200,
             'document' => $document->fresh(),
         ];
+    }
+
+    /**
+     * @param array<string, mixed> $input
+     */
+    private function targetHeap(array $input): ?Heap
+    {
+        if (! array_key_exists('heap_id', $input)) {
+            return null;
+        }
+
+        $heapId = $this->identifiers->stringValue($input['heap_id'] ?? null);
+
+        return $heapId === null ? null : $this->requireOwnedHeap($heapId);
     }
 
     /**

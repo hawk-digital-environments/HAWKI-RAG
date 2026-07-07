@@ -3431,17 +3431,19 @@ class ApiAndVectorValidationTests(unittest.TestCase):
         )
         self.assertEqual(
             build_match_filter(
-                {
-                    "AND": [
+                [
+                    "AND",
+                    [
                         ["owner_app", "hawki-web"],
-                        {
-                            "OR": [
+                        [
+                            "OR",
+                            [
                                 ["protected", False],
                                 ["document_id", ["doc-1", "doc-2"]],
-                            ]
-                        },
-                    ]
-                }
+                            ],
+                        ],
+                    ],
+                ]
             ),
             {
                 "must": [

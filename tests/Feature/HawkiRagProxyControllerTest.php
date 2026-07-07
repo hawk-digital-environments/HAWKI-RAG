@@ -33,6 +33,7 @@ class HawkiRagProxyControllerTest extends TestCase
                             'document_id' => 'doc-visible',
                             'content' => 'Campus policy body',
                             'heap' => 'heap-public',
+                            'corpus_id' => 'corpus-visible',
                             'course' => 'policy',
                         ],
                     ],
@@ -124,12 +125,15 @@ class HawkiRagProxyControllerTest extends TestCase
                 'user_identifier' => 'learner-123',
                 'preferred_tags' => ['policy'],
             ])->assertOk()
-            ->assertJsonPath('query', 'campus policy')
-            ->assertJsonPath('count', 1)
+            ->assertJsonPath('total', 1)
             ->assertJsonPath('results.0.id', 'chunk-1')
             ->assertJsonPath('results.0.document_id', 'doc-visible')
-            ->assertJsonPath('results.0.content', 'Campus policy body')
+            ->assertJsonPath('results.0.heap_id', 'heap-public')
+            ->assertJsonPath('results.0.corpus_id', 'corpus-visible')
+            ->assertJsonPath('results.0.chunk_content', 'Campus policy body')
             ->assertJsonPath('results.0.metadata.heap', 'heap-public')
+            ->assertJsonMissingPath('query')
+            ->assertJsonMissingPath('count')
             ->assertJsonMissingPath('ok')
             ->assertJsonMissingPath('hits')
             ->assertJsonMissingPath('kg')
@@ -361,7 +365,7 @@ class HawkiRagProxyControllerTest extends TestCase
             ->postJson('/api/search', [
                 'query' => 'campus policy',
                 'limit' => 6,
-                'filters' => ['NOT' => ['visibility', 'hidden']],
+                'filters' => ['NOT', ['visibility', 'hidden']],
             ])->assertOk();
 
         Http::assertSent(function (Request $request): bool {
@@ -375,7 +379,7 @@ class HawkiRagProxyControllerTest extends TestCase
     }
 
     /**
-     * @param array<string, mixed> $filter
+     * @param array<mixed> $filter
      */
     private function filterContains(array $filter, string $key, mixed $value): bool
     {
@@ -389,12 +393,8 @@ class HawkiRagProxyControllerTest extends TestCase
             return $this->filterValueMatches($candidate, $value);
         }
 
-        foreach (['AND', 'OR'] as $operator) {
-            $children = $filter[$operator] ?? null;
-            if (! is_array($children)) {
-                continue;
-            }
-
+        if ($this->isFilterOperator($filter, 'AND') || $this->isFilterOperator($filter, 'OR')) {
+            $children = is_array($filter[1] ?? null) ? $filter[1] : [];
             foreach ($children as $child) {
                 if (is_array($child) && $this->filterContains($child, $key, $value)) {
                     return true;
@@ -402,8 +402,7 @@ class HawkiRagProxyControllerTest extends TestCase
             }
         }
 
-        $not = $filter['NOT'] ?? null;
-        if (is_array($not) && $this->filterContains($not, $key, $value)) {
+        if ($this->isFilterOperator($filter, 'NOT') && is_array($filter[1] ?? null) && $this->filterContains($filter[1], $key, $value)) {
             return true;
         }
 
@@ -418,17 +417,12 @@ class HawkiRagProxyControllerTest extends TestCase
 
     private function filterContainsNot(array $filter, string $key, mixed $value): bool
     {
-        $not = $filter['NOT'] ?? null;
-        if (is_array($not) && $this->filterContains($not, $key, $value)) {
+        if ($this->isFilterOperator($filter, 'NOT') && is_array($filter[1] ?? null) && $this->filterContains($filter[1], $key, $value)) {
             return true;
         }
 
-        foreach (['AND', 'OR'] as $operator) {
-            $children = $filter[$operator] ?? null;
-            if (! is_array($children)) {
-                continue;
-            }
-
+        if ($this->isFilterOperator($filter, 'AND') || $this->isFilterOperator($filter, 'OR')) {
+            $children = is_array($filter[1] ?? null) ? $filter[1] : [];
             foreach ($children as $child) {
                 if (is_array($child) && $this->filterContainsNot($child, $key, $value)) {
                     return true;
@@ -462,7 +456,16 @@ class HawkiRagProxyControllerTest extends TestCase
     {
         return array_is_list($filter)
             && count($filter) === 2
-            && is_string($filter[0] ?? null);
+            && is_string($filter[0] ?? null)
+            && ! in_array(strtoupper($filter[0]), ['AND', 'OR', 'NOT'], true);
+    }
+
+    private function isFilterOperator(array $filter, string $operator): bool
+    {
+        return array_is_list($filter)
+            && count($filter) === 2
+            && is_string($filter[0] ?? null)
+            && strtoupper($filter[0]) === $operator;
     }
 
     private function filterValueMatches(mixed $candidate, mixed $value): bool

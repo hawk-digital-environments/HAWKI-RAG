@@ -56,15 +56,15 @@ Leaf arrays mean logical OR across values:
 Boolean groups:
 
 ```json
-{ "AND": [["owner_app", "hawki-web"], ["visibility", "discoverable"]] }
+["AND", [["owner_app", "hawki-web"], ["visibility", "discoverable"]]]
 ```
 
 ```json
-{ "OR": [["heap", "heap-a"], ["heap", "heap-b"]] }
+["OR", [["heap", "heap-a"], ["heap", "heap-b"]]]
 ```
 
 ```json
-{ "NOT": ["protected", true] }
+["NOT", ["protected", true]]
 ```
 
 Sibling expressions at the root are treated as an implicit `AND`:
@@ -92,12 +92,13 @@ The Python bridge request contains exactly:
 {
   "query": "campus policy",
   "limit": 5,
-  "filters": {
-    "AND": [
+  "filters": [
+    "AND",
+    [
       ["owner_app", "hawki-web"],
       ["protected", false]
     ]
-  }
+  ]
 }
 ```
 
@@ -120,19 +121,20 @@ must not leak through this public route.
 
 ```json
 {
-  "query": "campus policy",
-  "count": 1,
   "results": [
     {
       "id": "chunk-1",
       "document_id": "doc-1",
+      "heap_id": "heap-public",
+      "corpus_id": "sha256:...",
+      "chunk_content": "Chunk content",
       "score": 0.92,
-      "content": "Chunk content",
       "metadata": {
         "document_id": "doc-1"
       }
     }
-  ]
+  ],
+  "total": 1
 }
 ```
 

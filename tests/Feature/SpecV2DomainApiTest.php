@@ -43,9 +43,9 @@ class SpecV2DomainApiTest extends TestCase
             'permissions' => ['reads-all-apps', 'reads'],
         ])->assertCreated()
             ->assertJsonPath('id', 'hawki-web')
-            ->assertJsonPath('tenantId', 'uni-hawk')
+            ->assertJsonPath('tenant_id', 'uni-hawk')
             ->assertJsonPath('permissions.0', 'reads-all-apps')
-            ->assertJsonPath('tokenType', 'Bearer');
+            ->assertJsonPath('token_type', 'Bearer');
         $token = $application->json('token');
 
         $this->withHeader('Authorization', 'Bearer '.$token)

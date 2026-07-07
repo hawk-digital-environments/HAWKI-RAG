@@ -869,7 +869,7 @@ class ArchitectureContractTest extends TestCase
         $contract = file_get_contents(base_path('docs/internal-architecture-contract.md'));
         $searchContract = file_get_contents(base_path('docs/hawki-rag-v2-search-contract.md'));
         $proxy = file_get_contents(app_path('Http/Controllers/API/HawkiRagProxyController.php'));
-        $retrieval = file_get_contents(app_path('Http/Controllers/API/OpenCompat/RetrievalController.php'));
+        $retrieval = file_get_contents(app_path('Http/Controllers/API/SearchChunkController.php'));
         $compatService = file_get_contents(app_path('Services/OpenCompat/OpenCompatService.php'));
         $compatIngestService = file_get_contents(app_path('Services/OpenCompat/OpenCompatIngestService.php'));
         $specDocuments = file_get_contents(app_path('Services/SpecV2/DocumentService.php'));
@@ -888,6 +888,7 @@ class ArchitectureContractTest extends TestCase
         $this->assertStringContainsString('Laravel owns actor resolution', $contract);
         $this->assertStringContainsString('Python is a retrieval engine only', $contract);
         $this->assertStringContainsString('Qdrant payload mutation is a write-path concern', $contract);
+        $this->assertStringContainsString('relational `datasets.dataset_id` storage model is an explicit legacy', $contract);
         $this->assertStringContainsString('App-facing internal APIs use application bearer tokens only', $contract);
         $this->assertStringContainsString('App-facing V2 reads return `403`', $contract);
         $this->assertStringContainsString('No legacy compatibility API routes are registered', $contract);
@@ -943,6 +944,8 @@ class ArchitectureContractTest extends TestCase
         $this->assertStringNotContainsString("Route::post('/query'", $appSearchRoutes);
         $this->assertStringNotContainsString("Route::post('/documents'", $appSearchRoutes);
         $this->assertStringNotContainsString("Route::post('/batch/chunks'", $appSearchRoutes);
+        $this->assertStringContainsString('SearchChunkController', $appSearchRoutes);
+        $this->assertStringNotContainsString('OpenCompatRetrievalController', $appSearchRoutes);
         $this->assertIsString($appIngestionRoutes);
         $this->assertStringContainsString('auth:application-token', $appIngestionRoutes);
         $this->assertIsString($specRoutes);
@@ -1009,6 +1012,102 @@ class ArchitectureContractTest extends TestCase
         sort($allowedUris);
 
         $this->assertSame($allowedUris, $uris);
+    }
+
+    public function test_operator_graph_and_pipeline_entrypoints_stay_out_of_application_boundary(): void
+    {
+        $routes = collect(Route::getRoutes()->getRoutes());
+        $operatorUris = [
+            'api/pipeline/tasks',
+            'api/pipeline/tasks/{taskId}',
+            'api/pipeline/recovery/failed-jobs',
+            'api/rag/stats',
+            'api/rag/neo4j/graph/overview',
+            'api/rag/neo4j/graph/search',
+            'api/rag/neo4j/graph/semantic-search',
+            'api/rag/neo4j/graph/expand',
+        ];
+
+        foreach ($operatorUris as $uri) {
+            $matchingRoutes = $routes->filter(fn (\Illuminate\Routing\Route $route): bool => $route->uri() === $uri);
+            $this->assertNotEmpty($matchingRoutes, $uri.' should remain registered as an operator endpoint.');
+
+            foreach ($matchingRoutes as $route) {
+                $middleware = $route->gatherMiddleware();
+                $this->assertContains('auth:sanctum,oidc', $middleware, $uri.' must stay behind human/operator auth.');
+                $this->assertNotContains('auth:application-token', $middleware, $uri.' must not leak onto the app-facing API surface.');
+            }
+        }
+
+        $applicationUris = $routes
+            ->filter(fn (\Illuminate\Routing\Route $route): bool => in_array('auth:application-token', $route->gatherMiddleware(), true))
+            ->map(fn (\Illuminate\Routing\Route $route): string => $route->uri())
+            ->unique()
+            ->values()
+            ->all();
+
+        $this->assertContains('api/pipeline/files', $applicationUris);
+
+        foreach ($applicationUris as $uri) {
+            $this->assertFalse(str_starts_with($uri, 'api/rag/neo4j/graph'), $uri.' is graph exploration and must be operator-only.');
+            $this->assertFalse(str_starts_with($uri, 'api/pipeline/tasks'), $uri.' is pipeline operations and must be operator-only.');
+            $this->assertFalse(str_starts_with($uri, 'api/pipeline/recovery'), $uri.' is pipeline recovery and must be operator-only.');
+            $this->assertNotSame('api/rag/stats', $uri, 'RAG stats must be operator-only.');
+            $this->assertFalse(str_starts_with($uri, 'api/rag/qdrant'), $uri.' is destructive storage management and must be operator-only.');
+        }
+    }
+
+    public function test_final_v2_design_decisions_are_documented_and_enforced(): void
+    {
+        $contract = file_get_contents(base_path('docs/internal-architecture-contract.md'));
+        $swagger = file_get_contents(base_path('public/swagger/openapi.yaml'));
+        $searchRequest = file_get_contents(app_path('Http/Requests/Search/SearchQueryRequest.php'));
+        $createHeapRequest = file_get_contents(app_path('Http/Requests/SpecV2/CreateHeapRequest.php'));
+        $updateHeapRequest = file_get_contents(app_path('Http/Requests/SpecV2/UpdateHeapRequest.php'));
+        $replaceDocumentGrants = file_get_contents(app_path('Http/Requests/SpecV2/ReplaceDocumentGrantAssignmentsRequest.php'));
+        $updateDocumentGrants = file_get_contents(app_path('Http/Requests/SpecV2/UpdateDocumentGrantAssignmentsRequest.php'));
+        $grantService = file_get_contents(app_path('Services/SpecV2/AuthorizationGrantService.php'));
+
+        $this->assertIsString($contract);
+        foreach ([
+            'Auth-disabled semantics: `AUTHZ_ENABLED=false` is a no-op mode',
+            'Canonical response casing: app-facing V2 resources use `snake_case` keys',
+            'Filter grammar: search accepts the strict V2 tuple grammar only',
+            'V2 search accepts `limit` only',
+            'Permission error semantics: app-facing V2 reads return `403`',
+            'Document grants are user-only',
+            'Heap protection is grant-derived only',
+            'Native Laravel grant tables are the V2 runtime authorization source',
+            '`/api/search/chunks` and `/api/search/chunks/grouped` are V2 app-search',
+        ] as $decision) {
+            $this->assertStringContainsString($decision, $contract);
+        }
+
+        $this->assertIsString($searchRequest);
+        $this->assertStringContainsString("'limit' =>", $searchRequest);
+        $this->assertStringContainsString("'top_k' => 'prohibited'", $searchRequest);
+        $this->assertStringContainsString("'k' => 'prohibited'", $searchRequest);
+
+        $this->assertIsString($createHeapRequest);
+        $this->assertStringNotContainsString("'protected'", $createHeapRequest);
+        $this->assertIsString($updateHeapRequest);
+        $this->assertStringNotContainsString("'protected'", $updateHeapRequest);
+
+        $this->assertIsString($replaceDocumentGrants);
+        $this->assertStringContainsString("'groups' => 'prohibited'", $replaceDocumentGrants);
+        $this->assertIsString($updateDocumentGrants);
+        $this->assertStringContainsString("'add_groups' => 'prohibited'", $updateDocumentGrants);
+        $this->assertStringContainsString("'remove_groups' => 'prohibited'", $updateDocumentGrants);
+
+        $this->assertIsString($grantService);
+        $this->assertStringContainsString('$heap->protected = true;', $grantService);
+        $this->assertStringContainsString('$heap->protected = false;', $grantService);
+
+        $this->assertIsString($swagger);
+        $this->assertStringNotContainsString('/auth/heaps/{heapId}/grants', $swagger);
+        $this->assertStringNotContainsString('/auth/documents/{documentId}/grants', $swagger);
+        $this->assertStringContainsString('ReplaceDocumentGrantAssignmentsRequest', $swagger);
+        $this->assertStringContainsString('Move the document to another heap owned by the current application.', $swagger);
     }
 
     public function test_core_v2_and_app_contract_files_do_not_reintroduce_legacy_dataset_terms(): void
@@ -1123,7 +1222,7 @@ class ArchitectureContractTest extends TestCase
     }
 
     /**
-     * @param array<string, mixed> $filter
+     * @param array<mixed> $filter
      */
     private function filterContains(array $filter, string $key, mixed $value): bool
     {
@@ -1137,12 +1236,8 @@ class ArchitectureContractTest extends TestCase
             return $this->filterValueMatches($candidate, $value);
         }
 
-        foreach (['AND', 'OR'] as $operator) {
-            $children = $filter[$operator] ?? null;
-            if (! is_array($children)) {
-                continue;
-            }
-
+        if ($this->isFilterOperator($filter, 'AND') || $this->isFilterOperator($filter, 'OR')) {
+            $children = is_array($filter[1] ?? null) ? $filter[1] : [];
             foreach ($children as $child) {
                 if (is_array($child) && $this->filterContains($child, $key, $value)) {
                     return true;
@@ -1150,8 +1245,7 @@ class ArchitectureContractTest extends TestCase
             }
         }
 
-        $not = $filter['NOT'] ?? null;
-        if (is_array($not) && $this->filterContains($not, $key, $value)) {
+        if ($this->isFilterOperator($filter, 'NOT') && is_array($filter[1] ?? null) && $this->filterContains($filter[1], $key, $value)) {
             return true;
         }
 
@@ -1187,7 +1281,16 @@ class ArchitectureContractTest extends TestCase
     {
         return array_is_list($filter)
             && count($filter) === 2
-            && is_string($filter[0] ?? null);
+            && is_string($filter[0] ?? null)
+            && ! in_array(strtoupper($filter[0]), ['AND', 'OR', 'NOT'], true);
+    }
+
+    private function isFilterOperator(array $filter, string $operator): bool
+    {
+        return array_is_list($filter)
+            && count($filter) === 2
+            && is_string($filter[0] ?? null)
+            && strtoupper($filter[0]) === $operator;
     }
 
     private function filterValueMatches(mixed $candidate, mixed $value): bool

@@ -16,8 +16,10 @@ denormalized payload writes.
    canonical `filters` expression from Laravel. It must not resolve tenants,
    applications, user identities, or permission grants.
 5. The auth backend is optional infrastructure. When enabled, Laravel services
-   may write or check graph relationships. When disabled, auth-shaped inputs
-   are accepted and ignored without side effects.
+   may mirror native grants or connector projections to graph relationships.
+   Runtime V2 access decisions are made from Laravel's tenant, application,
+   group, heap grant, and document grant model. When disabled, auth-shaped
+   inputs are accepted and ignored without side effects.
 6. Qdrant payload mutation is a write-path concern. Controllers do not write
    Qdrant directly. Relational `documents.metadata_json` holds caller metadata
    plus internal audit (`__rawki.audit`) only. Denormalized payload composition
@@ -25,7 +27,11 @@ denormalized payload writes.
 7. No legacy compatibility API routes are registered on this branch. Shared
    legacy-named services may remain only as internal adapters behind active
    app-search, app-ingestion, or V2 flows.
-8. `user_identifier` is an opaque Laravel-only lookup value. Scope resolution
+8. The relational `datasets.dataset_id` storage model is an explicit legacy
+   heap storage adapter. It is not a public V2 term. Core V2 resources, routes,
+   docs, and Swagger must expose heap terminology only until a dedicated schema
+   migration replaces the underlying table and column names.
+9. `user_identifier` is an opaque Laravel-only lookup value. Scope resolution
    matches it exactly against `user_identities.external_user_id`, never through
    `email` or `username`, and excludes ambiguous multi-provider matches within
    one tenant from federated unioning.
@@ -39,7 +45,7 @@ denormalized payload writes.
   Owns the canonical Laravel request contract for application-facing search
   endpoints. It accepts `limit` only and rejects deprecated `top_k` or `k`
   aliases on the V2 surface.
-- `app/Http/Controllers/API/OpenCompat/RetrievalController.php`
+- `app/Http/Controllers/API/SearchChunkController.php`
   Builds application-visible search scope through Laravel policy services
   before delegating shared chunk retrieval for `/api/search/chunks` and
   `/api/search/chunks/grouped`.
@@ -94,6 +100,35 @@ denormalized payload writes.
 
 ## Enforcement Notes
 
+- Final V2 design decisions:
+  - Auth-disabled semantics: `AUTHZ_ENABLED=false` is a no-op mode. This branch
+    intentionally chooses no-op semantics over the spec's alternate 503 /
+    fail-closed wording for absent auth infrastructure. Auth fields, grant
+    endpoints, permission sync inputs, and utility checks are accepted without
+    graph side effects. Scoped `/api/auth/check` calls return `permitted: true`;
+    identifier heap lookups return an empty page.
+  - Canonical response casing: app-facing V2 resources use `snake_case` keys
+    for public contract fields. Legacy camelCase keys may exist only behind
+    explicitly isolated compatibility adapters.
+  - Filter grammar: search accepts the strict V2 tuple grammar only, including
+    `["field", value]`, `["AND", [...]]`, `["OR", [...]]`, `["NOT", expr]`,
+    and root sibling expressions as implicit `AND`. V2 search accepts `limit` only; deprecated `top_k` and `k` aliases are rejected.
+  - Permission error semantics: app-facing V2 reads return `403` when an
+    existing resource is outside the caller's application scope and `404` only
+    when the resource is missing or intentionally hidden by an ownership-only
+    write path.
+  - Document grants are user-only. Heap grants may contain direct users and
+    groups; document grants may contain direct users only.
+  - Heap protection is grant-derived only. General heap create/update APIs do
+    not accept `protected`; first grant creation protects a heap and deleting
+    heap grants unprotects it.
+  - Native Laravel grant tables are the V2 runtime authorization source of
+    truth. SpiceDB/OpenFGA are optional projection backends used for connector
+    compatibility, replay, and external graph integration; V2 reads must not
+    require a graph round-trip.
+  - `/api/search/chunks` and `/api/search/chunks/grouped` are V2 app-search
+    routes. They may reuse shared chunk retrieval services internally but must
+    stay mounted through V2-facing controllers and application-token auth.
 - Application permissions mean:
   - `reads`: own application only
   - `reads-all-apps`: any application in the same tenant

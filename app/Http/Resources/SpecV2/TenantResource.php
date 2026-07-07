@@ -21,12 +21,11 @@ class TenantResource extends JsonResource
             'id' => $this->id,
             'name' => $this->name,
             'metadata' => is_array($this->metadata_json) ? $this->metadata_json : [],
-            'applicationCount' => (int) ($this->applications_count ?? 0),
-            'groupCount' => (int) ($this->groups_count ?? 0),
-            'heapCount' => (int) ($this->heaps_count ?? 0),
-            'createdAt' => $this->created_at?->toIso8601String(),
-            'updatedAt' => $this->updated_at?->toIso8601String(),
+            'application_count' => (int) ($this->applications_count ?? 0),
+            'group_count' => (int) ($this->groups_count ?? 0),
+            'heap_count' => (int) ($this->heaps_count ?? 0),
+            'created_at' => $this->created_at?->toIso8601String(),
+            'updated_at' => $this->updated_at?->toIso8601String(),
         ];
     }
 }
-

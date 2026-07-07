@@ -17,7 +17,7 @@ This repo treats the V2 terminology as the canonical product language.
 ## Current implementation shape
 
 - `Tenant`, `Application`, `Heap`, `Corpus`, and `Group` all have first-class API surfaces.
-- `Document` payloads expose `heapId` and `corpusId`.
+- `Document` payloads expose `heap_id` and `corpus_id`.
 - Search requests use gateway-built `filters` and forward search inputs to Python.
 - Authorization identity resolution is tenant-aware and application-aware.
 
@@ -29,6 +29,9 @@ This is a terminology and surface-alignment step, not a full storage rewrite.
 - Python remains the search executor.
 - Authorization data still flows through the existing permission-graph path.
 - Internal storage and pipeline code may still contain compatibility-era symbols, but product-facing surfaces should speak only in V2 terms.
+- The current relational heap storage adapter still maps heaps onto the legacy
+  `datasets.dataset_id` schema. That is an internal adapter boundary, not a
+  public V2 API term.
 
 ## Canonical API surfaces
 

@@ -36,6 +36,10 @@ readonly class FilterLanguageParser
             return FilterExpression::empty();
         }
 
+        if ($this->isOperatorNode($node)) {
+            return $this->parseOperatorNode($node);
+        }
+
         if ($this->isLeafNode($node)) {
             return $this->parseLeaf((string) $node[0], $node[1]);
         }
@@ -44,19 +48,9 @@ readonly class FilterLanguageParser
             return $this->parseImplicitAnd($node);
         }
 
-        $operators = $this->operatorKeys($node);
-        if (count($operators) !== 1 || count($node) !== 1) {
-            throw ValidationException::withMessages([
-                'filters' => ['Filter objects may only contain one boolean operator. Use ["field", value] for leaf filters.'],
-            ]);
-        }
-
-        $operator = $operators[0];
-
-        return match ($operator) {
-            'AND', 'OR' => $this->parseGroupOperator($operator, $node[$this->matchingKey($node, $operator)]),
-            'NOT' => $this->parseNotOperator($node[$this->matchingKey($node, $operator)]),
-        };
+        throw ValidationException::withMessages([
+            'filters' => ['Boolean filter operators must use array syntax such as ["AND", [...]], ["OR", [...]], or ["NOT", expression].'],
+        ]);
     }
 
     private function parseLeaf(string $field, mixed $value): FilterExpression
@@ -100,6 +94,28 @@ readonly class FilterLanguageParser
         return FilterExpression::leaf($normalizedField, $value);
     }
 
+    /**
+     * @param array<mixed> $node
+     */
+    private function parseOperatorNode(array $node): FilterExpression
+    {
+        $operator = strtoupper(trim((string) $node[0]));
+
+        if (count($node) !== 2) {
+            throw ValidationException::withMessages([
+                'filters' => ["The {$operator} operator requires exactly one value."],
+            ]);
+        }
+
+        return match ($operator) {
+            'AND', 'OR' => $this->parseGroupOperator($operator, $node[1]),
+            'NOT' => $this->parseNotOperator($node[1]),
+            default => throw ValidationException::withMessages([
+                'filters' => ['Unknown boolean filter operator.'],
+            ]),
+        };
+    }
+
     private function parseGroupOperator(string $operator, mixed $value): FilterExpression
     {
         if (! is_array($value) || ! array_is_list($value) || $value === []) {
@@ -130,7 +146,7 @@ readonly class FilterLanguageParser
             ]);
         }
 
-        if (array_is_list($value) && ! $this->isLeafNode($value)) {
+        if (array_is_list($value) && ! $this->isLeafNode($value) && ! $this->isOperatorNode($value)) {
             throw ValidationException::withMessages([
                 'filters' => ['The NOT operator requires a single child filter expression, not a list of siblings.'],
             ]);
@@ -166,42 +182,19 @@ readonly class FilterLanguageParser
     {
         return array_is_list($node)
             && count($node) === 2
-            && is_string($node[0] ?? null);
-    }
-
-    /**
-     * @param array<mixed> $node
-     * @return list<string>
-     */
-    private function operatorKeys(array $node): array
-    {
-        $operators = [];
-        foreach (array_keys($node) as $key) {
-            if (! is_string($key)) {
-                continue;
-            }
-
-            $upper = strtoupper(trim($key));
-            if (in_array($upper, ['AND', 'OR', 'NOT'], true)) {
-                $operators[] = $upper;
-            }
-        }
-
-        return array_values(array_unique($operators));
+            && is_string($node[0] ?? null)
+            && ! in_array(strtoupper(trim((string) $node[0])), ['AND', 'OR', 'NOT'], true);
     }
 
     /**
      * @param array<mixed> $node
      */
-    private function matchingKey(array $node, string $operator): string
+    private function isOperatorNode(array $node): bool
     {
-        foreach (array_keys($node) as $key) {
-            if (is_string($key) && strtoupper(trim($key)) === $operator) {
-                return $key;
-            }
-        }
-
-        return $operator;
+        return array_is_list($node)
+            && isset($node[0])
+            && is_string($node[0])
+            && in_array(strtoupper(trim($node[0])), ['AND', 'OR', 'NOT'], true);
     }
 
     private function normalizeField(string $field): string

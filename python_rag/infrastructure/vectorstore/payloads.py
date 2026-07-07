@@ -25,6 +25,9 @@ def _build_canonical_filter(node: dict[str, Any] | list[Any]) -> dict[str, Any]:
         return {}
 
     if isinstance(node, list):
+        if _is_operator_node(node):
+            return _build_operator_clause(str(node[0]).strip().upper(), node[1])
+
         if _is_leaf_node(node):
             return _build_leaf_clause(str(node[0]), node[1])
 
@@ -65,8 +68,41 @@ def _build_canonical_filter(node: dict[str, Any] | list[Any]) -> dict[str, Any]:
     return {"must": clauses}
 
 
+def _build_operator_clause(operator: str, value: Any) -> dict[str, Any]:
+    if operator == "NOT":
+        if not isinstance(value, (dict, list)):
+            return {}
+        clause = _build_canonical_filter(value)
+        return {"must_not": [clause]} if clause else {}
+
+    if not isinstance(value, list):
+        return {}
+
+    clauses = [
+        _build_canonical_filter(child)
+        for child in value
+        if isinstance(child, (dict, list))
+    ]
+    clauses = [clause for clause in clauses if clause]
+    if not clauses:
+        return {}
+    return {"must" if operator == "AND" else "should": clauses}
+
+
 def _is_leaf_node(node: list[Any]) -> bool:
-    return len(node) == 2 and isinstance(node[0], str)
+    return (
+        len(node) == 2
+        and isinstance(node[0], str)
+        and str(node[0]).strip().upper() not in {"AND", "OR", "NOT"}
+    )
+
+
+def _is_operator_node(node: list[Any]) -> bool:
+    return (
+        len(node) == 2
+        and isinstance(node[0], str)
+        and str(node[0]).strip().upper() in {"AND", "OR", "NOT"}
+    )
 
 
 def _build_leaf_clause(field: str, value: Any) -> dict[str, Any]:

@@ -44,9 +44,9 @@ readonly class CanonicalFilterExpressionSerializer
         }
 
         return match ($expression->operator) {
-            'NOT' => ['NOT' => $children[0]],
-            'OR' => ['OR' => $children],
-            default => ['AND' => $children],
+            'NOT' => ['NOT', $children[0]],
+            'OR' => ['OR', $children],
+            default => ['AND', $children],
         };
     }
 

@@ -53,7 +53,7 @@ paths:
                 $ref: "#/components/schemas/Tenant"
         "422":
           $ref: "#/components/responses/ValidationError"
-  /tenants/{tenantId}:
+  /tenants/{tenant_id}:
     parameters:
       - $ref: "#/components/parameters/TenantId"
     get:
@@ -101,7 +101,7 @@ paths:
                 $ref: "#/components/schemas/ApplicationCreateResponse"
         "422":
           $ref: "#/components/responses/ValidationError"
-  /applications/{applicationId}:
+  /applications/{application_id}:
     parameters:
       - $ref: "#/components/parameters/ApplicationId"
     get:
@@ -152,7 +152,7 @@ paths:
                 $ref: "#/components/schemas/Heap"
         "422":
           $ref: "#/components/responses/ValidationError"
-  /heaps/{heapId}:
+  /heaps/{heap_id}:
     parameters:
       - $ref: "#/components/parameters/HeapId"
     get:
@@ -197,7 +197,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HeapDeleteFailureResponse"
-  /heaps/{heapId}/documents:
+  /heaps/{heap_id}/documents:
     parameters:
       - $ref: "#/components/parameters/HeapId"
     get:
@@ -237,7 +237,7 @@ paths:
                 $ref: "#/components/schemas/DocumentCreateResponse"
         "422":
           $ref: "#/components/responses/ValidationError"
-  /documents/{documentId}:
+  /documents/{document_id}:
     parameters:
       - $ref: "#/components/parameters/DocumentId"
     get:
@@ -294,7 +294,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PaginatedCorpusResponse"
-  /corpora/{corpusId}:
+  /corpora/{corpus_id}:
     parameters:
       - $ref: "#/components/parameters/CorpusId"
     get:
@@ -458,7 +458,7 @@ paths:
                 $ref: "#/components/schemas/Group"
         "422":
           $ref: "#/components/responses/ValidationError"
-  /auth/groups/{groupId}:
+  /auth/groups/{group_id}:
     parameters:
       - $ref: "#/components/parameters/GroupId"
     get:
@@ -481,7 +481,7 @@ paths:
           description: Group deleted
         "404":
           $ref: "#/components/responses/NotFound"
-  /auth/groups/{groupId}/users:
+  /auth/groups/{group_id}/users:
     parameters:
       - $ref: "#/components/parameters/GroupId"
     get:
@@ -533,7 +533,7 @@ paths:
                 $ref: "#/components/schemas/PaginatedIdentifierResponse"
         "422":
           $ref: "#/components/responses/ValidationError"
-  /auth/heaps/{heapId}:
+  /auth/heaps/{heap_id}:
     parameters:
       - $ref: "#/components/parameters/HeapId"
     get:
@@ -599,7 +599,7 @@ paths:
       responses:
         "204":
           description: Heap grants deleted
-  /auth/documents/{documentId}:
+  /auth/documents/{document_id}:
     parameters:
       - $ref: "#/components/parameters/DocumentId"
     get:
@@ -715,37 +715,37 @@ components:
         type: boolean
     TenantId:
       in: path
-      name: tenantId
+      name: tenant_id
       required: true
       schema:
         type: string
     ApplicationId:
       in: path
-      name: applicationId
+      name: application_id
       required: true
       schema:
         type: string
     HeapId:
       in: path
-      name: heapId
+      name: heap_id
       required: true
       schema:
         type: string
     DocumentId:
       in: path
-      name: documentId
+      name: document_id
       required: true
       schema:
         type: string
     GroupId:
       in: path
-      name: groupId
+      name: group_id
       required: true
       schema:
         type: string
     CorpusId:
       in: path
-      name: corpusId
+      name: corpus_id
       required: true
       schema:
         type: string
@@ -808,17 +808,17 @@ components:
           type: string
         metadata:
           $ref: "#/components/schemas/Metadata"
-        applicationCount:
+        application_count:
           type: integer
-        groupCount:
+        group_count:
           type: integer
-        heapCount:
+        heap_count:
           type: integer
-        createdAt:
+        created_at:
           type: string
           format: date-time
           nullable: true
-        updatedAt:
+        updated_at:
           type: string
           format: date-time
           nullable: true
@@ -848,7 +848,7 @@ components:
       properties:
         id:
           type: string
-        tenantId:
+        tenant_id:
           type: string
         name:
           type: string
@@ -862,19 +862,19 @@ components:
             enum: [reads, reads-all-apps, reads-federated, reads-protected]
         metadata:
           $ref: "#/components/schemas/Metadata"
-        heapCount:
+        heap_count:
           type: integer
-        groupCount:
+        group_count:
           type: integer
-        createdAt:
+        created_at:
           type: string
           format: date-time
           nullable: true
-        updatedAt:
+        updated_at:
           type: string
           format: date-time
           nullable: true
-      required: [id, tenantId, name, permissions, metadata]
+      required: [id, tenant_id, name, permissions, metadata]
     ApplicationCreateResponse:
       allOf:
         - $ref: "#/components/schemas/Application"
@@ -882,10 +882,10 @@ components:
           properties:
             token:
               type: string
-            tokenType:
+            token_type:
               type: string
               example: Bearer
-          required: [token, tokenType]
+          required: [token, token_type]
     PaginatedApplicationResponse:
       type: object
       properties:
@@ -1106,6 +1106,9 @@ components:
       properties:
         content:
           type: string
+        heap_id:
+          type: string
+          description: Move the document to another heap owned by the current application.
         metadata:
           $ref: "#/components/schemas/Metadata"
         source_url:
@@ -1143,29 +1146,47 @@ components:
       description: Root-level sibling expressions are treated as an implicit AND.
       items:
         $ref: "#/components/schemas/CanonicalFilterExpression"
+    CanonicalFilterAnd:
+      type: array
+      minItems: 2
+      maxItems: 2
+      description: Boolean AND expression in the form ["AND", [child expressions...]].
+      items:
+        oneOf:
+          - type: string
+            enum: [AND]
+          - type: array
+            items:
+              $ref: "#/components/schemas/CanonicalFilterExpression"
+    CanonicalFilterOr:
+      type: array
+      minItems: 2
+      maxItems: 2
+      description: Boolean OR expression in the form ["OR", [child expressions...]].
+      items:
+        oneOf:
+          - type: string
+            enum: [OR]
+          - type: array
+            items:
+              $ref: "#/components/schemas/CanonicalFilterExpression"
+    CanonicalFilterNot:
+      type: array
+      minItems: 2
+      maxItems: 2
+      description: Boolean NOT expression in the form ["NOT", child expression].
+      items:
+        oneOf:
+          - type: string
+            enum: [NOT]
+          - $ref: "#/components/schemas/CanonicalFilterExpression"
     CanonicalFilterExpression:
       oneOf:
         - $ref: "#/components/schemas/CanonicalFilterLeaf"
         - $ref: "#/components/schemas/CanonicalFilterImplicitAnd"
-        - type: object
-          properties:
-            AND:
-              type: array
-              items:
-                $ref: "#/components/schemas/CanonicalFilterExpression"
-          additionalProperties: false
-        - type: object
-          properties:
-            OR:
-              type: array
-              items:
-                $ref: "#/components/schemas/CanonicalFilterExpression"
-          additionalProperties: false
-        - type: object
-          properties:
-            NOT:
-              $ref: "#/components/schemas/CanonicalFilterExpression"
-          additionalProperties: false
+        - $ref: "#/components/schemas/CanonicalFilterAnd"
+        - $ref: "#/components/schemas/CanonicalFilterOr"
+        - $ref: "#/components/schemas/CanonicalFilterNot"
     SearchRequest:
       type: object
       properties:
@@ -1198,27 +1219,31 @@ components:
         document_id:
           type: string
           nullable: true
+        heap_id:
+          type: string
+          nullable: true
+        corpus_id:
+          type: string
+          nullable: true
+        chunk_content:
+          type: string
+          nullable: true
         score:
           type: number
           nullable: true
-        content:
-          type: string
-          nullable: true
         metadata:
           $ref: "#/components/schemas/Metadata"
-      required: [id, document_id, score, content, metadata]
+      required: [id, document_id, heap_id, corpus_id, chunk_content, score, metadata]
     SearchResponse:
       type: object
       properties:
-        query:
-          type: string
-        count:
-          type: integer
         results:
           type: array
           items:
             $ref: "#/components/schemas/SearchResult"
-      required: [query, count, results]
+        total:
+          type: integer
+      required: [results, total]
     SearchChunk:
       type: object
       properties:

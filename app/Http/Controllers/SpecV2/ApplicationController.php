@@ -39,7 +39,7 @@ class ApplicationController extends Controller
 
         $payload = (new ApplicationResource($result['application']))->resolve($request);
         $payload['token'] = $result['token'];
-        $payload['tokenType'] = 'Bearer';
+        $payload['token_type'] = 'Bearer';
 
         return response()->json($payload, 201);
     }

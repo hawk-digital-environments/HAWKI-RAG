@@ -588,7 +588,8 @@ class AuthorizationGrantApiTest extends TestCase
             ->postJson('/api/search', [
                 'query' => 'design',
                 'filters' => [
-                    'AND' => [
+                    'AND',
+                    [
                         ['heap', 'heap-design'],
                         ['visibility', 'hidden'],
                         ['course', 'design'],
@@ -681,7 +682,7 @@ class AuthorizationGrantApiTest extends TestCase
     }
 
     /**
-     * @param array<string, mixed> $filter
+     * @param array<mixed> $filter
      */
     private function filterContains(array $filter, string $key, mixed $value): bool
     {
@@ -695,12 +696,8 @@ class AuthorizationGrantApiTest extends TestCase
             return $this->filterValueMatches($candidate, $value);
         }
 
-        foreach (['AND', 'OR'] as $operator) {
-            $children = $filter[$operator] ?? null;
-            if (! is_array($children)) {
-                continue;
-            }
-
+        if ($this->isFilterOperator($filter, 'AND') || $this->isFilterOperator($filter, 'OR')) {
+            $children = is_array($filter[1] ?? null) ? $filter[1] : [];
             foreach ($children as $child) {
                 if (is_array($child) && $this->filterContains($child, $key, $value)) {
                     return true;
@@ -708,8 +705,7 @@ class AuthorizationGrantApiTest extends TestCase
             }
         }
 
-        $not = $filter['NOT'] ?? null;
-        if (is_array($not) && $this->filterContains($not, $key, $value)) {
+        if ($this->isFilterOperator($filter, 'NOT') && is_array($filter[1] ?? null) && $this->filterContains($filter[1], $key, $value)) {
             return true;
         }
 
@@ -745,7 +741,16 @@ class AuthorizationGrantApiTest extends TestCase
     {
         return array_is_list($filter)
             && count($filter) === 2
-            && is_string($filter[0] ?? null);
+            && is_string($filter[0] ?? null)
+            && ! in_array(strtoupper($filter[0]), ['AND', 'OR', 'NOT'], true);
+    }
+
+    private function isFilterOperator(array $filter, string $operator): bool
+    {
+        return array_is_list($filter)
+            && count($filter) === 2
+            && is_string($filter[0] ?? null)
+            && strtoupper($filter[0]) === $operator;
     }
 
     private function filterValueMatches(mixed $candidate, mixed $value): bool

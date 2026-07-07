@@ -9,7 +9,7 @@ use Illuminate\Container\Attributes\Singleton;
 readonly class RagSearchResponseFactory
 {
     /**
-     * @return array{query: string, count: int, results: list<array<string, mixed>>}
+     * @return array{results: list<array<string, mixed>>, total: int}
      */
     public function fromBridgePayload(string $query, mixed $payload): array
     {
@@ -25,16 +25,17 @@ readonly class RagSearchResponseFactory
             $results[] = [
                 'id' => $hit['id'] ?? null,
                 'document_id' => $this->documentId($payload),
+                'heap_id' => $this->heapId($payload),
+                'corpus_id' => $this->corpusId($payload),
+                'chunk_content' => $this->content($payload),
                 'score' => $hit['score'] ?? null,
-                'content' => $this->content($payload),
                 'metadata' => $this->metadata($payload),
             ];
         }
 
         return [
-            'query' => $query,
-            'count' => count($results),
             'results' => $results,
+            'total' => count($results),
         ];
     }
 
@@ -62,6 +63,34 @@ readonly class RagSearchResponseFactory
             if (is_string($value) && trim($value) !== '') {
                 return $value;
             }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     */
+    private function heapId(array $payload): ?string
+    {
+        foreach (['heap_id', 'heap', 'dataset_id'] as $key) {
+            $value = $payload[$key] ?? null;
+            if (is_string($value) && trim($value) !== '') {
+                return $value;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     */
+    private function corpusId(array $payload): ?string
+    {
+        $value = $payload['corpus_id'] ?? null;
+        if (is_string($value) && trim($value) !== '') {
+            return $value;
         }
 
         return null;

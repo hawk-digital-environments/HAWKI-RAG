@@ -18,6 +18,7 @@ class UpdateDocumentRequest extends FormRequest
     {
         return [
             'content' => 'sometimes|string',
+            'heap_id' => 'sometimes|string|max:191',
             'metadata' => ['sometimes', 'array', new DisallowReservedMetadataKeys],
             'source_url' => 'sometimes|string|max:1000',
             'title' => 'sometimes|string|max:255',
@@ -30,7 +31,7 @@ class UpdateDocumentRequest extends FormRequest
         $validator->after(function (Validator $validator): void {
             $validated = $this->all();
 
-            foreach (['content', 'metadata', 'source_url', 'title', 'filename'] as $field) {
+            foreach (['content', 'heap_id', 'metadata', 'source_url', 'title', 'filename'] as $field) {
                 if (array_key_exists($field, $validated)) {
                     return;
                 }

@@ -19,16 +19,15 @@ class ApplicationResource extends JsonResource
     {
         return [
             'id' => $this->id,
-            'tenantId' => $this->tenant_id,
+            'tenant_id' => $this->tenant_id,
             'name' => $this->name,
             'description' => $this->description,
             'permissions' => is_array($this->permissions) ? $this->permissions : [],
             'metadata' => is_array($this->metadata_json) ? $this->metadata_json : [],
-            'heapCount' => (int) ($this->heaps_count ?? 0),
-            'groupCount' => (int) ($this->groups_count ?? 0),
-            'createdAt' => $this->created_at?->toIso8601String(),
-            'updatedAt' => $this->updated_at?->toIso8601String(),
+            'heap_count' => (int) ($this->heaps_count ?? 0),
+            'group_count' => (int) ($this->groups_count ?? 0),
+            'created_at' => $this->created_at?->toIso8601String(),
+            'updated_at' => $this->updated_at?->toIso8601String(),
         ];
     }
 }
-

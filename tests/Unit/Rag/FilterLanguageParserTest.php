@@ -22,27 +22,31 @@ class FilterLanguageParserTest extends TestCase
     {
         $this->assertSame(
             [
-                'AND' => [
+                'AND',
+                [
                     ['heap', 'heap-design'],
                     [
-                        'OR' => [
+                        'OR',
+                        [
                             ['visibility', 'hidden'],
                             ['protected', false],
                         ],
                     ],
-                    ['NOT' => ['document_id', 'doc-deleted']],
+                    ['NOT', ['document_id', 'doc-deleted']],
                 ],
             ],
             $this->serialize([
-                'AND' => [
+                'AND',
+                [
                     ['heap', 'heap-design'],
                     [
-                        'OR' => [
+                        'OR',
+                        [
                             ['visibility', 'hidden'],
                             ['protected', false],
                         ],
                     ],
-                    ['NOT' => ['document_id', 'doc-deleted']],
+                    ['NOT', ['document_id', 'doc-deleted']],
                 ],
             ]),
         );
@@ -52,7 +56,8 @@ class FilterLanguageParserTest extends TestCase
     {
         $this->assertSame(
             [
-                'AND' => [
+                'AND',
+                [
                     ['heap', 'heap-design'],
                     ['course', 'architecture'],
                 ],
@@ -82,18 +87,20 @@ class FilterLanguageParserTest extends TestCase
         $this->assertInvalid(['course', []]);
         $this->assertInvalid(['course', ['design', '']]);
         $this->assertInvalid(['AND', 'design']);
+        $this->assertInvalid(['AND' => [['course', 'design']]]);
         $this->assertInvalid(['__rawki', 'forged']);
     }
 
     public function test_not_requires_one_child_expression(): void
     {
         $this->assertSame(
-            ['NOT' => ['protected', true]],
-            $this->serialize(['NOT' => ['protected', true]]),
+            ['NOT', ['protected', true]],
+            $this->serialize(['NOT', ['protected', true]]),
         );
 
         $this->assertInvalid([
-            'NOT' => [
+            'NOT',
+            [
                 ['protected', true],
                 ['visibility', 'hidden'],
             ],
