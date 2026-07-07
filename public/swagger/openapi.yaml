@@ -244,6 +244,18 @@ paths:
   /documents/{documentId}:
     parameters:
       - $ref: "#/components/parameters/DocumentId"
+    get:
+      tags: [Documents]
+      summary: Get a document
+      responses:
+        "200":
+          description: Document detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Document"
+        "404":
+          $ref: "#/components/responses/NotFound"
     put:
       tags: [Documents]
       summary: Update a document

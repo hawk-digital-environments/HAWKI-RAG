@@ -10,10 +10,9 @@ use App\Services\Authorization\ApplicationTokenService;
 use App\Services\SpecV2\Exceptions\AccessDeniedException;
 use App\Services\SpecV2\Exceptions\ApplicationNotFoundException;
 use App\Services\SpecV2\Exceptions\TenantNotFoundException;
-use App\Services\SpecV2\Payloads\ApplicationPayloadBuilder;
-use App\Services\SpecV2\Payloads\PaginationPayloadBuilder;
 use App\Services\SpecV2\Repositories\ApplicationRepository;
 use App\Services\SpecV2\Repositories\TenantRepository;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Container\Attributes\Singleton;
 
 #[Singleton]
@@ -24,12 +23,10 @@ readonly class ApplicationService
         private TenantRepository $tenants,
         private ApplicationTokenService $tokens,
         private SpecIdentifierFactory $identifiers,
-        private ApplicationPayloadBuilder $payloads,
-        private PaginationPayloadBuilder $pagination,
         private ApiActorScopeService $actors,
     ) {}
 
-    public function list(?string $tenantId, int $page, int $perPage): array
+    public function list(?string $tenantId, int $page, int $perPage): LengthAwarePaginator
     {
         $filters = $this->actors->currentApplicationFilters();
         if ($tenantId !== null) {
@@ -38,13 +35,10 @@ readonly class ApplicationService
 
         $applications = $this->applications->paginate($filters, $perPage, $page);
 
-        return [
-            'data' => $applications->getCollection()->map(fn (Application $application): array => $this->payloads->payload($application))->all(),
-            'pagination' => $this->pagination->payload($applications),
-        ];
+        return $applications;
     }
 
-    public function show(string $applicationId): array
+    public function show(string $applicationId): Application
     {
         $application = $this->applications->findById($applicationId);
         if (! $application instanceof Application) {
@@ -55,11 +49,12 @@ readonly class ApplicationService
             throw AccessDeniedException::forAction('read', 'application', $applicationId);
         }
 
-        return $this->payloads->payload($application);
+        return $application;
     }
 
     /**
      * @param array<string, mixed> $input
+     * @return array{application: Application, token: string}
      */
     public function create(array $input, ?ApiActor $actor = null): array
     {
@@ -86,10 +81,10 @@ readonly class ApplicationService
         $application->loadCount(['heaps', 'groups']);
         $token = $this->tokens->issue($application);
 
-        return array_merge($this->payloads->payload($application), [
+        return [
+            'application' => $application,
             'token' => $token,
-            'tokenType' => 'Bearer',
-        ]);
+        ];
     }
 
     /**

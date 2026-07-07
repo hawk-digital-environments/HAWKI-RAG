@@ -33,6 +33,7 @@ Route::middleware(['auth:application-token', 'throttle:hawki-api'])->group(funct
     });
 
     Route::prefix('documents')->group(function () {
+        Route::get('/{documentId}', [SpecDocumentController::class, 'show']);
         Route::put('/{documentId}', [SpecDocumentController::class, 'update'])->middleware('throttle:hawki-upload');
         Route::delete('/{documentId}', [SpecDocumentController::class, 'destroy'])->middleware('throttle:hawki-destructive');
     });

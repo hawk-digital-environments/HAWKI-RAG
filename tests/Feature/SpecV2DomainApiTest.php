@@ -151,7 +151,9 @@ class SpecV2DomainApiTest extends TestCase
             'updated_at' => now(),
         ]);
 
-        $create = $this->withHeader('Authorization', 'Bearer '.$token)
+        $auth = ['Authorization' => 'Bearer '.$token];
+
+        $this->withHeaders($auth)
             ->postJson('/api/heaps/heap-spec-docs/documents', [
                 'document_id' => 'doc-spec-1',
                 'content' => 'Initial design guidance.',
@@ -164,13 +166,20 @@ class SpecV2DomainApiTest extends TestCase
             ->assertJsonPath('metadata.course', 'design')
             ->assertJsonPath('isDuplicate', false);
 
-        $this->withHeader('Authorization', 'Bearer '.$token)
+        $this->withHeaders($auth)
+            ->getJson('/api/documents/doc-spec-1')
+            ->assertOk()
+            ->assertJsonPath('documentId', 'doc-spec-1')
+            ->assertJsonPath('heapId', 'heap-spec-docs')
+            ->assertJsonPath('metadata.course', 'design');
+
+        $this->withHeaders($auth)
             ->getJson('/api/heaps/heap-spec-docs/documents')
             ->assertOk()
             ->assertJsonPath('pagination.total', 1)
             ->assertJsonPath('data.0.documentId', 'doc-spec-1');
 
-        $this->withHeader('Authorization', 'Bearer '.$token)
+        $this->withHeaders($auth)
             ->putJson('/api/documents/doc-spec-1', [
                 'content' => 'Updated design guidance.',
                 'metadata' => ['course' => 'ux'],
@@ -186,9 +195,13 @@ class SpecV2DomainApiTest extends TestCase
             'title' => 'Updated Spec Document',
         ]);
 
-        $this->withHeader('Authorization', 'Bearer '.$token)
+        $this->withHeaders($auth)
             ->delete('/api/documents/doc-spec-1')
             ->assertNoContent();
+
+        $this->withHeaders($auth)
+            ->getJson('/api/documents/doc-spec-1')
+            ->assertNotFound();
 
         $this->assertDatabaseMissing('documents', [
             'id' => 'doc-spec-1',
@@ -274,6 +287,91 @@ class SpecV2DomainApiTest extends TestCase
             && data_get($request->data(), 'workflow_input.ingestion.graph') === false);
 
         File::deleteDirectory($root);
+    }
+
+    public function test_canonical_v2_delete_routes_return_intentional_status_codes(): void
+    {
+        ['token' => $token] = $this->issueApplicationToken([
+            'id' => 'rawki-default',
+            'tenant_id' => 'default',
+        ]);
+
+        $headers = ['Authorization' => 'Bearer '.$token];
+
+        config()->set('config.hawki_rag_bridge_url', 'http://bridge.test');
+        config()->set('config.qdrant_http_url', 'http://qdrant.test');
+        config()->set('config.neo4j_http_url', 'http://neo4j.test');
+
+        Http::fake([
+            'http://bridge.test/documents/*' => Http::response(['ok' => true], 204),
+            'http://qdrant.test/*' => Http::response(['status' => 'ok', 'result' => ['status' => 'acknowledged']], 200),
+            'http://neo4j.test/db/neo4j/tx/commit' => Http::response([
+                'results' => [
+                    ['data' => [['row' => [0]]]],
+                    ['data' => [['row' => [0, 0]]]],
+                    ['data' => [['row' => [0]]]],
+                ],
+                'errors' => [],
+            ], 200),
+        ]);
+
+        Dataset::query()->create([
+            'dataset_id' => 'heap-delete-doc',
+            'tenant_id' => 'default',
+            'owner_application_id' => 'rawki-default',
+            'name' => 'Heap Delete Document',
+            'status' => Dataset::STATUS_ACTIVE,
+            'visibility' => Dataset::VISIBILITY_DISCOVERABLE,
+            'protected' => false,
+            'metadata_json' => ['purpose' => 'document-delete-status'],
+            'qdrant_collection' => 'heap_delete_doc',
+            'neo4j_namespace' => 'heap_delete_doc',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        Document::query()->create([
+            'id' => 'doc-status-delete',
+            'dataset_id' => 'heap-delete-doc',
+            'collection' => 'heap_delete_doc',
+            'source_type' => Document::SOURCE_API,
+            'source_url' => 'https://example.test/doc-status-delete',
+            'storage_path' => '/tmp/doc-status-delete.md',
+            'checksum_sha256' => hash('sha256', 'doc-status-delete'),
+            'status' => Document::STATUS_COMPLETED,
+        ]);
+
+        Dataset::query()->create([
+            'dataset_id' => 'heap-status-delete',
+            'tenant_id' => 'default',
+            'owner_application_id' => 'rawki-default',
+            'name' => 'Heap Delete Status',
+            'status' => Dataset::STATUS_ACTIVE,
+            'visibility' => Dataset::VISIBILITY_DISCOVERABLE,
+            'protected' => false,
+            'metadata_json' => ['purpose' => 'heap-delete-status'],
+            'qdrant_collection' => 'heap_status_delete',
+            'neo4j_namespace' => 'heap_status_delete',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->withHeaders($headers)
+            ->delete('/api/documents/doc-status-delete')
+            ->assertNoContent();
+
+        $this->assertDatabaseMissing('documents', [
+            'id' => 'doc-status-delete',
+        ]);
+
+        $this->withHeaders($headers)
+            ->delete('/api/heaps/heap-status-delete')
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->assertDatabaseMissing('datasets', [
+            'dataset_id' => 'heap-status-delete',
+        ]);
     }
 
     public function test_application_actor_defaults_ownership_without_human_identity_provisioning(): void

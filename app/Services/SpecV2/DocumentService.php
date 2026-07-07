@@ -51,6 +51,21 @@ readonly class DocumentService
         ], $perPage, $page);
     }
 
+    public function show(string $documentId): Document
+    {
+        $document = $this->documents->findById($documentId);
+        if (! $document instanceof Document) {
+            throw AuthorizationGrantException::documentNotFound($documentId);
+        }
+
+        $document->loadMissing('heap');
+        if (! $document->heap instanceof Heap || ! $this->actors->currentCanReadHeap($document->heap)) {
+            throw AuthorizationGrantException::documentNotFound($documentId);
+        }
+
+        return $document;
+    }
+
     /**
      * @param array<string, mixed> $input
      * @return array{document?: Document, is_duplicate?: bool, job_id?: string, payload?: array<string, mixed>, source_id?: string, status: int, task_id?: string}

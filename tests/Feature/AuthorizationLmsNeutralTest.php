@@ -283,9 +283,9 @@ class AuthorizationLmsNeutralTest extends TestCase
         ], $document->toArray());
     }
 
-    public function test_legacy_document_show_route_is_not_registered_on_v2_branch(): void
+    public function test_canonical_document_show_route_is_available_on_v2_app_surface(): void
     {
-        $document = $this->documentWithUploadedFile();
+        $document = $this->documentWithUploadedFile(false);
         $this->actingAsApplication([
             'id' => 'rawki-default',
             'tenant_id' => 'default',
@@ -294,12 +294,13 @@ class AuthorizationLmsNeutralTest extends TestCase
         config()->set('authz.enabled', true);
 
         $this->getJson('/api/documents/'.$document->id)
-            ->assertMethodNotAllowed();
+            ->assertOk()
+            ->assertJsonPath('documentId', $document->id);
     }
 
-    public function test_legacy_document_show_route_stays_unavailable_when_authorization_is_disabled(): void
+    public function test_document_show_route_remains_available_when_authorization_is_disabled(): void
     {
-        $document = $this->documentWithUploadedFile();
+        $document = $this->documentWithUploadedFile(false);
         $this->actingAsApplication([
             'id' => 'rawki-default',
             'tenant_id' => 'default',
@@ -309,7 +310,8 @@ class AuthorizationLmsNeutralTest extends TestCase
         config()->set('authz.document_api_enforced', true);
 
         $this->getJson('/api/documents/'.$document->id)
-            ->assertMethodNotAllowed();
+            ->assertOk()
+            ->assertJsonPath('documentId', $document->id);
     }
 
     public function test_legacy_uploaded_document_download_route_is_not_registered(): void
@@ -339,7 +341,7 @@ class AuthorizationLmsNeutralTest extends TestCase
         ]);
     }
 
-    private function documentWithUploadedFile(): Document
+    private function documentWithUploadedFile(bool $protected = true): Document
     {
         $root = storage_path('framework/testing/authz-uploads');
         File::ensureDirectoryExists($root.'/task-upload');
@@ -358,7 +360,7 @@ class AuthorizationLmsNeutralTest extends TestCase
             'name' => 'Authz Dataset',
             'status' => Dataset::STATUS_ACTIVE,
             'visibility' => Dataset::VISIBILITY_DISCOVERABLE,
-            'protected' => true,
+            'protected' => $protected,
             'metadata_json' => [],
             'qdrant_collection' => 'hawki_authz',
             'neo4j_namespace' => 'hawki_authz',

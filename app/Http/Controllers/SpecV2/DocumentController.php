@@ -12,6 +12,7 @@ use App\Http\Resources\SpecV2\DocumentResource;
 use App\Services\SpecV2\SpecV2Service;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Response;
+use Illuminate\Http\Request;
 
 class DocumentController extends Controller
 {
@@ -25,6 +26,11 @@ class DocumentController extends Controller
             (new DocumentCollection($this->spec->documents->listForHeap($heapId, $request->filters(), $request->page(), $request->perPage())))
                 ->resolve($request)
         );
+    }
+
+    public function show(string $documentId, Request $request): JsonResponse
+    {
+        return response()->json((new DocumentResource($this->spec->documents->show($documentId)))->resolve($request));
     }
 
     public function store(string $heapId, CreateDocumentRequest $request): JsonResponse
