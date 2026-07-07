@@ -24,8 +24,21 @@ class HawkiRagProxyControllerTest extends TestCase
         Http::fake([
             'http://bridge.test/query' => Http::response([
                 'ok' => true,
-                'count' => 0,
-                'hits' => [],
+                'count' => 1,
+                'hits' => [
+                    [
+                        'id' => 'chunk-1',
+                        'score' => 0.91,
+                        'payload' => [
+                            'document_id' => 'doc-visible',
+                            'content' => 'Campus policy body',
+                            'heap' => 'heap-public',
+                            'course' => 'policy',
+                        ],
+                    ],
+                ],
+                'kg' => [['legacy' => true]],
+                'retrieval' => ['legacy' => true],
             ], 200),
         ]);
 
@@ -110,7 +123,17 @@ class HawkiRagProxyControllerTest extends TestCase
                 'limit' => 3,
                 'user_identifier' => 'learner-123',
                 'preferred_tags' => ['policy'],
-            ])->assertOk();
+            ])->assertOk()
+            ->assertJsonPath('query', 'campus policy')
+            ->assertJsonPath('count', 1)
+            ->assertJsonPath('results.0.id', 'chunk-1')
+            ->assertJsonPath('results.0.document_id', 'doc-visible')
+            ->assertJsonPath('results.0.content', 'Campus policy body')
+            ->assertJsonPath('results.0.metadata.heap', 'heap-public')
+            ->assertJsonMissingPath('ok')
+            ->assertJsonMissingPath('hits')
+            ->assertJsonMissingPath('kg')
+            ->assertJsonMissingPath('retrieval');
 
         Http::assertSent(function (Request $request) use ($publicDocument, $protectedDocument): bool {
             if ($request->url() !== 'http://bridge.test/query') {

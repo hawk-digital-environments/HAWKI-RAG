@@ -10,6 +10,7 @@ use App\Services\Authorization\ApiActorResolver;
 use App\Services\Authorization\GatewaySearchFilterService;
 use App\Services\Rag\RagProxyService;
 use App\Services\Rag\RagQueryPayloadFactory;
+use App\Services\Rag\RagSearchResponseFactory;
 use Illuminate\Http\JsonResponse;
 
 class HawkiRagProxyController extends Controller
@@ -20,6 +21,7 @@ class HawkiRagProxyController extends Controller
         ApiActorResolver $actors,
         GatewaySearchFilterService $filters,
         RagQueryPayloadFactory $payloads,
+        RagSearchResponseFactory $responses,
     ): JsonResponse
     {
         $data = $request->payload();
@@ -29,6 +31,10 @@ class HawkiRagProxyController extends Controller
 
         $result = $proxy->query($payloads->make($data));
 
-        return response()->json($result['payload'], $result['status']);
+        if ($result['status'] >= 400) {
+            return response()->json($responses->error($result['payload']), $result['status']);
+        }
+
+        return response()->json($responses->fromBridgePayload($data['query'], $result['payload']), $result['status']);
     }
 }

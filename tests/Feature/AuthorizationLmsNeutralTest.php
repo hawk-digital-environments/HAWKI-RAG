@@ -295,7 +295,7 @@ class AuthorizationLmsNeutralTest extends TestCase
 
         $this->getJson('/api/documents/'.$document->id)
             ->assertOk()
-            ->assertJsonPath('documentId', $document->id);
+            ->assertJsonPath('document_id', $document->id);
     }
 
     public function test_document_show_route_remains_available_when_authorization_is_disabled(): void
@@ -311,7 +311,7 @@ class AuthorizationLmsNeutralTest extends TestCase
 
         $this->getJson('/api/documents/'.$document->id)
             ->assertOk()
-            ->assertJsonPath('documentId', $document->id);
+            ->assertJsonPath('document_id', $document->id);
     }
 
     public function test_legacy_uploaded_document_download_route_is_not_registered(): void

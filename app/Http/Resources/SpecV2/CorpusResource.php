@@ -19,12 +19,12 @@ class CorpusResource extends JsonResource
     {
         return [
             'id' => $this->id,
-            'referenceCount' => $this->reference_count,
-            'documentCount' => (int) ($this->documents_count ?? 0),
-            'contentPreview' => $this->content !== null ? mb_substr($this->content, 0, 240) : null,
+            'reference_count' => $this->reference_count,
+            'document_count' => (int) ($this->documents_count ?? 0),
+            'content_preview' => $this->content !== null ? mb_substr($this->content, 0, 240) : null,
             'metadata' => is_array($this->metadata_json) ? $this->metadata_json : [],
-            'createdAt' => $this->created_at?->toIso8601String(),
-            'updatedAt' => $this->updated_at?->toIso8601String(),
+            'created_at' => $this->created_at?->toIso8601String(),
+            'updated_at' => $this->updated_at?->toIso8601String(),
         ];
     }
 }

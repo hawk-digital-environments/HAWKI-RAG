@@ -13,6 +13,7 @@ use App\Services\Authorization\ApiActorResolver;
 use App\Services\SpecV2\SpecV2Service;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 
 class HeapController extends Controller
 {
@@ -45,15 +46,20 @@ class HeapController extends Controller
         return response()->json((new HeapResource($this->spec->heaps->update($heapId, $request->validated())))->resolve($request));
     }
 
-    public function destroy(string $heapId): JsonResponse
+    public function destroy(string $heapId): Response|JsonResponse
     {
         $deleted = $this->spec->heaps->delete($heapId);
 
         $ok = ($deleted['qdrant']['ok'] ?? false) && ($deleted['neo4j']['ok'] ?? false) && ($deleted['heapDeleted'] ?? false);
 
+        if ($ok) {
+            return response()->noContent();
+        }
+
         return response()->json([
-            'success' => $ok,
+            'error' => 'heap_delete_failed',
+            'message' => 'Heap cleanup failed.',
             'cleanup' => $deleted,
-        ], $ok ? 200 : 502);
+        ], 502);
     }
 }

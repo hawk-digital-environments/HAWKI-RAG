@@ -22,17 +22,17 @@ class DocumentResource extends JsonResource
 
         return [
             'id' => (string) $this->id,
-            'documentId' => (string) $this->id,
-            'heapId' => $this->heapId(),
-            'corpusId' => $this->corpus_id,
-            'sourceUrl' => $this->source_url,
-            'sourceType' => $this->source_type,
-            'originalFilename' => $this->original_filename,
+            'document_id' => (string) $this->id,
+            'heap_id' => $this->heapId(),
+            'corpus_id' => $this->corpus_id,
+            'source_url' => $this->source_url,
+            'source_type' => $this->source_type,
+            'original_filename' => $this->original_filename,
             'title' => $this->title,
             'status' => $this->status,
             'metadata' => $metadata,
-            'createdAt' => $this->created_at?->toIso8601String(),
-            'updatedAt' => $this->updated_at?->toIso8601String(),
+            'created_at' => $this->created_at?->toIso8601String(),
+            'updated_at' => $this->updated_at?->toIso8601String(),
         ];
     }
 }

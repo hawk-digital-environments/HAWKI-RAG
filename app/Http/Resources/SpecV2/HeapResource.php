@@ -19,19 +19,19 @@ class HeapResource extends JsonResource
     {
         return [
             'id' => $this->heapId(),
-            'heapId' => $this->heapId(),
+            'heap_id' => $this->heapId(),
             'name' => $this->name,
             'description' => $this->description,
-            'tenantId' => $this->tenant_id,
-            'ownerApp' => $this->owner_application_id,
+            'tenant_id' => $this->tenant_id,
+            'owner_app' => $this->owner_application_id,
             'visibility' => $this->visibility ?? Heap::VISIBILITY_DISCOVERABLE,
             'protected' => (bool) $this->protected,
             'metadata' => is_array($this->metadata_json) ? $this->metadata_json : [],
-            'qdrantCollection' => $this->qdrant_collection,
-            'neo4jNamespace' => $this->neo4j_namespace,
-            'documentCount' => (int) ($this->documents_count ?? 0),
-            'createdAt' => $this->created_at?->toIso8601String(),
-            'updatedAt' => $this->updated_at?->toIso8601String(),
+            'qdrant_collection' => $this->qdrant_collection,
+            'neo4j_namespace' => $this->neo4j_namespace,
+            'document_count' => (int) ($this->documents_count ?? 0),
+            'created_at' => $this->created_at?->toIso8601String(),
+            'updated_at' => $this->updated_at?->toIso8601String(),
         ];
     }
 }

@@ -46,15 +46,15 @@ class DocumentController extends Controller
         }
 
         $payload = (new DocumentResource($result['document']))->resolve($request);
-        $payload['isDuplicate'] = (bool) ($result['is_duplicate'] ?? false);
+        $payload['is_duplicate'] = (bool) ($result['is_duplicate'] ?? false);
         if (isset($result['task_id'])) {
-            $payload['taskId'] = $result['task_id'];
+            $payload['task_id'] = $result['task_id'];
         }
         if (isset($result['job_id'])) {
-            $payload['jobId'] = $result['job_id'];
+            $payload['job_id'] = $result['job_id'];
         }
         if (isset($result['source_id'])) {
-            $payload['sourceId'] = $result['source_id'];
+            $payload['source_id'] = $result['source_id'];
         }
 
         return response()->json($payload, $result['status']);

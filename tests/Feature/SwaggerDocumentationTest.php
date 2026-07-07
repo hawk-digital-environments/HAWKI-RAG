@@ -45,6 +45,15 @@ class SwaggerDocumentationTest extends TestCase
         $this->assertArrayHasKey('CanonicalFilterImplicitAnd', $spec['components']['schemas'] ?? []);
         $this->assertArrayNotHasKey('protected', $spec['components']['schemas']['CreateHeapRequest']['properties'] ?? []);
         $this->assertArrayNotHasKey('protected', $spec['components']['schemas']['UpdateHeapRequest']['properties'] ?? []);
+        $this->assertSame(['discoverable', 'all'], $spec['components']['parameters']['VisibilityFilter']['schema']['enum'] ?? null);
+        $this->assertArrayHasKey('204', $paths['/heaps/{heapId}']['delete']['responses'] ?? []);
+        $this->assertArrayNotHasKey('200', $paths['/heaps/{heapId}']['delete']['responses'] ?? []);
+        $this->assertSame('#/components/schemas/HeapDeleteFailureResponse', $paths['/heaps/{heapId}']['delete']['responses']['502']['content']['application/json']['schema']['$ref'] ?? null);
+        $this->assertV2SchemaUsesSnakeCase($spec, 'Heap', ['heap_id', 'tenant_id', 'owner_app', 'document_count'], ['heapId', 'tenantId', 'ownerApp', 'documentCount']);
+        $this->assertV2SchemaUsesSnakeCase($spec, 'Document', ['document_id', 'heap_id', 'corpus_id', 'source_url', 'source_type'], ['documentId', 'heapId', 'corpusId', 'sourceUrl', 'sourceType']);
+        $this->assertV2SchemaUsesSnakeCase($spec, 'Corpus', ['reference_count', 'document_count', 'content_preview'], ['referenceCount', 'documentCount', 'contentPreview']);
+        $this->assertV2SchemaUsesSnakeCase($spec, 'SearchResponse', ['query', 'count', 'results'], ['ok', 'hits', 'kg', 'retrieval']);
+        $this->assertV2SchemaUsesSnakeCase($spec, 'SearchResult', ['document_id', 'content', 'metadata'], ['payload']);
         $this->assertArrayNotHasKey('GrantPayload', $spec['components']['schemas'] ?? []);
         $this->assertSame('#/components/schemas/HeapGrantPayload', $paths['/auth/heaps/{heapId}']['get']['responses']['200']['content']['application/json']['schema']['$ref'] ?? null);
         $this->assertArrayHasKey('201', $paths['/auth/heaps/{heapId}']['put']['responses'] ?? []);
@@ -54,5 +63,23 @@ class SwaggerDocumentationTest extends TestCase
         $securityScheme = $spec['components']['securitySchemes']['ApplicationBearerAuth'] ?? [];
         $this->assertSame('http', $securityScheme['type'] ?? null);
         $this->assertSame('bearer', $securityScheme['scheme'] ?? null);
+    }
+
+    /**
+     * @param array<string, mixed> $spec
+     * @param list<string> $requiredKeys
+     * @param list<string> $forbiddenKeys
+     */
+    private function assertV2SchemaUsesSnakeCase(array $spec, string $schema, array $requiredKeys, array $forbiddenKeys): void
+    {
+        $properties = $spec['components']['schemas'][$schema]['properties'] ?? [];
+
+        foreach ($requiredKeys as $key) {
+            $this->assertArrayHasKey($key, $properties, $schema.' should expose '.$key);
+        }
+
+        foreach ($forbiddenKeys as $key) {
+            $this->assertArrayNotHasKey($key, $properties, $schema.' should not expose '.$key);
+        }
     }
 }

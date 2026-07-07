@@ -189,18 +189,14 @@ paths:
       tags: [Heaps]
       summary: Delete heap and storage backends
       responses:
-        "200":
+        "204":
           description: Heap deleted
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/HeapDeleteResponse"
         "502":
           description: Backend cleanup partially failed
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/HeapDeleteResponse"
+                $ref: "#/components/schemas/HeapDeleteFailureResponse"
   /heaps/{heapId}/documents:
     parameters:
       - $ref: "#/components/parameters/HeapId"
@@ -691,9 +687,10 @@ components:
     VisibilityFilter:
       in: query
       name: visibility
+      description: Hidden heaps are excluded by default; use all to include hidden heaps.
       schema:
         type: string
-        enum: [discoverable, hidden]
+        enum: [discoverable, all]
     ProtectedFilter:
       in: query
       name: protected
@@ -907,16 +904,16 @@ components:
       properties:
         id:
           type: string
-        heapId:
+        heap_id:
           type: string
         name:
           type: string
         description:
           type: string
           nullable: true
-        tenantId:
+        tenant_id:
           type: string
-        ownerApp:
+        owner_app:
           type: string
         visibility:
           type: string
@@ -925,23 +922,23 @@ components:
           type: boolean
         metadata:
           $ref: "#/components/schemas/Metadata"
-        qdrantCollection:
+        qdrant_collection:
           type: string
           nullable: true
-        neo4jNamespace:
+        neo4j_namespace:
           type: string
           nullable: true
-        documentCount:
+        document_count:
           type: integer
-        createdAt:
+        created_at:
           type: string
           format: date-time
           nullable: true
-        updatedAt:
+        updated_at:
           type: string
           format: date-time
           nullable: true
-      required: [id, heapId, name, tenantId, ownerApp, visibility, protected, metadata]
+      required: [id, heap_id, name, tenant_id, owner_app, visibility, protected, metadata]
     PaginatedHeapResponse:
       type: object
       properties:
@@ -990,20 +987,20 @@ components:
       properties:
         id:
           type: string
-        documentId:
+        document_id:
           type: string
-        heapId:
+        heap_id:
           type: string
-        corpusId:
-          type: string
-          nullable: true
-        sourceUrl:
+        corpus_id:
           type: string
           nullable: true
-        sourceType:
+        source_url:
+          type: string
+          nullable: true
+        source_type:
           type: string
           enum: [api, upload, manual]
-        originalFilename:
+        original_filename:
           type: string
           nullable: true
         title:
@@ -1014,15 +1011,15 @@ components:
           enum: [created, queued, processing, completed, failed, archived]
         metadata:
           $ref: "#/components/schemas/Metadata"
-        createdAt:
+        created_at:
           type: string
           format: date-time
           nullable: true
-        updatedAt:
+        updated_at:
           type: string
           format: date-time
           nullable: true
-      required: [id, documentId, heapId, status, metadata]
+      required: [id, document_id, heap_id, status, metadata]
     PaginatedDocumentResponse:
       type: object
       properties:
@@ -1075,18 +1072,18 @@ components:
         - $ref: "#/components/schemas/Document"
         - type: object
           properties:
-            isDuplicate:
+            is_duplicate:
               type: boolean
-            taskId:
+            task_id:
               type: string
               nullable: true
-            jobId:
+            job_id:
               type: string
               nullable: true
-            sourceId:
+            source_id:
               type: string
               nullable: true
-          required: [isDuplicate]
+          required: [is_duplicate]
     UpdateDocumentRequest:
       type: object
       properties:
@@ -1173,39 +1170,38 @@ components:
             username, and is never forwarded to Python.
       required: [query]
       additionalProperties: false
-    SearchHit:
+    SearchResult:
       type: object
       properties:
         id:
+          nullable: true
           oneOf:
             - type: string
             - type: integer
+        document_id:
+          type: string
+          nullable: true
         score:
           type: number
           nullable: true
-        payload:
+        content:
+          type: string
+          nullable: true
+        metadata:
           $ref: "#/components/schemas/Metadata"
-      required: [payload]
+      required: [id, document_id, score, content, metadata]
     SearchResponse:
       type: object
       properties:
-        ok:
-          type: boolean
+        query:
+          type: string
         count:
           type: integer
-        hits:
+        results:
           type: array
           items:
-            $ref: "#/components/schemas/SearchHit"
-        kg:
-          type: array
-          items:
-            $ref: "#/components/schemas/Metadata"
-        answer:
-          type: string
-        retrieval:
-          $ref: "#/components/schemas/Metadata"
-      required: [ok, count, hits]
+            $ref: "#/components/schemas/SearchResult"
+      required: [query, count, results]
     SearchChunk:
       type: object
       properties:
@@ -1257,24 +1253,24 @@ components:
       properties:
         id:
           type: string
-        referenceCount:
+        reference_count:
           type: integer
-        documentCount:
+        document_count:
           type: integer
-        contentPreview:
+        content_preview:
           type: string
           nullable: true
         metadata:
           $ref: "#/components/schemas/Metadata"
-        createdAt:
+        created_at:
           type: string
           format: date-time
           nullable: true
-        updatedAt:
+        updated_at:
           type: string
           format: date-time
           nullable: true
-      required: [id, referenceCount, documentCount, metadata]
+      required: [id, reference_count, document_count, metadata]
     PaginatedCorpusResponse:
       type: object
       properties:
@@ -1462,12 +1458,15 @@ components:
         pagination:
           $ref: "#/components/schemas/Pagination"
       required: [data, pagination]
-    HeapDeleteResponse:
+    HeapDeleteFailureResponse:
       type: object
       properties:
-        success:
-          type: boolean
+        error:
+          type: string
+          example: heap_delete_failed
+        message:
+          type: string
         cleanup:
           type: object
           additionalProperties: true
-      required: [success, cleanup]
+      required: [error, message, cleanup]

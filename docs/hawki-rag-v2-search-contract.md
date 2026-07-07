@@ -114,27 +114,25 @@ internally.
 
 ## Search Response
 
-`POST /api/search` returns the retrieval response from Python:
+`POST /api/search` returns a Laravel-owned V2 response shape. Python bridge
+fields such as `ok`, `hits`, `kg`, `answer`, and `retrieval` are internal and
+must not leak through this public route.
 
 ```json
 {
-  "ok": true,
+  "query": "campus policy",
   "count": 1,
-  "hits": [
+  "results": [
     {
       "id": "chunk-1",
+      "document_id": "doc-1",
       "score": 0.92,
-      "payload": {
-        "document_id": "doc-1",
-        "content": "Chunk content"
+      "content": "Chunk content",
+      "metadata": {
+        "document_id": "doc-1"
       }
     }
-  ],
-  "kg": [],
-  "answer": "",
-  "retrieval": {
-    "iterative_pass": false
-  }
+  ]
 }
 ```
 

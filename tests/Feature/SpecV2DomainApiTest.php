@@ -57,8 +57,8 @@ class SpecV2DomainApiTest extends TestCase
             'metadata' => ['course' => 'design'],
         ])->assertCreated()
             ->assertJsonPath('id', 'heap-design')
-            ->assertJsonPath('tenantId', 'uni-hawk')
-            ->assertJsonPath('ownerApp', 'hawki-web')
+            ->assertJsonPath('tenant_id', 'uni-hawk')
+            ->assertJsonPath('owner_app', 'hawki-web')
             ->assertJsonPath('visibility', 'hidden')
             ->assertJsonPath('metadata.course', 'design');
 
@@ -114,13 +114,13 @@ class SpecV2DomainApiTest extends TestCase
             ->getJson('/api/corpora')
             ->assertOk()
             ->assertJsonPath('data.0.id', hash('sha256', 'design corpus'))
-            ->assertJsonPath('data.0.referenceCount', 1);
+            ->assertJsonPath('data.0.reference_count', 1);
 
         $this->withHeader('Authorization', 'Bearer '.$token)
             ->getJson('/api/corpora/'.hash('sha256', 'design corpus'))
             ->assertOk()
             ->assertJsonPath('id', hash('sha256', 'design corpus'))
-            ->assertJsonPath('documentCount', 1);
+            ->assertJsonPath('document_count', 1);
     }
 
     public function test_canonical_v2_document_routes_create_update_and_delete_documents(): void
@@ -161,16 +161,16 @@ class SpecV2DomainApiTest extends TestCase
                 'source_url' => 'https://example.test/spec-doc-1',
                 'title' => 'Spec Document',
             ])->assertCreated()
-            ->assertJsonPath('documentId', 'doc-spec-1')
-            ->assertJsonPath('heapId', 'heap-spec-docs')
+            ->assertJsonPath('document_id', 'doc-spec-1')
+            ->assertJsonPath('heap_id', 'heap-spec-docs')
             ->assertJsonPath('metadata.course', 'design')
-            ->assertJsonPath('isDuplicate', false);
+            ->assertJsonPath('is_duplicate', false);
 
         $this->withHeaders($auth)
             ->getJson('/api/documents/doc-spec-1')
             ->assertOk()
-            ->assertJsonPath('documentId', 'doc-spec-1')
-            ->assertJsonPath('heapId', 'heap-spec-docs')
+            ->assertJsonPath('document_id', 'doc-spec-1')
+            ->assertJsonPath('heap_id', 'heap-spec-docs')
             ->assertJsonPath('metadata.course', 'design');
 
         $document = Document::query()->findOrFail('doc-spec-1');
@@ -187,7 +187,7 @@ class SpecV2DomainApiTest extends TestCase
             ->getJson('/api/heaps/heap-spec-docs/documents')
             ->assertOk()
             ->assertJsonPath('pagination.total', 1)
-            ->assertJsonPath('data.0.documentId', 'doc-spec-1');
+            ->assertJsonPath('data.0.document_id', 'doc-spec-1');
 
         $this->withHeaders($auth)
             ->putJson('/api/documents/doc-spec-1', [
@@ -195,7 +195,7 @@ class SpecV2DomainApiTest extends TestCase
                 'metadata' => ['course' => 'ux'],
                 'title' => 'Updated Spec Document',
             ])->assertOk()
-            ->assertJsonPath('documentId', 'doc-spec-1')
+            ->assertJsonPath('document_id', 'doc-spec-1')
             ->assertJsonPath('metadata.course', 'ux')
             ->assertJsonPath('title', 'Updated Spec Document');
 
@@ -274,14 +274,14 @@ class SpecV2DomainApiTest extends TestCase
             ]);
 
         $response->assertCreated()
-            ->assertJsonPath('documentId', 'doc-upload-1')
-            ->assertJsonPath('heapId', 'heap-upload-docs')
-            ->assertJsonPath('sourceType', Document::SOURCE_UPLOAD)
+            ->assertJsonPath('document_id', 'doc-upload-1')
+            ->assertJsonPath('heap_id', 'heap-upload-docs')
+            ->assertJsonPath('source_type', Document::SOURCE_UPLOAD)
             ->assertJsonPath('status', Document::STATUS_QUEUED)
             ->assertJsonPath('metadata.course', 'design')
-            ->assertJsonPath('taskId', $response->json('taskId'))
-            ->assertJsonPath('jobId', $response->json('jobId'))
-            ->assertJsonPath('sourceId', $response->json('sourceId'));
+            ->assertJsonPath('task_id', $response->json('task_id'))
+            ->assertJsonPath('job_id', $response->json('job_id'))
+            ->assertJsonPath('source_id', $response->json('source_id'));
 
         $document = Document::query()->findOrFail('doc-upload-1');
 
@@ -289,14 +289,14 @@ class SpecV2DomainApiTest extends TestCase
         $this->assertSame(Document::STATUS_QUEUED, $document->status);
         $this->assertNotNull($document->checksum_sha256);
         $this->assertSame('design', $document->metadata_json['course']);
-        $this->assertSame($response->json('taskId'), $document->metadata_json['task_id']);
-        $this->assertSame($response->json('jobId'), $document->metadata_json['job_id']);
-        $this->assertSame($response->json('sourceId'), $document->metadata_json['upload']['source_id']);
+        $this->assertSame($response->json('task_id'), $document->metadata_json['task_id']);
+        $this->assertSame($response->json('job_id'), $document->metadata_json['job_id']);
+        $this->assertSame($response->json('source_id'), $document->metadata_json['upload']['source_id']);
 
         $this->assertDatabaseHas('pipeline_jobs', [
-            'job_id' => $response->json('jobId'),
-            'task_id' => $response->json('taskId'),
-            'source_id' => $response->json('sourceId'),
+            'job_id' => $response->json('job_id'),
+            'task_id' => $response->json('task_id'),
+            'source_id' => $response->json('source_id'),
             'source_url' => 'upload://brief.pdf',
             'status' => 'running',
         ]);
@@ -385,12 +385,61 @@ class SpecV2DomainApiTest extends TestCase
 
         $this->withHeaders($headers)
             ->delete('/api/heaps/heap-status-delete')
-            ->assertOk()
-            ->assertJsonPath('success', true);
+            ->assertNoContent();
 
         $this->assertDatabaseMissing('datasets', [
             'dataset_id' => 'heap-status-delete',
         ]);
+    }
+
+    public function test_heap_list_excludes_hidden_heaps_unless_visibility_all_is_requested(): void
+    {
+        ['token' => $token] = $this->issueApplicationToken([
+            'id' => 'rawki-default',
+            'tenant_id' => 'default',
+            'permissions' => ['reads'],
+        ]);
+
+        foreach ([
+            'heap-visible' => Dataset::VISIBILITY_DISCOVERABLE,
+            'heap-hidden' => Dataset::VISIBILITY_HIDDEN,
+        ] as $heapId => $visibility) {
+            Dataset::query()->create([
+                'dataset_id' => $heapId,
+                'tenant_id' => 'default',
+                'owner_application_id' => 'rawki-default',
+                'name' => $heapId,
+                'status' => Dataset::STATUS_ACTIVE,
+                'visibility' => $visibility,
+                'protected' => false,
+                'metadata_json' => [],
+                'qdrant_collection' => $heapId,
+                'neo4j_namespace' => $heapId,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
+
+        $visible = $this->withHeader('Authorization', 'Bearer '.$token)
+            ->getJson('/api/heaps')
+            ->assertOk();
+
+        $visibleHeapIds = array_column($visible->json('data'), 'heap_id');
+        $this->assertContains('heap-visible', $visibleHeapIds);
+        $this->assertNotContains('heap-hidden', $visibleHeapIds);
+
+        $all = $this->withHeader('Authorization', 'Bearer '.$token)
+            ->getJson('/api/heaps?visibility=all')
+            ->assertOk();
+
+        $allHeapIds = array_column($all->json('data'), 'heap_id');
+        $this->assertContains('heap-visible', $allHeapIds);
+        $this->assertContains('heap-hidden', $allHeapIds);
+
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->getJson('/api/heaps?visibility=hidden')
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['visibility']);
     }
 
     public function test_application_actor_defaults_ownership_without_human_identity_provisioning(): void
@@ -404,8 +453,8 @@ class SpecV2DomainApiTest extends TestCase
             'id' => 'heap-local',
             'name' => 'Local Heap',
         ])->assertCreated()
-            ->assertJsonPath('tenantId', 'default')
-            ->assertJsonPath('ownerApp', 'rawki-default');
+            ->assertJsonPath('tenant_id', 'default')
+            ->assertJsonPath('owner_app', 'rawki-default');
 
         $this->postJson('/api/auth/groups', [
             'id' => 'local_team',

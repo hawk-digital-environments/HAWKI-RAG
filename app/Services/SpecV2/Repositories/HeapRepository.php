@@ -10,17 +10,23 @@ use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 #[Singleton]
 readonly class HeapRepository
 {
+    private const VISIBILITY_ALL = 'all';
+
     /**
      * @param array<string, mixed> $filters
      */
     public function paginate(array $filters, int $perPage, int $page): LengthAwarePaginator
     {
+        $visibility = is_string($filters['visibility'] ?? null)
+            ? trim($filters['visibility'])
+            : Heap::VISIBILITY_DISCOVERABLE;
+
         return Heap::query()
             ->with(['tenant', 'ownerApplication'])
             ->withCount('documents')
             ->when($filters['tenant_id'] ?? null, fn ($query, $tenantId) => $query->where('tenant_id', $tenantId))
             ->when($filters['owner_application_id'] ?? null, fn ($query, $appId) => $query->where('owner_application_id', $appId))
-            ->when($filters['visibility'] ?? null, fn ($query, $visibility) => $query->where('visibility', $visibility))
+            ->when($visibility !== self::VISIBILITY_ALL, fn ($query) => $query->where('visibility', $visibility))
             ->when(array_key_exists('protected', $filters), fn ($query) => $query->where('protected', (bool) $filters['protected']))
             ->orderByDesc('created_at')
             ->paginate($perPage, ['*'], 'page', $page);
