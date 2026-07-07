@@ -1,34 +1,3 @@
-FROM neunerlei/node-nginx:25 AS node-build
-
-ARG DOCKER_PROJECT_HOST
-ARG DOCKER_PROJECT_PATH
-ARG DOCKER_PROJECT_PROTOCOL
-ARG DOCKER_SERVICE_PATH
-ENV DOCKER_PROJECT_HOST=${DOCKER_PROJECT_HOST:-ixdlab.hawk.de} \
-    DOCKER_PROJECT_PATH=${DOCKER_PROJECT_PATH:-/hawki-rag/} \
-    DOCKER_PROJECT_PROTOCOL=${DOCKER_PROJECT_PROTOCOL:-https}
-
-# Copy only package files for caching
-COPY package.json package-lock.json ./
-
-# Install Node dependencies with more tolerant network settings (CI/build hosts can be slow)
-RUN npm config set fetch-retries 5 \
- && npm config set fetch-retry-mintimeout 20000 \
- && npm config set fetch-retry-maxtimeout 120000 \
- && npm config set fetch-timeout 300000 \
- && npm ci --with-dev
-
-# Copy rest of application
-COPY --chown=www-data:www-data . .
-
-# Prepare container for building
-RUN rm -rf /var/www/html/public/build \
-    && gosu www-data mkdir -p /var/www/html/public/build \
-    && source /container/entrypoint/entrypoint.sh \
-    && npm run build
-
-# =================================================================
-
 FROM neunerlei/php-nginx:8.4 AS laravel-app
 
 ARG DOCKER_PROJECT_HOST
@@ -57,14 +26,10 @@ RUN composer install --no-dev --optimize-autoloader --no-interaction --no-script
 # Copy rest of application
 COPY . .
 
-# Copy built assets from node build stage
-COPY --chown=www-data:www-data --from=node-build /var/www/html/public/build /var/www/built_resources
-
 # Fix Laravel permissions
 RUN chown -R www-data:www-data \
     /var/www/html/storage \
-    /var/www/html/bootstrap/cache \
-    /var/www/built_resources
+    /var/www/html/bootstrap/cache
 
 # Copy container config
 COPY ./docker/rag_app /container/custom/

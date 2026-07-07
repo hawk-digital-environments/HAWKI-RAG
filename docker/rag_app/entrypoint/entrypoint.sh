@@ -1,11 +1,6 @@
 #!/bin/bash
 set -e
 
-# Create symlink for built assets
-echo "Creating symlink for built assets..."
-rm -rf /var/www/html/public/build
-ln -s /var/www/built_resources /var/www/html/public/build
-
 echo "Fixing Laravel storage and cache permissions..."
 
 # Ensure directories exist and fix permissions for Laravel
