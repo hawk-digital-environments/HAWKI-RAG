@@ -95,6 +95,10 @@ Homestead.yaml
 !package.json
 !package-lock.json
 
+# Markdown docs
+*.md
+!docs/hawki-rag-v2-architecture-and-api-summary.md
+
 # Refactor notes
 refactor_code_python.md
 refactor_code*.md
