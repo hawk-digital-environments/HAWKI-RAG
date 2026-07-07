@@ -9,16 +9,19 @@ denormalized payload writes.
    validation, grant projection, and search-scope construction.
 2. App-facing internal APIs use application bearer tokens only. Human
    `sanctum` or OIDC authentication is reserved for operator-only surfaces.
-3. Python is a retrieval engine only. It receives only `query`, `limit`, and a
+3. App-facing V2 reads return `403` when a resource exists but falls outside
+   the caller's permitted application scope. `404` is reserved for truly
+   missing resources.
+4. Python is a retrieval engine only. It receives only `query`, `limit`, and a
    canonical `filters` expression from Laravel. It must not resolve tenants,
    applications, user identities, or permission grants.
-4. The auth backend is optional infrastructure. When enabled, Laravel services
+5. The auth backend is optional infrastructure. When enabled, Laravel services
    may write or check graph relationships. When disabled, auth-shaped inputs
    are accepted and ignored without side effects.
-5. Qdrant payload mutation is a write-path concern. Controllers do not write
+6. Qdrant payload mutation is a write-path concern. Controllers do not write
    Qdrant directly. Denormalized search payload sync belongs to dedicated
    Laravel services.
-6. No legacy compatibility API routes are registered on this branch. Shared
+7. No legacy compatibility API routes are registered on this branch. Shared
    legacy-named services may remain only as internal adapters behind active
    app-search, app-ingestion, or V2 flows.
 

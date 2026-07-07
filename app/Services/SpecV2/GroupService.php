@@ -7,6 +7,7 @@ use App\Models\SpecV2\Group;
 use App\Services\Authorization\ApiActor;
 use App\Services\Authorization\ApiActorScopeService;
 use App\Services\Authorization\IdentityProvisioningService;
+use App\Services\SpecV2\Exceptions\AccessDeniedException;
 use App\Services\SpecV2\Exceptions\ApplicationNotFoundException;
 use App\Services\SpecV2\Exceptions\GroupNotFoundException;
 use App\Services\SpecV2\Payloads\PaginationPayloadBuilder;
@@ -51,7 +52,7 @@ readonly class GroupService
         }
 
         if (! $this->actors->currentCanReadGroup($group)) {
-            throw GroupNotFoundException::withId($groupId);
+            throw AccessDeniedException::forAction('read', 'group', $groupId);
         }
 
         return $group;
@@ -98,7 +99,7 @@ readonly class GroupService
         }
 
         if (! $this->actors->currentCanReadGroup($group)) {
-            throw GroupNotFoundException::withId($groupId);
+            throw AccessDeniedException::forAction('manage', 'group', $groupId);
         }
 
         $this->groups->delete($group);
@@ -112,7 +113,7 @@ readonly class GroupService
         }
 
         if (! $this->actors->currentCanReadGroup($group)) {
-            throw GroupNotFoundException::withId($groupId);
+            throw AccessDeniedException::forAction('read', 'group', $groupId);
         }
 
         $members = $this->members->paginate($group, $perPage, $page);
@@ -134,7 +135,7 @@ readonly class GroupService
         }
 
         if (! $this->actors->currentCanReadGroup($group)) {
-            throw GroupNotFoundException::withId($groupId);
+            throw AccessDeniedException::forAction('manage', 'group', $groupId);
         }
 
         $this->members->replaceMembers(
@@ -161,7 +162,7 @@ readonly class GroupService
         }
 
         if (! $this->actors->currentCanReadGroup($group)) {
-            throw GroupNotFoundException::withId($groupId);
+            throw AccessDeniedException::forAction('manage', 'group', $groupId);
         }
 
         $this->members->addMembers(

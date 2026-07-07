@@ -7,6 +7,7 @@ use App\Models\SpecV2\Application;
 use App\Services\Authorization\ApiActor;
 use App\Services\Authorization\ApiActorScopeService;
 use App\Services\Authorization\ApplicationTokenService;
+use App\Services\SpecV2\Exceptions\AccessDeniedException;
 use App\Services\SpecV2\Exceptions\ApplicationNotFoundException;
 use App\Services\SpecV2\Exceptions\TenantNotFoundException;
 use App\Services\SpecV2\Payloads\ApplicationPayloadBuilder;
@@ -51,7 +52,7 @@ readonly class ApplicationService
         }
 
         if (! $this->actors->currentCanReadApplication($application)) {
-            throw ApplicationNotFoundException::withId($applicationId);
+            throw AccessDeniedException::forAction('read', 'application', $applicationId);
         }
 
         return $this->payloads->payload($application);

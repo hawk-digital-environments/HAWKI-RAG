@@ -14,6 +14,7 @@ use App\Services\Authorization\AuthorizationModeService;
 use App\Services\Authorization\IdentityProvisioningService;
 use App\Services\Authorization\Repositories\GrantAccessRepository;
 use App\Services\Authorization\Repositories\UserIdentityRepository;
+use App\Services\SpecV2\Exceptions\AccessDeniedException;
 use App\Services\SpecV2\Exceptions\AuthorizationGrantException;
 use App\Services\SpecV2\Exceptions\GroupNotFoundException;
 use App\Services\SpecV2\Exceptions\HeapNotFoundException;
@@ -48,13 +49,7 @@ readonly class AuthorizationGrantService
             return $this->grantPayload('heap', $heap->heapId(), [], [], (bool) $heap->protected);
         }
 
-        return $this->grantPayload(
-            'heap',
-            $heap->heapId(),
-            $this->grantedUsers($this->heapGrants->listForHeap($heap->heapId())),
-            $this->grantedGroups($this->heapGrants->listForHeap($heap->heapId())),
-            (bool) $heap->protected,
-        );
+        return $this->heapGrantPayload($heap);
     }
 
     /**
@@ -76,7 +71,7 @@ readonly class AuthorizationGrantService
         );
         $this->heapGrants->replaceGroups($heap->heapId(), $this->validatedGroupIds($groups, $heap->tenant_id, $heap->heapId()));
 
-        return $this->heapGrants($heap->heapId());
+        return $this->heapGrantPayload($heap);
     }
 
     /**
@@ -102,7 +97,7 @@ readonly class AuthorizationGrantService
         $this->heapGrants->addGroups($heap->heapId(), $this->validatedGroupIds($addGroups, $heap->tenant_id, $heap->heapId()));
         $this->heapGrants->removeGroups($heap->heapId(), $this->identifiers->stringList($removeGroups));
 
-        return $this->heapGrants($heap->heapId());
+        return $this->heapGrantPayload($heap);
     }
 
     public function documentGrants(string $documentId): array
@@ -113,12 +108,7 @@ readonly class AuthorizationGrantService
             return $this->grantPayload('document', (string) $document->id, [], []);
         }
 
-        return $this->grantPayload(
-            'document',
-            (string) $document->id,
-            $this->grantedUsers($this->documentGrants->listForDocument((string) $document->id)),
-            $this->grantedGroups($this->documentGrants->listForDocument((string) $document->id)),
-        );
+        return $this->documentGrantPayload($document);
     }
 
     /**
@@ -146,7 +136,7 @@ readonly class AuthorizationGrantService
             (string) $document->id,
         ));
 
-        return $this->documentGrants((string) $document->id);
+        return $this->documentGrantPayload($document);
     }
 
     /**
@@ -175,7 +165,7 @@ readonly class AuthorizationGrantService
         $this->documentGrants->addGroups((string) $document->id, $this->validatedGroupIds($addGroups, $tenantId, (string) $document->id));
         $this->documentGrants->removeGroups((string) $document->id, $this->identifiers->stringList($removeGroups));
 
-        return $this->documentGrants((string) $document->id);
+        return $this->documentGrantPayload($document);
     }
 
     public function deleteHeapGrants(string $heapId): void
@@ -263,8 +253,12 @@ readonly class AuthorizationGrantService
     private function readableHeap(string $heapId): Heap
     {
         $heap = $this->heaps->findById($heapId);
-        if (! $heap instanceof Heap || ! $this->currentCanScopeHeap($heap)) {
+        if (! $heap instanceof Heap) {
             throw HeapNotFoundException::withId($heapId);
+        }
+
+        if (! $this->currentCanScopeHeap($heap)) {
+            throw AccessDeniedException::forAction('read', 'heap', $heapId);
         }
 
         return $heap;
@@ -272,9 +266,13 @@ readonly class AuthorizationGrantService
 
     private function ownedHeap(string $heapId): Heap
     {
-        $heap = $this->readableHeap($heapId);
-        if (! $this->currentOwnsHeap($heap)) {
+        $heap = $this->heaps->findById($heapId);
+        if (! $heap instanceof Heap) {
             throw HeapNotFoundException::withId($heapId);
+        }
+
+        if (! $this->currentOwnsHeap($heap)) {
+            throw AccessDeniedException::forAction('manage', 'heap', $heapId);
         }
 
         return $heap;
@@ -289,8 +287,12 @@ readonly class AuthorizationGrantService
 
         $document->loadMissing('heap');
 
-        if (! $document->heap instanceof Heap || ! $this->currentCanScopeHeap($document->heap)) {
+        if (! $document->heap instanceof Heap) {
             throw AuthorizationGrantException::documentNotFound($documentId);
+        }
+
+        if (! $this->currentCanScopeHeap($document->heap)) {
+            throw AccessDeniedException::forAction('read', 'document', $documentId);
         }
 
         return $document;
@@ -298,9 +300,19 @@ readonly class AuthorizationGrantService
 
     private function ownedDocument(string $documentId): Document
     {
-        $document = $this->readableDocument($documentId);
-        if (! $document->heap instanceof Heap || ! $this->currentOwnsHeap($document->heap)) {
+        $document = $this->documents->findById($documentId);
+        if (! $document instanceof Document) {
             throw AuthorizationGrantException::documentNotFound($documentId);
+        }
+
+        $document->loadMissing('heap');
+
+        if (! $document->heap instanceof Heap) {
+            throw AuthorizationGrantException::documentNotFound($documentId);
+        }
+
+        if (! $this->currentOwnsHeap($document->heap)) {
+            throw AccessDeniedException::forAction('manage', 'document', $documentId);
         }
 
         return $document;
@@ -382,6 +394,27 @@ readonly class AuthorizationGrantService
     private function enabled(): bool
     {
         return $this->mode->enabled();
+    }
+
+    private function heapGrantPayload(Heap $heap): array
+    {
+        return $this->grantPayload(
+            'heap',
+            $heap->heapId(),
+            $this->grantedUsers($this->heapGrants->listForHeap($heap->heapId())),
+            $this->grantedGroups($this->heapGrants->listForHeap($heap->heapId())),
+            (bool) $heap->protected,
+        );
+    }
+
+    private function documentGrantPayload(Document $document): array
+    {
+        return $this->grantPayload(
+            'document',
+            (string) $document->id,
+            $this->grantedUsers($this->documentGrants->listForDocument((string) $document->id)),
+            $this->grantedGroups($this->documentGrants->listForDocument((string) $document->id)),
+        );
     }
 
     /**

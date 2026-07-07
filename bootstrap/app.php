@@ -2,6 +2,7 @@
 
 use App\Http\Middleware\RequireOperatorAccess;
 use App\Http\Middleware\SecurityHeaders;
+use App\Services\SpecV2\Exceptions\AccessDeniedException;
 use App\Services\SpecV2\Exceptions\ApplicationNotFoundException;
 use App\Services\SpecV2\Exceptions\AuthorizationGrantException;
 use App\Services\SpecV2\Exceptions\CorpusNotFoundException;
@@ -38,6 +39,9 @@ return Application::configure(basePath: dirname(__DIR__))
         );
         $exceptions->render(function (ApplicationNotFoundException|InvalidGroupIdentifierException $exception) {
             return response()->json(['message' => $exception->getMessage()], 422);
+        });
+        $exceptions->render(function (AccessDeniedException $exception) {
+            return response()->json(['message' => $exception->getMessage()], 403);
         });
         $exceptions->render(function (HeapNotFoundException|GroupNotFoundException|CorpusNotFoundException $exception) {
             return response()->json(['message' => $exception->getMessage()], 404);

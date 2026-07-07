@@ -6,6 +6,7 @@ use App\Models\AuthorizationPermissionEvent;
 use App\Models\Dataset;
 use App\Models\Document;
 use App\Models\SpecV2\Application;
+use App\Services\Authorization\ApiActorScopeService;
 use App\Models\SpecV2\Group;
 use App\Models\SpecV2\Tenant;
 use App\Models\SpecV2\Corpus;
@@ -13,7 +14,8 @@ use App\Services\Authorization\PermissionSyncService;
 use App\Services\Authorization\Values\LmsDocumentRelation;
 use App\Services\Authorization\Values\LmsMembership;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Http\Client\Request;
+use Illuminate\Http\Client\Request as ClientRequest;
+use Illuminate\Http\Request as HttpRequest;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Route;
 use Tests\TestCase;
@@ -155,7 +157,7 @@ class ArchitectureContractTest extends TestCase
             ->assertJsonPath('pagination.total', 1);
         $this->withHeader('Authorization', 'Bearer '.$readsToken)
             ->getJson('/api/heaps/heap-protected')
-            ->assertNotFound();
+            ->assertForbidden();
 
         $this->withHeader('Authorization', 'Bearer '.$protectedToken)
             ->getJson('/api/heaps')
@@ -252,7 +254,7 @@ class ArchitectureContractTest extends TestCase
                 'user_identifier' => 'learner-1',
             ])->assertOk();
 
-        Http::assertSent(function (Request $request) use ($document): bool {
+        Http::assertSent(function (ClientRequest $request) use ($document): bool {
             if ($request->url() !== 'http://bridge.test/query') {
                 return false;
             }
@@ -265,6 +267,425 @@ class ArchitectureContractTest extends TestCase
                 && ($this->filterContains($filters, 'heap', 'heap-protected')
                     || $this->filterContainsDocumentId($filters, (string) $document->id));
         });
+    }
+
+    public function test_application_permission_matrix_covers_read_surfaces_consistently(): void
+    {
+        config()->set('authz.enabled', true);
+
+        Tenant::query()->create(['id' => 'tenant-a', 'name' => 'Tenant A', 'metadata_json' => []]);
+        Tenant::query()->create(['id' => 'tenant-b', 'name' => 'Tenant B', 'metadata_json' => []]);
+
+        Application::query()->create([
+            'id' => 'app-owned',
+            'tenant_id' => 'tenant-a',
+            'name' => 'App Owned',
+            'permissions' => [Application::PERMISSION_READS],
+            'token_hash' => null,
+            'metadata_json' => [],
+        ]);
+        Application::query()->create([
+            'id' => 'app-peer',
+            'tenant_id' => 'tenant-a',
+            'name' => 'App Peer',
+            'permissions' => [Application::PERMISSION_READS],
+            'token_hash' => null,
+            'metadata_json' => [],
+        ]);
+        Application::query()->create([
+            'id' => 'app-foreign',
+            'tenant_id' => 'tenant-b',
+            'name' => 'App Foreign',
+            'permissions' => [Application::PERMISSION_READS],
+            'token_hash' => null,
+            'metadata_json' => [],
+        ]);
+
+        $this->seedHeapCorpusAndGroup('heap-owned-public', 'tenant-a', 'app-owned', 'corpus-owned-public', 'group-owned-public', false, 'doc-owned-public');
+        $this->seedHeapCorpusAndGroup('heap-owned-protected', 'tenant-a', 'app-owned', 'corpus-owned-protected', 'group-owned-protected', true, 'doc-owned-protected');
+        $this->seedHeapCorpusAndGroup('heap-peer-public', 'tenant-a', 'app-peer', 'corpus-peer-public', 'group-peer-public', false, 'doc-peer-public');
+        $this->seedHeapCorpusAndGroup('heap-peer-protected', 'tenant-a', 'app-peer', 'corpus-peer-protected', 'group-peer-protected', true, 'doc-peer-protected');
+        $this->seedHeapCorpusAndGroup('heap-foreign-public', 'tenant-b', 'app-foreign', 'corpus-foreign-public', 'group-foreign-public', false, 'doc-foreign-public');
+
+        ['token' => $readsToken] = $this->issueApplicationToken([
+            'id' => 'app-owned',
+            'tenant_id' => 'tenant-a',
+            'permissions' => [Application::PERMISSION_READS],
+        ]);
+        ['token' => $tenantToken] = $this->issueApplicationToken([
+            'id' => 'tenant-reader',
+            'tenant_id' => 'tenant-a',
+            'permissions' => [Application::PERMISSION_READS_ALL_APPS],
+        ]);
+        ['token' => $federatedToken] = $this->issueApplicationToken([
+            'id' => 'federated-reader',
+            'tenant_id' => 'tenant-a',
+            'permissions' => [Application::PERMISSION_READS_FEDERATED],
+        ]);
+        ['token' => $protectedTenantToken] = $this->issueApplicationToken([
+            'id' => 'tenant-reader-protected',
+            'tenant_id' => 'tenant-a',
+            'permissions' => [Application::PERMISSION_READS_ALL_APPS, Application::PERMISSION_READS_PROTECTED],
+        ]);
+
+        $cases = [
+            [
+                'name' => 'reads',
+                'token' => $readsToken,
+                'heap_total' => 1,
+                'heap_statuses' => [
+                    'heap-owned-public' => 200,
+                    'heap-owned-protected' => 403,
+                    'heap-peer-public' => 403,
+                    'heap-foreign-public' => 403,
+                ],
+                'corpus_statuses' => [
+                    'corpus-owned-public' => 200,
+                    'corpus-owned-protected' => 403,
+                    'corpus-peer-public' => 403,
+                    'corpus-foreign-public' => 403,
+                ],
+                'grant_statuses' => [
+                    'heap-owned-public' => 200,
+                    'heap-owned-protected' => 200,
+                    'heap-peer-public' => 403,
+                    'heap-foreign-public' => 403,
+                ],
+                'document_access' => [
+                    'doc-owned-public' => true,
+                    'doc-owned-protected' => false,
+                    'doc-peer-public' => false,
+                    'doc-peer-protected' => false,
+                    'doc-foreign-public' => false,
+                ],
+            ],
+            [
+                'name' => 'tenant',
+                'token' => $tenantToken,
+                'heap_total' => 2,
+                'heap_statuses' => [
+                    'heap-owned-public' => 200,
+                    'heap-owned-protected' => 403,
+                    'heap-peer-public' => 200,
+                    'heap-peer-protected' => 403,
+                    'heap-foreign-public' => 403,
+                ],
+                'corpus_statuses' => [
+                    'corpus-owned-public' => 200,
+                    'corpus-owned-protected' => 403,
+                    'corpus-peer-public' => 200,
+                    'corpus-peer-protected' => 403,
+                    'corpus-foreign-public' => 403,
+                ],
+                'grant_statuses' => [
+                    'heap-owned-public' => 200,
+                    'heap-owned-protected' => 200,
+                    'heap-peer-public' => 200,
+                    'heap-peer-protected' => 200,
+                    'heap-foreign-public' => 403,
+                ],
+                'document_access' => [
+                    'doc-owned-public' => true,
+                    'doc-owned-protected' => false,
+                    'doc-peer-public' => true,
+                    'doc-peer-protected' => false,
+                    'doc-foreign-public' => false,
+                ],
+            ],
+            [
+                'name' => 'federated',
+                'token' => $federatedToken,
+                'heap_total' => 4,
+                'heap_statuses' => [
+                    'heap-owned-public' => 200,
+                    'heap-owned-protected' => 403,
+                    'heap-peer-public' => 200,
+                    'heap-peer-protected' => 403,
+                    'heap-foreign-public' => 200,
+                ],
+                'corpus_statuses' => [
+                    'corpus-owned-public' => 200,
+                    'corpus-owned-protected' => 403,
+                    'corpus-peer-public' => 200,
+                    'corpus-peer-protected' => 403,
+                    'corpus-foreign-public' => 200,
+                ],
+                'grant_statuses' => [
+                    'heap-owned-public' => 200,
+                    'heap-owned-protected' => 200,
+                    'heap-peer-public' => 200,
+                    'heap-peer-protected' => 200,
+                    'heap-foreign-public' => 200,
+                ],
+                'document_access' => [
+                    'doc-owned-public' => true,
+                    'doc-owned-protected' => false,
+                    'doc-peer-public' => true,
+                    'doc-peer-protected' => false,
+                    'doc-foreign-public' => true,
+                ],
+            ],
+            [
+                'name' => 'tenant-protected',
+                'token' => $protectedTenantToken,
+                'heap_total' => 4,
+                'heap_statuses' => [
+                    'heap-owned-public' => 200,
+                    'heap-owned-protected' => 200,
+                    'heap-peer-public' => 200,
+                    'heap-peer-protected' => 200,
+                    'heap-foreign-public' => 403,
+                ],
+                'corpus_statuses' => [
+                    'corpus-owned-public' => 200,
+                    'corpus-owned-protected' => 200,
+                    'corpus-peer-public' => 200,
+                    'corpus-peer-protected' => 200,
+                    'corpus-foreign-public' => 403,
+                ],
+                'grant_statuses' => [
+                    'heap-owned-public' => 200,
+                    'heap-owned-protected' => 200,
+                    'heap-peer-public' => 200,
+                    'heap-peer-protected' => 200,
+                    'heap-foreign-public' => 403,
+                ],
+                'document_access' => [
+                    'doc-owned-public' => true,
+                    'doc-owned-protected' => true,
+                    'doc-peer-public' => true,
+                    'doc-peer-protected' => true,
+                    'doc-foreign-public' => false,
+                ],
+            ],
+        ];
+
+        foreach ($cases as $case) {
+            $heaps = $this->withHeader('Authorization', 'Bearer '.$case['token'])
+                ->getJson('/api/heaps')
+                ->assertOk();
+            $this->assertSame(
+                $case['heap_total'],
+                $heaps->json('pagination.total'),
+                'Unexpected heap total for '.$case['name'].': '.json_encode(array_column($heaps->json('data') ?? [], 'id'))
+            );
+
+            foreach ($case['heap_statuses'] as $heapId => $status) {
+                $this->withHeader('Authorization', 'Bearer '.$case['token'])
+                    ->getJson('/api/heaps/'.$heapId)
+                    ->assertStatus($status);
+            }
+
+            foreach ($case['corpus_statuses'] as $corpusId => $status) {
+                $this->withHeader('Authorization', 'Bearer '.$case['token'])
+                    ->getJson('/api/corpora/'.$corpusId)
+                    ->assertStatus($status);
+            }
+
+            foreach ($case['grant_statuses'] as $heapId => $status) {
+                $this->withHeader('Authorization', 'Bearer '.$case['token'])
+                    ->getJson('/api/auth/heaps/'.$heapId)
+                    ->assertStatus($status);
+            }
+
+            foreach ($case['document_access'] as $documentId => $expected) {
+                $this->assertSame($expected, $this->canReadDocumentWithToken($case['token'], $documentId), 'Unexpected document access for '.$documentId);
+            }
+        }
+    }
+
+    public function test_application_permission_matrix_covers_search_filters(): void
+    {
+        config()->set('authz.enabled', true);
+        config()->set('config.hawki_rag_bridge_url', 'http://bridge.test');
+
+        Tenant::query()->create(['id' => 'tenant-a', 'name' => 'Tenant A', 'metadata_json' => []]);
+        Tenant::query()->create(['id' => 'tenant-b', 'name' => 'Tenant B', 'metadata_json' => []]);
+
+        Application::query()->create([
+            'id' => 'app-owned',
+            'tenant_id' => 'tenant-a',
+            'name' => 'App Owned',
+            'permissions' => [Application::PERMISSION_READS],
+            'token_hash' => null,
+            'metadata_json' => [],
+        ]);
+        Application::query()->create([
+            'id' => 'app-peer',
+            'tenant_id' => 'tenant-a',
+            'name' => 'App Peer',
+            'permissions' => [Application::PERMISSION_READS],
+            'token_hash' => null,
+            'metadata_json' => [],
+        ]);
+        Application::query()->create([
+            'id' => 'app-foreign',
+            'tenant_id' => 'tenant-b',
+            'name' => 'App Foreign',
+            'permissions' => [Application::PERMISSION_READS],
+            'token_hash' => null,
+            'metadata_json' => [],
+        ]);
+
+        $this->seedHeapCorpusAndGroup('heap-owned-public', 'tenant-a', 'app-owned', 'corpus-owned-public', 'group-owned-public');
+        $this->seedHeapCorpusAndGroup('heap-owned-protected', 'tenant-a', 'app-owned', 'corpus-owned-protected', 'group-owned-protected', true);
+        $this->seedHeapCorpusAndGroup('heap-peer-public', 'tenant-a', 'app-peer', 'corpus-peer-public', 'group-peer-public');
+        $this->seedHeapCorpusAndGroup('heap-peer-protected', 'tenant-a', 'app-peer', 'corpus-peer-protected', 'group-peer-protected', true);
+        $this->seedHeapCorpusAndGroup('heap-foreign-public', 'tenant-b', 'app-foreign', 'corpus-foreign-public', 'group-foreign-public');
+
+        ['token' => $readsToken] = $this->issueApplicationToken([
+            'id' => 'app-owned',
+            'tenant_id' => 'tenant-a',
+            'permissions' => [Application::PERMISSION_READS],
+        ]);
+        ['token' => $tenantToken] = $this->issueApplicationToken([
+            'id' => 'tenant-reader',
+            'tenant_id' => 'tenant-a',
+            'permissions' => [Application::PERMISSION_READS_ALL_APPS],
+        ]);
+        ['token' => $federatedToken] = $this->issueApplicationToken([
+            'id' => 'federated-reader',
+            'tenant_id' => 'tenant-a',
+            'permissions' => [Application::PERMISSION_READS_FEDERATED],
+        ]);
+        ['token' => $protectedTenantToken] = $this->issueApplicationToken([
+            'id' => 'tenant-reader-protected',
+            'tenant_id' => 'tenant-a',
+            'permissions' => [Application::PERMISSION_READS_ALL_APPS, Application::PERMISSION_READS_PROTECTED],
+        ]);
+
+        $captured = [];
+        Http::fake([
+            'http://bridge.test/query' => function (ClientRequest $request) use (&$captured) {
+                $captured[] = $request->data();
+
+                return Http::response(['ok' => true, 'count' => 0, 'hits' => []], 200);
+            },
+        ]);
+
+        $cases = [
+            [
+                'token' => $readsToken,
+                'assert' => function (array $payload): void {
+                    $this->assertTrue($this->payloadHasOnlyBridgeKeys($payload));
+                    $filters = $payload['filters'] ?? [];
+                    $this->assertTrue($this->filterContains($filters, 'owner_app', 'app-owned'));
+                    $this->assertTrue($this->filterContains($filters, 'protected', false));
+                },
+            ],
+            [
+                'token' => $tenantToken,
+                'assert' => function (array $payload): void {
+                    $this->assertTrue($this->payloadHasOnlyBridgeKeys($payload));
+                    $filters = $payload['filters'] ?? [];
+                    $this->assertTrue($this->filterContains($filters, 'heap', 'heap-owned-public'));
+                    $this->assertTrue($this->filterContains($filters, 'heap', 'heap-peer-public'));
+                    $this->assertFalse($this->filterContains($filters, 'heap', 'heap-foreign-public'));
+                    $this->assertTrue($this->filterContains($filters, 'protected', false));
+                    $this->assertFalse($this->filterContains($filters, 'owner_app', 'app-owned'));
+                },
+            ],
+            [
+                'token' => $federatedToken,
+                'assert' => function (array $payload): void {
+                    $this->assertTrue($this->payloadHasOnlyBridgeKeys($payload));
+                    $filters = $payload['filters'] ?? [];
+                    $this->assertTrue($this->filterContains($filters, 'protected', false));
+                    $this->assertFalse($this->filterContains($filters, 'owner_app', 'app-owned'));
+                    $this->assertFalse($this->filterContains($filters, 'heap', 'heap-owned-public'));
+                },
+            ],
+            [
+                'token' => $protectedTenantToken,
+                'assert' => function (array $payload): void {
+                    $this->assertTrue($this->payloadHasOnlyBridgeKeys($payload));
+                    $filters = $payload['filters'] ?? [];
+                    $this->assertTrue($this->filterContains($filters, 'heap', 'heap-owned-public'));
+                    $this->assertTrue($this->filterContains($filters, 'heap', 'heap-peer-public'));
+                    $this->assertFalse($this->filterContains($filters, 'heap', 'heap-foreign-public'));
+                    $this->assertFalse($this->filterContains($filters, 'protected', false));
+                },
+            ],
+        ];
+
+        foreach ($cases as $case) {
+            $this->withHeader('Authorization', 'Bearer '.$case['token'])
+                ->postJson('/api/search', ['query' => 'design'])
+                ->assertOk();
+
+            $payload = array_pop($captured);
+            $this->assertIsArray($payload);
+            $case['assert']($payload);
+        }
+    }
+
+    public function test_v2_read_endpoints_use_403_for_scope_denials_and_404_for_missing_resources(): void
+    {
+        config()->set('authz.enabled', true);
+
+        Tenant::query()->create(['id' => 'tenant-a', 'name' => 'Tenant A', 'metadata_json' => []]);
+        Tenant::query()->create(['id' => 'tenant-b', 'name' => 'Tenant B', 'metadata_json' => []]);
+
+        Application::query()->create([
+            'id' => 'app-owned',
+            'tenant_id' => 'tenant-a',
+            'name' => 'App Owned',
+            'permissions' => [Application::PERMISSION_READS],
+            'token_hash' => null,
+            'metadata_json' => [],
+        ]);
+        Application::query()->create([
+            'id' => 'app-peer',
+            'tenant_id' => 'tenant-a',
+            'name' => 'App Peer',
+            'permissions' => [Application::PERMISSION_READS],
+            'token_hash' => null,
+            'metadata_json' => [],
+        ]);
+
+        $this->seedHeapCorpusAndGroup('heap-owned', 'tenant-a', 'app-owned', 'corpus-owned', 'group-owned');
+        $this->seedHeapCorpusAndGroup('heap-peer', 'tenant-a', 'app-peer', 'corpus-peer', 'group-peer');
+
+        ['token' => $readsToken] = $this->issueApplicationToken([
+            'id' => 'app-owned',
+            'tenant_id' => 'tenant-a',
+            'permissions' => [Application::PERMISSION_READS],
+        ]);
+
+        $this->withHeader('Authorization', 'Bearer '.$readsToken)
+            ->getJson('/api/heaps/heap-peer')
+            ->assertForbidden();
+        $this->withHeader('Authorization', 'Bearer '.$readsToken)
+            ->getJson('/api/heaps/heap-missing')
+            ->assertNotFound();
+
+        $this->withHeader('Authorization', 'Bearer '.$readsToken)
+            ->getJson('/api/corpora/corpus-peer')
+            ->assertForbidden();
+        $this->withHeader('Authorization', 'Bearer '.$readsToken)
+            ->getJson('/api/corpora/corpus-missing')
+            ->assertNotFound();
+
+        $this->withHeader('Authorization', 'Bearer '.$readsToken)
+            ->getJson('/api/applications/app-peer')
+            ->assertForbidden();
+        $this->withHeader('Authorization', 'Bearer '.$readsToken)
+            ->getJson('/api/applications/app-missing')
+            ->assertNotFound();
+
+        $this->withHeader('Authorization', 'Bearer '.$readsToken)
+            ->getJson('/api/tenants/tenant-b')
+            ->assertForbidden();
+        $this->withHeader('Authorization', 'Bearer '.$readsToken)
+            ->getJson('/api/tenants/tenant-missing')
+            ->assertNotFound();
+
+        $this->withHeader('Authorization', 'Bearer '.$readsToken)
+            ->getJson('/api/auth/groups/group-peer')
+            ->assertForbidden();
+        $this->withHeader('Authorization', 'Bearer '.$readsToken)
+            ->getJson('/api/auth/groups/group-missing')
+            ->assertNotFound();
     }
 
     public function test_denormalized_document_payload_contract_keeps_required_fields(): void
@@ -319,6 +740,8 @@ class ArchitectureContractTest extends TestCase
         $compatService = file_get_contents(app_path('Services/OpenCompat/OpenCompatService.php'));
         $compatIngestService = file_get_contents(app_path('Services/OpenCompat/OpenCompatIngestService.php'));
         $specDocuments = file_get_contents(app_path('Services/SpecV2/DocumentService.php'));
+        $actorScope = file_get_contents(app_path('Services/Authorization/ApiActorScopeService.php'));
+        $actorResolver = file_get_contents(app_path('Services/Authorization/ApiActorResolver.php'));
         $internalApiRoutes = file_get_contents(base_path('routes/internal_api.php'));
         $appSearchRoutes = file_get_contents(base_path('routes/internal_api/app_search.php'));
         $appIngestionRoutes = file_get_contents(base_path('routes/internal_api/app_ingestion.php'));
@@ -332,6 +755,7 @@ class ArchitectureContractTest extends TestCase
         $this->assertStringContainsString('Python is a retrieval engine only', $contract);
         $this->assertStringContainsString('Qdrant payload mutation is a write-path concern', $contract);
         $this->assertStringContainsString('App-facing internal APIs use application bearer tokens only', $contract);
+        $this->assertStringContainsString('App-facing V2 reads return `403`', $contract);
         $this->assertStringContainsString('No legacy compatibility API routes are registered', $contract);
         $this->assertStringContainsString('receives only `query`, `limit`, and a', $contract);
 
@@ -368,6 +792,12 @@ class ArchitectureContractTest extends TestCase
         $this->assertIsString($specDocuments);
         $this->assertStringContainsString('CorpusSyncService', $specDocuments);
         $this->assertStringContainsString('OpenCompatIngestService', $specDocuments);
+
+        $this->assertIsString($actorScope);
+        $this->assertStringNotContainsString('sanctum', $actorScope);
+        $this->assertStringNotContainsString('oidc', $actorScope);
+        $this->assertIsString($actorResolver);
+        $this->assertStringContainsString('Application authentication is required.', $actorResolver);
 
         $this->assertIsString($internalApiRoutes);
         $this->assertStringNotContainsString('compatibility.php', $internalApiRoutes);
@@ -586,6 +1016,7 @@ class ArchitectureContractTest extends TestCase
         string $corpusId,
         string $groupId,
         bool $protected = false,
+        ?string $documentId = null,
     ): void {
         Dataset::query()->create([
             'dataset_id' => $heapId,
@@ -608,6 +1039,7 @@ class ArchitectureContractTest extends TestCase
             'metadata_json' => [],
         ]);
         Document::query()->create([
+            'id' => $documentId ?? 'doc-'.$heapId,
             'dataset_id' => $heapId,
             'corpus_id' => $corpusId,
             'collection' => $heapId.'_collection',
@@ -625,5 +1057,20 @@ class ArchitectureContractTest extends TestCase
             'name' => $groupId,
             'metadata_json' => [],
         ]);
+    }
+
+    private function canReadDocumentWithToken(string $token, string $documentId): bool
+    {
+        $previousRequest = $this->app['request'];
+        $request = HttpRequest::create('/api/test-document-scope', 'GET', server: [
+            'HTTP_AUTHORIZATION' => 'Bearer '.$token,
+        ]);
+        $this->app->instance('request', $request);
+
+        try {
+            return app(ApiActorScopeService::class)->currentCanReadDocument($documentId);
+        } finally {
+            $this->app->instance('request', $previousRequest);
+        }
     }
 }

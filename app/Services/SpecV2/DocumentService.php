@@ -13,6 +13,7 @@ use App\Services\OpenCompat\OpenCompatIngestService;
 use App\Services\Pipeline\Uploads\PipelineUploadService;
 use App\Services\Pipeline\Values\PipelineUploadInput;
 use App\Services\Settings\SettingsService;
+use App\Services\SpecV2\Exceptions\AccessDeniedException;
 use App\Services\SpecV2\Exceptions\AuthorizationGrantException;
 use App\Services\SpecV2\Exceptions\HeapNotFoundException;
 use App\Services\SpecV2\Repositories\CorpusRepository;
@@ -278,8 +279,12 @@ readonly class DocumentService
     private function requireReadableHeap(string $heapId): Heap
     {
         $heap = $this->heaps->findById($heapId);
-        if (! $heap instanceof Heap || ! $this->currentCanReadHeap($heap)) {
+        if (! $heap instanceof Heap) {
             throw HeapNotFoundException::withId($heapId);
+        }
+
+        if (! $this->actors->currentCanReadHeap($heap)) {
+            throw AccessDeniedException::forAction('read', 'heap', $heapId);
         }
 
         return $heap;
@@ -316,24 +321,6 @@ readonly class DocumentService
         $actor = $this->actors->currentActor();
 
         return $actor instanceof ApiActor && $actor->applicationId() === (string) $heap->owner_application_id;
-    }
-
-    private function currentCanReadHeap(Heap $heap): bool
-    {
-        $actor = $this->actors->currentActor();
-        if (! $actor instanceof ApiActor) {
-            return false;
-        }
-
-        if ($actor->hasApplicationPermission(\App\Models\SpecV2\Application::PERMISSION_READS_FEDERATED)) {
-            return true;
-        }
-
-        if ($actor->hasApplicationPermission(\App\Models\SpecV2\Application::PERMISSION_READS_ALL_APPS)) {
-            return (string) $heap->tenant_id === $actor->tenantId();
-        }
-
-        return (string) $heap->owner_application_id === $actor->applicationId();
     }
 
     /**

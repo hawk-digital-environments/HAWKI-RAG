@@ -5,6 +5,7 @@ namespace App\Services\SpecV2;
 
 use App\Models\SpecV2\Tenant;
 use App\Services\Authorization\ApiActorScopeService;
+use App\Services\SpecV2\Exceptions\AccessDeniedException;
 use App\Services\SpecV2\Exceptions\TenantNotFoundException;
 use App\Services\SpecV2\Payloads\PaginationPayloadBuilder;
 use App\Services\SpecV2\Payloads\TenantPayloadBuilder;
@@ -40,7 +41,7 @@ readonly class TenantService
         }
 
         if (! $this->actors->currentCanReadTenant($tenant)) {
-            throw TenantNotFoundException::withId($tenantId);
+            throw AccessDeniedException::forAction('read', 'tenant', $tenantId);
         }
 
         return $this->payloads->payload($tenant);

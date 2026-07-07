@@ -220,6 +220,93 @@ class AuthorizationGrantApiTest extends TestCase
             ->assertJsonPath('pagination.total', 1);
     }
 
+    public function test_grant_read_paths_use_403_for_scope_denials_and_404_for_missing_resources(): void
+    {
+        config()->set('authz.enabled', true);
+
+        ['application' => $ownedApplication] = $this->issueApplicationToken([
+            'id' => 'app-owned',
+            'tenant_id' => 'tenant-a',
+            'permissions' => ['reads'],
+        ]);
+        ['application' => $peerApplication] = $this->issueApplicationToken([
+            'id' => 'app-peer',
+            'tenant_id' => 'tenant-a',
+            'permissions' => ['reads'],
+        ]);
+        ['token' => $token] = $this->issueApplicationToken([
+            'id' => 'app-owned',
+            'tenant_id' => 'tenant-a',
+            'permissions' => ['reads'],
+        ]);
+
+        Dataset::query()->create([
+            'dataset_id' => 'heap-owned',
+            'tenant_id' => 'tenant-a',
+            'owner_application_id' => $ownedApplication->id,
+            'name' => 'Owned Heap',
+            'status' => Dataset::STATUS_ACTIVE,
+            'visibility' => Dataset::VISIBILITY_DISCOVERABLE,
+            'protected' => false,
+            'metadata_json' => [],
+            'qdrant_collection' => 'owned_heap',
+            'neo4j_namespace' => 'owned_heap',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        Dataset::query()->create([
+            'dataset_id' => 'heap-peer',
+            'tenant_id' => 'tenant-a',
+            'owner_application_id' => $peerApplication->id,
+            'name' => 'Peer Heap',
+            'status' => Dataset::STATUS_ACTIVE,
+            'visibility' => Dataset::VISIBILITY_DISCOVERABLE,
+            'protected' => false,
+            'metadata_json' => [],
+            'qdrant_collection' => 'peer_heap',
+            'neo4j_namespace' => 'peer_heap',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        Document::query()->create([
+            'id' => 'doc-owned',
+            'dataset_id' => 'heap-owned',
+            'collection' => 'owned_heap',
+            'source_type' => Document::SOURCE_API,
+            'source_url' => 'https://example.test/owned',
+            'storage_path' => '/tmp/owned.md',
+            'checksum_sha256' => hash('sha256', 'owned'),
+            'status' => Document::STATUS_COMPLETED,
+            'metadata_json' => [],
+        ]);
+        Document::query()->create([
+            'id' => 'doc-peer',
+            'dataset_id' => 'heap-peer',
+            'collection' => 'peer_heap',
+            'source_type' => Document::SOURCE_API,
+            'source_url' => 'https://example.test/peer',
+            'storage_path' => '/tmp/peer.md',
+            'checksum_sha256' => hash('sha256', 'peer'),
+            'status' => Document::STATUS_COMPLETED,
+            'metadata_json' => [],
+        ]);
+
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->getJson('/api/auth/heaps/heap-peer')
+            ->assertForbidden();
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->getJson('/api/auth/heaps/heap-missing')
+            ->assertNotFound();
+
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->getJson('/api/auth/documents/doc-peer')
+            ->assertForbidden();
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->getJson('/api/auth/documents/doc-missing')
+            ->assertNotFound();
+    }
+
     public function test_heap_metadata_rejects_reserved_keys(): void
     {
         $this->actingAsApplication([

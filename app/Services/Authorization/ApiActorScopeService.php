@@ -9,16 +9,11 @@ use App\Models\SpecV2\Group;
 use App\Models\SpecV2\Heap;
 use App\Models\SpecV2\Tenant;
 use Illuminate\Container\Attributes\Singleton;
-use Illuminate\Contracts\Auth\Factory as AuthFactory;
-use Illuminate\Contracts\Config\Repository as ConfigRepository;
 
 #[Singleton]
 readonly class ApiActorScopeService
 {
     public function __construct(
-        private AuthFactory $auth,
-        private ConfigRepository $config,
-        private ApiActorResolver $actors,
         private ApplicationTokenService $tokens,
         private ApplicationReadPolicy $policy,
         private ApplicationScopeResolver $documents,
@@ -27,24 +22,8 @@ readonly class ApiActorScopeService
     public function currentActor(): ?ApiActor
     {
         $application = $this->tokens->authenticate(request()->bearerToken());
-        if ($application instanceof Application) {
-            return ApiActor::forApplication($application);
-        }
 
-        foreach (['sanctum', 'oidc'] as $guard) {
-            $principal = $this->auth->guard($guard)->user();
-            if ($principal === null) {
-                continue;
-            }
-
-            try {
-                return $this->actors->resolvePrincipal($principal);
-            } catch (\Throwable) {
-                continue;
-            }
-        }
-
-        return null;
+        return $application instanceof Application ? ApiActor::forApplication($application) : null;
     }
 
     /**

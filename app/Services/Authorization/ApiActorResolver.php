@@ -18,11 +18,17 @@ readonly class ApiActorResolver
     public function __construct(
         private IdentityProvisioningService $identityProvisioning,
         private ApplicationRepository $applications,
+        private ApplicationTokenService $tokens,
     ) {}
 
     public function resolve(Request $request): ApiActor
     {
-        return $this->resolvePrincipal($request->user());
+        $application = $this->tokens->authenticate($request->bearerToken());
+        if ($application instanceof Application) {
+            return ApiActor::forApplication($application);
+        }
+
+        throw new AuthenticationException('Application authentication is required.');
     }
 
     public function resolvePrincipal(mixed $principal): ApiActor

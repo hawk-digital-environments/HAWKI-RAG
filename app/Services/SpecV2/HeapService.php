@@ -9,6 +9,7 @@ use App\Services\Authorization\ApiActorScopeService;
 use App\Services\Authorization\AuthorizationModeService;
 use App\Services\SpecV2\Events\HeapSearchPayloadChanged;
 use App\Services\Heap\HeapIdentifierFactory;
+use App\Services\SpecV2\Exceptions\AccessDeniedException;
 use App\Services\SpecV2\Exceptions\ApplicationNotFoundException;
 use App\Services\SpecV2\Exceptions\HeapNotFoundException;
 use App\Services\SpecV2\Repositories\ApplicationRepository;
@@ -53,7 +54,7 @@ readonly class HeapService
         }
 
         if (! $this->actors->currentCanReadHeap($heap)) {
-            throw HeapNotFoundException::withId($heapId);
+            throw AccessDeniedException::forAction('read', 'heap', $heapId);
         }
 
         return $heap;
