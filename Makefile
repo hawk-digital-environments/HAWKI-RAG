@@ -7,6 +7,7 @@ ENV_FILE ?= .env
 HOST_OS := $(shell uname -s)
 
 BASE_COMPOSE_FILE ?= docker-compose.yml
+LOCAL_COMPOSE_FILE ?= docker-compose.local.yml
 GPU_OVERRIDE_COMPOSE ?= docker-compose-gpu-override.yml
 COMPOSE_FILE_SEP ?= :
 
@@ -22,12 +23,12 @@ ifeq ($(USE_OLLAMA_GPU),auto)
 	endif
 endif
 
-COMPOSE_FILE_LIST := $(BASE_COMPOSE_FILE)
+COMPOSE_FILE_LIST := $(BASE_COMPOSE_FILE)$(if $(wildcard $(LOCAL_COMPOSE_FILE)),$(COMPOSE_FILE_SEP)$(LOCAL_COMPOSE_FILE))
 COMPOSE_PROFILES :=
 GPU_MESSAGE := Ollama CPU mode.
 
 ifeq ($(USE_OLLAMA_GPU),1)
-	COMPOSE_FILE_LIST := $(BASE_COMPOSE_FILE)$(COMPOSE_FILE_SEP)$(GPU_OVERRIDE_COMPOSE)
+	COMPOSE_FILE_LIST := $(COMPOSE_FILE_LIST)$(COMPOSE_FILE_SEP)$(GPU_OVERRIDE_COMPOSE)
 	COMPOSE_PROFILES := gpu
 	GPU_MESSAGE := Ollama GPU override enabled.
 endif
@@ -112,9 +113,7 @@ health:
 	check_running $(OLLAMA_CONTAINER) 1; \
 	check_running hawki_rag_bridge 0; \
 	check_running hawki_rag_rerank 0; \
-	check_running hawki_rag_temporal_workflow_worker 0; \
-	check_running hawki_rag_temporal_converter_worker 0; \
-	check_running hawki_rag_temporal_ingestion_worker 0; \
+	check_running hawki_rag_temporal_workers 0; \
 	echo ""; \
 	echo "Service checks"; \
 	check_exec "PostgreSQL ping" hawki_rag_postgres 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"' 1; \

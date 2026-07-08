@@ -194,13 +194,15 @@ Operator graph APIs expose graph overview, search, semantic search, node lookup,
 
 ### Temporal And Workers
 
-Temporal coordinates ingestion/conversion pipelines.
+Temporal coordinates ingestion/conversion pipelines. Docker runs these as one service, `hawki-rag-temporal-workers`, which starts workflow, converter, and ingestion workers inside one Python process.
 
 Core queues from the docs:
 
 - `rag-workflow-task-queue`
 - `rag-converter-task-queue`
 - `rag-ingestion-task-queue`
+
+The queues stay separate even though the Docker service is shared. This keeps workflow routing explicit while reducing Compose service count.
 
 Typical flow:
 
@@ -677,7 +679,7 @@ uv run pytest python_rag/tests/test_phase1_characterization.py
 Start the core stack:
 
 ```bash
-make up-core
+make up
 ```
 
 Generate the Laravel app key if needed:
