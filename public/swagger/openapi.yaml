@@ -105,6 +105,230 @@ paths:
             application/json:
               schema:
                 type: object
+  /assistant/documents:
+    post:
+      tags:
+        - Assistant Documents
+      summary: Create assistant document and start ingest
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          required: false
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+                - dataset_id
+              properties:
+                file:
+                  type: string
+                  format: binary
+                dataset_id:
+                  type: string
+                source_updated_at:
+                  type: string
+                  format: date-time
+                source_checksum_sha256:
+                  type: string
+                graph:
+                  type: boolean
+                  default: false
+                  description: Optional. If omitted, assistant ingest stays vector-only and does not write Neo4j graph data.
+                display_name:
+                  type: string
+                source_url:
+                  type: string
+                  format: uri
+                metadata_json:
+                  oneOf:
+                    - type: object
+                      additionalProperties: true
+                    - type: string
+      responses:
+        "202":
+          description: Assistant document accepted for ingest
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantDocumentMutationResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          description: Validation failed
+  /assistant/documents/batch:
+    post:
+      tags:
+        - Assistant Documents
+      summary: Create many assistant documents and start one ingest workflow per file
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          required: false
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - files
+                - dataset_id
+              properties:
+                files:
+                  type: array
+                  items:
+                    type: string
+                    format: binary
+                dataset_id:
+                  type: string
+                graph:
+                  type: boolean
+                  default: false
+                  description: Optional. If omitted, all assistant ingests in the batch stay vector-only and do not write Neo4j graph data.
+                metadata_json:
+                  oneOf:
+                    - type: object
+                      additionalProperties: true
+                    - type: string
+      responses:
+        "202":
+          description: All assistant documents were accepted for ingest
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantDocumentBatchResponse"
+        "207":
+          description: Some assistant documents were accepted and some failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantDocumentBatchResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          description: Validation failed
+  /assistant/documents/{assistantDocumentId}:
+    parameters:
+      - in: path
+        name: assistantDocumentId
+        required: true
+        schema:
+          type: string
+    get:
+      tags:
+        - Assistant Documents
+      summary: Get assistant document status and active outputs
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Assistant document
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantDocumentResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      tags:
+        - Assistant Documents
+      summary: Replace assistant document if the incoming file is newer
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          required: false
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+                source_updated_at:
+                  type: string
+                  format: date-time
+                source_checksum_sha256:
+                  type: string
+                graph:
+                  type: boolean
+                  description: Optional override. If omitted, the current assistant document graph setting is preserved.
+                display_name:
+                  type: string
+                source_url:
+                  type: string
+                  format: uri
+                metadata_json:
+                  oneOf:
+                    - type: object
+                      additionalProperties: true
+                    - type: string
+                force:
+                  type: boolean
+      responses:
+        "200":
+          description: Replacement skipped because the document is unchanged
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantDocumentMutationResponse"
+        "202":
+          description: Replacement accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantDocumentMutationResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          description: Validation failed
+    delete:
+      tags:
+        - Assistant Documents
+      summary: Delete all active indexed outputs for an assistant document
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Assistant document deleted from derived indexes
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantDocumentDeleteResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
   /pipeline/tasks:
     get:
       tags:
@@ -651,3 +875,185 @@ components:
           type: array
           items:
             type: object
+    AssistantDocumentOperation:
+      type: object
+      properties:
+        type:
+          type: string
+        status:
+          type: string
+        reason:
+          type: string
+          nullable: true
+    AssistantPipelineReference:
+      type: object
+      properties:
+        task_id:
+          type: string
+          nullable: true
+        job_id:
+          type: string
+          nullable: true
+        source_id:
+          type: string
+          nullable: true
+    AssistantDocumentOutput:
+      type: object
+      properties:
+        bridge_document_id:
+          type: string
+        qdrant_collection:
+          type: string
+        neo4j_namespace:
+          type: string
+          nullable: true
+        chunk_count:
+          type: integer
+        status:
+          type: string
+        active:
+          type: boolean
+        indexed_at:
+          type: string
+          format: date-time
+          nullable: true
+    AssistantDocumentResource:
+      type: object
+      properties:
+        assistant_document_id:
+          type: string
+        dataset_id:
+          type: string
+        status:
+          type: string
+        graph_enabled:
+          type: boolean
+        display_name:
+          type: string
+          nullable: true
+        source_type:
+          type: string
+        source_url:
+          type: string
+          nullable: true
+        source_updated_at:
+          type: string
+          format: date-time
+          nullable: true
+        source_checksum_sha256:
+          type: string
+          nullable: true
+        latest_document_version:
+          type: string
+          nullable: true
+        indexed_at:
+          type: string
+          format: date-time
+          nullable: true
+        latest_task_id:
+          type: string
+          nullable: true
+        latest_job_id:
+          type: string
+          nullable: true
+        latest_source_id:
+          type: string
+          nullable: true
+        last_error:
+          type: string
+          nullable: true
+        metadata_json:
+          type: object
+          nullable: true
+          additionalProperties: true
+        outputs:
+          type: array
+          items:
+            $ref: "#/components/schemas/AssistantDocumentOutput"
+        active_output_count:
+          type: integer
+        active_chunk_count:
+          type: integer
+    AssistantDocumentResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        document:
+          $ref: "#/components/schemas/AssistantDocumentResource"
+    AssistantDocumentMutationResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        operation:
+          $ref: "#/components/schemas/AssistantDocumentOperation"
+        document:
+          $ref: "#/components/schemas/AssistantDocumentResource"
+        pipeline:
+          $ref: "#/components/schemas/AssistantPipelineReference"
+        message:
+          type: string
+        error:
+          type: string
+          nullable: true
+    AssistantDocumentBatchItem:
+      type: object
+      properties:
+        index:
+          type: integer
+        file_name:
+          type: string
+        http_status:
+          type: integer
+        success:
+          type: boolean
+        result:
+          type: object
+          additionalProperties: true
+    AssistantDocumentBatchResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        operation:
+          $ref: "#/components/schemas/AssistantDocumentOperation"
+        summary:
+          type: object
+          properties:
+            total:
+              type: integer
+            accepted:
+              type: integer
+            failed:
+              type: integer
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AssistantDocumentBatchItem"
+    AssistantDocumentDeleteBreakdown:
+      type: object
+      properties:
+        bridge_documents_deleted:
+          type: integer
+        qdrant:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        neo4j:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+    AssistantDocumentDeleteResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        operation:
+          $ref: "#/components/schemas/AssistantDocumentOperation"
+        document:
+          $ref: "#/components/schemas/AssistantDocumentResource"
+        deletion:
+          $ref: "#/components/schemas/AssistantDocumentDeleteBreakdown"

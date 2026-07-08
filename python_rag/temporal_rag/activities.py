@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 import hashlib
 import io
 import json
@@ -14,7 +15,6 @@ from urllib.parse import urljoin
 import zipfile
 
 import requests
-from temporalio import activity
 
 from temporal_rag.external_clients import ExternalJobClient
 from temporal_rag.logging import log_event
@@ -43,90 +43,24 @@ SCRAPER_BOOKKEEPING_FILENAMES = frozenset({
 class DirectExtractUnsupportedFileError(RuntimeError):
     """The direct converter rejected a file type that RAG-Anything may still parse."""
 
-@activity.defn(name="scrape_source")
-def scrape_source(workflow_input: dict[str, Any]) -> dict[str, Any]:
-    settings = TemporalRagSettings.from_env()
-    metadata = AppMetadataStore(settings)
-    source_id = str(workflow_input["source_id"])
-    raw_dir = str(workflow_input["raw_output_path"])
-    service_config = _service_config(workflow_input, "scraper", settings)
-    metadata.mark_phase(workflow_input, "scrape_source", "started", {"raw_dir": raw_dir})
-    log_event(logger, "scrape_source:start", source_id=source_id, raw_dir=raw_dir, task_queue=settings.scraper_task_queue)
 
-    upload_result = _scrape_uploaded_file(workflow_input, source_id, raw_dir)
-    if upload_result is not None:
-        metadata.mark_phase(workflow_input, "scrape_source", "success", upload_result)
-        log_event(logger, "scrape_source:uploaded_file", **upload_result, task_queue=settings.scraper_task_queue)
-        return upload_result
+@dataclass(frozen=True)
+class DirectExtractRequest:
+    """HTTP request configuration for a direct converter extract call."""
 
-    try:
-        client = ExternalJobClient(**service_config)
-        start_payload = _scraper_start_payload(workflow_input, source_id, raw_dir)
-        response = client.start_and_wait(start_payload)
-    except Exception as exc:
-        _record_activity_exception(metadata, workflow_input, "scrape_source", exc, raw_dir=raw_dir)
-        raise
-
-    result = _scrape_result(response, start_payload, source_id, raw_dir)
-    metadata.mark_phase(workflow_input, "scrape_source", str(result["status"]), result)
-    log_event(logger, "scrape_source:end", **result, task_queue=settings.scraper_task_queue)
-    return result
+    url: str
+    headers: dict[str, str]
+    timeout_seconds: float
+    retry_attempts: int
 
 
-@activity.defn(name="inspect_and_convert_files")
-def inspect_and_convert_files(payload: dict[str, Any]) -> dict[str, Any]:
-    workflow_input = dict(payload["workflow_input"])
-    scrape_result = dict(payload["scrape_result"])
-    settings = TemporalRagSettings.from_env()
-    metadata = AppMetadataStore(settings)
-    source_id = str(workflow_input["source_id"])
-    raw_dir = str(scrape_result.get("raw_dir") or workflow_input["raw_output_path"])
-    markdown_dir = str(workflow_input["markdown_output_path"])
-    service_config = _service_config(workflow_input, "converter", settings)
-    metadata.mark_phase(workflow_input, "inspect_and_convert_files", "started", {"raw_dir": raw_dir, "markdown_dir": markdown_dir})
-    log_event(logger, "inspect_and_convert_files:start", source_id=source_id, raw_dir=raw_dir, markdown_dir=markdown_dir, task_queue=settings.converter_task_queue)
+@dataclass(frozen=True)
+class ConvertedFileResult:
+    """Outcome for a single raw file sent through direct extraction."""
 
-    try:
-        if _uses_direct_converter(service_config):
-            response = _convert_files_with_extract_api(service_config, source_id, raw_dir, markdown_dir)
-        else:
-            try:
-                client = ExternalJobClient(**service_config)
-                response = client.start_and_wait({
-                    "source_id": source_id,
-                    "raw_dir": raw_dir,
-                    "markdown_dir": markdown_dir,
-                })
-            except RuntimeError as exc:
-                if not _should_fallback_to_extract_api(exc, service_config):
-                    raise
-
-                fallback_config = dict(service_config)
-                fallback_config["start_path"] = "/extract"
-                response = _convert_files_with_extract_api(fallback_config, source_id, raw_dir, markdown_dir)
-    except Exception as exc:
-        _record_activity_exception(
-            metadata,
-            workflow_input,
-            "inspect_and_convert_files",
-            exc,
-            raw_dir=raw_dir,
-            markdown_dir=markdown_dir,
-        )
-        raise
-
-    status = _status(response)
-    result = {
-        "source_id": source_id,
-        "external_job_id": response.get("external_job_id"),
-        "markdown_dir": response.get("markdown_dir") or response.get("markdown_output_path") or markdown_dir,
-        "markdown_files_created": int(response.get("markdown_files_created") or response.get("file_count") or 0),
-        "status": status,
-        "error_details": response.get("error") or response.get("error_details"),
-    }
-    metadata.mark_phase(workflow_input, "inspect_and_convert_files", status, result)
-    log_event(logger, "inspect_and_convert_files:end", **result, task_queue=settings.converter_task_queue)
-    return result
+    source_path: str
+    markdown_files_created: int
+    used_passthrough: bool
 
 
 def _scraper_start_payload(workflow_input: dict[str, Any], source_id: str, raw_dir: str) -> dict[str, Any]:
@@ -267,126 +201,6 @@ def _positive_int(value: Any) -> int | None:
         return integer if integer > 0 else None
 
     return None
-
-
-@activity.defn(name="ingest_markdown_files")
-def ingest_markdown_files(payload: dict[str, Any]) -> dict[str, Any]:
-    workflow_input = dict(payload["workflow_input"])
-    convert_result = dict(payload["convert_result"])
-    settings = TemporalRagSettings.from_env()
-    metadata = AppMetadataStore(settings)
-    source_id = str(workflow_input["source_id"])
-    markdown_dir = str(convert_result.get("markdown_dir") or workflow_input["markdown_output_path"])
-    manifest_path = str(workflow_input.get("ingest_manifest_path") or "")
-    metadata.mark_phase(workflow_input, "ingest_markdown_files", "started", {"markdown_dir": markdown_dir})
-    log_event(logger, "ingest_markdown_files:start", source_id=source_id, markdown_dir=markdown_dir, task_queue=settings.ingestion_task_queue)
-
-    try:
-        files = list_markdown_files(markdown_dir)
-    except Exception as exc:
-        _record_activity_exception(metadata, workflow_input, "ingest_markdown_files", exc, markdown_dir=markdown_dir)
-        raise
-
-    if not files:
-        result = _ingest_result(source_id, status="skipped")
-        result["error_details"] = "No Markdown files were found."
-        metadata.mark_phase(workflow_input, "ingest_markdown_files", "failed", result)
-        return result
-
-    ingest_options = dict(workflow_input.get("ingestion") or {})
-    batch_size = max(1, int(ingest_options.get("batch_size") or 64))
-    totals = _empty_totals(source_id)
-    manifest_records: list[dict[str, Any]] = []
-
-    try:
-        for batch in _batches(files, batch_size):
-            docs: list[dict[str, Any]] = []
-            batch_manifest_records: list[dict[str, Any]] = []
-            for markdown_file in batch:
-                text = read_text_file(markdown_file)
-                if not text.strip():
-                    totals["skipped_documents"] += 1
-                    continue
-                doc_id = stable_document_id(source_id, markdown_file, markdown_dir)
-                content_hash = sha256_text(text)
-                relative_path = str(Path(markdown_file).resolve().relative_to(Path(markdown_dir).resolve()))
-                passthrough_metadata = _load_passthrough_metadata(markdown_file)
-                payload = {
-                    "source_id": source_id,
-                    "document_id": doc_id,
-                    "doc_id": doc_id,
-                    "chunk_id": None,
-                    "version": content_hash[:16],
-                    "url": workflow_input.get("source_url"),
-                    "source_url": workflow_input.get("source_url"),
-                    "source_format": "markdown",
-                    "relative_path": relative_path,
-                    "content_hash": content_hash,
-                    "job_id": workflow_input.get("job_id"),
-                    "task_id": workflow_input.get("task_id"),
-                }
-                if passthrough_metadata:
-                    payload.update(passthrough_metadata)
-                docs.append({"id": doc_id, "text": text, "payload": payload})
-                manifest_record = {
-                    "document_id": doc_id,
-                    "relative_path": relative_path,
-                    "content_hash": content_hash,
-                    "markdown_path": markdown_file,
-                }
-                if passthrough_metadata:
-                    manifest_record["passthrough"] = passthrough_metadata
-                batch_manifest_records.append(manifest_record)
-                manifest_records.append(manifest_record)
-
-            if not docs:
-                continue
-
-            response = _post_ingest(settings, workflow_input, ingest_options, docs)
-            _accumulate_ingest_response(totals, response)
-            metadata.upsert_documents(workflow_input, batch_manifest_records, response)
-
-        if manifest_path:
-            write_manifest(manifest_path, manifest_records)
-    except Exception as exc:
-        _record_activity_exception(metadata, workflow_input, "ingest_markdown_files", exc, markdown_dir=markdown_dir)
-        raise
-
-    totals["status"] = "success" if totals["documents_indexed"] > 0 or totals["unchanged_documents"] > 0 else "skipped"
-    totals["document_version"] = hashlib.sha256(
-        "|".join(record["content_hash"] for record in manifest_records).encode("utf-8")
-    ).hexdigest()[:24]
-    metadata.mark_phase(workflow_input, "ingest_markdown_files", totals["status"], totals)
-    log_event(logger, "ingest_markdown_files:end", **totals, markdown_dir=markdown_dir, task_queue=settings.ingestion_task_queue)
-    return totals
-
-
-@activity.defn(name="mark_source_ready")
-def mark_source_ready(payload: dict[str, Any]) -> dict[str, Any]:
-    workflow_input = dict(payload["workflow_input"])
-    ingest_result = dict(payload["ingest_result"])
-    settings = TemporalRagSettings.from_env()
-    result = {
-        "source_id": workflow_input.get("source_id"),
-        "source_url": workflow_input.get("source_url"),
-        "status": "ready" if ingest_result.get("status") == "success" else ingest_result.get("status", "failed"),
-        "workflow_status": ingest_result,
-        "documents_indexed": int(ingest_result.get("documents_indexed") or 0),
-        "chunks_indexed": int(ingest_result.get("chunks_indexed") or 0),
-        "vectors_upserted": int(ingest_result.get("vectors_upserted") or 0),
-        "graph_records_updated": int(ingest_result.get("graph_records_updated") or 0),
-        "failed_documents": int(ingest_result.get("failed_documents") or 0),
-        "skipped_documents": int(ingest_result.get("skipped_documents") or 0),
-        "document_version": ingest_result.get("document_version"),
-        "error_details": ingest_result.get("error_details"),
-    }
-    metadata = AppMetadataStore(settings)
-    if ingest_result.get("status") == "success":
-        metadata.mark_ready(workflow_input, result)
-    else:
-        metadata.mark_phase(workflow_input, "mark_source_ready", str(result["status"]), result)
-    log_event(logger, "mark_source_ready:end", **result, task_queue=settings.ingestion_task_queue)
-    return result
 
 
 def _service_config(workflow_input: dict[str, Any], service: str, settings: TemporalRagSettings) -> dict[str, Any]:
@@ -539,6 +353,21 @@ def _uses_direct_converter(service_config: dict[str, Any]) -> bool:
     return str(service_config.get("start_path") or "").strip().strip("/") == "extract"
 
 
+def _normalize_direct_converter_start_path(service_config: dict[str, Any]) -> dict[str, Any]:
+    normalized = dict(service_config)
+    base_url = str(normalized.get("base_url") or "").rstrip("/")
+    start_path = "/" + str(normalized.get("start_path") or "").strip().lstrip("/")
+
+    # The HAWKI file-converter exposes /extract directly, not a start/status API.
+    if base_url.endswith("/extract"):
+        normalized["base_url"] = base_url.removesuffix("/extract")
+        normalized["start_path"] = "/extract"
+    elif start_path == "/api/convert/start":
+        normalized["start_path"] = "/extract"
+
+    return normalized
+
+
 def _should_fallback_to_extract_api(exc: RuntimeError, service_config: dict[str, Any]) -> bool:
     start_path = str(service_config.get("start_path") or "")
 
@@ -554,6 +383,7 @@ def _convert_files_with_extract_api(
     raw_root = _local_directory(raw_dir, "raw")
     markdown_root = _local_directory(markdown_dir, "markdown", must_exist=False)
     markdown_root.mkdir(parents=True, exist_ok=True)
+    raw_display_root = Path(raw_dir.removeprefix("file://")).expanduser()
 
     candidates = _raw_conversion_candidates(raw_root)
 
@@ -573,23 +403,12 @@ def _convert_files_with_extract_api(
     passthrough_files: list[str] = []
     markdown_files_created = 0
     for raw_file in candidates:
-        output_dir = markdown_root / _converter_output_dir_name(raw_file)
-        if output_dir.exists():
-            shutil.rmtree(output_dir)
-        output_dir.mkdir(parents=True, exist_ok=True)
-
-        try:
-            created = _extract_single_file(service_config, raw_file, output_dir)
-        except DirectExtractUnsupportedFileError as exc:
-            created = _write_raganything_passthrough(raw_file, output_dir, exc)
-            passthrough_files.append(str(raw_file))
-            logger.info(
-                "converter:direct_extract_passthrough file=%s reason=%s",
-                raw_file,
-                exc,
-            )
-        markdown_files_created += created
-        converted_files.append(str(raw_file))
+        source_path = str(raw_display_root / raw_file.relative_to(raw_root))
+        result = _convert_candidate_with_extract_api(service_config, raw_file, markdown_root, source_path)
+        markdown_files_created += result.markdown_files_created
+        converted_files.append(result.source_path)
+        if result.used_passthrough:
+            passthrough_files.append(result.source_path)
 
     return {
         "source_id": source_id,
@@ -604,24 +423,42 @@ def _convert_files_with_extract_api(
     }
 
 
+def _convert_candidate_with_extract_api(
+    service_config: dict[str, Any],
+    raw_file: Path,
+    markdown_root: Path,
+    source_path: str,
+) -> ConvertedFileResult:
+    output_dir = markdown_root / _converter_output_dir_name(raw_file)
+    if output_dir.exists():
+        shutil.rmtree(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    try:
+        created = _extract_single_file(service_config, raw_file, output_dir)
+        return ConvertedFileResult(source_path, created, False)
+    except DirectExtractUnsupportedFileError as exc:
+        created = _write_raganything_passthrough(raw_file, output_dir, exc)
+        logger.info(
+            "converter:direct_extract_passthrough file=%s reason=%s",
+            raw_file,
+            exc,
+        )
+        return ConvertedFileResult(source_path, created, True)
+
+
 def _extract_single_file(service_config: dict[str, Any], raw_file: Path, output_dir: Path) -> int:
-    base_url = str(service_config["base_url"]).rstrip("/") + "/"
-    start_path = str(service_config.get("start_path") or "/extract").lstrip("/")
-    url = urljoin(base_url, start_path)
-    token = str(service_config.get("token") or "")
-    timeout_seconds = float(service_config.get("timeout_seconds") or 30)
-    retry_attempts = max(1, int(service_config.get("retry_attempts") or 1))
-    headers = {"Authorization": f"Bearer {token}"} if token else {}
+    request = _direct_extract_request(service_config)
     last_error: Exception | None = None
 
-    for attempt in range(1, retry_attempts + 1):
+    for attempt in range(1, request.retry_attempts + 1):
         try:
             with raw_file.open("rb") as handle:
                 response = requests.post(
-                    url,
-                    headers=headers,
+                    request.url,
+                    headers=request.headers,
                     files={"file": (raw_file.name, handle)},
-                    timeout=timeout_seconds,
+                    timeout=request.timeout_seconds,
                 )
 
             if response.status_code >= 500 or response.status_code in {408, 429}:
@@ -641,11 +478,24 @@ def _extract_single_file(service_config: dict[str, Any], raw_file: Path, output_
             raise
         except Exception as exc:
             last_error = exc
-            if attempt >= retry_attempts:
+            if attempt >= request.retry_attempts:
                 break
             time.sleep(min(2 ** (attempt - 1), 10))
 
     raise RuntimeError(f"Converter extract request failed for {raw_file.name}: {last_error}") from last_error
+
+
+def _direct_extract_request(service_config: dict[str, Any]) -> DirectExtractRequest:
+    base_url = str(service_config["base_url"]).rstrip("/") + "/"
+    start_path = str(service_config.get("start_path") or "/extract").lstrip("/")
+    token = str(service_config.get("token") or "")
+
+    return DirectExtractRequest(
+        url=urljoin(base_url, start_path),
+        headers={"Authorization": f"Bearer {token}"} if token else {},
+        timeout_seconds=float(service_config.get("timeout_seconds") or 30),
+        retry_attempts=max(1, int(service_config.get("retry_attempts") or 1)),
+    )
 
 
 def _write_raganything_passthrough(raw_file: Path, output_dir: Path, error: Exception) -> int:
@@ -908,6 +758,11 @@ def _operation_id(workflow_input: dict[str, Any], document_id: str, operation: s
     source_id = workflow_input.get("source_id")
     job_id = workflow_input.get("job_id")
     return f"{source_id}:{job_id}:{document_id}:{operation}"
+
+
+from temporal_rag.activity_convert import inspect_and_convert_files
+from temporal_rag.activity_ingest import ingest_markdown_files, mark_source_ready
+from temporal_rag.activity_scrape import scrape_source
 
 
 __all__ = [

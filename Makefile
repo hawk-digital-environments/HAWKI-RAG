@@ -62,7 +62,8 @@ COMPOSE_CMD = $(COMPOSE_ENV_PREFIX) COMPOSE_PARALLEL_LIMIT=$(COMPOSE_PARALLEL_LI
 UI_AUTO_BUILD ?= 1
 UI_BUILD_DIR ?= /tmp/rawki-vite-build
 UI_NODE_IMAGE ?= node:22-bookworm-slim
-UI_NODE_RUN = docker run --rm --entrypoint /usr/bin/env --user "$$(id -u):$$(id -g)" -v "$(CURDIR):/work" -v "$(UI_BUILD_DIR):$(UI_BUILD_DIR)" -w /work $(UI_NODE_IMAGE)
+UI_NPM_CACHE_DIR ?= /tmp/rawki-npm-cache
+UI_NODE_RUN = docker run --rm --entrypoint /usr/bin/env --user "$$(id -u):$$(id -g)" -e HOME=/tmp -e npm_config_cache=/tmp/rawki-npm-cache -v "$(CURDIR):/work" -v "$(UI_BUILD_DIR):$(UI_BUILD_DIR)" -v "$(UI_NPM_CACHE_DIR):/tmp/rawki-npm-cache" -w /work $(UI_NODE_IMAGE)
 
 # Bruno collection test variables (override via `make VAR=value`)
 BRUNO_BIN ?= bru
@@ -115,9 +116,11 @@ build-app:
 build-ui:
 	@echo "Building HAWKI RAG UI assets..."
 	@mkdir -p "$(UI_BUILD_DIR)"
-	@if [ ! -x node_modules/.bin/vite ] || [ ! -d node_modules/@sveltejs/vite-plugin-svelte ]; then \
-		echo "Node dependencies are missing or incomplete; running npm install..."; \
-		$(UI_NODE_RUN) npm install; \
+	@mkdir -p "$(UI_NPM_CACHE_DIR)"
+	@if [ ! -x node_modules/.bin/vite ] || [ ! -d node_modules/@sveltejs/vite-plugin-svelte ] || ! $(UI_NODE_RUN) node -e "require('rollup/dist/native.js')" >/dev/null 2>&1; then \
+		echo "Node dependencies are missing, incomplete, or built for the wrong platform; reinstalling cleanly..."; \
+		rm -rf node_modules; \
+		$(UI_NODE_RUN) npm ci; \
 	fi
 	@$(UI_NODE_RUN) npm run build -- --outDir "$(UI_BUILD_DIR)" --emptyOutDir
 

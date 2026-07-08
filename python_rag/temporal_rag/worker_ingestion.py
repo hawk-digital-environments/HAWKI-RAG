@@ -7,7 +7,7 @@ import asyncio
 from temporalio.client import Client
 from temporalio.worker import Worker
 
-from temporal_rag.activities import ingest_markdown_files, mark_source_ready
+from temporal_rag.activity_ingest import ingest_markdown_files, mark_source_ready
 from temporal_rag.logging import configure_logging
 from temporal_rag.settings import TemporalRagSettings
 from temporal_rag.worker_runtime import create_activity_executor

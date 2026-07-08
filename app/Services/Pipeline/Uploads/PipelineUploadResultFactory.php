@@ -74,6 +74,7 @@ readonly class PipelineUploadResultFactory
             'success' => true,
             'taskId' => $task->task_id,
             'jobId' => $job->job_id,
+            'sourceId' => $job->source_id,
             'datasetId' => $task->dataset_id,
             'task' => $this->tasks->show($task->task_id),
             'dashboardUrl' => $this->urls->to('/pipeline-controller'),
