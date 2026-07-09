@@ -60,8 +60,8 @@ build/
 _documentation.build/build
 _documentation.build/.docusaurus
 
-# Bruno CLI reports
-/bruno/reports/
+# Bruno collections stay local-only
+/bruno/
 
 # Logs and OS/editor files
 *.log
