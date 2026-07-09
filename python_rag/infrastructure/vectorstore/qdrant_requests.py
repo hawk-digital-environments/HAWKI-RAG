@@ -60,10 +60,23 @@ def build_upsert_points_request(
 
 
 def build_count_points_request(collection: str, *, exact: bool, timeout: float) -> QdrantRequest:
+    return build_count_points_request_with_filter(collection, exact=exact, timeout=timeout)
+
+
+def build_count_points_request_with_filter(
+    collection: str,
+    *,
+    exact: bool,
+    timeout: float,
+    filter_body: dict[str, Any] | None = None,
+) -> QdrantRequest:
+    body: dict[str, Any] = {"exact": bool(exact)}
+    if filter_body:
+        body["filter"] = filter_body
     return QdrantRequest(
         "POST",
         f"/collections/{collection}/points/count",
-        json_body={"exact": bool(exact)},
+        json_body=body,
         timeout=timeout,
         operation="qdrant.points.count",
     )

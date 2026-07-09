@@ -29,8 +29,13 @@ readonly class AssistantDocumentCreateService
      */
     public function create(array $input, ?UploadedFile $file, ?string $idempotencyKey): array
     {
+        $assistantDocumentId = $this->documents->nextAssistantDocumentId();
         $upload = $this->uploads->upload(
-            $this->pipelineInput((string) ($input['dataset_id'] ?? ''), (bool) ($input['graph_enabled'] ?? false)),
+            $this->pipelineInput(
+                (string) ($input['dataset_id'] ?? ''),
+                (bool) ($input['graph_enabled'] ?? false),
+                $assistantDocumentId,
+            ),
             $file,
         );
 
@@ -43,7 +48,7 @@ readonly class AssistantDocumentCreateService
 
         $state = $this->pipelineState->resolve($upload->payload);
         $document = $this->documents->create([
-            'assistant_document_id' => $this->documents->nextAssistantDocumentId(),
+            'assistant_document_id' => $assistantDocumentId,
             'dataset_id' => (string) $input['dataset_id'],
             'display_name' => $input['display_name'] ?? $file?->getClientOriginalName(),
             'source_type' => 'upload',
@@ -110,11 +115,14 @@ readonly class AssistantDocumentCreateService
         ];
     }
 
-    private function pipelineInput(string $datasetId, bool $graphEnabled): PipelineUploadInput
+    private function pipelineInput(string $datasetId, bool $graphEnabled, string $assistantDocumentId): PipelineUploadInput
     {
         return PipelineUploadInput::fromValidated([
             'dataset_id' => $datasetId,
             'graph' => $graphEnabled ? 'true' : 'false',
+            'request_metadata' => [
+                'assistant_document_id' => $assistantDocumentId,
+            ],
         ]);
     }
 

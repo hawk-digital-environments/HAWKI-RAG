@@ -12,6 +12,7 @@ readonly class PipelineUploadInput
         public ?string $customConverterUrl,
         public ?string $customConverterToken,
         public string $customConverterStartPath,
+        public array $requestMetadata,
     ) {
     }
 
@@ -35,6 +36,7 @@ readonly class PipelineUploadInput
             self::stringValue($validated['converter_url'] ?? $validated['converterUrl'] ?? null) ?? $defaultUrl,
             self::stringValue($validated['converter_token'] ?? $validated['converterToken'] ?? null),
             self::pathValue($validated['converter_start_path'] ?? $validated['converterStartPath'] ?? null) ?? $defaultStartPath,
+            self::requestMetadata($validated['request_metadata'] ?? $validated['requestMetadata'] ?? null),
         );
     }
 
@@ -72,5 +74,13 @@ readonly class PipelineUploadInput
         }
 
         return str_starts_with($path, '/') ? $path : '/'.$path;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private static function requestMetadata(mixed $value): array
+    {
+        return is_array($value) ? $value : [];
     }
 }

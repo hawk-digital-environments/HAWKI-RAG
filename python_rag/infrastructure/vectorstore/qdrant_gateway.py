@@ -11,6 +11,7 @@ from typing import Any
 from infrastructure.vectorstore.qdrant_requests import (
     QdrantRequest,
     build_count_points_request,
+    build_count_points_request_with_filter,
     build_create_collection_request,
     build_delete_by_filter_request,
     build_get_collection_request,
@@ -69,7 +70,23 @@ class QdrantHTTPGateway:
             )
         )
 
-    def count_points(self, collection: str, *, exact: bool, timeout: float) -> Any:
+    def count_points(
+        self,
+        collection: str,
+        *,
+        exact: bool,
+        timeout: float,
+        filter_body: dict[str, Any] | None = None,
+    ) -> Any:
+        if filter_body:
+            return self.send(
+                build_count_points_request_with_filter(
+                    collection,
+                    exact=exact,
+                    timeout=timeout,
+                    filter_body=filter_body,
+                )
+            )
         return self.send(build_count_points_request(collection, exact=exact, timeout=timeout))
 
     def delete_by_filter(

@@ -22,6 +22,7 @@ def build_replacement_ingest_request(
         docs=[ingest_doc],
         provider=body.provider or app_settings.rag_default_provider,
         collection=body.collection,
+        neo4j_database=body.neo4j_database,
         distance=body.distance or app_settings.qdrant_distance,
         chunk_chars=body.chunk_chars or 3200,
         chunk_overlap=body.chunk_overlap or 250,

@@ -76,6 +76,24 @@ class PipelineUploadPayloadServiceTest extends TestCase
         $this->assertStringNotContainsString('secret-api-key', json_encode($metadata, JSON_UNESCAPED_SLASHES));
     }
 
+    public function test_it_merges_request_metadata_into_upload_task_metadata(): void
+    {
+        $metadata = app(PipelineUploadPayloadService::class)->taskMetadata(
+            $this->dataset(),
+            PipelineUploadInput::fromValidated([
+                'dataset_id' => 'upload-dataset',
+                'graph' => 'false',
+                'request_metadata' => [
+                    'assistant_document_id' => 'adoc_upload_1',
+                ],
+            ]),
+            $this->storedUpload(),
+        );
+
+        $this->assertSame('adoc_upload_1', $metadata['request']['metadata']['assistant_document_id']);
+        $this->assertSame('sample.pdf', $metadata['request']['metadata']['label']);
+    }
+
     private function dataset(): Dataset
     {
         return new Dataset([

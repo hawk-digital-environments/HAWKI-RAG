@@ -25,9 +25,16 @@ readonly class AssistantDocumentOutputDeletionService
         $neo4j = [];
 
         foreach ($activeOutputs as $output) {
-            $response = $this->bridge->deleteDocument($output->bridge_document_id, $idempotencyKey);
+            $response = $this->bridge->deleteDocument(
+                $output->bridge_document_id,
+                $idempotencyKey,
+                $this->stringValue($output->qdrant_collection),
+                $this->stringValue($output->neo4j_namespace),
+            );
             $qdrant[] = [
                 'bridge_document_id' => $output->bridge_document_id,
+                'collection' => $response['qdrant']['collection'] ?? $this->stringValue($output->qdrant_collection),
+                'deleted_points' => $response['qdrant']['deleted_points'] ?? null,
                 'result' => $response['qdrant'] ?? null,
             ];
 
@@ -35,12 +42,14 @@ readonly class AssistantDocumentOutputDeletionService
             if (is_array($neo4jPayload)) {
                 $neo4j[] = array_merge([
                     'bridge_document_id' => $output->bridge_document_id,
+                    'namespace' => $neo4jPayload['namespace'] ?? $this->stringValue($output->neo4j_namespace),
                 ], $neo4jPayload);
                 continue;
             }
 
             $neo4j[] = [
                 'bridge_document_id' => $output->bridge_document_id,
+                'namespace' => $this->stringValue($output->neo4j_namespace),
                 'result' => $neo4jPayload,
             ];
         }
@@ -50,5 +59,10 @@ readonly class AssistantDocumentOutputDeletionService
             'qdrant' => $qdrant,
             'neo4j' => $neo4j,
         ];
+    }
+
+    private function stringValue(mixed $value): ?string
+    {
+        return is_scalar($value) && trim((string) $value) !== '' ? trim((string) $value) : null;
     }
 }

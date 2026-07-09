@@ -65,7 +65,10 @@ readonly class AssistantDocumentUpdateService
         }
 
         try {
-            $activeOutputs = $this->outputs->activeForDocument($document->assistant_document_id);
+            $activeOutputs = $this->outputs->backfillScopes(
+                $document,
+                $this->outputs->activeForDocument($document->assistant_document_id),
+            );
             $this->deletions->deleteActiveOutputs($activeOutputs, $idempotencyKey);
             if ($activeOutputs->isNotEmpty()) {
                 $this->outputs->deactivateActiveOutputs($document, Carbon::now());
@@ -84,7 +87,7 @@ readonly class AssistantDocumentUpdateService
             : (bool) $document->graph_enabled;
 
         $upload = $this->uploads->upload(
-            $this->pipelineInput($document->dataset_id, $graphEnabled),
+            $this->pipelineInput($document->dataset_id, $graphEnabled, $document->assistant_document_id),
             $file,
         );
 
@@ -178,11 +181,14 @@ readonly class AssistantDocumentUpdateService
         return AssistantDocumentReplacementDecision::replace();
     }
 
-    private function pipelineInput(string $datasetId, bool $graphEnabled): PipelineUploadInput
+    private function pipelineInput(string $datasetId, bool $graphEnabled, string $assistantDocumentId): PipelineUploadInput
     {
         return PipelineUploadInput::fromValidated([
             'dataset_id' => $datasetId,
             'graph' => $graphEnabled ? 'true' : 'false',
+            'request_metadata' => [
+                'assistant_document_id' => $assistantDocumentId,
+            ],
         ]);
     }
 

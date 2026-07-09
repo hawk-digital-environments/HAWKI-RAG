@@ -273,10 +273,21 @@ def ingest_documents(
     )
 
 
-def delete_document(doc_id: str, *, idempotency_key: str | None = None) -> dict[str, Any]:
+def delete_document(
+    doc_id: str,
+    *,
+    idempotency_key: str | None = None,
+    collection: str | None = None,
+    neo4j_namespace: str | None = None,
+) -> dict[str, Any]:
     if not doc_id:
         raise HTTPException(status_code=400, detail="doc_id is required")
-    return delete_document_entries(doc_id, idempotency_key=idempotency_key)
+    return delete_document_entries(
+        doc_id,
+        idempotency_key=idempotency_key,
+        collection=collection,
+        neo4j_namespace=neo4j_namespace,
+    )
 
 
 def _mark_registry_completed(

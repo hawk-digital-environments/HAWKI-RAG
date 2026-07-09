@@ -89,6 +89,7 @@ class AssistantDocumentApiTest extends TestCase
         Http::assertSent(fn ($request): bool => $request->method() === 'POST'
             && $request->url() === config('config.hawki_rag_bridge_url').'/temporal/workflows/ingest'
             && data_get($request->data(), 'workflow_input.dataset_id') === 'assistant-create'
+            && data_get($request->data(), 'workflow_input.assistant_document_id') === $assistantDocumentId
             && data_get($request->data(), 'workflow_input.ingestion.graph') === true);
 
         File::deleteDirectory($root);
@@ -347,14 +348,21 @@ class AssistantDocumentApiTest extends TestCase
         ]);
 
         Http::fake([
-            '*documents/doc-delete-1' => Http::response([
+            '*documents/doc-delete-1*' => Http::response([
                 'ok' => true,
                 'doc_id' => 'doc-delete-1',
                 'qdrant' => [
-                    'status' => 'completed',
-                    'deleted' => 83,
+                    'doc_id' => 'doc-delete-1',
+                    'collection' => 'hawki_assistant_delete',
+                    'deleted_points' => 83,
+                    'result' => [
+                        'status' => 'completed',
+                        'deleted' => 83,
+                    ],
                 ],
                 'neo4j' => [
+                    'doc_id' => 'doc-delete-1',
+                    'namespace' => 'hawki_assistant_delete',
                     'relationships_deleted' => 214,
                     'entities_deleted' => 97,
                 ],
@@ -371,8 +379,11 @@ class AssistantDocumentApiTest extends TestCase
             ->assertJsonPath('document.status', AssistantDocument::STATUS_DELETED)
             ->assertJsonPath('deletion.bridge_documents_deleted', 1)
             ->assertJsonPath('deletion.qdrant.0.bridge_document_id', 'doc-delete-1')
-            ->assertJsonPath('deletion.qdrant.0.result.deleted', 83)
+            ->assertJsonPath('deletion.qdrant.0.collection', 'hawki_assistant_delete')
+            ->assertJsonPath('deletion.qdrant.0.deleted_points', 83)
+            ->assertJsonPath('deletion.qdrant.0.result.deleted_points', 83)
             ->assertJsonPath('deletion.neo4j.0.bridge_document_id', 'doc-delete-1')
+            ->assertJsonPath('deletion.neo4j.0.namespace', 'hawki_assistant_delete')
             ->assertJsonPath('deletion.neo4j.0.relationships_deleted', 214)
             ->assertJsonPath('deletion.neo4j.0.entities_deleted', 97);
 
@@ -388,7 +399,79 @@ class AssistantDocumentApiTest extends TestCase
         ]);
 
         Http::assertSent(fn ($request): bool => $request->method() === 'DELETE'
-            && $request->url() === config('config.hawki_rag_bridge_url').'/documents/doc-delete-1'
+            && $request->url() === config('config.hawki_rag_bridge_url').'/documents/doc-delete-1?collection=hawki_assistant_delete&neo4j_namespace=hawki_assistant_delete'
             && $request->hasHeader('Idempotency-Key', ['assistant-delete-1']));
+    }
+
+    public function test_delete_backfills_missing_output_scope_from_dataset_before_bridge_delete(): void
+    {
+        \App\Models\Dataset::query()->create([
+            'dataset_id' => 'assistant-delete-backfill',
+            'name' => 'assistant-delete-backfill',
+            'status' => 'active',
+            'qdrant_collection' => 'hawki_assistant_delete_backfill',
+            'neo4j_namespace' => 'hawki_assistant_delete_backfill',
+            'created_at' => Carbon::parse('2026-07-09T10:00:00Z'),
+        ]);
+
+        AssistantDocument::query()->create([
+            'assistant_document_id' => 'adoc_delete_backfill_1',
+            'dataset_id' => 'assistant-delete-backfill',
+            'display_name' => 'delete-backfill.pdf',
+            'source_type' => 'upload',
+            'graph_enabled' => false,
+            'status' => AssistantDocument::STATUS_INDEXED,
+        ]);
+
+        AssistantDocumentOutput::query()->create([
+            'assistant_document_id' => 'adoc_delete_backfill_1',
+            'bridge_document_id' => 'doc-delete-backfill-1',
+            'qdrant_collection' => '',
+            'neo4j_namespace' => null,
+            'source_id' => 'source-delete-backfill-1',
+            'task_id' => 'task-delete-backfill-1',
+            'job_id' => 'ingest-delete-backfill-1',
+            'content_hash' => hash('sha256', 'delete-backfill'),
+            'chunk_count' => 2,
+            'status' => 'indexed',
+            'active' => true,
+        ]);
+
+        Http::fake([
+            '*documents/doc-delete-backfill-1*' => Http::response([
+                'ok' => true,
+                'doc_id' => 'doc-delete-backfill-1',
+                'qdrant' => [
+                    'doc_id' => 'doc-delete-backfill-1',
+                    'collection' => 'hawki_assistant_delete_backfill',
+                    'deleted_points' => 2,
+                    'result' => [
+                        'status' => 'completed',
+                    ],
+                ],
+                'neo4j' => [
+                    'doc_id' => 'doc-delete-backfill-1',
+                    'namespace' => 'hawki_assistant_delete_backfill',
+                    'relationships_deleted' => 0,
+                    'entities_deleted' => 0,
+                ],
+            ]),
+        ]);
+
+        $this->deleteJson('/api/assistant/documents/adoc_delete_backfill_1')
+            ->assertOk()
+            ->assertJsonPath('deletion.qdrant.0.collection', 'hawki_assistant_delete_backfill')
+            ->assertJsonPath('deletion.neo4j.0.namespace', 'hawki_assistant_delete_backfill');
+
+        $this->assertDatabaseHas('assistant_document_outputs', [
+            'assistant_document_id' => 'adoc_delete_backfill_1',
+            'bridge_document_id' => 'doc-delete-backfill-1',
+            'qdrant_collection' => 'hawki_assistant_delete_backfill',
+            'neo4j_namespace' => 'hawki_assistant_delete_backfill',
+            'active' => 0,
+        ]);
+
+        Http::assertSent(fn ($request): bool => $request->method() === 'DELETE'
+            && $request->url() === config('config.hawki_rag_bridge_url').'/documents/doc-delete-backfill-1?collection=hawki_assistant_delete_backfill&neo4j_namespace=hawki_assistant_delete_backfill');
     }
 }

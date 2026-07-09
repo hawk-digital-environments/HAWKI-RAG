@@ -108,6 +108,7 @@ class IngestSourceWorkflowPayloadFactoryTest extends TestCase
                     'request' => [
                         'metadata' => [
                             'graph' => false,
+                            'assistant_document_id' => 'adoc-upload-1',
                         ],
                     ],
                     'upload' => [
@@ -121,6 +122,7 @@ class IngestSourceWorkflowPayloadFactoryTest extends TestCase
 
         $this->assertSame('/shared/task/sample-upload.pdf', $payload['upload']['local_path']);
         $this->assertSame('sample-upload.pdf', $payload['upload']['target_name']);
+        $this->assertSame('adoc-upload-1', $payload['assistant_document_id']);
         $this->assertSame('native', $payload['converter_mode']);
         $this->assertFalse($payload['ingestion']['graph']);
     }

@@ -58,7 +58,11 @@ def ingest_markdown_files(payload: dict[str, Any]) -> dict[str, Any]:
                 content_hash = sha256_text(text)
                 relative_path = str(Path(markdown_file).resolve().relative_to(Path(markdown_dir).resolve()))
                 passthrough_metadata = support._load_passthrough_metadata(markdown_file)
-                payload = {
+                neo4j_namespace = ingest_options.get("neo4j_database") or ingest_options.get("neo4j_namespace")
+                payload = dict(passthrough_metadata or {})
+                payload.update({
+                    "assistant_document_id": workflow_input.get("assistant_document_id"),
+                    "dataset_id": workflow_input.get("dataset_id"),
                     "source_id": source_id,
                     "document_id": doc_id,
                     "doc_id": doc_id,
@@ -71,9 +75,9 @@ def ingest_markdown_files(payload: dict[str, Any]) -> dict[str, Any]:
                     "content_hash": content_hash,
                     "job_id": workflow_input.get("job_id"),
                     "task_id": workflow_input.get("task_id"),
-                }
-                if passthrough_metadata:
-                    payload.update(passthrough_metadata)
+                    "qdrant_collection": ingest_options.get("collection"),
+                    "neo4j_namespace": neo4j_namespace,
+                })
                 docs.append({"id": doc_id, "text": text, "payload": payload})
                 manifest_record = {
                     "document_id": doc_id,

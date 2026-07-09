@@ -35,6 +35,8 @@ readonly class IngestSourceWorkflowPayloadFactory
         $customConverter = is_array($metadata['custom_converter'] ?? null)
             ? $metadata['custom_converter']
             : null;
+        $request = is_array($metadata['request'] ?? null) ? $metadata['request'] : [];
+        $requestMetadata = is_array($request['metadata'] ?? null) ? $request['metadata'] : [];
         $modelRuntime = $this->settings->modelRuntime();
 
         return array_filter([
@@ -43,6 +45,7 @@ readonly class IngestSourceWorkflowPayloadFactory
             'task_id' => $task->task_id,
             'job_id' => $job->job_id,
             'dataset_id' => $task->dataset_id,
+            'assistant_document_id' => $requestMetadata['assistant_document_id'] ?? null,
             'upload' => $upload,
             'converter_mode' => $customConverter ? 'custom' : 'native',
             'custom_converter_profile_path' => $customConverter['profile_path'] ?? null,
@@ -58,7 +61,7 @@ readonly class IngestSourceWorkflowPayloadFactory
             'markdown_output_path' => $source->markdown_storage_path,
             'ingest_manifest_path' => $this->manifestPath($source->source_id),
             'metadata' => [
-                'request' => $metadata['request'] ?? null,
+                'request' => $request,
             ],
             'storage' => [
                 'mode' => $this->storageMode(),

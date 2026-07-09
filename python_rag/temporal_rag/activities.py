@@ -690,7 +690,7 @@ def _post_ingest(
         "provider": ingest_options.get("provider") or "ollama",
         "embedding_model": ingest_options.get("embedding_model"),
         "collection": ingest_options.get("collection"),
-        "neo4j_database": ingest_options.get("neo4j_database"),
+        "neo4j_database": ingest_options.get("neo4j_database") or ingest_options.get("neo4j_namespace"),
         "chunk_chars": int(ingest_options.get("chunk_chars") or 1200),
         "chunk_overlap": int(ingest_options.get("chunk_overlap") or 250),
         "batch_size": int(ingest_options.get("batch_size") or 64),

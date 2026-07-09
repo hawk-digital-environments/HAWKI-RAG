@@ -47,6 +47,12 @@ readonly class AssistantDocumentSyncService
             ? ($this->documents->find($document->assistant_document_id) ?? $document)
             : $this->documents->save($document, $state->attributes);
 
+        $document = $this->documents->find($document->assistant_document_id) ?? $document;
+        $this->outputs->backfillScopes(
+            $document,
+            $document->outputs->where('active', true)->values(),
+        );
+
         return $this->documents->find($document->assistant_document_id) ?? $document;
     }
 

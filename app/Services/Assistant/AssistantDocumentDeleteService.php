@@ -38,7 +38,10 @@ readonly class AssistantDocumentDeleteService
             'last_error' => null,
         ]);
 
-        $activeOutputs = $this->outputs->activeForDocument($document->assistant_document_id);
+        $activeOutputs = $this->outputs->backfillScopes(
+            $document,
+            $this->outputs->activeForDocument($document->assistant_document_id),
+        );
 
         try {
             $deletion = $this->deletions->deleteActiveOutputs($activeOutputs, $idempotencyKey);

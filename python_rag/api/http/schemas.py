@@ -87,6 +87,7 @@ class DocumentUpsertRequest(BaseModel):
     payload: dict[str, Any] = Field(default_factory=dict)
     provider: str | None = None
     collection: str | None = None
+    neo4j_database: str | None = None
     distance: str | None = None
     chunk_chars: int | None = None
     chunk_overlap: int | None = None

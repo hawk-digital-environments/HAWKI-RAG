@@ -2841,32 +2841,75 @@ class CliIngestHelperCharacterizationTests(unittest.TestCase):
 
 
 class IngestDeletionCharacterizationTests(unittest.TestCase):
-    def test_delete_document_entries_deletes_vector_and_graph_then_closes_graph(self) -> None:
+    def test_delete_document_entries_scopes_vector_and_graph_delete_then_closes_graph(self) -> None:
         from application.workflows.ingest.deletion import delete_document_entries
 
-        events: list[tuple[str, str]] = []
+        events: list[tuple[str, object]] = []
 
         class Qdrant:
-            def delete_by_doc_id(self, doc_id: str) -> dict[str, str]:
-                events.append(("qdrant", doc_id))
-                return {"deleted": doc_id}
+            collection = "default"
+
+            def set_collection(self, collection: str) -> None:
+                self.collection = collection
+                events.append(("qdrant_collection", collection))
+
+            def count_points_by_doc_id(self, doc_id: str, *, collection: str | None = None, exact: bool = True) -> int:
+                events.append(("qdrant_count", {"doc_id": doc_id, "collection": collection, "exact": exact}))
+                return 4
+
+            def delete_by_doc_id(self, doc_id: str, *, idempotency_key: str | None = None) -> dict[str, object]:
+                events.append(("qdrant", {"doc_id": doc_id, "idempotency_key": idempotency_key, "collection": self.collection}))
+                return {"result": {"status": "completed"}}
 
         class Graph:
-            def delete_by_doc_id(self, doc_id: str) -> dict[str, str]:
-                events.append(("graph", doc_id))
-                return {"deleted": doc_id}
+            def __init__(self, *, database: str | None = None) -> None:
+                self.database = database
+                events.append(("graph_database", database))
+
+            def delete_by_doc_id(self, doc_id: str, *, request_id: str | None = None) -> dict[str, int]:
+                events.append(("graph", {"doc_id": doc_id, "request_id": request_id, "database": self.database}))
+                return {"relationships_deleted": 2, "entities_deleted": 1}
 
             def close(self) -> None:
                 events.append(("graph_close", ""))
 
         result = delete_document_entries(
             "doc-1",
+            idempotency_key="delete-op-1",
+            collection="student_space",
+            neo4j_namespace="student_graph",
             qdrant_factory=Qdrant,
             graph_factory=Graph,
         )
 
-        self.assertEqual(result, {"qdrant": {"deleted": "doc-1"}, "neo4j": {"deleted": "doc-1"}})
-        self.assertEqual(events, [("qdrant", "doc-1"), ("graph", "doc-1"), ("graph_close", "")])
+        self.assertEqual(
+            result,
+            {
+                "qdrant": {
+                    "doc_id": "doc-1",
+                    "collection": "student_space",
+                    "deleted_points": 4,
+                    "result": {"result": {"status": "completed"}},
+                },
+                "neo4j": {
+                    "doc_id": "doc-1",
+                    "namespace": "student_graph",
+                    "relationships_deleted": 2,
+                    "entities_deleted": 1,
+                },
+            },
+        )
+        self.assertEqual(
+            events,
+            [
+                ("qdrant_collection", "student_space"),
+                ("qdrant_count", {"doc_id": "doc-1", "collection": "student_space", "exact": True}),
+                ("qdrant", {"doc_id": "doc-1", "idempotency_key": "delete-op-1", "collection": "student_space"}),
+                ("graph_database", "student_graph"),
+                ("graph", {"doc_id": "doc-1", "request_id": "delete-op-1", "database": "student_graph"}),
+                ("graph_close", ""),
+            ],
+        )
 
 
 class ApiAndVectorValidationTests(unittest.TestCase):
@@ -3342,16 +3385,26 @@ class ApiAndVectorValidationTests(unittest.TestCase):
                 return_value={"ok": True},
             ) as ingest_mock:
                 with TestClient(app) as client:
-                    delete_response = client.delete("/documents/doc-replace-1")
+                    delete_response = client.delete(
+                        "/documents/doc-replace-1",
+                        params={"collection": "toy_docs", "neo4j_namespace": "toy_graph"},
+                    )
                     put_response = client.put(
                         "/documents/doc-replace-1",
-                        json={"text": "updated"},
+                        json={"text": "updated", "collection": "toy_docs", "neo4j_database": "toy_graph"},
                     )
 
         self.assertEqual(delete_response.status_code, 200)
         self.assertEqual(
             delete_response.json(),
-            {"ok": True, "doc_id": "doc-replace-1", "qdrant": {"ok": True}, "neo4j": {"ok": True}},
+            {
+                "ok": True,
+                "doc_id": "doc-replace-1",
+                "collection": "toy_docs",
+                "neo4j_namespace": "toy_graph",
+                "qdrant": {"ok": True},
+                "neo4j": {"ok": True},
+            },
         )
         self.assertEqual(put_response.status_code, 200)
         self.assertEqual(put_response.json()["ok"], True)
@@ -3362,8 +3415,12 @@ class ApiAndVectorValidationTests(unittest.TestCase):
         delete_calls = delete_mock.call_args_list
         self.assertEqual(delete_calls[0].args[0], "doc-replace-1")
         self.assertEqual(delete_calls[0].kwargs["idempotency_key"], "doc-replace-1")
+        self.assertEqual(delete_calls[0].kwargs["collection"], "toy_docs")
+        self.assertEqual(delete_calls[0].kwargs["neo4j_namespace"], "toy_graph")
         self.assertEqual(delete_calls[1].args[0], "doc-replace-1")
         self.assertIsNone(delete_calls[1].kwargs["idempotency_key"])
+        self.assertEqual(delete_calls[1].kwargs["collection"], "toy_docs")
+        self.assertEqual(delete_calls[1].kwargs["neo4j_namespace"], "toy_graph")
         replacement_builder.assert_called_once()
         ingest_mock.assert_called_once()
 

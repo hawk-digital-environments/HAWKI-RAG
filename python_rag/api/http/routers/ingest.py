@@ -6,7 +6,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Query, Request
 
 from api.http.dependencies import get_provider_or_400
 from api.http.schemas import DocumentUpsertRequest, IngestRequest, apply_ingest_request_settings
@@ -60,21 +60,35 @@ def build_ingest_router(
         )
 
     @router.delete("/documents/{doc_id}")
-    def delete_document_endpoint(doc_id: str, request: Request) -> dict[str, Any]:
+    def delete_document_endpoint(
+        doc_id: str,
+        request: Request,
+        collection: str | None = Query(default=None),
+        neo4j_namespace: str | None = Query(default=None),
+    ) -> dict[str, Any]:
         from application.ingest import delete_document
 
         request_id = getattr(request.state, "request_id", None)
         idempotency_key = _extract_idempotency_key(request, doc_id)
         logger.info(
-            "api:delete request_id=%s doc_id=%s idempotency_key=%s",
+            "api:delete request_id=%s doc_id=%s idempotency_key=%s collection=%s neo4j_namespace=%s",
             request_id,
             doc_id,
             idempotency_key,
+            collection,
+            neo4j_namespace,
         )
-        result = delete_document(doc_id, idempotency_key=idempotency_key)
+        result = delete_document(
+            doc_id,
+            idempotency_key=idempotency_key,
+            collection=collection,
+            neo4j_namespace=neo4j_namespace,
+        )
         return {
             "ok": True,
             "doc_id": str(doc_id),
+            "collection": result["qdrant"].get("collection") or collection,
+            "neo4j_namespace": result["neo4j"].get("namespace") or neo4j_namespace,
             "qdrant": result["qdrant"],
             "neo4j": result["neo4j"],
         }
@@ -86,7 +100,12 @@ def build_ingest_router(
 
         request_id = getattr(request.state, "request_id", None)
         idempotency_key = _extract_idempotency_key(request, body.idempotency_key)
-        deletion = delete_document(doc_id, idempotency_key=idempotency_key)
+        deletion = delete_document(
+            doc_id,
+            idempotency_key=idempotency_key,
+            collection=body.collection,
+            neo4j_namespace=body.neo4j_database,
+        )
         ingest_request = build_replacement_ingest_request(
             doc_id=doc_id,
             body=body,

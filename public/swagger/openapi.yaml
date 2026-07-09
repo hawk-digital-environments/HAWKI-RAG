@@ -109,7 +109,17 @@ paths:
     post:
       tags:
         - Assistant Documents
-      summary: Create assistant document and start ingest
+      summary: Upload one PDF into a student dataset and start ingest
+      description: |
+        Creates one assistant document from one uploaded file.
+
+        Mental model:
+        - One `dataset_id` represents one student space.
+        - That student space maps to one Qdrant collection.
+        - Each uploaded PDF becomes one assistant document inside that dataset.
+        - Each assistant document is chunked into many vector points during ingest.
+
+        Use this endpoint when the assistant system is uploading a single file.
       security:
         - BearerAuth: []
       parameters:
@@ -133,6 +143,7 @@ paths:
                   format: binary
                 dataset_id:
                   type: string
+                  description: Student dataset identifier. All PDFs uploaded with the same dataset id are indexed into the same student collection.
                 source_updated_at:
                   type: string
                   format: date-time
@@ -154,7 +165,7 @@ paths:
                     - type: string
       responses:
         "202":
-          description: Assistant document accepted for ingest
+          description: Assistant document accepted for ingest in the target student dataset
           content:
             application/json:
               schema:
@@ -167,7 +178,15 @@ paths:
     post:
       tags:
         - Assistant Documents
-      summary: Create many assistant documents and start one ingest workflow per file
+      summary: Upload many PDFs into one student dataset and start one ingest workflow per file
+      description: |
+        Creates one assistant document per uploaded file.
+
+        Batch behavior:
+        - All files in the same request share the same `dataset_id`.
+        - That means all files are indexed into the same student Qdrant collection.
+        - Each PDF still becomes its own assistant document with its own task, job, and bridge document id.
+        - Deleting one assistant document is intended to remove only that file's indexed outputs while keeping the other files in the dataset intact.
       security:
         - BearerAuth: []
       parameters:
@@ -193,6 +212,7 @@ paths:
                     format: binary
                 dataset_id:
                   type: string
+                  description: Student dataset identifier shared by every file in this batch.
                 graph:
                   type: boolean
                   default: false
@@ -204,7 +224,7 @@ paths:
                     - type: string
       responses:
         "202":
-          description: All assistant documents were accepted for ingest
+          description: All assistant documents were accepted for ingest in the same student dataset
           content:
             application/json:
               schema:
@@ -230,6 +250,13 @@ paths:
       tags:
         - Assistant Documents
       summary: Get assistant document status and active outputs
+      description: |
+        Returns the assistant document plus the currently active indexed outputs.
+
+        The `outputs` array shows where this PDF is indexed now, including:
+        - the Qdrant collection used for the dataset
+        - the optional Neo4j namespace
+        - the active chunk count for this document version
       security:
         - BearerAuth: []
       responses:
@@ -247,6 +274,13 @@ paths:
       tags:
         - Assistant Documents
       summary: Replace assistant document if the incoming file is newer
+      description: |
+        Replaces one assistant document while keeping it in the same dataset.
+
+        Typical use case:
+        - the assistant system has a newer copy of the same PDF
+        - old indexed outputs for that assistant document are replaced
+        - the rest of the student's dataset stays untouched
       security:
         - BearerAuth: []
       parameters:
@@ -309,7 +343,15 @@ paths:
     delete:
       tags:
         - Assistant Documents
-      summary: Delete all active indexed outputs for an assistant document
+      summary: Delete one assistant document's active indexed outputs
+      description: |
+        Deletes the active indexed outputs for one assistant document.
+
+        API contract:
+        - remove only this PDF's chunk points from the student dataset
+        - optionally remove this PDF's Neo4j graph data
+        - keep the Qdrant collection itself
+        - keep every other PDF in the same dataset intact
       security:
         - BearerAuth: []
       parameters:
@@ -899,16 +941,21 @@ components:
           nullable: true
     AssistantDocumentOutput:
       type: object
+      description: One active indexed output for one assistant document version.
       properties:
         bridge_document_id:
           type: string
+          description: Python bridge document id used for downstream delete and replacement operations.
         qdrant_collection:
           type: string
+          description: Qdrant collection that holds this document's chunk points. In the assistant model, this is the student dataset collection.
         neo4j_namespace:
           type: string
           nullable: true
+          description: Neo4j namespace used for graph writes when graph ingest is enabled.
         chunk_count:
           type: integer
+          description: Number of active chunks currently indexed for this document output.
         status:
           type: string
         active:
@@ -919,15 +966,18 @@ components:
           nullable: true
     AssistantDocumentResource:
       type: object
+      description: Assistant-facing view of one uploaded file and its indexing state.
       properties:
         assistant_document_id:
           type: string
         dataset_id:
           type: string
+          description: Student dataset identifier. Multiple assistant documents can share this dataset and therefore share the same Qdrant collection.
         status:
           type: string
         graph_enabled:
           type: boolean
+          description: Whether new ingests for this assistant document should also write graph data to Neo4j.
         display_name:
           type: string
           nullable: true
@@ -970,10 +1020,12 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/AssistantDocumentOutput"
+          description: Active indexed outputs for this assistant document. A single uploaded PDF can produce many chunks but still appears here as one document output record.
         active_output_count:
           type: integer
         active_chunk_count:
           type: integer
+          description: Total active chunks currently indexed for this assistant document across its active outputs.
     AssistantDocumentResponse:
       type: object
       properties:
@@ -1013,6 +1065,7 @@ components:
           additionalProperties: true
     AssistantDocumentBatchResponse:
       type: object
+      description: Batch upload result. Each accepted file becomes a separate assistant document in the same dataset.
       properties:
         success:
           type: boolean
@@ -1033,21 +1086,26 @@ components:
             $ref: "#/components/schemas/AssistantDocumentBatchItem"
     AssistantDocumentDeleteBreakdown:
       type: object
+      description: Per-store delete results for one assistant document.
       properties:
         bridge_documents_deleted:
           type: integer
+          description: Number of bridge document outputs targeted by the delete operation.
         qdrant:
           type: array
           items:
             type: object
             additionalProperties: true
+          description: Qdrant delete results, typically one entry per active bridge document, including the affected collection and deleted point count.
         neo4j:
           type: array
           items:
             type: object
             additionalProperties: true
+          description: Neo4j delete results, typically one entry per active bridge document when graph ingest was enabled, including the affected namespace.
     AssistantDocumentDeleteResponse:
       type: object
+      description: Response returned after deleting one assistant document's active indexed outputs.
       properties:
         success:
           type: boolean

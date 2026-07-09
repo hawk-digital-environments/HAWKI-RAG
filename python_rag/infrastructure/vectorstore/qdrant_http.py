@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from inspect import signature
 import logging
 from typing import Any
 
@@ -71,6 +72,17 @@ def _request_exception_type() -> type[BaseException]:
         ).exceptions.RequestException
     except RuntimeError:
         return _UnavailableRequestsError
+
+
+def _callable_supports_kwarg(target: Any, method_name: str, kwarg: str) -> bool:
+    method = getattr(target, method_name, None)
+    if method is None:
+        return False
+    try:
+        params = signature(method).parameters.values()
+    except (TypeError, ValueError):
+        return False
+    return any(param.name == kwarg or param.kind == param.VAR_KEYWORD for param in params)
 
 
 class QdrantHTTP:
@@ -185,11 +197,18 @@ class QdrantHTTP:
         self,
         collection: str | None = None,
         exact: bool = True,
+        filter_body: dict[str, Any] | None = None,
     ) -> int | None:
         """Return the number of points stored in a collection."""
         col = collection or self.collection
         try:
-            r = self._gateway.count_points(col, exact=exact, timeout=self._http_settings.count_timeout)
+            count_kwargs: dict[str, Any] = {
+                "exact": exact,
+                "timeout": self._http_settings.count_timeout,
+            }
+            if filter_body and _callable_supports_kwarg(self._gateway, "count_points", "filter_body"):
+                count_kwargs["filter_body"] = filter_body
+            r = self._gateway.count_points(col, **count_kwargs)
             r.raise_for_status()
             return parse_count(r.json())
         except Exception as exc:
@@ -201,6 +220,20 @@ class QdrantHTTP:
                 return None
             logger.warning("Qdrant count failed for collection %s: %s", col, exc)
             return None
+
+    def count_points_by_doc_id(
+        self,
+        doc_id: str,
+        *,
+        collection: str | None = None,
+        exact: bool = True,
+    ) -> int | None:
+        """Return the number of points that belong to one document id."""
+        return self.count_points(
+            collection=collection,
+            exact=exact,
+            filter_body=build_delete_filter(doc_id),
+        )
 
     def search(
         self,

@@ -6,6 +6,7 @@ namespace App\Services\Assistant\Repositories;
 
 use App\Models\AssistantDocument;
 use App\Models\AssistantDocumentOutput;
+use App\Models\Dataset;
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -96,5 +97,46 @@ readonly class AssistantDocumentOutputRepository
             ]);
 
         return $outputs;
+    }
+
+    /**
+     * @param Collection<int, AssistantDocumentOutput> $outputs
+     * @return Collection<int, AssistantDocumentOutput>
+     */
+    public function backfillScopes(AssistantDocument $document, Collection $outputs): Collection
+    {
+        if ($outputs->isEmpty()) {
+            return $outputs;
+        }
+
+        $dataset = Dataset::query()
+            ->where('dataset_id', $document->dataset_id)
+            ->first();
+
+        $fallbackCollection = $this->stringValue($dataset?->qdrant_collection);
+        $fallbackNamespace = $this->stringValue($dataset?->neo4j_namespace);
+
+        foreach ($outputs as $output) {
+            $updates = [];
+
+            if ($this->stringValue($output->qdrant_collection) === null && $fallbackCollection !== null) {
+                $updates['qdrant_collection'] = $fallbackCollection;
+            }
+
+            if ($this->stringValue($output->neo4j_namespace) === null && $fallbackNamespace !== null) {
+                $updates['neo4j_namespace'] = $fallbackNamespace;
+            }
+
+            if ($updates !== []) {
+                $output->forceFill($updates)->save();
+            }
+        }
+
+        return $this->activeForDocument($document->assistant_document_id);
+    }
+
+    private function stringValue(mixed $value): ?string
+    {
+        return is_scalar($value) && trim((string) $value) !== '' ? trim((string) $value) : null;
     }
 }

@@ -30,12 +30,12 @@ readonly class PipelineUploadPayloadService
             'request' => [
                 'source' => 'pipeline-controller',
                 'mode' => 'uploaded_file_convert_ingest',
-                'metadata' => [
+                'metadata' => array_merge([
                     'label' => $storedUpload->originalName,
                     'source' => 'pipeline-controller',
                     'graph' => $input->graph,
                     'converter_mode' => $input->converterMode,
-                ],
+                ], $input->requestMetadata),
             ],
             'orchestration' => 'temporal',
             'temporal' => [
