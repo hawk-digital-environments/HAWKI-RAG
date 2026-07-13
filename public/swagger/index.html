@@ -24,8 +24,11 @@
     <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.11.2/swagger-ui-standalone-preset.js"></script>
     <script>
       window.onload = () => {
+        const specUrl = new URL("/swagger/openapi.yaml", window.location.origin);
+        specUrl.searchParams.set("v", String(Date.now()));
+
         window.ui = SwaggerUIBundle({
-          url: "/swagger/openapi.yaml",
+          url: specUrl.toString(),
           dom_id: "#swagger-ui",
           deepLinking: true,
           docExpansion: "list",

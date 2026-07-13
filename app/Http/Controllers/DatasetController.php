@@ -29,7 +29,7 @@ class DatasetController extends Controller
 
         return response()->json([
             'success' => true,
-            'datasetId' => $dataset->dataset_id,
+            'dataset_id' => $dataset->dataset_id,
             'dataset' => $this->datasets->show($dataset->dataset_id),
         ], 201);
     }
@@ -60,7 +60,7 @@ class DatasetController extends Controller
             ], 404);
         }
 
-        $ok = ($result['qdrant']['ok'] ?? false) && ($result['neo4j']['ok'] ?? false) && ($result['datasetDeleted'] ?? false);
+        $ok = ($result['qdrant']['ok'] ?? false) && ($result['neo4j']['ok'] ?? false) && ($result['dataset_deleted'] ?? false);
 
         return response()->json([
             'success' => $ok,

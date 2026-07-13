@@ -50,17 +50,25 @@ class PipelineTaskPayloadServiceTest extends TestCase
 
         $payload = app(PipelineTaskPayloadService::class)->detail($task, 1, ['jobs_total' => 0]);
 
-        $this->assertSame('task-payload', $payload['taskId']);
-        $this->assertSame('dataset-payload', $payload['datasetId']);
+        $this->assertSame('task-payload', $payload['task_id']);
+        $this->assertSame('dataset-payload', $payload['dataset_id']);
         $this->assertSame(PipelineTask::STATUS_RUNNING, $payload['status']);
         $this->assertSame(['jobs_total' => 1], $payload['counters']);
         $this->assertSame(['source' => 'unit-test'], $payload['metadata']);
-        $this->assertSame(1, $payload['activeJobs']);
-        $this->assertSame('2026-06-08T12:00:00+00:00', $payload['updatedAt']);
-        $this->assertSame('job-payload', $payload['jobs'][0]['jobId']);
-        $this->assertSame('parent-job', $payload['jobs'][0]['parentJobId']);
-        $this->assertSame('https://example.test/page', $payload['jobs'][0]['sourceUrl']);
+        $this->assertSame(1, $payload['active_jobs']);
+        $this->assertSame('2026-06-08T12:00:00+00:00', $payload['updated_at']);
+        $this->assertSame([], $payload['managed_documents']);
+        $this->assertSame(0, $payload['managed_document_count']);
+        $this->assertSame([], $payload['sources']);
+        $this->assertSame('job-payload', $payload['jobs'][0]['job_id']);
+        $this->assertSame('parent-job', $payload['jobs'][0]['parent_job_id']);
+        $this->assertSame('https://example.test/page', $payload['jobs'][0]['source_url']);
         $this->assertSame(['label' => 'Page'], $payload['jobs'][0]['metadata']);
+        $this->assertSame([], $payload['jobs'][0]['managed_documents']);
+        $this->assertSame(0, $payload['jobs'][0]['managed_document_count']);
+        $this->assertSame('https://example.test/page', $payload['jobs'][0]['source']['source_url']);
+        $this->assertSame('task-payload', $payload['jobs'][0]['source']['task_id']);
+        $this->assertSame([], $payload['jobs'][0]['source']['managed_documents']);
     }
 
     public function test_it_builds_uploaded_file_stage_payload_before_ingestion_starts(): void
@@ -131,7 +139,7 @@ class PipelineTaskPayloadServiceTest extends TestCase
         $payload = app(PipelineTaskPayloadService::class)->detail($task, 1, ['jobs_total' => 0]);
 
         $this->assertSame(PipelineJob::STATUS_COMPLETED, $payload['stages']['convert']['status']);
-        $this->assertSame(1, $payload['stages']['convert']['counts']['convertedFiles']);
+        $this->assertSame(1, $payload['stages']['convert']['counts']['converted_files']);
         $this->assertSame('processing', $payload['stages']['ingest']['status']);
         $this->assertSame('Ingestion processing.', $payload['stages']['ingest']['message']);
     }
@@ -180,11 +188,11 @@ class PipelineTaskPayloadServiceTest extends TestCase
         $payload = app(PipelineTaskPayloadService::class)->detail($task, 0, ['jobs_total' => 1]);
 
         $this->assertSame(PipelineJob::STATUS_COMPLETED, $payload['stages']['scrape']['status']);
-        $this->assertSame(1, $payload['stages']['scrape']['counts']['pagesCrawled']);
-        $this->assertSame(1, $payload['stages']['scrape']['counts']['totalPages']);
+        $this->assertSame(1, $payload['stages']['scrape']['counts']['pages_crawled']);
+        $this->assertSame(1, $payload['stages']['scrape']['counts']['total_pages']);
         $this->assertSame(PipelineJob::STATUS_COMPLETED, $payload['stages']['convert']['status']);
-        $this->assertSame(21, $payload['stages']['convert']['counts']['convertedFiles']);
-        $this->assertSame(21, $payload['stages']['convert']['counts']['sourceFiles']);
+        $this->assertSame(21, $payload['stages']['convert']['counts']['converted_files']);
+        $this->assertSame(21, $payload['stages']['convert']['counts']['source_files']);
         $this->assertSame(PipelineJob::STATUS_COMPLETED, $payload['stages']['ingest']['status']);
         $this->assertSame(21, $payload['stages']['ingest']['counts']['completed']);
         $this->assertSame(21, $payload['stages']['ingest']['counts']['total']);
@@ -215,13 +223,13 @@ class PipelineTaskPayloadServiceTest extends TestCase
         $events = app(PipelineTaskPayloadService::class)->eventsForJob($job);
 
         $this->assertCount(1, $events);
-        $this->assertSame('job.failed', $events[0]['eventType']);
-        $this->assertSame('event-failed', $events[0]['eventId']);
-        $this->assertSame('task-events', $events[0]['taskId']);
-        $this->assertSame('job-events', $events[0]['jobId']);
-        $this->assertSame(PipelineJob::TYPE_CONVERT, $events[0]['jobType']);
+        $this->assertSame('job.failed', $events[0]['event_type']);
+        $this->assertSame('event-failed', $events[0]['event_id']);
+        $this->assertSame('task-events', $events[0]['task_id']);
+        $this->assertSame('job-events', $events[0]['job_id']);
+        $this->assertSame(PipelineJob::TYPE_CONVERT, $events[0]['job_type']);
         $this->assertSame(PipelineJob::STATUS_FAILED, $events[0]['status']);
-        $this->assertSame('Conversion failed', $events[0]['errorMessage']);
+        $this->assertSame('Conversion failed', $events[0]['error_message']);
         $this->assertSame('2026-06-08T11:10:00+00:00', $events[0]['at']);
     }
 
@@ -238,8 +246,8 @@ class PipelineTaskPayloadServiceTest extends TestCase
         $events = app(PipelineTaskPayloadService::class)->eventsForJob($job);
 
         $this->assertCount(1, $events);
-        $this->assertSame('job.status', $events[0]['eventType']);
-        $this->assertSame('job-no-history', $events[0]['jobId']);
+        $this->assertSame('job.status', $events[0]['event_type']);
+        $this->assertSame('job-no-history', $events[0]['job_id']);
         $this->assertSame(PipelineJob::STATUS_RUNNING, $events[0]['status']);
     }
 }

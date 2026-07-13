@@ -4,19 +4,17 @@ declare(strict_types=1);
 
 namespace App\Services\Assistant;
 
-use App\Services\Assistant\Repositories\AssistantDocumentRepository;
+use App\Services\Document\ManagedDocumentService;
 use Illuminate\Container\Attributes\Singleton;
 
+/**
+ * @deprecated Compatibility adapter for legacy /api/assistant/documents routes.
+ */
 #[Singleton]
 readonly class AssistantDocumentService
 {
     public function __construct(
-        public AssistantDocumentCreateService $create,
-        public AssistantDocumentUpdateService $update,
-        public AssistantDocumentDeleteService $delete,
-        private AssistantDocumentRepository $documents,
-        private AssistantDocumentSyncService $sync,
-        private AssistantDocumentPayloadBuilder $payloads,
+        private ManagedDocumentService $documents,
     ) {
     }
 
@@ -26,7 +24,7 @@ readonly class AssistantDocumentService
      */
     public function create(array $input, ?\Illuminate\Http\UploadedFile $file, ?string $idempotencyKey): array
     {
-        return $this->create->create($input, $file, $idempotencyKey);
+        return $this->legacyPayload($this->documents->create($input, $file, $idempotencyKey));
     }
 
     /**
@@ -36,7 +34,16 @@ readonly class AssistantDocumentService
      */
     public function createBatch(array $input, array $files, ?string $idempotencyKey): array
     {
-        return $this->create->createBatch($input, $files, $idempotencyKey);
+        return $this->legacyPayload($this->documents->createBatch($input, $files, $idempotencyKey));
+    }
+
+    /**
+     * @param array<string, mixed> $filters
+     * @return list<array<string, mixed>>
+     */
+    public function list(int $limit = 100, array $filters = []): array
+    {
+        return array_map($this->legacyDocument(...), $this->documents->list($limit, $filters));
     }
 
     /**
@@ -44,20 +51,7 @@ readonly class AssistantDocumentService
      */
     public function show(string $assistantDocumentId): ?array
     {
-        $document = $this->documents->find($assistantDocumentId);
-        if ($document === null) {
-            return null;
-        }
-
-        $document = $this->sync->sync($document);
-
-        return [
-            'status' => 200,
-            'payload' => [
-                'success' => true,
-                'document' => $this->payloads->build($document),
-            ],
-        ];
+        return $this->legacyNullablePayload($this->documents->show($assistantDocumentId));
     }
 
     /**
@@ -66,7 +60,7 @@ readonly class AssistantDocumentService
      */
     public function update(string $assistantDocumentId, array $input, ?\Illuminate\Http\UploadedFile $file, ?string $idempotencyKey): ?array
     {
-        return $this->update->update($assistantDocumentId, $input, $file, $idempotencyKey);
+        return $this->legacyNullablePayload($this->documents->update($assistantDocumentId, $input, $file, $idempotencyKey));
     }
 
     /**
@@ -74,6 +68,78 @@ readonly class AssistantDocumentService
      */
     public function delete(string $assistantDocumentId, ?string $idempotencyKey): ?array
     {
-        return $this->delete->delete($assistantDocumentId, $idempotencyKey);
+        return $this->legacyNullablePayload($this->documents->delete($assistantDocumentId, $idempotencyKey));
+    }
+
+    /**
+     * @param array{status:int,payload:array<string,mixed>} $result
+     * @return array{status:int,payload:array<string,mixed>}
+     */
+    private function legacyPayload(array $result): array
+    {
+        $result['payload'] = $this->decoratePayload($result['payload']);
+
+        return $result;
+    }
+
+    /**
+     * @param array{status:int,payload:array<string,mixed>}|null $result
+     * @return array{status:int,payload:array<string,mixed>}|null
+     */
+    private function legacyNullablePayload(?array $result): ?array
+    {
+        if ($result === null) {
+            return null;
+        }
+
+        return $this->legacyPayload($result);
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     * @return array<string, mixed>
+     */
+    private function decoratePayload(array $payload): array
+    {
+        if (isset($payload['document']) && is_array($payload['document'])) {
+            $payload['document'] = $this->legacyDocument($payload['document']);
+        }
+
+        if (! isset($payload['items']) || ! is_array($payload['items'])) {
+            return $payload;
+        }
+
+        $payload['items'] = array_map(function (mixed $item): mixed {
+            if (! is_array($item)) {
+                return $item;
+            }
+
+            if (isset($item['result']) && is_array($item['result'])) {
+                $item['result'] = $this->decoratePayload($item['result']);
+            }
+
+            return $item;
+        }, $payload['items']);
+
+        return $payload;
+    }
+
+    /**
+     * @param array<string, mixed> $document
+     * @return array<string, mixed>
+     */
+    private function legacyDocument(array $document): array
+    {
+        $assistantDocumentId = $this->stringValue($document['document_id'] ?? $document['documentId'] ?? $document['id'] ?? null);
+        if ($assistantDocumentId !== null) {
+            $document['assistant_document_id'] = $assistantDocumentId;
+        }
+
+        return $document;
+    }
+
+    private function stringValue(mixed $value): ?string
+    {
+        return is_scalar($value) && trim((string) $value) !== '' ? trim((string) $value) : null;
     }
 }

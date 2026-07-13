@@ -83,20 +83,20 @@ class DatasetManagementTest extends TestCase
             ->assertOk()
             ->assertJsonPath('success', true)
             ->assertJsonFragment([
-                'datasetId' => 'dataset-ui',
-                'documentCount' => 1,
-                'taskCount' => 1,
+                'dataset_id' => 'dataset-ui',
+                'document_count' => 1,
+                'task_count' => 1,
             ])
             ->assertJsonMissing([
-                'datasetId' => 'orphan-dataset',
+                'dataset_id' => 'orphan-dataset',
             ]);
 
         $this->getJson('/api/datasets/dataset-ui')
             ->assertOk()
-            ->assertJsonPath('dataset.datasetId', 'dataset-ui')
-            ->assertJsonPath('dataset.tasks.0.taskId', 'task-dataset-ui')
-            ->assertJsonPath('dataset.documents.0.datasetId', 'dataset-ui')
-            ->assertJsonPath('dataset.ingestionHistory.0.jobId', 'ingest-dataset-ui');
+            ->assertJsonPath('dataset.dataset_id', 'dataset-ui')
+            ->assertJsonPath('dataset.tasks.0.task_id', 'task-dataset-ui')
+            ->assertJsonPath('dataset.documents.0.dataset_id', 'dataset-ui')
+            ->assertJsonPath('dataset.ingestion_history.0.job_id', 'ingest-dataset-ui');
     }
 
     public function test_starting_pipeline_task_creates_and_uses_dataset(): void
@@ -109,7 +109,7 @@ class DatasetManagementTest extends TestCase
             'urls' => ['https://example.test/start'],
         ])
             ->assertCreated()
-            ->assertJsonPath('task.datasetId', 'dataset-start');
+            ->assertJsonPath('task.dataset_id', 'dataset-start');
 
         $this->assertDatabaseHas('datasets', [
             'dataset_id' => 'dataset-start',
@@ -170,10 +170,10 @@ class DatasetManagementTest extends TestCase
 
         $this->getJson('/api/datasets/empty-dataset')
             ->assertOk()
-            ->assertJsonPath('dataset.graphStats.qdrant.ok', true)
-            ->assertJsonPath('dataset.graphStats.qdrant.points', 0)
-            ->assertJsonPath('dataset.graphStats.qdrant.status', 'not_created')
-            ->assertJsonPath('dataset.graphStats.qdrant.message', 'Collection not created yet');
+            ->assertJsonPath('dataset.graph_stats.qdrant.ok', true)
+            ->assertJsonPath('dataset.graph_stats.qdrant.points', 0)
+            ->assertJsonPath('dataset.graph_stats.qdrant.status', 'not_created')
+            ->assertJsonPath('dataset.graph_stats.qdrant.message', 'Collection not created yet');
     }
 
     public function test_deleting_dataset_removes_neo4j_nodes_by_single_doc_id_and_attached_relationships(): void
@@ -219,7 +219,7 @@ class DatasetManagementTest extends TestCase
         $this->deleteJson('/api/datasets/delete-dataset/storage')
             ->assertOk()
             ->assertJsonPath('success', true)
-            ->assertJsonPath('cleanup.neo4j.documentJobIds', 1)
+            ->assertJsonPath('cleanup.neo4j.document_job_ids', 1)
             ->assertJsonPath('cleanup.neo4j.nodes', 4)
             ->assertJsonPath('cleanup.neo4j.relationships', 6);
 

@@ -33,13 +33,13 @@ class PipelineRecoveryPayloadServiceTest extends TestCase
             new PipelineTask(['dataset_id' => 'dataset-recovery']),
         );
 
-        $this->assertSame('task-recovery', $payload['taskId']);
-        $this->assertSame('dataset-recovery', $payload['datasetId']);
-        $this->assertSame('convert-recovery', $payload['jobId']);
-        $this->assertSame(PipelineJob::TYPE_CONVERT, $payload['jobType']);
-        $this->assertSame('Converter failed', $payload['errorMessage']);
-        $this->assertSame(2, $payload['retryCount']);
+        $this->assertSame('task-recovery', $payload['task_id']);
+        $this->assertSame('dataset-recovery', $payload['dataset_id']);
+        $this->assertSame('convert-recovery', $payload['job_id']);
+        $this->assertSame(PipelineJob::TYPE_CONVERT, $payload['job_type']);
+        $this->assertSame('Converter failed', $payload['error_message']);
+        $this->assertSame(2, $payload['retry_count']);
         $this->assertSame('2026-06-08T12:00:00+00:00', $payload['timestamp']);
-        $this->assertSame('job.recovery_requested', $payload['lastRecoveryEvent']['event']);
+        $this->assertSame('job.recovery_requested', $payload['last_recovery_event']['event']);
     }
 }

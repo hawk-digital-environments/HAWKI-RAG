@@ -21,7 +21,7 @@ readonly class AssistantDocumentPipelineStateResolver
      */
     public function resolve(array $uploadPayload): AssistantDocumentPipelineState
     {
-        $sourceId = $this->stringValue($uploadPayload['sourceId'] ?? null);
+        $sourceId = $this->stringValue($uploadPayload['source_id'] ?? $uploadPayload['sourceId'] ?? null);
         $source = $sourceId === null ? null : $this->sources->findBySourceId($sourceId);
 
         return AssistantDocumentPipelineState::fromUploadPayload($uploadPayload, $source);

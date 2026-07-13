@@ -200,19 +200,19 @@ function bootDatasetsDashboard() {
     }
 
     function retryTaskButton(task) {
-        if (!isFailedStatus(task.status) || !task.taskId) {
+        if (!isFailedStatus(task.status) || !task.task_id) {
             return '-';
         }
 
-        return actionButton('Retry', () => retryTask(task.taskId), 'Retry failed.');
+        return actionButton('Retry', () => retryTask(task.task_id), 'Retry failed.');
     }
 
     function retryJobButton(job) {
-        if (!isFailedStatus(job.status) || !job.jobId) {
+        if (!isFailedStatus(job.status) || !job.job_id) {
             return '-';
         }
 
-        return actionButton('Retry', () => retryJob(job.jobId), 'Retry failed.');
+        return actionButton('Retry', () => retryJob(job.job_id), 'Retry failed.');
     }
 
     function openDocumentButton(document) {
@@ -236,11 +236,11 @@ function bootDatasetsDashboard() {
 
         const qdrant = document.createElement('span');
         qdrant.className = 'evidence-item';
-        qdrant.append('Qdrant ', statusPill(document.qdrantStatus || document.status));
+        qdrant.append('Qdrant ', statusPill(document.qdrant_status || document.status));
 
         const neo4j = document.createElement('span');
         neo4j.className = 'evidence-item';
-        neo4j.append('Neo4j ', statusPill(document.neo4jStatus || 'unknown'));
+        neo4j.append('Neo4j ', statusPill(document.neo4j_status || 'unknown'));
 
         wrapper.append(qdrant, neo4j);
 
@@ -260,37 +260,37 @@ function bootDatasetsDashboard() {
         datasets.forEach((dataset) => {
             const wrapper = document.createElement('div');
             wrapper.className = 'dataset-list-entry';
-            if (dataset.datasetId === state.selectedDatasetId) {
+            if (dataset.dataset_id === state.selectedDatasetId) {
                 wrapper.classList.add('is-selected');
             }
 
             const button = document.createElement('button');
             button.type = 'button';
             button.className = 'dataset-list-item';
-            if (dataset.datasetId === state.selectedDatasetId) {
+            if (dataset.dataset_id === state.selectedDatasetId) {
                 button.classList.add('is-selected');
             }
 
             const top = document.createElement('span');
             top.className = 'dataset-list-top';
             const title = document.createElement('strong');
-            title.textContent = dataset.name || dataset.datasetId;
+            title.textContent = dataset.name || dataset.dataset_id;
             top.append(title, statusPill(dataset.status));
 
             const id = document.createElement('span');
             id.className = 'dataset-list-id';
-            id.textContent = dataset.datasetId;
+            id.textContent = dataset.dataset_id;
 
             const meta = document.createElement('span');
             meta.className = 'dataset-list-meta';
             meta.textContent = [
-                `${dataset.taskCount || 0} tasks`,
-                `${dataset.documentCount || 0} documents`,
-                lastIngestionLabel(dataset.lastIngestion),
+                `${dataset.task_count || 0} tasks`,
+                `${dataset.document_count || 0} documents`,
+                lastIngestionLabel(dataset.last_ingestion),
             ].filter(Boolean).join(' | ');
 
             button.append(top, id, meta);
-            button.addEventListener('click', () => loadDataset(dataset.datasetId, { keepDocumentSelection: false }));
+            button.addEventListener('click', () => loadDataset(dataset.dataset_id, { keepDocumentSelection: false }));
 
             const deleteButton = document.createElement('button');
             deleteButton.type = 'button';
@@ -315,22 +315,22 @@ function bootDatasetsDashboard() {
 
     function renderDataset(dataset) {
         setText(els.updated, `Updated ${formatDate(new Date().toISOString())}`);
-        setStatus(`Showing dataset ${dataset.datasetId}.`);
+        setStatus(`Showing dataset ${dataset.dataset_id}.`);
 
         renderInfo(dataset);
         renderMetrics(dataset);
         renderTasks(dataset.tasks || []);
-        renderIngestionHistory(dataset.ingestionHistory || []);
+        renderIngestionHistory(dataset.ingestion_history || []);
     }
 
     function renderInfo(dataset) {
         els.info.innerHTML = '';
         [
             ['Name', dataset.name],
-            ['Dataset ID', dataset.datasetId],
-            ['Qdrant collection', dataset.qdrantCollection],
-            ['Neo4j namespace', dataset.neo4jNamespace],
-            ['Last ingestion', lastIngestionLabel(dataset.lastIngestion) || '-'],
+            ['Dataset ID', dataset.dataset_id],
+            ['Qdrant collection', dataset.qdrant_collection],
+            ['Neo4j namespace', dataset.neo4j_namespace],
+            ['Last ingestion', lastIngestionLabel(dataset.last_ingestion) || '-'],
         ].forEach(([label, value]) => {
             const wrapper = document.createElement('div');
             const term = document.createElement('dt');
@@ -344,14 +344,14 @@ function bootDatasetsDashboard() {
 
     function renderMetrics(dataset) {
         els.metrics.innerHTML = '';
-        const qdrant = dataset.graphStats?.qdrant || {};
-        const neo4j = dataset.graphStats?.neo4j || {};
+        const qdrant = dataset.graph_stats?.qdrant || {};
+        const neo4j = dataset.graph_stats?.neo4j || {};
         const qdrantCaption = qdrant.ok === false
             ? qdrant.error
             : (qdrant.message || qdrant.collection);
 
         [
-            ['Documents', dataset.documentCount ?? 0, 'Database documents'],
+            ['Documents', dataset.document_count ?? 0, 'Database documents'],
             ['Qdrant points', qdrant.points ?? '-', qdrantCaption],
             ['Neo4j entities', neo4j.nodes ?? '-', neo4j.ok === false ? neo4j.error : neo4j.namespace],
             ['Neo4j relations', neo4j.relationships ?? '-', neo4j.ok === false ? neo4j.error : neo4j.namespace],
@@ -372,10 +372,10 @@ function bootDatasetsDashboard() {
     function renderTasks(tasks) {
         setText(els.taskCount, `${tasks.length} task${tasks.length === 1 ? '' : 's'}`);
         renderTable(els.tasks, ['Task', 'Status', 'Jobs', 'Finished', 'Action'], tasks, (task) => [
-            task.taskId,
+            task.task_id,
             statusPill(task.status),
             task.counters?.jobs_total ?? 0,
-            formatDate(task.finishedAt),
+            formatDate(task.finished_at),
             retryTaskButton(task),
         ]);
     }
@@ -383,11 +383,11 @@ function bootDatasetsDashboard() {
     function renderDocuments(documents) {
         setText(els.documentCount, `${documents.length} document${documents.length === 1 ? '' : 's'} shown`);
         renderTable(els.documents, ['Document', 'Status', 'Evidence', 'Source', 'Updated', 'Action'], documents, (document) => [
-            document.title || document.originalFilename || document.id,
+            document.title || document.original_filename || document.id,
             statusPill(document.status),
             evidencePills(document),
-            document.sourceUrl,
-            formatDate(document.updatedAt || document.createdAt),
+            document.source_url,
+            formatDate(document.updated_at || document.created_at),
             openDocumentButton(document),
         ], 'No documents found for this dataset.');
     }
@@ -395,14 +395,14 @@ function bootDatasetsDashboard() {
     function renderDocument(doc) {
         state.selectedDocumentId = doc.id;
         localStorage.setItem('hawkiDatasetsDashboardDocumentId', doc.id);
-        setText(els.documentUpdated, `Updated ${formatDate(doc.updatedAt || new Date().toISOString())}`);
+        setText(els.documentUpdated, `Updated ${formatDate(doc.updated_at || new Date().toISOString())}`);
         els.documentState.className = `status-pill ${statusClass(doc.status)}`;
         renderStatusIndicator(els.documentState, doc.status);
 
         renderDocumentInfo(doc);
         renderDocumentMetrics(doc);
         renderMarkdown(doc);
-        renderRelatedJobs(doc.relatedJobs || []);
+        renderRelatedJobs(doc.related_jobs || []);
         setText(els.documentMetadata, JSON.stringify(doc.metadata || {}, null, 2));
         renderDocuments(state.documents);
         syncUrl();
@@ -412,12 +412,12 @@ function bootDatasetsDashboard() {
         els.documentInfo.innerHTML = '';
 
         [
-            ['Document', doc.title || doc.originalFilename || doc.id],
-            ['Dataset ID', makeLink(`/datasets?dataset_id=${encodeURIComponent(doc.datasetId || '')}`, doc.datasetId)],
+            ['Document', doc.title || doc.original_filename || doc.id],
+            ['Dataset ID', makeLink(`/datasets?dataset_id=${encodeURIComponent(doc.dataset_id || '')}`, doc.dataset_id)],
             ['Status', statusPill(doc.status)],
-            ['Source URL', doc.sourceUrl],
-            ['Content type', doc.contentType],
-            ['Ingested at', formatDate(doc.ingestedAt)],
+            ['Source URL', doc.source_url],
+            ['Content type', doc.content_type],
+            ['Ingested at', formatDate(doc.ingested_at)],
         ].forEach(([label, value]) => {
             const wrapper = document.createElement('div');
             const term = document.createElement('dt');
@@ -436,10 +436,10 @@ function bootDatasetsDashboard() {
     function renderDocumentMetrics(doc) {
         els.documentMetrics.innerHTML = '';
         [
-            ['Qdrant points', doc.qdrantPointCount ?? '-', doc.qdrantCollection || doc.collection],
-            ['Neo4j entities', doc.neo4jEntityCount ?? '-', doc.neo4jNamespace || doc.neo4jStatus],
-            ['Neo4j relations', doc.neo4jRelationCount ?? '-', doc.neo4jNamespace || doc.neo4jStatus],
-            ['File size', doc.fileSize ? `${doc.fileSize} bytes` : '-', doc.contentType],
+            ['Qdrant points', doc.qdrant_point_count ?? '-', doc.qdrant_collection || doc.collection],
+            ['Neo4j entities', doc.neo4j_entity_count ?? '-', doc.neo4j_namespace || doc.neo4j_status],
+            ['Neo4j relations', doc.neo4j_relation_count ?? '-', doc.neo4j_namespace || doc.neo4j_status],
+            ['File size', doc.file_size ? `${doc.file_size} bytes` : '-', doc.content_type],
         ].forEach(([label, value, caption]) => {
             const item = document.createElement('div');
             item.className = 'metric-item';
@@ -455,32 +455,32 @@ function bootDatasetsDashboard() {
     }
 
     function renderMarkdown(doc) {
-        const preview = doc.markdownPreview || '';
+        const preview = doc.markdown_preview || '';
         if (preview) {
             setText(els.documentMarkdownPreview, preview);
             setText(
                 els.documentPreviewNote,
-                doc.markdownPreviewTruncated
-                    ? `Preview is truncated from ${doc.markdownPreviewPath || doc.localPath}.`
-                    : `Preview from ${doc.markdownPreviewPath || doc.localPath}.`,
+                doc.markdown_preview_truncated
+                    ? `Preview is truncated from ${doc.markdown_preview_path || doc.local_path}.`
+                    : `Preview from ${doc.markdown_preview_path || doc.local_path}.`,
             );
             els.documentMarkdownPreview.dataset.empty = 'false';
             return;
         }
 
-        setText(els.documentMarkdownPreview, doc.markdownPreviewError || 'No extracted Markdown preview is available.');
-        setText(els.documentPreviewNote, doc.markdownPreviewError || 'Preview reads the recorded local path.');
+        setText(els.documentMarkdownPreview, doc.markdown_preview_error || 'No extracted Markdown preview is available.');
+        setText(els.documentPreviewNote, doc.markdown_preview_error || 'Preview reads the recorded local path.');
         els.documentMarkdownPreview.dataset.empty = 'true';
     }
 
     function renderRelatedJobs(jobs) {
         setText(els.documentJobsCount, `${jobs.length} job${jobs.length === 1 ? '' : 's'} shown`);
         renderTable(els.documentRelatedJobs, ['Job', 'Type', 'Status', 'Finished', 'Error', 'Action'], jobs, (job) => [
-            job.jobId,
-            job.jobType,
+            job.job_id,
+            job.job_type,
             statusPill(job.status),
-            formatDate(job.finishedAt),
-            job.errorMessage,
+            formatDate(job.finished_at),
+            job.error_message,
             retryJobButton(job),
         ]);
     }
@@ -488,10 +488,10 @@ function bootDatasetsDashboard() {
     function renderIngestionHistory(history) {
         setText(els.ingestionCount, `${history.length} ingestion job${history.length === 1 ? '' : 's'} shown`);
         renderTable(els.ingestionHistory, ['Job', 'Status', 'Finished', 'Error', 'Action'], history, (job) => [
-            job.jobId,
+            job.job_id,
             statusPill(job.status),
-            formatDate(job.finishedAt),
-            job.errorMessage,
+            formatDate(job.finished_at),
+            job.error_message,
             retryJobButton(job),
         ]);
     }
@@ -549,7 +549,7 @@ function bootDatasetsDashboard() {
     function lastIngestionLabel(lastIngestion) {
         if (!lastIngestion) return '';
 
-        return `${lastIngestion.status || 'ingested'} ${formatDate(lastIngestion.finishedAt)}`;
+        return `${lastIngestion.status || 'ingested'} ${formatDate(lastIngestion.finished_at)}`;
     }
 
     function setDocumentsLoading() {
@@ -567,8 +567,8 @@ function bootDatasetsDashboard() {
 
         try {
             const data = await requestJson(`documents/data/${encodeURIComponent(state.selectedDocumentId)}`);
-            if (data.document?.datasetId) {
-                state.selectedDatasetId = data.document.datasetId;
+            if (data.document?.dataset_id) {
+                state.selectedDatasetId = data.document.dataset_id;
                 localStorage.setItem('hawkiDatasetsDashboardDatasetId', state.selectedDatasetId);
             }
         } catch {
@@ -582,8 +582,8 @@ function bootDatasetsDashboard() {
         if (requestId !== state.requestId) return;
 
         state.datasets = Array.isArray(data.datasets) ? data.datasets : [];
-        if (!keepSelection || !state.datasets.some((dataset) => dataset.datasetId === state.selectedDatasetId)) {
-            state.selectedDatasetId = state.datasets[0]?.datasetId || '';
+        if (!keepSelection || !state.datasets.some((dataset) => dataset.dataset_id === state.selectedDatasetId)) {
+            state.selectedDatasetId = state.datasets[0]?.dataset_id || '';
             state.selectedDocumentId = '';
         }
 
@@ -665,8 +665,8 @@ function bootDatasetsDashboard() {
         setStatus(`Loading document ${documentId}...`);
 
         const data = await requestJson(`documents/data/${encodeURIComponent(documentId)}`);
-        if (data.document?.datasetId && data.document.datasetId !== state.selectedDatasetId) {
-            state.selectedDatasetId = data.document.datasetId;
+        if (data.document?.dataset_id && data.document.dataset_id !== state.selectedDatasetId) {
+            state.selectedDatasetId = data.document.dataset_id;
             localStorage.setItem('hawkiDatasetsDashboardDatasetId', state.selectedDatasetId);
         }
 
@@ -694,20 +694,20 @@ function bootDatasetsDashboard() {
     }
 
     async function deleteDatasetStorage(dataset) {
-        const qdrant = dataset.qdrantCollection || 'the linked Qdrant collection';
-        const neo4j = dataset.neo4jNamespace || 'the linked Neo4j namespace';
+        const qdrant = dataset.qdrant_collection || 'the linked Qdrant collection';
+        const neo4j = dataset.neo4j_namespace || 'the linked Neo4j namespace';
         const confirmed = window.confirm(
-            `Delete dataset ${dataset.datasetId}?\n\nThis deletes Qdrant collection "${qdrant}", Neo4j graph data for "${neo4j}", and removes the dataset from this browser. Historical task and document records stay in the database.`,
+            `Delete dataset ${dataset.dataset_id}?\n\nThis deletes Qdrant collection "${qdrant}", Neo4j graph data for "${neo4j}", and removes the dataset from this browser. Historical task and document records stay in the database.`,
         );
         if (!confirmed) return;
 
-        setStatus(`Deleting dataset ${dataset.datasetId}...`);
-        const data = await requestJson(`datasets/data/${encodeURIComponent(dataset.datasetId)}/storage`, { method: 'DELETE' });
+        setStatus(`Deleting dataset ${dataset.dataset_id}...`);
+        const data = await requestJson(`datasets/data/${encodeURIComponent(dataset.dataset_id)}/storage`, { method: 'DELETE' });
         const qdrantMessage = data.cleanup?.qdrant?.message || 'Qdrant cleanup finished.';
         const neo4jNodes = data.cleanup?.neo4j?.nodes ?? 0;
         const neo4jRelationships = data.cleanup?.neo4j?.relationships ?? 0;
 
-        if (dataset.datasetId === state.selectedDatasetId) {
+        if (dataset.dataset_id === state.selectedDatasetId) {
             state.selectedDatasetId = '';
             state.selectedDocumentId = '';
             localStorage.removeItem('hawkiDatasetsDashboardDatasetId');
@@ -715,7 +715,7 @@ function bootDatasetsDashboard() {
         }
 
         await loadDatasets({ keepSelection: false });
-        setStatus(`Deleted ${dataset.datasetId}. ${qdrantMessage} Neo4j deleted ${neo4jNodes} nodes and ${neo4jRelationships} relationships.`, 'success');
+        setStatus(`Deleted ${dataset.dataset_id}. ${qdrantMessage} Neo4j deleted ${neo4jNodes} nodes and ${neo4jRelationships} relationships.`, 'success');
     }
 
     function clearDocumentDetail() {

@@ -5,23 +5,35 @@ declare(strict_types=1);
 namespace App\Services\Assistant\Repositories;
 
 use App\Models\AssistantDocument;
+use App\Services\Document\Repositories\ManagedDocumentRepository;
 use Illuminate\Container\Attributes\Singleton;
-use Illuminate\Support\Str;
+use Illuminate\Support\Collection;
 
 #[Singleton]
 readonly class AssistantDocumentRepository
 {
+    public function __construct(
+        private ManagedDocumentRepository $documents,
+    ) {
+    }
+
     public function nextAssistantDocumentId(): string
     {
-        return 'adoc_'.Str::lower((string) Str::ulid());
+        return $this->documents->nextManagedDocumentId();
     }
 
     public function find(string $assistantDocumentId): ?AssistantDocument
     {
-        return AssistantDocument::query()
-            ->with(['outputs' => fn ($query) => $query->orderByDesc('active')->orderBy('id')])
-            ->where('assistant_document_id', $assistantDocumentId)
-            ->first();
+        return $this->documents->find($assistantDocumentId);
+    }
+
+    /**
+     * @param array<string, mixed> $filters
+     * @return Collection<int, AssistantDocument>
+     */
+    public function list(array $filters, int $limit): Collection
+    {
+        return $this->documents->list($filters, $limit);
     }
 
     /**
@@ -29,7 +41,7 @@ readonly class AssistantDocumentRepository
      */
     public function create(array $attributes): AssistantDocument
     {
-        return AssistantDocument::query()->create($attributes)->refresh();
+        return $this->documents->create($attributes);
     }
 
     /**
@@ -37,8 +49,6 @@ readonly class AssistantDocumentRepository
      */
     public function save(AssistantDocument $document, array $attributes): AssistantDocument
     {
-        $document->forceFill($attributes)->save();
-
-        return $this->find($document->assistant_document_id) ?? $document->refresh();
+        return $this->documents->save($document, $attributes);
     }
 }

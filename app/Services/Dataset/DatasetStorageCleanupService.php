@@ -27,7 +27,7 @@ readonly class DatasetStorageCleanupService
     public function deleteStorage(Dataset $dataset): array
     {
         return [
-            'datasetId' => $dataset->dataset_id,
+            'dataset_id' => $dataset->dataset_id,
             'qdrant' => $this->deleteQdrantCollection($dataset),
             'neo4j' => $this->deleteNeo4jData($dataset),
         ];
@@ -182,7 +182,7 @@ CYPHER,
             return [
                 'ok' => true,
                 'namespace' => $dataset->neo4j_namespace,
-                'documentJobIds' => count($documentJobIds),
+                'document_job_ids' => count($documentJobIds),
                 'relationships' => (int) ($payload['results'][0]['data'][0]['row'][0] ?? 0)
                     + (int) ($payload['results'][1]['data'][0]['row'][1] ?? 0),
                 'nodes' => (int) ($payload['results'][1]['data'][0]['row'][0] ?? 0)
@@ -192,7 +192,7 @@ CYPHER,
             return [
                 'ok' => false,
                 'namespace' => $dataset->neo4j_namespace,
-                'documentJobIds' => count($documentJobIds),
+                'document_job_ids' => count($documentJobIds),
                 'nodes' => null,
                 'relationships' => null,
                 'error' => $exception->getMessage(),

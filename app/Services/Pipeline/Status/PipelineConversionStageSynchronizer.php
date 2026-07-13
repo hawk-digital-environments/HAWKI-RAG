@@ -20,19 +20,19 @@ readonly class PipelineConversionStageSynchronizer
     public function sync(string $jobId, array $stage): void
     {
         $payload = [
-            'dataset_path' => $stage['datasetPath'] ?? null,
+            'dataset_path' => $stage['dataset_path'] ?? $stage['datasetPath'] ?? null,
             'counts' => [
-                'total' => (int) ($stage['counts']['sourceFiles'] ?? 0),
-                'sourceFiles' => (int) ($stage['counts']['sourceFiles'] ?? 0),
-                'processed' => (int) ($stage['counts']['convertedFiles'] ?? 0),
-                'convertedFiles' => (int) ($stage['counts']['convertedFiles'] ?? 0),
-                'failed' => (int) ($stage['counts']['failedFiles'] ?? 0),
-                'failedFiles' => (int) ($stage['counts']['failedFiles'] ?? 0),
+                'total' => (int) ($stage['counts']['source_files'] ?? $stage['counts']['sourceFiles'] ?? 0),
+                'source_files' => (int) ($stage['counts']['source_files'] ?? $stage['counts']['sourceFiles'] ?? 0),
+                'processed' => (int) ($stage['counts']['converted_files'] ?? $stage['counts']['convertedFiles'] ?? 0),
+                'converted_files' => (int) ($stage['counts']['converted_files'] ?? $stage['counts']['convertedFiles'] ?? 0),
+                'failed' => (int) ($stage['counts']['failed_files'] ?? $stage['counts']['failedFiles'] ?? 0),
+                'failed_files' => (int) ($stage['counts']['failed_files'] ?? $stage['counts']['failedFiles'] ?? 0),
             ],
             'errors' => $stage['errors'] ?? [],
-            'max_retries' => (int) ($stage['retry']['maxRetries'] ?? 0),
+            'max_retries' => (int) ($stage['retry']['max_retries'] ?? $stage['retry']['maxRetries'] ?? 0),
             'metadata' => [
-                'supportedExtensions' => $stage['supportedExtensions'] ?? [],
+                'supported_extensions' => $stage['supported_extensions'] ?? $stage['supportedExtensions'] ?? [],
                 'source' => 'pipeline-status-reconcile',
             ],
         ];
@@ -48,11 +48,11 @@ readonly class PipelineConversionStageSynchronizer
             default => null,
         };
 
-        $resolvedDatasetPath = (string) ($stage['datasetPath'] ?? '');
+        $resolvedDatasetPath = (string) ($stage['dataset_path'] ?? $stage['datasetPath'] ?? '');
         if ($status === 'skipped'
             && ! $this->pipelineState->isStageClaimedOrDone($jobId, PipelineStateService::STAGE_INGEST)) {
             $this->pipelineState->skipStage($jobId, PipelineStateService::STAGE_INGEST, [
-                'dataset_path' => $resolvedDatasetPath !== '' ? $resolvedDatasetPath : ($stage['datasetPath'] ?? null),
+                'dataset_path' => $resolvedDatasetPath !== '' ? $resolvedDatasetPath : ($stage['dataset_path'] ?? $stage['datasetPath'] ?? null),
                 'counts' => [],
                 'metadata' => [
                     'reason' => 'Conversion skipped because no supported source files were found.',

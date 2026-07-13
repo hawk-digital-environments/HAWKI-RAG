@@ -3,6 +3,8 @@ declare(strict_types=1);
 
 namespace App\Services\Pipeline\Values;
 
+use App\Services\Document\Values\ManagedDocumentId;
+
 readonly class PipelineUploadInput
 {
     private function __construct(
@@ -81,6 +83,10 @@ readonly class PipelineUploadInput
      */
     private static function requestMetadata(mixed $value): array
     {
-        return is_array($value) ? $value : [];
+        if (! is_array($value)) {
+            return [];
+        }
+
+        return ManagedDocumentId::normalizeRequestMetadata($value);
     }
 }

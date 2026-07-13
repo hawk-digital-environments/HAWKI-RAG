@@ -18,13 +18,13 @@ readonly class PipelineStageEmptyResponseFactory
         return array_merge([
             'status' => $status,
             'message' => $message,
-            'startedAt' => null,
-            'completedAt' => null,
+            'started_at' => null,
+            'completed_at' => null,
             'counts' => [],
             'errors' => [],
             'retry' => [
-                'retryCount' => null,
-                'maxRetries' => null,
+                'retry_count' => null,
+                'max_retries' => null,
             ],
         ], $extra);
     }

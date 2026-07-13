@@ -30,18 +30,21 @@ readonly class PipelineStatusService
     {
         $tracked = $this->pipelineState->status($jobId);
         $scrape = $this->scrapeStatuses->stage($jobId);
-        $datasetPath = $tracked['datasetPath'] ?? $scrape['datasetPath'] ?? null;
+        $datasetPath = $tracked['dataset_path'] ?? $tracked['datasetPath'] ?? $scrape['dataset_path'] ?? $scrape['datasetPath'] ?? null;
         $convert = $this->convertStage($jobId, $datasetPath);
         $ingest = $this->ingestStatuses->stage($jobId, $datasetPath);
         $tracked = $this->pipelineState->status($jobId);
 
         return [
             'success' => true,
-            'jobId' => $jobId,
-            'datasetPath' => $datasetPath,
-            'currentStage' => $tracked['currentStage'] ?? $this->stageMerger->currentStage($scrape, $convert, $ingest),
+            'job_id' => $jobId,
+            'dataset_path' => $datasetPath,
+            'current_stage' => $tracked['current_stage'] ?? $tracked['currentStage'] ?? $this->stageMerger->currentStage($scrape, $convert, $ingest),
             'status' => $tracked['status'] ?? $this->stageMerger->overallStatus($scrape, $convert, $ingest),
-            'documentCounts' => $tracked['documentCounts'] ?? null,
+            'document_counts' => $tracked['document_counts'] ?? $tracked['documentCounts'] ?? null,
+            'managed_documents' => is_array($tracked['managed_documents'] ?? null) ? $tracked['managed_documents'] : [],
+            'managed_document_count' => (int) ($tracked['managed_document_count'] ?? 0),
+            'source' => is_array($tracked['source'] ?? null) ? $tracked['source'] : null,
             'stages' => [
                 'scrape' => $this->stageMerger->mergeTrackedStage($scrape, $tracked['stages']['scrape'] ?? null),
                 'convert' => $this->stageMerger->mergeTrackedStage($convert, $tracked['stages']['convert'] ?? null),
@@ -49,11 +52,14 @@ readonly class PipelineStatusService
             ],
             'tracked' => [
                 'found' => $tracked !== null,
-                'startedAt' => $tracked['startedAt'] ?? null,
-                'completedAt' => $tracked['completedAt'] ?? null,
+                'started_at' => $tracked['started_at'] ?? $tracked['startedAt'] ?? null,
+                'completed_at' => $tracked['completed_at'] ?? $tracked['completedAt'] ?? null,
                 'metadata' => $tracked['metadata'] ?? [],
+                'managed_documents' => is_array($tracked['managed_documents'] ?? null) ? $tracked['managed_documents'] : [],
+                'managed_document_count' => (int) ($tracked['managed_document_count'] ?? 0),
+                'source' => is_array($tracked['source'] ?? null) ? $tracked['source'] : null,
             ],
-            'updatedAt' => $this->clock->now()->format(\DateTimeInterface::ATOM),
+            'updated_at' => $this->clock->now()->format(\DateTimeInterface::ATOM),
         ];
     }
 

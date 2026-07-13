@@ -108,7 +108,7 @@ class IngestSourceWorkflowPayloadFactoryTest extends TestCase
                     'request' => [
                         'metadata' => [
                             'graph' => false,
-                            'assistant_document_id' => 'adoc-upload-1',
+                            'document_id' => 'adoc-upload-1',
                         ],
                     ],
                     'upload' => [
@@ -122,9 +122,52 @@ class IngestSourceWorkflowPayloadFactoryTest extends TestCase
 
         $this->assertSame('/shared/task/sample-upload.pdf', $payload['upload']['local_path']);
         $this->assertSame('sample-upload.pdf', $payload['upload']['target_name']);
+        $this->assertSame('adoc-upload-1', $payload['document_id']);
         $this->assertSame('adoc-upload-1', $payload['assistant_document_id']);
         $this->assertSame('native', $payload['converter_mode']);
         $this->assertFalse($payload['ingestion']['graph']);
+        $this->assertSame('adoc-upload-1', $payload['metadata']['request']['metadata']['document_id']);
+        $this->assertSame('adoc-upload-1', $payload['metadata']['request']['metadata']['assistant_document_id']);
+    }
+
+    public function test_it_normalizes_legacy_assistant_document_id_into_canonical_workflow_metadata(): void
+    {
+        config()->set('temporal.storage.mode', 'shared');
+        config()->set('temporal.storage.shared_root', '/shared');
+
+        $factory = app(IngestSourceWorkflowPayloadFactory::class);
+        $sourceId = $factory->sourceId('dataset-upload', 'upload://sample.pdf|hash');
+        $paths = $factory->storagePaths($sourceId);
+
+        $payload = $factory->input(
+            new PipelineTask([
+                'task_id' => 'task-upload',
+                'dataset_id' => 'dataset-upload',
+            ]),
+            new PipelineJob([
+                'job_id' => 'ingest-upload',
+                'job_type' => PipelineJob::TYPE_INGEST,
+            ]),
+            new IngestionSource([
+                'source_id' => $sourceId,
+                'source_url' => 'upload://sample.pdf',
+                'content_hash' => 'hash',
+                'raw_storage_path' => $paths['raw'],
+                'markdown_storage_path' => $paths['markdown'],
+                'metadata' => [
+                    'request' => [
+                        'metadata' => [
+                            'assistant_document_id' => 'adoc-upload-legacy-1',
+                        ],
+                    ],
+                ],
+            ]),
+        );
+
+        $this->assertSame('adoc-upload-legacy-1', $payload['document_id']);
+        $this->assertSame('adoc-upload-legacy-1', $payload['assistant_document_id']);
+        $this->assertSame('adoc-upload-legacy-1', $payload['metadata']['request']['metadata']['document_id']);
+        $this->assertSame('adoc-upload-legacy-1', $payload['metadata']['request']['metadata']['assistant_document_id']);
     }
 
     public function test_it_includes_custom_converter_profile_path_without_secret_material(): void

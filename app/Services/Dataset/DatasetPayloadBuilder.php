@@ -28,23 +28,23 @@ readonly class DatasetPayloadBuilder
         $stats = $this->stats($dataset);
         $payload = [
             'id' => $dataset->id,
-            'datasetId' => $dataset->dataset_id,
+            'dataset_id' => $dataset->dataset_id,
             'name' => $dataset->name,
             'description' => $dataset->description,
             'status' => $dataset->status,
-            'qdrantCollection' => $dataset->qdrant_collection,
-            'neo4jNamespace' => $dataset->neo4j_namespace,
-            'createdAt' => $dataset->created_at?->format(DATE_ATOM),
-            'documentCount' => $stats['documents'],
-            'taskCount' => $stats['tasks'],
-            'lastIngestion' => $stats['lastIngestion'],
-            'graphStats' => $stats['graph'],
+            'qdrant_collection' => $dataset->qdrant_collection,
+            'neo4j_namespace' => $dataset->neo4j_namespace,
+            'created_at' => $dataset->created_at?->format(DATE_ATOM),
+            'document_count' => $stats['documents'],
+            'task_count' => $stats['tasks'],
+            'last_ingestion' => $stats['last_ingestion'],
+            'graph_stats' => $stats['graph'],
         ];
 
         if ($includeDetails) {
             $payload['tasks'] = $this->tasks($dataset);
             $payload['documents'] = $this->documents($dataset);
-            $payload['ingestionHistory'] = $this->ingestionHistory($dataset);
+            $payload['ingestion_history'] = $this->ingestionHistory($dataset);
         }
 
         return $payload;
@@ -58,7 +58,7 @@ readonly class DatasetPayloadBuilder
         return [
             'documents' => $this->datasets->documentCount($dataset),
             'tasks' => $this->datasets->taskCount($dataset),
-            'lastIngestion' => $this->lastIngestion($dataset),
+            'last_ingestion' => $this->lastIngestion($dataset),
             'graph' => [
                 'qdrant' => $this->vectorStats->stats($dataset),
                 'neo4j' => $this->graphStats->stats($dataset),
@@ -73,12 +73,12 @@ readonly class DatasetPayloadBuilder
     {
         return $this->datasets->recentTasks($dataset)
             ->map(fn (PipelineTask $task): array => [
-                'taskId' => $task->task_id,
-                'datasetId' => $task->dataset_id,
+                'task_id' => $task->task_id,
+                'dataset_id' => $task->dataset_id,
                 'status' => $task->status,
                 'counters' => $task->counters ?? [],
-                'startedAt' => $task->started_at?->format(DATE_ATOM),
-                'finishedAt' => $task->finished_at?->format(DATE_ATOM),
+                'started_at' => $task->started_at?->format(DATE_ATOM),
+                'finished_at' => $task->finished_at?->format(DATE_ATOM),
             ])
             ->all();
     }
@@ -91,17 +91,17 @@ readonly class DatasetPayloadBuilder
         return $this->datasets->recentDocuments($dataset)
             ->map(fn (Document $document): array => [
                 'id' => $document->id,
-                'datasetId' => $document->dataset_id,
+                'dataset_id' => $document->dataset_id,
                 'collection' => $document->collection,
-                'sourceType' => $document->source_type,
-                'sourceUrl' => $document->source_url,
-                'originalFilename' => $document->original_filename,
-                'storagePath' => $document->storage_path,
-                'checksumSha256' => $document->checksum_sha256,
+                'source_type' => $document->source_type,
+                'source_url' => $document->source_url,
+                'original_filename' => $document->original_filename,
+                'storage_path' => $document->storage_path,
+                'checksum_sha256' => $document->checksum_sha256,
                 'title' => $document->title,
                 'status' => $document->status,
-                'createdAt' => $document->created_at?->format(DATE_ATOM),
-                'updatedAt' => $document->updated_at?->format(DATE_ATOM),
+                'created_at' => $document->created_at?->format(DATE_ATOM),
+                'updated_at' => $document->updated_at?->format(DATE_ATOM),
             ])
             ->all();
     }
@@ -113,14 +113,14 @@ readonly class DatasetPayloadBuilder
     {
         return $this->datasets->recentIngestionJobs($dataset)
             ->map(fn (PipelineJob $job): array => [
-                'jobId' => $job->job_id,
-                'taskId' => $job->task_id,
+                'job_id' => $job->job_id,
+                'task_id' => $job->task_id,
                 'status' => $job->status,
-                'sourceUrl' => $job->source_url,
-                'localPath' => $job->local_path,
-                'errorMessage' => $job->error_message,
-                'startedAt' => $job->started_at?->format(DATE_ATOM),
-                'finishedAt' => $job->finished_at?->format(DATE_ATOM),
+                'source_url' => $job->source_url,
+                'local_path' => $job->local_path,
+                'error_message' => $job->error_message,
+                'started_at' => $job->started_at?->format(DATE_ATOM),
+                'finished_at' => $job->finished_at?->format(DATE_ATOM),
             ])
             ->all();
     }
@@ -137,10 +137,10 @@ readonly class DatasetPayloadBuilder
         }
 
         return [
-            'jobId' => $job->job_id,
-            'taskId' => $job->task_id,
+            'job_id' => $job->job_id,
+            'task_id' => $job->task_id,
             'status' => $job->status,
-            'finishedAt' => $job->finished_at?->format(DATE_ATOM),
+            'finished_at' => $job->finished_at?->format(DATE_ATOM),
         ];
     }
 }

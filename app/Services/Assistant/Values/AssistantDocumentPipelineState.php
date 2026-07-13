@@ -30,9 +30,9 @@ readonly class AssistantDocumentPipelineState
         $indexStatus = $source?->index_status;
 
         return new self(
-            self::stringValue($uploadPayload['sourceId'] ?? null),
-            self::stringValue($uploadPayload['taskId'] ?? null),
-            self::stringValue($uploadPayload['jobId'] ?? null),
+            self::stringValue($uploadPayload['source_id'] ?? $uploadPayload['sourceId'] ?? null),
+            self::stringValue($uploadPayload['task_id'] ?? $uploadPayload['taskId'] ?? null),
+            self::stringValue($uploadPayload['job_id'] ?? $uploadPayload['jobId'] ?? null),
             self::stringValue($source?->document_version),
             self::stringValue($source?->content_hash),
             match ($indexStatus) {

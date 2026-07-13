@@ -67,8 +67,8 @@ class PipelineStateRepositoryTest extends TestCase
 
         $running = $state->status('state-service-job');
         $this->assertSame(PipelineJob::STATUS_RUNNING, $running['status']);
-        $this->assertSame(PipelineStateService::STAGE_SCRAPE, $running['currentStage']);
-        $this->assertSame(2, $running['documentCounts']['total']);
+        $this->assertSame(PipelineStateService::STAGE_SCRAPE, $running['current_stage']);
+        $this->assertSame(2, $running['document_counts']['total']);
         $this->assertSame(PipelineJob::STATUS_RUNNING, $running['stages'][PipelineStateService::STAGE_SCRAPE]['status']);
 
         $state->completeStage('state-service-job', PipelineStateService::STAGE_SCRAPE, [
@@ -80,7 +80,7 @@ class PipelineStateRepositoryTest extends TestCase
 
         $completed = $state->status('state-service-job');
         $this->assertSame(PipelineJob::STATUS_PARTIAL, $completed['status']);
-        $this->assertSame(2, $completed['documentCounts']['processed']);
+        $this->assertSame(2, $completed['document_counts']['processed']);
         $this->assertSame(PipelineJob::STATUS_COMPLETED, $completed['stages'][PipelineStateService::STAGE_SCRAPE]['status']);
         $this->assertTrue($state->isStageCompleted('state-service-job', PipelineStateService::STAGE_SCRAPE));
     }
@@ -107,8 +107,8 @@ class PipelineStateRepositoryTest extends TestCase
         $this->assertSame(3, $stage->counts['skipped']);
 
         $status = $state->status('state-count-job');
-        $this->assertSame(3, $status['documentCounts']['processed']);
-        $this->assertSame(3, $status['documentCounts']['skipped']);
+        $this->assertSame(3, $status['document_counts']['processed']);
+        $this->assertSame(3, $status['document_counts']['skipped']);
     }
 
     public function test_state_service_claims_stages_with_required_completed_stages(): void

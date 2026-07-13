@@ -92,7 +92,7 @@ readonly class DatasetService
 
         return [
             ...$cleanup,
-            'datasetDeleted' => $cleanupOk ? $this->datasets->delete($dataset) : false,
+            'dataset_deleted' => $cleanupOk ? $this->datasets->delete($dataset) : false,
         ];
     }
 }

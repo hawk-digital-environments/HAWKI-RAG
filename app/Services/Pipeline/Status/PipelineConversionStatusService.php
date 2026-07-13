@@ -32,7 +32,7 @@ readonly class PipelineConversionStatusService
         $resolvedPath = realpath($datasetPath);
         if ($resolvedPath === false || ! $this->files->isDirectory($resolvedPath)) {
             return $this->emptyStages->stage('unknown', 'Dataset path does not exist yet.', [
-                'datasetPath' => $datasetPath,
+                'dataset_path' => $datasetPath,
             ]);
         }
 
@@ -40,19 +40,19 @@ readonly class PipelineConversionStatusService
 
         return [
             'status' => $this->convertStatus($scan['sourceCount'], $scan['convertedCount'], $scan['failedCount']),
-            'datasetPath' => $resolvedPath,
-            'startedAt' => $scan['convertedAt'] === [] ? null : min($scan['convertedAt']),
-            'completedAt' => $scan['convertedAt'] === [] ? null : max($scan['convertedAt']),
+            'dataset_path' => $resolvedPath,
+            'started_at' => $scan['convertedAt'] === [] ? null : min($scan['convertedAt']),
+            'completed_at' => $scan['convertedAt'] === [] ? null : max($scan['convertedAt']),
             'counts' => [
-                'sourceFiles' => $scan['sourceCount'],
-                'convertedFiles' => $scan['convertedCount'],
-                'failedFiles' => $scan['failedCount'],
+                'source_files' => $scan['sourceCount'],
+                'converted_files' => $scan['convertedCount'],
+                'failed_files' => $scan['failedCount'],
             ],
-            'supportedExtensions' => $scan['supportedExtensions'],
+            'supported_extensions' => $scan['supportedExtensions'],
             'errors' => $scan['failures'],
             'retry' => [
-                'retryCount' => null,
-                'maxRetries' => $this->converterRetries,
+                'retry_count' => null,
+                'max_retries' => $this->converterRetries,
             ],
         ];
     }

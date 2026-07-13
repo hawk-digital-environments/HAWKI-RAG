@@ -33,7 +33,7 @@ class PipelineTaskController extends Controller
 
         return response()->json([
             'success' => true,
-            'taskId' => $task->task_id,
+            'task_id' => $task->task_id,
             'task' => $payload,
         ], 201);
     }
@@ -58,7 +58,7 @@ class PipelineTaskController extends Controller
     {
         return response()->json([
             'success' => true,
-            'taskId' => $taskId,
+            'task_id' => $taskId,
             'jobs' => $this->pipeline->tasks->jobs($taskId),
         ]);
     }
@@ -67,7 +67,7 @@ class PipelineTaskController extends Controller
     {
         return response()->json([
             'success' => true,
-            'taskId' => $taskId,
+            'task_id' => $taskId,
             'jobs' => $this->pipeline->tasks->failedJobs($taskId),
         ]);
     }
@@ -76,7 +76,7 @@ class PipelineTaskController extends Controller
     {
         return response()->json([
             'success' => true,
-            'taskId' => $taskId,
+            'task_id' => $taskId,
             'events' => $this->pipeline->tasks->recentEvents($taskId, $request->limit(), $request->filters()),
             'filters' => $this->pipeline->tasks->eventFilters($taskId),
         ]);
@@ -101,7 +101,7 @@ class PipelineTaskController extends Controller
 
         return response()->json([
             'success' => true,
-            'taskId' => $taskId,
+            'task_id' => $taskId,
             'log' => $log,
         ]);
     }
@@ -133,8 +133,8 @@ class PipelineTaskController extends Controller
 
         return response()->json([
             'success' => true,
-            'taskId' => $taskId,
-            'jobId' => $job->job_id,
+            'task_id' => $taskId,
+            'job_id' => $job->job_id,
             'job' => $job->fresh(),
         ]);
     }
@@ -168,15 +168,15 @@ class PipelineTaskController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => "Pipeline task {$taskId} storage cleanup failed; task history was not deleted.",
-                'storageCleanup' => $result['storageCleanup'] ?? null,
+                'storage_cleanup' => $result['storageCleanup'] ?? null,
             ], 500);
         }
 
         return response()->json([
             'success' => true,
-            'taskId' => $taskId,
+            'task_id' => $taskId,
             'deleted' => true,
-            'storageCleanup' => $result['storageCleanup'] ?? null,
+            'storage_cleanup' => $result['storageCleanup'] ?? null,
         ]);
     }
 
@@ -191,7 +191,7 @@ class PipelineTaskController extends Controller
 
         return response()->json([
             'success' => true,
-            'taskId' => $taskId,
+            'task_id' => $taskId,
             'task' => $this->pipeline->tasks->show($taskId),
         ]);
     }

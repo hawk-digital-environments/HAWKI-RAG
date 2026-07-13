@@ -7,6 +7,7 @@ namespace App\Services\Pipeline\Tasks;
 use App\Models\PipelineJob;
 use App\Models\PipelineStageState;
 use App\Models\PipelineTask;
+use App\Services\Pipeline\PipelineManagedDocumentViewService;
 use Illuminate\Container\Attributes\Singleton;
 use Psr\Clock\ClockInterface;
 use Symfony\Component\Clock\Clock;
@@ -14,8 +15,10 @@ use Symfony\Component\Clock\Clock;
 #[Singleton]
 readonly class PipelineTaskPayloadService
 {
-    public function __construct(private ClockInterface $clock = new Clock())
-    {
+    public function __construct(
+        private PipelineManagedDocumentViewService $documents,
+        private ClockInterface $clock = new Clock(),
+    ) {
     }
 
     /**
@@ -25,10 +28,19 @@ readonly class PipelineTaskPayloadService
     public function detail(PipelineTask $task, int $activeJobs, array $defaultCounters): array
     {
         $jobs = $task->jobs;
+        $managedDocuments = $this->documents->managedDocumentsForTask($task);
+        $sources = $this->documents->sourcesForTask($task);
+        $sourceMap = collect($sources)
+            ->filter(fn (mixed $source): bool => is_array($source) && is_string($source['source_id'] ?? null))
+            ->mapWithKeys(fn (array $source): array => [(string) $source['source_id'] => $source])
+            ->all();
 
         return array_merge($this->summary($task, $activeJobs, $defaultCounters), [
+            'managed_documents' => $managedDocuments,
+            'managed_document_count' => count($managedDocuments),
+            'sources' => $sources,
             'jobs' => $jobs
-                ->map(fn (PipelineJob $job) => $this->job($job))
+                ->map(fn (PipelineJob $job) => $this->job($job, $this->sourceForJob($job, $sourceMap)))
                 ->all(),
             'stages' => $this->stages($task),
         ]);
@@ -41,15 +53,15 @@ readonly class PipelineTaskPayloadService
     public function summary(PipelineTask $task, int $activeJobs, array $defaultCounters): array
     {
         return [
-            'taskId' => $task->task_id,
-            'datasetId' => $task->dataset_id,
+            'task_id' => $task->task_id,
+            'dataset_id' => $task->dataset_id,
             'status' => $task->status,
-            'startedAt' => $this->dateValue($task->started_at),
-            'finishedAt' => $this->dateValue($task->finished_at),
+            'started_at' => $this->dateValue($task->started_at),
+            'finished_at' => $this->dateValue($task->finished_at),
             'counters' => $task->counters ?? $defaultCounters,
             'metadata' => $task->metadata ?? [],
-            'activeJobs' => $activeJobs,
-            'updatedAt' => $this->clock->now()->format(\DateTimeInterface::ATOM),
+            'active_jobs' => $activeJobs,
+            'updated_at' => $this->clock->now()->format(\DateTimeInterface::ATOM),
             'stages' => $this->stages($task),
         ];
     }
@@ -57,26 +69,36 @@ readonly class PipelineTaskPayloadService
     /**
      * @return array<string, mixed>
      */
-    public function job(PipelineJob $job): array
+    public function job(PipelineJob $job, ?array $source = null): array
     {
+        $managedDocuments = $this->documents->managedDocumentsForJob($job);
+
         return [
-            'jobId' => $job->job_id,
-            'taskId' => $job->task_id,
-            'parentJobId' => $job->parent_job_id,
-            'jobType' => $job->job_type,
-            'sourceId' => $job->source_id,
-            'sourceUrl' => $job->source_url,
-            'localPath' => $job->local_path,
-            'contentHash' => $job->content_hash,
-            'temporalWorkflowId' => $job->temporal_workflow_id,
-            'temporalRunId' => $job->temporal_run_id,
-            'temporalScheduleId' => $job->temporal_schedule_id,
-            'indexStatus' => $job->index_status,
+            'job_id' => $job->job_id,
+            'task_id' => $job->task_id,
+            'parent_job_id' => $job->parent_job_id,
+            'job_type' => $job->job_type,
+            'source_id' => $job->source_id,
+            'source_url' => $job->source_url,
+            'local_path' => $job->local_path,
+            'content_hash' => $job->content_hash,
+            'temporal_workflow_id' => $job->temporal_workflow_id,
+            'temporal_run_id' => $job->temporal_run_id,
+            'temporal_schedule_id' => $job->temporal_schedule_id,
+            'index_status' => $job->index_status,
             'status' => $job->status,
-            'errorMessage' => $job->error_message,
-            'startedAt' => $this->dateValue($job->started_at),
-            'finishedAt' => $this->dateValue($job->finished_at),
+            'error_message' => $job->error_message,
+            'started_at' => $this->dateValue($job->started_at),
+            'finished_at' => $this->dateValue($job->finished_at),
             'metadata' => $job->metadata ?? [],
+            'managed_documents' => $managedDocuments,
+            'managed_document_count' => count($managedDocuments),
+            'source' => $source ?? $this->documents->source(
+                is_string($job->source_id) ? $job->source_id : null,
+                $job->source_url,
+                null,
+                $job->task_id,
+            ),
         ];
     }
 
@@ -101,15 +123,15 @@ readonly class PipelineTaskPayloadService
             ->filter(fn (mixed $event): bool => is_array($event))
             ->map(function (array $event) use ($job): array {
                 return [
-                    'eventType' => $this->nullableString($event['event_type'] ?? $event['eventType'] ?? $event['event'] ?? null) ?? 'job.status',
-                    'eventId' => $this->nullableString($event['event_id'] ?? $event['eventId'] ?? null),
-                    'taskId' => $job->task_id,
-                    'jobId' => $job->job_id,
-                    'jobType' => $job->job_type,
+                    'event_type' => $this->nullableString($event['event_type'] ?? $event['eventType'] ?? $event['event'] ?? null) ?? 'job.status',
+                    'event_id' => $this->nullableString($event['event_id'] ?? $event['eventId'] ?? null),
+                    'task_id' => $job->task_id,
+                    'job_id' => $job->job_id,
+                    'job_type' => $job->job_type,
                     'status' => $this->nullableString($event['status'] ?? null) ?? $job->status,
-                    'sourceUrl' => $job->source_url,
-                    'localPath' => $job->local_path,
-                    'errorMessage' => $job->error_message,
+                    'source_url' => $job->source_url,
+                    'local_path' => $job->local_path,
+                    'error_message' => $job->error_message,
                     'at' => $this->nullableString($event['at'] ?? $event['created_at'] ?? $event['createdAt'] ?? null)
                         ?? $this->dateValue($job->updated_at)
                         ?? $this->dateValue($job->started_at),
@@ -122,6 +144,20 @@ readonly class PipelineTaskPayloadService
     private function nullableString(mixed $value): ?string
     {
         return is_scalar($value) && trim((string) $value) !== '' ? trim((string) $value) : null;
+    }
+
+    /**
+     * @param array<string, array<string, mixed>> $sourceMap
+     * @return array<string, mixed>|null
+     */
+    private function sourceForJob(PipelineJob $job, array $sourceMap): ?array
+    {
+        $sourceId = is_string($job->source_id) ? trim($job->source_id) : '';
+        if ($sourceId === '') {
+            return null;
+        }
+
+        return $sourceMap[$sourceId] ?? null;
     }
 
     /**
@@ -180,8 +216,8 @@ readonly class PipelineTaskPayloadService
                     'failed' => $job->error_message ?: ($details['error_details'] ?? 'Conversion failed.'),
                     'queued' => 'Waiting for converter.',
                 ]),
-                'startedAt' => $tracked['convert']['startedAt'] ?? $this->dateValue($job->started_at),
-                'completedAt' => $tracked['convert']['completedAt'] ?? ($convertStatus === PipelineJob::STATUS_COMPLETED ? $this->dateValue($job->updated_at) : null),
+                'started_at' => $tracked['convert']['started_at'] ?? $this->dateValue($job->started_at),
+                'completed_at' => $tracked['convert']['completed_at'] ?? ($convertStatus === PipelineJob::STATUS_COMPLETED ? $this->dateValue($job->updated_at) : null),
                 'counts' => array_merge($this->uploadedConvertCounts($convertStatus, $details), $tracked['convert']['counts'] ?? []),
                 'errors' => $tracked['convert']['errors'] ?? ($convertStatus === PipelineJob::STATUS_FAILED ? array_values(array_filter([
                     $job->error_message ?: ($details['error_details'] ?? null),
@@ -196,10 +232,10 @@ readonly class PipelineTaskPayloadService
                     'completed' => 'Ingestion finished.',
                     'failed' => $job->error_message ?: ($details['error_details'] ?? 'Ingestion failed.'),
                 ]),
-                'startedAt' => $tracked['ingest']['startedAt'] ?? (in_array($ingestStatus, ['processing', 'running', PipelineJob::STATUS_COMPLETED, PipelineJob::STATUS_FAILED], true)
+                'started_at' => $tracked['ingest']['started_at'] ?? (in_array($ingestStatus, ['processing', 'running', PipelineJob::STATUS_COMPLETED, PipelineJob::STATUS_FAILED], true)
                     ? $this->dateValue($job->updated_at)
                     : null),
-                'completedAt' => $tracked['ingest']['completedAt'] ?? ($ingestStatus === PipelineJob::STATUS_COMPLETED ? $this->dateValue($job->finished_at) : null),
+                'completed_at' => $tracked['ingest']['completed_at'] ?? ($ingestStatus === PipelineJob::STATUS_COMPLETED ? $this->dateValue($job->finished_at) : null),
                 'counts' => array_merge($this->uploadedIngestCounts($details), $tracked['ingest']['counts'] ?? []),
                 'errors' => $tracked['ingest']['errors'] ?? ($ingestStatus === PipelineJob::STATUS_FAILED ? array_values(array_filter([
                     $job->error_message ?: ($details['error_details'] ?? null),
@@ -263,8 +299,8 @@ readonly class PipelineTaskPayloadService
         $sourceFiles = max(1, (int) ($details['files_found'] ?? $convertedFiles));
 
         return [
-            'sourceFiles' => $sourceFiles,
-            'convertedFiles' => $convertedFiles,
+            'source_files' => $sourceFiles,
+            'converted_files' => $convertedFiles,
         ];
     }
 
@@ -302,8 +338,8 @@ readonly class PipelineTaskPayloadService
                 return [
                     $stage->stage => [
                         'status' => $this->stageStatus($stage, $counts),
-                        'startedAt' => $this->dateValue($stage->started_at),
-                        'completedAt' => $this->dateValue($stage->completed_at),
+                        'started_at' => $this->dateValue($stage->started_at),
+                        'completed_at' => $this->dateValue($stage->completed_at),
                         'counts' => $counts,
                         'errors' => $this->stageErrors($stage, $counts),
                     ],
@@ -319,33 +355,33 @@ readonly class PipelineTaskPayloadService
     private function stageCounts(string $stage, array $counts, ?int $scrapePageLimit = null): array
     {
         if ($stage === 'scrape') {
-            $pagesCrawled = (int) ($counts['pagesCrawled'] ?? $counts['processed'] ?? $counts['completed'] ?? 0);
+            $pagesCrawled = (int) ($counts['pages_crawled'] ?? $counts['pagesCrawled'] ?? $counts['processed'] ?? $counts['completed'] ?? 0);
             $pageLimit = $this->positiveInt(
-                $counts['pageLimit'] ?? $counts['max_pages'] ?? $counts['maxPages'] ?? null,
+                $counts['page_limit'] ?? $counts['pageLimit'] ?? $counts['max_pages'] ?? $counts['maxPages'] ?? null,
             ) ?? $scrapePageLimit;
             $totalPages = $pageLimit
-                ?? (int) ($counts['totalPages'] ?? $counts['total'] ?? $pagesCrawled);
+                ?? (int) ($counts['total_pages'] ?? $counts['totalPages'] ?? $counts['total'] ?? $pagesCrawled);
 
             $normalized = array_merge($counts, [
-                'pagesCrawled' => $pagesCrawled,
-                'totalPages' => max($pagesCrawled, $totalPages),
+                'pages_crawled' => $pagesCrawled,
+                'total_pages' => max($pagesCrawled, $totalPages),
             ]);
 
             if ($pageLimit !== null) {
-                $normalized['pageLimit'] = $pageLimit;
-                $normalized['totalPages'] = max($pagesCrawled, $pageLimit);
+                $normalized['page_limit'] = $pageLimit;
+                $normalized['total_pages'] = max($pagesCrawled, $pageLimit);
             }
 
             return $normalized;
         }
 
         if ($stage === 'convert') {
-            $convertedFiles = (int) ($counts['convertedFiles'] ?? $counts['processed'] ?? $counts['completed'] ?? 0);
-            $sourceFiles = (int) ($counts['sourceFiles'] ?? $counts['total'] ?? $convertedFiles);
+            $convertedFiles = (int) ($counts['converted_files'] ?? $counts['convertedFiles'] ?? $counts['processed'] ?? $counts['completed'] ?? 0);
+            $sourceFiles = (int) ($counts['source_files'] ?? $counts['sourceFiles'] ?? $counts['total'] ?? $convertedFiles);
 
             return array_merge($counts, [
-                'convertedFiles' => $convertedFiles,
-                'sourceFiles' => $sourceFiles,
+                'converted_files' => $convertedFiles,
+                'source_files' => $sourceFiles,
             ]);
         }
 
@@ -390,8 +426,8 @@ readonly class PipelineTaskPayloadService
             && $errors === []) {
             $errors[] = sprintf(
                 'Scraper stopped at %d/%d pages before reaching the configured page limit.',
-                $this->countValue($counts['pagesCrawled'] ?? null),
-                $this->countValue($counts['pageLimit'] ?? null),
+                $this->countValue($counts['pages_crawled'] ?? $counts['pagesCrawled'] ?? null),
+                $this->countValue($counts['page_limit'] ?? $counts['pageLimit'] ?? null),
             );
         }
 
@@ -403,12 +439,12 @@ readonly class PipelineTaskPayloadService
      */
     private function scrapeStoppedBeforeLimit(array $counts): bool
     {
-        $pageLimit = $this->positiveInt($counts['pageLimit'] ?? null);
+        $pageLimit = $this->positiveInt($counts['page_limit'] ?? $counts['pageLimit'] ?? null);
         if ($pageLimit === null) {
             return false;
         }
 
-        return $this->countValue($counts['pagesCrawled'] ?? null) < $pageLimit;
+        return $this->countValue($counts['pages_crawled'] ?? $counts['pagesCrawled'] ?? null) < $pageLimit;
     }
 
     private function scrapePageLimit(PipelineTask $task, PipelineJob $job): ?int

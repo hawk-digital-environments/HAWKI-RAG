@@ -84,14 +84,33 @@ class PipelineUploadPayloadServiceTest extends TestCase
                 'dataset_id' => 'upload-dataset',
                 'graph' => 'false',
                 'request_metadata' => [
+                    'document_id' => 'adoc_upload_1',
                     'assistant_document_id' => 'adoc_upload_1',
                 ],
             ]),
             $this->storedUpload(),
         );
 
+        $this->assertSame('adoc_upload_1', $metadata['request']['metadata']['document_id']);
         $this->assertSame('adoc_upload_1', $metadata['request']['metadata']['assistant_document_id']);
         $this->assertSame('sample.pdf', $metadata['request']['metadata']['label']);
+    }
+
+    public function test_it_normalizes_legacy_request_metadata_to_managed_document_handle_keys(): void
+    {
+        $metadata = app(PipelineUploadPayloadService::class)->taskMetadata(
+            $this->dataset(),
+            PipelineUploadInput::fromValidated([
+                'dataset_id' => 'upload-dataset',
+                'request_metadata' => [
+                    'assistant_document_id' => 'adoc_upload_legacy_1',
+                ],
+            ]),
+            $this->storedUpload(),
+        );
+
+        $this->assertSame('adoc_upload_legacy_1', $metadata['request']['metadata']['document_id']);
+        $this->assertSame('adoc_upload_legacy_1', $metadata['request']['metadata']['assistant_document_id']);
     }
 
     private function dataset(): Dataset

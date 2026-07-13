@@ -132,14 +132,14 @@ readonly class PipelineStageLogService
             : $this->buildLiveText($task, $canonicalStage, $jobs);
 
         return [
-            'taskId' => $task->task_id,
-            'datasetId' => $task->dataset_id,
+            'task_id' => $task->task_id,
+            'dataset_id' => $task->dataset_id,
             'stage' => $canonicalStage,
             'label' => self::STAGE_LABELS[$canonicalStage],
             'filename' => $this->filename($task, $canonicalStage),
-            'lineCount' => $this->lineCount($text),
+            'line_count' => $this->lineCount($text),
             'text' => $text,
-            'updatedAt' => $this->clock->now()->format(\DateTimeInterface::ATOM),
+            'updated_at' => $this->clock->now()->format(\DateTimeInterface::ATOM),
         ];
     }
 

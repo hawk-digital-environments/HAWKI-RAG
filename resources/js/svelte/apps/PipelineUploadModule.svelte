@@ -156,12 +156,12 @@
             });
             const data = await parseResponse(response);
 
-            if (!response.ok || !data.success || !data.taskId) {
+            if (!response.ok || !data.success || !data.task_id) {
                 throw new Error(data.message || `File pipeline start failed (${response.status})`);
             }
 
-            setStatus(`Queued ${customConverterMode ? 'custom converter' : 'native'} pipeline ${data.jobId || data.taskId}.`, 'success');
-            onqueued?.(data.taskId, data.jobId || '');
+            setStatus(`Queued ${customConverterMode ? 'custom converter' : 'native'} pipeline ${data.job_id || data.task_id}.`, 'success');
+            onqueued?.(data.task_id, data.job_id || '');
         } catch (error) {
             setStatus(error instanceof Error ? error.message : 'File pipeline start failed.', 'error');
         } finally {

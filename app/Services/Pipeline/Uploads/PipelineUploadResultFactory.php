@@ -36,7 +36,7 @@ readonly class PipelineUploadResultFactory
         return PipelineUploadResult::fromPayload([
             'success' => false,
             'message' => $this->policy->unsupportedMessage($input),
-            'acceptedExtensions' => $this->policy->supportedExtensions(),
+            'accepted_extensions' => $this->policy->supportedExtensions(),
         ], 422);
     }
 
@@ -47,9 +47,9 @@ readonly class PipelineUploadResultFactory
         return PipelineUploadResult::fromPayload([
             'success' => false,
             'message' => 'Custom converter profile could not be prepared for this upload.',
-            'datasetId' => $input->datasetId,
-            'taskId' => null,
-            'jobId' => null,
+            'dataset_id' => $input->datasetId,
+            'task_id' => null,
+            'job_id' => null,
             'error' => $exception->getMessage(),
         ], 500);
     }
@@ -61,9 +61,9 @@ readonly class PipelineUploadResultFactory
         return PipelineUploadResult::fromPayload([
             'success' => false,
             'message' => $exception->responseMessage(),
-            'datasetId' => $input->datasetId,
-            'taskId' => null,
-            'jobId' => null,
+            'dataset_id' => $input->datasetId,
+            'task_id' => null,
+            'job_id' => null,
             'error' => $exception->getMessage(),
         ], 500);
     }
@@ -72,13 +72,13 @@ readonly class PipelineUploadResultFactory
     {
         return PipelineUploadResult::fromPayload([
             'success' => true,
-            'taskId' => $task->task_id,
-            'jobId' => $job->job_id,
-            'sourceId' => $job->source_id,
-            'datasetId' => $task->dataset_id,
+            'task_id' => $task->task_id,
+            'job_id' => $job->job_id,
+            'source_id' => $job->source_id,
+            'dataset_id' => $task->dataset_id,
             'task' => $this->tasks->show($task->task_id),
-            'dashboardUrl' => $this->urls->to('/pipeline-controller'),
-            'controllerUrl' => $this->urls->to('/pipeline-controller'),
+            'dashboard_url' => $this->urls->to('/pipeline-controller'),
+            'controller_url' => $this->urls->to('/pipeline-controller'),
         ], 201);
     }
 }

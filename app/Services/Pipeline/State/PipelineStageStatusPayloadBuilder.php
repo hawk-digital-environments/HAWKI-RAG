@@ -6,30 +6,46 @@ namespace App\Services\Pipeline\State;
 
 use App\Models\PipelineJob;
 use App\Models\PipelineStageState;
+use App\Services\Pipeline\PipelineManagedDocumentViewService;
 use Illuminate\Container\Attributes\Singleton;
 
 #[Singleton]
 readonly class PipelineStageStatusPayloadBuilder
 {
+    public function __construct(
+        private PipelineManagedDocumentViewService $documents,
+    ) {
+    }
+
     /**
      * @return array<string, mixed>
      */
     public function forJob(PipelineJob $job): array
     {
+        $managedDocuments = $this->documents->managedDocumentsForJob($job);
+
         return [
-            'jobId' => $job->job_id,
-            'datasetPath' => $job->dataset_path,
-            'currentStage' => $job->current_stage,
+            'job_id' => $job->job_id,
+            'dataset_path' => $job->dataset_path,
+            'current_stage' => $job->current_stage,
             'status' => $job->status,
-            'documentCounts' => [
+            'document_counts' => [
                 'total' => $job->total_documents,
                 'processed' => $job->processed_documents,
                 'failed' => $job->failed_documents,
                 'skipped' => $job->skipped_documents,
             ],
-            'startedAt' => $this->dateValue($job->started_at),
-            'completedAt' => $this->dateValue($job->completed_at),
+            'started_at' => $this->dateValue($job->started_at),
+            'completed_at' => $this->dateValue($job->completed_at),
             'metadata' => $job->metadata ?? [],
+            'managed_documents' => $managedDocuments,
+            'managed_document_count' => count($managedDocuments),
+            'source' => $this->documents->source(
+                is_string($job->source_id) ? $job->source_id : null,
+                $job->source_url,
+                null,
+                $job->task_id,
+            ),
             'stages' => $job->stages
                 ->mapWithKeys(fn (PipelineStageState $stage) => [
                     $stage->stage => $this->stage($stage),
@@ -45,18 +61,18 @@ readonly class PipelineStageStatusPayloadBuilder
     {
         return [
             'status' => $stage->status,
-            'startedAt' => $this->dateValue($stage->started_at),
-            'completedAt' => $this->dateValue($stage->completed_at),
-            'failedAt' => $this->dateValue($stage->failed_at),
+            'started_at' => $this->dateValue($stage->started_at),
+            'completed_at' => $this->dateValue($stage->completed_at),
+            'failed_at' => $this->dateValue($stage->failed_at),
             'counts' => $stage->counts ?? [],
             'errors' => $stage->errors ?? [],
             'warnings' => $stage->warnings ?? [],
             'retry' => [
-                'retryCount' => $stage->retry_count,
-                'maxRetries' => $stage->max_retries,
+                'retry_count' => $stage->retry_count,
+                'max_retries' => $stage->max_retries,
             ],
             'metadata' => $stage->metadata ?? [],
-            'updatedAt' => $this->dateValue($stage->updated_at),
+            'updated_at' => $this->dateValue($stage->updated_at),
         ];
     }
 

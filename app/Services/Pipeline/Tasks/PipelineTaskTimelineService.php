@@ -29,10 +29,10 @@ readonly class PipelineTaskTimelineService
 
         return $this->jobEvents($taskId)
             ->when($this->input->nullableString($filters['event_type'] ?? $filters['eventType'] ?? null), function (Collection $events, string $eventType): Collection {
-                return $events->filter(fn (array $event): bool => ($event['eventType'] ?? null) === $eventType);
+                return $events->filter(fn (array $event): bool => ($event['event_type'] ?? null) === $eventType);
             })
             ->when($this->input->nullableString($filters['job_id'] ?? $filters['jobId'] ?? null), function (Collection $events, string $jobId): Collection {
-                return $events->filter(fn (array $event): bool => ($event['jobId'] ?? null) === $jobId);
+                return $events->filter(fn (array $event): bool => ($event['job_id'] ?? null) === $jobId);
             })
             ->sortBy(fn (array $event): string => (string) ($event['at'] ?? ''))
             ->take($limit)
@@ -41,22 +41,22 @@ readonly class PipelineTaskTimelineService
     }
 
     /**
-     * @return array{eventTypes:list<string>,jobIds:list<string>}
+     * @return array{event_types:list<string>,job_ids:list<string>}
      */
     public function eventFilters(string $taskId): array
     {
         $events = $this->jobEvents($taskId);
 
         return [
-            'eventTypes' => $events
-                ->pluck('eventType')
+            'event_types' => $events
+                ->pluck('event_type')
                 ->filter()
                 ->unique()
                 ->sort()
                 ->values()
                 ->all(),
-            'jobIds' => $events
-                ->pluck('jobId')
+            'job_ids' => $events
+                ->pluck('job_id')
                 ->filter()
                 ->unique()
                 ->sort()

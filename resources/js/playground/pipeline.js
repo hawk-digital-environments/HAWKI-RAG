@@ -195,8 +195,8 @@ async function loadStageLogs(stage, { quiet = false } = {}) {
 
     const log = data.log || {};
     if (stageLogStatusEl) {
-        const refreshedAt = log.updatedAt ? ` | live ${formatDate(log.updatedAt)}` : '';
-        stageLogStatusEl.textContent = `${log.label || stageLogLabel(stage)} logs | ${log.filename || stageLogFilename(stage)} | ${log.lineCount ?? 0} lines${refreshedAt}`;
+        const refreshedAt = log.updated_at ? ` | live ${formatDate(log.updated_at)}` : '';
+        stageLogStatusEl.textContent = `${log.label || stageLogLabel(stage)} logs | ${log.filename || stageLogFilename(stage)} | ${log.line_count ?? 0} lines${refreshedAt}`;
     }
     if (stageLogViewerEl) {
         stageLogViewerEl.textContent = log.text || 'No log lines found for this stage yet.';
@@ -221,11 +221,11 @@ function refreshActiveStageLogs({ quiet = true } = {}) {
 
 function stageSummary(stage) {
     const counts = stage?.counts || {};
-    if (counts.pagesCrawled !== undefined || counts.totalPages !== undefined) {
-        return `${counts.pagesCrawled || 0}/${counts.totalPages || 0} pages`;
+    if (counts.pages_crawled !== undefined || counts.total_pages !== undefined) {
+        return `${counts.pages_crawled || 0}/${counts.total_pages || 0} pages`;
     }
-    if (counts.convertedFiles !== undefined || counts.sourceFiles !== undefined) {
-        return `${counts.convertedFiles || 0}/${counts.sourceFiles || 0} files`;
+    if (counts.converted_files !== undefined || counts.source_files !== undefined) {
+        return `${counts.converted_files || 0}/${counts.source_files || 0} files`;
     }
     if (counts.completed !== undefined || counts.total !== undefined) {
         return `${counts.completed || 0}/${counts.total || 0} docs`;
@@ -312,12 +312,12 @@ function renderStageCard(name, stage = {}) {
     Object.entries(counts).forEach(([key, value]) => appendMetric(metrics, key, value));
 
     if (stage.retry) {
-        appendMetric(metrics, 'retry', stage.retry.retryCount);
-        appendMetric(metrics, 'max retries', stage.retry.maxRetries);
+        appendMetric(metrics, 'retry', stage.retry.retry_count);
+        appendMetric(metrics, 'max retries', stage.retry.max_retries);
     }
 
-    if (stage.startedAt) appendMetric(metrics, 'started', formatDate(stage.startedAt));
-    if (stage.completedAt) appendMetric(metrics, 'completed', formatDate(stage.completedAt));
+    if (stage.started_at) appendMetric(metrics, 'started', formatDate(stage.started_at));
+    if (stage.completed_at) appendMetric(metrics, 'completed', formatDate(stage.completed_at));
     card.appendChild(metrics);
 
     const errors = Array.isArray(stage.errors) ? stage.errors : [];
@@ -363,7 +363,7 @@ function appendTaskStat(parent, label, value) {
 }
 
 function jobStatusCounts(jobs, type) {
-    const matching = jobs.filter((job) => (job.jobType || job.job_type || '') === type);
+    const matching = jobs.filter((job) => (job.job_type || '') === type);
     const counts = {
         total: matching.length,
         queued: 0,
@@ -456,16 +456,16 @@ function renderPipelineTask(task) {
 
     const counters = task.counters || {};
     const jobs = Array.isArray(task.jobs) ? task.jobs : [];
-    activePipelineDatasetId = task.datasetId || '';
-    currentEl.textContent = `Task ${task.status || 'unknown'} · ${task.activeJobs || 0} active`;
-    if (jobIdEl) jobIdEl.textContent = `Task ID: ${task.taskId || 'none'}`;
-    if (datasetPathEl) datasetPathEl.textContent = `Dataset: ${task.datasetId || 'none'}`;
-    if (updatedAtEl) updatedAtEl.textContent = task.updatedAt ? `Updated ${formatDate(task.updatedAt)}` : '';
+    activePipelineDatasetId = task.dataset_id || '';
+    currentEl.textContent = `Task ${task.status || 'unknown'} · ${task.active_jobs || 0} active`;
+    if (jobIdEl) jobIdEl.textContent = `Task ID: ${task.task_id || 'none'}`;
+    if (datasetPathEl) datasetPathEl.textContent = `Dataset: ${task.dataset_id || 'none'}`;
+    if (updatedAtEl) updatedAtEl.textContent = task.updated_at ? `Updated ${formatDate(task.updated_at)}` : '';
 
     if (taskRunEl) {
         taskRunEl.innerHTML = '';
         appendTaskStat(taskRunEl, 'Total jobs', counters.jobs_total || jobs.length);
-        appendTaskStat(taskRunEl, 'Running', counters.jobs_running || task.activeJobs || 0);
+        appendTaskStat(taskRunEl, 'Running', counters.jobs_running || task.active_jobs || 0);
         appendTaskStat(taskRunEl, 'Completed', counters.jobs_completed || 0);
         appendTaskStat(taskRunEl, 'Skipped', counters.jobs_skipped || 0);
         taskRunEl.hidden = false;
@@ -503,16 +503,16 @@ function taskRunLabel(task) {
     const requestMetadata = task?.metadata?.request?.metadata || {};
     return requestMetadata.catalog_task_label
         || requestMetadata.label
-        || task.datasetId
-        || task.taskId;
+        || task.dataset_id
+        || task.task_id;
 }
 
 function taskRunMeta(task) {
     const counters = task.counters || {};
     const total = counters.jobs_total ?? 0;
     const done = (counters.jobs_completed ?? 0) + (counters.jobs_skipped ?? 0);
-    const active = task.activeJobs ?? counters.jobs_active ?? 0;
-    const started = task.startedAt ? formatDate(task.startedAt) : 'not started';
+    const active = task.active_jobs ?? counters.jobs_active ?? 0;
+    const started = task.started_at ? formatDate(task.started_at) : 'not started';
 
     return `${done}/${total} done · ${active} active · ${started}`;
 }
@@ -524,7 +524,7 @@ function isPipelineTaskCancellable(task) {
     }
 
     const counters = task?.counters || {};
-    const active = Number(task?.activeJobs ?? counters.jobs_active ?? counters.jobs_running ?? 0);
+    const active = Number(task?.active_jobs ?? counters.jobs_active ?? counters.jobs_running ?? 0);
 
     return active > 0 || ['pending', 'queued', 'running', 'processing', 'received'].includes(status);
 }
@@ -546,15 +546,15 @@ function renderPipelineTaskRuns(tasks) {
     tasks.forEach((task) => {
         const row = document.createElement('div');
         row.className = 'pipeline-run-row';
-        if (task.taskId === activePipelineTaskId) {
+        if (task.task_id === activePipelineTaskId) {
             row.classList.add('is-selected');
         }
 
         const button = document.createElement('button');
         button.type = 'button';
         button.className = 'pipeline-run-select';
-        button.dataset.taskId = task.taskId;
-        if (task.taskId === activePipelineTaskId) {
+        button.dataset.taskId = task.task_id;
+        if (task.task_id === activePipelineTaskId) {
             button.classList.add('is-selected');
         }
 
@@ -573,13 +573,13 @@ function renderPipelineTaskRuns(tasks) {
         meta.className = 'pipeline-run-meta';
 
         const id = document.createElement('span');
-        id.textContent = task.taskId;
+        id.textContent = task.task_id;
         const counts = document.createElement('span');
         counts.textContent = taskRunMeta(task);
         meta.append(id, counts);
 
         button.append(title, meta);
-        button.addEventListener('click', () => selectPipelineTask(task.taskId));
+        button.addEventListener('click', () => selectPipelineTask(task.task_id));
 
         const actions = document.createElement('div');
         actions.className = 'pipeline-run-actions';
@@ -590,7 +590,7 @@ function renderPipelineTaskRuns(tasks) {
             cancel.className = 'pipeline-run-cancel';
             cancel.textContent = 'Cancel';
             cancel.title = 'Cancel active processing for this pipeline task';
-            cancel.addEventListener('click', () => cancelPipelineTask(task.taskId, cancel));
+            cancel.addEventListener('click', () => cancelPipelineTask(task.task_id, cancel));
             actions.appendChild(cancel);
         }
 
@@ -599,7 +599,7 @@ function renderPipelineTaskRuns(tasks) {
         deleteButton.className = 'pipeline-run-delete';
         deleteButton.textContent = 'Delete';
         deleteButton.title = 'Delete this pipeline task history and owned shared-storage folders';
-        deleteButton.addEventListener('click', () => deletePipelineTask(task.taskId, deleteButton));
+        deleteButton.addEventListener('click', () => deletePipelineTask(task.task_id, deleteButton));
         actions.appendChild(deleteButton);
 
         row.append(button, actions);
@@ -608,8 +608,8 @@ function renderPipelineTaskRuns(tasks) {
 }
 
 function updatePipelineTaskRun(task) {
-    if (!task?.taskId) return;
-    const index = pipelineTaskRuns.findIndex((candidate) => candidate.taskId === task.taskId);
+    if (!task?.task_id) return;
+    const index = pipelineTaskRuns.findIndex((candidate) => candidate.task_id === task.task_id);
     if (index >= 0) {
         pipelineTaskRuns[index] = {
             ...pipelineTaskRuns[index],
@@ -623,7 +623,7 @@ function updatePipelineTaskRun(task) {
 
 function renderPipeline(data) {
     if (!currentEl || !stagesEl) return;
-    if (!data || !data.jobId) {
+    if (!data || !data.job_id) {
         currentEl.textContent = 'No pipeline selected.';
         if (jobIdEl) jobIdEl.textContent = 'Job ID: none';
         if (datasetPathEl) datasetPathEl.textContent = 'Dataset path: none';
@@ -637,12 +637,12 @@ function renderPipeline(data) {
     }
 
     clearTaskRun();
-    const stageName = data.currentStage || 'pending';
+    const stageName = data.current_stage || 'pending';
     const status = data.status || 'unknown';
     currentEl.textContent = `${stageName} · ${status}`;
-    if (jobIdEl) jobIdEl.textContent = `Job ID: ${data.jobId}`;
-    if (datasetPathEl) datasetPathEl.textContent = `Dataset path: ${data.datasetPath || 'none'}`;
-    if (updatedAtEl) updatedAtEl.textContent = data.updatedAt ? `Updated ${formatDate(data.updatedAt)}` : '';
+    if (jobIdEl) jobIdEl.textContent = `Job ID: ${data.job_id}`;
+    if (datasetPathEl) datasetPathEl.textContent = `Dataset path: ${data.dataset_path || 'none'}`;
+    if (updatedAtEl) updatedAtEl.textContent = data.updated_at ? `Updated ${formatDate(data.updated_at)}` : '';
 
     const stages = data.stages || {};
     stagesEl.innerHTML = '';
@@ -793,7 +793,7 @@ async function cancelPipelineTask(taskId, button = null) {
 async function deletePipelineTask(taskId, button = null) {
     if (!taskId) return;
 
-    const task = pipelineTaskRuns.find((candidate) => candidate.taskId === taskId);
+    const task = pipelineTaskRuns.find((candidate) => candidate.task_id === taskId);
     const activeWarning = isPipelineTaskCancellable(task)
         ? '\n\nThis task still looks active. Use Cancel first if workers may still be reading its files.'
         : '';
@@ -819,7 +819,7 @@ async function deletePipelineTask(taskId, button = null) {
             throw new Error(data.message || `Pipeline task delete failed (${response.status})`);
         }
 
-        pipelineTaskRuns = pipelineTaskRuns.filter((candidate) => candidate.taskId !== taskId);
+        pipelineTaskRuns = pipelineTaskRuns.filter((candidate) => candidate.task_id !== taskId);
 
         if (taskId === activePipelineTaskId) {
             activePipelineTaskId = '';
@@ -831,7 +831,7 @@ async function deletePipelineTask(taskId, button = null) {
         }
 
         renderPipelineTaskRuns(pipelineTaskRuns);
-        const cleanup = data.storageCleanup || {};
+        const cleanup = data.storage_cleanup || {};
         const removedCount = Array.isArray(cleanup.deleted) ? cleanup.deleted.length : 0;
         const skippedCount = Array.isArray(cleanup.skipped) ? cleanup.skipped.length : 0;
         const cleanupMessage = removedCount || skippedCount
@@ -895,10 +895,10 @@ function pipelineTaskPayload(task) {
     };
 
     return {
-        taskId: pipelineTaskIdFor(task),
-        datasetId: sanitizeLabel(task.label || task.id),
-        sourceUrl,
-        sitemapUrl,
+        task_id: pipelineTaskIdFor(task),
+        dataset_id: sanitizeLabel(task.label || task.id),
+        source_url: sourceUrl,
+        sitemap_url: sitemapUrl,
         urls: sourceUrl ? [sourceUrl] : [],
         metadata,
     };
@@ -920,7 +920,7 @@ async function startPipelineTaskFromCatalog(task) {
         body: JSON.stringify(pipelineTaskPayload(task)),
     });
     const data = await parseResponseJson(response);
-    if (!response.ok || !data.success || !data.taskId) {
+    if (!response.ok || !data.success || !data.task_id) {
         throw new Error(data.message || `Pipeline task start failed (${response.status})`);
     }
 
@@ -966,9 +966,9 @@ async function startSelectedTask() {
     try {
         if (canStartAsPipelineTask(task)) {
             const data = await startPipelineTaskFromCatalog(task);
-            setActivePipelineTask(data.taskId);
-            setTaskNote(`Created pipeline task ${data.taskId}`, 'success');
-            pushActivity('Pipeline', `task ${data.taskId} created from ${taskId}`);
+            setActivePipelineTask(data.task_id);
+            setTaskNote(`Created pipeline task ${data.task_id}`, 'success');
+            pushActivity('Pipeline', `task ${data.task_id} created from ${taskId}`);
             renderPipelineTask(data.task);
             updatePipelineTaskRun(data.task);
             await loadPipelineTaskRuns();
@@ -980,7 +980,7 @@ async function startSelectedTask() {
         setActiveJob(data.jobId);
         setTaskNote(`Created scraper job ID ${data.jobId}`, 'success');
         pushActivity('Pipeline', `task ${taskId} created job ${data.jobId}`);
-        renderPipeline({ jobId: data.jobId, currentStage: 'scrape', status: 'running', stages: {} });
+        renderPipeline({ job_id: data.jobId, current_stage: 'scrape', status: 'running', stages: {} });
         startPolling();
     } catch (error) {
         setTaskNote(error.message || 'Scraper task start failed.', 'error');
@@ -1004,7 +1004,7 @@ async function pollPipeline() {
             renderPipelineTask(data.task);
             updatePipelineTaskRun(data.task);
             if (['completed', 'failed', 'cancelled'].includes(data.task.status)) {
-                pushActivity('Pipeline', `task ${data.task.taskId}: ${data.task.status}`);
+                pushActivity('Pipeline', `task ${data.task.task_id}: ${data.task.status}`);
             }
         } catch {
             // UI polling should stay quiet on transient failures.
@@ -1024,7 +1024,7 @@ async function pollPipeline() {
         if (!response.ok || !data.success) return;
         renderPipeline(data);
         if (['completed', 'failed', 'partial', 'skipped'].includes(data.status)) {
-            pushActivity('Pipeline', `${data.currentStage}: ${data.status}`);
+            pushActivity('Pipeline', `${data.current_stage}: ${data.status}`);
         }
     } catch {
         // UI polling should stay quiet on transient failures.

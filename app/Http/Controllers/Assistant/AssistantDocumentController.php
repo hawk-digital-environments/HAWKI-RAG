@@ -11,6 +11,9 @@ use App\Http\Requests\Assistant\UpdateAssistantDocumentRequest;
 use App\Services\Assistant\AssistantDocumentService;
 use Illuminate\Http\JsonResponse;
 
+/**
+ * @deprecated Compatibility adapter for legacy /api/assistant/documents routes.
+ */
 class AssistantDocumentController extends Controller
 {
     public function __construct(

@@ -23,8 +23,8 @@ readonly class PipelineIngestStageSynchronizer
             'dataset_path' => $datasetPath,
             'counts' => $stage['counts'] ?? [],
             'errors' => $stage['errors'] ?? [],
-            'retry_count' => (int) ($stage['retry']['retryCount'] ?? 0),
-            'max_retries' => (int) ($stage['retry']['maxRetries'] ?? 0),
+            'retry_count' => (int) ($stage['retry']['retry_count'] ?? $stage['retry']['retryCount'] ?? 0),
+            'max_retries' => (int) ($stage['retry']['max_retries'] ?? $stage['retry']['maxRetries'] ?? 0),
             'metadata' => [
                 'latest' => $stage['latest'] ?? null,
                 'source' => 'pipeline-status-reconcile',

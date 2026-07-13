@@ -35,6 +35,7 @@ class PipelineTaskMetadataServiceTest extends TestCase
                     'metadata' => [
                         'source' => 'unit-test',
                         'max_pages' => 5,
+                        'assistant_document_id' => 'adoc_task_1',
                     ],
                 ],
                 'dataset' => [
@@ -47,6 +48,8 @@ class PipelineTaskMetadataServiceTest extends TestCase
 
         $this->assertSame('unit-test', $metadata['source']);
         $this->assertSame(5, $metadata['max_pages']);
+        $this->assertSame('adoc_task_1', $metadata['document_id']);
+        $this->assertSame('adoc_task_1', $metadata['assistant_document_id']);
         $this->assertSame(['dataset_id' => 'dataset-meta'], $metadata['dataset']);
     }
 

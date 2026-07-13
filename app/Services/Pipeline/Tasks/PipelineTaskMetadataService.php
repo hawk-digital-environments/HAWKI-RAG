@@ -6,6 +6,7 @@ namespace App\Services\Pipeline\Tasks;
 
 use App\Models\Dataset;
 use App\Models\PipelineTask;
+use App\Services\Document\Values\ManagedDocumentId;
 use Illuminate\Container\Attributes\Singleton;
 use Psr\Clock\ClockInterface;
 use Symfony\Component\Clock\Clock;
@@ -36,7 +37,9 @@ readonly class PipelineTaskMetadataService
     {
         $metadata = $task->metadata ?? [];
         $request = is_array($metadata['request'] ?? null) ? $metadata['request'] : [];
-        $requestMetadata = is_array($request['metadata'] ?? null) ? $request['metadata'] : [];
+        $requestMetadata = ManagedDocumentId::normalizeRequestMetadata(
+            is_array($request['metadata'] ?? null) ? $request['metadata'] : [],
+        );
 
         return array_merge($requestMetadata, [
             'dataset' => is_array($metadata['dataset'] ?? null) ? $metadata['dataset'] : [],

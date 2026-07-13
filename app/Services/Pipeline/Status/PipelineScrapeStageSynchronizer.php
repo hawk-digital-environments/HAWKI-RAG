@@ -21,11 +21,11 @@ readonly class PipelineScrapeStageSynchronizer
     {
         $status = (string) ($stage['status'] ?? 'unknown');
         $payload = [
-            'dataset_path' => $stage['datasetPath'] ?? null,
+            'dataset_path' => $stage['dataset_path'] ?? $stage['datasetPath'] ?? null,
             'counts' => [
-                'totalPages' => (int) ($stage['counts']['totalPages'] ?? 0),
-                'pagesCrawled' => (int) ($stage['counts']['pagesCrawled'] ?? 0),
-                'failedUrls' => (int) ($stage['counts']['failedUrls'] ?? 0),
+                'total_pages' => (int) ($stage['counts']['total_pages'] ?? $stage['counts']['totalPages'] ?? 0),
+                'pages_crawled' => (int) ($stage['counts']['pages_crawled'] ?? $stage['counts']['pagesCrawled'] ?? 0),
+                'failed_urls' => (int) ($stage['counts']['failed_urls'] ?? $stage['counts']['failedUrls'] ?? 0),
             ],
             'errors' => $stage['errors'] ?? [],
             'warnings' => $stage['warnings'] ?? [],

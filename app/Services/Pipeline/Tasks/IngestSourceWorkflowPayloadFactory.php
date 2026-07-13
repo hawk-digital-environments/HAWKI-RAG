@@ -7,6 +7,7 @@ namespace App\Services\Pipeline\Tasks;
 use App\Models\IngestionSource;
 use App\Models\PipelineJob;
 use App\Models\PipelineTask;
+use App\Services\Document\Values\ManagedDocumentId;
 use App\Services\Settings\SettingsService;
 use Illuminate\Config\Repository as ConfigRepository;
 use Illuminate\Container\Attributes\Singleton;
@@ -36,7 +37,14 @@ readonly class IngestSourceWorkflowPayloadFactory
             ? $metadata['custom_converter']
             : null;
         $request = is_array($metadata['request'] ?? null) ? $metadata['request'] : [];
-        $requestMetadata = is_array($request['metadata'] ?? null) ? $request['metadata'] : [];
+        $requestMetadata = ManagedDocumentId::normalizeRequestMetadata(
+            is_array($request['metadata'] ?? null) ? $request['metadata'] : [],
+        );
+        if ($requestMetadata !== []) {
+            $request['metadata'] = $requestMetadata;
+        }
+
+        $managedDocumentId = ManagedDocumentId::fromRequestMetadata($requestMetadata);
         $modelRuntime = $this->settings->modelRuntime();
 
         return array_filter([
@@ -45,7 +53,8 @@ readonly class IngestSourceWorkflowPayloadFactory
             'task_id' => $task->task_id,
             'job_id' => $job->job_id,
             'dataset_id' => $task->dataset_id,
-            'assistant_document_id' => $requestMetadata['assistant_document_id'] ?? null,
+            'document_id' => $managedDocumentId?->value,
+            'assistant_document_id' => $managedDocumentId?->value,
             'upload' => $upload,
             'converter_mode' => $customConverter ? 'custom' : 'native',
             'custom_converter_profile_path' => $customConverter['profile_path'] ?? null,
@@ -149,7 +158,9 @@ readonly class IngestSourceWorkflowPayloadFactory
     private function graphEnabled(array $metadata): bool
     {
         $request = is_array($metadata['request'] ?? null) ? $metadata['request'] : [];
-        $requestMetadata = is_array($request['metadata'] ?? null) ? $request['metadata'] : [];
+        $requestMetadata = ManagedDocumentId::normalizeRequestMetadata(
+            is_array($request['metadata'] ?? null) ? $request['metadata'] : [],
+        );
 
         return filter_var(
             $requestMetadata['graph'] ?? $metadata['graph'] ?? $this->config->get('temporal.ingestion.graph', false),

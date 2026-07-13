@@ -53,10 +53,10 @@ paths:
           description: Dataset created
         "401":
           $ref: "#/components/responses/Unauthorized"
-  /datasets/{datasetId}:
+  /datasets/{dataset_id}:
     parameters:
       - in: path
-        name: datasetId
+        name: dataset_id
         required: true
         schema:
           type: string
@@ -78,48 +78,60 @@ paths:
       tags:
         - Documents
       summary: List documents
+      description: |
+        Unified document list for HAWKI RAG.
+
+        Read behavior:
+        - returns managed upload documents with `adoc_*` or `doc_*` handles when matching managed documents exist
+        - falls back to legacy indexed document UUID records when no managed documents match the current filter
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: query
+          name: dataset_id
+          required: false
+          schema:
+            type: string
+          description: Dataset filter using the snake_case query name accepted by the API.
+        - in: query
+          name: q
+          required: false
+          schema:
+            type: string
+          description: Free-text search term.
+        - in: query
+          name: search
+          required: false
+          schema:
+            type: string
+          description: Free-text search term alias.
+        - in: query
+          name: limit
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 250
       responses:
         "200":
           description: Document list
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  type: object
-  /documents/{documentId}:
-    parameters:
-      - in: path
-        name: documentId
-        required: true
-        schema:
-          type: string
-    get:
-      tags:
-        - Documents
-      summary: Get document
-      responses:
-        "200":
-          description: Document
-          content:
-            application/json:
-              schema:
-                type: object
-  /assistant/documents:
+                $ref: "#/components/schemas/UnifiedDocumentListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
     post:
       tags:
-        - Assistant Documents
-      summary: Upload one PDF into a student dataset and start ingest
+        - Documents
+      summary: Upload one document into a dataset and start ingest
       description: |
-        Creates one assistant document from one uploaded file.
+        Creates one managed document from one uploaded file.
 
-        Mental model:
-        - One `dataset_id` represents one student space.
-        - That student space maps to one Qdrant collection.
-        - Each uploaded PDF becomes one assistant document inside that dataset.
-        - Each assistant document is chunked into many vector points during ingest.
-
-        Use this endpoint when the assistant system is uploading a single file.
+        Managed document model:
+        - the public document handle is the `adoc_*` or `doc_*` id returned in `document.document_id`
+        - one `dataset_id` groups documents that should be indexed together
+        - the managed document remains the stable public handle for later read, replace, and delete operations
       security:
         - BearerAuth: []
       parameters:
@@ -143,7 +155,7 @@ paths:
                   format: binary
                 dataset_id:
                   type: string
-                  description: Student dataset identifier. All PDFs uploaded with the same dataset id are indexed into the same student collection.
+                  description: Dataset identifier used to group this document with related documents.
                 source_updated_at:
                   type: string
                   format: date-time
@@ -152,7 +164,7 @@ paths:
                 graph:
                   type: boolean
                   default: false
-                  description: Optional. If omitted, assistant ingest stays vector-only and does not write Neo4j graph data.
+                  description: Optional. If omitted, ingest stays vector-only and does not write Neo4j graph data.
                 display_name:
                   type: string
                 source_url:
@@ -165,28 +177,27 @@ paths:
                     - type: string
       responses:
         "202":
-          description: Assistant document accepted for ingest in the target student dataset
+          description: Managed document accepted for ingest
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantDocumentMutationResponse"
+                $ref: "#/components/schemas/ManagedDocumentMutationResponse"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "422":
           description: Validation failed
-  /assistant/documents/batch:
+  /documents/batch:
     post:
       tags:
-        - Assistant Documents
-      summary: Upload many PDFs into one student dataset and start one ingest workflow per file
+        - Documents
+      summary: Upload many documents into one dataset and start one ingest workflow per file
       description: |
-        Creates one assistant document per uploaded file.
+        Creates one managed document per uploaded file.
 
         Batch behavior:
-        - All files in the same request share the same `dataset_id`.
-        - That means all files are indexed into the same student Qdrant collection.
-        - Each PDF still becomes its own assistant document with its own task, job, and bridge document id.
-        - Deleting one assistant document is intended to remove only that file's indexed outputs while keeping the other files in the dataset intact.
+        - all files in the same request share the same `dataset_id`
+        - each file still becomes its own managed `adoc_*` document handle
+        - deleting one managed document is intended to remove only that file's indexed outputs while keeping the rest of the dataset intact
       security:
         - BearerAuth: []
       parameters:
@@ -212,11 +223,11 @@ paths:
                     format: binary
                 dataset_id:
                   type: string
-                  description: Student dataset identifier shared by every file in this batch.
+                  description: Dataset identifier shared by every file in this batch.
                 graph:
                   type: boolean
                   default: false
-                  description: Optional. If omitted, all assistant ingests in the batch stay vector-only and do not write Neo4j graph data.
+                  description: Optional. If omitted, ingests stay vector-only and do not write Neo4j graph data.
                 metadata_json:
                   oneOf:
                     - type: object
@@ -224,63 +235,66 @@ paths:
                     - type: string
       responses:
         "202":
-          description: All assistant documents were accepted for ingest in the same student dataset
+          description: All managed documents were accepted for ingest
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantDocumentBatchResponse"
+                $ref: "#/components/schemas/ManagedDocumentBatchResponse"
         "207":
-          description: Some assistant documents were accepted and some failed
+          description: Some managed documents were accepted and some failed
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantDocumentBatchResponse"
+                $ref: "#/components/schemas/ManagedDocumentBatchResponse"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "422":
           description: Validation failed
-  /assistant/documents/{assistantDocumentId}:
+  /documents/{document_id}:
     parameters:
       - in: path
-        name: assistantDocumentId
+        name: document_id
         required: true
         schema:
           type: string
+        description: |
+          Unified document handle.
+
+          Accepted values:
+          - managed public document ids such as `adoc_...` or `doc_...`
+          - legacy indexed document UUIDs for read-only access
     get:
       tags:
-        - Assistant Documents
-      summary: Get assistant document status and active outputs
+        - Documents
+      summary: Get document
       description: |
-        Returns the assistant document plus the currently active indexed outputs.
+        Returns one document from the unified surface.
 
-        The `outputs` array shows where this PDF is indexed now, including:
-        - the Qdrant collection used for the dataset
-        - the optional Neo4j namespace
-        - the active chunk count for this document version
+        Read behavior:
+        - `adoc_*` and `doc_*` ids resolve to managed documents
+        - UUID ids resolve to legacy indexed documents
       security:
         - BearerAuth: []
       responses:
         "200":
-          description: Assistant document
+          description: Document
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantDocumentResponse"
+                $ref: "#/components/schemas/UnifiedDocumentResponse"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
     put:
       tags:
-        - Assistant Documents
-      summary: Replace assistant document if the incoming file is newer
+        - Documents
+      summary: Replace a managed document if the incoming file is newer
       description: |
-        Replaces one assistant document while keeping it in the same dataset.
+        Replaces one managed document while keeping it in the same dataset.
 
-        Typical use case:
-        - the assistant system has a newer copy of the same PDF
-        - old indexed outputs for that assistant document are replaced
-        - the rest of the student's dataset stays untouched
+        This operation only supports managed `adoc_*` or `doc_*` document ids.
+        Passing a legacy indexed document UUID returns `404`.
       security:
         - BearerAuth: []
       parameters:
@@ -308,7 +322,7 @@ paths:
                   type: string
                 graph:
                   type: boolean
-                  description: Optional override. If omitted, the current assistant document graph setting is preserved.
+                  description: Optional override. If omitted, the current graph setting is preserved.
                 display_name:
                   type: string
                 source_url:
@@ -327,13 +341,13 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantDocumentMutationResponse"
+                $ref: "#/components/schemas/ManagedDocumentMutationResponse"
         "202":
           description: Replacement accepted
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantDocumentMutationResponse"
+                $ref: "#/components/schemas/ManagedDocumentMutationResponse"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
@@ -342,16 +356,13 @@ paths:
           description: Validation failed
     delete:
       tags:
-        - Assistant Documents
-      summary: Delete one assistant document's active indexed outputs
+        - Documents
+      summary: Delete one managed document's active indexed outputs
       description: |
-        Deletes the active indexed outputs for one assistant document.
+        Deletes the active indexed outputs for one managed document.
 
-        API contract:
-        - remove only this PDF's chunk points from the student dataset
-        - optionally remove this PDF's Neo4j graph data
-        - keep the Qdrant collection itself
-        - keep every other PDF in the same dataset intact
+        This operation only supports managed `adoc_*` or `doc_*` document ids.
+        Passing a legacy indexed document UUID returns `404`.
       security:
         - BearerAuth: []
       parameters:
@@ -362,11 +373,11 @@ paths:
             type: string
       responses:
         "200":
-          description: Assistant document deleted from derived indexes
+          description: Managed document deleted from derived indexes
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AssistantDocumentDeleteResponse"
+                $ref: "#/components/schemas/ManagedDocumentDeleteResponse"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
@@ -418,10 +429,10 @@ paths:
           description: Task started
         "401":
           $ref: "#/components/responses/Unauthorized"
-  /pipeline/tasks/{taskId}:
+  /pipeline/tasks/{task_id}:
     parameters:
       - in: path
-        name: taskId
+        name: task_id
         required: true
         schema:
           type: string
@@ -438,10 +449,10 @@ paths:
                 type: object
         "401":
           $ref: "#/components/responses/Unauthorized"
-  /pipeline/tasks/{taskId}/jobs:
+  /pipeline/tasks/{task_id}/jobs:
     parameters:
       - in: path
-        name: taskId
+        name: task_id
         required: true
         schema:
           type: string
@@ -471,10 +482,10 @@ paths:
       responses:
         "200":
           description: Job upserted
-  /pipeline/tasks/{taskId}/failed-jobs:
+  /pipeline/tasks/{task_id}/failed-jobs:
     parameters:
       - in: path
-        name: taskId
+        name: task_id
         required: true
         schema:
           type: string
@@ -491,10 +502,10 @@ paths:
                 type: array
                 items:
                   type: object
-  /pipeline/tasks/{taskId}/events:
+  /pipeline/tasks/{task_id}/events:
     parameters:
       - in: path
-        name: taskId
+        name: task_id
         required: true
         schema:
           type: string
@@ -511,10 +522,10 @@ paths:
                 type: array
                 items:
                   type: object
-  /pipeline/tasks/{taskId}/retry:
+  /pipeline/tasks/{task_id}/retry:
     parameters:
       - in: path
-        name: taskId
+        name: task_id
         required: true
         schema:
           type: string
@@ -525,10 +536,10 @@ paths:
       responses:
         "200":
           description: Retry initiated
-  /pipeline/tasks/{taskId}/retry-failed-jobs:
+  /pipeline/tasks/{task_id}/retry-failed-jobs:
     parameters:
       - in: path
-        name: taskId
+        name: task_id
         required: true
         schema:
           type: string
@@ -539,10 +550,10 @@ paths:
       responses:
         "200":
           description: Retry initiated
-  /pipeline/tasks/{taskId}/cancel:
+  /pipeline/tasks/{task_id}/cancel:
     parameters:
       - in: path
-        name: taskId
+        name: task_id
         required: true
         schema:
           type: string
@@ -611,10 +622,10 @@ paths:
       responses:
         "200":
           description: Retry queued
-  /pipeline/recovery/jobs/{jobId}/retry:
+  /pipeline/recovery/jobs/{job_id}/retry:
     parameters:
       - in: path
-        name: jobId
+        name: job_id
         required: true
         schema:
           type: string
@@ -633,10 +644,10 @@ paths:
       responses:
         "200":
           description: Retry queued
-  /pipeline/recovery/tasks/{taskId}/retry-failed:
+  /pipeline/recovery/tasks/{task_id}/retry-failed:
     parameters:
       - in: path
-        name: taskId
+        name: task_id
         required: true
         schema:
           type: string
@@ -647,10 +658,10 @@ paths:
       responses:
         "200":
           description: Retry queued
-  /pipeline/recovery/datasets/{datasetId}/retry-failed:
+  /pipeline/recovery/datasets/{dataset_id}/retry-failed:
     parameters:
       - in: path
-        name: datasetId
+        name: dataset_id
         required: true
         schema:
           type: string
@@ -917,7 +928,7 @@ components:
           type: array
           items:
             type: object
-    AssistantDocumentOperation:
+    DocumentOperation:
       type: object
       properties:
         type:
@@ -927,7 +938,7 @@ components:
         reason:
           type: string
           nullable: true
-    AssistantPipelineReference:
+    DocumentPipelineReference:
       type: object
       properties:
         task_id:
@@ -939,16 +950,51 @@ components:
         source_id:
           type: string
           nullable: true
-    AssistantDocumentOutput:
+    RelatedJob:
       type: object
-      description: One active indexed output for one assistant document version.
+      properties:
+        job_id:
+          type: string
+        task_id:
+          type: string
+          nullable: true
+        parent_job_id:
+          type: string
+          nullable: true
+        job_type:
+          type: string
+        status:
+          type: string
+        source_url:
+          type: string
+          nullable: true
+        local_path:
+          type: string
+          nullable: true
+        content_hash:
+          type: string
+          nullable: true
+        error_message:
+          type: string
+          nullable: true
+        started_at:
+          type: string
+          format: date-time
+          nullable: true
+        finished_at:
+          type: string
+          format: date-time
+          nullable: true
+    ManagedDocumentOutput:
+      type: object
+      description: One active indexed output for one managed document version.
       properties:
         bridge_document_id:
           type: string
           description: Python bridge document id used for downstream delete and replacement operations.
         qdrant_collection:
           type: string
-          description: Qdrant collection that holds this document's chunk points. In the assistant model, this is the student dataset collection.
+          description: Qdrant collection that holds this document's chunk points.
         neo4j_namespace:
           type: string
           nullable: true
@@ -964,23 +1010,34 @@ components:
           type: string
           format: date-time
           nullable: true
-    AssistantDocumentResource:
+    ManagedDocumentResource:
       type: object
-      description: Assistant-facing view of one uploaded file and its indexing state.
+      description: |
+        Unified managed document view for uploaded files.
+
+        Preferred public handle:
+        - `document_id`
+
+        Compatibility alias:
+        - `id`
       properties:
-        assistant_document_id:
+        id:
+          type: string
+        document_id:
           type: string
         dataset_id:
           type: string
-          description: Student dataset identifier. Multiple assistant documents can share this dataset and therefore share the same Qdrant collection.
+          description: Dataset identifier. Multiple managed documents can share this dataset and therefore share the same Qdrant collection.
         status:
           type: string
         graph_enabled:
           type: boolean
-          description: Whether new ingests for this assistant document should also write graph data to Neo4j.
+          description: Whether new ingests for this managed document should also write graph data to Neo4j.
         display_name:
           type: string
           nullable: true
+        title:
+          type: string
         source_type:
           type: string
         source_url:
@@ -993,10 +1050,17 @@ components:
         source_checksum_sha256:
           type: string
           nullable: true
+        content_hash:
+          type: string
+          nullable: true
         latest_document_version:
           type: string
           nullable: true
         indexed_at:
+          type: string
+          format: date-time
+          nullable: true
+        ingested_at:
           type: string
           format: date-time
           nullable: true
@@ -1012,44 +1076,232 @@ components:
         last_error:
           type: string
           nullable: true
+        metadata:
+          type: object
+          nullable: true
+          additionalProperties: true
         metadata_json:
           type: object
           nullable: true
           additionalProperties: true
+        original_filename:
+          type: string
+          nullable: true
+        content_type:
+          type: string
+          nullable: true
+        local_path:
+          type: string
+          nullable: true
+        collection:
+          type: string
+          nullable: true
+        qdrant_collection:
+          type: string
+          nullable: true
+        neo4j_namespace:
+          type: string
+          nullable: true
+        qdrant_status:
+          type: string
+          nullable: true
+        neo4j_status:
+          type: string
+          nullable: true
+        file_size:
+          type: integer
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          nullable: true
+        updated_at:
+          type: string
+          format: date-time
+          nullable: true
         outputs:
           type: array
           items:
-            $ref: "#/components/schemas/AssistantDocumentOutput"
-          description: Active indexed outputs for this assistant document. A single uploaded PDF can produce many chunks but still appears here as one document output record.
+            $ref: "#/components/schemas/ManagedDocumentOutput"
+          description: Active indexed outputs for this managed document. A single uploaded PDF can produce many chunks but still appears here as one document output record.
         active_output_count:
           type: integer
         active_chunk_count:
           type: integer
-          description: Total active chunks currently indexed for this assistant document across its active outputs.
-    AssistantDocumentResponse:
+          description: Total active chunks currently indexed for this managed document across its active outputs.
+        qdrant_point_count:
+          type: integer
+          nullable: true
+        neo4j_entity_count:
+          type: integer
+          nullable: true
+        neo4j_relation_count:
+          type: integer
+          nullable: true
+        neo4j_live_stats:
+          type: object
+          nullable: true
+          additionalProperties: true
+        markdown_preview:
+          type: string
+        markdown_preview_path:
+          type: string
+          nullable: true
+        markdown_preview_error:
+          type: string
+          nullable: true
+        markdown_preview_truncated:
+          type: boolean
+        related_jobs:
+          type: array
+          items:
+            $ref: "#/components/schemas/RelatedJob"
+        indexed_document_id:
+          type: string
+          nullable: true
+          description: Backing indexed document UUID when this managed document has already produced a legacy indexed record.
+    IndexedDocumentResource:
+      type: object
+      description: Legacy indexed document view keyed by the UUID stored in `documents.id`.
+      properties:
+        id:
+          type: string
+          description: Legacy indexed document UUID.
+        dataset_id:
+          type: string
+        source_url:
+          type: string
+          nullable: true
+        content_type:
+          type: string
+          nullable: true
+        content_hash:
+          type: string
+          nullable: true
+        qdrant_status:
+          type: string
+          nullable: true
+        neo4j_status:
+          type: string
+          nullable: true
+        ingested_at:
+          type: string
+          format: date-time
+          nullable: true
+        metadata:
+          type: object
+          additionalProperties: true
+        task_id:
+          type: string
+          nullable: true
+        job_id:
+          type: string
+          nullable: true
+        title:
+          type: string
+          nullable: true
+        status:
+          type: string
+        source_type:
+          type: string
+          nullable: true
+        local_path:
+          type: string
+          nullable: true
+        original_filename:
+          type: string
+          nullable: true
+        collection:
+          type: string
+          nullable: true
+        qdrant_collection:
+          type: string
+          nullable: true
+        neo4j_namespace:
+          type: string
+          nullable: true
+        file_size:
+          type: integer
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          nullable: true
+        updated_at:
+          type: string
+          format: date-time
+          nullable: true
+        markdown_preview:
+          type: string
+        markdown_preview_path:
+          type: string
+          nullable: true
+        markdown_preview_error:
+          type: string
+          nullable: true
+        markdown_preview_truncated:
+          type: boolean
+        qdrant_point_count:
+          type: integer
+          nullable: true
+        neo4j_entity_count:
+          type: integer
+          nullable: true
+        neo4j_relation_count:
+          type: integer
+          nullable: true
+        neo4j_live_stats:
+          type: object
+          nullable: true
+          additionalProperties: true
+        related_jobs:
+          type: array
+          items:
+            $ref: "#/components/schemas/RelatedJob"
+    UnifiedDocumentResource:
+      oneOf:
+        - $ref: "#/components/schemas/ManagedDocumentResource"
+        - $ref: "#/components/schemas/IndexedDocumentResource"
+    UnifiedDocumentResponse:
       type: object
       properties:
         success:
           type: boolean
         document:
-          $ref: "#/components/schemas/AssistantDocumentResource"
-    AssistantDocumentMutationResponse:
+          $ref: "#/components/schemas/UnifiedDocumentResource"
+    UnifiedDocumentListResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        documents:
+          type: array
+          items:
+            $ref: "#/components/schemas/UnifiedDocumentResource"
+    ManagedDocumentResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        document:
+          $ref: "#/components/schemas/ManagedDocumentResource"
+    ManagedDocumentMutationResponse:
       type: object
       properties:
         success:
           type: boolean
         operation:
-          $ref: "#/components/schemas/AssistantDocumentOperation"
+          $ref: "#/components/schemas/DocumentOperation"
         document:
-          $ref: "#/components/schemas/AssistantDocumentResource"
+          $ref: "#/components/schemas/ManagedDocumentResource"
         pipeline:
-          $ref: "#/components/schemas/AssistantPipelineReference"
+          $ref: "#/components/schemas/DocumentPipelineReference"
         message:
           type: string
         error:
           type: string
           nullable: true
-    AssistantDocumentBatchItem:
+    ManagedDocumentBatchItem:
       type: object
       properties:
         index:
@@ -1061,16 +1313,15 @@ components:
         success:
           type: boolean
         result:
-          type: object
-          additionalProperties: true
-    AssistantDocumentBatchResponse:
+          $ref: "#/components/schemas/ManagedDocumentMutationResponse"
+    ManagedDocumentBatchResponse:
       type: object
-      description: Batch upload result. Each accepted file becomes a separate assistant document in the same dataset.
+      description: Batch upload result. Each accepted file becomes a separate managed document in the same dataset.
       properties:
         success:
           type: boolean
         operation:
-          $ref: "#/components/schemas/AssistantDocumentOperation"
+          $ref: "#/components/schemas/DocumentOperation"
         summary:
           type: object
           properties:
@@ -1083,10 +1334,10 @@ components:
         items:
           type: array
           items:
-            $ref: "#/components/schemas/AssistantDocumentBatchItem"
-    AssistantDocumentDeleteBreakdown:
+            $ref: "#/components/schemas/ManagedDocumentBatchItem"
+    ManagedDocumentDeleteBreakdown:
       type: object
-      description: Per-store delete results for one assistant document.
+      description: Per-store delete results for one managed document.
       properties:
         bridge_documents_deleted:
           type: integer
@@ -1103,15 +1354,15 @@ components:
             type: object
             additionalProperties: true
           description: Neo4j delete results, typically one entry per active bridge document when graph ingest was enabled, including the affected namespace.
-    AssistantDocumentDeleteResponse:
+    ManagedDocumentDeleteResponse:
       type: object
-      description: Response returned after deleting one assistant document's active indexed outputs.
+      description: Response returned after deleting one managed document's active indexed outputs.
       properties:
         success:
           type: boolean
         operation:
-          $ref: "#/components/schemas/AssistantDocumentOperation"
+          $ref: "#/components/schemas/DocumentOperation"
         document:
-          $ref: "#/components/schemas/AssistantDocumentResource"
+          $ref: "#/components/schemas/ManagedDocumentResource"
         deletion:
-          $ref: "#/components/schemas/AssistantDocumentDeleteBreakdown"
+          $ref: "#/components/schemas/ManagedDocumentDeleteBreakdown"

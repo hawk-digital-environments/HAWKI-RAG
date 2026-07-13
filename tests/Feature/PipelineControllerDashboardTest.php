@@ -4,6 +4,9 @@ namespace Tests\Feature;
 
 use App\Models\IngestionSource;
 use App\Models\Dataset;
+use App\Models\Document;
+use App\Models\ManagedDocument;
+use App\Models\ManagedDocumentOutput;
 use App\Models\PipelineJob;
 use App\Models\PipelineStageState;
 use App\Models\PipelineTask;
@@ -11,6 +14,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 class PipelineControllerDashboardTest extends TestCase
@@ -69,13 +73,13 @@ class PipelineControllerDashboardTest extends TestCase
         $response
             ->assertCreated()
             ->assertJsonPath('success', true)
-            ->assertJsonPath('datasetId', 'controller-test')
+            ->assertJsonPath('dataset_id', 'controller-test')
             ->assertJsonPath('task.stages.scrape.status', 'n/a')
             ->assertJsonPath('task.stages.convert.status', 'processing')
             ->assertJsonPath('task.stages.ingest.status', PipelineJob::STATUS_QUEUED);
 
-        $taskId = $response->json('taskId');
-        $jobId = $response->json('jobId');
+        $taskId = $response->json('task_id');
+        $jobId = $response->json('job_id');
 
         $this->assertDatabaseHas('datasets', [
             'dataset_id' => 'controller-test',
@@ -163,15 +167,171 @@ class PipelineControllerDashboardTest extends TestCase
             ->assertJsonPath('task.counters.files_found', 21)
             ->assertJsonPath('task.counters.converted', 21)
             ->assertJsonPath('task.stages.scrape.status', PipelineJob::STATUS_FAILED)
-            ->assertJsonPath('task.stages.scrape.counts.pagesCrawled', 4)
-            ->assertJsonPath('task.stages.scrape.counts.totalPages', 300)
-            ->assertJsonPath('task.stages.scrape.counts.pageLimit', 300)
+            ->assertJsonPath('task.stages.scrape.counts.pages_crawled', 4)
+            ->assertJsonPath('task.stages.scrape.counts.total_pages', 300)
+            ->assertJsonPath('task.stages.scrape.counts.page_limit', 300)
             ->assertJsonPath('task.stages.scrape.errors.0', 'Scraper stopped at 4/300 pages before reaching the configured page limit.')
             ->assertJsonPath('task.stages.convert.status', PipelineJob::STATUS_COMPLETED)
-            ->assertJsonPath('task.stages.convert.counts.convertedFiles', 21)
-            ->assertJsonPath('task.stages.convert.counts.sourceFiles', 21)
+            ->assertJsonPath('task.stages.convert.counts.converted_files', 21)
+            ->assertJsonPath('task.stages.convert.counts.source_files', 21)
             ->assertJsonPath('task.stages.ingest.status', PipelineJob::STATUS_COMPLETED)
             ->assertJsonPath('task.stages.ingest.counts.completed', 21);
+    }
+
+    public function test_task_detail_resolves_managed_document_summaries_for_jobs_and_sources(): void
+    {
+        $task = PipelineTask::query()->create([
+            'task_id' => 'task-managed-read',
+            'dataset_id' => 'managed-read',
+            'status' => PipelineTask::STATUS_RUNNING,
+            'started_at' => now()->subMinute(),
+            'counters' => ['jobs_total' => 1],
+            'metadata' => [],
+        ]);
+
+        $job = PipelineJob::query()->create([
+            'job_id' => 'job-managed-read',
+            'task_id' => $task->task_id,
+            'source_id' => 'source-managed-read',
+            'job_type' => PipelineJob::TYPE_INGEST,
+            'status' => PipelineJob::STATUS_RUNNING,
+            'source_url' => 'upload://managed-read.pdf',
+            'started_at' => now()->subMinute(),
+            'metadata' => [],
+        ]);
+
+        IngestionSource::query()->create([
+            'source_id' => 'source-managed-read',
+            'source_url' => 'upload://managed-read.pdf',
+            'task_id' => $task->task_id,
+            'dataset_id' => 'managed-read',
+            'content_hash' => hash('sha256', 'managed-read'),
+            'document_version' => 'version-managed-read',
+            'index_status' => IngestionSource::STATUS_READY,
+            'raw_storage_path' => '/shared/sources/source-managed-read/raw/',
+            'markdown_storage_path' => '/shared/sources/source-managed-read/markdown/',
+            'metadata' => [],
+            'ready_at' => now(),
+        ]);
+
+        ManagedDocument::query()->create([
+            'assistant_document_id' => 'adoc_managed_read_1',
+            'dataset_id' => 'managed-read',
+            'display_name' => 'managed-read.pdf',
+            'source_type' => 'upload',
+            'source_url' => 'upload://managed-read.pdf',
+            'graph_enabled' => true,
+            'status' => ManagedDocument::STATUS_INDEXED,
+            'latest_source_id' => 'source-managed-read',
+            'latest_task_id' => $task->task_id,
+            'latest_job_id' => $job->job_id,
+            'indexed_at' => now(),
+        ]);
+
+        ManagedDocumentOutput::query()->create([
+            'assistant_document_id' => 'adoc_managed_read_1',
+            'bridge_document_id' => 'doc-managed-read-1',
+            'qdrant_collection' => 'hawki_managed_read',
+            'neo4j_namespace' => 'hawki_managed_read',
+            'chunk_count' => 8,
+            'status' => 'indexed',
+            'active' => true,
+            'indexed_at' => now(),
+        ]);
+
+        Document::query()->create([
+            'id' => (string) Str::uuid(),
+            'external_id' => 'doc-managed-read-1',
+            'dataset_id' => 'managed-read',
+            'collection' => 'hawki_managed_read',
+            'source_type' => 'upload',
+            'source_url' => 'upload://managed-read.pdf',
+            'original_filename' => 'managed-read.pdf',
+            'storage_path' => '/tmp/managed-read/managed-read.md',
+            'mime_type' => 'text/markdown',
+            'file_size' => 123,
+            'checksum_sha256' => hash('sha256', 'managed-read'),
+            'title' => 'managed-read',
+            'metadata_json' => [
+                'source_id' => 'source-managed-read',
+                'task_id' => $task->task_id,
+                'job_id' => $job->job_id,
+                'document_id' => 'doc-managed-read-1',
+                'qdrant_collection' => 'hawki_managed_read',
+                'neo4j_namespace' => 'hawki_managed_read',
+            ],
+            'status' => Document::STATUS_COMPLETED,
+        ]);
+
+        $this->getJson("/pipeline/tasks/{$task->task_id}")
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('task.managed_documents.0.document_id', 'adoc_managed_read_1')
+            ->assertJsonPath('task.managed_document_count', 1)
+            ->assertJsonPath('task.jobs.0.managed_documents.0.document_id', 'adoc_managed_read_1')
+            ->assertJsonPath('task.jobs.0.source.source_id', 'source-managed-read')
+            ->assertJsonPath('task.jobs.0.source.managed_documents.0.document_id', 'adoc_managed_read_1')
+            ->assertJsonPath('task.sources.0.source_id', 'source-managed-read')
+            ->assertJsonPath('task.sources.0.managed_documents.0.document_id', 'adoc_managed_read_1');
+    }
+
+    public function test_job_status_resolves_managed_document_summaries_for_source_view(): void
+    {
+        $task = PipelineTask::query()->create([
+            'task_id' => 'task-status-managed-read',
+            'dataset_id' => 'managed-status-read',
+            'status' => PipelineTask::STATUS_RUNNING,
+            'started_at' => now()->subMinute(),
+            'counters' => ['jobs_total' => 1],
+            'metadata' => [],
+        ]);
+
+        $job = PipelineJob::query()->create([
+            'job_id' => 'job-status-managed-read',
+            'task_id' => $task->task_id,
+            'source_id' => 'source-status-managed-read',
+            'job_type' => PipelineJob::TYPE_INGEST,
+            'status' => PipelineJob::STATUS_RUNNING,
+            'current_stage' => 'ingest',
+            'source_url' => 'upload://status-managed-read.pdf',
+            'started_at' => now()->subMinute(),
+            'metadata' => [],
+        ]);
+
+        IngestionSource::query()->create([
+            'source_id' => 'source-status-managed-read',
+            'source_url' => 'upload://status-managed-read.pdf',
+            'task_id' => $task->task_id,
+            'dataset_id' => 'managed-status-read',
+            'content_hash' => hash('sha256', 'managed-status-read'),
+            'document_version' => 'version-status-managed-read',
+            'index_status' => IngestionSource::STATUS_RUNNING,
+            'raw_storage_path' => '/shared/sources/source-status-managed-read/raw/',
+            'markdown_storage_path' => '/shared/sources/source-status-managed-read/markdown/',
+            'metadata' => [],
+        ]);
+
+        ManagedDocument::query()->create([
+            'assistant_document_id' => 'adoc_status_managed_read_1',
+            'dataset_id' => 'managed-status-read',
+            'display_name' => 'status-managed-read.pdf',
+            'source_type' => 'upload',
+            'source_url' => 'upload://status-managed-read.pdf',
+            'graph_enabled' => false,
+            'status' => ManagedDocument::STATUS_PROCESSING,
+            'latest_source_id' => 'source-status-managed-read',
+            'latest_task_id' => $task->task_id,
+            'latest_job_id' => $job->job_id,
+        ]);
+
+        $this->getJson("/pipeline/status/{$job->job_id}")
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('managed_documents.0.document_id', 'adoc_status_managed_read_1')
+            ->assertJsonPath('managed_document_count', 1)
+            ->assertJsonPath('source.source_id', 'source-status-managed-read')
+            ->assertJsonPath('source.managed_documents.0.document_id', 'adoc_status_managed_read_1')
+            ->assertJsonPath('tracked.managed_documents.0.document_id', 'adoc_status_managed_read_1');
     }
 
     public function test_native_upload_rejects_non_raganything_file_type(): void
@@ -224,7 +384,7 @@ class PipelineControllerDashboardTest extends TestCase
         ])
             ->assertCreated()
             ->assertJsonPath('success', true)
-            ->assertJsonPath('datasetId', 'custom-converter-test');
+            ->assertJsonPath('dataset_id', 'custom-converter-test');
 
         $profilePath = null;
         Http::assertSent(function ($request) use (&$profilePath): bool {
@@ -249,7 +409,7 @@ class PipelineControllerDashboardTest extends TestCase
 
         $task = PipelineTask::query()->where('dataset_id', 'custom-converter-test')->firstOrFail();
         $this->assertStringNotContainsString('secret-user-api-key', json_encode($task->metadata, JSON_UNESCAPED_SLASHES));
-        $this->assertSame($task->task_id, $response->json('taskId'));
+        $this->assertSame($task->task_id, $response->json('task_id'));
 
         File::deleteDirectory($root);
     }
@@ -298,7 +458,7 @@ class PipelineControllerDashboardTest extends TestCase
         ])
             ->assertCreated()
             ->assertJsonPath('success', true)
-            ->assertJsonPath('datasetId', 'saved-converter-test');
+            ->assertJsonPath('dataset_id', 'saved-converter-test');
 
         $profilePath = null;
         Http::assertSent(function ($request) use (&$profilePath): bool {
@@ -416,9 +576,9 @@ class PipelineControllerDashboardTest extends TestCase
         ])
             ->assertStatus(500)
             ->assertJsonPath('success', false)
-            ->assertJsonPath('datasetId', 'blocked-controller-dataset')
-            ->assertJsonPath('taskId', null)
-            ->assertJsonPath('jobId', null);
+            ->assertJsonPath('dataset_id', 'blocked-controller-dataset')
+            ->assertJsonPath('task_id', null)
+            ->assertJsonPath('job_id', null);
 
         $this->assertDatabaseMissing('datasets', [
             'dataset_id' => 'blocked-controller-dataset',
@@ -536,9 +696,9 @@ class PipelineControllerDashboardTest extends TestCase
             ->deleteJson('/pipeline/tasks/task-cache-delete', [], ['X-CSRF-TOKEN' => 'test-token'])
             ->assertOk()
             ->assertJsonPath('success', true)
-            ->assertJsonPath('taskId', 'task-cache-delete')
+            ->assertJsonPath('task_id', 'task-cache-delete')
             ->assertJsonPath('deleted', true)
-            ->assertJsonPath('storageCleanup.ok', true);
+            ->assertJsonPath('storage_cleanup.ok', true);
 
         $this->assertDatabaseMissing('pipeline_tasks', [
             'task_id' => 'task-cache-delete',

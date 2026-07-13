@@ -31,29 +31,29 @@ readonly class DocumentPayloadBuilder
 
         $payload = [
             'id' => $document->id,
-            'datasetId' => $document->dataset_id,
-            'sourceUrl' => $document->source_url,
-            'contentType' => $document->mime_type,
-            'contentHash' => $document->checksum_sha256,
-            'qdrantStatus' => $this->statuses->qdrantStatus($document, $bridgeResponse),
-            'neo4jStatus' => $this->statuses->neo4jStatus($document, $metadata, $bridgeResponse),
-            'ingestedAt' => $document->status === Document::STATUS_COMPLETED
+            'dataset_id' => $document->dataset_id,
+            'source_url' => $document->source_url,
+            'content_type' => $document->mime_type,
+            'content_hash' => $document->checksum_sha256,
+            'qdrant_status' => $this->statuses->qdrantStatus($document, $bridgeResponse),
+            'neo4j_status' => $this->statuses->neo4jStatus($document, $metadata, $bridgeResponse),
+            'ingested_at' => $document->status === Document::STATUS_COMPLETED
                 ? $this->dateValue($document->updated_at ?? $document->created_at)
                 : null,
             'metadata' => $metadata,
-            'taskId' => $taskId,
-            'jobId' => $jobId,
+            'task_id' => $taskId,
+            'job_id' => $jobId,
             'title' => $document->title,
             'status' => $document->status,
-            'sourceType' => $document->source_type,
-            'localPath' => $document->storage_path,
-            'originalFilename' => $document->original_filename,
+            'source_type' => $document->source_type,
+            'local_path' => $document->storage_path,
+            'original_filename' => $document->original_filename,
             'collection' => $document->collection,
-            'qdrantCollection' => $this->stringValue($metadata['qdrant_collection'] ?? null) ?? $document->collection,
-            'neo4jNamespace' => $this->stringValue($metadata['neo4j_namespace'] ?? null),
-            'fileSize' => $document->file_size,
-            'createdAt' => $this->dateValue($document->created_at),
-            'updatedAt' => $this->dateValue($document->updated_at),
+            'qdrant_collection' => $this->stringValue($metadata['qdrant_collection'] ?? null) ?? $document->collection,
+            'neo4j_namespace' => $this->stringValue($metadata['neo4j_namespace'] ?? null),
+            'file_size' => $document->file_size,
+            'created_at' => $this->dateValue($document->created_at),
+            'updated_at' => $this->dateValue($document->updated_at),
         ];
 
         if ($includeDetails) {
@@ -71,15 +71,15 @@ readonly class DocumentPayloadBuilder
             }
 
             $preview = $this->previews->preview($document->storage_path);
-            $payload['markdownPreview'] = $preview['content'];
-            $payload['markdownPreviewPath'] = $preview['path'];
-            $payload['markdownPreviewError'] = $preview['error'];
-            $payload['markdownPreviewTruncated'] = $preview['truncated'];
-            $payload['qdrantPointCount'] = $qdrantPointCount;
-            $payload['neo4jEntityCount'] = $neo4jEntityCount;
-            $payload['neo4jRelationCount'] = $neo4jRelationCount;
-            $payload['neo4jLiveStats'] = $liveGraphStats;
-            $payload['relatedJobs'] = $this->relatedJobs($document, $taskId, $jobId);
+            $payload['markdown_preview'] = $preview['content'];
+            $payload['markdown_preview_path'] = $preview['path'];
+            $payload['markdown_preview_error'] = $preview['error'];
+            $payload['markdown_preview_truncated'] = $preview['truncated'];
+            $payload['qdrant_point_count'] = $qdrantPointCount;
+            $payload['neo4j_entity_count'] = $neo4jEntityCount;
+            $payload['neo4j_relation_count'] = $neo4jRelationCount;
+            $payload['neo4j_live_stats'] = $liveGraphStats;
+            $payload['related_jobs'] = $this->relatedJobs($document, $taskId, $jobId);
         }
 
         return $payload;
@@ -92,17 +92,17 @@ readonly class DocumentPayloadBuilder
     {
         return $this->documents->relatedJobs($document, $taskId, $jobId)
             ->map(fn (PipelineJob $job): array => [
-                'jobId' => $job->job_id,
-                'taskId' => $job->task_id,
-                'parentJobId' => $job->parent_job_id,
-                'jobType' => $job->job_type,
+                'job_id' => $job->job_id,
+                'task_id' => $job->task_id,
+                'parent_job_id' => $job->parent_job_id,
+                'job_type' => $job->job_type,
                 'status' => $job->status,
-                'sourceUrl' => $job->source_url,
-                'localPath' => $job->local_path,
-                'contentHash' => $job->content_hash,
-                'errorMessage' => $job->error_message,
-                'startedAt' => $this->dateValue($job->started_at),
-                'finishedAt' => $this->dateValue($job->finished_at),
+                'source_url' => $job->source_url,
+                'local_path' => $job->local_path,
+                'content_hash' => $job->content_hash,
+                'error_message' => $job->error_message,
+                'started_at' => $this->dateValue($job->started_at),
+                'finished_at' => $this->dateValue($job->finished_at),
             ])
             ->all();
     }
