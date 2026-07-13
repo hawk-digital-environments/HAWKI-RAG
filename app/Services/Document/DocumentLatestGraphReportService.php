@@ -52,7 +52,7 @@ readonly class DocumentLatestGraphReportService
      */
     private function managedReport(array $document): ?array
     {
-        $documentId = $this->stringValue($document['document_id'] ?? $document['documentId'] ?? $document['id'] ?? null);
+        $documentId = $this->stringValue($document['document_id'] ?? $document['id'] ?? null);
         if ($documentId === null) {
             return null;
         }
@@ -66,16 +66,16 @@ readonly class DocumentLatestGraphReportService
 
         return [
             'document_id' => $documentId,
-            'external_id' => $this->stringValue($primaryOutput['bridge_document_id'] ?? $primaryOutput['bridgeDocumentId'] ?? null),
-            'dataset_id' => $this->stringValue($document['dataset_id'] ?? $document['datasetId'] ?? null),
-            'collection' => $this->stringValue($primaryOutput['qdrant_collection'] ?? $primaryOutput['qdrantCollection'] ?? null)
-                ?? $this->stringValue($document['collection'] ?? $document['qdrantCollection'] ?? null),
+            'external_id' => $this->stringValue($primaryOutput['bridge_document_id'] ?? null),
+            'dataset_id' => $this->stringValue($document['dataset_id'] ?? null),
+            'collection' => $this->stringValue($primaryOutput['qdrant_collection'] ?? null)
+                ?? $this->stringValue($document['collection'] ?? $document['qdrant_collection'] ?? null),
             'title' => $this->stringValue($document['title'] ?? null),
-            'source_url' => $this->stringValue($document['source_url'] ?? $document['sourceUrl'] ?? null),
-            'updated_at' => $this->stringValue($document['updatedAt'] ?? $document['indexedAt'] ?? null),
+            'source_url' => $this->stringValue($document['source_url'] ?? null),
+            'updated_at' => $this->stringValue($document['updated_at'] ?? $document['indexed_at'] ?? null),
             'qdrant_points' => $bridgeResponse['points'] ?? null,
             'graph_enabled' => $this->boolValue(
-                $document['graph_enabled'] ?? $document['graphEnabled'] ?? $graphConfig['enabled'] ?? ($graphPreview !== []),
+                $document['graph_enabled'] ?? $graphConfig['enabled'] ?? ($graphPreview !== []),
             ),
             'graph_triplets' => $graphPreview['total_triplets'] ?? null,
             'docs_with_triplets' => $graphPreview['docs_with_triplets'] ?? null,

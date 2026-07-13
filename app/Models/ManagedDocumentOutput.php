@@ -10,10 +10,10 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class ManagedDocumentOutput extends Model
 {
-    protected $table = 'assistant_document_outputs';
+    protected $table = 'managed_document_outputs';
 
     protected $fillable = [
-        'assistant_document_id',
+        'document_id',
         'bridge_document_id',
         'qdrant_collection',
         'neo4j_namespace',
@@ -39,11 +39,11 @@ class ManagedDocumentOutput extends Model
 
     public function document(): BelongsTo
     {
-        return $this->belongsTo(ManagedDocument::class, 'assistant_document_id', 'assistant_document_id');
+        return $this->belongsTo(ManagedDocument::class, 'document_id', 'document_id');
     }
 
     public function documentId(): ManagedDocumentId
     {
-        return ManagedDocumentId::fromString((string) $this->getAttribute('assistant_document_id'));
+        return ManagedDocumentId::fromString((string) $this->getAttribute('document_id'));
     }
 }

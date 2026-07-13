@@ -85,14 +85,14 @@ class PipelineUploadPayloadServiceTest extends TestCase
                 'graph' => 'false',
                 'request_metadata' => [
                     'document_id' => 'adoc_upload_1',
-                    'assistant_document_id' => 'adoc_upload_1',
                 ],
             ]),
             $this->storedUpload(),
         );
 
-        $this->assertSame('adoc_upload_1', $metadata['request']['metadata']['document_id']);
-        $this->assertSame('adoc_upload_1', $metadata['request']['metadata']['assistant_document_id']);
+        $this->assertSame('adoc_upload_1', $metadata['request']['metadata']['managed_document_id']);
+        $this->assertArrayNotHasKey('document_id', $metadata['request']['metadata']);
+        $this->assertArrayNotHasKey('assistant_document_id', $metadata['request']['metadata']);
         $this->assertSame('sample.pdf', $metadata['request']['metadata']['label']);
     }
 
@@ -109,8 +109,9 @@ class PipelineUploadPayloadServiceTest extends TestCase
             $this->storedUpload(),
         );
 
-        $this->assertSame('adoc_upload_legacy_1', $metadata['request']['metadata']['document_id']);
-        $this->assertSame('adoc_upload_legacy_1', $metadata['request']['metadata']['assistant_document_id']);
+        $this->assertSame('adoc_upload_legacy_1', $metadata['request']['metadata']['managed_document_id']);
+        $this->assertArrayNotHasKey('document_id', $metadata['request']['metadata']);
+        $this->assertArrayNotHasKey('assistant_document_id', $metadata['request']['metadata']);
     }
 
     private function dataset(): Dataset

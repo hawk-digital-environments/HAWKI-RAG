@@ -18,16 +18,16 @@ class ManagedDocument extends Model
     public const STATUS_DELETED = 'deleted';
     public const STATUS_FAILED = 'failed';
 
-    protected $table = 'assistant_documents';
+    protected $table = 'managed_documents';
 
-    protected $primaryKey = 'assistant_document_id';
+    protected $primaryKey = 'document_id';
 
     public $incrementing = false;
 
     protected $keyType = 'string';
 
     protected $fillable = [
-        'assistant_document_id',
+        'document_id',
         'dataset_id',
         'display_name',
         'source_type',
@@ -56,11 +56,11 @@ class ManagedDocument extends Model
 
     public function outputs(): HasMany
     {
-        return $this->hasMany(ManagedDocumentOutput::class, 'assistant_document_id', 'assistant_document_id');
+        return $this->hasMany(ManagedDocumentOutput::class, 'document_id', 'document_id');
     }
 
     public function documentId(): ManagedDocumentId
     {
-        return ManagedDocumentId::fromString((string) $this->getAttribute('assistant_document_id'));
+        return ManagedDocumentId::fromString((string) $this->getAttribute('document_id'));
     }
 }

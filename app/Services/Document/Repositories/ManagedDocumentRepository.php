@@ -22,7 +22,7 @@ readonly class ManagedDocumentRepository
     {
         return ManagedDocument::query()
             ->with(['outputs' => fn ($query) => $query->orderByDesc('active')->orderBy('id')])
-            ->where('assistant_document_id', $this->managedDocumentIdValue($managedDocumentId))
+            ->where('document_id', $this->managedDocumentIdValue($managedDocumentId))
             ->first();
     }
 
@@ -130,7 +130,7 @@ readonly class ManagedDocumentRepository
         if ($search !== null) {
             $like = '%'.str_replace(['%', '_'], ['\%', '\_'], $search).'%';
             $query->where(function (Builder $inner) use ($like): void {
-                $inner->where('assistant_document_id', 'like', $like)
+                $inner->where('document_id', 'like', $like)
                     ->orWhere('display_name', 'like', $like)
                     ->orWhere('source_url', 'like', $like)
                     ->orWhere('source_checksum_sha256', 'like', $like)

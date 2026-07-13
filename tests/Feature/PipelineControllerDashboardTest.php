@@ -215,7 +215,7 @@ class PipelineControllerDashboardTest extends TestCase
         ]);
 
         ManagedDocument::query()->create([
-            'assistant_document_id' => 'adoc_managed_read_1',
+            'document_id' => 'adoc_managed_read_1',
             'dataset_id' => 'managed-read',
             'display_name' => 'managed-read.pdf',
             'source_type' => 'upload',
@@ -229,7 +229,7 @@ class PipelineControllerDashboardTest extends TestCase
         ]);
 
         ManagedDocumentOutput::query()->create([
-            'assistant_document_id' => 'adoc_managed_read_1',
+            'document_id' => 'adoc_managed_read_1',
             'bridge_document_id' => 'doc-managed-read-1',
             'qdrant_collection' => 'hawki_managed_read',
             'neo4j_namespace' => 'hawki_managed_read',
@@ -312,7 +312,7 @@ class PipelineControllerDashboardTest extends TestCase
         ]);
 
         ManagedDocument::query()->create([
-            'assistant_document_id' => 'adoc_status_managed_read_1',
+            'document_id' => 'adoc_status_managed_read_1',
             'dataset_id' => 'managed-status-read',
             'display_name' => 'status-managed-read.pdf',
             'source_type' => 'upload',

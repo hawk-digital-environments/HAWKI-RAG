@@ -175,7 +175,7 @@ class AppMetadataStore:
         source_type = "upload" if source_url.startswith("upload://") else "scrape"
         upload = workflow_input.get("upload") if isinstance(workflow_input.get("upload"), dict) else {}
         upload_filename = str(upload.get("original_filename") or "")
-        assistant_document_id = str(workflow_input.get("assistant_document_id") or "")
+        managed_document_id = str(workflow_input.get("managed_document_id") or "")
         if not upload_filename and source_url.startswith("upload://"):
             upload_filename = source_url.removeprefix("upload://")
 
@@ -202,7 +202,7 @@ class AppMetadataStore:
                         title = Path(title_source).stem or str(record.get("document_id") or "Document")
                         document_id = str(record.get("document_id") or "")
                         metadata = {
-                            "assistant_document_id": assistant_document_id or None,
+                            "managed_document_id": managed_document_id or None,
                             "source_id": source_id,
                             "task_id": task_id,
                             "job_id": job_id,

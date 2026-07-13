@@ -25,7 +25,6 @@ use Illuminate\Support\Facades\Route;
 */
 use App\Http\Controllers\API\HawkiRagProxyController;
 use App\Http\Controllers\API\RagStatsController;
-use App\Http\Controllers\Assistant\AssistantDocumentController;
 use App\Http\Controllers\Document\UnifiedDocumentController;
 
 /*
@@ -74,14 +73,6 @@ Route::middleware(['auth:sanctum', 'throttle:hawki-api'])->group(function () {
         Route::get('/{documentId}', [DocumentBrowserController::class, 'show']);
         Route::put('/{documentId}', [UnifiedDocumentController::class, 'update'])->middleware('throttle:hawki-upload');
         Route::delete('/{documentId}', [UnifiedDocumentController::class, 'destroy'])->middleware('throttle:hawki-destructive');
-    });
-
-    Route::prefix('assistant/documents')->group(function () {
-        Route::post('/', [AssistantDocumentController::class, 'store'])->middleware('throttle:hawki-upload');
-        Route::post('/batch', [AssistantDocumentController::class, 'storeBatch'])->middleware('throttle:hawki-upload');
-        Route::get('/{assistantDocumentId}', [AssistantDocumentController::class, 'show']);
-        Route::put('/{assistantDocumentId}', [AssistantDocumentController::class, 'update'])->middleware('throttle:hawki-upload');
-        Route::delete('/{assistantDocumentId}', [AssistantDocumentController::class, 'destroy'])->middleware('throttle:hawki-destructive');
     });
 
     Route::prefix('pipeline/tasks')->group(function () {

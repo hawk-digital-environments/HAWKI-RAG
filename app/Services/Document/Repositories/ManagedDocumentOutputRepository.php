@@ -28,7 +28,7 @@ readonly class ManagedDocumentOutputRepository
     public function activeForDocument(ManagedDocumentId|string $managedDocumentId): Collection
     {
         return ManagedDocumentOutput::query()
-            ->where('assistant_document_id', $this->managedDocumentIdValue($managedDocumentId))
+            ->where('document_id', $this->managedDocumentIdValue($managedDocumentId))
             ->where('active', true)
             ->orderBy('id')
             ->get();
@@ -53,7 +53,7 @@ readonly class ManagedDocumentOutputRepository
 
             ManagedDocumentOutput::query()->updateOrCreate(
                 [
-                    'assistant_document_id' => $managedDocumentId,
+                    'document_id' => $managedDocumentId,
                     'bridge_document_id' => $bridgeDocumentId,
                 ],
                 [
@@ -77,7 +77,7 @@ readonly class ManagedDocumentOutputRepository
             $deletedAt = $this->now();
 
             ManagedDocumentOutput::query()
-                ->where('assistant_document_id', $managedDocumentId)
+                ->where('document_id', $managedDocumentId)
                 ->where('active', true)
                 ->whereNotIn('bridge_document_id', $bridgeDocumentIds)
                 ->update([
@@ -98,7 +98,7 @@ readonly class ManagedDocumentOutputRepository
         $outputs = $this->activeForDocument($document->documentId());
 
         ManagedDocumentOutput::query()
-            ->where('assistant_document_id', $document->documentId()->value)
+            ->where('document_id', $document->documentId()->value)
             ->where('active', true)
             ->update([
                 'active' => false,

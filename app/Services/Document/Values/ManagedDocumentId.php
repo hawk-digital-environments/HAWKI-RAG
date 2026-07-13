@@ -33,7 +33,9 @@ readonly class ManagedDocumentId
      */
     public static function fromRequestMetadata(array $metadata): ?self
     {
-        $value = self::stringValue($metadata['document_id'] ?? $metadata['assistant_document_id'] ?? null);
+        $value = self::stringValue(
+            $metadata['managed_document_id'] ?? $metadata['assistant_document_id'] ?? $metadata['document_id'] ?? null,
+        );
         if ($value === null || ! self::looksLike($value)) {
             return null;
         }
@@ -52,6 +54,12 @@ readonly class ManagedDocumentId
             return $metadata;
         }
 
+        if (($metadata['document_id'] ?? null) === $documentId->value) {
+            unset($metadata['document_id']);
+        }
+
+        unset($metadata['assistant_document_id']);
+
         return array_merge($metadata, $documentId->toRequestMetadata());
     }
 
@@ -67,18 +75,16 @@ readonly class ManagedDocumentId
             && (
                 str_starts_with($normalized, 'adoc_')
                 || str_starts_with($normalized, 'adoc-')
-                || str_starts_with($normalized, 'doc_')
             );
     }
 
     /**
-     * @return array{document_id: string, assistant_document_id: string}
+     * @return array{managed_document_id: string}
      */
     public function toRequestMetadata(): array
     {
         return [
-            'document_id' => $this->value,
-            'assistant_document_id' => $this->value,
+            'managed_document_id' => $this->value,
         ];
     }
 

@@ -70,8 +70,8 @@ class DocumentUnifiedApiTest extends TestCase
         $this->assertIsString($publicDocumentId);
         $this->assertStringStartsWith('adoc_', $publicDocumentId);
 
-        $this->assertDatabaseHas('assistant_documents', [
-            'assistant_document_id' => $publicDocumentId,
+        $this->assertDatabaseHas('managed_documents', [
+            'document_id' => $publicDocumentId,
             'dataset_id' => 'documents-create',
             'display_name' => 'operator-manual.pdf',
         ]);
@@ -79,8 +79,7 @@ class DocumentUnifiedApiTest extends TestCase
         Http::assertSent(fn ($request): bool => $request->method() === 'POST'
             && $request->url() === config('config.hawki_rag_bridge_url').'/temporal/workflows/ingest'
             && data_get($request->data(), 'workflow_input.dataset_id') === 'documents-create'
-            && data_get($request->data(), 'workflow_input.document_id') === $publicDocumentId
-            && data_get($request->data(), 'workflow_input.assistant_document_id') === $publicDocumentId);
+            && data_get($request->data(), 'workflow_input.managed_document_id') === $publicDocumentId);
 
         File::deleteDirectory($root);
     }
@@ -165,13 +164,13 @@ class DocumentUnifiedApiTest extends TestCase
             ->assertJsonPath('items.1.result.document.dataset_id', 'documents-batch')
             ->assertJsonPath('items.1.result.document.graph_enabled', false);
 
-        $this->assertDatabaseCount('assistant_documents', 2);
-        $this->assertDatabaseHas('assistant_documents', [
+        $this->assertDatabaseCount('managed_documents', 2);
+        $this->assertDatabaseHas('managed_documents', [
             'dataset_id' => 'documents-batch',
             'display_name' => 'first.pdf',
             'graph_enabled' => 0,
         ]);
-        $this->assertDatabaseHas('assistant_documents', [
+        $this->assertDatabaseHas('managed_documents', [
             'dataset_id' => 'documents-batch',
             'display_name' => 'second.pdf',
             'graph_enabled' => 0,
@@ -189,7 +188,7 @@ class DocumentUnifiedApiTest extends TestCase
     public function test_show_returns_managed_document_payload_when_document_id_uses_adoc_handle(): void
     {
         ManagedDocument::query()->create([
-            'assistant_document_id' => 'adoc_show_1',
+            'document_id' => 'adoc_show_1',
             'dataset_id' => 'documents-show',
             'display_name' => 'policy.pdf',
             'source_type' => 'upload',
@@ -200,7 +199,7 @@ class DocumentUnifiedApiTest extends TestCase
         ]);
 
         ManagedDocumentOutput::query()->create([
-            'assistant_document_id' => 'adoc_show_1',
+            'document_id' => 'adoc_show_1',
             'bridge_document_id' => 'doc-show-1',
             'qdrant_collection' => 'hawki_documents_show',
             'neo4j_namespace' => 'hawki_documents_show',
@@ -229,7 +228,7 @@ class DocumentUnifiedApiTest extends TestCase
     public function test_list_returns_managed_documents_for_dataset_using_public_adoc_handle(): void
     {
         ManagedDocument::query()->create([
-            'assistant_document_id' => 'adoc_list_1',
+            'document_id' => 'adoc_list_1',
             'dataset_id' => 'documents-list',
             'display_name' => 'listable.pdf',
             'source_type' => 'upload',
@@ -240,7 +239,7 @@ class DocumentUnifiedApiTest extends TestCase
         ]);
 
         ManagedDocumentOutput::query()->create([
-            'assistant_document_id' => 'adoc_list_1',
+            'document_id' => 'adoc_list_1',
             'bridge_document_id' => 'doc-list-1',
             'qdrant_collection' => 'hawki_documents_list',
             'neo4j_namespace' => 'hawki_documents_list',
@@ -294,7 +293,7 @@ class DocumentUnifiedApiTest extends TestCase
         File::put($path, "# Policy\n\nIndexed Markdown content.");
 
         ManagedDocument::query()->create([
-            'assistant_document_id' => 'adoc_detail_1',
+            'document_id' => 'adoc_detail_1',
             'dataset_id' => 'documents-detail',
             'display_name' => 'policy.pdf',
             'source_type' => 'upload',
@@ -397,7 +396,7 @@ class DocumentUnifiedApiTest extends TestCase
     {
         $checksum = hash('sha256', 'documents-skip');
         ManagedDocument::query()->create([
-            'assistant_document_id' => 'adoc_skip_1',
+            'document_id' => 'adoc_skip_1',
             'dataset_id' => 'documents-skip',
             'display_name' => 'first-name.pdf',
             'source_type' => 'upload',
@@ -432,7 +431,7 @@ class DocumentUnifiedApiTest extends TestCase
     public function test_delete_fans_out_to_bridge_and_soft_deletes_outputs_through_unified_documents_route(): void
     {
         ManagedDocument::query()->create([
-            'assistant_document_id' => 'adoc_delete_1',
+            'document_id' => 'adoc_delete_1',
             'dataset_id' => 'documents-delete',
             'display_name' => 'delete-me.pdf',
             'source_type' => 'upload',
@@ -441,7 +440,7 @@ class DocumentUnifiedApiTest extends TestCase
         ]);
 
         ManagedDocumentOutput::query()->create([
-            'assistant_document_id' => 'adoc_delete_1',
+            'document_id' => 'adoc_delete_1',
             'bridge_document_id' => 'doc-delete-1',
             'qdrant_collection' => 'hawki_documents_delete',
             'neo4j_namespace' => 'hawki_documents_delete',
@@ -497,12 +496,12 @@ class DocumentUnifiedApiTest extends TestCase
             ->assertJsonPath('deletion.neo4j.0.relationships_deleted', 214)
             ->assertJsonPath('deletion.neo4j.0.entities_deleted', 97);
 
-        $this->assertDatabaseHas('assistant_documents', [
-            'assistant_document_id' => 'adoc_delete_1',
+        $this->assertDatabaseHas('managed_documents', [
+            'document_id' => 'adoc_delete_1',
             'status' => ManagedDocument::STATUS_DELETED,
         ]);
-        $this->assertDatabaseHas('assistant_document_outputs', [
-            'assistant_document_id' => 'adoc_delete_1',
+        $this->assertDatabaseHas('managed_document_outputs', [
+            'document_id' => 'adoc_delete_1',
             'bridge_document_id' => 'doc-delete-1',
             'active' => 0,
             'status' => 'deleted',
@@ -525,7 +524,7 @@ class DocumentUnifiedApiTest extends TestCase
         ]);
 
         ManagedDocument::query()->create([
-            'assistant_document_id' => 'adoc_delete_backfill_1',
+            'document_id' => 'adoc_delete_backfill_1',
             'dataset_id' => 'documents-delete-backfill',
             'display_name' => 'delete-backfill.pdf',
             'source_type' => 'upload',
@@ -534,7 +533,7 @@ class DocumentUnifiedApiTest extends TestCase
         ]);
 
         ManagedDocumentOutput::query()->create([
-            'assistant_document_id' => 'adoc_delete_backfill_1',
+            'document_id' => 'adoc_delete_backfill_1',
             'bridge_document_id' => 'doc-delete-backfill-1',
             'qdrant_collection' => '',
             'neo4j_namespace' => null,
@@ -574,8 +573,8 @@ class DocumentUnifiedApiTest extends TestCase
             ->assertJsonPath('deletion.qdrant.0.collection', 'hawki_documents_delete_backfill')
             ->assertJsonPath('deletion.neo4j.0.namespace', 'hawki_documents_delete_backfill');
 
-        $this->assertDatabaseHas('assistant_document_outputs', [
-            'assistant_document_id' => 'adoc_delete_backfill_1',
+        $this->assertDatabaseHas('managed_document_outputs', [
+            'document_id' => 'adoc_delete_backfill_1',
             'bridge_document_id' => 'doc-delete-backfill-1',
             'qdrant_collection' => 'hawki_documents_delete_backfill',
             'neo4j_namespace' => 'hawki_documents_delete_backfill',

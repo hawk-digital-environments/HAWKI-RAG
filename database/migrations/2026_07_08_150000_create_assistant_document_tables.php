@@ -8,8 +8,8 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::create('assistant_documents', function (Blueprint $table): void {
-            $table->string('assistant_document_id', 191)->primary();
+        Schema::create('managed_documents', function (Blueprint $table): void {
+            $table->string('document_id', 191)->primary();
             $table->string('dataset_id', 191);
             $table->string('display_name')->nullable();
             $table->string('source_type', 64)->default('upload');
@@ -34,9 +34,9 @@ return new class extends Migration
             $table->index('latest_job_id');
         });
 
-        Schema::create('assistant_document_outputs', function (Blueprint $table): void {
+        Schema::create('managed_document_outputs', function (Blueprint $table): void {
             $table->bigIncrements('id');
-            $table->string('assistant_document_id', 191);
+            $table->string('document_id', 191);
             $table->string('bridge_document_id', 191);
             $table->string('qdrant_collection', 191);
             $table->string('neo4j_namespace', 191)->nullable();
@@ -52,13 +52,13 @@ return new class extends Migration
             $table->json('metadata_json')->nullable();
             $table->timestamps();
 
-            $table->foreign('assistant_document_id')
-                ->references('assistant_document_id')
-                ->on('assistant_documents')
+            $table->foreign('document_id')
+                ->references('document_id')
+                ->on('managed_documents')
                 ->cascadeOnDelete();
 
-            $table->unique(['assistant_document_id', 'bridge_document_id'], 'assistant_document_outputs_unique');
-            $table->index(['assistant_document_id', 'active']);
+            $table->unique(['document_id', 'bridge_document_id'], 'managed_document_outputs_unique');
+            $table->index(['document_id', 'active']);
             $table->index('source_id');
             $table->index('task_id');
             $table->index('job_id');
@@ -67,7 +67,7 @@ return new class extends Migration
 
     public function down(): void
     {
-        Schema::dropIfExists('assistant_document_outputs');
-        Schema::dropIfExists('assistant_documents');
+        Schema::dropIfExists('managed_document_outputs');
+        Schema::dropIfExists('managed_documents');
     }
 };

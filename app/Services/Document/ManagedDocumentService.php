@@ -56,7 +56,7 @@ readonly class ManagedDocumentService
 
         $state = $this->pipelineState->resolve($upload->payload);
         $document = $this->documents->create([
-            'assistant_document_id' => $managedDocumentId->value,
+            'document_id' => $managedDocumentId->value,
             'dataset_id' => (string) $input['dataset_id'],
             'display_name' => $input['display_name'] ?? $file?->getClientOriginalName(),
             'source_type' => 'upload',

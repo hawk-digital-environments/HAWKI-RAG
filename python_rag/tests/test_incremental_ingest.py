@@ -543,7 +543,7 @@ class IncrementalIngestTests(unittest.TestCase):
                     "source_url": "upload://alpha.pdf",
                     "source_format": "markdown",
                     "dataset_id": "student-dataset",
-                    "assistant_document_id": "adoc-alpha",
+                    "managed_document_id": "adoc-alpha",
                     "source_id": "source-alpha",
                 },
             ),
@@ -555,7 +555,7 @@ class IncrementalIngestTests(unittest.TestCase):
                     "source_url": "upload://beta.pdf",
                     "source_format": "markdown",
                     "dataset_id": "student-dataset",
-                    "assistant_document_id": "adoc-beta",
+                    "managed_document_id": "adoc-beta",
                     "source_id": "source-beta",
                 },
             ),
@@ -567,7 +567,7 @@ class IncrementalIngestTests(unittest.TestCase):
                     "source_url": "upload://gamma.pdf",
                     "source_format": "markdown",
                     "dataset_id": "student-dataset",
-                    "assistant_document_id": "adoc-gamma",
+                    "managed_document_id": "adoc-gamma",
                     "source_id": "source-gamma",
                 },
             ),
@@ -594,7 +594,7 @@ class IncrementalIngestTests(unittest.TestCase):
 
         self.assertGreater(len(result.points), 3)
         doc_ids_by_assistant = {
-            str(record["payload"]["assistant_document_id"]): str(record["doc_id"])
+            str(record["payload"]["managed_document_id"]): str(record["doc_id"])
             for record in chunk_records
         }
         target_doc_id = doc_ids_by_assistant["adoc-beta"]
@@ -606,10 +606,10 @@ class IncrementalIngestTests(unittest.TestCase):
         for point in result.points:
             payload = point["payload"]
             self.assertEqual(payload["dataset_id"], "student-dataset")
-            self.assertIn(payload["assistant_document_id"], {"adoc-alpha", "adoc-beta", "adoc-gamma"})
+            self.assertIn(payload["managed_document_id"], {"adoc-alpha", "adoc-beta", "adoc-gamma"})
             self.assertTrue(str(payload["source_id"]).startswith("source-"))
             self.assertTrue(str(payload["doc_id"]))
-            graph_writer.upsert_triplets([("Student", "uploaded", str(payload["assistant_document_id"]))], doc_id=str(payload["doc_id"]))
+            graph_writer.upsert_triplets([("Student", "uploaded", str(payload["managed_document_id"]))], doc_id=str(payload["doc_id"]))
 
         target_points_before = qdrant.count_points_by_doc_id(target_doc_id, collection="student_space")
         kept_points_before = {

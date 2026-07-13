@@ -20,7 +20,7 @@ class RagLatestDocumentGraphReporterTest extends TestCase
     public function test_it_prefers_managed_document_reporting_when_available(): void
     {
         ManagedDocument::query()->create([
-            'assistant_document_id' => 'adoc_report_1',
+            'document_id' => 'adoc_report_1',
             'dataset_id' => 'report-dataset',
             'display_name' => 'report.pdf',
             'source_type' => 'upload',
@@ -32,7 +32,7 @@ class RagLatestDocumentGraphReporterTest extends TestCase
         ]);
 
         ManagedDocumentOutput::query()->create([
-            'assistant_document_id' => 'adoc_report_1',
+            'document_id' => 'adoc_report_1',
             'bridge_document_id' => 'doc-report-1',
             'qdrant_collection' => 'hawki_report_dataset',
             'neo4j_namespace' => 'hawki_report_dataset',

@@ -122,12 +122,14 @@ class IngestSourceWorkflowPayloadFactoryTest extends TestCase
 
         $this->assertSame('/shared/task/sample-upload.pdf', $payload['upload']['local_path']);
         $this->assertSame('sample-upload.pdf', $payload['upload']['target_name']);
-        $this->assertSame('adoc-upload-1', $payload['document_id']);
-        $this->assertSame('adoc-upload-1', $payload['assistant_document_id']);
+        $this->assertSame('adoc-upload-1', $payload['managed_document_id']);
+        $this->assertArrayNotHasKey('document_id', $payload);
+        $this->assertArrayNotHasKey('assistant_document_id', $payload);
         $this->assertSame('native', $payload['converter_mode']);
         $this->assertFalse($payload['ingestion']['graph']);
-        $this->assertSame('adoc-upload-1', $payload['metadata']['request']['metadata']['document_id']);
-        $this->assertSame('adoc-upload-1', $payload['metadata']['request']['metadata']['assistant_document_id']);
+        $this->assertSame('adoc-upload-1', $payload['metadata']['request']['metadata']['managed_document_id']);
+        $this->assertArrayNotHasKey('document_id', $payload['metadata']['request']['metadata']);
+        $this->assertArrayNotHasKey('assistant_document_id', $payload['metadata']['request']['metadata']);
     }
 
     public function test_it_normalizes_legacy_assistant_document_id_into_canonical_workflow_metadata(): void
@@ -164,10 +166,12 @@ class IngestSourceWorkflowPayloadFactoryTest extends TestCase
             ]),
         );
 
-        $this->assertSame('adoc-upload-legacy-1', $payload['document_id']);
-        $this->assertSame('adoc-upload-legacy-1', $payload['assistant_document_id']);
-        $this->assertSame('adoc-upload-legacy-1', $payload['metadata']['request']['metadata']['document_id']);
-        $this->assertSame('adoc-upload-legacy-1', $payload['metadata']['request']['metadata']['assistant_document_id']);
+        $this->assertSame('adoc-upload-legacy-1', $payload['managed_document_id']);
+        $this->assertArrayNotHasKey('document_id', $payload);
+        $this->assertArrayNotHasKey('assistant_document_id', $payload);
+        $this->assertSame('adoc-upload-legacy-1', $payload['metadata']['request']['metadata']['managed_document_id']);
+        $this->assertArrayNotHasKey('document_id', $payload['metadata']['request']['metadata']);
+        $this->assertArrayNotHasKey('assistant_document_id', $payload['metadata']['request']['metadata']);
     }
 
     public function test_it_includes_custom_converter_profile_path_without_secret_material(): void

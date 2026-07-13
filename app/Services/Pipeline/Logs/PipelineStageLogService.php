@@ -732,6 +732,7 @@ readonly class PipelineStageLogService
             $this->appendNeedle($needles, $metadata['source_id'] ?? null);
             $this->appendNeedle($needles, $metadata['task_id'] ?? null);
             $this->appendNeedle($needles, $metadata['job_id'] ?? null);
+            $this->appendNeedle($needles, $metadata['managed_document_id'] ?? null);
             $this->appendNeedle($needles, $metadata['document_id'] ?? null);
             $this->appendNeedle($needles, $metadata['doc_id'] ?? null);
             $this->appendNeedle($needles, $job->local_path);
@@ -755,6 +756,7 @@ readonly class PipelineStageLogService
             $this->appendNeedle($needles, $job->job_id);
             $this->appendNeedle($needles, $metadata['task_id'] ?? null);
             $this->appendNeedle($needles, $metadata['job_id'] ?? null);
+            $this->appendNeedle($needles, $metadata['managed_document_id'] ?? null);
             $this->appendNeedle($needles, $metadata['document_id'] ?? null);
             $this->appendNeedle($needles, $metadata['doc_id'] ?? null);
         });
@@ -772,6 +774,7 @@ readonly class PipelineStageLogService
 
         $jobs->each(function (PipelineJob $job) use (&$needles): void {
             $metadata = is_array($job->metadata) ? $job->metadata : [];
+            $this->appendNeedle($needles, $metadata['managed_document_id'] ?? null);
             $this->appendNeedle($needles, $metadata['document_id'] ?? null);
             $this->appendNeedle($needles, $metadata['doc_id'] ?? null);
 

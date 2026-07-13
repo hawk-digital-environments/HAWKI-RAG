@@ -61,7 +61,7 @@ def ingest_markdown_files(payload: dict[str, Any]) -> dict[str, Any]:
                 neo4j_namespace = ingest_options.get("neo4j_database") or ingest_options.get("neo4j_namespace")
                 payload = dict(passthrough_metadata or {})
                 payload.update({
-                    "assistant_document_id": workflow_input.get("assistant_document_id"),
+                    "managed_document_id": workflow_input.get("managed_document_id"),
                     "dataset_id": workflow_input.get("dataset_id"),
                     "source_id": source_id,
                     "document_id": doc_id,
