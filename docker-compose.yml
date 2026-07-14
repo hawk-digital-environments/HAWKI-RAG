@@ -211,6 +211,7 @@ services:
     env_file:
       - ./.env
     environment:
+      PIPELINE_SHARED_STORAGE_GID: ${PGID:-1000}
       QDRANT_HOST: qdrant
       QDRANT_PORT: 6333
       NEO4J_URI: bolt://hawki_rag_neo4j:7687
@@ -227,6 +228,8 @@ services:
       - ./public:/app/public
       - shared_storage:/app/shared
       - shared_storage:/shared
+    group_add:
+      - "${PGID:-1000}"
     command: ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000"]
     restart: unless-stopped
 
@@ -240,6 +243,7 @@ services:
     env_file:
       - ./.env
     environment:
+      PIPELINE_SHARED_STORAGE_GID: ${PGID:-1000}
       TEMPORAL_ADDRESS: temporal:7233
       TEMPORAL_NAMESPACE: ${TEMPORAL_NAMESPACE:-default}
       DB_CONNECTION: pgsql
@@ -248,6 +252,8 @@ services:
     volumes:
       - ./python_rag:/app
       - shared_storage:/shared
+    group_add:
+      - "${PGID:-1000}"
     command: ["python", "-m", "temporal_rag.worker_workflow"]
     depends_on:
       temporal:
@@ -264,6 +270,7 @@ services:
     env_file:
       - ./.env
     environment:
+      PIPELINE_SHARED_STORAGE_GID: ${PGID:-1000}
       TEMPORAL_ADDRESS: temporal:7233
       TEMPORAL_NAMESPACE: ${TEMPORAL_NAMESPACE:-default}
       DB_CONNECTION: pgsql
@@ -273,6 +280,8 @@ services:
     volumes:
       - ./python_rag:/app
       - shared_storage:/shared
+    group_add:
+      - "${PGID:-1000}"
     command: ["python", "-m", "temporal_rag.worker_scraper"]
     depends_on:
       temporal:
@@ -291,6 +300,7 @@ services:
     env_file:
       - ./.env
     environment:
+      PIPELINE_SHARED_STORAGE_GID: ${PGID:-1000}
       TEMPORAL_ADDRESS: temporal:7233
       TEMPORAL_NAMESPACE: ${TEMPORAL_NAMESPACE:-default}
       DB_CONNECTION: pgsql
@@ -300,6 +310,8 @@ services:
     volumes:
       - ./python_rag:/app
       - shared_storage:/shared
+    group_add:
+      - "${PGID:-1000}"
     command: ["python", "-m", "temporal_rag.worker_converter"]
     depends_on:
       temporal:
@@ -318,6 +330,7 @@ services:
     env_file:
       - ./.env
     environment:
+      PIPELINE_SHARED_STORAGE_GID: ${PGID:-1000}
       TEMPORAL_ADDRESS: temporal:7233
       TEMPORAL_NAMESPACE: ${TEMPORAL_NAMESPACE:-default}
       DB_CONNECTION: pgsql
@@ -333,6 +346,8 @@ services:
       - ./python_rag:/app
       - ./public:/app/public
       - shared_storage:/shared
+    group_add:
+      - "${PGID:-1000}"
     command: ["python", "-m", "temporal_rag.worker_ingestion"]
     depends_on:
       temporal:

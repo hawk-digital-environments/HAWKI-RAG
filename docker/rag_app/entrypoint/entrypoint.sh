@@ -33,6 +33,7 @@ echo "Ensuring crawled-data root exists at $CRAWLED_DATA_ROOT..."
 mkdir -p "$CRAWLED_DATA_ROOT"
 chown -R www-data:www-data "$CRAWLED_DATA_ROOT"
 chmod -R 775 "$CRAWLED_DATA_ROOT"
+find "$CRAWLED_DATA_ROOT" -type d -exec chmod g+s {} +
 
 GRAPH_SNAPSHOT=/var/www/html/public/neo4j_graph_visualization.json
 

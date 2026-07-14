@@ -35,9 +35,13 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 
 COPY python_rag /app
 
-RUN mkdir -p /app/rag_storage
+COPY docker/python-rag/shared-storage-entrypoint.sh /usr/local/bin/hawki-shared-storage-entrypoint
+
+RUN mkdir -p /app/rag_storage \
+    && chmod 0755 /usr/local/bin/hawki-shared-storage-entrypoint
 
 EXPOSE 8003
+ENTRYPOINT ["/usr/local/bin/hawki-shared-storage-entrypoint"]
 CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8003"]
 
 # Local reranker
