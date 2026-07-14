@@ -14,6 +14,8 @@
     interface Props extends HTMLAttributes<HTMLDivElement> {
         /** Browser URL for submitting HAWKI-RAG queries. */
         queryEndpoint: string;
+        /** Browser URL for datasets the authenticated user may query. */
+        datasetsEndpoint: string;
         /** Browser URL for RAG runtime monitor data. */
         monitorEndpoint: string;
         /** Browser URL for Qdrant and Neo4j stats. */
@@ -44,6 +46,11 @@
         subject: string;
         relation: string;
         object: string;
+    }
+
+    interface DatasetOption {
+        datasetId: string;
+        name: string;
     }
 
     interface CollectionStat {
@@ -94,6 +101,7 @@
 
     const {
         queryEndpoint,
+        datasetsEndpoint,
         monitorEndpoint,
         statsEndpoint,
         qdrantCollectionEndpointBase,
@@ -111,6 +119,8 @@
     ];
 
     let question = $state('');
+    let datasets = $state<DatasetOption[]>([]);
+    let selectedDatasetId = $state('');
     let topK = $state(5);
     let retrievalMode = $state<RetrievalMode>('deep');
     let includeAnswer = $state(false);
@@ -168,7 +178,7 @@
         },
         {
             label: 'Mode',
-            value: retrievalMode === 'deep' ? 'graph + vector' : 'fast vector',
+            value: retrievalMode === 'deep' ? 'deep vector' : 'fast vector',
             tone: retrievalMode === 'deep' ? 'active' : 'ready',
         },
     ]);
@@ -184,6 +194,7 @@
             return;
         }
 
+        void loadAuthorizedDatasets();
         void refreshSystem();
         const monitorTimer = window.setInterval(() => {
             void loadMonitor();
@@ -261,7 +272,9 @@
         const payload = asRecord(await response.json().catch(() => ({})));
 
         if (!response.ok || payload.ok === false || payload.success === false) {
-            throw new Error(textValue(payload.message || payload.error, `Request failed (${response.status})`));
+            const error = asRecord(payload.error);
+            const message = textValue(error.message, textValue(payload.message, `Request failed (${response.status})`));
+            throw new Error(message);
         }
 
         return payload;
@@ -399,13 +412,53 @@
         pushActivity('System', 'Live state refreshed');
     }
 
+    async function loadAuthorizedDatasets(): Promise<void> {
+        try {
+            const payload = await requestJson(datasetsEndpoint);
+            datasets = asArray(payload.datasets)
+                .map((value): DatasetOption | null => {
+                    const dataset = asRecord(value);
+                    const datasetId = textValue(dataset.dataset_id);
+                    if (!datasetId) return null;
+
+                    return {
+                        datasetId,
+                        name: textValue(dataset.name, datasetId),
+                    };
+                })
+                .filter((value): value is DatasetOption => value !== null);
+
+            const remembered = window.localStorage.getItem('hawkiRagQueryDatasetId') || '';
+            selectedDatasetId = datasets.some((dataset) => dataset.datasetId === remembered)
+                ? remembered
+                : datasets[0]?.datasetId || '';
+
+            if (selectedDatasetId) {
+                window.localStorage.setItem('hawkiRagQueryDatasetId', selectedDatasetId);
+            } else {
+                status = 'No authorized active dataset is available.';
+            }
+        } catch (error) {
+            datasets = [];
+            selectedDatasetId = '';
+            errorMessage = error instanceof Error ? error.message : 'Authorized datasets could not be loaded.';
+            status = errorMessage;
+        }
+    }
+
+    function rememberDataset(): void {
+        if (selectedDatasetId) {
+            window.localStorage.setItem('hawkiRagQueryDatasetId', selectedDatasetId);
+        }
+    }
+
     async function runQuery(): Promise<void> {
         const query = question.trim();
-        if (!query || busy) return;
+        if (!query || !selectedDatasetId || busy) return;
 
         busy = true;
         errorMessage = '';
-        status = retrievalMode === 'deep' ? 'Tracing vector and graph evidence...' : 'Running fast vector retrieval...';
+        status = retrievalMode === 'deep' ? 'Running scoped high-recall retrieval...' : 'Running fast scoped retrieval...';
         hits = [];
         kgFacts = [];
         answer = '';
@@ -424,6 +477,7 @@
                     'X-CSRF-TOKEN': csrfToken(),
                 },
                 body: JSON.stringify({
+                    dataset_id: selectedDatasetId,
                     query,
                     top_k: topK,
                     generate: includeAnswer,
@@ -619,6 +673,25 @@
                 </div>
 
                 <div class="control-grid">
+                    <div class="dataset-control">
+                        <label for="query-dataset">Dataset</label>
+                        <select
+                            id="query-dataset"
+                            bind:value={selectedDatasetId}
+                            onchange={rememberDataset}
+                            disabled={datasets.length === 0 || busy}
+                            required
+                        >
+                            {#if datasets.length === 0}
+                                <option value="">No authorized datasets</option>
+                            {:else}
+                                {#each datasets as dataset}
+                                    <option value={dataset.datasetId}>{dataset.name} ({dataset.datasetId})</option>
+                                {/each}
+                            {/if}
+                        </select>
+                    </div>
+
                     <fieldset>
                         <legend>Retrieval mode</legend>
                         <div class="segmented">
@@ -628,7 +701,7 @@
                                 aria-pressed={retrievalMode === 'deep'}
                                 onclick={() => { retrievalMode = 'deep'; }}
                             >
-                                Deep graph
+                                Deep vector
                             </button>
                             <button
                                 type="button"
@@ -652,7 +725,7 @@
                     </label>
                 </div>
 
-                <button type="submit" class="run-button" disabled={busy || !question.trim()}>
+                <button type="submit" class="run-button" disabled={busy || !question.trim() || !selectedDatasetId}>
                     {busy ? 'Retrieving...' : 'Run retrieval'}
                 </button>
             </form>
@@ -1143,7 +1216,8 @@
     }
 
     textarea,
-    input[type="number"] {
+    input[type="number"],
+    select {
         width: 100%;
         border: 1px solid var(--pg-border);
         border-radius: 8px;
@@ -1158,13 +1232,15 @@
         line-height: 1.52;
     }
 
-    input[type="number"] {
+    input[type="number"],
+    select {
         min-height: 42px;
         padding: 0 11px;
     }
 
     textarea:focus,
-    input[type="number"]:focus {
+    input[type="number"]:focus,
+    select:focus {
         outline: none;
         border-color: var(--pg-border-strong);
     }
@@ -1185,6 +1261,14 @@
         grid-template-columns: 1fr 94px;
         gap: 10px;
         align-items: end;
+    }
+
+    .dataset-control {
+        grid-column: 1 / -1;
+    }
+
+    .dataset-control select {
+        margin-top: 6px;
     }
 
     fieldset {

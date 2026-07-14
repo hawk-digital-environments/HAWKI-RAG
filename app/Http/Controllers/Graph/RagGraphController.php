@@ -5,17 +5,20 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Graph;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Graph\SemanticDatasetGraphSearchRequest;
+use App\Models\User;
 use App\Services\Graph\GraphCacheService;
 use App\Services\Graph\Neo4jAdmin;
 use App\Services\Graph\Neo4jGraphExplorer;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 
 class RagGraphController extends Controller
 {
     public function overview(Request $request, Neo4jGraphExplorer $graph): JsonResponse
     {
-        return $this->graphResponse(fn() => $graph->overview((int) $request->integer('limit', 80)));
+        return $this->graphResponse(fn () => $graph->overview((int) $request->integer('limit', 80)));
     }
 
     public function search(Request $request, Neo4jGraphExplorer $graph): JsonResponse
@@ -25,17 +28,24 @@ class RagGraphController extends Controller
             'limit' => 'sometimes|integer|min:1|max:50',
         ]);
 
-        return $this->graphResponse(fn() => $graph->searchEntities($data['q'], (int) ($data['limit'] ?? 12)));
+        return $this->graphResponse(fn () => $graph->searchEntities($data['q'], (int) ($data['limit'] ?? 12)));
     }
 
-    public function semanticSearch(Request $request, Neo4jGraphExplorer $graph): JsonResponse
+    public function semanticSearch(SemanticDatasetGraphSearchRequest $request, Neo4jGraphExplorer $graph): JsonResponse
     {
-        $data = $request->validate([
-            'q' => 'required|string|max:500',
-            'limit' => 'sometimes|integer|min:1|max:25',
-        ]);
+        $user = $request->user();
+        if (! $user instanceof User) {
+            return $this->noStore(response()->json([
+                'message' => 'Authentication is required.',
+            ], 401));
+        }
 
-        return $this->graphResponse(fn() => $graph->semanticSearch($data['q'], (int) ($data['limit'] ?? 8)));
+        return $this->graphResponse(fn () => $graph->semanticSearch(
+            $user,
+            $request->datasetId(),
+            $request->queryText(),
+            $request->limit(),
+        ));
     }
 
     public function expand(Request $request, Neo4jGraphExplorer $graph): JsonResponse
@@ -46,7 +56,7 @@ class RagGraphController extends Controller
             'limit' => 'sometimes|integer|min:5|max:250',
         ]);
 
-        return $this->graphResponse(fn() => $graph->expand(
+        return $this->graphResponse(fn () => $graph->expand(
             $data['node_id'],
             (int) ($data['depth'] ?? 1),
             (int) ($data['limit'] ?? 80)
@@ -60,7 +70,7 @@ class RagGraphController extends Controller
             'limit' => 'sometimes|integer|min:5|max:250',
         ]);
 
-        return $this->graphResponse(fn() => $graph->graphForNode($data['node_id'], (int) ($data['limit'] ?? 80)));
+        return $this->graphResponse(fn () => $graph->graphForNode($data['node_id'], (int) ($data['limit'] ?? 80)));
     }
 
     public function snapshots(Neo4jGraphExplorer $graph): JsonResponse
@@ -81,6 +91,7 @@ class RagGraphController extends Controller
     public function loadSnapshot(string $id, Neo4jGraphExplorer $graph): JsonResponse
     {
         $result = $graph->loadSnapshot($id);
+
         return $this->noStore(response()->json($result, ($result['ok'] ?? false) ? 200 : 404));
     }
 
@@ -110,7 +121,11 @@ class RagGraphController extends Controller
     {
         try {
             $result = $callback();
-            return $this->noStore(response()->json($result, ($result['ok'] ?? true) ? 200 : 422));
+            $status = (int) ($result['status'] ?? (($result['ok'] ?? true) ? 200 : 422));
+
+            return $this->noStore(response()->json($result, $status));
+        } catch (HttpExceptionInterface $exception) {
+            throw $exception;
         } catch (\Throwable $e) {
             report($e);
 

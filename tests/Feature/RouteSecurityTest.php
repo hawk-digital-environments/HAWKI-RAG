@@ -126,7 +126,7 @@ class RouteSecurityTest extends TestCase
         $this->withSession(['_token' => 'test-token'])
             ->postJson('/query', ['query' => 'hello'], ['X-CSRF-TOKEN' => 'test-token'])
             ->assertUnauthorized()
-            ->assertJsonPath('message', 'Operator authentication required.');
+            ->assertJsonPath('message', 'Unauthenticated.');
     }
 
     public function test_web_ui_operator_endpoints_allow_sanctum_users(): void

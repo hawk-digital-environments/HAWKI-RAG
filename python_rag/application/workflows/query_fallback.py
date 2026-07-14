@@ -8,6 +8,7 @@ from typing import Any, Dict, List
 
 from application.workflows.query_hits import merge_hits
 from application.workflows.query_lexical import extract_query_terms_for_lexical
+from infrastructure.vectorstore.qdrant_http import ScopedCollectionNotReadyError
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +34,7 @@ def keyword_fallback_search(
     query: str,
     top_k: int,
     *,
+    filters: dict[str, Any] | None = None,
     text_scroll_limit_fn: Callable[[int], int] | None = None,
     exhaustive_text_fn: Callable[[], bool] | None = None,
 ) -> list[dict[str, Any]]:
@@ -52,7 +54,16 @@ def keyword_fallback_search(
 
     hits: list[dict[str, Any]] = []
     try:
-        hits = qdrant.search_with_text(vec, top_k=top_k, terms=terms, fields=fields)
+        search_kwargs: dict[str, Any] = {
+            "top_k": top_k,
+            "terms": terms,
+            "fields": fields,
+        }
+        if filters:
+            search_kwargs["filters"] = filters
+        hits = qdrant.search_with_text(vec, **search_kwargs)
+    except ScopedCollectionNotReadyError:
+        raise
     except Exception as exc:
         logger.warning("query:text-fallback search failed: %s", exc)
 
@@ -62,6 +73,7 @@ def keyword_fallback_search(
         fields=fields,
         fallback_limit=fallback_limit,
         exhaustive_text=exhaustive_fn(),
+        filters=filters,
     )
     if hits and scroll_hits:
         return merge_hits(hits, scroll_hits, max(top_k * 2, len(hits) + len(scroll_hits)))
@@ -81,41 +93,35 @@ def fallback_scroll_hits(
     fallback_limit: int,
     exhaustive_text: bool | None = None,
     exhaustive_text_fn: Callable[[], bool] | None = None,
+    filters: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     if exhaustive_text is None:
         exhaustive_text = exhaustive_text_fn() if exhaustive_text_fn is not None else _exhaustive_text_default()
 
     try:
+        scroll_kwargs: dict[str, Any] = {
+            "terms": terms,
+            "fields": fields,
+            "limit": fallback_limit,
+            "require_all": True,
+        }
+        if filters:
+            scroll_kwargs["filters"] = filters
+
         if exhaustive_text:
-            scroll_hits = qdrant.scroll_with_text_all(
-                terms=terms,
-                fields=fields,
-                limit=fallback_limit,
-                require_all=True,
-            )
+            scroll_hits = qdrant.scroll_with_text_all(**scroll_kwargs)
             if not scroll_hits:
-                scroll_hits = qdrant.scroll_with_text_all(
-                    terms=terms,
-                    fields=fields,
-                    limit=fallback_limit,
-                    require_all=False,
-                )
+                scroll_kwargs["require_all"] = False
+                scroll_hits = qdrant.scroll_with_text_all(**scroll_kwargs)
             return scroll_hits
 
-        scroll_hits = qdrant.scroll_with_text(
-            terms=terms,
-            fields=fields,
-            limit=fallback_limit,
-            require_all=True,
-        )
+        scroll_hits = qdrant.scroll_with_text(**scroll_kwargs)
         if not scroll_hits:
-            scroll_hits = qdrant.scroll_with_text(
-                terms=terms,
-                fields=fields,
-                limit=fallback_limit,
-                require_all=False,
-            )
+            scroll_kwargs["require_all"] = False
+            scroll_hits = qdrant.scroll_with_text(**scroll_kwargs)
         return scroll_hits
+    except ScopedCollectionNotReadyError:
+        raise
     except Exception as exc:
         logger.warning("query:text-fallback scroll failed: %s", exc)
         return []

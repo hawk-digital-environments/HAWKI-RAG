@@ -1,6 +1,7 @@
 """Error contracts for API adapters."""
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request
@@ -10,18 +11,51 @@ from requests import RequestException
 from common.reliability import API_REQUEST_ERROR_EVENT, log_redacted_value
 
 
-def build_error_payload(request: Request, *, status: int, error_type: str, message: str | None) -> dict[str, Any]:
+def build_error_payload(
+    request: Request,
+    *,
+    status: int,
+    error_type: str,
+    message: str | None,
+    error_code: str | None = None,
+) -> dict[str, Any]:
     """Build a standardized request error payload."""
 
-    return {
-        "error": {
-            "type": error_type,
-            "status": status,
-            "message": log_redacted_value(message or ""),
-            "path": str(getattr(request.url, "path", "")),
-            "request_id": str(getattr(request.state, "request_id", "")),
-        }
+    error: dict[str, Any] = {
+        "type": error_type,
+        "status": status,
+        "message": log_redacted_value(message or ""),
+        "path": str(getattr(request.url, "path", "")),
+        "request_id": str(getattr(request.state, "request_id", "")),
     }
+    if error_code:
+        error["code"] = error_code
+
+    return {"error": error}
+
+
+def build_http_error_payload(request: Request, exc: HTTPException) -> dict[str, Any]:
+    """Preserve stable public contracts for structured domain HTTP errors."""
+
+    detail = exc.detail
+    if isinstance(detail, Mapping):
+        error_code = detail.get("code")
+        message = detail.get("message")
+        if isinstance(error_code, str) and isinstance(message, str):
+            return build_error_payload(
+                request,
+                status=exc.status_code,
+                error_type=exc.__class__.__name__,
+                message=message,
+                error_code=error_code,
+            )
+
+    return build_error_payload(
+        request,
+        status=exc.status_code,
+        error_type=exc.__class__.__name__,
+        message=str(detail),
+    )
 
 
 def install_exception_handlers(app: FastAPI, logger) -> None:
@@ -38,12 +72,7 @@ def install_exception_handlers(app: FastAPI, logger) -> None:
         )
         return JSONResponse(
             status_code=status_code,
-            content=build_error_payload(
-                request,
-                status=status_code,
-                error_type=exc.__class__.__name__,
-                message=str(exc.detail),
-            ),
+            content=build_http_error_payload(request, exc),
         )
 
     def handle_value_error(request: Request, exc: ValueError) -> JSONResponse:
@@ -126,4 +155,3 @@ def install_exception_handlers(app: FastAPI, logger) -> None:
     app.add_exception_handler(RequestException, handle_request_error)
     app.add_exception_handler(RuntimeError, handle_runtime_error)
     app.add_exception_handler(Exception, handle_unexpected)
-

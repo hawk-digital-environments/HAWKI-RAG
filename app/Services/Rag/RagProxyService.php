@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Services\Rag;
 
+use App\Models\User;
+use App\Services\Authorization\DatasetQueryAuthorizationService;
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Contracts\Config\Repository as ConfigRepository;
 use Illuminate\Http\Client\Factory as HttpFactory;
@@ -14,14 +16,16 @@ readonly class RagProxyService
     public function __construct(
         private ConfigRepository $config,
         private HttpFactory $http,
+        private DatasetQueryAuthorizationService $authorization,
     ) {}
 
     /**
-     * @param array<string, mixed> $data
+     * @param  array<string, mixed>  $data
      * @return array{payload: mixed, status: int}
      */
-    public function query(array $data): array
+    public function query(User $user, array $data): array
     {
+        $scope = $this->authorization->authorize($user, (string) $data['dataset_id']);
         $payload = [
             'query' => $data['query'],
             'top_k' => $data['top_k'] ?? 5,
@@ -29,10 +33,15 @@ readonly class RagProxyService
             'generate' => $data['generate'] ?? true,
             'fast_mode' => $data['fast_mode'] ?? false,
             'smart_lookup' => $data['smart_lookup'] ?? false,
+            'authorized_scope' => $scope->toArray(),
         ];
 
         if (! empty($data['preferred_tags'])) {
             $payload['preferred_tags'] = $data['preferred_tags'];
+        }
+
+        if (! empty($data['filters'])) {
+            $payload['filters'] = $data['filters'];
         }
 
         try {

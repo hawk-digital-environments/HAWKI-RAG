@@ -27,6 +27,7 @@ if (root) {
         target: root,
         props: {
             queryEndpoint: apiUrl('query'),
+            datasetsEndpoint: apiUrl('query/datasets'),
             monitorEndpoint: apiUrl('rag/monitor'),
             statsEndpoint: apiUrl('rag/stats'),
             qdrantCollectionEndpointBase: apiUrl('rag/qdrant/collections'),

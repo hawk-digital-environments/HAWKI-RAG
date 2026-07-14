@@ -12,6 +12,7 @@ from infrastructure.vectorstore.payloads import (
     build_search_body,
     build_text_filter,
     build_vector_search_body,
+    combine_filter_bodies,
     iter_batches,
 )
 from infrastructure.vectorstore.settings import (
@@ -45,6 +46,10 @@ from infrastructure.vectorstore.qdrant_transport import QdrantHTTPTransport
 from common.optional_imports import import_required_module
 
 logger = logging.getLogger(__name__)
+
+
+class ScopedCollectionNotReadyError(RuntimeError):
+    """The authorized query collection does not exist in Qdrant."""
 
 
 class _RequestsProxy:
@@ -113,14 +118,33 @@ class QdrantHTTP:
             transport=self._transport,
             collection=self.collection,
         )
+        self._scoped_collection: str | None = None
 
     def set_collection(self, collection: str) -> None:
         """Switch the active collection for all collection-scoped requests."""
         selected = str(collection or "").strip()
         if not selected:
             return
+        if self._scoped_collection is not None and selected != self._scoped_collection:
+            raise RuntimeError("Cannot replace an authorized query collection.")
         self.collection = selected
         self._gateway.collection = selected
+
+    def select_scoped_collection(self, collection: str) -> None:
+        """Lock this request-local client to one authorized collection."""
+
+        selected = str(collection or "").strip()
+        if not selected:
+            raise ValueError("An authorized Qdrant collection is required.")
+        if self._scoped_collection is not None and selected != self._scoped_collection:
+            raise RuntimeError("Cannot replace an authorized query collection.")
+        self.collection = selected
+        self._gateway.collection = selected
+        self._scoped_collection = selected
+
+    def _raise_if_scoped_collection_missing(self, response: Any) -> None:
+        if self._scoped_collection is not None and response.status_code == 404:
+            raise ScopedCollectionNotReadyError("Authorized dataset storage is not ready.")
 
     def ensure_collection(self, vector_size: int, distance: str = "Cosine") -> None:
         """Create the collection if it does not already exist."""
@@ -264,6 +288,11 @@ class QdrantHTTP:
             keyword_fields=keyword_fields,
         )
 
+        if self._scoped_collection is not None:
+            r = self._gateway.search(self._scoped_collection, body, timeout=timeout)
+            self._raise_if_scoped_collection_missing(r)
+            return parse_search_payload(r)
+
         if self._http_settings.search_all:
             try:
                 collections = self.list_collections()
@@ -326,6 +355,7 @@ class QdrantHTTP:
         top_k: int,
         terms: list[str],
         fields: list[str],
+        filters: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         terms = [t for t in (terms or []) if t]
         fields = [f for f in (fields or []) if f]
@@ -341,11 +371,15 @@ class QdrantHTTP:
 
         terms, fields = normalize_query_inputs(terms, fields)
         max_terms = self._http_settings.text_fallback_terms
-        filter_body = build_text_filter(terms, fields, max_terms=max_terms, require_all=True)
+        filter_body = combine_filter_bodies(
+            build_match_filter(filters),
+            build_text_filter(terms, fields, max_terms=max_terms, require_all=True),
+        )
         if not filter_body:
             return []
         body = build_vector_search_body(vector, top_k=top_k, filter_body=filter_body)
         r = self._gateway.search(collection, body, timeout=self._http_settings.text_timeout)
+        self._raise_if_scoped_collection_missing(r)
         result = parse_search_payload(r, empty_on_not_found=True)
         if result:
             return result
@@ -354,13 +388,17 @@ class QdrantHTTP:
         relax_body = build_vector_search_body(
             vector,
             top_k=top_k,
-            filter_body=build_text_filter(terms, fields, max_terms=max_terms, require_all=False),
+            filter_body=combine_filter_bodies(
+                build_match_filter(filters),
+                build_text_filter(terms, fields, max_terms=max_terms, require_all=False),
+            ),
         )
         r2 = self._gateway.search(
             collection,
             relax_body,
             timeout=self._http_settings.text_timeout,
         )
+        self._raise_if_scoped_collection_missing(r2)
         return parse_search_payload(r2, empty_on_not_found=True)
 
     def scroll_with_text(
@@ -371,6 +409,7 @@ class QdrantHTTP:
         limit: int,
         require_all: bool = True,
         offset: str | None = None,
+        filters: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         terms, fields = normalize_query_inputs(terms, fields)
         if not terms or not fields:
@@ -384,11 +423,15 @@ class QdrantHTTP:
             return []
 
         max_terms = self._http_settings.text_fallback_terms
-        filter_body = build_text_filter(terms, fields, max_terms=max_terms, require_all=require_all)
+        filter_body = combine_filter_bodies(
+            build_match_filter(filters),
+            build_text_filter(terms, fields, max_terms=max_terms, require_all=require_all),
+        )
         if not filter_body:
             return []
         body = build_scroll_body(limit=limit, filter_body=filter_body, offset=offset)
         r = self._gateway.scroll(collection, body, timeout=self._http_settings.text_timeout)
+        self._raise_if_scoped_collection_missing(r)
         if r.status_code == 404:
             return []
         points, _ = parse_scroll_payload(r, empty_on_not_found=True)
@@ -401,6 +444,7 @@ class QdrantHTTP:
         fields: list[str],
         limit: int,
         require_all: bool = True,
+        filters: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         terms, fields = normalize_query_inputs(terms, fields)
         if not terms or not fields:
@@ -414,7 +458,10 @@ class QdrantHTTP:
             return []
 
         max_terms = self._http_settings.text_fallback_terms
-        filter_body = build_text_filter(terms, fields, max_terms=max_terms, require_all=require_all)
+        filter_body = combine_filter_bodies(
+            build_match_filter(filters),
+            build_text_filter(terms, fields, max_terms=max_terms, require_all=require_all),
+        )
         if not filter_body:
             return []
 
@@ -439,6 +486,7 @@ class QdrantHTTP:
                 body,
                 timeout=self._http_settings.text_timeout,
             )
+            self._raise_if_scoped_collection_missing(r)
             if r.status_code == 404:
                 break
             points, next_offset = parse_scroll_payload(r)
@@ -469,6 +517,7 @@ class QdrantHTTP:
             return []
         body = build_scroll_body(limit=limit, filter_body=filter_body, offset=offset)
         r = self._gateway.scroll(collection, body, timeout=self._http_settings.text_timeout)
+        self._raise_if_scoped_collection_missing(r)
         if r.status_code == 404:
             return []
         points, _ = parse_scroll_payload(r, empty_on_not_found=True)

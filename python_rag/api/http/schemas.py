@@ -1,9 +1,9 @@
 """FastAPI request models for the RAG API."""
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, FiniteFloat
 
 from api.settings import AppSettings
 
@@ -38,6 +38,20 @@ class IngestRequest(BaseModel):
     dry_include_graph: bool = False
 
 
+class AuthorizedQueryScope(BaseModel):
+    """Storage scope that Laravel derived after authorizing a dataset query."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    dataset_id: str = Field(min_length=1, max_length=191)
+    qdrant_collection: str = Field(min_length=1, max_length=191)
+    neo4j_namespace: str | None = Field(default=None, max_length=191)
+    graph_enabled: Literal[False] = False
+
+
+QueryFilterScalar = str | int | FiniteFloat | bool
+
+
 def apply_ingest_request_settings(body: IngestRequest, settings: AppSettings) -> IngestRequest:
     updates: dict[str, object] = {}
     _apply_if_absent(body, "provider", settings.rag_default_provider, updates)
@@ -50,10 +64,13 @@ def apply_ingest_request_settings(body: IngestRequest, settings: AppSettings) ->
 
 
 class QueryRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     query: str
+    authorized_scope: AuthorizedQueryScope
     top_k: int = 5
     provider: str = "ollama"
-    filters: dict[str, Any] = Field(default_factory=dict)
+    filters: dict[str, QueryFilterScalar] = Field(default_factory=dict)
     generate: bool = True
     is_optimized: bool = False
     fast_mode: bool = False

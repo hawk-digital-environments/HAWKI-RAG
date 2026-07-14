@@ -147,8 +147,10 @@ def keyword_fallback(
     vec: list[float],
     query: str,
     top_k: int,
+    *,
+    filters: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
-    return keyword_fallback_search(qdrant, vec, query, top_k)
+    return keyword_fallback_search(qdrant, vec, query, top_k, filters=filters)
 
 
 def is_multimodal_query(text: str) -> bool:

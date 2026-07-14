@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Services\Graph;
 
+use App\Models\User;
+
 class Neo4jGraphExplorer
 {
     public function __construct(
@@ -18,13 +20,13 @@ class Neo4jGraphExplorer
         $limit = max(5, min(300, $limit));
 
         return $this->graphQuery(
-            "MATCH (s)-[r]->(o)
+            'MATCH (s)-[r]->(o)
              WHERE coalesce(s.name, s.entity_id) IS NOT NULL
                AND coalesce(o.name, o.entity_id) IS NOT NULL
              WITH s, r, o
              ORDER BY coalesce(r.updated_at, 0) DESC
-             LIMIT \$limit
-             RETURN collect(DISTINCT s) + collect(DISTINCT o) AS nodes, collect(DISTINCT r) AS edges",
+             LIMIT $limit
+             RETURN collect(DISTINCT s) + collect(DISTINCT o) AS nodes, collect(DISTINCT r) AS edges',
             ['limit' => $limit],
             ['mode' => 'overview']
         );
@@ -35,9 +37,9 @@ class Neo4jGraphExplorer
         return $this->search->searchEntities($query, $limit);
     }
 
-    public function semanticSearch(string $query, int $limit = 8): array
+    public function semanticSearch(User $user, string $datasetId, string $query, int $limit = 8): array
     {
-        return $this->search->semanticSearch($query, $limit);
+        return $this->search->semanticSearch($user, $datasetId, $query, $limit);
     }
 
     public function expand(string $nodeId, int $depth = 1, int $limit = 80): array

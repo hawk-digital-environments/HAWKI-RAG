@@ -16,6 +16,11 @@ class RagSearcherFailedException extends \RuntimeException implements RagSearchE
         return new self('Failed to extract RAG responses because no query was provided.');
     }
 
+    public static function missingAuthorizedDatasetScope(): self
+    {
+        return new self('Failed to execute RAG search because no authorized dataset scope was provided.');
+    }
+
     public static function backendRequestFailed(string $query, string $baseUrl): self
     {
         return new self(sprintf('Failed to extract RAG responses for "%s" because the backend at %s returned an unsuccessful response.', $query, $baseUrl));

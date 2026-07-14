@@ -130,8 +130,15 @@ def _fuzzy_term_in_words(term: str, words: list[str]) -> bool:
     return query_stages.apply_fuzzy_term_match(term, words)
 
 
-def _keyword_fallback_search(qdrant: QdrantHTTP, vec: list[float], query: str, top_k: int) -> list[dict[str, Any]]:
-    return query_stages.keyword_fallback(qdrant, vec, query, top_k)
+def _keyword_fallback_search(
+    qdrant: QdrantHTTP,
+    vec: list[float],
+    query: str,
+    top_k: int,
+    *,
+    filters: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    return query_stages.keyword_fallback(qdrant, vec, query, top_k, filters=filters)
 
 
 def _is_multimodal_query(text: str) -> bool:

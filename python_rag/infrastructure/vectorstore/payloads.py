@@ -52,6 +52,17 @@ def build_text_filter(
     return {"must": clauses} if require_all else {"should": clauses}
 
 
+def combine_filter_bodies(*filter_bodies: dict[str, Any] | None) -> dict[str, Any]:
+    """Combine independent Qdrant filters with an explicit logical AND."""
+
+    active_filters = [filter_body for filter_body in filter_bodies if filter_body]
+    if not active_filters:
+        return {}
+    if len(active_filters) == 1:
+        return dict(active_filters[0])
+    return {"must": active_filters}
+
+
 def build_search_body(
     vector: list[float],
     *,

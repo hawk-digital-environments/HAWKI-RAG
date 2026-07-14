@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Services\RagSearch;
 
+use App\Models\User;
+use App\Services\Authorization\DatasetQueryAuthorizationService;
+use App\Services\Authorization\Values\AuthorizedDatasetScope;
 use App\Services\RagSearch\Exceptions\RagSearcherFailedException;
 use Illuminate\Container\Attributes\Config;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
@@ -11,14 +14,18 @@ use Illuminate\Http\Client\Factory as HttpFactory;
 
 class RagSearcher
 {
-    private string|null $query = null;
+    private ?string $query = null;
+
     private int $topK = 15;
+
+    private ?AuthorizedDatasetScope $scope = null;
 
     public function __construct(
         private readonly HttpFactory $http,
         private readonly RagSearchPayloadFactory $payloads,
         private readonly RagSearchSchemaFactory $schemas,
         private readonly RagSearchResponseFilter $responses,
+        private readonly DatasetQueryAuthorizationService $authorization,
         #[Config('config.hawki_rag_bridge_url')]
         private readonly string $baseUrl,
     ) {}
@@ -28,7 +35,7 @@ class RagSearcher
         return $this->baseUrl;
     }
 
-    public function withQuery(string|null $query): static
+    public function withQuery(?string $query): static
     {
         $clone = clone $this;
         $clone->query = $query;
@@ -36,7 +43,7 @@ class RagSearcher
         return $clone;
     }
 
-    public function getQuery(): string|null
+    public function getQuery(): ?string
     {
         return $this->query;
     }
@@ -58,6 +65,14 @@ class RagSearcher
         return $this->topK;
     }
 
+    public function forDataset(User $user, string $datasetId): static
+    {
+        $clone = clone $this;
+        $clone->scope = $this->authorization->authorize($user, $datasetId);
+
+        return $clone;
+    }
+
     public function getResponseSchema(JsonSchema $schema): array
     {
         return $this->schemas->make($schema);
@@ -69,11 +84,15 @@ class RagSearcher
             throw RagSearcherFailedException::missingQuery();
         }
 
+        if (! $this->scope instanceof AuthorizedDatasetScope) {
+            throw RagSearcherFailedException::missingAuthorizedDatasetScope();
+        }
+
         $baseUrl = rtrim($this->baseUrl, '/');
 
         try {
             $response = $this->http->timeout(60)
-                ->post($baseUrl.'/query', $this->payloads->make($this->query, $this->topK));
+                ->post($baseUrl.'/query', $this->payloads->make($this->query, $this->topK, $this->scope));
 
             if (! $response->successful()) {
                 throw RagSearcherFailedException::backendRequestFailed($this->query, $baseUrl);

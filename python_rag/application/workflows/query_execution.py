@@ -9,7 +9,7 @@ from typing import Any, Callable, Dict, List, Tuple
 from fastapi import HTTPException
 
 from infrastructure.vectorstore.vector_search import run_high_recall, run_search
-from infrastructure.vectorstore.qdrant_http import QdrantHTTP
+from infrastructure.vectorstore.qdrant_http import QdrantHTTP, ScopedCollectionNotReadyError
 from common.safety_utils import analyze_prompt, enforce_output_safety, sanitize_prompt_text
 from common.text_preprocessor import _extract_terms, _terms_from_payload
 from infrastructure.graph.graph_utils import fetch_related_terms, structural_hops, structural_limit, build_structural_hits
@@ -21,10 +21,21 @@ from application.workflows.query_settings import (
     score_thresholds,
     search_top_k as configured_search_top_k,
 )
+from application.workflows.query_scope import build_scoped_query_filters
 
 logger = logging.getLogger(__name__)
 
 VectorSearch = Callable[..., list[dict[str, Any]]]
+
+
+def _dataset_not_ready(exc: Exception) -> HTTPException:
+    return HTTPException(
+        status_code=503,
+        detail={
+            "code": "dataset_not_ready",
+            "message": "The authorized dataset storage is not ready.",
+        },
+    )
 
 
 def _set_fast_mode_env(enabled: bool) -> None:
@@ -88,9 +99,14 @@ def run_query_documents(
 
     provider = get_provider(body.provider)
     qdrant = qdrant_ctor()
+    authorized_scope = body.authorized_scope
+    qdrant.select_scoped_collection(authorized_scope.qdrant_collection)
+    filters = build_scoped_query_filters(authorized_scope.dataset_id, body.filters)
+    graph_enabled = bool(authorized_scope.graph_enabled)
     logger.info(
-        "query:start provider=%s top_k=%s fast=%s smart=%s optimized=%s",
+        "query:start provider=%s dataset_id=%s top_k=%s fast=%s smart=%s optimized=%s",
         body.provider,
+        authorized_scope.dataset_id,
         body.top_k,
         body.fast_mode,
         body.smart_lookup,
@@ -119,23 +135,31 @@ def run_query_documents(
         raise HTTPException(status_code=500, detail=f"Embedding failed: {exc}") from exc
     timings["embed_ms"] = (time.perf_counter() - t_embed_start) * 1000
 
-    filters = dict(body.filters) if body.filters else None
     t_qdrant_start = time.perf_counter()
     keyword_fields = ["title", "page_url", "source_url", "canonical_url", "tags", "content", "pdfs"]
     search_top_k = configured_search_top_k_fn(body.top_k)
-    hits = run_search_fn(
-        qdrant=qdrant,
-        vec=vec,
-        top_k=search_top_k,
-        filters=filters,
-        query_terms=query_terms,
-        keyword_fields=keyword_fields,
-        smart_lookup=body.smart_lookup,
-        fast_mode=body.fast_mode,
-        is_optimized=body.is_optimized,
-        preferred_tags=body.preferred_tags,
-    )
-    keyword_hits = keyword_fallback_fn(qdrant, vec, rewritten_query, search_top_k)
+    try:
+        hits = run_search_fn(
+            qdrant=qdrant,
+            vec=vec,
+            top_k=search_top_k,
+            filters=filters,
+            query_terms=query_terms,
+            keyword_fields=keyword_fields,
+            smart_lookup=body.smart_lookup,
+            fast_mode=body.fast_mode,
+            is_optimized=body.is_optimized,
+            preferred_tags=body.preferred_tags,
+        )
+        keyword_hits = keyword_fallback_fn(
+            qdrant,
+            vec,
+            rewritten_query,
+            search_top_k,
+            filters=filters,
+        )
+    except ScopedCollectionNotReadyError as exc:
+        raise _dataset_not_ready(exc) from exc
     if keyword_hits:
         hits = merge_hits_fn(hits, keyword_hits, max(search_top_k * 2, len(hits) + len(keyword_hits)))
     timings["qdrant_ms"] = (time.perf_counter() - t_qdrant_start) * 1000
@@ -143,7 +167,7 @@ def run_query_documents(
 
     struct_hops = body.structural_hops if getattr(body, "structural_hops", None) is not None else structural_hops_fn()
     t_graph_start = time.perf_counter()
-    structural_hits = [] if body.fast_mode or struct_hops == 0 else build_structural_hits_fn(
+    structural_hits = [] if not graph_enabled or body.fast_mode or struct_hops == 0 else build_structural_hits_fn(
         query_terms,
         limit=structural_limit_fn(body.top_k),
         hops=struct_hops,
@@ -194,13 +218,16 @@ def run_query_documents(
         except Exception:
             iter_vec = vec
 
-        secondary_hits = run_high_recall_fn(
-            qdrant=qdrant,
-            vec=iter_vec,
-            top_k=max(body.top_k * 2, len(hits) or body.top_k),
-            filters=filters,
-            preferred_tags=body.preferred_tags,
-        )
+        try:
+            secondary_hits = run_high_recall_fn(
+                qdrant=qdrant,
+                vec=iter_vec,
+                top_k=max(body.top_k * 2, len(hits) or body.top_k),
+                filters=filters,
+                preferred_tags=body.preferred_tags,
+            )
+        except ScopedCollectionNotReadyError as exc:
+            raise _dataset_not_ready(exc) from exc
         if secondary_hits:
             hits = merge_hits_fn(hits, secondary_hits, max(body.top_k * 2, 12))
             hits = rerank_and_filter_hits_fn(
@@ -232,7 +259,7 @@ def run_query_documents(
 
     kg_facts: list[dict[str, str]] = []
     t_kg_start = time.perf_counter()
-    if hits and not body.fast_mode:
+    if graph_enabled and hits and not body.fast_mode:
         kg_terms = set(extract_terms_fn(rewritten_query))
         kg_terms.update(query_terms)
         for h in hits[: body.top_k]:
@@ -259,6 +286,9 @@ def run_query_documents(
         "kg": kg_facts,
         "answer": answer,
         "retrieval": {
+            "dataset_id": authorized_scope.dataset_id,
+            "graph_enabled": graph_enabled,
+            "graph_disabled_reason": None if graph_enabled else "dataset_scope_not_enforced",
             "iterative_pass": iteration_used,
             "expansion_terms": expansion_terms if expansion_terms else [],
             "context_tokens_used": context_tokens_used,

@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class Dataset extends Model
 {
     public const STATUS_ACTIVE = 'active';
+
     public const STATUS_ARCHIVED = 'archived';
 
     public $timestamps = false;
@@ -34,5 +35,10 @@ class Dataset extends Model
     public function documents(): HasMany
     {
         return $this->hasMany(Document::class, 'dataset_id', 'dataset_id');
+    }
+
+    public function grants(): HasMany
+    {
+        return $this->hasMany(DatasetGrant::class, 'dataset_id', 'dataset_id');
     }
 }

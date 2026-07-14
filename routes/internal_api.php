@@ -104,6 +104,7 @@ Route::middleware(['auth:sanctum', 'throttle:hawki-api'])->group(function () {
         Route::post('/datasets/{datasetId}/retry-failed', [PipelineRecoveryController::class, 'retryDataset'])->middleware('throttle:hawki-destructive');
     });
 
+    Route::get('/query/datasets', [HawkiRagProxyController::class, 'datasets']);
     Route::post('/query', [HawkiRagProxyController::class, 'query'])->middleware('throttle:hawki-rag-query');
     Route::get('/rag/stats', [RagStatsController::class, 'show']);
     Route::delete('/rag/qdrant/collections/{collection}', [RagStatsController::class, 'destroyQdrantCollection'])->middleware('throttle:hawki-destructive');

@@ -206,8 +206,11 @@ Route::get('/hawki-rag-playground', function (\Illuminate\Http\Request $request,
         'rootAttributes' => ['data-hawki-rag-playground' => true],
     ]);
 });
-Route::middleware('operator')->group(function (): void {
+Route::middleware(['operator', 'auth:sanctum'])->group(function (): void {
+    Route::get('/query/datasets', [HawkiRagProxyController::class, 'datasets']);
     Route::post('/query', [HawkiRagProxyController::class, 'query'])->middleware('throttle:hawki-rag-query');
+});
+Route::middleware('operator')->group(function (): void {
     Route::get('/rag/stats', [RagStatsController::class, 'show']);
     Route::delete('/rag/qdrant/collections/{collection}', [RagStatsController::class, 'destroyQdrantCollection'])->middleware('throttle:hawki-destructive');
 });

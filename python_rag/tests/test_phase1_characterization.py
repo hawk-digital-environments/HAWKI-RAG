@@ -52,6 +52,23 @@ def _requests_http_error_type() -> type[BaseException]:
 TestClient = _fastapi_test_client_class()
 
 
+def _authorized_query_scope(*, graph_enabled: bool = False) -> SimpleNamespace:
+    return SimpleNamespace(
+        dataset_id="dataset-a",
+        qdrant_collection="hawki_dataset_a",
+        neo4j_namespace="hawki_dataset_a",
+        graph_enabled=graph_enabled,
+    )
+
+
+class _ScopedQdrantStub:
+    def __init__(self) -> None:
+        self.collection = ""
+
+    def select_scoped_collection(self, collection: str) -> None:
+        self.collection = collection
+
+
 def _install_optional_dependency_stubs() -> None:
     if "neo4j" not in sys.modules:
         neo4j_module = types.ModuleType("neo4j")
@@ -2358,6 +2375,7 @@ class QueryCharacterizationTests(unittest.TestCase):
 
         body = SimpleNamespace(
             query="HAWKI architecture",
+            authorized_scope=_authorized_query_scope(),
             top_k=2,
             provider="fake",
             filters={},
@@ -2404,7 +2422,7 @@ class QueryCharacterizationTests(unittest.TestCase):
                 "RAG_GENERATE_ANSWER": "false",
             },
             clear=False,
-        ), patch.object(query_logic, "QdrantHTTP", lambda: object()), patch.object(
+        ), patch.object(query_logic, "QdrantHTTP", _ScopedQdrantStub), patch.object(
             query_logic, "run_search", lambda **kwargs: list(hits)
         ), patch.object(
             query_logic, "_keyword_fallback_search", lambda *args, **kwargs: []
@@ -2439,6 +2457,7 @@ class QueryCharacterizationTests(unittest.TestCase):
 
         body = SimpleNamespace(
             query="toy train",
+            authorized_scope=_authorized_query_scope(graph_enabled=True),
             top_k=2,
             provider="fake",
             filters={"source_format": "markdown"},
@@ -2458,7 +2477,7 @@ class QueryCharacterizationTests(unittest.TestCase):
             body,
             rag_service=SimpleNamespace(rerank_hits=lambda **kwargs: [{"id": "fallback", "score": 0.1, "payload": {"title": "Fallback", "content": "", "doc_id": "z"}}]),
             get_provider=lambda name: Provider(),
-            qdrant_ctor=object,
+            qdrant_ctor=_ScopedQdrantStub,
             analyze_prompt_fn=lambda query: {"blocked": False, "issues": [], "sanitized": query},
             enforce_output_safety_fn=lambda answer: {"blocked": False, "issues": [], "answer": answer},
             sanitize_prompt_text_fn=lambda query: query,
@@ -2511,6 +2530,7 @@ class QueryCharacterizationTests(unittest.TestCase):
 
         body = SimpleNamespace(
             query="fast mode",
+            authorized_scope=_authorized_query_scope(),
             top_k=2,
             provider="fake",
             filters={},
@@ -2535,7 +2555,7 @@ class QueryCharacterizationTests(unittest.TestCase):
                 embed_model="embed-model",
                 rag_model="rag-model",
             ),
-            qdrant_ctor=object,
+            qdrant_ctor=_ScopedQdrantStub,
             analyze_prompt_fn=lambda query: {"blocked": False, "issues": [], "sanitized": query},
             enforce_output_safety_fn=lambda answer: {"blocked": False, "issues": [], "answer": answer},
             sanitize_prompt_text_fn=lambda query: query,
@@ -2976,7 +2996,15 @@ class ApiAndVectorValidationTests(unittest.TestCase):
         ingest = IngestRequest(
             docs=[IngestDoc(id="doc-1", text="Toy catalog", payload={"title": "Toys"})],
         )
-        query = QueryRequest(query="Which toys are wooden?")
+        query = QueryRequest(
+            query="Which toys are wooden?",
+            authorized_scope={
+                "dataset_id": "dataset-a",
+                "qdrant_collection": "hawki_dataset_a",
+                "neo4j_namespace": "hawki_dataset_a",
+                "graph_enabled": False,
+            },
+        )
         settings = load_app_settings()
 
         self.assertEqual(ingest.provider, settings.rag_default_provider)
@@ -2993,6 +3021,12 @@ class ApiAndVectorValidationTests(unittest.TestCase):
 
         custom_query = QueryRequest(
             query="Which toys are wooden?",
+            authorized_scope={
+                "dataset_id": "dataset-a",
+                "qdrant_collection": "hawki_dataset_a",
+                "neo4j_namespace": "hawki_dataset_a",
+                "graph_enabled": False,
+            },
             provider="query-provider",
             reranker="cosine",
             mix_mode=False,
@@ -3276,6 +3310,12 @@ class ApiAndVectorValidationTests(unittest.TestCase):
 
         query_body = QueryRequest(
             query="Why wooden toys are safe?",
+            authorized_scope={
+                "dataset_id": "dataset-a",
+                "qdrant_collection": "hawki_dataset_a",
+                "neo4j_namespace": "hawki_dataset_a",
+                "graph_enabled": False,
+            },
             top_k=4,
             provider="query-provider",
             filters={"source_format": "markdown"},
