@@ -52,6 +52,98 @@ class IncrementalIngestTests(unittest.TestCase):
         )
         self.assertEqual(stats["doc_ids"], [expected_doc_id])
 
+    def test_prepare_documents_registers_upload_identity_without_changing_document_id(self) -> None:
+        from application.workflows.ingest.chunking import prepare_documents
+        from application.workflows.ingest.page_registry import build_page_registry_records
+
+        doc = SimpleNamespace(
+            id="doc_upload_page_1",
+            text="Page one of an uploaded PDF.",
+            payload={
+                "title": "upload.pdf",
+                "source_url": "upload://upload.pdf",
+                "source_format": "markdown",
+                "relative_path": "pages/00001.md",
+                "source_id": "source-upload-1",
+            },
+        )
+
+        chunk_records, stats = prepare_documents(
+            [doc],
+            chunk_chars=1200,
+            chunk_overlap=0,
+            default_job_id="job-upload-1",
+        )
+
+        payload = chunk_records[0]["payload"]
+        self.assertEqual(chunk_records[0]["doc_id"], "doc_upload_page_1")
+        self.assertEqual(payload["doc_id"], "doc_upload_page_1")
+        self.assertEqual(payload["source_identity"], "doc:doc_upload_page_1")
+        self.assertEqual(stats["doc_ids"], ["doc_upload_page_1"])
+
+        registry_records = build_page_registry_records(
+            chunk_records,
+            collection="upload_test_docs",
+            neo4j_database=None,
+        )
+
+        self.assertEqual(len(registry_records), 1)
+        self.assertEqual(registry_records[0].doc_id, "doc_upload_page_1")
+        self.assertEqual(registry_records[0].source_identity, "doc:doc_upload_page_1")
+        self.assertEqual(registry_records[0].source_id, "source-upload-1")
+        self.assertEqual(registry_records[0].chunks_count, 1)
+
+    def test_upload_registry_identity_skips_unchanged_retry(self) -> None:
+        from application.workflows.ingest.chunking import prepare_documents
+        from application.workflows.ingest.incremental import plan_incremental_ingest
+
+        doc = SimpleNamespace(
+            id="doc_upload_retry",
+            text="The same uploaded page.",
+            payload={
+                "source_url": "upload://retry.pdf",
+                "source_format": "markdown",
+                "relative_path": "pages/00001.md",
+            },
+        )
+        chunk_records, stats = prepare_documents(
+            [doc],
+            chunk_chars=1200,
+            chunk_overlap=0,
+            default_job_id="job-upload-retry",
+        )
+        content_hash = str(chunk_records[0]["payload"]["content_hash"])
+
+        class FakeRegistry:
+            def find_by_source_identity(self, *, collection: str, source_identity: str) -> dict[str, object]:
+                self.lookup = (collection, source_identity)
+                return {
+                    "doc_id": "doc_upload_retry",
+                    "content_hash": content_hash,
+                    "status": "completed",
+                }
+
+        class FakeQdrant:
+            def find_points_by_payload(self, filters: dict[str, object], *, limit: int = 1) -> list[dict[str, object]]:
+                raise AssertionError("Qdrant fallback should not be used when the upload registry matches")
+
+        registry = FakeRegistry()
+        plan = plan_incremental_ingest(
+            chunk_records,
+            doc_stats=stats,
+            qdrant=FakeQdrant(),
+            collection="upload_test_docs",
+            operation_id="op-upload-retry",
+            logger_obj=logging.getLogger("test_upload_registry_retry"),
+            page_registry=registry,
+        )
+
+        self.assertEqual(plan.chunk_records, [])
+        self.assertEqual(plan.unchanged_doc_ids, {"doc_upload_retry"})
+        self.assertEqual(registry.lookup, ("upload_test_docs", "doc:doc_upload_retry"))
+        self.assertEqual(len(plan.unchanged_page_records), 1)
+        self.assertEqual(plan.unchanged_page_records[0].source_identity, "doc:doc_upload_retry")
+
     def test_incremental_plan_skips_unchanged_and_marks_changed_old_doc_id_for_replace(self) -> None:
         from application.workflows.ingest.incremental import plan_incremental_ingest
 

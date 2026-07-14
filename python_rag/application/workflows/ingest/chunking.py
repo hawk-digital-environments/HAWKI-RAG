@@ -96,6 +96,12 @@ def prepare_documents(
             normalized_payload.setdefault("source_document_id", source_doc_id)
         if source_identity:
             normalized_payload["source_identity"] = source_identity
+        elif not str(normalized_payload.get("source_identity") or "").strip():
+            # Non-HTTP sources (for example upload:// files) already receive a
+            # source-scoped stable document id from the Temporal ingestion
+            # activity. Reuse that id for registry identity without re-hashing
+            # it, so retries can participate in incremental lifecycle tracking.
+            normalized_payload["source_identity"] = f"doc:{doc_id}"
         canonical_url = normalized_page_url(normalized_payload)
         if canonical_url:
             normalized_payload.setdefault("canonical_url", canonical_url)

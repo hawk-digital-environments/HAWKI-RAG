@@ -5,10 +5,13 @@ declare(strict_types=1);
 namespace Tests\Unit\Graph;
 
 use App\Services\Graph\GraphResultNormalizer;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 class GraphResultNormalizerTest extends TestCase
 {
+    use RefreshDatabase;
+
     public function test_it_normalizes_records_nodes_edges_and_removes_vectors(): void
     {
         $normalizer = app(GraphResultNormalizer::class);

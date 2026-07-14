@@ -9,6 +9,7 @@ class Neo4jGraphExplorerPageTest extends TestCase
     public function test_graph_explorer_has_its_own_page_and_is_removed_from_playground(): void
     {
         $this->withoutVite();
+        config()->set('config.operator_auth.bypass', false);
 
         $this->get('/neo4j-graph-explorer')
             ->assertOk()

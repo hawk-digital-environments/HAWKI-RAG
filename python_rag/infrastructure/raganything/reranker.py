@@ -125,16 +125,13 @@ def rerank_hits(
             rr_url = os.environ.get("RERANKER_API_URL", "").strip()
             if rr_url:
                 requests = _requests_module()
-                docs = []
+                docs: list[str] = []
                 for h in candidates:
                     payload = h.get("payload") or {}
                     docs.append(
-                        {
-                            "id": payload.get("page_url") or payload.get("source_url") or str(payload.get("title") or ""),
-                            "text": _strip_control_chars(
-                                (payload.get("snippet") or payload.get("content") or payload.get("title") or "")[:2000]
-                            ),
-                        }
+                        _strip_control_chars(
+                            (payload.get("snippet") or payload.get("content") or payload.get("title") or "")[:2000]
+                        )
                     )
                 headers = {"Content-Type": "application/json"}
                 rr_key = os.environ.get("RERANKER_API_KEY", "").strip()
@@ -143,10 +140,8 @@ def rerank_hits(
                 response = requests.post(rr_url, headers=headers, json={"query": user_query, "documents": docs}, timeout=30)
                 if response.ok:
                     payload = response.json()
-                    order = payload.get("results") or payload
+                    order = payload.get("results") if isinstance(payload, dict) else payload
                     if isinstance(order, list):
-                        score_map = {str(item.get("id")): float(item.get("score", 0.0)) for item in order}
-
                         def key_for(hit: dict[str, Any]) -> str:
                             p = hit.get("payload") or {}
                             page_url = p.get("page_url_text") or p.get("page_url") or p.get("source_url")
@@ -157,7 +152,32 @@ def rerank_hits(
                                 title = title[0] if title else ""
                             return str(page_url or title or "")
 
-                        scores = [float(score_map.get(key_for(h), 0.0)) for h in candidates]
+                        scores_by_index: dict[int, float] = {}
+                        scores_by_id: dict[str, float] = {}
+                        for item in order:
+                            if not isinstance(item, dict):
+                                continue
+                            raw_score = item.get("relevance_score", item.get("score", 0.0))
+                            try:
+                                score = float(raw_score)
+                            except (TypeError, ValueError):
+                                continue
+
+                            try:
+                                index = int(item.get("index", -1))
+                            except (TypeError, ValueError):
+                                index = -1
+                            if 0 <= index < len(candidates):
+                                scores_by_index[index] = score
+
+                            item_id = item.get("id")
+                            if item_id is not None:
+                                scores_by_id[str(item_id)] = score
+
+                        scores = [
+                            scores_by_index.get(index, scores_by_id.get(key_for(hit), 0.0))
+                            for index, hit in enumerate(candidates)
+                        ]
                         return _rank_candidates(candidates, scores, hits, mix_mode, mix_weight, orig_scores)
 
         if mode == "jina":

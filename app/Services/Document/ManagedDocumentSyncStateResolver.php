@@ -79,7 +79,7 @@ readonly class ManagedDocumentSyncStateResolver
                 'task_id' => $this->stringValue($metadata['task_id'] ?? null),
                 'job_id' => $this->stringValue($metadata['job_id'] ?? null),
                 'content_hash' => $this->stringValue($document->checksum_sha256),
-                'chunk_count' => (int) ($chunkCounts[$bridgeDocumentId] ?? 0),
+                'chunk_count' => $this->chunkCount($chunkCounts, $metadata, $bridgeDocumentId),
                 'status' => 'indexed',
                 'indexed_at' => $document->updated_at ?? $document->created_at,
                 'metadata_json' => $metadata,
@@ -87,6 +87,32 @@ readonly class ManagedDocumentSyncStateResolver
         }
 
         return array_values($outputs);
+    }
+
+    /**
+     * @param array<string, int> $registryChunkCounts
+     * @param array<string, mixed> $metadata
+     */
+    private function chunkCount(array $registryChunkCounts, array $metadata, string $bridgeDocumentId): int
+    {
+        if (array_key_exists($bridgeDocumentId, $registryChunkCounts)) {
+            return max(0, (int) $registryChunkCounts[$bridgeDocumentId]);
+        }
+
+        $bridgeResponse = is_array($metadata['bridge_response'] ?? null)
+            ? $metadata['bridge_response']
+            : [];
+        $summary = is_array($bridgeResponse['summary'] ?? null)
+            ? $bridgeResponse['summary']
+            : [];
+        $documents = is_array($summary['documents'] ?? null)
+            ? $summary['documents']
+            : [];
+        $chunkCounts = is_array($documents['chunks_per_doc'] ?? null)
+            ? $documents['chunks_per_doc']
+            : [];
+
+        return max(0, (int) ($chunkCounts[$bridgeDocumentId] ?? 0));
     }
 
     private function bridgeDocumentId(Document $document): ?string

@@ -30,6 +30,23 @@ if "neo4j" not in sys.modules:
 
 
 class ReliabilityContractTests(unittest.TestCase):
+    def test_raganything_file_logging_is_opt_in(self) -> None:
+        from api.settings import load_app_settings
+
+        settings = load_app_settings({"RAG_DEFAULT_PROVIDER": "fake"})
+        configured_settings = load_app_settings(
+            {
+                "RAG_DEFAULT_PROVIDER": "fake",
+                "HAWKI_RAG_RAGANYTHING_LOG_PATH": "/shared/logs/raganything_runtime.log",
+            }
+        )
+
+        self.assertEqual(settings.raganything_log_path, "")
+        self.assertEqual(
+            configured_settings.raganything_log_path,
+            "/shared/logs/raganything_runtime.log",
+        )
+
     def test_retryable_write_contract_is_idempotency_gated(self) -> None:
         from common.reliability import is_safe_retryable_write
 

@@ -11,6 +11,7 @@ class HawkiRagPlaygroundPageTest extends TestCase
     public function test_playground_mounts_the_svelte_retrieval_console(): void
     {
         $this->withoutVite();
+        config()->set('config.operator_auth.bypass', false);
 
         $this->get('/hawki-rag-playground')
             ->assertOk()

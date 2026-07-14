@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import logging
 import threading
 from typing import Any
@@ -71,10 +72,17 @@ class RagAnythingGraphLoop:
         if client is None:
             return
         try:
+            finalize_fn = getattr(client, "finalize_storages", None)
+            if callable(finalize_fn):
+                result = finalize_fn()
+                if inspect.isawaitable(result):
+                    self.run_sync(result)
+                return
+
             close_fn = getattr(client, "close", None)
             if callable(close_fn):
                 result = close_fn()
-                if asyncio.iscoroutine(result):
+                if inspect.isawaitable(result):
                     self.run_sync(result)
         except Exception as exc:
             self._logger.debug("RAG-Anything close failed: %s", exc)

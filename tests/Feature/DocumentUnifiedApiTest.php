@@ -392,6 +392,109 @@ class DocumentUnifiedApiTest extends TestCase
         $this->assertTrue(Str::isUuid((string) $response->json('document.indexed_document_id')));
     }
 
+    public function test_show_uses_bridge_chunk_summary_when_upload_has_no_ingested_page_registry_rows(): void
+    {
+        $bridgeResponse = [
+            'ok' => true,
+            'points' => 3,
+            'summary' => [
+                'documents' => [
+                    'chunks_per_doc' => [
+                        'doc-upload-page-1' => 1,
+                        'doc-upload-page-2' => 2,
+                    ],
+                ],
+                'graph' => ['enabled' => false],
+                'graph_preview' => [
+                    'planned_entities' => 0,
+                    'planned_triplets' => 0,
+                ],
+            ],
+        ];
+
+        ManagedDocument::query()->create([
+            'document_id' => 'adoc_upload_chunks_1',
+            'dataset_id' => 'documents-upload-chunks',
+            'display_name' => 'multi-page.pdf',
+            'source_type' => 'upload',
+            'source_url' => 'upload://multi-page.pdf',
+            'graph_enabled' => false,
+            'status' => ManagedDocument::STATUS_PROCESSING,
+            'latest_source_id' => 'source-upload-chunks-1',
+            'latest_task_id' => 'task-upload-chunks-1',
+            'latest_job_id' => 'ingest-upload-chunks-1',
+        ]);
+
+        IngestionSource::query()->create([
+            'source_id' => 'source-upload-chunks-1',
+            'source_url' => 'upload://multi-page.pdf',
+            'task_id' => 'task-upload-chunks-1',
+            'dataset_id' => 'documents-upload-chunks',
+            'content_hash' => hash('sha256', 'multi-page.pdf'),
+            'document_version' => 'version-upload-chunks-1',
+            'index_status' => IngestionSource::STATUS_READY,
+            'metadata' => [],
+            'ready_at' => Carbon::parse('2026-07-14T08:45:00Z'),
+        ]);
+
+        foreach ([
+            'doc-upload-page-1' => hash('sha256', 'upload-page-1'),
+            'doc-upload-page-2' => hash('sha256', 'upload-page-2'),
+        ] as $bridgeDocumentId => $checksum) {
+            Document::query()->create([
+                'id' => (string) Str::uuid(),
+                'external_id' => $bridgeDocumentId,
+                'dataset_id' => 'documents-upload-chunks',
+                'collection' => 'hawki_documents_upload_chunks',
+                'source_type' => 'upload',
+                'source_url' => 'upload://multi-page.pdf',
+                'original_filename' => 'multi-page.pdf',
+                'storage_path' => "/tmp/{$bridgeDocumentId}.md",
+                'mime_type' => 'text/markdown',
+                'checksum_sha256' => $checksum,
+                'title' => $bridgeDocumentId,
+                'metadata_json' => [
+                    'source_id' => 'source-upload-chunks-1',
+                    'task_id' => 'task-upload-chunks-1',
+                    'job_id' => 'ingest-upload-chunks-1',
+                    'document_id' => $bridgeDocumentId,
+                    'qdrant_collection' => 'hawki_documents_upload_chunks',
+                    'neo4j_namespace' => 'hawki_documents_upload_chunks',
+                    'bridge_response' => $bridgeResponse,
+                ],
+                'status' => Document::STATUS_COMPLETED,
+            ]);
+        }
+
+        $this->assertDatabaseCount('ingested_pages', 0);
+
+        $this->getJson('/api/documents/adoc_upload_chunks_1')
+            ->assertOk()
+            ->assertJsonPath('document.status', ManagedDocument::STATUS_INDEXED)
+            ->assertJsonPath('document.qdrant_point_count', 3)
+            ->assertJsonPath('document.active_output_count', 2)
+            ->assertJsonPath('document.active_chunk_count', 3)
+            ->assertJsonFragment([
+                'bridge_document_id' => 'doc-upload-page-1',
+                'chunk_count' => 1,
+            ])
+            ->assertJsonFragment([
+                'bridge_document_id' => 'doc-upload-page-2',
+                'chunk_count' => 2,
+            ]);
+
+        $this->assertDatabaseHas('managed_document_outputs', [
+            'document_id' => 'adoc_upload_chunks_1',
+            'bridge_document_id' => 'doc-upload-page-1',
+            'chunk_count' => 1,
+        ]);
+        $this->assertDatabaseHas('managed_document_outputs', [
+            'document_id' => 'adoc_upload_chunks_1',
+            'bridge_document_id' => 'doc-upload-page-2',
+            'chunk_count' => 2,
+        ]);
+    }
+
     public function test_update_skips_when_timestamp_is_not_newer_through_unified_documents_route(): void
     {
         $checksum = hash('sha256', 'documents-skip');

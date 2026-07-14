@@ -389,7 +389,10 @@ class GraphFallbackCharacterizationTests(unittest.TestCase):
 
         class FakeService:
             def extract_triplets(self, text: str, engine: str) -> list[tuple[str, str, str]]:
-                return [("A", "R", "B"), ("B", "S", "C")]
+                return [
+                    ("HAWKI", "uses", "Qdrant"),
+                    ("Qdrant", "supports", "vector search"),
+                ]
 
         fake_graph = FakeGraph()
         with patch("infrastructure.graph.graph_text.Neo4jGraph", return_value=fake_graph):
@@ -401,7 +404,13 @@ class GraphFallbackCharacterizationTests(unittest.TestCase):
 
         self.assertEqual(result["ok"], True)
         self.assertEqual(result["triplets"], 2)
-        self.assertEqual(fake_graph.triplets, [("A", "R", "B"), ("B", "S", "C")])
+        self.assertEqual(
+            fake_graph.triplets,
+            [
+                ("HAWKI", "uses", "Qdrant"),
+                ("Qdrant", "supports", "vector search"),
+            ],
+        )
         self.assertTrue(fake_graph.closed)
 
     def test_graph_visualization_write_can_be_disabled_with_injected_settings(self) -> None:
@@ -825,6 +834,51 @@ class RagAnythingLoopCharacterizationTests(unittest.TestCase):
 
         loop = RagAnythingGraphLoop()
         self.assertEqual(loop.run_sync(_value()), "ok")
+
+    def test_graph_loop_finalizes_raganything_storages_on_owned_loop(self) -> None:
+        import asyncio
+
+        from infrastructure.raganything.raganything_loop import RagAnythingGraphLoop
+
+        calls: dict[str, object] = {}
+
+        class FakeClient:
+            async def finalize_storages(self) -> None:
+                calls["finalize_loop"] = asyncio.get_running_loop()
+
+            def close(self) -> None:
+                calls["close_called"] = True
+
+        graph_loop = RagAnythingGraphLoop()
+        owned_loop = graph_loop.ensure_rag_graph_loop()
+
+        graph_loop.close_raganything_instance(FakeClient())
+
+        self.assertIs(calls["finalize_loop"], owned_loop)
+        self.assertNotIn("close_called", calls)
+
+    def test_graph_loop_retains_sync_and_async_close_fallbacks(self) -> None:
+        import asyncio
+
+        from infrastructure.raganything.raganything_loop import RagAnythingGraphLoop
+
+        calls: list[object] = []
+
+        class SyncCloseClient:
+            def close(self) -> None:
+                calls.append("sync")
+
+        class AsyncCloseClient:
+            async def close(self) -> None:
+                calls.append(asyncio.get_running_loop())
+
+        graph_loop = RagAnythingGraphLoop()
+        owned_loop = graph_loop.ensure_rag_graph_loop()
+
+        graph_loop.close_raganything_instance(SyncCloseClient())
+        graph_loop.close_raganything_instance(AsyncCloseClient())
+
+        self.assertEqual(calls, ["sync", owned_loop])
 
 
 class RagAnythingRuntimeCharacterizationTests(unittest.TestCase):
