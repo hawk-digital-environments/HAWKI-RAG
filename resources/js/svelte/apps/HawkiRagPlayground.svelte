@@ -16,6 +16,8 @@
         queryEndpoint: string;
         /** Browser URL for datasets the authenticated user may query. */
         datasetsEndpoint: string;
+        /** Browser URL that exchanges a Sanctum token for an HttpOnly session. */
+        sessionEndpoint: string;
         /** Browser URL for RAG runtime monitor data. */
         monitorEndpoint: string;
         /** Browser URL for Qdrant and Neo4j stats. */
@@ -28,6 +30,8 @@
         uploadDownloadEndpoint: string;
         /** Whether the current browser request is allowed to use operator APIs. */
         operatorAuthorized?: boolean;
+        /** Whether a real browser principal may access dataset-scoped query APIs. */
+        queryAuthenticated?: boolean;
     }
 
     interface QueryHit {
@@ -102,12 +106,14 @@
     const {
         queryEndpoint,
         datasetsEndpoint,
+        sessionEndpoint,
         monitorEndpoint,
         statsEndpoint,
         qdrantCollectionEndpointBase,
         neo4jClearEndpoint,
         uploadDownloadEndpoint,
         operatorAuthorized = false,
+        queryAuthenticated = false,
         class: className = '',
         ...restProps
     }: Props = $props();
@@ -119,6 +125,9 @@
     ];
 
     let question = $state('');
+    let sessionToken = $state('');
+    let sessionBusy = $state(false);
+    let sessionError = $state('');
     let datasets = $state<DatasetOption[]>([]);
     let selectedDatasetId = $state('');
     let topK = $state(5);
@@ -211,11 +220,16 @@
     });
 
     onMount(() => {
+        if (queryAuthenticated) {
+            void loadAuthorizedDatasets();
+        } else {
+            status = 'Sign in with an authenticated HAWKI session to query datasets.';
+        }
+
         if (!operatorAuthorized) {
             return;
         }
 
-        void loadAuthorizedDatasets();
         void refreshSystem();
         const monitorTimer = window.setInterval(() => {
             void loadMonitor();
@@ -299,6 +313,31 @@
         }
 
         return payload;
+    }
+
+    async function startBrowserSession(): Promise<void> {
+        const token = sessionToken.trim();
+        if (!token || sessionBusy) return;
+
+        sessionBusy = true;
+        sessionError = '';
+
+        try {
+            await requestJson(sessionEndpoint, {
+                method: 'POST',
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    'X-CSRF-TOKEN': csrfToken(),
+                },
+            });
+            sessionToken = '';
+            window.location.reload();
+        } catch (error) {
+            sessionToken = '';
+            sessionError = error instanceof Error ? error.message : 'Authentication failed.';
+        } finally {
+            sessionBusy = false;
+        }
     }
 
     function pushActivity(source: string, message: string, tone: Tone = 'ready'): void {
@@ -664,6 +703,34 @@
         active="playground"
     />
 
+    {#if !queryAuthenticated}
+    <section class="query-session-panel" aria-labelledby="query-session-title">
+        <div>
+            <span>Dataset authentication</span>
+            <h2 id="query-session-title">Start a secure browser session</h2>
+            <p>Paste a Sanctum access token once. RAWKI exchanges it for an HttpOnly session cookie and does not store the token in browser storage.</p>
+        </div>
+        <form onsubmit={(event) => { event.preventDefault(); void startBrowserSession(); }}>
+            <label for="query-session-token">Access token</label>
+            <div>
+                <input
+                    id="query-session-token"
+                    type="password"
+                    bind:value={sessionToken}
+                    autocomplete="off"
+                    spellcheck="false"
+                    placeholder="Paste Sanctum token"
+                    required
+                />
+                <button type="submit" disabled={sessionBusy || !sessionToken.trim()}>
+                    {sessionBusy ? 'Signing in...' : 'Sign in'}
+                </button>
+            </div>
+            {#if sessionError}<p class="query-session-error" role="alert">{sessionError}</p>{/if}
+        </form>
+    </section>
+    {/if}
+
     {#if operatorAuthorized}
     <section class="signal-strip" aria-label="Live retrieval state">
         {#each systemSignals as signal}
@@ -673,8 +740,10 @@
             </article>
         {/each}
     </section>
+    {/if}
 
-    <main class="playground-grid">
+    {#if operatorAuthorized || queryAuthenticated}
+    <main class={operatorAuthorized ? 'playground-grid' : 'playground-grid playground-grid--query-only'}>
         <section class="composer" aria-labelledby="query-title">
             <div class="panel-heading">
                 <div>
@@ -684,6 +753,7 @@
                 <span data-tone={busy ? 'active' : errorMessage ? 'fail' : 'ready'}>{busy ? 'Running' : errorMessage ? 'Failed' : 'Ready'}</span>
             </div>
 
+            {#if queryAuthenticated}
             <form class="query-form" onsubmit={(event) => { event.preventDefault(); void runQuery(); }}>
                 <label for="hawki-question">Question</label>
                 <textarea
@@ -780,6 +850,12 @@
                     <p class="empty-copy">No activity yet.</p>
                 {/if}
             </section>
+            {:else}
+                <div class="query-auth-required" role="status">
+                    <strong>Authenticated query session required</strong>
+                    <p>Operator access can show system health, but dataset retrieval requires a signed-in HAWKI user with an explicit dataset grant.</p>
+                </div>
+            {/if}
         </section>
 
         <section class="result-stage" aria-labelledby="result-title">
@@ -791,7 +867,12 @@
                 <span>{resultSummary}</span>
             </div>
 
-            {#if !hasResult && !errorMessage}
+            {#if !queryAuthenticated}
+                <div class="empty-result">
+                    <strong>Dataset results remain private.</strong>
+                    <span>Sign in and obtain a dataset query grant before retrieving evidence.</span>
+                </div>
+            {:else if !hasResult && !errorMessage}
                 <div class="empty-result">
                     <strong>Ready for a grounded question.</strong>
                     <span>Sources, graph facts, and raw retrieval data will appear here.</span>
@@ -899,6 +980,7 @@
             {/if}
         </section>
 
+        {#if operatorAuthorized}
         <aside class="system-panel" aria-label="HAWKI-RAG system overview">
             <section class="system-section">
                 <div class="mini-heading">
@@ -975,6 +1057,7 @@
                 </div>
             </section>
         </aside>
+        {/if}
     </main>
     {:else}
     <section class="playground-auth-panel" aria-labelledby="playground-auth-required-title">
@@ -1181,6 +1264,10 @@
         align-items: start;
     }
 
+    .playground-grid--query-only {
+        grid-template-columns: minmax(340px, 0.82fr) minmax(560px, 1.42fr);
+    }
+
     .composer,
     .result-stage,
     .system-panel {
@@ -1232,6 +1319,92 @@
     .query-form {
         display: grid;
         gap: 12px;
+    }
+
+    .query-auth-required {
+        border: 1px solid rgba(251, 191, 36, 0.32);
+        border-radius: 10px;
+        background: rgba(120, 53, 15, 0.16);
+        padding: 18px;
+        color: var(--pg-text);
+    }
+
+    .query-auth-required strong {
+        display: block;
+        margin-bottom: 7px;
+    }
+
+    .query-auth-required p {
+        margin: 0;
+        color: var(--pg-muted);
+        line-height: 1.5;
+    }
+
+    .query-session-panel {
+        display: grid;
+        grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.8fr);
+        gap: 18px;
+        max-width: 1760px;
+        margin: 0 auto 14px;
+        border: 1px solid rgba(96, 165, 250, 0.32);
+        border-radius: 10px;
+        background: rgba(15, 23, 42, 0.82);
+        padding: 18px;
+        box-shadow: var(--pg-shadow);
+    }
+
+    .query-session-panel span {
+        color: var(--pg-blue);
+        font-size: 0.76rem;
+        font-weight: 850;
+        letter-spacing: 0.07em;
+        text-transform: uppercase;
+    }
+
+    .query-session-panel h2,
+    .query-session-panel p {
+        margin: 6px 0 0;
+    }
+
+    .query-session-panel p {
+        color: var(--pg-muted);
+        line-height: 1.45;
+    }
+
+    .query-session-panel form {
+        display: grid;
+        align-content: center;
+        gap: 7px;
+    }
+
+    .query-session-panel form > div {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 8px;
+    }
+
+    .query-session-panel input {
+        min-width: 0;
+        border: 1px solid var(--pg-border);
+        border-radius: 8px;
+        background: rgba(3, 7, 18, 0.72);
+        padding: 0 11px;
+        color: var(--pg-text);
+    }
+
+    .query-session-panel button {
+        min-height: 42px;
+        border: 1px solid var(--pg-border-strong);
+        border-radius: 8px;
+        background: rgba(13, 148, 136, 0.2);
+        padding: 0 16px;
+        color: var(--pg-text);
+        font-weight: 850;
+    }
+
+    .query-session-error {
+        color: var(--pg-red) !important;
+        font-size: 0.86rem;
     }
 
     label,
@@ -1720,6 +1893,7 @@
 
     @media (max-width: 900px) {
         .playground-grid,
+        .query-session-panel,
         .source-layout,
         .system-panel {
             grid-template-columns: 1fr;
@@ -1750,7 +1924,8 @@
         .signal-strip,
         .control-grid,
         .graph-facts article,
-        .activity-list article {
+        .activity-list article,
+        .query-session-panel form > div {
             grid-template-columns: 1fr;
         }
 

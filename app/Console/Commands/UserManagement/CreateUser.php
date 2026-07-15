@@ -19,7 +19,7 @@ class CreateUser extends Command
      *
      * @var string
      */
-    protected $description = 'Command description';
+    protected $description = 'Create a local user and print the ID used by grant commands';
 
     /**
      * Execute the console command.
@@ -30,8 +30,8 @@ class CreateUser extends Command
         $email = (string) $this->ask('Enter the email?');
         $ip = (string) $this->ask('Enter the server ip address?');
 
-        $users->create($username, $email, $ip);
+        $user = $users->create($username, $email, $ip);
 
-        $this->info('User created successfully!');
+        $this->info(sprintf('User created successfully (ID: %s).', $user->getAuthIdentifier()));
     }
 }

@@ -18,6 +18,7 @@
 */
 use App\Http\Controllers\API\HawkiRagProxyController;
 use App\Http\Controllers\API\RagStatsController;
+use App\Http\Controllers\BrowserSessionController;
 
 /*
 |--------------------------------------------------------------------------
@@ -56,6 +57,7 @@ use App\Http\Controllers\ScrapeController;
 use App\Http\Controllers\ScrapeTaskUiProxyController;
 use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\UploadedSourceDocumentController;
+use App\Services\Authorization\BrowserQueryPrincipalService;
 use App\Services\Profile\OperatorAccessService;
 use App\Services\Settings\SettingsService;
 
@@ -191,22 +193,40 @@ Route::middleware('operator')->group(function (): void {
 
 /*
 |--------------------------------------------------------------------------
+| Browser Authentication Session
+|--------------------------------------------------------------------------
+| Exchanges a valid Sanctum bearer token once for a dedicated HttpOnly query
+| session. It does not create an operator login or persist the bearer token.
+*/
+Route::post('/auth/session', [BrowserSessionController::class, 'store'])
+    ->middleware(['auth:sanctum', 'throttle:hawki-api']);
+
+/*
+|--------------------------------------------------------------------------
 | UI Page: HAWKI RAG Playground (/hawki-rag-playground)
 |--------------------------------------------------------------------------
 | Chat, RAG Status Cards, Qdrant Stats und die zentrale Playground Shell.
 */
-Route::get('/hawki-rag-playground', function (\Illuminate\Http\Request $request, OperatorAccessService $operatorAccess) {
+Route::get('/hawki-rag-playground', function (
+    \Illuminate\Http\Request $request,
+    OperatorAccessService $operatorAccess,
+    BrowserQueryPrincipalService $queryPrincipals,
+) {
+    $operatorAuthorized = $operatorAccess->allows($request);
+    $queryPrincipal = $queryPrincipals->resolve($request);
+
     return view('svelte-page', [
         'title' => 'HAWKI-RAG Console',
         'vite' => 'resources/js/hawki-rag-playground.js',
         'configScriptId' => 'hawki-rag-playground-config',
         'config' => [
-            'operatorAuthorized' => $operatorAccess->allows($request),
+            'operatorAuthorized' => $operatorAuthorized,
+            'queryAuthenticated' => $queryPrincipal !== null,
         ],
         'rootAttributes' => ['data-hawki-rag-playground' => true],
     ]);
 });
-Route::middleware(['operator', 'auth:sanctum'])->group(function (): void {
+Route::middleware('browser-query-principal')->group(function (): void {
     Route::get('/query/datasets', [HawkiRagProxyController::class, 'datasets']);
     Route::post('/query', [HawkiRagProxyController::class, 'query'])->middleware('throttle:hawki-rag-query');
 });

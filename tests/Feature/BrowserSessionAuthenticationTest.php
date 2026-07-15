@@ -1,0 +1,193 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Tests\Feature;
+
+use App\Models\Dataset;
+use App\Models\User;
+use App\Services\Authorization\BrowserQueryPrincipalService;
+use App\Services\Authorization\DatasetQueryAuthorizationService;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Request;
+use Illuminate\Session\ArraySessionHandler;
+use Illuminate\Session\Store;
+use Illuminate\Support\Facades\Http;
+use Tests\TestCase;
+
+class BrowserSessionAuthenticationTest extends TestCase
+{
+    use RefreshDatabase;
+
+    public function test_user_create_command_prints_the_id_needed_for_dataset_grants(): void
+    {
+        $this->artisan('user:create')
+            ->expectsQuestion('Enter the username?', 'browser-command-user')
+            ->expectsQuestion('Enter the email?', 'browser-command-user@example.test')
+            ->expectsQuestion('Enter the server ip address?', '127.0.0.200')
+            ->expectsOutput('User created successfully (ID: 1).')
+            ->assertSuccessful();
+    }
+
+    public function test_sanctum_token_establishes_a_real_query_session(): void
+    {
+        config()->set('config.operator_auth.bypass', false);
+        $user = $this->createUser('browser-session-login');
+        $dataset = Dataset::query()->create([
+            'dataset_id' => 'browser-session-login-dataset',
+            'name' => 'Browser Session Login Dataset',
+            'description' => null,
+            'status' => Dataset::STATUS_ACTIVE,
+            'qdrant_collection' => 'hawki_browser-session-login-dataset',
+            'neo4j_namespace' => 'graph_browser-session-login-dataset',
+            'created_at' => now(),
+        ]);
+        app(DatasetQueryAuthorizationService::class)->grantQueryAccess($user, $dataset);
+        $token = $user->createToken('browser-session-test', ['query'])->plainTextToken;
+
+        $this->withSession(['_token' => 'browser-session-csrf'])
+            ->withToken($token)
+            ->postJson('/auth/session', [], ['X-CSRF-TOKEN' => 'browser-session-csrf'])
+            ->assertOk()
+            ->assertExactJson(['authenticated' => true]);
+
+        $this->withHeader('Authorization', '')
+            ->getJson('/query/datasets')
+            ->assertOk()
+            ->assertExactJson([
+                'datasets' => [[
+                    'dataset_id' => 'browser-session-login-dataset',
+                    'name' => 'Browser Session Login Dataset',
+                ]],
+            ]);
+
+        $this->withoutVite();
+        $this->get('/hawki-rag-playground')
+            ->assertOk()
+            ->assertSee('"operatorAuthorized":false', false)
+            ->assertSee('"queryAuthenticated":true', false);
+
+        $this->getJson('/settings/config')
+            ->assertUnauthorized();
+        $this->postJson('/rag/neo4j/clear')
+            ->assertUnauthorized();
+    }
+
+    public function test_invalid_token_cannot_establish_a_browser_session(): void
+    {
+        $this->withToken('invalid-token')
+            ->postJson('/auth/session')
+            ->assertUnauthorized()
+            ->assertJsonPath('message', 'Unauthenticated.');
+    }
+
+    public function test_removed_user_token_cannot_establish_a_browser_session(): void
+    {
+        $user = $this->createUser('removed-browser-session', removed: true);
+        $token = $user->createToken('removed-session-test')->plainTextToken;
+
+        $this->withToken($token)
+            ->postJson('/auth/session')
+            ->assertUnauthorized()
+            ->assertExactJson(['message' => 'Unauthenticated.']);
+    }
+
+    public function test_token_without_query_ability_cannot_establish_a_browser_session(): void
+    {
+        $user = $this->createUser('limited-browser-session');
+        $token = $user->createToken('limited-session-test', ['documents:read'])->plainTextToken;
+
+        $this->withToken($token)
+            ->postJson('/auth/session')
+            ->assertUnauthorized()
+            ->assertExactJson(['message' => 'Unauthenticated.']);
+    }
+
+    public function test_token_without_query_ability_cannot_call_browser_query_routes(): void
+    {
+        config()->set('config.operator_auth.bypass', false);
+        $user = $this->createUser('limited-browser-query');
+        $token = $user->createToken('limited-query-test', ['documents:read'])->plainTextToken;
+        Http::fake();
+
+        $this->withToken($token)
+            ->getJson('/query/datasets')
+            ->assertUnauthorized()
+            ->assertExactJson(['message' => 'Unauthenticated.']);
+
+        $this->withToken($token)
+            ->postJson('/query', [
+                'dataset_id' => 'not-authorized',
+                'query' => 'This request must never reach the RAG bridge.',
+            ])
+            ->assertUnauthorized()
+            ->assertExactJson(['message' => 'Unauthenticated.']);
+
+        $this->withToken($token)
+            ->postJson('/'.ltrim((string) config('mcp.server'), '/'), [])
+            ->assertForbidden();
+
+        Http::assertNothingSent();
+    }
+
+    public function test_query_token_is_limited_to_internal_query_routes(): void
+    {
+        $user = $this->createUser('internal-query-only');
+        $dataset = Dataset::query()->create([
+            'dataset_id' => 'internal-query-only-dataset',
+            'name' => 'Internal Query Only Dataset',
+            'description' => null,
+            'status' => Dataset::STATUS_ACTIVE,
+            'qdrant_collection' => 'hawki_internal-query-only-dataset',
+            'neo4j_namespace' => 'graph_internal-query-only-dataset',
+            'created_at' => now(),
+        ]);
+        app(DatasetQueryAuthorizationService::class)->grantQueryAccess($user, $dataset);
+        $token = $user->createToken('internal-query-only-test', ['query'])->plainTextToken;
+
+        $this->withToken($token)
+            ->getJson('/api/query/datasets')
+            ->assertOk()
+            ->assertJsonPath('datasets.0.dataset_id', 'internal-query-only-dataset');
+
+        $this->withToken($token)
+            ->getJson('/api/pipeline/tasks')
+            ->assertForbidden();
+
+        $this->withToken($token)
+            ->getJson('/api/ping')
+            ->assertForbidden();
+    }
+
+    public function test_reauthentication_destroys_the_previous_query_session_id(): void
+    {
+        $secondUser = $this->createUser('second-query-session');
+        $handler = new ArraySessionHandler(120);
+        $session = new Store('query-session-test', $handler);
+        $firstSessionId = str_repeat('a', 40);
+        $session->setId($firstSessionId);
+        $session->start();
+        $session->put('hawki_rag.query_user_id', '1');
+        $session->save();
+        $session->setId($firstSessionId);
+        $session->start();
+
+        $request = Request::create('/auth/session', 'POST');
+        $request->setLaravelSession($session);
+        app(BrowserQueryPrincipalService::class)->establishSession($request, $secondUser);
+
+        $this->assertNotSame($firstSessionId, $session->getId());
+        $this->assertSame('', $handler->read($firstSessionId));
+        $this->assertSame((string) $secondUser->id, $session->get('hawki_rag.query_user_id'));
+    }
+
+    private function createUser(string $username, bool $removed = false): User
+    {
+        return User::query()->create([
+            'username' => $username,
+            'email' => $username.'@example.test',
+            'ip' => '127.0.0.'.random_int(1, 254),
+            'isRemoved' => $removed,
+        ]);
+    }
+}

@@ -96,4 +96,12 @@ return [
             explode(',', env('HAWKI_RAG_OPERATOR_AUTH_BYPASS_ENVIRONMENTS', 'local,testing'))
         ))),
     ],
+    'query_auth' => [
+        'development_bypass' => filter_var(env('HAWKI_RAG_QUERY_AUTH_BYPASS', false), FILTER_VALIDATE_BOOLEAN),
+        'development_bypass_environments' => array_values(array_filter(array_map(
+            'trim',
+            explode(',', env('HAWKI_RAG_QUERY_AUTH_BYPASS_ENVIRONMENTS', 'local,testing'))
+        ))),
+        'development_user_id' => env('HAWKI_RAG_QUERY_AUTH_BYPASS_USER_ID'),
+    ],
 ];

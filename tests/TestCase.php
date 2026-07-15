@@ -35,7 +35,7 @@ abstract class TestCase extends BaseTestCase
             'ip' => '127.0.0.'.random_int(1, 254),
         ]);
 
-        Sanctum::actingAs($user);
+        Sanctum::actingAs($user, ['*']);
 
         return $user;
     }

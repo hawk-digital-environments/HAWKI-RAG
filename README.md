@@ -137,6 +137,31 @@ curl -fsS http://127.0.0.1:4000/v1/embeddings \
 - Documents: `http://localhost:8080/documents`
 - Graph explorer: `http://localhost:8080/neo4j-graph-explorer`
 
+## Authenticate Playground Queries
+
+Production and shared environments require an authenticated browser principal.
+For a standalone browser session, create a real user, grant that user access to
+the requested dataset, and issue a Sanctum token:
+
+```bash
+docker compose exec hawki_rag_app php artisan user:create
+docker compose exec hawki_rag_app php artisan dataset:grant-query <dataset_id> <user_id>
+docker compose exec hawki_rag_app php artisan user:token
+```
+
+The create command prints the `user_id`. Open the playground and paste the
+token into **Dataset authentication**. RAWKI sends it once to `/auth/session`,
+establishes an HttpOnly Laravel session, clears the input, and then lists only
+datasets granted to that principal. The token needs the `query` ability; the
+existing token command creates a wildcard token that includes it.
+
+Local development may skip the token prompt without weakening production. Set
+`HAWKI_RAG_QUERY_AUTH_BYPASS=true`, restrict its environments to
+`local,testing`, and set `HAWKI_RAG_QUERY_AUTH_BYPASS_USER_ID` to a persisted
+active user that already has explicit `dataset_grants`. The browser attaches
+that principal only to `/query` and `/query/datasets`; `/api/*` remains
+Sanctum-protected. RAWKI hard-denies this bypass outside `local` and `testing`.
+
 ## Add Content
 
 Use the upload/control page when possible. For a direct import, run:

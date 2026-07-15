@@ -58,7 +58,12 @@ use App\Http\Controllers\PipelineControlController;
 use App\Http\Controllers\PipelineRecoveryController;
 use App\Http\Controllers\PipelineTaskController;
 
-Route::middleware(['auth:sanctum', 'throttle:hawki-api'])->group(function () {
+Route::middleware(['auth:sanctum', 'abilities:query', 'throttle:hawki-api'])->group(function () {
+    Route::get('/query/datasets', [HawkiRagProxyController::class, 'datasets']);
+    Route::post('/query', [HawkiRagProxyController::class, 'query'])->middleware('throttle:hawki-rag-query');
+});
+
+Route::middleware(['auth:sanctum', 'abilities:operator', 'throttle:hawki-api'])->group(function () {
     Route::prefix('datasets')->group(function () {
         Route::get('/', [DatasetController::class, 'index']);
         Route::post('/', [DatasetController::class, 'store']);
@@ -104,8 +109,6 @@ Route::middleware(['auth:sanctum', 'throttle:hawki-api'])->group(function () {
         Route::post('/datasets/{datasetId}/retry-failed', [PipelineRecoveryController::class, 'retryDataset'])->middleware('throttle:hawki-destructive');
     });
 
-    Route::get('/query/datasets', [HawkiRagProxyController::class, 'datasets']);
-    Route::post('/query', [HawkiRagProxyController::class, 'query'])->middleware('throttle:hawki-rag-query');
     Route::get('/rag/stats', [RagStatsController::class, 'show']);
     Route::delete('/rag/qdrant/collections/{collection}', [RagStatsController::class, 'destroyQdrantCollection'])->middleware('throttle:hawki-destructive');
     Route::get('/rag/neo4j/graph/overview', [RagGraphController::class, 'overview']);

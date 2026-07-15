@@ -28,12 +28,14 @@ if (root) {
         props: {
             queryEndpoint: apiUrl('query'),
             datasetsEndpoint: apiUrl('query/datasets'),
+            sessionEndpoint: apiUrl('auth/session'),
             monitorEndpoint: apiUrl('rag/monitor'),
             statsEndpoint: apiUrl('rag/stats'),
             qdrantCollectionEndpointBase: apiUrl('rag/qdrant/collections'),
             neo4jClearEndpoint: apiUrl('rag/neo4j/clear'),
             uploadDownloadEndpoint: apiUrl('documents/uploads/download'),
             operatorAuthorized: config.operatorAuthorized === true,
+            queryAuthenticated: config.queryAuthenticated === true,
         },
     });
 }

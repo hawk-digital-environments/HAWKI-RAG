@@ -129,14 +129,17 @@ class RouteSecurityTest extends TestCase
             ->assertJsonPath('message', 'Unauthenticated.');
     }
 
-    public function test_web_ui_operator_endpoints_allow_sanctum_users(): void
+    public function test_web_ui_operator_endpoints_allow_sanctum_tokens_with_operator_ability(): void
     {
         config()->set('config.operator_auth.bypass', false);
-        Sanctum::actingAs(new User([
-            'username' => 'operator-test',
-            'email' => 'operator-test@example.test',
-            'ip' => '127.0.0.1',
-        ]));
+        Sanctum::actingAs(
+            new User([
+                'username' => 'operator-test',
+                'email' => 'operator-test@example.test',
+                'ip' => '127.0.0.1',
+            ]),
+            ['operator'],
+        );
 
         $this->getJson('/settings/config')
             ->assertOk();
@@ -176,11 +179,14 @@ class RouteSecurityTest extends TestCase
 
     public function test_query_payloads_are_size_limited(): void
     {
-        Sanctum::actingAs(new User([
-            'username' => 'api-test',
-            'email' => 'api-test@example.test',
-            'ip' => '127.0.0.1',
-        ]));
+        Sanctum::actingAs(
+            new User([
+                'username' => 'api-test',
+                'email' => 'api-test@example.test',
+                'ip' => '127.0.0.1',
+            ]),
+            ['query'],
+        );
 
         $this->postJson('/api/query', ['query' => str_repeat('x', 4001)])
             ->assertUnprocessable()
