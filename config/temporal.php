@@ -40,7 +40,7 @@ return [
     ],
 
     'ingestion' => [
-        'provider' => env('RAG_DEFAULT_PROVIDER', 'litellm'),
+        'provider' => env('RAG_DEFAULT_PROVIDER', 'ollama'),
         'graph' => env('RAG_INGEST_GRAPH', false),
         'bridge_timeout' => env('RAG_INGEST_BRIDGE_TIMEOUT', 3600),
     ],

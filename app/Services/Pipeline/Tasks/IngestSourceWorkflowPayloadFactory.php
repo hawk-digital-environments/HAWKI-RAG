@@ -45,11 +45,14 @@ readonly class IngestSourceWorkflowPayloadFactory
         }
 
         $managedDocumentId = ManagedDocumentId::fromRequestMetadata($requestMetadata);
-        $modelRuntime = $this->settings->modelRuntime();
         $datasetMetadata = is_array($metadata['dataset'] ?? null)
             ? $metadata['dataset']
             : (is_array($task->metadata['dataset'] ?? null) ? $task->metadata['dataset'] : []);
         $datasetModel = trim((string) ($datasetMetadata['embedding_model'] ?? ''));
+        $datasetProvider = $this->datasetProvider($datasetMetadata, $datasetModel);
+        $modelRuntime = $datasetProvider !== ''
+            ? $this->settings->modelRuntimeForProvider($datasetProvider)
+            : $this->settings->modelRuntime();
         $embeddingModel = $datasetModel !== '' ? $datasetModel : $modelRuntime['embedding_model'];
 
         return array_filter([
@@ -171,5 +174,20 @@ readonly class IngestSourceWorkflowPayloadFactory
             $requestMetadata['graph'] ?? $metadata['graph'] ?? $this->config->get('temporal.ingestion.graph', false),
             FILTER_VALIDATE_BOOLEAN,
         );
+    }
+
+    /**
+     * @param  array<string, mixed>  $datasetMetadata
+     */
+    private function datasetProvider(array $datasetMetadata, string $embeddingModel): string
+    {
+        $provider = strtolower(trim((string) ($datasetMetadata['embedding_provider'] ?? '')));
+        if ($provider !== '') {
+            return $provider;
+        }
+
+        // Tasks created before embedding_provider was persisted may still carry
+        // LiteLLM's HAWKI aliases. Preserve that vector space during rollout.
+        return str_starts_with($embeddingModel, 'hawki-') ? 'litellm' : '';
     }
 }

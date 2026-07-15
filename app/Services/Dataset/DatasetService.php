@@ -42,6 +42,7 @@ readonly class DatasetService
     {
         $datasetId = $this->identifiers->datasetId($input['dataset_id'] ?? $input['datasetId'] ?? null);
         $safe = $this->identifiers->safeName($datasetId);
+        $embedding = $this->embeddingRuntime();
 
         return $this->datasets->create([
             'dataset_id' => $datasetId,
@@ -52,7 +53,8 @@ readonly class DatasetService
                 ?? $this->identifiers->qdrantCollection($safe),
             'neo4j_namespace' => $this->identifiers->stringValue($input['neo4j_namespace'] ?? $input['neo4jNamespace'] ?? null)
                 ?? $this->identifiers->neo4jNamespace($safe),
-            'embedding_model' => $this->embeddingModel(),
+            'embedding_provider' => $embedding['provider'],
+            'embedding_model' => $embedding['model'],
             'created_at' => $this->clock->now(),
         ]);
     }
@@ -66,6 +68,7 @@ readonly class DatasetService
 
         $datasetId = $this->identifiers->datasetId($dataset ?? $input['dataset_id'] ?? $input['datasetId'] ?? null);
         $safe = $this->identifiers->safeName($datasetId);
+        $embedding = $this->embeddingRuntime();
 
         return $this->datasets->firstOrCreate($datasetId, [
             'name' => $this->identifiers->displayName($datasetId, $input['name'] ?? null),
@@ -75,7 +78,8 @@ readonly class DatasetService
                 ?? $this->identifiers->qdrantCollection($safe),
             'neo4j_namespace' => $this->identifiers->stringValue($input['neo4j_namespace'] ?? $input['neo4jNamespace'] ?? null)
                 ?? $this->identifiers->neo4jNamespace($safe),
-            'embedding_model' => $this->embeddingModel(),
+            'embedding_provider' => $embedding['provider'],
+            'embedding_model' => $embedding['model'],
             'created_at' => $this->clock->now(),
         ]);
     }
@@ -100,11 +104,18 @@ readonly class DatasetService
         ];
     }
 
-    private function embeddingModel(): string
+    /**
+     * @return array{provider:string,model:string}
+     */
+    private function embeddingRuntime(): array
     {
         $runtime = $this->settings->modelRuntime();
+        $provider = trim((string) ($runtime['provider'] ?? ''));
         $embeddingModel = trim((string) ($runtime['embedding_model'] ?? ''));
 
-        return $embeddingModel !== '' ? $embeddingModel : 'hawki-ollama-embedding';
+        return [
+            'provider' => $provider !== '' ? $provider : 'ollama',
+            'model' => $embeddingModel !== '' ? $embeddingModel : 'bge-m3',
+        ];
     }
 }

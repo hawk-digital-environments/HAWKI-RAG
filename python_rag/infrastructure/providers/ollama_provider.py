@@ -59,7 +59,7 @@ class OllamaProvider:
         # LLM used for chat/RAG; override with OLLAMA_RAG_MODEL / OLLAMA_TEXT_MODEL if desired
         self.rag_model = os.environ.get(
             "OLLAMA_RAG_MODEL",
-            os.environ.get("OLLAMA_TEXT_MODEL", "llama3:8b"),
+            os.environ.get("OLLAMA_TEXT_MODEL", "llama3.1:8b"),
         )
         self.vision_model = os.environ.get(
             "OLLAMA_VISION_MODEL",

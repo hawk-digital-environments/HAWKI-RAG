@@ -3,7 +3,7 @@
 | File/Path | Description |
 |---|---|
 | `Makefile` | Helper targets (`network`, `up-core`, `health`, `ingest`, logs/restart helpers) using docker compose and container exec. |
-| `docker-compose.yml` | Base Compose (CPU-safe default stack, including local `ollama` and the default `litellm` model gateway). |
+| `docker-compose.yml` | Base Compose (CPU-safe direct `ollama` runtime plus the optional profile-gated `litellm` gateway). |
 | `docker-compose-gpu-override.yml` | Optional NVIDIA override for `ollama` (used when GPU mode is enabled). |
 | `Dockerfile` | Multi-stage build for Python services: `python-rag` (bridge/API image) and `rerank` (local reranker). |
 | `docker/` | Dockerfiles and runtime assets, including `docker/litellm/config.yaml`, which maps public HAWKI aliases to Ollama, OpenAI, and Anthropic targets. |
@@ -41,8 +41,10 @@
 | `HAWKI_RAG_BRIDGE_URL` | HAWKI-RAG bridge base URL used for query, ingest, health, and graph cache operations. |
 | `HAWKI_RAG_TEMPORAL_SHARED_ROOT` | Shared Temporal ingestion handoff root path inside containers. |
 | `TEMPORAL_ADDRESS` | Temporal frontend address used by Laravel and workers. |
-| `RAG_DEFAULT_PROVIDER` | Runtime provider; the supported default is `litellm`. |
-| `LITELLM_API_URL` | OpenAI-compatible gateway endpoint used by the Python runtime. |
+| `RAG_DEFAULT_PROVIDER` | Runtime provider; the default is direct `ollama`, while `litellm` is an explicit optional selection. |
+| `OLLAMA_API_URL` / `OLLAMA_*_MODEL` | Direct Ollama endpoint and default chat, embedding, and vision models. |
+| `OLLAMA_*_MODELS` | Comma-separated direct model allowlists accepted by Laravel Settings. |
+| `LITELLM_API_URL` | OpenAI-compatible gateway endpoint used only when the optional LiteLLM provider is selected. |
 | `LITELLM_API_KEY` | Optional bearer token when the selected gateway requires proxy authentication. |
 | `LITELLM_CHAT_MODEL` | Default allowlisted chat/graph alias. |
 | `LITELLM_EMBED_MODEL` | Default embedding alias captured for newly created datasets. |

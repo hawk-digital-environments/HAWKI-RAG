@@ -85,7 +85,8 @@ class BrowserDevelopmentQueryBypassTest extends TestCase
                 'dataset_id' => 'development-scope',
                 'qdrant_collection' => 'hawki_development-scope',
                 'neo4j_namespace' => 'graph_development-scope',
-                'embedding_model' => 'hawki-ollama-embedding',
+                'embedding_provider' => 'ollama',
+                'embedding_model' => 'bge-m3',
                 'graph_enabled' => true,
             ];
         });

@@ -18,7 +18,7 @@ readonly class RagSearchPayloadFactory
      */
     public function make(string $query, int $topK, AuthorizedDatasetScope $scope): array
     {
-        $modelRuntime = $this->settings->modelRuntime();
+        $modelRuntime = $this->settings->modelRuntimeForProvider($scope->embeddingProvider);
 
         return array_filter([
             'query' => $query,

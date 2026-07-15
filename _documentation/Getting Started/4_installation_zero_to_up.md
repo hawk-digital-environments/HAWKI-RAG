@@ -37,15 +37,16 @@ Open `.env` in an editor and set:
 - Command: `make up-core`
 
 :::tip "Verification"
-    `docker ps` should show containers such as `hawki_rag_app`, `hawki_qdrant`, `hawki_rag_bridge`, `hawki_rag_rerank`, `hawki_rag_neo4j`, `hawki_ollama`, `hawki_litellm`, `hawki_rag_postgres`, `temporal`, and `temporal_ui`.
+    `docker ps` should show containers such as `hawki_rag_app`, `hawki_qdrant`, `hawki_rag_bridge`, `hawki_rag_rerank`, `hawki_rag_neo4j`, `hawki_ollama`, `hawki_rag_postgres`, `temporal`, and `temporal_ui`. `hawki_litellm` appears only when the `litellm` profile is enabled.
 :::
 
 ## Step 5 - Health check everything
 - Commands: `make health` and `make test-services`
 - You should be able to see `OK` for all components.
 
-Confirm that the default model gateway loaded its aliases:
+Optionally start LiteLLM and confirm that its aliases loaded:
 
 ```bash
+CORE_PROFILES_BASE=litellm make up-core
 curl -fsS http://127.0.0.1:4000/v1/models
 ```

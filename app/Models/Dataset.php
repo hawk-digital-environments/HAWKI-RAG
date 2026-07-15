@@ -13,6 +13,11 @@ class Dataset extends Model
 
     public $timestamps = false;
 
+    protected $attributes = [
+        'embedding_provider' => 'ollama',
+        'embedding_model' => 'bge-m3',
+    ];
+
     protected $fillable = [
         'dataset_id',
         'name',
@@ -20,6 +25,7 @@ class Dataset extends Model
         'status',
         'qdrant_collection',
         'neo4j_namespace',
+        'embedding_provider',
         'embedding_model',
         'created_at',
     ];

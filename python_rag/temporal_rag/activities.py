@@ -687,7 +687,7 @@ def _post_ingest(
     )
     body = {
         "docs": docs,
-        "provider": ingest_options.get("provider") or "litellm",
+        "provider": ingest_options.get("provider") or "ollama",
         "embedding_model": ingest_options.get("embedding_model"),
         "vision_model": ingest_options.get("vision_model"),
         "collection": ingest_options.get("collection"),

@@ -106,14 +106,12 @@ def check_neo4j() -> None:
 
 
 def check_provider_availability(service: Any, settings: AppSettings, timeout_seconds: float) -> None:
-    """Verify the configured default provider is reachable when supported."""
+    """Verify only the core direct provider required by the default stack."""
 
     provider_name = (settings.rag_default_provider or "").strip().lower()
-    if provider_name == "litellm":
-        provider = service.get_provider(provider_name)
-        _check_litellm_provider(provider, timeout_seconds)
-        return
     if provider_name != "ollama":
+        # LiteLLM is an optional Compose profile. Its availability is checked
+        # when explicitly used, never as a bridge startup dependency.
         return
 
     provider = service.get_provider(provider_name)

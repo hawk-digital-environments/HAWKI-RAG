@@ -31,5 +31,5 @@ def load_rag_settings() -> RAGServiceSettings:
         graph_debug=_env_bool("GRAPH_DEBUG"),
         graph_debug_llm=_env_bool("GRAPH_DEBUG_LLM"),
         graph_perf_log=_env_bool("GRAPH_PERF_LOG"),
-        graph_provider=(os.environ.get("GRAPH_PROVIDER", "litellm") or "litellm").strip().lower(),
+        graph_provider=(os.environ.get("GRAPH_PROVIDER", "ollama") or "ollama").strip().lower(),
     )

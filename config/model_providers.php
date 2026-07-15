@@ -23,6 +23,28 @@ $litellmVisionAliases = $csv(
     'LITELLM_VISION_ALIASES',
     'hawki-ollama-vision,hawki-gpt-vision,hawki-claude-vision,hawki-vision',
 );
+$ollamaChatModel = trim((string) env('OLLAMA_RAG_MODEL', 'llama3.1:8b'));
+$ollamaEmbeddingModel = trim((string) env('OLLAMA_EMBED_MODEL', 'bge-m3'));
+$ollamaVisionModel = trim((string) env('OLLAMA_VISION_MODEL', 'qwen2.5vl:7b'));
+$ollamaChatModel = $ollamaChatModel !== '' ? $ollamaChatModel : 'llama3.1:8b';
+$ollamaEmbeddingModel = $ollamaEmbeddingModel !== '' ? $ollamaEmbeddingModel : 'bge-m3';
+$ollamaVisionModel = $ollamaVisionModel !== '' ? $ollamaVisionModel : 'qwen2.5vl:7b';
+$ollamaChatModels = array_values(array_unique(array_merge(
+    [$ollamaChatModel],
+    $csv('OLLAMA_CHAT_MODELS', 'llama3.1:8b'),
+)));
+$ollamaEmbeddingModels = array_values(array_unique(array_merge(
+    [$ollamaEmbeddingModel],
+    $csv('OLLAMA_EMBED_MODELS', 'bge-m3'),
+)));
+$ollamaVisionModels = array_values(array_unique(array_merge(
+    [$ollamaVisionModel],
+    $csv('OLLAMA_VISION_MODELS', 'qwen2.5vl:7b'),
+)));
+$ollamaOptions = static fn (array $models): array => array_map(
+    static fn (string $model): array => ['value' => $model, 'label' => "Ollama · {$model}"],
+    $models,
+);
 
 return [
 
@@ -32,15 +54,15 @@ return [
     |--------------------------------------------------------------------------
     |
     |   List of model providers suggested for the project.
-    |   HAWKI-RAG uses LiteLLM as its runtime boundary. Ollama, OpenAI, and
-    |   Anthropic are upstream routes owned by the proxy rather than direct
-    |   Laravel or Python providers.
+    |   Direct Ollama is the local default. LiteLLM is an optional explicit
+    |   runtime boundary for Ollama aliases, OpenAI, Anthropic, and other
+    |   proxy-managed routes. Provider failures never trigger silent fallback.
     |
     */
     'providers' => [
         'litellm' => [
             'label' => 'LiteLLM Gateway',
-            'description' => 'The single OpenAI-compatible runtime used by HAWKI-RAG. Select an allowlisted Ollama, GPT, or Claude route alias below.',
+            'description' => 'Optional OpenAI-compatible gateway for allowlisted Ollama, GPT, Claude, and other proxy-managed route aliases.',
             'configuration_mode' => 'environment',
             'model_selection_mode' => 'settings',
             'runtime_supported' => true,
@@ -110,22 +132,42 @@ return [
             ],
         ],
         'ollama' => [
-            'label' => 'Ollama (via LiteLLM)',
-            'description' => 'Local chat, embedding, and vision models are exposed only as LiteLLM aliases.',
-            'configuration_mode' => 'proxy',
-            'model_selection_mode' => 'none',
-            'runtime_supported' => false,
-            'api_url' => env('LITELLM_OLLAMA_API_BASE', 'http://hawki_ollama:11434'),
+            'label' => 'Ollama (Direct)',
+            'description' => 'Default local runtime. Python connects directly to Ollama without requiring the LiteLLM gateway.',
+            'configuration_mode' => 'environment',
+            'model_selection_mode' => 'settings',
+            'runtime_supported' => true,
+            'api_url' => env('OLLAMA_API_URL', 'http://hawki_ollama:11434/api'),
             'models' => [
-                'embedding' => 'hawki-ollama-embedding',
-                'graph' => 'hawki-ollama-chat',
-                'multimodal' => 'hawki-ollama-vision',
+                'embedding' => $ollamaEmbeddingModel,
+                'graph' => $ollamaChatModel,
+                'text' => $ollamaChatModel,
+                'multimodal' => $ollamaVisionModel,
+                'rag' => $ollamaChatModel,
+            ],
+            'allowed_models' => [
+                'graph' => $ollamaChatModels,
+                'embedding' => $ollamaEmbeddingModels,
+                'vision' => $ollamaVisionModels,
+            ],
+            'model_placeholders' => [
+                'graph' => 'llama3.1:8b',
+                'embedding' => 'bge-m3',
+                'vision' => 'qwen2.5vl:7b',
+            ],
+            'model_options' => [
+                'graph' => $ollamaOptions($ollamaChatModels),
+                'embedding' => $ollamaOptions($ollamaEmbeddingModels),
+                'vision' => $ollamaOptions($ollamaVisionModels),
             ],
             'environment_variables' => [
-                ['name' => 'LITELLM_OLLAMA_API_BASE', 'placeholder' => 'http://hawki_ollama:11434', 'description' => 'Ollama API root visible from LiteLLM.', 'secret' => false, 'configured' => true],
-                ['name' => 'LITELLM_OLLAMA_CHAT_MODEL', 'placeholder' => 'ollama_chat/llama3.1:8b', 'description' => 'Local chat target behind hawki-ollama-chat.', 'secret' => false, 'configured' => true],
-                ['name' => 'LITELLM_OLLAMA_EMBED_MODEL', 'placeholder' => 'ollama/bge-m3', 'description' => 'Local embedding target behind hawki-ollama-embedding.', 'secret' => false, 'configured' => true],
-                ['name' => 'LITELLM_OLLAMA_VISION_MODEL', 'placeholder' => 'ollama_chat/qwen2.5vl:7b', 'description' => 'Local vision target behind hawki-ollama-vision.', 'secret' => false, 'configured' => true],
+                ['name' => 'OLLAMA_API_URL', 'placeholder' => 'http://hawki_ollama:11434/api', 'description' => 'Direct Ollama API root visible from Python services.', 'secret' => false, 'configured' => true],
+                ['name' => 'OLLAMA_RAG_MODEL', 'placeholder' => 'llama3.1:8b', 'description' => 'Default direct chat and graph model.', 'secret' => false, 'configured' => true],
+                ['name' => 'OLLAMA_EMBED_MODEL', 'placeholder' => 'bge-m3', 'description' => 'Default direct embedding model.', 'secret' => false, 'configured' => true],
+                ['name' => 'OLLAMA_VISION_MODEL', 'placeholder' => 'qwen2.5vl:7b', 'description' => 'Default direct vision model.', 'secret' => false, 'configured' => true],
+                ['name' => 'OLLAMA_CHAT_MODELS', 'placeholder' => 'llama3.1:8b', 'description' => 'Allowlisted direct chat and graph models shown in Settings.', 'secret' => false, 'configured' => true],
+                ['name' => 'OLLAMA_EMBED_MODELS', 'placeholder' => 'bge-m3', 'description' => 'Allowlisted direct embedding models shown in Settings.', 'secret' => false, 'configured' => true],
+                ['name' => 'OLLAMA_VISION_MODELS', 'placeholder' => 'qwen2.5vl:7b', 'description' => 'Allowlisted direct vision models shown in Settings.', 'secret' => false, 'configured' => true],
             ],
         ],
         'openai' => [

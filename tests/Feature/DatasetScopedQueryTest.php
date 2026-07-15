@@ -44,9 +44,9 @@ class DatasetScopedQueryTest extends TestCase
             return $request->url() === rtrim((string) config('config.hawki_rag_bridge_url'), '/').'/query'
                 && ($payload['query'] ?? null) === 'What is in this dataset?'
                 && ($payload['top_k'] ?? null) === 7
-                && ($payload['provider'] ?? null) === 'litellm'
-                && ($payload['chat_model'] ?? null) === 'hawki-ollama-chat'
-                && ($payload['vision_model'] ?? null) === 'hawki-ollama-vision'
+                && ($payload['provider'] ?? null) === 'ollama'
+                && ($payload['chat_model'] ?? null) === 'llama3.1:8b'
+                && ($payload['vision_model'] ?? null) === 'qwen2.5vl:7b'
                 && ($payload['filters'] ?? null) === [
                     'source_type' => 'pdf',
                     'language' => 'en',
@@ -55,7 +55,8 @@ class DatasetScopedQueryTest extends TestCase
                     'dataset_id' => 'authorized',
                     'qdrant_collection' => 'hawki_authorized',
                     'neo4j_namespace' => 'graph_authorized',
-                    'embedding_model' => 'hawki-ollama-embedding',
+                    'embedding_provider' => 'ollama',
+                    'embedding_model' => 'bge-m3',
                     'graph_enabled' => true,
                 ]
                 && ! array_key_exists('dataset_id', $payload);
@@ -76,7 +77,12 @@ class DatasetScopedQueryTest extends TestCase
         config()->set('config.operator_settings_path', $settingsPath);
 
         $user = $this->actingAsApiUser();
-        $dataset = $this->createDataset('litellm-query', 'LiteLLM Query Dataset');
+        $dataset = $this->createDataset(
+            'litellm-query',
+            'LiteLLM Query Dataset',
+            embeddingProvider: 'litellm',
+            embeddingModel: 'hawki-embedding',
+        );
         $this->grant($user, $dataset);
         Http::fake([
             '*' => Http::response(['ok' => true, 'answer' => 'LiteLLM answer.']),
@@ -306,6 +312,8 @@ class DatasetScopedQueryTest extends TestCase
         string $status = Dataset::STATUS_ACTIVE,
         ?string $qdrantCollection = null,
         ?string $neo4jNamespace = null,
+        string $embeddingProvider = 'ollama',
+        string $embeddingModel = 'bge-m3',
     ): Dataset {
         return Dataset::query()->create([
             'dataset_id' => $datasetId,
@@ -314,6 +322,8 @@ class DatasetScopedQueryTest extends TestCase
             'status' => $status,
             'qdrant_collection' => $qdrantCollection ?? 'hawki_'.$datasetId,
             'neo4j_namespace' => $neo4jNamespace ?? 'graph_'.$datasetId,
+            'embedding_provider' => $embeddingProvider,
+            'embedding_model' => $embeddingModel,
             'created_at' => now(),
         ]);
     }

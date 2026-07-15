@@ -104,7 +104,8 @@ class DatasetScopedGraphSearchTest extends TestCase
                     'dataset_id' => 'scoped-graph',
                     'qdrant_collection' => 'hawki_scoped_graph',
                     'neo4j_namespace' => 'hawki_scoped_graph',
-                    'embedding_model' => 'hawki-ollama-embedding',
+                    'embedding_provider' => 'ollama',
+                    'embedding_model' => 'bge-m3',
                     'graph_enabled' => true,
                 ];
         });

@@ -36,6 +36,7 @@ readonly class DatasetQueryAuthorizationService
             datasetId: (string) $dataset->dataset_id,
             qdrantCollection: trim((string) $dataset->qdrant_collection),
             neo4jNamespace: trim((string) $dataset->neo4j_namespace),
+            embeddingProvider: trim((string) $dataset->embedding_provider),
             embeddingModel: trim((string) $dataset->embedding_model),
         );
     }
@@ -89,6 +90,7 @@ readonly class DatasetQueryAuthorizationService
     {
         return trim((string) $dataset->qdrant_collection) !== ''
             && trim((string) $dataset->neo4j_namespace) !== ''
+            && trim((string) $dataset->embedding_provider) !== ''
             && trim((string) $dataset->embedding_model) !== '';
     }
 }

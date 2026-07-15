@@ -15,7 +15,7 @@ Base compose is always `docker-compose.yml`, and `Makefile` exports `COMPOSE_FIL
   - `1`: force GPU override.
   - `0`: force CPU mode.
 - `ENV_FILE` (default `.env`): choose env file.
-- `COMPOSE_PROFILES`: optional profile toggle (e.g. `gpu` to include `raganything_api_gpu`).
+- `COMPOSE_PROFILES`: optional profile toggle (for example `litellm` for the model gateway or `gpu` for `raganything_api_gpu`).
 - `BASE_COMPOSE_FILE` / `GPU_OVERRIDE_COMPOSE`: advanced override of compose filenames.
 
 Examples:
@@ -28,11 +28,14 @@ USE_OLLAMA_GPU=1 make up-core
 
 # Start with profile-gated GPU API too
 USE_OLLAMA_GPU=1 COMPOSE_PROFILES=gpu make up-core
+
+# Start the optional LiteLLM gateway too
+CORE_PROFILES_BASE=litellm make up-core
 ```
 
 ## Compose/Dockerfile roles
 - `docker-compose.yml`:
-  - CPU-safe base stack with local `ollama` and the default OpenAI-compatible `litellm` gateway.
+  - CPU-safe base stack with direct local `ollama`; the OpenAI-compatible `litellm` gateway is profile-gated.
 - `docker-compose-gpu-override.yml`:
   - Overrides only `ollama` to CUDA build + NVIDIA device reservation.
 - `docker/laravel.Dockerfile`: builds `hawki_rag_app`.
@@ -57,7 +60,7 @@ What `make up-core` does:
 | Compose context | Uses computed `COMPOSE_FILE` with `ENV_FILE` and optional `COMPOSE_PROFILES`. |
 | Launch preview | Prints selected compose files before startup. |
 | Model readiness | Pulls Ollama models: `bge-m3`, `llama3.1:8b`, `llama3.2:1b`, `qwen2.5vl:7b`. |
-| Gateway readiness | Starts LiteLLM and exposes the configured aliases on `http://127.0.0.1:4000/v1`. |
+| Gateway readiness | Starts LiteLLM only when the `litellm` profile is enabled and exposes aliases on `http://127.0.0.1:4000/v1`. |
 | UI readiness | Builds Vite/Svelte assets and publishes them into the running Laravel app. |
 
 ## Model pulls (Ollama)
@@ -66,12 +69,13 @@ What `make up-core` does:
   - `docker exec hawki_ollama ollama pull llama3.2:3b`
 - Rough VRAM guide: `bge-m3` < 4 GB, `llama3.2:1b` ~2 GB, `llama3.1:8b` prefers 12-16 GB, `qwen2.5vl:7b` prefers 8-12 GB.
 
-HAWKI calls these local models through `hawki-ollama-chat`,
-`hawki-ollama-embedding`, and `hawki-ollama-vision` LiteLLM aliases. OpenAI
-and Anthropic aliases are also declared, but their calls remain unavailable
-until the corresponding provider key is set in `.env`.
+HAWKI calls these local models directly by default. When the optional LiteLLM
+profile is enabled and selected in Settings, the same models are available as
+`hawki-ollama-chat`, `hawki-ollama-embedding`, and `hawki-ollama-vision` aliases.
+OpenAI and Anthropic aliases require their provider keys in `.env`.
 
 ```bash
+CORE_PROFILES_BASE=litellm make up-core
 curl -fsS http://127.0.0.1:4000/v1/models
 ```
 

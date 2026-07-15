@@ -77,6 +77,7 @@ class AuthorizedScopeSchemaTests(unittest.TestCase):
                 "dataset_id": " dataset-a ",
                 "qdrant_collection": " hawki_dataset_a ",
                 "neo4j_namespace": " hawki_dataset_a ",
+                "embedding_provider": " ollama ",
                 "embedding_model": " hawki-ollama-embedding ",
                 "graph_enabled": False,
             },
@@ -84,6 +85,7 @@ class AuthorizedScopeSchemaTests(unittest.TestCase):
 
         self.assertEqual(request.authorized_scope.dataset_id, "dataset-a")
         self.assertEqual(request.authorized_scope.qdrant_collection, "hawki_dataset_a")
+        self.assertEqual(request.authorized_scope.embedding_provider, "ollama")
         self.assertEqual(request.authorized_scope.embedding_model, "hawki-ollama-embedding")
         self.assertFalse(request.authorized_scope.graph_enabled)
 
@@ -94,6 +96,7 @@ class AuthorizedScopeSchemaTests(unittest.TestCase):
             AuthorizedQueryScope(
                 dataset_id="dataset-a",
                 qdrant_collection="hawki_dataset_a",
+                embedding_provider="ollama",
                 embedding_model="hawki-ollama-embedding",
                 graph_enabled=False,
                 caller_collection="hawki_dataset_b",
@@ -116,6 +119,7 @@ class AuthorizedScopeSchemaTests(unittest.TestCase):
             dataset_id="dataset-a",
             qdrant_collection="hawki_dataset_a",
             neo4j_namespace="graph_dataset_a",
+            embedding_provider="ollama",
             embedding_model="hawki-ollama-embedding",
             graph_enabled=True,
         )
@@ -127,6 +131,7 @@ class AuthorizedScopeSchemaTests(unittest.TestCase):
             AuthorizedQueryScope(
                 dataset_id="dataset-a",
                 qdrant_collection="hawki_dataset_a",
+                embedding_provider="ollama",
                 embedding_model="hawki-ollama-embedding",
                 graph_enabled=True,
             )
@@ -136,9 +141,30 @@ class AuthorizedScopeSchemaTests(unittest.TestCase):
                 "dataset_id": "dataset-a",
                 "qdrant_collection": "hawki_dataset_a",
                 "neo4j_namespace": "graph_dataset_a",
+                "embedding_provider": "ollama",
                 "embedding_model": "hawki-ollama-embedding",
                 "graph_enabled": "true",
             })
+
+    def test_query_rejects_provider_mismatch_instead_of_falling_back(self) -> None:
+        from api.http.schemas import QueryRequest
+
+        with self.assertRaisesRegex(
+            ValidationError,
+            "automatic provider fallback is disabled",
+        ):
+            QueryRequest(
+                query="Find the PDF",
+                provider="litellm",
+                authorized_scope={
+                    "dataset_id": "dataset-a",
+                    "qdrant_collection": "hawki_dataset_a",
+                    "neo4j_namespace": "graph_dataset_a",
+                    "embedding_provider": "ollama",
+                    "embedding_model": "bge-m3",
+                    "graph_enabled": False,
+                },
+            )
 
     def test_query_filters_reject_unsupported_nested_values(self) -> None:
         from api.http.schemas import QueryRequest
@@ -243,6 +269,7 @@ class QueryExecutionScopeTests(unittest.TestCase):
                 dataset_id="dataset-a",
                 qdrant_collection="hawki_dataset_a",
                 neo4j_namespace="hawki_dataset_a",
+                embedding_provider="litellm",
                 embedding_model="authorized-embedding",
                 graph_enabled=False,
             ),

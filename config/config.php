@@ -52,7 +52,7 @@ return [
     'chunk_overlap_size' => (int) env('CHUNK_OVERLAP_SIZE', 250),
     'ingest_batch_size' => (int) env('INGEST_BATCH_SIZE', 64),
     'graph_engine' => env('GRAPH_ENGINE', 'raganything'),
-    'graph_provider' => env('GRAPH_PROVIDER', 'litellm'),
+    'graph_provider' => env('GRAPH_PROVIDER', 'ollama'),
     'graph_doc_max_chars' => (int) env('GRAPH_DOC_MAX_CHARS', 0),
     'graph_doc_max_chunks' => (int) env('GRAPH_DOC_MAX_CHUNKS', 0),
     'graph_reset_cache_per_doc' => filter_var(env('GRAPH_RESET_CACHE_PER_DOC', true), FILTER_VALIDATE_BOOLEAN),

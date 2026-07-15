@@ -218,7 +218,7 @@ services:
       NEO4J_USER: ${NEO4J_USER}
       NEO4J_PASSWORD: ${NEO4J_PASSWORD}
       KG_MAX_GLEANING: "1"
-      GRAPH_OLLAMA_RAG_MODEL: ${GRAPH_OLLAMA_RAG_MODEL:-llama3.2:3b}
+      GRAPH_OLLAMA_RAG_MODEL: ${GRAPH_OLLAMA_RAG_MODEL:-llama3.1:8b}
       OLLAMA_VISION_MODEL: ${OLLAMA_VISION_MODEL:-qwen2.5vl:7b}
       OLLAMA_CHAT_TIMEOUT: ${OLLAMA_CHAT_TIMEOUT:-60}
       GRAPH_PERF_LOG: "1"
@@ -232,7 +232,7 @@ services:
       - "${PGID:-1000}"
     command: ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000"]
     depends_on:
-      litellm:
+      ollama:
         condition: service_healthy
     restart: unless-stopped
 
@@ -378,9 +378,10 @@ services:
     container_name: hawki_ollama
 
   # -------------------------------------------------
-  # Primary OpenAI-compatible LiteLLM gateway
+  # Optional OpenAI-compatible LiteLLM gateway
   # -------------------------------------------------
   litellm:
+    profiles: ["litellm"]
     image: ${LITELLM_IMAGE:-docker.litellm.ai/berriai/litellm:main-stable}
     container_name: hawki_litellm
     command: ["--config=/app/config.yaml", "--port=4000"]
@@ -405,9 +406,6 @@ services:
     networks:
       - default
       - hawki-network
-    depends_on:
-      ollama:
-        condition: service_healthy
     restart: unless-stopped
     healthcheck:
       test:

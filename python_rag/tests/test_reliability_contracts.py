@@ -190,6 +190,22 @@ class ReliabilityContractTests(unittest.TestCase):
 
         self.assertEqual(calls["provider"], 0)
 
+    def test_litellm_is_not_a_bridge_startup_dependency(self) -> None:
+        from api.settings import load_app_settings
+        from api.startup_checks import check_provider_availability
+
+        calls = {"provider": 0}
+
+        class FakeService:
+            def get_provider(self, _name: str) -> object:
+                calls["provider"] += 1
+                raise AssertionError("optional LiteLLM must not be probed at startup")
+
+        settings = load_app_settings({"RAG_DEFAULT_PROVIDER": "litellm"})
+        check_provider_availability(FakeService(), settings, 1.0)
+
+        self.assertEqual(calls["provider"], 0)
+
     def test_ollama_startup_probe_accepts_base_url_with_api_suffix(self) -> None:
         from api.settings import load_app_settings
         from api.startup_checks import check_provider_availability
@@ -248,9 +264,8 @@ class ReliabilityContractTests(unittest.TestCase):
 
         self.assertEqual(calls, ["http://ollama:11434/api/tags"])
 
-    def test_litellm_startup_probe_uses_models_endpoint_and_bearer_key(self) -> None:
-        from api.settings import load_app_settings
-        from api.startup_checks import check_provider_availability
+    def test_optional_litellm_probe_uses_models_endpoint_and_bearer_key(self) -> None:
+        from api.startup_checks import _check_litellm_provider
 
         calls: list[tuple[str, dict[str, str], float]] = []
 
@@ -279,8 +294,6 @@ class ReliabilityContractTests(unittest.TestCase):
             def get_provider(self, _name: str) -> object:
                 return SimpleNamespace(base="http://litellm:4000/v1/", key="test-key")
 
-        settings = load_app_settings({"RAG_DEFAULT_PROVIDER": "litellm"})
-
         with patch.dict(
             os.environ,
             {
@@ -290,7 +303,7 @@ class ReliabilityContractTests(unittest.TestCase):
             },
             clear=False,
         ), patch("api.startup_checks._requests_module", return_value=FakeRequests):
-            check_provider_availability(FakeService(), settings, 2.5)
+            _check_litellm_provider(FakeService().get_provider("litellm"), 2.5)
 
         self.assertEqual(
             calls,
@@ -303,9 +316,8 @@ class ReliabilityContractTests(unittest.TestCase):
             ],
         )
 
-    def test_litellm_startup_probe_reports_authentication_failure_without_exposing_key(self) -> None:
-        from api.settings import load_app_settings
-        from api.startup_checks import check_provider_availability
+    def test_optional_litellm_probe_reports_authentication_failure_without_exposing_key(self) -> None:
+        from api.startup_checks import _check_litellm_provider
 
         class FakeResponse:
             status_code = 401
@@ -322,17 +334,14 @@ class ReliabilityContractTests(unittest.TestCase):
             def get_provider(self, _name: str) -> object:
                 return SimpleNamespace(base="http://litellm:4000/v1", key="secret-key")
 
-        settings = load_app_settings({"RAG_DEFAULT_PROVIDER": "litellm"})
-
         with patch("api.startup_checks._requests_module", return_value=FakeRequests):
             with self.assertRaisesRegex(RuntimeError, r"LiteLLM authentication failed \(401\)") as raised:
-                check_provider_availability(FakeService(), settings, 1.0)
+                _check_litellm_provider(FakeService().get_provider("litellm"), 1.0)
 
         self.assertNotIn("secret-key", str(raised.exception))
 
-    def test_litellm_startup_probe_reports_missing_required_model_aliases(self) -> None:
-        from api.settings import load_app_settings
-        from api.startup_checks import check_provider_availability
+    def test_optional_litellm_probe_reports_missing_required_model_aliases(self) -> None:
+        from api.startup_checks import _check_litellm_provider
 
         class FakeResponse:
             status_code = 200
@@ -352,8 +361,6 @@ class ReliabilityContractTests(unittest.TestCase):
             def get_provider(self, _name: str) -> object:
                 return SimpleNamespace(base="http://litellm:4000/v1", key="")
 
-        settings = load_app_settings({"RAG_DEFAULT_PROVIDER": "litellm"})
-
         with patch.dict(
             os.environ,
             {
@@ -368,7 +375,7 @@ class ReliabilityContractTests(unittest.TestCase):
                 "LiteLLM is missing required model aliases: "
                 "hawki-ollama-embedding, hawki-ollama-vision",
             ):
-                check_provider_availability(FakeService(), settings, 1.0)
+                _check_litellm_provider(FakeService().get_provider("litellm"), 1.0)
 
     def test_qdrant_transport_emits_retry_attempt_telemetry(self) -> None:
         from infrastructure.vectorstore.qdrant_requests import QdrantRequest

@@ -330,6 +330,8 @@ function bootDatasetsDashboard() {
             ['Dataset ID', dataset.dataset_id],
             ['Qdrant collection', dataset.qdrant_collection],
             ['Neo4j namespace', dataset.neo4j_namespace],
+            ['Embedding provider', dataset.embedding_provider],
+            ['Embedding model', dataset.embedding_model],
             ['Last ingestion', lastIngestionLabel(dataset.last_ingestion) || '-'],
         ].forEach(([label, value]) => {
             const wrapper = document.createElement('div');

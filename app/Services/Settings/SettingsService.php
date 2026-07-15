@@ -94,8 +94,33 @@ readonly class SettingsService
         $provider = $this->runtimeProvider(
             $this->stringValue($models['provider'] ?? null)
                 ?? $this->stringValue($this->config->get('temporal.ingestion.provider'))
-                ?? (string) $this->config->get('config.graph_provider', 'litellm'),
+                ?? (string) $this->config->get('config.graph_provider', 'ollama'),
         );
+
+        return $this->modelRuntimeForProvider($provider, $stored);
+    }
+
+    /**
+     * Resolve models for an explicit provider without switching to the active
+     * provider. Dataset-scoped retrieval uses this to preserve vector space.
+     *
+     * @return array{provider: string, graph_model: ?string, embedding_model: ?string, vision_model: ?string}
+     */
+    public function modelRuntimeForProvider(string $provider, ?array $stored = null): array
+    {
+        $stored ??= $this->settings->read();
+        $storedModels = is_array($stored['models'] ?? null) ? $stored['models'] : [];
+        $provider = strtolower(trim($provider));
+        if (! $this->supportsRuntimeProvider($provider)) {
+            throw new \InvalidArgumentException(sprintf(
+                'The explicit RAG provider "%s" is not supported; provider fallback is disabled.',
+                $provider,
+            ));
+        }
+        $storedProvider = $this->stringValue($storedModels['provider'] ?? null);
+        $models = $storedProvider === null || strtolower($storedProvider) === $provider
+            ? $storedModels
+            : [];
 
         $graphModel = $this->runtimeModel(
             $provider,
@@ -194,7 +219,9 @@ readonly class SettingsService
      */
     private function updatedModels(array $input): array
     {
-        $provider = $this->runtimeProvider($this->stringValue($input['provider'] ?? null) ?? 'litellm');
+        $provider = $this->runtimeProvider(
+            $this->stringValue($input['provider'] ?? null) ?? $this->configuredDefaultProvider(),
+        );
 
         return array_filter([
             'provider' => $provider,
@@ -310,13 +337,27 @@ readonly class SettingsService
             return $provider;
         }
 
+        $default = $this->configuredDefaultProvider();
+        if ($this->supportsRuntimeProvider($default)) {
+            return $default;
+        }
+
         foreach ($this->providerKeys() as $candidate) {
             if ($this->supportsRuntimeProvider($candidate)) {
                 return $candidate;
             }
         }
 
-        return 'litellm';
+        return 'ollama';
+    }
+
+    private function configuredDefaultProvider(): string
+    {
+        return strtolower(
+            $this->stringValue($this->config->get('temporal.ingestion.provider'))
+                ?? $this->stringValue($this->config->get('config.graph_provider'))
+                ?? 'ollama',
+        );
     }
 
     /**
@@ -325,8 +366,13 @@ readonly class SettingsService
     private function providerKeys(): array
     {
         $providers = $this->config->get('model_providers.providers', []);
+        $keys = is_array($providers) ? array_keys($providers) : ['ollama', 'litellm'];
+        $default = $this->configuredDefaultProvider();
 
-        return is_array($providers) ? array_keys($providers) : ['litellm'];
+        return array_values(array_unique([
+            ...(in_array($default, $keys, true) ? [$default] : []),
+            ...$keys,
+        ]));
     }
 
     /**

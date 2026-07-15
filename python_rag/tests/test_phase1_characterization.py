@@ -3075,6 +3075,7 @@ class ApiAndVectorValidationTests(unittest.TestCase):
                 "dataset_id": "dataset-a",
                 "qdrant_collection": "hawki_dataset_a",
                 "neo4j_namespace": "hawki_dataset_a",
+                "embedding_provider": "ollama",
                 "embedding_model": "hawki-ollama-embedding",
                 "graph_enabled": False,
             },
@@ -3088,7 +3089,7 @@ class ApiAndVectorValidationTests(unittest.TestCase):
         self.assertEqual(apply_ingest_request_settings(ingest, settings), ingest)
 
         patched_query = apply_query_request_settings(query, settings)
-        self.assertEqual(patched_query.provider, settings.rag_default_provider)
+        self.assertEqual(patched_query.provider, query.authorized_scope.embedding_provider)
         self.assertEqual(patched_query.reranker, settings.reranker_mode)
         self.assertEqual(patched_query.mix_mode, settings.reranker_mix_mode)
         self.assertEqual(patched_query.mix_weight, settings.reranker_mix_weight)
@@ -3099,6 +3100,7 @@ class ApiAndVectorValidationTests(unittest.TestCase):
                 "dataset_id": "dataset-a",
                 "qdrant_collection": "hawki_dataset_a",
                 "neo4j_namespace": "hawki_dataset_a",
+                "embedding_provider": "query-provider",
                 "embedding_model": "hawki-ollama-embedding",
                 "graph_enabled": False,
             },
@@ -3389,6 +3391,7 @@ class ApiAndVectorValidationTests(unittest.TestCase):
                 "dataset_id": "dataset-a",
                 "qdrant_collection": "hawki_dataset_a",
                 "neo4j_namespace": "hawki_dataset_a",
+                "embedding_provider": "query-provider",
                 "embedding_model": "hawki-ollama-embedding",
                 "graph_enabled": False,
             },

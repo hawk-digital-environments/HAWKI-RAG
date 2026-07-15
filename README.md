@@ -61,26 +61,40 @@ Temporal UI:
 http://localhost:8081
 ```
 
-## LiteLLM Model Gateway
+## Model Runtimes
 
-LiteLLM is the default and only model-provider boundary used by HAWKI RAG.
-Laravel, the Python bridge, and the ingestion workers select stable LiteLLM
-aliases; only the proxy knows whether an alias resolves to local Ollama,
-OpenAI, or Anthropic. The `litellm` service is part of the default Compose
-stack, so `make up-core` starts it without an optional profile.
+Direct Ollama is the default model runtime and does not require LiteLLM.
+HAWKI RAG connects to `llama3.1:8b` for chat and graph work, `bge-m3` for
+embeddings, and `qwen2.5vl:7b` for vision. LiteLLM remains available as an
+explicit optional gateway for stable Ollama, OpenAI, and Anthropic aliases.
 
-| Capability | Local Ollama alias | OpenAI alias | Anthropic alias |
+| Capability | LiteLLM Ollama alias | OpenAI alias | Anthropic alias |
 | --- | --- | --- | --- |
 | Chat and graph | `hawki-ollama-chat` | `hawki-gpt-chat` | `hawki-claude-chat` |
 | Embeddings | `hawki-ollama-embedding` | `hawki-openai-embedding` | Not available |
 | Vision | `hawki-ollama-vision` | `hawki-gpt-vision` | `hawki-claude-vision` |
 
-The local aliases are the defaults and require no provider key. Legacy local
-aliases (`hawki-chat`, `hawki-embedding`, and `hawki-vision`) remain available
-for compatibility. Configure upstream targets and credentials in `.env`:
+Configure the direct default in `.env`:
 
 ```env
-RAG_DEFAULT_PROVIDER=litellm
+RAG_DEFAULT_PROVIDER=ollama
+GRAPH_PROVIDER=ollama
+OLLAMA_API_URL=http://hawki_ollama:11434/api
+OLLAMA_RAG_MODEL=llama3.1:8b
+OLLAMA_EMBED_MODEL=bge-m3
+OLLAMA_VISION_MODEL=qwen2.5vl:7b
+```
+
+Start the optional gateway profile before selecting `LiteLLM Gateway` in
+Settings:
+
+```bash
+docker compose --profile litellm up -d litellm
+```
+
+Its aliases and optional cloud credentials remain environment-managed:
+
+```env
 LITELLM_API_URL=http://litellm:4000/v1
 LITELLM_CHAT_MODEL=hawki-ollama-chat
 LITELLM_EMBED_MODEL=hawki-ollama-embedding
@@ -96,18 +110,21 @@ ANTHROPIC_API_KEY=
 `LITELLM_API_KEY` only when the configured LiteLLM deployment itself requires
 a bearer token.
 
-The Settings page at `http://localhost:8080/settings` selects only aliases from
-the configured `LITELLM_*_ALIASES` allowlists. Connection URLs and provider
-credentials remain environment-managed: the UI shows variable names and
-configured/not-configured status, but never receives secret values. A dataset
-records its embedding alias when it is created. Changing the embedding alias
-therefore affects new datasets, not vectors already stored for an existing
-dataset; change an existing dataset only through an intentional re-ingestion.
+The Settings page at `http://localhost:8080/settings` selects either direct
+Ollama models from the `OLLAMA_*_MODELS` allowlists or LiteLLM aliases from the
+`LITELLM_*_ALIASES` allowlists. Connection URLs and credentials remain
+environment-managed. Provider failures are returned to the caller; the runtime
+never silently switches between LiteLLM and Ollama. A dataset records its
+embedding provider/model when it is created, so changing an existing dataset's
+vector model requires intentional re-ingestion.
+
+LiteLLM is not a bridge startup or core-health dependency. Its connectivity is
+evaluated only when an explicitly LiteLLM-scoped operation calls the gateway.
 
 After editing proxy variables, recreate the gateway and model consumers:
 
 ```bash
-docker compose --env-file .env up -d --force-recreate \
+docker compose --env-file .env --profile litellm up -d --force-recreate \
   litellm hawki_rag_bridge \
   hawki-rag-temporal-workflow-worker \
   hawki-rag-temporal-ingestion-worker

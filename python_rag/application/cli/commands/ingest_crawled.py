@@ -55,7 +55,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Ingest local crawled-data into LightRAG via HTTP.")
     parser.add_argument("--root", required=True, help="Path to local crawled-data root")
     parser.add_argument("--base-url", default="http://localhost:8009", help="LightRAG base URL (default: http://localhost:8009)")
-    parser.add_argument("--provider", default="litellm", help="Embedding/LLM provider name")
+    parser.add_argument("--provider", default="ollama", help="Embedding/LLM provider name")
     parser.add_argument("--embedding-model", default=None, help="Embedding model override")
     parser.add_argument("--graph", action="store_true", help="Enable KG extraction during ingest")
     parser.add_argument("--graph-only", action="store_true", help="Skip Qdrant/embeddings and only write Neo4j triplets")

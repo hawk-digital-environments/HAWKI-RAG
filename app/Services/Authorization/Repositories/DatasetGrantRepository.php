@@ -34,6 +34,7 @@ readonly class DatasetGrantRepository
                 'datasets.name',
                 'datasets.qdrant_collection',
                 'datasets.neo4j_namespace',
+                'datasets.embedding_provider',
                 'datasets.embedding_model',
             ])
             ->orderBy('datasets.name')

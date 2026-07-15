@@ -94,6 +94,8 @@ class DatasetManagementTest extends TestCase
         $this->getJson('/api/datasets/dataset-ui')
             ->assertOk()
             ->assertJsonPath('dataset.dataset_id', 'dataset-ui')
+            ->assertJsonPath('dataset.embedding_provider', 'ollama')
+            ->assertJsonPath('dataset.embedding_model', 'bge-m3')
             ->assertJsonPath('dataset.tasks.0.task_id', 'task-dataset-ui')
             ->assertJsonPath('dataset.documents.0.dataset_id', 'dataset-ui')
             ->assertJsonPath('dataset.ingestion_history.0.job_id', 'ingest-dataset-ui');
@@ -115,6 +117,8 @@ class DatasetManagementTest extends TestCase
             'dataset_id' => 'dataset-start',
             'qdrant_collection' => 'hawki_dataset_start',
             'neo4j_namespace' => 'hawki_dataset_start',
+            'embedding_provider' => 'ollama',
+            'embedding_model' => 'bge-m3',
         ]);
         $this->assertDatabaseHas('pipeline_tasks', [
             'task_id' => 'task-dataset-start',
@@ -127,6 +131,8 @@ class DatasetManagementTest extends TestCase
         $this->assertSame('dataset-start', $job->task->dataset_id);
         $this->assertSame('hawki_dataset_start', $job->metadata['dataset']['qdrant_collection'] ?? null);
         $this->assertSame('hawki_dataset_start', $job->metadata['dataset']['neo4j_namespace'] ?? null);
+        $this->assertSame('ollama', $job->metadata['dataset']['embedding_provider'] ?? null);
+        $this->assertSame('bge-m3', $job->metadata['dataset']['embedding_model'] ?? null);
     }
 
     public function test_missing_qdrant_collection_is_reported_as_empty_dataset_stats(): void

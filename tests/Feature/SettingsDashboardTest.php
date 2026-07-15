@@ -4,11 +4,50 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
+use App\Services\Settings\SettingsService;
 use Illuminate\Support\Facades\File;
 use Tests\TestCase;
 
 class SettingsDashboardTest extends TestCase
 {
+    public function test_settings_accepts_direct_ollama_as_the_default_runtime(): void
+    {
+        config()->set('config.operator_auth.bypass', true);
+        config()->set('config.operator_auth.bypass_environments', [app()->environment()]);
+        config()->set('temporal.ingestion.provider', 'ollama');
+        config()->set('config.graph_provider', 'ollama');
+        $settingsPath = storage_path('framework/testing/settings-dashboard-ollama.json');
+        File::delete($settingsPath);
+        config()->set('config.operator_settings_path', $settingsPath);
+
+        $response = $this->withSession(['_token' => 'test-token'])
+            ->putJson('/settings/config', [
+                'customConverter' => [],
+                'models' => [
+                    'provider' => 'ollama',
+                    'graphModel' => 'llama3.1:8b',
+                    'embeddingModel' => 'bge-m3',
+                    'visionModel' => 'qwen2.5vl:7b',
+                ],
+            ], ['X-CSRF-TOKEN' => 'test-token'])
+            ->assertOk()
+            ->assertJsonPath('models.provider', 'ollama')
+            ->assertJsonPath('models.graph_model', 'llama3.1:8b')
+            ->assertJsonPath('models.embedding_model', 'bge-m3')
+            ->assertJsonPath('models.vision_model', 'qwen2.5vl:7b')
+            ->assertJsonPath('providers.0.key', 'ollama')
+            ->assertJsonPath('providers.0.runtimeSupported', true)
+            ->assertJsonFragment([
+                'key' => 'litellm',
+                'runtimeSupported' => true,
+            ]);
+
+        $this->assertStringContainsString('Ollama (Direct)', $response->getContent());
+        $this->assertStringContainsString('LiteLLM Gateway', $response->getContent());
+
+        File::delete($settingsPath);
+    }
+
     public function test_settings_page_mounts_and_saves_converter_and_model_defaults(): void
     {
         $this->withoutVite();
@@ -155,5 +194,32 @@ class SettingsDashboardTest extends TestCase
             ], ['X-CSRF-TOKEN' => 'test-token'])
             ->assertUnprocessable()
             ->assertJsonValidationErrors('models.graphModel');
+    }
+
+    public function test_settings_rejects_unknown_direct_ollama_models(): void
+    {
+        config()->set('config.operator_auth.bypass', true);
+        config()->set('config.operator_auth.bypass_environments', [app()->environment()]);
+
+        $this->withSession(['_token' => 'test-token'])
+            ->putJson('/settings/config', [
+                'customConverter' => [],
+                'models' => [
+                    'provider' => 'ollama',
+                    'graphModel' => 'unknown-local-model',
+                    'embeddingModel' => 'bge-m3',
+                    'visionModel' => 'qwen2.5vl:7b',
+                ],
+            ], ['X-CSRF-TOKEN' => 'test-token'])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('models.graphModel');
+    }
+
+    public function test_explicit_runtime_resolution_never_falls_back_to_another_provider(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('provider fallback is disabled');
+
+        app(SettingsService::class)->modelRuntimeForProvider('unavailable-provider');
     }
 }

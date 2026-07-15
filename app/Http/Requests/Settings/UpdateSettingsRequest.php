@@ -42,7 +42,7 @@ class UpdateSettingsRequest extends FormRequest
     public function withValidator(Validator $validator): void
     {
         $validator->after(function (Validator $validator): void {
-            $provider = strtolower(trim((string) $this->input('models.provider', 'litellm')));
+            $provider = strtolower(trim((string) $this->input('models.provider', 'ollama')));
             $settings = app(SettingsService::class);
 
             if (! $settings->supportsRuntimeProvider($provider)) {

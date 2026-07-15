@@ -97,8 +97,8 @@
     }: Props = $props();
 
     const fallbackProvider: ProviderOption = {
-        key: 'litellm',
-        label: 'LiteLLM Gateway',
+        key: 'ollama',
+        label: 'Ollama (Direct)',
         runtimeSupported: true,
         embeddingSupported: true,
         configurationMode: 'environment',
@@ -164,7 +164,7 @@
     }
 
     function initialActiveProvider(): string {
-        return initialConfig.models?.provider || providers[0]?.key || 'litellm';
+        return initialConfig.models?.provider || providers[0]?.key || 'ollama';
     }
 
     function initialGraphModel(): string {
@@ -225,7 +225,9 @@
     }
 
     function providerState(provider: ProviderOption): string {
-        if (provider.runtimeSupported) return 'runtime boundary available';
+        if (provider.runtimeSupported && provider.key === 'ollama') return 'default runtime available';
+        if (provider.runtimeSupported && provider.key === 'litellm') return 'optional runtime available';
+        if (provider.runtimeSupported) return 'runtime available';
         if (provider.configurationMode === 'proxy') {
             const secretVariables = (provider.environmentVariables || []).filter((variable) => variable.secret);
             if (secretVariables.length === 0) return 'local proxy upstream';
@@ -276,7 +278,7 @@
         customApiKey = '';
         customClearApiKey = false;
         customApiKeySet = Boolean(payload.customConverter?.apiKeySet);
-        activeProvider = payload.models?.provider || providers[0]?.key || 'litellm';
+        activeProvider = payload.models?.provider || providers[0]?.key || 'ollama';
         const provider = providers.find((item) => item.key === activeProvider) || providers[0] || fallbackProvider;
         graphModel = isModelSelectionManaged(provider)
             ? provider.defaultGraphModel || ''
@@ -371,7 +373,7 @@
     <DashboardHeader
         eyebrow="HAWKI RAG settings"
         title="Settings"
-        copy="Converter defaults, provider connections, and graph extraction model choices."
+        copy="Converter defaults, direct Ollama, optional LiteLLM, and graph extraction model choices."
         active="settings"
     />
 
@@ -440,7 +442,7 @@
                     </select>
                 </div>
                 <div>
-                    <label for="settings-graph-model">Chat / graph alias</label>
+                    <label for="settings-graph-model">Chat / graph model</label>
                     <input
                         id="settings-graph-model"
                         type="text"
@@ -457,7 +459,7 @@
                     </datalist>
                 </div>
                 <div>
-                    <label for="settings-embedding-model">Embedding alias</label>
+                    <label for="settings-embedding-model">Embedding model</label>
                     <input
                         id="settings-embedding-model"
                         type="text"
@@ -474,7 +476,7 @@
                     </datalist>
                 </div>
                 <div>
-                    <label for="settings-vision-model">Vision alias</label>
+                    <label for="settings-vision-model">Vision model</label>
                     <input
                         id="settings-vision-model"
                         type="text"
@@ -493,7 +495,7 @@
             </div>
 
             <p class="settings-model-safety">
-                Chat and vision aliases apply immediately. The embedding alias is captured when a dataset is created; existing datasets keep their ingestion alias and require re-ingestion to change vector models.
+                Provider selection is explicit: an unavailable LiteLLM gateway fails visibly and never falls back to Ollama. Chat and vision models apply immediately. The embedding model is captured when a dataset is created; existing datasets require re-ingestion to change vector models.
             </p>
 
             {#if isEnvironmentManaged(selectedProvider)}
@@ -504,7 +506,7 @@
                     </div>
                     <p>
                         {selectedProvider.description || `${selectedProvider.label} is configured by the server environment.`}
-                        This page may select allowlisted route aliases, but it does not expose or change the Python runtime endpoint or provider API keys.
+                        This page may select only deployment-allowlisted model identifiers, but it does not expose or change runtime endpoints or provider API keys.
                     </p>
                     <dl class="settings-runtime-facts">
                         <div>
@@ -512,22 +514,22 @@
                             <dd><code>{selectedProvider.apiUrl || 'Not reported'}</code></dd>
                         </div>
                         <div>
-                            <dt>Chat / graph alias</dt>
+                            <dt>Chat / graph model</dt>
                             <dd><code>{graphModel || selectedProvider.defaultGraphModel || 'Not reported'}</code></dd>
                         </div>
                         <div>
-                            <dt>Embedding alias</dt>
+                            <dt>Embedding model</dt>
                             <dd><code>{embeddingModel || selectedProvider.defaultEmbeddingModel || 'Not reported'}</code></dd>
                         </div>
                         {#if selectedProvider.defaultVisionModel}
                             <div>
-                                <dt>Vision alias</dt>
+                                <dt>Vision model</dt>
                                 <dd><code>{visionModel || selectedProvider.defaultVisionModel}</code></dd>
                             </div>
                         {/if}
                     </dl>
                     <p class="settings-runtime-note__hint">
-                        Update the deployment environment and recreate LiteLLM/Python services to change endpoints, upstream models, or secrets.
+                        Update the deployment environment and recreate Python services to change endpoints or direct models. Recreate LiteLLM only when the optional gateway is enabled.
                     </p>
                 </aside>
             {/if}
@@ -536,8 +538,8 @@
         <section class="settings-panel settings-provider-panel" aria-labelledby="settings-provider-credentials-title">
             <div class="section-head">
                 <div>
-                    <h2 id="settings-provider-credentials-title">LiteLLM Proxy &amp; Upstreams</h2>
-                    <p>Placeholders only · secret values never leave the deployment environment</p>
+                    <h2 id="settings-provider-credentials-title">Model Provider Connections</h2>
+                    <p>Direct Ollama and optional LiteLLM · secrets never leave the deployment environment</p>
                 </div>
             </div>
 

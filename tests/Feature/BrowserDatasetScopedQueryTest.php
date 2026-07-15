@@ -71,7 +71,8 @@ class BrowserDatasetScopedQueryTest extends TestCase
                 'dataset_id' => 'browser-session-dataset',
                 'qdrant_collection' => 'hawki_browser-session-dataset',
                 'neo4j_namespace' => 'graph_browser-session-dataset',
-                'embedding_model' => 'hawki-ollama-embedding',
+                'embedding_provider' => 'ollama',
+                'embedding_model' => 'bge-m3',
                 'graph_enabled' => true,
             ];
         });

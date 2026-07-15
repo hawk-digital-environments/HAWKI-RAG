@@ -35,6 +35,8 @@ class IngestSourceWorkflowPayloadFactoryTest extends TestCase
                     'dataset' => [
                         'qdrant_collection' => 'hawki_dataset_a',
                         'neo4j_namespace' => 'hawki_dataset_a',
+                        'embedding_provider' => 'litellm',
+                        'embedding_model' => 'hawki-ollama-embedding',
                     ],
                 ],
             ]),

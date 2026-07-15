@@ -28,7 +28,7 @@ readonly class RagProxyService
     public function query(User $user, array $data): array
     {
         $scope = $this->authorization->authorize($user, (string) $data['dataset_id']);
-        $modelRuntime = $this->settings->modelRuntime();
+        $modelRuntime = $this->settings->modelRuntimeForProvider($scope->embeddingProvider);
         $payload = [
             'query' => $data['query'],
             'top_k' => $data['top_k'] ?? 5,
