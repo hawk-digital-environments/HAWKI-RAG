@@ -52,7 +52,9 @@ class RagSearcherDatasetScopeTest extends TestCase
         $this->assertSame([], $result['results']);
         Http::assertSent(fn (Request $request): bool => data_get($request->data(), 'authorized_scope.dataset_id') === 'mcp-dataset'
             && data_get($request->data(), 'authorized_scope.qdrant_collection') === 'hawki_mcp_dataset'
-            && data_get($request->data(), 'authorized_scope.graph_enabled') === false
+            && data_get($request->data(), 'authorized_scope.neo4j_namespace') === 'hawki_mcp_dataset'
+            && data_get($request->data(), 'authorized_scope.embedding_model') === 'hawki-ollama-embedding'
+            && data_get($request->data(), 'authorized_scope.graph_enabled') === true
         );
     }
 

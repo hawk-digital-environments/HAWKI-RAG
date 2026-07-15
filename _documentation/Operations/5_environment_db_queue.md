@@ -56,7 +56,7 @@ allowlisted aliases instead of receiving provider credentials.
 | `LITELLM_API_URL` | `http://litellm:4000/v1` | OpenAI-compatible endpoint visible inside the Compose network. |
 | `LITELLM_API_KEY` | Empty | Optional bearer token for a LiteLLM deployment that enables proxy authentication. |
 | `LITELLM_CHAT_MODEL` | `hawki-ollama-chat` | Default chat and graph alias selected for new requests. |
-| `LITELLM_EMBED_MODEL` | `hawki-ollama-embedding` | Default embedding alias used by the model runtime. |
+| `LITELLM_EMBED_MODEL` | `hawki-ollama-embedding` | Default embedding alias captured when a dataset is created. |
 | `LITELLM_VISION_MODEL` | `hawki-ollama-vision` | Default vision alias selected for new ingestion work. |
 | `LITELLM_CHAT_ALIASES` | Ollama, GPT, Claude aliases | Allowlist accepted by Laravel Settings for chat/graph. |
 | `LITELLM_EMBED_ALIASES` | Ollama and OpenAI aliases | Allowlist accepted by Laravel Settings for embeddings. Anthropic has no embedding route. |
@@ -72,6 +72,12 @@ allowlisted aliases instead of receiving provider credentials.
 Provider keys belong only in `.env` and are passed to the LiteLLM container.
 The Settings UI exposes safe placeholders and configured/not-configured status,
 never the secret values. It accepts only aliases from the three allowlists.
+
+:::warning "Embedding compatibility"
+    Each dataset stores the embedding alias used to build its vectors. Changing
+    the Settings default affects newly created datasets; existing datasets must
+    keep their stored alias unless they are intentionally re-ingested.
+:::
 
 ## Database setup
 ### Variables to verify before migrating

@@ -34,6 +34,7 @@ readonly class DatasetPayloadBuilder
             'status' => $dataset->status,
             'qdrant_collection' => $dataset->qdrant_collection,
             'neo4j_namespace' => $dataset->neo4j_namespace,
+            'embedding_model' => $dataset->embedding_model,
             'created_at' => $dataset->created_at?->format(DATE_ATOM),
             'document_count' => $stats['documents'],
             'task_count' => $stats['tasks'],

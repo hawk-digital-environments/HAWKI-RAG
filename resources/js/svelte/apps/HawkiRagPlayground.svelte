@@ -131,6 +131,9 @@
     let hits = $state<QueryHit[]>([]);
     let kgFacts = $state<KgFact[]>([]);
     let rawPayload = $state<JsonRecord | null>(null);
+    let graphEnabled = $state<boolean | null>(null);
+    let graphDisabledReason = $state('');
+    let resultFastMode = $state(false);
     let elapsedMs = $state<number | null>(null);
     let errorMessage = $state('');
     let activity = $state<ActivityItem[]>([]);
@@ -188,6 +191,24 @@
             : 'No retrieval run yet.',
     );
     const rawJson = $derived(rawPayload ? JSON.stringify(rawPayload, null, 2) : '');
+    const graphEmptyTitle = $derived(
+        graphEnabled === false
+            ? 'Dataset graph retrieval is disabled.'
+            : 'No scoped graph facts matched.',
+    );
+    const graphEmptyMessage = $derived.by(() => {
+        if (graphEnabled === false) {
+            return graphDisabledReason === 'dataset_scope_not_enforced'
+                ? 'The server kept Neo4j retrieval off because this dataset does not yet have enforceable graph isolation.'
+                : 'The server did not authorize graph retrieval for this dataset.';
+        }
+
+        if (resultFastMode) {
+            return 'Fast vector mode skips graph retrieval. Run the query in Deep vector mode to include scoped graph facts.';
+        }
+
+        return 'Neo4j was searched only inside the authorized dataset, but no matching facts were found.';
+    });
 
     onMount(() => {
         if (!operatorAuthorized) {
@@ -463,6 +484,9 @@
         kgFacts = [];
         answer = '';
         rawPayload = null;
+        graphEnabled = null;
+        graphDisabledReason = '';
+        resultFastMode = retrievalMode === 'fast';
         elapsedMs = null;
         resultTab = 'sources';
         pushActivity('Query', query.slice(0, 120), 'active');
@@ -490,6 +514,9 @@
             elapsedMs = Math.round(performance.now() - startedAt);
             hits = asArray(payload.hits).map(normalizeHit);
             kgFacts = asArray(payload.kg).map(normalizeKgFact);
+            const retrieval = asRecord(payload.retrieval);
+            graphEnabled = typeof retrieval.graph_enabled === 'boolean' ? retrieval.graph_enabled : null;
+            graphDisabledReason = textValue(retrieval.graph_disabled_reason);
             answer = textValue(payload.answer || payload.response || payload.generated_answer);
             status = `${hits.length} sources retrieved in ${elapsedMs} ms`;
             pushActivity('Retrieval', `${hits.length} sources, ${kgFacts.length} graph facts, ${elapsedMs} ms`, 'ready');
@@ -859,8 +886,8 @@
                             </article>
                         {:else}
                             <div class="empty-result">
-                                <strong>No graph facts returned.</strong>
-                                <span>Use Deep graph mode or inspect Neo4j health.</span>
+                                <strong>{graphEmptyTitle}</strong>
+                                <span>{graphEmptyMessage}</span>
                             </div>
                         {/each}
                     </div>

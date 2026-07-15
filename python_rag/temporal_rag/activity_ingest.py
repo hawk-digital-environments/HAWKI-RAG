@@ -58,7 +58,7 @@ def ingest_markdown_files(payload: dict[str, Any]) -> dict[str, Any]:
                 content_hash = sha256_text(text)
                 relative_path = str(Path(markdown_file).resolve().relative_to(Path(markdown_dir).resolve()))
                 passthrough_metadata = support._load_passthrough_metadata(markdown_file)
-                neo4j_namespace = ingest_options.get("neo4j_database") or ingest_options.get("neo4j_namespace")
+                neo4j_namespace = ingest_options.get("neo4j_namespace")
                 payload = dict(passthrough_metadata or {})
                 payload.update({
                     "managed_document_id": workflow_input.get("managed_document_id"),

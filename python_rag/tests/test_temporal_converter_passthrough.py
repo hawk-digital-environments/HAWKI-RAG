@@ -270,14 +270,17 @@ class TemporalConverterPassthroughTests(unittest.TestCase):
         with patch("temporal_rag.activities._bridge_request", return_value={"ok": True}) as bridge:
             activities._post_ingest(
                 object(),  # _bridge_request is mocked, so no settings fields are read.
-                {"source_id": "source_image", "job_id": "job_image"},
-                {"graph": False},
+                {"source_id": "source_image", "job_id": "job_image", "dataset_id": "dataset-image"},
+                {"graph": False, "neo4j_namespace": "hawki_dataset_image"},
                 docs,
             )
 
         body = bridge.call_args.kwargs["json"]
         headers = bridge.call_args.kwargs["headers"]
         self.assertIs(body["graph"], True)
+        self.assertEqual(body["dataset_id"], "dataset-image")
+        self.assertEqual(body["neo4j_namespace"], "hawki_dataset_image")
+        self.assertIsNone(body["neo4j_database"])
         self.assertEqual(body["idempotency_key"], "source_image:job_image:doc_image:ingest")
         self.assertEqual(headers["Idempotency-Key"], "source_image:job_image:doc_image:ingest")
         self.assertEqual(headers["X-Request-ID"], "source_image:job_image:doc_image:ingest")

@@ -117,6 +117,8 @@ class ReliabilityContractTests(unittest.TestCase):
 
         executor = FakeExecutor()
         graph = Neo4jGraph(
+            dataset_id="dataset-a",
+            neo4j_namespace="graph-a",
             settings=SimpleNamespace(database=None, retry_attempts=1, log_latency=False, perf_log=False),
             query_executor=executor,  # type: ignore[arg-type]
         )

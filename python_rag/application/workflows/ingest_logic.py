@@ -14,11 +14,16 @@ from application.workflows.ingest.deletion import delete_document_entries
 from application.workflows.ingest.dependencies import IngestWorkflowDependencies
 from application.workflows.ingest.dry_run import build_dry_run_ingest_response
 from application.workflows.ingest.finalize import build_success_ingest_response
-from application.workflows.ingest.graph_commit import commit_graph_triplets
+from application.workflows.ingest.graph_commit import (
+    GraphScopeMismatchError,
+    commit_graph_triplets,
+    validate_and_stamp_chunk_scope,
+)
 from application.workflows.ingest.incremental import plan_incremental_ingest
 from application.workflows.ingest.page_registry import build_page_registry_records
 from application.workflows.ingest.request import apply_provider_overrides, infer_job_id, infer_operation_id
 from application.workflows.ingest.vector_commit import commit_vector_points
+from infrastructure.graph.neo4j_requests import normalize_graph_write_scope
 
 logger = logging.getLogger(__name__)
 
@@ -95,6 +100,20 @@ def ingest_documents(
         default_job_id=run_job_id,
         graph_debug=resolved_graph_debug,
     )
+    if body.graph:
+        write_scope = normalize_graph_write_scope(
+            getattr(body, "dataset_id", None),
+            getattr(body, "neo4j_namespace", None),
+        )
+        if write_scope is not None:
+            try:
+                validate_and_stamp_chunk_scope(
+                    chunk_records,
+                    dataset_id=write_scope[0],
+                    neo4j_namespace=write_scope[1],
+                )
+            except GraphScopeMismatchError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
     total_chunks = len(chunk_records)
 
     if total_chunks == 0:
@@ -149,7 +168,7 @@ def ingest_documents(
             doc_stats=doc_stats,
             qdrant=qdrant,
             collection=qdrant.collection,
-            neo4j_database=getattr(body, "neo4j_database", None),
+            neo4j_database=getattr(body, "neo4j_namespace", None),
             page_registry=page_registry,
             operation_id=operation_id,
             logger_obj=logger,
@@ -250,7 +269,7 @@ def ingest_documents(
         completed_page_records = build_page_registry_records(
             chunk_records,
             collection=qdrant.collection,
-            neo4j_database=getattr(body, "neo4j_database", None),
+            neo4j_database=getattr(body, "neo4j_namespace", None),
         )
         _mark_registry_completed(page_registry, completed_page_records, logger_obj=logger)
         _mark_registry_seen(page_registry, unchanged_page_records, logger_obj=logger)

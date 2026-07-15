@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Services\Authorization\DatasetQueryAuthorizationService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
@@ -43,6 +44,9 @@ class DatasetScopedQueryTest extends TestCase
             return $request->url() === rtrim((string) config('config.hawki_rag_bridge_url'), '/').'/query'
                 && ($payload['query'] ?? null) === 'What is in this dataset?'
                 && ($payload['top_k'] ?? null) === 7
+                && ($payload['provider'] ?? null) === 'litellm'
+                && ($payload['chat_model'] ?? null) === 'hawki-ollama-chat'
+                && ($payload['vision_model'] ?? null) === 'hawki-ollama-vision'
                 && ($payload['filters'] ?? null) === [
                     'source_type' => 'pdf',
                     'language' => 'en',
@@ -51,10 +55,43 @@ class DatasetScopedQueryTest extends TestCase
                     'dataset_id' => 'authorized',
                     'qdrant_collection' => 'hawki_authorized',
                     'neo4j_namespace' => 'graph_authorized',
-                    'graph_enabled' => false,
+                    'embedding_model' => 'hawki-ollama-embedding',
+                    'graph_enabled' => true,
                 ]
                 && ! array_key_exists('dataset_id', $payload);
         });
+    }
+
+    public function test_authorized_query_uses_the_server_selected_litellm_provider(): void
+    {
+        $settingsPath = storage_path('framework/testing/dataset-query-litellm.json');
+        File::delete($settingsPath);
+        File::put($settingsPath, json_encode([
+            'models' => [
+                'provider' => 'litellm',
+                'graph_model' => 'hawki-chat',
+                'embedding_model' => 'hawki-embedding',
+            ],
+        ], JSON_THROW_ON_ERROR));
+        config()->set('config.operator_settings_path', $settingsPath);
+
+        $user = $this->actingAsApiUser();
+        $dataset = $this->createDataset('litellm-query', 'LiteLLM Query Dataset');
+        $this->grant($user, $dataset);
+        Http::fake([
+            '*' => Http::response(['ok' => true, 'answer' => 'LiteLLM answer.']),
+        ]);
+
+        try {
+            $this->postJson('/api/query', [
+                'dataset_id' => $dataset->dataset_id,
+                'query' => 'Use the selected provider.',
+            ])->assertOk();
+
+            Http::assertSent(static fn (Request $request): bool => ($request->data()['provider'] ?? null) === 'litellm');
+        } finally {
+            File::delete($settingsPath);
+        }
     }
 
     public function test_unknown_unauthorized_and_inactive_datasets_have_the_same_not_found_response(): void
@@ -154,8 +191,23 @@ class DatasetScopedQueryTest extends TestCase
             'query' => 'Query',
             'collection' => 'another_collection',
             'authorized_scope' => ['dataset_id' => 'another-dataset'],
+            'neo4j_namespace' => 'another-graph',
+            'graph_enabled' => false,
+            'provider' => 'ollama',
+            'chat_model' => 'arbitrary-paid-model',
+            'embedding_model' => 'different-vector-space',
+            'vision_model' => 'arbitrary-vision-model',
         ])->assertUnprocessable()
-            ->assertJsonValidationErrors(['collection', 'authorized_scope']);
+            ->assertJsonValidationErrors([
+                'collection',
+                'authorized_scope',
+                'neo4j_namespace',
+                'graph_enabled',
+                'provider',
+                'chat_model',
+                'embedding_model',
+                'vision_model',
+            ]);
 
         $this->postJson('/api/query', [
             'dataset_id' => 'authorized',

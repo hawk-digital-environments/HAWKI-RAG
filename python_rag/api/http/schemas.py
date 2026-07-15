@@ -1,9 +1,9 @@
 """FastAPI request models for the RAG API."""
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, FiniteFloat
+from pydantic import BaseModel, ConfigDict, Field, FiniteFloat, StrictBool, model_validator
 
 from api.settings import AppSettings
 
@@ -24,6 +24,8 @@ class IngestRequest(BaseModel):
     provider: str = "litellm"
     embedding_model: str | None = None
     collection: str | None = None
+    dataset_id: str | None = Field(default=None, max_length=191)
+    neo4j_namespace: str | None = Field(default=None, max_length=191)
     neo4j_database: str | None = None
     distance: str = "Cosine"
     chunk_chars: int = 1200
@@ -47,7 +49,16 @@ class AuthorizedQueryScope(BaseModel):
     dataset_id: str = Field(min_length=1, max_length=191)
     qdrant_collection: str = Field(min_length=1, max_length=191)
     neo4j_namespace: str | None = Field(default=None, max_length=191)
-    graph_enabled: Literal[False] = False
+    embedding_model: str = Field(min_length=1, max_length=160, pattern=r"^[A-Za-z0-9][A-Za-z0-9._:/-]*$")
+    graph_enabled: StrictBool = False
+
+    @model_validator(mode="after")
+    def require_graph_namespace(self) -> "AuthorizedQueryScope":
+        """Require the server-derived namespace before graph reads can run."""
+
+        if self.graph_enabled and not self.neo4j_namespace:
+            raise ValueError("neo4j_namespace is required when graph retrieval is enabled")
+        return self
 
 
 QueryFilterScalar = str | int | FiniteFloat | bool

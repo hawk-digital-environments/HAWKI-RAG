@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 import logging
 import time
 from collections.abc import Callable
@@ -17,6 +18,7 @@ from application.workflows.ingest.graph_ingest import (
 from application.workflows.ingest.settings import GraphIngestSettings
 from application.workflows.ingest.summary import build_graph_preview
 from application.workflows.observability import pipeline_log
+from infrastructure.graph.neo4j_requests import normalize_graph_write_scope
 
 
 @dataclass(slots=True)
@@ -27,6 +29,10 @@ class GraphCommitResult:
     neo4j_ms: float | None
 
 
+class GraphScopeMismatchError(ValueError):
+    """A document payload conflicts with the trusted graph write scope."""
+
+
 def commit_graph_triplets(
     *,
     body: Any,
@@ -34,7 +40,7 @@ def commit_graph_triplets(
     doc_stats: dict[str, Any],
     rag_service: Any,
     provider: Any | None,
-    graph_factory: Callable[[str | None], Any],
+    graph_factory: Callable[..., Any],
     public_dir: Path,
     job_id: str | None,
     operation_id: str | None,
@@ -45,8 +51,33 @@ def commit_graph_triplets(
 ) -> GraphCommitResult:
     """Extract graph triplets, upsert them to Neo4j, and build graph preview data."""
 
-    neo4j_database = getattr(body, "neo4j_database", None)
-    graph = graph_factory(neo4j_database)
+    neo4j_database = _optional_string(getattr(body, "neo4j_database", None))
+    requested_dataset_id = _optional_string(getattr(body, "dataset_id", None))
+    requested_namespace = _optional_string(getattr(body, "neo4j_namespace", None))
+    write_scope = normalize_graph_write_scope(
+        requested_dataset_id,
+        requested_namespace,
+    )
+    if write_scope is None:
+        logger_obj.warning(
+            "graph:canonical write disabled; dataset_id and neo4j_namespace are required dataset_id=%s namespace=%s",
+            requested_dataset_id or "-",
+            requested_namespace or "-",
+        )
+    dataset_id = write_scope[0] if write_scope else None
+    neo4j_namespace = write_scope[1] if write_scope else None
+    if write_scope is not None:
+        validate_and_stamp_chunk_scope(
+            chunk_records,
+            dataset_id=write_scope[0],
+            neo4j_namespace=write_scope[1],
+        )
+    graph = _create_graph(
+        graph_factory,
+        database=neo4j_database,
+        dataset_id=dataset_id,
+        neo4j_namespace=neo4j_namespace,
+    )
     try:
         graph_write_start = time.perf_counter()
         triplet_start = time.perf_counter()
@@ -58,6 +89,8 @@ def commit_graph_triplets(
             graph_debug=graph_debug,
             graph=graph,
             neo4j_database=neo4j_database,
+            dataset_id=dataset_id,
+            neo4j_namespace=neo4j_namespace,
             public_dir=public_dir,
             request_id=operation_id,
             replace_doc_ids_by_doc=replace_doc_ids_by_doc,
@@ -99,6 +132,71 @@ def commit_graph_triplets(
             pass
 
 
+def _optional_string(value: Any) -> str | None:
+    normalized = str(value or "").strip()
+    return normalized or None
+
+
+def validate_and_stamp_chunk_scope(
+    chunk_records: list[dict[str, Any]],
+    *,
+    dataset_id: str,
+    neo4j_namespace: str,
+) -> None:
+    """Validate existing payload scope, then stamp the trusted request scope."""
+
+    for record in chunk_records:
+        payload = record.get("payload")
+        if not isinstance(payload, dict):
+            payload = {}
+            record["payload"] = payload
+        for key, trusted_value in (
+            ("dataset_id", dataset_id),
+            ("neo4j_namespace", neo4j_namespace),
+        ):
+            existing_value = _optional_string(payload.get(key))
+            if existing_value is not None and existing_value != trusted_value:
+                raise GraphScopeMismatchError(
+                    f"Chunk {record.get('doc_id') or '-'} has {key}={existing_value!r}, "
+                    f"which conflicts with trusted {key}={trusted_value!r}."
+                )
+        payload["dataset_id"] = dataset_id
+        payload["neo4j_namespace"] = neo4j_namespace
+
+
+def _create_graph(
+    graph_factory: Callable[..., Any],
+    *,
+    database: str | None,
+    dataset_id: str | None,
+    neo4j_namespace: str | None,
+) -> Any:
+    """Pass logical scope where supported without breaking legacy test factories."""
+
+    try:
+        parameters = inspect.signature(graph_factory).parameters.values()
+    except (TypeError, ValueError):
+        parameters = ()
+    parameter_by_name = {parameter.name: parameter for parameter in parameters}
+    names = set(parameter_by_name)
+    accepts_kwargs = any(parameter.kind is inspect.Parameter.VAR_KEYWORD for parameter in parameters)
+    kwargs: dict[str, str | None] = {}
+    if accepts_kwargs or "dataset_id" in names:
+        kwargs["dataset_id"] = dataset_id
+    if accepts_kwargs or "neo4j_namespace" in names:
+        kwargs["neo4j_namespace"] = neo4j_namespace
+    database_parameter = parameter_by_name.get("database")
+    if accepts_kwargs or (
+        database_parameter is not None
+        and database_parameter.kind is not inspect.Parameter.POSITIONAL_ONLY
+    ):
+        kwargs["database"] = database
+        return graph_factory(**kwargs)
+    if database is not None:
+        return graph_factory(database, **kwargs)
+    return graph_factory(**kwargs)
+
+
 def _record_graph_failures(
     *,
     public_dir: Path,
@@ -126,4 +224,9 @@ def _record_graph_failures(
     logger_obj.info("graph:failures count=%s file=%s", len(failures), failure_path)
 
 
-__all__ = ["GraphCommitResult", "commit_graph_triplets"]
+__all__ = [
+    "GraphCommitResult",
+    "GraphScopeMismatchError",
+    "commit_graph_triplets",
+    "validate_and_stamp_chunk_scope",
+]

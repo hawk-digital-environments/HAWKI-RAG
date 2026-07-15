@@ -10,7 +10,6 @@ from collections.abc import Iterable
 
 Triplet = tuple[str, str, str]
 
-
 class UpsertRow(TypedDict):
     s: str
     s_key: str
@@ -18,6 +17,8 @@ class UpsertRow(TypedDict):
     o: str
     o_key: str
     doc_id: str
+    dataset_id: str
+    neo4j_namespace: str
 
 
 @dataclass(frozen=True)
@@ -34,8 +35,10 @@ class Neo4jQueryRequest:
 def build_upsert_triplets_query() -> str:
     return (
         "UNWIND $rows AS row "
-        "MERGE (s:Entity {entity_key: row.s_key}) "
-        "MERGE (o:Entity {entity_key: row.o_key}) "
+        "MERGE (s:Entity {entity_key: row.s_key, dataset_id: row.dataset_id, "
+        "neo4j_namespace: row.neo4j_namespace}) "
+        "MERGE (o:Entity {entity_key: row.o_key, dataset_id: row.dataset_id, "
+        "neo4j_namespace: row.neo4j_namespace}) "
         "SET s.name = CASE WHEN s.name IS NULL OR s.name = row.s_key THEN row.s ELSE s.name END "
         "SET o.name = CASE WHEN o.name IS NULL OR o.name = row.o_key THEN row.o ELSE o.name END "
         "SET s.doc_ids = coalesce(s.doc_ids, []) + "
@@ -43,9 +46,11 @@ def build_upsert_triplets_query() -> str:
         "SET o.doc_ids = coalesce(o.doc_ids, []) + "
         "  CASE WHEN row.doc_id IN coalesce(o.doc_ids, []) THEN [] ELSE [row.doc_id] END "
         "WITH row, s, o "
-        "OPTIONAL MATCH (o)-[reverse:REL {type: row.r}]->(s) "
+        "OPTIONAL MATCH (o)-[reverse:REL {type: row.r, dataset_id: row.dataset_id, "
+        "neo4j_namespace: row.neo4j_namespace}]->(s) "
         "FOREACH (_ IN CASE WHEN reverse IS NULL THEN [1] ELSE [] END | "
-        "  MERGE (s)-[r:REL {type: row.r}]->(o) "
+        "  MERGE (s)-[r:REL {type: row.r, dataset_id: row.dataset_id, "
+        "neo4j_namespace: row.neo4j_namespace}]->(o) "
         "  SET r.doc_ids = coalesce(r.doc_ids, []) + "
         "    CASE WHEN row.doc_id IN coalesce(r.doc_ids, []) THEN [] ELSE [row.doc_id] END, "
         "    r.doc_id = coalesce(r.doc_id, row.doc_id), "
@@ -62,8 +67,14 @@ def build_upsert_triplets_query() -> str:
 
 def build_fetch_related_query() -> str:
     return (
-        "MATCH (s)-[r]->(o) "
-        "WHERE coalesce(s.name, s.entity_id) IS NOT NULL "
+        "MATCH (s:Entity)-[r:REL]->(o:Entity) "
+        "WHERE s.dataset_id = $dataset_id "
+        "  AND s.neo4j_namespace = $neo4j_namespace "
+        "  AND o.dataset_id = $dataset_id "
+        "  AND o.neo4j_namespace = $neo4j_namespace "
+        "  AND r.dataset_id = $dataset_id "
+        "  AND r.neo4j_namespace = $neo4j_namespace "
+        "  AND coalesce(s.name, s.entity_id) IS NOT NULL "
         "  AND coalesce(o.name, o.entity_id) IS NOT NULL "
         "  AND any(term IN $terms WHERE "
         "    toLower(coalesce(s.name, s.entity_id, '')) CONTAINS term OR "
@@ -85,8 +96,16 @@ def build_search_structural_query(safe_hops: int, *, include_rel_match: bool) ->
         else ""
     )
     return (
-        "MATCH p=(s)-[r*1..%d]->(o) "
-        "WHERE coalesce(s.name, s.entity_id) IS NOT NULL "
+        "MATCH p=(s:Entity)-[r:REL*1..%d]->(o:Entity) "
+        "WHERE s.dataset_id = $dataset_id "
+        "  AND s.neo4j_namespace = $neo4j_namespace "
+        "  AND o.dataset_id = $dataset_id "
+        "  AND o.neo4j_namespace = $neo4j_namespace "
+        "  AND all(node IN nodes(p) WHERE "
+        "    node.dataset_id = $dataset_id AND node.neo4j_namespace = $neo4j_namespace) "
+        "  AND all(rel IN relationships(p) WHERE "
+        "    rel.dataset_id = $dataset_id AND rel.neo4j_namespace = $neo4j_namespace) "
+        "  AND coalesce(s.name, s.entity_id) IS NOT NULL "
         "  AND coalesce(o.name, o.entity_id) IS NOT NULL "
         "  AND any(term IN $terms WHERE "
         "    toLower(coalesce(s.name, s.entity_id, '')) CONTAINS term OR "
@@ -106,7 +125,8 @@ def build_search_structural_query(safe_hops: int, *, include_rel_match: bool) ->
 def build_delete_doc_edges_query() -> str:
     return (
         "MATCH (:Entity)-[r:REL]->(:Entity) "
-        "WHERE r.doc_id = $doc_id OR $doc_id IN coalesce(r.doc_ids, []) "
+        "WHERE r.neo4j_namespace = $neo4j_namespace "
+        "  AND (r.doc_id = $doc_id OR $doc_id IN coalesce(r.doc_ids, [])) "
         "SET r.doc_ids = [id IN coalesce(r.doc_ids, []) WHERE id <> $doc_id] "
         "SET r.doc_id = CASE "
         "  WHEN r.doc_id = $doc_id THEN head([id IN coalesce(r.doc_ids, []) WHERE id <> $doc_id]) "
@@ -119,7 +139,8 @@ def build_delete_doc_edges_query() -> str:
 def build_cleanup_orphaned_relationships_query() -> str:
     return (
         "MATCH (:Entity)-[r:REL]->(:Entity) "
-        "WHERE coalesce(size(r.doc_ids), 0) = 0 "
+        "WHERE r.neo4j_namespace = $neo4j_namespace "
+        "  AND coalesce(size(r.doc_ids), 0) = 0 "
         "DELETE r"
     )
 
@@ -127,6 +148,7 @@ def build_cleanup_orphaned_relationships_query() -> str:
 def build_cleanup_isolated_nodes_query() -> str:
     return (
         "MATCH (n:Entity) "
+        "WHERE n.neo4j_namespace = $neo4j_namespace "
         "SET n.doc_ids = [id IN coalesce(n.doc_ids, []) WHERE id <> $doc_id] "
         "WITH n "
         "WHERE NOT (n)--() DELETE n"
@@ -158,14 +180,46 @@ def build_row_grouped_query(kind: str) -> str:
     raise ValueError(f"unsupported grouped query kind: {kind}")
 
 
-def build_triplet_rows(triplets: Iterable[Triplet], doc_id: str) -> list[UpsertRow]:
+def normalize_graph_write_scope(
+    dataset_id: str | None,
+    neo4j_namespace: str | None,
+) -> tuple[str, str] | None:
+    """Return a complete write scope or reject an incomplete legacy write."""
+
+    normalized_dataset_id = str(dataset_id or "").strip()
+    normalized_namespace = str(neo4j_namespace or "").strip()
+    if not normalized_dataset_id or not normalized_namespace:
+        return None
+    return normalized_dataset_id, normalized_namespace
+
+
+def build_triplet_rows(
+    triplets: Iterable[Triplet],
+    doc_id: str,
+    *,
+    dataset_id: str | None = None,
+    neo4j_namespace: str | None = None,
+) -> list[UpsertRow]:
+    scope = normalize_graph_write_scope(dataset_id, neo4j_namespace)
+    if scope is None:
+        return []
+    dataset_id, neo4j_namespace = scope
     rows: list[UpsertRow] = []
     for s, r, o in triplets:
         s_key = canonical_entity_key(s)
         o_key = canonical_entity_key(o)
         if not s or not r or not o or not s_key or not o_key:
             continue
-        rows.append({"s": s, "s_key": s_key, "r": r, "o": o, "o_key": o_key, "doc_id": doc_id})
+        rows.append({
+            "s": s,
+            "s_key": s_key,
+            "r": r,
+            "o": o,
+            "o_key": o_key,
+            "doc_id": doc_id,
+            "dataset_id": dataset_id,
+            "neo4j_namespace": neo4j_namespace,
+        })
     return rows
 
 

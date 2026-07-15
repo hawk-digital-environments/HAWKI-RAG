@@ -20,6 +20,7 @@ class Dataset extends Model
         'status',
         'qdrant_collection',
         'neo4j_namespace',
+        'embedding_model',
         'created_at',
     ];
 

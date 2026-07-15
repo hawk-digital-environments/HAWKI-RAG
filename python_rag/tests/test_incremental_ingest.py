@@ -329,6 +329,8 @@ class IncrementalIngestTests(unittest.TestCase):
                 FakeRAGService(),
                 provider=None,
                 graph=graph,
+                dataset_id="dataset-a",
+                neo4j_namespace="graph-a",
                 graph_settings=settings,
                 request_id="op-1",
                 replace_doc_ids_by_doc={"doc-new": {"old-doc", "doc-new"}},
@@ -499,6 +501,7 @@ class IncrementalIngestTests(unittest.TestCase):
             batch_size=64,
             distance="Cosine",
             neo4j_database="neo4j",
+            neo4j_namespace="student_graph",
             embedding_model=None,
             graph_model=None,
             idempotency_key="op-new",
@@ -535,7 +538,7 @@ class IncrementalIngestTests(unittest.TestCase):
         self.assertEqual(completed.source_identity, "url:https://example.test/new-hawki")
         self.assertEqual(completed.task_id, "task-1")
         self.assertEqual(completed.job_id, "job-new")
-        self.assertEqual(completed.neo4j_database, "neo4j")
+        self.assertEqual(completed.neo4j_database, "student_graph")
 
     def test_three_documents_share_one_collection_and_delete_removes_only_target_document_points(self) -> None:
         from application.workflows.ingest.chunking import prepare_documents
@@ -601,8 +604,13 @@ class IncrementalIngestTests(unittest.TestCase):
         graph_state: dict[str, set[str]] = {}
 
         class FakeGraph:
-            def __init__(self, *, database: str | None = None) -> None:
-                self.database = database or "default"
+            def __init__(
+                self,
+                *,
+                database: str | None = None,
+                neo4j_namespace: str | None = None,
+            ) -> None:
+                self.database = neo4j_namespace or database or "default"
                 graph_state.setdefault(self.database, set())
 
             def upsert_triplets(

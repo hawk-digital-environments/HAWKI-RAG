@@ -115,16 +115,13 @@ def _factory_supports_kwarg(factory: Any, kwarg: str) -> bool:
 
 
 def _instantiate_graph(graph_factory: Any, namespace: str | None) -> Any:
-    if namespace:
-        if _factory_supports_kwarg(graph_factory, "database"):
-            return graph_factory(database=namespace)
-        if _factory_supports_kwarg(graph_factory, "neo4j_namespace"):
-            return graph_factory(neo4j_namespace=namespace)
+    if namespace and _factory_supports_kwarg(graph_factory, "neo4j_namespace"):
+        return graph_factory(neo4j_namespace=namespace)
     return graph_factory()
 
 
 def _graph_namespace(graph: Any) -> str | None:
-    return _string_value(getattr(graph, "_database", None))
+    return _string_value(getattr(graph, "_neo4j_namespace", None))
 
 
 def _count_qdrant_points(qdrant: Any, doc_id: str, collection: str | None) -> int | None:

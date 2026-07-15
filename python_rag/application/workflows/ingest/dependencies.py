@@ -13,7 +13,7 @@ from infrastructure.vectorstore.qdrant_http import QdrantHTTP
 
 GraphSettingsLoader = Callable[[], GraphIngestSettings]
 QdrantFactory = Callable[[], Any]
-GraphFactory = Callable[[str | None], Any]
+GraphFactory = Callable[..., Any]
 PageRegistryFactory = Callable[[], Any | None]
 
 
@@ -22,9 +22,18 @@ def create_qdrant_http() -> QdrantHTTP:
     return QdrantHTTP()
 
 
-def create_neo4j_graph(database: str | None = None) -> Neo4jGraph:
+def create_neo4j_graph(
+    database: str | None = None,
+    *,
+    dataset_id: str | None = None,
+    neo4j_namespace: str | None = None,
+) -> Neo4jGraph:
     """Create the production Neo4j graph adapter."""
-    return Neo4jGraph(database=database)
+    return Neo4jGraph(
+        database=database,
+        dataset_id=dataset_id,
+        neo4j_namespace=neo4j_namespace,
+    )
 
 
 def create_ingested_page_registry() -> IngestedPageRegistry:

@@ -12,7 +12,6 @@ import os
 from collections.abc import Mapping
 from typing import Any
 
-from infrastructure.graph.neo4j_graph import Neo4jGraph
 from infrastructure.graph.graph_utils import clean_triplets
 
 logger = logging.getLogger(__name__)
@@ -64,21 +63,20 @@ def graph_from_text(
         clean_ms,
     )
     logger.info("graph:from_text triplets=%s", len(triplets))
-    g = Neo4jGraph()
-    upsert_start = time.perf_counter()
-    g.upsert_triplets(triplets)
-    upsert_ms = (time.perf_counter() - upsert_start) * 1000
+    upsert_ms = 0.0
+    logger.warning(
+        "graph:from_text persistence skipped; legacy endpoint has no trusted dataset scope"
+    )
     _perf_log(
         graph_perf_log,
         "perf:graph graph.graph_text.graph_from_text step=neo4j_upsert triplets=%s ms=%.2f",
         len(triplets),
         upsert_ms,
     )
-    g.close()
     _perf_log(
         graph_perf_log,
         "perf:graph graph.graph_text.graph_from_text done triplets=%s total_ms=%.2f",
         len(triplets),
         (time.perf_counter() - fn_start) * 1000,
     )
-    return {"ok": True, "triplets": len(triplets)}
+    return {"ok": True, "triplets": len(triplets), "persisted": False}

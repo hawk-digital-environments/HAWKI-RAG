@@ -30,6 +30,15 @@ logger = logging.getLogger(__name__)
 VectorSearch = Callable[..., list[dict[str, Any]]]
 
 
+def _extend_unique_terms(target: list[str], seen: set[str], candidates: list[str]) -> None:
+    for candidate in candidates:
+        term = str(candidate or "").strip()
+        if not term or term in seen:
+            continue
+        seen.add(term)
+        target.append(term)
+
+
 def _dataset_not_ready(exc: Exception) -> HTTPException:
     return HTTPException(
         status_code=503,
@@ -75,7 +84,7 @@ def run_query_documents(
         lambda hits, max_docs, max_tokens: ([], [], 0)
     ),
     run_high_recall_fn: VectorSearch = run_high_recall,
-    fetch_related_terms_fn: Callable[[list[str], int], list[dict[str, str]]] = fetch_related_terms,
+    fetch_related_terms_fn: Callable[..., list[dict[str, str]]] = fetch_related_terms,
     context_limits_fn: Callable[[], tuple[int, int]] = context_limits,
     score_thresholds_fn: Callable[[], tuple[float, float]] = score_thresholds,
     iterative_retrieval_enabled_fn: Callable[[], bool] = iterative_retrieval_enabled,
@@ -175,6 +184,8 @@ def run_query_documents(
     t_graph_start = time.perf_counter()
     structural_hits = [] if not graph_enabled or body.fast_mode or struct_hops == 0 else build_structural_hits_fn(
         query_terms,
+        dataset_id=authorized_scope.dataset_id,
+        neo4j_namespace=authorized_scope.neo4j_namespace,
         limit=structural_limit_fn(body.top_k),
         hops=struct_hops,
         include_rel_match=body.smart_lookup,
@@ -266,18 +277,25 @@ def run_query_documents(
     kg_facts: list[dict[str, str]] = []
     t_kg_start = time.perf_counter()
     if graph_enabled and hits and not body.fast_mode:
-        kg_terms = set(extract_terms_fn(rewritten_query))
-        kg_terms.update(query_terms)
+        kg_terms: list[str] = []
+        seen_kg_terms: set[str] = set()
+        _extend_unique_terms(kg_terms, seen_kg_terms, extract_terms_fn(rewritten_query))
+        _extend_unique_terms(kg_terms, seen_kg_terms, query_terms)
         for h in hits[: body.top_k]:
             payload = h.get("payload") or {}
-            kg_terms.update(terms_from_payload_fn(payload))
+            _extend_unique_terms(kg_terms, seen_kg_terms, terms_from_payload_fn(payload))
             content_sample = (payload.get("content") or "")[:160]
-            kg_terms.update(extract_terms_fn(content_sample))
-        limited_terms = list(kg_terms)[:30]
+            _extend_unique_terms(kg_terms, seen_kg_terms, extract_terms_fn(content_sample))
+        limited_terms = kg_terms[:30]
         if limited_terms:
-            kg_facts = fetch_related_terms_fn(limited_terms, limit=30)
-    logger.info("query:kg facts=%s ms=%.2f", len(kg_facts), timings.get("kg_ms", 0.0))
+            kg_facts = fetch_related_terms_fn(
+                limited_terms,
+                dataset_id=authorized_scope.dataset_id,
+                neo4j_namespace=authorized_scope.neo4j_namespace,
+                limit=30,
+            )
     timings["kg_ms"] = (time.perf_counter() - t_kg_start) * 1000
+    logger.info("query:kg facts=%s ms=%.2f", len(kg_facts), timings["kg_ms"])
 
     answer = ""
     output_safety = {"blocked": False, "issues": [], "answer": ""}

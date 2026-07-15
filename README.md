@@ -99,7 +99,10 @@ a bearer token.
 The Settings page at `http://localhost:8080/settings` selects only aliases from
 the configured `LITELLM_*_ALIASES` allowlists. Connection URLs and provider
 credentials remain environment-managed: the UI shows variable names and
-configured/not-configured status, but never receives secret values.
+configured/not-configured status, but never receives secret values. A dataset
+records its embedding alias when it is created. Changing the embedding alias
+therefore affects new datasets, not vectors already stored for an existing
+dataset; change an existing dataset only through an intentional re-ingestion.
 
 After editing proxy variables, recreate the gateway and model consumers:
 

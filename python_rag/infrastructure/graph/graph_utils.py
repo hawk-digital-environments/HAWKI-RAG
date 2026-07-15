@@ -311,12 +311,32 @@ def filter_triplets_to_source(
 
     return filtered
 
-def fetch_related_terms(terms: list[str], limit: int = 30) -> list[dict[str, str]]:
+def _required_graph_scope(dataset_id: str, neo4j_namespace: str) -> tuple[str, str]:
+    normalized_dataset_id = str(dataset_id or "").strip()
+    normalized_namespace = str(neo4j_namespace or "").strip()
+    if not normalized_dataset_id or not normalized_namespace:
+        raise ValueError("Dataset-scoped graph retrieval requires dataset_id and neo4j_namespace.")
+    return normalized_dataset_id, normalized_namespace
+
+
+def fetch_related_terms(
+    terms: list[str],
+    *,
+    dataset_id: str,
+    neo4j_namespace: str,
+    limit: int = 30,
+) -> list[dict[str, str]]:
+    dataset_id, neo4j_namespace = _required_graph_scope(dataset_id, neo4j_namespace)
     if not terms:
         return []
-    g = Neo4jGraph()
+    g = Neo4jGraph(allow_database_fallback=False)
     try:
-        results = g.fetch_related(terms, limit=limit)
+        results = g.fetch_related(
+            terms,
+            dataset_id=dataset_id,
+            neo4j_namespace=neo4j_namespace,
+            limit=limit,
+        )
         logger.debug("graph:fetch_related terms=%s results=%s", len(terms), len(results))
         return results
     except Exception:
@@ -339,16 +359,26 @@ def structural_hops(default_hops: int = 2) -> int:
 def build_structural_hits(
     terms: list[str],
     *,
+    dataset_id: str,
+    neo4j_namespace: str,
     limit: int,
     hops: int,
     include_rel_match: bool = False,
     graph_perf_log: bool | None = None,
 ) -> list[dict[str, Any]]:
+    dataset_id, neo4j_namespace = _required_graph_scope(dataset_id, neo4j_namespace)
     if not terms:
         return []
-    g = Neo4jGraph()
+    g = Neo4jGraph(allow_database_fallback=False)
     try:
-        rows = g.search_structural(terms, limit=limit, hops=hops, include_rel_match=include_rel_match)
+        rows = g.search_structural(
+            terms,
+            dataset_id=dataset_id,
+            neo4j_namespace=neo4j_namespace,
+            limit=limit,
+            hops=hops,
+            include_rel_match=include_rel_match,
+        )
     except Exception:
         rows = []
     finally:
@@ -376,6 +406,8 @@ def build_structural_hits(
                     "relation": r,
                     "object": o,
                     "doc_id": doc_id,
+                    "dataset_id": dataset_id,
+                    "neo4j_namespace": neo4j_namespace,
                     "content": content,
                     "title": "Graph relation",
                 },

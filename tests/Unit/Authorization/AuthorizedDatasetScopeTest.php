@@ -10,19 +10,21 @@ use PHPUnit\Framework\TestCase;
 
 class AuthorizedDatasetScopeTest extends TestCase
 {
-    public function test_scope_serializes_only_server_derived_targets_with_graph_disabled(): void
+    public function test_scope_serializes_only_server_derived_ready_targets_with_graph_enabled(): void
     {
         $scope = AuthorizedDatasetScope::fromStorageTargets(
             datasetId: 'dataset-a',
             qdrantCollection: 'hawki_dataset_a',
             neo4jNamespace: 'graph_dataset_a',
+            embeddingModel: 'hawki-ollama-embedding',
         );
 
         $this->assertSame([
             'dataset_id' => 'dataset-a',
             'qdrant_collection' => 'hawki_dataset_a',
             'neo4j_namespace' => 'graph_dataset_a',
-            'graph_enabled' => false,
+            'embedding_model' => 'hawki-ollama-embedding',
+            'graph_enabled' => true,
         ], $scope->toArray());
     }
 

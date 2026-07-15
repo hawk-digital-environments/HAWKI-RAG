@@ -46,6 +46,11 @@ readonly class IngestSourceWorkflowPayloadFactory
 
         $managedDocumentId = ManagedDocumentId::fromRequestMetadata($requestMetadata);
         $modelRuntime = $this->settings->modelRuntime();
+        $datasetMetadata = is_array($metadata['dataset'] ?? null)
+            ? $metadata['dataset']
+            : (is_array($task->metadata['dataset'] ?? null) ? $task->metadata['dataset'] : []);
+        $datasetModel = trim((string) ($datasetMetadata['embedding_model'] ?? ''));
+        $embeddingModel = $datasetModel !== '' ? $datasetModel : $modelRuntime['embedding_model'];
 
         return array_filter([
             'source_id' => $source->source_id,
@@ -85,7 +90,7 @@ readonly class IngestSourceWorkflowPayloadFactory
             'ingestion' => [
                 'provider' => $modelRuntime['provider'],
                 'graph_model' => $modelRuntime['graph_model'],
-                'embedding_model' => $modelRuntime['embedding_model'],
+                'embedding_model' => $embeddingModel,
                 'vision_model' => $modelRuntime['vision_model'],
                 'graph' => $this->graphEnabled($metadata),
                 'collection' => $metadata['dataset']['qdrant_collection'] ?? null,

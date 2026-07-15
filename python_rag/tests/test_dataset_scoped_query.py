@@ -77,12 +77,14 @@ class AuthorizedScopeSchemaTests(unittest.TestCase):
                 "dataset_id": " dataset-a ",
                 "qdrant_collection": " hawki_dataset_a ",
                 "neo4j_namespace": " hawki_dataset_a ",
+                "embedding_model": " hawki-ollama-embedding ",
                 "graph_enabled": False,
             },
         )
 
         self.assertEqual(request.authorized_scope.dataset_id, "dataset-a")
         self.assertEqual(request.authorized_scope.qdrant_collection, "hawki_dataset_a")
+        self.assertEqual(request.authorized_scope.embedding_model, "hawki-ollama-embedding")
         self.assertFalse(request.authorized_scope.graph_enabled)
 
     def test_scope_rejects_unknown_internal_fields(self) -> None:
@@ -92,6 +94,7 @@ class AuthorizedScopeSchemaTests(unittest.TestCase):
             AuthorizedQueryScope(
                 dataset_id="dataset-a",
                 qdrant_collection="hawki_dataset_a",
+                embedding_model="hawki-ollama-embedding",
                 graph_enabled=False,
                 caller_collection="hawki_dataset_b",
             )
@@ -106,12 +109,36 @@ class AuthorizedScopeSchemaTests(unittest.TestCase):
                 collection="hawki_dataset_b",
             )
 
+    def test_trusted_scope_accepts_graph_only_with_a_namespace(self) -> None:
+        from api.http.schemas import AuthorizedQueryScope
+
+        scope = AuthorizedQueryScope(
+            dataset_id="dataset-a",
+            qdrant_collection="hawki_dataset_a",
+            neo4j_namespace="graph_dataset_a",
+            embedding_model="hawki-ollama-embedding",
+            graph_enabled=True,
+        )
+
+        self.assertTrue(scope.graph_enabled)
+        self.assertEqual(scope.neo4j_namespace, "graph_dataset_a")
+
         with self.assertRaises(ValidationError):
             AuthorizedQueryScope(
                 dataset_id="dataset-a",
                 qdrant_collection="hawki_dataset_a",
+                embedding_model="hawki-ollama-embedding",
                 graph_enabled=True,
             )
+
+        with self.assertRaises(ValidationError):
+            AuthorizedQueryScope.model_validate({
+                "dataset_id": "dataset-a",
+                "qdrant_collection": "hawki_dataset_a",
+                "neo4j_namespace": "graph_dataset_a",
+                "embedding_model": "hawki-ollama-embedding",
+                "graph_enabled": "true",
+            })
 
     def test_query_filters_reject_unsupported_nested_values(self) -> None:
         from api.http.schemas import QueryRequest
@@ -159,6 +186,179 @@ class AuthorizedScopeSchemaTests(unittest.TestCase):
 
 
 class QueryExecutionScopeTests(unittest.TestCase):
+    def _run_generation_query(
+        self,
+        *,
+        generate: bool,
+    ) -> tuple[dict[str, Any], list[dict[str, Any]], Any]:
+        from application.workflows.query_execution import run_query_documents
+
+        calls: list[dict[str, Any]] = []
+
+        class FakeQdrant:
+            def select_scoped_collection(self, _collection: str) -> None:
+                return None
+
+        class Provider:
+            embed_model = "initial-embedding"
+            rag_model = "initial-chat"
+            vision_model = "initial-vision"
+
+            def embed(self, text: str) -> list[float]:
+                calls.append(
+                    {
+                        "operation": "embed",
+                        "text": text,
+                        "embedding_model": self.embed_model,
+                        "chat_model": self.rag_model,
+                        "vision_model": self.vision_model,
+                    }
+                )
+                return [0.1, 0.2]
+
+            def chat(
+                self,
+                system_prompt: str,
+                messages: list[dict[str, str]],
+                *,
+                temperature: float,
+            ) -> str:
+                calls.append(
+                    {
+                        "operation": "chat",
+                        "system_prompt": system_prompt,
+                        "messages": messages,
+                        "temperature": temperature,
+                        "embedding_model": self.embed_model,
+                        "chat_model": self.rag_model,
+                        "vision_model": self.vision_model,
+                    }
+                )
+                return "The answer is grounded [Source 1]."
+
+        provider = Provider()
+        body = SimpleNamespace(
+            query="find page ten",
+            authorized_scope=SimpleNamespace(
+                dataset_id="dataset-a",
+                qdrant_collection="hawki_dataset_a",
+                neo4j_namespace="hawki_dataset_a",
+                embedding_model="authorized-embedding",
+                graph_enabled=False,
+            ),
+            embedding_model="untrusted-request-embedding",
+            chat_model="selected-chat",
+            vision_model="selected-vision",
+            top_k=1,
+            provider="litellm",
+            filters={},
+            generate=generate,
+            is_optimized=False,
+            fast_mode=False,
+            smart_lookup=False,
+            structural_hops=0,
+            preferred_tags=None,
+            reranker="none",
+            rerank_top_n=1,
+            mix_mode=False,
+            mix_weight=0.5,
+        )
+
+        result = run_query_documents(
+            body,
+            rag_service=SimpleNamespace(),
+            get_provider=lambda _name: provider,
+            qdrant_ctor=FakeQdrant,
+            analyze_prompt_fn=lambda query: {"blocked": False, "issues": [], "sanitized": query},
+            enforce_output_safety_fn=lambda answer: {
+                "blocked": False,
+                "issues": [],
+                "answer": answer,
+            },
+            sanitize_prompt_text_fn=lambda query: query,
+            build_query_rewrite_fn=lambda _provider, query, **_kwargs: {
+                "enabled": False,
+                "rewritten_query": query,
+                "high_level_keys": [],
+                "low_level_keys": [],
+                "entity_terms": [],
+                "modality_hints": [],
+            },
+            build_query_terms_fn=lambda *_args: [],
+            run_search_fn=lambda **_kwargs: [
+                {
+                    "id": "chunk-1",
+                    "score": 0.9,
+                    "payload": {
+                        "dataset_id": "dataset-a",
+                        "component_type": "chunk",
+                        "content": "Page ten contains the grounded answer.",
+                    },
+                }
+            ],
+            keyword_fallback_fn=lambda *_args, **_kwargs: [],
+            build_fused_hits_fn=lambda semantic, _structural, **_kwargs: semantic,
+            rerank_and_filter_hits_fn=lambda hits, **_kwargs: hits,
+            prepare_context_fn=lambda _hits, max_docs, max_tokens: (
+                [
+                    {
+                        "idx": 1,
+                        "title": "Ten-page PDF",
+                        "url": "upload://ten-pages.pdf",
+                        "snippet": "Page ten contains the grounded answer.",
+                    }
+                ],
+                [],
+                12,
+            ),
+            context_limits_fn=lambda: (100, 1),
+            score_thresholds_fn=lambda: (0.0, 0.0),
+            iterative_retrieval_enabled_fn=lambda: False,
+            generation_enabled_fn=lambda: True,
+            configured_search_top_k_fn=lambda top_k: top_k,
+            set_fast_mode_fn=lambda _enabled: None,
+            build_grounded_answer_prompt_fn=lambda _query, _sources, _facts: (
+                "grounded system prompt",
+                "grounded user prompt",
+            ),
+        )
+
+        return result, calls, provider
+
+    def test_authorized_embedding_and_selected_chat_vision_aliases_apply_before_provider_calls(self) -> None:
+        result, calls, provider = self._run_generation_query(generate=True)
+
+        self.assertEqual([call["operation"] for call in calls], ["embed", "chat"])
+        for call in calls:
+            self.assertEqual(call["embedding_model"], "authorized-embedding")
+            self.assertEqual(call["chat_model"], "selected-chat")
+            self.assertEqual(call["vision_model"], "selected-vision")
+        self.assertEqual(provider._explicit_graph_model, "selected-chat")
+        self.assertEqual(calls[1]["system_prompt"], "grounded system prompt")
+        self.assertEqual(calls[1]["messages"], [{"role": "user", "content": "grounded user prompt"}])
+        self.assertEqual(calls[1]["temperature"], 0.0)
+        self.assertEqual(result["answer"], "The answer is grounded [Source 1].")
+
+    def test_generate_false_skips_provider_chat_even_when_context_and_generation_are_enabled(self) -> None:
+        result, calls, _provider = self._run_generation_query(generate=False)
+
+        self.assertEqual([call["operation"] for call in calls], ["embed"])
+        self.assertEqual(result["answer"], "")
+
+    def test_kg_timing_is_recorded_before_it_is_logged(self) -> None:
+        with patch("application.workflows.query_execution.logger.info") as log_info:
+            result, _calls, _provider = self._run_generation_query(generate=False)
+
+        kg_timing = result["retrieval"]["timings_ms"]["kg"]
+        kg_log = next(
+            call
+            for call in log_info.call_args_list
+            if call.args and call.args[0] == "query:kg facts=%s ms=%.2f"
+        )
+
+        self.assertGreater(kg_timing, 0.0)
+        self.assertEqual(kg_log.args[2], kg_timing)
+
     def test_scoped_vector_paths_share_filters_and_disabled_graph_is_not_called(self) -> None:
         from application.workflows.query_execution import run_query_documents
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import inspect
 import logging
 import signal
 import threading
@@ -113,6 +114,8 @@ def build_triplets_by_doc(
     *,
     graph: Any | None = None,
     neo4j_database: str | None = None,
+    dataset_id: str | None = None,
+    neo4j_namespace: str | None = None,
     public_dir: Path | None = None,
     graph_debug: bool | None = None,
     graph_perf_log: bool | None = None,
@@ -325,7 +328,14 @@ def build_triplets_by_doc(
                 )
             if graph is not None and triplets:
                 neo4j_start = time.perf_counter()
-                graph.upsert_triplets(triplets, doc_id=doc_id, request_id=request_id)
+                _upsert_scoped_triplets(
+                    graph,
+                    triplets,
+                    doc_id=str(doc_id),
+                    request_id=request_id,
+                    dataset_id=dataset_id,
+                    neo4j_namespace=neo4j_namespace,
+                )
                 neo4j_ms = (time.perf_counter() - neo4j_start) * 1000
                 if public_dir is not None:
                     try:
@@ -360,3 +370,35 @@ def build_triplets_by_doc(
         settings=resolved_settings,
     )
     return out, failures
+
+
+def _upsert_scoped_triplets(
+    graph: Any,
+    triplets: list[tuple[str, str, str]],
+    *,
+    doc_id: str,
+    request_id: str | None,
+    dataset_id: str | None,
+    neo4j_namespace: str | None,
+) -> None:
+    """Forward write scope while retaining compatibility with legacy graph doubles."""
+
+    if not str(dataset_id or "").strip() or not str(neo4j_namespace or "").strip():
+        logger.warning(
+            "graph:neo4j canonical upsert skipped doc=%s; trusted graph scope is missing",
+            doc_id,
+        )
+        return
+    upsert = graph.upsert_triplets
+    try:
+        parameters = inspect.signature(upsert).parameters.values()
+    except (TypeError, ValueError):
+        parameters = ()
+    names = {parameter.name for parameter in parameters}
+    accepts_kwargs = any(parameter.kind is inspect.Parameter.VAR_KEYWORD for parameter in parameters)
+    kwargs: dict[str, Any] = {"doc_id": doc_id, "request_id": request_id}
+    if accepts_kwargs or "dataset_id" in names:
+        kwargs["dataset_id"] = dataset_id
+    if accepts_kwargs or "neo4j_namespace" in names:
+        kwargs["neo4j_namespace"] = neo4j_namespace
+    upsert(triplets, **kwargs)

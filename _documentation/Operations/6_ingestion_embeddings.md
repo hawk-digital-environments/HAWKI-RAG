@@ -28,13 +28,18 @@ Temporal coordinates ingestion and keeps the large file/content payloads out of 
 
 1. **Scrape**: the scraper activity calls the external scraper service and writes raw files to shared/object storage.
 2. **Convert**: the converter activity calls the external converter service and writes Markdown to shared/object storage.
-3. **Ingest**: the ingestion activity reads Markdown files, chunks text, and calls the RAG bridge `/ingest` endpoint with the selected LiteLLM embedding, chat, and vision aliases.
+3. **Ingest**: the ingestion activity reads Markdown files, chunks text, and calls the RAG bridge `/ingest` endpoint with the dataset's stored LiteLLM embedding alias and the selected chat/vision aliases.
 4. **Index**: LiteLLM routes the embedding alias to Ollama or OpenAI, and the resulting vectors are stored in Qdrant to power semantic search.
 5. **Enrich (optional)**: when graph mode is on, triplets are extracted through the selected LiteLLM chat alias and written to Neo4j.
 6. **Track**: Laravel app metadata records workflow IDs, source freshness, and index status.
 
 </div>
 </div>
+
+The embedding alias is part of the dataset contract because query vectors must
+use the same model family and dimensions as the indexed vectors. Changing the
+Settings default applies to new datasets; intentionally re-ingest an existing
+dataset before changing its embedding model.
 
 ## Run ingestion
 Start ingestion through Laravel so it can create source/job metadata and start `IngestSourceWorkflow` in Temporal:

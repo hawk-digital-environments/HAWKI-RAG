@@ -18,12 +18,14 @@ class PipelineTaskMetadataServiceTest extends TestCase
             'dataset_id' => 'dataset-meta',
             'qdrant_collection' => 'hawki_dataset_meta',
             'neo4j_namespace' => 'hawki_dataset_meta',
+            'embedding_model' => 'hawki-ollama-embedding',
         ]));
 
         $this->assertSame([
             'dataset_id' => 'dataset-meta',
             'qdrant_collection' => 'hawki_dataset_meta',
             'neo4j_namespace' => 'hawki_dataset_meta',
+            'embedding_model' => 'hawki-ollama-embedding',
         ], $metadata);
     }
 

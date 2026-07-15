@@ -393,17 +393,6 @@ class GraphFallbackCharacterizationTests(unittest.TestCase):
     def test_graph_from_text_uses_graph_perf_log_injection(self) -> None:
         from infrastructure.graph.graph_text import graph_from_text
 
-        class FakeGraph:
-            def __init__(self):
-                self.triplets: list[tuple[str, str, str]] = []
-                self.closed = False
-
-            def upsert_triplets(self, triplets: list[tuple[str, str, str]]) -> None:
-                self.triplets = triplets
-
-            def close(self) -> None:
-                self.closed = True
-
         class FakeService:
             def extract_triplets(self, text: str, engine: str) -> list[tuple[str, str, str]]:
                 return [
@@ -411,24 +400,15 @@ class GraphFallbackCharacterizationTests(unittest.TestCase):
                     ("Qdrant", "supports", "vector search"),
                 ]
 
-        fake_graph = FakeGraph()
-        with patch("infrastructure.graph.graph_text.Neo4jGraph", return_value=fake_graph):
-            result = graph_from_text(
-                SimpleNamespace(text="sample", engine="engine-a"),
-                rag_service=FakeService(),
-                graph_perf_log=True,
-            )
+        result = graph_from_text(
+            SimpleNamespace(text="sample", engine="engine-a"),
+            rag_service=FakeService(),
+            graph_perf_log=True,
+        )
 
         self.assertEqual(result["ok"], True)
         self.assertEqual(result["triplets"], 2)
-        self.assertEqual(
-            fake_graph.triplets,
-            [
-                ("HAWKI", "uses", "Qdrant"),
-                ("Qdrant", "supports", "vector search"),
-            ],
-        )
-        self.assertTrue(fake_graph.closed)
+        self.assertIs(result["persisted"], False)
 
     def test_graph_visualization_write_can_be_disabled_with_injected_settings(self) -> None:
         from infrastructure.graph.graph_visualization import write_graph_visualization
@@ -987,11 +967,17 @@ class IngestCharacterizationTests(unittest.TestCase):
         from application.workflows.ingest.request import apply_provider_overrides, infer_job_id
 
         docs = [SimpleNamespace(id="doc-1", payload={"trace_id": "trace-1"})]
-        body = SimpleNamespace(job_id=None, embedding_model="embed-v2", graph_model="graph-v2")
+        body = SimpleNamespace(
+            job_id=None,
+            embedding_model="embed-v2",
+            graph_model="graph-v2",
+            vision_model="vision-v2",
+        )
 
         class Provider:
             embed_model = "embed-v1"
             rag_model = "graph-v1"
+            vision_model = "vision-v1"
 
         provider = Provider()
         apply_provider_overrides(provider, body)
@@ -999,6 +985,7 @@ class IngestCharacterizationTests(unittest.TestCase):
         self.assertEqual(infer_job_id(body, docs), "trace-1")
         self.assertEqual(provider.embed_model, "embed-v2")
         self.assertEqual(provider.rag_model, "graph-v2")
+        self.assertEqual(provider.vision_model, "vision-v2")
         self.assertEqual(provider._explicit_graph_model, "graph-v2")
 
     def test_ingest_documents_dry_run_returns_request_summary_shape(self) -> None:
@@ -1212,8 +1199,16 @@ class IngestCharacterizationTests(unittest.TestCase):
                 *,
                 doc_id: str | None = None,
                 request_id: str | None = None,
+                dataset_id: str | None = None,
+                neo4j_namespace: str | None = None,
             ) -> None:
-                self.upserts.append({"triplets": triplets, "doc_id": doc_id, "request_id": request_id})
+                self.upserts.append({
+                    "triplets": triplets,
+                    "doc_id": doc_id,
+                    "request_id": request_id,
+                    "dataset_id": dataset_id,
+                    "neo4j_namespace": neo4j_namespace,
+                })
 
             def close(self) -> None:
                 self.closed = True
@@ -1250,8 +1245,15 @@ class IngestCharacterizationTests(unittest.TestCase):
             graph_failure_log="",
         )
 
-        def graph_factory(database: str | None) -> FakeGraph:
+        def graph_factory(
+            database: str | None,
+            *,
+            dataset_id: str | None = None,
+            neo4j_namespace: str | None = None,
+        ) -> FakeGraph:
             calls["graph_database"] = database
+            calls["dataset_id"] = dataset_id
+            calls["neo4j_namespace"] = neo4j_namespace
             return graph
 
         with tempfile.TemporaryDirectory() as tmp, patch(
@@ -1259,7 +1261,12 @@ class IngestCharacterizationTests(unittest.TestCase):
             return_value=None,
         ):
             result = commit_graph_triplets(
-                body=SimpleNamespace(graph_engine="raganything", neo4j_database="toy-graph"),
+                body=SimpleNamespace(
+                    graph_engine="raganything",
+                    dataset_id="dataset-toy",
+                    neo4j_namespace="toy-graph",
+                    neo4j_database="neo4j",
+                ),
                 chunk_records=chunk_records,
                 doc_stats=doc_stats,
                 rag_service=FakeRAGService(),
@@ -1273,14 +1280,20 @@ class IngestCharacterizationTests(unittest.TestCase):
                 logger_obj=logging.getLogger("test_graph_commit_helper"),
             )
 
-        self.assertEqual(calls["graph_database"], "toy-graph")
+        self.assertEqual(calls["graph_database"], "neo4j")
+        self.assertEqual(calls["dataset_id"], "dataset-toy")
+        self.assertEqual(calls["neo4j_namespace"], "toy-graph")
         self.assertEqual(calls["engine"], "raganything")
         self.assertIs(calls["provider"], provider)
         self.assertEqual(calls["doc_id"], "toy-doc")
-        self.assertEqual(calls["neo4j_database"], "toy-graph")
+        self.assertEqual(calls["neo4j_database"], "neo4j")
         self.assertTrue(graph.closed)
         self.assertEqual(graph.upserts[0]["doc_id"], "toy-doc")
         self.assertEqual(graph.upserts[0]["request_id"], "operation-toy")
+        self.assertEqual(graph.upserts[0]["dataset_id"], "dataset-toy")
+        self.assertEqual(graph.upserts[0]["neo4j_namespace"], "toy-graph")
+        self.assertEqual(chunk_records[0]["payload"]["dataset_id"], "dataset-toy")
+        self.assertEqual(chunk_records[0]["payload"]["neo4j_namespace"], "toy-graph")
         self.assertEqual(graph.upserts[0]["triplets"], [("Wooden train", "is", "Toy")])
         self.assertIsNotNone(result.graph_preview)
         assert result.graph_preview is not None
@@ -1392,6 +1405,8 @@ class IngestCharacterizationTests(unittest.TestCase):
             batch_size=64,
             distance="Cosine",
             neo4j_database="toy-graph",
+            dataset_id="dataset-toy",
+            neo4j_namespace="toy-graph",
             job_id="job-toy",
             idempotency_key=None,
             embedding_model=None,
@@ -2065,15 +2080,29 @@ class Neo4jCharacterizationTests(unittest.TestCase):
         graph.upsert_triplets(
             [("HAWKI", "USES", "Qdrant"), ("HAWKI", "PERSISTS", "Neo4j")],
             doc_id="doc-1",
+            dataset_id="dataset-a",
+            neo4j_namespace="hawki_dataset_a",
         )
 
         self.assertEqual(len(calls), 1)
         cypher, params = calls[0]
-        self.assertIn("MERGE (s:Entity {entity_key: row.s_key})", cypher)
+        self.assertIn(
+            "MERGE (s:Entity {entity_key: row.s_key, dataset_id: row.dataset_id, neo4j_namespace: row.neo4j_namespace})",
+            cypher,
+        )
         self.assertEqual(
             params["rows"],
             [
-                {"s": "HAWKI", "s_key": "hawki", "r": "USES", "o": "Qdrant", "o_key": "qdrant", "doc_id": "doc-1"},
+                {
+                    "s": "HAWKI",
+                    "s_key": "hawki",
+                    "r": "USES",
+                    "o": "Qdrant",
+                    "o_key": "qdrant",
+                    "doc_id": "doc-1",
+                    "dataset_id": "dataset-a",
+                    "neo4j_namespace": "hawki_dataset_a",
+                },
                 {
                     "s": "HAWKI",
                     "s_key": "hawki",
@@ -2081,6 +2110,8 @@ class Neo4jCharacterizationTests(unittest.TestCase):
                     "o": "Neo4j",
                     "o_key": "neo4j",
                     "doc_id": "doc-1",
+                    "dataset_id": "dataset-a",
+                    "neo4j_namespace": "hawki_dataset_a",
                 },
             ],
         )
@@ -2095,6 +2126,8 @@ class Neo4jCharacterizationTests(unittest.TestCase):
                     ("rrolf", "mentions", "Rag System"),
                 ],
                 "doc-1",
+                dataset_id="dataset-a",
+                neo4j_namespace="hawki_dataset_a",
             ),
             [
                 {
@@ -2104,6 +2137,8 @@ class Neo4jCharacterizationTests(unittest.TestCase):
                     "o": "RAG-System",
                     "o_key": "rag system",
                     "doc_id": "doc-1",
+                    "dataset_id": "dataset-a",
+                    "neo4j_namespace": "hawki_dataset_a",
                 },
                 {
                     "s": "rrolf",
@@ -2112,6 +2147,8 @@ class Neo4jCharacterizationTests(unittest.TestCase):
                     "o": "Rag System",
                     "o_key": "rag system",
                     "doc_id": "doc-1",
+                    "dataset_id": "dataset-a",
+                    "neo4j_namespace": "hawki_dataset_a",
                 },
             ],
         )
@@ -2186,10 +2223,16 @@ class Neo4jCharacterizationTests(unittest.TestCase):
 
         executor = FakeExecutor()
         graph = Neo4jGraph(
+            dataset_id="dataset-a",
+            neo4j_namespace="graph-a",
             settings=SimpleNamespace(database=None, retry_attempts=1, log_latency=False, perf_log=False),
             query_executor=executor,  # type: ignore[arg-type]
         )
-        fetch_result = graph.fetch_related(["toy"])
+        fetch_result = graph.fetch_related(
+            ["toy"],
+            dataset_id="dataset-a",
+            neo4j_namespace="graph-a",
+        )
         graph.upsert_triplets([("A", "R", "B")], doc_id="doc-1")
 
         self.assertEqual(fetch_result, [{"subject": "A", "relation": "R", "object": "B"}])
@@ -2446,6 +2489,8 @@ class QueryCharacterizationTests(unittest.TestCase):
 
         calls: list[str] = []
         fast_mode_calls: list[bool] = []
+        graph_calls: list[tuple[str, dict[str, object]]] = []
+        kg_term_calls: list[list[str]] = []
 
         class Provider:
             embed_model = "provider-embed"
@@ -2473,6 +2518,11 @@ class QueryCharacterizationTests(unittest.TestCase):
             mix_weight=0.25,
         )
 
+        def fetch_scoped_terms(terms: list[str], **kwargs: object) -> list[dict[str, str]]:
+            kg_term_calls.append(terms)
+            graph_calls.append(("kg", kwargs))
+            return [{"subject": "HAWKI", "predicate": "related", "object": "RAG"}]
+
         result = query_execution.run_query_documents(
             body,
             rag_service=SimpleNamespace(rerank_hits=lambda **kwargs: [{"id": "fallback", "score": 0.1, "payload": {"title": "Fallback", "content": "", "doc_id": "z"}}]),
@@ -2495,7 +2545,9 @@ class QueryCharacterizationTests(unittest.TestCase):
                 {"id": "b", "score": 0.4, "payload": {"title": "B", "component_type": "chunk", "content": "toy", "doc_id": "b"}},
             ],
             keyword_fallback_fn=lambda *args, **kwargs: [],
-            build_structural_hits_fn=lambda *args, **kwargs: [{"id": "s", "payload": {"component_type": "relation", "title": "s"}}],
+            build_structural_hits_fn=lambda *args, **kwargs: graph_calls.append(
+                ("structural", kwargs)
+            ) or [{"id": "s", "payload": {"component_type": "relation", "title": "s"}}],
             structural_hops_fn=lambda: 1,
             structural_limit_fn=lambda top_k: top_k,
             fusion_weights_fn=lambda: (1.0, 0.5),
@@ -2506,7 +2558,7 @@ class QueryCharacterizationTests(unittest.TestCase):
             build_fused_hits_fn=lambda sem_hits, struct_hits, sem_weight=0.0, str_weight=0.0: sem_hits + struct_hits,
             prepare_context_fn=lambda hits, max_docs, max_tokens: (hits, [], 0),
             run_high_recall_fn=lambda **kwargs: [],
-            fetch_related_terms_fn=lambda terms, limit: [{"subject": "HAWKI", "predicate": "related", "object": "RAG"}],
+            fetch_related_terms_fn=fetch_scoped_terms,
             context_limits_fn=lambda: (400, 10),
             score_thresholds_fn=lambda: (0.0, 0.0),
             iterative_retrieval_enabled_fn=lambda: False,
@@ -2524,6 +2576,11 @@ class QueryCharacterizationTests(unittest.TestCase):
         self.assertEqual(result["retrieval"]["iterative_pass"], False)
         self.assertIn("embed", calls)
         self.assertEqual(fast_mode_calls, [False])
+        self.assertEqual([call[0] for call in graph_calls], ["structural", "kg"])
+        for _operation, scope in graph_calls:
+            self.assertEqual(scope["dataset_id"], "dataset-a")
+            self.assertEqual(scope["neo4j_namespace"], "hawki_dataset_a")
+        self.assertEqual(kg_term_calls, [["rewritten", "train", "toy", "kg"]])
 
     def test_query_execution_fast_mode_setter_is_injected(self) -> None:
         from application.workflows import query_execution
@@ -2936,12 +2993,23 @@ class IngestDeletionCharacterizationTests(unittest.TestCase):
                 return {"result": {"status": "completed"}}
 
         class Graph:
-            def __init__(self, *, database: str | None = None) -> None:
+            def __init__(
+                self,
+                *,
+                database: str | None = None,
+                neo4j_namespace: str | None = None,
+            ) -> None:
                 self.database = database
-                events.append(("graph_database", database))
+                self.neo4j_namespace = neo4j_namespace
+                events.append(("graph_scope", {"database": database, "neo4j_namespace": neo4j_namespace}))
 
             def delete_by_doc_id(self, doc_id: str, *, request_id: str | None = None) -> dict[str, int]:
-                events.append(("graph", {"doc_id": doc_id, "request_id": request_id, "database": self.database}))
+                events.append(("graph", {
+                    "doc_id": doc_id,
+                    "request_id": request_id,
+                    "database": self.database,
+                    "neo4j_namespace": self.neo4j_namespace,
+                }))
                 return {"relationships_deleted": 2, "entities_deleted": 1}
 
             def close(self) -> None:
@@ -2979,8 +3047,13 @@ class IngestDeletionCharacterizationTests(unittest.TestCase):
                 ("qdrant_collection", "student_space"),
                 ("qdrant_count", {"doc_id": "doc-1", "collection": "student_space", "exact": True}),
                 ("qdrant", {"doc_id": "doc-1", "idempotency_key": "delete-op-1", "collection": "student_space"}),
-                ("graph_database", "student_graph"),
-                ("graph", {"doc_id": "doc-1", "request_id": "delete-op-1", "database": "student_graph"}),
+                ("graph_scope", {"database": None, "neo4j_namespace": "student_graph"}),
+                ("graph", {
+                    "doc_id": "doc-1",
+                    "request_id": "delete-op-1",
+                    "database": None,
+                    "neo4j_namespace": "student_graph",
+                }),
                 ("graph_close", ""),
             ],
         )
@@ -3002,6 +3075,7 @@ class ApiAndVectorValidationTests(unittest.TestCase):
                 "dataset_id": "dataset-a",
                 "qdrant_collection": "hawki_dataset_a",
                 "neo4j_namespace": "hawki_dataset_a",
+                "embedding_model": "hawki-ollama-embedding",
                 "graph_enabled": False,
             },
         )
@@ -3025,6 +3099,7 @@ class ApiAndVectorValidationTests(unittest.TestCase):
                 "dataset_id": "dataset-a",
                 "qdrant_collection": "hawki_dataset_a",
                 "neo4j_namespace": "hawki_dataset_a",
+                "embedding_model": "hawki-ollama-embedding",
                 "graph_enabled": False,
             },
             provider="query-provider",
@@ -3314,6 +3389,7 @@ class ApiAndVectorValidationTests(unittest.TestCase):
                 "dataset_id": "dataset-a",
                 "qdrant_collection": "hawki_dataset_a",
                 "neo4j_namespace": "hawki_dataset_a",
+                "embedding_model": "hawki-ollama-embedding",
                 "graph_enabled": False,
             },
             top_k=4,

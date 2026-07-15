@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Dataset;
 
 use App\Models\Dataset;
+use App\Services\Settings\SettingsService;
 use Illuminate\Container\Attributes\Singleton;
 use Psr\Clock\ClockInterface;
 use Symfony\Component\Clock\Clock;
@@ -17,6 +18,7 @@ readonly class DatasetService
         private DatasetIdentifierFactory $identifiers,
         private DatasetPayloadBuilder $payloads,
         private DatasetStorageCleanupService $storageCleanup,
+        private SettingsService $settings,
         private ClockInterface $clock = new Clock,
     ) {}
 
@@ -50,6 +52,7 @@ readonly class DatasetService
                 ?? $this->identifiers->qdrantCollection($safe),
             'neo4j_namespace' => $this->identifiers->stringValue($input['neo4j_namespace'] ?? $input['neo4jNamespace'] ?? null)
                 ?? $this->identifiers->neo4jNamespace($safe),
+            'embedding_model' => $this->embeddingModel(),
             'created_at' => $this->clock->now(),
         ]);
     }
@@ -72,6 +75,7 @@ readonly class DatasetService
                 ?? $this->identifiers->qdrantCollection($safe),
             'neo4j_namespace' => $this->identifiers->stringValue($input['neo4j_namespace'] ?? $input['neo4jNamespace'] ?? null)
                 ?? $this->identifiers->neo4jNamespace($safe),
+            'embedding_model' => $this->embeddingModel(),
             'created_at' => $this->clock->now(),
         ]);
     }
@@ -94,5 +98,13 @@ readonly class DatasetService
             ...$cleanup,
             'dataset_deleted' => $cleanupOk ? $this->datasets->delete($dataset) : false,
         ];
+    }
+
+    private function embeddingModel(): string
+    {
+        $runtime = $this->settings->modelRuntime();
+        $embeddingModel = trim((string) ($runtime['embedding_model'] ?? ''));
+
+        return $embeddingModel !== '' ? $embeddingModel : 'hawki-ollama-embedding';
     }
 }

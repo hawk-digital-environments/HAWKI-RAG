@@ -27,6 +27,7 @@ readonly class PipelineTaskMetadataService
             'dataset_id' => $dataset->dataset_id,
             'qdrant_collection' => $dataset->qdrant_collection,
             'neo4j_namespace' => $dataset->neo4j_namespace,
+            'embedding_model' => $dataset->embedding_model,
         ];
     }
 

@@ -21,6 +21,7 @@ from infrastructure.graph.neo4j_requests import (
     build_search_structural_query,
     build_triplet_rows,
     build_upsert_triplets_query,
+    normalize_graph_write_scope,
 )
 from infrastructure.graph.neo4j_settings import Neo4jSettings, load_neo4j_settings
 from infrastructure.graph.neo4j_responses import (
@@ -62,6 +63,14 @@ def _perf_log(enabled: bool, msg: str, *args: object) -> None:
         logger.info(msg, *args)
 
 
+def _required_read_scope(dataset_id: str, neo4j_namespace: str) -> tuple[str, str]:
+    normalized_dataset_id = str(dataset_id or "").strip()
+    normalized_namespace = str(neo4j_namespace or "").strip()
+    if not normalized_dataset_id or not normalized_namespace:
+        raise ValueError("Dataset-scoped graph retrieval requires dataset_id and neo4j_namespace.")
+    return normalized_dataset_id, normalized_namespace
+
+
 class Neo4jGraph:
     """Neo4j utility used for inserting and querying LightRAG triplets."""
 
@@ -69,9 +78,14 @@ class Neo4jGraph:
         self,
         *,
         database: str | None = None,
+        dataset_id: str | None = None,
+        neo4j_namespace: str | None = None,
+        allow_database_fallback: bool = True,
         settings: Neo4jSettings | None = None,
         query_executor: Neo4jQueryExecutorProtocol | None = None,
     ) -> None:
+        self._dataset_id = str(dataset_id or "").strip() or None
+        self._neo4j_namespace = str(neo4j_namespace or "").strip() or None
         self._settings = settings or load_neo4j_settings(database=database)
         self._database = self._settings.database
         self._query_executor: Neo4jQueryExecutorProtocol
@@ -85,6 +99,9 @@ class Neo4jGraph:
                     with self._driver.session(database=self._database) as session:
                         session.run("RETURN 1").consume()
                 except _neo4j_error_type() as exc:
+                    if not allow_database_fallback:
+                        self._driver.close()
+                        raise
                     logger.warning(
                         "neo4j:requested database '%s' is unavailable (%s); falling back to default database",
                         self._database,
@@ -185,6 +202,8 @@ class Neo4jGraph:
         *,
         doc_id: str | None = None,
         request_id: str | None = None,
+        dataset_id: str | None = None,
+        neo4j_namespace: str | None = None,
     ) -> None:
         """Insert or update triplets by merging nodes and relationships."""
         settings = getattr(self, "_settings", None)
@@ -195,7 +214,26 @@ class Neo4jGraph:
             doc_id if doc_id is not None else "__legacy__",
         )
         doc_key = str(doc_id) if doc_id is not None else "__legacy__"
-        rows = build_triplet_rows(triplets, doc_key)
+        if dataset_id is not None or neo4j_namespace is not None:
+            write_scope = normalize_graph_write_scope(dataset_id, neo4j_namespace)
+        else:
+            write_scope = normalize_graph_write_scope(
+                getattr(self, "_dataset_id", None),
+                getattr(self, "_neo4j_namespace", None),
+            )
+        if write_scope is None:
+            logger.warning(
+                "neo4j:refusing unscoped triplet write doc_id=%s; dataset_id and neo4j_namespace are required",
+                doc_key,
+            )
+            return
+        write_dataset_id, write_namespace = write_scope
+        rows = build_triplet_rows(
+            triplets,
+            doc_key,
+            dataset_id=write_dataset_id,
+            neo4j_namespace=write_namespace,
+        )
         rows_ms = (time.perf_counter() - fn_start) * 1000
         if not rows:
             logger.debug("neo4j:upsert_triplets empty doc_id=%s", doc_key)
@@ -239,11 +277,15 @@ class Neo4jGraph:
         doc_key = str(doc_id or "").strip()
         if not doc_key:
             return {"relationships_deleted": 0, "entities_deleted": 0}
+        neo4j_namespace = str(getattr(self, "_neo4j_namespace", None) or "").strip()
+        if not neo4j_namespace:
+            logger.warning("neo4j:refusing unscoped document delete doc_id=%s", doc_key)
+            return {"relationships_deleted": 0, "entities_deleted": 0}
 
         is_retryable = is_retryable_write(request_id, "neo4j.delete_by_doc_id")
         remove_edges_query = Neo4jQueryRequest(
             build_delete_doc_edges_query(),
-            {"doc_id": doc_key},
+            {"doc_id": doc_key, "neo4j_namespace": neo4j_namespace},
             operation="neo4j.delete_by_doc_id",
             request_id=request_id,
             retryable=is_retryable,
@@ -257,7 +299,7 @@ class Neo4jGraph:
 
         orphaned_query = Neo4jQueryRequest(
             build_cleanup_orphaned_relationships_query(),
-            {},
+            {"neo4j_namespace": neo4j_namespace},
             operation="neo4j.delete_by_doc_id",
             request_id=request_id,
             retryable=is_retryable,
@@ -265,7 +307,7 @@ class Neo4jGraph:
         relationships_deleted = self._run_write(
             orphaned_query,
             callback=lambda tx: int(
-                tx.run(orphaned_query.statement).consume().counters.relationships_deleted
+                tx.run(orphaned_query.statement, **orphaned_query.params).consume().counters.relationships_deleted
             ),
         )
 
@@ -273,7 +315,7 @@ class Neo4jGraph:
         if relationships_touched or relationships_deleted:
             cleanup_query = Neo4jQueryRequest(
                 build_cleanup_isolated_nodes_query(),
-                {"doc_id": doc_key},
+                {"doc_id": doc_key, "neo4j_namespace": neo4j_namespace},
                 operation="neo4j.delete_by_doc_id",
                 request_id=request_id,
                 retryable=is_retryable,
@@ -295,15 +337,28 @@ class Neo4jGraph:
         )
         return {"relationships_deleted": relationships_deleted, "entities_deleted": nodes_deleted}
 
-    def fetch_related(self, terms: Iterable[str], limit: int = 25) -> list[dict[str, str]]:
+    def fetch_related(
+        self,
+        terms: Iterable[str],
+        *,
+        dataset_id: str,
+        neo4j_namespace: str,
+        limit: int = 25,
+    ) -> list[dict[str, str]]:
         """Pull related entities/relations that match any of the supplied terms."""
+        dataset_id, neo4j_namespace = _required_read_scope(dataset_id, neo4j_namespace)
         cleaned = clean_query_terms(terms)
         if not cleaned:
             return []
 
         query = Neo4jQueryRequest(
             build_fetch_related_query(),
-            {"terms": cleaned, "limit": int(limit)},
+            {
+                "terms": cleaned,
+                "dataset_id": dataset_id,
+                "neo4j_namespace": neo4j_namespace,
+                "limit": int(limit),
+            },
             operation="neo4j.fetch_related",
         )
         try:
@@ -321,11 +376,14 @@ class Neo4jGraph:
         self,
         terms: Iterable[str],
         *,
+        dataset_id: str,
+        neo4j_namespace: str,
         limit: int = 40,
         hops: int = 2,
         include_rel_match: bool = False,
     ) -> list[dict[str, Any]]:
         """Return structural graph candidates based on matched entities and hop expansion."""
+        dataset_id, neo4j_namespace = _required_read_scope(dataset_id, neo4j_namespace)
         cleaned = clean_query_terms(terms)
         if not cleaned:
             return []
@@ -333,7 +391,13 @@ class Neo4jGraph:
         safe_hops = max(1, int(hops))
         query = Neo4jQueryRequest(
             build_search_structural_query(safe_hops, include_rel_match=include_rel_match),
-            {"terms": cleaned, "limit": int(limit), "hops": safe_hops},
+            {
+                "terms": cleaned,
+                "dataset_id": dataset_id,
+                "neo4j_namespace": neo4j_namespace,
+                "limit": int(limit),
+                "hops": safe_hops,
+            },
             operation="neo4j.search_structural",
         )
         try:

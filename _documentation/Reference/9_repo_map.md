@@ -45,7 +45,7 @@
 | `LITELLM_API_URL` | OpenAI-compatible gateway endpoint used by the Python runtime. |
 | `LITELLM_API_KEY` | Optional bearer token when the selected gateway requires proxy authentication. |
 | `LITELLM_CHAT_MODEL` | Default allowlisted chat/graph alias. |
-| `LITELLM_EMBED_MODEL` | Default embedding alias used by the model runtime. |
+| `LITELLM_EMBED_MODEL` | Default embedding alias captured for newly created datasets. |
 | `LITELLM_VISION_MODEL` | Default allowlisted vision alias. |
 | `LITELLM_*_ALIASES` | Comma-separated alias allowlists accepted by Laravel Settings. |
 | `LITELLM_OLLAMA_*` | Local Ollama endpoint and concrete model targets owned by LiteLLM. |
