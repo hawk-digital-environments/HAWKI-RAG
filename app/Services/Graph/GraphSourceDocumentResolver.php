@@ -15,11 +15,10 @@ readonly class GraphSourceDocumentResolver
     public function __construct(
         private DocumentRepository $documents,
         private DocumentMarkdownPreviewReader $previews,
-    ) {
-    }
+    ) {}
 
     /**
-     * @param list<array<string, mixed>> $nodes
+     * @param  list<array<string, mixed>>  $nodes
      * @return list<array<string, mixed>>
      */
     public function attachToNodes(array $nodes): array
@@ -90,29 +89,36 @@ readonly class GraphSourceDocumentResolver
 
     private function markdownSnippet(string $content, ?string $needle): ?string
     {
+        $content = $this->validUtf8($content);
         $needle = $this->stringValue($needle);
         if ($content === '' || ! $needle) {
             return null;
         }
 
-        $position = stripos($content, $needle);
+        $position = mb_stripos($content, $needle, 0, 'UTF-8');
         if ($position === false) {
             return null;
         }
 
         $start = max(0, $position - 180);
-        $snippet = substr($content, $start, 420);
+        $contentLength = mb_strlen($content, 'UTF-8');
+        $snippet = mb_substr($content, $start, 420, 'UTF-8');
         $snippet = preg_replace('/\s+/u', ' ', $snippet) ?? $snippet;
         $snippet = trim($snippet);
 
         if ($start > 0) {
             $snippet = '...'.$snippet;
         }
-        if ($start + 420 < strlen($content)) {
+        if ($start + 420 < $contentLength) {
             $snippet .= '...';
         }
 
         return $snippet;
+    }
+
+    private function validUtf8(string $value): string
+    {
+        return mb_check_encoding($value, 'UTF-8') ? $value : mb_scrub($value, 'UTF-8');
     }
 
     /**

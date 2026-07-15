@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace Tests\Unit\Graph;
 
+use App\Models\Document;
 use App\Services\Graph\GraphResultNormalizer;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\File;
 use Tests\TestCase;
 
 class GraphResultNormalizerTest extends TestCase
@@ -62,5 +64,45 @@ class GraphResultNormalizerTest extends TestCase
         $this->assertSame('node-1', $graph['edges'][0]['source']);
         $this->assertSame('node-2', $graph['edges'][0]['target']);
         $this->assertSame(1, $graph['edges'][0]['weight']);
+    }
+
+    public function test_source_snippets_remain_valid_utf8_when_the_window_starts_near_a_multibyte_character(): void
+    {
+        $path = storage_path('app/graph-source-utf8.md');
+        File::ensureDirectoryExists(dirname($path));
+        File::put($path, 'ö'.str_repeat('a', 179).'Veröffentlicht'.str_repeat('z', 430));
+
+        try {
+            Document::query()->create([
+                'external_id' => 'doc-utf8',
+                'collection' => 'graph-utf8',
+                'source_type' => Document::SOURCE_UPLOAD,
+                'storage_path' => $path,
+                'checksum_sha256' => hash('sha256', 'doc-utf8'),
+            ]);
+
+            $graph = app(GraphResultNormalizer::class)->graph([[
+                '_graph' => [
+                    'nodes' => [[
+                        'elementId' => 'node-utf8',
+                        'labels' => ['Entity'],
+                        'properties' => [
+                            'name' => 'Veröffentlicht',
+                            'doc_id' => 'doc-utf8',
+                        ],
+                    ]],
+                    'relationships' => [],
+                ],
+            ]]);
+
+            $snippet = $graph['nodes'][0]['source_documents'][0]['markdownSnippet'];
+
+            $this->assertIsString($snippet);
+            $this->assertTrue(mb_check_encoding($snippet, 'UTF-8'));
+            $this->assertStringContainsString('ö', $snippet);
+            $this->assertIsString(json_encode($graph, JSON_THROW_ON_ERROR));
+        } finally {
+            File::delete($path);
+        }
     }
 }
