@@ -215,32 +215,32 @@ function bootDatasetsDashboard() {
         return actionButton('Retry', () => retryJob(job.job_id), 'Retry failed.');
     }
 
-    function openDocumentButton(document) {
-        if (!document.id) {
+    function openDocumentButton(doc) {
+        if (!doc.id) {
             return '-';
         }
 
         const button = actionButton(
-            document.id === state.selectedDocumentId ? 'Open' : 'Open',
-            () => loadDocument(document.id),
+            doc.id === state.selectedDocumentId ? 'Open' : 'Open',
+            () => loadDocument(doc.id),
             'Document load failed.',
         );
-        button.disabled = document.id === state.selectedDocumentId;
+        button.disabled = doc.id === state.selectedDocumentId;
 
         return button;
     }
 
-    function evidencePills(document) {
+    function evidencePills(doc) {
         const wrapper = document.createElement('span');
         wrapper.className = 'evidence-stack';
 
         const qdrant = document.createElement('span');
         qdrant.className = 'evidence-item';
-        qdrant.append('Qdrant ', statusPill(document.qdrant_status || document.status));
+        qdrant.append('Qdrant ', statusPill(doc.qdrant_status || doc.status));
 
         const neo4j = document.createElement('span');
         neo4j.className = 'evidence-item';
-        neo4j.append('Neo4j ', statusPill(document.neo4j_status || 'unknown'));
+        neo4j.append('Neo4j ', statusPill(doc.neo4j_status || 'unknown'));
 
         wrapper.append(qdrant, neo4j);
 
@@ -382,13 +382,13 @@ function bootDatasetsDashboard() {
 
     function renderDocuments(documents) {
         setText(els.documentCount, `${documents.length} document${documents.length === 1 ? '' : 's'} shown`);
-        renderTable(els.documents, ['Document', 'Status', 'Evidence', 'Source', 'Updated', 'Action'], documents, (document) => [
-            document.title || document.original_filename || document.id,
-            statusPill(document.status),
-            evidencePills(document),
-            document.source_url,
-            formatDate(document.updated_at || document.created_at),
-            openDocumentButton(document),
+        renderTable(els.documents, ['Document', 'Status', 'Evidence', 'Source', 'Updated', 'Action'], documents, (doc) => [
+            doc.title || doc.original_filename || doc.id,
+            statusPill(doc.status),
+            evidencePills(doc),
+            doc.source_url,
+            formatDate(doc.updated_at || doc.created_at),
+            openDocumentButton(doc),
         ], 'No documents found for this dataset.');
     }
 
@@ -643,7 +643,7 @@ function bootDatasetsDashboard() {
         if (requestId !== state.documentRequestId) return;
 
         state.documents = Array.isArray(data.documents) ? data.documents : [];
-        if (!keepSelection || !state.documents.some((document) => document.id === state.selectedDocumentId)) {
+        if (!keepSelection || !state.documents.some((doc) => doc.id === state.selectedDocumentId)) {
             state.selectedDocumentId = state.documents[0]?.id || '';
         }
 
