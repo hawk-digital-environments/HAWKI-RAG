@@ -141,7 +141,7 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     ap = argparse.ArgumentParser(description="Re-ingest specific document IDs into LightRAG.")
     ap.add_argument("--root", required=True, help="Path to the crawled-data root that was used for the original ingest.")
     ap.add_argument("--base-url", default="http://localhost:8009", help="LightRAG base URL (default: http://localhost:8009)")
-    ap.add_argument("--provider", default="ollama", help="Embedding/LLM provider name.")
+    ap.add_argument("--provider", default="litellm", help="Embedding/LLM provider name.")
     ap.add_argument("--graph", action="store_true", help="Enable KG extraction during ingest.")
     ap.add_argument("--graph-only", action="store_true", help="Skip embeddings and only write Neo4j triplets.")
     ap.add_argument("--graph-engine", default="raganything", help="Graph engine to use when --graph is enabled.")

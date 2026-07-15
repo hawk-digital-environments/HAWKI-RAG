@@ -32,7 +32,7 @@ USE_OLLAMA_GPU=1 COMPOSE_PROFILES=gpu make up-core
 
 ## Compose/Dockerfile roles
 - `docker-compose.yml`:
-  - CPU-safe base stack and the default `ollama` service.
+  - CPU-safe base stack with local `ollama` and the default OpenAI-compatible `litellm` gateway.
 - `docker-compose-gpu-override.yml`:
   - Overrides only `ollama` to CUDA build + NVIDIA device reservation.
 - `docker/laravel.Dockerfile`: builds `hawki_rag_app`.
@@ -57,6 +57,7 @@ What `make up-core` does:
 | Compose context | Uses computed `COMPOSE_FILE` with `ENV_FILE` and optional `COMPOSE_PROFILES`. |
 | Launch preview | Prints selected compose files before startup. |
 | Model readiness | Pulls Ollama models: `bge-m3`, `llama3.1:8b`, `llama3.2:1b`, `qwen2.5vl:7b`. |
+| Gateway readiness | Starts LiteLLM and exposes the configured aliases on `http://127.0.0.1:4000/v1`. |
 | UI readiness | Builds Vite/Svelte assets and publishes them into the running Laravel app. |
 
 ## Model pulls (Ollama)
@@ -64,6 +65,15 @@ What `make up-core` does:
 - Optional (manual): `llama3.2:3b`
   - `docker exec hawki_ollama ollama pull llama3.2:3b`
 - Rough VRAM guide: `bge-m3` < 4 GB, `llama3.2:1b` ~2 GB, `llama3.1:8b` prefers 12-16 GB, `qwen2.5vl:7b` prefers 8-12 GB.
+
+HAWKI calls these local models through `hawki-ollama-chat`,
+`hawki-ollama-embedding`, and `hawki-ollama-vision` LiteLLM aliases. OpenAI
+and Anthropic aliases are also declared, but their calls remain unavailable
+until the corresponding provider key is set in `.env`.
+
+```bash
+curl -fsS http://127.0.0.1:4000/v1/models
+```
 
 ## Health and logs
 ```bash

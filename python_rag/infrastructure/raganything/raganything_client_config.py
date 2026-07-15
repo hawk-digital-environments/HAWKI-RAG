@@ -4,15 +4,15 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from pathlib import Path
 from typing import Any
 
+from common.optional_imports import import_required_module
 from infrastructure.raganything.provider_config import clone_provider_for_graph, graph_model_override, provider_fingerprint
 from infrastructure.raganything.raganything_runtime import prepare_lightrag_neo4j_env
-from infrastructure.raganything.raganything_settings import RagAnythingGraphSettings
+from infrastructure.raganything.raganything_settings import RagAnythingGraphSettings, parse_optional_int
 from infrastructure.raganything.raganything_utils import graph_embed_junk_reason, junk_embedding_sentinel, normalize_graph_embed_text
-from infrastructure.raganything.raganything_settings import parse_optional_int
-from common.optional_imports import import_required_module
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +41,7 @@ def graph_runtime_cache_key(
             str(settings.graph_temperature).strip(),
             str(settings.ollama_chat_timeout).strip(),
             str(settings.vision_model).strip(),
+            str(settings.graph_embedding_dimensions).strip(),
         ]
     )
 
@@ -72,8 +73,47 @@ def graph_runtime_summary_limits(settings: RagAnythingGraphSettings) -> dict[str
     }
 
 
-def _embed_model_dim(graph_provider: Any) -> int:
+_MAX_EMBEDDING_DIMENSION = 65_536
+_MODEL_ALIAS_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,159}$")
+
+
+def _valid_embedding_dimension(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return None
+    try:
+        dimension = int(value)
+    except (TypeError, ValueError):
+        return None
+    if not 1 <= dimension <= _MAX_EMBEDDING_DIMENSION:
+        return None
+    return dimension
+
+
+def _embedding_dimension_overrides(raw_value: str) -> dict[str, int]:
+    dimensions: dict[str, int] = {}
+    for item in str(raw_value or "").split(","):
+        alias, separator, raw_dimension = item.strip().partition("=")
+        if not separator or not _MODEL_ALIAS_PATTERN.fullmatch(alias):
+            continue
+        dimension = _valid_embedding_dimension(raw_dimension.strip())
+        if dimension is not None:
+            dimensions[alias.lower()] = dimension
+    return dimensions
+
+
+def _embed_model_dim(graph_provider: Any, settings: RagAnythingGraphSettings) -> int:
+    observed_dimension = _valid_embedding_dimension(
+        getattr(graph_provider, "_last_embed_dim", None)
+    )
+    if observed_dimension is not None:
+        return observed_dimension
+
     embed_model_name = str(getattr(graph_provider, "embed_model", "") or "").lower()
+    configured_dimension = _embedding_dimension_overrides(
+        settings.graph_embedding_dimensions
+    ).get(embed_model_name)
+    if configured_dimension is not None:
+        return configured_dimension
     if "bge-m3" in embed_model_name:
         return 1024
     if "text-embedding-3-large" in embed_model_name:
@@ -138,12 +178,6 @@ def _build_vision_model_func(graph_provider: Any, settings: RagAnythingGraphSett
         del kwargs
         system = system_prompt or "You are a helpful visual assistant."
         temperature = _graph_temperature(settings)
-
-        if settings.vision_model and hasattr(graph_provider, "vision_model"):
-            try:
-                setattr(graph_provider, "vision_model", settings.vision_model)
-            except Exception:
-                pass
 
         if settings.graph_debug_llm:
             logger_obj.debug("graph:raganything vision system=%s", system)
@@ -263,12 +297,7 @@ def build_raganything_client(
         return None, base_runtime_meta, {}
 
     graph_provider = clone_provider_for_graph(provider)
-    if settings.vision_model and hasattr(graph_provider, "vision_model"):
-        try:
-            setattr(graph_provider, "vision_model", settings.vision_model)
-        except Exception:
-            pass
-    embed_dim = _embed_model_dim(graph_provider)
+    embed_dim = _embed_model_dim(graph_provider, settings)
 
     llm_model_func = _build_llm_model_func(graph_provider, settings, logger_obj=logger_obj)
     vision_model_func = _build_vision_model_func(graph_provider, settings, logger_obj=logger_obj)

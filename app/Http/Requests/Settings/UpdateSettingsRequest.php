@@ -31,6 +31,7 @@ class UpdateSettingsRequest extends FormRequest
             'models.provider' => 'required|string|max:80',
             'models.graphModel' => 'nullable|string|max:160',
             'models.embeddingModel' => 'nullable|string|max:160',
+            'models.visionModel' => 'nullable|string|max:160',
             'providerCredentials' => 'nullable|array',
             'providerCredentials.*.apiUrl' => 'nullable|url|max:2048',
             'providerCredentials.*.apiKey' => 'nullable|string|max:4096',
@@ -41,13 +42,31 @@ class UpdateSettingsRequest extends FormRequest
     public function withValidator(Validator $validator): void
     {
         $validator->after(function (Validator $validator): void {
-            $provider = strtolower(trim((string) $this->input('models.provider', 'ollama')));
+            $provider = strtolower(trim((string) $this->input('models.provider', 'litellm')));
+            $settings = app(SettingsService::class);
 
-            if (! app(SettingsService::class)->supportsRuntimeProvider($provider)) {
+            if (! $settings->supportsRuntimeProvider($provider)) {
                 $validator->errors()->add(
                     'models.provider',
                     'This provider is not supported by the current RAG runtime.',
                 );
+
+                return;
+            }
+
+            $models = [
+                'graph' => ['input' => 'models.graphModel', 'label' => 'chat / graph'],
+                'embedding' => ['input' => 'models.embeddingModel', 'label' => 'embedding'],
+                'vision' => ['input' => 'models.visionModel', 'label' => 'vision'],
+            ];
+            foreach ($models as $capability => $model) {
+                $value = $this->input($model['input']);
+                if (! $settings->supportsRuntimeModel($provider, $capability, is_scalar($value) ? (string) $value : null)) {
+                    $validator->errors()->add(
+                        $model['input'],
+                        sprintf('The selected %s model is not an allowed %s alias.', $model['label'], $provider),
+                    );
+                }
             }
         });
     }

@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace App\Services\Settings;
@@ -15,8 +16,7 @@ readonly class SettingsService
         private SettingsFileRepository $settings,
         private ConfigRepository $config,
         private Encrypter $encrypter,
-    ) {
-    }
+    ) {}
 
     /**
      * @return array<string, mixed>
@@ -33,7 +33,7 @@ readonly class SettingsService
     }
 
     /**
-     * @param array<string, mixed> $validated
+     * @param  array<string, mixed>  $validated
      * @return array<string, mixed>
      */
     public function update(array $validated): array
@@ -85,7 +85,7 @@ readonly class SettingsService
     }
 
     /**
-     * @return array{provider: string, graph_model: ?string, embedding_model: ?string}
+     * @return array{provider: string, graph_model: ?string, embedding_model: ?string, vision_model: ?string}
      */
     public function modelRuntime(?array $stored = null): array
     {
@@ -94,15 +94,33 @@ readonly class SettingsService
         $provider = $this->runtimeProvider(
             $this->stringValue($models['provider'] ?? null)
                 ?? $this->stringValue($this->config->get('temporal.ingestion.provider'))
-                ?? (string) $this->config->get('config.graph_provider', 'ollama'),
+                ?? (string) $this->config->get('config.graph_provider', 'litellm'),
+        );
+
+        $graphModel = $this->runtimeModel(
+            $provider,
+            'graph',
+            $this->stringValue($models['graph_model'] ?? null),
+            $this->defaultGraphModel($provider),
+        );
+        $embeddingModel = $this->runtimeModel(
+            $provider,
+            'embedding',
+            $this->stringValue($models['embedding_model'] ?? null),
+            $this->defaultEmbeddingModel($provider),
+        );
+        $visionModel = $this->runtimeModel(
+            $provider,
+            'vision',
+            $this->stringValue($models['vision_model'] ?? null),
+            $this->defaultVisionModel($provider),
         );
 
         return [
             'provider' => $provider,
-            'graph_model' => $this->stringValue($models['graph_model'] ?? null)
-                ?? $this->defaultGraphModel($provider),
-            'embedding_model' => $this->stringValue($models['embedding_model'] ?? null)
-                ?? $this->defaultEmbeddingModel($provider),
+            'graph_model' => $graphModel,
+            'embedding_model' => $embeddingModel,
+            'vision_model' => $visionModel,
         ];
     }
 
@@ -113,8 +131,18 @@ readonly class SettingsService
         return filter_var($providerConfig['runtime_supported'] ?? false, FILTER_VALIDATE_BOOLEAN);
     }
 
+    public function supportsRuntimeModel(string $provider, string $capability, ?string $model): bool
+    {
+        $model = $this->stringValue($model);
+        if ($model === null) {
+            return true;
+        }
+
+        return in_array($model, $this->allowedModels($provider, $capability), true);
+    }
+
     /**
-     * @param array<string, mixed> $stored
+     * @param  array<string, mixed>  $stored
      * @return array<string, mixed>
      */
     private function customConverterPublicDefaults(array $stored): array
@@ -135,8 +163,8 @@ readonly class SettingsService
     }
 
     /**
-     * @param array<string, mixed> $current
-     * @param array<string, mixed> $input
+     * @param  array<string, mixed>  $current
+     * @param  array<string, mixed>  $input
      * @return array<string, mixed>
      */
     private function updatedCustomConverter(array $current, array $input): array
@@ -161,29 +189,51 @@ readonly class SettingsService
     }
 
     /**
-     * @param array<string, mixed> $input
+     * @param  array<string, mixed>  $input
      * @return array<string, mixed>
      */
     private function updatedModels(array $input): array
     {
-        $provider = $this->runtimeProvider($this->stringValue($input['provider'] ?? null) ?? 'ollama');
+        $provider = $this->runtimeProvider($this->stringValue($input['provider'] ?? null) ?? 'litellm');
 
         return array_filter([
             'provider' => $provider,
-            'graph_model' => $this->stringValue($input['graphModel'] ?? null),
-            'embedding_model' => $this->stringValue($input['embeddingModel'] ?? null),
+            'graph_model' => $this->runtimeModel(
+                $provider,
+                'graph',
+                $this->stringValue($input['graphModel'] ?? null),
+                $this->defaultGraphModel($provider),
+            ),
+            'embedding_model' => $this->runtimeModel(
+                $provider,
+                'embedding',
+                $this->stringValue($input['embeddingModel'] ?? null),
+                $this->defaultEmbeddingModel($provider),
+            ),
+            'vision_model' => $this->runtimeModel(
+                $provider,
+                'vision',
+                $this->stringValue($input['visionModel'] ?? null),
+                $this->defaultVisionModel($provider),
+            ),
         ], static fn (mixed $value): bool => $value !== null && $value !== '');
     }
 
     /**
-     * @param array<string, mixed> $current
-     * @param array<string, mixed> $input
+     * @param  array<string, mixed>  $current
+     * @param  array<string, mixed>  $input
      * @return array<string, mixed>
      */
     private function updatedProviderCredentials(array $current, array $input): array
     {
         $next = $current;
         foreach ($this->providerKeys() as $provider) {
+            $providerConfig = $this->providerConfig($provider);
+            if (($this->stringValue($providerConfig['configuration_mode'] ?? null) ?? 'settings') !== 'settings') {
+                unset($next[$provider]);
+                continue;
+            }
+
             $providerInput = is_array($input[$provider] ?? null) ? $input[$provider] : [];
             $existing = is_array($current[$provider] ?? null) ? $current[$provider] : [];
             $apiUrl = $this->stringValue($providerInput['apiUrl'] ?? null);
@@ -209,7 +259,7 @@ readonly class SettingsService
     }
 
     /**
-     * @param array<string, mixed> $stored
+     * @param  array<string, mixed>  $stored
      * @return array<int, array<string, mixed>>
      */
     private function providerOptions(array $stored): array
@@ -220,18 +270,34 @@ readonly class SettingsService
             $providerConfig = $this->providerConfig($provider);
             $storedCredentials = is_array($credentials[$provider] ?? null) ? $credentials[$provider] : [];
             $models = is_array($providerConfig['models'] ?? null) ? $providerConfig['models'] : [];
+            $configurationMode = $this->stringValue($providerConfig['configuration_mode'] ?? null) ?? 'stored';
+            $applicationManaged = $configurationMode === 'settings';
+            $modelSelectionMode = $this->stringValue($providerConfig['model_selection_mode'] ?? null) ?? 'settings';
+            $embeddingSupported = $this->stringValue($models['embedding'] ?? null) !== null;
 
             return [
                 'key' => $provider,
                 'label' => $this->stringValue($providerConfig['label'] ?? null) ?? ucfirst($provider),
+                'description' => $this->stringValue($providerConfig['description'] ?? null) ?? '',
+                'configurationMode' => $configurationMode,
+                'modelSelectionMode' => $modelSelectionMode,
                 'runtimeSupported' => filter_var($providerConfig['runtime_supported'] ?? false, FILTER_VALIDATE_BOOLEAN),
-                'embeddingSupported' => $this->stringValue($models['embedding'] ?? null) !== null,
-                'apiUrl' => $this->stringValue($storedCredentials['api_url'] ?? null)
+                'embeddingSupported' => $embeddingSupported,
+                'apiUrl' => ($applicationManaged ? $this->stringValue($storedCredentials['api_url'] ?? null) : null)
                     ?? $this->stringValue($providerConfig['api_url'] ?? null)
                     ?? '',
-                'apiKeySet' => $this->stringValue($storedCredentials['api_key_ciphertext'] ?? null) !== null,
+                'apiKeySet' => $applicationManaged
+                    && $this->stringValue($storedCredentials['api_key_ciphertext'] ?? null) !== null,
                 'defaultGraphModel' => $this->defaultGraphModel($provider) ?? '',
-                'defaultEmbeddingModel' => $this->defaultEmbeddingModel($provider) ?? '',
+                'defaultEmbeddingModel' => $embeddingSupported ? ($this->defaultEmbeddingModel($provider) ?? '') : '',
+                'defaultVisionModel' => $this->defaultVisionModel($provider) ?? '',
+                'graphModelPlaceholder' => $this->modelPlaceholder($providerConfig, 'graph'),
+                'embeddingModelPlaceholder' => $this->modelPlaceholder($providerConfig, 'embedding'),
+                'visionModelPlaceholder' => $this->modelPlaceholder($providerConfig, 'vision'),
+                'graphModelOptions' => $this->modelOptions($providerConfig, 'graph'),
+                'embeddingModelOptions' => $this->modelOptions($providerConfig, 'embedding'),
+                'visionModelOptions' => $this->modelOptions($providerConfig, 'vision'),
+                'environmentVariables' => $this->environmentVariables($providerConfig),
             ];
         }, $this->providerKeys());
     }
@@ -240,7 +306,17 @@ readonly class SettingsService
     {
         $provider = strtolower(trim($provider));
 
-        return $this->supportsRuntimeProvider($provider) ? $provider : 'ollama';
+        if ($this->supportsRuntimeProvider($provider)) {
+            return $provider;
+        }
+
+        foreach ($this->providerKeys() as $candidate) {
+            if ($this->supportsRuntimeProvider($candidate)) {
+                return $candidate;
+            }
+        }
+
+        return 'litellm';
     }
 
     /**
@@ -250,7 +326,7 @@ readonly class SettingsService
     {
         $providers = $this->config->get('model_providers.providers', []);
 
-        return is_array($providers) ? array_keys($providers) : ['ollama'];
+        return is_array($providers) ? array_keys($providers) : ['litellm'];
     }
 
     /**
@@ -281,6 +357,142 @@ readonly class SettingsService
 
         return $this->stringValue($models['embedding'] ?? null)
             ?? $this->stringValue($this->config->get('config.embedding_default'));
+    }
+
+    private function defaultVisionModel(string $provider): ?string
+    {
+        $providerConfig = $this->providerConfig($provider);
+        $models = is_array($providerConfig['models'] ?? null) ? $providerConfig['models'] : [];
+
+        return $this->stringValue($models['multimodal'] ?? null);
+    }
+
+    private function runtimeModel(
+        string $provider,
+        string $capability,
+        ?string $candidate,
+        ?string $default,
+    ): ?string {
+        if ($candidate !== null && $this->supportsRuntimeModel($provider, $capability, $candidate)) {
+            return $candidate;
+        }
+
+        return $default !== null && $this->supportsRuntimeModel($provider, $capability, $default)
+            ? $default
+            : null;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function allowedModels(string $provider, string $capability): array
+    {
+        $providerConfig = $this->providerConfig($provider);
+        $allowed = is_array($providerConfig['allowed_models'] ?? null)
+            ? ($providerConfig['allowed_models'][$capability] ?? [])
+            : [];
+
+        if (! is_array($allowed)) {
+            return [];
+        }
+
+        return array_values(array_unique(array_filter(array_map(
+            fn (mixed $value): ?string => $this->stringValue($value),
+            $allowed,
+        ))));
+    }
+
+    /**
+     * @param  array<string, mixed>  $providerConfig
+     */
+    private function modelPlaceholder(array $providerConfig, string $capability): string
+    {
+        $placeholders = is_array($providerConfig['model_placeholders'] ?? null)
+            ? $providerConfig['model_placeholders']
+            : [];
+
+        return $this->stringValue($placeholders[$capability] ?? null) ?? '';
+    }
+
+    /**
+     * @param  array<string, mixed>  $providerConfig
+     * @return list<array{value:string,label:string}>
+     */
+    private function modelOptions(array $providerConfig, string $capability): array
+    {
+        $options = is_array($providerConfig['model_options'] ?? null)
+            ? ($providerConfig['model_options'][$capability] ?? [])
+            : [];
+        if (! is_array($options)) {
+            return [];
+        }
+
+        $normalized = [];
+        foreach ($options as $option) {
+            if (! is_array($option)) {
+                continue;
+            }
+
+            $value = $this->stringValue($option['value'] ?? null);
+            if ($value === null || ! in_array($value, $this->allowedModelsFromConfig($providerConfig, $capability), true)) {
+                continue;
+            }
+
+            $normalized[] = [
+                'value' => $value,
+                'label' => $this->stringValue($option['label'] ?? null) ?? $value,
+            ];
+        }
+
+        return $normalized;
+    }
+
+    /**
+     * @param  array<string, mixed>  $providerConfig
+     * @return list<string>
+     */
+    private function allowedModelsFromConfig(array $providerConfig, string $capability): array
+    {
+        $allowedModels = is_array($providerConfig['allowed_models'] ?? null)
+            ? ($providerConfig['allowed_models'][$capability] ?? [])
+            : [];
+
+        return is_array($allowedModels)
+            ? array_values(array_filter(array_map(fn (mixed $value): ?string => $this->stringValue($value), $allowedModels)))
+            : [];
+    }
+
+    /**
+     * @param  array<string, mixed>  $providerConfig
+     * @return list<array{name:string,placeholder:string,description:string,secret:bool,configured:bool}>
+     */
+    private function environmentVariables(array $providerConfig): array
+    {
+        $variables = is_array($providerConfig['environment_variables'] ?? null)
+            ? $providerConfig['environment_variables']
+            : [];
+        $normalized = [];
+
+        foreach ($variables as $variable) {
+            if (! is_array($variable)) {
+                continue;
+            }
+
+            $name = $this->stringValue($variable['name'] ?? null);
+            if ($name === null) {
+                continue;
+            }
+
+            $normalized[] = [
+                'name' => $name,
+                'placeholder' => $this->stringValue($variable['placeholder'] ?? null) ?? '',
+                'description' => $this->stringValue($variable['description'] ?? null) ?? '',
+                'secret' => filter_var($variable['secret'] ?? false, FILTER_VALIDATE_BOOLEAN),
+                'configured' => filter_var($variable['configured'] ?? false, FILTER_VALIDATE_BOOLEAN),
+            ];
+        }
+
+        return $normalized;
     }
 
     /**

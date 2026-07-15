@@ -140,12 +140,12 @@ class RagAnythingVisionTests(unittest.TestCase):
 
         self.assertEqual(summary["models"]["vision_model"], "vision-graph")
 
-    def test_raganything_vision_model_func_uses_provider_vision_chat(self) -> None:
+    def test_raganything_vision_model_func_preserves_provider_vision_selection(self) -> None:
         from infrastructure.raganything.raganything_client_config import _build_vision_model_func
         from infrastructure.raganything.raganything_settings import load_raganything_graph_settings
 
         class Provider:
-            vision_model = "old-vision"
+            vision_model = "selected-vision"
 
             def __init__(self) -> None:
                 self.call: dict[str, object] | None = None
@@ -199,12 +199,13 @@ class RagAnythingVisionTests(unittest.TestCase):
             )
 
         self.assertEqual(response, "caption")
-        self.assertEqual(provider.vision_model, "vision-graph")
+        self.assertEqual(settings.vision_model, "vision-graph")
+        self.assertEqual(provider.vision_model, "selected-vision")
         self.assertEqual(provider.call["system"], "vision system")
         self.assertEqual(provider.call["prompt"], "describe image")
         self.assertEqual(provider.call["image_data"], "img-base64")
         self.assertEqual(provider.call["temperature"], 0.2)
-        self.assertEqual(provider.call["vision_model"], "vision-graph")
+        self.assertEqual(provider.call["vision_model"], "selected-vision")
 
 
 if __name__ == "__main__":

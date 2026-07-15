@@ -28,9 +28,9 @@ Temporal coordinates ingestion and keeps the large file/content payloads out of 
 
 1. **Scrape**: the scraper activity calls the external scraper service and writes raw files to shared/object storage.
 2. **Convert**: the converter activity calls the external converter service and writes Markdown to shared/object storage.
-3. **Ingest**: the ingestion activity reads Markdown files, chunks text, and calls the RAG bridge `/ingest` endpoint.
-4. **Index**: vectors are stored in Qdrant to power semantic search.
-5. **Enrich (optional)**: when graph mode is on, triplets are extracted with `GRAPH_OLLAMA_RAG_MODEL` and written to Neo4j.
+3. **Ingest**: the ingestion activity reads Markdown files, chunks text, and calls the RAG bridge `/ingest` endpoint with the selected LiteLLM embedding, chat, and vision aliases.
+4. **Index**: LiteLLM routes the embedding alias to Ollama or OpenAI, and the resulting vectors are stored in Qdrant to power semantic search.
+5. **Enrich (optional)**: when graph mode is on, triplets are extracted through the selected LiteLLM chat alias and written to Neo4j.
 6. **Track**: Laravel app metadata records workflow IDs, source freshness, and index status.
 
 </div>

@@ -19,6 +19,11 @@ class QueryDatasetRequest extends FormRequest
         'authorized_scope',
         'auth_context',
         'graph_enabled',
+        'provider',
+        'chat_model',
+        'graph_model',
+        'embedding_model',
+        'vision_model',
     ];
 
     public function authorize(): bool
@@ -52,6 +57,11 @@ class QueryDatasetRequest extends FormRequest
             'neo4j_namespace' => ['prohibited'],
             'neo4jNamespace' => ['prohibited'],
             'graph_enabled' => ['prohibited'],
+            'provider' => ['prohibited'],
+            'chat_model' => ['prohibited'],
+            'graph_model' => ['prohibited'],
+            'embedding_model' => ['prohibited'],
+            'vision_model' => ['prohibited'],
         ];
     }
 

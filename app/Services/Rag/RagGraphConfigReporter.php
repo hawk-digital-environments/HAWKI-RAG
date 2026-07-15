@@ -32,6 +32,7 @@ readonly class RagGraphConfigReporter
             'graph_provider' => $modelRuntime['provider'],
             'graph_model' => $modelRuntime['graph_model'],
             'embedding_model' => $modelRuntime['embedding_model'],
+            'vision_model' => $modelRuntime['vision_model'],
             'chunk_size' => (int) $this->config->get('config.chunk_size', 1200),
             'chunk_overlap' => (int) $this->config->get('config.chunk_overlap_size', 250),
             'graph_doc_max_chars' => (int) ($limits['graph_doc_max_chars'] ?? $this->config->get('config.graph_doc_max_chars', 0)),

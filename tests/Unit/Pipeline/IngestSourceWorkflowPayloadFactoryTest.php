@@ -20,7 +20,7 @@ class IngestSourceWorkflowPayloadFactoryTest extends TestCase
         config()->set('temporal.task_queues.scraper', 'rag-scraper-task-queue');
         config()->set('temporal.task_queues.converter', 'rag-converter-task-queue');
         config()->set('temporal.task_queues.ingestion', 'rag-ingestion-task-queue');
-        config()->set('temporal.ingestion.provider', 'ollama');
+        config()->set('temporal.ingestion.provider', 'litellm');
         config()->set('temporal.ingestion.graph', true);
 
         $factory = app(IngestSourceWorkflowPayloadFactory::class);
@@ -68,9 +68,10 @@ class IngestSourceWorkflowPayloadFactoryTest extends TestCase
         $this->assertSame('rag-scraper-task-queue', $payload['task_queues']['scraper']);
         $this->assertSame('rag-converter-task-queue', $payload['task_queues']['converter']);
         $this->assertSame('rag-ingestion-task-queue', $payload['task_queues']['ingestion']);
-        $this->assertSame('ollama', $payload['ingestion']['provider']);
-        $this->assertSame('llama3.1:8b', $payload['ingestion']['graph_model']);
-        $this->assertSame('bge-m3', $payload['ingestion']['embedding_model']);
+        $this->assertSame('litellm', $payload['ingestion']['provider']);
+        $this->assertSame('hawki-ollama-chat', $payload['ingestion']['graph_model']);
+        $this->assertSame('hawki-ollama-embedding', $payload['ingestion']['embedding_model']);
+        $this->assertSame('hawki-ollama-vision', $payload['ingestion']['vision_model']);
         $this->assertTrue($payload['ingestion']['graph']);
 
         $encoded = json_encode($payload, JSON_THROW_ON_ERROR);

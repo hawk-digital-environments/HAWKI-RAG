@@ -43,14 +43,35 @@
 | `EXTERNAL_SCRAPER_URL` | `http://crawler:8000` | External scraper service base URL; worker calls its start/status endpoints. |
 | `EXTERNAL_CONVERTER_URL` | `http://file-converter:8000` | External converter service base URL; worker calls its start/status endpoints. |
 
-### Ollama and models
+### LiteLLM gateway and model aliases
+
+HAWKI RAG uses LiteLLM as its only model-provider boundary. Ollama, OpenAI, and
+Anthropic are upstream routes owned by the proxy; Laravel and Python select
+allowlisted aliases instead of receiving provider credentials.
+
 | Variable | Default Value | Description |
 | --- | --- | --- |
-| `OLLAMA_API_URL` | `http://ollama:11434/api` | Ollama API base URL (compose alias like `http://hawki_ollama:11434/api` can also be used). |
-| `OLLAMA_EMBED_MODEL` | `bge-m3` | Embedding model used during ingestion. |
-| `GRAPH_OLLAMA_RAG_MODEL` | `llama3.2:1b` | Default graph extraction model. |
-| `OLLAMA_VISION_MODEL` | `qwen2.5vl:7b` | Vision model used by RAG-Anything to describe images. |
-| `GRAPH_OLLAMA_VISION_MODEL` | `qwen2.5vl:7b` | Graph-specific override for the RAG-Anything image vision model. |
+| `RAG_DEFAULT_PROVIDER` | `litellm` | Runtime provider used for ingestion and query model calls. |
+| `GRAPH_PROVIDER` | `litellm` | Provider used for graph/model reporting. |
+| `LITELLM_API_URL` | `http://litellm:4000/v1` | OpenAI-compatible endpoint visible inside the Compose network. |
+| `LITELLM_API_KEY` | Empty | Optional bearer token for a LiteLLM deployment that enables proxy authentication. |
+| `LITELLM_CHAT_MODEL` | `hawki-ollama-chat` | Default chat and graph alias selected for new requests. |
+| `LITELLM_EMBED_MODEL` | `hawki-ollama-embedding` | Default embedding alias used by the model runtime. |
+| `LITELLM_VISION_MODEL` | `hawki-ollama-vision` | Default vision alias selected for new ingestion work. |
+| `LITELLM_CHAT_ALIASES` | Ollama, GPT, Claude aliases | Allowlist accepted by Laravel Settings for chat/graph. |
+| `LITELLM_EMBED_ALIASES` | Ollama and OpenAI aliases | Allowlist accepted by Laravel Settings for embeddings. Anthropic has no embedding route. |
+| `LITELLM_VISION_ALIASES` | Ollama, GPT, Claude aliases | Allowlist accepted by Laravel Settings for vision. |
+| `GRAPH_EMBEDDING_DIMENSIONS` | Local `1024`, OpenAI small `1536` | Trusted alias-to-dimension map used when graph-only ingestion cannot observe a vector response first. |
+
+| Upstream | Target variables | Credential |
+| --- | --- | --- |
+| Local Ollama | `LITELLM_OLLAMA_API_BASE`, `LITELLM_OLLAMA_CHAT_MODEL`, `LITELLM_OLLAMA_EMBED_MODEL`, `LITELLM_OLLAMA_VISION_MODEL` | None |
+| OpenAI | `LITELLM_OPENAI_API_BASE`, `LITELLM_OPENAI_CHAT_MODEL`, `LITELLM_OPENAI_EMBED_MODEL`, `LITELLM_OPENAI_VISION_MODEL` | `OPENAI_API_KEY` |
+| Anthropic | `LITELLM_ANTHROPIC_API_BASE`, `LITELLM_ANTHROPIC_CHAT_MODEL`, `LITELLM_ANTHROPIC_VISION_MODEL` | `ANTHROPIC_API_KEY` |
+
+Provider keys belong only in `.env` and are passed to the LiteLLM container.
+The Settings UI exposes safe placeholders and configured/not-configured status,
+never the secret values. It accepts only aliases from the three allowlists.
 
 ## Database setup
 ### Variables to verify before migrating
@@ -75,8 +96,17 @@ start workflows, cancel workflows, and create/update/delete schedules.
 Start the stack:
 
 ```bash
-docker compose up -d postgres temporal temporal-ui hawki_rag_app hawki_rag_bridge qdrant hawki_rag_neo4j
+docker compose up -d postgres temporal temporal-ui hawki_rag_app ollama litellm hawki_rag_bridge qdrant hawki_rag_neo4j
 docker compose up -d hawki-rag-temporal-workflow-worker hawki-rag-temporal-scraper-worker hawki-rag-temporal-converter-worker hawki-rag-temporal-ingestion-worker
+```
+
+Smoke-test the gateway from the host:
+
+```bash
+curl -fsS http://127.0.0.1:4000/v1/models
+curl -fsS http://127.0.0.1:4000/v1/embeddings \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"hawki-ollama-embedding","input":["HAWKI RAG smoke test"]}'
 ```
 
 Temporal UI is exposed on `http://localhost:8081` by default.

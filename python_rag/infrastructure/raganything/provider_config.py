@@ -16,6 +16,18 @@ def graph_model_override(provider: Any) -> str | None:
     return None
 
 
+def graph_vision_model_override(provider: Any) -> str | None:
+    """Return an explicit vision selection or Ollama's legacy graph override."""
+
+    explicit = str(getattr(provider, "_explicit_vision_model", "") or "").strip()
+    if explicit:
+        return explicit
+    if isinstance(provider, OllamaProvider):
+        val = os.environ.get("GRAPH_OLLAMA_VISION_MODEL", "").strip()
+        return val or None
+    return None
+
+
 def provider_fingerprint(provider: Any) -> str:
     parts = [
         provider.__class__.__name__,
@@ -38,7 +50,16 @@ def clone_provider_for_graph(provider: Any) -> Any:
         clone = provider.__class__()  # re-read env-backed config
     except Exception:
         clone = provider
-    for attr in ("base", "key", "rag_model", "vision_model", "embed_model", "_explicit_graph_model"):
+    for attr in (
+        "base",
+        "key",
+        "rag_model",
+        "vision_model",
+        "embed_model",
+        "_explicit_graph_model",
+        "_explicit_vision_model",
+        "_last_embed_dim",
+    ):
         if hasattr(provider, attr):
             try:
                 setattr(clone, attr, getattr(provider, attr))
@@ -47,4 +68,7 @@ def clone_provider_for_graph(provider: Any) -> Any:
     graph_model = graph_model_override(clone)
     if graph_model and hasattr(clone, "rag_model"):
         setattr(clone, "rag_model", graph_model)
+    vision_model = graph_vision_model_override(clone)
+    if vision_model and hasattr(clone, "vision_model"):
+        setattr(clone, "vision_model", vision_model)
     return clone

@@ -109,6 +109,10 @@ def check_provider_availability(service: Any, settings: AppSettings, timeout_sec
     """Verify the configured default provider is reachable when supported."""
 
     provider_name = (settings.rag_default_provider or "").strip().lower()
+    if provider_name == "litellm":
+        provider = service.get_provider(provider_name)
+        _check_litellm_provider(provider, timeout_seconds)
+        return
     if provider_name != "ollama":
         return
 
@@ -129,6 +133,53 @@ def check_provider_availability(service: Any, settings: AppSettings, timeout_sec
             last_error = str(exc)
 
     raise RuntimeError(f"Ollama provider check failed: {last_error}")
+
+
+def _check_litellm_provider(provider: Any, timeout_seconds: float) -> None:
+    """Verify the OpenAI-compatible models endpoint exposed by LiteLLM."""
+
+    base = str(getattr(provider, "base", "http://litellm:4000/v1")).rstrip("/")
+    headers = {"Accept": "application/json"}
+    api_key = str(getattr(provider, "key", "") or "").strip()
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+
+    try:
+        response = _requests_module().get(
+            f"{base}/models",
+            headers=headers,
+            timeout=timeout_seconds,
+        )
+        if response.status_code == 200:
+            try:
+                payload = response.json()
+            except Exception as exc:
+                raise RuntimeError("LiteLLM models endpoint returned invalid JSON.") from exc
+
+            rows = payload.get("data") if isinstance(payload, dict) else None
+            available_models = {
+                str(row.get("id") or "").strip()
+                for row in rows or []
+                if isinstance(row, dict) and str(row.get("id") or "").strip()
+            }
+            required_models = {
+                os.environ.get("LITELLM_CHAT_MODEL", "hawki-ollama-chat").strip(),
+                os.environ.get("LITELLM_EMBED_MODEL", "hawki-ollama-embedding").strip(),
+                os.environ.get("LITELLM_VISION_MODEL", "hawki-ollama-vision").strip(),
+            }
+            missing_models = sorted(required_models - available_models)
+            if missing_models:
+                raise RuntimeError(
+                    "LiteLLM is missing required model aliases: " + ", ".join(missing_models)
+                )
+            return
+        if response.status_code in (401, 403):
+            raise RuntimeError(f"LiteLLM authentication failed ({response.status_code}).")
+        response.raise_for_status()
+    except RuntimeError:
+        raise
+    except Exception as exc:
+        raise RuntimeError(f"LiteLLM provider check failed: {exc}") from exc
 
 
 def _ollama_probe_urls(base: str) -> tuple[str, str]:

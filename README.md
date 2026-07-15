@@ -61,6 +61,70 @@ Temporal UI:
 http://localhost:8081
 ```
 
+## LiteLLM Model Gateway
+
+LiteLLM is the default and only model-provider boundary used by HAWKI RAG.
+Laravel, the Python bridge, and the ingestion workers select stable LiteLLM
+aliases; only the proxy knows whether an alias resolves to local Ollama,
+OpenAI, or Anthropic. The `litellm` service is part of the default Compose
+stack, so `make up-core` starts it without an optional profile.
+
+| Capability | Local Ollama alias | OpenAI alias | Anthropic alias |
+| --- | --- | --- | --- |
+| Chat and graph | `hawki-ollama-chat` | `hawki-gpt-chat` | `hawki-claude-chat` |
+| Embeddings | `hawki-ollama-embedding` | `hawki-openai-embedding` | Not available |
+| Vision | `hawki-ollama-vision` | `hawki-gpt-vision` | `hawki-claude-vision` |
+
+The local aliases are the defaults and require no provider key. Legacy local
+aliases (`hawki-chat`, `hawki-embedding`, and `hawki-vision`) remain available
+for compatibility. Configure upstream targets and credentials in `.env`:
+
+```env
+RAG_DEFAULT_PROVIDER=litellm
+LITELLM_API_URL=http://litellm:4000/v1
+LITELLM_CHAT_MODEL=hawki-ollama-chat
+LITELLM_EMBED_MODEL=hawki-ollama-embedding
+LITELLM_VISION_MODEL=hawki-ollama-vision
+
+# Optional cloud routes; leave blank to keep that provider unavailable.
+OPENAI_API_KEY=
+ANTHROPIC_API_KEY=
+```
+
+`LITELLM_OLLAMA_*`, `LITELLM_OPENAI_*`, and `LITELLM_ANTHROPIC_*` variables in
+`.env.example` map those aliases to concrete upstream models. Set
+`LITELLM_API_KEY` only when the configured LiteLLM deployment itself requires
+a bearer token.
+
+The Settings page at `http://localhost:8080/settings` selects only aliases from
+the configured `LITELLM_*_ALIASES` allowlists. Connection URLs and provider
+credentials remain environment-managed: the UI shows variable names and
+configured/not-configured status, but never receives secret values.
+
+After editing proxy variables, recreate the gateway and model consumers:
+
+```bash
+docker compose --env-file .env up -d --force-recreate \
+  litellm hawki_rag_bridge \
+  hawki-rag-temporal-workflow-worker \
+  hawki-rag-temporal-ingestion-worker
+```
+
+The local proxy is bound only to `127.0.0.1`. Verify its aliases and local
+Ollama routes:
+
+```bash
+curl -fsS http://127.0.0.1:4000/v1/models
+
+curl -fsS http://127.0.0.1:4000/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"hawki-ollama-chat","messages":[{"role":"user","content":"Reply with OK"}]}'
+
+curl -fsS http://127.0.0.1:4000/v1/embeddings \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"hawki-ollama-embedding","input":["HAWKI RAG smoke test"]}'
+```
+
 ## Main Pages
 
 - Experience hub: `http://localhost:8080/hawki-rag`
@@ -163,7 +227,7 @@ Then open `http://localhost:8081`.
 
 HAWKI RAG uses Laravel for the web app, Python FastAPI for retrieval, Temporal for
 ingestion workflows, PostgreSQL for metadata, Qdrant for vector search, Neo4j for graph
-search, and Ollama for local AI models.
+search, and LiteLLM to route model calls to local Ollama or configured cloud providers.
 
 Default models:
 

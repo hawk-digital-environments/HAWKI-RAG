@@ -86,6 +86,7 @@ readonly class IngestSourceWorkflowPayloadFactory
                 'provider' => $modelRuntime['provider'],
                 'graph_model' => $modelRuntime['graph_model'],
                 'embedding_model' => $modelRuntime['embedding_model'],
+                'vision_model' => $modelRuntime['vision_model'],
                 'graph' => $this->graphEnabled($metadata),
                 'collection' => $metadata['dataset']['qdrant_collection'] ?? null,
                 'neo4j_namespace' => $metadata['dataset']['neo4j_namespace'] ?? null,

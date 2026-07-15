@@ -18,7 +18,8 @@
 ## How This Project Implements RAG
 - **Vector DB (Qdrant):** Stores meanings of text as numbers (“embeddings”).
 - **Graph DB (Neo4j):** Stores entities/relationships extracted from text.
-- **Models (Ollama):** Runs `bge-m3` for embeddings; `llama3.1:8b` to write answers; `llama3.2:1b` for fast graph tasks; `qwen2.5vl:7b` for image understanding.
+- **Model gateway (LiteLLM):** Gives HAWKI one OpenAI-compatible boundary and routes stable aliases to local Ollama by default, or to configured OpenAI and Anthropic models. Provider credentials stay at the proxy.
+- **Local models (Ollama):** Runs `bge-m3` for embeddings, `llama3.1:8b` for answers/graph work, and `qwen2.5vl:7b` for image understanding behind LiteLLM aliases.
 - **Bridge (Python FastAPI):** Ingests documents, chunks text, makes embeddings/graph, saves to Qdrant/Neo4j.
 - **Temporal:** Durable source-ingestion workflow orchestration for scrape, conversion, ingestion, retries, cancellation, and schedules.
 - **Reranker (Python):** Improves ordering of search results.
@@ -35,6 +36,9 @@ flowchart TB
     Pipeline --> Qdrant[("Qdrant Vectors")]
     Pipeline -. optional .-> Neo4j[("Neo4j Structure")]
     Pipeline -. optional .-> Rerank["External Reranker"]
+    Pipeline --> LiteLLM["LiteLLM Model Gateway"]
+    LiteLLM --> Ollama["Local Ollama"]
+    LiteLLM -. configured .-> Cloud["OpenAI / Anthropic"]
 
     Pipeline --> Result["Retrieved context"]
     Result --> Laravel --> UI
@@ -43,9 +47,9 @@ flowchart TB
     classDef data fill:#f1fbf7,color:#0f172a,stroke:#2c8f67,stroke-width:1.5px,font-size:16px;
     classDef side fill:#eef2ff,color:#0f172a,stroke:#4f46e5,stroke-width:1.5px,font-size:16px;
 
-    class UI,Laravel,Bridge,Pipeline,Result core;
+    class UI,Laravel,Bridge,Pipeline,Result,LiteLLM core;
     class Qdrant,Neo4j data;
-    class Rerank side;
+    class Rerank,Ollama,Cloud side;
 ```
 
 ## Key Concepts Explained

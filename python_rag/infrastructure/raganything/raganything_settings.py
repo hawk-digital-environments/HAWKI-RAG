@@ -6,6 +6,13 @@ import re
 from dataclasses import dataclass
 
 
+DEFAULT_GRAPH_EMBEDDING_DIMENSIONS = (
+    "hawki-ollama-embedding=1024,"
+    "hawki-openai-embedding=1536,"
+    "hawki-embedding=1024"
+)
+
+
 def _bool_env(name: str, default: bool = False) -> bool:
     value = str(os.environ.get(name, "")).strip().lower()
     if not value:
@@ -68,6 +75,7 @@ class RagAnythingGraphSettings:
     graph_model: str
     vision_model: str
     embed_model: str
+    graph_embedding_dimensions: str
     neo4j_uri: str
     neo4j_user: str
     neo4j_username: str
@@ -92,6 +100,16 @@ def load_raganything_graph_settings() -> RagAnythingGraphSettings:
     if not vision_model:
         vision_model = os.environ.get("OLLAMA_VISION_MODEL", "qwen2.5vl:7b").strip()
 
+    custom_embedding_dimensions = os.environ.get(
+        "GRAPH_EMBEDDING_DIMENSIONS",
+        "",
+    ).strip()
+    graph_embedding_dimensions = DEFAULT_GRAPH_EMBEDDING_DIMENSIONS
+    if custom_embedding_dimensions:
+        graph_embedding_dimensions = (
+            f"{DEFAULT_GRAPH_EMBEDDING_DIMENSIONS},{custom_embedding_dimensions}"
+        )
+
     return RagAnythingGraphSettings(
         graph_perf_log=_bool_env("GRAPH_PERF_LOG"),
         graph_debug=_bool_env("GRAPH_DEBUG"),
@@ -110,6 +128,7 @@ def load_raganything_graph_settings() -> RagAnythingGraphSettings:
         graph_model=graph_model,
         vision_model=vision_model,
         embed_model=os.environ.get("OLLAMA_EMBED_MODEL", "").strip(),
+        graph_embedding_dimensions=graph_embedding_dimensions,
         neo4j_uri=neo4j_uri,
         neo4j_user=os.environ.get("NEO4J_USER", "").strip(),
         neo4j_username=os.environ.get("NEO4J_USERNAME", "").strip(),

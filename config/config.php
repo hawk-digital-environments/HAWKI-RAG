@@ -20,6 +20,7 @@ return [
 
 
     'hawki_rag_bridge_url' => env('HAWKI_RAG_BRIDGE_URL', 'http://hawki_rag_bridge:8000'),
+    'hawki_rag_query_timeout' => (int) env('HAWKI_RAG_QUERY_TIMEOUT', 300),
     'qdrant_http_url' => env('QDRANT_HTTP_URL', 'http://qdrant:6333'),
     'neo4j_http_url' => env('NEO4J_HTTP_URL', 'http://hawki_rag_neo4j:7474'),
     'neo4j_user' => env('NEO4J_USER', 'neo4j'),
@@ -51,7 +52,7 @@ return [
     'chunk_overlap_size' => (int) env('CHUNK_OVERLAP_SIZE', 250),
     'ingest_batch_size' => (int) env('INGEST_BATCH_SIZE', 64),
     'graph_engine' => env('GRAPH_ENGINE', 'raganything'),
-    'graph_provider' => env('GRAPH_PROVIDER', 'ollama'),
+    'graph_provider' => env('GRAPH_PROVIDER', 'litellm'),
     'graph_doc_max_chars' => (int) env('GRAPH_DOC_MAX_CHARS', 0),
     'graph_doc_max_chunks' => (int) env('GRAPH_DOC_MAX_CHUNKS', 0),
     'graph_reset_cache_per_doc' => filter_var(env('GRAPH_RESET_CACHE_PER_DOC', true), FILTER_VALIDATE_BOOLEAN),

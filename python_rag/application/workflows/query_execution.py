@@ -22,6 +22,8 @@ from application.workflows.query_settings import (
     search_top_k as configured_search_top_k,
 )
 from application.workflows.query_scope import build_scoped_query_filters
+from application.workflows.provider_overrides import apply_provider_overrides
+from application.workflows.query_context import build_grounded_answer_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -82,6 +84,9 @@ def run_query_documents(
     extract_terms_fn: Callable[[str], list[str]] = _extract_terms,
     terms_from_payload_fn: Callable[[dict[str, Any]], list[str]] = _terms_from_payload,
     set_fast_mode_fn: Callable[[bool], None] = _set_fast_mode_env,
+    build_grounded_answer_prompt_fn: Callable[
+        [str, list[dict[str, Any]], list[dict[str, str]]], tuple[str, str]
+    ] = build_grounded_answer_prompt,
 ) -> dict[str, Any]:
     """Run the query orchestration used by `/query` with injectable collaborators."""
     timings: dict[str, float] = {}
@@ -98,6 +103,7 @@ def run_query_documents(
         raise HTTPException(status_code=400, detail="Query is empty after sanitization.")
 
     provider = get_provider(body.provider)
+    apply_provider_overrides(provider, body)
     qdrant = qdrant_ctor()
     authorized_scope = body.authorized_scope
     qdrant.select_scoped_collection(authorized_scope.qdrant_collection)
@@ -275,9 +281,26 @@ def run_query_documents(
 
     answer = ""
     output_safety = {"blocked": False, "issues": [], "answer": ""}
-    if generation_enabled_fn() and context_summaries:
-        output_safety = enforce_output_safety_fn(answer)
+    t_generation_start = time.perf_counter()
+    if bool(getattr(body, "generate", True)) and generation_enabled_fn() and context_summaries:
+        system_prompt, user_prompt = build_grounded_answer_prompt_fn(
+            rewritten_query,
+            context_summaries,
+            kg_facts,
+        )
+        try:
+            generated_answer = provider.chat(
+                system_prompt,
+                [{"role": "user", "content": user_prompt}],
+                temperature=0.0,
+            )
+        except Exception as exc:
+            logger.exception("query:generation failed")
+            raise HTTPException(status_code=502, detail="Answer generation failed.") from exc
+
+        output_safety = enforce_output_safety_fn(str(generated_answer or ""))
         answer = output_safety["answer"]
+    timings["generation_ms"] = (time.perf_counter() - t_generation_start) * 1000
 
     return {
         "ok": True,
@@ -310,6 +333,7 @@ def run_query_documents(
                 "graph": timings.get("graph_ms"),
                 "rerank": timings.get("rerank_ms"),
                 "kg": timings.get("kg_ms"),
+                "generation": timings.get("generation_ms"),
             },
         },
     }

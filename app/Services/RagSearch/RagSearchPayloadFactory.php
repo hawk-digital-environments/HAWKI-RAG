@@ -25,6 +25,8 @@ readonly class RagSearchPayloadFactory
             'authorized_scope' => $scope->toArray(),
             'top_k' => $topK,
             'provider' => $modelRuntime['provider'],
+            'chat_model' => $modelRuntime['graph_model'],
+            'vision_model' => $modelRuntime['vision_model'],
             'generate' => false,
             'reranker' => 'external',
             'rerank_top_n' => 20,

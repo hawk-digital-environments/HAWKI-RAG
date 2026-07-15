@@ -23,6 +23,8 @@ Open `.env` in an editor and set:
 | `TAVILY_SEARCH_API_KEY` | Optional | If `WEB_SEARCH_PROVIDER=tavily` |
 | `BRAVE_SEARCH_API_KEY` | Optional | If `WEB_SEARCH_PROVIDER=brave` |
 | `JINA_API_KEY` | Optional | Only if reranker mode is `jina` |
+| `OPENAI_API_KEY` | Optional | Enables the GPT chat/vision and OpenAI embedding aliases in LiteLLM |
+| `ANTHROPIC_API_KEY` | Optional | Enables the Claude chat/vision aliases in LiteLLM |
 
 ## Step 3 - Create Docker networks
 - Command: `make network`
@@ -35,9 +37,15 @@ Open `.env` in an editor and set:
 - Command: `make up-core`
 
 :::tip "Verification"
-    `docker ps` should show containers such as `hawki_rag_app`, `hawki_qdrant`, `hawki_rag_bridge`, `hawki_rag_rerank`, `hawki_rag_neo4j`, `hawki_ollama`, `hawki_rag_postgres`, `temporal`, and `temporal_ui`.
+    `docker ps` should show containers such as `hawki_rag_app`, `hawki_qdrant`, `hawki_rag_bridge`, `hawki_rag_rerank`, `hawki_rag_neo4j`, `hawki_ollama`, `hawki_litellm`, `hawki_rag_postgres`, `temporal`, and `temporal_ui`.
 :::
 
 ## Step 5 - Health check everything
 - Commands: `make health` and `make test-services`
 - You should be able to see `OK` for all components.
+
+Confirm that the default model gateway loaded its aliases:
+
+```bash
+curl -fsS http://127.0.0.1:4000/v1/models
+```

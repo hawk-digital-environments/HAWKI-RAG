@@ -20,6 +20,20 @@
         provider?: string;
         graph_model?: string;
         embedding_model?: string;
+        vision_model?: string;
+    }
+
+    interface ModelOption {
+        value: string;
+        label: string;
+    }
+
+    interface EnvironmentVariable {
+        name: string;
+        placeholder: string;
+        description: string;
+        secret: boolean;
+        configured: boolean;
     }
 
     interface ProviderOption {
@@ -27,10 +41,21 @@
         label: string;
         runtimeSupported: boolean;
         embeddingSupported: boolean;
+        configurationMode?: string;
+        modelSelectionMode?: string;
+        description?: string;
         apiUrl: string;
         apiKeySet: boolean;
         defaultGraphModel: string;
         defaultEmbeddingModel: string;
+        defaultVisionModel?: string;
+        graphModelPlaceholder?: string;
+        embeddingModelPlaceholder?: string;
+        visionModelPlaceholder?: string;
+        graphModelOptions?: ModelOption[];
+        embeddingModelOptions?: ModelOption[];
+        visionModelOptions?: ModelOption[];
+        environmentVariables?: EnvironmentVariable[];
     }
 
     interface SettingsConfig {
@@ -72,14 +97,25 @@
     }: Props = $props();
 
     const fallbackProvider: ProviderOption = {
-        key: 'ollama',
-        label: 'Ollama',
+        key: 'litellm',
+        label: 'LiteLLM Gateway',
         runtimeSupported: true,
         embeddingSupported: true,
+        configurationMode: 'environment',
+        modelSelectionMode: 'settings',
+        description: '',
         apiUrl: '',
         apiKeySet: false,
         defaultGraphModel: '',
         defaultEmbeddingModel: '',
+        defaultVisionModel: '',
+        graphModelPlaceholder: '',
+        embeddingModelPlaceholder: '',
+        visionModelPlaceholder: '',
+        graphModelOptions: [],
+        embeddingModelOptions: [],
+        visionModelOptions: [],
+        environmentVariables: [],
     };
 
     let providers = $state<ProviderOption[]>(initialProviders());
@@ -93,6 +129,7 @@
     let activeProvider = $state(initialActiveProvider());
     let graphModel = $state(initialGraphModel());
     let embeddingModel = $state(initialEmbeddingModel());
+    let visionModel = $state(initialVisionModel());
     let providerForms = $state<Record<string, ProviderForm>>(initialProviderForms());
     let busy = $state(false);
     let status = $state('Settings are loaded.');
@@ -127,15 +164,34 @@
     }
 
     function initialActiveProvider(): string {
-        return initialConfig.models?.provider || providers[0]?.key || 'ollama';
+        return initialConfig.models?.provider || providers[0]?.key || 'litellm';
     }
 
     function initialGraphModel(): string {
-        return initialConfig.models?.graph_model || providers[0]?.defaultGraphModel || '';
+        const provider = providers.find((item) => item.key === initialActiveProvider()) || providers[0];
+        if (provider && isModelSelectionManaged(provider)) {
+            return provider.defaultGraphModel || '';
+        }
+
+        return initialConfig.models?.graph_model || provider?.defaultGraphModel || '';
     }
 
     function initialEmbeddingModel(): string {
-        return initialConfig.models?.embedding_model || providers[0]?.defaultEmbeddingModel || '';
+        const provider = providers.find((item) => item.key === initialActiveProvider()) || providers[0];
+        if (provider && isModelSelectionManaged(provider)) {
+            return provider.defaultEmbeddingModel || '';
+        }
+
+        return initialConfig.models?.embedding_model || provider?.defaultEmbeddingModel || '';
+    }
+
+    function initialVisionModel(): string {
+        const provider = providers.find((item) => item.key === initialActiveProvider()) || providers[0];
+        if (provider && isModelSelectionManaged(provider)) {
+            return provider.defaultVisionModel || '';
+        }
+
+        return initialConfig.models?.vision_model || provider?.defaultVisionModel || '';
     }
 
     function initialProviderForms(): Record<string, ProviderForm> {
@@ -169,7 +225,40 @@
     }
 
     function providerState(provider: ProviderOption): string {
-        return provider.runtimeSupported ? 'available' : 'not active';
+        if (provider.runtimeSupported) return 'runtime boundary available';
+        if (provider.configurationMode === 'proxy') {
+            const secretVariables = (provider.environmentVariables || []).filter((variable) => variable.secret);
+            if (secretVariables.length === 0) return 'local proxy upstream';
+
+            return secretVariables.every((variable) => variable.configured)
+                ? 'proxy upstream configured'
+                : 'proxy upstream · key missing';
+        }
+
+        return 'not active';
+    }
+
+    function isEnvironmentManaged(provider: ProviderOption): boolean {
+        return provider.configurationMode !== undefined
+            ? provider.configurationMode !== 'settings'
+            : provider.key === 'litellm';
+    }
+
+    function isModelSelectionManaged(provider: ProviderOption): boolean {
+        return provider.modelSelectionMode !== undefined
+            ? provider.modelSelectionMode !== 'settings'
+            : isEnvironmentManaged(provider);
+    }
+
+    function selectProvider(providerKey: string): void {
+        const provider = providers.find((item) => item.key === providerKey);
+        if (!provider || !provider.runtimeSupported) return;
+
+        activeProvider = provider.key;
+        graphModel = provider.defaultGraphModel || '';
+        embeddingModel = provider.embeddingSupported ? provider.defaultEmbeddingModel || '' : '';
+        visionModel = provider.defaultVisionModel || '';
+        setStatus(`${provider.label} selected. Save settings to activate this runtime.`);
     }
 
     function providerApiKeyPlaceholder(provider: ProviderOption): string {
@@ -187,9 +276,17 @@
         customApiKey = '';
         customClearApiKey = false;
         customApiKeySet = Boolean(payload.customConverter?.apiKeySet);
-        activeProvider = payload.models?.provider || providers[0]?.key || 'ollama';
-        graphModel = payload.models?.graph_model || selectedProvider?.defaultGraphModel || '';
-        embeddingModel = payload.models?.embedding_model || selectedProvider?.defaultEmbeddingModel || '';
+        activeProvider = payload.models?.provider || providers[0]?.key || 'litellm';
+        const provider = providers.find((item) => item.key === activeProvider) || providers[0] || fallbackProvider;
+        graphModel = isModelSelectionManaged(provider)
+            ? provider.defaultGraphModel || ''
+            : payload.models?.graph_model || provider.defaultGraphModel || '';
+        embeddingModel = isModelSelectionManaged(provider)
+            ? provider.defaultEmbeddingModel || ''
+            : payload.models?.embedding_model || provider.defaultEmbeddingModel || '';
+        visionModel = isModelSelectionManaged(provider)
+            ? provider.defaultVisionModel || ''
+            : payload.models?.vision_model || provider.defaultVisionModel || '';
         providerForms = providerFormDefaults(providers);
     }
 
@@ -205,7 +302,7 @@
     }
 
     function credentialPayload(): Record<string, {apiUrl: string; apiKey: string; clearApiKey: boolean}> {
-        return Object.fromEntries(providers.map((provider) => {
+        return Object.fromEntries(providers.filter((provider) => !isEnvironmentManaged(provider)).map((provider) => {
             const form = providerForms[provider.key] || {
                 apiUrl: '',
                 apiKey: '',
@@ -247,6 +344,7 @@
                         provider: activeProvider,
                         graphModel: graphModel.trim(),
                         embeddingModel: embeddingModel.trim(),
+                        visionModel: visionModel.trim(),
                     },
                     providerCredentials: credentialPayload(),
                 }),
@@ -273,7 +371,7 @@
     <DashboardHeader
         eyebrow="HAWKI RAG settings"
         title="Settings"
-        copy="Converter defaults, provider credentials, and graph extraction model choices."
+        copy="Converter defaults, provider connections, and graph extraction model choices."
         active="settings"
     />
 
@@ -321,7 +419,7 @@
         <section class="settings-panel" aria-labelledby="settings-model-title">
             <div class="section-head">
                 <div>
-                    <h2 id="settings-model-title">Graph Extraction Runtime</h2>
+                    <h2 id="settings-model-title">RAG Model Runtime</h2>
                     <p>{selectedProvider?.label || 'Provider'} · {providerState(selectedProvider)}</p>
                 </div>
             </div>
@@ -329,7 +427,11 @@
             <div class="settings-grid">
                 <div>
                     <label for="settings-provider">Provider</label>
-                    <select id="settings-provider" bind:value={activeProvider}>
+                    <select
+                        id="settings-provider"
+                        value={activeProvider}
+                        onchange={(event) => selectProvider(event.currentTarget.value)}
+                    >
                         {#each providers as provider (provider.key)}
                             <option value={provider.key} disabled={!provider.runtimeSupported}>
                                 {provider.label} {provider.runtimeSupported ? '' : '(not active)'}
@@ -338,21 +440,104 @@
                     </select>
                 </div>
                 <div>
-                    <label for="settings-graph-model">Graph model</label>
-                    <input id="settings-graph-model" type="text" bind:value={graphModel} autocomplete="off" />
+                    <label for="settings-graph-model">Chat / graph alias</label>
+                    <input
+                        id="settings-graph-model"
+                        type="text"
+                        bind:value={graphModel}
+                        list="settings-graph-model-options"
+                        placeholder={selectedProvider.graphModelPlaceholder || 'hawki-ollama-chat'}
+                        autocomplete="off"
+                        disabled={isModelSelectionManaged(selectedProvider)}
+                    />
+                    <datalist id="settings-graph-model-options">
+                        {#each selectedProvider.graphModelOptions || [] as option (option.value)}
+                            <option value={option.value}>{option.label}</option>
+                        {/each}
+                    </datalist>
                 </div>
                 <div>
-                    <label for="settings-embedding-model">Embedding model</label>
-                    <input id="settings-embedding-model" type="text" bind:value={embeddingModel} autocomplete="off" disabled={!selectedProvider?.embeddingSupported} />
+                    <label for="settings-embedding-model">Embedding alias</label>
+                    <input
+                        id="settings-embedding-model"
+                        type="text"
+                        bind:value={embeddingModel}
+                        list="settings-embedding-model-options"
+                        placeholder={selectedProvider.embeddingModelPlaceholder || 'hawki-ollama-embedding'}
+                        autocomplete="off"
+                        disabled={!selectedProvider?.embeddingSupported || isModelSelectionManaged(selectedProvider)}
+                    />
+                    <datalist id="settings-embedding-model-options">
+                        {#each selectedProvider.embeddingModelOptions || [] as option (option.value)}
+                            <option value={option.value}>{option.label}</option>
+                        {/each}
+                    </datalist>
+                </div>
+                <div>
+                    <label for="settings-vision-model">Vision alias</label>
+                    <input
+                        id="settings-vision-model"
+                        type="text"
+                        bind:value={visionModel}
+                        list="settings-vision-model-options"
+                        placeholder={selectedProvider.visionModelPlaceholder || 'hawki-ollama-vision'}
+                        autocomplete="off"
+                        disabled={isModelSelectionManaged(selectedProvider)}
+                    />
+                    <datalist id="settings-vision-model-options">
+                        {#each selectedProvider.visionModelOptions || [] as option (option.value)}
+                            <option value={option.value}>{option.label}</option>
+                        {/each}
+                    </datalist>
                 </div>
             </div>
+
+            <p class="settings-model-safety">
+                Chat and vision aliases apply immediately. The embedding alias is captured when a dataset is created; existing datasets keep their ingestion alias and require re-ingestion to change vector models.
+            </p>
+
+            {#if isEnvironmentManaged(selectedProvider)}
+                <aside class="settings-runtime-note" data-provider={selectedProvider.key}>
+                    <div class="settings-runtime-note__head">
+                        <strong>Deployment-managed connection</strong>
+                        <span>Connectivity is not checked on this page</span>
+                    </div>
+                    <p>
+                        {selectedProvider.description || `${selectedProvider.label} is configured by the server environment.`}
+                        This page may select allowlisted route aliases, but it does not expose or change the Python runtime endpoint or provider API keys.
+                    </p>
+                    <dl class="settings-runtime-facts">
+                        <div>
+                            <dt>Endpoint</dt>
+                            <dd><code>{selectedProvider.apiUrl || 'Not reported'}</code></dd>
+                        </div>
+                        <div>
+                            <dt>Chat / graph alias</dt>
+                            <dd><code>{graphModel || selectedProvider.defaultGraphModel || 'Not reported'}</code></dd>
+                        </div>
+                        <div>
+                            <dt>Embedding alias</dt>
+                            <dd><code>{embeddingModel || selectedProvider.defaultEmbeddingModel || 'Not reported'}</code></dd>
+                        </div>
+                        {#if selectedProvider.defaultVisionModel}
+                            <div>
+                                <dt>Vision alias</dt>
+                                <dd><code>{visionModel || selectedProvider.defaultVisionModel}</code></dd>
+                            </div>
+                        {/if}
+                    </dl>
+                    <p class="settings-runtime-note__hint">
+                        Update the deployment environment and recreate LiteLLM/Python services to change endpoints, upstream models, or secrets.
+                    </p>
+                </aside>
+            {/if}
         </section>
 
         <section class="settings-panel settings-provider-panel" aria-labelledby="settings-provider-credentials-title">
             <div class="section-head">
                 <div>
-                    <h2 id="settings-provider-credentials-title">Provider Credentials</h2>
-                    <p>{providers.length} providers configured</p>
+                    <h2 id="settings-provider-credentials-title">LiteLLM Proxy &amp; Upstreams</h2>
+                    <p>Placeholders only · secret values never leave the deployment environment</p>
                 </div>
             </div>
 
@@ -364,25 +549,57 @@
                                 <h3>{provider.label}</h3>
                                 <span>{providerState(provider)}</span>
                             </div>
-                            {#if providerForms[provider.key]?.apiKeySet}
+                            {#if isEnvironmentManaged(provider)}
+                                <strong>deployment managed</strong>
+                            {:else if providerForms[provider.key]?.apiKeySet}
                                 <strong>key stored</strong>
                             {/if}
                         </div>
-                        <div class="settings-grid">
-                            <div>
-                                <label for={`settings-provider-url-${provider.key}`}>API URL</label>
-                                <input id={`settings-provider-url-${provider.key}`} type="url" bind:value={providerForms[provider.key].apiUrl} autocomplete="off" />
+                        {#if isEnvironmentManaged(provider)}
+                            <div class="settings-managed-connection">
+                                <p>{provider.description || `${provider.label} connection details are supplied by the deployment environment.`}</p>
+                                <div>
+                                    <span>Endpoint</span>
+                                    <code>{provider.apiUrl || 'Not reported'}</code>
+                                </div>
+                                {#if provider.environmentVariables?.length}
+                                    <dl class="settings-environment-list">
+                                        {#each provider.environmentVariables as variable (variable.name)}
+                                            <div>
+                                                <dt>
+                                                    <code>{variable.name}</code>
+                                                    {#if variable.secret}
+                                                        <span data-configured={variable.configured}>
+                                                            {variable.configured ? 'configured' : 'not configured'}
+                                                        </span>
+                                                    {/if}
+                                                </dt>
+                                                <dd>
+                                                    <code>{variable.placeholder}</code>
+                                                    {#if variable.description}<small>{variable.description}</small>{/if}
+                                                </dd>
+                                            </div>
+                                        {/each}
+                                    </dl>
+                                {/if}
                             </div>
-                            <div>
-                                <label for={`settings-provider-key-${provider.key}`}>API key</label>
-                                <input id={`settings-provider-key-${provider.key}`} type="password" bind:value={providerForms[provider.key].apiKey} placeholder={providerApiKeyPlaceholder(provider)} autocomplete="off" />
+                        {:else}
+                            <div class="settings-grid">
+                                <div>
+                                    <label for={`settings-provider-url-${provider.key}`}>API URL</label>
+                                    <input id={`settings-provider-url-${provider.key}`} type="url" bind:value={providerForms[provider.key].apiUrl} autocomplete="off" />
+                                </div>
+                                <div>
+                                    <label for={`settings-provider-key-${provider.key}`}>API key</label>
+                                    <input id={`settings-provider-key-${provider.key}`} type="password" bind:value={providerForms[provider.key].apiKey} placeholder={providerApiKeyPlaceholder(provider)} autocomplete="off" />
+                                </div>
                             </div>
-                        </div>
-                        {#if providerForms[provider.key]?.apiKeySet}
-                            <label class="settings-inline-check" for={`settings-provider-clear-${provider.key}`}>
-                                <input id={`settings-provider-clear-${provider.key}`} type="checkbox" bind:checked={providerForms[provider.key].clearApiKey} />
-                                <span>Clear stored API key</span>
-                            </label>
+                            {#if providerForms[provider.key]?.apiKeySet}
+                                <label class="settings-inline-check" for={`settings-provider-clear-${provider.key}`}>
+                                    <input id={`settings-provider-clear-${provider.key}`} type="checkbox" bind:checked={providerForms[provider.key].clearApiKey} />
+                                    <span>Clear stored API key</span>
+                                </label>
+                            {/if}
                         {/if}
                     </article>
                 {/each}
@@ -524,6 +741,135 @@
         border-color: rgba(251, 191, 36, 0.3);
     }
 
+    .settings-runtime-note {
+        display: grid;
+        gap: 0.75rem;
+        margin-top: 0.95rem;
+        border: 1px solid rgba(56, 189, 248, 0.28);
+        border-radius: 0.65rem;
+        padding: 0.85rem;
+        background: rgba(8, 47, 73, 0.24);
+    }
+
+    .settings-runtime-note p,
+    .settings-managed-connection p {
+        margin: 0;
+        color: #cbd5e1;
+        font-size: 0.86rem;
+        line-height: 1.5;
+    }
+
+    .settings-runtime-note__head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 0.45rem 1rem;
+    }
+
+    .settings-runtime-note__head strong {
+        color: #e0f2fe;
+        font-size: 0.9rem;
+    }
+
+    .settings-runtime-note__head span,
+    .settings-runtime-note__hint {
+        color: #7dd3fc !important;
+        font-size: 0.78rem !important;
+    }
+
+    .settings-runtime-facts {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 0.65rem;
+        margin: 0;
+    }
+
+    .settings-runtime-facts > div,
+    .settings-managed-connection > div {
+        display: grid;
+        gap: 0.3rem;
+        min-width: 0;
+    }
+
+    .settings-runtime-facts dt,
+    .settings-managed-connection span {
+        color: #93c5fd;
+        font-size: 0.75rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+    }
+
+    .settings-runtime-facts dd {
+        min-width: 0;
+        margin: 0;
+    }
+
+    .settings-runtime-facts code,
+    .settings-managed-connection code {
+        display: block;
+        overflow-wrap: anywhere;
+        color: #f8fafc;
+        font-size: 0.82rem;
+    }
+
+    .settings-managed-connection {
+        display: grid;
+        gap: 0.65rem;
+    }
+
+    .settings-model-safety {
+        margin-top: 0.8rem !important;
+        color: #fcd34d !important;
+        line-height: 1.45;
+    }
+
+    .settings-environment-list {
+        display: grid;
+        gap: 0.55rem;
+        margin: 0;
+    }
+
+    .settings-environment-list > div {
+        display: grid;
+        grid-template-columns: minmax(190px, 0.7fr) minmax(0, 1.3fr);
+        gap: 0.5rem 0.8rem;
+        border-top: 1px solid rgba(148, 163, 184, 0.15);
+        padding-top: 0.55rem;
+    }
+
+    .settings-environment-list dt,
+    .settings-environment-list dd {
+        min-width: 0;
+        margin: 0;
+    }
+
+    .settings-environment-list dt {
+        display: grid;
+        align-content: start;
+        gap: 0.25rem;
+    }
+
+    .settings-environment-list dt span {
+        color: #fca5a5;
+        font-size: 0.72rem;
+    }
+
+    .settings-environment-list dt span[data-configured="true"] {
+        color: #86efac;
+    }
+
+    .settings-environment-list dd {
+        display: grid;
+        gap: 0.25rem;
+    }
+
+    .settings-environment-list small {
+        color: #94a3b8;
+        line-height: 1.35;
+    }
+
     .settings-actions {
         display: flex;
         align-items: center;
@@ -550,6 +896,10 @@
 
     @media (max-width: 760px) {
         .settings-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .settings-environment-list > div {
             grid-template-columns: 1fr;
         }
     }

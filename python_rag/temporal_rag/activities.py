@@ -687,8 +687,9 @@ def _post_ingest(
     )
     body = {
         "docs": docs,
-        "provider": ingest_options.get("provider") or "ollama",
+        "provider": ingest_options.get("provider") or "litellm",
         "embedding_model": ingest_options.get("embedding_model"),
+        "vision_model": ingest_options.get("vision_model"),
         "collection": ingest_options.get("collection"),
         "neo4j_database": ingest_options.get("neo4j_database") or ingest_options.get("neo4j_namespace"),
         "chunk_chars": int(ingest_options.get("chunk_chars") or 1200),

@@ -3,10 +3,10 @@
 | File/Path | Description |
 |---|---|
 | `Makefile` | Helper targets (`network`, `up-core`, `health`, `ingest`, logs/restart helpers) using docker compose and container exec. |
-| `docker-compose.yml` | Base Compose (CPU-safe default stack, including `ollama`). |
+| `docker-compose.yml` | Base Compose (CPU-safe default stack, including local `ollama` and the default `litellm` model gateway). |
 | `docker-compose-gpu-override.yml` | Optional NVIDIA override for `ollama` (used when GPU mode is enabled). |
 | `Dockerfile` | Multi-stage build for Python services: `python-rag` (bridge/API image) and `rerank` (local reranker). |
-| `docker/` | Dockerfiles and runtime assets (`laravel.Dockerfile`, `ollama.Dockerfile`, `qdrant.Dockerfile`, entrypoint/nginx configs). |
+| `docker/` | Dockerfiles and runtime assets, including `docker/litellm/config.yaml`, which maps public HAWKI aliases to Ollama, OpenAI, and Anthropic targets. |
 | `.env.example` | Template for runtime configuration. |
 
 ## Laravel (PHP) side
@@ -41,9 +41,16 @@
 | `HAWKI_RAG_BRIDGE_URL` | HAWKI-RAG bridge base URL used for query, ingest, health, and graph cache operations. |
 | `HAWKI_RAG_TEMPORAL_SHARED_ROOT` | Shared Temporal ingestion handoff root path inside containers. |
 | `TEMPORAL_ADDRESS` | Temporal frontend address used by Laravel and workers. |
-| `OLLAMA_API_URL` | Ollama API endpoint. |
-| `OLLAMA_EMBED_MODEL` | Embedding model name. |
-| `GRAPH_OLLAMA_RAG_MODEL` | Graph extraction model name. |
+| `RAG_DEFAULT_PROVIDER` | Runtime provider; the supported default is `litellm`. |
+| `LITELLM_API_URL` | OpenAI-compatible gateway endpoint used by the Python runtime. |
+| `LITELLM_API_KEY` | Optional bearer token when the selected gateway requires proxy authentication. |
+| `LITELLM_CHAT_MODEL` | Default allowlisted chat/graph alias. |
+| `LITELLM_EMBED_MODEL` | Default embedding alias used by the model runtime. |
+| `LITELLM_VISION_MODEL` | Default allowlisted vision alias. |
+| `LITELLM_*_ALIASES` | Comma-separated alias allowlists accepted by Laravel Settings. |
+| `LITELLM_OLLAMA_*` | Local Ollama endpoint and concrete model targets owned by LiteLLM. |
+| `LITELLM_OPENAI_*` / `OPENAI_API_KEY` | OpenAI target models and proxy-only credential. |
+| `LITELLM_ANTHROPIC_*` / `ANTHROPIC_API_KEY` | Anthropic target models and proxy-only credential. |
 
 ## Python side
 | Path | Description |

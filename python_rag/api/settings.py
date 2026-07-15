@@ -83,7 +83,7 @@ def load_app_settings(env: Mapping[str, str] | None = None) -> AppSettings:
     env_map = env or os.environ
     project_root = Path(__file__).resolve().parent.parent.parent
     return AppSettings(
-        rag_default_provider=_env_str(env_map, "RAG_DEFAULT_PROVIDER", "ollama"),
+        rag_default_provider=_env_str(env_map, "RAG_DEFAULT_PROVIDER", "litellm"),
         qdrant_distance=_env_str(env_map, "QDRANT_DISTANCE", "Cosine"),
         graph_engine=_env_str(env_map, "GRAPH_ENGINE", "raganything"),
         reranker_mode=_env_str(env_map, "RERANKER_MODE", "none"),

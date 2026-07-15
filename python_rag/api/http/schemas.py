@@ -21,7 +21,7 @@ class IngestDoc(BaseModel):
 
 class IngestRequest(BaseModel):
     docs: list[IngestDoc]
-    provider: str = "ollama"
+    provider: str = "litellm"
     embedding_model: str | None = None
     collection: str | None = None
     neo4j_database: str | None = None
@@ -32,6 +32,7 @@ class IngestRequest(BaseModel):
     graph: bool = False
     graph_engine: str = "raganything"
     graph_model: str | None = None
+    vision_model: str | None = None
     graph_only: bool = False
     idempotency_key: str | None = None
     dry_run: bool = False
@@ -69,7 +70,9 @@ class QueryRequest(BaseModel):
     query: str
     authorized_scope: AuthorizedQueryScope
     top_k: int = 5
-    provider: str = "ollama"
+    provider: str = "litellm"
+    chat_model: str | None = Field(default=None, max_length=160, pattern=r"^[A-Za-z0-9][A-Za-z0-9._:/-]*$")
+    vision_model: str | None = Field(default=None, max_length=160, pattern=r"^[A-Za-z0-9][A-Za-z0-9._:/-]*$")
     filters: dict[str, QueryFilterScalar] = Field(default_factory=dict)
     generate: bool = True
     is_optimized: bool = False

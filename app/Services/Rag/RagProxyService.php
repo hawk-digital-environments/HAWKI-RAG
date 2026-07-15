@@ -6,6 +6,7 @@ namespace App\Services\Rag;
 
 use App\Models\User;
 use App\Services\Authorization\DatasetQueryAuthorizationService;
+use App\Services\Settings\SettingsService;
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Contracts\Config\Repository as ConfigRepository;
 use Illuminate\Http\Client\Factory as HttpFactory;
@@ -17,6 +18,7 @@ readonly class RagProxyService
         private ConfigRepository $config,
         private HttpFactory $http,
         private DatasetQueryAuthorizationService $authorization,
+        private SettingsService $settings,
     ) {}
 
     /**
@@ -26,9 +28,13 @@ readonly class RagProxyService
     public function query(User $user, array $data): array
     {
         $scope = $this->authorization->authorize($user, (string) $data['dataset_id']);
+        $modelRuntime = $this->settings->modelRuntime();
         $payload = [
             'query' => $data['query'],
             'top_k' => $data['top_k'] ?? 5,
+            'provider' => $modelRuntime['provider'],
+            'chat_model' => $modelRuntime['graph_model'],
+            'vision_model' => $modelRuntime['vision_model'],
             'is_optimized' => $data['is_optimized'] ?? false,
             'generate' => $data['generate'] ?? true,
             'fast_mode' => $data['fast_mode'] ?? false,
@@ -45,7 +51,9 @@ readonly class RagProxyService
         }
 
         try {
-            $response = $this->http->timeout(60)->post($this->queryEndpoint(), $payload);
+            $response = $this->http
+                ->timeout(max(1, (int) $this->config->get('config.hawki_rag_query_timeout', 300)))
+                ->post($this->queryEndpoint(), $payload);
         } catch (\Throwable $exception) {
             return [
                 'status' => 502,

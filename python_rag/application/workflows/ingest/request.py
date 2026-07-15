@@ -5,6 +5,7 @@ import hashlib
 import os
 from typing import Any
 
+from application.workflows.provider_overrides import apply_provider_overrides
 from common.reliability import is_retry_safe_write
 
 
@@ -34,22 +35,6 @@ def infer_job_id(body: Any, docs: list[Any]) -> str | None:
     if doc_ids:
         return "|".join(doc_ids)
     return None
-
-
-def apply_provider_overrides(provider: Any, body: Any) -> None:
-    if provider is None:
-        return
-    embedding_model = getattr(body, "embedding_model", None)
-    if embedding_model and hasattr(provider, "embed_model"):
-        provider.embed_model = str(embedding_model).strip()
-    graph_model = getattr(body, "graph_model", None)
-    if graph_model and hasattr(provider, "rag_model"):
-        graph_model_value = str(graph_model).strip()
-        provider.rag_model = graph_model_value
-        try:
-            provider._explicit_graph_model = graph_model_value
-        except Exception:
-            pass
 
 
 def infer_operation_id(body: Any, docs: list[Any] | None = None, *, fallback: str | None = None) -> str | None:
