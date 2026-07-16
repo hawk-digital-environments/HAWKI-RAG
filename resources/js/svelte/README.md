@@ -38,5 +38,3 @@ Route ownership:
 - Browser pages and aliases stay in `routes/web_ui.php`.
 - Token-protected service routes stay in `routes/internal_api.php`.
 - Health, monitor, and repair routes stay in `routes/health.php`.
-
-The full route boundary is documented in `docs/hawki-rag-svelte-ui.md`.
