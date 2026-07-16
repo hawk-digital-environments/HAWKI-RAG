@@ -9,10 +9,22 @@ runner; it also collects the existing `unittest.TestCase` scenarios.
 
 RAWKI has two application boundaries with different security jobs:
 
-| Boundary | Owns | Must not own |
-| --- | --- | --- |
-| Laravel gateway | Browser session and Sanctum authentication, active-user checks, query-token abilities, development-principal policy, dataset grants, active-dataset lookup, and database-derived storage/model scope | It must not accept collection, namespace, model, graph, or authorization scope from a public query caller. |
-| Python RAG bridge | Pydantic validation of the trusted `authorized_scope`, mandatory dataset filtering, selection of exactly one Qdrant collection, scoped Neo4j reads, retrieval, reranking, generation, ingestion, and storage adapters | It does not authenticate a HAWKI user and does not decide whether a principal has a dataset grant. |
+- **Laravel gateway**
+
+  - Owns browser-session and Sanctum authentication, active-user checks,
+    query-token abilities, development-principal policy, dataset grants,
+    active-dataset lookup, and database-derived storage and model scope.
+  - Must not accept collection, namespace, model, graph, or authorization scope
+    from a public query caller.
+
+- **Python RAG bridge**
+
+  - Owns Pydantic validation of the trusted `authorized_scope`, mandatory
+    dataset filtering, selection of exactly one Qdrant collection, scoped
+    Neo4j reads, retrieval, reranking, generation, ingestion, and storage
+    adapters.
+  - Does not authenticate a HAWKI user or decide whether a principal has a
+    dataset grant.
 
 Laravel's
 [`DatasetQueryAuthorizationService`](../../app/Services/Authorization/DatasetQueryAuthorizationService.php)
@@ -51,95 +63,245 @@ bypass Laravel's principal and grant checks.
 ## Query flow
 
 ```mermaid
-flowchart LR
-    A[Browser session or Sanctum query token] --> B[Laravel query middleware]
-    B --> C[Validate public dataset_id, query, and safe filters]
-    C --> D[Resolve active HAWKI user]
-    D --> E[Join active dataset to explicit query grant]
-    E -->|unknown, unauthorized, or inactive| F[Uniform 404]
-    E --> G[Derive storage and embedding scope from database]
-    G -->|targets incomplete| H[Laravel dataset_not_ready]
-    G --> I[POST internal FastAPI /query with authorized_scope]
-    I --> J[Pydantic scope and provider validation]
-    J --> K[Select only the derived Qdrant collection]
-    K --> L[Mandatory dataset filter AND sanitized user filter]
-    L --> M[Vector, lexical, and optional rerank stages]
-    J --> N{graph_enabled?}
-    N -->|yes| O[Dataset and namespace scoped Neo4j retrieval]
-    N -->|no| P[No graph read]
-    M --> Q[Grounded context and optional answer generation]
-    O --> Q
-    P --> Q
-    Q --> R[Laravel forwards the bridge response]
+flowchart TD
+    subgraph Laravel["Laravel gateway — public trust boundary"]
+        A["Browser session or Sanctum query token"] --> B["Authenticate the query principal and require query ability"]
+        B --> C["Validate dataset_id, query options, and scalar metadata filters"]
+        C --> D["Resolve an active HAWKI user"]
+        D --> E{"Active dataset with an explicit query grant?"}
+        E -- "No" --> F["404 dataset_not_found<br/>Unknown, unauthorized, and inactive look identical"]
+        E -- "Yes" --> G["Derive authorized_scope and model runtime from database and settings"]
+        G --> H{"Collection, namespace, and embedding contract complete?"}
+        H -- "No" --> I["409 dataset_not_ready<br/>Python is not called"]
+        H -- "Yes" --> J["POST internal /query with server-derived authorized_scope"]
+    end
+
+    subgraph Python["Python bridge — trusted internal network"]
+        J --> K["Validate the scope, provider, and embedding vector space with Pydantic"]
+        K --> L["Select exactly authorized_scope.qdrant_collection"]
+        L --> M{"Scoped collection available?"}
+        M -- "No" --> N["503 dataset_not_ready<br/>Never search or fall back globally"]
+        M -- "Yes" --> O["Sanitize user filters and append the mandatory dataset_id predicate"]
+        O --> P["Embed with the dataset model<br/>Direct Ollama or selected LiteLLM alias; no provider fallback"]
+        P --> Q["Vector and lexical retrieval from only the selected collection"]
+        Q --> R["Fuse, optionally rerank, and trim retrieved sources"]
+
+        K --> S{"Graph retrieval enabled for this request?"}
+        S -- "Yes" --> T["Neo4j structural and KG reads constrained by dataset_id and namespace"]
+        S -- "No" --> U["Skip graph retrieval"]
+
+        R --> V["Build grounded context"]
+        T --> V
+        U --> V
+        V --> W{"Generate an answer?"}
+        W -- "Yes" --> X["Generate through the explicitly selected runtime and apply output safety"]
+        W -- "No" --> Y["Return ranked sources without generation"]
+        X --> Z["Return the scoped response"]
+        Y --> Z
+    end
+
+    Z --> AA["Laravel forwards the Python status and response body"]
 ```
 
-The Laravel incomplete-target error is currently HTTP 409. A collection that
-is named in a valid scope but missing in Qdrant is detected by Python and
-returned as HTTP 503. Tests document both boundaries.
+Readiness failures intentionally identify which boundary rejected the request:
+
+- Laravel returns HTTP 409 `dataset_not_ready` when the authorized database row
+  lacks a collection, namespace, embedding provider, or embedding model. The
+  bridge is not called.
+- Python returns HTTP 503 `dataset_not_ready` when a complete authorized scope
+  names a collection that is absent from Qdrant. It never uses
+  `QDRANT_SEARCH_ALL`, `QDRANT_FALLBACK_ALL`, or another collection.
+- Unknown, unauthorized, and inactive datasets all return the same HTTP 404
+  response so callers cannot enumerate dataset identities.
 
 ## Ingestion flow
 
 ```mermaid
-flowchart LR
-    A[Laravel upload or pipeline request] --> B[Create or resolve dataset, task, job, and source]
-    B --> C[Build workflow input with dataset storage and model settings]
-    C --> D[FastAPI Temporal bridge routes]
-    D --> E[Temporal IngestSourceWorkflow]
-    E --> F[Scrape or stage uploaded source]
-    F --> G[Inspect and convert files to Markdown]
-    G --> H[Build stable document IDs, hashes, and scoped payloads]
-    H --> I[POST FastAPI /ingest with idempotency key]
-    I --> J[Validate and chunk documents]
-    J --> K[Embed and upsert dataset-stamped Qdrant points]
-    J --> L[Optional triplet extraction and scoped Neo4j writes]
-    K --> M[Persist manifest and document metadata]
-    L --> M
-    M --> N[Mark source and pipeline job ready in PostgreSQL]
+flowchart TD
+    subgraph Gateway["Laravel gateway and metadata"]
+        A{"Upload, crawl, or scheduled source?"}
+        A -- "Upload" --> B["Persist the original file in shared storage"]
+        A -- "Crawl or schedule" --> C["Persist the source URL and refresh request"]
+        B --> D["Create or resolve dataset, task, job, and source records"]
+        C --> D
+        D --> E["Load the dataset collection, namespace, embedding contract, and selected runtime"]
+        E --> F["Start Temporal through the internal FastAPI route using storage references, not file bytes"]
+    end
+
+    subgraph Temporal["Temporal IngestSourceWorkflow"]
+        F --> G["Scrape the source or stage the uploaded file"]
+        G --> H["Inspect and convert source files to Markdown"]
+        H --> I["Read Markdown in bounded batches"]
+        I --> J["Build stable document IDs, content hashes, scoped payloads, and idempotency keys"]
+        J --> K["POST internal /ingest with the dataset storage and model contract"]
+    end
+
+    subgraph Bridge["Python ingestion bridge"]
+        K --> L["Validate collection, provider, embedding model, and graph scope"]
+        L --> M["Chunk and embed with the dataset model<br/>Direct Ollama or selected LiteLLM alias; no provider fallback"]
+        M --> N["Upsert dataset-stamped points into only the selected Qdrant collection"]
+
+        L --> O{"Graph requested with dataset_id and namespace?"}
+        O -- "Yes" --> P["Extract triplets and write dataset- and namespace-scoped Neo4j records"]
+        O -- "No" --> Q["Skip graph writes"]
+
+        N --> R["Return the per-batch ingestion summary"]
+        P --> R
+        Q --> R
+    end
+
+    subgraph Completion["Durable completion state"]
+        R --> S["Upsert document metadata and write the ingestion manifest"]
+        S --> T{"All required stages successful?"}
+        T -- "Yes" --> U["Mark the source and pipeline job ready in PostgreSQL"]
+        T -- "No" --> V["Record the failed phase; Temporal applies bounded activity retries"]
+    end
 ```
 
-Ingestion authorization is controlled before the internal worker call. The
-Python ingestion path validates conflicting graph scope and stamps trusted
-`dataset_id` and `neo4j_namespace` values on canonical graph records. Its
-write and management endpoints are internal service endpoints, not public
-authorization gates.
+Ingestion authorization is controlled before the internal worker call.
+Workflow history contains identifiers and storage references rather than PDF
+or Markdown bodies. The same dataset collection, namespace, embedding
+provider, and embedding model travel through every stage; stable document
+hashes and idempotency keys make retries safe. Python stamps `dataset_id` on
+Qdrant payloads and both `dataset_id` and `neo4j_namespace` on canonical graph
+records. Ingestion and management routes remain internal service endpoints,
+not public authorization gates.
 
 ## Test categories
 
-| Directory | Primary coverage |
-| --- | --- |
-| [`api/`](api/) | FastAPI schemas, settings, app construction, middleware/error envelopes, route delegation, and vertical query/ingest HTTP flows using `TestClient`. |
-| [`query/`](query/) | Authorized query scope, strict Qdrant selection, mandatory filters, lexical and high-recall fallbacks, rewrite/ranking/context orchestration, generation, and external reranker consumer contracts. |
-| [`ingest/`](ingest/) | Validation, Markdown cleanup, deterministic chunk/point construction, dry runs, incremental replacement, vector and graph commits, deletion, summaries, and ingestion CLI helpers. |
-| [`graph/`](graph/) | Triplet cleanup/extraction, cache behavior, Neo4j request construction, dataset-scoped reads and writes, namespace-scoped deletion, and graph runtime helpers. |
-| [`providers/`](providers/) | Ollama, LiteLLM, RAGAnything, embedding dimensions, multimodal payloads, provider selection, and safe upstream error normalization. |
-| [`temporal/`](temporal/) | Scraper/converter/activity contracts, shared path mapping, passthrough conversion, metadata persistence, and workflow-stage behavior. |
-| [`reliability/`](reliability/) | Retry/idempotency policy, startup checks, log redaction, transport telemetry, optional-import boundaries, shared-storage permissions, and refactor characterization. |
-| [`integration/`](integration/) | Opt-in compatibility tests against live Qdrant, Neo4j, Temporal, Ollama, and LiteLLM services. Resources are uniquely named and cleaned up; unavailable services skip unless strict mode is enabled. |
-| [`characterization_support.py`](characterization_support.py) | Shared optional-dependency stubs and FastAPI test helpers. It is support code, not a test module. |
+- [`api/`](api/): FastAPI schemas, settings, app construction,
+  middleware/error envelopes, route delegation, and vertical query and ingest
+  HTTP flows using `TestClient`.
+- [`query/`](query/): Authorized query scope, strict Qdrant selection,
+  mandatory filters, lexical and high-recall fallbacks,
+  rewrite/ranking/context orchestration, generation, and external reranker
+  consumer contracts.
+- [`ingest/`](ingest/): Validation, Markdown cleanup, deterministic chunk and
+  point construction, dry runs, incremental replacement, vector and graph
+  commits, deletion, summaries, and ingestion CLI helpers.
+- [`graph/`](graph/): Triplet cleanup and extraction, cache behavior, Neo4j
+  request construction, dataset-scoped reads and writes, namespace-scoped
+  deletion, and graph runtime helpers.
+- [`providers/`](providers/): Ollama, LiteLLM, RAGAnything, embedding
+  dimensions, multimodal payloads, provider selection, and safe upstream error
+  normalization.
+- [`temporal/`](temporal/): Scraper, converter, and activity contracts; shared
+  path mapping; passthrough conversion; metadata persistence; and workflow
+  stage behavior.
+- [`reliability/`](reliability/): Retry and idempotency policy, startup checks,
+  log redaction, transport telemetry, optional-import boundaries,
+  shared-storage permissions, and refactor characterization.
+- [`integration/`](integration/): Opt-in compatibility tests against live
+  Qdrant, Neo4j, Temporal, Ollama, and LiteLLM services. Resources are uniquely
+  named and cleaned up; unavailable services skip unless strict mode is
+  enabled.
+- [`characterization_support.py`](characterization_support.py): Shared
+  optional-dependency stubs and FastAPI test helpers. It is support code, not a
+  test module.
 
 ## FastAPI endpoint coverage
 
-The matrix lists every application-defined route in the main bridge and local
-reranker apps. "Direct" means a test sends an HTTP request through FastAPI's
-`TestClient`; deeper workflow tests may still replace network, model, and
-database boundaries with fakes.
+The following list covers every application-defined route in the main bridge
+and local reranker apps. "Direct" means a test sends an HTTP request through
+FastAPI's `TestClient`; deeper workflow tests may still replace network, model,
+and database boundaries with fakes.
 
-| Service | Method and route | Responsibility | Current test coverage |
-| --- | --- | --- | --- |
-| Main bridge | `GET /health` | Health plus optional graph runtime summary | Direct in `api/test_api_characterization.py`, including `runtime=false`. |
-| Main bridge | `GET /config` | Effective provider and Qdrant runtime information | Direct in `api/test_api_characterization.py` with fake provider/Qdrant boundaries. |
-| Main bridge | `POST /ingest` | Validate and delegate document ingestion; propagate idempotency | Direct vertical success, validation, and error-envelope coverage in `api/test_ingest_api_flow.py`; delegation is also characterized in `api/test_api_characterization.py`. |
-| Main bridge | `DELETE /documents/{doc_id}` | Delete one document from Qdrant and Neo4j | Direct contract coverage in `api/test_api_characterization.py` with fake stores; deeper scoped deletion tests live under `ingest/` and `graph/`. |
-| Main bridge | `PUT /documents/{doc_id}` | Delete and re-ingest a replacement document | Direct contract coverage in `api/test_api_characterization.py` with fake application functions. |
-| Main bridge | `POST /query` | Validate trusted scope and run dataset-scoped retrieval | Direct vertical success, 422, strict-scope, and 503-envelope coverage in `api/test_query_api_flow.py`; detailed scope/fallback tests live under `query/`. |
-| Main bridge | `POST /graph/from-text` | Extract graph facts from text | Direct success, 422, and normalized 502 coverage in `api/test_graph_api_flow.py`; live scoped Neo4j behavior is covered separately in `integration/test_neo4j_scoping.py`. |
-| Main bridge | `POST /graph/cache/clear` | Clear graph/RAGAnything caches | Direct in `api/test_api_characterization.py`; cache file behavior is covered under `graph/`. |
-| Main bridge | `POST /temporal/workflows/ingest` | Start an ingest workflow | Direct success, 422, and normalized 502 coverage in `api/test_temporal_api_flow.py`; the production workflow is also executed against live Temporal in `integration/test_temporal_ingestion.py`. |
-| Main bridge | `POST /temporal/schedules/ingest` | Create or update an ingest schedule | Direct success, 422, and normalized 502 coverage in `api/test_temporal_api_flow.py`. |
-| Main bridge | `POST /temporal/schedules/delete` | Delete an ingest schedule | Direct success, 422, and normalized 502 coverage in `api/test_temporal_api_flow.py`. |
-| Main bridge | `POST /temporal/workflows/cancel` | Cancel a workflow/run | Direct success, 422, and normalized 502 coverage in `api/test_temporal_api_flow.py`. |
-| Local reranker | `GET /health` | Report that the reranker process is available | Direct in `api/test_reranker_api_flow.py` with the download-heavy model constructor replaced. |
-| Local reranker | `POST /v1/rerank` | Cohere-shaped reranking with a local CrossEncoder | Direct ranking, validation, and client-error coverage in `api/test_reranker_api_flow.py`; the query-side consumer contract remains covered in `query/test_reranker_contract.py`. |
+### Main bridge
+
+- **`GET /health`**
+
+  - Responsibility: Return health information and the optional graph runtime
+    summary.
+  - Coverage: Direct in `api/test_api_characterization.py`, including
+    `runtime=false`.
+
+- **`GET /config`**
+
+  - Responsibility: Return effective provider and Qdrant runtime information.
+  - Coverage: Direct in `api/test_api_characterization.py` with fake provider
+    and Qdrant boundaries.
+
+- **`POST /ingest`**
+
+  - Responsibility: Validate and delegate document ingestion while propagating
+    the idempotency key.
+  - Coverage: Direct vertical success, validation, and error-envelope coverage
+    in `api/test_ingest_api_flow.py`; delegation is also characterized in
+    `api/test_api_characterization.py`.
+
+- **`DELETE /documents/{doc_id}`**
+
+  - Responsibility: Delete one document from Qdrant and Neo4j.
+  - Coverage: Direct contract coverage in `api/test_api_characterization.py`
+    with fake stores; deeper scoped deletion tests live under `ingest/` and
+    `graph/`.
+
+- **`PUT /documents/{doc_id}`**
+
+  - Responsibility: Delete and re-ingest a replacement document.
+  - Coverage: Direct contract coverage in `api/test_api_characterization.py`
+    with fake application functions.
+
+- **`POST /query`**
+
+  - Responsibility: Validate the trusted scope and run dataset-scoped
+    retrieval.
+  - Coverage: Direct vertical success, 422, strict-scope, and 503-envelope
+    coverage in `api/test_query_api_flow.py`; detailed scope and fallback tests
+    live under `query/`.
+
+- **`POST /graph/from-text`**
+
+  - Responsibility: Extract graph facts from text.
+  - Coverage: Direct success, 422, and normalized 502 coverage in
+    `api/test_graph_api_flow.py`; live scoped Neo4j behavior is covered in
+    `integration/test_neo4j_scoping.py`.
+
+- **`POST /graph/cache/clear`**
+
+  - Responsibility: Clear graph and RAGAnything caches.
+  - Coverage: Direct in `api/test_api_characterization.py`; cache-file behavior
+    is covered under `graph/`.
+
+- **`POST /temporal/workflows/ingest`**
+
+  - Responsibility: Start an ingestion workflow.
+  - Coverage: Direct success, 422, and normalized 502 coverage in
+    `api/test_temporal_api_flow.py`; the production workflow is also executed
+    against live Temporal in `integration/test_temporal_ingestion.py`.
+
+- **`POST /temporal/schedules/ingest`**
+
+  - Responsibility: Create or update an ingestion schedule.
+  - Coverage: Direct success, 422, and normalized 502 coverage in
+    `api/test_temporal_api_flow.py`.
+
+- **`POST /temporal/schedules/delete`**
+
+  - Responsibility: Delete an ingestion schedule.
+  - Coverage: Direct success, 422, and normalized 502 coverage in
+    `api/test_temporal_api_flow.py`.
+
+- **`POST /temporal/workflows/cancel`**
+
+  - Responsibility: Cancel a workflow or workflow run.
+  - Coverage: Direct success, 422, and normalized 502 coverage in
+    `api/test_temporal_api_flow.py`.
+
+### Local reranker
+
+- **`GET /health`**
+
+  - Responsibility: Report that the reranker process is available.
+  - Coverage: Direct in `api/test_reranker_api_flow.py`, with the
+    download-heavy model constructor replaced.
+
+- **`POST /v1/rerank`**
+
+  - Responsibility: Provide Cohere-shaped reranking with a local CrossEncoder.
+  - Coverage: Direct ranking, validation, and client-error coverage in
+    `api/test_reranker_api_flow.py`; the query-side consumer contract remains
+    covered in `query/test_reranker_contract.py`.
 
 Both FastAPI applications also expose the default framework routes
 `GET /openapi.json`, `GET /docs`, `GET /docs/oauth2-redirect`, and
@@ -255,47 +417,3 @@ PYTHONPATH=python_rag python -m pytest -c python_rag/pytest.ini \
 # Show collected tests without executing them
 PYTHONPATH=python_rag python -m pytest -c python_rag/pytest.ini --collect-only -q
 ```
-
-## Naming and docstrings
-
-- Put a test in the directory for the boundary whose behavior it proves, not
-  merely the module it imports.
-- Name files `test_<capability>.py` and tests
-  `test_<condition>_<observable_result>`. Include security-relevant outcomes in
-  the name, for example `test_missing_scoped_collection_fails_without_global_fallback`.
-- Use `TestCapability` for pytest classes or `CapabilityTests` for
-  `unittest.TestCase`. Both styles are collected by `python_rag/pytest.ini`.
-- Give each test module a one-sentence docstring describing its contract. Give
-  helper fakes and non-obvious test classes short intent-oriented docstrings.
-- A descriptive test name is normally enough; add a test-function docstring
-  only when the policy or trust-boundary rationale is not clear from the name.
-- Name fakes by role (`RecordingQdrant`, `FakeProvider`) and expose only the
-  methods the scenario requires. Assertions should inspect their recorded
-  inputs and public outputs.
-- Keep Arrange/Act/Assert visible through spacing and names. Avoid comments
-  that only restate code.
-
-## Current limitations
-
-- The deterministic suite remains predominantly isolated characterization and
-  contract coverage. The opt-in integration suite connects to live services,
-  but deliberately does not start containers or download models.
-- No Python integration test currently exercises PostgreSQL metadata writes,
-  a downloaded local CrossEncoder, or a real RAGAnything parser/model runtime.
-- Python tests begin after Laravel's authorization decision. Laravel feature
-  tests under `tests/Feature/Authentication` and `tests/Feature/Query` are the
-  source of truth for authentication and grants. Vertical scenarios under
-  `tests/System` combine real Sanctum/session middleware, dataset grants,
-  trusted scope construction, and PDF upload persistence while faking only the
-  external Python HTTP boundary.
-- The internal FastAPI routes do not authenticate callers. Network isolation is
-  part of the production security model and is not proven by this suite.
-- Default OpenAPI/documentation routes are framework-owned and unasserted.
-- The ten-page PDF system scenario proves upload validation, byte-for-byte
-  shared-storage persistence, pipeline records, and Temporal payload creation;
-  it does not wait for conversion, embedding, graph ingestion, or a completed
-  retrieval response.
-- `make test-services` and the Bruno collections are smoke checks, not proof of
-  full ingestion, model, and retrieval compatibility. A production release
-  should run deterministic, live integration, provider, Laravel Feature, and
-  Laravel System suites and review every skip.
