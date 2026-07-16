@@ -1,20 +1,35 @@
-# Simple Makefile to streamline the HAWKI RAG pipeline
+# ==============================================================================
+# HAWKI RAG development and operations commands
+# ==============================================================================
+#
+# Start with `make help` to see the public commands grouped by responsibility.
+# Variables can be overridden per invocation, for example:
+#
+#   make up-core USE_OLLAMA_GPU=0 UI_AUTO_BUILD=0
+#   make up-core-server ENV_FILE=.env.production
+#
+# Internal implementation targets start with an underscore and are intentionally
+# omitted from the help output.
 
 SHELL := /bin/bash
+.DEFAULT_GOAL := help
 
+# ==============================================================================
+# Docker Compose configuration
+# ==============================================================================
+
+# Compose executable, environment, and file layers.
 COMPOSE_BIN ?= docker compose
 COMPOSE_PARALLEL_LIMIT ?= 1
-
-# Core stack variables (override via `make VAR=value`)
 ENV_FILE ?= .env
 HOST_OS := $(shell uname -s)
-
 BASE_COMPOSE_FILE ?= docker-compose.yml
 GPU_OVERRIDE_COMPOSE ?= docker-compose-gpu-override.yml
 LOCAL_OVERRIDE_COMPOSE ?= docker-compose.local.yml
 COMPOSE_FILE_SEP ?= :
 COMMA := ,
-# USE_OLLAMA_GPU: auto (default), 1 (force GPU override), 0 (force CPU mode)
+
+# Ollama acceleration policy: auto (default), 1 (force GPU), or 0 (force CPU).
 USE_OLLAMA_GPU ?= auto
 CORE_PROFILES_BASE ?=
 
@@ -29,6 +44,7 @@ endif
 OLLAMA_SERVICE := ollama
 OLLAMA_CONTAINER ?= hawki_ollama
 
+# Derived Compose suffixes and profiles.
 CORE_GPU_COMPOSE_SUFFIX :=
 CORE_PROFILES := $(CORE_PROFILES_BASE)
 
@@ -46,46 +62,62 @@ COMPOSE_FILE_LIST ?= $(CORE_SERVER_COMPOSE_FILE_LIST)
 COMPOSE_PROFILES ?= $(CORE_PROFILES)
 PROFILE_MESSAGE ?= $(GPU_MESSAGE)
 
+# Host compatibility. Clearing an inherited amd64 platform avoids incorrect
+# image selection on Apple Silicon.
 COMPOSE_ENV_PREFIX :=
 ifeq ($(HOST_OS),Darwin)
-	# Clear forced amd64 platform if inherited from shell; avoids wrong-platform pulls on Apple Silicon.
 	COMPOSE_ENV_PREFIX := DOCKER_DEFAULT_PLATFORM=
 endif
-COMPOSE_PROFILE_PREFIX :=
-ifneq ($(strip $(COMPOSE_PROFILES)),)
-	COMPOSE_PROFILE_PREFIX := COMPOSE_PROFILES=$(COMPOSE_PROFILES)
-endif
-COMPOSE_FILE_PREFIX := COMPOSE_FILE=$(COMPOSE_FILE_LIST)
-COMPOSE_CMD = $(COMPOSE_ENV_PREFIX) COMPOSE_PARALLEL_LIMIT=$(COMPOSE_PARALLEL_LIMIT) COMPOSE_FILE=$(COMPOSE_FILE_LIST) $(if $(strip $(COMPOSE_PROFILES)),COMPOSE_PROFILES=$(COMPOSE_PROFILES)) $(COMPOSE_BIN) --env-file $(ENV_FILE)
 
-# UI asset variables
+# Canonical wrapper used by every Compose-backed command.
+COMPOSE_CMD = $(COMPOSE_ENV_PREFIX) \
+	COMPOSE_PARALLEL_LIMIT=$(COMPOSE_PARALLEL_LIMIT) \
+	COMPOSE_FILE=$(COMPOSE_FILE_LIST) \
+	$(if $(strip $(COMPOSE_PROFILES)),COMPOSE_PROFILES=$(COMPOSE_PROFILES)) \
+	$(COMPOSE_BIN) --env-file $(ENV_FILE)
+
+# ==============================================================================
+# UI asset configuration
+# ==============================================================================
+
 UI_AUTO_BUILD ?= 1
 UI_BUILD_DIR ?= /tmp/rawki-vite-build
 UI_NODE_IMAGE ?= node:22-bookworm-slim
 UI_NPM_CACHE_DIR ?= /tmp/rawki-npm-cache
-UI_NODE_RUN = docker run --rm --entrypoint /usr/bin/env --user "$$(id -u):$$(id -g)" -e HOME=/tmp -e npm_config_cache=/tmp/rawki-npm-cache -v "$(CURDIR):/work" -v "$(UI_BUILD_DIR):$(UI_BUILD_DIR)" -v "$(UI_NPM_CACHE_DIR):/tmp/rawki-npm-cache" -w /work $(UI_NODE_IMAGE)
+UI_NODE_RUN = docker run --rm --entrypoint /usr/bin/env \
+	--user "$$(id -u):$$(id -g)" \
+	-e HOME=/tmp \
+	-e npm_config_cache=/tmp/rawki-npm-cache \
+	-v "$(CURDIR):/work" \
+	-v "$(UI_BUILD_DIR):$(UI_BUILD_DIR)" \
+	-v "$(UI_NPM_CACHE_DIR):/tmp/rawki-npm-cache" \
+	-w /work $(UI_NODE_IMAGE)
 
-# Bruno collection test variables (override via `make VAR=value`)
-BRUNO_BIN ?= bru
-BRUNO_ENV ?= local
-BRUNO_BASE_URL ?= http://localhost:8080
-BRUNO_REPORT_DIR ?= $(CURDIR)/bruno/reports
-BRUNO_RUN_FLAGS ?= --bail
-BRUNO_REPORT_FLAGS ?= --reporter-skip-all-headers --reporter-skip-body
-BRUNO_API_DIR ?= bruno/rag-api
-BRUNO_WEB_DIR ?= bruno/rag-web
-BRUNO_DATASET_ID ?= rawki-demo
-BRUNO_UPLOAD_FILE ?= fixtures/turbo-paper.pdf
-BRUNO_GRAPH ?= true
-BRUNO_API_ARGS = --env $(BRUNO_ENV) --env-var baseUrl=$(BRUNO_BASE_URL)
-BRUNO_PIPELINE_ARGS = --env-var datasetId=$(BRUNO_DATASET_ID) --env-var file=$(BRUNO_UPLOAD_FILE) --env-var graph=$(BRUNO_GRAPH)
-export RAWKI_API_TOKEN
-export BRUNO_ALLOW_DESTRUCTIVE
+# ==============================================================================
+# Target registry and command discovery
+# ==============================================================================
 
-.PHONY: clean network pull-core build-app build-ui publish-ui migrate-core _up-core up-core up-core-ui up-core-server health pull-models logs-core logs-core-ui down-core down-rag restart-core restart-core-ui test-services test-bruno test-bruno-full test-bruno-smoke test-bruno-api test-bruno-pipeline test-bruno-scraper test-bruno-converter test-bruno-everything test-bruno-destructive bruno-reports _bruno-require-token _bruno-require-destructive neo4j-fresh python-test python-deps
-.NOTPARALLEL: test-bruno test-bruno-full test-bruno-everything
+.PHONY: help
+.PHONY: clean python-deps python-test python-integration provider-test system-test
+.PHONY: network pull-core build-app build-ui publish-ui
+.PHONY: migrate-core
+.PHONY: _up-core up-core up-core-ui up-core-server
+.PHONY: health test-services
+.PHONY: pull-models logs-core logs-core-ui
+.PHONY: down-core down-rag restart-core restart-core-ui
+.PHONY: neo4j-fresh
 
-clean:
+##@ General
+help: ## Show the available commands grouped by module.
+	@awk 'BEGIN { FS = ":.*## "; printf "HAWKI RAG commands\n" } /^##@/ { printf "\n%s\n", substr($$0, 5) } /^[a-zA-Z0-9_-]+:.*## / { printf "  %-20s %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
+
+# ==============================================================================
+# Workspace and Python dependencies
+# ==============================================================================
+
+##@ Workspace
+
+clean: ## Remove generated Python caches, logs, coverage, and build artifacts.
 	@find . -type d -name "__pycache__" -exec rm -rf {} +
 	@find . -type f -name "*.py[cod]" -delete
 	@find . -type f -name "*.pyc" -delete
@@ -93,11 +125,17 @@ clean:
 	@find . -type f -name "*.log" -delete
 	@rm -rf .pytest_cache .ruff_cache .mypy_cache .coverage* .tox .venv dist build
 
-python-deps:
+python-deps: ## Install Python runtime and test dependencies.
 	@python3 -m pip install --upgrade pip setuptools wheel
-	@python3 -m pip install -r python_rag/requirements.txt
+	@python3 -m pip install -r python_rag/requirements.txt -r python_rag/requirements-test.txt
 
-network:
+# ==============================================================================
+# Docker foundation and application images
+# ==============================================================================
+
+##@ Docker foundation
+
+network: ## Create the external Docker networks when they do not exist.
 	@for net in hawki-network hosting_network; do \
 		if docker network inspect $$net >/dev/null 2>&1; then \
 			echo "$$net already exists; skipping create"; \
@@ -107,13 +145,19 @@ network:
 		fi; \
 	done
 
-pull-core:
+pull-core: ## Pull the base Nginx image used by the core stack.
 	@$(COMPOSE_CMD) pull nginx || true
 
-build-app:
+build-app: ## Build the Laravel HAWKI RAG application image.
 	@$(COMPOSE_CMD) build hawki_rag_app
 
-build-ui:
+# ==============================================================================
+# Frontend assets
+# ==============================================================================
+
+##@ Frontend
+
+build-ui: ## Build the Svelte/Vite frontend in an isolated Node container.
 	@echo "Building HAWKI RAG UI assets..."
 	@mkdir -p "$(UI_BUILD_DIR)"
 	@mkdir -p "$(UI_NPM_CACHE_DIR)"
@@ -124,14 +168,20 @@ build-ui:
 	fi
 	@$(UI_NODE_RUN) npm run build -- --outDir "$(UI_BUILD_DIR)" --emptyOutDir
 
-publish-ui: build-ui
+publish-ui: build-ui ## Publish freshly built frontend assets into the app container.
 	@echo "Publishing HAWKI RAG UI assets to hawki_rag_app..."
 	@docker exec hawki_rag_app sh -lc 'mkdir -p /var/www/built_resources && find /var/www/built_resources -mindepth 1 -maxdepth 1 -exec rm -rf {} +'
 	@docker cp "$(UI_BUILD_DIR)/." hawki_rag_app:/var/www/built_resources/
 	@docker exec hawki_rag_app sh -lc 'chown -R www-data:www-data storage bootstrap/cache /var/www/built_resources'
 	@echo "UI assets are ready at http://localhost:8080"
 
-migrate-core:
+# ==============================================================================
+# Database lifecycle
+# ==============================================================================
+
+##@ Database
+
+migrate-core: ## Run Laravel migrations with startup retry handling.
 	@echo "Running Laravel migrations..."
 	@attempt=1; \
 	while [ "$$attempt" -le 30 ]; do \
@@ -146,6 +196,12 @@ migrate-core:
 	done; \
 	echo "Laravel migrations failed after 30 attempts."; \
 	exit 1
+
+# ==============================================================================
+# Stack startup profiles
+# ==============================================================================
+
+##@ Stack startup
 
 _up-core: network
 	@echo $(PROFILE_MESSAGE)
@@ -162,21 +218,27 @@ _up-core: network
 up-core: COMPOSE_FILE_LIST = $(CORE_LOCAL_COMPOSE_FILE_LIST)
 up-core: COMPOSE_PROFILES = $(if $(strip $(CORE_PROFILES)),devtools$(COMMA)$(CORE_PROFILES),devtools)
 up-core: PROFILE_MESSAGE = $(GPU_MESSAGE) Full local experience enabled with Temporal UI/devtools.
-up-core: _up-core
+up-core: _up-core ## Start the complete local stack with devtools and publish the UI.
 	@if [ "$(UI_AUTO_BUILD)" = "1" ]; then \
 		$(MAKE) --no-print-directory publish-ui UI_BUILD_DIR="$(UI_BUILD_DIR)"; \
 	else \
 		echo "Skipping UI asset publish (UI_AUTO_BUILD=$(UI_AUTO_BUILD))."; \
 	fi
 
-up-core-ui: up-core
+up-core-ui: up-core ## Alias for the complete local development stack.
 
 up-core-server: COMPOSE_FILE_LIST = $(CORE_SERVER_COMPOSE_FILE_LIST)
 up-core-server: COMPOSE_PROFILES = $(CORE_PROFILES)
 up-core-server: PROFILE_MESSAGE = $(GPU_MESSAGE) Server mode and Temporal workers enabled.
-up-core-server: _up-core
+up-core-server: _up-core ## Start the server-oriented stack without local devtools.
 
-health:
+# ==============================================================================
+# Health and service diagnostics
+# ==============================================================================
+
+##@ Diagnostics
+
+health: ## Check required and optional containers plus service endpoints.
 	@set +e; \
 	failed=0; \
 	check_running() { \
@@ -256,7 +318,7 @@ health:
 		exit 1; \
 	fi
 
-test-services:
+test-services: ## Run focused Qdrant, Neo4j, bridge, and reranker smoke checks.
 	@set -e; \
 	printf "qdrant: "; \
 	if docker ps --format '{{.Names}}' | grep -q hawki_qdrant; then \
@@ -283,128 +345,63 @@ test-services:
 	fi; \
 	echo "Service checks completed."
 
-bruno-reports:
-	@mkdir -p "$(BRUNO_REPORT_DIR)"
+# ==============================================================================
+# Automated tests
+# ==============================================================================
 
-_bruno-require-token:
-	@if [ -z "$${RAWKI_API_TOKEN:-}" ]; then \
-		echo "RAWKI_API_TOKEN is required for Sanctum-protected Bruno API tests."; \
-		echo "Create a local token with: docker exec -it hawki_rag_app php artisan user:token"; \
-		echo "Then run: export RAWKI_API_TOKEN=your-local-token"; \
-		exit 1; \
-	fi
+##@ Tests
 
-_bruno-require-destructive:
-	@if [ "$(BRUNO_ALLOW_DESTRUCTIVE)" != "1" ]; then \
-		echo "Refusing destructive Bruno tests."; \
-		echo "Re-run with BRUNO_ALLOW_DESTRUCTIVE=1 if you intend to clear local graph data."; \
-		exit 1; \
-	fi
+python-test: ## Run deterministic Python contract and API tests.
+	@PYTHONPATH=python_rag python -m pytest -c python_rag/pytest.ini -m "not integration"
 
-test-bruno: test-bruno-full
+python-integration: ## Run live storage and Temporal integration tests (unavailable services skip).
+	@PYTHONPATH=python_rag python -m pytest -c python_rag/pytest.ini -m "integration and not model" python_rag/tests/integration
 
-test-bruno-full: test-bruno-smoke test-bruno-api test-bruno-pipeline test-bruno-converter
-	@echo "Bruno full non-destructive suite completed. Reports: $(BRUNO_REPORT_DIR)"
+provider-test: ## Run live Ollama and LiteLLM compatibility tests (unavailable services skip).
+	@PYTHONPATH=python_rag python -m pytest -c python_rag/pytest.ini -m "integration and model" python_rag/tests/integration
 
-test-bruno-smoke: _bruno-require-token bruno-reports
-	@echo "Running Bruno smoke tests against $(BRUNO_BASE_URL)..."
-	@cd $(BRUNO_API_DIR) && $(BRUNO_BIN) run requests -r \
-		$(BRUNO_API_ARGS) \
-		--env-var token="$${RAWKI_API_TOKEN}" \
-		--tags smoke \
-		$(BRUNO_RUN_FLAGS) \
-		--reporter-junit "$(BRUNO_REPORT_DIR)/bruno-smoke-junit.xml" \
-		--reporter-json "$(BRUNO_REPORT_DIR)/bruno-smoke.json" \
-		$(BRUNO_REPORT_FLAGS)
+system-test: ## Run Laravel authenticated query, isolation, and PDF upload system flows.
+	@php artisan test --testsuite=System
 
-test-bruno-api: _bruno-require-token bruno-reports
-	@echo "Running Bruno API tests against $(BRUNO_BASE_URL)..."
-	@cd $(BRUNO_API_DIR) && $(BRUNO_BIN) run \
-		requests/auth \
-		requests/health \
-		-r \
-		$(BRUNO_API_ARGS) \
-		--env-var token="$${RAWKI_API_TOKEN}" \
-		--tags smoke \
-		$(BRUNO_RUN_FLAGS) \
-		--reporter-junit "$(BRUNO_REPORT_DIR)/bruno-api-junit.xml" \
-		--reporter-json "$(BRUNO_REPORT_DIR)/bruno-api.json" \
-		$(BRUNO_REPORT_FLAGS)
+# ==============================================================================
+# Ollama model management
+# ==============================================================================
 
-test-bruno-pipeline: _bruno-require-token bruno-reports
-	@echo "Running Bruno pipeline tests against $(BRUNO_BASE_URL)..."
-	@cd $(BRUNO_API_DIR) && $(BRUNO_BIN) run \
-		requests/pipeline-health/017-pipeline-health.yml \
-		requests/pipeline-tasks/007-list-pipeline-tasks.yml \
-		requests/pipeline-recovery/019-list-failed-jobs.yml \
-		$(BRUNO_API_ARGS) \
-		--env-var token="$${RAWKI_API_TOKEN}" \
-		$(BRUNO_RUN_FLAGS) \
-		--reporter-junit "$(BRUNO_REPORT_DIR)/bruno-pipeline-junit.xml" \
-		--reporter-json "$(BRUNO_REPORT_DIR)/bruno-pipeline.json" \
-		$(BRUNO_REPORT_FLAGS)
+##@ Models
 
-test-bruno-scraper: bruno-reports
-	@echo "Running Bruno scraper tests against $(BRUNO_BASE_URL)..."
-	@cd $(BRUNO_WEB_DIR) && $(BRUNO_BIN) run requests/web-scrape -r \
-		$(BRUNO_API_ARGS) \
-		--exclude-tags destructive \
-		$(BRUNO_RUN_FLAGS) \
-		--reporter-junit "$(BRUNO_REPORT_DIR)/bruno-scraper-junit.xml" \
-		--reporter-json "$(BRUNO_REPORT_DIR)/bruno-scraper.json" \
-		$(BRUNO_REPORT_FLAGS)
-
-test-bruno-converter: _bruno-require-token bruno-reports
-	@echo "Running Bruno converter-facing pipeline checks against $(BRUNO_BASE_URL)..."
-	@cd $(BRUNO_API_DIR) && $(BRUNO_BIN) run \
-		requests/pipeline-health/017-pipeline-health.yml \
-		requests/pipeline-upload/018-upload-pipeline-file.yml \
-		$(BRUNO_API_ARGS) \
-		--env-var token="$${RAWKI_API_TOKEN}" \
-		$(BRUNO_PIPELINE_ARGS) \
-		$(BRUNO_RUN_FLAGS) \
-		--reporter-junit "$(BRUNO_REPORT_DIR)/bruno-converter-junit.xml" \
-		--reporter-json "$(BRUNO_REPORT_DIR)/bruno-converter.json" \
-		$(BRUNO_REPORT_FLAGS)
-
-test-bruno-everything: test-bruno-full test-bruno-destructive
-	@echo "Bruno full suite including destructive tests completed. Reports: $(BRUNO_REPORT_DIR)"
-
-test-bruno-destructive: _bruno-require-token _bruno-require-destructive bruno-reports
-	@echo "Running destructive Bruno tests against $(BRUNO_BASE_URL)..."
-	@cd $(BRUNO_API_DIR) && $(BRUNO_BIN) run requests/rag-graph/039-clear-neo4j-graph.yml \
-		$(BRUNO_API_ARGS) \
-		--env-var token="$${RAWKI_API_TOKEN}" \
-		$(BRUNO_RUN_FLAGS) \
-		--reporter-junit "$(BRUNO_REPORT_DIR)/bruno-destructive-junit.xml" \
-		--reporter-json "$(BRUNO_REPORT_DIR)/bruno-destructive.json" \
-		$(BRUNO_REPORT_FLAGS)
-
-python-test:
-	@PYTHONPATH=python_rag python -m unittest discover -s python_rag/tests -p 'test_*.py'
-
-pull-models:
+pull-models: ## Pull all local embedding, chat, and vision models into Ollama.
 	@docker exec -it $(OLLAMA_CONTAINER) ollama pull bge-m3
 	@docker exec -it $(OLLAMA_CONTAINER) ollama pull llama3.1:8b
 	@docker exec -it $(OLLAMA_CONTAINER) ollama pull llama3.2:1b
 	@docker exec -it $(OLLAMA_CONTAINER) ollama pull qwen2.5vl:7b
 
-logs-core:
+# ==============================================================================
+# Runtime logs
+# ==============================================================================
+
+##@ Logs
+
+logs-core: ## Follow logs for the complete core stack.
 	@$(COMPOSE_CMD) logs -f postgres temporal qdrant hawki_rag_neo4j $(OLLAMA_SERVICE) hawki_rag_app hawki_rag_bridge hawki_rag_rerank hawki-rag-temporal-workflow-worker hawki-rag-temporal-scraper-worker hawki-rag-temporal-converter-worker hawki-rag-temporal-ingestion-worker
 	@$(COMPOSE_CMD) logs -f
 
 logs-core-ui: COMPOSE_FILE_LIST = $(CORE_LOCAL_COMPOSE_FILE_LIST)
 logs-core-ui: COMPOSE_PROFILES = $(if $(strip $(CORE_PROFILES)),devtools$(COMMA)$(CORE_PROFILES),devtools)
-logs-core-ui:
+logs-core-ui: ## Follow Temporal UI logs from the local devtools profile.
 	@$(COMPOSE_CMD) logs -f temporal-ui
 
-down-core:
+# ==============================================================================
+# Stack shutdown and restart
+# ==============================================================================
+
+##@ Stack lifecycle
+
+down-core: ## Stop and remove the active HAWKI RAG Compose stack.
 	@$(COMPOSE_CMD) down
 
-down-rag:
-	@$(COMPOSE_CMD) down
+down-rag: down-core ## Backward-compatible alias for stopping the RAG stack.
 
-restart-core:
+restart-core: ## Recreate all core services and Temporal workers.
 	@echo $(PROFILE_MESSAGE)
 	@$(COMPOSE_CMD) up -d --force-recreate postgres temporal qdrant hawki_rag_neo4j $(OLLAMA_SERVICE) hawki_rag_app hawki_rag_bridge hawki_rag_rerank hawki-rag-temporal-workflow-worker hawki-rag-temporal-scraper-worker hawki-rag-temporal-converter-worker hawki-rag-temporal-ingestion-worker
 	@$(COMPOSE_CMD) up -d --force-recreate
@@ -412,11 +409,17 @@ restart-core:
 restart-core-ui: COMPOSE_FILE_LIST = $(CORE_LOCAL_COMPOSE_FILE_LIST)
 restart-core-ui: COMPOSE_PROFILES = $(if $(strip $(CORE_PROFILES)),devtools$(COMMA)$(CORE_PROFILES),devtools)
 restart-core-ui: PROFILE_MESSAGE = $(GPU_MESSAGE) Local override enabled and Temporal UI enabled for dev diagnostics.
-restart-core-ui:
+restart-core-ui: ## Recreate the Temporal UI from the local devtools profile.
 	@echo $(PROFILE_MESSAGE)
 	@$(COMPOSE_CMD) up -d --force-recreate temporal-ui
 
-neo4j-fresh:
+# ==============================================================================
+# Destructive data maintenance
+# ==============================================================================
+
+##@ Maintenance
+
+neo4j-fresh: ## DESTRUCTIVE: recreate Neo4j with an empty persisted store.
 	@echo "Stopping Neo4j service..."
 	@$(COMPOSE_CMD) stop hawki_rag_neo4j >/dev/null 2>&1 || true
 	@$(COMPOSE_CMD) rm -f hawki_rag_neo4j >/dev/null 2>&1 || true
