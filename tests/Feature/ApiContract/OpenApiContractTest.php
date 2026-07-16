@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Tests\Feature;
+namespace Tests\Feature\ApiContract;
 
 use Illuminate\Routing\Route;
 use Tests\TestCase;
@@ -12,7 +12,7 @@ class OpenApiContractTest extends TestCase
     public function test_openapi_operations_match_registered_api_routes(): void
     {
         $documented = array_keys($this->openApiOperations());
-        $registered = $this->registeredApiOperations();
+        $registered = $this->registeredPublicApiOperations();
 
         sort($documented);
         sort($registered);
@@ -20,8 +20,21 @@ class OpenApiContractTest extends TestCase
         $this->assertSame(
             $registered,
             $documented,
-            'public/swagger/openapi.yaml must document every registered /api method/path exactly once and contain no obsolete operations.',
+            'public/swagger/openapi.yaml must document every registered public /api method/path exactly once and contain no obsolete operations.',
         );
+    }
+
+    public function test_routes_explicitly_hidden_from_openapi_are_not_published(): void
+    {
+        $documented = array_keys($this->openApiOperations());
+
+        foreach ($this->registeredHiddenApiOperations() as $operation) {
+            $this->assertNotContains(
+                $operation,
+                $documented,
+                "{$operation} is marked openapi=false and must not appear in the published contract.",
+            );
+        }
     }
 
     public function test_every_openapi_operation_explains_purpose_and_authentication(): void
@@ -114,7 +127,23 @@ class OpenApiContractTest extends TestCase
     /**
      * @return list<string>
      */
-    private function registeredApiOperations(): array
+    private function registeredPublicApiOperations(): array
+    {
+        return $this->registeredApiOperations(hidden: false);
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function registeredHiddenApiOperations(): array
+    {
+        return $this->registeredApiOperations(hidden: true);
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function registeredApiOperations(bool $hidden): array
     {
         $operations = [];
 
@@ -122,6 +151,11 @@ class OpenApiContractTest extends TestCase
         foreach ($this->app['router']->getRoutes()->getRoutes() as $route) {
             $uri = $route->uri();
             if (! str_starts_with($uri, 'api/')) {
+                continue;
+            }
+
+            $hiddenFromOpenApi = ($route->defaults['openapi'] ?? true) === false;
+            if ($hiddenFromOpenApi !== $hidden) {
                 continue;
             }
 

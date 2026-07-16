@@ -90,8 +90,12 @@ Route::middleware(['auth:sanctum', 'abilities:operator', 'throttle:hawki-api'])-
         Route::get('/{taskId}/stages/{stage}/logs', [PipelineTaskController::class, 'stageLogs']);
         Route::get('/{taskId}/stages/{stage}/logs/download', [PipelineTaskController::class, 'downloadStageLogs']);
         Route::post('/{taskId}/jobs', [PipelineTaskController::class, 'upsertJob']);
-        Route::post('/{taskId}/retry', [PipelineTaskController::class, 'retry'])->middleware('throttle:hawki-destructive');
-        Route::post('/{taskId}/retry-failed-jobs', [PipelineTaskController::class, 'retryFailedJobs'])->middleware('throttle:hawki-destructive');
+        Route::post('/{taskId}/retry', [PipelineTaskController::class, 'retry'])
+            ->middleware('throttle:hawki-destructive')
+            ->defaults('openapi', false);
+        Route::post('/{taskId}/retry-failed-jobs', [PipelineTaskController::class, 'retryFailedJobs'])
+            ->middleware('throttle:hawki-destructive')
+            ->defaults('openapi', false);
         Route::post('/{taskId}/cancel', [PipelineTaskController::class, 'cancel'])->middleware('throttle:hawki-destructive');
         Route::delete('/{taskId}', [PipelineTaskController::class, 'destroy'])->middleware('throttle:hawki-destructive');
     });
