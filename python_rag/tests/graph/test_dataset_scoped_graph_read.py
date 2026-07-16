@@ -1,3 +1,5 @@
+"""Graph-read scenarios proving that dataset scope prevents cross-dataset leakage."""
+
 from __future__ import annotations
 
 import sys
@@ -8,7 +10,7 @@ from typing import Any
 from unittest.mock import patch
 
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
@@ -72,6 +74,8 @@ def _graph(executor: _ScopeAwareExecutor) -> Any:
 
 
 class DatasetScopedGraphReadTests(unittest.TestCase):
+    """Verify every structural and fact lookup remains inside the trusted graph scope."""
+
     def test_graph_utils_disables_database_fallback_and_forwards_scope(self) -> None:
         from infrastructure.graph.graph_utils import fetch_related_terms
 

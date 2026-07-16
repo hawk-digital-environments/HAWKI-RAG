@@ -1,3 +1,5 @@
+"""Temporal metadata scenarios for UTC persistence and pipeline progress accounting."""
+
 from __future__ import annotations
 
 from types import ModuleType, SimpleNamespace
@@ -16,6 +18,8 @@ class _FakeConnection:
 
 
 class TemporalMetadataTests(unittest.TestCase):
+    """Verify workflow metadata uses stable time and page-count semantics."""
+
     def test_metadata_store_forces_utc_database_session(self) -> None:
         calls: list[dict[str, object]] = []
         connection = _FakeConnection()

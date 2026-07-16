@@ -1,3 +1,5 @@
+"""Incremental-ingestion scenarios from stable identity through scoped vector and graph writes."""
+
 from __future__ import annotations
 
 import hashlib
@@ -9,12 +11,14 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 
 class IncrementalIngestTests(unittest.TestCase):
+    """Verify retries, replacements, registries, and deletions preserve document isolation."""
+
     def test_prepare_documents_assigns_stable_http_page_id_and_hash(self) -> None:
         from application.workflows.ingest.chunking import prepare_documents
         from application.workflows.ingest.incremental import page_identity_key

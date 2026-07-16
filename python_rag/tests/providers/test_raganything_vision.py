@@ -1,3 +1,5 @@
+"""Multimodal provider scenarios for image payloads and explicit vision-model selection."""
+
 from __future__ import annotations
 
 import asyncio
@@ -9,7 +11,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
@@ -43,6 +45,8 @@ class _FakeRequests:
 
 
 class RagAnythingVisionTests(unittest.TestCase):
+    """Verify RAG-Anything preserves image content and routes it to the configured vision model."""
+
     def test_ollama_provider_sends_image_data_to_configured_vision_model(self) -> None:
         from infrastructure.providers.ollama_provider import OllamaProvider
 

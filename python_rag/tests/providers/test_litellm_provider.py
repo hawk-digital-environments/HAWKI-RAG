@@ -1,3 +1,5 @@
+"""LiteLLM adapter scenarios for model selection, OpenAI-compatible payloads, and safe failures."""
+
 from __future__ import annotations
 
 import os
@@ -8,7 +10,7 @@ from typing import Any
 from unittest.mock import patch
 
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
@@ -82,6 +84,8 @@ def _provider_env(**overrides: str) -> dict[str, str]:
 
 
 class LiteLLMProviderTests(unittest.TestCase):
+    """Verify LiteLLM remains explicit, validates responses, and never exposes credentials."""
+
     def test_factory_selects_litellm_without_changing_ollama(self) -> None:
         from infrastructure.providers.factory import get_provider
         from infrastructure.providers.litellm_provider import LiteLLMProvider

@@ -1,3 +1,5 @@
+"""Graph-write scenarios proving incomplete or conflicting dataset scope fails closed."""
+
 from __future__ import annotations
 
 import logging
@@ -10,6 +12,8 @@ from fastapi import HTTPException
 
 
 class GraphWriteScopingTests(unittest.TestCase):
+    """Verify Neo4j writes and deletes always carry the authorized logical namespace."""
+
     def test_incomplete_scope_never_dispatches_a_canonical_write(self) -> None:
         from infrastructure.graph.neo4j_graph import Neo4jGraph
         from infrastructure.graph.neo4j_requests import build_triplet_rows

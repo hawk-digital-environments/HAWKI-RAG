@@ -1,3 +1,5 @@
+"""RAG-Anything provider-runtime scenarios for model overrides and embedding dimensions."""
+
 from __future__ import annotations
 
 import os
@@ -8,12 +10,14 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 
 class RagAnythingProviderRuntimeTests(unittest.TestCase):
+    """Verify graph extraction uses the selected provider without changing vector compatibility."""
+
     def test_graph_clone_preserves_request_models_and_observed_embedding_dimension(self) -> None:
         from application.workflows.provider_overrides import apply_provider_overrides
         from infrastructure.raganything.provider_config import clone_provider_for_graph

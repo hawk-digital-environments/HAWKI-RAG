@@ -1,3 +1,5 @@
+"""Operational reliability scenarios for retries, startup checks, redaction, and optional gateways."""
+
 from __future__ import annotations
 
 import os
@@ -8,7 +10,7 @@ import types
 import unittest
 from unittest.mock import patch
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
@@ -30,6 +32,8 @@ if "neo4j" not in sys.modules:
 
 
 class ReliabilityContractTests(unittest.TestCase):
+    """Verify production boundaries are retry-safe, observable, secret-safe, and fail predictably."""
+
     def test_raganything_file_logging_is_opt_in(self) -> None:
         from api.settings import load_app_settings
 

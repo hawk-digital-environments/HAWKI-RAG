@@ -1,3 +1,5 @@
+"""Temporal conversion scenarios from crawler output through custom and passthrough conversion."""
+
 from __future__ import annotations
 
 import json
@@ -24,6 +26,8 @@ class _UnsupportedResponse:
 
 
 class TemporalConverterPassthroughTests(unittest.TestCase):
+    """Verify worker payloads, converter profiles, and unsupported-file passthrough behavior."""
+
     def test_scraper_start_payload_matches_custom_crawler_contract(self) -> None:
         payload = activities._scraper_start_payload(
             {

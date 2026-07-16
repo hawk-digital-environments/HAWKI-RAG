@@ -1,3 +1,5 @@
+"""Reranker boundary scenarios for request documents, score formats, and backward compatibility."""
+
 from __future__ import annotations
 
 import os
@@ -8,7 +10,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
@@ -55,6 +57,8 @@ def _hits() -> list[dict[str, object]]:
 
 
 class ExternalRerankerContractTests(unittest.TestCase):
+    """Verify external reranking preserves document identity while normalizing provider scores."""
+
     def test_external_reranker_uses_string_documents_and_cohere_scores(self) -> None:
         from infrastructure.raganything.reranker import rerank_hits
 

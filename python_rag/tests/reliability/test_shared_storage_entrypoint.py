@@ -1,3 +1,5 @@
+"""Container-entrypoint scenarios for shared-group permissions and invalid configuration."""
+
 from __future__ import annotations
 
 import os
@@ -7,7 +9,7 @@ import subprocess
 import sys
 
 
-ENTRYPOINT = Path(__file__).parents[2] / "docker" / "python-rag" / "shared-storage-entrypoint.sh"
+ENTRYPOINT = Path(__file__).parents[3] / "docker" / "python-rag" / "shared-storage-entrypoint.sh"
 
 
 def test_entrypoint_creates_group_writable_setgid_directories(tmp_path: Path) -> None:

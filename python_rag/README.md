@@ -5,18 +5,30 @@ query pipeline, command-line ingestion helpers, and local reranker code.
 
 ## Test Command
 
-Run the lightweight Python characterization suite from the repository root:
+Run the deterministic Python contract and API suite from the repository root:
 
 ```bash
 make python-test
 ```
 
-The target uses the current requirements-file layout and does not require a
-Python packaging migration:
+Install runtime and test dependencies with `make python-deps` from a Python
+3.11 environment, matching the bridge image. The test target uses pytest so
+both `unittest.TestCase` scenarios and module-level pytest functions are
+collected:
 
 ```bash
-PYTHONPATH=python_rag python -m unittest discover -s python_rag/tests -p 'test_*.py'
+PYTHONPATH=python_rag python -m pytest -c python_rag/pytest.ini -m "not integration"
 ```
+
+When the corresponding services are reachable, run the opt-in live suites:
+
+```bash
+make python-integration
+make provider-test
+```
+
+See [`tests/README.md`](tests/README.md) for the API flows, feature categories,
+endpoint coverage, and the Laravel/Python authorization boundary.
 
 ## Runtime Output
 

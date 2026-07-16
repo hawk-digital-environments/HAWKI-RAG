@@ -1,3 +1,5 @@
+"""Dataset-scoped query scenarios covering validation, search fallbacks, and fail-closed errors."""
+
 from __future__ import annotations
 
 import logging
@@ -11,7 +13,7 @@ from unittest.mock import patch
 from pydantic import ValidationError
 
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
@@ -65,6 +67,8 @@ def _qdrant_http_settings(*, search_all: bool = True, fallback_all: bool = True)
 
 
 class AuthorizedScopeSchemaTests(unittest.TestCase):
+    """Verify the Python boundary accepts only Laravel-derived trusted retrieval scope."""
+
     def test_query_requires_a_typed_authorized_scope(self) -> None:
         from api.http.schemas import QueryRequest
 
@@ -212,6 +216,8 @@ class AuthorizedScopeSchemaTests(unittest.TestCase):
 
 
 class QueryExecutionScopeTests(unittest.TestCase):
+    """Verify provider, vector, graph, ranking, and generation stages retain authorized scope."""
+
     def _run_generation_query(
         self,
         *,
@@ -561,6 +567,8 @@ class QueryExecutionScopeTests(unittest.TestCase):
 
 
 class DatasetNotReadyHttpContractTests(unittest.TestCase):
+    """Verify missing scoped storage returns the stable public dataset-not-ready response."""
+
     def test_structured_dataset_not_ready_error_has_a_stable_public_shape(self) -> None:
         from fastapi import FastAPI, HTTPException
         from fastapi.testclient import TestClient
@@ -600,6 +608,8 @@ class DatasetNotReadyHttpContractTests(unittest.TestCase):
 
 
 class QueryFallbackScopeTests(unittest.TestCase):
+    """Verify lexical and scroll fallbacks inherit the mandatory dataset filter."""
+
     def test_keyword_and_scroll_fallbacks_receive_mandatory_filters(self) -> None:
         from application.workflows.query_fallback import keyword_fallback_search
 
@@ -639,6 +649,8 @@ class QueryFallbackScopeTests(unittest.TestCase):
 
 
 class QdrantStrictCollectionTests(unittest.TestCase):
+    """Verify scoped search never reaches global collection search or fallback paths."""
+
     def test_scoped_search_bypasses_search_all_and_global_fallback(self) -> None:
         from infrastructure.vectorstore.qdrant_http import QdrantHTTP
 
