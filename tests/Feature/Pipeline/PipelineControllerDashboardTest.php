@@ -1,6 +1,6 @@
 <?php
 
-namespace Tests\Feature;
+namespace Tests\Feature\Pipeline;
 
 use App\Models\IngestionSource;
 use App\Models\Dataset;

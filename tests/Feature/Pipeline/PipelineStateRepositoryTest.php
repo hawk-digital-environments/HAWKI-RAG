@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Tests\Feature;
+namespace Tests\Feature\Pipeline;
 
 use App\Models\PipelineJob;
 use App\Services\Pipeline\Repositories\PipelineJobCreationRepository;

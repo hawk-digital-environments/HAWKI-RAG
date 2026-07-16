@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-namespace Tests\Feature;
+namespace Tests\Feature\Pipeline;
 
 use Illuminate\Support\Facades\Artisan;
 use Tests\TestCase;

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Tests\Feature;
+namespace Tests\Feature\Graph;
 
 use App\Models\Dataset;
 use App\Models\DatasetGrant;

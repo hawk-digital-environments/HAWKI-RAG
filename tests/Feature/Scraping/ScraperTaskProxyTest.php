@@ -1,6 +1,6 @@
 <?php
 
-namespace Tests\Feature;
+namespace Tests\Feature\Scraping;
 
 use App\Models\PipelineStageState;
 use Illuminate\Http\Client\Request;

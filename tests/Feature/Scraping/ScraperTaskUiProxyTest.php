@@ -1,6 +1,6 @@
 <?php
 
-namespace Tests\Feature;
+namespace Tests\Feature\Scraping;
 
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;

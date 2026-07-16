@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Tests\Feature;
+namespace Tests\Feature\Settings;
 
 use App\Services\Settings\SettingsService;
 use Illuminate\Support\Facades\File;

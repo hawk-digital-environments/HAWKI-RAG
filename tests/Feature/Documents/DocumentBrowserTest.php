@@ -1,6 +1,6 @@
 <?php
 
-namespace Tests\Feature;
+namespace Tests\Feature\Documents;
 
 use App\Models\Dataset;
 use App\Models\Document;

@@ -16,6 +16,9 @@ abstract class TestCase extends BaseTestCase
         $this->assertSafeTestDatabaseEnvironment();
 
         parent::setUp();
+
+        // Config caching must not re-enable development query access in tests.
+        config()->set('config.query_auth.development_bypass', false);
     }
 
     public function createApplication(): Application

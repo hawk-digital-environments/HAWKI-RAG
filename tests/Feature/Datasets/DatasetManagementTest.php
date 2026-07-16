@@ -1,6 +1,6 @@
 <?php
 
-namespace Tests\Feature;
+namespace Tests\Feature\Datasets;
 
 use App\Models\Dataset;
 use App\Models\Document;
@@ -8,12 +8,24 @@ use App\Models\PipelineJob;
 use App\Models\PipelineTask;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
 class DatasetManagementTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $settingsPath = storage_path('framework/testing/dataset-management-settings.json');
+        File::delete($settingsPath);
+        config()->set('config.operator_settings_path', $settingsPath);
+        config()->set('temporal.ingestion.provider', 'ollama');
+        config()->set('config.graph_provider', 'ollama');
+    }
 
     public function test_datasets_are_visible_with_counts_last_ingestion_and_graph_stats(): void
     {
