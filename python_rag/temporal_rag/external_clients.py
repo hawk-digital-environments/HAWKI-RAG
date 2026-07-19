@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 import logging
 import time
 from typing import Any
@@ -28,7 +29,7 @@ class ExternalJobClient:
         timeout_seconds: float = 30.0,
         retry_attempts: int = 3,
         poll_interval_seconds: float = 5.0,
-        poll_timeout_seconds: float = 7200.0,
+        poll_timeout_seconds: float = 43200.0,
     ) -> None:
         self.base_url = base_url.rstrip("/") + "/"
         self.start_path = start_path.lstrip("/")
@@ -40,17 +41,33 @@ class ExternalJobClient:
         self.poll_timeout_seconds = max(self.poll_interval_seconds, poll_timeout_seconds)
         self.session = requests.Session()
 
-    def start_and_wait(self, payload: dict[str, Any]) -> dict[str, Any]:
-        started = self._request("POST", self.start_path, json=payload)
-        job_id = self._job_id(started)
-        if not job_id:
-            raise RuntimeError("External service did not return a job id.")
+    def start_and_wait(
+        self,
+        payload: dict[str, Any],
+        *,
+        resume_job_id: str | None = None,
+        progress_callback: Callable[[str], None] | None = None,
+    ) -> dict[str, Any]:
+        """Start a job, or resume polling one recorded by a previous attempt."""
+        if resume_job_id:
+            job_id = resume_job_id
+            last_status: dict[str, Any] = {"external_job_id": job_id}
+        else:
+            started = self._request("POST", self.start_path, json=payload)
+            job_id = self._job_id(started)
+            if not job_id:
+                raise RuntimeError("External service did not return a job id.")
+            last_status = dict(started)
+
+        if progress_callback is not None:
+            progress_callback(job_id)
 
         deadline = time.monotonic() + self.poll_timeout_seconds
-        last_status = dict(started)
         while time.monotonic() < deadline:
             snapshot = self._request("GET", self.status_path.format(job_id=job_id))
             last_status = snapshot
+            if progress_callback is not None:
+                progress_callback(job_id)
             status = self._status(snapshot)
             if status in _SUCCESS_STATUSES:
                 snapshot["external_job_id"] = job_id

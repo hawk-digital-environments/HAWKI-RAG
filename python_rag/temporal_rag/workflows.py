@@ -9,6 +9,10 @@ from temporalio import workflow
 from temporalio.common import RetryPolicy
 
 
+_SCRAPE_START_TO_CLOSE_TIMEOUT = timedelta(hours=13)
+_SCRAPE_SCHEDULE_TO_CLOSE_TIMEOUT = timedelta(hours=14)
+
+
 def _task_queue(workflow_input: dict[str, Any], key: str, default: str) -> str:
     queues = workflow_input.get("task_queues")
     if isinstance(queues, dict):
@@ -51,8 +55,9 @@ class IngestSourceWorkflow:
             "scrape_source",
             workflow_input,
             task_queue=_task_queue(workflow_input, "scraper", "rag-scraper-task-queue"),
-            start_to_close_timeout=timedelta(hours=2),
-            schedule_to_close_timeout=timedelta(hours=3),
+            start_to_close_timeout=_SCRAPE_START_TO_CLOSE_TIMEOUT,
+            schedule_to_close_timeout=_SCRAPE_SCHEDULE_TO_CLOSE_TIMEOUT,
+            heartbeat_timeout=timedelta(minutes=2),
             retry_policy=retry_policy,
         )
         if scrape_result.get("status") != "success":

@@ -12,6 +12,18 @@ from temporal_rag.metadata import AppMetadataStore
 from temporal_rag.settings import TemporalRagSettings
 
 
+def _heartbeat_external_job_id() -> str | None:
+    """Return the external job recorded by an earlier activity attempt."""
+    for detail in activity.info().heartbeat_details:
+        if isinstance(detail, str) and detail.strip():
+            return detail.strip()
+        if isinstance(detail, dict):
+            job_id = detail.get("external_job_id")
+            if isinstance(job_id, (str, int)) and str(job_id).strip():
+                return str(job_id)
+    return None
+
+
 @activity.defn(name="scrape_source")
 def scrape_source(workflow_input: dict[str, Any]) -> dict[str, Any]:
     from temporal_rag import activities as support
@@ -33,7 +45,11 @@ def scrape_source(workflow_input: dict[str, Any]) -> dict[str, Any]:
     try:
         client = ExternalJobClient(**service_config)
         start_payload = support._scraper_start_payload(workflow_input, source_id, raw_dir)
-        response = client.start_and_wait(start_payload)
+        response = client.start_and_wait(
+            start_payload,
+            resume_job_id=_heartbeat_external_job_id(),
+            progress_callback=lambda job_id: activity.heartbeat({"external_job_id": job_id}),
+        )
     except Exception as exc:
         support._record_activity_exception(metadata, workflow_input, "scrape_source", exc, raw_dir=raw_dir)
         raise
