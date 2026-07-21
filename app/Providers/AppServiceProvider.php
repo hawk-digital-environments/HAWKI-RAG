@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Providers;
 
+use App\Policies\DatasetQueryPolicy;
+use App\Policies\OperatorAccessPolicy;
+use App\Policies\UserAccessPolicy;
 use App\Services\Storage\StorageService;
 use App\Services\Storage\StorageElementReader;
 use App\Services\Storage\StorageJobReportReader;
@@ -21,6 +24,7 @@ use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Filesystem\FilesystemManager;
 use Illuminate\Http\Request;
 use Illuminate\Routing\UrlGenerator as LaravelUrlGenerator;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Vite;
@@ -81,8 +85,17 @@ class AppServiceProvider extends ServiceProvider
         $url->useOrigin((string) $config->get('app.url'));
 
         $this->configureViteAssetPaths($config);
+        $this->registerAuthorizationGates();
         $this->registerRouteConstraints();
         $this->registerRateLimits();
+    }
+
+    private function registerAuthorizationGates(): void
+    {
+        Gate::define('access-active-user', [UserAccessPolicy::class, 'accessActiveUser']);
+        Gate::define('access-operator', [OperatorAccessPolicy::class, 'access']);
+        Gate::define('access-query-principal', [UserAccessPolicy::class, 'accessQueryPrincipal']);
+        Gate::define('query-dataset', [DatasetQueryPolicy::class, 'query']);
     }
 
     private function configureViteAssetPaths(ConfigRepository $config): void

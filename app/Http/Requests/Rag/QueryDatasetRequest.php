@@ -30,7 +30,7 @@ class QueryDatasetRequest extends FormRequest
     {
         $user = $this->user();
 
-        return $user instanceof User && ! (bool) $user->isRemoved;
+        return $user instanceof User && $user->can('access-query-principal');
     }
 
     /**

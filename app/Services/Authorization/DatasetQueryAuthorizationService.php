@@ -42,6 +42,20 @@ readonly class DatasetQueryAuthorizationService
     }
 
     /**
+     * Check the dataset grant only; storage readiness remains an operational check in authorize().
+     */
+    public function canQuery(User $user, string $datasetId): bool
+    {
+        $principal = $this->tryPrincipalFor($user);
+
+        if ($principal === null) {
+            return false;
+        }
+
+        return $this->grants->findActiveDatasetForQuery($principal, trim($datasetId)) instanceof Dataset;
+    }
+
+    /**
      * @return list<array{dataset_id:string,name:string}>
      */
     public function authorizedDatasets(User $user): array

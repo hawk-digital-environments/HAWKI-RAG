@@ -58,12 +58,12 @@ use App\Http\Controllers\PipelineControlController;
 use App\Http\Controllers\PipelineRecoveryController;
 use App\Http\Controllers\PipelineTaskController;
 
-Route::middleware(['auth:sanctum', 'abilities:query', 'throttle:hawki-api'])->group(function () {
+Route::middleware(['auth:sanctum', 'abilities:query', 'can:access-query-principal', 'throttle:hawki-api'])->group(function () {
     Route::get('/query/datasets', [HawkiRagProxyController::class, 'datasets']);
     Route::post('/query', [HawkiRagProxyController::class, 'query'])->middleware('throttle:hawki-rag-query');
 });
 
-Route::middleware(['auth:sanctum', 'abilities:operator', 'throttle:hawki-api'])->group(function () {
+Route::middleware(['auth:sanctum', 'abilities:operator', 'can:access-active-user', 'throttle:hawki-api'])->group(function () {
     Route::prefix('datasets')->group(function () {
         Route::get('/', [DatasetController::class, 'index']);
         Route::post('/', [DatasetController::class, 'store']);

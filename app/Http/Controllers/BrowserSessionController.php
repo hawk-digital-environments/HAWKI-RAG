@@ -19,7 +19,7 @@ class BrowserSessionController extends Controller
 
         if (
             ! $user instanceof User
-            || (bool) $user->isRemoved
+            || $user->cannot('access-query-principal')
             || ! $accessToken instanceof PersonalAccessToken
             || ! $accessToken->can('query')
         ) {

@@ -13,7 +13,7 @@ class ListAuthorizedQueryDatasetsRequest extends FormRequest
     {
         $user = $this->user();
 
-        return $user instanceof User && ! (bool) $user->isRemoved;
+        return $user instanceof User && $user->can('access-query-principal');
     }
 
     public function rules(): array

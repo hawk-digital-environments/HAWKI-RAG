@@ -145,6 +145,31 @@ class RouteSecurityTest extends TestCase
             ->assertOk();
     }
 
+    public function test_web_ui_operator_endpoints_preserve_active_tokenless_browser_sessions(): void
+    {
+        config()->set('config.operator_auth.bypass', false);
+
+        $this->actingAs(new User([
+            'username' => 'browser-operator',
+            'email' => 'browser-operator@example.test',
+            'ip' => '127.0.0.2',
+        ]))->getJson('/settings/config')
+            ->assertOk();
+    }
+
+    public function test_web_ui_operator_endpoints_reject_removed_browser_sessions(): void
+    {
+        config()->set('config.operator_auth.bypass', false);
+
+        $this->actingAs(new User([
+            'username' => 'removed-browser-operator',
+            'email' => 'removed-browser-operator@example.test',
+            'ip' => '127.0.0.3',
+            'isRemoved' => true,
+        ]))->getJson('/settings/config')
+            ->assertUnauthorized();
+    }
+
     public function test_web_ui_operator_local_bypass_must_be_explicit_and_environment_scoped(): void
     {
         config()->set('config.operator_auth.bypass', true);

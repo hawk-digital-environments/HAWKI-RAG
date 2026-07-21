@@ -7,6 +7,7 @@ namespace App\Services\Authorization;
 use App\Models\User;
 use App\Services\User\Repositories\UserRepository;
 use Illuminate\Container\Attributes\Singleton;
+use Illuminate\Contracts\Auth\Access\Gate as GateContract;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Contracts\Auth\Factory as AuthFactory;
 use Illuminate\Contracts\Config\Repository as ConfigRepository;
@@ -23,6 +24,7 @@ readonly class BrowserQueryPrincipalService
         private ConfigRepository $config,
         private Application $application,
         private UserRepository $users,
+        private GateContract $gate,
     ) {}
 
     public function establishSession(Request $request, User $user): void
@@ -100,7 +102,11 @@ readonly class BrowserQueryPrincipalService
 
     private function activeUser(?Authenticatable $user): ?User
     {
-        return $user instanceof User && ! (bool) $user->isRemoved ? $user : null;
+        if (! $user instanceof User) {
+            return null;
+        }
+
+        return $this->gate->forUser($user)->allows('access-query-principal') ? $user : null;
     }
 
     private function activeQueryTokenUser(?Authenticatable $user): ?User
