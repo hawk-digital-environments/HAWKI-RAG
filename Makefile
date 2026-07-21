@@ -28,6 +28,7 @@ GPU_OVERRIDE_COMPOSE ?= docker-compose-gpu-override.yml
 LOCAL_OVERRIDE_COMPOSE ?= docker-compose.local.yml
 COMPOSE_FILE_SEP ?= :
 COMMA := ,
+PYTHON_MINERU_WHEEL_ROOT ?= /tmp/rawki-mineru-compat
 
 # Ollama acceleration policy: auto (default), 1 (force GPU), or 0 (force CPU).
 USE_OLLAMA_GPU ?= auto
@@ -127,7 +128,14 @@ clean: ## Remove generated Python caches, logs, coverage, and build artifacts.
 
 python-deps: ## Install Python runtime and test dependencies.
 	@python3 -m pip install --upgrade pip setuptools wheel
-	@python3 -m pip install -r python_rag/requirements.txt -r python_rag/requirements-test.txt
+	@mkdir -p "$(PYTHON_MINERU_WHEEL_ROOT)/upstream" "$(PYTHON_MINERU_WHEEL_ROOT)/patched"
+	@python3 -m pip download --no-deps --dest "$(PYTHON_MINERU_WHEEL_ROOT)/upstream" "mineru==3.4.4"
+	@python3 python_rag/scripts/build_mineru_transformers5_wheel.py \
+		"$(PYTHON_MINERU_WHEEL_ROOT)/upstream/mineru-3.4.4-py3-none-any.whl" \
+		"$(PYTHON_MINERU_WHEEL_ROOT)/patched"
+	@python3 -m pip install --find-links "$(PYTHON_MINERU_WHEEL_ROOT)/patched" \
+		-r python_rag/requirements.txt -r python_rag/requirements-test.txt
+	@python3 -m pip install --upgrade -r python_rag/requirements-security.txt
 
 # ==============================================================================
 # Docker foundation and application images

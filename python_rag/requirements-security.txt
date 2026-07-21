@@ -1,0 +1,2 @@
+# Explicit security override for a transitive FastAPI dependency.
+starlette==1.3.1

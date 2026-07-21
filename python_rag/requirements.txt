@@ -1,4 +1,4 @@
-fastapi>=0.115.2,<1.0
+fastapi==0.139.2
 pydantic>=2.8,<3
 uvicorn[standard]==0.30.6
 requests>=2.32,<3
@@ -8,16 +8,20 @@ psycopg[binary]>=3.2,<4
 numpy>=1.26,<2.1
 qdrant-client>=1.12.0,<2.0
 neo4j==5.23.0
-python-dotenv==1.0.1
-raganything[all]
+python-dotenv==1.2.2
+raganything[all]==1.3.1
 # RAG-Anything initializes the MinerU parser even for converted markdown input.
-# The base mineru package is not enough for that runtime check.
-mineru[core]
+# The base package is not enough for that runtime check. Build this local-version
+# wheel from the checksum-verified upstream 3.4.4 artifact before installation.
+# Its local core extra intentionally contains only RAWKI's validated pipeline
+# backend and the narrow Transformers 5 compatibility patch.
+mineru[core]==3.4.4+rawki.1
+transformers==5.14.1
 PyJWT>=2.9,<3
 aiofiles>=24.1,<25
 torch>=2.2.0
-sentence-transformers==3.0.1
 # python-multipart>=0.0.18,<1.0
 # Avoid PyAV source builds that require ffmpeg7 in slim/arm Docker environments.
 av==12.3.0
-git+https://github.com/HKUDS/LightRAG.git
+# Keep the Git-only dependency reproducible at the revision exercised by the image tests.
+git+https://github.com/HKUDS/LightRAG.git@c5bf73dbf6139f1b03f738a2fec4e47d5e66f3ab

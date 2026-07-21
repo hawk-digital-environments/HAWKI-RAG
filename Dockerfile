@@ -27,11 +27,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     tesseract-ocr-deu \
     && rm -rf /var/lib/apt/lists/*
 
-COPY python_rag/requirements.txt /app/requirements.txt
+COPY python_rag/requirements.txt python_rag/requirements-security.txt /app/
+COPY python_rag/scripts/build_mineru_transformers5_wheel.py /tmp/
 RUN --mount=type=cache,target=/root/.cache/pip \
-    python -m pip install --no-cache-dir "pip<26" \
+    python -m pip install --no-cache-dir "pip==26.1.2" "setuptools==83.0.0" \
+    && mkdir -p /tmp/mineru-upstream /tmp/mineru-patched \
+    && pip download --no-deps --dest /tmp/mineru-upstream "mineru==3.4.4" \
+    && python /tmp/build_mineru_transformers5_wheel.py \
+       /tmp/mineru-upstream/mineru-3.4.4-py3-none-any.whl /tmp/mineru-patched \
     && PIP_DEFAULT_TIMEOUT=1200 PIP_RETRIES=25 \
-       pip install --prefer-binary --retries 25 --timeout 1200 -r requirements.txt
+       pip install --find-links=/tmp/mineru-patched \
+       --prefer-binary --retries 25 --timeout 1200 -r requirements.txt \
+    && pip install --prefer-binary --retries 10 --timeout 300 \
+       --upgrade -r requirements-security.txt \
+    && rm -rf /tmp/mineru-upstream /tmp/mineru-patched
 
 COPY python_rag /app
 
@@ -61,8 +70,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl && \
     rm -rf /var/lib/apt/lists/*
 
-COPY python_rag/requirements.txt /app/requirements.txt
-RUN pip install --no-cache-dir --retries 10 --timeout 180 -r requirements.txt
+COPY python_rag/requirements-rerank.txt /app/
+RUN python -m pip install --no-cache-dir "pip==26.1.2" "setuptools==83.0.0" \
+    && pip install --no-cache-dir --retries 10 --timeout 300 -r requirements-rerank.txt
 
 COPY python_rag /app
 

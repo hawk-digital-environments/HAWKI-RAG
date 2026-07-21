@@ -279,7 +279,10 @@ class ApiCharacterizationTests(unittest.TestCase):
                     sys.modules.pop(mod_name, None)
 
                 app_main = importlib.import_module("api.main")
-                paths = {route.path for route in app_main.app.router.routes}
+                # Starlette 1.x keeps included routers as lazy internal route
+                # objects. OpenAPI is the stable public surface for asserting
+                # that the application registered its HTTP endpoints.
+                paths = set(app_main.app.openapi()["paths"])
 
         self.assertIn("/health", paths)
         self.assertIn("/config", paths)
