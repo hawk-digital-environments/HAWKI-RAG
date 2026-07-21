@@ -3,8 +3,8 @@
 namespace Tests\Feature\Scraping;
 
 use App\Models\PipelineStageState;
-use Illuminate\Http\Client\Request;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
@@ -172,6 +172,19 @@ class ScraperTaskProxyTest extends TestCase
 
         $this->assertSame('manual-site-goettingen', $stage->metadata['taskId'] ?? null);
         $this->assertSame('scraper-task-ui', $stage->metadata['source'] ?? null);
+    }
+
+    public function test_starting_scraper_task_rejects_invalid_input_before_proxying(): void
+    {
+        Http::fake();
+
+        $this->postJson('/scraper/tasks/start', [
+            'taskId' => 'invalid task',
+            'options' => 'invalid',
+        ])->assertUnprocessable()
+            ->assertJsonValidationErrors(['taskId', 'options']);
+
+        Http::assertNothingSent();
     }
 
     private function profileEntry(): array

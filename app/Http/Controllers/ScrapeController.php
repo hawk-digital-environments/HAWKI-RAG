@@ -5,15 +5,14 @@ declare(strict_types=1);
 namespace App\Http\Controllers;
 
 use App\Http\Controllers\Scrape\ScrapeControllerResponseFactory;
-use App\Http\Controllers\Scrape\ScrapeRequestRules;
+use App\Http\Requests\Scrape\StartCrawlerTaskRequest;
 use App\Services\Scrape\ScrapeService;
-use Illuminate\Http\Request;
+use Illuminate\Http\JsonResponse;
 
 class ScrapeController extends Controller
 {
     public function __construct(
         protected readonly ScrapeService $scrapeService,
-        private readonly ScrapeRequestRules $rules,
         private readonly ScrapeControllerResponseFactory $responses,
     ) {}
 
@@ -29,13 +28,11 @@ class ScrapeController extends Controller
         return response()->json($result, 200);
     }
 
-    public function startCrawlerTask(Request $request)
+    public function startCrawlerTask(StartCrawlerTaskRequest $request): JsonResponse
     {
-        $validatedData = $request->validate($this->rules->crawlerTask());
-
         $result = $this->scrapeService->startCrawlerTask(
-            $validatedData['taskId'],
-            $validatedData['options'] ?? [],
+            $request->taskId(),
+            $request->options(),
         );
 
         return $this->responses->crawler($result);
