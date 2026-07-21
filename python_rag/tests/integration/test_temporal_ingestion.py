@@ -75,6 +75,7 @@ async def _connect_temporal(client_type: Any) -> tuple[Any | None, list[str]]:
 async def _run_live_ingestion_workflow(
     *,
     unavailable: Callable[[str], NoReturn],
+    duplicate_only: bool = False,
 ) -> dict[str, Any]:
     try:
         activity = importlib.import_module("temporalio.activity")
@@ -105,32 +106,58 @@ async def _run_live_ingestion_workflow(
         assert workflow_input["integration_marker"] == marker
         return {"status": "success", "scrape_marker": marker}
 
+    @activity.defn(name="classify_source_documents")
+    async def classify_source_documents(activity_input: dict[str, Any]) -> dict[str, Any]:
+        assert activity_input["scrape_result"]["scrape_marker"] == marker
+        return {
+            "status": "success",
+            "decision": "duplicate" if duplicate_only else "new",
+            "process_documents": 0 if duplicate_only else 1,
+            "duplicate_documents": 1 if duplicate_only else 0,
+            "skip_processing": duplicate_only,
+            "dedup_marker": marker,
+        }
+
     @activity.defn(name="inspect_and_convert_files")
     async def inspect_and_convert_files(activity_input: dict[str, Any]) -> dict[str, Any]:
+        assert not duplicate_only, "duplicate-only workflow must skip conversion"
         assert activity_input["scrape_result"]["scrape_marker"] == marker
+        assert activity_input["deduplication_result"]["dedup_marker"] == marker
         return {"status": "success", "convert_marker": marker}
 
     @activity.defn(name="ingest_markdown_files")
     async def ingest_markdown_files(activity_input: dict[str, Any]) -> dict[str, Any]:
+        assert not duplicate_only, "duplicate-only workflow must skip ingestion"
         assert activity_input["scrape_result"]["scrape_marker"] == marker
+        assert activity_input["deduplication_result"]["dedup_marker"] == marker
         assert activity_input["convert_result"]["convert_marker"] == marker
         return {"status": "success", "ingest_marker": marker}
 
     @activity.defn(name="mark_source_ready")
     async def mark_source_ready(activity_input: dict[str, Any]) -> dict[str, Any]:
         workflow_input = activity_input["workflow_input"]
-        assert activity_input["ingest_result"]["ingest_marker"] == marker
+        assert activity_input["deduplication_result"]["dedup_marker"] == marker
+        if duplicate_only:
+            assert activity_input["convert_result"]["status"] == "skipped"
+            assert activity_input["ingest_result"]["skipped_documents"] == 1
+        else:
+            assert activity_input["ingest_result"]["ingest_marker"] == marker
         return {
             "status": "success",
             "source_id": workflow_input["source_id"],
             "dataset_id": workflow_input["dataset_id"],
             "integration_marker": marker,
-            "completed_stages": [
-                "scrape_source",
-                "inspect_and_convert_files",
-                "ingest_markdown_files",
-                "mark_source_ready",
-            ],
+            "completed_stages": (
+                ["scrape_source", "classify_source_documents", "mark_source_ready"]
+                if duplicate_only
+                else [
+                    "scrape_source",
+                    "classify_source_documents",
+                    "inspect_and_convert_files",
+                    "ingest_markdown_files",
+                    "mark_source_ready",
+                ]
+            ),
         }
 
     workflow_input = {
@@ -150,6 +177,7 @@ async def _run_live_ingestion_workflow(
         workflows=[IngestSourceWorkflow],
         activities=[
             scrape_source,
+            classify_source_documents,
             inspect_and_convert_files,
             ingest_markdown_files,
             mark_source_ready,
@@ -195,7 +223,26 @@ class TestLiveTemporalIngestion:
         assert result["integration_marker"].startswith("rawki-it-marker-")
         assert result["completed_stages"] == [
             "scrape_source",
+            "classify_source_documents",
             "inspect_and_convert_files",
             "ingest_markdown_files",
+            "mark_source_ready",
+        ]
+
+    def test_duplicate_only_workflow_skips_conversion_and_ingestion(
+        self,
+        integration_unavailable: Callable[[str], NoReturn],
+    ) -> None:
+        result = asyncio.run(
+            _run_live_ingestion_workflow(
+                unavailable=integration_unavailable,
+                duplicate_only=True,
+            )
+        )
+
+        assert result["status"] == "success"
+        assert result["completed_stages"] == [
+            "scrape_source",
+            "classify_source_documents",
             "mark_source_ready",
         ]

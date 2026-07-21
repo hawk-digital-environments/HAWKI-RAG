@@ -20,9 +20,8 @@ readonly class IngestSourceWorkflowPayloadFactory
     public function __construct(
         private ConfigRepository $config,
         private SettingsService $settings,
-        private ClockInterface $clock = new Clock(),
-    ) {
-    }
+        private ClockInterface $clock = new Clock,
+    ) {}
 
     /**
      * @return array<string, mixed>
@@ -55,6 +54,15 @@ readonly class IngestSourceWorkflowPayloadFactory
             : $this->settings->modelRuntime();
         $embeddingModel = $datasetModel !== '' ? $datasetModel : $modelRuntime['embedding_model'];
 
+        $deduplication = $this->deduplication(
+            $task,
+            $source,
+            $managedDocumentId,
+            $upload,
+            $datasetMetadata,
+            $requestMetadata,
+        );
+
         return array_filter([
             'source_id' => $source->source_id,
             'source_url' => $source->source_url,
@@ -76,6 +84,7 @@ readonly class IngestSourceWorkflowPayloadFactory
             'raw_output_path' => $source->raw_storage_path,
             'markdown_output_path' => $source->markdown_storage_path,
             'ingest_manifest_path' => $this->manifestPath($source->source_id),
+            'deduplication' => $deduplication,
             'metadata' => [
                 'request' => $request,
             ],
@@ -161,7 +170,7 @@ readonly class IngestSourceWorkflowPayloadFactory
     }
 
     /**
-     * @param array<string, mixed> $metadata
+     * @param  array<string, mixed>  $metadata
      */
     private function graphEnabled(array $metadata): bool
     {
@@ -174,6 +183,40 @@ readonly class IngestSourceWorkflowPayloadFactory
             $requestMetadata['graph'] ?? $metadata['graph'] ?? $this->config->get('temporal.ingestion.graph', false),
             FILTER_VALIDATE_BOOLEAN,
         );
+    }
+
+    /**
+     * @param  array<string, mixed>|null  $upload
+     * @param  array<string, mixed>  $datasetMetadata
+     * @param  array<string, mixed>  $requestMetadata
+     * @return array{scope_key:string,doc_id:string,content_hash?:string,force:bool}
+     */
+    private function deduplication(
+        PipelineTask $task,
+        IngestionSource $source,
+        ?ManagedDocumentId $managedDocumentId,
+        ?array $upload,
+        array $datasetMetadata,
+        array $requestMetadata,
+    ): array {
+        $scopeKey = trim((string) ($datasetMetadata['qdrant_collection'] ?? ''));
+        if ($scopeKey === '') {
+            $scopeKey = (string) $task->dataset_id;
+        }
+
+        $documentId = $managedDocumentId?->value ?? (string) $source->source_id;
+
+        $contentHash = trim((string) ($upload['content_hash'] ?? ''));
+        $validContentHash = preg_match('/\A[a-fA-F0-9]{64}\z/', $contentHash) === 1
+            ? strtolower($contentHash)
+            : null;
+
+        return array_filter([
+            'scope_key' => $scopeKey,
+            'doc_id' => $documentId,
+            'content_hash' => $validContentHash,
+            'force' => filter_var($requestMetadata['dedup_force'] ?? false, FILTER_VALIDATE_BOOLEAN),
+        ], static fn (mixed $value): bool => $value !== null);
     }
 
     /**

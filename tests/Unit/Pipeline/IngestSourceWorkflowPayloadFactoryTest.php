@@ -75,6 +75,11 @@ class IngestSourceWorkflowPayloadFactoryTest extends TestCase
         $this->assertSame('hawki-ollama-embedding', $payload['ingestion']['embedding_model']);
         $this->assertSame('hawki-ollama-vision', $payload['ingestion']['vision_model']);
         $this->assertTrue($payload['ingestion']['graph']);
+        $this->assertSame('hawki_dataset_a', $payload['deduplication']['scope_key']);
+        $this->assertSame($sourceId, $payload['deduplication']['doc_id']);
+        $this->assertFalse($payload['deduplication']['force']);
+        $this->assertArrayNotHasKey('reclaim', $payload['deduplication']);
+        $this->assertArrayNotHasKey('content_hash', $payload['deduplication']);
 
         $encoded = json_encode($payload, JSON_THROW_ON_ERROR);
         $this->assertStringNotContainsString('markdown_body', $encoded);
@@ -89,7 +94,8 @@ class IngestSourceWorkflowPayloadFactoryTest extends TestCase
         config()->set('temporal.ingestion.graph', true);
 
         $factory = app(IngestSourceWorkflowPayloadFactory::class);
-        $sourceId = $factory->sourceId('dataset-upload', 'upload://sample.pdf|hash');
+        $contentHash = hash('sha256', 'sample upload bytes');
+        $sourceId = $factory->sourceId('dataset-upload', 'upload://sample.pdf|'.$contentHash);
         $paths = $factory->storagePaths($sourceId);
 
         $payload = $factory->input(
@@ -104,7 +110,7 @@ class IngestSourceWorkflowPayloadFactoryTest extends TestCase
             new IngestionSource([
                 'source_id' => $sourceId,
                 'source_url' => 'upload://sample.pdf',
-                'content_hash' => 'hash',
+                'content_hash' => $contentHash,
                 'raw_storage_path' => $paths['raw'],
                 'markdown_storage_path' => $paths['markdown'],
                 'metadata' => [
@@ -118,6 +124,7 @@ class IngestSourceWorkflowPayloadFactoryTest extends TestCase
                         'original_filename' => 'sample.pdf',
                         'target_name' => 'sample-upload.pdf',
                         'local_path' => '/shared/task/sample-upload.pdf',
+                        'content_hash' => $contentHash,
                     ],
                 ],
             ]),
@@ -130,6 +137,11 @@ class IngestSourceWorkflowPayloadFactoryTest extends TestCase
         $this->assertArrayNotHasKey('assistant_document_id', $payload);
         $this->assertSame('native', $payload['converter_mode']);
         $this->assertFalse($payload['ingestion']['graph']);
+        $this->assertSame('dataset-upload', $payload['deduplication']['scope_key']);
+        $this->assertSame('adoc-upload-1', $payload['deduplication']['doc_id']);
+        $this->assertSame($contentHash, $payload['deduplication']['content_hash']);
+        $this->assertFalse($payload['deduplication']['force']);
+        $this->assertArrayNotHasKey('reclaim', $payload['deduplication']);
         $this->assertSame('adoc-upload-1', $payload['metadata']['request']['metadata']['managed_document_id']);
         $this->assertArrayNotHasKey('document_id', $payload['metadata']['request']['metadata']);
         $this->assertArrayNotHasKey('assistant_document_id', $payload['metadata']['request']['metadata']);
@@ -212,6 +224,7 @@ class IngestSourceWorkflowPayloadFactoryTest extends TestCase
         );
 
         $this->assertSame('custom', $payload['converter_mode']);
+        $this->assertSame($sourceId, $payload['deduplication']['doc_id']);
         $this->assertSame(
             '/shared/sources/'.$sourceId.'/secrets/custom_converter.json',
             $payload['custom_converter_profile_path'],

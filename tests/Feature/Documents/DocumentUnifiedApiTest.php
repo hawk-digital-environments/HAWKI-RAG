@@ -117,6 +117,37 @@ class DocumentUnifiedApiTest extends TestCase
         File::deleteDirectory($root);
     }
 
+    public function test_create_persists_server_checksum_instead_of_client_claim(): void
+    {
+        $root = storage_path('framework/testing/unified-documents-server-checksum');
+        File::deleteDirectory($root);
+        config()->set('temporal.storage.shared_root', $root);
+        config()->set('file_converter.raganything_supported_extensions', ['pdf']);
+        Http::fake([
+            '*temporal/workflows/ingest' => Http::response([
+                'workflow_id' => 'documents-checksum-workflow',
+                'run_id' => 'documents-checksum-run-1',
+            ]),
+        ]);
+        $contents = "%PDF-1.4\nauthoritative bytes\n";
+
+        $response = $this->post('/api/documents', [
+            'dataset_id' => 'documents-server-checksum',
+            'source_checksum_sha256' => str_repeat('f', 64),
+            'file' => UploadedFile::fake()->createWithContent('checksum.pdf', $contents),
+        ], [
+            'Accept' => 'application/json',
+        ]);
+
+        $response->assertAccepted();
+        $this->assertDatabaseHas('managed_documents', [
+            'document_id' => $response->json('document.document_id'),
+            'source_checksum_sha256' => hash('sha256', $contents),
+        ]);
+
+        File::deleteDirectory($root);
+    }
+
     public function test_batch_create_accepts_multiple_files_with_one_dataset_through_unified_documents_route(): void
     {
         $root = storage_path('framework/testing/unified-documents-batch');
@@ -528,6 +559,59 @@ class DocumentUnifiedApiTest extends TestCase
             ->assertJsonPath('document.status', ManagedDocument::STATUS_INDEXED)
             ->assertJsonPath('document.display_name', 'renamed-without-reingest.pdf');
 
+        Http::assertNothingSent();
+    }
+
+    public function test_update_skips_identical_uploaded_bytes_even_with_newer_timestamp(): void
+    {
+        $contents = "%PDF-1.4\nidentical replacement bytes\n";
+        $checksum = hash('sha256', $contents);
+        ManagedDocument::query()->create([
+            'document_id' => 'adoc_same_bytes_1',
+            'dataset_id' => 'documents-same-bytes',
+            'display_name' => 'original.pdf',
+            'source_type' => 'upload',
+            'source_updated_at' => Carbon::parse('2026-07-13T13:35:00Z'),
+            'source_checksum_sha256' => $checksum,
+            'graph_enabled' => false,
+            'status' => ManagedDocument::STATUS_INDEXED,
+        ]);
+        ManagedDocumentOutput::query()->create([
+            'document_id' => 'adoc_same_bytes_1',
+            'bridge_document_id' => 'doc-same-bytes-1',
+            'qdrant_collection' => 'hawki_documents_same_bytes',
+            'neo4j_namespace' => 'hawki_documents_same_bytes',
+            'source_id' => 'source-same-bytes-1',
+            'content_hash' => $checksum,
+            'chunk_count' => 1,
+            'status' => 'indexed',
+        ]);
+
+        Http::fake();
+
+        $this->put('/api/documents/adoc_same_bytes_1', [
+            'file' => UploadedFile::fake()->createWithContent('replacement.pdf', $contents),
+            'source_updated_at' => '2026-07-14T13:35:00Z',
+            'source_checksum_sha256' => str_repeat('b', 64),
+            'display_name' => 'renamed.pdf',
+        ], [
+            'Accept' => 'application/json',
+        ])
+            ->assertOk()
+            ->assertJsonPath('operation.status', ManagedDocument::STATUS_SKIPPED_UNCHANGED)
+            ->assertJsonPath('document.display_name', 'renamed.pdf');
+
+        $this->assertDatabaseHas('managed_documents', [
+            'document_id' => 'adoc_same_bytes_1',
+            'source_checksum_sha256' => $checksum,
+            'status' => ManagedDocument::STATUS_INDEXED,
+        ]);
+        $this->assertDatabaseHas('managed_document_outputs', [
+            'document_id' => 'adoc_same_bytes_1',
+            'bridge_document_id' => 'doc-same-bytes-1',
+            'status' => 'indexed',
+            'deleted_at' => null,
+        ]);
         Http::assertNothingSent();
     }
 

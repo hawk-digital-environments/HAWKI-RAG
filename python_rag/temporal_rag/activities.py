@@ -21,6 +21,7 @@ from temporal_rag.logging import log_event
 from temporal_rag.metadata import AppMetadataStore
 from temporal_rag.settings import TemporalRagSettings
 from temporal_rag.storage import (
+    SCRAPER_BOOKKEEPING_FILENAMES,
     is_object_prefix,
     list_markdown_files,
     read_text_file,
@@ -32,14 +33,6 @@ from temporal_rag.storage import (
 logger = logging.getLogger(__name__)
 
 PASSTHROUGH_METADATA_FILENAME = "rawki_passthrough.json"
-SCRAPER_BOOKKEEPING_FILENAMES = frozenset({
-    "crawler.log",
-    "job_state.json",
-    "summary.json",
-    "urls_index.json",
-})
-
-
 class DirectExtractUnsupportedFileError(RuntimeError):
     """The direct converter rejected a file type that RAG-Anything may still parse."""
 
@@ -61,6 +54,7 @@ class ConvertedFileResult:
     source_path: str
     markdown_files_created: int
     used_passthrough: bool
+    markdown_files: tuple[str, ...]
 
 
 def _scraper_start_payload(workflow_input: dict[str, Any], source_id: str, raw_dir: str) -> dict[str, Any]:
@@ -322,9 +316,6 @@ def _scrape_uploaded_file(workflow_input: dict[str, Any], source_id: str, raw_di
         raise RuntimeError(f"Uploaded source file was not found: {source}")
 
     raw_root = _fresh_local_directory(raw_dir)
-    markdown_dir = workflow_input.get("markdown_output_path")
-    if isinstance(markdown_dir, str) and markdown_dir.strip():
-        _fresh_local_directory(markdown_dir)
     target_name = str(upload.get("target_name") or source.name)
     target = raw_root / target_name
     if source != target:
@@ -379,13 +370,16 @@ def _convert_files_with_extract_api(
     source_id: str,
     raw_dir: str,
     markdown_dir: str,
+    *,
+    candidates: list[Path] | None = None,
+    source_metadata_by_path: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     raw_root = _local_directory(raw_dir, "raw")
     markdown_root = _local_directory(markdown_dir, "markdown", must_exist=False)
     markdown_root.mkdir(parents=True, exist_ok=True)
     raw_display_root = Path(raw_dir.removeprefix("file://")).expanduser()
 
-    candidates = _raw_conversion_candidates(raw_root)
+    candidates = candidates if candidates is not None else _raw_conversion_candidates(raw_root)
 
     if not candidates:
         return {
@@ -401,11 +395,20 @@ def _convert_files_with_extract_api(
 
     converted_files: list[str] = []
     passthrough_files: list[str] = []
+    markdown_files: list[str] = []
     markdown_files_created = 0
     for raw_file in candidates:
         source_path = str(raw_display_root / raw_file.relative_to(raw_root))
-        result = _convert_candidate_with_extract_api(service_config, raw_file, markdown_root, source_path)
+        source_metadata = (source_metadata_by_path or {}).get(str(raw_file.resolve()), {})
+        result = _convert_candidate_with_extract_api(
+            service_config,
+            raw_file,
+            markdown_root,
+            source_path,
+            source_metadata=source_metadata,
+        )
         markdown_files_created += result.markdown_files_created
+        markdown_files.extend(result.markdown_files)
         converted_files.append(result.source_path)
         if result.used_passthrough:
             passthrough_files.append(result.source_path)
@@ -417,6 +420,7 @@ def _convert_files_with_extract_api(
         "markdown_files_created": markdown_files_created,
         "converted_files": converted_files,
         "passthrough_files": passthrough_files,
+        "markdown_files": sorted(set(markdown_files)),
         "skipped_files": [],
         "status": "success" if markdown_files_created > 0 else "failed",
         "error_details": None if markdown_files_created > 0 else "Converter did not produce Markdown files.",
@@ -428,23 +432,73 @@ def _convert_candidate_with_extract_api(
     raw_file: Path,
     markdown_root: Path,
     source_path: str,
+    *,
+    source_metadata: dict[str, Any] | None = None,
 ) -> ConvertedFileResult:
-    output_dir = markdown_root / _converter_output_dir_name(raw_file)
+    source_metadata = dict(source_metadata or {})
+    output_dir = markdown_root / _converter_output_dir_name(
+        raw_file,
+        document_id=_string_value(source_metadata.get("dedup_document_id")) or None,
+    )
     if output_dir.exists():
         shutil.rmtree(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    if source_metadata.get("crawler_markdown") is True and raw_file.suffix.lower() in {".md", ".markdown"}:
+        markdown_path = output_dir / "content.md"
+        shutil.copy2(raw_file, markdown_path)
+        _write_source_metadata(output_dir, source_metadata)
+        return ConvertedFileResult(source_path, 1, False, (str(markdown_path.resolve()),))
+
     try:
         created = _extract_single_file(service_config, raw_file, output_dir)
-        return ConvertedFileResult(source_path, created, False)
+        _write_source_metadata(output_dir, source_metadata)
+        return ConvertedFileResult(
+            source_path,
+            created,
+            False,
+            tuple(_markdown_paths(output_dir)),
+        )
     except DirectExtractUnsupportedFileError as exc:
         created = _write_raganything_passthrough(raw_file, output_dir, exc)
+        _write_source_metadata(output_dir, source_metadata)
         logger.info(
             "converter:direct_extract_passthrough file=%s reason=%s",
             raw_file,
             exc,
         )
-        return ConvertedFileResult(source_path, created, True)
+        return ConvertedFileResult(
+            source_path,
+            created,
+            True,
+            tuple(_markdown_paths(output_dir)),
+        )
+
+
+SOURCE_METADATA_FILENAME = "rawki_source_metadata.json"
+
+
+def _write_source_metadata(output_dir: Path, metadata: dict[str, Any]) -> None:
+    clean = {
+        str(key): value
+        for key, value in metadata.items()
+        if isinstance(key, str) and key.strip() and value is not None
+    }
+    if not clean:
+        return
+    targets = {output_dir.resolve()}
+    targets.update(Path(path).parent for path in _markdown_paths(output_dir))
+    serialized = json.dumps(clean, indent=2, sort_keys=True) + "\n"
+    for target in targets:
+        (target / SOURCE_METADATA_FILENAME).write_text(serialized, encoding="utf-8")
+
+
+def _markdown_paths(output_dir: Path) -> list[str]:
+    return [
+        str(path.resolve())
+        for path in sorted(output_dir.rglob("*"))
+        if path.is_file() and path.suffix.lower() in {".md", ".markdown"}
+    ]
 
 
 def _extract_single_file(service_config: dict[str, Any], raw_file: Path, output_dir: Path) -> int:
@@ -540,21 +594,25 @@ def _write_raganything_passthrough(raw_file: Path, output_dir: Path, error: Exce
 
 
 def _load_passthrough_metadata(markdown_file: str) -> dict[str, Any]:
-    metadata_path = Path(markdown_file).resolve().parent / PASSTHROUGH_METADATA_FILENAME
-    if not metadata_path.is_file():
-        return {}
-    try:
-        payload = json.loads(metadata_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        logger.warning("converter:passthrough_metadata unreadable path=%s error=%s", metadata_path, exc)
-        return {}
-    if not isinstance(payload, dict):
-        return {}
-    return {
-        str(key): value
-        for key, value in payload.items()
-        if isinstance(key, str) and key.strip()
-    }
+    merged: dict[str, Any] = {}
+    parent = Path(markdown_file).resolve().parent
+    for filename in (SOURCE_METADATA_FILENAME, PASSTHROUGH_METADATA_FILENAME):
+        metadata_path = parent / filename
+        if not metadata_path.is_file():
+            continue
+        try:
+            payload = json.loads(metadata_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            logger.warning("converter:handoff_metadata unreadable path=%s error=%s", metadata_path, exc)
+            continue
+        if not isinstance(payload, dict):
+            continue
+        merged.update({
+            str(key): value
+            for key, value in payload.items()
+            if isinstance(key, str) and key.strip()
+        })
+    return merged
 
 
 def _is_unsupported_direct_extract_response(status_code: int, error: str) -> bool:
@@ -632,7 +690,14 @@ def _looks_like_scraper_output_dir(raw_root: Path) -> bool:
     return (raw_root / "job_state.json").is_file() or (raw_root / "urls_index.json").is_file()
 
 
-def _converter_output_dir_name(raw_file: Path) -> str:
+def _converter_output_dir_name(raw_file: Path, *, document_id: str | None = None) -> str:
+    if document_id:
+        safe_document_id = "".join(
+            character if character.isalnum() or character in {"-", "_"} else "-"
+            for character in document_id
+        ).strip("-")
+        if safe_document_id:
+            return f"documents/{safe_document_id}"
     safe_stem = "".join(char.lower() if char.isalnum() else "-" for char in raw_file.stem).strip("-")
     digest = hashlib.sha256(str(raw_file.resolve()).encode("utf-8")).hexdigest()[:8]
 
@@ -678,6 +743,8 @@ def _post_ingest(
     workflow_input: dict[str, Any],
     ingest_options: dict[str, Any],
     docs: list[dict[str, Any]],
+    *,
+    force_reprocess: bool = False,
 ) -> dict[str, Any]:
     operation_id = _operation_id(workflow_input, docs[0]["id"], "ingest")
     requires_graph = any(
@@ -700,6 +767,7 @@ def _post_ingest(
         "graph": bool(ingest_options.get("graph", False)) or requires_graph,
         "graph_model": ingest_options.get("graph_model"),
         "idempotency_key": operation_id,
+        "force_reprocess": force_reprocess,
     }
     return _bridge_request(
         settings,
@@ -764,12 +832,14 @@ def _operation_id(workflow_input: dict[str, Any], document_id: str, operation: s
 
 
 from temporal_rag.activity_convert import inspect_and_convert_files
+from temporal_rag.activity_deduplicate import classify_source_documents
 from temporal_rag.activity_ingest import ingest_markdown_files, mark_source_ready
 from temporal_rag.activity_scrape import scrape_source
 
 
 __all__ = [
     "inspect_and_convert_files",
+    "classify_source_documents",
     "ingest_markdown_files",
     "mark_source_ready",
     "scrape_source",

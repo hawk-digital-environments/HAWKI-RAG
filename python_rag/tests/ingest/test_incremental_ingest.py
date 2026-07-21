@@ -56,6 +56,36 @@ class IncrementalIngestTests(unittest.TestCase):
         )
         self.assertEqual(stats["doc_ids"], [expected_doc_id])
 
+    def test_prepare_documents_preserves_trusted_preconversion_document_id(self) -> None:
+        from application.workflows.ingest.chunking import prepare_documents
+
+        doc = SimpleNamespace(
+            id="doc_preconversion",
+            text="Stable page content.",
+            payload={
+                "dedup_document_id": "doc_preconversion",
+                "source_identity": "url:https://example.test/research",
+                "source_url": "https://example.test/research",
+                "canonical_url": "https://example.test/en/research",
+                "source_format": "markdown",
+            },
+        )
+
+        chunk_records, stats = prepare_documents(
+            [doc],
+            chunk_chars=1200,
+            chunk_overlap=0,
+            default_job_id="job-preconversion",
+        )
+
+        self.assertEqual(chunk_records[0]["doc_id"], "doc_preconversion")
+        self.assertEqual(chunk_records[0]["payload"]["doc_id"], "doc_preconversion")
+        self.assertEqual(
+            chunk_records[0]["payload"]["source_identity"],
+            "url:https://example.test/research",
+        )
+        self.assertEqual(stats["doc_ids"], ["doc_preconversion"])
+
     def test_prepare_documents_registers_upload_identity_without_changing_document_id(self) -> None:
         from application.workflows.ingest.chunking import prepare_documents
         from application.workflows.ingest.page_registry import build_page_registry_records
@@ -147,6 +177,51 @@ class IncrementalIngestTests(unittest.TestCase):
         self.assertEqual(registry.lookup, ("upload_test_docs", "doc:doc_upload_retry"))
         self.assertEqual(len(plan.unchanged_page_records), 1)
         self.assertEqual(plan.unchanged_page_records[0].source_identity, "doc:doc_upload_retry")
+
+    def test_force_reprocess_keeps_matching_content_for_retry_repair(self) -> None:
+        from application.workflows.ingest.incremental import plan_incremental_ingest
+
+        class FakeQdrant:
+            def find_points_by_payload(
+                self,
+                filters: dict[str, object],
+                *,
+                limit: int = 1,
+            ) -> list[dict[str, object]]:
+                return [{"payload": {"doc_id": "doc-retry", "content_hash": "same-hash"}}]
+
+        records = [{
+            "doc_id": "doc-retry",
+            "content": "same",
+            "payload": {
+                "doc_id": "doc-retry",
+                "chunk_index": 0,
+                "content_hash": "same-hash",
+                "source_format": "markdown",
+            },
+        }]
+        stats: dict[str, object] = {
+            "processed_docs": 1,
+            "skipped_docs": 0,
+            "doc_ids": ["doc-retry"],
+            "chunks_per_doc": {"doc-retry": 1},
+            "by_format": {"markdown": 1},
+        }
+
+        plan = plan_incremental_ingest(
+            records,
+            doc_stats=stats,
+            qdrant=FakeQdrant(),
+            collection="retry_docs",
+            operation_id="op-retry",
+            logger_obj=logging.getLogger("test_force_reprocess"),
+            force_reprocess=True,
+        )
+
+        self.assertEqual(plan.chunk_records, records)
+        self.assertEqual(plan.changed_doc_ids, {"doc-retry"})
+        self.assertEqual(plan.unchanged_doc_ids, set())
+        self.assertEqual(plan.replace_doc_ids, {"doc-retry"})
 
     def test_incremental_plan_skips_unchanged_and_marks_changed_old_doc_id_for_replace(self) -> None:
         from application.workflows.ingest.incremental import plan_incremental_ingest

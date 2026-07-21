@@ -10,6 +10,14 @@ import unittest
 from unittest.mock import patch
 
 from temporal_rag import activities
+from temporal_rag.activity_convert import (
+    _convert_documents_with_external_jobs,
+    _conversion_checkpoint_path,
+    _read_conversion_checkpoint,
+    _write_conversion_checkpoint,
+)
+from temporal_rag.deduplication import ClaimedSourceDocument
+from temporal_rag.activity_ingest import _document_id_for_markdown
 
 
 class _UnsupportedResponse:
@@ -264,6 +272,49 @@ class TemporalConverterPassthroughTests(unittest.TestCase):
         self.assertEqual(result["markdown_files_created"], 0)
         self.assertIn("No files were found", result["error_details"])
 
+    def test_dedup_selection_converts_only_claimed_crawler_markdown(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            raw_dir = root / "raw"
+            markdown_dir = root / "markdown"
+            page_dir = raw_dir / "pages" / "research"
+            page_dir.mkdir(parents=True)
+            content = page_dir / "content.md"
+            content.write_text("# Claimed page", encoding="utf-8")
+            metadata_file = page_dir / "data.json"
+            metadata_file.write_text('{"title":"bookkeeping only"}', encoding="utf-8")
+
+            with patch("temporal_rag.activities.requests.post") as post:
+                result = activities._convert_files_with_extract_api(
+                    {
+                        "base_url": "http://converter.test",
+                        "start_path": "/extract",
+                        "timeout_seconds": 1,
+                        "retry_attempts": 1,
+                    },
+                    "source_crawl",
+                    str(raw_dir),
+                    str(markdown_dir),
+                    candidates=[content.resolve()],
+                    source_metadata_by_path={
+                        str(content.resolve()): {
+                            "dedup_document_id": "doc_claimed",
+                            "source_content_hash": "a" * 64,
+                            "source_url": "https://example.test/research",
+                            "crawler_markdown": True,
+                        },
+                    },
+                )
+
+            post.assert_not_called()
+            output = markdown_dir / "documents" / "doc_claimed" / "content.md"
+            self.assertEqual(output.read_text(encoding="utf-8"), "# Claimed page")
+            self.assertEqual(result["markdown_files"], [str(output.resolve())])
+            self.assertNotIn(str(metadata_file), result["converted_files"])
+            loaded = activities._load_passthrough_metadata(str(output))
+            self.assertEqual(loaded["dedup_document_id"], "doc_claimed")
+            self.assertEqual(loaded["source_content_hash"], "a" * 64)
+
     def test_passthrough_documents_force_graph_ingestion(self) -> None:
         docs = [{
             "id": "doc_image",
@@ -288,6 +339,165 @@ class TemporalConverterPassthroughTests(unittest.TestCase):
         self.assertEqual(body["idempotency_key"], "source_image:job_image:doc_image:ingest")
         self.assertEqual(headers["Idempotency-Key"], "source_image:job_image:doc_image:ingest")
         self.assertEqual(headers["X-Request-ID"], "source_image:job_image:doc_image:ingest")
+
+    def test_temporal_ingest_can_force_reprocessing_after_partial_retry(self) -> None:
+        docs = [{"id": "doc_retry", "text": "Retry", "payload": {}}]
+
+        with patch("temporal_rag.activities._bridge_request", return_value={"ok": True}) as bridge:
+            activities._post_ingest(
+                object(),
+                {"source_id": "source_retry", "job_id": "job_retry"},
+                {},
+                docs,
+                force_reprocess=True,
+            )
+
+        self.assertIs(bridge.call_args.kwargs["json"]["force_reprocess"], True)
+
+    def test_multi_markdown_outputs_receive_stable_distinct_child_ids(self) -> None:
+        with TemporaryDirectory() as tmp:
+            markdown_dir = Path(tmp) / "markdown"
+            first = markdown_dir / "documents" / "parent" / "page-1.md"
+            second = markdown_dir / "documents" / "parent" / "page-2.md"
+            first.parent.mkdir(parents=True)
+            first.write_text("one", encoding="utf-8")
+            second.write_text("two", encoding="utf-8")
+
+            first_id = _document_id_for_markdown(
+                source_id="source-a",
+                markdown_file=str(first),
+                markdown_dir=str(markdown_dir),
+                parent_document_id="doc_parent",
+                sibling_count=2,
+            )
+            second_id = _document_id_for_markdown(
+                source_id="source-a",
+                markdown_file=str(second),
+                markdown_dir=str(markdown_dir),
+                parent_document_id="doc_parent",
+                sibling_count=2,
+            )
+            single_id = _document_id_for_markdown(
+                source_id="source-a",
+                markdown_file=str(first),
+                markdown_dir=str(markdown_dir),
+                parent_document_id="doc_parent",
+                sibling_count=1,
+            )
+
+        self.assertNotEqual(first_id, second_id)
+        self.assertTrue(first_id.startswith("doc_"))
+        self.assertEqual(single_id, "doc_parent")
+
+    def test_successful_conversion_checkpoint_is_reused_only_when_outputs_exist(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            plan_path = root / "deduplication" / "plan.json"
+            plan_path.parent.mkdir()
+            markdown_dir = root / "markdown"
+            markdown = markdown_dir / "documents" / "doc-a" / "content.md"
+            markdown.parent.mkdir(parents=True)
+            markdown.write_text("converted", encoding="utf-8")
+            checkpoint_path = _conversion_checkpoint_path(
+                plan_path=str(plan_path),
+                document_version="a" * 64,
+                service_config={"base_url": "http://converter", "start_path": "/extract"},
+            )
+            response = {
+                "status": "success",
+                "markdown_files": [str(markdown)],
+                "markdown_files_created": 1,
+            }
+
+            _write_conversion_checkpoint(checkpoint_path, response)
+            restored = _read_conversion_checkpoint(checkpoint_path, str(markdown_dir))
+            markdown.unlink()
+            missing = _read_conversion_checkpoint(checkpoint_path, str(markdown_dir))
+
+        self.assertEqual(restored, response)
+        self.assertIsNone(missing)
+
+    def test_external_converter_retry_resumes_recorded_job_without_deleting_output(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            raw_dir = root / "raw"
+            markdown_dir = root / "markdown"
+            raw_dir.mkdir()
+            source = raw_dir / "source.pdf"
+            source.write_bytes(b"pdf")
+            resume_ids: list[str | None] = []
+
+            class FakeExternalJobClient:
+                def __init__(self, **config: object) -> None:
+                    self.config = config
+
+                def start_and_wait(
+                    self,
+                    payload: dict[str, object],
+                    *,
+                    resume_job_id: str | None = None,
+                    progress_callback=None,
+                ) -> dict[str, str]:
+                    output_dir = Path(str(payload["markdown_dir"]))
+                    existing = output_dir / "content.md"
+                    if resume_job_id is not None:
+                        self.assert_output_survived(existing)
+                    output_dir.mkdir(parents=True, exist_ok=True)
+                    existing.write_text("converted", encoding="utf-8")
+                    resume_ids.append(resume_job_id)
+                    progress_callback("external-job-1")
+                    return {"status": "success"}
+
+                @staticmethod
+                def assert_output_survived(path: Path) -> None:
+                    if not path.is_file():
+                        raise AssertionError("resumed conversion output was deleted")
+
+            support = SimpleNamespace(
+                _status=lambda response: response["status"],
+                _markdown_paths=lambda output_dir: [
+                    str(path.resolve())
+                    for path in output_dir.rglob("*.md")
+                ],
+                _write_source_metadata=lambda output_dir, metadata: None,
+            )
+            document = ClaimedSourceDocument(
+                scope_key="collection-a",
+                document_id="doc_external",
+                content_hash="a" * 64,
+                source_id="source-a",
+                source_path=str(source),
+                relative_path="source.pdf",
+                decision="new",
+                previous_content_hash=None,
+            )
+
+            with patch(
+                "temporal_rag.activity_convert.ExternalJobClient",
+                FakeExternalJobClient,
+            ):
+                first = _convert_documents_with_external_jobs(
+                    support,
+                    service_config={},
+                    source_id="source-a",
+                    raw_dir=str(raw_dir),
+                    markdown_dir=str(markdown_dir),
+                    documents=[document],
+                    claim_token="claim-a",
+                )
+                second = _convert_documents_with_external_jobs(
+                    support,
+                    service_config={},
+                    source_id="source-a",
+                    raw_dir=str(raw_dir),
+                    markdown_dir=str(markdown_dir),
+                    documents=[document],
+                    claim_token="claim-a",
+                )
+
+        self.assertEqual(first["status"], "success")
+        self.assertEqual(second["status"], "success")
+        self.assertEqual(resume_ids, [None, "external-job-1"])
 
 
 def _settings() -> SimpleNamespace:

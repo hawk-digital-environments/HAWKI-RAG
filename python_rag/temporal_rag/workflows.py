@@ -31,6 +31,15 @@ def _retry_policy() -> RetryPolicy:
     )
 
 
+def _deduplication_retry_policy() -> RetryPolicy:
+    return RetryPolicy(
+        initial_interval=timedelta(seconds=10),
+        backoff_coefficient=2.0,
+        maximum_interval=timedelta(minutes=5),
+        maximum_attempts=0,
+    )
+
+
 def _failed_result(workflow_input: dict[str, Any], phase: str, result: dict[str, Any]) -> dict[str, Any]:
     return {
         "source_id": workflow_input.get("source_id"),
@@ -63,11 +72,63 @@ class IngestSourceWorkflow:
         if scrape_result.get("status") != "success":
             return _failed_result(workflow_input, "scrape_source", scrape_result)
 
+        deduplication_result = await workflow.execute_activity(
+            "classify_source_documents",
+            {
+                "workflow_input": workflow_input,
+                "scrape_result": scrape_result,
+            },
+            task_queue=_task_queue(workflow_input, "converter", "rag-converter-task-queue"),
+            start_to_close_timeout=timedelta(minutes=30),
+            schedule_to_close_timeout=timedelta(hours=8),
+            heartbeat_timeout=timedelta(minutes=2),
+            retry_policy=_deduplication_retry_policy(),
+        )
+        if deduplication_result.get("status") != "success":
+            return _failed_result(workflow_input, "classify_source_documents", deduplication_result)
+
+        if deduplication_result.get("skip_processing") is True:
+            duplicate_documents = int(deduplication_result.get("duplicate_documents") or 0)
+            skipped_ingest_result = {
+                "source_id": source_id,
+                "status": "success",
+                "documents_indexed": 0,
+                "chunks_indexed": 0,
+                "vectors_upserted": 0,
+                "graph_records_updated": 0,
+                "failed_documents": 0,
+                "skipped_documents": duplicate_documents,
+                "new_documents": 0,
+                "changed_documents": 0,
+                "unchanged_documents": duplicate_documents,
+                "document_version": deduplication_result.get("document_version"),
+                "deduplication": deduplication_result,
+                "error_details": None,
+            }
+            return await workflow.execute_activity(
+                "mark_source_ready",
+                {
+                    "workflow_input": workflow_input,
+                    "scrape_result": scrape_result,
+                    "deduplication_result": deduplication_result,
+                    "convert_result": {
+                        "status": "skipped",
+                        "reason": "duplicate_source_content",
+                    },
+                    "ingest_result": skipped_ingest_result,
+                },
+                task_queue=_task_queue(workflow_input, "ingestion", "rag-ingestion-task-queue"),
+                start_to_close_timeout=timedelta(minutes=5),
+                schedule_to_close_timeout=timedelta(minutes=15),
+                retry_policy=retry_policy,
+            )
+
         convert_result = await workflow.execute_activity(
             "inspect_and_convert_files",
             {
                 "workflow_input": workflow_input,
                 "scrape_result": scrape_result,
+                "deduplication_result": deduplication_result,
             },
             task_queue=_task_queue(workflow_input, "converter", "rag-converter-task-queue"),
             start_to_close_timeout=timedelta(hours=2),
@@ -82,6 +143,7 @@ class IngestSourceWorkflow:
             {
                 "workflow_input": workflow_input,
                 "scrape_result": scrape_result,
+                "deduplication_result": deduplication_result,
                 "convert_result": convert_result,
             },
             task_queue=_task_queue(workflow_input, "ingestion", "rag-ingestion-task-queue"),
@@ -97,6 +159,7 @@ class IngestSourceWorkflow:
             {
                 "workflow_input": workflow_input,
                 "scrape_result": scrape_result,
+                "deduplication_result": deduplication_result,
                 "convert_result": convert_result,
                 "ingest_result": ingest_result,
             },

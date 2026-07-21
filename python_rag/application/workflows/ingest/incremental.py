@@ -84,6 +84,7 @@ def plan_incremental_ingest(
     logger_obj: logging.Logger,
     neo4j_database: str | None = None,
     page_registry: Any | None = None,
+    force_reprocess: bool = False,
 ) -> IncrementalIngestPlan:
     """Skip unchanged docs and mark changed docs for page-scoped replacement."""
 
@@ -113,7 +114,7 @@ def plan_incremental_ingest(
         existing_doc_id = str(existing_payload.get("doc_id") or "") if existing_payload else ""
         existing_hash = str(existing_payload.get("content_hash") or "") if existing_payload else ""
 
-        if existing_payload and existing_hash and existing_hash == content_hash:
+        if not force_reprocess and existing_payload and existing_hash and existing_hash == content_hash:
             plan.unchanged_doc_ids.add(doc_id)
             plan.unchanged_chunks += len(records)
             page_record = build_page_registry_record(
@@ -147,13 +148,14 @@ def plan_incremental_ingest(
     doc_stats["total_chunks"] = len(kept)
 
     logger_obj.info(
-        "ingest:incremental new=%s changed=%s unchanged=%s registry_hits=%s kept_chunks=%s skipped_chunks=%s operation_id=%s",
+        "ingest:incremental new=%s changed=%s unchanged=%s registry_hits=%s kept_chunks=%s skipped_chunks=%s force_reprocess=%s operation_id=%s",
         len(plan.new_doc_ids),
         len(plan.changed_doc_ids),
         len(plan.unchanged_doc_ids),
         registry_hits,
         len(kept),
         plan.unchanged_chunks,
+        force_reprocess,
         operation_id or "-",
     )
     return plan

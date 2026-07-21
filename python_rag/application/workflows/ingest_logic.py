@@ -172,6 +172,7 @@ def ingest_documents(
             page_registry=page_registry,
             operation_id=operation_id,
             logger_obj=logger,
+            force_reprocess=bool(getattr(body, "force_reprocess", False)),
         )
         chunk_records = incremental_plan.chunk_records
         replace_doc_ids = incremental_plan.replace_doc_ids

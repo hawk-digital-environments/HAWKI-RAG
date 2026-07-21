@@ -37,6 +37,7 @@ class IngestRequest(BaseModel):
     vision_model: str | None = None
     graph_only: bool = False
     idempotency_key: str | None = None
+    force_reprocess: bool = False
     dry_run: bool = False
     dry_include_graph: bool = False
 

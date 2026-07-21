@@ -5,6 +5,7 @@ from __future__ import annotations
 from types import ModuleType, SimpleNamespace
 import sys
 import unittest
+from unittest.mock import patch
 
 from temporal_rag.metadata import AppMetadataStore
 
@@ -69,6 +70,16 @@ class TemporalMetadataTests(unittest.TestCase):
         self.assertEqual(counts["total"], 300)
         self.assertEqual(counts["totalPages"], 300)
         self.assertEqual(counts["pageLimit"], 300)
+
+    def test_mark_ready_propagates_database_failure_for_temporal_retry(self) -> None:
+        store = AppMetadataStore(SimpleNamespace())
+
+        with patch.object(store, "connection", side_effect=ConnectionError("database offline")):
+            with self.assertRaisesRegex(ConnectionError, "database offline"):
+                store.mark_ready(
+                    {"source_id": "source-a", "job_id": "job-a"},
+                    {"document_version": "v1"},
+                )
 
 
 if __name__ == "__main__":

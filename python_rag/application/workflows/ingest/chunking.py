@@ -90,7 +90,15 @@ def prepare_documents(
 
         if not str(normalized_payload.get("content_hash") or "").strip():
             normalized_payload["content_hash"] = content_hash_for_text(document_text)
-        stable_doc_id, source_identity = stable_document_id_from_payload(normalized_payload, source_doc_id)
+        dedup_document_id = str(normalized_payload.get("dedup_document_id") or "").strip()
+        if dedup_document_id:
+            stable_doc_id = dedup_document_id
+            source_identity = str(normalized_payload.get("source_identity") or "").strip() or None
+        else:
+            stable_doc_id, source_identity = stable_document_id_from_payload(
+                normalized_payload,
+                source_doc_id,
+            )
         doc_id = stable_doc_id
         if source_doc_id and source_doc_id != doc_id:
             normalized_payload.setdefault("source_document_id", source_doc_id)

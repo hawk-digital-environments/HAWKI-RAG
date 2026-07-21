@@ -8,6 +8,7 @@ from temporalio.client import Client
 from temporalio.worker import Worker
 
 from temporal_rag.activity_convert import inspect_and_convert_files
+from temporal_rag.activity_deduplicate import classify_source_documents
 from temporal_rag.logging import configure_logging
 from temporal_rag.settings import TemporalRagSettings
 from temporal_rag.worker_runtime import create_activity_executor
@@ -21,7 +22,7 @@ async def main() -> None:
         worker = Worker(
             client,
             task_queue=settings.converter_task_queue,
-            activities=[inspect_and_convert_files],
+            activities=[classify_source_documents, inspect_and_convert_files],
             activity_executor=activity_executor,
         )
         await worker.run()

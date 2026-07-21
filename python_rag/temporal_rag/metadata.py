@@ -114,17 +114,23 @@ class AppMetadataStore:
                            set index_status = 'ready',
                                ready_at = now(),
                                last_scraped_at = coalesce(last_scraped_at, now()),
+                               content_hash = coalesce(%s, content_hash),
                                document_version = %s,
                                metadata = (coalesce(metadata::jsonb, '{}'::jsonb) || %s::jsonb)::json,
                                updated_at = now()
                          where source_id = %s
                         """,
                         (
+                            result.get("content_hash"),
                             result.get("document_version"),
                             json.dumps(self._source_metadata(workflow_input, "mark_source_ready", "ready", result)),
                             source_id,
                         ),
                     )
+                    if cur.rowcount != 1:
+                        raise RuntimeError(
+                            f"Ingestion source [{source_id}] was not updated to ready."
+                        )
                     if job_id:
                         cur.execute(
                             """
@@ -151,9 +157,14 @@ class AppMetadataStore:
                                 job_id,
                             ),
                         )
+                        if cur.rowcount != 1:
+                            raise RuntimeError(
+                                f"Pipeline job [{job_id}] was not updated to completed."
+                            )
                         self._upsert_stage_state(cur, job_id, "ingest", "mark_source_ready", "ready", result)
         except Exception:
             logger.exception("app_metadata:mark_ready failed source_id=%s", source_id)
+            raise
 
     def upsert_documents(
         self,
@@ -323,6 +334,7 @@ class AppMetadataStore:
     def _ui_stage(phase: str) -> str:
         return {
             "scrape_source": "scrape",
+            "classify_source_documents": "convert",
             "inspect_and_convert_files": "convert",
             "ingest_markdown_files": "ingest",
             "mark_source_ready": "ingest",
@@ -443,6 +455,16 @@ class AppMetadataStore:
     @staticmethod
     def _stage_counts(ui_stage: str, details: dict[str, Any]) -> dict[str, int]:
         if ui_stage == "convert":
+            if any(key in details for key in ("new_documents", "updated_documents", "duplicate_documents")):
+                total = int(details.get("total_documents") or 0)
+                processed = int(details.get("process_documents") or 0)
+                return {
+                    "total": total,
+                    "processed": processed,
+                    "newDocuments": int(details.get("new_documents") or 0),
+                    "updatedDocuments": int(details.get("updated_documents") or 0),
+                    "duplicateDocuments": int(details.get("duplicate_documents") or 0),
+                }
             total = int(
                 details.get("files_found")
                 or details.get("file_count")

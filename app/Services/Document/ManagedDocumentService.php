@@ -27,17 +27,17 @@ readonly class ManagedDocumentService
         private ManagedDocumentOutputDeletionService $deletions,
         private PipelineUploadService $uploads,
         private ManagedDocumentPipelineStateResolver $pipelineState,
-        private ClockInterface $clock = new Clock(),
-    ) {
-    }
+        private ClockInterface $clock = new Clock,
+    ) {}
 
     /**
-     * @param array<string, mixed> $input
+     * @param  array<string, mixed>  $input
      * @return array{status:int,payload:array<string,mixed>}
      */
     public function create(array $input, ?UploadedFile $file, ?string $idempotencyKey): array
     {
         $managedDocumentId = $this->documents->nextManagedDocumentId();
+        $serverChecksum = $this->uploadedFileChecksum($file);
         $upload = $this->uploads->upload(
             $this->pipelineInput(
                 (string) ($input['dataset_id'] ?? ''),
@@ -62,7 +62,7 @@ readonly class ManagedDocumentService
             'source_type' => 'upload',
             'source_url' => $input['source_url'] ?? null,
             'source_updated_at' => $input['source_updated_at'] ?? null,
-            'source_checksum_sha256' => $input['source_checksum_sha256'] ?? $state->checksumSha256,
+            'source_checksum_sha256' => $serverChecksum ?? $state->checksumSha256,
             'graph_enabled' => (bool) ($input['graph_enabled'] ?? false),
             'status' => $state->status,
             'last_error' => $state->lastError,
@@ -80,8 +80,8 @@ readonly class ManagedDocumentService
     }
 
     /**
-     * @param array<string, mixed> $input
-     * @param list<UploadedFile> $files
+     * @param  array<string, mixed>  $input
+     * @param  list<UploadedFile>  $files
      * @return array{status:int,payload:array<string,mixed>}
      */
     public function createBatch(array $input, array $files, ?string $idempotencyKey): array
@@ -124,7 +124,7 @@ readonly class ManagedDocumentService
     }
 
     /**
-     * @param array<string, mixed> $filters
+     * @param  array<string, mixed>  $filters
      * @return list<array<string, mixed>>
      */
     public function list(int $limit = 100, array $filters = []): array
@@ -158,7 +158,7 @@ readonly class ManagedDocumentService
     }
 
     /**
-     * @param array<string, mixed> $input
+     * @param  array<string, mixed>  $input
      * @return array{status:int,payload:array<string,mixed>}|null
      */
     public function update(string $managedDocumentId, array $input, ?UploadedFile $file, ?string $idempotencyKey): ?array
@@ -169,10 +169,14 @@ readonly class ManagedDocumentService
         }
 
         $document = $this->sync->sync($document);
+        $serverChecksum = $this->uploadedFileChecksum($file);
+        if ($serverChecksum !== null) {
+            $input['source_checksum_sha256'] = $serverChecksum;
+        }
         $decision = $this->replacementDecision(
             $document,
             $input['source_updated_at'] ?? null,
-            $input['source_checksum_sha256'] ?? null,
+            $serverChecksum ?? $input['source_checksum_sha256'] ?? null,
             (bool) ($input['force'] ?? false),
         );
 
@@ -216,7 +220,12 @@ readonly class ManagedDocumentService
             : (bool) $document->graph_enabled;
 
         $upload = $this->uploads->upload(
-            $this->pipelineInput($document->dataset_id, $graphEnabled, $document->documentId()),
+            $this->pipelineInput(
+                $document->dataset_id,
+                $graphEnabled,
+                $document->documentId(),
+                forceProcessing: true,
+            ),
             $file,
         );
 
@@ -355,6 +364,15 @@ readonly class ManagedDocumentService
             ];
         }
 
+        $storedChecksum = $this->stringValue($document->source_checksum_sha256);
+        $candidateChecksum = $this->stringValue($incomingChecksum);
+        if ($storedChecksum !== null && $candidateChecksum !== null && hash_equals($storedChecksum, $candidateChecksum)) {
+            return [
+                'replace' => false,
+                'reason' => 'incoming source_checksum_sha256 matches the stored document',
+            ];
+        }
+
         $incomingUpdatedAt = $incomingSourceUpdatedAt instanceof Carbon ? $incomingSourceUpdatedAt : null;
         if ($document->source_updated_at instanceof Carbon && $incomingUpdatedAt instanceof Carbon) {
             if ($incomingUpdatedAt->greaterThan($document->source_updated_at)) {
@@ -370,27 +388,43 @@ readonly class ManagedDocumentService
             ];
         }
 
-        $storedChecksum = $this->stringValue($document->source_checksum_sha256);
-        $candidateChecksum = $this->stringValue($incomingChecksum);
-        if ($storedChecksum !== null && $candidateChecksum !== null && hash_equals($storedChecksum, $candidateChecksum)) {
-            return [
-                'replace' => false,
-                'reason' => 'incoming source_checksum_sha256 matches the stored document',
-            ];
-        }
-
         return [
             'replace' => true,
             'reason' => null,
         ];
     }
 
-    private function pipelineInput(string $datasetId, bool $graphEnabled, ManagedDocumentId $managedDocumentId): PipelineUploadInput
+    private function uploadedFileChecksum(?UploadedFile $file): ?string
     {
+        if ($file === null || ! $file->isValid()) {
+            return null;
+        }
+
+        $path = $file->getRealPath();
+        if (! is_string($path) || ! is_file($path)) {
+            return null;
+        }
+
+        $checksum = hash_file('sha256', $path);
+
+        return is_string($checksum) && preg_match('/\A[a-f0-9]{64}\z/', $checksum) === 1
+            ? $checksum
+            : null;
+    }
+
+    private function pipelineInput(
+        string $datasetId,
+        bool $graphEnabled,
+        ManagedDocumentId $managedDocumentId,
+        bool $forceProcessing = false,
+    ): PipelineUploadInput {
         return PipelineUploadInput::fromValidated([
             'dataset_id' => $datasetId,
             'graph' => $graphEnabled ? 'true' : 'false',
-            'request_metadata' => $managedDocumentId->toRequestMetadata(),
+            'request_metadata' => array_merge(
+                $managedDocumentId->toRequestMetadata(),
+                ['dedup_force' => $forceProcessing],
+            ),
         ]);
     }
 
