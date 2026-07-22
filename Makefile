@@ -99,7 +99,7 @@ UI_NODE_RUN = docker run --rm --entrypoint /usr/bin/env \
 # ==============================================================================
 
 .PHONY: help
-.PHONY: clean python-deps python-test python-integration provider-test system-test
+.PHONY: clean python-lock python-deps python-test python-integration provider-test system-test
 .PHONY: network pull-core build-app build-ui publish-ui
 .PHONY: migrate-core
 .PHONY: _up-core up-core up-core-ui up-core-server
@@ -126,7 +126,20 @@ clean: ## Remove generated Python caches, logs, coverage, and build artifacts.
 	@find . -type f -name "*.log" -delete
 	@rm -rf .pytest_cache .ruff_cache .mypy_cache .coverage* .tox .venv dist build
 
-python-deps: ## Install Python runtime and test dependencies.
+python-lock: ## Resolve and lock all Python runtime dependencies for Python 3.11.
+	@command -v uv >/dev/null 2>&1 || { echo "uv is required to regenerate python_rag/requirements.lock.txt"; exit 1; }
+	@mkdir -p "$(PYTHON_MINERU_WHEEL_ROOT)/upstream" "$(PYTHON_MINERU_WHEEL_ROOT)/patched"
+	@uv run --python 3.11 --with pip python -m pip download --no-deps \
+		--dest "$(PYTHON_MINERU_WHEEL_ROOT)/upstream" "mineru==3.4.4"
+	@uv run --python 3.11 python python_rag/scripts/build_mineru_transformers5_wheel.py \
+		"$(PYTHON_MINERU_WHEEL_ROOT)/upstream/mineru-3.4.4-py3-none-any.whl" \
+		"$(PYTHON_MINERU_WHEEL_ROOT)/patched"
+	@uv pip compile python_rag/requirements.txt python_rag/requirements-security.txt \
+		--python-version 3.11 --universal \
+		--find-links "$(PYTHON_MINERU_WHEEL_ROOT)/patched" \
+		--output-file python_rag/requirements.lock.txt
+
+python-deps: ## Install locked Python runtime and test dependencies.
 	@python3 -m pip install --upgrade pip setuptools wheel
 	@mkdir -p "$(PYTHON_MINERU_WHEEL_ROOT)/upstream" "$(PYTHON_MINERU_WHEEL_ROOT)/patched"
 	@python3 -m pip download --no-deps --dest "$(PYTHON_MINERU_WHEEL_ROOT)/upstream" "mineru==3.4.4"
@@ -134,8 +147,7 @@ python-deps: ## Install Python runtime and test dependencies.
 		"$(PYTHON_MINERU_WHEEL_ROOT)/upstream/mineru-3.4.4-py3-none-any.whl" \
 		"$(PYTHON_MINERU_WHEEL_ROOT)/patched"
 	@python3 -m pip install --find-links "$(PYTHON_MINERU_WHEEL_ROOT)/patched" \
-		-r python_rag/requirements.txt -r python_rag/requirements-test.txt
-	@python3 -m pip install --upgrade -r python_rag/requirements-security.txt
+		-r python_rag/requirements.lock.txt -r python_rag/requirements-test.txt
 
 # ==============================================================================
 # Docker foundation and application images

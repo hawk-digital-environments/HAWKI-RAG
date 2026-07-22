@@ -21,6 +21,7 @@ def test_entrypoint_creates_group_writable_setgid_directories(tmp_path: Path) ->
     environment.update(
         {
             "HAWKI_RAG_TEMPORAL_SHARED_ROOT": str(shared_root),
+            "HAWKI_RAG_SHARED_STORAGE_INIT": "1",
             "PIPELINE_SHARED_STORAGE_GID": str(os.getgid()),
         }
     )
@@ -61,6 +62,7 @@ def test_entrypoint_rejects_non_numeric_group_id(tmp_path: Path) -> None:
     environment.update(
         {
             "HAWKI_RAG_TEMPORAL_SHARED_ROOT": str(shared_root),
+            "HAWKI_RAG_SHARED_STORAGE_INIT": "1",
             "PIPELINE_SHARED_STORAGE_GID": "www-data",
         }
     )
@@ -75,3 +77,20 @@ def test_entrypoint_rejects_non_numeric_group_id(tmp_path: Path) -> None:
 
     assert result.returncode == 64
     assert "must be a numeric group id" in result.stderr
+
+
+def test_entrypoint_fails_when_shared_storage_was_not_initialized(tmp_path: Path) -> None:
+    shared_root = tmp_path / "missing-shared-root"
+    environment = os.environ.copy()
+    environment["HAWKI_RAG_TEMPORAL_SHARED_ROOT"] = str(shared_root)
+
+    result = subprocess.run(
+        ["sh", str(ENTRYPOINT), sys.executable, "-c", "raise SystemExit(0)"],
+        check=False,
+        capture_output=True,
+        env=environment,
+        text=True,
+    )
+
+    assert result.returncode == 73
+    assert "Run the shared-storage init service first" in result.stderr

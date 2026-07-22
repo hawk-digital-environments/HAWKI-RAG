@@ -121,22 +121,24 @@ services:
       - default
       - hawki-network
 
-  temporal-ui:
-    profiles: ["devtools"]
-    image: temporalio/ui:2.34.0
-    container_name: temporal_ui
-    restart: unless-stopped
-    environment:
-      TEMPORAL_ADDRESS: temporal:7233
-      TEMPORAL_CORS_ORIGINS: http://localhost:8080
-    ports:
-      - "${TEMPORAL_UI_PORT:-8081}:8080"
-    depends_on:
-      temporal:
-        condition: service_started
-    networks:
-      - default
-      - hawki-network
+  # Optional Temporal UI for local diagnostics. Uncomment this service block
+  # when the browser-based workflow inspector is needed.
+  # temporal-ui:
+  #   profiles: ["devtools"]
+  #   image: temporalio/ui:2.34.0
+  #   container_name: temporal_ui
+  #   restart: unless-stopped
+  #   environment:
+  #     TEMPORAL_ADDRESS: temporal:7233
+  #     TEMPORAL_CORS_ORIGINS: http://localhost:8080
+  #   ports:
+  #     - "${TEMPORAL_UI_PORT:-8081}:8080"
+  #   depends_on:
+  #     temporal:
+  #       condition: service_started
+  #   networks:
+  #     - default
+  #     - hawki-network
 
   # -------------------------------------------------
   # Qdrant Vector DB
@@ -189,6 +191,7 @@ services:
     image: hawki-rag-rerank:local
     pull_policy: never
     container_name: hawki_rag_rerank
+    user: "10001:10001"
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
@@ -200,6 +203,22 @@ services:
   # -------------------------------------------------
   # FastAPI bridge (Python RAG API)
   # -------------------------------------------------
+  hawki-rag-shared-storage-init:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: python-rag
+    image: hawki-rag-python:local
+    pull_policy: never
+    user: "0:0"
+    environment:
+      HAWKI_RAG_SHARED_STORAGE_INIT: "1"
+      PIPELINE_SHARED_STORAGE_GID: ${PGID:-1000}
+    volumes:
+      - shared_storage:/shared
+    command: ["true"]
+    restart: "no"
+
   hawki_rag_bridge:
     build:
       context: .
@@ -208,6 +227,7 @@ services:
     image: hawki-rag-python:local
     pull_policy: never
     container_name: hawki_rag_bridge
+    user: "10001:10001"
     env_file:
       - ./.env
     environment:
@@ -232,6 +252,8 @@ services:
       - "${PGID:-1000}"
     command: ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000"]
     depends_on:
+      hawki-rag-shared-storage-init:
+        condition: service_completed_successfully
       ollama:
         condition: service_healthy
     restart: unless-stopped
@@ -243,6 +265,7 @@ services:
     image: hawki-rag-python:local
     pull_policy: never
     container_name: hawki_rag_temporal_workflow_worker
+    user: "10001:10001"
     env_file:
       - ./.env
     environment:
@@ -259,6 +282,8 @@ services:
       - "${PGID:-1000}"
     command: ["python", "-m", "temporal_rag.worker_workflow"]
     depends_on:
+      hawki-rag-shared-storage-init:
+        condition: service_completed_successfully
       temporal:
         condition: service_started
     restart: unless-stopped
@@ -270,6 +295,7 @@ services:
     image: hawki-rag-python:local
     pull_policy: never
     container_name: hawki_rag_temporal_scraper_worker
+    user: "10001:10001"
     env_file:
       - ./.env
     environment:
@@ -287,6 +313,8 @@ services:
       - "${PGID:-1000}"
     command: ["python", "-m", "temporal_rag.worker_scraper"]
     depends_on:
+      hawki-rag-shared-storage-init:
+        condition: service_completed_successfully
       temporal:
         condition: service_started
       postgres:
@@ -300,6 +328,7 @@ services:
     image: hawki-rag-python:local
     pull_policy: never
     container_name: hawki_rag_temporal_converter_worker
+    user: "10001:10001"
     env_file:
       - ./.env
     environment:
@@ -317,6 +346,8 @@ services:
       - "${PGID:-1000}"
     command: ["python", "-m", "temporal_rag.worker_converter"]
     depends_on:
+      hawki-rag-shared-storage-init:
+        condition: service_completed_successfully
       temporal:
         condition: service_started
       postgres:
@@ -330,6 +361,7 @@ services:
     image: hawki-rag-python:local
     pull_policy: never
     container_name: hawki_rag_temporal_ingestion_worker
+    user: "10001:10001"
     env_file:
       - ./.env
     environment:
@@ -353,6 +385,8 @@ services:
       - "${PGID:-1000}"
     command: ["python", "-m", "temporal_rag.worker_ingestion"]
     depends_on:
+      hawki-rag-shared-storage-init:
+        condition: service_completed_successfully
       temporal:
         condition: service_started
       postgres:
@@ -373,7 +407,7 @@ services:
   # -------------------------------------------------
   ollama:
     <<: *ollama_base
-    image: ollama/ollama:latest
+    image: ollama/ollama:0.32.1
     pull_policy: always
     container_name: hawki_ollama
 
