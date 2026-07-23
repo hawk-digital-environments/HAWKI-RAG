@@ -232,12 +232,21 @@ Route::middleware('throttle:hawki-ui')->group(function () use ($hawkiRagExperien
     | /documents URL is retained as a page-level alias and preserves filters;
     | all dataset/document payloads come from /api/datasets and /api/documents.
     */
-    Route::get('/datasets', function (Request $request, OperatorAccessService $operatorAccess): View {
+    Route::get('/datasets', function (
+        Request $request,
+        OperatorAccessService $operatorAccess,
+        BrowserQueryPrincipalService $queryPrincipals,
+    ): View {
+        $operatorAuthorized = $operatorAccess->allows($request);
+
         return view('svelte-page', [
             'title' => 'HAWKI Data Browser',
             'vite' => ['resources/css/datasets-dashboard.css', 'resources/css/dashboard-dark-theme.css', 'resources/css/hawki-rag-theme.css', 'resources/js/datasets-dashboard.js'],
             'configScriptId' => 'datasets-dashboard-config',
-            'config' => ['operatorAuthorized' => $operatorAccess->allows($request)],
+            'config' => [
+                'operatorAuthorized' => $operatorAuthorized,
+                'queryAuthenticated' => $operatorAuthorized && $queryPrincipals->resolve($request) !== null,
+            ],
             'rootAttributes' => ['data-datasets-dashboard' => true],
         ]);
     });

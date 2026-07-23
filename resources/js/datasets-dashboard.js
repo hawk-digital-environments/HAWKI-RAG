@@ -11,6 +11,7 @@ function readConfig() {
     if (!configElement?.textContent) {
         return {
             operatorAuthorized: false,
+            queryAuthenticated: false,
         };
     }
 
@@ -20,17 +21,19 @@ function readConfig() {
         console.error('Invalid datasets dashboard config.', error);
         return {
             operatorAuthorized: false,
+            queryAuthenticated: false,
         };
     }
 }
 
-if (root) {
-    const config = readConfig();
+const config = readConfig();
 
+if (root) {
     mount(DatasetsDashboardPage, {
         target: root,
         props: {
             operatorAuthorized: config.operatorAuthorized === true,
+            queryAuthenticated: config.queryAuthenticated === true,
             onready: config.operatorAuthorized === true ? bootDatasetsDashboard : undefined,
         },
     });
@@ -64,6 +67,8 @@ function bootDatasetsDashboard() {
         tasks: document.getElementById('datasets-tasks'),
         documents: document.getElementById('datasets-documents'),
         ingestionHistory: document.getElementById('datasets-ingestion-history'),
+        queryAccessStatus: document.getElementById('datasets-query-access-status'),
+        queryAccessButton: document.getElementById('datasets-query-access-button'),
     };
 
     const state = {
@@ -75,6 +80,9 @@ function bootDatasetsDashboard() {
         pollTimer: null,
         requestId: 0,
         documentRequestId: 0,
+        selectedDataset: null,
+        queryAuthenticated: config.queryAuthenticated === true,
+        authorizedDatasetIds: new Set(),
     };
 
     if (els.documentSearch) {
@@ -314,6 +322,7 @@ function bootDatasetsDashboard() {
     }
 
     function renderDataset(dataset) {
+        state.selectedDataset = dataset;
         setText(els.updated, `Updated ${formatDate(new Date().toISOString())}`);
         setStatus(`Showing dataset ${dataset.dataset_id}.`);
 
@@ -321,6 +330,52 @@ function bootDatasetsDashboard() {
         renderMetrics(dataset);
         renderTasks(dataset.tasks || []);
         renderIngestionHistory(dataset.ingestion_history || []);
+        renderQueryAccess(dataset);
+    }
+
+    function renderQueryAccess(dataset) {
+        if (!els.queryAccessStatus || !els.queryAccessButton) return;
+
+        if (!dataset) {
+            setText(els.queryAccessStatus, 'Select a dataset to manage retrieval access.');
+            els.queryAccessButton.disabled = true;
+            return;
+        }
+
+        const datasetId = String(dataset.dataset_id || '');
+        if (state.authorizedDatasetIds.has(datasetId)) {
+            setText(els.queryAccessStatus, 'Available in the Retrieval page for your account.');
+            els.queryAccessButton.textContent = 'Retrieval access granted';
+            els.queryAccessButton.disabled = true;
+            return;
+        }
+
+        els.queryAccessButton.textContent = 'Grant me retrieval access';
+        if (!state.queryAuthenticated) {
+            setText(els.queryAccessStatus, 'A query-capable account is required to grant retrieval access.');
+            els.queryAccessButton.disabled = true;
+            return;
+        }
+
+        const qdrant = dataset.graph_stats?.qdrant || {};
+        const storageReady = [
+            dataset.qdrant_collection,
+            dataset.neo4j_namespace,
+            dataset.embedding_provider,
+            dataset.embedding_model,
+        ].every((value) => String(value || '').trim() !== '');
+        const ingestionCompleted = String(dataset.last_ingestion?.status || '').toLowerCase() === 'completed';
+        const vectorsReady = qdrant.ok === true && Number(qdrant.points || 0) > 0;
+        const ready = dataset.status === 'active' && storageReady && ingestionCompleted && vectorsReady;
+
+        if (!ready) {
+            setText(els.queryAccessStatus, 'Retrieval access can be granted after ingestion completes and Qdrant contains points.');
+            els.queryAccessButton.disabled = true;
+            return;
+        }
+
+        setText(els.queryAccessStatus, 'This dataset is private until you explicitly grant yourself retrieval access.');
+        els.queryAccessButton.disabled = false;
     }
 
     function renderInfo(dataset) {
@@ -598,6 +653,29 @@ function bootDatasetsDashboard() {
         }
     }
 
+    async function loadAuthorizedDatasets() {
+        if (!state.queryAuthenticated) {
+            state.authorizedDatasetIds = new Set();
+            renderQueryAccess(state.selectedDataset);
+            return;
+        }
+
+        try {
+            const data = await requestJson('query/datasets');
+            state.authorizedDatasetIds = new Set(
+                (Array.isArray(data.datasets) ? data.datasets : [])
+                    .map((dataset) => String(dataset.dataset_id || ''))
+                    .filter(Boolean),
+            );
+        } catch {
+            // Losing query authentication must not block the operator's
+            // read-only dataset browser. The grant action remains fail-closed.
+            state.queryAuthenticated = false;
+            state.authorizedDatasetIds = new Set();
+        }
+        renderQueryAccess(state.selectedDataset);
+    }
+
     async function loadDataset(datasetId, { renderList = true, keepDocumentSelection = true, loadDocumentList = true } = {}) {
         if (!datasetId) return;
         const changedDataset = state.selectedDatasetId !== datasetId;
@@ -720,6 +798,26 @@ function bootDatasetsDashboard() {
         setStatus(`Deleted ${dataset.dataset_id}. ${qdrantMessage} Neo4j deleted ${neo4jNodes} nodes and ${neo4jRelationships} relationships.`, 'success');
     }
 
+    async function grantSelectedDatasetQueryAccess() {
+        const dataset = state.selectedDataset;
+        if (!dataset?.dataset_id) return;
+
+        const datasetId = String(dataset.dataset_id);
+        setText(els.queryAccessStatus, `Granting retrieval access to ${datasetId}...`);
+        els.queryAccessButton.disabled = true;
+
+        try {
+            await requestJson(`datasets/${encodeURIComponent(datasetId)}/query-grants/self`, { method: 'POST' });
+            state.authorizedDatasetIds.add(datasetId);
+            localStorage.setItem('hawkiRagQueryDatasetId', datasetId);
+            renderQueryAccess(dataset);
+            setStatus(`${datasetId} is now available on the Retrieval page.`, 'success');
+        } catch (error) {
+            renderQueryAccess(dataset);
+            setStatus(error.message || 'Could not grant retrieval access.', 'error');
+        }
+    }
+
     function clearDocumentDetail() {
         setText(els.documentUpdated, 'No document loaded.');
         if (els.documentState) {
@@ -740,6 +838,7 @@ function bootDatasetsDashboard() {
     }
 
     function clearDetail() {
+        state.selectedDataset = null;
         setStatus('No datasets found.');
         setText(els.updated, 'No dataset loaded.');
         [els.info, els.metrics, els.tasks, els.documents, els.ingestionHistory]
@@ -750,6 +849,7 @@ function bootDatasetsDashboard() {
             });
         [els.taskCount, els.documentCount, els.ingestionCount].forEach((el) => setText(el, '0'));
         clearDocumentDetail();
+        renderQueryAccess(null);
     }
 
     function startPolling() {
@@ -778,8 +878,13 @@ function bootDatasetsDashboard() {
         }
     });
 
+    els.queryAccessButton?.addEventListener('click', grantSelectedDatasetQueryAccess);
+
     resolveInitialDocumentDataset()
-        .then(() => loadDatasets({ keepSelection: true }))
+        .then(async () => {
+            await loadAuthorizedDatasets();
+            await loadDatasets({ keepSelection: true });
+        })
         .catch((error) => {
             setStatus(error.message || 'Could not load data browser.', 'error');
             clearDetail();

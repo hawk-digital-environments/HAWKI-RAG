@@ -147,7 +147,7 @@ class QueryCharacterizationTests(unittest.TestCase):
         self.assertEqual([hit["payload"]["doc_id"] for hit in hits], ["doc-a"])
         self.assertEqual(calls, [("search", 3), ("scroll_all", 7)])
 
-    def test_query_hit_helpers_merge_dedupe_and_limit_by_doc_identity(self) -> None:
+    def test_query_hit_helpers_preserve_distinct_chunks_until_ranking(self) -> None:
         from application.workflows import query_logic
 
         primary = [
@@ -155,15 +155,75 @@ class QueryCharacterizationTests(unittest.TestCase):
             {"id": "b", "score": 0.4, "payload": {"doc_id": "doc-b", "title": "Blocks"}},
         ]
         secondary = [
-            {"id": "a2", "score": 0.9, "payload": {"doc_id": "doc-a", "title": "Toy Train Duplicate"}},
+            {"id": "a2", "score": 0.9, "payload": {"doc_id": "doc-a", "title": "Toy Train Exact Match"}},
             {"id": "c", "score": 0.8, "payload": {"doc_id": "doc-c", "title": "Blocks"}},
         ]
 
         merged = query_logic._merge_hits(primary, secondary, limit=3)
         deduped = query_logic._dedupe_hits_by_title_or_url(merged)
 
-        self.assertEqual([hit["payload"]["doc_id"] for hit in merged], ["doc-c", "doc-b", "doc-a"])
-        self.assertEqual([hit["payload"]["doc_id"] for hit in deduped], ["doc-c", "doc-a"])
+        self.assertEqual([hit["id"] for hit in merged], ["a2", "c", "b"])
+        self.assertEqual([hit["id"] for hit in deduped], ["a2", "c"])
+
+    def test_query_hit_merge_keeps_primary_score_for_the_same_point(self) -> None:
+        from application.workflows import query_logic
+
+        merged = query_logic._merge_hits(
+            [{"id": "same", "score": 0.3, "payload": {"doc_id": "doc-a"}}],
+            [{"id": "same", "score": 0.9, "payload": {"doc_id": "doc-a"}}],
+            limit=2,
+        )
+
+        self.assertEqual(merged, [{"id": "same", "score": 0.3, "payload": {"doc_id": "doc-a"}}])
+
+    def test_query_hit_merge_uses_chunk_index_when_point_id_is_missing(self) -> None:
+        from application.workflows import query_logic
+
+        merged = query_logic._merge_hits(
+            [{"score": 0.4, "payload": {"doc_id": "doc-a", "chunk_index": 0}}],
+            [{"score": 0.8, "payload": {"doc_id": "doc-a", "chunk_index": 1}}],
+            limit=2,
+        )
+
+        self.assertEqual(
+            [hit["payload"]["chunk_index"] for hit in merged],
+            [1, 0],
+        )
+
+    def test_graph_fusion_does_not_collapse_chunks_from_the_same_document(self) -> None:
+        from application.workflows import query_logic
+
+        fused = query_logic._fuse_hits(
+            [
+                {"id": "chunk-1", "score": 0.8, "payload": {"doc_id": "doc-a"}},
+                {"id": "chunk-2", "score": 0.6, "payload": {"doc_id": "doc-a"}},
+            ],
+            [
+                {"id": "relation-1", "score": 0.5, "payload": {"doc_id": "doc-a"}},
+                {"id": "relation-2", "score": 0.25, "payload": {"doc_id": "doc-a"}},
+            ],
+            sem_weight=1.0,
+            str_weight=0.4,
+        )
+
+        self.assertEqual([hit["id"] for hit in fused], ["chunk-1", "chunk-2"])
+        self.assertEqual([hit["score"] for hit in fused], [1.1, 0.9])
+
+    def test_graph_fusion_keeps_one_aggregate_for_a_structural_only_document(self) -> None:
+        from application.workflows import query_logic
+
+        fused = query_logic._fuse_hits(
+            [],
+            [
+                {"id": "relation-1", "score": 0.5, "payload": {"doc_id": "doc-a"}},
+                {"id": "relation-2", "score": 0.25, "payload": {"doc_id": "doc-a"}},
+            ],
+            sem_weight=1.0,
+            str_weight=0.4,
+        )
+
+        self.assertEqual([hit["id"] for hit in fused], ["relation-1"])
+        self.assertAlmostEqual(fused[0]["score"], 0.3)
 
     def test_query_context_summaries_trim_to_token_budget(self) -> None:
         from application.workflows import query_logic

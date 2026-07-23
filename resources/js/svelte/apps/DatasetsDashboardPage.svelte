@@ -10,11 +10,13 @@
     interface Props extends HTMLAttributes<HTMLElement> {
         /** Whether the current browser request is allowed to use operator APIs. */
         operatorAuthorized?: boolean;
+        /** Whether the browser also has a query principal for retrieval grants. */
+        queryAuthenticated?: boolean;
         /** Called once the static dashboard DOM is available for the current data browser runtime. */
         onready?: () => void;
     }
 
-    const {operatorAuthorized = false, onready, class: className = '', ...restProps}: Props = $props();
+    const {operatorAuthorized = false, queryAuthenticated = false, onready, class: className = '', ...restProps}: Props = $props();
 
     onMount(() => {
         if (!operatorAuthorized) {
@@ -56,6 +58,12 @@
                     <div>
                         <h2>Selected data pool</h2>
                         <p id="datasets-updated">No dataset loaded.</p>
+                    </div>
+                    <div class="query-access-control" data-query-authenticated={queryAuthenticated}>
+                        <span id="datasets-query-access-status" aria-live="polite">Checking retrieval access...</span>
+                        <button id="datasets-query-access-button" type="button" class="inline-button" disabled>
+                            Grant me retrieval access
+                        </button>
                     </div>
                 </div>
                 <div class="overview-grid">

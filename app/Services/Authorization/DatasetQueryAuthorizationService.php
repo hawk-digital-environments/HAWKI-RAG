@@ -28,7 +28,7 @@ readonly class DatasetQueryAuthorizationService
             throw DatasetQueryNotFoundException::requestedDatasetIsUnavailable();
         }
 
-        if (! $this->isReady($dataset)) {
+        if (! $this->isReadyForQuery($dataset)) {
             throw DatasetNotReadyException::storageTargetsAreMissing();
         }
 
@@ -66,7 +66,7 @@ readonly class DatasetQueryAuthorizationService
         }
 
         return $this->grants->listActiveDatasetsForQuery($principal)
-            ->filter(fn (Dataset $dataset): bool => $this->isReady($dataset))
+            ->filter(fn (Dataset $dataset): bool => $this->isReadyForQuery($dataset))
             ->map(static fn (Dataset $dataset): array => [
                 'dataset_id' => (string) $dataset->dataset_id,
                 'name' => (string) $dataset->name,
@@ -100,7 +100,7 @@ readonly class DatasetQueryAuthorizationService
         return AuthenticatedPrincipal::tryFromUserIdentifier($user->getAuthIdentifier());
     }
 
-    private function isReady(Dataset $dataset): bool
+    public function isReadyForQuery(Dataset $dataset): bool
     {
         return trim((string) $dataset->qdrant_collection) !== ''
             && trim((string) $dataset->neo4j_namespace) !== ''

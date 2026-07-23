@@ -46,6 +46,11 @@ class BrowserDevelopmentQueryBypassTest extends TestCase
             ->assertSee('"operatorAuthorized":true', false)
             ->assertSee('"queryAuthenticated":true', false);
 
+        $this->get('/datasets')
+            ->assertOk()
+            ->assertSee('"operatorAuthorized":true', false)
+            ->assertSee('"queryAuthenticated":true', false);
+
         $response = $this->getJson('/api/query/datasets')
             ->assertOk()
             ->assertExactJson([

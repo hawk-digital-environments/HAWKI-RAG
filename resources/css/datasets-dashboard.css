@@ -196,6 +196,21 @@ dt,
     font-size: 0.86rem;
 }
 
+.query-access-control {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 10px;
+    max-width: min(620px, 60%);
+    color: var(--muted);
+    font-size: 0.82rem;
+    text-align: right;
+}
+
+.query-access-control .inline-button {
+    flex: 0 0 auto;
+}
+
 .overview-grid,
 .document-context-grid {
     display: grid;
@@ -700,6 +715,13 @@ dd a {
     .section-head {
         align-items: flex-start;
         flex-direction: column;
+    }
+
+    .query-access-control {
+        align-items: flex-start;
+        flex-direction: column;
+        max-width: 100%;
+        text-align: left;
     }
 
     .document-search {
