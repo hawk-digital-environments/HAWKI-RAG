@@ -10,6 +10,7 @@ from fastapi import APIRouter
 from api.http.dependencies import get_provider_or_400
 from api.http.schemas import QueryRequest, apply_query_request_settings
 from api.settings import AppSettings
+from domain.ports import ModelProvider
 
 
 def build_query_router(*, logger: logging.Logger, rag_service: Any, app_settings: AppSettings) -> APIRouter:
@@ -17,7 +18,7 @@ def build_query_router(*, logger: logging.Logger, rag_service: Any, app_settings
 
     router = APIRouter()
 
-    def get_provider(name: str) -> Any:
+    def get_provider(name: str) -> ModelProvider:
         return get_provider_or_400(rag_service, name)
 
     @router.post("/query")

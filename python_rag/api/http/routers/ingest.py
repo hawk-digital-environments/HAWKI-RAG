@@ -11,6 +11,7 @@ from fastapi import APIRouter, Query, Request
 from api.http.dependencies import get_provider_or_400
 from api.http.schemas import DocumentUpsertRequest, IngestRequest, apply_ingest_request_settings
 from api.settings import AppSettings
+from domain.ports import ModelProvider
 
 
 def build_ingest_router(
@@ -24,7 +25,7 @@ def build_ingest_router(
     """Build ingest/document management routes."""
     router = APIRouter()
 
-    def get_provider(name: str) -> Any:
+    def get_provider(name: str) -> ModelProvider:
         return get_provider_or_400(rag_service, name)
 
     def _extract_idempotency_key(request: Request, fallback: str | None = None) -> str | None:

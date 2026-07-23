@@ -11,7 +11,7 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
-from types import SimpleNamespace
+from types import MappingProxyType, SimpleNamespace
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -1281,6 +1281,48 @@ class CliIngestHelperCharacterizationTests(unittest.TestCase):
 
 class IngestDeletionCharacterizationTests(unittest.TestCase):
     """Verify document deletion remains scoped across vector and graph storage."""
+
+    def test_delete_document_entries_accepts_read_only_mapping_results(self) -> None:
+        from application.workflows.ingest.deletion import delete_document_entries
+
+        class Qdrant:
+            collection = "student_space"
+
+            def delete_by_doc_id(
+                self,
+                doc_id: str,
+                *,
+                idempotency_key: str | None = None,
+            ) -> object:
+                return MappingProxyType({
+                    "result": MappingProxyType({"deleted": 3}),
+                })
+
+        class Graph:
+            def delete_by_doc_id(
+                self,
+                doc_id: str,
+                *,
+                request_id: str | None = None,
+            ) -> object:
+                return MappingProxyType({
+                    "relationships_deleted": "2",
+                    "entities_deleted": 1,
+                })
+
+            def close(self) -> None:
+                return None
+
+        result = delete_document_entries(
+            "doc-read-only-result",
+            qdrant_factory=Qdrant,
+            graph_factory=Graph,
+        )
+
+        self.assertEqual(result["qdrant"]["deleted_points"], 3)
+        self.assertEqual(result["neo4j"]["relationships_deleted"], 2)
+        self.assertEqual(result["neo4j"]["entities_deleted"], 1)
+
     def test_delete_document_entries_scopes_vector_and_graph_delete_then_closes_graph(self) -> None:
         from application.workflows.ingest.deletion import delete_document_entries
 

@@ -10,6 +10,7 @@ from typing import Any, TypeVar
 from fastapi import FastAPI
 
 from application.service import RAGService
+from domain.ports import ModelProvider
 from infrastructure.vectorstore import QdrantHTTP
 
 from .settings import AppSettings, load_app_settings
@@ -115,7 +116,7 @@ def build_app(
     public_dir = public_dir or settings.public_dir
     service = rag_service or RAGService()
 
-    def get_provider(name: str) -> Any:
+    def get_provider(name: str) -> ModelProvider:
         return get_provider_or_400(service, name)
 
     def get_runtime_summary() -> dict[str, object]:

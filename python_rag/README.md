@@ -3,6 +3,89 @@
 This directory contains the FastAPI bridge, vector and graph ingestion logic,
 query pipeline, command-line ingestion helpers, and local reranker code.
 
+## Architecture
+
+The Python service is the internal RAG data plane, not the public authorization
+boundary. Browser and API requests enter through Laravel, which resolves the
+caller and the permitted dataset scope before forwarding an internal request.
+
+```mermaid
+flowchart LR
+    Client["Browser / API client"] --> Laravel["Laravel<br/>UI, authorization, dataset scope<br/>and control-plane metadata"]
+
+    Laravel -->|"authorized query"| FastAPI["Python FastAPI bridge<br/>retrieval, ingestion, and ML adapters"]
+    Laravel -->|"start, cancel, or schedule"| FastAPI
+    FastAPI -->|"Temporal client"| Temporal["Temporal<br/>durable workflow orchestration"]
+    Temporal --> Workers["Python Temporal workers<br/>scrape → convert → ingest"]
+    Workers -->|"ingest Markdown batches"| FastAPI
+    Workers <--> SharedStorage[("Shared storage<br/>raw files and Markdown")]
+
+    FastAPI -->|"graph-enabled ingestion"| RAGAnything["RAG-Anything<br/>document and multimodal orchestration"]
+    RAGAnything -->|"internal entity/relation extraction"| LightRAG["LightRAG<br/>embedded implementation detail"]
+
+    Laravel <--> AppPostgres[("PostgreSQL<br/>application metadata and projected status")]
+    Workers -->|"project stage status"| AppPostgres
+    Temporal --> TemporalPostgres[("PostgreSQL<br/>Temporal workflow history")]
+
+    FastAPI -->|"chunk vectors and payloads"| Qdrant[("Qdrant")]
+    FastAPI -->|"dataset-scoped graph facts"| Neo4j[("Neo4j")]
+```
+
+### Component ownership
+
+- **Laravel is the control plane.** It owns the UI, authentication and
+  authorization, dataset grants, server-derived query scope, and application
+  metadata such as datasets, sources, pipeline jobs, and stage status.
+- **Temporal is the durable orchestrator.** Laravel requests workflow starts,
+  cancellations, and schedules through the Python bridge. Temporal coordinates
+  the scrape, conversion, ingestion, retry, and readiness phases; its activities
+  project user-facing status back into Laravel's pipeline tables.
+- **Python is the RAG data plane.** FastAPI and the Temporal workers isolate the
+  Python parser, ML, vector, and graph dependencies from the Laravel process.
+  The bridge applies Laravel's authorized dataset scope when reading Qdrant and
+  Neo4j; it does not decide which datasets a caller may access.
+
+### RAG-Anything and LightRAG
+
+RAG-Anything is the outer document and multimodal orchestration library **inside
+the graph-extraction path**. During graph-enabled ingestion, the service gives
+RAG-Anything normalized text blocks and any associated images. RAG-Anything
+owns the extraction lifecycle and uses the configured chat, vision, and
+embedding providers.
+
+LightRAG is used internally by RAG-Anything to extract entities and relations
+and expose the resulting graph edges. The application then normalizes and
+deduplicates those edges before writing dataset-scoped facts to Neo4j. LightRAG
+is therefore not a second selectable RAG engine running beside RAG-Anything,
+and it is not the normal query endpoint: retrieval queries Qdrant and Neo4j
+through the application's own adapters.
+
+### Data flow and storage
+
+1. **Query:** Laravel authorizes the caller and dataset, sends the resulting
+   scope to FastAPI, and FastAPI retrieves scoped vector and graph context from
+   Qdrant and Neo4j.
+2. **Ingestion:** Laravel creates the application metadata and asks the bridge
+   to start a Temporal workflow. Python workers scrape, convert to Markdown, and
+   submit batches to FastAPI. FastAPI writes chunk vectors to Qdrant and, when
+   graph ingestion is enabled, writes normalized RAG-Anything/LightRAG facts to
+   Neo4j.
+3. **Status:** Temporal activities write phase projections to the Laravel-owned
+   PostgreSQL tables. Temporal keeps its own workflow history in a separate
+   Temporal-owned PostgreSQL database; Laravel does not read or write Temporal's
+   internal tables.
+
+Storage responsibilities are intentionally separate:
+
+- **PostgreSQL:** application metadata, authorization-related records, dataset
+  configuration, ingestion sources, and projected pipeline status. The same
+  PostgreSQL service may also host Temporal's separate internal databases.
+- **Qdrant:** chunk embeddings and their retrieval payloads.
+- **Neo4j:** normalized, dataset-scoped entity and relation facts used for graph
+  retrieval.
+- **Shared storage:** raw source files, converted Markdown, manifests, and other
+  artifacts passed between Temporal activities.
+
 ## Test Command
 
 Run the deterministic Python contract and API suite from the repository root:

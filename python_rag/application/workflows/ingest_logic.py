@@ -10,7 +10,7 @@ from fastapi import HTTPException
 
 from application.workflows.observability import pipeline_log
 from application.workflows.ingest.chunking import prepare_documents
-from application.workflows.ingest.deletion import delete_document_entries
+from application.workflows.ingest.deletion import DocumentDeletionResult, delete_document_entries
 from application.workflows.ingest.dependencies import IngestWorkflowDependencies
 from application.workflows.ingest.dry_run import build_dry_run_ingest_response
 from application.workflows.ingest.finalize import build_success_ingest_response
@@ -298,7 +298,7 @@ def delete_document(
     idempotency_key: str | None = None,
     collection: str | None = None,
     neo4j_namespace: str | None = None,
-) -> dict[str, Any]:
+) -> DocumentDeletionResult:
     if not doc_id:
         raise HTTPException(status_code=400, detail="doc_id is required")
     return delete_document_entries(
