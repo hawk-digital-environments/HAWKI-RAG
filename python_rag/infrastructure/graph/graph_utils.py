@@ -12,6 +12,10 @@ from typing import Any, Dict, List, Iterable, Tuple
 
 from common.text_terms import STOPWORDS
 from infrastructure.graph.neo4j_graph import Neo4jGraph
+from infrastructure.graph.triplet_normalization import (
+    dedupe_one_way_triplets,
+    normalize_relation_label,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -242,12 +246,11 @@ def clean_triplets(
         input_count if input_count >= 0 else "unknown",
         graph_perf_log=graph_perf_log,
     )
-    cleaned: list[tuple[str, str, str]] = []
-    seen = set()
+    candidates: list[tuple[str, str, str]] = []
     dropped = 0
     for s, r, o in triplets:
         subj = _normalize_text(s)
-        rel = _normalize_text(r)
+        rel = normalize_relation_label(r)
         obj = _normalize_text(o)
         if not subj or not rel or not obj:
             dropped += 1
@@ -258,13 +261,10 @@ def clean_triplets(
         if _is_noise_relation(rel):
             dropped += 1
             continue
-        key = (subj, rel, obj)
-        reverse_key = (obj, rel, subj)
-        if key in seen or reverse_key in seen:
-            dropped += 1
-            continue
-        seen.add(key)
-        cleaned.append((subj, rel, obj))
+        candidates.append((subj, rel, obj))
+
+    cleaned = dedupe_one_way_triplets(candidates)
+    dropped += len(candidates) - len(cleaned)
     if dropped:
         logger.info("graph:triplets cleanup dropped=%s kept=%s", dropped, len(cleaned))
     _perf_log(

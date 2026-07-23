@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import logging
-import re
 from pathlib import Path
 from typing import Any
 
-from infrastructure.raganything.fallback_parser import Triplet, dedupe_triplets, is_junk_graph_label, strip_control_chars
+from infrastructure.graph.triplet_normalization import normalize_relation_label
+from infrastructure.raganything.fallback_parser import Triplet, dedupe_triplets, is_junk_graph_label
 
 logger = logging.getLogger(__name__)
 
@@ -14,15 +14,7 @@ def edge_relation_label(edge: dict[str, Any]) -> str:
     raw = edge.get("keywords") or edge.get("description") or edge.get("content") or "RELATED_TO"
     if isinstance(raw, (list, tuple)):
         raw = ", ".join(str(x) for x in raw if str(x).strip())
-    rel = strip_control_chars(str(raw)).replace("\n", " ").strip()
-    if "\t" in rel:
-        rel = rel.split("\t", 1)[0].strip()
-    if "," in rel:
-        rel = rel.split(",", 1)[0].strip()
-    rel = re.sub(r"\s+", " ", rel)
-    if len(rel) > 120:
-        rel = rel[:120].rstrip()
-    return rel or "RELATED_TO"
+    return normalize_relation_label(raw) or "RELATED_TO"
 
 
 def triplets_from_raganything_edges(

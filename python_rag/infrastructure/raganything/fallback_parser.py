@@ -6,6 +6,8 @@ import re
 from pathlib import Path
 from typing import Iterable
 
+from infrastructure.graph.triplet_normalization import normalize_relation_label
+
 logger = logging.getLogger(__name__)
 
 Triplet = tuple[str, str, str]
@@ -25,11 +27,7 @@ def strip_control_chars(text: str | None) -> str:
 
 
 def relation_label_from_text(raw: str) -> str:
-    rel = strip_control_chars(str(raw or "")).replace("\n", " ").strip()
-    rel = re.sub(r"\s+", " ", rel)
-    if len(rel) > 120:
-        rel = rel[:120].rstrip()
-    return rel or "RELATED_TO"
+    return normalize_relation_label(strip_control_chars(str(raw or ""))) or "RELATED_TO"
 
 
 def parse_raganything_llm_cache(

@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, TypedDict
 
+from infrastructure.graph.triplet_normalization import dedupe_one_way_triplets
+
 
 class Neo4jCountResult(TypedDict, total=False):
     c: int
@@ -80,18 +82,22 @@ def parse_label_counts(rows: Any) -> list[dict[str, Any]]:
 
 
 def parse_fact_rows(rows: Any) -> list[Neo4jFactRow]:
-    """Normalize fetched related rows to a stable dict shape."""
-    out: list[Neo4jFactRow] = []
+    """Normalize fetched rows and return each logical fact in one direction."""
+    triplets: list[tuple[str, str, str]] = []
     if not rows:
-        return out
+        return []
     for row in rows:
         subject = _get(row, "subject")
         relation = _get(row, "relation")
         obj = _get(row, "object")
         if subject is None or relation is None or obj is None:
             continue
-        out.append({"subject": subject, "relation": relation, "object": obj})
-    return out
+        triplets.append((str(subject), str(relation), str(obj)))
+
+    return [
+        {"subject": subject, "relation": relation, "object": obj}
+        for subject, relation, obj in dedupe_one_way_triplets(triplets)
+    ]
 
 
 def parse_structural_rows(rows: Any) -> list[Neo4jStructuralRow]:

@@ -179,6 +179,26 @@ class GraphFallbackCharacterizationTests(unittest.TestCase):
             [("HAWKI", "uses", "Qdrant")],
         )
 
+    def test_graph_cleanup_returns_bidirectional_duplicates_once(self) -> None:
+        from infrastructure.graph.graph_utils import clean_triplets
+
+        self.assertEqual(
+            clean_triplets(
+                [
+                    ("Gebührenordnung", "covered_by", "Portokosten"),
+                    ("Portokosten", "covered_by,", "Gebührenordnung"),
+                    ("HAWK", "equivalent_to,", "University"),
+                    ("University", "equivalent", "HAWK"),
+                    ("HAWK", "synonym", "University"),
+                ]
+            ),
+            [
+                ("Gebührenordnung", "covered_by", "Portokosten"),
+                ("HAWK", "equivalent", "University"),
+                ("HAWK", "synonym", "University"),
+            ],
+        )
+
     def test_graph_triplet_filter_drops_runtime_metadata_and_malformed_relations(self) -> None:
         from infrastructure.graph.graph_utils import filter_triplets_to_source
 
@@ -736,10 +756,18 @@ class Neo4jCharacterizationTests(unittest.TestCase):
             parse_fact_rows(
                 [
                     Row({"subject": "S", "relation": "R", "object": "O"}),
+                    Row({"subject": "O", "relation": "R,", "object": "S"}),
+                    Row({"subject": "A", "relation": "equivalent_to,", "object": "B"}),
+                    Row({"subject": "B", "relation": "equivalent", "object": "A"}),
+                    Row({"subject": "A", "relation": "synonym", "object": "B"}),
                     Row({"subject": "bad", "relation": "R"}),
                 ]
             ),
-            [{"subject": "S", "relation": "R", "object": "O"}],
+            [
+                {"subject": "S", "relation": "R", "object": "O"},
+                {"subject": "A", "relation": "equivalent", "object": "B"},
+                {"subject": "A", "relation": "synonym", "object": "B"},
+            ],
         )
         self.assertEqual(
             parse_structural_rows(
