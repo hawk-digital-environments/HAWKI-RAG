@@ -227,6 +227,7 @@ _up-core: network
 	@echo $(PROFILE_MESSAGE)
 	@echo "Launching full stack (COMPOSE_FILE=$(COMPOSE_FILE_LIST), profiles: $(if $(strip $(COMPOSE_PROFILES)),$(COMPOSE_PROFILES),none))..."
 	@$(COMPOSE_CMD) up -d --build --remove-orphans
+	@$(COMPOSE_CMD) rm -f hawki-rag-shared-storage-init >/dev/null
 	@echo "Ensuring Ollama models are pulled..."
 	@for model in bge-m3 llama3.1:8b llama3.2:1b qwen2.5vl:7b; do \
 		echo "Pulling $$model..."; \

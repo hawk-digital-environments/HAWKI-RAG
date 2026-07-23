@@ -29,6 +29,29 @@ class PipelineStageStatusMergerTest extends TestCase
         );
     }
 
+    public function test_not_tracked_ingest_is_not_treated_as_an_active_stage(): void
+    {
+        $merger = app(PipelineStageStatusMerger::class);
+
+        $this->assertSame(
+            'convert',
+            $merger->currentStage(
+                ['status' => 'completed'],
+                ['status' => 'running'],
+                ['status' => 'not_tracked'],
+            ),
+        );
+
+        $this->assertSame(
+            'ingest',
+            $merger->currentStage(
+                ['status' => 'completed'],
+                ['status' => 'completed'],
+                ['status' => 'not_tracked'],
+            ),
+        );
+    }
+
     public function test_it_merges_tracked_stage_details_without_losing_status(): void
     {
         $merger = app(PipelineStageStatusMerger::class);

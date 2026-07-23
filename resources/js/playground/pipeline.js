@@ -238,7 +238,7 @@ function stageStatusClass(status) {
     if (['completed', 'success'].includes(value)) return 'is-completed';
     if (['running', 'processing', 'received'].includes(value)) return 'is-running';
     if (['failed', 'error'].includes(value)) return 'is-failed';
-    if (['partial', 'skipped', 'n/a', 'not_available', 'unavailable'].includes(value)) return 'is-partial';
+    if (['partial', 'skipped', 'n/a', 'not_available', 'not_tracked', 'unavailable'].includes(value)) return 'is-partial';
     return 'is-pending';
 }
 
@@ -274,7 +274,7 @@ function renderStageCard(name, stage = {}) {
 
     const status = document.createElement('strong');
     status.className = 'pipeline-stage-status';
-    status.textContent = stage.status || 'queued';
+    status.textContent = String(stage.status || 'queued').replace(/_/g, ' ');
     const side = document.createElement('div');
     side.className = 'pipeline-stage-side';
     side.appendChild(status);
@@ -413,7 +413,7 @@ function currentStageLogFromEntries(entries, task) {
 
     const eligible = entries.filter(([, stage]) => {
         const status = String(stage?.status || '').toLowerCase();
-        return !['n/a', 'not_available', 'unavailable'].includes(status);
+        return !['n/a', 'not_available', 'not_tracked', 'unavailable'].includes(status);
     });
     const candidates = eligible.length > 0 ? eligible : entries;
 

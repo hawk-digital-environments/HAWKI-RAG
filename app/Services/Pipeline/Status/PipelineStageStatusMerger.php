@@ -11,7 +11,7 @@ readonly class PipelineStageStatusMerger
 {
     public function currentStage(array $scrape, array $convert, array $ingest): string
     {
-        if (! in_array($ingest['status'], ['unknown', 'pending', 'skipped', 'completed'], true)) {
+        if (! in_array($ingest['status'], ['unknown', 'not_tracked', 'pending', 'skipped', 'completed'], true)) {
             return 'ingest';
         }
         if (! in_array($convert['status'], ['unknown', 'pending', 'skipped', 'completed'], true)) {
@@ -23,7 +23,7 @@ readonly class PipelineStageStatusMerger
         if ($ingest['status'] === 'completed') {
             return 'ingest';
         }
-        if (in_array($convert['status'], ['completed', 'skipped'], true) && in_array($ingest['status'], ['unknown', 'pending'], true)) {
+        if (in_array($convert['status'], ['completed', 'skipped'], true) && in_array($ingest['status'], ['unknown', 'not_tracked', 'pending'], true)) {
             return 'ingest';
         }
         if ($scrape['status'] === 'completed' && in_array($convert['status'], ['unknown', 'pending', 'skipped'], true)) {

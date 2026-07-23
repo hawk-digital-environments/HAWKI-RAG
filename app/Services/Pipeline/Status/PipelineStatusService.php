@@ -15,13 +15,12 @@ readonly class PipelineStatusService
     public function __construct(
         private PipelineScrapeStatusService $scrapeStatuses,
         private PipelineConversionStatusService $conversionStatuses,
-        private PipelineIngestStatusService $ingestStatuses,
         private PipelineStateService $pipelineState,
         private PipelineStageStatusMerger $stageMerger,
         private PipelineConversionStageSynchronizer $conversionStages,
+        private PipelineStageEmptyResponseFactory $emptyStages,
         private ClockInterface $clock = new Clock,
-    ) {
-    }
+    ) {}
 
     /**
      * @return array<string, mixed>
@@ -32,8 +31,10 @@ readonly class PipelineStatusService
         $scrape = $this->scrapeStatuses->stage($jobId);
         $datasetPath = $tracked['dataset_path'] ?? $tracked['datasetPath'] ?? $scrape['dataset_path'] ?? $scrape['datasetPath'] ?? null;
         $convert = $this->convertStage($jobId, $datasetPath);
-        $ingest = $this->ingestStatuses->stage($jobId, $datasetPath);
+
+        // Reconciliation can persist conversion and ingest stages during this request.
         $tracked = $this->pipelineState->status($jobId);
+        $ingest = $this->persistedIngestStage($tracked);
 
         return [
             'success' => true,
@@ -48,7 +49,7 @@ readonly class PipelineStatusService
             'stages' => [
                 'scrape' => $this->stageMerger->mergeTrackedStage($scrape, $tracked['stages']['scrape'] ?? null),
                 'convert' => $this->stageMerger->mergeTrackedStage($convert, $tracked['stages']['convert'] ?? null),
-                'ingest' => $this->stageMerger->mergeTrackedStage($ingest, $tracked['stages']['ingest'] ?? null),
+                'ingest' => $ingest,
             ],
             'tracked' => [
                 'found' => $tracked !== null,
@@ -72,5 +73,22 @@ readonly class PipelineStatusService
         $this->conversionStages->sync($jobId, $stage);
 
         return $stage;
+    }
+
+    /**
+     * @param  array<string, mixed>|null  $tracked
+     * @return array<string, mixed>
+     */
+    private function persistedIngestStage(?array $tracked): array
+    {
+        $stage = $tracked['stages'][PipelineStateService::STAGE_INGEST] ?? null;
+        if (is_array($stage)) {
+            return $stage;
+        }
+
+        return $this->emptyStages->stage(
+            'not_tracked',
+            'No persisted ingest stage has been recorded for this job.',
+        );
     }
 }

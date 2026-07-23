@@ -81,8 +81,6 @@ services:
       POSTGRES_USER: ${DB_USERNAME:-rag_user}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-change_me}
       TZ: Europe/Berlin
-    ports:
-      - "5432:5432"
     volumes:
       - hawki_postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -112,8 +110,6 @@ services:
       TEMPORAL_ADDRESS: temporal:7233
       BIND_ON_IP: 0.0.0.0
       DEFAULT_NAMESPACE: ${TEMPORAL_NAMESPACE:-default}
-    ports:
-      - "7233:7233"
     depends_on:
       postgres:
         condition: service_healthy
