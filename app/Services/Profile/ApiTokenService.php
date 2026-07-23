@@ -6,6 +6,7 @@ namespace App\Services\Profile;
 
 use App\Models\User;
 use App\Services\Profile\Exceptions\ProfileTokenException;
+use App\Services\Profile\Values\ApiTokenAbility;
 use Illuminate\Contracts\Auth\Factory as AuthFactory;
 use Illuminate\Support\Collection;
 use Laravel\Sanctum\NewAccessToken;
@@ -18,11 +19,23 @@ class ApiTokenService
         private readonly LoggerInterface $logger,
     ) {}
 
-    public function createApiToken(string $name): NewAccessToken
+    /**
+     * @param  non-empty-list<ApiTokenAbility>  $abilities
+     */
+    public function createApiToken(string $name, array $abilities): NewAccessToken
     {
-        return $this->currentUser()->createToken($name);
+        return $this->currentUser()->createToken(
+            $name,
+            array_map(
+                static fn (ApiTokenAbility $ability): string => $ability->value,
+                $abilities,
+            ),
+        );
     }
 
+    /**
+     * @return Collection<int, array{id: int, name: string, abilities: list<string>}>
+     */
     public function fetchTokenList(): Collection
     {
         $tokens = $this->currentUser()->tokens()->get();
@@ -31,6 +44,7 @@ class ApiTokenService
             return [
                 'id' => $token->id,
                 'name' => $token->name,
+                'abilities' => is_array($token->abilities) ? $token->abilities : [],
             ];
         });
     }
@@ -59,5 +73,4 @@ class ApiTokenService
 
         return $user;
     }
-
 }

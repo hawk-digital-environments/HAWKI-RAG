@@ -9,7 +9,7 @@ use Illuminate\Contracts\Auth\Access\Gate as GateContract;
 use Illuminate\Contracts\Auth\Factory as AuthFactory;
 use Illuminate\Http\Request;
 
-readonly class OperatorAccessService
+readonly class AdminAccessService
 {
     public function __construct(
         private AuthFactory $auth,
@@ -22,7 +22,7 @@ readonly class OperatorAccessService
         $user = $resolvedUser instanceof User ? $resolvedUser : null;
         $gate = $user === null ? $this->gate : $this->gate->forUser($user);
 
-        if ($gate->denies('access-operator')) {
+        if ($gate->denies('access-admin')) {
             return false;
         }
 

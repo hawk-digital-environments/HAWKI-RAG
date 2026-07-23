@@ -20,7 +20,7 @@ class BrowserDatasetScopedQueryTest extends TestCase
     {
         parent::setUp();
 
-        config()->set('config.operator_auth.bypass', false);
+        config()->set('config.admin_auth.bypass', false);
     }
 
     public function test_browser_bearer_principal_can_list_only_granted_ready_datasets(): void
@@ -88,8 +88,8 @@ class BrowserDatasetScopedQueryTest extends TestCase
         $this->getJson('/api/query/datasets')
             ->assertUnauthorized();
 
-        config()->set('config.operator_auth.bypass', true);
-        config()->set('config.operator_auth.bypass_environments', [app()->environment()]);
+        config()->set('config.admin_auth.bypass', true);
+        config()->set('config.admin_auth.bypass_environments', [app()->environment()]);
 
         $this->getJson('/api/query/datasets')
             ->assertUnauthorized()

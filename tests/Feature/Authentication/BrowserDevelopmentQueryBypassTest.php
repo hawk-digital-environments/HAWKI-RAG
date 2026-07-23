@@ -22,8 +22,8 @@ class BrowserDevelopmentQueryBypassTest extends TestCase
     {
         parent::setUp();
 
-        config()->set('config.operator_auth.bypass', true);
-        config()->set('config.operator_auth.bypass_environments', [app()->environment()]);
+        config()->set('config.admin_auth.bypass', true);
+        config()->set('config.admin_auth.bypass_environments', [app()->environment()]);
         config()->set('config.query_auth.development_bypass', true);
         config()->set('config.query_auth.development_bypass_environments', [app()->environment()]);
     }
@@ -43,12 +43,12 @@ class BrowserDevelopmentQueryBypassTest extends TestCase
         $this->withoutVite();
         $this->get('/hawki-rag-playground')
             ->assertOk()
-            ->assertSee('"operatorAuthorized":true', false)
+            ->assertSee('"adminAuthorized":true', false)
             ->assertSee('"queryAuthenticated":true', false);
 
         $this->get('/datasets')
             ->assertOk()
-            ->assertSee('"operatorAuthorized":true', false)
+            ->assertSee('"adminAuthorized":true', false)
             ->assertSee('"queryAuthenticated":true', false);
 
         $response = $this->getJson('/api/query/datasets')
@@ -131,26 +131,26 @@ class BrowserDevelopmentQueryBypassTest extends TestCase
             ->assertUnauthorized();
     }
 
-    public function test_development_query_bypass_does_not_grant_operator_authorization(): void
+    public function test_development_query_bypass_does_not_grant_admin_authorization(): void
     {
-        $user = $this->createUser('development-not-operator');
-        $dataset = $this->createDataset('development-not-operator-dataset', 'Development Not Operator Dataset');
+        $user = $this->createUser('development-not-admin');
+        $dataset = $this->createDataset('development-not-admin-dataset', 'Development Not Admin Dataset');
         $this->grant($user, $dataset);
         $this->configureDevelopmentUser($user);
-        config()->set('config.operator_auth.bypass', false);
+        config()->set('config.admin_auth.bypass', false);
 
         $this->withoutVite();
         $this->get('/hawki-rag-playground')
             ->assertOk()
-            ->assertSee('"operatorAuthorized":false', false)
+            ->assertSee('"adminAuthorized":false', false)
             ->assertSee('"queryAuthenticated":true', false);
 
         $this->getJson('/api/query/datasets')
             ->assertOk()
-            ->assertJsonPath('datasets.0.dataset_id', 'development-not-operator-dataset');
+            ->assertJsonPath('datasets.0.dataset_id', 'development-not-admin-dataset');
         $this->getJson('/api/settings/config')
             ->assertUnauthorized()
-            ->assertJsonPath('message', 'Operator authentication required.');
+            ->assertJsonPath('message', 'Admin authentication required.');
     }
 
     public function test_development_bypass_is_hard_denied_in_production(): void

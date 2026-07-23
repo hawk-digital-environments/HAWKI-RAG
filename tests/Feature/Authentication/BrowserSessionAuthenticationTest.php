@@ -29,9 +29,30 @@ class BrowserSessionAuthenticationTest extends TestCase
             ->assertSuccessful();
     }
 
+    public function test_user_role_command_promotes_and_demotes_a_persisted_admin(): void
+    {
+        $user = $this->createUser('role-command');
+
+        $this->artisan('user:role', [
+            'userId' => (string) $user->id,
+            'role' => 'admin',
+        ])->expectsOutput("User {$user->id} role updated to admin.")
+            ->assertSuccessful();
+
+        $this->assertSame('admin', $user->refresh()->role->value);
+
+        $this->artisan('user:role', [
+            'userId' => (string) $user->id,
+            'role' => 'user',
+        ])->expectsOutput("User {$user->id} role updated to user.")
+            ->assertSuccessful();
+
+        $this->assertSame('user', $user->refresh()->role->value);
+    }
+
     public function test_sanctum_token_establishes_a_real_query_session(): void
     {
-        config()->set('config.operator_auth.bypass', false);
+        config()->set('config.admin_auth.bypass', false);
         $user = $this->createUser('browser-session-login');
         $dataset = Dataset::query()->create([
             'dataset_id' => 'browser-session-login-dataset',
@@ -72,7 +93,7 @@ class BrowserSessionAuthenticationTest extends TestCase
         $this->withoutVite();
         $this->get('/hawki-rag-playground')
             ->assertOk()
-            ->assertSee('"operatorAuthorized":false', false)
+            ->assertSee('"adminAuthorized":false', false)
             ->assertSee('"queryAuthenticated":true', false);
 
         $this->getJson('/api/settings/config')
@@ -142,7 +163,7 @@ class BrowserSessionAuthenticationTest extends TestCase
 
     public function test_token_without_query_ability_cannot_call_canonical_query_routes(): void
     {
-        config()->set('config.operator_auth.bypass', false);
+        config()->set('config.admin_auth.bypass', false);
         $user = $this->createUser('limited-browser-query');
         $token = $user->createToken('limited-query-test', ['documents:read'])->plainTextToken;
         Http::fake();
@@ -169,7 +190,7 @@ class BrowserSessionAuthenticationTest extends TestCase
 
     public function test_query_token_is_limited_to_canonical_query_operations(): void
     {
-        config()->set('config.operator_auth.bypass', false);
+        config()->set('config.admin_auth.bypass', false);
         $user = $this->createUser('internal-query-only');
         $dataset = Dataset::query()->create([
             'dataset_id' => 'internal-query-only-dataset',
@@ -191,12 +212,12 @@ class BrowserSessionAuthenticationTest extends TestCase
         $this->withToken($token)
             ->getJson('/api/pipeline/tasks')
             ->assertUnauthorized()
-            ->assertJsonPath('message', 'Operator authentication required.');
+            ->assertJsonPath('message', 'Admin authentication required.');
 
         $this->withToken($token)
             ->getJson('/api/ping')
             ->assertUnauthorized()
-            ->assertJsonPath('message', 'Operator authentication required.');
+            ->assertJsonPath('message', 'Admin authentication required.');
     }
 
     public function test_reauthentication_destroys_the_previous_query_session_id(): void

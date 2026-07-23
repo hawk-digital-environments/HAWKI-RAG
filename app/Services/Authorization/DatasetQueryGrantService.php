@@ -24,7 +24,7 @@ readonly class DatasetQueryGrantService
     ) {}
 
     /**
-     * Grant the current query principal access to one operator-selected dataset.
+     * Grant the current query principal access to one admin-selected dataset.
      *
      * Existing grants remain idempotent even during a temporary Qdrant outage.
      * A first grant is fail-closed until the pipeline and physical vector store

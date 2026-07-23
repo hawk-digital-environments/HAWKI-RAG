@@ -4,23 +4,23 @@ declare(strict_types=1);
 
 namespace App\Providers;
 
+use App\Policies\AdminAccessPolicy;
 use App\Policies\DatasetQueryPolicy;
-use App\Policies\OperatorAccessPolicy;
 use App\Policies\UserAccessPolicy;
-use App\Services\Storage\StorageService;
 use App\Services\Storage\StorageElementReader;
 use App\Services\Storage\StorageJobReportReader;
 use App\Services\Storage\StoragePathBuilder;
+use App\Services\Storage\StorageService;
 use App\Services\Storage\UrlGenerator;
+use App\Services\WebSearch\Contracts\WebSearchInterface;
 use App\Services\WebSearch\Exceptions\WebSearchFailedException;
 use App\Services\WebSearch\Implementations\BraveSearch;
 use App\Services\WebSearch\Implementations\TavilySearch;
-use App\Services\WebSearch\Contracts\WebSearchInterface;
 use App\Support\Clock\CarbonClock;
+use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Contracts\Config\Repository as ConfigRepository;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Contracts\Routing\UrlGenerator as RoutingUrlGenerator;
-use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Filesystem\FilesystemManager;
 use Illuminate\Http\Request;
 use Illuminate\Routing\UrlGenerator as LaravelUrlGenerator;
@@ -28,8 +28,8 @@ use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Vite;
-use Psr\Clock\ClockInterface;
 use Illuminate\Support\ServiceProvider;
+use Psr\Clock\ClockInterface;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -47,11 +47,11 @@ class AppServiceProvider extends ServiceProvider
             $diskName = (string) $config->get('filesystems.file_storage');
             $disk = $app->make(FilesystemManager::class)->disk($diskName);
             $urlGenerator = new UrlGenerator(
-                (array) $config->get('filesystems.disks.' . $diskName),
+                (array) $config->get('filesystems.disks.'.$diskName),
                 $disk,
                 $app->make(RoutingUrlGenerator::class),
             );
-            $paths = new StoragePathBuilder();
+            $paths = new StoragePathBuilder;
 
             return new StorageService(
                 new StorageJobReportReader($disk, $paths),
@@ -66,9 +66,9 @@ class AppServiceProvider extends ServiceProvider
                 $provider = (string) $config->get('web_search.default');
 
                 return match ($provider) {
-                'brave' => $app->make(BraveSearch::class),
-                'tavily' => $app->make(TavilySearch::class),
-                default => throw WebSearchFailedException::invalidDefaultProvider($provider),
+                    'brave' => $app->make(BraveSearch::class),
+                    'tavily' => $app->make(TavilySearch::class),
+                    default => throw WebSearchFailedException::invalidDefaultProvider($provider),
                 };
             }
         );
@@ -93,18 +93,18 @@ class AppServiceProvider extends ServiceProvider
     private function registerAuthorizationGates(): void
     {
         Gate::define('access-active-user', [UserAccessPolicy::class, 'accessActiveUser']);
-        Gate::define('access-operator', [OperatorAccessPolicy::class, 'access']);
+        Gate::define('access-admin', [AdminAccessPolicy::class, 'access']);
         Gate::define('access-query-principal', [UserAccessPolicy::class, 'accessQueryPrincipal']);
         Gate::define('query-dataset', [DatasetQueryPolicy::class, 'query']);
     }
 
     private function configureViteAssetPaths(ConfigRepository $config): void
     {
-        $basePath = '/' . trim((string) $config->get('app.asset_base_path', '/'), '/');
+        $basePath = '/'.trim((string) $config->get('app.asset_base_path', '/'), '/');
         $basePath = $basePath === '/' ? '' : $basePath;
 
         Vite::createAssetPathsUsing(
-            fn (string $path, ?bool $secure = null): string => $basePath . '/' . ltrim($path, '/')
+            fn (string $path, ?bool $secure = null): string => $basePath.'/'.ltrim($path, '/')
         );
     }
 

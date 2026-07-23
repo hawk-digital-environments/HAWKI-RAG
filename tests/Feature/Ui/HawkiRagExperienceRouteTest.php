@@ -8,39 +8,39 @@ use Tests\TestCase;
 
 class HawkiRagExperienceRouteTest extends TestCase
 {
-    public function test_root_opens_the_operator_experience(): void
+    public function test_root_opens_the_admin_experience(): void
     {
         $this->get('/')
             ->assertRedirect('/admin');
     }
 
-    public function test_operator_experience_page_mounts_svelte_shell(): void
+    public function test_admin_experience_page_mounts_svelte_shell(): void
     {
         $this->withoutVite();
 
         $this->get('/admin')
             ->assertOk()
-            ->assertSee('HAWKI-RAG Operator')
+            ->assertSee('HAWKI-RAG Admin')
             ->assertSee('data-hawki-rag-experience', false)
-            ->assertSee('"operatorRoutes"', false)
+            ->assertSee('"adminRoutes"', false)
             ->assertSee('"key":"pipeline"', false)
             ->assertSee('"key":"datasets"', false)
             ->assertSee('"key":"graph"', false)
             ->assertSee('"key":"retrieve"', false)
-            ->assertDontSee('"key":"operator"', false)
+            ->assertDontSee('"key":"admin"', false)
             ->assertDontSee('"key":"analytics"', false)
             ->assertDontSee('"key":"health"', false)
             ->assertDontSee('"key":"settings"', false);
     }
 
-    public function test_operator_world_aliases_point_to_current_surfaces(): void
+    public function test_admin_world_aliases_point_to_current_surfaces(): void
     {
         $this->withoutVite();
 
         $this->get('/admin')
             ->assertOk()
-            ->assertSee('HAWKI-RAG Operator')
-            ->assertSee('"activeSection":"operator"', false);
+            ->assertSee('HAWKI-RAG Admin')
+            ->assertSee('"activeSection":"admin"', false);
 
         $this->get('/admin/pipeline')
             ->assertRedirect('/pipeline-controller');

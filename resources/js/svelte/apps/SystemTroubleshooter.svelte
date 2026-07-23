@@ -129,7 +129,7 @@
             });
             const payload = (await response.json().catch(() => ({}))) as SystemGatePayload;
             if (response.status === 401 || response.status === 403) {
-                summary = 'Operator access is required to run detailed health diagnostics.';
+                summary = 'Admin access is required to run detailed health diagnostics.';
                 checks = [];
                 repairActions = [];
                 setProgress(100, 'Authorization required');

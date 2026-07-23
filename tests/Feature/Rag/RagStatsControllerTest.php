@@ -13,7 +13,7 @@ class RagStatsControllerTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_operator_can_delete_a_collection_with_a_valid_name(): void
+    public function test_admin_can_delete_a_collection_with_a_valid_name(): void
     {
         $this->actingAsApiUser();
         config()->set('config.qdrant_http_url', 'http://qdrant.test');

@@ -28,7 +28,7 @@ class TwoDatasetIsolationTest extends SystemTestCase
     {
         $settingsPath = storage_path('framework/testing/system-two-dataset-settings.json');
         File::delete($settingsPath);
-        config()->set('config.operator_settings_path', $settingsPath);
+        config()->set('config.admin_settings_path', $settingsPath);
 
         $bridgeEndpoint = rtrim((string) config('config.hawki_rag_bridge_url'), '/').'/query';
         Http::fake([

@@ -2,18 +2,19 @@
 
 namespace Tests\Feature\Pipeline;
 
-use App\Models\IngestionSource;
 use App\Models\Dataset;
 use App\Models\Document;
+use App\Models\IngestionSource;
 use App\Models\ManagedDocument;
 use App\Models\ManagedDocumentOutput;
 use App\Models\PipelineJob;
 use App\Models\PipelineStageState;
 use App\Models\PipelineTask;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use Tests\TestCase;
 
@@ -37,7 +38,7 @@ class PipelineControllerDashboardTest extends TestCase
             ->assertSee('Pipeline Controller')
             ->assertSee('data-pipeline-controller-dashboard', false)
             ->assertSee('pipeline-controller-config', false)
-            ->assertSee('"operatorAuthorized":true', false)
+            ->assertSee('"adminAuthorized":true', false)
             ->assertDontSee('pipeline-task-select', false);
 
         $this->get('/hawki-rag-playground')
@@ -420,7 +421,7 @@ class PipelineControllerDashboardTest extends TestCase
         $settingsPath = storage_path('framework/testing/pipeline-controller-settings.json');
         File::deleteDirectory($root);
         File::delete($settingsPath);
-        config()->set('config.operator_settings_path', $settingsPath);
+        config()->set('config.admin_settings_path', $settingsPath);
         config()->set('temporal.storage.shared_root', $root);
         config()->set('file_converter.raganything_supported_extensions', ['pdf']);
         Http::fake([
@@ -611,7 +612,7 @@ class PipelineControllerDashboardTest extends TestCase
 
         $settingsPath = storage_path('framework/testing/pipeline-controller-config-settings.json');
         File::delete($settingsPath);
-        config()->set('config.operator_settings_path', $settingsPath);
+        config()->set('config.admin_settings_path', $settingsPath);
 
         $this->withSession(['_token' => 'test-token'])
             ->putJson('/api/settings/config', [
@@ -857,7 +858,7 @@ class PipelineControllerDashboardTest extends TestCase
             'task_id' => 'task-direct-convert-logs',
             'dataset_id' => 'direct-convert-dataset',
             'status' => PipelineTask::STATUS_RUNNING,
-            'started_at' => \Illuminate\Support\Carbon::parse('2026-06-21 10:00:30', 'UTC'),
+            'started_at' => Carbon::parse('2026-06-21 10:00:30', 'UTC'),
             'counters' => ['jobs_total' => 1],
             'metadata' => ['request' => ['mode' => 'uploaded_file_convert_ingest']],
         ]);
@@ -903,7 +904,7 @@ class PipelineControllerDashboardTest extends TestCase
             'task_id' => 'task-repeat-upload-ingest-logs',
             'dataset_id' => 'repeat-upload-dataset',
             'status' => PipelineTask::STATUS_RUNNING,
-            'started_at' => \Illuminate\Support\Carbon::parse('2026-06-28 23:45:38', 'UTC'),
+            'started_at' => Carbon::parse('2026-06-28 23:45:38', 'UTC'),
             'counters' => ['jobs_total' => 1],
             'metadata' => ['request' => ['mode' => 'uploaded_file_convert_ingest']],
         ]);

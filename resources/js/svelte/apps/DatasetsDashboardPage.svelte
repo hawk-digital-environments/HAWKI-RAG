@@ -8,18 +8,18 @@
     import HawkiRagBackground from '../components/HawkiRagBackground.svelte';
 
     interface Props extends HTMLAttributes<HTMLElement> {
-        /** Whether the current browser request is allowed to use operator APIs. */
-        operatorAuthorized?: boolean;
+        /** Whether the current browser request is allowed to use admin APIs. */
+        adminAuthorized?: boolean;
         /** Whether the browser also has a query principal for retrieval grants. */
         queryAuthenticated?: boolean;
         /** Called once the static dashboard DOM is available for the current data browser runtime. */
         onready?: () => void;
     }
 
-    const {operatorAuthorized = false, queryAuthenticated = false, onready, class: className = '', ...restProps}: Props = $props();
+    const {adminAuthorized = false, queryAuthenticated = false, onready, class: className = '', ...restProps}: Props = $props();
 
     onMount(() => {
-        if (!operatorAuthorized) {
+        if (!adminAuthorized) {
             return;
         }
 
@@ -38,7 +38,7 @@
         active="datasets"
     />
 
-    {#if operatorAuthorized}
+    {#if adminAuthorized}
     <div class="dashboard-grid">
         <aside class="dataset-sidebar" aria-label="Datasets">
             <div class="section-head">
@@ -151,9 +151,9 @@
     </div>
     {:else}
     <section class="datasets-auth-panel" aria-labelledby="datasets-auth-required-title">
-        <span class="datasets-auth-kicker">Operator access required</span>
+        <span class="datasets-auth-kicker">Admin access required</span>
         <h2 id="datasets-auth-required-title">Dataset controls are locked.</h2>
-        <p>Sign in with an operator account or enable the explicit local bypass before loading datasets, documents, and recovery actions.</p>
+        <p>Sign in with an admin account or enable the explicit local bypass before loading datasets, documents, and recovery actions.</p>
     </section>
     {/if}
 </main>

@@ -13,14 +13,14 @@ function csrfToken() {
 
 function readConfig() {
     if (!configElement?.textContent) {
-        return { operatorAuthorized: false };
+        return { adminAuthorized: false };
     }
 
     try {
         return JSON.parse(configElement.textContent);
     } catch (error) {
         console.error('Invalid settings dashboard config.', error);
-        return { operatorAuthorized: false };
+        return { adminAuthorized: false };
     }
 }
 
@@ -33,7 +33,7 @@ if (root) {
             endpoint: apiUrl('settings/config'),
             csrfToken: csrfToken(),
             initialConfig: config,
-            operatorAuthorized: config.operatorAuthorized === true,
+            adminAuthorized: config.adminAuthorized === true,
         },
     });
 }

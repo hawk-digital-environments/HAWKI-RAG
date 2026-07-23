@@ -1,11 +1,14 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Console\Commands\UserManagement;
 
+use App\Models\User;
 use App\Services\Profile\ApiTokenService;
+use App\Services\Profile\Values\ApiTokenAbility;
 use App\Services\User\Repositories\UserRepository;
 use Illuminate\Console\Command;
-use Throwable;
 
 class CreateSanctumTokenForUser extends Command
 {
@@ -14,7 +17,9 @@ class CreateSanctumTokenForUser extends Command
      *
      * @var string
      */
-    protected $signature = 'user:token {--revoke : Revoke a token instead of creating one}';
+    protected $signature = 'user:token
+        {--revoke : Revoke a token instead of creating one}
+        {--abilities=query : Comma-separated token abilities: query, admin}';
 
     /**
      * The console command description.
@@ -24,7 +29,7 @@ class CreateSanctumTokenForUser extends Command
     protected $description = 'Create or revoke Sanctum API tokens for a user';
 
     /**
-     * @inheritDoc
+     * {@inheritDoc}
      */
     public function __construct(
         private ApiTokenService $apiTokenService,
@@ -33,11 +38,10 @@ class CreateSanctumTokenForUser extends Command
         parent::__construct();
     }
 
-
     /**
      * Execute the console command.
      */
-    public function handle(): void
+    public function handle(): int
     {
         $isRevoking = $this->option('revoke');
         $actionText = $isRevoking ? 'revoke' : 'create';
@@ -55,14 +59,16 @@ class CreateSanctumTokenForUser extends Command
         $value = (string) $this->ask("Please enter the $choice");
         $user = $this->findUser($choice, $value);
 
-        if (!$user) {
+        if (! $user) {
             $this->error('User not found!');
-            return;
+
+            return self::FAILURE;
         }
 
         if ((bool) $user->isRemoved) {
             $this->error('User account is suspended!');
-            return;
+
+            return self::FAILURE;
         }
 
         // Simulate authentication for the user
@@ -77,58 +83,66 @@ class CreateSanctumTokenForUser extends Command
                 // Call the revoke method
                 $this->apiTokenService->revokeToken((int) $tokenId);
                 $this->info('Token successfully revoked.');
-            } catch (Throwable $e) {
+            } catch (\Throwable $e) {
                 $this->error('Failed to revoke token. '.$e->getMessage());
+
+                return self::FAILURE;
             }
 
-        } else {
-            // Create a token
-            $tokenName = $this->ask('Enter a name for the token (max 16 characters)');
-
-            // Call the create method
-            $token = $this->apiTokenService->createApiToken($tokenName);
-
-            // Check the response status
-            if ($token) {
-                $this->info('Token created successfully:');
-                $this->line('');
-                $this->line('Token ID: ' . $token->accessToken->id);
-                $this->line('Token Name: ' . $token->accessToken->name);
-                $this->line('');
-                $this->warn('IMPORTANT: Copy this token now - it will not be shown again!');
-                $this->line('');
-                $this->info($token->plainTextToken);
-                $this->line('');
-            } else {
-                $this->error('Failed to create token.');
-            }
+            return self::SUCCESS;
         }
+
+        // Create a token
+        $tokenName = $this->ask('Enter a name for the token (max 16 characters)');
+        $abilities = $this->tokenAbilities();
+        if ($abilities === null) {
+            return self::FAILURE;
+        }
+
+        $token = $this->apiTokenService->createApiToken((string) $tokenName, $abilities);
+
+        $this->info('Token created successfully:');
+        $this->line('');
+        $this->line('Token ID: '.$token->accessToken->id);
+        $this->line('Token Name: '.$token->accessToken->name);
+        $this->line('');
+        $this->warn('IMPORTANT: Copy this token now - it will not be shown again!');
+        $this->line('');
+        $this->info($token->plainTextToken);
+        $this->line('');
+
+        return self::SUCCESS;
     }
 
     /**
      * List tokens for the user
      */
-    private function listUserTokens()
+    private function listUserTokens(): void
     {
         $tokens = $this->apiTokenService->fetchTokenList();
 
-        if (!$tokens || empty($tokens)) {
+        if ($tokens->isEmpty()) {
             $this->warn('No tokens found for this user.');
+
             return;
         }
 
         $this->info('Available tokens:');
-        $headers = ['ID', 'Name'];
+        $headers = ['ID', 'Name', 'Abilities'];
         $rows = [];
 
         foreach ($tokens as $token) {
-            $rows[] = [$token['id'], $token['name']];
+            $rows[] = [
+                $token['id'],
+                $token['name'],
+                implode(', ', $token['abilities']),
+            ];
         }
 
         $this->table($headers, $rows);
     }
 
-    private function findUser(string $choice, string $value)
+    private function findUser(string $choice, string $value): ?User
     {
         return match ($choice) {
             'Username' => $this->users->findByUsername($value),
@@ -136,5 +150,36 @@ class CreateSanctumTokenForUser extends Command
             'UserID' => $this->users->findById($value),
             default => null,
         };
+    }
+
+    /**
+     * @return non-empty-list<ApiTokenAbility>|null
+     */
+    private function tokenAbilities(): ?array
+    {
+        $values = array_values(array_unique(array_filter(array_map(
+            static fn (string $ability): string => strtolower(trim($ability)),
+            explode(',', (string) $this->option('abilities')),
+        ))));
+
+        if ($values === []) {
+            $this->error('At least one token ability is required.');
+
+            return null;
+        }
+
+        $abilities = [];
+        foreach ($values as $value) {
+            $ability = ApiTokenAbility::tryFrom($value);
+            if ($ability === null) {
+                $this->error("Token ability {$value} is invalid. Expected query or admin.");
+
+                return null;
+            }
+
+            $abilities[] = $ability;
+        }
+
+        return $abilities;
     }
 }

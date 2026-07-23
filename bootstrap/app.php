@@ -1,7 +1,7 @@
 <?php
 
+use App\Http\Middleware\RequireAdminAccess;
 use App\Http\Middleware\RequireBrowserQueryPrincipal;
-use App\Http\Middleware\RequireOperatorAccess;
 use App\Http\Middleware\SecurityHeaders;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -24,7 +24,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'abilities' => CheckAbilities::class,
             'browser-query-principal' => RequireBrowserQueryPrincipal::class,
-            'operator' => RequireOperatorAccess::class,
+            'admin' => RequireAdminAccess::class,
         ]);
         $middleware->validateCsrfTokens(except: [
             'ui/*',

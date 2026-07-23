@@ -14,8 +14,8 @@ class GraphRequestValidationTest extends TestCase
     {
         parent::setUp();
 
-        config()->set('config.operator_auth.bypass', true);
-        config()->set('config.operator_auth.bypass_environments', [app()->environment()]);
+        config()->set('config.admin_auth.bypass', true);
+        config()->set('config.admin_auth.bypass_environments', [app()->environment()]);
     }
 
     public function test_graph_requests_forward_validated_values_and_defaults(): void

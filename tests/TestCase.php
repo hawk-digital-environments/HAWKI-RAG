@@ -7,7 +7,6 @@ namespace Tests;
 use App\Models\User;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
-use Laravel\Sanctum\Sanctum;
 
 abstract class TestCase extends BaseTestCase
 {
@@ -30,7 +29,10 @@ abstract class TestCase extends BaseTestCase
         return $app;
     }
 
-    protected function actingAsApiUser(): User
+    /**
+     * @param  non-empty-list<string>  $abilities
+     */
+    protected function actingAsApiUser(array $abilities = ['admin', 'query']): User
     {
         $user = User::query()->create([
             'username' => 'api-test-'.uniqid(),
@@ -38,17 +40,19 @@ abstract class TestCase extends BaseTestCase
             'ip' => '127.0.0.'.random_int(1, 254),
         ]);
 
-        Sanctum::actingAs($user, ['*']);
+        $this->withToken(
+            $user->createToken('feature-test', $abilities)->plainTextToken,
+        );
 
         return $user;
     }
 
     private function assertSafeTestDatabaseEnvironment(): void
     {
-        $environment = $this->testEnvironmentVariable('APP_ENV');
-        $connection = $this->testEnvironmentVariable('DB_CONNECTION');
-        $database = $this->testEnvironmentVariable('DB_DATABASE');
-        $url = $this->testEnvironmentVariable('DB_URL');
+        $environment = $this->environmentVariableForTest('APP_ENV');
+        $connection = $this->environmentVariableForTest('DB_CONNECTION');
+        $database = $this->environmentVariableForTest('DB_DATABASE');
+        $url = $this->environmentVariableForTest('DB_URL');
 
         if ($environment === 'testing' && $connection === 'sqlite' && $database === ':memory:' && $url === '') {
             return;
@@ -109,7 +113,7 @@ abstract class TestCase extends BaseTestCase
         ));
     }
 
-    private function testEnvironmentVariable(string $name): string
+    private function environmentVariableForTest(string $name): string
     {
         $value = getenv($name);
 

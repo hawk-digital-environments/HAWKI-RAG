@@ -28,8 +28,8 @@
         neo4jClearEndpoint: string;
         /** Browser URL for downloading original uploaded source files. */
         uploadDownloadEndpoint: string;
-        /** Whether the current browser request is allowed to use operator APIs. */
-        operatorAuthorized?: boolean;
+        /** Whether the current browser request is allowed to use admin APIs. */
+        adminAuthorized?: boolean;
         /** Whether a real browser principal may access dataset-scoped query APIs. */
         queryAuthenticated?: boolean;
     }
@@ -112,7 +112,7 @@
         qdrantCollectionEndpointBase,
         neo4jClearEndpoint,
         uploadDownloadEndpoint,
-        operatorAuthorized = false,
+        adminAuthorized = false,
         queryAuthenticated = false,
         class: className = '',
         ...restProps
@@ -226,7 +226,7 @@
             status = 'Sign in with an authenticated HAWKI session to query datasets.';
         }
 
-        if (!operatorAuthorized) {
+        if (!adminAuthorized) {
             return;
         }
 
@@ -731,7 +731,7 @@
     </section>
     {/if}
 
-    {#if operatorAuthorized}
+    {#if adminAuthorized}
     <section class="signal-strip" aria-label="Live retrieval state">
         {#each systemSignals as signal}
             <article data-tone={signal.tone}>
@@ -742,8 +742,8 @@
     </section>
     {/if}
 
-    {#if operatorAuthorized || queryAuthenticated}
-    <main class={operatorAuthorized ? 'playground-grid' : 'playground-grid playground-grid--query-only'}>
+    {#if adminAuthorized || queryAuthenticated}
+    <main class={adminAuthorized ? 'playground-grid' : 'playground-grid playground-grid--query-only'}>
         <section class="composer" aria-labelledby="query-title">
             <div class="panel-heading">
                 <div>
@@ -853,7 +853,7 @@
             {:else}
                 <div class="query-auth-required" role="status">
                     <strong>Authenticated query session required</strong>
-                    <p>Operator access can show system health, but dataset retrieval requires a signed-in HAWKI user with an explicit dataset grant.</p>
+                    <p>Admin access can show system health, but dataset retrieval requires a signed-in HAWKI user with an explicit dataset grant.</p>
                 </div>
             {/if}
         </section>
@@ -980,7 +980,7 @@
             {/if}
         </section>
 
-        {#if operatorAuthorized}
+        {#if adminAuthorized}
         <aside class="system-panel" aria-label="HAWKI-RAG system overview">
             <section class="system-section">
                 <div class="mini-heading">
@@ -1061,9 +1061,9 @@
     </main>
     {:else}
     <section class="playground-auth-panel" aria-labelledby="playground-auth-required-title">
-        <span class="playground-auth-kicker">Operator access required</span>
+        <span class="playground-auth-kicker">Admin access required</span>
         <h2 id="playground-auth-required-title">Retrieval controls are locked.</h2>
-        <p>Sign in with an operator account or enable the explicit local bypass before running retrieval, viewing operator stats, or clearing graph storage.</p>
+        <p>Sign in with an admin account or enable the explicit local bypass before running retrieval, viewing admin stats, or clearing graph storage.</p>
     </section>
     {/if}
 </div>

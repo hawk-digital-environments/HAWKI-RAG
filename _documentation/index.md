@@ -15,7 +15,7 @@ This portal is organized as a guided flow: from prerequisites to deployment, wit
 
 ## Overview
 
-HAWKI-RAG is a containerized Retrieval-Augmented Generation platform built to turn crawled website content into usable intelligence. It combines a Laravel operator layer (UI + API) with a FastAPI pipeline for ingestion, retrieval, and optional graph enrichment, so operations stay simple while the backend remains capable.
+HAWKI-RAG is a containerized Retrieval-Augmented Generation platform built to turn crawled website content into usable intelligence. It combines a Laravel admin layer (UI + API) with a FastAPI pipeline for ingestion, retrieval, and optional graph enrichment, so operations stay simple while the backend remains capable.
 
 Crawled Markdown files are processed through the RAG-Anything flow, embedded directly with local Ollama by default, indexed in Qdrant for semantic retrieval, and optionally enriched into graph triplets in Neo4j. An optional LiteLLM profile provides explicit routes to Ollama aliases, OpenAI, and Anthropic without becoming a startup dependency. The result blends fast vector search with structured graph reasoning in one operational stack.
 

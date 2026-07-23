@@ -8,16 +8,16 @@
     import HawkiRagBackground from '../components/HawkiRagBackground.svelte';
 
     interface Props extends HTMLAttributes<HTMLElement> {
-        /** Whether the current browser request is allowed to use operator health APIs. */
-        operatorAuthorized?: boolean;
+        /** Whether the current browser request is allowed to use admin health APIs. */
+        adminAuthorized?: boolean;
         /** Called once the health dashboard DOM is available for the current runtime. */
         onready?: () => void;
     }
 
-    const {operatorAuthorized = false, onready, class: className = '', ...restProps}: Props = $props();
+    const {adminAuthorized = false, onready, class: className = '', ...restProps}: Props = $props();
 
     onMount(() => {
-        if (!operatorAuthorized) {
+        if (!adminAuthorized) {
             return;
         }
 
@@ -36,7 +36,7 @@
         active="health"
     />
 
-    {#if operatorAuthorized}
+    {#if adminAuthorized}
         <section class="health-status" id="pipeline-health-status">Loading ingestion health...</section>
 
         <section class="panel">
@@ -72,9 +72,9 @@
         </section>
     {:else}
         <section class="health-auth-panel" aria-labelledby="health-auth-required-title">
-            <span class="health-auth-kicker">Operator access required</span>
+            <span class="health-auth-kicker">Admin access required</span>
             <h2 id="health-auth-required-title">Detailed health checks are locked.</h2>
-            <p>Sign in with an operator account or enable the explicit local bypass before loading service, worker, and queue diagnostics.</p>
+            <p>Sign in with an admin account or enable the explicit local bypass before loading service, worker, and queue diagnostics.</p>
         </section>
     {/if}
 </main>

@@ -8,23 +8,23 @@ servers:
     description: Laravel API base URL
 tags:
   - name: Health
-    description: Operator checks for application, pipeline, and retrieval readiness.
+    description: Admin checks for application, pipeline, and retrieval readiness.
   - name: Datasets
     description: |
-      Operator endpoints for organizing related documents into isolated RAG workspaces.
+      Admin endpoints for organizing related documents into isolated RAG workspaces.
       A dataset keeps its own vector collection, graph namespace, and embedding configuration.
   - name: Documents
-    description: Operator endpoints for uploading, replacing, inspecting, and deleting managed documents.
+    description: Admin endpoints for uploading, replacing, inspecting, and deleting managed documents.
   - name: Pipeline
-    description: Operator endpoints for starting and observing durable ingestion tasks.
+    description: Admin endpoints for starting and observing durable ingestion tasks.
   - name: Pipeline Recovery
-    description: Operator endpoints for finding failed work and requesting controlled retries.
+    description: Admin endpoints for finding failed work and requesting controlled retries.
   - name: Query
     description: Authenticated dataset discovery and dataset-scoped retrieval endpoints.
   - name: RAG
-    description: Operator diagnostics for the retrieval bridge and backing data stores.
+    description: Admin diagnostics for the retrieval bridge and backing data stores.
   - name: Graph
-    description: Operator graph exploration, snapshots, and destructive graph maintenance.
+    description: Admin graph exploration, snapshots, and destructive graph maintenance.
 paths:
   /ping:
     get:
@@ -60,7 +60,7 @@ paths:
         Use `GET /datasets/{dataset_id}` when you need recent documents, tasks,
         and ingestion history for one dataset.
 
-        Requires an operator token. Regular query users should use
+        Requires an admin token. Regular query users should use
         `GET /query/datasets`, which returns only datasets they are authorized to query.
       security:
         - BearerAuth: []
@@ -98,9 +98,9 @@ paths:
         start ingestion, populate vector or graph storage, or grant query access.
         Upload with `POST /documents` to begin ingestion. Document upload can also
         create a missing dataset automatically, so this endpoint is most useful
-        when an operator wants to prepare and inspect a workspace in advance.
+        when an admin wants to prepare and inspect a workspace in advance.
 
-        Requires an operator token.
+        Requires an admin token.
       security:
         - BearerAuth: []
       requestBody:
@@ -146,7 +146,7 @@ paths:
         recent documents, recent pipeline tasks, and ingestion history.
 
         This endpoint reports the workspace; it does not return document content
-        or run a retrieval query. Requires an operator token.
+        or run a retrieval query. Requires an admin token.
       security:
         - BearerAuth: []
       responses:
@@ -179,7 +179,7 @@ paths:
         Removes the dataset's Qdrant collection and dataset-scoped Neo4j data,
         then deletes its metadata only after both storage cleanups succeed.
 
-        This is a destructive operator operation. It does not silently report
+        This is a destructive admin operation. It does not silently report
         success when a backing store could not be cleaned.
       security:
         - BearerAuth: []
@@ -1236,7 +1236,7 @@ paths:
       tags:
         - RAG
       summary: Delete a Qdrant collection
-      description: Permanently removes one validated Qdrant collection. This low-level operator operation does not delete Laravel dataset metadata.
+      description: Permanently removes one validated Qdrant collection. This low-level admin operation does not delete Laravel dataset metadata.
       security:
         - BearerAuth: []
       responses:
@@ -1261,7 +1261,7 @@ paths:
       tags:
         - Graph
       summary: Get graph overview
-      description: Returns a bounded recent graph scene containing normalized nodes and relationships for operator visualization.
+      description: Returns a bounded recent graph scene containing normalized nodes and relationships for admin visualization.
       security:
         - BearerAuth: []
       parameters:
@@ -1461,7 +1461,7 @@ paths:
       tags:
         - Graph
       summary: List graph snapshots
-      description: Lists saved graph visualization scenes available to the operator.
+      description: Lists saved graph visualization scenes available to the admin.
       security:
         - BearerAuth: []
       responses:

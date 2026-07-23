@@ -4,13 +4,13 @@ declare(strict_types=1);
 
 namespace App\Http\Middleware;
 
-use App\Services\Profile\OperatorAccessService;
+use App\Services\Profile\AdminAccessService;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
-readonly class RequireOperatorAccess
+readonly class RequireAdminAccess
 {
-    public function __construct(private OperatorAccessService $access) {}
+    public function __construct(private AdminAccessService $access) {}
 
     public function handle(Request $request, \Closure $next): Response
     {
@@ -20,10 +20,10 @@ readonly class RequireOperatorAccess
 
         if ($request->expectsJson() || $request->is('api/*')) {
             return response()->json([
-                'message' => 'Operator authentication required.',
+                'message' => 'Admin authentication required.',
             ], 401);
         }
 
-        return response('Operator authentication required.', 401);
+        return response('Admin authentication required.', 401);
     }
 }

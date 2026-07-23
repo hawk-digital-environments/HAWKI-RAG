@@ -74,7 +74,7 @@ class DatasetScopedQueryTest extends TestCase
                 'embedding_model' => 'hawki-embedding',
             ],
         ], JSON_THROW_ON_ERROR));
-        config()->set('config.operator_settings_path', $settingsPath);
+        config()->set('config.admin_settings_path', $settingsPath);
 
         $user = $this->actingAsApiUser();
         $dataset = $this->createDataset(

@@ -10,7 +10,7 @@ const configElement = document.getElementById('datasets-dashboard-config');
 function readConfig() {
     if (!configElement?.textContent) {
         return {
-            operatorAuthorized: false,
+            adminAuthorized: false,
             queryAuthenticated: false,
         };
     }
@@ -20,7 +20,7 @@ function readConfig() {
     } catch (error) {
         console.error('Invalid datasets dashboard config.', error);
         return {
-            operatorAuthorized: false,
+            adminAuthorized: false,
             queryAuthenticated: false,
         };
     }
@@ -32,9 +32,9 @@ if (root) {
     mount(DatasetsDashboardPage, {
         target: root,
         props: {
-            operatorAuthorized: config.operatorAuthorized === true,
+            adminAuthorized: config.adminAuthorized === true,
             queryAuthenticated: config.queryAuthenticated === true,
-            onready: config.operatorAuthorized === true ? bootDatasetsDashboard : undefined,
+            onready: config.adminAuthorized === true ? bootDatasetsDashboard : undefined,
         },
     });
 }
@@ -668,7 +668,7 @@ function bootDatasetsDashboard() {
                     .filter(Boolean),
             );
         } catch {
-            // Losing query authentication must not block the operator's
+            // Losing query authentication must not block the admin's
             // read-only dataset browser. The grant action remains fail-closed.
             state.queryAuthenticated = false;
             state.authorizedDatasetIds = new Set();

@@ -5,7 +5,7 @@ declare(strict_types=1);
 use App\Http\Controllers\ScrapeTaskUiProxyController;
 use App\Http\Controllers\SettingsController;
 use App\Services\Authorization\BrowserQueryPrincipalService;
-use App\Services\Profile\OperatorAccessService;
+use App\Services\Profile\AdminAccessService;
 use App\Services\Settings\SettingsService;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
@@ -14,16 +14,16 @@ use Illuminate\Support\Facades\Route;
 
 /*
 |--------------------------------------------------------------------------
-| Shared Operator Navigation Configuration
+| Shared Admin Navigation Configuration
 |--------------------------------------------------------------------------
-| This presentation-only payload drives the operator landing page. Service
+| This presentation-only payload drives the admin landing page. Service
 | URLs are page links; each page calls the canonical /api endpoints for data
 | and actions instead of registering JSON routes in this file.
 */
-$hawkiRagExperienceConfig = static function (string $section = 'operator'): array {
+$hawkiRagExperienceConfig = static function (string $section = 'admin'): array {
     return [
         'activeSection' => $section,
-        'operatorRoutes' => [
+        'adminRoutes' => [
             [
                 'key' => 'pipeline',
                 'label' => 'Pipeline',
@@ -105,7 +105,7 @@ Route::middleware('throttle:hawki-ui')->group(function () use ($hawkiRagExperien
     |----------------------------------------------------------------------
     | Entry Points and API Documentation
     |----------------------------------------------------------------------
-    | The project root opens the operator experience. Swagger remains a page
+    | The project root opens the admin experience. Swagger remains a page
     | redirect to the generated API documentation assets.
     */
     Route::redirect('/', '/admin');
@@ -113,20 +113,20 @@ Route::middleware('throttle:hawki-ui')->group(function () use ($hawkiRagExperien
 
     /*
     |----------------------------------------------------------------------
-    | Operator Experience Pages
+    | Admin Experience Pages
     |----------------------------------------------------------------------
     | /admin and /admin/analytics render the shared Svelte navigation shell
     | with the active product section selected in the bootstrap payload.
     */
     Route::get('/admin', static fn (): View => view('svelte-page', [
-        'title' => 'HAWKI-RAG Operator',
+        'title' => 'HAWKI-RAG Admin',
         'vite' => ['resources/css/app.css', 'resources/css/hawki-rag-theme.css', 'resources/js/hawki-rag-experience.js'],
         'configScriptId' => 'hawki-rag-experience-config',
-        'config' => $hawkiRagExperienceConfig('operator'),
+        'config' => $hawkiRagExperienceConfig('admin'),
         'rootAttributes' => ['data-hawki-rag-experience' => true],
     ]));
     Route::get('/admin/analytics', static fn (): View => view('svelte-page', [
-        'title' => 'HAWKI-RAG Operator',
+        'title' => 'HAWKI-RAG Admin',
         'vite' => ['resources/css/app.css', 'resources/css/hawki-rag-theme.css', 'resources/js/hawki-rag-experience.js'],
         'configScriptId' => 'hawki-rag-experience-config',
         'config' => $hawkiRagExperienceConfig('analytics'),
@@ -135,7 +135,7 @@ Route::middleware('throttle:hawki-ui')->group(function () use ($hawkiRagExperien
 
     /*
     |----------------------------------------------------------------------
-    | Stable Operator Navigation Aliases
+    | Stable Admin Navigation Aliases
     |----------------------------------------------------------------------
     | Task-oriented /admin URLs remain stable bookmark targets even when the
     | underlying page implementation has a more specific historical path.
@@ -152,7 +152,7 @@ Route::middleware('throttle:hawki-ui')->group(function () use ($hawkiRagExperien
     | Settings Page
     |----------------------------------------------------------------------
     | SettingsController renders sanitized initial state and whether the
-    | current browser may use operator APIs. Reads and updates happen only at
+    | current browser may use admin APIs. Reads and updates happen only at
     | /api/settings/config.
     */
     Route::get('/settings', [SettingsController::class, 'page']);
@@ -162,12 +162,12 @@ Route::middleware('throttle:hawki-ui')->group(function () use ($hawkiRagExperien
     | Retrieval Playground Page
     |----------------------------------------------------------------------
     | The shell supports two independent capabilities: dataset-scoped query
-    | access and broader operator controls. The API enforces both capabilities;
+    | access and broader admin controls. The API enforces both capabilities;
     | these booleans only decide which Svelte controls should be rendered.
     */
     Route::get('/hawki-rag-playground', function (
         Request $request,
-        OperatorAccessService $operatorAccess,
+        AdminAccessService $adminAccess,
         BrowserQueryPrincipalService $queryPrincipals,
     ): View {
         return view('svelte-page', [
@@ -175,7 +175,7 @@ Route::middleware('throttle:hawki-ui')->group(function () use ($hawkiRagExperien
             'vite' => 'resources/js/hawki-rag-playground.js',
             'configScriptId' => 'hawki-rag-playground-config',
             'config' => [
-                'operatorAuthorized' => $operatorAccess->allows($request),
+                'adminAuthorized' => $adminAccess->allows($request),
                 'queryAuthenticated' => $queryPrincipals->resolve($request) !== null,
             ],
             'rootAttributes' => ['data-hawki-rag-playground' => true],
@@ -187,14 +187,14 @@ Route::middleware('throttle:hawki-ui')->group(function () use ($hawkiRagExperien
     | Knowledge Graph Explorer Page
     |----------------------------------------------------------------------
     | Renders the graph workspace shell. Graph data is loaded lazily from the
-    | operator-protected /api/rag/neo4j endpoints only when access is allowed.
+    | admin-protected /api/rag/neo4j endpoints only when access is allowed.
     */
-    Route::get('/neo4j-graph-explorer', function (Request $request, OperatorAccessService $operatorAccess): View {
+    Route::get('/neo4j-graph-explorer', function (Request $request, AdminAccessService $adminAccess): View {
         return view('svelte-page', [
             'title' => 'Neo4j Graph Explorer',
             'vite' => ['resources/css/app.css', 'resources/js/neo4j-graph-dashboard.js'],
             'configScriptId' => 'neo4j-graph-dashboard-config',
-            'config' => ['operatorAuthorized' => $operatorAccess->allows($request)],
+            'config' => ['adminAuthorized' => $adminAccess->allows($request)],
             'rootAttributes' => ['data-neo4j-graph-dashboard' => true],
         ]);
     });
@@ -209,7 +209,7 @@ Route::middleware('throttle:hawki-ui')->group(function () use ($hawkiRagExperien
     */
     Route::get('/pipeline-controller', function (
         Request $request,
-        OperatorAccessService $operatorAccess,
+        AdminAccessService $adminAccess,
         SettingsService $settings,
     ) use ($pipelineControllerConfig): View {
         return view('svelte-page', [
@@ -218,7 +218,7 @@ Route::middleware('throttle:hawki-ui')->group(function () use ($hawkiRagExperien
             'configScriptId' => 'pipeline-controller-config',
             'config' => [
                 ...$pipelineControllerConfig($settings),
-                'operatorAuthorized' => $operatorAccess->allows($request),
+                'adminAuthorized' => $adminAccess->allows($request),
             ],
             'rootAttributes' => ['data-pipeline-controller-dashboard' => true],
         ]);
@@ -234,18 +234,18 @@ Route::middleware('throttle:hawki-ui')->group(function () use ($hawkiRagExperien
     */
     Route::get('/datasets', function (
         Request $request,
-        OperatorAccessService $operatorAccess,
+        AdminAccessService $adminAccess,
         BrowserQueryPrincipalService $queryPrincipals,
     ): View {
-        $operatorAuthorized = $operatorAccess->allows($request);
+        $adminAuthorized = $adminAccess->allows($request);
 
         return view('svelte-page', [
             'title' => 'HAWKI Data Browser',
             'vite' => ['resources/css/datasets-dashboard.css', 'resources/css/dashboard-dark-theme.css', 'resources/css/hawki-rag-theme.css', 'resources/js/datasets-dashboard.js'],
             'configScriptId' => 'datasets-dashboard-config',
             'config' => [
-                'operatorAuthorized' => $operatorAuthorized,
-                'queryAuthenticated' => $operatorAuthorized && $queryPrincipals->resolve($request) !== null,
+                'adminAuthorized' => $adminAuthorized,
+                'queryAuthenticated' => $adminAuthorized && $queryPrincipals->resolve($request) !== null,
             ],
             'rootAttributes' => ['data-datasets-dashboard' => true],
         ]);

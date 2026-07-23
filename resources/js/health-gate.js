@@ -198,7 +198,7 @@ async function refreshGate() {
         });
         const payload = await response.json().catch(() => ({}));
         if (response.status === 401 || response.status === 403) {
-            // Detailed health data is operator-only. Lack of access is not a
+            // Detailed health data is admin-only. Lack of access is not a
             // service failure and must never block query-only browser users.
             setBlocked(false);
             stopPolling();

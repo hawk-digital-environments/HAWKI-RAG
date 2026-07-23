@@ -22,7 +22,7 @@ class DatasetManagementTest extends TestCase
 
         $settingsPath = storage_path('framework/testing/dataset-management-settings.json');
         File::delete($settingsPath);
-        config()->set('config.operator_settings_path', $settingsPath);
+        config()->set('config.admin_settings_path', $settingsPath);
         config()->set('temporal.ingestion.provider', 'ollama');
         config()->set('config.graph_provider', 'ollama');
     }

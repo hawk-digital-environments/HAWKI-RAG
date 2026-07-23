@@ -1,5 +1,5 @@
 <!--
-  @component Operator settings page for custom converter defaults and model runtime choices.
+  @component Admin settings page for custom converter defaults and model runtime choices.
 -->
 <script lang="ts">
     import type {HTMLAttributes} from 'svelte/elements';
@@ -62,7 +62,7 @@
         customConverter?: CustomConverterConfig;
         models?: ModelConfig;
         providers?: ProviderOption[];
-        operatorAuthorized?: boolean;
+        adminAuthorized?: boolean;
     }
 
     interface ProviderForm {
@@ -83,15 +83,15 @@
         csrfToken: string;
         /** Initial settings payload rendered by Laravel. */
         initialConfig: SettingsConfig;
-        /** Whether the current browser request is allowed to use operator APIs. */
-        operatorAuthorized?: boolean;
+        /** Whether the current browser request is allowed to use admin APIs. */
+        adminAuthorized?: boolean;
     }
 
     const {
         endpoint,
         csrfToken,
         initialConfig,
-        operatorAuthorized = false,
+        adminAuthorized = false,
         class: className = '',
         ...restProps
     }: Props = $props();
@@ -377,7 +377,7 @@
         active="settings"
     />
 
-    {#if operatorAuthorized}
+    {#if adminAuthorized}
     <form class="settings-layout" onsubmit={(event) => { event.preventDefault(); void saveSettings(); }}>
         <section class="settings-panel" aria-labelledby="settings-converter-title">
             <div class="section-head">
@@ -615,9 +615,9 @@
     </form>
     {:else}
     <section class="settings-auth-panel" aria-labelledby="settings-auth-required-title">
-        <span class="settings-auth-kicker">Operator access required</span>
+        <span class="settings-auth-kicker">Admin access required</span>
         <h2 id="settings-auth-required-title">Settings are locked.</h2>
-        <p>Sign in with an operator account or enable the explicit local bypass before editing converter defaults, credentials, and runtime models.</p>
+        <p>Sign in with an admin account or enable the explicit local bypass before editing converter defaults, credentials, and runtime models.</p>
     </section>
     {/if}
 </main>

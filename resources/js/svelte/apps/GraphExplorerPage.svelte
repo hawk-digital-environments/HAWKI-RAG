@@ -8,21 +8,21 @@
     import HawkiRagBackground from '../components/HawkiRagBackground.svelte';
 
     interface Props extends HTMLAttributes<HTMLDivElement> {
-        /** Whether the current browser request is allowed to use operator APIs. */
-        operatorAuthorized?: boolean;
+        /** Whether the current browser request is allowed to use admin APIs. */
+        adminAuthorized?: boolean;
         /** Opens and lazy-loads the Cytoscape graph engine. */
         onopenTechnicalGraph?: () => void;
     }
 
     const {
-        operatorAuthorized = false,
+        adminAuthorized = false,
         onopenTechnicalGraph,
         class: className = '',
         ...restProps
     }: Props = $props();
 
     onMount(() => {
-        if (!operatorAuthorized) {
+        if (!adminAuthorized) {
             return;
         }
 
@@ -40,7 +40,7 @@
         active="graph"
     />
 
-    {#if operatorAuthorized}
+    {#if adminAuthorized}
     <section class="graph-visualization-section" aria-labelledby="graph-workspace-heading">
         <div class="graph-visualization-header">
             <div>
@@ -126,9 +126,9 @@
     </section>
     {:else}
     <section class="graph-auth-panel" aria-labelledby="graph-auth-required-title">
-        <span class="graph-auth-kicker">Operator access required</span>
+        <span class="graph-auth-kicker">Admin access required</span>
         <h2 id="graph-auth-required-title">Graph controls are locked.</h2>
-        <p>Sign in with an operator account or enable the explicit local bypass before searching entities, expanding neighborhoods, or saving graph snapshots.</p>
+        <p>Sign in with an admin account or enable the explicit local bypass before searching entities, expanding neighborhoods, or saving graph snapshots.</p>
     </section>
     {/if}
 </div>

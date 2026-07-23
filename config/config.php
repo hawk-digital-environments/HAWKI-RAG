@@ -18,7 +18,6 @@ $stageRuntimeLogPaths = static function (string $stage, string $file) use ($pipe
 
 return [
 
-
     'hawki_rag_bridge_url' => env('HAWKI_RAG_BRIDGE_URL', 'http://hawki_rag_bridge:8000'),
     'hawki_rag_query_timeout' => (int) env('HAWKI_RAG_QUERY_TIMEOUT', 300),
     'qdrant_http_url' => env('QDRANT_HTTP_URL', 'http://qdrant:6333'),
@@ -28,7 +27,10 @@ return [
     'neo4j_database' => env('NEO4J_DATABASE', 'neo4j'),
     'graph_snapshot_path' => env('HAWKI_RAG_GRAPH_SNAPSHOT_PATH', storage_path('app/graph_snapshots')),
     'graph_visualization_path' => env('HAWKI_RAG_GRAPH_VISUALIZATION_PATH', public_path('neo4j_graph_visualization.json')),
-    'operator_settings_path' => env('HAWKI_RAG_OPERATOR_SETTINGS_PATH', storage_path('app/hawki-rag/settings.json')),
+    'admin_settings_path' => env(
+        'HAWKI_RAG_ADMIN_SETTINGS_PATH',
+        env('HAWKI_RAG_OPERATOR_SETTINGS_PATH', storage_path('app/hawki-rag/settings.json')),
+    ),
     'pipeline_root' => $pipelineRoot,
     'shared_root' => $pipelineRoot,
     'crawled_data_root' => $crawledDataRoot,
@@ -89,12 +91,22 @@ return [
             explode(',', env('HAWKI_RAG_HEALTH_GATE_REQUIRED', 'retrieval,graph,pipeline'))
         ))),
     ],
-    'operator_auth' => [
-        'bypass' => filter_var(env('HAWKI_RAG_OPERATOR_AUTH_BYPASS', false), FILTER_VALIDATE_BOOLEAN),
+    'admin_auth' => [
+        'bypass' => filter_var(
+            env('HAWKI_RAG_ADMIN_AUTH_BYPASS', env('HAWKI_RAG_OPERATOR_AUTH_BYPASS', false)),
+            FILTER_VALIDATE_BOOLEAN,
+        ),
         'bypass_environments' => array_values(array_filter(array_map(
             'trim',
-            explode(',', env('HAWKI_RAG_OPERATOR_AUTH_BYPASS_ENVIRONMENTS', 'local,testing'))
+            explode(',', env(
+                'HAWKI_RAG_ADMIN_AUTH_BYPASS_ENVIRONMENTS',
+                env('HAWKI_RAG_OPERATOR_AUTH_BYPASS_ENVIRONMENTS', 'local,testing'),
+            )),
         ))),
+        'accept_legacy_operator_ability' => filter_var(
+            env('HAWKI_RAG_ADMIN_AUTH_ACCEPT_LEGACY_OPERATOR_ABILITY', false),
+            FILTER_VALIDATE_BOOLEAN,
+        ),
     ],
     'query_auth' => [
         'development_bypass' => filter_var(env('HAWKI_RAG_QUERY_AUTH_BYPASS', false), FILTER_VALIDATE_BOOLEAN),

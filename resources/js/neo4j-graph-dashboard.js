@@ -10,14 +10,14 @@ const configElement = document.getElementById('neo4j-graph-dashboard-config');
 
 function readConfig() {
     if (!configElement?.textContent) {
-        return { operatorAuthorized: false };
+        return { adminAuthorized: false };
     }
 
     try {
         return JSON.parse(configElement.textContent);
     } catch (error) {
         console.error('Invalid graph dashboard config.', error);
-        return { operatorAuthorized: false };
+        return { adminAuthorized: false };
     }
 }
 
@@ -27,8 +27,8 @@ if (root) {
     mount(GraphExplorerPage, {
         target: root,
         props: {
-            operatorAuthorized: config.operatorAuthorized === true,
-            onopenTechnicalGraph: config.operatorAuthorized === true ? loadGraphVisualization : undefined,
+            adminAuthorized: config.adminAuthorized === true,
+            onopenTechnicalGraph: config.adminAuthorized === true ? loadGraphVisualization : undefined,
         },
     });
 }

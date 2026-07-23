@@ -9,14 +9,14 @@ const configElement = document.getElementById('hawki-rag-playground-config');
 
 function readConfig() {
     if (!configElement?.textContent) {
-        return { operatorAuthorized: false };
+        return { adminAuthorized: false };
     }
 
     try {
         return JSON.parse(configElement.textContent);
     } catch (error) {
         console.error('Invalid HAWKI-RAG playground config.', error);
-        return { operatorAuthorized: false };
+        return { adminAuthorized: false };
     }
 }
 
@@ -34,7 +34,7 @@ if (root) {
             qdrantCollectionEndpointBase: apiUrl('rag/qdrant/collections'),
             neo4jClearEndpoint: apiUrl('rag/neo4j/clear'),
             uploadDownloadEndpoint: apiUrl('documents/uploads/download'),
-            operatorAuthorized: config.operatorAuthorized === true,
+            adminAuthorized: config.adminAuthorized === true,
             queryAuthenticated: config.queryAuthenticated === true,
         },
     });

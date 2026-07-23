@@ -31,7 +31,7 @@ if (root) {
     mount(HawkiRagExperience, {
         target: root,
         props: {
-            operatorRoutes: withPageUrls(config.operatorRoutes || []),
+            adminRoutes: withPageUrls(config.adminRoutes || []),
         },
     });
 }

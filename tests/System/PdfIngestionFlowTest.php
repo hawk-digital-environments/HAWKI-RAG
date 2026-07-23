@@ -16,7 +16,7 @@ use Illuminate\Support\Facades\Http;
 /**
  * Vertical upload-to-orchestration scenario using a valid ten-page PDF.
  *
- * The test exercises a persisted operator token, Sanctum/ability middleware,
+ * The test exercises a persisted admin token, Sanctum/ability middleware,
  * multipart validation, physical shared-storage persistence, hashing, dataset,
  * task/job/source creation, and Temporal workflow-payload construction. Only
  * the Python Temporal endpoint is faked: workers, conversion, model inference,
@@ -44,7 +44,7 @@ class PdfIngestionFlowTest extends SystemTestCase
 
         $settingsPath = storage_path('framework/testing/system-pdf-ingestion-settings.json');
         File::delete($settingsPath);
-        config()->set('config.operator_settings_path', $settingsPath);
+        config()->set('config.admin_settings_path', $settingsPath);
     }
 
     protected function tearDown(): void
@@ -56,7 +56,7 @@ class PdfIngestionFlowTest extends SystemTestCase
 
     public function test_real_ten_page_pdf_is_persisted_and_handed_to_temporal(): void
     {
-        config()->set('config.operator_auth.bypass', false);
+        config()->set('config.admin_auth.bypass', false);
 
         $bridgeEndpoint = rtrim((string) config('config.hawki_rag_bridge_url'), '/')
             .'/temporal/workflows/ingest';
@@ -72,8 +72,8 @@ class PdfIngestionFlowTest extends SystemTestCase
         $this->assertStringStartsWith('%PDF-1.4', $pdf);
         $this->assertStringContainsString('%%EOF', $pdf);
 
-        $operator = $this->createSystemUser('system-pdf-operator');
-        $token = $operator->createToken('system-pdf-ingestion', ['operator'])->plainTextToken;
+        $admin = $this->createSystemUser('system-pdf-admin');
+        $token = $admin->createToken('system-pdf-ingestion', ['admin'])->plainTextToken;
 
         $response = $this->withToken($token)
             ->post('/api/pipeline/controller/files', [

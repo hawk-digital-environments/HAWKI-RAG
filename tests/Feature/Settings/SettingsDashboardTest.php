@@ -12,13 +12,13 @@ class SettingsDashboardTest extends TestCase
 {
     public function test_settings_accepts_direct_ollama_as_the_default_runtime(): void
     {
-        config()->set('config.operator_auth.bypass', true);
-        config()->set('config.operator_auth.bypass_environments', [app()->environment()]);
+        config()->set('config.admin_auth.bypass', true);
+        config()->set('config.admin_auth.bypass_environments', [app()->environment()]);
         config()->set('temporal.ingestion.provider', 'ollama');
         config()->set('config.graph_provider', 'ollama');
         $settingsPath = storage_path('framework/testing/settings-dashboard-ollama.json');
         File::delete($settingsPath);
-        config()->set('config.operator_settings_path', $settingsPath);
+        config()->set('config.admin_settings_path', $settingsPath);
 
         $response = $this->withSession(['_token' => 'test-token'])
             ->putJson('/api/settings/config', [
@@ -51,11 +51,11 @@ class SettingsDashboardTest extends TestCase
     public function test_settings_page_mounts_and_saves_converter_and_model_defaults(): void
     {
         $this->withoutVite();
-        config()->set('config.operator_auth.bypass', true);
-        config()->set('config.operator_auth.bypass_environments', [app()->environment()]);
+        config()->set('config.admin_auth.bypass', true);
+        config()->set('config.admin_auth.bypass_environments', [app()->environment()]);
         $settingsPath = storage_path('framework/testing/settings-dashboard.json');
         File::delete($settingsPath);
-        config()->set('config.operator_settings_path', $settingsPath);
+        config()->set('config.admin_settings_path', $settingsPath);
 
         $payload = [
             'customConverter' => [
@@ -111,11 +111,11 @@ class SettingsDashboardTest extends TestCase
 
     public function test_settings_rejects_provider_not_supported_by_runtime(): void
     {
-        config()->set('config.operator_auth.bypass', true);
-        config()->set('config.operator_auth.bypass_environments', [app()->environment()]);
+        config()->set('config.admin_auth.bypass', true);
+        config()->set('config.admin_auth.bypass_environments', [app()->environment()]);
         $settingsPath = storage_path('framework/testing/settings-dashboard-invalid.json');
         File::delete($settingsPath);
-        config()->set('config.operator_settings_path', $settingsPath);
+        config()->set('config.admin_settings_path', $settingsPath);
 
         $this->withSession(['_token' => 'test-token'])
             ->putJson('/api/settings/config', [
@@ -132,11 +132,11 @@ class SettingsDashboardTest extends TestCase
 
     public function test_settings_accepts_litellm_as_a_runtime_provider(): void
     {
-        config()->set('config.operator_auth.bypass', true);
-        config()->set('config.operator_auth.bypass_environments', [app()->environment()]);
+        config()->set('config.admin_auth.bypass', true);
+        config()->set('config.admin_auth.bypass_environments', [app()->environment()]);
         $settingsPath = storage_path('framework/testing/settings-dashboard-litellm.json');
         File::delete($settingsPath);
-        config()->set('config.operator_settings_path', $settingsPath);
+        config()->set('config.admin_settings_path', $settingsPath);
 
         $response = $this->withSession(['_token' => 'test-token'])
             ->putJson('/api/settings/config', [
@@ -179,8 +179,8 @@ class SettingsDashboardTest extends TestCase
 
     public function test_settings_rejects_unknown_litellm_aliases(): void
     {
-        config()->set('config.operator_auth.bypass', true);
-        config()->set('config.operator_auth.bypass_environments', [app()->environment()]);
+        config()->set('config.admin_auth.bypass', true);
+        config()->set('config.admin_auth.bypass_environments', [app()->environment()]);
 
         $this->withSession(['_token' => 'test-token'])
             ->putJson('/api/settings/config', [
@@ -198,8 +198,8 @@ class SettingsDashboardTest extends TestCase
 
     public function test_settings_rejects_unknown_direct_ollama_models(): void
     {
-        config()->set('config.operator_auth.bypass', true);
-        config()->set('config.operator_auth.bypass_environments', [app()->environment()]);
+        config()->set('config.admin_auth.bypass', true);
+        config()->set('config.admin_auth.bypass_environments', [app()->environment()]);
 
         $this->withSession(['_token' => 'test-token'])
             ->putJson('/api/settings/config', [

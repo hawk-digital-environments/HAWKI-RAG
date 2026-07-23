@@ -24,13 +24,13 @@ class HealthRequestValidationTest extends TestCase
             ->assertJsonValidationErrors('timeout');
     }
 
-    public function test_canonical_health_endpoints_validate_after_operator_authentication(): void
+    public function test_canonical_health_endpoints_validate_after_admin_authentication(): void
     {
         Sanctum::actingAs(new User([
-            'username' => 'health-operator',
-            'email' => 'health-operator@example.test',
+            'username' => 'health-admin',
+            'email' => 'health-admin@example.test',
             'ip' => '127.0.0.81',
-        ]), ['operator']);
+        ]), ['admin']);
 
         $this->getJson('/api/pipeline/health?timeout=0')
             ->assertUnprocessable()

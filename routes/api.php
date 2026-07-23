@@ -62,19 +62,19 @@ Route::middleware(['browser-query-principal', 'throttle:hawki-api'])->group(func
 
 /*
 |--------------------------------------------------------------------------
-| Operator API Boundary
+| Admin API Boundary
 |--------------------------------------------------------------------------
-| The operator middleware accepts an authorized browser session or an
-| operator-capable bearer token. Domain-specific upload and destructive
+| The admin middleware accepts an authorized browser session or an
+| admin-capable bearer token. Domain-specific upload and destructive
 | throttles below are added on top of the shared API rate limit.
 */
-Route::middleware(['operator', 'throttle:hawki-api'])->group(function (): void {
+Route::middleware(['admin', 'throttle:hawki-api'])->group(function (): void {
     /*
     |----------------------------------------------------------------------
     | Platform Connectivity
     |----------------------------------------------------------------------
     | Unlike the public /up liveness check, ping confirms that the caller can
-    | reach the authenticated operator API boundary.
+    | reach the authenticated admin API boundary.
     */
     Route::get('/ping', static fn (): JsonResponse => response()->json(['pong' => true]));
 
@@ -82,7 +82,7 @@ Route::middleware(['operator', 'throttle:hawki-api'])->group(function (): void {
     |----------------------------------------------------------------------
     | Runtime Settings Domain
     |----------------------------------------------------------------------
-    | Reads and updates the operator-managed converter and model defaults.
+    | Reads and updates the admin-managed converter and model defaults.
     | These routes currently belong to the Svelte settings UI rather than the
     | published external API contract.
     */
@@ -99,7 +99,7 @@ Route::middleware(['operator', 'throttle:hawki-api'])->group(function (): void {
     | Dataset routes manage searchable dataset metadata. Storage cleanup is
     | separated from metadata reads and creation because it deletes Qdrant and
     | Neo4j data and therefore receives the destructive-operation throttle.
-    | Self-granting query access requires both operator authority and a query
+    | Self-granting query access requires both admin authority and a query
     | principal; it never broadens access for another user or another dataset.
     */
     Route::prefix('datasets')->group(function (): void {
@@ -225,7 +225,7 @@ Route::middleware(['operator', 'throttle:hawki-api'])->group(function (): void {
                 ->middleware('throttle:hawki-destructive');
         });
 
-        // Pipeline health is detailed operator diagnostics, not public
+        // Pipeline health is detailed admin diagnostics, not public
         // liveness; infrastructure probes must use /up.
         Route::get('/health', [PipelineHealthController::class, 'show']);
     });
@@ -235,7 +235,7 @@ Route::middleware(['operator', 'throttle:hawki-api'])->group(function (): void {
     | Health and Monitoring Domain
     |----------------------------------------------------------------------
     | Reports RAG bridge health, runtime monitoring, and the combined system
-    | gate. These detailed payloads remain operator-only; /up is the public
+    | gate. These detailed payloads remain admin-only; /up is the public
     | liveness endpoint for infrastructure probes.
     */
     Route::get('/rag/health', [RagHealthController::class, 'show']);

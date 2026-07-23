@@ -26,12 +26,12 @@ class AuthenticatedRagFlowTest extends SystemTestCase
 
     public function test_query_token_becomes_a_dataset_scoped_browser_session(): void
     {
-        config()->set('config.operator_auth.bypass', false);
+        config()->set('config.admin_auth.bypass', false);
         config()->set('config.query_auth.development_bypass', false);
 
         $settingsPath = storage_path('framework/testing/system-authenticated-rag-settings.json');
         File::delete($settingsPath);
-        config()->set('config.operator_settings_path', $settingsPath);
+        config()->set('config.admin_settings_path', $settingsPath);
 
         $bridgeEndpoint = rtrim((string) config('config.hawki_rag_bridge_url'), '/').'/query';
         Http::fake([
@@ -109,10 +109,10 @@ class AuthenticatedRagFlowTest extends SystemTestCase
                 && ! array_key_exists('dataset_id', $payload);
         });
 
-        // A query session is deliberately not an operator session.
+        // A query session is deliberately not an admin session.
         $this->withHeader('Authorization', '')
             ->getJson('/api/settings/config')
             ->assertUnauthorized()
-            ->assertExactJson(['message' => 'Operator authentication required.']);
+            ->assertExactJson(['message' => 'Admin authentication required.']);
     }
 }

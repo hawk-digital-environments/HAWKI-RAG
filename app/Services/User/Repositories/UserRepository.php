@@ -5,18 +5,24 @@ declare(strict_types=1);
 namespace App\Services\User\Repositories;
 
 use App\Models\User;
+use App\Services\User\Values\UserRole;
 use Illuminate\Container\Attributes\Singleton;
 
 #[Singleton]
 readonly class UserRepository
 {
-    public function create(string $username, string $email, string $ip): User
-    {
+    public function create(
+        string $username,
+        string $email,
+        string $ip,
+        UserRole $role = UserRole::User,
+    ): User {
         $user = new User([
             'username' => $username,
             'email' => $email,
             'ip' => $ip,
         ]);
+        $user->role = $role;
         $user->save();
 
         return $user;
@@ -46,6 +52,12 @@ readonly class UserRepository
     public function markRemoved(User $user): void
     {
         $user->remove();
+        $user->save();
+    }
+
+    public function setRole(User $user, UserRole $role): void
+    {
+        $user->role = $role;
         $user->save();
     }
 }

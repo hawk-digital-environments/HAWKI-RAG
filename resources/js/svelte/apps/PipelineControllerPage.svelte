@@ -39,8 +39,8 @@
         customExtensions: string[];
         /** Saved custom converter defaults from Settings. */
         customConverter?: CustomConverterDefaults;
-        /** Whether the current browser request is allowed to use operator APIs. */
-        operatorAuthorized?: boolean;
+        /** Whether the current browser request is allowed to use admin APIs. */
+        adminAuthorized?: boolean;
         /** Called once the static controller DOM is available for the current runtime. */
         onready?: () => void;
     }
@@ -72,14 +72,14 @@
         nativeExtensions,
         customExtensions,
         customConverter = {},
-        operatorAuthorized = false,
+        adminAuthorized = false,
         onready,
         class: className = '',
         ...restProps
     }: Props = $props();
 
     onMount(() => {
-        if (! operatorAuthorized) {
+        if (! adminAuthorized) {
             return;
         }
 
@@ -121,7 +121,7 @@
         </div>
     </section>
 
-    {#if operatorAuthorized}
+    {#if adminAuthorized}
         <section class="controller-file-section" aria-labelledby="pipeline-file-input-title">
             <PipelineUploadModule
                 endpoint={uploadEndpoint}
@@ -198,9 +198,9 @@
         </section>
     {:else}
         <section class="pipeline-auth-panel" aria-labelledby="pipeline-auth-required-title">
-            <span class="pipeline-auth-kicker">Operator access required</span>
+            <span class="pipeline-auth-kicker">Admin access required</span>
             <h2 id="pipeline-auth-required-title">Pipeline controls are locked.</h2>
-            <p>Sign in with an operator account or enable the explicit local bypass before loading scraper tasks, pipeline runs, and upload controls.</p>
+            <p>Sign in with an admin account or enable the explicit local bypass before loading scraper tasks, pipeline runs, and upload controls.</p>
         </section>
     {/if}
 </div>

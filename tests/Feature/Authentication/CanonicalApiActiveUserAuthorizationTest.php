@@ -16,23 +16,23 @@ class CanonicalApiActiveUserAuthorizationTest extends TestCase
     {
         parent::setUp();
 
-        config()->set('config.operator_auth.bypass', false);
+        config()->set('config.admin_auth.bypass', false);
     }
 
-    public function test_removed_operator_token_is_denied_from_operator_and_health_routes(): void
+    public function test_removed_admin_token_is_denied_from_admin_and_health_routes(): void
     {
-        $user = $this->createUser('removed-operator', '127.0.0.221', removed: true);
-        $token = $user->createToken('removed-operator', ['operator'])->plainTextToken;
+        $user = $this->createUser('removed-admin', '127.0.0.221', removed: true);
+        $token = $user->createToken('removed-admin', ['admin'])->plainTextToken;
 
         $this->withToken($token)
             ->getJson('/api/datasets')
             ->assertUnauthorized()
-            ->assertJsonPath('message', 'Operator authentication required.');
+            ->assertJsonPath('message', 'Admin authentication required.');
 
         $this->withToken($token)
             ->getJson('/api/ping')
             ->assertUnauthorized()
-            ->assertJsonPath('message', 'Operator authentication required.');
+            ->assertJsonPath('message', 'Admin authentication required.');
     }
 
     public function test_removed_query_token_is_denied_from_query_and_mcp_routes(): void
@@ -50,12 +50,12 @@ class CanonicalApiActiveUserAuthorizationTest extends TestCase
             ->assertForbidden();
     }
 
-    public function test_active_operator_token_retains_access_to_canonical_operator_and_health_routes(): void
+    public function test_active_admin_token_retains_access_to_canonical_admin_and_health_routes(): void
     {
-        $operator = $this->createUser('active-operator', '127.0.0.223');
-        $operatorToken = $operator->createToken('active-operator', ['operator'])->plainTextToken;
+        $admin = $this->createUser('active-admin', '127.0.0.223');
+        $adminToken = $admin->createToken('active-admin', ['admin'])->plainTextToken;
 
-        $this->withToken($operatorToken)
+        $this->withToken($adminToken)
             ->getJson('/api/datasets')
             ->assertOk()
             ->assertExactJson([
@@ -63,7 +63,7 @@ class CanonicalApiActiveUserAuthorizationTest extends TestCase
                 'datasets' => [],
             ]);
 
-        $this->withToken($operatorToken)
+        $this->withToken($adminToken)
             ->getJson('/api/ping')
             ->assertOk()
             ->assertExactJson(['pong' => true]);

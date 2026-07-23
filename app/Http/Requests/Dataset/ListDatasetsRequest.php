@@ -19,8 +19,8 @@ class ListDatasetsRequest extends FormRequest
         }
 
         return $user === null
-            ? $gate->allows('access-operator')
-            : $gate->forUser($user)->allows('access-operator');
+            ? $gate->allows('access-admin')
+            : $gate->forUser($user)->allows('access-admin');
     }
 
     public function rules(): array

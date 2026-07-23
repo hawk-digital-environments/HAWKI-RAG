@@ -13,7 +13,7 @@ The feature suite is grouped by user-visible capability or application boundary.
 | `Query` | Authorized dataset-scoped querying and the browser playground | 3 | 15 |
 | `Scraping` | Scraper task APIs and the proxied scraper UI | 2 | 5 |
 | `Settings` | Runtime provider, Ollama, LiteLLM, and converter settings | 1 | 7 |
-| `Ui` | Top-level operator experience routes and Svelte shell mounting | 1 | 3 |
+| `Ui` | Top-level admin experience routes and Svelte shell mounting | 1 | 3 |
 | **Total** | **10 feature sets** | **25** | **135** |
 
 ## Running the suite

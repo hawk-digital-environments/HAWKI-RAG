@@ -1,5 +1,5 @@
 <!--
-  @component Shared animated HAWKI-RAG admin background for operator pages.
+  @component Shared animated HAWKI-RAG admin background for admin pages.
 -->
 <script lang="ts">
     import {onMount} from 'svelte';

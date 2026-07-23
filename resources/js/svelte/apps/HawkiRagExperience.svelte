@@ -1,5 +1,5 @@
 <!--
-  @component Minimal HAWKI-RAG admin landing page with the primary operator destinations.
+  @component Minimal HAWKI-RAG admin landing page with the primary admin destinations.
 -->
 <script lang="ts">
     import type {HTMLAttributes} from 'svelte/elements';
@@ -15,17 +15,17 @@
     }
 
     interface Props extends HTMLAttributes<HTMLDivElement> {
-        /** Browser-facing operator routes shown as dashboard cards. */
-        operatorRoutes: ExperienceRoute[];
+        /** Browser-facing admin routes shown as dashboard cards. */
+        adminRoutes: ExperienceRoute[];
     }
 
     const {
-        operatorRoutes,
+        adminRoutes,
         class: className = '',
         ...restProps
     }: Props = $props();
 
-    const visibleRoutes = $derived(operatorRoutes.filter((route) => ['pipeline', 'datasets', 'graph', 'retrieve'].includes(route.key)));
+    const visibleRoutes = $derived(adminRoutes.filter((route) => ['pipeline', 'datasets', 'graph', 'retrieve'].includes(route.key)));
 
     function cardAccent(key: string): string {
         if (key === 'pipeline') return 'green';

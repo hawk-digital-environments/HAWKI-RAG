@@ -8,14 +8,14 @@ const configElement = document.getElementById('pipeline-health-dashboard-config'
 
 function readConfig() {
     if (!configElement?.textContent) {
-        return { operatorAuthorized: false };
+        return { adminAuthorized: false };
     }
 
     try {
         return JSON.parse(configElement.textContent);
     } catch (error) {
         console.error('Invalid pipeline health dashboard config.', error);
-        return { operatorAuthorized: false };
+        return { adminAuthorized: false };
     }
 }
 
@@ -25,8 +25,8 @@ if (root) {
     mount(PipelineHealthDashboardPage, {
         target: root,
         props: {
-            operatorAuthorized: config.operatorAuthorized === true,
-            onready: config.operatorAuthorized === true ? bootPipelineHealthDashboard : undefined,
+            adminAuthorized: config.adminAuthorized === true,
+            onready: config.adminAuthorized === true ? bootPipelineHealthDashboard : undefined,
         },
     });
 }

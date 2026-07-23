@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace App\Services\Settings\Repositories;
@@ -13,8 +14,7 @@ readonly class SettingsFileRepository
     public function __construct(
         private Filesystem $files,
         private ConfigRepository $config,
-    ) {
-    }
+    ) {}
 
     /**
      * @return array<string, mixed>
@@ -32,7 +32,7 @@ readonly class SettingsFileRepository
     }
 
     /**
-     * @param array<string, mixed> $settings
+     * @param  array<string, mixed>  $settings
      */
     public function write(array $settings): void
     {
@@ -41,7 +41,7 @@ readonly class SettingsFileRepository
 
         $encoded = json_encode($settings, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
         if (! is_string($encoded)) {
-            throw new \RuntimeException('Operator settings could not be encoded.');
+            throw new \RuntimeException('Admin settings could not be encoded.');
         }
 
         $this->files->put($path, $encoded."\n");
@@ -50,6 +50,6 @@ readonly class SettingsFileRepository
 
     private function path(): string
     {
-        return (string) $this->config->get('config.operator_settings_path');
+        return (string) $this->config->get('config.admin_settings_path');
     }
 }

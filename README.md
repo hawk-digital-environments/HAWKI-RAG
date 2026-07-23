@@ -163,14 +163,31 @@ the requested dataset, and issue a Sanctum token:
 ```bash
 docker compose exec hawki_rag_app php artisan user:create
 docker compose exec hawki_rag_app php artisan dataset:grant-query <dataset_id> <user_id>
-docker compose exec hawki_rag_app php artisan user:token
+docker compose exec hawki_rag_app php artisan user:token --abilities=query
 ```
 
 The create command prints the `user_id`. Open the playground and paste the
 token into **Dataset authentication**. RAWKI sends it once to `/auth/session`,
 establishes an HttpOnly Laravel session, clears the input, and then lists only
-datasets granted to that principal. The token needs the `query` ability; the
-existing token command creates a wildcard token that includes it.
+datasets granted to that principal. The token needs the explicit `query`
+ability. The token command defaults to `query` and never creates wildcard
+tokens.
+
+Browser access to the admin UI requires a persisted admin role. Promote only
+trusted users, then issue admin API credentials with the explicit `admin`
+ability when bearer access is needed:
+
+```bash
+docker compose exec hawki_rag_app php artisan user:role <user_id> admin
+docker compose exec hawki_rag_app php artisan user:token --abilities=admin
+```
+
+During migration, existing `operator` bearer abilities can be accepted by
+setting `HAWKI_RAG_ADMIN_AUTH_ACCEPT_LEGACY_OPERATOR_ABILITY=true`. The switch
+defaults to false; disable it again after replacing those credentials.
+Wildcard tokens do not count as explicit admin credentials and must be
+reissued. Existing browser users are not upgraded implicitly; they remain
+non-admin until assigned the role above.
 
 Local development may skip the token prompt without weakening production. Set
 `HAWKI_RAG_QUERY_AUTH_BYPASS=true`, restrict its environments to

@@ -1,10 +1,11 @@
 <?php
+
 declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
 use App\Http\Requests\Settings\UpdateSettingsRequest;
-use App\Services\Profile\OperatorAccessService;
+use App\Services\Profile\AdminAccessService;
 use App\Services\Settings\SettingsService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -14,10 +15,9 @@ class SettingsController extends Controller
 {
     public function __construct(
         private readonly SettingsService $settings,
-    ) {
-    }
+    ) {}
 
-    public function page(Request $request, OperatorAccessService $operatorAccess): View
+    public function page(Request $request, AdminAccessService $adminAccess): View
     {
         return view('svelte-page', [
             'title' => 'HAWKI Settings',
@@ -25,7 +25,7 @@ class SettingsController extends Controller
             'configScriptId' => 'settings-dashboard-config',
             'config' => [
                 ...$this->settings->browserPayload(),
-                'operatorAuthorized' => $operatorAccess->allows($request),
+                'adminAuthorized' => $adminAccess->allows($request),
             ],
             'rootAttributes' => ['data-settings-dashboard' => true],
         ]);
