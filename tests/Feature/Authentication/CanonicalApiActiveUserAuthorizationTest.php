@@ -8,39 +8,49 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
-class InternalApiActiveUserAuthorizationTest extends TestCase
+class CanonicalApiActiveUserAuthorizationTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_removed_operator_token_is_forbidden_from_operator_and_health_routes(): void
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        config()->set('config.operator_auth.bypass', false);
+    }
+
+    public function test_removed_operator_token_is_denied_from_operator_and_health_routes(): void
     {
         $user = $this->createUser('removed-operator', '127.0.0.221', removed: true);
         $token = $user->createToken('removed-operator', ['operator'])->plainTextToken;
 
         $this->withToken($token)
             ->getJson('/api/datasets')
-            ->assertForbidden();
+            ->assertUnauthorized()
+            ->assertJsonPath('message', 'Operator authentication required.');
 
         $this->withToken($token)
             ->getJson('/api/ping')
-            ->assertForbidden();
+            ->assertUnauthorized()
+            ->assertJsonPath('message', 'Operator authentication required.');
     }
 
-    public function test_removed_query_token_is_forbidden_from_query_and_mcp_routes(): void
+    public function test_removed_query_token_is_denied_from_query_and_mcp_routes(): void
     {
         $user = $this->createUser('removed-query', '127.0.0.222', removed: true);
         $token = $user->createToken('removed-query', ['query'])->plainTextToken;
 
         $this->withToken($token)
             ->getJson('/api/query/datasets')
-            ->assertForbidden();
+            ->assertUnauthorized()
+            ->assertJsonPath('message', 'Unauthenticated.');
 
         $this->withToken($token)
             ->postJson('/'.ltrim((string) config('mcp.server'), '/'), [])
             ->assertForbidden();
     }
 
-    public function test_active_operator_token_retains_access_to_internal_operator_and_health_routes(): void
+    public function test_active_operator_token_retains_access_to_canonical_operator_and_health_routes(): void
     {
         $operator = $this->createUser('active-operator', '127.0.0.223');
         $operatorToken = $operator->createToken('active-operator', ['operator'])->plainTextToken;
@@ -59,7 +69,7 @@ class InternalApiActiveUserAuthorizationTest extends TestCase
             ->assertExactJson(['pong' => true]);
     }
 
-    public function test_active_query_token_retains_access_to_internal_query_routes(): void
+    public function test_active_query_token_retains_access_to_canonical_query_routes(): void
     {
         $queryUser = $this->createUser('active-query', '127.0.0.224');
         $queryToken = $queryUser->createToken('active-query', ['query'])->plainTextToken;

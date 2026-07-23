@@ -81,16 +81,24 @@ class RouteSecurityTest extends TestCase
             ->assertSee('neo4j-graph-dashboard-config', false)
             ->assertSee('"operatorAuthorized":false', false)
             ->assertDontSee('graph-search-input', false);
+
+        $this->get('/pipeline-health')
+            ->assertOk()
+            ->assertSee('pipeline-health-dashboard-config', false)
+            ->assertSee('"operatorAuthorized":false', false)
+            ->assertDontSee('pipeline-health-metrics', false);
     }
 
-    public function test_internal_api_requires_sanctum_authentication(): void
+    public function test_canonical_operator_api_requires_operator_authentication(): void
     {
+        config()->set('config.operator_auth.bypass', false);
+
         $this->get('/api/pipeline/tasks')
-            ->assertUnauthorized()
-            ->assertJsonPath('message', 'Unauthenticated.');
+            ->assertUnauthorized();
 
         $this->getJson('/api/pipeline/tasks')
             ->assertUnauthorized()
+            ->assertJsonPath('message', 'Operator authentication required.')
             ->assertHeaderMissing('Access-Control-Allow-Origin');
     }
 
@@ -105,31 +113,39 @@ class RouteSecurityTest extends TestCase
 
         $this->assertStringContainsString('no-store', (string) $response->headers->get('Cache-Control'));
 
-        $this->getJson('/settings/config')
+        $this->getJson('/api/settings/config')
             ->assertUnauthorized()
             ->assertHeader('Pragma', 'no-cache')
             ->assertHeader('Expires', '0');
     }
 
-    public function test_web_ui_operator_endpoints_require_operator_authentication(): void
+    public function test_canonical_operator_endpoints_require_operator_authentication(): void
     {
         config()->set('config.operator_auth.bypass', false);
 
-        $this->getJson('/settings/config')
+        $this->getJson('/api/settings/config')
             ->assertUnauthorized()
             ->assertJsonPath('message', 'Operator authentication required.');
 
-        $this->getJson('/documents/uploads/download?source_url=upload%3A%2F%2Fsecret.pdf')
+        $this->getJson('/api/documents/uploads/download?source_url=upload%3A%2F%2Fsecret.pdf')
+            ->assertUnauthorized()
+            ->assertJsonPath('message', 'Operator authentication required.');
+
+        $this->getJson('/api/health/system-gate')
+            ->assertUnauthorized()
+            ->assertJsonPath('message', 'Operator authentication required.');
+
+        $this->getJson('/api/pipeline/health')
             ->assertUnauthorized()
             ->assertJsonPath('message', 'Operator authentication required.');
 
         $this->withSession(['_token' => 'test-token'])
-            ->postJson('/query', ['query' => 'hello'], ['X-CSRF-TOKEN' => 'test-token'])
+            ->postJson('/api/query', ['query' => 'hello'], ['X-CSRF-TOKEN' => 'test-token'])
             ->assertUnauthorized()
             ->assertJsonPath('message', 'Unauthenticated.');
     }
 
-    public function test_web_ui_operator_endpoints_allow_sanctum_tokens_with_operator_ability(): void
+    public function test_canonical_operator_endpoints_allow_sanctum_tokens_with_operator_ability(): void
     {
         config()->set('config.operator_auth.bypass', false);
         Sanctum::actingAs(
@@ -141,11 +157,11 @@ class RouteSecurityTest extends TestCase
             ['operator'],
         );
 
-        $this->getJson('/settings/config')
+        $this->getJson('/api/settings/config')
             ->assertOk();
     }
 
-    public function test_web_ui_operator_endpoints_preserve_active_tokenless_browser_sessions(): void
+    public function test_canonical_operator_endpoints_preserve_active_tokenless_browser_sessions(): void
     {
         config()->set('config.operator_auth.bypass', false);
 
@@ -153,11 +169,12 @@ class RouteSecurityTest extends TestCase
             'username' => 'browser-operator',
             'email' => 'browser-operator@example.test',
             'ip' => '127.0.0.2',
-        ]))->getJson('/settings/config')
+        ]))->withHeader('Origin', rtrim((string) config('app.url'), '/'))
+            ->getJson('/api/settings/config')
             ->assertOk();
     }
 
-    public function test_web_ui_operator_endpoints_reject_removed_browser_sessions(): void
+    public function test_canonical_operator_endpoints_reject_removed_browser_sessions(): void
     {
         config()->set('config.operator_auth.bypass', false);
 
@@ -166,26 +183,28 @@ class RouteSecurityTest extends TestCase
             'email' => 'removed-browser-operator@example.test',
             'ip' => '127.0.0.3',
             'isRemoved' => true,
-        ]))->getJson('/settings/config')
+        ]))->withHeader('Origin', rtrim((string) config('app.url'), '/'))
+            ->getJson('/api/settings/config')
             ->assertUnauthorized();
     }
 
-    public function test_web_ui_operator_local_bypass_must_be_explicit_and_environment_scoped(): void
+    public function test_canonical_operator_local_bypass_must_be_explicit_and_environment_scoped(): void
     {
         config()->set('config.operator_auth.bypass', true);
         config()->set('config.operator_auth.bypass_environments', ['production']);
 
-        $this->getJson('/settings/config')
+        $this->getJson('/api/settings/config')
             ->assertUnauthorized();
 
         config()->set('config.operator_auth.bypass_environments', [app()->environment()]);
 
-        $this->getJson('/settings/config')
+        $this->getJson('/api/settings/config')
             ->assertOk();
     }
 
-    public function test_internal_api_cors_requires_an_explicit_allowed_origin(): void
+    public function test_canonical_api_cors_requires_an_explicit_allowed_origin(): void
     {
+        config()->set('config.operator_auth.bypass', false);
         config()->set('cors.allowed_origins', [
             'https://trusted-ui.example.test',
             'https://admin-ui.example.test',
@@ -202,7 +221,7 @@ class RouteSecurityTest extends TestCase
             ->assertHeaderMissing('Access-Control-Allow-Origin');
     }
 
-    public function test_query_payloads_are_size_limited(): void
+    public function test_bearer_query_requests_are_csrf_free_and_size_limited(): void
     {
         Sanctum::actingAs(
             new User([
@@ -220,7 +239,7 @@ class RouteSecurityTest extends TestCase
 
     public function test_route_identifier_constraints_reject_suspicious_paths(): void
     {
-        $this->getJson('/pipeline/tasks/..')
+        $this->getJson('/api/pipeline/tasks/..')
             ->assertNotFound();
     }
 }

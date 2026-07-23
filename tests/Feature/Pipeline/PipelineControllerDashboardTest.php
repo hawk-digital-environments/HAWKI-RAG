@@ -160,7 +160,7 @@ class PipelineControllerDashboardTest extends TestCase
             ]);
         }
 
-        $this->getJson('/pipeline/tasks/task-scraper-stage-detail')
+        $this->getJson('/api/pipeline/tasks/task-scraper-stage-detail')
             ->assertOk()
             ->assertJsonPath('success', true)
             ->assertJsonPath('task.counters.scraped', 4)
@@ -263,7 +263,7 @@ class PipelineControllerDashboardTest extends TestCase
             'status' => Document::STATUS_COMPLETED,
         ]);
 
-        $this->getJson("/pipeline/tasks/{$task->task_id}")
+        $this->getJson("/api/pipeline/tasks/{$task->task_id}")
             ->assertOk()
             ->assertJsonPath('success', true)
             ->assertJsonPath('task.managed_documents.0.document_id', 'adoc_managed_read_1')
@@ -324,7 +324,7 @@ class PipelineControllerDashboardTest extends TestCase
             'latest_job_id' => $job->job_id,
         ]);
 
-        $this->getJson("/pipeline/status/{$job->job_id}")
+        $this->getJson("/api/pipeline/status/{$job->job_id}")
             ->assertOk()
             ->assertJsonPath('success', true)
             ->assertJsonPath('managed_documents.0.document_id', 'adoc_status_managed_read_1')
@@ -431,7 +431,7 @@ class PipelineControllerDashboardTest extends TestCase
         ]);
 
         $this->withSession(['_token' => 'test-token'])
-            ->putJson('/settings/config', [
+            ->putJson('/api/settings/config', [
                 'customConverter' => [
                     'enabled' => true,
                     'supportedExtensions' => '',
@@ -550,7 +550,7 @@ class PipelineControllerDashboardTest extends TestCase
         ]);
 
         $this->withSession(['_token' => 'test-token'])
-            ->postJson('/pipeline/tasks/task-retry-temporal/retry-failed-jobs', [], ['X-CSRF-TOKEN' => 'test-token'])
+            ->postJson('/api/pipeline/tasks/task-retry-temporal/retry-failed-jobs', [], ['X-CSRF-TOKEN' => 'test-token'])
             ->assertOk()
             ->assertJsonPath('success', true);
 
@@ -614,7 +614,7 @@ class PipelineControllerDashboardTest extends TestCase
         config()->set('config.operator_settings_path', $settingsPath);
 
         $this->withSession(['_token' => 'test-token'])
-            ->putJson('/settings/config', [
+            ->putJson('/api/settings/config', [
                 'customConverter' => [
                     'enabled' => true,
                     'supportedExtensions' => 'svg',
@@ -696,7 +696,7 @@ class PipelineControllerDashboardTest extends TestCase
         ]);
 
         $this->withSession(['_token' => 'test-token'])
-            ->deleteJson('/pipeline/tasks/task-cache-delete', [], ['X-CSRF-TOKEN' => 'test-token'])
+            ->deleteJson('/api/pipeline/tasks/task-cache-delete', [], ['X-CSRF-TOKEN' => 'test-token'])
             ->assertOk()
             ->assertJsonPath('success', true)
             ->assertJsonPath('task_id', 'task-cache-delete')
@@ -769,7 +769,7 @@ class PipelineControllerDashboardTest extends TestCase
             'errors' => [],
         ]);
 
-        $response = $this->getJson('/pipeline/tasks/task-stage-logs/stages/scraper/logs')
+        $response = $this->getJson('/api/pipeline/tasks/task-stage-logs/stages/scraper/logs')
             ->assertOk()
             ->assertJsonPath('success', true)
             ->assertJsonPath('log.filename', 'scraper_log_logs-dataset.txt')
@@ -782,7 +782,7 @@ class PipelineControllerDashboardTest extends TestCase
         $this->assertStringNotContainsString('Job: job-stage-logs', $text);
         $this->assertStringNotContainsString('Crawler submitted pages.', $text);
 
-        $download = $this->get('/pipeline/tasks/task-stage-logs/stages/scraper/logs/download')
+        $download = $this->get('/api/pipeline/tasks/task-stage-logs/stages/scraper/logs/download')
             ->assertOk();
 
         $this->assertStringContainsString(
@@ -828,7 +828,7 @@ class PipelineControllerDashboardTest extends TestCase
             'metadata' => ['source_id' => 'source_scrape_direct'],
         ]);
 
-        $response = $this->getJson('/pipeline/tasks/task-direct-scrape-logs/stages/scrape/logs')
+        $response = $this->getJson('/api/pipeline/tasks/task-direct-scrape-logs/stages/scrape/logs')
             ->assertOk()
             ->assertJsonPath('success', true);
 
@@ -873,7 +873,7 @@ class PipelineControllerDashboardTest extends TestCase
             'metadata' => ['source_id' => 'source_convert_direct'],
         ]);
 
-        $response = $this->getJson('/pipeline/tasks/task-direct-convert-logs/stages/convert/logs')
+        $response = $this->getJson('/api/pipeline/tasks/task-direct-convert-logs/stages/convert/logs')
             ->assertOk()
             ->assertJsonPath('success', true);
 
@@ -919,7 +919,7 @@ class PipelineControllerDashboardTest extends TestCase
             'metadata' => ['source_id' => 'source_repeat_upload'],
         ]);
 
-        $response = $this->getJson('/pipeline/tasks/task-repeat-upload-ingest-logs/stages/ingest/logs')
+        $response = $this->getJson('/api/pipeline/tasks/task-repeat-upload-ingest-logs/stages/ingest/logs')
             ->assertOk()
             ->assertJsonPath('success', true);
 
@@ -993,7 +993,7 @@ class PipelineControllerDashboardTest extends TestCase
             'errors' => [],
         ]);
 
-        $response = $this->getJson('/pipeline/tasks/task-raganything-logs/stages/ingest/logs')
+        $response = $this->getJson('/api/pipeline/tasks/task-raganything-logs/stages/ingest/logs')
             ->assertOk()
             ->assertJsonPath('success', true);
 
@@ -1014,7 +1014,7 @@ class PipelineControllerDashboardTest extends TestCase
         $this->assertStringNotContainsString('doc_old_abc123', $text);
         $this->assertSame(1, substr_count($text, 'api:ingest request_id='.$operationId));
 
-        $download = $this->get('/pipeline/tasks/task-raganything-logs/stages/ingest/logs/download')
+        $download = $this->get('/api/pipeline/tasks/task-raganything-logs/stages/ingest/logs/download')
             ->assertOk();
         $downloadText = (string) $download->getContent();
         $this->assertStringContainsString('Ingest job and stage records', $downloadText);

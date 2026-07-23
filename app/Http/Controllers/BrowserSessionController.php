@@ -18,7 +18,9 @@ class BrowserSessionController extends Controller
         $accessToken = $user instanceof User ? $user->currentAccessToken() : null;
 
         if (
-            ! $user instanceof User
+            ! (bool) $request->attributes->get('sanctum', false)
+            || ! $request->hasSession()
+            || ! $user instanceof User
             || $user->cannot('access-query-principal')
             || ! $accessToken instanceof PersonalAccessToken
             || ! $accessToken->can('query')

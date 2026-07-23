@@ -15,16 +15,16 @@ class HealthRequestValidationTest extends TestCase
 {
     public function test_health_endpoints_reject_invalid_timeouts(): void
     {
-        $this->getJson('/pipeline/health?timeout=0')
+        $this->getJson('/api/pipeline/health?timeout=0')
             ->assertUnprocessable()
             ->assertJsonValidationErrors('timeout');
 
-        $this->getJson('/health/system-gate?timeout=31')
+        $this->getJson('/api/health/system-gate?timeout=31')
             ->assertUnprocessable()
             ->assertJsonValidationErrors('timeout');
     }
 
-    public function test_internal_health_endpoints_validate_after_operator_authentication(): void
+    public function test_canonical_health_endpoints_validate_after_operator_authentication(): void
     {
         Sanctum::actingAs(new User([
             'username' => 'health-operator',
@@ -43,11 +43,11 @@ class HealthRequestValidationTest extends TestCase
 
     public function test_health_request_preserves_nullable_and_explicit_timeouts(): void
     {
-        $defaultRequest = HealthCheckRequest::create('/pipeline/health', 'GET');
+        $defaultRequest = HealthCheckRequest::create('/api/pipeline/health', 'GET');
         $defaultRequest->setContainer($this->app);
         $defaultRequest->validateResolved();
 
-        $explicitRequest = HealthCheckRequest::create('/pipeline/health?timeout=3', 'GET');
+        $explicitRequest = HealthCheckRequest::create('/api/pipeline/health?timeout=3', 'GET');
         $explicitRequest->setContainer($this->app);
         $explicitRequest->validateResolved();
 
@@ -60,16 +60,16 @@ class HealthRequestValidationTest extends TestCase
         $this->app->instance(PipelineHealthService::class, new FakePipelineHealthService);
         $this->app->instance(HawkiRagSystemGateService::class, new FakeHawkiRagSystemGateService);
 
-        $this->getJson('/pipeline/health')
+        $this->getJson('/api/pipeline/health')
             ->assertOk()
             ->assertJsonPath('checks.0.detail', '5');
-        $this->getJson('/pipeline/health?timeout=3')
+        $this->getJson('/api/pipeline/health?timeout=3')
             ->assertOk()
             ->assertJsonPath('checks.0.detail', '3');
-        $this->getJson('/health/system-gate')
+        $this->getJson('/api/health/system-gate')
             ->assertOk()
             ->assertJsonPath('timeout', null);
-        $this->getJson('/health/system-gate?timeout=3')
+        $this->getJson('/api/health/system-gate?timeout=3')
             ->assertOk()
             ->assertJsonPath('timeout', 3);
     }

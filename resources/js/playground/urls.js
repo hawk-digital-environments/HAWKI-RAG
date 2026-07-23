@@ -13,8 +13,10 @@ function configuredBasePath() {
 
 export function apiUrl(path) {
     const relative = String(path || '').replace(/^\/+/, '');
+    const baseUrl = new URL(configuredBasePath(), window.location.origin);
+    const apiBaseUrl = new URL('api/', baseUrl);
 
-    return new URL(relative, new URL(configuredBasePath(), window.location.origin)).toString();
+    return new URL(relative, apiBaseUrl).toString();
 }
 
 export function pageUrl(path) {

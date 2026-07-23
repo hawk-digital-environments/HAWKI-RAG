@@ -43,23 +43,23 @@ class GraphRequestValidationTest extends TestCase
                 ->andReturn(['ok' => true]);
         });
 
-        $this->getJson('/rag/neo4j/graph/overview')
+        $this->getJson('/api/rag/neo4j/graph/overview')
             ->assertOk()
             ->assertJsonPath('ok', true);
 
-        $this->getJson('/rag/neo4j/graph/search?q=alpha')
+        $this->getJson('/api/rag/neo4j/graph/search?q=alpha')
             ->assertOk()
             ->assertJsonPath('ok', true);
 
-        $this->postJson('/rag/neo4j/graph/expand', ['node_id' => 'node-1'])
+        $this->postJson('/api/rag/neo4j/graph/expand', ['node_id' => 'node-1'])
             ->assertOk()
             ->assertJsonPath('ok', true);
 
-        $this->getJson('/rag/neo4j/graph/node?node_id=node-2')
+        $this->getJson('/api/rag/neo4j/graph/node?node_id=node-2')
             ->assertOk()
             ->assertJsonPath('ok', true);
 
-        $this->postJson('/rag/neo4j/graph/snapshots', [
+        $this->postJson('/api/rag/neo4j/graph/snapshots', [
             'scene' => ['nodes' => [], 'edges' => []],
         ])->assertOk()
             ->assertJsonPath('ok', true);
@@ -67,25 +67,25 @@ class GraphRequestValidationTest extends TestCase
 
     public function test_graph_requests_reject_invalid_input(): void
     {
-        $this->getJson('/rag/neo4j/graph/overview?limit=4')
+        $this->getJson('/api/rag/neo4j/graph/overview?limit=4')
             ->assertUnprocessable()
             ->assertJsonValidationErrors('limit');
 
-        $this->getJson('/rag/neo4j/graph/search?limit=12')
+        $this->getJson('/api/rag/neo4j/graph/search?limit=12')
             ->assertUnprocessable()
             ->assertJsonValidationErrors('q');
 
-        $this->postJson('/rag/neo4j/graph/expand', [
+        $this->postJson('/api/rag/neo4j/graph/expand', [
             'node_id' => 'node-1',
             'depth' => 4,
         ])->assertUnprocessable()
             ->assertJsonValidationErrors('depth');
 
-        $this->getJson('/rag/neo4j/graph/node?node_id=node-2&limit=251')
+        $this->getJson('/api/rag/neo4j/graph/node?node_id=node-2&limit=251')
             ->assertUnprocessable()
             ->assertJsonValidationErrors('limit');
 
-        $this->postJson('/rag/neo4j/graph/snapshots', ['scene' => 'invalid'])
+        $this->postJson('/api/rag/neo4j/graph/snapshots', ['scene' => 'invalid'])
             ->assertUnprocessable()
             ->assertJsonValidationErrors('scene');
     }

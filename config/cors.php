@@ -14,7 +14,7 @@ return [
     | Cross-Origin Resource Sharing
     |--------------------------------------------------------------------------
     |
-    | Internal APIs are same-origin by default. Add explicit browser origins
+    | The canonical API is same-origin by default. Add explicit browser origins
     | only when a trusted external UI must call /api/* directly.
     */
 

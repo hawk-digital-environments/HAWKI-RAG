@@ -568,7 +568,7 @@ function bootDatasetsDashboard() {
         }
 
         try {
-            const data = await requestJson(`documents/data/${encodeURIComponent(state.selectedDocumentId)}`);
+            const data = await requestJson(`documents/${encodeURIComponent(state.selectedDocumentId)}`);
             if (data.document?.dataset_id) {
                 state.selectedDatasetId = data.document.dataset_id;
                 localStorage.setItem('hawkiDatasetsDashboardDatasetId', state.selectedDatasetId);
@@ -580,7 +580,7 @@ function bootDatasetsDashboard() {
 
     async function loadDatasets({ keepSelection = true } = {}) {
         const requestId = ++state.requestId;
-        const data = await requestJson('datasets/data?limit=100');
+        const data = await requestJson('datasets?limit=100');
         if (requestId !== state.requestId) return;
 
         state.datasets = Array.isArray(data.datasets) ? data.datasets : [];
@@ -610,7 +610,7 @@ function bootDatasetsDashboard() {
         setStatus(`Loading dataset ${datasetId}...`);
         setDocumentsLoading();
 
-        const data = await requestJson(`datasets/data/${encodeURIComponent(datasetId)}`);
+        const data = await requestJson(`datasets/${encodeURIComponent(datasetId)}`);
         renderDataset(data.dataset);
 
         if (renderList) {
@@ -641,7 +641,7 @@ function bootDatasetsDashboard() {
             params.set('q', state.documentSearch);
         }
 
-        const data = await requestJson(`documents/data?${params.toString()}`);
+        const data = await requestJson(`documents?${params.toString()}`);
         if (requestId !== state.documentRequestId) return;
 
         state.documents = Array.isArray(data.documents) ? data.documents : [];
@@ -666,7 +666,7 @@ function bootDatasetsDashboard() {
         localStorage.setItem('hawkiDatasetsDashboardDocumentId', documentId);
         setStatus(`Loading document ${documentId}...`);
 
-        const data = await requestJson(`documents/data/${encodeURIComponent(documentId)}`);
+        const data = await requestJson(`documents/${encodeURIComponent(documentId)}`);
         if (data.document?.dataset_id && data.document.dataset_id !== state.selectedDatasetId) {
             state.selectedDatasetId = data.document.dataset_id;
             localStorage.setItem('hawkiDatasetsDashboardDatasetId', state.selectedDatasetId);
@@ -704,7 +704,7 @@ function bootDatasetsDashboard() {
         if (!confirmed) return;
 
         setStatus(`Deleting dataset ${dataset.dataset_id}...`);
-        const data = await requestJson(`datasets/data/${encodeURIComponent(dataset.dataset_id)}/storage`, { method: 'DELETE' });
+        const data = await requestJson(`datasets/${encodeURIComponent(dataset.dataset_id)}/storage`, { method: 'DELETE' });
         const qdrantMessage = data.cleanup?.qdrant?.message || 'Qdrant cleanup finished.';
         const neo4jNodes = data.cleanup?.neo4j?.nodes ?? 0;
         const neo4jRelationships = data.cleanup?.neo4j?.relationships ?? 0;

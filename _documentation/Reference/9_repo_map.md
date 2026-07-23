@@ -18,9 +18,10 @@
 | `app/Http/Controllers/Health/` | Health and monitoring HTTP controllers, separated from core UI/API controllers. |
 | `app/Services/GraphService/Neo4jAdmin.php` | Clears all nodes/edges in Neo4j. |
 | `config/config.php` | App config mapping for endpoint URLs, model defaults, and ingest/log paths (keys listed below). |
-| `routes/web_ui.php` | Browser-facing UI pages and UI-consumed RAG endpoints. |
-| `routes/internal_api.php` | Token-authenticated internal/API-client endpoints mounted under `/api`. |
-| `routes/health.php` | Separate health and monitoring route sector for RAG monitor, ping, and pipeline health surfaces. |
+| `routes/web.php` | Browser-facing HTML pages, redirects, and page-shell routes. |
+| `routes/api.php` | Canonical JSON/action API used by browser and token clients, mounted under `/api`. |
+| `routes/ai.php` | Laravel MCP protocol transport. It remains outside the application JSON API because MCP owns its HTTP route contract. |
+| `routes/health.php` | Public liveness endpoint and browser health-dashboard page. Detailed health JSON lives in `routes/api.php`. |
 | `storage/` | Logs (`storage/logs`) and shared files (`storage/app/public`, bound to shared volume). |
 
 ### Config keys (`config/config.php` + `.env`)
@@ -70,6 +71,7 @@
 |---|---|
 | `resources/` | Standard Laravel frontend resources (views/assets). |
 | `public/` | Laravel public web root served by the web stack/reverse proxy. |
+| `/ui/*` | Transparent crawler UI proxy; it is a browser transport surface rather than an application JSON endpoint. |
 
 ## Volumes (from compose)
 | Volume | Description |

@@ -9,9 +9,9 @@ return [
     | Sanctum Routes
     |--------------------------------------------------------------------------
     |
-    | RAWKI uses Sanctum bearer tokens for internal APIs. The default
-    | /sanctum/csrf-cookie SPA bootstrap route is disabled unless explicitly
-    | enabled for a first-party Sanctum SPA.
+    | RAWKI's canonical API accepts bearer tokens and stateful first-party
+    | requests. The default /sanctum/csrf-cookie SPA bootstrap route remains
+    | disabled because the server-rendered shell already provides CSRF state.
     */
 
     'routes' => filter_var(env('SANCTUM_ROUTES', false), FILTER_VALIDATE_BOOLEAN),

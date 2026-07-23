@@ -21,7 +21,7 @@ class SettingsDashboardTest extends TestCase
         config()->set('config.operator_settings_path', $settingsPath);
 
         $response = $this->withSession(['_token' => 'test-token'])
-            ->putJson('/settings/config', [
+            ->putJson('/api/settings/config', [
                 'customConverter' => [],
                 'models' => [
                     'provider' => 'ollama',
@@ -80,7 +80,7 @@ class SettingsDashboardTest extends TestCase
         ];
 
         $response = $this->withSession(['_token' => 'test-token'])
-            ->putJson('/settings/config', $payload, ['X-CSRF-TOKEN' => 'test-token'])
+            ->putJson('/api/settings/config', $payload, ['X-CSRF-TOKEN' => 'test-token'])
             ->assertOk()
             ->assertJsonPath('customConverter.enabled', true)
             ->assertJsonPath('customConverter.apiKeySet', true)
@@ -118,7 +118,7 @@ class SettingsDashboardTest extends TestCase
         config()->set('config.operator_settings_path', $settingsPath);
 
         $this->withSession(['_token' => 'test-token'])
-            ->putJson('/settings/config', [
+            ->putJson('/api/settings/config', [
                 'customConverter' => [],
                 'models' => [
                     'provider' => 'openai',
@@ -139,7 +139,7 @@ class SettingsDashboardTest extends TestCase
         config()->set('config.operator_settings_path', $settingsPath);
 
         $response = $this->withSession(['_token' => 'test-token'])
-            ->putJson('/settings/config', [
+            ->putJson('/api/settings/config', [
                 'customConverter' => [],
                 'models' => [
                     'provider' => 'litellm',
@@ -183,7 +183,7 @@ class SettingsDashboardTest extends TestCase
         config()->set('config.operator_auth.bypass_environments', [app()->environment()]);
 
         $this->withSession(['_token' => 'test-token'])
-            ->putJson('/settings/config', [
+            ->putJson('/api/settings/config', [
                 'customConverter' => [],
                 'models' => [
                     'provider' => 'litellm',
@@ -202,7 +202,7 @@ class SettingsDashboardTest extends TestCase
         config()->set('config.operator_auth.bypass_environments', [app()->environment()]);
 
         $this->withSession(['_token' => 'test-token'])
-            ->putJson('/settings/config', [
+            ->putJson('/api/settings/config', [
                 'customConverter' => [],
                 'models' => [
                     'provider' => 'ollama',

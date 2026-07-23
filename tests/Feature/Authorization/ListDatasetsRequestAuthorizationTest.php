@@ -18,7 +18,8 @@ class ListDatasetsRequestAuthorizationTest extends TestCase
         $user = $this->createUser('browser-session');
 
         $this->actingAs($user)
-            ->getJson('/datasets/data')
+            ->withHeader('Origin', rtrim((string) config('app.url'), '/'))
+            ->getJson('/api/datasets')
             ->assertOk()
             ->assertExactJson([
                 'success' => true,
@@ -31,7 +32,7 @@ class ListDatasetsRequestAuthorizationTest extends TestCase
         config()->set('config.operator_auth.bypass', true);
         config()->set('config.operator_auth.bypass_environments', [app()->environment()]);
 
-        $this->getJson('/datasets/data')
+        $this->getJson('/api/datasets')
             ->assertOk()
             ->assertExactJson([
                 'success' => true,
@@ -46,7 +47,7 @@ class ListDatasetsRequestAuthorizationTest extends TestCase
         $token = $user->createToken('list-datasets', ['operator'])->plainTextToken;
 
         $this->withToken($token)
-            ->getJson('/datasets/data')
+            ->getJson('/api/datasets')
             ->assertOk()
             ->assertExactJson([
                 'success' => true,
@@ -60,7 +61,8 @@ class ListDatasetsRequestAuthorizationTest extends TestCase
         $user = $this->createUser('removed-browser-session', removed: true);
 
         $this->actingAs($user)
-            ->getJson('/datasets/data')
+            ->withHeader('Origin', rtrim((string) config('app.url'), '/'))
+            ->getJson('/api/datasets')
             ->assertUnauthorized();
     }
 

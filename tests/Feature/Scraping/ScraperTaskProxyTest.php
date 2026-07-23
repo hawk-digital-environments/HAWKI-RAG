@@ -41,7 +41,7 @@ class ScraperTaskProxyTest extends TestCase
             ], 200),
         ]);
 
-        $this->getJson('/scraper/tasks')
+        $this->getJson('/api/scraper/tasks')
             ->assertOk()
             ->assertJsonPath('success', true)
             ->assertJsonCount(2, 'tasks')
@@ -83,7 +83,7 @@ class ScraperTaskProxyTest extends TestCase
             ], 200),
         ]);
 
-        $this->getJson('/scraper/tasks')
+        $this->getJson('/api/scraper/tasks')
             ->assertOk()
             ->assertJsonPath('success', true)
             ->assertJsonCount(2, 'tasks')
@@ -106,7 +106,7 @@ class ScraperTaskProxyTest extends TestCase
             'http://crawler.test/tasks' => Http::response(['tasks' => []], 200),
         ]);
 
-        $this->getJson('/scraper/tasks')
+        $this->getJson('/api/scraper/tasks')
             ->assertOk()
             ->assertJsonPath('success', false)
             ->assertJsonPath('message', 'Please build the HAWKI-Scraper for getting available tasks.');
@@ -132,7 +132,7 @@ class ScraperTaskProxyTest extends TestCase
 
         $this
             ->withSession(['_token' => 'test-token'])
-            ->postJson('/scraper/tasks/start', [
+            ->postJson('/api/scraper/tasks/start', [
                 'taskId' => 'manual-site-goettingen',
                 'options' => [
                     'job_id' => 'site-goettingen_123',
@@ -178,7 +178,7 @@ class ScraperTaskProxyTest extends TestCase
     {
         Http::fake();
 
-        $this->postJson('/scraper/tasks/start', [
+        $this->postJson('/api/scraper/tasks/start', [
             'taskId' => 'invalid task',
             'options' => 'invalid',
         ])->assertUnprocessable()

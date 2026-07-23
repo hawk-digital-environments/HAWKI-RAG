@@ -46,7 +46,7 @@ class BrowserDevelopmentQueryBypassTest extends TestCase
             ->assertSee('"operatorAuthorized":true', false)
             ->assertSee('"queryAuthenticated":true', false);
 
-        $response = $this->getJson('/query/datasets')
+        $response = $this->getJson('/api/query/datasets')
             ->assertOk()
             ->assertExactJson([
                 'datasets' => [[
@@ -71,7 +71,7 @@ class BrowserDevelopmentQueryBypassTest extends TestCase
         Http::fake(['*' => Http::response(['ok' => true, 'answer' => 'Development answer.'])]);
 
         $this->withSession(['_token' => 'development-csrf'])
-            ->postJson('/query', [
+            ->postJson('/api/query', [
                 'dataset_id' => $dataset->dataset_id,
                 'query' => 'What is available in development?',
             ], [
@@ -98,20 +98,20 @@ class BrowserDevelopmentQueryBypassTest extends TestCase
         $this->configureDevelopmentUser($user);
 
         config()->set('config.query_auth.development_bypass', false);
-        $this->getJson('/query/datasets')->assertUnauthorized();
+        $this->getJson('/api/query/datasets')->assertUnauthorized();
 
         config()->set('config.query_auth.development_bypass', true);
         config()->set('config.query_auth.development_bypass_environments', ['production']);
-        $this->getJson('/query/datasets')->assertUnauthorized();
+        $this->getJson('/api/query/datasets')->assertUnauthorized();
 
         config()->set('config.query_auth.development_bypass_environments', [app()->environment()]);
         config()->set('config.query_auth.development_user_id', '999999');
-        $this->getJson('/query/datasets')->assertUnauthorized();
+        $this->getJson('/api/query/datasets')->assertUnauthorized();
 
         $user->isRemoved = true;
         $user->save();
         $this->configureDevelopmentUser($user);
-        $this->getJson('/query/datasets')->assertUnauthorized();
+        $this->getJson('/api/query/datasets')->assertUnauthorized();
     }
 
     public function test_invalid_bearer_token_does_not_fall_through_to_development_access(): void
@@ -122,7 +122,7 @@ class BrowserDevelopmentQueryBypassTest extends TestCase
         $this->configureDevelopmentUser($user);
 
         $this->withToken('invalid-token')
-            ->getJson('/query/datasets')
+            ->getJson('/api/query/datasets')
             ->assertUnauthorized();
     }
 
@@ -140,10 +140,10 @@ class BrowserDevelopmentQueryBypassTest extends TestCase
             ->assertSee('"operatorAuthorized":false', false)
             ->assertSee('"queryAuthenticated":true', false);
 
-        $this->getJson('/query/datasets')
+        $this->getJson('/api/query/datasets')
             ->assertOk()
             ->assertJsonPath('datasets.0.dataset_id', 'development-not-operator-dataset');
-        $this->getJson('/settings/config')
+        $this->getJson('/api/settings/config')
             ->assertUnauthorized()
             ->assertJsonPath('message', 'Operator authentication required.');
     }
@@ -158,9 +158,9 @@ class BrowserDevelopmentQueryBypassTest extends TestCase
         $this->app->detectEnvironment(static fn (): string => 'production');
         Http::fake();
 
-        $this->getJson('/query/datasets')->assertUnauthorized();
+        $this->getJson('/api/query/datasets')->assertUnauthorized();
         $this->withSession(['_token' => 'production-csrf'])
-            ->postJson('/query', [
+            ->postJson('/api/query', [
                 'dataset_id' => $dataset->dataset_id,
                 'query' => 'Production must not use the development principal.',
             ], [
@@ -181,7 +181,7 @@ class BrowserDevelopmentQueryBypassTest extends TestCase
         $this->configureDevelopmentUser($developmentUser);
 
         $this->actingAs($realUser)
-            ->getJson('/query/datasets')
+            ->getJson('/api/query/datasets')
             ->assertOk()
             ->assertExactJson([
                 'datasets' => [[
@@ -200,22 +200,26 @@ class BrowserDevelopmentQueryBypassTest extends TestCase
         $this->configureDevelopmentUser($developmentUser);
 
         $this->actingAs($removedUser)
-            ->getJson('/query/datasets')
+            ->getJson('/api/query/datasets')
             ->assertUnauthorized();
     }
 
-    public function test_development_bypass_never_applies_to_internal_api_routes(): void
+    public function test_development_bypass_uses_only_the_canonical_query_api(): void
     {
         $user = $this->createUser('development-browser-only');
         $dataset = $this->createDataset('development-browser-only-dataset', 'Development Browser Only');
         $this->grant($user, $dataset);
         $this->configureDevelopmentUser($user);
 
-        $this->getJson('/api/query/datasets')->assertUnauthorized();
-        $this->postJson('/api/query', [
+        $this->getJson('/api/query/datasets')
+            ->assertOk()
+            ->assertJsonPath('datasets.0.dataset_id', $dataset->dataset_id);
+
+        $this->getJson('/query/datasets')->assertNotFound();
+        $this->postJson('/query', [
             'dataset_id' => $dataset->dataset_id,
-            'query' => 'Internal APIs stay protected.',
-        ])->assertUnauthorized();
+            'query' => 'Legacy browser API routes stay removed.',
+        ])->assertNotFound();
     }
 
     private function configureDevelopmentUser(User $user): void

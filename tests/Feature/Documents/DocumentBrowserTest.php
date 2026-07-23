@@ -141,7 +141,7 @@ class DocumentBrowserTest extends TestCase
 
         $this->actingAsApiUser();
 
-        $this->get('/documents/uploads/download?'.http_build_query(['source_url' => $sourceUrl]))
+        $this->get('/api/documents/uploads/download?'.http_build_query(['source_url' => $sourceUrl]))
             ->assertOk()
             ->assertDownload('NordVPN_Instructions_V1.pdf');
     }
@@ -157,7 +157,7 @@ class DocumentBrowserTest extends TestCase
 
         $this->actingAsApiUser();
 
-        $this->get('/documents/uploads/download?'.http_build_query([
+        $this->get('/api/documents/uploads/download?'.http_build_query([
             'source_url' => $sourceUrl,
             'content_hash' => '1c693e60d1cda122f4e3d61a7cbf8c4eb72b82228da494d27455885b0a7dc54f',
         ]))
@@ -189,7 +189,7 @@ class DocumentBrowserTest extends TestCase
 
         $this->actingAsApiUser();
 
-        $this->getJson('/documents/uploads/download?'.http_build_query(['source_url' => $sourceUrl]))
+        $this->getJson('/api/documents/uploads/download?'.http_build_query(['source_url' => $sourceUrl]))
             ->assertNotFound()
             ->assertJsonPath('success', false);
     }

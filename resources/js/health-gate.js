@@ -75,6 +75,13 @@ function setBlocked(blocked) {
     if (overlay) overlay.hidden = !blocked;
 }
 
+function stopPolling() {
+    if (!timer) return;
+
+    window.clearInterval(timer);
+    timer = null;
+}
+
 function statusLabel(status) {
     if (status === 'ok') return 'Ready';
     if (status === 'fail') return 'Repair';
@@ -190,6 +197,13 @@ async function refreshGate() {
             headers: { Accept: 'application/json' },
         });
         const payload = await response.json().catch(() => ({}));
+        if (response.status === 401 || response.status === 403) {
+            // Detailed health data is operator-only. Lack of access is not a
+            // service failure and must never block query-only browser users.
+            setBlocked(false);
+            stopPolling();
+            return;
+        }
         if (!response.ok || payload.success === false) {
             throw new Error(payload.message || `System gate failed (${response.status})`);
         }
@@ -210,7 +224,7 @@ function boot() {
     refreshGate();
     timer = window.setInterval(refreshGate, POLL_INTERVAL_MS);
     window.addEventListener('beforeunload', () => {
-        if (timer) window.clearInterval(timer);
+        stopPolling();
     });
 }
 

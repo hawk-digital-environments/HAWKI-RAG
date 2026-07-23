@@ -10,9 +10,7 @@ use Symfony\Component\HttpFoundation\Response;
 
 readonly class RequireOperatorAccess
 {
-    public function __construct(private OperatorAccessService $access)
-    {
-    }
+    public function __construct(private OperatorAccessService $access) {}
 
     public function handle(Request $request, \Closure $next): Response
     {
@@ -20,7 +18,7 @@ readonly class RequireOperatorAccess
             return $next($request);
         }
 
-        if ($request->expectsJson() || $request->is('query', 'settings/config', 'rag/*', 'pipeline/*', 'scraper/*', 'datasets/data*', 'documents/data*')) {
+        if ($request->expectsJson() || $request->is('api/*')) {
             return response()->json([
                 'message' => 'Operator authentication required.',
             ], 401);

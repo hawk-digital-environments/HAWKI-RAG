@@ -33,7 +33,7 @@ class BrowserDatasetScopedQueryTest extends TestCase
         $this->grant($user, $unready);
 
         $response = $this->withToken($user->createToken('browser-test')->plainTextToken)
-            ->getJson('/query/datasets')
+            ->getJson('/api/query/datasets')
             ->assertOk()
             ->assertExactJson([
                 'datasets' => [[
@@ -56,8 +56,9 @@ class BrowserDatasetScopedQueryTest extends TestCase
         ]);
 
         $this->actingAs($user)
+            ->withHeader('Origin', rtrim((string) config('app.url'), '/'))
             ->withSession(['_token' => 'browser-csrf-token'])
-            ->postJson('/query', [
+            ->postJson('/api/query', [
                 'dataset_id' => $dataset->dataset_id,
                 'query' => 'What may this session user read?',
             ], [
@@ -78,24 +79,24 @@ class BrowserDatasetScopedQueryTest extends TestCase
         });
     }
 
-    public function test_scoped_browser_routes_deny_requests_without_a_real_principal(): void
+    public function test_canonical_query_routes_deny_requests_without_a_real_principal(): void
     {
-        $this->get('/query/datasets')
+        $this->get('/api/query/datasets')
             ->assertUnauthorized()
             ->assertExactJson(['message' => 'Unauthenticated.']);
 
-        $this->getJson('/query/datasets')
+        $this->getJson('/api/query/datasets')
             ->assertUnauthorized();
 
         config()->set('config.operator_auth.bypass', true);
         config()->set('config.operator_auth.bypass_environments', [app()->environment()]);
 
-        $this->getJson('/query/datasets')
+        $this->getJson('/api/query/datasets')
             ->assertUnauthorized()
             ->assertJsonPath('message', 'Unauthenticated.');
 
         $this->withSession(['_token' => 'browser-csrf-token'])
-            ->postJson('/query', [
+            ->postJson('/api/query', [
                 'dataset_id' => 'browser-ready',
                 'query' => 'Bypass without a principal must fail.',
             ], [

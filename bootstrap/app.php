@@ -11,14 +11,15 @@ use Laravel\Sanctum\Http\Middleware\CheckAbilities;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
-        api: __DIR__.'/../routes/internal_api.php',
-        web: __DIR__.'/../routes/web_ui.php',
+        api: __DIR__.'/../routes/api.php',
+        web: __DIR__.'/../routes/web.php',
         then: function (): void {
             require __DIR__.'/../routes/health.php';
         },
     )
     ->withCommands([__DIR__.'/../app/Console/Commands'])
     ->withMiddleware(function (Middleware $middleware) {
+        $middleware->statefulApi();
         $middleware->append(SecurityHeaders::class);
         $middleware->alias([
             'abilities' => CheckAbilities::class,
@@ -32,7 +33,7 @@ return Application::configure(basePath: dirname(__DIR__))
     })
     ->withExceptions(function (Exceptions $exceptions) {
         $exceptions->shouldRenderJsonWhen(
-            fn (Request $request, \Throwable $exception): bool => $request->is('api/*', 'query', 'query/*')
+            fn (Request $request, \Throwable $exception): bool => $request->is('api/*')
                 || $request->expectsJson()
         );
     })->create();

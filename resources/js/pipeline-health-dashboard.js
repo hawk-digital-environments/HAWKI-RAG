@@ -4,12 +4,29 @@ import PipelineHealthDashboardPage from './svelte/apps/PipelineHealthDashboardPa
 import { apiUrl } from './playground/urls.js';
 
 const root = document.querySelector('[data-pipeline-health-dashboard]');
+const configElement = document.getElementById('pipeline-health-dashboard-config');
+
+function readConfig() {
+    if (!configElement?.textContent) {
+        return { operatorAuthorized: false };
+    }
+
+    try {
+        return JSON.parse(configElement.textContent);
+    } catch (error) {
+        console.error('Invalid pipeline health dashboard config.', error);
+        return { operatorAuthorized: false };
+    }
+}
 
 if (root) {
+    const config = readConfig();
+
     mount(PipelineHealthDashboardPage, {
         target: root,
         props: {
-            onready: bootPipelineHealthDashboard,
+            operatorAuthorized: config.operatorAuthorized === true,
+            onready: config.operatorAuthorized === true ? bootPipelineHealthDashboard : undefined,
         },
     });
 }

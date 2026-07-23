@@ -45,14 +45,22 @@ class BrowserSessionAuthenticationTest extends TestCase
         app(DatasetQueryAuthorizationService::class)->grantQueryAccess($user, $dataset);
         $token = $user->createToken('browser-session-test', ['query'])->plainTextToken;
 
-        $this->withSession(['_token' => 'browser-session-csrf'])
+        $this->withHeader('Origin', $this->applicationOrigin())
+            ->withSession(['_token' => 'browser-session-csrf'])
             ->withToken($token)
-            ->postJson('/auth/session', [], ['X-CSRF-TOKEN' => 'browser-session-csrf'])
+            ->postJson('/api/auth/session', [], ['X-CSRF-TOKEN' => 'browser-session-csrf'])
             ->assertOk()
             ->assertExactJson(['authenticated' => true]);
 
+        $this->app['auth']->forgetGuards();
         $this->withHeader('Authorization', '')
-            ->getJson('/query/datasets')
+            ->withHeader('Origin', 'https://untrusted-ui.example.test')
+            ->getJson('/api/query/datasets')
+            ->assertUnauthorized();
+
+        $this->app['auth']->forgetGuards();
+        $this->withHeader('Origin', $this->applicationOrigin())
+            ->getJson('/api/query/datasets')
             ->assertOk()
             ->assertExactJson([
                 'datasets' => [[
@@ -67,18 +75,43 @@ class BrowserSessionAuthenticationTest extends TestCase
             ->assertSee('"operatorAuthorized":false', false)
             ->assertSee('"queryAuthenticated":true', false);
 
-        $this->getJson('/settings/config')
+        $this->getJson('/api/settings/config')
             ->assertUnauthorized();
-        $this->postJson('/rag/neo4j/clear')
+        $this->withHeader('X-CSRF-TOKEN', 'browser-session-csrf')
+            ->postJson('/api/rag/neo4j/clear')
             ->assertUnauthorized();
     }
 
     public function test_invalid_token_cannot_establish_a_browser_session(): void
     {
         $this->withToken('invalid-token')
-            ->postJson('/auth/session')
+            ->postJson('/api/auth/session')
             ->assertUnauthorized()
             ->assertJsonPath('message', 'Unauthenticated.');
+    }
+
+    public function test_valid_bearer_without_stateful_headers_cannot_establish_a_browser_session(): void
+    {
+        $user = $this->createUser('stateless-session-exchange');
+        $token = $user->createToken('stateless-session-exchange-test', ['query'])->plainTextToken;
+
+        $this->withToken($token)
+            ->postJson('/api/auth/session')
+            ->assertUnauthorized()
+            ->assertExactJson(['message' => 'Unauthenticated.']);
+    }
+
+    public function test_same_origin_session_exchange_requires_csrf_outside_the_test_environment(): void
+    {
+        $this->app->detectEnvironment(static fn (): string => 'local');
+        $user = $this->createUser('csrf-session-exchange');
+        $token = $user->createToken('csrf-session-exchange-test', ['query'])->plainTextToken;
+
+        $this->withHeader('Origin', $this->applicationOrigin())
+            ->withSession(['_token' => 'csrf-session-token'])
+            ->withToken($token)
+            ->postJson('/api/auth/session')
+            ->assertStatus(419);
     }
 
     public function test_removed_user_token_cannot_establish_a_browser_session(): void
@@ -86,8 +119,10 @@ class BrowserSessionAuthenticationTest extends TestCase
         $user = $this->createUser('removed-browser-session', removed: true);
         $token = $user->createToken('removed-session-test')->plainTextToken;
 
-        $this->withToken($token)
-            ->postJson('/auth/session')
+        $this->withHeader('Origin', $this->applicationOrigin())
+            ->withSession(['_token' => 'removed-session-csrf'])
+            ->withToken($token)
+            ->postJson('/api/auth/session', [], ['X-CSRF-TOKEN' => 'removed-session-csrf'])
             ->assertUnauthorized()
             ->assertExactJson(['message' => 'Unauthenticated.']);
     }
@@ -97,13 +132,15 @@ class BrowserSessionAuthenticationTest extends TestCase
         $user = $this->createUser('limited-browser-session');
         $token = $user->createToken('limited-session-test', ['documents:read'])->plainTextToken;
 
-        $this->withToken($token)
-            ->postJson('/auth/session')
+        $this->withHeader('Origin', $this->applicationOrigin())
+            ->withSession(['_token' => 'limited-session-csrf'])
+            ->withToken($token)
+            ->postJson('/api/auth/session', [], ['X-CSRF-TOKEN' => 'limited-session-csrf'])
             ->assertUnauthorized()
             ->assertExactJson(['message' => 'Unauthenticated.']);
     }
 
-    public function test_token_without_query_ability_cannot_call_browser_query_routes(): void
+    public function test_token_without_query_ability_cannot_call_canonical_query_routes(): void
     {
         config()->set('config.operator_auth.bypass', false);
         $user = $this->createUser('limited-browser-query');
@@ -111,12 +148,12 @@ class BrowserSessionAuthenticationTest extends TestCase
         Http::fake();
 
         $this->withToken($token)
-            ->getJson('/query/datasets')
+            ->getJson('/api/query/datasets')
             ->assertUnauthorized()
             ->assertExactJson(['message' => 'Unauthenticated.']);
 
         $this->withToken($token)
-            ->postJson('/query', [
+            ->postJson('/api/query', [
                 'dataset_id' => 'not-authorized',
                 'query' => 'This request must never reach the RAG bridge.',
             ])
@@ -130,8 +167,9 @@ class BrowserSessionAuthenticationTest extends TestCase
         Http::assertNothingSent();
     }
 
-    public function test_query_token_is_limited_to_internal_query_routes(): void
+    public function test_query_token_is_limited_to_canonical_query_operations(): void
     {
+        config()->set('config.operator_auth.bypass', false);
         $user = $this->createUser('internal-query-only');
         $dataset = Dataset::query()->create([
             'dataset_id' => 'internal-query-only-dataset',
@@ -152,11 +190,13 @@ class BrowserSessionAuthenticationTest extends TestCase
 
         $this->withToken($token)
             ->getJson('/api/pipeline/tasks')
-            ->assertForbidden();
+            ->assertUnauthorized()
+            ->assertJsonPath('message', 'Operator authentication required.');
 
         $this->withToken($token)
             ->getJson('/api/ping')
-            ->assertForbidden();
+            ->assertUnauthorized()
+            ->assertJsonPath('message', 'Operator authentication required.');
     }
 
     public function test_reauthentication_destroys_the_previous_query_session_id(): void
@@ -172,7 +212,7 @@ class BrowserSessionAuthenticationTest extends TestCase
         $session->setId($firstSessionId);
         $session->start();
 
-        $request = Request::create('/auth/session', 'POST');
+        $request = Request::create('/api/auth/session', 'POST');
         $request->setLaravelSession($session);
         app(BrowserQueryPrincipalService::class)->establishSession($request, $secondUser);
 
@@ -189,5 +229,10 @@ class BrowserSessionAuthenticationTest extends TestCase
             'ip' => '127.0.0.'.random_int(1, 254),
             'isRemoved' => $removed,
         ]);
+    }
+
+    private function applicationOrigin(): string
+    {
+        return rtrim((string) config('app.url'), '/');
     }
 }

@@ -35,6 +35,6 @@ Laravel shell:
 
 Route ownership:
 
-- Browser pages and aliases stay in `routes/web_ui.php`.
-- Token-protected service routes stay in `routes/internal_api.php`.
-- Health, monitor, and repair routes stay in `routes/health.php`.
+- Browser pages and aliases stay in `routes/web.php`.
+- Browser and token clients use the canonical service routes in `routes/api.php`.
+- The liveness endpoint and health-dashboard page stay in `routes/health.php`; health JSON uses `routes/api.php`.

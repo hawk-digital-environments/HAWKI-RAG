@@ -12,7 +12,7 @@ use Illuminate\Support\Facades\Http;
 /**
  * Vertical browser-query scenario.
  *
- * This test uses a persisted Sanctum token, the real /auth/session exchange,
+ * This test uses a persisted Sanctum token, the real /api/auth/session exchange,
  * the browser-principal middleware, the dataset-grant database lookup, the
  * query FormRequest, controller, and proxy service. The Python bridge is the
  * only faked boundary; Qdrant, Neo4j, and model providers are therefore not
@@ -52,16 +52,17 @@ class AuthenticatedRagFlowTest extends SystemTestCase
         $this->grantQueryAccess($user, $dataset);
         $token = $user->createToken('system-browser-query', ['query'])->plainTextToken;
 
-        $this->withSession(['_token' => 'system-browser-csrf'])
+        $this->withHeader('Origin', rtrim((string) config('app.url'), '/'))
+            ->withSession(['_token' => 'system-browser-csrf'])
             ->withToken($token)
-            ->postJson('/auth/session', [], [
+            ->postJson('/api/auth/session', [], [
                 'X-CSRF-TOKEN' => 'system-browser-csrf',
             ])
             ->assertOk()
             ->assertExactJson(['authenticated' => true]);
 
         $this->withHeader('Authorization', '')
-            ->getJson('/query/datasets')
+            ->getJson('/api/query/datasets')
             ->assertOk()
             ->assertExactJson([
                 'datasets' => [[
@@ -72,7 +73,7 @@ class AuthenticatedRagFlowTest extends SystemTestCase
 
         $this->withHeader('Authorization', '')
             ->withHeader('X-CSRF-TOKEN', 'system-browser-csrf')
-            ->postJson('/query', [
+            ->postJson('/api/query', [
                 'dataset_id' => 'system-authenticated',
                 'query' => 'What can this authenticated browser session retrieve?',
                 'top_k' => 4,
@@ -110,7 +111,7 @@ class AuthenticatedRagFlowTest extends SystemTestCase
 
         // A query session is deliberately not an operator session.
         $this->withHeader('Authorization', '')
-            ->getJson('/settings/config')
+            ->getJson('/api/settings/config')
             ->assertUnauthorized()
             ->assertExactJson(['message' => 'Operator authentication required.']);
     }
