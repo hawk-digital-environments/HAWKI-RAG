@@ -52,7 +52,6 @@ return new class extends Migration
 
             $table->unique(['job_id', 'stage'], 'pipeline_stage_job_stage_unique');
             $table->index(['stage', 'status']);
-            $table->index('job_id');
         });
     }
 

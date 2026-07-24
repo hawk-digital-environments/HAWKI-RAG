@@ -102,10 +102,10 @@ UI_NODE_RUN = docker run --rm --entrypoint /usr/bin/env \
 .PHONY: clean python-lock python-deps python-test python-integration provider-test system-test
 .PHONY: network pull-core build-app build-ui publish-ui
 .PHONY: migrate-core
-.PHONY: _up-core up-core up-core-ui up-core-server
+.PHONY: _up-core up-core up-core-server
 .PHONY: health test-services
-.PHONY: pull-models logs-core logs-core-ui
-.PHONY: down-core down-rag restart-core restart-core-ui
+.PHONY: pull-models logs-core
+.PHONY: down-core down-rag restart-core
 .PHONY: neo4j-fresh
 
 ##@ General
@@ -165,8 +165,8 @@ network: ## Create the external Docker networks when they do not exist.
 		fi; \
 	done
 
-pull-core: ## Pull the base Nginx image used by the core stack.
-	@$(COMPOSE_CMD) pull nginx || true
+pull-core: ## Pull third-party runtime images used directly by the core stack.
+	@$(COMPOSE_CMD) pull postgres temporal hawki_rag_neo4j $(OLLAMA_SERVICE)
 
 build-app: ## Build the Laravel HAWKI RAG application image.
 	@$(COMPOSE_CMD) build hawki_rag_app
@@ -237,21 +237,19 @@ _up-core: network
 	@$(MAKE) --no-print-directory migrate-core COMPOSE_FILE_LIST="$(COMPOSE_FILE_LIST)" COMPOSE_PROFILES="$(COMPOSE_PROFILES)" ENV_FILE="$(ENV_FILE)" COMPOSE_BIN="$(COMPOSE_BIN)"
 
 up-core: COMPOSE_FILE_LIST = $(CORE_LOCAL_COMPOSE_FILE_LIST)
-up-core: COMPOSE_PROFILES = $(if $(strip $(CORE_PROFILES)),devtools$(COMMA)$(CORE_PROFILES),devtools)
-up-core: PROFILE_MESSAGE = $(GPU_MESSAGE) Full local experience enabled with Temporal UI/devtools.
-up-core: _up-core ## Start the complete local stack with devtools and publish the UI.
+up-core: COMPOSE_PROFILES = $(CORE_PROFILES)
+up-core: PROFILE_MESSAGE = $(GPU_MESSAGE) Local override enabled.
+up-core: _up-core ## Start the complete local stack and publish the UI.
 	@if [ "$(UI_AUTO_BUILD)" = "1" ]; then \
 		$(MAKE) --no-print-directory publish-ui UI_BUILD_DIR="$(UI_BUILD_DIR)"; \
 	else \
 		echo "Skipping UI asset publish (UI_AUTO_BUILD=$(UI_AUTO_BUILD))."; \
 	fi
 
-up-core-ui: up-core ## Alias for the complete local development stack.
-
 up-core-server: COMPOSE_FILE_LIST = $(CORE_SERVER_COMPOSE_FILE_LIST)
 up-core-server: COMPOSE_PROFILES = $(CORE_PROFILES)
 up-core-server: PROFILE_MESSAGE = $(GPU_MESSAGE) Server mode and Temporal workers enabled.
-up-core-server: _up-core ## Start the server-oriented stack without local devtools.
+up-core-server: _up-core ## Start the server-oriented stack without local overrides.
 
 # ==============================================================================
 # Health and service diagnostics
@@ -310,7 +308,6 @@ health: ## Check required and optional containers plus service endpoints.
 	echo "Container status"; \
 	check_running hawki_rag_postgres 1; \
 	check_running temporal 1; \
-	check_running temporal_ui 0; \
 	check_running hawki_rag_app 1; \
 	check_running hawki_qdrant 1; \
 	check_running hawki_rag_neo4j 1; \
@@ -404,12 +401,6 @@ pull-models: ## Pull all local embedding, chat, and vision models into Ollama.
 
 logs-core: ## Follow logs for the complete core stack.
 	@$(COMPOSE_CMD) logs -f postgres temporal qdrant hawki_rag_neo4j $(OLLAMA_SERVICE) hawki_rag_app hawki_rag_bridge hawki_rag_rerank hawki-rag-temporal-workflow-worker hawki-rag-temporal-scraper-worker hawki-rag-temporal-converter-worker hawki-rag-temporal-ingestion-worker
-	@$(COMPOSE_CMD) logs -f
-
-logs-core-ui: COMPOSE_FILE_LIST = $(CORE_LOCAL_COMPOSE_FILE_LIST)
-logs-core-ui: COMPOSE_PROFILES = $(if $(strip $(CORE_PROFILES)),devtools$(COMMA)$(CORE_PROFILES),devtools)
-logs-core-ui: ## Follow Temporal UI logs from the local devtools profile.
-	@$(COMPOSE_CMD) logs -f temporal-ui
 
 # ==============================================================================
 # Stack shutdown and restart
@@ -424,15 +415,7 @@ down-rag: down-core ## Backward-compatible alias for stopping the RAG stack.
 
 restart-core: ## Recreate all core services and Temporal workers.
 	@echo $(PROFILE_MESSAGE)
-	@$(COMPOSE_CMD) up -d --force-recreate postgres temporal qdrant hawki_rag_neo4j $(OLLAMA_SERVICE) hawki_rag_app hawki_rag_bridge hawki_rag_rerank hawki-rag-temporal-workflow-worker hawki-rag-temporal-scraper-worker hawki-rag-temporal-converter-worker hawki-rag-temporal-ingestion-worker
 	@$(COMPOSE_CMD) up -d --force-recreate
-
-restart-core-ui: COMPOSE_FILE_LIST = $(CORE_LOCAL_COMPOSE_FILE_LIST)
-restart-core-ui: COMPOSE_PROFILES = $(if $(strip $(CORE_PROFILES)),devtools$(COMMA)$(CORE_PROFILES),devtools)
-restart-core-ui: PROFILE_MESSAGE = $(GPU_MESSAGE) Local override enabled and Temporal UI enabled for dev diagnostics.
-restart-core-ui: ## Recreate the Temporal UI from the local devtools profile.
-	@echo $(PROFILE_MESSAGE)
-	@$(COMPOSE_CMD) up -d --force-recreate temporal-ui
 
 # ==============================================================================
 # Destructive data maintenance

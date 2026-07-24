@@ -41,8 +41,6 @@ return new class extends Migration
                 $table->timestamp('completed_at')->nullable();
                 $table->unsignedInteger('duration_seconds')->nullable();
                 $table->timestamps();
-
-                $table->index(['job_id', 'completed_at']);
             });
         }
 

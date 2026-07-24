@@ -195,9 +195,6 @@ Route::middleware(['admin', 'throttle:hawki-api'])->group(function (): void {
             Route::post('/{taskId}/retry', [PipelineTaskController::class, 'retry'])
                 ->middleware('throttle:hawki-destructive')
                 ->defaults('openapi', false);
-            Route::post('/{taskId}/retry-failed-jobs', [PipelineTaskController::class, 'retryFailedJobs'])
-                ->middleware('throttle:hawki-destructive')
-                ->defaults('openapi', false);
             Route::post('/{taskId}/cancel', [PipelineTaskController::class, 'cancel'])
                 ->middleware('throttle:hawki-destructive');
             Route::delete('/{taskId}', [PipelineTaskController::class, 'destroy'])

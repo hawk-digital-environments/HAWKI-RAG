@@ -86,14 +86,9 @@ class PipelineTaskService
         return $this->updater->upsertJob($taskId, $input);
     }
 
-    public function retryFailedJobs(string $taskId): ?PipelineTask
-    {
-        return $this->retries->retryFailedJobs($taskId);
-    }
-
     public function retry(string $taskId): ?PipelineTask
     {
-        return $this->retryFailedJobs($taskId);
+        return $this->retries->retryFailedJobs($taskId);
     }
 
     public function cancel(string $taskId): ?PipelineTask

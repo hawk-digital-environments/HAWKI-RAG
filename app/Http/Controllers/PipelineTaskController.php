@@ -141,12 +141,7 @@ class PipelineTaskController extends Controller
 
     public function retry(string $taskId): JsonResponse
     {
-        return $this->taskActionResponse($taskId, $this->pipeline->tasks->retryFailedJobs($taskId));
-    }
-
-    public function retryFailedJobs(string $taskId): JsonResponse
-    {
-        return $this->retry($taskId);
+        return $this->taskActionResponse($taskId, $this->pipeline->tasks->retry($taskId));
     }
 
     public function cancel(string $taskId): JsonResponse

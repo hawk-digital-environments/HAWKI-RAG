@@ -12,17 +12,26 @@ use App\Services\Authorization\Exceptions\DatasetQueryNotFoundException;
 use App\Services\Authorization\Repositories\DatasetGrantRepository;
 use App\Services\Authorization\Values\AuthenticatedPrincipal;
 use App\Services\Authorization\Values\AuthorizedDatasetScope;
+use Illuminate\Container\Attributes\Config;
 use Illuminate\Container\Attributes\Singleton;
 
 #[Singleton]
 readonly class DatasetQueryAuthorizationService
 {
-    public function __construct(private DatasetGrantRepository $grants) {}
+    public function __construct(
+        private DatasetGrantRepository $grants,
+        #[Config('config.query_auth.all_datasets_by_default')]
+        private bool $allDatasetsByDefault,
+    ) {}
 
     public function authorize(User $user, string $datasetId): AuthorizedDatasetScope
     {
         $principal = $this->principalFor($user);
-        $dataset = $this->grants->findActiveDatasetForQuery($principal, trim($datasetId));
+        $dataset = $this->grants->findActiveDatasetForQuery(
+            $principal,
+            trim($datasetId),
+            $this->canQueryAllDatasets(),
+        );
 
         if (! $dataset instanceof Dataset) {
             throw DatasetQueryNotFoundException::requestedDatasetIsUnavailable();
@@ -52,7 +61,11 @@ readonly class DatasetQueryAuthorizationService
             return false;
         }
 
-        return $this->grants->findActiveDatasetForQuery($principal, trim($datasetId)) instanceof Dataset;
+        return $this->grants->findActiveDatasetForQuery(
+            $principal,
+            trim($datasetId),
+            $this->canQueryAllDatasets(),
+        ) instanceof Dataset;
     }
 
     /**
@@ -65,7 +78,7 @@ readonly class DatasetQueryAuthorizationService
             return [];
         }
 
-        return $this->grants->listActiveDatasetsForQuery($principal)
+        return $this->grants->listActiveDatasetsForQuery($principal, $this->canQueryAllDatasets())
             ->filter(fn (Dataset $dataset): bool => $this->isReadyForQuery($dataset))
             ->map(static fn (Dataset $dataset): array => [
                 'dataset_id' => (string) $dataset->dataset_id,
@@ -106,5 +119,10 @@ readonly class DatasetQueryAuthorizationService
             && trim((string) $dataset->neo4j_namespace) !== ''
             && trim((string) $dataset->embedding_provider) !== ''
             && trim((string) $dataset->embedding_model) !== '';
+    }
+
+    private function canQueryAllDatasets(): bool
+    {
+        return $this->allDatasetsByDefault;
     }
 }

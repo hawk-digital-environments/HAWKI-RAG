@@ -178,7 +178,7 @@ not public authorization gates.
   consumer contracts.
 - [`ingest/`](ingest/): Validation, Markdown cleanup, deterministic chunk and
   point construction, dry runs, incremental replacement, vector and graph
-  commits, deletion, summaries, and ingestion CLI helpers.
+  commits, deletion, summaries, and idempotent retry behavior.
 - [`graph/`](graph/): Triplet cleanup and extraction, cache behavior, Neo4j
   request construction, dataset-scoped reads and writes, namespace-scoped
   deletion, and graph runtime helpers.

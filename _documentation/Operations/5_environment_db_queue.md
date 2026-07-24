@@ -111,7 +111,7 @@ start workflows, cancel workflows, and create/update/delete schedules.
 Start the stack:
 
 ```bash
-docker compose up -d postgres temporal temporal-ui hawki_rag_app ollama hawki_rag_bridge qdrant hawki_rag_neo4j
+docker compose up -d postgres temporal hawki_rag_app ollama hawki_rag_bridge qdrant hawki_rag_neo4j
 docker compose up -d hawki-rag-temporal-workflow-worker hawki-rag-temporal-scraper-worker hawki-rag-temporal-converter-worker hawki-rag-temporal-ingestion-worker
 ```
 
@@ -125,4 +125,6 @@ curl -fsS http://127.0.0.1:4000/v1/embeddings \
   -d '{"model":"hawki-ollama-embedding","input":["HAWKI RAG smoke test"]}'
 ```
 
-Temporal UI is exposed on `http://localhost:8081` by default.
+Temporal remains on the internal Compose network. Inspect workflow progress from
+the application's pipeline task pages and use `make logs-core` for service and
+worker logs.

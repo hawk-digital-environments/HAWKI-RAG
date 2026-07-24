@@ -17,8 +17,9 @@ readonly class DatasetGrantRepository
     public function findActiveDatasetForQuery(
         AuthenticatedPrincipal $principal,
         string $datasetId,
+        bool $canQueryAllDatasets = false,
     ): ?Dataset {
-        return $this->activeDatasetsForQuery($principal)
+        return $this->activeDatasetsForQuery($principal, $canQueryAllDatasets)
             ->where('datasets.dataset_id', $datasetId)
             ->first();
     }
@@ -26,9 +27,12 @@ readonly class DatasetGrantRepository
     /**
      * @return Collection<int, Dataset>
      */
-    public function listActiveDatasetsForQuery(AuthenticatedPrincipal $principal): Collection
+    public function listActiveDatasetsForQuery(
+        AuthenticatedPrincipal $principal,
+        bool $canQueryAllDatasets = false,
+    ): Collection
     {
-        return $this->activeDatasetsForQuery($principal)
+        return $this->activeDatasetsForQuery($principal, $canQueryAllDatasets)
             ->select([
                 'datasets.dataset_id',
                 'datasets.name',
@@ -57,10 +61,19 @@ readonly class DatasetGrantRepository
     /**
      * @return Builder<Dataset>
      */
-    private function activeDatasetsForQuery(AuthenticatedPrincipal $principal): Builder
+    private function activeDatasetsForQuery(
+        AuthenticatedPrincipal $principal,
+        bool $canQueryAllDatasets,
+    ): Builder
     {
-        return Dataset::query()
-            ->where('datasets.status', Dataset::STATUS_ACTIVE)
+        $query = Dataset::query()
+            ->where('datasets.status', Dataset::STATUS_ACTIVE);
+
+        if ($canQueryAllDatasets) {
+            return $query;
+        }
+
+        return $query
             ->whereExists(function ($query) use ($principal): void {
                 $query->selectRaw('1')
                     ->from('dataset_grants')

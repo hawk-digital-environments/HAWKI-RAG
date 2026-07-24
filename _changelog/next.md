@@ -8,7 +8,7 @@
 - Add Neo4j graph visualization to the HAWKI RAG playground, including live graph snapshots, relationship counts, recently added triplet highlighting, and graph clearing controls.
 - Add graph-only ingestion mode for writing Neo4j triplets without running the full vector embedding flow.
 - Add document and pipeline state persistence foundations with new `documents` and `job_processing_state` models and migrations.
-- Add Temporal Server and Temporal UI to the core Docker stack.
+- Add Temporal Server with PostgreSQL persistence to the core Docker stack.
 - Add independently scalable Temporal workflow, scraper, converter, and ingestion workers.
 
 ### Quality of Life

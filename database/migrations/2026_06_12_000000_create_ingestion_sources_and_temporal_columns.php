@@ -14,7 +14,7 @@ return new class extends Migration
                 $table->string('source_id', 191)->unique();
                 $table->text('source_url');
                 $table->string('task_id', 191)->nullable()->index();
-                $table->string('dataset_id', 191)->nullable()->index();
+                $table->string('dataset_id', 191)->nullable();
                 $table->timestamp('last_scraped_at')->nullable();
                 $table->string('etag', 191)->nullable();
                 $table->string('last_modified', 191)->nullable();

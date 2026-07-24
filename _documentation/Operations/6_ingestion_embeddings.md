@@ -51,9 +51,8 @@ docker exec -it hawki_rag_app php artisan pipeline:start-task \
 ```
 
 ## Monitoring ingest progress
-- Open Temporal UI at `http://localhost:${TEMPORAL_UI_PORT:-8081}`.
 - Inspect Laravel pipeline/source metadata in the pipeline task UI.
 - Follow worker logs with `docker compose logs -f hawki-rag-temporal-workflow-worker hawki-rag-temporal-scraper-worker hawki-rag-temporal-converter-worker hawki-rag-temporal-ingestion-worker`.
 
 ## Stopping ingestion
-Cancel the pipeline task from Laravel or cancel the workflow in Temporal UI. Temporal will preserve workflow history and retry/resume behavior.
+Cancel the pipeline task from Laravel. Temporal will preserve workflow history and retry/resume behavior.

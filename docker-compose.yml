@@ -50,6 +50,7 @@ services:
       VIRTUAL_PATH: /hawki-rag/
       VIRTUAL_DEST: /
       ENVIRONMENT: "development"
+      HAWKI_RAG_QUERY_ALL_DATASETS_BY_DEFAULT: ${HAWKI_RAG_QUERY_ALL_DATASETS_BY_DEFAULT:-true}
       DB_CONNECTION: pgsql
       DB_HOST: postgres
       DB_PORT: 5432
@@ -116,25 +117,6 @@ services:
     networks:
       - default
       - hawki-network
-
-  # Optional Temporal UI for local diagnostics. Uncomment this service block
-  # when the browser-based workflow inspector is needed.
-  # temporal-ui:
-  #   profiles: ["devtools"]
-  #   image: temporalio/ui:2.34.0
-  #   container_name: temporal_ui
-  #   restart: unless-stopped
-  #   environment:
-  #     TEMPORAL_ADDRESS: temporal:7233
-  #     TEMPORAL_CORS_ORIGINS: http://localhost:8080
-  #   ports:
-  #     - "${TEMPORAL_UI_PORT:-8081}:8080"
-  #   depends_on:
-  #     temporal:
-  #       condition: service_started
-  #   networks:
-  #     - default
-  #     - hawki-network
 
   # -------------------------------------------------
   # Qdrant Vector DB

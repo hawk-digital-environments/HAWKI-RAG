@@ -1,7 +1,7 @@
 # Python RAG Service
 
 This directory contains the FastAPI bridge, vector and graph ingestion logic,
-query pipeline, command-line ingestion helpers, and local reranker code.
+query pipeline, Temporal ingestion workers, and local reranker code.
 
 ## Architecture
 
@@ -130,5 +130,5 @@ endpoint coverage, and the Laravel/Python authorization boundary.
 ## Runtime Output
 
 The service writes runtime/cache data under directories such as
-`python_rag/rag_storage`, `python_rag/public`, `python_rag/shared`, and Python
-`__pycache__` folders. These are generated artifacts and should not be committed.
+`python_rag/rag_storage`, `python_rag/public`, and Python `__pycache__` folders.
+These are generated artifacts and should not be committed.

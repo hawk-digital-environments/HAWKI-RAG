@@ -32,6 +32,28 @@ class DatasetAuthorizationGateTest extends TestCase
         $this->assertFalse(Gate::forUser($user)->allows('query-dataset', $dataset->dataset_id));
     }
 
+    public function test_all_datasets_are_authorized_by_default_when_enabled(): void
+    {
+        config()->set('config.query_auth.all_datasets_by_default', true);
+        $user = $this->createUser('default-all-datasets');
+
+        $existingDataset = $this->createDataset('default-existing');
+        $this->assertTrue(Gate::forUser($user)->allows('query-dataset', $existingDataset->dataset_id));
+
+        $futureDataset = $this->createDataset('default-future');
+        $this->assertTrue(Gate::forUser($user)->allows('query-dataset', $futureDataset->dataset_id));
+        $this->assertDatabaseCount('dataset_grants', 0);
+    }
+
+    public function test_default_all_datasets_access_cannot_query_inactive_datasets(): void
+    {
+        config()->set('config.query_auth.all_datasets_by_default', true);
+        $user = $this->createUser('all-inactive');
+        $dataset = $this->createDataset('all-inactive', Dataset::STATUS_ARCHIVED);
+
+        $this->assertFalse(Gate::forUser($user)->allows('query-dataset', $dataset->dataset_id));
+    }
+
     public function test_query_dataset_gate_denies_an_inactive_dataset_even_with_an_explicit_grant(): void
     {
         $user = $this->createUser('inactive-dataset');

@@ -114,6 +114,6 @@ make neo4j-fresh   # stops Neo4j, wipes /data, restarts clean graph
 ```
 
 ## Troubleshooting tips for Make targets
-- If pulls are slow: pre-pull with `docker compose pull` or check VPN/proxy.
+- If pulls are slow: pre-pull the direct runtime images with `make pull-core` or check VPN/proxy.
 - If Ollama pulls hang: pull manually in `hawki_ollama`.
 - If GPU is expected but not detected on Linux: install `nvidia-container-toolkit` and restart Docker, or force CPU mode with `USE_OLLAMA_GPU=0`.

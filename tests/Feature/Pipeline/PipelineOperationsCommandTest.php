@@ -9,6 +9,24 @@ use Tests\TestCase;
 
 class PipelineOperationsCommandTest extends TestCase
 {
+    public function test_only_current_pipeline_commands_are_registered(): void
+    {
+        $commands = array_keys(Artisan::all());
+
+        foreach (['pipeline:health', 'pipeline:start-task', 'pipeline:workers'] as $command) {
+            $this->assertContains($command, $commands);
+        }
+
+        foreach ([
+            'pipeline:architecture',
+            'pipeline:demo',
+            'pipeline:retry-failed-jobs',
+            'pipeline:show-task',
+        ] as $command) {
+            $this->assertNotContains($command, $commands);
+        }
+    }
+
     public function test_pipeline_workers_prints_temporal_start_commands_and_task_queues(): void
     {
         $exitCode = Artisan::call('pipeline:workers');
@@ -17,7 +35,7 @@ class PipelineOperationsCommandTest extends TestCase
         $this->assertSame(0, $exitCode);
         $this->assertStringContainsString('HAWKI RAG Temporal ingestion workers', $output);
         $this->assertStringContainsString('docker compose up -d postgres temporal hawki_rag_app', $output);
-        $this->assertStringContainsString('docker compose --profile devtools up -d temporal-ui', $output);
+        $this->assertStringNotContainsString('temporal-ui', $output);
         $this->assertStringContainsString('hawki-rag-temporal-workflow-worker', $output);
         $this->assertStringContainsString('hawki-rag-temporal-scraper-worker', $output);
         $this->assertStringContainsString('hawki-rag-temporal-converter-worker', $output);

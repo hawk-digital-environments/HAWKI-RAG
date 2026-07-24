@@ -35,18 +35,6 @@ return new class extends Migration
             if (!Schema::hasColumn('pipeline_jobs', 'job_type')) {
                 $table->string('job_type', 64)->nullable()->after('parent_job_id')->index();
             }
-            if (!Schema::hasColumn('pipeline_jobs', 'local_path')) {
-                $table->text('local_path')->nullable()->after('source_url');
-            }
-            if (!Schema::hasColumn('pipeline_jobs', 'content_hash')) {
-                $table->string('content_hash', 191)->nullable()->after('local_path')->index();
-            }
-            if (!Schema::hasColumn('pipeline_jobs', 'error_message')) {
-                $table->text('error_message')->nullable()->after('status');
-            }
-            if (!Schema::hasColumn('pipeline_jobs', 'finished_at')) {
-                $table->timestamp('finished_at')->nullable()->after('completed_at');
-            }
         });
     }
 

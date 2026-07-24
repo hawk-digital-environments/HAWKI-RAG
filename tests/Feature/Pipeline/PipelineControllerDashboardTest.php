@@ -551,7 +551,7 @@ class PipelineControllerDashboardTest extends TestCase
         ]);
 
         $this->withSession(['_token' => 'test-token'])
-            ->postJson('/api/pipeline/tasks/task-retry-temporal/retry-failed-jobs', [], ['X-CSRF-TOKEN' => 'test-token'])
+            ->postJson('/api/pipeline/tasks/task-retry-temporal/retry', [], ['X-CSRF-TOKEN' => 'test-token'])
             ->assertOk()
             ->assertJsonPath('success', true);
 

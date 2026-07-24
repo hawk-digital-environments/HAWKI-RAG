@@ -36,6 +36,7 @@
         <env name="MAIL_MAILER" value="array" force="true"/>
         <env name="PULSE_ENABLED" value="false" force="true"/>
         <env name="HAWKI_RAG_QUERY_AUTH_BYPASS" value="false" force="true"/>
+        <env name="HAWKI_RAG_QUERY_ALL_DATASETS_BY_DEFAULT" value="false" force="true"/>
         <env name="QUEUE_CONNECTION" value="sync" force="true"/>
         <env name="SESSION_CONNECTION" value="sqlite" force="true"/>
         <env name="SESSION_DRIVER" value="array" force="true"/>

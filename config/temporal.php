@@ -13,7 +13,6 @@ return [
 
     'enabled' => env('HAWKI_RAG_TEMPORAL_ENABLED', true),
     'address' => env('TEMPORAL_ADDRESS', 'temporal:7233'),
-    'ui_port' => env('TEMPORAL_UI_PORT', 8081),
     'namespace' => env('TEMPORAL_NAMESPACE', 'default'),
     'identity' => env('TEMPORAL_CLIENT_IDENTITY', 'hawki-rag-laravel'),
     'bridge_timeout' => env('HAWKI_RAG_BRIDGE_TIMEOUT', 30),

@@ -33,8 +33,8 @@ make up-core
 ```
 
 This starts the full local experience, including the Laravel UI, RAG services,
-Temporal workers, Temporal UI/devtools, Qdrant, Neo4j, Ollama, reranker, and
-fresh Vite/Svelte UI assets.
+Temporal workers, Qdrant, Neo4j, Ollama, reranker, and fresh Vite/Svelte UI
+assets.
 Use `make up-core` for the local full-stack experience.
 
 Generate the application key once:
@@ -53,12 +53,6 @@ Open the app:
 
 ```text
 http://localhost:8080
-```
-
-Temporal UI:
-
-```text
-http://localhost:8081
 ```
 
 ## Model Runtimes
@@ -277,13 +271,12 @@ Stop:
 make down-core
 ```
 
-Optional workflow diagnostics:
+Inspect workflow activity from the pipeline task pages in the application. To
+follow the application and Temporal worker logs:
 
 ```bash
-make up-core
+make logs-core
 ```
-
-Then open `http://localhost:8081`.
 
 ## What Runs Inside
 

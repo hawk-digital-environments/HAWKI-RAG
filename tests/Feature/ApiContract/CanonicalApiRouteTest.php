@@ -39,7 +39,6 @@ class CanonicalApiRouteTest extends TestCase
         'pipeline/tasks/{taskId}/failed-jobs',
         'pipeline/tasks/{taskId}/jobs',
         'pipeline/tasks/{taskId}/retry',
-        'pipeline/tasks/{taskId}/retry-failed-jobs',
         'pipeline/tasks/{taskId}/stages/{stage}/logs',
         'pipeline/tasks/{taskId}/stages/{stage}/logs/download',
         'pipeline/controller/files',
@@ -68,10 +67,7 @@ class CanonicalApiRouteTest extends TestCase
 
     public function test_legacy_non_api_json_and_action_routes_are_not_registered(): void
     {
-        $registeredUris = array_map(
-            static fn (Route $route): string => $route->uri(),
-            $this->app['router']->getRoutes()->getRoutes(),
-        );
+        $registeredUris = $this->registeredUris();
 
         foreach (self::LEGACY_JSON_ROUTE_URIS as $legacyUri) {
             $this->assertNotContains(
@@ -80,6 +76,14 @@ class CanonicalApiRouteTest extends TestCase
                 "Legacy route {$legacyUri} must not be registered outside the canonical /api surface.",
             );
         }
+    }
+
+    public function test_removed_retry_alias_is_not_registered(): void
+    {
+        $this->assertNotContains(
+            'api/pipeline/tasks/{taskId}/retry-failed-jobs',
+            $this->registeredUris(),
+        );
     }
 
     public function test_each_controller_action_and_http_method_is_registered_once(): void
@@ -112,6 +116,17 @@ class CanonicalApiRouteTest extends TestCase
             [],
             $duplicates,
             'A controller action and HTTP method must have one canonical route; duplicate registrations drift in middleware and behavior.',
+        );
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function registeredUris(): array
+    {
+        return array_map(
+            static fn (Route $route): string => $route->uri(),
+            $this->app['router']->getRoutes()->getRoutes(),
         );
     }
 }

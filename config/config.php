@@ -80,7 +80,6 @@ return [
     'pipeline_proof_log_globs' => [
         storage_path('logs/laravel-*.log'),
     ],
-    'pipeline_demo_urls' => env('PIPELINE_DEMO_URLS', ''),
     'docker_project_path' => env('DOCKER_PROJECT_PATH', ''),
     'virtual_path' => env('VIRTUAL_PATH', ''),
     'health_gate' => [
@@ -109,6 +108,10 @@ return [
         ),
     ],
     'query_auth' => [
+        'all_datasets_by_default' => filter_var(
+            env('HAWKI_RAG_QUERY_ALL_DATASETS_BY_DEFAULT', true),
+            FILTER_VALIDATE_BOOLEAN,
+        ),
         'development_bypass' => filter_var(env('HAWKI_RAG_QUERY_AUTH_BYPASS', false), FILTER_VALIDATE_BOOLEAN),
         'development_bypass_environments' => array_values(array_filter(array_map(
             'trim',
