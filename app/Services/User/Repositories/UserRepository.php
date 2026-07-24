@@ -49,6 +49,22 @@ readonly class UserRepository
         return $user instanceof User ? $user : null;
     }
 
+    public function findSoleActive(): ?User
+    {
+        $users = User::query()
+            ->where('isRemoved', false)
+            ->limit(2)
+            ->get();
+
+        if ($users->count() !== 1) {
+            return null;
+        }
+
+        $user = $users->first();
+
+        return $user instanceof User ? $user : null;
+    }
+
     public function markRemoved(User $user): void
     {
         $user->remove();

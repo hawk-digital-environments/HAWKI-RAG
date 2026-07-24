@@ -8,31 +8,27 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
-class CanonicalApiActiveUserAuthorizationTest extends TestCase
+class CanonicalApiAccessTest extends TestCase
 {
     use RefreshDatabase;
 
-    protected function setUp(): void
+    public function test_operator_routes_are_not_conditioned_on_user_state_or_token_ability(): void
     {
-        parent::setUp();
-
-        config()->set('config.admin_auth.bypass', false);
-    }
-
-    public function test_removed_admin_token_is_denied_from_admin_and_health_routes(): void
-    {
-        $user = $this->createUser('removed-admin', '127.0.0.221', removed: true);
-        $token = $user->createToken('removed-admin', ['admin'])->plainTextToken;
+        $removedUser = $this->createUser('removed-operator', '127.0.0.221', removed: true);
+        $token = $removedUser->createToken('removed-operator', ['query'])->plainTextToken;
 
         $this->withToken($token)
             ->getJson('/api/datasets')
-            ->assertUnauthorized()
-            ->assertJsonPath('message', 'Admin authentication required.');
+            ->assertOk()
+            ->assertExactJson([
+                'success' => true,
+                'datasets' => [],
+            ]);
 
         $this->withToken($token)
             ->getJson('/api/ping')
-            ->assertUnauthorized()
-            ->assertJsonPath('message', 'Admin authentication required.');
+            ->assertOk()
+            ->assertExactJson(['pong' => true]);
     }
 
     public function test_removed_query_token_is_denied_from_query_and_mcp_routes(): void
@@ -48,25 +44,6 @@ class CanonicalApiActiveUserAuthorizationTest extends TestCase
         $this->withToken($token)
             ->postJson('/'.ltrim((string) config('mcp.server'), '/'), [])
             ->assertForbidden();
-    }
-
-    public function test_active_admin_token_retains_access_to_canonical_admin_and_health_routes(): void
-    {
-        $admin = $this->createUser('active-admin', '127.0.0.223');
-        $adminToken = $admin->createToken('active-admin', ['admin'])->plainTextToken;
-
-        $this->withToken($adminToken)
-            ->getJson('/api/datasets')
-            ->assertOk()
-            ->assertExactJson([
-                'success' => true,
-                'datasets' => [],
-            ]);
-
-        $this->withToken($adminToken)
-            ->getJson('/api/ping')
-            ->assertOk()
-            ->assertExactJson(['pong' => true]);
     }
 
     public function test_active_query_token_retains_access_to_canonical_query_routes(): void

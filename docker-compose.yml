@@ -37,20 +37,23 @@ services:
       - shared_storage:/app/shared
       - shared_storage:/shared
       - ./storage:/var/www/html/storage
-      - ./docker/rag_app:/container/custom
-      - ./:/var/www/html
     env_file:
-      - ./.env
+      - ${HAWKI_RAG_COMPOSE_ENV_FILE:-.env}
     environment:
-      # ENVIRONMENT: 'development' # 'dev' or 'prod'
       # PHP_PROD_DEBUG: "true" # If you want to stay in prod mode, but need to live edit files
       PUID: ${PUID:-1000}
       PGID: ${PGID:-1000}
       VIRTUAL_HOST: ixdlab.hawk.de
       VIRTUAL_PATH: /hawki-rag/
       VIRTUAL_DEST: /
-      ENVIRONMENT: "development"
+      ENVIRONMENT: ${HAWKI_RAG_CONTAINER_ENVIRONMENT:-production}
+      APP_ENV: ${HAWKI_RAG_APP_ENV:-production}
+      APP_DEBUG: ${HAWKI_RAG_APP_DEBUG:-false}
       HAWKI_RAG_QUERY_ALL_DATASETS_BY_DEFAULT: ${HAWKI_RAG_QUERY_ALL_DATASETS_BY_DEFAULT:-true}
+      HAWKI_RAG_GRAPH_VISUALIZATION_PATH: ${HAWKI_RAG_GRAPH_VISUALIZATION_PATH:-/shared/public/neo4j_graph_visualization.json}
+      HAWKI_RAG_INGEST_SUMMARY_PUBLIC_PATH: ${HAWKI_RAG_INGEST_SUMMARY_PUBLIC_PATH:-/shared/public/ingest_summary.json}
+      HAWKI_RAG_GRAPH_PREVIEW_PATH: ${HAWKI_RAG_GRAPH_PREVIEW_PATH:-/shared/public/ingest_graph_preview.json}
+      HAWKI_RAG_GRAPH_FAILURES_PATH: ${HAWKI_RAG_GRAPH_FAILURES_PATH:-/shared/storage/logs/ingest_graph_failures.jsonl}
       DB_CONNECTION: pgsql
       DB_HOST: postgres
       DB_PORT: 5432
@@ -65,6 +68,8 @@ services:
       - hosting_network
       - default
     depends_on:
+      hawki-rag-shared-storage-init:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       temporal:
@@ -207,7 +212,7 @@ services:
     container_name: hawki_rag_bridge
     user: "10001:10001"
     env_file:
-      - ./.env
+      - ${HAWKI_RAG_COMPOSE_ENV_FILE:-.env}
     environment:
       PIPELINE_SHARED_STORAGE_GID: ${PGID:-1000}
       QDRANT_HOST: qdrant
@@ -220,10 +225,9 @@ services:
       OLLAMA_VISION_MODEL: ${OLLAMA_VISION_MODEL:-qwen2.5vl:7b}
       OLLAMA_CHAT_TIMEOUT: ${OLLAMA_CHAT_TIMEOUT:-60}
       GRAPH_PERF_LOG: "1"
-      HAWKI_RAG_PUBLIC_DIR: /app/public
+      HAWKI_RAG_PUBLIC_DIR: ${HAWKI_RAG_PUBLIC_DIR:-/shared/public}
+      GRAPH_FAILURE_LOG: ${GRAPH_FAILURE_LOG:-/shared/storage/logs/ingest_graph_failures.jsonl}
     volumes:
-      - ./python_rag:/app
-      - ./public:/app/public
       - shared_storage:/app/shared
       - shared_storage:/shared
     group_add:
@@ -245,7 +249,7 @@ services:
     container_name: hawki_rag_temporal_workflow_worker
     user: "10001:10001"
     env_file:
-      - ./.env
+      - ${HAWKI_RAG_COMPOSE_ENV_FILE:-.env}
     environment:
       PIPELINE_SHARED_STORAGE_GID: ${PGID:-1000}
       TEMPORAL_ADDRESS: temporal:7233
@@ -254,7 +258,6 @@ services:
       DB_HOST: postgres
       DB_PORT: 5432
     volumes:
-      - ./python_rag:/app
       - shared_storage:/shared
     group_add:
       - "${PGID:-1000}"
@@ -275,7 +278,7 @@ services:
     container_name: hawki_rag_temporal_scraper_worker
     user: "10001:10001"
     env_file:
-      - ./.env
+      - ${HAWKI_RAG_COMPOSE_ENV_FILE:-.env}
     environment:
       PIPELINE_SHARED_STORAGE_GID: ${PGID:-1000}
       TEMPORAL_ADDRESS: temporal:7233
@@ -285,7 +288,6 @@ services:
       DB_PORT: 5432
       HAWKI_RAG_TEMPORAL_SCRAPER_LOG_PATH: /shared/logs/scraper_worker.log
     volumes:
-      - ./python_rag:/app
       - shared_storage:/shared
     group_add:
       - "${PGID:-1000}"
@@ -308,7 +310,7 @@ services:
     container_name: hawki_rag_temporal_converter_worker
     user: "10001:10001"
     env_file:
-      - ./.env
+      - ${HAWKI_RAG_COMPOSE_ENV_FILE:-.env}
     environment:
       PIPELINE_SHARED_STORAGE_GID: ${PGID:-1000}
       TEMPORAL_ADDRESS: temporal:7233
@@ -318,7 +320,6 @@ services:
       DB_PORT: 5432
       HAWKI_RAG_TEMPORAL_CONVERTER_LOG_PATH: /shared/logs/converter_worker.log
     volumes:
-      - ./python_rag:/app
       - shared_storage:/shared
     group_add:
       - "${PGID:-1000}"
@@ -341,7 +342,7 @@ services:
     container_name: hawki_rag_temporal_ingestion_worker
     user: "10001:10001"
     env_file:
-      - ./.env
+      - ${HAWKI_RAG_COMPOSE_ENV_FILE:-.env}
     environment:
       PIPELINE_SHARED_STORAGE_GID: ${PGID:-1000}
       TEMPORAL_ADDRESS: temporal:7233
@@ -354,10 +355,10 @@ services:
       NEO4J_URI: bolt://hawki_rag_neo4j:7687
       NEO4J_USER: ${NEO4J_USER}
       NEO4J_PASSWORD: ${NEO4J_PASSWORD}
+      HAWKI_RAG_PUBLIC_DIR: ${HAWKI_RAG_PUBLIC_DIR:-/shared/public}
+      GRAPH_FAILURE_LOG: ${GRAPH_FAILURE_LOG:-/shared/storage/logs/ingest_graph_failures.jsonl}
       HAWKI_RAG_TEMPORAL_INGESTION_LOG_PATH: /shared/logs/ingestion_worker.log
     volumes:
-      - ./python_rag:/app
-      - ./public:/app/public
       - shared_storage:/shared
     group_add:
       - "${PGID:-1000}"
@@ -437,7 +438,7 @@ services:
     container_name: raganything_api_gpu
     profiles: ["gpu"]
     env_file:
-      - ./.env
+      - ${HAWKI_RAG_COMPOSE_ENV_FILE:-.env}
     environment:
       RAG_WORKING_DIR: /app/rag_storage
       OLLAMA_URL: http://ollama:11434
@@ -448,7 +449,6 @@ services:
       NEO4J_PASSWORD: ${NEO4J_PASSWORD}
       GPU_MIN_FREE_MB: ${GPU_MIN_FREE_MB:-4096}
     volumes:
-      - ./python_rag:/app
       - rag_storage:/app/rag_storage
       - ./scripts/gpu_guard.sh:/usr/local/bin/gpu_guard.sh:ro
     command: ["/usr/local/bin/gpu_guard.sh", "uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8003"]

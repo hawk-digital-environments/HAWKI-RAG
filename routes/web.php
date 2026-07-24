@@ -4,8 +4,6 @@ declare(strict_types=1);
 
 use App\Http\Controllers\ScrapeTaskUiProxyController;
 use App\Http\Controllers\SettingsController;
-use App\Services\Authorization\BrowserQueryPrincipalService;
-use App\Services\Profile\AdminAccessService;
 use App\Services\Settings\SettingsService;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
@@ -97,8 +95,8 @@ $pipelineControllerConfig = static function (SettingsService $settings): array {
 | Browser Page Boundary
 |--------------------------------------------------------------------------
 | Only HTML pages, redirects, and the crawler UI transport live here. Pages
-| may render a locked state for unauthenticated visitors, but every data read
-| or mutation is independently authorized by the matching /api route.
+| render their management workspaces directly, while dataset-scoped retrieval
+| remains independently authorized by its matching /api routes.
 */
 Route::middleware('throttle:hawki-ui')->group(function () use ($hawkiRagExperienceConfig, $pipelineControllerConfig): void {
     /*
@@ -151,9 +149,8 @@ Route::middleware('throttle:hawki-ui')->group(function () use ($hawkiRagExperien
     |----------------------------------------------------------------------
     | Settings Page
     |----------------------------------------------------------------------
-    | SettingsController renders sanitized initial state and whether the
-    | current browser may use admin APIs. Reads and updates happen only at
-    | /api/settings/config.
+    | SettingsController renders sanitized initial state. Reads and updates
+    | happen only at /api/settings/config.
     */
     Route::get('/settings', [SettingsController::class, 'page']);
 
@@ -161,40 +158,26 @@ Route::middleware('throttle:hawki-ui')->group(function () use ($hawkiRagExperien
     |----------------------------------------------------------------------
     | Retrieval Playground Page
     |----------------------------------------------------------------------
-    | The shell supports two independent capabilities: dataset-scoped query
-    | access and broader admin controls. The API enforces both capabilities;
-    | these booleans only decide which Svelte controls should be rendered.
+    | The browser loads query-ready datasets from the canonical retrieval API.
+    | The API resolves the deployment's query principal server-side.
     */
-    Route::get('/hawki-rag-playground', function (
-        Request $request,
-        AdminAccessService $adminAccess,
-        BrowserQueryPrincipalService $queryPrincipals,
-    ): View {
-        return view('svelte-page', [
-            'title' => 'HAWKI-RAG Console',
-            'vite' => 'resources/js/hawki-rag-playground.js',
-            'configScriptId' => 'hawki-rag-playground-config',
-            'config' => [
-                'adminAuthorized' => $adminAccess->allows($request),
-                'queryAuthenticated' => $queryPrincipals->resolve($request) !== null,
-            ],
-            'rootAttributes' => ['data-hawki-rag-playground' => true],
-        ]);
-    });
+    Route::get('/hawki-rag-playground', static fn (): View => view('svelte-page', [
+        'title' => 'HAWKI-RAG Console',
+        'vite' => 'resources/js/hawki-rag-playground.js',
+        'rootAttributes' => ['data-hawki-rag-playground' => true],
+    ]));
 
     /*
     |----------------------------------------------------------------------
     | Knowledge Graph Explorer Page
     |----------------------------------------------------------------------
     | Renders the graph workspace shell. Graph data is loaded lazily from the
-    | admin-protected /api/rag/neo4j endpoints only when access is allowed.
+    | throttled /api/rag/neo4j endpoints.
     */
-    Route::get('/neo4j-graph-explorer', function (Request $request, AdminAccessService $adminAccess): View {
+    Route::get('/neo4j-graph-explorer', static function (): View {
         return view('svelte-page', [
             'title' => 'Neo4j Graph Explorer',
             'vite' => ['resources/css/app.css', 'resources/js/neo4j-graph-dashboard.js'],
-            'configScriptId' => 'neo4j-graph-dashboard-config',
-            'config' => ['adminAuthorized' => $adminAccess->allows($request)],
             'rootAttributes' => ['data-neo4j-graph-dashboard' => true],
         ]);
     });
@@ -203,23 +186,18 @@ Route::middleware('throttle:hawki-ui')->group(function () use ($hawkiRagExperien
     |----------------------------------------------------------------------
     | Pipeline Controller Page
     |----------------------------------------------------------------------
-    | Supplies safe upload/converter capabilities and an authorization flag to
-    | the Svelte shell. Pipeline tasks, uploads, and recovery actions all use
-    | the canonical /api/pipeline and /api/scraper domains.
+    | Supplies safe upload/converter capabilities to the Svelte shell. Pipeline
+    | tasks, uploads, and recovery actions all use the canonical /api/pipeline
+    | and /api/scraper domains.
     */
     Route::get('/pipeline-controller', function (
-        Request $request,
-        AdminAccessService $adminAccess,
         SettingsService $settings,
     ) use ($pipelineControllerConfig): View {
         return view('svelte-page', [
             'title' => 'HAWKI Pipeline Controller',
             'vite' => ['resources/css/app.css', 'resources/css/hawki-rag-theme.css', 'resources/js/pipeline-controller.js'],
             'configScriptId' => 'pipeline-controller-config',
-            'config' => [
-                ...$pipelineControllerConfig($settings),
-                'adminAuthorized' => $adminAccess->allows($request),
-            ],
+            'config' => $pipelineControllerConfig($settings),
             'rootAttributes' => ['data-pipeline-controller-dashboard' => true],
         ]);
     });
@@ -232,24 +210,11 @@ Route::middleware('throttle:hawki-ui')->group(function () use ($hawkiRagExperien
     | /documents URL is retained as a page-level alias and preserves filters;
     | all dataset/document payloads come from /api/datasets and /api/documents.
     */
-    Route::get('/datasets', function (
-        Request $request,
-        AdminAccessService $adminAccess,
-        BrowserQueryPrincipalService $queryPrincipals,
-    ): View {
-        $adminAuthorized = $adminAccess->allows($request);
-
-        return view('svelte-page', [
-            'title' => 'HAWKI Data Browser',
-            'vite' => ['resources/css/datasets-dashboard.css', 'resources/css/dashboard-dark-theme.css', 'resources/css/hawki-rag-theme.css', 'resources/js/datasets-dashboard.js'],
-            'configScriptId' => 'datasets-dashboard-config',
-            'config' => [
-                'adminAuthorized' => $adminAuthorized,
-                'queryAuthenticated' => $adminAuthorized && $queryPrincipals->resolve($request) !== null,
-            ],
-            'rootAttributes' => ['data-datasets-dashboard' => true],
-        ]);
-    });
+    Route::get('/datasets', static fn (): View => view('svelte-page', [
+        'title' => 'HAWKI Data Browser',
+        'vite' => ['resources/css/datasets-dashboard.css', 'resources/css/dashboard-dark-theme.css', 'resources/css/hawki-rag-theme.css', 'resources/js/datasets-dashboard.js'],
+        'rootAttributes' => ['data-datasets-dashboard' => true],
+    ]));
 
     Route::get('/documents', static function (Request $request): RedirectResponse {
         $query = $request->getQueryString();

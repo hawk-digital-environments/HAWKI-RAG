@@ -1,18 +1,45 @@
 services:
   hawki_rag_app:
-    build:
-      args:
-        - DOCKER_PROJECT_HOST=localhost:8080
-        - DOCKER_PROJECT_PATH=/
-        - DOCKER_PROJECT_PROTOCOL=http
     environment:
-      DOCKER_SERVICE_PROTOCOL: http
-      DOCKER_PROJECT_HOST: localhost:8080
-      DOCKER_PROJECT_PATH: /
-      DOCKER_PROJECT_PROTOCOL: http
-      ASSET_URL: ""
-    ports:
-      - "127.0.0.1:8080:80"
+      ENVIRONMENT: development
+      APP_ENV: local
+      APP_DEBUG: "true"
+      HAWKI_RAG_GRAPH_VISUALIZATION_PATH: /var/www/html/public/neo4j_graph_visualization.json
+      HAWKI_RAG_INGEST_SUMMARY_PUBLIC_PATH: /var/www/html/public/ingest_summary.json
+      HAWKI_RAG_GRAPH_PREVIEW_PATH: /var/www/html/public/ingest_graph_preview.json
+    volumes:
+      - ./docker/rag_app:/container/custom
+      - ./:/var/www/html
     networks: !override
       - default
       - hawki-network
+
+  hawki_rag_bridge:
+    environment:
+      HAWKI_RAG_PUBLIC_DIR: /app/public
+    volumes:
+      - ./python_rag:/app
+      - ./public:/app/public
+
+  hawki-rag-temporal-workflow-worker:
+    volumes:
+      - ./python_rag:/app
+
+  hawki-rag-temporal-scraper-worker:
+    volumes:
+      - ./python_rag:/app
+
+  hawki-rag-temporal-converter-worker:
+    volumes:
+      - ./python_rag:/app
+
+  hawki-rag-temporal-ingestion-worker:
+    environment:
+      HAWKI_RAG_PUBLIC_DIR: /app/public
+    volumes:
+      - ./python_rag:/app
+      - ./public:/app/public
+
+  raganything_api_gpu:
+    volumes:
+      - ./python_rag:/app

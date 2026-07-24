@@ -90,33 +90,10 @@ return [
             explode(',', env('HAWKI_RAG_HEALTH_GATE_REQUIRED', 'retrieval,graph,pipeline'))
         ))),
     ],
-    'admin_auth' => [
-        'bypass' => filter_var(
-            env('HAWKI_RAG_ADMIN_AUTH_BYPASS', env('HAWKI_RAG_OPERATOR_AUTH_BYPASS', false)),
-            FILTER_VALIDATE_BOOLEAN,
-        ),
-        'bypass_environments' => array_values(array_filter(array_map(
-            'trim',
-            explode(',', env(
-                'HAWKI_RAG_ADMIN_AUTH_BYPASS_ENVIRONMENTS',
-                env('HAWKI_RAG_OPERATOR_AUTH_BYPASS_ENVIRONMENTS', 'local,testing'),
-            )),
-        ))),
-        'accept_legacy_operator_ability' => filter_var(
-            env('HAWKI_RAG_ADMIN_AUTH_ACCEPT_LEGACY_OPERATOR_ABILITY', false),
-            FILTER_VALIDATE_BOOLEAN,
-        ),
-    ],
     'query_auth' => [
         'all_datasets_by_default' => filter_var(
             env('HAWKI_RAG_QUERY_ALL_DATASETS_BY_DEFAULT', true),
             FILTER_VALIDATE_BOOLEAN,
         ),
-        'development_bypass' => filter_var(env('HAWKI_RAG_QUERY_AUTH_BYPASS', false), FILTER_VALIDATE_BOOLEAN),
-        'development_bypass_environments' => array_values(array_filter(array_map(
-            'trim',
-            explode(',', env('HAWKI_RAG_QUERY_AUTH_BYPASS_ENVIRONMENTS', 'local,testing'))
-        ))),
-        'development_user_id' => env('HAWKI_RAG_QUERY_AUTH_BYPASS_USER_ID'),
     ],
 ];

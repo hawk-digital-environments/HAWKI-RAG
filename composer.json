@@ -1,13 +1,18 @@
 {
     "$schema": "https://getcomposer.org/schema.json",
-    "name": "laravel/laravel",
+    "name": "hawk-digital-environments/rawki",
     "type": "project",
-    "description": "The skeleton application for the Laravel framework.",
+    "description": "HAWKI's retrieval service for searchable, grounded answers over managed content.",
     "keywords": [
+        "hawki",
         "laravel",
-        "framework"
+        "rag",
+        "retrieval-augmented-generation"
     ],
-    "license": "MIT",
+    "license": [
+        "GPL-3.0-only",
+        "proprietary"
+    ],
     "require": {
         "php": "^8.4",
         "guzzlehttp/guzzle": "^7.9",

@@ -34,7 +34,9 @@ Open `.env` in an editor and set:
 :::
 
 ## Step 4 - Start services
-- Command: `make up-core`
+- Production-mode command with UI at `http://localhost:8080`: `make up-core`
+- Reverse-proxy production command without a host port: `make up-core-server`
+- Source-mounted development command: `make up-core-local`
 
 :::tip "Verification"
     `docker ps` should show containers such as `hawki_rag_app`, `hawki_qdrant`, `hawki_rag_bridge`, `hawki_rag_rerank`, `hawki_rag_neo4j`, `hawki_ollama`, `hawki_rag_postgres`, and `temporal`. `hawki_litellm` appears only when the `litellm` profile is enabled.

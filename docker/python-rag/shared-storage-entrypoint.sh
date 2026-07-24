@@ -14,7 +14,11 @@ case "$shared_gid" in
 esac
 
 if [ "$initialize_storage" = "1" ]; then
-    mkdir -p "$shared_root/sources" "$shared_root/logs"
+    mkdir -p \
+        "$shared_root/sources" \
+        "$shared_root/logs" \
+        "$shared_root/public" \
+        "$shared_root/storage/logs"
 
     # This branch is reserved for the short-lived root init container. A shared
     # numeric group plus setgid directories keeps Python and PHP-FPM files

@@ -197,13 +197,6 @@ async function refreshGate() {
             headers: { Accept: 'application/json' },
         });
         const payload = await response.json().catch(() => ({}));
-        if (response.status === 401 || response.status === 403) {
-            // Detailed health data is admin-only. Lack of access is not a
-            // service failure and must never block query-only browser users.
-            setBlocked(false);
-            stopPolling();
-            return;
-        }
         if (!response.ok || payload.success === false) {
             throw new Error(payload.message || `System gate failed (${response.status})`);
         }

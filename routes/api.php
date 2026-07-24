@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 use App\Http\Controllers\API\HawkiRagProxyController;
 use App\Http\Controllers\API\RagStatsController;
-use App\Http\Controllers\BrowserSessionController;
 use App\Http\Controllers\DatasetController;
 use App\Http\Controllers\DatasetQueryGrantController;
 use App\Http\Controllers\Document\UnifiedDocumentController;
@@ -36,23 +35,12 @@ use Illuminate\Support\Facades\Route;
 
 /*
 |--------------------------------------------------------------------------
-| Authentication: Browser Query Session
-|--------------------------------------------------------------------------
-| A trusted first-party browser may exchange a query-capable bearer token for
-| the dedicated HttpOnly query session. This is a UI authentication handshake,
-| not a general token endpoint, so it is intentionally omitted from OpenAPI.
-*/
-Route::post('/auth/session', [BrowserSessionController::class, 'store'])
-    ->middleware(['auth:sanctum', 'throttle:hawki-api'])
-    ->defaults('openapi', false);
-
-/*
-|--------------------------------------------------------------------------
 | Retrieval Domain
 |--------------------------------------------------------------------------
-| Query routes accept either a bearer token with query access or the dedicated
-| browser query session. The principal service also derives the allowed
-| dataset scope server-side before a request reaches the RAG bridge.
+| Query routes use an explicit query-capable bearer principal when supplied.
+| Credential-free requests resolve only when exactly one active user exists.
+| The principal service derives the allowed dataset scope server-side before
+| a request reaches the RAG bridge.
 */
 Route::middleware(['browser-query-principal', 'throttle:hawki-api'])->group(function (): void {
     Route::get('/query/datasets', [HawkiRagProxyController::class, 'datasets']);
@@ -62,19 +50,19 @@ Route::middleware(['browser-query-principal', 'throttle:hawki-api'])->group(func
 
 /*
 |--------------------------------------------------------------------------
-| Admin API Boundary
+| Management API Boundary
 |--------------------------------------------------------------------------
-| The admin middleware accepts an authorized browser session or an
-| admin-capable bearer token. Domain-specific upload and destructive
-| throttles below are added on top of the shared API rate limit.
+| Single-user deployments expose the management API directly.
+| Domain-specific upload and destructive throttles below are added on top of
+| the shared API rate limit.
 */
-Route::middleware(['admin', 'throttle:hawki-api'])->group(function (): void {
+Route::middleware('throttle:hawki-api')->group(function (): void {
     /*
     |----------------------------------------------------------------------
     | Platform Connectivity
     |----------------------------------------------------------------------
-    | Unlike the public /up liveness check, ping confirms that the caller can
-    | reach the authenticated admin API boundary.
+    | Unlike the minimal /up liveness check, ping confirms that the caller can
+    | reach the application API boundary.
     */
     Route::get('/ping', static fn (): JsonResponse => response()->json(['pong' => true]));
 
@@ -82,7 +70,7 @@ Route::middleware(['admin', 'throttle:hawki-api'])->group(function (): void {
     |----------------------------------------------------------------------
     | Runtime Settings Domain
     |----------------------------------------------------------------------
-    | Reads and updates the admin-managed converter and model defaults.
+    | Reads and updates the runtime-managed converter and model defaults.
     | These routes currently belong to the Svelte settings UI rather than the
     | published external API contract.
     */
@@ -99,8 +87,8 @@ Route::middleware(['admin', 'throttle:hawki-api'])->group(function (): void {
     | Dataset routes manage searchable dataset metadata. Storage cleanup is
     | separated from metadata reads and creation because it deletes Qdrant and
     | Neo4j data and therefore receives the destructive-operation throttle.
-    | Self-granting query access requires both admin authority and a query
-    | principal; it never broadens access for another user or another dataset.
+    | Self-granting query access requires a query principal and applies only to
+    | that current user and the selected dataset.
     */
     Route::prefix('datasets')->group(function (): void {
         Route::get('/', [DatasetController::class, 'index']);
@@ -222,8 +210,8 @@ Route::middleware(['admin', 'throttle:hawki-api'])->group(function (): void {
                 ->middleware('throttle:hawki-destructive');
         });
 
-        // Pipeline health is detailed admin diagnostics, not public
-        // liveness; infrastructure probes must use /up.
+        // Pipeline health provides detailed diagnostics; infrastructure probes
+        // should continue to use the minimal /up liveness endpoint.
         Route::get('/health', [PipelineHealthController::class, 'show']);
     });
 
@@ -232,8 +220,8 @@ Route::middleware(['admin', 'throttle:hawki-api'])->group(function (): void {
     | Health and Monitoring Domain
     |----------------------------------------------------------------------
     | Reports RAG bridge health, runtime monitoring, and the combined system
-    | gate. These detailed payloads remain admin-only; /up is the public
-    | liveness endpoint for infrastructure probes.
+    | gate. These detailed payloads use the shared API throttle; /up remains
+    | the minimal liveness endpoint for infrastructure probes.
     */
     Route::get('/rag/health', [RagHealthController::class, 'show']);
     Route::get('/rag/monitor', [RagMonitorController::class, 'show']);
@@ -261,7 +249,8 @@ Route::middleware(['admin', 'throttle:hawki-api'])->group(function (): void {
     Route::prefix('rag/neo4j')->group(function (): void {
         Route::get('/graph/overview', [RagGraphController::class, 'overview']);
         Route::get('/graph/search', [RagGraphController::class, 'search']);
-        Route::get('/graph/semantic-search', [RagGraphController::class, 'semanticSearch']);
+        Route::get('/graph/semantic-search', [RagGraphController::class, 'semanticSearch'])
+            ->middleware('browser-query-principal');
         Route::get('/graph/node', [RagGraphController::class, 'node']);
         Route::post('/graph/expand', [RagGraphController::class, 'expand']);
         Route::post('/graph/clear-view', [RagGraphController::class, 'clearView']);

@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
@@ -8,7 +10,7 @@ return new class extends Migration
 {
     public function up(): void
     {
-        if (!Schema::hasTable('pipeline_tasks')) {
+        if (! Schema::hasTable('pipeline_tasks')) {
             Schema::create('pipeline_tasks', function (Blueprint $table) {
                 $table->bigIncrements('id');
                 $table->string('task_id', 191)->unique();
@@ -26,14 +28,26 @@ return new class extends Migration
         }
 
         Schema::table('pipeline_jobs', function (Blueprint $table) {
-            if (!Schema::hasColumn('pipeline_jobs', 'task_id')) {
+            if (! Schema::hasColumn('pipeline_jobs', 'task_id')) {
                 $table->string('task_id', 191)->nullable()->after('job_id')->index();
             }
-            if (!Schema::hasColumn('pipeline_jobs', 'parent_job_id')) {
+            if (! Schema::hasColumn('pipeline_jobs', 'parent_job_id')) {
                 $table->string('parent_job_id', 191)->nullable()->after('task_id')->index();
             }
-            if (!Schema::hasColumn('pipeline_jobs', 'job_type')) {
+            if (! Schema::hasColumn('pipeline_jobs', 'job_type')) {
                 $table->string('job_type', 64)->nullable()->after('parent_job_id')->index();
+            }
+            if (! Schema::hasColumn('pipeline_jobs', 'local_path')) {
+                $table->text('local_path')->nullable()->after('source_url');
+            }
+            if (! Schema::hasColumn('pipeline_jobs', 'content_hash')) {
+                $table->string('content_hash', 191)->nullable()->after('local_path')->index();
+            }
+            if (! Schema::hasColumn('pipeline_jobs', 'error_message')) {
+                $table->text('error_message')->nullable()->after('status');
+            }
+            if (! Schema::hasColumn('pipeline_jobs', 'finished_at')) {
+                $table->timestamp('finished_at')->nullable()->after('completed_at');
             }
         });
     }

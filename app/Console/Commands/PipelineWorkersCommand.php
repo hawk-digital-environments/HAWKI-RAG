@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
-use Illuminate\Contracts\Config\Repository as ConfigRepository;
 use Illuminate\Console\Command;
+use Illuminate\Contracts\Config\Repository as ConfigRepository;
 
 class PipelineWorkersCommand extends Command
 {
@@ -21,12 +21,10 @@ class PipelineWorkersCommand extends Command
         $this->line('Laravel starts/cancels/schedules workflows. Temporal coordinates durable phase transitions.');
         $this->newLine();
 
-        $this->line('Start the Temporal stack:');
-        $this->line('  docker compose up -d postgres temporal hawki_rag_app hawki_rag_bridge qdrant hawki_rag_neo4j');
-        $this->newLine();
-
-        $this->line('Start all Temporal workers:');
-        $this->line('  docker compose up -d hawki-rag-temporal-workflow-worker hawki-rag-temporal-scraper-worker hawki-rag-temporal-converter-worker hawki-rag-temporal-ingestion-worker');
+        $this->line('Start the production stack (including all Temporal workers):');
+        $this->line('  make up-core');
+        $this->line('Start the source-mounted development stack:');
+        $this->line('  make up-core-local');
         $this->newLine();
 
         $this->table(['Worker', 'Container', 'Task queue', 'Registers'], [

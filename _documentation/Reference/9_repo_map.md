@@ -2,7 +2,7 @@
 ## Root
 | File/Path | Description |
 |---|---|
-| `Makefile` | Helper targets (`network`, `up-core`, `health`, `ingest`, logs/restart helpers) using docker compose and container exec. |
+| `Makefile` | Helper targets for production/local startup, migrations, health checks, tests, logs, and lifecycle operations. |
 | `docker-compose.yml` | Base Compose (CPU-safe direct `ollama` runtime plus the optional profile-gated `litellm` gateway). |
 | `docker-compose-gpu-override.yml` | Optional NVIDIA override for `ollama` (used when GPU mode is enabled). |
 | `Dockerfile` | Multi-stage build for Python services: `python-rag` (bridge/API image) and `rerank` (local reranker). |
@@ -13,16 +13,16 @@
 | Path | Description |
 |---|---|
 | `app/Http/Controllers/API/HawkiRagProxyController.php` | Proxies user queries to bridge. |
-| `app/Http/Controllers/API/IngestController.php` | Starts/stops ingest processes, validates paths, writes status. |
-| `app/Http/Controllers/API/IngestStatusController.php` | Reads/updates ingest status and logs. |
+| `app/Http/Controllers/PipelineControlController.php` | Accepts uploads and starts pipeline work. |
+| `app/Http/Controllers/PipelineStatusController.php` | Returns persisted pipeline status. |
 | `app/Http/Controllers/Health/` | Health and monitoring HTTP controllers, separated from core UI/API controllers. |
-| `app/Services/GraphService/Neo4jAdmin.php` | Clears all nodes/edges in Neo4j. |
+| `app/Services/Graph/Neo4jAdmin.php` | Clears all nodes/edges in Neo4j. |
 | `config/config.php` | App config mapping for endpoint URLs, model defaults, and ingest/log paths (keys listed below). |
 | `routes/web.php` | Browser-facing HTML pages, redirects, and page-shell routes. |
 | `routes/api.php` | Canonical JSON/action API used by browser and token clients, mounted under `/api`. |
 | `routes/ai.php` | Laravel MCP protocol transport. It remains outside the application JSON API because MCP owns its HTTP route contract. |
 | `routes/health.php` | Public liveness endpoint and browser health-dashboard page. Detailed health JSON lives in `routes/api.php`. |
-| `storage/` | Logs (`storage/logs`) and shared files (`storage/app/public`, bound to shared volume). |
+| `storage/` | Host-mounted Laravel runtime files, including logs, settings, and private/public application data. |
 
 ### Config keys (`config/config.php` + `.env`)
 | Variable | Purpose |
@@ -59,12 +59,12 @@
 | Path | Description |
 |---|---|
 | `python_rag/` | Python RAG stack containing the FastAPI bridge, RAG API components, and reranker code. |
-| `python_rag/app/` | FastAPI entrypoints and route modules (`main.py`, `query.py`, `ingest.py`). |
+| `python_rag/api/` | FastAPI factory, settings, middleware, schemas, and HTTP routers. |
+| `python_rag/application/` | Query and ingestion use cases plus workflow orchestration. |
 | `python_rag/temporal_rag/` | Temporal workflows, activities, adapters, and worker entrypoints for source ingestion. |
-| `python_rag/pipeline/` | Query and ingest pipeline logic/helpers. |
 | `python_rag/infrastructure/rerank/` | Local reranker adapter service. |
 | `python_rag/requirements.txt` | Python dependency manifest. |
-| `rag_storage/` | Local repo directory; in Compose, the RAG API working directory is the named volume `rag_storage` mounted at `/app/rag_storage` for `raganything_api_gpu` (GPU profile). `hawki_rag_bridge` uses `./python_rag:/app` and `shared_storage:/app/shared`. |
+| `rag_storage` (Compose volume) | Optional GPU API working data mounted at `/app/rag_storage`; it is not a source directory. |
 
 ## Assets and build
 | Path | Description |

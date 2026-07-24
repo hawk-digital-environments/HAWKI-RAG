@@ -111,14 +111,13 @@ start workflows, cancel workflows, and create/update/delete schedules.
 Start the stack:
 
 ```bash
-docker compose up -d postgres temporal hawki_rag_app ollama hawki_rag_bridge qdrant hawki_rag_neo4j
-docker compose up -d hawki-rag-temporal-workflow-worker hawki-rag-temporal-scraper-worker hawki-rag-temporal-converter-worker hawki-rag-temporal-ingestion-worker
+make up-core-local
 ```
 
 Optionally start and smoke-test the gateway from the host:
 
 ```bash
-docker compose --profile litellm up -d litellm
+CORE_PROFILES_BASE=litellm make up-core-local
 curl -fsS http://127.0.0.1:4000/v1/models
 curl -fsS http://127.0.0.1:4000/v1/embeddings \
   -H 'Content-Type: application/json' \

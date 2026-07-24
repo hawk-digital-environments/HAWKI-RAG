@@ -8,32 +8,32 @@ servers:
     description: Laravel API base URL
 tags:
   - name: Health
-    description: Admin checks for application, pipeline, and retrieval readiness.
+    description: Control-plane checks for application, pipeline, and retrieval readiness.
   - name: Datasets
     description: |
-      Admin endpoints for organizing related documents into isolated RAG workspaces.
+      Control-plane endpoints for organizing related documents into isolated RAG workspaces.
       A dataset keeps its own vector collection, graph namespace, and embedding configuration.
   - name: Documents
-    description: Admin endpoints for uploading, replacing, inspecting, and deleting managed documents.
+    description: Control-plane endpoints for uploading, replacing, inspecting, and deleting managed documents.
   - name: Pipeline
-    description: Admin endpoints for starting and observing durable ingestion tasks.
+    description: Control-plane endpoints for starting and observing durable ingestion tasks.
   - name: Pipeline Recovery
-    description: Admin endpoints for finding failed work and requesting controlled retries.
+    description: Control-plane endpoints for finding failed work and requesting controlled retries.
   - name: Query
-    description: Authenticated dataset discovery and dataset-scoped retrieval endpoints.
+    description: Single-user dataset discovery and dataset-scoped retrieval, with optional bearer identity selection.
   - name: RAG
-    description: Admin diagnostics for the retrieval bridge and backing data stores.
+    description: Control-plane diagnostics for the retrieval bridge and backing data stores.
   - name: Graph
-    description: Admin graph exploration, snapshots, and destructive graph maintenance.
+    description: Control-plane graph exploration, snapshots, and destructive graph maintenance.
 paths:
   /ping:
     get:
       tags:
         - Health
       summary: Health ping
-      description: Confirms that the authenticated Laravel API is reachable. This check does not test downstream RAG services.
+      description: Confirms that the Laravel control-plane API is reachable. This check does not test downstream RAG services.
       security:
-        - BearerAuth: []
+        []
       responses:
         "200":
           description: Service is alive
@@ -43,10 +43,6 @@ paths:
                 $ref: "#/components/schemas/PingResponse"
               example:
                 pong: true
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
   /datasets:
     get:
       tags:
@@ -60,10 +56,12 @@ paths:
         Use `GET /datasets/{dataset_id}` when you need recent documents, tasks,
         and ingestion history for one dataset.
 
-        Requires an admin token. Regular query users should use
-        `GET /query/datasets`, which returns only datasets they are authorized to query.
+        This control-plane operation does not require a RAWKI bearer token.
+        Retrieval clients should use `GET /query/datasets`, which resolves the
+        sole active local user by default and returns only query-ready datasets
+        allowed by the configured policy.
       security:
-        - BearerAuth: []
+        []
       parameters:
         - in: query
           name: limit
@@ -81,10 +79,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DatasetListResponse"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
     post:
       tags:
         - Datasets
@@ -98,11 +92,11 @@ paths:
         start ingestion, populate vector or graph storage, or grant query access.
         Upload with `POST /documents` to begin ingestion. Document upload can also
         create a missing dataset automatically, so this endpoint is most useful
-        when an admin wants to prepare and inspect a workspace in advance.
+        when an operator wants to prepare and inspect a workspace in advance.
 
-        Requires an admin token.
+        This control-plane operation does not require a RAWKI bearer token.
       security:
-        - BearerAuth: []
+        []
       requestBody:
         required: true
         description: Human-friendly dataset metadata. Storage names are optional advanced overrides.
@@ -121,10 +115,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DatasetCreateResponse"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
         "422":
           $ref: "#/components/responses/ValidationFailed"
   /datasets/{dataset_id}:
@@ -146,9 +136,9 @@ paths:
         recent documents, recent pipeline tasks, and ingestion history.
 
         This endpoint reports the workspace; it does not return document content
-        or run a retrieval query. Requires an admin token.
+        or run a retrieval query. It does not require a RAWKI bearer token.
       security:
-        - BearerAuth: []
+        []
       responses:
         "200":
           description: Dataset workspace details were returned successfully.
@@ -156,10 +146,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DatasetDetailResponse"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
   /datasets/{dataset_id}/storage:
@@ -179,10 +165,10 @@ paths:
         Removes the dataset's Qdrant collection and dataset-scoped Neo4j data,
         then deletes its metadata only after both storage cleanups succeed.
 
-        This is a destructive admin operation. It does not silently report
+        This is a destructive control-plane operation. It does not silently report
         success when a backing store could not be cleaned.
       security:
-        - BearerAuth: []
+        []
       responses:
         "200":
           description: Dataset storage and metadata were deleted successfully.
@@ -190,10 +176,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DatasetDeleteResponse"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
         "502":
@@ -214,7 +196,7 @@ paths:
         - returns managed upload documents with `adoc_*` or `doc_*` handles when matching managed documents exist
         - falls back to legacy indexed document UUID records when no managed documents match the current filter
       security:
-        - BearerAuth: []
+        []
       parameters:
         - in: query
           name: dataset_id
@@ -248,8 +230,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/UnifiedDocumentListResponse"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
     post:
       tags:
         - Documents
@@ -262,7 +242,7 @@ paths:
         - one `dataset_id` groups documents that should be indexed together
         - the managed document remains the stable public handle for later read, replace, and delete operations
       security:
-        - BearerAuth: []
+        []
       parameters:
         - in: header
           name: Idempotency-Key
@@ -311,8 +291,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ManagedDocumentMutationResponse"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
         "422":
           description: Validation failed
   /documents/batch:
@@ -328,7 +306,7 @@ paths:
         - each file still becomes its own managed `adoc_*` document handle
         - deleting one managed document is intended to remove only that file's indexed outputs while keeping the rest of the dataset intact
       security:
-        - BearerAuth: []
+        []
       parameters:
         - in: header
           name: Idempotency-Key
@@ -375,8 +353,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ManagedDocumentBatchResponse"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
         "422":
           description: Validation failed
   /documents/{document_id}:
@@ -403,7 +379,7 @@ paths:
         - `adoc_*` and `doc_*` ids resolve to managed documents
         - UUID ids resolve to legacy indexed documents
       security:
-        - BearerAuth: []
+        []
       responses:
         "200":
           description: Document
@@ -411,8 +387,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/UnifiedDocumentResponse"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
     put:
@@ -425,7 +399,7 @@ paths:
         This operation only supports managed `adoc_*` or `doc_*` document ids.
         Passing a legacy indexed document UUID returns `404`.
       security:
-        - BearerAuth: []
+        []
       parameters:
         - in: header
           name: Idempotency-Key
@@ -477,8 +451,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ManagedDocumentMutationResponse"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
         "422":
@@ -493,7 +465,7 @@ paths:
         This operation only supports managed `adoc_*` or `doc_*` document ids.
         Passing a legacy indexed document UUID returns `404`.
       security:
-        - BearerAuth: []
+        []
       parameters:
         - in: header
           name: Idempotency-Key
@@ -507,8 +479,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ManagedDocumentDeleteResponse"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
   /pipeline/tasks:
@@ -518,7 +488,7 @@ paths:
       summary: List pipeline tasks
       description: Returns recent ingestion tasks with their dataset, status, counters, active-job count, and stage progress.
       security:
-        - BearerAuth: []
+        []
       parameters:
         - in: query
           name: limit
@@ -536,10 +506,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PipelineTaskListResponse"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
   /pipeline/tasks/start:
     post:
       tags:
@@ -550,7 +516,7 @@ paths:
         Temporal workflow for the supplied source URL, sitemap, or URL list.
         The dataset is created automatically when it does not yet exist.
       security:
-        - BearerAuth: []
+        []
       requestBody:
         required: true
         description: Source selection, optional stable identifiers, refresh cadence, and request metadata.
@@ -565,10 +531,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PipelineTaskCreateResponse"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
         "422":
           $ref: "#/components/responses/ValidationFailed"
   /pipeline/tasks/{task_id}:
@@ -584,7 +546,7 @@ paths:
       summary: Get task
       description: Returns one pipeline task with its jobs, managed documents, sources, counters, and stage status.
       security:
-        - BearerAuth: []
+        []
       responses:
         "200":
           description: Pipeline task details were returned successfully.
@@ -592,10 +554,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PipelineTaskDetailResponse"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
     delete:
@@ -604,7 +562,7 @@ paths:
       summary: Delete a pipeline task and its stored history
       description: Cleans task-owned storage and deletes the pipeline task only when cleanup succeeds.
       security:
-        - BearerAuth: []
+        []
       responses:
         "200":
           description: Task storage and history were deleted successfully.
@@ -612,10 +570,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PipelineTaskDeleteResponse"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
         "500":
@@ -637,7 +591,7 @@ paths:
       summary: List task jobs
       description: Returns all jobs currently associated with one pipeline task.
       security:
-        - BearerAuth: []
+        []
       responses:
         "200":
           description: Task jobs were returned successfully.
@@ -645,17 +599,13 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PipelineJobListResponse"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
     post:
       tags:
         - Pipeline
       summary: Upsert a job
       description: Creates or updates one job record inside the selected pipeline task.
       security:
-        - BearerAuth: []
+        []
       requestBody:
         required: true
         content:
@@ -669,10 +619,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PipelineJobUpsertResponse"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
         "422":
           $ref: "#/components/responses/ValidationFailed"
   /pipeline/tasks/{task_id}/failed-jobs:
@@ -688,7 +634,7 @@ paths:
       summary: List failed jobs for task
       description: Returns only failed jobs belonging to the selected pipeline task.
       security:
-        - BearerAuth: []
+        []
       responses:
         "200":
           description: Failed task jobs were returned successfully.
@@ -696,10 +642,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PipelineJobListResponse"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
   /pipeline/tasks/{task_id}/events:
     parameters:
       - in: path
@@ -713,7 +655,7 @@ paths:
       summary: List task events
       description: Returns the recent normalized event timeline for one task, optionally filtered by event type or job.
       security:
-        - BearerAuth: []
+        []
       parameters:
         - in: query
           name: limit
@@ -740,10 +682,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PipelineEventListResponse"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
   /pipeline/tasks/{task_id}/stages/{stage}/logs:
     parameters:
       - in: path
@@ -764,7 +702,7 @@ paths:
       summary: View pipeline stage logs
       description: Returns the current human-readable log text and metadata for one stage of a pipeline task.
       security:
-        - BearerAuth: []
+        []
       responses:
         "200":
           description: Stage log details were returned successfully.
@@ -772,10 +710,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PipelineStageLogResponse"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
         "422":
@@ -799,7 +733,7 @@ paths:
       summary: Download a pipeline stage report
       description: Downloads a UTF-8 diagnostic report for one supported pipeline stage as a text file.
       security:
-        - BearerAuth: []
+        []
       responses:
         "200":
           description: Stage diagnostic report.
@@ -811,10 +745,6 @@ paths:
             text/plain:
               schema:
                 type: string
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
         "404":
           description: Pipeline task was not found.
         "422":
@@ -832,7 +762,7 @@ paths:
       summary: Cancel task
       description: Requests cancellation of the selected task and returns its refreshed status.
       security:
-        - BearerAuth: []
+        []
       responses:
         "200":
           description: Task cancellation was accepted.
@@ -840,10 +770,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PipelineTaskActionResponse"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
   /pipeline/health:
@@ -853,7 +779,7 @@ paths:
       summary: Pipeline health status
       description: Runs bounded checks for PostgreSQL, Temporal, workers, Qdrant, Neo4j, and shared storage.
       security:
-        - BearerAuth: []
+        []
       parameters:
         - in: query
           name: timeout
@@ -871,10 +797,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PipelineHealthResponse"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
         "422":
           $ref: "#/components/responses/ValidationFailed"
   /health/system-gate:
@@ -884,7 +806,7 @@ paths:
       summary: Evaluate overall system readiness
       description: Combines retrieval, graph, and pipeline checks into one deployment readiness decision with repair guidance.
       security:
-        - BearerAuth: []
+        []
       parameters:
         - in: query
           name: timeout
@@ -901,10 +823,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SystemGateResponse"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
         "422":
           $ref: "#/components/responses/ValidationFailed"
   /pipeline/controller/files:
@@ -914,7 +832,7 @@ paths:
       summary: Upload pipeline control files
       description: Uploads one supported file, prepares its dataset and task records, and starts conversion and ingestion through Temporal.
       security:
-        - BearerAuth: []
+        []
       requestBody:
         required: true
         content:
@@ -928,10 +846,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PipelineFileUploadResponse"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
         "422":
           $ref: "#/components/responses/ValidationFailed"
         "500":
@@ -947,7 +861,7 @@ paths:
       summary: List failed jobs
       description: Returns recoverable failed jobs, optionally limited to one task or dataset.
       security:
-        - BearerAuth: []
+        []
       parameters:
         - in: query
           name: limit
@@ -973,10 +887,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PipelineFailedJobListResponse"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
         "422":
           $ref: "#/components/responses/ValidationFailed"
   /pipeline/recovery/jobs/retry-selected:
@@ -986,7 +896,7 @@ paths:
       summary: Retry selected failed jobs
       description: Requests recovery for the supplied list of failed job identifiers and reports the outcome for each job.
       security:
-        - BearerAuth: []
+        []
       requestBody:
         required: true
         content:
@@ -1000,10 +910,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PipelineRecoveryResponse"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
         "422":
           $ref: "#/components/responses/ValidationFailed"
   /pipeline/recovery/jobs/{job_id}/retry:
@@ -1019,7 +925,7 @@ paths:
       summary: Retry single failed job
       description: Requests recovery for one failed job and returns the retry decision.
       security:
-        - BearerAuth: []
+        []
       responses:
         "200":
           description: Recovery result for the selected job.
@@ -1027,10 +933,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PipelineRecoveryResponse"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
   /pipeline/recovery/retry-all:
     post:
       tags:
@@ -1038,7 +940,7 @@ paths:
       summary: Retry all failed jobs
       description: Requests recovery for every currently recoverable failed job.
       security:
-        - BearerAuth: []
+        []
       responses:
         "200":
           description: Aggregate recovery result for all failed jobs.
@@ -1046,10 +948,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PipelineRecoveryResponse"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
   /pipeline/recovery/tasks/{task_id}/retry-failed:
     parameters:
       - in: path
@@ -1063,7 +961,7 @@ paths:
       summary: Retry failed jobs for a task
       description: Requests recovery for all recoverable failed jobs belonging to one task.
       security:
-        - BearerAuth: []
+        []
       responses:
         "200":
           description: Aggregate recovery result for the selected task.
@@ -1071,10 +969,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PipelineRecoveryResponse"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
   /pipeline/recovery/datasets/{dataset_id}/retry-failed:
     parameters:
       - in: path
@@ -1088,7 +982,7 @@ paths:
       summary: Retry failed jobs for a dataset
       description: Requests recovery for all recoverable failed jobs belonging to one dataset.
       security:
-        - BearerAuth: []
+        []
       responses:
         "200":
           description: Aggregate recovery result for the selected dataset.
@@ -1096,23 +990,24 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PipelineRecoveryResponse"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
   /query:
     post:
       tags:
         - Query
       summary: Query an authorized dataset
       description: |
-        Runs retrieval against one explicitly authorized dataset. Laravel derives
-        the collection, graph namespace, embedding provider, and embedding model
-        after checking the signed-in principal's dataset grant.
+        Runs retrieval against one dataset allowed for the resolved query user.
+        Without a credential, Laravel uses the only active local user. An
+        optional Sanctum bearer token may select an explicit active user and
+        must include the `query` ability.
 
         Callers cannot override storage or authorization fields. Unknown and
-        unauthorized datasets are intentionally indistinguishable.
+        unauthorized datasets are intentionally indistinguishable. Zero or
+        multiple active local users fail closed instead of selecting a user
+        arbitrarily. An explicitly supplied invalid token never falls back to
+        the implicit user.
       security:
+        - {}
         - BearerAuth: []
       requestBody:
         required: true
@@ -1129,14 +1024,12 @@ paths:
                 $ref: "#/components/schemas/QueryResponse"
         "401":
           $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
         "422":
           $ref: "#/components/responses/ValidationFailed"
         "503":
-          description: The authorized dataset or its configured model/storage runtime is not ready.
+          description: No unambiguous implicit query user is available, or the authorized dataset/model/storage runtime is not ready.
           content:
             application/json:
               schema:
@@ -1147,11 +1040,17 @@ paths:
         - Query
       summary: List datasets available for querying
       description: |
-        Returns only active datasets the authenticated principal may query under
-        the configured grant policy and whose Qdrant collection currently exists.
+        Returns only active datasets the resolved query user may query under the
+        configured policy and whose Qdrant collection currently exists. Without
+        a credential, the query user is the only active local user. An optional
+        Sanctum bearer token may select an explicit active user.
+
         If physical collection readiness cannot be established, the list fails
-        closed and exposes no dataset options.
+        closed and exposes no dataset options. Zero or multiple active local
+        users fail with HTTP 503; an explicitly supplied invalid token fails
+        with HTTP 401 and never falls back to the implicit user.
       security:
+        - {}
         - BearerAuth: []
       responses:
         "200":
@@ -1162,8 +1061,8 @@ paths:
                 $ref: "#/components/schemas/AuthorizedDatasetListResponse"
         "401":
           $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
+        "503":
+          $ref: "#/components/responses/QueryPrincipalUnavailable"
   /rag/health:
     get:
       tags:
@@ -1171,7 +1070,7 @@ paths:
       summary: Show RAG health
       description: Probes the configured Python retrieval bridge and reports endpoint, status, and request latency.
       security:
-        - BearerAuth: []
+        []
       responses:
         "200":
           description: The retrieval bridge is reachable.
@@ -1179,10 +1078,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/RagHealthResponse"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
         "502":
           description: The configured retrieval bridge could not be reached successfully.
           content:
@@ -1196,7 +1091,7 @@ paths:
       summary: RAG monitor
       description: Returns bridge runtime details, graph configuration, recent ingestion artifacts, and graph failure diagnostics.
       security:
-        - BearerAuth: []
+        []
       responses:
         "200":
           description: RAG runtime and artifact diagnostics were returned successfully.
@@ -1204,10 +1099,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/RagMonitorResponse"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
   /rag/stats:
     get:
       tags:
@@ -1215,7 +1106,7 @@ paths:
       summary: RAG statistics
       description: Returns current Qdrant collection counts and Neo4j entity, relationship, label, and relationship-type statistics.
       security:
-        - BearerAuth: []
+        []
       responses:
         "200":
           description: Vector and graph statistics were returned successfully.
@@ -1223,10 +1114,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/RagStatsResponse"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
   /rag/qdrant/collections/{collection}:
     parameters:
       - in: path
@@ -1240,9 +1127,9 @@ paths:
       tags:
         - RAG
       summary: Delete a Qdrant collection
-      description: Permanently removes one validated Qdrant collection. This low-level admin operation does not delete Laravel dataset metadata.
+      description: Permanently removes one validated Qdrant collection. This low-level control-plane operation does not delete Laravel dataset metadata.
       security:
-        - BearerAuth: []
+        []
       responses:
         "200":
           description: The Qdrant collection was deleted successfully.
@@ -1250,10 +1137,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/QdrantCollectionDeleteResponse"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
         "422":
           description: The collection name was invalid or Qdrant rejected the deletion.
           content:
@@ -1265,9 +1148,9 @@ paths:
       tags:
         - Graph
       summary: Get graph overview
-      description: Returns a bounded recent graph scene containing normalized nodes and relationships for admin visualization.
+      description: Returns a bounded recent graph scene containing normalized nodes and relationships for control-plane visualization.
       security:
-        - BearerAuth: []
+        []
       parameters:
         - in: query
           name: limit
@@ -1284,10 +1167,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/GraphPayload"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
         "502":
           $ref: "#/components/responses/BadGateway"
   /rag/neo4j/graph/search:
@@ -1297,7 +1176,7 @@ paths:
       summary: Search graph
       description: Searches Neo4j entities by text and returns a graph-ready result set.
       security:
-        - BearerAuth: []
+        []
       parameters:
         - in: query
           name: q
@@ -1320,10 +1199,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/GraphPayload"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
         "422":
           $ref: "#/components/responses/ValidationFailed"
         "502":
@@ -1333,8 +1208,13 @@ paths:
       tags:
         - Graph
       summary: Graph semantic search
-      description: Performs semantic graph retrieval inside one dataset scope authorized for the current user.
+      description: |
+        Performs semantic graph retrieval inside one dataset scope allowed for
+        the resolved query user. Credential-free requests use the only active
+        local user; an optional Sanctum bearer token may select an explicit
+        active user. Zero or multiple active local users fail closed.
       security:
+        - {}
         - BearerAuth: []
       parameters:
         - in: query
@@ -1366,14 +1246,14 @@ paths:
                 $ref: "#/components/schemas/GraphPayload"
         "401":
           $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
         "422":
           $ref: "#/components/responses/ValidationFailed"
         "502":
           $ref: "#/components/responses/BadGateway"
+        "503":
+          $ref: "#/components/responses/QueryPrincipalUnavailable"
   /rag/neo4j/graph/node:
     get:
       tags:
@@ -1381,7 +1261,7 @@ paths:
       summary: Get graph node
       description: Loads one Neo4j node and a bounded one-hop neighborhood for graph inspection.
       security:
-        - BearerAuth: []
+        []
       parameters:
         - in: query
           name: node_id
@@ -1404,10 +1284,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/GraphPayload"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
         "422":
           $ref: "#/components/responses/ValidationFailed"
         "502":
@@ -1419,7 +1295,7 @@ paths:
       summary: Expand graph node
       description: Expands a selected Neo4j node by one to three relationship hops and returns a bounded graph scene.
       security:
-        - BearerAuth: []
+        []
       requestBody:
         required: true
         content:
@@ -1433,10 +1309,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/GraphPayload"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
         "422":
           $ref: "#/components/responses/ValidationFailed"
         "502":
@@ -1448,7 +1320,7 @@ paths:
       summary: Clear graph view
       description: Returns an empty graph scene for resetting the client visualization without deleting Neo4j data.
       security:
-        - BearerAuth: []
+        []
       responses:
         "200":
           description: View cleared
@@ -1456,18 +1328,14 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/GraphPayload"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
   /rag/neo4j/graph/snapshots:
     get:
       tags:
         - Graph
       summary: List graph snapshots
-      description: Lists saved graph visualization scenes available to the admin.
+      description: Lists saved graph visualization scenes available to the operator.
       security:
-        - BearerAuth: []
+        []
       responses:
         "200":
           description: Snapshot list
@@ -1475,17 +1343,13 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/GraphSnapshotListResponse"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
     post:
       tags:
         - Graph
       summary: Save graph snapshot
       description: Saves a named client graph scene for later restoration.
       security:
-        - BearerAuth: []
+        []
       requestBody:
         required: true
         content:
@@ -1499,10 +1363,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/GraphSnapshotResponse"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
         "422":
           $ref: "#/components/responses/ValidationFailed"
   /rag/neo4j/graph/snapshots/{id}:
@@ -1518,7 +1378,7 @@ paths:
       summary: Load graph snapshot
       description: Loads one previously saved graph visualization scene by snapshot identifier.
       security:
-        - BearerAuth: []
+        []
       responses:
         "200":
           description: Snapshot payload
@@ -1526,10 +1386,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/GraphSnapshotResponse"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
     delete:
@@ -1538,7 +1394,7 @@ paths:
       summary: Delete snapshot
       description: Permanently removes one saved graph visualization snapshot without changing Neo4j data.
       security:
-        - BearerAuth: []
+        []
       responses:
         "200":
           description: Snapshot deletion result.
@@ -1546,10 +1402,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/GraphSnapshotDeleteResponse"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
   /rag/neo4j/clear:
     post:
       tags:
@@ -1557,7 +1409,7 @@ paths:
       summary: Clear Neo4j graph content
       description: Permanently deletes all graph content and clears the bridge graph cache and visualization snapshot after Neo4j succeeds.
       security:
-        - BearerAuth: []
+        []
       responses:
         "200":
           description: Graph cleared
@@ -1565,10 +1417,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/GraphClearResponse"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
         "502":
           description: Neo4j rejected the destructive operation.
           content:
@@ -1580,16 +1428,16 @@ components:
     BearerAuth:
       type: http
       scheme: bearer
-      bearerFormat: JWT
+      bearerFormat: Sanctum
   responses:
     Unauthorized:
-      description: A valid bearer token is required.
+      description: An explicitly supplied bearer token is invalid, belongs to a removed user, or lacks the query ability.
       content:
         application/json:
           schema:
             $ref: "#/components/schemas/Error"
-    Forbidden:
-      description: The authenticated token does not have the required API ability.
+    QueryPrincipalUnavailable:
+      description: A credential-free request could not resolve exactly one active local user.
       content:
         application/json:
           schema:

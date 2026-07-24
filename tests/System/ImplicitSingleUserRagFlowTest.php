@@ -10,25 +10,22 @@ use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 
 /**
- * Vertical browser-query scenario.
+ * Vertical credential-free single-user query scenario.
  *
- * This test uses a persisted Sanctum token, the real /api/auth/session exchange,
- * the browser-principal middleware, the dataset-grant database lookup, the
- * query FormRequest, controller, and proxy service. The Python bridge and
- * Qdrant collection catalog are the faked boundaries; Qdrant queries, Neo4j,
- * and model providers are therefore not started or proven compatible here.
- * Database behavior runs through Laravel's migrations and Eloquent on the
- * isolated SQLite test connection, not live PostgreSQL.
+ * This test uses the sole active persisted user, the browser-principal
+ * middleware, the dataset-grant database lookup, the query FormRequest,
+ * controller, and proxy service. The Python bridge and Qdrant collection
+ * catalog are the faked boundaries; Qdrant queries, Neo4j, and model providers
+ * are therefore not started or proven compatible here. Database behavior runs
+ * through Laravel's migrations and Eloquent on the isolated SQLite test
+ * connection, not live PostgreSQL.
  */
-class AuthenticatedRagFlowTest extends SystemTestCase
+class ImplicitSingleUserRagFlowTest extends SystemTestCase
 {
     use RefreshDatabase;
 
-    public function test_query_token_becomes_a_dataset_scoped_browser_session(): void
+    public function test_sole_active_user_receives_a_dataset_scoped_query(): void
     {
-        config()->set('config.admin_auth.bypass', false);
-        config()->set('config.query_auth.development_bypass', false);
-
         $settingsPath = storage_path('framework/testing/system-authenticated-rag-settings.json');
         File::delete($settingsPath);
         config()->set('config.admin_settings_path', $settingsPath);
@@ -50,19 +47,8 @@ class AuthenticatedRagFlowTest extends SystemTestCase
             'graph_system_authenticated',
         );
         $this->grantQueryAccess($user, $dataset);
-        $token = $user->createToken('system-browser-query', ['query'])->plainTextToken;
 
-        $this->withHeader('Origin', rtrim((string) config('app.url'), '/'))
-            ->withSession(['_token' => 'system-browser-csrf'])
-            ->withToken($token)
-            ->postJson('/api/auth/session', [], [
-                'X-CSRF-TOKEN' => 'system-browser-csrf',
-            ])
-            ->assertOk()
-            ->assertExactJson(['authenticated' => true]);
-
-        $this->withHeader('Authorization', '')
-            ->getJson('/api/query/datasets')
+        $this->getJson('/api/query/datasets')
             ->assertOk()
             ->assertExactJson([
                 'datasets' => [[
@@ -71,17 +57,15 @@ class AuthenticatedRagFlowTest extends SystemTestCase
                 ]],
             ]);
 
-        $this->withHeader('Authorization', '')
-            ->withHeader('X-CSRF-TOKEN', 'system-browser-csrf')
-            ->postJson('/api/query', [
-                'dataset_id' => 'system-authenticated',
-                'query' => 'What can this authenticated browser session retrieve?',
-                'top_k' => 4,
-                'filters' => [
-                    'source_type' => 'pdf',
-                    'language' => 'en',
-                ],
-            ])
+        $this->postJson('/api/query', [
+            'dataset_id' => 'system-authenticated',
+            'query' => 'What can this sole active user retrieve?',
+            'top_k' => 4,
+            'filters' => [
+                'source_type' => 'pdf',
+                'language' => 'en',
+            ],
+        ])
             ->assertOk()
             ->assertJsonPath('ok', true)
             ->assertJsonPath('answer', 'The authenticated session received a scoped answer.');
@@ -92,7 +76,7 @@ class AuthenticatedRagFlowTest extends SystemTestCase
 
             return $request->method() === 'POST'
                 && $request->url() === $bridgeEndpoint
-                && ($payload['query'] ?? null) === 'What can this authenticated browser session retrieve?'
+                && ($payload['query'] ?? null) === 'What can this sole active user retrieve?'
                 && ($payload['top_k'] ?? null) === 4
                 && ($payload['filters'] ?? null) === [
                     'source_type' => 'pdf',
@@ -109,10 +93,9 @@ class AuthenticatedRagFlowTest extends SystemTestCase
                 && ! array_key_exists('dataset_id', $payload);
         });
 
-        // A query session is deliberately not an admin session.
+        // The operator surface remains available independently of query identity.
         $this->withHeader('Authorization', '')
             ->getJson('/api/settings/config')
-            ->assertUnauthorized()
-            ->assertExactJson(['message' => 'Admin authentication required.']);
+            ->assertOk();
     }
 }

@@ -5,13 +5,15 @@ All commands run from project root unless noted. Use `docker ps` to see containe
 | Command | Purpose |
 |---|---|
 | `make network` | Create Docker networks `hawki-network` and `hosting_network` required by Compose. |
-| `make up-core` | Start the full local stack, run migrations, pull required Ollama models, and publish fresh Vite/Svelte UI assets into the Laravel app. |
+| `make up-core` | Build images, migrate safely, and start production mode with the UI on `http://localhost:8080`. |
+| `make up-core-server` | Start production mode for an external HTTPS reverse proxy without publishing a host UI port. |
+| `make up-core-local` | Reuse service images, start the source-mounted development stack, and publish fresh Vite/Svelte assets. |
+| `BUILD_STACK=1 make up-core-local` | Rebuild service images before starting development; use after Dockerfile or locked dependency changes. |
+| `make migration-test` | Run isolated PostgreSQL upgrade scenarios against a temporary schema in the active database. |
 | `make publish-ui` | Rebuild and publish only the Vite/Svelte UI assets into the running `hawki_rag_app` container. |
 | `make health` | Run internal health checks for Qdrant, Ollama, reranker, and bridge. |
 | `make logs-core` | Stream Compose logs for core and stack services. |
 | `docker exec -it hawki_rag_app php artisan migrate` | Create database tables. |
-| `docker compose up -d postgres temporal qdrant hawki_rag_neo4j hawki_rag_bridge hawki_rag_app` | Start the local Temporal/PostgreSQL/RAG stack. |
-| `docker compose up -d hawki-rag-temporal-workflow-worker hawki-rag-temporal-scraper-worker hawki-rag-temporal-converter-worker hawki-rag-temporal-ingestion-worker` | Start all Temporal RAG ingestion workers. |
 | `docker exec -it hawki_rag_app php artisan pipeline:workers` | Print Temporal worker containers, task queues, and registered workflow/activity names. |
 | `docker exec -it hawki_rag_app php artisan pipeline:start-task --source-url=https://example.edu --refresh-cadence=daily` | Start `IngestSourceWorkflow` from Laravel and create/update a daily Temporal schedule. |
 | `docker compose logs -f hawki-rag-temporal-workflow-worker hawki-rag-temporal-scraper-worker hawki-rag-temporal-converter-worker hawki-rag-temporal-ingestion-worker` | Follow Temporal worker logs during a run. |

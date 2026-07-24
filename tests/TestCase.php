@@ -16,9 +16,6 @@ abstract class TestCase extends BaseTestCase
         $this->assertSafeTestDatabaseEnvironment();
 
         parent::setUp();
-
-        // Config caching must not re-enable development query access in tests.
-        config()->set('config.query_auth.development_bypass', false);
     }
 
     public function createApplication(): Application
@@ -33,7 +30,7 @@ abstract class TestCase extends BaseTestCase
     /**
      * @param  non-empty-list<string>  $abilities
      */
-    protected function actingAsApiUser(array $abilities = ['admin', 'query']): User
+    protected function actingAsApiUser(array $abilities = ['query']): User
     {
         $user = User::query()->create([
             'username' => 'api-test-'.uniqid(),

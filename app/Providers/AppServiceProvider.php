@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Providers;
 
-use App\Policies\AdminAccessPolicy;
 use App\Policies\DatasetQueryPolicy;
 use App\Policies\UserAccessPolicy;
 use App\Services\WebSearch\Contracts\WebSearchInterface;
@@ -69,7 +68,6 @@ class AppServiceProvider extends ServiceProvider
     private function registerAuthorizationGates(): void
     {
         Gate::define('access-active-user', [UserAccessPolicy::class, 'accessActiveUser']);
-        Gate::define('access-admin', [AdminAccessPolicy::class, 'access']);
         Gate::define('access-query-principal', [UserAccessPolicy::class, 'accessQueryPrincipal']);
         Gate::define('query-dataset', [DatasetQueryPolicy::class, 'query']);
     }

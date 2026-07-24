@@ -128,13 +128,6 @@
                 headers: {Accept: 'application/json'},
             });
             const payload = (await response.json().catch(() => ({}))) as SystemGatePayload;
-            if (response.status === 401 || response.status === 403) {
-                summary = 'Admin access is required to run detailed health diagnostics.';
-                checks = [];
-                repairActions = [];
-                setProgress(100, 'Authorization required');
-                return;
-            }
             if (!response.ok || payload.success === false) {
                 throw new Error(payload.message || `System gate failed (${response.status})`);
             }

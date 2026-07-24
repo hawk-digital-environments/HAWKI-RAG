@@ -13,9 +13,8 @@ class RagStatsControllerTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_admin_can_delete_a_collection_with_a_valid_name(): void
+    public function test_operator_can_delete_a_collection_without_an_authentication_gate(): void
     {
-        $this->actingAsApiUser();
         config()->set('config.qdrant_http_url', 'http://qdrant.test');
         Http::fake([
             'http://qdrant.test/collections/*' => Http::response([], 200),
@@ -34,7 +33,6 @@ class RagStatsControllerTest extends TestCase
 
     public function test_invalid_collection_name_is_rejected_before_qdrant_is_called(): void
     {
-        $this->actingAsApiUser();
         Http::fake();
 
         $this->deleteJson('/api/rag/qdrant/collections/hawki@test')
@@ -46,7 +44,6 @@ class RagStatsControllerTest extends TestCase
 
     public function test_double_encoded_collection_name_is_not_decoded_twice(): void
     {
-        $this->actingAsApiUser();
         Http::fake();
 
         $this->deleteJson('/api/rag/qdrant/collections/hawki%253A1')

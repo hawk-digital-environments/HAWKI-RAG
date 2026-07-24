@@ -21,12 +21,10 @@ docker-compose.override.yml
 public/build/
 public/hot
 public/storage/
-storage/*.key
-storage/pail/
-storage/logs/
-storage/framework/cache/
-storage/framework/sessions/
-storage/framework/views/
+public/ingest_graph_preview.json
+public/ingest_summary.json
+public/neo4j_graph_visualization.json
+storage/**
 
 # Local RAG/runtime data and generated artifacts
 rag_storage/
@@ -35,7 +33,6 @@ python_rag/rag_storage/
 python_rag/rabbit_worker/
 python_rag/rabbitmq/
 python_rag/workers/
-storage/app/private/crawled-data/
 ../hawki-data/crawled-data/
 
 # Python caches and test artifacts

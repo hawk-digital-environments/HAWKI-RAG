@@ -11,8 +11,9 @@ RAWKI has two application boundaries with different security jobs:
 
 - **Laravel gateway**
 
-  - Owns browser-session and Sanctum authentication, active-user checks,
-    query-token abilities, development-principal policy, dataset grants,
+  - Resolves the only active local user for credential-free requests, or an
+    explicitly supplied Sanctum query token for external clients.
+  - Owns active-user checks, query-token abilities, dataset grant policy,
     active-dataset lookup, and database-derived storage and model scope.
   - Must not accept collection, namespace, model, graph, or authorization scope
     from a public query caller.
@@ -28,11 +29,19 @@ RAWKI has two application boundaries with different security jobs:
 
 Laravel's
 [`DatasetQueryAuthorizationService`](../../app/Services/Authorization/DatasetQueryAuthorizationService.php)
-resolves an active principal, requires an explicit `query` grant for an active
-dataset, and derives `dataset_id`, `qdrant_collection`, `neo4j_namespace`,
-`embedding_provider`, and `embedding_model` from the database. Unknown,
-unauthorized, and inactive datasets deliberately share the same 404 response.
-A database row with incomplete storage targets fails before Python is called.
+resolves an active principal and derives `dataset_id`, `qdrant_collection`,
+`neo4j_namespace`, `embedding_provider`, and `embedding_model` from the
+database. The single-user default permits every active dataset; setting
+`HAWKI_RAG_QUERY_ALL_DATASETS_BY_DEFAULT=false` switches to explicit
+`dataset_grants`. Unknown, unauthorized, and inactive datasets deliberately
+share the same 404 response. A database row with incomplete storage targets
+fails before Python is called.
+
+Credential-free requests must resolve exactly one active local user. Zero or
+multiple active users fail with HTTP `503`; RAWKI never chooses an arbitrary
+row. A supplied bearer token takes precedence, must belong to an active user
+with the `query` ability, and fails with HTTP `401` instead of falling back to
+the implicit user.
 
 The public Laravel request
 [`QueryDatasetRequest`](../../app/Http/Requests/Rag/QueryDatasetRequest.php)
@@ -65,42 +74,46 @@ bypass Laravel's principal and grant checks.
 ```mermaid
 flowchart TD
     subgraph Laravel["Laravel gateway — public trust boundary"]
-        A["Browser session or Sanctum query token"] --> B["Authenticate the query principal and require query ability"]
-        B --> C["Validate dataset_id, query options, and scalar metadata filters"]
-        C --> D["Resolve an active HAWKI user"]
-        D --> E{"Active dataset with an explicit query grant?"}
-        E -- "No" --> F["404 dataset_not_found<br/>Unknown, unauthorized, and inactive look identical"]
-        E -- "Yes" --> G["Derive authorized_scope and model runtime from database and settings"]
-        G --> H{"Collection, namespace, and embedding contract complete?"}
-        H -- "No" --> I["409 dataset_not_ready<br/>Python is not called"]
-        H -- "Yes" --> J["POST internal /query with server-derived authorized_scope"]
+        A["Credential-free request or optional Sanctum query token"] --> B{"Bearer token supplied?"}
+        B -- "Yes" --> C["Require a valid active user with query ability<br/>Invalid token: 401"]
+        B -- "No" --> D{"Exactly one active local user?"}
+        D -- "No" --> E["503 query principal unavailable or ambiguous"]
+        D -- "Yes" --> F["Use the sole active local user"]
+        C --> G["Validate dataset_id, query options, and scalar metadata filters"]
+        F --> G
+        G --> H{"Active dataset allowed by the configured query policy?"}
+        H -- "No" --> I["404 dataset_not_found<br/>Unknown, unauthorized, and inactive look identical"]
+        H -- "Yes" --> J["Derive authorized_scope and model runtime from database and settings"]
+        J --> K{"Collection, namespace, and embedding contract complete?"}
+        K -- "No" --> L["409 dataset_not_ready<br/>Python is not called"]
+        K -- "Yes" --> M["POST internal /query with server-derived authorized_scope"]
     end
 
     subgraph Python["Python bridge — trusted internal network"]
-        J --> K["Validate the scope, provider, and embedding vector space with Pydantic"]
-        K --> L["Select exactly authorized_scope.qdrant_collection"]
-        L --> M{"Scoped collection available?"}
-        M -- "No" --> N["503 dataset_not_ready<br/>Never search or fall back globally"]
-        M -- "Yes" --> O["Sanitize user filters and append the mandatory dataset_id predicate"]
-        O --> P["Embed with the dataset model<br/>Direct Ollama or selected LiteLLM alias; no provider fallback"]
-        P --> Q["Vector and lexical retrieval from only the selected collection"]
-        Q --> R["Fuse, optionally rerank, and trim retrieved sources"]
+        M --> N["Validate the scope, provider, and embedding vector space with Pydantic"]
+        N --> O["Select exactly authorized_scope.qdrant_collection"]
+        O --> P{"Scoped collection available?"}
+        P -- "No" --> Q["503 dataset_not_ready<br/>Never search or fall back globally"]
+        P -- "Yes" --> R["Sanitize user filters and append the mandatory dataset_id predicate"]
+        R --> S["Embed with the dataset model<br/>Direct Ollama or selected LiteLLM alias; no provider fallback"]
+        S --> T["Vector and lexical retrieval from only the selected collection"]
+        T --> U["Fuse, optionally rerank, and trim retrieved sources"]
 
-        K --> S{"Graph retrieval enabled for this request?"}
-        S -- "Yes" --> T["Neo4j structural and KG reads constrained by dataset_id and namespace"]
-        S -- "No" --> U["Skip graph retrieval"]
+        N --> V{"Graph retrieval enabled for this request?"}
+        V -- "Yes" --> W["Neo4j structural and KG reads constrained by dataset_id and namespace"]
+        V -- "No" --> X["Skip graph retrieval"]
 
-        R --> V["Build grounded context"]
-        T --> V
-        U --> V
-        V --> W{"Generate an answer?"}
-        W -- "Yes" --> X["Generate through the explicitly selected runtime and apply output safety"]
-        W -- "No" --> Y["Return ranked sources without generation"]
-        X --> Z["Return the scoped response"]
-        Y --> Z
+        U --> Y["Build grounded context"]
+        W --> Y
+        X --> Y
+        Y --> Z{"Generate an answer?"}
+        Z -- "Yes" --> AA["Generate through the explicitly selected runtime and apply output safety"]
+        Z -- "No" --> AB["Return ranked sources without generation"]
+        AA --> AC["Return the scoped response"]
+        AB --> AC
     end
 
-    Z --> AA["Laravel forwards the Python status and response body"]
+    AC --> AD["Laravel forwards the Python status and response body"]
 ```
 
 Readiness failures intentionally identify which boundary rejected the request:

@@ -70,7 +70,10 @@ Use GitHub checklists as developer inspiration. Treat official EU/German guidanc
    Keep CSP, frame, MIME, referrer, permissions, and cross-origin headers enabled.
 
 2. Internal API hardening.
-   Keep internal APIs behind Sanctum bearer tokens and rate limits. Do not expose `/api/*` without authentication.
+   Keep the credential-free control-plane and single-user query APIs on loopback
+   or a trusted network, or protect them at the reverse proxy. Keep rate limits
+   enabled. Never expose retrieval data or destructive control-plane routes
+   directly to untrusted clients.
 
 3. Destructive action hardening.
    Keep delete, retry, cancel, Qdrant cleanup, and Neo4j clear routes separately throttled.
@@ -81,8 +84,11 @@ Use GitHub checklists as developer inspiration. Treat official EU/German guidanc
 5. Filesystem boundaries.
    Local scraper files and output directories must stay inside configured HAWKI-RAG storage roots.
 
-6. Token lifecycle.
-   Use prefixed Sanctum tokens, expiration, revocation, and per-environment secrets.
+6. Query identity.
+   Keep exactly one active local user for credential-free retrieval. Zero or
+   multiple active users must fail closed instead of selecting a user
+   arbitrarily. If external clients use optional Sanctum tokens, keep their
+   prefixes, expiration, revocation, and per-environment secrets configured.
 
 7. Production secrets.
    Replace `change_me`, disable debug, use HTTPS, rotate leaked credentials, and do not commit `.env`.

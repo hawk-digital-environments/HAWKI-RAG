@@ -14,6 +14,7 @@ const clearNote = document.getElementById('neo4j-clear-note');
 
 const searchInput = document.getElementById('graph-search-input');
 const searchResults = document.getElementById('graph-search-results');
+const semanticDatasetSelect = document.getElementById('graph-semantic-dataset');
 const semanticInput = document.getElementById('graph-semantic-input');
 const semanticResults = document.getElementById('graph-semantic-results');
 const layoutSelect = document.getElementById('graph-layout-select');
@@ -539,12 +540,65 @@ async function searchEntities(query) {
     }
 }
 
+async function loadSemanticDatasets() {
+    if (!semanticDatasetSelect) return;
+
+    try {
+        const data = await requestJson(apiUrl('query/datasets'));
+        const datasets = (Array.isArray(data.datasets) ? data.datasets : [])
+            .map((dataset) => ({
+                datasetId: String(dataset?.dataset_id || '').trim(),
+                name: String(dataset?.name || dataset?.dataset_id || '').trim(),
+            }))
+            .filter((dataset) => dataset.datasetId !== '');
+        const rememberedDatasetId = window.localStorage.getItem('hawkiRagQueryDatasetId') || '';
+
+        semanticDatasetSelect.replaceChildren();
+        if (datasets.length === 0) {
+            semanticDatasetSelect.add(new Option('No query-ready datasets', ''));
+            return;
+        }
+
+        datasets.forEach((dataset) => {
+            semanticDatasetSelect.add(
+                new Option(`${dataset.name || dataset.datasetId} (${dataset.datasetId})`, dataset.datasetId),
+            );
+        });
+
+        const selectedDatasetId = datasets.some(
+            (dataset) => dataset.datasetId === rememberedDatasetId,
+        )
+            ? rememberedDatasetId
+            : semanticDatasetSelect.options[0]?.value || '';
+
+        semanticDatasetSelect.value = selectedDatasetId;
+        if (selectedDatasetId) {
+            window.localStorage.setItem('hawkiRagQueryDatasetId', selectedDatasetId);
+        }
+    } catch (error) {
+        semanticDatasetSelect.replaceChildren(new Option('Query-ready datasets unavailable', ''));
+        semanticResults.innerHTML = `<div class="graph-result-error">${escapeHtml(error.message)}</div>`;
+    }
+}
+
 async function semanticSearch(query) {
     activeSearchQuery = query;
     if (!query.trim()) return;
+
+    const datasetId = semanticDatasetSelect?.value || '';
+    if (!datasetId) {
+        semanticResults.innerHTML = '<div class="graph-result-muted">No query-ready dataset is available.</div>';
+        return;
+    }
+
     semanticResults.innerHTML = '<div class="graph-result-muted">Searching semantically...</div>';
     try {
-        const data = await requestJson(apiUrl(`rag/neo4j/graph/semantic-search?q=${encodeURIComponent(query)}&limit=8`));
+        const params = new URLSearchParams({
+            dataset_id: datasetId,
+            q: query,
+            limit: '8',
+        });
+        const data = await requestJson(apiUrl(`rag/neo4j/graph/semantic-search?${params.toString()}`));
         renderSearchResults(semanticResults, data.results || [], data.warnings || []);
     } catch (error) {
         semanticResults.innerHTML = `<div class="graph-result-error">${escapeHtml(error.message)}</div>`;
@@ -698,6 +752,7 @@ function debounce(callback, wait = 300) {
 if (graphCanvas) {
     initGraph();
     loadSnapshotList().catch(() => {});
+    loadSemanticDatasets();
     loadOverview();
     const overviewPollTimer = setInterval(() => {
         loadOverview({ quiet: true, replace: false });
@@ -706,6 +761,12 @@ if (graphCanvas) {
     searchInput?.addEventListener('input', debounce((event) => searchEntities(event.target.value), 350));
     semanticInput?.addEventListener('keydown', (event) => {
         if (event.key === 'Enter') semanticSearch(event.target.value);
+    });
+    semanticDatasetSelect?.addEventListener('change', () => {
+        if (semanticDatasetSelect.value) {
+            window.localStorage.setItem('hawkiRagQueryDatasetId', semanticDatasetSelect.value);
+        }
+        semanticResults.innerHTML = '';
     });
     overviewBtn?.addEventListener('click', loadOverview);
     relayoutBtn?.addEventListener('click', runLayout);

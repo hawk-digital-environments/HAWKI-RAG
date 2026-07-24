@@ -23,6 +23,21 @@
 
 ### Bugfix
 
+- Preserve released migration identities and add forward reconciliation so
+  lagging installations can upgrade without losing assistant-era document
+  data or missing pipeline columns.
+- Make `up-core` use production Laravel/container defaults and baked
+  application sources while publishing its UI on loopback, retain
+  `up-core-local` for development mounts and `up-core-server` for external
+  reverse proxies, and ensure `ENV_FILE` reaches service containers.
+- Reuse existing service images during `up-core-local` so ordinary frontend
+  development does not rebuild the full Python/CUDA dependency image.
+- Remove the RAWKI admin/operator gate from the single-operator control plane
+  and remove the browser token prompt by resolving the sole active user for
+  credential-free, dataset-scoped retrieval. Explicit Sanctum bearer clients
+  remain supported, while zero or multiple active users fail closed.
+- Quiesce application writers and run migrations before releasing upgraded
+  application and worker containers.
 - Fix ARM compatibility issues in Docker builds, including Ollama and database admin tooling.
 - Fix gateway/Laravel URL handling by making `DOCKER_PROJECT_PROTOCOL`, `APP_URL`, and `ASSET_URL` configurable from Docker build args.
 - Fix Vite asset base path generation so assets resolve correctly when the app is mounted under a sub-path.
@@ -43,7 +58,9 @@
 - Add Temporal workflow payload factories and external service adapter workers for scraper/converter/ingestion handoff.
 - Add pipeline validation and structured pipeline logging helpers for conversion and ingestion stages.
 - Remove previously tracked Python cache files and generated JSON artifacts from the repository.
-- Clean up Laravel migrations by removing obsolete cache/session/scrape table migrations and adding operational state tables for the new pipeline.
+- Consolidate fresh-install operational schemas while retaining the forward
+  migrations required by existing deployments.
+- Correct Composer package identity and GPLv3/commercial dual-license metadata.
 - Update the Laravel Dockerfile to build frontend assets more reliably and simplify crawler resource handling.
 
 ### Deprecation

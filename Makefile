@@ -5,8 +5,8 @@
 # Start with `make help` to see the public commands grouped by responsibility.
 # Variables can be overridden per invocation, for example:
 #
-#   make up-core USE_OLLAMA_GPU=0 UI_AUTO_BUILD=0
-#   make up-core-server ENV_FILE=.env.production
+#   make up-core USE_OLLAMA_GPU=0 ENV_FILE=.env.production
+#   make up-core-local UI_AUTO_BUILD=0
 #
 # Internal implementation targets start with an underscore and are intentionally
 # omitted from the help output.
@@ -22,9 +22,11 @@ SHELL := /bin/bash
 COMPOSE_BIN ?= docker compose
 COMPOSE_PARALLEL_LIMIT ?= 1
 ENV_FILE ?= .env
+BUILD_STACK ?= 1
 HOST_OS := $(shell uname -s)
 BASE_COMPOSE_FILE ?= docker-compose.yml
 GPU_OVERRIDE_COMPOSE ?= docker-compose-gpu-override.yml
+UI_OVERRIDE_COMPOSE ?= docker-compose.ui.yml
 LOCAL_OVERRIDE_COMPOSE ?= docker-compose.local.yml
 COMPOSE_FILE_SEP ?= :
 COMMA := ,
@@ -58,8 +60,9 @@ else
 endif
 
 CORE_SERVER_COMPOSE_FILE_LIST := $(BASE_COMPOSE_FILE)$(CORE_GPU_COMPOSE_SUFFIX)
-CORE_LOCAL_COMPOSE_FILE_LIST := $(BASE_COMPOSE_FILE)$(CORE_GPU_COMPOSE_SUFFIX)$(COMPOSE_FILE_SEP)$(LOCAL_OVERRIDE_COMPOSE)
-COMPOSE_FILE_LIST ?= $(CORE_SERVER_COMPOSE_FILE_LIST)
+CORE_UI_COMPOSE_FILE_LIST := $(BASE_COMPOSE_FILE)$(CORE_GPU_COMPOSE_SUFFIX)$(COMPOSE_FILE_SEP)$(UI_OVERRIDE_COMPOSE)
+CORE_LOCAL_COMPOSE_FILE_LIST := $(CORE_UI_COMPOSE_FILE_LIST)$(COMPOSE_FILE_SEP)$(LOCAL_OVERRIDE_COMPOSE)
+COMPOSE_FILE_LIST ?= $(CORE_UI_COMPOSE_FILE_LIST)
 COMPOSE_PROFILES ?= $(CORE_PROFILES)
 PROFILE_MESSAGE ?= $(GPU_MESSAGE)
 
@@ -74,6 +77,7 @@ endif
 COMPOSE_CMD = $(COMPOSE_ENV_PREFIX) \
 	COMPOSE_PARALLEL_LIMIT=$(COMPOSE_PARALLEL_LIMIT) \
 	COMPOSE_FILE=$(COMPOSE_FILE_LIST) \
+	HAWKI_RAG_COMPOSE_ENV_FILE="$(ENV_FILE)" \
 	$(if $(strip $(COMPOSE_PROFILES)),COMPOSE_PROFILES=$(COMPOSE_PROFILES)) \
 	$(COMPOSE_BIN) --env-file $(ENV_FILE)
 
@@ -99,10 +103,10 @@ UI_NODE_RUN = docker run --rm --entrypoint /usr/bin/env \
 # ==============================================================================
 
 .PHONY: help
-.PHONY: clean python-lock python-deps python-test python-integration provider-test system-test
+.PHONY: clean python-lock python-deps python-test python-integration provider-test system-test migration-test
 .PHONY: network pull-core build-app build-ui publish-ui
-.PHONY: migrate-core
-.PHONY: _up-core up-core up-core-server
+.PHONY: migrate-core _migrate-core-before-start
+.PHONY: _up-core up-core up-core-local up-core-server
 .PHONY: health test-services
 .PHONY: pull-models logs-core
 .PHONY: down-core down-rag restart-core
@@ -217,6 +221,21 @@ migrate-core: ## Run Laravel migrations with startup retry handling.
 	echo "Laravel migrations failed after 30 attempts."; \
 	exit 1
 
+_migrate-core-before-start:
+	@echo "Running Laravel migrations before writable services start..."
+	@attempt=1; \
+	while [ "$$attempt" -le 30 ]; do \
+		if $(COMPOSE_CMD) run --rm --no-deps hawki_rag_app php artisan migrate --force; then \
+			echo "Laravel migrations are up to date."; \
+			exit 0; \
+		fi; \
+		echo "Migration attempt $$attempt failed; retrying in 2s..."; \
+		attempt=$$((attempt + 1)); \
+		sleep 2; \
+	done; \
+	echo "Laravel migrations failed after 30 attempts; writable services remain stopped."; \
+	exit 1
+
 # ==============================================================================
 # Stack startup profiles
 # ==============================================================================
@@ -225,8 +244,19 @@ migrate-core: ## Run Laravel migrations with startup retry handling.
 
 _up-core: network
 	@echo $(PROFILE_MESSAGE)
-	@echo "Launching full stack (COMPOSE_FILE=$(COMPOSE_FILE_LIST), profiles: $(if $(strip $(COMPOSE_PROFILES)),$(COMPOSE_PROFILES),none))..."
-	@$(COMPOSE_CMD) up -d --build --remove-orphans
+	@if [ "$(BUILD_STACK)" = "1" ]; then \
+		echo "Building stack images (COMPOSE_FILE=$(COMPOSE_FILE_LIST), profiles: $(if $(strip $(COMPOSE_PROFILES)),$(COMPOSE_PROFILES),none))..."; \
+		$(COMPOSE_CMD) build; \
+	else \
+		echo "Reusing existing development images (set BUILD_STACK=1 to rebuild them)."; \
+	fi
+	@echo "Quiescing application writers before database migration..."
+	@$(COMPOSE_CMD) down --remove-orphans
+	@$(COMPOSE_CMD) up -d --wait postgres
+	@$(COMPOSE_CMD) run --rm --no-deps hawki-rag-shared-storage-init
+	@$(MAKE) --no-print-directory _migrate-core-before-start COMPOSE_FILE_LIST="$(COMPOSE_FILE_LIST)" COMPOSE_PROFILES="$(COMPOSE_PROFILES)" ENV_FILE="$(ENV_FILE)" COMPOSE_BIN="$(COMPOSE_BIN)"
+	@echo "Launching the migrated stack..."
+	@$(COMPOSE_CMD) up -d --remove-orphans
 	@$(COMPOSE_CMD) rm -f hawki-rag-shared-storage-init >/dev/null
 	@echo "Ensuring Ollama models are pulled..."
 	@for model in bge-m3 llama3.1:8b llama3.2:1b qwen2.5vl:7b; do \
@@ -234,12 +264,17 @@ _up-core: network
 		docker exec $(OLLAMA_CONTAINER) ollama pull $$model >/dev/null 2>&1 || true; \
 	done
 	@docker network connect hawki-network hawki-toolkit-file-converter-file-converter-1 >/dev/null 2>&1 || true
-	@$(MAKE) --no-print-directory migrate-core COMPOSE_FILE_LIST="$(COMPOSE_FILE_LIST)" COMPOSE_PROFILES="$(COMPOSE_PROFILES)" ENV_FILE="$(ENV_FILE)" COMPOSE_BIN="$(COMPOSE_BIN)"
 
-up-core: COMPOSE_FILE_LIST = $(CORE_LOCAL_COMPOSE_FILE_LIST)
+up-core: COMPOSE_FILE_LIST = $(CORE_UI_COMPOSE_FILE_LIST)
 up-core: COMPOSE_PROFILES = $(CORE_PROFILES)
-up-core: PROFILE_MESSAGE = $(GPU_MESSAGE) Local override enabled.
-up-core: _up-core ## Start the complete local stack and publish the UI.
+up-core: PROFILE_MESSAGE = $(GPU_MESSAGE) Production mode enabled with loopback UI.
+up-core: _up-core ## Start the production-mode stack at http://localhost:8080.
+
+up-core-local: COMPOSE_FILE_LIST = $(CORE_LOCAL_COMPOSE_FILE_LIST)
+up-core-local: COMPOSE_PROFILES = $(CORE_PROFILES)
+up-core-local: BUILD_STACK = 0
+up-core-local: PROFILE_MESSAGE = $(GPU_MESSAGE) Local development override enabled.
+up-core-local: _up-core ## Reuse images, start source-mounted development, and publish the UI.
 	@if [ "$(UI_AUTO_BUILD)" = "1" ]; then \
 		$(MAKE) --no-print-directory publish-ui UI_BUILD_DIR="$(UI_BUILD_DIR)"; \
 	else \
@@ -248,8 +283,8 @@ up-core: _up-core ## Start the complete local stack and publish the UI.
 
 up-core-server: COMPOSE_FILE_LIST = $(CORE_SERVER_COMPOSE_FILE_LIST)
 up-core-server: COMPOSE_PROFILES = $(CORE_PROFILES)
-up-core-server: PROFILE_MESSAGE = $(GPU_MESSAGE) Server mode and Temporal workers enabled.
-up-core-server: _up-core ## Start the server-oriented stack without local overrides.
+up-core-server: PROFILE_MESSAGE = $(GPU_MESSAGE) Production reverse-proxy mode enabled.
+up-core-server: _up-core ## Start production mode without publishing a host UI port.
 
 # ==============================================================================
 # Health and service diagnostics
@@ -327,7 +362,7 @@ health: ## Check required and optional containers plus service endpoints.
 	check_exec "Ollama models" $(OLLAMA_CONTAINER) "ollama list" 1; \
 	check_exec "Ingestion bridge" hawki_rag_bridge "curl -fsS http://localhost:8000/health" 0; \
 	check_exec "Local reranker" hawki_rag_rerank "curl -fsS http://localhost:8000/health" 0; \
-	check_url "Laravel HTTP" "http://127.0.0.1:8080/rag/health" 0; \
+	check_url "Laravel HTTP" "http://127.0.0.1:8080/up" 0; \
 	echo ""; \
 	if [ "$$failed" = "0" ]; then \
 		echo "Health checks completed."; \
@@ -380,6 +415,17 @@ provider-test: ## Run live Ollama and LiteLLM compatibility tests (unavailable s
 
 system-test: ## Run Laravel authenticated query, isolation, and PDF upload system flows.
 	@php artisan test --testsuite=System
+
+migration-test: ## Run isolated PostgreSQL migration-upgrade scenarios in the active stack.
+	@$(COMPOSE_CMD) exec -T hawki_rag_app sh -lc '\
+		RUN_POSTGRES_MIGRATION_TESTS=1 \
+		MIGRATION_TEST_ALLOW_SHARED_DATABASE=1 \
+		MIGRATION_TEST_DB_HOST="$${DB_HOST:-postgres}" \
+		MIGRATION_TEST_DB_PORT="$${DB_PORT:-5432}" \
+		MIGRATION_TEST_DB_DATABASE="$${DB_DATABASE:-hawki_rag}" \
+		MIGRATION_TEST_DB_USERNAME="$${DB_USERNAME:-rag_user}" \
+		MIGRATION_TEST_DB_PASSWORD="$${DB_PASSWORD:-}" \
+		php artisan test tests/Feature/Database/PostgresMigrationUpgradeTest.php'
 
 # ==============================================================================
 # Ollama model management

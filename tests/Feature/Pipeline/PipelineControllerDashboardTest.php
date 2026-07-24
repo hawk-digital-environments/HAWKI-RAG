@@ -38,7 +38,6 @@ class PipelineControllerDashboardTest extends TestCase
             ->assertSee('Pipeline Controller')
             ->assertSee('data-pipeline-controller-dashboard', false)
             ->assertSee('pipeline-controller-config', false)
-            ->assertSee('"adminAuthorized":true', false)
             ->assertDontSee('pipeline-task-select', false);
 
         $this->get('/hawki-rag-playground')

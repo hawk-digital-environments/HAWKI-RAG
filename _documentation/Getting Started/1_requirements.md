@@ -59,7 +59,7 @@
 - Install Python dependencies for the FastAPI bridge and reranker before first use:
 
 ```bash
-cd /home/rnonk/RAG/RAWKI
+# From the RAWKI repository root:
 make python-deps
 ```
 

@@ -1,12 +1,12 @@
 FROM neunerlei/node-nginx:25 AS node-build
 
-ARG DOCKER_PROJECT_HOST
-ARG DOCKER_PROJECT_PATH
-ARG DOCKER_PROJECT_PROTOCOL
+ARG DOCKER_PROJECT_HOST=ixdlab.hawk.de
+ARG DOCKER_PROJECT_PATH=/hawki-rag/
+ARG DOCKER_PROJECT_PROTOCOL=https
 ARG DOCKER_SERVICE_PATH
-ENV DOCKER_PROJECT_HOST=${DOCKER_PROJECT_HOST:-ixdlab.hawk.de} \
-    DOCKER_PROJECT_PATH=${DOCKER_PROJECT_PATH:-/hawki-rag/} \
-    DOCKER_PROJECT_PROTOCOL=${DOCKER_PROJECT_PROTOCOL:-https}
+ENV DOCKER_PROJECT_HOST=${DOCKER_PROJECT_HOST} \
+    DOCKER_PROJECT_PATH=${DOCKER_PROJECT_PATH} \
+    DOCKER_PROJECT_PROTOCOL=${DOCKER_PROJECT_PROTOCOL}
 
 # Copy only package files for caching
 COPY package.json package-lock.json ./
@@ -31,13 +31,13 @@ RUN rm -rf /var/www/html/public/build \
 
 FROM neunerlei/php-nginx:8.4 AS laravel-app
 
-ARG DOCKER_PROJECT_HOST
-ARG DOCKER_PROJECT_PATH
-ARG DOCKER_PROJECT_PROTOCOL
-ENV DOCKER_PROJECT_HOST=${DOCKER_PROJECT_HOST:-ixdlab.hawk.de} \
-    DOCKER_PROJECT_PATH=${DOCKER_PROJECT_PATH:-/hawki-rag/} \
-    DOCKER_PROJECT_PROTOCOL=${DOCKER_PROJECT_PROTOCOL:-https} \
-    ASSET_URL="${DOCKER_PROJECT_PROTOCOL}://${DOCKER_PROJECT_HOST}${DOCKER_PROJECT_PATH}" \
+ARG DOCKER_PROJECT_HOST=ixdlab.hawk.de
+ARG DOCKER_PROJECT_PATH=/hawki-rag/
+ARG DOCKER_PROJECT_PROTOCOL=https
+ENV DOCKER_PROJECT_HOST=${DOCKER_PROJECT_HOST} \
+    DOCKER_PROJECT_PATH=${DOCKER_PROJECT_PATH} \
+    DOCKER_PROJECT_PROTOCOL=${DOCKER_PROJECT_PROTOCOL}
+ENV ASSET_URL="${DOCKER_PROJECT_PROTOCOL}://${DOCKER_PROJECT_HOST}${DOCKER_PROJECT_PATH}" \
     APP_URL="${DOCKER_PROJECT_PROTOCOL}://${DOCKER_PROJECT_HOST}${DOCKER_PROJECT_PATH}"
 
 # Install runtime/build dependencies. The base image already includes the PHP
@@ -60,8 +60,16 @@ COPY . .
 # Copy built assets from node build stage
 COPY --chown=www-data:www-data --from=node-build /var/www/html/public/build /var/www/built_resources
 
-# Fix Laravel permissions
-RUN chown -R www-data:www-data \
+# Recreate the runtime skeleton because local storage data is excluded from the
+# build context and mounted separately at runtime.
+RUN mkdir -p \
+    /var/www/html/storage/app/public \
+    /var/www/html/storage/framework/cache/data \
+    /var/www/html/storage/framework/sessions \
+    /var/www/html/storage/framework/views \
+    /var/www/html/storage/logs \
+    /var/www/html/bootstrap/cache \
+ && chown -R www-data:www-data \
     /var/www/html/storage \
     /var/www/html/bootstrap/cache \
     /var/www/built_resources

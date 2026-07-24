@@ -15,11 +15,18 @@ If your app is behind a different host/port, replace `localhost` accordingly.
 
 ## About auth
 
-Most `/api` routes documented here are protected in code, including the dataset,
-document, pipeline, query, and graph endpoints.
+RAWKI's control-plane and dataset-scoped query endpoints support a trusted
+single-user deployment without a bearer token. A credential-free query uses
+the only active local user; zero or multiple active users fail with HTTP `503`
+instead of selecting one arbitrarily.
 
-You can add `Authorization: Bearer <token>` in Swagger UI once you log in with
-your normal app flow.
+External API clients may optionally add `Authorization: Bearer <query-token>`
+in Swagger UI to select an explicit active user. An invalid token is rejected
+with HTTP `401` and never falls back to the implicit user.
+
+Because the whole published API is reachable without a RAWKI credential in
+single-user mode, keep this UI and the endpoints on loopback or a trusted
+network, or protect them at the reverse proxy.
 
 Legacy compatibility routes may still exist in code, but this published
 contract intentionally shows only the unified public API surface.

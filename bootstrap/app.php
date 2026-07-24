@@ -1,6 +1,5 @@
 <?php
 
-use App\Http\Middleware\RequireAdminAccess;
 use App\Http\Middleware\RequireBrowserQueryPrincipal;
 use App\Http\Middleware\SecurityHeaders;
 use Illuminate\Foundation\Application;
@@ -24,7 +23,6 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'abilities' => CheckAbilities::class,
             'browser-query-principal' => RequireBrowserQueryPrincipal::class,
-            'admin' => RequireAdminAccess::class,
         ]);
         $middleware->validateCsrfTokens(except: [
             'ui/*',
@@ -33,7 +31,7 @@ return Application::configure(basePath: dirname(__DIR__))
     })
     ->withExceptions(function (Exceptions $exceptions) {
         $exceptions->shouldRenderJsonWhen(
-            fn (Request $request, \Throwable $exception): bool => $request->is('api/*')
+            fn (Request $request, Throwable $exception): bool => $request->is('api/*')
                 || $request->expectsJson()
         );
     })->create();

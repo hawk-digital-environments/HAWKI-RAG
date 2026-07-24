@@ -10,14 +10,6 @@ use Tests\TestCase;
 
 class GraphRequestValidationTest extends TestCase
 {
-    protected function setUp(): void
-    {
-        parent::setUp();
-
-        config()->set('config.admin_auth.bypass', true);
-        config()->set('config.admin_auth.bypass_environments', [app()->environment()]);
-    }
-
     public function test_graph_requests_forward_validated_values_and_defaults(): void
     {
         $this->mock(Neo4jGraphExplorer::class, function (MockInterface $mock): void {

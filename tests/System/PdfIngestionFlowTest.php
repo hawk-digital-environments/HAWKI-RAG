@@ -16,9 +16,9 @@ use Illuminate\Support\Facades\Http;
 /**
  * Vertical upload-to-orchestration scenario using a valid ten-page PDF.
  *
- * The test exercises a persisted admin token, Sanctum/ability middleware,
- * multipart validation, physical shared-storage persistence, hashing, dataset,
- * task/job/source creation, and Temporal workflow-payload construction. Only
+ * The test exercises the unlocked operator upload API, multipart validation,
+ * physical shared-storage persistence, hashing, dataset, task/job/source
+ * creation, and Temporal workflow-payload construction. Only
  * the Python Temporal endpoint is faked: workers, conversion, model inference,
  * Qdrant writes, Neo4j writes, and workflow completion are intentionally not
  * claimed by this test. Relational persistence uses the isolated SQLite test
@@ -56,8 +56,6 @@ class PdfIngestionFlowTest extends SystemTestCase
 
     public function test_real_ten_page_pdf_is_persisted_and_handed_to_temporal(): void
     {
-        config()->set('config.admin_auth.bypass', false);
-
         $bridgeEndpoint = rtrim((string) config('config.hawki_rag_bridge_url'), '/')
             .'/temporal/workflows/ingest';
         Http::fake([
@@ -72,17 +70,13 @@ class PdfIngestionFlowTest extends SystemTestCase
         $this->assertStringStartsWith('%PDF-1.4', $pdf);
         $this->assertStringContainsString('%%EOF', $pdf);
 
-        $admin = $this->createSystemUser('system-pdf-admin');
-        $token = $admin->createToken('system-pdf-ingestion', ['admin'])->plainTextToken;
-
-        $response = $this->withToken($token)
-            ->post('/api/pipeline/controller/files', [
-                'dataset_id' => 'system-pdf-ten-pages',
-                'graph' => 'true',
-                'file' => UploadedFile::fake()->createWithContent('ten-page-handbook.pdf', $pdf),
-            ], [
-                'Accept' => 'application/json',
-            ]);
+        $response = $this->post('/api/pipeline/controller/files', [
+            'dataset_id' => 'system-pdf-ten-pages',
+            'graph' => 'true',
+            'file' => UploadedFile::fake()->createWithContent('ten-page-handbook.pdf', $pdf),
+        ], [
+            'Accept' => 'application/json',
+        ]);
 
         $response
             ->assertCreated()

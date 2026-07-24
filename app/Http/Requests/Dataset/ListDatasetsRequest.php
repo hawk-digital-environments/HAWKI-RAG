@@ -4,23 +4,13 @@ declare(strict_types=1);
 
 namespace App\Http\Requests\Dataset;
 
-use App\Models\User;
-use Illuminate\Contracts\Auth\Access\Gate as GateContract;
 use Illuminate\Foundation\Http\FormRequest;
 
 class ListDatasetsRequest extends FormRequest
 {
-    public function authorize(GateContract $gate): bool
+    public function authorize(): bool
     {
-        $user = $this->user();
-
-        if ($user !== null && ! $user instanceof User) {
-            return false;
-        }
-
-        return $user === null
-            ? $gate->allows('access-admin')
-            : $gate->forUser($user)->allows('access-admin');
+        return true;
     }
 
     public function rules(): array

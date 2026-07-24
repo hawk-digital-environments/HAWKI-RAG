@@ -6,7 +6,7 @@ This specification describes triplet-aware retrieval behavior across:
 
 - `app/Mcp/Tools/HawkiRagSearchTool.php`
 - `app/Services/RagSearch/RagSearcher.php`
-- `python_rag/pipeline/query_logic.py`
+- `python_rag/application/workflows/query_logic.py`
 
 ## System-level behavior
 

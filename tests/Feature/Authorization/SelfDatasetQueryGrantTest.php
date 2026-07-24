@@ -20,16 +20,14 @@ final class SelfDatasetQueryGrantTest extends TestCase
     {
         parent::setUp();
 
-        config()->set('config.admin_auth.bypass', false);
-        config()->set('config.query_auth.development_bypass', false);
         config()->set('config.qdrant_http_url', 'http://qdrant.test');
     }
 
-    public function test_admin_query_principal_can_idempotently_grant_ready_dataset_to_self(): void
+    public function test_query_principal_can_idempotently_grant_ready_dataset_to_self(): void
     {
         $user = $this->user('self-grant');
         $dataset = $this->readyDataset('self-grant-ready');
-        $this->authenticateWithAbilities($user, ['admin', 'query']);
+        $this->authenticateWithAbilities($user, ['query']);
         $this->fakeAvailableQdrantCollections([(string) $dataset->qdrant_collection], [
             'http://qdrant.test/*' => Http::response(['result' => ['count' => 3]], 200),
         ]);
@@ -57,23 +55,10 @@ final class SelfDatasetQueryGrantTest extends TestCase
             ->assertJsonPath('datasets.0.dataset_id', $dataset->dataset_id);
     }
 
-    public function test_query_only_token_cannot_create_a_dataset_grant(): void
+    public function test_token_without_query_ability_cannot_create_a_dataset_grant(): void
     {
-        $user = $this->user('query-only');
-        $dataset = $this->readyDataset('query-only-dataset');
-        $this->authenticateWithAbilities($user, ['query']);
-
-        $this->postJson("/api/datasets/{$dataset->dataset_id}/query-grants/self")
-            ->assertUnauthorized()
-            ->assertJsonPath('message', 'Admin authentication required.');
-
-        $this->assertDatabaseCount('dataset_grants', 0);
-    }
-
-    public function test_admin_only_token_cannot_create_a_dataset_grant(): void
-    {
-        $user = $this->user('admin-only');
-        $dataset = $this->readyDataset('admin-only-dataset');
+        $user = $this->user('no-query-ability');
+        $dataset = $this->readyDataset('no-query-ability-dataset');
         $this->authenticateWithAbilities($user, ['admin']);
 
         $this->postJson("/api/datasets/{$dataset->dataset_id}/query-grants/self")
@@ -87,7 +72,7 @@ final class SelfDatasetQueryGrantTest extends TestCase
     {
         $user = $this->user('not-ready');
         $dataset = $this->dataset('not-ready-dataset');
-        $this->authenticateWithAbilities($user, ['admin', 'query']);
+        $this->authenticateWithAbilities($user, ['query']);
         Http::fake([
             'http://qdrant.test/*' => Http::response(['result' => ['count' => 0]], 200),
         ]);
@@ -104,7 +89,7 @@ final class SelfDatasetQueryGrantTest extends TestCase
     {
         $user = $this->user('no-vectors');
         $dataset = $this->readyDataset('no-vectors-dataset');
-        $this->authenticateWithAbilities($user, ['admin', 'query']);
+        $this->authenticateWithAbilities($user, ['query']);
         Http::fake([
             'http://qdrant.test/*' => Http::response(['result' => ['count' => 0]], 200),
         ]);
@@ -119,7 +104,7 @@ final class SelfDatasetQueryGrantTest extends TestCase
 
     public function test_missing_dataset_does_not_disclose_or_create_a_grant(): void
     {
-        $this->authenticateWithAbilities($this->user('missing'), ['admin', 'query']);
+        $this->authenticateWithAbilities($this->user('missing'), ['query']);
 
         $this->postJson('/api/datasets/missing-dataset/query-grants/self')
             ->assertNotFound()

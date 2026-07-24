@@ -87,7 +87,7 @@ class DatasetScopedGraphSearchTest extends TestCase
                 'errors' => [],
             ]),
         ]);
-        Sanctum::actingAs($user, ['admin']);
+        Sanctum::actingAs($user, ['query']);
 
         $this->getJson('/api/rag/neo4j/graph/semantic-search?dataset_id=scoped-graph&q=HAWKI')
             ->assertOk()
@@ -149,7 +149,7 @@ class DatasetScopedGraphSearchTest extends TestCase
             'qdrant_collection' => 'hawki_hidden_graph',
             'neo4j_namespace' => 'hawki_hidden_graph',
         ]);
-        Sanctum::actingAs($user, ['admin']);
+        Sanctum::actingAs($user, ['query']);
 
         $this->getJson('/api/rag/neo4j/graph/semantic-search?dataset_id=hidden-graph&q=HAWKI')
             ->assertNotFound()

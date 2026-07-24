@@ -29,13 +29,16 @@ cp .env.example .env
 Start HAWKI RAG:
 
 ```bash
-make up-core
+make up-core-local
 ```
 
 This starts the full local experience, including the Laravel UI, RAG services,
 Temporal workers, Qdrant, Neo4j, Ollama, reranker, and fresh Vite/Svelte UI
 assets.
-Use `make up-core` for the local full-stack experience.
+Use `make up-core-local` for the source-mounted development experience.
+It reuses existing service images so frontend or source edits do not trigger a
+full Python dependency rebuild. Run `BUILD_STACK=1 make up-core-local` after
+changing Dockerfiles or locked container dependencies.
 
 Generate the application key once:
 
@@ -141,54 +144,52 @@ curl -fsS http://127.0.0.1:4000/v1/embeddings \
 
 ## Main Pages
 
-- Experience hub: `http://localhost:8080/hawki-rag`
 - Admin hub: `http://localhost:8080/admin`
 - Playground: `http://localhost:8080/hawki-rag-playground`
 - Upload/control page: `http://localhost:8080/pipeline-controller`
 - Documents: `http://localhost:8080/documents`
 - Graph explorer: `http://localhost:8080/neo4j-graph-explorer`
 
-## Authenticate Playground Queries
+## Single-User Query Identity
 
-Production and shared environments require an authenticated browser principal.
-For a standalone browser session, create a real user, grant that user access to
-the requested dataset, and issue a Sanctum token:
+Create one local user before opening the retrieval playground:
 
 ```bash
 docker compose exec hawki_rag_app php artisan user:create
+```
+
+The browser does not need a token or sign-in step. When a credential-free query
+arrives, RAWKI uses the only active local user as its internal query identity.
+Removed users do not count. If there are no active users, or more than one,
+query and dataset-scoped semantic-search requests fail with HTTP `503` instead
+of selecting an identity arbitrarily.
+
+By default, that user may query every current and future active dataset whose
+authorization metadata and physical Qdrant collection are ready. Datasets that
+are inactive, incomplete, or missing their collection are not offered in the
+retrieval page. Set `HAWKI_RAG_QUERY_ALL_DATASETS_BY_DEFAULT=false` only when
+you intentionally want explicit per-dataset grants, then grant them with:
+
+```bash
 docker compose exec hawki_rag_app php artisan dataset:grant-query <dataset_id> <user_id>
+```
+
+External API and MCP clients may still use a Sanctum bearer token to select an
+explicit active user. Tokens for query endpoints need the `query` ability:
+
+```bash
 docker compose exec hawki_rag_app php artisan user:token --abilities=query
 ```
 
-The create command prints the `user_id`. Open the playground and paste the
-token into **Dataset authentication**. RAWKI sends it once to `/auth/session`,
-establishes an HttpOnly Laravel session, clears the input, and then lists only
-datasets granted to that principal. The token needs the explicit `query`
-ability. The token command defaults to `query` and never creates wildcard
-tokens.
+An explicitly supplied invalid, removed-user, or insufficient-ability token is
+rejected and never falls back to the implicit user.
 
-Browser access to the admin UI requires a persisted admin role. Promote only
-trusted users, then issue admin API credentials with the explicit `admin`
-ability when bearer access is needed:
-
-```bash
-docker compose exec hawki_rag_app php artisan user:role <user_id> admin
-docker compose exec hawki_rag_app php artisan user:token --abilities=admin
-```
-
-During migration, existing `operator` bearer abilities can be accepted by
-setting `HAWKI_RAG_ADMIN_AUTH_ACCEPT_LEGACY_OPERATOR_ABILITY=true`. The switch
-defaults to false; disable it again after replacing those credentials.
-Wildcard tokens do not count as explicit admin credentials and must be
-reissued. Existing browser users are not upgraded implicitly; they remain
-non-admin until assigned the role above.
-
-Local development may skip the token prompt without weakening production. Set
-`HAWKI_RAG_QUERY_AUTH_BYPASS=true`, restrict its environments to
-`local,testing`, and set `HAWKI_RAG_QUERY_AUTH_BYPASS_USER_ID` to a persisted
-active user that already has explicit `dataset_grants`. The browser attaches
-that principal only to `/query` and `/query/datasets`; `/api/*` remains
-Sanctum-protected. RAWKI hard-denies this bypass outside `local` and `testing`.
+The entire browser and HTTP API surface, including dataset-scoped retrieval,
+is therefore reachable without a RAWKI credential in the intended single-user
+deployment. Keep it on loopback or a trusted network, or protect it at the
+reverse proxy. Several APIs can return private document evidence, delete
+storage, clear graph data, or start and cancel work, so do not expose them
+directly to untrusted clients.
 
 ## Add Content
 
@@ -215,18 +216,35 @@ docker compose exec hawki_rag_app php artisan pipeline:health
 Before exposing HAWKI RAG, edit `.env` and change at least:
 
 ```env
-APP_ENV=production
-APP_DEBUG=false
+HAWKI_RAG_APP_ENV=production
+HAWKI_RAG_APP_DEBUG=false
 APP_URL=https://your-domain.example
 DB_PASSWORD=replace_with_a_strong_password
 NEO4J_PASSWORD=replace_with_a_strong_password
 ```
 
-For server startup, use:
+For a production-mode local startup, use:
 
 ```bash
-make up-core-server
+make up-core
 ```
+
+`up-core` runs the application and Python workers from their built images,
+forces production Laravel/container defaults, keeps the existing host-mounted
+Laravel `storage/` directory, and migrates while application writers are
+stopped. It publishes the UI only on `http://localhost:8080`. Use
+`up-core-local` to add the source mounts and development entrypoint from
+`docker-compose.local.yml`.
+
+For a server behind an HTTPS reverse proxy, use `up-core-server`. It does not
+publish a host port and builds assets for the configured production path:
+
+```bash
+make up-core-server ENV_FILE=.env.production
+```
+
+The selected environment file is used for both Compose interpolation and the
+application and worker containers.
 
 Production checklist:
 
@@ -234,7 +252,8 @@ Production checklist:
 - Use HTTPS through a trusted reverse proxy.
 - Change all default passwords and tokens.
 - Configure the scraper and file-converter service URLs in `.env`.
-- Back up PostgreSQL, Qdrant, Neo4j, and the shared storage volume.
+- Back up PostgreSQL, Qdrant, Neo4j, the shared storage volume, and Laravel's
+  host-mounted `storage/` directory.
 - Monitor disk usage as crawled files and embeddings grow over time.
 - Run `make health` after deployments or configuration changes.
 

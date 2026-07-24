@@ -14,7 +14,11 @@ Base compose is always `docker-compose.yml`, and `Makefile` exports `COMPOSE_FIL
   - `auto` (default): detect GPU on Linux.
   - `1`: force GPU override.
   - `0`: force CPU mode.
-- `ENV_FILE` (default `.env`): choose env file.
+- `ENV_FILE` (default `.env`): choose the file used both for Compose
+  interpolation and as the service environment file.
+- `HAWKI_RAG_APP_ENV` / `HAWKI_RAG_APP_DEBUG`: production-mode Laravel
+  defaults used by `make up-core`; `make up-core-local` explicitly uses
+  `local` / `true`.
 - `COMPOSE_PROFILES`: optional profile toggle (for example `litellm` for the model gateway or `gpu` for `raganything_api_gpu`).
 - `BASE_COMPOSE_FILE` / `GPU_OVERRIDE_COMPOSE`: advanced override of compose filenames.
 
@@ -58,10 +62,26 @@ What `make up-core` does:
 | Step | What happens |
 | --- | --- |
 | Compose context | Uses computed `COMPOSE_FILE` with `ENV_FILE` and optional `COMPOSE_PROFILES`. |
-| Launch preview | Prints selected compose files before startup. |
+| Safe upgrade | Builds images, stops application writers, migrates with a one-off app container, then starts the new application and workers. |
 | Model readiness | Pulls Ollama models: `bge-m3`, `llama3.1:8b`, `llama3.2:1b`, `qwen2.5vl:7b`. |
 | Gateway readiness | Starts LiteLLM only when the `litellm` profile is enabled and exposes aliases on `http://127.0.0.1:4000/v1`. |
-| UI readiness | Builds Vite/Svelte assets and publishes them into the running Laravel app. |
+| Runtime mode | Uses baked application sources with production Laravel defaults and publishes the UI on `http://localhost:8080`. |
+
+For an HTTPS reverse-proxy deployment without a published host port, use
+`make up-core-server ENV_FILE=.env.production`.
+
+For source mounts, development defaults, and live UI publishing, use:
+
+```bash
+make up-core-local
+```
+
+Development startup reuses existing service images. After changing a
+Dockerfile or locked container dependency, rebuild explicitly:
+
+```bash
+BUILD_STACK=1 make up-core-local
+```
 
 ## Model pulls (Ollama)
 - Default pulls: `bge-m3`, `llama3.1:8b`, `llama3.2:1b`, `qwen2.5vl:7b`.

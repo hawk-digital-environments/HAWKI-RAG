@@ -13,7 +13,6 @@ class CanonicalApiRouteTest extends TestCase
      * @var list<string>
      */
     private const LEGACY_JSON_ROUTE_URIS = [
-        'auth/session',
         'query',
         'query/datasets',
         'settings/config',
@@ -84,6 +83,12 @@ class CanonicalApiRouteTest extends TestCase
             'api/pipeline/tasks/{taskId}/retry-failed-jobs',
             $this->registeredUris(),
         );
+    }
+
+    public function test_removed_browser_session_exchange_is_not_registered(): void
+    {
+        $this->assertNotContains('api/auth/session', $this->registeredUris());
+        $this->assertNotContains('auth/session', $this->registeredUris());
     }
 
     public function test_each_controller_action_and_http_method_is_registered_once(): void

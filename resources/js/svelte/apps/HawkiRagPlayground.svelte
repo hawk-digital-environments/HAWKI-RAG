@@ -14,10 +14,8 @@
     interface Props extends HTMLAttributes<HTMLDivElement> {
         /** Browser URL for submitting HAWKI-RAG queries. */
         queryEndpoint: string;
-        /** Browser URL for datasets the authenticated user may query. */
+        /** Browser URL for datasets that are ready for retrieval. */
         datasetsEndpoint: string;
-        /** Browser URL that exchanges a Sanctum token for an HttpOnly session. */
-        sessionEndpoint: string;
         /** Browser URL for RAG runtime monitor data. */
         monitorEndpoint: string;
         /** Browser URL for Qdrant and Neo4j stats. */
@@ -28,10 +26,6 @@
         neo4jClearEndpoint: string;
         /** Browser URL for downloading original uploaded source files. */
         uploadDownloadEndpoint: string;
-        /** Whether the current browser request is allowed to use admin APIs. */
-        adminAuthorized?: boolean;
-        /** Whether a real browser principal may access dataset-scoped query APIs. */
-        queryAuthenticated?: boolean;
     }
 
     interface QueryHit {
@@ -118,14 +112,11 @@
     const {
         queryEndpoint,
         datasetsEndpoint,
-        sessionEndpoint,
         monitorEndpoint,
         statsEndpoint,
         qdrantCollectionEndpointBase,
         neo4jClearEndpoint,
         uploadDownloadEndpoint,
-        adminAuthorized = false,
-        queryAuthenticated = false,
         class: className = '',
         ...restProps
     }: Props = $props();
@@ -137,9 +128,6 @@
     ];
 
     let question = $state('');
-    let sessionToken = $state('');
-    let sessionBusy = $state(false);
-    let sessionError = $state('');
     let datasets = $state<DatasetOption[]>([]);
     let selectedDatasetId = $state('');
     let topK = $state(5);
@@ -228,20 +216,11 @@
             return 'Fast vector mode skips graph retrieval. Run the query in Deep vector mode to include scoped graph facts.';
         }
 
-        return 'Neo4j was searched only inside the authorized dataset, but no matching facts were found.';
+        return 'Neo4j was searched only inside the selected dataset, but no matching facts were found.';
     });
 
     onMount(() => {
-        if (queryAuthenticated) {
-            void loadAuthorizedDatasets();
-        } else {
-            status = 'Sign in with an authenticated HAWKI session to query datasets.';
-        }
-
-        if (!adminAuthorized) {
-            return;
-        }
-
+        void loadQueryReadyDatasets();
         void refreshSystem();
         const monitorTimer = window.setInterval(() => {
             void loadMonitor();
@@ -327,31 +306,6 @@
         }
 
         return payload;
-    }
-
-    async function startBrowserSession(): Promise<void> {
-        const token = sessionToken.trim();
-        if (!token || sessionBusy) return;
-
-        sessionBusy = true;
-        sessionError = '';
-
-        try {
-            await requestJson(sessionEndpoint, {
-                method: 'POST',
-                headers: {
-                    Authorization: `Bearer ${token}`,
-                    'X-CSRF-TOKEN': csrfToken(),
-                },
-            });
-            sessionToken = '';
-            window.location.reload();
-        } catch (error) {
-            sessionToken = '';
-            sessionError = error instanceof Error ? error.message : 'Authentication failed.';
-        } finally {
-            sessionBusy = false;
-        }
     }
 
     function pushActivity(source: string, message: string, tone: Tone = 'ready'): void {
@@ -486,7 +440,7 @@
         pushActivity('System', 'Live state refreshed');
     }
 
-    async function loadAuthorizedDatasets(): Promise<boolean> {
+    async function loadQueryReadyDatasets(): Promise<boolean> {
         try {
             const payload = await requestJson(datasetsEndpoint);
             datasets = asArray(payload.datasets)
@@ -512,7 +466,7 @@
                 window.localStorage.setItem('hawkiRagQueryDatasetId', selectedDatasetId);
             } else {
                 window.localStorage.removeItem('hawkiRagQueryDatasetId');
-                status = 'No authorized query-ready dataset is available.';
+                status = 'No query-ready dataset is available.';
             }
 
             return true;
@@ -520,7 +474,7 @@
             datasets = [];
             selectedDatasetId = '';
             window.localStorage.removeItem('hawkiRagQueryDatasetId');
-            errorMessage = error instanceof Error ? error.message : 'Authorized datasets could not be loaded.';
+            errorMessage = error instanceof Error ? error.message : 'Query-ready datasets could not be loaded.';
             status = errorMessage;
 
             return false;
@@ -597,7 +551,7 @@
         } catch (error) {
             if (error instanceof ApiRequestError && error.code === 'dataset_not_ready') {
                 removeDatasetOption(queryDatasetId);
-                const refreshed = await loadAuthorizedDatasets();
+                const refreshed = await loadQueryReadyDatasets();
                 if (refreshed) {
                     removeDatasetOption(queryDatasetId);
                 }
@@ -627,11 +581,9 @@
             });
             pushActivity('Qdrant', `Deleted ${name}`, 'warn');
             await loadStats(false);
-            if (queryAuthenticated) {
-                const refreshed = await loadAuthorizedDatasets();
-                if (refreshed) {
-                    status = `Deleted ${name}; available datasets were refreshed.`;
-                }
+            const refreshed = await loadQueryReadyDatasets();
+            if (refreshed) {
+                status = `Deleted ${name}; available datasets were refreshed.`;
             }
         } catch (error) {
             pushActivity('Qdrant', error instanceof Error ? error.message : 'Delete failed', 'fail');
@@ -755,35 +707,6 @@
         active="playground"
     />
 
-    {#if !queryAuthenticated}
-    <section class="query-session-panel" aria-labelledby="query-session-title">
-        <div>
-            <span>Dataset authentication</span>
-            <h2 id="query-session-title">Start a secure browser session</h2>
-            <p>Paste a Sanctum access token once. RAWKI exchanges it for an HttpOnly session cookie and does not store the token in browser storage.</p>
-        </div>
-        <form onsubmit={(event) => { event.preventDefault(); void startBrowserSession(); }}>
-            <label for="query-session-token">Access token</label>
-            <div>
-                <input
-                    id="query-session-token"
-                    type="password"
-                    bind:value={sessionToken}
-                    autocomplete="off"
-                    spellcheck="false"
-                    placeholder="Paste Sanctum token"
-                    required
-                />
-                <button type="submit" disabled={sessionBusy || !sessionToken.trim()}>
-                    {sessionBusy ? 'Signing in...' : 'Sign in'}
-                </button>
-            </div>
-            {#if sessionError}<p class="query-session-error" role="alert">{sessionError}</p>{/if}
-        </form>
-    </section>
-    {/if}
-
-    {#if adminAuthorized}
     <section class="signal-strip" aria-label="Live retrieval state">
         {#each systemSignals as signal}
             <article data-tone={signal.tone}>
@@ -792,10 +715,8 @@
             </article>
         {/each}
     </section>
-    {/if}
 
-    {#if adminAuthorized || queryAuthenticated}
-    <main class={adminAuthorized ? 'playground-grid' : 'playground-grid playground-grid--query-only'}>
+    <main class="playground-grid">
         <section class="composer" aria-labelledby="query-title">
             <div class="panel-heading">
                 <div>
@@ -805,7 +726,6 @@
                 <span data-tone={busy ? 'active' : errorMessage ? 'fail' : 'ready'}>{busy ? 'Running' : errorMessage ? 'Failed' : 'Ready'}</span>
             </div>
 
-            {#if queryAuthenticated}
             <form class="query-form" onsubmit={(event) => { event.preventDefault(); void runQuery(); }}>
                 <label for="hawki-question">Question</label>
                 <textarea
@@ -832,7 +752,7 @@
                             required
                         >
                             {#if datasets.length === 0}
-                                <option value="">No authorized query-ready datasets</option>
+                                <option value="">No query-ready datasets</option>
                             {:else}
                                 {#each datasets as dataset}
                                     <option value={dataset.datasetId}>{dataset.name} ({dataset.datasetId})</option>
@@ -902,12 +822,6 @@
                     <p class="empty-copy">No activity yet.</p>
                 {/if}
             </section>
-            {:else}
-                <div class="query-auth-required" role="status">
-                    <strong>Authenticated query session required</strong>
-                    <p>Admin access can show system health, but dataset retrieval requires a signed-in HAWKI user with an explicit dataset grant.</p>
-                </div>
-            {/if}
         </section>
 
         <section class="result-stage" aria-labelledby="result-title">
@@ -919,12 +833,7 @@
                 <span>{resultSummary}</span>
             </div>
 
-            {#if !queryAuthenticated}
-                <div class="empty-result">
-                    <strong>Dataset results remain private.</strong>
-                    <span>Sign in and obtain a dataset query grant before retrieving evidence.</span>
-                </div>
-            {:else if !hasResult && !errorMessage}
+            {#if !hasResult && !errorMessage}
                 <div class="empty-result">
                     <strong>Ready for a grounded question.</strong>
                     <span>Sources, graph facts, and raw retrieval data will appear here.</span>
@@ -1032,7 +941,6 @@
             {/if}
         </section>
 
-        {#if adminAuthorized}
         <aside class="system-panel" aria-label="HAWKI-RAG system overview">
             <section class="system-section">
                 <div class="mini-heading">
@@ -1109,15 +1017,7 @@
                 </div>
             </section>
         </aside>
-        {/if}
     </main>
-    {:else}
-    <section class="playground-auth-panel" aria-labelledby="playground-auth-required-title">
-        <span class="playground-auth-kicker">Admin access required</span>
-        <h2 id="playground-auth-required-title">Retrieval controls are locked.</h2>
-        <p>Sign in with an admin account or enable the explicit local bypass before running retrieval, viewing admin stats, or clearing graph storage.</p>
-    </section>
-    {/if}
 </div>
 
 <style>
@@ -1151,32 +1051,6 @@
         padding: clamp(14px, 2vw, 26px);
         color: var(--pg-text);
         font-family: Inter, ui-sans-serif, system-ui, sans-serif;
-    }
-
-    .playground-auth-panel {
-        display: grid;
-        gap: 10px;
-        max-width: 960px;
-        margin: 0 auto;
-        border: 1px solid rgba(148, 163, 184, 0.22);
-        border-radius: 12px;
-        padding: 20px;
-        background: rgba(15, 23, 42, 0.72);
-        color: #e2e8f0;
-        box-shadow: 0 18px 48px rgba(15, 23, 42, 0.2);
-    }
-
-    .playground-auth-panel h2,
-    .playground-auth-panel p {
-        margin: 0;
-    }
-
-    .playground-auth-kicker {
-        color: #7dd3fc;
-        font-size: 0.82rem;
-        font-weight: 800;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
     }
 
     button,
@@ -1316,10 +1190,6 @@
         align-items: start;
     }
 
-    .playground-grid--query-only {
-        grid-template-columns: minmax(340px, 0.82fr) minmax(560px, 1.42fr);
-    }
-
     .composer,
     .result-stage,
     .system-panel {
@@ -1371,92 +1241,6 @@
     .query-form {
         display: grid;
         gap: 12px;
-    }
-
-    .query-auth-required {
-        border: 1px solid rgba(251, 191, 36, 0.32);
-        border-radius: 10px;
-        background: rgba(120, 53, 15, 0.16);
-        padding: 18px;
-        color: var(--pg-text);
-    }
-
-    .query-auth-required strong {
-        display: block;
-        margin-bottom: 7px;
-    }
-
-    .query-auth-required p {
-        margin: 0;
-        color: var(--pg-muted);
-        line-height: 1.5;
-    }
-
-    .query-session-panel {
-        display: grid;
-        grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.8fr);
-        gap: 18px;
-        max-width: 1760px;
-        margin: 0 auto 14px;
-        border: 1px solid rgba(96, 165, 250, 0.32);
-        border-radius: 10px;
-        background: rgba(15, 23, 42, 0.82);
-        padding: 18px;
-        box-shadow: var(--pg-shadow);
-    }
-
-    .query-session-panel span {
-        color: var(--pg-blue);
-        font-size: 0.76rem;
-        font-weight: 850;
-        letter-spacing: 0.07em;
-        text-transform: uppercase;
-    }
-
-    .query-session-panel h2,
-    .query-session-panel p {
-        margin: 6px 0 0;
-    }
-
-    .query-session-panel p {
-        color: var(--pg-muted);
-        line-height: 1.45;
-    }
-
-    .query-session-panel form {
-        display: grid;
-        align-content: center;
-        gap: 7px;
-    }
-
-    .query-session-panel form > div {
-        display: grid;
-        grid-template-columns: minmax(0, 1fr) auto;
-        gap: 8px;
-    }
-
-    .query-session-panel input {
-        min-width: 0;
-        border: 1px solid var(--pg-border);
-        border-radius: 8px;
-        background: rgba(3, 7, 18, 0.72);
-        padding: 0 11px;
-        color: var(--pg-text);
-    }
-
-    .query-session-panel button {
-        min-height: 42px;
-        border: 1px solid var(--pg-border-strong);
-        border-radius: 8px;
-        background: rgba(13, 148, 136, 0.2);
-        padding: 0 16px;
-        color: var(--pg-text);
-        font-weight: 850;
-    }
-
-    .query-session-error {
-        color: var(--pg-red) !important;
-        font-size: 0.86rem;
     }
 
     label,
@@ -1945,7 +1729,6 @@
 
     @media (max-width: 900px) {
         .playground-grid,
-        .query-session-panel,
         .source-layout,
         .system-panel {
             grid-template-columns: 1fr;
@@ -1976,8 +1759,7 @@
         .signal-strip,
         .control-grid,
         .graph-facts article,
-        .activity-list article,
-        .query-session-panel form > div {
+        .activity-list article {
             grid-template-columns: 1fr;
         }
 

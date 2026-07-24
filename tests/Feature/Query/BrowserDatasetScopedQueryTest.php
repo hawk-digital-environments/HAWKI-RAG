@@ -16,13 +16,6 @@ class BrowserDatasetScopedQueryTest extends TestCase
 {
     use RefreshDatabase;
 
-    protected function setUp(): void
-    {
-        parent::setUp();
-
-        config()->set('config.admin_auth.bypass', false);
-    }
-
     public function test_browser_bearer_principal_can_list_only_granted_ready_datasets(): void
     {
         $user = $this->createUser('browser-bearer');
@@ -47,7 +40,7 @@ class BrowserDatasetScopedQueryTest extends TestCase
         $this->assertStringNotContainsString('neo4j_namespace', $response->getContent());
     }
 
-    public function test_browser_session_principal_reaches_the_scoped_query_form_request(): void
+    public function test_explicit_laravel_principal_reaches_the_scoped_query_form_request(): void
     {
         $user = $this->createUser('browser-session');
         $dataset = $this->createDataset('browser-session-dataset', 'Browser Session Dataset');
@@ -80,31 +73,31 @@ class BrowserDatasetScopedQueryTest extends TestCase
         });
     }
 
-    public function test_canonical_query_routes_deny_requests_without_a_real_principal(): void
+    public function test_canonical_query_routes_report_when_no_active_user_exists(): void
     {
         $this->get('/api/query/datasets')
-            ->assertUnauthorized()
-            ->assertExactJson(['message' => 'Unauthenticated.']);
+            ->assertStatus(503)
+            ->assertExactJson([
+                'message' => 'Query access requires exactly one active user.',
+                'error' => 'single_user_query_principal_unavailable',
+            ]);
 
         $this->getJson('/api/query/datasets')
-            ->assertUnauthorized();
-
-        config()->set('config.admin_auth.bypass', true);
-        config()->set('config.admin_auth.bypass_environments', [app()->environment()]);
+            ->assertStatus(503);
 
         $this->getJson('/api/query/datasets')
-            ->assertUnauthorized()
-            ->assertJsonPath('message', 'Unauthenticated.');
+            ->assertStatus(503)
+            ->assertJsonPath('error', 'single_user_query_principal_unavailable');
 
         $this->withSession(['_token' => 'browser-csrf-token'])
             ->postJson('/api/query', [
                 'dataset_id' => 'browser-ready',
-                'query' => 'Bypass without a principal must fail.',
+                'query' => 'A query without exactly one active user must fail.',
             ], [
                 'X-CSRF-TOKEN' => 'browser-csrf-token',
             ])
-            ->assertUnauthorized()
-            ->assertJsonPath('message', 'Unauthenticated.');
+            ->assertStatus(503)
+            ->assertJsonPath('error', 'single_user_query_principal_unavailable');
     }
 
     private function createUser(string $name): User
