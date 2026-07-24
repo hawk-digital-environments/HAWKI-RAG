@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 import os
 from collections.abc import Callable
-from typing import Any, Dict, List
+from typing import Any
 
 from application.workflows.query_hits import merge_hits
 from application.workflows.query_lexical import extract_query_terms_for_lexical
@@ -78,11 +78,6 @@ def keyword_fallback_search(
     if hits and scroll_hits:
         return merge_hits(hits, scroll_hits, max(top_k * 2, len(hits) + len(scroll_hits)))
     return hits or scroll_hits
-
-
-def text_scroll_limit(top_k: int) -> int:
-    """Backward-compatible fallback for env-driven scroll limit."""
-    return _text_scroll_limit_default(top_k)
 
 
 def fallback_scroll_hits(

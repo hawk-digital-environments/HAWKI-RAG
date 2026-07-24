@@ -1146,7 +1146,11 @@ paths:
       tags:
         - Query
       summary: List datasets available for querying
-      description: Returns only active, storage-ready datasets for which the authenticated principal has an explicit query grant.
+      description: |
+        Returns only active datasets the authenticated principal may query under
+        the configured grant policy and whose Qdrant collection currently exists.
+        If physical collection readiness cannot be established, the list fails
+        closed and exposes no dataset options.
       security:
         - BearerAuth: []
       responses:

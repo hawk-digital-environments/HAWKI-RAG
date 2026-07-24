@@ -31,6 +31,7 @@ class BrowserDatasetScopedQueryTest extends TestCase
         $this->createDataset('browser-not-granted', 'Browser Not Granted');
         $this->grant($user, $ready);
         $this->grant($user, $unready);
+        $this->fakeAvailableQdrantCollections([(string) $ready->qdrant_collection]);
 
         $response = $this->withToken($user->createToken('browser-test')->plainTextToken)
             ->getJson('/api/query/datasets')

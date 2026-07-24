@@ -349,7 +349,6 @@ class QueryExecutionScopeTests(unittest.TestCase):
             iterative_retrieval_enabled_fn=lambda: False,
             generation_enabled_fn=lambda: True,
             configured_search_top_k_fn=lambda top_k: top_k,
-            set_fast_mode_fn=lambda _enabled: None,
             build_grounded_answer_prompt_fn=lambda _query, _sources, _facts: (
                 "grounded system prompt",
                 "grounded user prompt",
@@ -495,7 +494,6 @@ class QueryExecutionScopeTests(unittest.TestCase):
             configured_search_top_k_fn=lambda top_k: top_k,
             extract_terms_fn=lambda text: [],
             terms_from_payload_fn=lambda payload: [],
-            set_fast_mode_fn=lambda enabled: None,
         )
 
         expected_filters = {"source_format": "pdf", "dataset_id": "dataset-a"}
@@ -559,7 +557,6 @@ class QueryExecutionScopeTests(unittest.TestCase):
                     ScopedCollectionNotReadyError("missing")
                 ),
                 keyword_fallback_fn=lambda *args, **kwargs: [],
-                set_fast_mode_fn=lambda enabled: None,
             )
 
         self.assertEqual(raised.exception.status_code, 503)

@@ -30,7 +30,7 @@ final class SelfDatasetQueryGrantTest extends TestCase
         $user = $this->user('self-grant');
         $dataset = $this->readyDataset('self-grant-ready');
         $this->authenticateWithAbilities($user, ['admin', 'query']);
-        Http::fake([
+        $this->fakeAvailableQdrantCollections([(string) $dataset->qdrant_collection], [
             'http://qdrant.test/*' => Http::response(['result' => ['count' => 3]], 200),
         ]);
 

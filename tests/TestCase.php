@@ -7,6 +7,7 @@ namespace Tests;
 use App\Models\User;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
+use Illuminate\Support\Facades\Http;
 
 abstract class TestCase extends BaseTestCase
 {
@@ -45,6 +46,27 @@ abstract class TestCase extends BaseTestCase
         );
 
         return $user;
+    }
+
+    /**
+     * @param  list<string>  $names
+     * @param  array<string, mixed>  $additionalFakes
+     */
+    protected function fakeAvailableQdrantCollections(array $names, array $additionalFakes = []): void
+    {
+        config()->set('config.qdrant_http_url', 'http://qdrant.test');
+
+        Http::fake([
+            'http://qdrant.test/collections' => Http::response([
+                'result' => [
+                    'collections' => array_map(
+                        static fn (string $name): array => ['name' => $name],
+                        $names,
+                    ),
+                ],
+            ]),
+            ...$additionalFakes,
+        ]);
     }
 
     private function assertSafeTestDatabaseEnvironment(): void

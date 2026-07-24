@@ -1,4 +1,3 @@
-import './bootstrap';
 import './health-gate.js';
 import { mount } from 'svelte';
 import GraphExplorerPage from './svelte/apps/GraphExplorerPage.svelte';

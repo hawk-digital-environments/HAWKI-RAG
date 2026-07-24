@@ -19,6 +19,16 @@ class BrowserSessionAuthenticationTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->fakeAvailableQdrantCollections([
+            'hawki_browser-session-login-dataset',
+            'hawki_internal-query-only-dataset',
+        ]);
+    }
+
     public function test_user_create_command_prints_the_id_needed_for_dataset_grants(): void
     {
         $this->artisan('user:create')

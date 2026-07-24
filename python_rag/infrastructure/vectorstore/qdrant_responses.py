@@ -1,7 +1,7 @@
 """Typed parsing helpers for Qdrant response payloads."""
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, TypedDict
+from typing import Any, Optional, TypedDict
 
 from infrastructure.vectorstore.collections import collection_names
 
@@ -14,27 +14,6 @@ class SearchResult(TypedDict, total=False):
 
 
 SearchResultList = list[SearchResult]
-
-
-class CountResult(TypedDict, total=False):
-    count: int
-
-
-class SearchResponse(TypedDict, total=False):
-    result: SearchResultList
-
-
-class CountResponse(TypedDict, total=False):
-    result: CountResult
-
-
-class ScrollResult(TypedDict, total=False):
-    points: list[SearchResult]
-    next_page_offset: str | None
-
-
-class CollectionConfigResult(TypedDict, total=False):
-    result: dict[str, Any]
 
 
 def parse_collection_names(payload: dict[str, Any]) -> list[str]:

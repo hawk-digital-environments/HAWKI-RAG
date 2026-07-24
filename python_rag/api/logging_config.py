@@ -68,10 +68,6 @@ class _StructuredFormatter(logging.Formatter):
         )
 
 
-def env_flag(value: str | None) -> bool:
-    return str(value or "").strip().lower() in ("1", "true", "yes")
-
-
 def configure_app_logging(settings: AppSettings, *, logger_name: str) -> tuple[logging.Logger, bool, str]:
     log_level = _coerce_log_level(settings.log_level)
     formatter = _StructuredFormatter()

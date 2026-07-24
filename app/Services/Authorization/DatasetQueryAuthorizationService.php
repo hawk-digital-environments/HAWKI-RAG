@@ -12,6 +12,7 @@ use App\Services\Authorization\Exceptions\DatasetQueryNotFoundException;
 use App\Services\Authorization\Repositories\DatasetGrantRepository;
 use App\Services\Authorization\Values\AuthenticatedPrincipal;
 use App\Services\Authorization\Values\AuthorizedDatasetScope;
+use App\Services\Dataset\QdrantCollectionCatalog;
 use Illuminate\Container\Attributes\Config;
 use Illuminate\Container\Attributes\Singleton;
 
@@ -20,6 +21,7 @@ readonly class DatasetQueryAuthorizationService
 {
     public function __construct(
         private DatasetGrantRepository $grants,
+        private QdrantCollectionCatalog $qdrantCollections,
         #[Config('config.query_auth.all_datasets_by_default')]
         private bool $allDatasetsByDefault,
     ) {}
@@ -78,8 +80,23 @@ readonly class DatasetQueryAuthorizationService
             return [];
         }
 
-        return $this->grants->listActiveDatasetsForQuery($principal, $this->canQueryAllDatasets())
-            ->filter(fn (Dataset $dataset): bool => $this->isReadyForQuery($dataset))
+        $candidates = $this->grants
+            ->listActiveDatasetsForQuery($principal, $this->canQueryAllDatasets())
+            ->filter(fn (Dataset $dataset): bool => $this->isReadyForQuery($dataset));
+
+        if ($candidates->isEmpty()) {
+            return [];
+        }
+
+        $availableCollections = $this->qdrantCollections->availableCollectionSet();
+        if ($availableCollections === null) {
+            return [];
+        }
+
+        return $candidates
+            ->filter(static fn (Dataset $dataset): bool => isset(
+                $availableCollections[trim((string) $dataset->qdrant_collection)]
+            ))
             ->map(static fn (Dataset $dataset): array => [
                 'dataset_id' => (string) $dataset->dataset_id,
                 'name' => (string) $dataset->name,

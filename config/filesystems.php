@@ -14,7 +14,6 @@ return [
     */
 
     'default' => env('FILESYSTEM_DISK', 'local'),
-    'file_storage' => env('FILE_STORAGE', 'public'),
 
     /*
     |--------------------------------------------------------------------------
@@ -25,7 +24,7 @@ return [
     | may even configure multiple disks for the same driver. Examples for
     | most supported storage drivers are configured here for reference.
     |
-    | Supported drivers: "local", "ftp", "sftp", "s3"
+    | Supported drivers: "local", "s3"
     |
     */
 
@@ -56,17 +55,6 @@ return [
             'endpoint' => env('AWS_ENDPOINT'),
             'use_path_style_endpoint' => env('AWS_USE_PATH_STYLE_ENDPOINT', false),
             'throw' => false,
-        ],
-
-        'sftp' => [
-            'driver' => 'sftp',
-            'host' => env('SFTP_HOST'),
-            'port' => (int) env('SFTP_PORT', 22),
-            'username' => env('SFTP_USERNAME'),
-            'password' => env('SFTP_PASSWORD'),
-            'root' => env('SFTP_BASE_PATH', '/'),
-            'timeout' => 30,
-            'visibility' => 'private',
         ],
 
     ],

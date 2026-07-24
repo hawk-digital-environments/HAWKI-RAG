@@ -9,6 +9,7 @@ use App\Services\Profile\ApiTokenService;
 use App\Services\Profile\Values\ApiTokenAbility;
 use App\Services\User\Repositories\UserRepository;
 use Illuminate\Console\Command;
+use Illuminate\Contracts\Auth\Factory as AuthFactory;
 
 class CreateSanctumTokenForUser extends Command
 {
@@ -34,6 +35,7 @@ class CreateSanctumTokenForUser extends Command
     public function __construct(
         private ApiTokenService $apiTokenService,
         private UserRepository $users,
+        private AuthFactory $auth,
     ) {
         parent::__construct();
     }
@@ -72,7 +74,7 @@ class CreateSanctumTokenForUser extends Command
         }
 
         // Simulate authentication for the user
-        auth()->setUser($user);
+        $this->auth->guard()->setUser($user);
 
         if ($isRevoking) {
             // List existing tokens

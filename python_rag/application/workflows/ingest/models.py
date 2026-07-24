@@ -1,8 +1,7 @@
 """Typed ingestion models used by the ingestion pipeline."""
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Any, Dict, List, TypedDict
+from typing import Any, TypedDict
 
 
 class IngestPayload(TypedDict, total=False):
@@ -38,20 +37,3 @@ class IngestDocumentStats(TypedDict, total=False):
     embedding_failed_chunks: int
     embedding_failed_docs: int
     embedding_skipped_docs: int
-
-
-@dataclass(slots=True)
-class IngestionSummaryResult:
-    ok: bool
-    points: int
-    graph_only: bool
-    summary: dict[str, Any]
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "ok": self.ok,
-            "points": self.points,
-            "graph_only": self.graph_only,
-            "summary": self.summary,
-        }
-

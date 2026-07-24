@@ -14,11 +14,11 @@ use Illuminate\Support\Facades\Http;
  *
  * This test uses a persisted Sanctum token, the real /api/auth/session exchange,
  * the browser-principal middleware, the dataset-grant database lookup, the
- * query FormRequest, controller, and proxy service. The Python bridge is the
- * only faked boundary; Qdrant, Neo4j, and model providers are therefore not
- * started or proven compatible here. Database behavior runs through Laravel's
- * migrations and Eloquent on the isolated SQLite test connection, not live
- * PostgreSQL.
+ * query FormRequest, controller, and proxy service. The Python bridge and
+ * Qdrant collection catalog are the faked boundaries; Qdrant queries, Neo4j,
+ * and model providers are therefore not started or proven compatible here.
+ * Database behavior runs through Laravel's migrations and Eloquent on the
+ * isolated SQLite test connection, not live PostgreSQL.
  */
 class AuthenticatedRagFlowTest extends SystemTestCase
 {
@@ -34,7 +34,7 @@ class AuthenticatedRagFlowTest extends SystemTestCase
         config()->set('config.admin_settings_path', $settingsPath);
 
         $bridgeEndpoint = rtrim((string) config('config.hawki_rag_bridge_url'), '/').'/query';
-        Http::fake([
+        $this->fakeAvailableQdrantCollections(['hawki_system_authenticated'], [
             $bridgeEndpoint => Http::response([
                 'ok' => true,
                 'answer' => 'The authenticated session received a scoped answer.',
@@ -86,7 +86,7 @@ class AuthenticatedRagFlowTest extends SystemTestCase
             ->assertJsonPath('ok', true)
             ->assertJsonPath('answer', 'The authenticated session received a scoped answer.');
 
-        Http::assertSentCount(1);
+        Http::assertSentCount(2);
         Http::assertSent(function (Request $request) use ($bridgeEndpoint): bool {
             $payload = $request->data();
 

@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import copy
-from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Callable, Sequence
 
 from infrastructure.vectorstore.qdrant_responses import SearchResultList
 
@@ -37,26 +37,6 @@ def merge_search_results(
     return merged[: int(top_k)]
 
 
-def search_multiple_collections(
-    collections: Sequence[str],
-    base_body: dict[str, Any],
-    timeout: float,
-    per_collection_limit: int,
-    *,
-    execute: SearchExecutor,
-) -> list[dict[str, Any]]:
-    """Execute the same search body against multiple collections."""
-    if not collections:
-        return []
-    all_hits: list[tuple[str, SearchResultList]] = []
-    for name in collections:
-        body = copy.deepcopy(base_body)
-        body["limit"] = int(per_collection_limit)
-        hits = execute(name, body, timeout)
-        all_hits.append((name, hits))
-    return merge_search_results(all_hits, top_k=max(0, int(sum(len(hits) for _, hits in all_hits) or 0)))
-
-
 def search_with_fallback_collections(
     collections: Sequence[str],
     base_body: dict[str, Any],
@@ -76,12 +56,3 @@ def search_with_fallback_collections(
         hits = execute(name, body, timeout)
         all_hits.append((name, hits))
     return merge_search_results(all_hits, top_k=top_k)
-
-
-def resolve_collection_with_default(
-    current: str | None,
-    pick_default: Callable[[], Optional[str]],
-) -> str:
-    if current:
-        return current
-    return pick_default() or ""

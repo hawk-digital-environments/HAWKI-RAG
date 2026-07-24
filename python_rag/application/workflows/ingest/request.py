@@ -6,7 +6,6 @@ import os
 from typing import Any
 
 from application.workflows.provider_overrides import apply_provider_overrides
-from common.reliability import is_retry_safe_write
 
 
 def _normalize_idempotency_key(value: Any, *, fallback: str | None = None) -> str | None:
@@ -50,10 +49,6 @@ def infer_operation_id(body: Any, docs: list[Any] | None = None, *, fallback: st
     if raw_job_id:
         return _normalize_idempotency_key(raw_job_id)
     return _normalize_idempotency_key(fallback)
-
-
-def infer_retry_safe(operation: str) -> bool:
-    return is_retry_safe_write(operation)
 
 
 def float_env(name: str, default: float) -> float:

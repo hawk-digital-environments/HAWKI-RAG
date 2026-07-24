@@ -1,7 +1,7 @@
 """Query pipeline facade."""
 from __future__ import annotations
 
-from typing import Any, Dict, List, Tuple
+from typing import Any
 
 from infrastructure.vectorstore.qdrant_http import QdrantHTTP
 from infrastructure.vectorstore.vector_search import run_high_recall, run_search
@@ -86,50 +86,6 @@ def _prepare_context_summaries(
     return query_stages.prepare_context(hits, max_docs=max_docs, max_tokens=max_tokens)
 
 
-def _int_env(name: str, default: int) -> int:
-    return query_stages.normalize_int_env(name, default)
-
-
-def _normalize_title(value: Any) -> str:
-    return query_stages.normalize_title(value)
-
-
-def _normalize_url(value: Any) -> str:
-    return query_stages.normalize_url(value)
-
-
-def _dedupe_hits_by_title_or_url(hits: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    return query_stages.dedupe_hits(hits)
-
-
-def _fold_text(value: Any) -> str:
-    return query_stages.text_fold(value)
-
-
-def _extract_query_terms_for_lexical(query: str) -> list[str]:
-    return query_stages.sanitize_query_terms_for_lexical(query)
-
-
-def _lexical_boost_hits(hits: list[dict[str, Any]], query: str) -> list[dict[str, Any]]:
-    return query_stages.apply_lexical_boost(hits, query)
-
-
-def _min_lexical_match_count(terms: list[str]) -> int:
-    return query_stages.lexical_min_match_count(terms)
-
-
-def _tokenize_words(text: str) -> list[str]:
-    return query_stages.split_lexical_words(text)
-
-
-def _levenshtein_with_limit(a: str, b: str, limit: int = 1) -> int:
-    return query_stages.levenshtein_limit(a, b, limit=limit)
-
-
-def _fuzzy_term_in_words(term: str, words: list[str]) -> bool:
-    return query_stages.apply_fuzzy_term_match(term, words)
-
-
 def _keyword_fallback_search(
     qdrant: QdrantHTTP,
     vec: list[float],
@@ -139,7 +95,3 @@ def _keyword_fallback_search(
     filters: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     return query_stages.keyword_fallback(qdrant, vec, query, top_k, filters=filters)
-
-
-def _is_multimodal_query(text: str) -> bool:
-    return query_stages.is_multimodal_query(text)

@@ -6,7 +6,7 @@ is enabled we can switch to the `optimized_semantic_search` helper.
 """
 from __future__ import annotations
 
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Iterable, Optional
 import logging
 
 from .qdrant_http import QdrantHTTP
@@ -61,26 +61,6 @@ def semantic_search_with_threshold(
         params=params,
     )
     logger.debug("qdrant:threshold hits=%s", len(result))
-    return result
-
-
-def semantic_search_with_payload_projection(
-    qdrant: QdrantHTTP,
-    vector: list[float],
-    *,
-    top_k: int = 5,
-    filters: Optional[dict[str, Any]] = None,
-    payload_fields: Optional[Iterable[str]] = None,
-) -> list[dict[str, Any]]:
-    """Return only the requested payload fields to reduce response size."""
-    projection = list(payload_fields) if payload_fields else None
-    result = qdrant.search(
-        vector,
-        top_k=top_k,
-        filters=filters,
-        payload_projection=projection,
-    )
-    logger.debug("qdrant:projection hits=%s", len(result))
     return result
 
 

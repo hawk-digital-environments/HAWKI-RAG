@@ -26,6 +26,14 @@ class BrowserDevelopmentQueryBypassTest extends TestCase
         config()->set('config.admin_auth.bypass_environments', [app()->environment()]);
         config()->set('config.query_auth.development_bypass', true);
         config()->set('config.query_auth.development_bypass_environments', [app()->environment()]);
+        $this->fakeAvailableQdrantCollections([
+            'hawki_development-ready',
+            'hawki_development-ungranted',
+            'hawki_development-not-admin-dataset',
+            'hawki_development-only',
+            'hawki_real-only',
+            'hawki_development-browser-only-dataset',
+        ]);
     }
 
     public function test_development_principal_unlocks_the_page_and_lists_only_explicit_ready_grants(): void

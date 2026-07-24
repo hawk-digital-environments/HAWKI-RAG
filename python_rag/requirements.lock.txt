@@ -135,22 +135,12 @@ google-genai==1.2.0
     # via lightrag-hku
 googleapis-common-protos==1.75.0
     # via google-api-core
-grpcio==1.82.1
-    # via
-    #   grpcio-tools
-    #   qdrant-client
-grpcio-tools==1.82.1 ; python_full_version >= '3.13'
-    # via qdrant-client
 h11==0.16.0
     # via
     #   httpcore
     #   uvicorn
-h2==4.3.0
-    # via httpx
 hf-xet==1.5.2 ; platform_machine == 'AMD64' or platform_machine == 'aarch64' or platform_machine == 'amd64' or platform_machine == 'arm64' or platform_machine == 'x86_64'
     # via huggingface-hub
-hpack==4.2.0
-    # via h2
 httpcore==1.0.9
     # via httpx
 httptools==0.8.0
@@ -163,7 +153,6 @@ httpx==0.27.2
     #   mineru
     #   mineru-vl-utils
     #   openai
-    #   qdrant-client
 httpx-retries==0.6.0
     # via mineru-vl-utils
 huggingface-hub==1.24.0
@@ -172,8 +161,6 @@ huggingface-hub==1.24.0
     #   raganything
     #   tokenizers
     #   transformers
-hyperframe==6.1.0
-    # via h2
 idna==3.18
     # via
     #   anyio
@@ -262,7 +249,6 @@ numpy==2.0.2
     #   paddleocr
     #   pandas
     #   pdftext
-    #   qdrant-client
     #   scikit-image
     #   scipy
     #   shapely
@@ -358,8 +344,6 @@ pillow==12.3.0
     #   weasyprint
 pipmaster==1.1.13
     # via lightrag-hku
-portalocker==2.10.1
-    # via qdrant-client
 propcache==0.5.2
     # via
     #   aiohttp
@@ -370,10 +354,8 @@ protobuf==7.35.1
     # via
     #   google-api-core
     #   googleapis-common-protos
-    #   grpcio-tools
     #   onnxruntime
     #   proto-plus
-    #   qdrant-client
     #   temporalio
 psycopg==3.3.4
     # via -r python_rag/requirements.txt
@@ -400,7 +382,6 @@ pydantic==2.13.4
     #   openai
     #   pdftext
     #   pydantic-settings
-    #   qdrant-client
 pydantic-core==2.46.4
     # via pydantic
 pydantic-settings==2.14.2
@@ -411,8 +392,6 @@ pygments==2.20.0
     # via
     #   raganything
     #   rich
-pyjwt==2.13.0
-    # via -r python_rag/requirements.txt
 pylatexenc==2.10
     # via mineru
 pypdf==6.14.2
@@ -446,8 +425,6 @@ pytz==2026.2
     # via
     #   neo4j
     #   pandas
-pywin32==312 ; sys_platform == 'win32'
-    # via portalocker
 pyyaml==6.0.3
     # via
     #   albumentations
@@ -457,10 +434,6 @@ pyyaml==6.0.3
     #   paddleocr
     #   transformers
     #   uvicorn
-qdrant-client==1.12.1 ; python_full_version >= '3.13'
-    # via -r python_rag/requirements.txt
-qdrant-client==1.18.0 ; python_full_version < '3.13'
-    # via -r python_rag/requirements.txt
 raganything==1.3.1
     # via -r python_rag/requirements.txt
 rapidfuzz==3.14.5
@@ -505,7 +478,6 @@ scipy==1.18.0 ; python_full_version >= '3.12'
     #   scikit-image
 setuptools==83.0.0
     # via
-    #   grpcio-tools
     #   lightrag-hku
     #   modelscope
     #   torch
@@ -589,7 +561,6 @@ typing-extensions==4.16.0
     #   beautifulsoup4
     #   fastapi
     #   google-genai
-    #   grpcio
     #   huggingface-hub
     #   nexus-rpc
     #   openai
@@ -615,7 +586,6 @@ urllib3==2.7.0
     # via
     #   modelscope
     #   modelscope-hub
-    #   qdrant-client
     #   requests
 uvicorn==0.30.6
     # via

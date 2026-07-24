@@ -220,7 +220,7 @@ class ApiCharacterizationTests(unittest.TestCase):
     def test_app_logging_config_sets_app_and_graph_logger_levels(self) -> None:
         import logging
 
-        from api.logging_config import configure_app_logging, env_flag
+        from api.logging_config import configure_app_logging
         from api.settings import AppSettings
 
         app_logger = logging.getLogger("tests.logging_config")
@@ -251,8 +251,6 @@ class ApiCharacterizationTests(unittest.TestCase):
                 logger_name="tests.logging_config",
             )
 
-            self.assertTrue(env_flag("yes"))
-            self.assertFalse(env_flag(""))
             self.assertTrue(graph_debug)
             self.assertEqual(graph_debug_log, "")
             self.assertEqual(logger.level, logging.WARNING)

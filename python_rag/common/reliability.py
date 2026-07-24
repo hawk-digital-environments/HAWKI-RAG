@@ -110,13 +110,6 @@ _SECRET_PATTERNS: tuple[re.Pattern[str], ...] = (
 
 REQUEST_ID_HEADERS = ("x-request-id", "x-correlation-id", "request-id")
 
-DEFAULT_RETRY_CAP_BY_OPERATION: dict[str, int] = {
-    "qdrant.upsert_points": 3,
-    "qdrant.delete_by_filter": 3,
-    "neo4j.upsert_triplets": 3,
-    "neo4j.delete_by_doc_id": 3,
-}
-
 DEFAULT_REQUEST_BODY_SNIPPET_BYTES = 2048
 
 _LOGGER = logging.getLogger(__name__)
@@ -170,13 +163,6 @@ def is_retryable_neo4j_exception(exc: Exception) -> bool:
     return any(token in lowered for token in NEO4J_RETRYABLE_ERROR_TOKENS)
 
 
-def is_safe_retryable_write(operation: str | None, request_id: str | None) -> bool:
-    """Return true when an operation can be retried and request replay is safe."""
-    if not request_id:
-        return False
-    return is_retry_safe_write(operation)
-
-
 def normalize_retry_attempt_limit(value: int | str, *, minimum: int = 1) -> int:
     """Keep retry attempts in a safe positive range."""
     try:
@@ -184,14 +170,6 @@ def normalize_retry_attempt_limit(value: int | str, *, minimum: int = 1) -> int:
     except (TypeError, ValueError):
         parsed = int(minimum)
     return parsed if parsed >= minimum else minimum
-
-
-def normalize_retry_cap(operation: str | None, configured: int | None, *, minimum: int = 1) -> int:
-    """Normalize configured retries with explicit per-operation fallback values."""
-    baseline = DEFAULT_RETRY_CAP_BY_OPERATION.get((operation or "").strip(), minimum)
-    if configured is None:
-        return normalize_retry_attempt_limit(baseline, minimum=minimum)
-    return normalize_retry_attempt_limit(configured, minimum=minimum)
 
 
 def pick_request_id(headers: Mapping[str, str], fallback: str | None = None) -> str:

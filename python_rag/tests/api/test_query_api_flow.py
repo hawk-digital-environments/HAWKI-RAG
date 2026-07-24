@@ -233,7 +233,6 @@ class TestQueryApiFlow:
                 configured_search_top_k_fn=lambda top_k: top_k,
                 extract_terms_fn=lambda _text: [],
                 terms_from_payload_fn=lambda _payload: [],
-                set_fast_mode_fn=lambda _enabled: None,
             )
 
         with patch(

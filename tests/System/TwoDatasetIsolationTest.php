@@ -14,11 +14,11 @@ use Illuminate\Support\Facades\Http;
  *
  * Sanctum, abilities middleware, persisted grants, uniform 404 handling, and
  * construction of the trusted authorized_scope are real. The Python request
- * is intercepted at the HTTP boundary, so this test proves that Laravel never
- * dispatches the denied dataset; live Qdrant payload filters and Neo4j Cypher
- * isolation remain the responsibility of the Python integration suite. The
- * grant queries use Laravel's isolated SQLite test database rather than live
- * PostgreSQL.
+ * and Qdrant collection catalog are intercepted at the HTTP boundary, so this
+ * test proves that Laravel never dispatches the denied dataset; live Qdrant
+ * payload filters and Neo4j Cypher isolation remain the responsibility of the
+ * Python integration suite. The grant queries use Laravel's isolated SQLite
+ * test database rather than live PostgreSQL.
  */
 class TwoDatasetIsolationTest extends SystemTestCase
 {
@@ -31,7 +31,10 @@ class TwoDatasetIsolationTest extends SystemTestCase
         config()->set('config.admin_settings_path', $settingsPath);
 
         $bridgeEndpoint = rtrim((string) config('config.hawki_rag_bridge_url'), '/').'/query';
-        Http::fake([
+        $this->fakeAvailableQdrantCollections([
+            'hawki_system_alpha',
+            'hawki_system_beta',
+        ], [
             $bridgeEndpoint => Http::response([
                 'ok' => true,
                 'answer' => 'Only dataset alpha was dispatched.',
@@ -94,7 +97,7 @@ class TwoDatasetIsolationTest extends SystemTestCase
                 'error' => 'dataset_not_found',
             ]);
 
-        Http::assertSentCount(1);
+        Http::assertSentCount(2);
         Http::assertSent(function (Request $request) use ($bridgeEndpoint): bool {
             $payload = $request->data();
 

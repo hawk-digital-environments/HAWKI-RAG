@@ -250,16 +250,20 @@ class DatasetScopedQueryTest extends TestCase
             ->assertJsonValidationErrors('filters');
     }
 
-    public function test_authorized_dataset_selector_exposes_only_ready_dataset_identity(): void
+    public function test_authorized_dataset_selector_exposes_only_physically_ready_dataset_identity(): void
     {
         $user = $this->actingAsApiUser();
         $ready = $this->createDataset('ready', 'Ready Dataset');
         $unready = $this->createDataset('unready', 'Unready Dataset', qdrantCollection: '');
+        $missingStorage = $this->createDataset('missing-storage', 'Missing Storage');
         $inactive = $this->createDataset('inactive-list', 'Inactive Dataset', Dataset::STATUS_ARCHIVED);
         $this->createDataset('not-granted', 'Not Granted Dataset');
         $this->grant($user, $ready);
         $this->grant($user, $unready);
+        $this->grant($user, $missingStorage);
         $this->grant($user, $inactive);
+        config()->set('model_providers.vector_stores.qdrant.api_key', 'catalog-test-key');
+        $this->fakeAvailableQdrantCollections(['hawki_ready']);
 
         $response = $this->getJson('/api/query/datasets')
             ->assertOk()
@@ -272,6 +276,47 @@ class DatasetScopedQueryTest extends TestCase
 
         $this->assertStringNotContainsString('qdrant_collection', $response->getContent());
         $this->assertStringNotContainsString('neo4j_namespace', $response->getContent());
+        $this->assertStringNotContainsString('Missing Storage', $response->getContent());
+        Http::assertSentCount(1);
+        Http::assertSent(static fn (Request $request): bool => $request->url() === 'http://qdrant.test/collections'
+            && $request->hasHeader('api-key', ['catalog-test-key']));
+    }
+
+    public function test_authorized_dataset_selector_fails_closed_when_qdrant_catalog_is_unavailable(): void
+    {
+        $user = $this->actingAsApiUser();
+        $dataset = $this->createDataset('unknown-storage', 'Unknown Storage');
+        $this->grant($user, $dataset);
+        config()->set('config.qdrant_http_url', 'http://qdrant.test');
+        Http::fake([
+            'http://qdrant.test/collections' => Http::response([], 503),
+        ]);
+
+        $this->getJson('/api/query/datasets')
+            ->assertOk()
+            ->assertExactJson(['datasets' => []]);
+
+        Http::assertSentCount(1);
+    }
+
+    public function test_default_all_dataset_selector_still_requires_a_physical_collection(): void
+    {
+        config()->set('config.query_auth.all_datasets_by_default', true);
+        $this->actingAsApiUser();
+        $ready = $this->createDataset('default-ready', 'Default Ready');
+        $this->createDataset('default-missing', 'Default Missing');
+        $this->fakeAvailableQdrantCollections([(string) $ready->qdrant_collection]);
+
+        $this->getJson('/api/query/datasets')
+            ->assertOk()
+            ->assertExactJson([
+                'datasets' => [[
+                    'dataset_id' => 'default-ready',
+                    'name' => 'Default Ready',
+                ]],
+            ]);
+
+        $this->assertDatabaseCount('dataset_grants', 0);
     }
 
     public function test_dataset_grant_command_provisions_query_access_without_broad_backfill(): void

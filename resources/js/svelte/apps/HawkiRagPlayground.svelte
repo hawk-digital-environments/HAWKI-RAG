@@ -103,6 +103,18 @@
 
     type JsonRecord = Record<string, unknown>;
 
+    class ApiRequestError extends Error {
+        readonly code: string;
+        readonly status: number;
+
+        constructor(message: string, code: string, status: number) {
+            super(message);
+            this.name = 'ApiRequestError';
+            this.code = code;
+            this.status = status;
+        }
+    }
+
     const {
         queryEndpoint,
         datasetsEndpoint,
@@ -307,9 +319,11 @@
         const payload = asRecord(await response.json().catch(() => ({})));
 
         if (!response.ok || payload.ok === false || payload.success === false) {
-            const error = asRecord(payload.error);
+            const rawError = payload.error;
+            const error = asRecord(rawError);
             const message = textValue(error.message, textValue(payload.message, `Request failed (${response.status})`));
-            throw new Error(message);
+            const code = textValue(error.code, typeof rawError === 'string' ? rawError : '');
+            throw new ApiRequestError(message, code, response.status);
         }
 
         return payload;
@@ -472,7 +486,7 @@
         pushActivity('System', 'Live state refreshed');
     }
 
-    async function loadAuthorizedDatasets(): Promise<void> {
+    async function loadAuthorizedDatasets(): Promise<boolean> {
         try {
             const payload = await requestJson(datasetsEndpoint);
             datasets = asArray(payload.datasets)
@@ -487,6 +501,7 @@
                     };
                 })
                 .filter((value): value is DatasetOption => value !== null);
+            errorMessage = '';
 
             const remembered = window.localStorage.getItem('hawkiRagQueryDatasetId') || '';
             selectedDatasetId = datasets.some((dataset) => dataset.datasetId === remembered)
@@ -496,13 +511,19 @@
             if (selectedDatasetId) {
                 window.localStorage.setItem('hawkiRagQueryDatasetId', selectedDatasetId);
             } else {
-                status = 'No authorized active dataset is available.';
+                window.localStorage.removeItem('hawkiRagQueryDatasetId');
+                status = 'No authorized query-ready dataset is available.';
             }
+
+            return true;
         } catch (error) {
             datasets = [];
             selectedDatasetId = '';
+            window.localStorage.removeItem('hawkiRagQueryDatasetId');
             errorMessage = error instanceof Error ? error.message : 'Authorized datasets could not be loaded.';
             status = errorMessage;
+
+            return false;
         }
     }
 
@@ -512,9 +533,23 @@
         }
     }
 
+    function removeDatasetOption(datasetId: string): void {
+        datasets = datasets.filter((dataset) => dataset.datasetId !== datasetId);
+        if (!datasets.some((dataset) => dataset.datasetId === selectedDatasetId)) {
+            selectedDatasetId = datasets[0]?.datasetId || '';
+        }
+
+        if (selectedDatasetId) {
+            window.localStorage.setItem('hawkiRagQueryDatasetId', selectedDatasetId);
+        } else {
+            window.localStorage.removeItem('hawkiRagQueryDatasetId');
+        }
+    }
+
     async function runQuery(): Promise<void> {
         const query = question.trim();
         if (!query || !selectedDatasetId || busy) return;
+        const queryDatasetId = selectedDatasetId;
 
         busy = true;
         errorMessage = '';
@@ -540,7 +575,7 @@
                     'X-CSRF-TOKEN': csrfToken(),
                 },
                 body: JSON.stringify({
-                    dataset_id: selectedDatasetId,
+                    dataset_id: queryDatasetId,
                     query,
                     top_k: topK,
                     generate: includeAnswer,
@@ -560,7 +595,18 @@
             status = `${hits.length} sources retrieved in ${elapsedMs} ms`;
             pushActivity('Retrieval', `${hits.length} sources, ${kgFacts.length} graph facts, ${elapsedMs} ms`, 'ready');
         } catch (error) {
-            errorMessage = error instanceof Error ? error.message : 'Retrieval failed.';
+            if (error instanceof ApiRequestError && error.code === 'dataset_not_ready') {
+                removeDatasetOption(queryDatasetId);
+                const refreshed = await loadAuthorizedDatasets();
+                if (refreshed) {
+                    removeDatasetOption(queryDatasetId);
+                }
+                errorMessage = refreshed
+                    ? 'That dataset is no longer query-ready and was removed from the available datasets.'
+                    : 'That dataset is no longer query-ready, and the available datasets could not be refreshed.';
+            } else {
+                errorMessage = error instanceof Error ? error.message : 'Retrieval failed.';
+            }
             status = errorMessage;
             pushActivity('Retrieval', errorMessage, 'fail');
         } finally {
@@ -581,6 +627,12 @@
             });
             pushActivity('Qdrant', `Deleted ${name}`, 'warn');
             await loadStats(false);
+            if (queryAuthenticated) {
+                const refreshed = await loadAuthorizedDatasets();
+                if (refreshed) {
+                    status = `Deleted ${name}; available datasets were refreshed.`;
+                }
+            }
         } catch (error) {
             pushActivity('Qdrant', error instanceof Error ? error.message : 'Delete failed', 'fail');
         } finally {
@@ -780,7 +832,7 @@
                             required
                         >
                             {#if datasets.length === 0}
-                                <option value="">No authorized datasets</option>
+                                <option value="">No authorized query-ready datasets</option>
                             {:else}
                                 {#each datasets as dataset}
                                     <option value={dataset.datasetId}>{dataset.name} ({dataset.datasetId})</option>

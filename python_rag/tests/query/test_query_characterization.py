@@ -148,7 +148,7 @@ class QueryCharacterizationTests(unittest.TestCase):
         self.assertEqual(calls, [("search", 3), ("scroll_all", 7)])
 
     def test_query_hit_helpers_preserve_distinct_chunks_until_ranking(self) -> None:
-        from application.workflows import query_logic
+        from application.workflows import query_logic, query_stages
 
         primary = [
             {"id": "a", "score": 0.2, "payload": {"doc_id": "doc-a", "title": "Toy Train"}},
@@ -160,7 +160,7 @@ class QueryCharacterizationTests(unittest.TestCase):
         ]
 
         merged = query_logic._merge_hits(primary, secondary, limit=3)
-        deduped = query_logic._dedupe_hits_by_title_or_url(merged)
+        deduped = query_stages.dedupe_hits(merged)
 
         self.assertEqual([hit["id"] for hit in merged], ["a2", "c", "b"])
         self.assertEqual([hit["id"] for hit in deduped], ["a2", "c"])
@@ -335,7 +335,6 @@ class QueryCharacterizationTests(unittest.TestCase):
         from application.workflows import query_execution
 
         calls: list[str] = []
-        fast_mode_calls: list[bool] = []
         graph_calls: list[tuple[str, dict[str, object]]] = []
         kg_term_calls: list[list[str]] = []
 
@@ -413,7 +412,6 @@ class QueryCharacterizationTests(unittest.TestCase):
             configured_search_top_k_fn=lambda top_k: top_k,
             extract_terms_fn=lambda text: text.lower().split(),
             terms_from_payload_fn=lambda payload: ["kg"],
-            set_fast_mode_fn=lambda enabled: fast_mode_calls.append(enabled),
         )
 
         self.assertEqual(result["ok"], True)
@@ -422,68 +420,11 @@ class QueryCharacterizationTests(unittest.TestCase):
         self.assertTrue(any(h["id"] == "a" for h in result["hits"]))
         self.assertEqual(result["retrieval"]["iterative_pass"], False)
         self.assertIn("embed", calls)
-        self.assertEqual(fast_mode_calls, [False])
         self.assertEqual([call[0] for call in graph_calls], ["structural", "kg"])
         for _operation, scope in graph_calls:
             self.assertEqual(scope["dataset_id"], "dataset-a")
             self.assertEqual(scope["neo4j_namespace"], "hawki_dataset_a")
         self.assertEqual(kg_term_calls, [["rewritten", "train", "toy", "kg"]])
-
-    def test_query_execution_fast_mode_setter_is_injected(self) -> None:
-        from application.workflows import query_execution
-
-        body = SimpleNamespace(
-            query="fast mode",
-            authorized_scope=_authorized_query_scope(),
-            top_k=2,
-            provider="fake",
-            filters={},
-            generate=False,
-            is_optimized=False,
-            fast_mode=True,
-            smart_lookup=False,
-            structural_hops=0,
-            preferred_tags=None,
-            reranker="none",
-            rerank_top_n=4,
-            mix_mode=False,
-            mix_weight=0.25,
-        )
-
-        fast_mode_calls: list[bool] = []
-        query_execution.run_query_documents(
-            body,
-            rag_service=SimpleNamespace(rerank_hits=lambda **kwargs: []),
-            get_provider=lambda name: SimpleNamespace(
-                embed=lambda text: [0.1, 0.2, 0.3],
-                embed_model="embed-model",
-                rag_model="rag-model",
-            ),
-            qdrant_ctor=_ScopedQdrantStub,
-            analyze_prompt_fn=lambda query: {"blocked": False, "issues": [], "sanitized": query},
-            enforce_output_safety_fn=lambda answer: {"blocked": False, "issues": [], "answer": answer},
-            sanitize_prompt_text_fn=lambda query: query,
-            build_query_rewrite_fn=lambda provider, query, **kwargs: {
-                "enabled": False,
-                "rewritten_query": query,
-                "high_level_keys": [],
-                "low_level_keys": [],
-                "entity_terms": [],
-                "modality_hints": [],
-            },
-            build_query_terms_fn=lambda rewritten_query, high_level_keys, low_level_keys, entity_terms: [],
-            run_search_fn=lambda **kwargs: [],
-            keyword_fallback_fn=lambda *args, **kwargs: [],
-            build_structural_hits_fn=lambda *args, **kwargs: [],
-            structural_hops_fn=lambda: 0,
-            structural_limit_fn=lambda top_k: top_k,
-            rerank_and_filter_hits_fn=lambda hits, **kwargs: hits,
-            run_high_recall_fn=lambda **kwargs: [],
-            fetch_related_terms_fn=lambda terms, limit: [],
-            set_fast_mode_fn=lambda enabled: fast_mode_calls.append(enabled),
-        )
-
-        self.assertEqual(fast_mode_calls, [True])
 
     def test_query_stages_rewrite_contract_is_multimodal_and_dedupe_terms(self) -> None:
         from application.workflows import query_stages

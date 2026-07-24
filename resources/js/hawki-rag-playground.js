@@ -1,4 +1,3 @@
-import './bootstrap';
 import './health-gate.js';
 import {mount} from 'svelte';
 import HawkiRagPlayground from './svelte/apps/HawkiRagPlayground.svelte';

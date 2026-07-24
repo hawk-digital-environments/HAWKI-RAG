@@ -1,10 +1,9 @@
 """Composable query orchestration for query documents."""
 from __future__ import annotations
 
-import os
 import logging
 import time
-from typing import Any, Callable, Dict, List, Tuple
+from typing import Any, Callable
 
 from fastapi import HTTPException
 
@@ -49,11 +48,6 @@ def _dataset_not_ready(exc: Exception) -> HTTPException:
     )
 
 
-def _set_fast_mode_env(enabled: bool) -> None:
-    """Set query fast mode flag in process environment (legacy contract)."""
-    os.environ["RAG_FAST_MODE"] = "true" if enabled else "false"
-
-
 def run_query_documents(
     body: Any,
     *,
@@ -92,14 +86,12 @@ def run_query_documents(
     configured_search_top_k_fn: Callable[[int], int] = configured_search_top_k,
     extract_terms_fn: Callable[[str], list[str]] = _extract_terms,
     terms_from_payload_fn: Callable[[dict[str, Any]], list[str]] = _terms_from_payload,
-    set_fast_mode_fn: Callable[[bool], None] = _set_fast_mode_env,
     build_grounded_answer_prompt_fn: Callable[
         [str, list[dict[str, Any]], list[dict[str, str]]], tuple[str, str]
     ] = build_grounded_answer_prompt,
 ) -> dict[str, Any]:
     """Run the query orchestration used by `/query` with injectable collaborators."""
     timings: dict[str, float] = {}
-    set_fast_mode_fn(body.fast_mode)
     prompt_safety = analyze_prompt_fn(body.query)
     if prompt_safety["blocked"]:
         detail = "Query blocked by content safety filters."

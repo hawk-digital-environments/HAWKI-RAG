@@ -1,23 +1,9 @@
 """Typed Neo4j response adapters and parsing helpers."""
 from __future__ import annotations
 
-from typing import Any, Dict, List, TypedDict
+from typing import Any, TypedDict
 
 from infrastructure.graph.triplet_normalization import dedupe_one_way_triplets
-
-
-class Neo4jCountResult(TypedDict, total=False):
-    c: int
-
-
-class Neo4jRelationCount(TypedDict):
-    type: str | None
-    count: int
-
-
-class Neo4jLabelCount(TypedDict):
-    labels: list[str]
-    count: int
 
 
 class Neo4jFactRow(TypedDict, total=False):

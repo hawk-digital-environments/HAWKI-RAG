@@ -1,4 +1,3 @@
-import './bootstrap';
 import './health-gate.js';
 import { mount } from 'svelte';
 import PipelineControllerPage from './svelte/apps/PipelineControllerPage.svelte';

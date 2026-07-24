@@ -7,11 +7,6 @@ namespace App\Providers;
 use App\Policies\AdminAccessPolicy;
 use App\Policies\DatasetQueryPolicy;
 use App\Policies\UserAccessPolicy;
-use App\Services\Storage\StorageElementReader;
-use App\Services\Storage\StorageJobReportReader;
-use App\Services\Storage\StoragePathBuilder;
-use App\Services\Storage\StorageService;
-use App\Services\Storage\UrlGenerator;
 use App\Services\WebSearch\Contracts\WebSearchInterface;
 use App\Services\WebSearch\Exceptions\WebSearchFailedException;
 use App\Services\WebSearch\Implementations\BraveSearch;
@@ -20,8 +15,6 @@ use App\Support\Clock\CarbonClock;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Contracts\Config\Repository as ConfigRepository;
 use Illuminate\Contracts\Foundation\Application;
-use Illuminate\Contracts\Routing\UrlGenerator as RoutingUrlGenerator;
-use Illuminate\Filesystem\FilesystemManager;
 use Illuminate\Http\Request;
 use Illuminate\Routing\UrlGenerator as LaravelUrlGenerator;
 use Illuminate\Support\Facades\Gate;
@@ -41,23 +34,6 @@ class AppServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->singleton(ClockInterface::class, CarbonClock::class);
-
-        $this->app->singleton(StorageService::class, function (Application $app) {
-            $config = $app->make(ConfigRepository::class);
-            $diskName = (string) $config->get('filesystems.file_storage');
-            $disk = $app->make(FilesystemManager::class)->disk($diskName);
-            $urlGenerator = new UrlGenerator(
-                (array) $config->get('filesystems.disks.'.$diskName),
-                $disk,
-                $app->make(RoutingUrlGenerator::class),
-            );
-            $paths = new StoragePathBuilder;
-
-            return new StorageService(
-                new StorageJobReportReader($disk, $paths),
-                new StorageElementReader($disk, $paths, $urlGenerator),
-            );
-        });
 
         $this->app->singleton(
             WebSearchInterface::class,
