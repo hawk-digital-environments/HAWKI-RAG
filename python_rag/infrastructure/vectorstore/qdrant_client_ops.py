@@ -4,10 +4,9 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from inspect import signature
-from typing import Any
 
 
-def gateway_supports_operation_id(gateway: Any, method_name: str) -> bool:
+def gateway_supports_operation_id(gateway: object, method_name: str) -> bool:
     """Return whether a gateway method accepts an idempotency operation id."""
 
     method = getattr(gateway, method_name, None)

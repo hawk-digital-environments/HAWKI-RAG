@@ -2,10 +2,10 @@
 from __future__ import annotations
 
 import time
-from typing import Any
 from uuid import uuid4
 
 from fastapi import FastAPI, Request
+from starlette.responses import Response
 
 from common.reliability import (
     API_REQUEST_END_EVENT,
@@ -24,7 +24,7 @@ def install_request_context_middleware(app: FastAPI, logger) -> None:
     """Register a correlation + request-body logging middleware."""
 
     @app.middleware("http")
-    async def _request_context(request: Request, call_next) -> Any:
+    async def _request_context(request: Request, call_next) -> Response:
         request_id = pick_request_id(request.headers, fallback=str(uuid4()))
         request.state.request_id = request_id
         try:

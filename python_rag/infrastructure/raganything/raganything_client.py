@@ -38,7 +38,7 @@ logger = logging.getLogger(__name__)
 
 
 def _is_junk_graph_label(
-    value: Any,
+    value: object,
     *,
     allowlist_raw: str | None = None,
     denylist_raw: str | None = None,
@@ -79,14 +79,14 @@ class RagAnythingGraphService:
         self._rag_graph_kv_junk_scrub_once_done = False
 
     @staticmethod
-    def _graph_model_override(provider: Any) -> str | None:
+    def _graph_model_override(provider: object) -> str | None:
         return graph_model_override(provider)
 
     @staticmethod
-    def _provider_fingerprint(provider: Any) -> str:
+    def _provider_fingerprint(provider: object) -> str:
         return provider_fingerprint(provider)
 
-    def graph_cache_fingerprint(self, provider: Any, *, neo4j_database: str | None = None) -> str:
+    def graph_cache_fingerprint(self, provider: object, *, neo4j_database: str | None = None) -> str:
         return graph_runtime_cache_key(
             working_dir=self.working_dir,
             provider=provider,
@@ -94,7 +94,7 @@ class RagAnythingGraphService:
             neo4j_database=neo4j_database,
         )
 
-    def _is_junk_graph_label(self, value: Any) -> bool:
+    def _is_junk_graph_label(self, value: object) -> bool:
         return _is_junk_graph_label(
             value,
             allowlist_raw=self._settings.graph_embed_junk_allowlist,
@@ -105,7 +105,7 @@ class RagAnythingGraphService:
     def _run_coro_sync(self, coro: Any) -> Any:
         return self._rag_graph_loop.run_sync(coro)
 
-    def _close_raganything_instance(self, client: Any | None) -> None:
+    def _close_raganything_instance(self, client: object | None) -> None:
         self._rag_graph_loop.close_raganything_instance(client)
 
     def clear_graph_cache(self) -> dict[str, Any]:

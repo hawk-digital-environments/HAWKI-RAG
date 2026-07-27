@@ -24,7 +24,7 @@ Reranker = Callable[..., list[dict[str, Any]]]
 class GraphExtractionService(Protocol):
     """Small graph service surface needed by ``RAGService``."""
 
-    client: Any | None
+    client: object | None
 
     def clear_graph_cache(self) -> dict[str, Any]:
         """Clear persisted graph extraction state."""

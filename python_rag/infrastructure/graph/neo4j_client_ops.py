@@ -12,7 +12,7 @@ def ensure_query_executor(
     current: Neo4jQueryExecutorProtocol | None,
     *,
     session_factory: Callable[[], Any],
-    settings: Any,
+    settings: object,
 ) -> Neo4jQueryExecutorProtocol:
     """Return an existing query executor or build one from graph settings."""
 

@@ -79,7 +79,7 @@ def _request_exception_type() -> type[BaseException]:
         return _UnavailableRequestsError
 
 
-def _callable_supports_kwarg(target: Any, method_name: str, kwarg: str) -> bool:
+def _callable_supports_kwarg(target: object, method_name: str, kwarg: str) -> bool:
     method = getattr(target, method_name, None)
     if method is None:
         return False

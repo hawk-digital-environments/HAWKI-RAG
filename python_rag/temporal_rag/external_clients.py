@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 import logging
 import time
-from typing import Any
+from typing import Any, cast
 from urllib.parse import urljoin
 
 import requests
@@ -84,9 +84,9 @@ class ExternalJobClient:
         last_status["error"] = f"External job {job_id} did not complete before timeout."
         return last_status
 
-    def _request(self, method: str, path: str, **kwargs: Any) -> dict[str, Any]:
+    def _request(self, method: str, path: str, **kwargs: object) -> dict[str, Any]:
         url = urljoin(self.base_url, path)
-        headers = kwargs.pop("headers", {})
+        headers = cast(dict[str, str], kwargs.pop("headers", {}))
         if self.token:
             headers["Authorization"] = f"Bearer {self.token}"
 

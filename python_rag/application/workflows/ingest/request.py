@@ -8,7 +8,7 @@ from typing import Any
 from application.workflows.provider_overrides import apply_provider_overrides
 
 
-def _normalize_idempotency_key(value: Any, *, fallback: str | None = None) -> str | None:
+def _normalize_idempotency_key(value: object, *, fallback: str | None = None) -> str | None:
     raw = str(value or "").strip() if value is not None else ""
     if not raw:
         raw = str(fallback or "").strip()

@@ -3,12 +3,12 @@ from __future__ import annotations
 
 import re
 import unicodedata
-from typing import Any, Dict, List
+from typing import Any
 
 from common.text_preprocessor import _extract_terms
 
 
-def fold_text(value: Any) -> str:
+def fold_text(value: object) -> str:
     text = str(value or "").lower()
     if not text:
         return ""

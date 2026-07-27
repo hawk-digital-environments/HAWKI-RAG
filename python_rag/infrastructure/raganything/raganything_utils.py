@@ -5,7 +5,6 @@ from __future__ import annotations
 import hashlib
 import re
 from functools import lru_cache
-from typing import Any
 
 Triplet = tuple[str, str, str]
 
@@ -23,7 +22,7 @@ def strip_control_chars(text: str | None) -> str:
     return "".join(cleaned_chars)
 
 
-def normalize_graph_embed_text(text: Any) -> str:
+def normalize_graph_embed_text(text: object) -> str:
     cleaned = strip_control_chars(str(text or ""))
     cleaned = cleaned.encode("utf-8", errors="ignore").decode("utf-8", errors="ignore")
     cleaned = re.sub(r"\s+", " ", cleaned).strip()
@@ -176,7 +175,7 @@ def graph_embed_junk_reason(
 
 
 def is_junk_graph_label(
-    value: Any,
+    value: object,
     *,
     allowlist_raw: str | None = None,
     denylist_raw: str | None = None,

@@ -195,7 +195,7 @@ def build_page_registry_record(
     )
 
 
-def _nullable_string(value: Any) -> str | None:
+def _nullable_string(value: object) -> str | None:
     if value is None:
         return None
     text = str(value).strip()

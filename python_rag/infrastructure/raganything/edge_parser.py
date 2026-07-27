@@ -73,5 +73,5 @@ def _edge_created_at(edge: dict[str, Any]) -> int:
     return 0
 
 
-def _norm_path(value: Any) -> str:
+def _norm_path(value: object) -> str:
     return str(value or "").replace("\\", "/").strip()

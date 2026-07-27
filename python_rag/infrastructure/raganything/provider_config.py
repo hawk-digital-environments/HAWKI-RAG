@@ -6,7 +6,7 @@ from typing import Any
 from infrastructure.providers.ollama_provider import OllamaProvider
 
 
-def graph_model_override(provider: Any) -> str | None:
+def graph_model_override(provider: object) -> str | None:
     explicit = str(getattr(provider, "_explicit_graph_model", "") or "").strip()
     if explicit:
         return explicit
@@ -16,7 +16,7 @@ def graph_model_override(provider: Any) -> str | None:
     return None
 
 
-def graph_vision_model_override(provider: Any) -> str | None:
+def graph_vision_model_override(provider: object) -> str | None:
     """Return an explicit vision selection or Ollama's legacy graph override."""
 
     explicit = str(getattr(provider, "_explicit_vision_model", "") or "").strip()
@@ -28,7 +28,7 @@ def graph_vision_model_override(provider: Any) -> str | None:
     return None
 
 
-def provider_fingerprint(provider: Any) -> str:
+def provider_fingerprint(provider: object) -> str:
     parts = [
         provider.__class__.__name__,
         str(getattr(provider, "base", "")),

@@ -83,7 +83,7 @@ def _temperature(value: float | None, default: float) -> float:
     return normalized
 
 
-def _normalize_image_url(value: Any) -> str | None:
+def _normalize_image_url(value: object) -> str | None:
     raw_value = str(value or "").strip()
     if not raw_value:
         return None
@@ -92,7 +92,7 @@ def _normalize_image_url(value: Any) -> str | None:
     return f"data:image/png;base64,{raw_value}"
 
 
-def _normalize_content_part(part: Any) -> dict[str, Any]:
+def _normalize_content_part(part: object) -> dict[str, Any]:
     if not isinstance(part, dict):
         raise ValueError("LiteLLM message content parts must be objects.")
 
@@ -115,7 +115,7 @@ def _normalize_content_part(part: Any) -> dict[str, Any]:
     raise ValueError(f"Unsupported LiteLLM message content type: {part_type or '<missing>'}.")
 
 
-def _normalize_message(message: Any, *, index: int) -> dict[str, Any]:
+def _normalize_message(message: object, *, index: int) -> dict[str, Any]:
     if not isinstance(message, dict):
         raise ValueError(f"LiteLLM message at index {index} must be an object.")
 
@@ -163,7 +163,7 @@ def _normalize_messages(messages: list[Any] | None) -> list[dict[str, Any]]:
     return [_normalize_message(message, index=index) for index, message in enumerate(messages)]
 
 
-def _chat_content(payload: Any) -> str | None:
+def _chat_content(payload: object) -> str | None:
     if not isinstance(payload, dict):
         return None
     choices = payload.get("choices")
@@ -379,8 +379,8 @@ class LiteLLMProvider:
             raise RuntimeError(f"LiteLLM {operation} returned a non-JSON response.")
         return response_payload
 
-    def _http_error_detail(self, payload: Any) -> str:
-        detail: Any = None
+    def _http_error_detail(self, payload: object) -> str:
+        detail: object | None = None
         if isinstance(payload, dict):
             error = payload.get("error")
             if isinstance(error, dict):
@@ -391,7 +391,7 @@ class LiteLLMProvider:
                 detail = payload["message"]
         return self._safe_detail(detail or "Upstream request failed.")
 
-    def _safe_detail(self, value: Any) -> str:
+    def _safe_detail(self, value: object) -> str:
         detail = str(value or "Upstream request failed.")
         if self.key:
             detail = detail.replace(self.key, "<redacted>")

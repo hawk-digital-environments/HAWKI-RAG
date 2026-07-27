@@ -60,7 +60,7 @@ def parse_llm_triplet_response(response: str, *, max_triplets: int = _MAX_TRIPLE
     """Parse the strict JSON shape requested from the fallback prompt."""
 
     payload = _loads_json_payload(response)
-    raw_triplets: Any
+    raw_triplets: object
     if isinstance(payload, dict):
         raw_triplets = payload.get("triplets")
     else:
@@ -124,7 +124,7 @@ def _trim_source_text(source_text: str) -> str:
     return f"{text[:head_chars]}\n\n[...snipped...]\n\n{text[-tail_chars:]}"
 
 
-def _loads_json_payload(response: str) -> Any:
+def _loads_json_payload(response: str) -> object:
     text = str(response or "").strip()
     if not text:
         return None
@@ -164,7 +164,7 @@ def _iter_triplet_objects_from_text(response: str) -> Iterable[dict[str, Any]]:
             yield payload
 
 
-def _triplet_from_raw(raw: Any) -> Triplet | None:
+def _triplet_from_raw(raw: object) -> Triplet | None:
     if isinstance(raw, dict):
         subj = raw.get("subject") or raw.get("source") or raw.get("head")
         rel = raw.get("relation") or raw.get("predicate") or raw.get("relationship")
@@ -177,7 +177,7 @@ def _triplet_from_raw(raw: Any) -> Triplet | None:
     return _clean_triplet(subj, rel, obj)
 
 
-def _clean_triplet(subject: Any, relation: Any, obj: Any) -> Triplet | None:
+def _clean_triplet(subject: object, relation: object, obj: object) -> Triplet | None:
     subj = _short_label(subject)
     rel = relation_label_from_text(str(relation or ""))
     target = _short_label(obj)
@@ -188,7 +188,7 @@ def _clean_triplet(subject: Any, relation: Any, obj: Any) -> Triplet | None:
     return subj, rel, target
 
 
-def _short_label(value: Any) -> str:
+def _short_label(value: object) -> str:
     text = " ".join(str(value or "").split())
     if len(text) > 120:
         text = text[:120].rstrip()

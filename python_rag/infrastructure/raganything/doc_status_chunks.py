@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable, Iterable, Sequence
-from typing import Any
+from typing import Any, TypeVar
+
+
+_RecordT = TypeVar("_RecordT")
 
 
 def chunk_file_sort_key(path: str) -> int:
@@ -22,7 +25,7 @@ def sort_chunk_files(paths: Iterable[str]) -> list[str]:
 
 def merge_chunk_payloads(
     paths: Iterable[str],
-    load_json_fn: Callable[[str], Any],
+    load_json_fn: Callable[[str], object],
 ) -> dict[str, Any]:
     """Load and merge JSON object payloads from chunk files."""
 
@@ -49,7 +52,7 @@ def chunk_item_dicts(
 
 def is_duplicate_doc_record(
     doc_id: str,
-    doc: Any,
+    doc: object,
     *,
     failed_status_value: str,
 ) -> bool:
@@ -70,10 +73,10 @@ def is_duplicate_doc_record(
 
 def annotate_duplicate_skip_metadata(
     doc_id: str,
-    doc: Any,
+    doc: _RecordT,
     *,
     failed_status_value: str,
-) -> Any:
+) -> _RecordT:
     """Mark duplicate records as effective skipped while preserving raw status."""
 
     if not is_duplicate_doc_record(doc_id, doc, failed_status_value=failed_status_value):
@@ -91,7 +94,7 @@ def annotate_duplicate_skip_metadata(
 
 
 def count_status_records(
-    records: Iterable[tuple[str, Any]],
+    records: Iterable[tuple[str, object]],
     *,
     status_values: Iterable[str],
     failed_status_value: str,

@@ -1,14 +1,14 @@
 """Runtime diagnostics for the RAG API."""
 from __future__ import annotations
 
+import logging
 import shutil
 import subprocess
 from pathlib import Path
-from typing import Any
 
 
 def log_gpu_status(
-    logger: Any,
+    logger: logging.Logger,
     context: str,
     *,
     cuda_visible_devices: str,

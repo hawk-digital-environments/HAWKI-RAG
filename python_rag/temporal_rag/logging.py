@@ -5,7 +5,6 @@ from __future__ import annotations
 import logging
 import os
 from pathlib import Path
-from typing import Any
 
 
 def configure_logging(stage: str | None = None) -> None:
@@ -55,7 +54,7 @@ def _worker_log_path(stage: str | None) -> str | None:
     return None
 
 
-def log_event(logger: logging.Logger, event: str, **fields: Any) -> None:
+def log_event(logger: logging.Logger, event: str, **fields: object) -> None:
     safe_fields = {key: value for key, value in fields.items() if value is not None}
     logger.info("%s %s", event, safe_fields)
 

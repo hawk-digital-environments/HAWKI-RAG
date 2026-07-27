@@ -102,13 +102,13 @@ def merge_hits(primary: list[dict[str, Any]], secondary: list[dict[str, Any]], l
     return merged[:limit]
 
 
-def normalize_title(value: Any) -> str:
+def normalize_title(value: object) -> str:
     if not value:
         return ""
     return re.sub(r"\s+", " ", str(value)).strip().lower()
 
 
-def normalize_url(value: Any) -> str:
+def normalize_url(value: object) -> str:
     if isinstance(value, list):
         value = value[0] if value else ""
     if not value:

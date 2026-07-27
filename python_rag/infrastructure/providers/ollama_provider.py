@@ -22,7 +22,7 @@ from common.optional_imports import import_required_module
 logger = logging.getLogger(__name__)
 
 
-def _clean_ollama_image_data(value: Any) -> str | None:
+def _clean_ollama_image_data(value: object) -> str | None:
     raw = str(value or "").strip()
     if not raw:
         return None
@@ -401,7 +401,7 @@ class OllamaProvider:
         return [{"role": "system", "content": system}, user_message]
 
     @staticmethod
-    def _normalize_vision_message(message: Any) -> dict[str, Any] | None:
+    def _normalize_vision_message(message: object) -> dict[str, Any] | None:
         if not isinstance(message, dict):
             return None
 

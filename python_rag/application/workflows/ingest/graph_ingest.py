@@ -24,7 +24,7 @@ class GraphTimeout(Exception):
 
 def perf_log(
     msg: str,
-    *args: Any,
+    *args: object,
     graph_perf_log: bool | None = None,
     settings: GraphIngestSettings | None = None,
 ) -> None:

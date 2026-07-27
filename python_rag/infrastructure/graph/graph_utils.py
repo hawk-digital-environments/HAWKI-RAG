@@ -34,7 +34,7 @@ def _env_int(name: str, default: int) -> int:
         return default
 
 
-def _perf_log(msg: str, *args: Any, graph_perf_log: bool | None = None) -> None:
+def _perf_log(msg: str, *args: object, graph_perf_log: bool | None = None) -> None:
     if graph_perf_log is None:
         graph_perf_log = _env_bool("GRAPH_PERF_LOG")
     if graph_perf_log:
@@ -90,13 +90,13 @@ _KNOWN_PROMPT_EXAMPLE_TERMS = {
 }
 
 
-def _normalize_text(value: Any) -> str:
+def _normalize_text(value: object) -> str:
     if value is None:
         return ""
     return " ".join(str(value).split())
 
 
-def _normalize_match_text(value: Any) -> str:
+def _normalize_match_text(value: object) -> str:
     if value is None:
         return ""
     text = unicodedata.normalize("NFKD", str(value))

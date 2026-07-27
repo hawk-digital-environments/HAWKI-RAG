@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Any
 
-
-def apply_provider_overrides(provider: Any, body: Any) -> None:
+def apply_provider_overrides(provider: object, body: object) -> None:
     """Apply server-selected model aliases without changing provider credentials."""
 
     if provider is None:
@@ -27,7 +25,7 @@ def apply_provider_overrides(provider: Any, body: Any) -> None:
         chat_model_value = str(chat_model).strip()
         provider.rag_model = chat_model_value
         try:
-            provider._explicit_graph_model = chat_model_value
+            setattr(provider, "_explicit_graph_model", chat_model_value)
         except Exception:
             pass
 
@@ -36,7 +34,7 @@ def apply_provider_overrides(provider: Any, body: Any) -> None:
         vision_model_value = str(vision_model).strip()
         provider.vision_model = vision_model_value
         try:
-            provider._explicit_vision_model = vision_model_value
+            setattr(provider, "_explicit_vision_model", vision_model_value)
         except Exception:
             pass
 

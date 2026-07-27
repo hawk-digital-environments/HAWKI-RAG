@@ -490,7 +490,7 @@ class AppMetadataStore:
         return {}
 
     @staticmethod
-    def _positive_int(value: Any) -> int | None:
+    def _positive_int(value: str | int | float | None) -> int | None:
         if isinstance(value, bool):
             return None
 

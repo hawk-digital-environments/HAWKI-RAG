@@ -157,11 +157,11 @@ def is_multimodal_query(text: str) -> bool:
     return _is_multimodal_query(text)
 
 
-def normalize_title(value: Any) -> str:
+def normalize_title(value: object) -> str:
     return normalize_title_raw(value)
 
 
-def normalize_url(value: Any) -> str:
+def normalize_url(value: object) -> str:
     return normalize_url_raw(value)
 
 
@@ -169,7 +169,7 @@ def dedupe_hits(hits: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return dedupe_hits_by_title_or_url(hits)
 
 
-def text_fold(value: Any) -> str:
+def text_fold(value: object) -> str:
     return fold_text(value)
 
 

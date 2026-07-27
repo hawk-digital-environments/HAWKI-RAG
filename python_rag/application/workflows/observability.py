@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any
 
 
 def pipeline_log(
@@ -11,12 +10,12 @@ def pipeline_log(
     *,
     stage: str,
     status: str,
-    job_id: Any = None,
-    doc_id: Any = None,
-    error_message: Any = None,
-    **fields: Any,
+    job_id: object = None,
+    doc_id: object = None,
+    error_message: object = None,
+    **fields: object,
 ) -> None:
-    payload = {
+    payload: dict[str, object] = {
         "event": "application.workflows.stage",
         "stage": stage,
         "status": status,
@@ -28,7 +27,7 @@ def pipeline_log(
     logger.log(level, json.dumps(payload, ensure_ascii=False, sort_keys=True, default=str))
 
 
-def _nullable_string(value: Any) -> str | None:
+def _nullable_string(value: object) -> str | None:
     if value is None or value == "":
         return None
     return str(value)

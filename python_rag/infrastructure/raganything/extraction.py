@@ -13,7 +13,7 @@ from infrastructure.raganything.text import clean_graph_text
 logger = logging.getLogger(__name__)
 
 
-def _perf_log(msg: str, graph_perf_log: bool, *args: Any) -> None:
+def _perf_log(msg: str, graph_perf_log: bool, *args: object) -> None:
     if graph_perf_log:
         logger.info(msg, *args)
 

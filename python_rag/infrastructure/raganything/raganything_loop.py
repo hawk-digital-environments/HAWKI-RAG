@@ -68,7 +68,7 @@ class RagAnythingGraphLoop:
         future = asyncio.run_coroutine_threadsafe(coro, loop)
         return future.result()
 
-    def close_raganything_instance(self, client: Any | None) -> None:
+    def close_raganything_instance(self, client: object | None) -> None:
         if client is None:
             return
         try:

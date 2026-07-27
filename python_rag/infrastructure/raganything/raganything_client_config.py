@@ -26,7 +26,7 @@ def _numpy_module() -> Any:
 
 def graph_runtime_cache_key(
     working_dir: Path,
-    provider: Any,
+    provider: object,
     settings: RagAnythingGraphSettings,
     *,
     neo4j_database: str | None = None,
@@ -77,8 +77,8 @@ _MAX_EMBEDDING_DIMENSION = 65_536
 _MODEL_ALIAS_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,159}$")
 
 
-def _valid_embedding_dimension(value: Any) -> int | None:
-    if isinstance(value, bool):
+def _valid_embedding_dimension(value: str | int | float | None) -> int | None:
+    if value is None or isinstance(value, bool):
         return None
     try:
         dimension = int(value)
@@ -101,7 +101,7 @@ def _embedding_dimension_overrides(raw_value: str) -> dict[str, int]:
     return dimensions
 
 
-def _embed_model_dim(graph_provider: Any, settings: RagAnythingGraphSettings) -> int:
+def _embed_model_dim(graph_provider: object, settings: RagAnythingGraphSettings) -> int:
     observed_dimension = _valid_embedding_dimension(
         getattr(graph_provider, "_last_embed_dim", None)
     )
@@ -129,7 +129,7 @@ def _build_llm_model_func(graph_provider: Any, settings: RagAnythingGraphSetting
         system_prompt: str | None = None,
         history_messages: list | None = None,
         max_tokens: int | None = None,
-        **kwargs: Any,
+        **kwargs: object,
     ) -> str:
         del max_tokens, kwargs
         messages = list(history_messages or [])
@@ -173,7 +173,7 @@ def _build_vision_model_func(graph_provider: Any, settings: RagAnythingGraphSett
         history_messages: list | None = None,
         image_data: str | None = None,
         messages: list | None = None,
-        **kwargs: Any,
+        **kwargs: object,
     ) -> str:
         del kwargs
         system = system_prompt or "You are a helpful visual assistant."

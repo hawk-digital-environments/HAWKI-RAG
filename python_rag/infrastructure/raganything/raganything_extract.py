@@ -6,6 +6,7 @@ import hashlib
 import logging
 import re
 import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -102,14 +103,14 @@ async def extract_triplets_from_graph_client(
     file_path: str | None,
     file_ref: str,
     working_dir: Path,
-    settings: Any,
+    settings: object,
     debug: bool,
     logger_obj: logging.Logger | None = None,
     neo4j_database: str | None = None,
     neo4j_uri: str | None = None,
     neo4j_user: str | None = None,
     neo4j_password: str | None = None,
-    scrub_raganything_kv_graph_junk: Any,
+    scrub_raganything_kv_graph_junk: Callable[..., object],
     request_id: str | None = None,
 ) -> list[tuple[str, str, str]]:
     log = logger_obj or logger

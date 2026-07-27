@@ -22,7 +22,7 @@ import json
 import glob
 import os
 import logging
-from typing import Any
+from typing import Any, TypeVar
 
 from infrastructure.raganything.doc_status_chunks import (
     annotate_duplicate_skip_metadata,
@@ -33,6 +33,8 @@ from infrastructure.raganything.doc_status_chunks import (
     sort_chunk_files,
 )
 from common.optional_imports import import_required_module
+
+_RecordT = TypeVar("_RecordT")
 
 try:
     lightrag_base = import_required_module(
@@ -98,13 +100,13 @@ except Exception as exc:  # pragma: no cover - optional dependency path
     class JsonDocStatusStorage:
         """Fallback base class for optional dependency environments."""
 
-        def __init__(self, *args: Any, **kwargs: Any) -> None:
+        def __init__(self, *args: object, **kwargs: object) -> None:
             self.global_config = args[0] if args else kwargs.get("global_config", {})
             self.namespace = kwargs.get("namespace", "") if len(args) < 2 else args[1]
             self.workspace = kwargs.get("workspace", None)
             self.storage_updated = kwargs.get("storage_updated", None)
 
-        async def upsert(self, *_args: Any, **_kwargs: Any) -> None:
+        async def upsert(self, *_args: object, **_kwargs: object) -> None:
             raise StorageNotInitializedError(
                 "LightRAG optional dependency 'lightrag' is unavailable for chunked doc status storage."
             )
@@ -127,22 +129,22 @@ except Exception as exc:  # pragma: no cover - optional dependency path
     def get_data_init_lock() -> _AsyncNoopContextManager:
         return _AsyncNoopContextManager()
 
-    def get_namespace_lock(*_args: Any, **_kwargs: Any) -> _AsyncNoopContextManager:
+    def get_namespace_lock(*_args: object, **_kwargs: object) -> _AsyncNoopContextManager:
         return _AsyncNoopContextManager()
 
-    async def get_namespace_data(*_args: Any, **_kwargs: Any) -> dict[str, Any]:
+    async def get_namespace_data(*_args: object, **_kwargs: object) -> dict[str, Any]:
         return {}
 
-    async def try_initialize_namespace(*_args: Any, **_kwargs: Any) -> bool:
+    async def try_initialize_namespace(*_args: object, **_kwargs: object) -> bool:
         return False
 
-    async def get_update_flag(*_args: Any, **_kwargs: Any) -> _UpdateFlag:
+    async def get_update_flag(*_args: object, **_kwargs: object) -> _UpdateFlag:
         return _UpdateFlag()
 
-    async def clear_all_update_flags(*_args: Any, **_kwargs: Any) -> None:
+    async def clear_all_update_flags(*_args: object, **_kwargs: object) -> None:
         return None
 
-    def _safe_load_json(path: str) -> Any:
+    def _safe_load_json(path: str) -> object:
         try:
             with open(path, "r", encoding="utf-8") as handle:
                 return json.load(handle)
@@ -152,7 +154,7 @@ except Exception as exc:  # pragma: no cover - optional dependency path
             logger.debug("chunked doc status load_json failed for %s: %s", path, exc)
             return {}
 
-    def _safe_write_json(payload: Any, path: str) -> bool:
+    def _safe_write_json(payload: object, path: str) -> bool:
         try:
             with open(path, "w", encoding="utf-8") as handle:
                 json.dump(payload, handle, ensure_ascii=False)
@@ -213,7 +215,7 @@ class ChunkedJsonDocStatusStorage(JsonDocStatusStorage):
         return legacy if isinstance(legacy, dict) else {}
 
     @staticmethod
-    def _is_duplicate_doc_record(doc_id: str, doc: Any) -> bool:
+    def _is_duplicate_doc_record(doc_id: str, doc: object) -> bool:
         return is_duplicate_doc_record(
             doc_id,
             doc,
@@ -221,7 +223,7 @@ class ChunkedJsonDocStatusStorage(JsonDocStatusStorage):
         )
 
     @classmethod
-    def _annotate_duplicate_skip_metadata(cls, doc_id: str, doc: Any) -> Any:
+    def _annotate_duplicate_skip_metadata(cls, doc_id: str, doc: _RecordT) -> _RecordT:
         return annotate_duplicate_skip_metadata(
             doc_id,
             doc,

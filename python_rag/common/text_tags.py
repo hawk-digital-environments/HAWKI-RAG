@@ -4,12 +4,11 @@ from __future__ import annotations
 
 import re
 from collections import Counter
-from typing import Any
 
 from common.text_terms import STOPWORDS
 
 
-def flatten_keywords(raw: Any) -> list[str]:
+def flatten_keywords(raw: object) -> list[str]:
     """Flatten nested keyword values into comma/list-like string candidates."""
 
     if raw is None:

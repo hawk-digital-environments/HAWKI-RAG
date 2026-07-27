@@ -125,7 +125,7 @@ def _rewrite_query(provider: Any, query: str) -> dict[str, Any]:
     return data if isinstance(data, dict) else {}
 
 
-def _normalize_list(value: Any) -> list[str]:
+def _normalize_list(value: object) -> list[str]:
     if not value:
         return []
     if isinstance(value, str):
@@ -225,7 +225,7 @@ def _terms_from_payload(payload: dict[str, Any]) -> list[str]:
     return terms
 
 
-def _flatten_keywords(raw: Any) -> list[str]:
+def _flatten_keywords(raw: object) -> list[str]:
     return _flatten_keywords_impl(raw)
 
 

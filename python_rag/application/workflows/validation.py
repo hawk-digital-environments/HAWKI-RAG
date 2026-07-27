@@ -8,7 +8,7 @@ URL_KEYS = ("source_url", "page_url", "original_url", "url")
 PATH_KEYS = ("file_path", "converted_path", "storage_path", "original_path")
 
 
-def validate_ingest_document(doc: Any) -> tuple[list[str], list[str]]:
+def validate_ingest_document(doc: object) -> tuple[list[str], list[str]]:
     errors: list[str] = []
     warnings: list[str] = []
 
@@ -43,7 +43,7 @@ def validate_ingest_document(doc: Any) -> tuple[list[str], list[str]]:
     return errors, warnings
 
 
-def normalize_ingest_metadata(doc: Any) -> dict[str, Any]:
+def normalize_ingest_metadata(doc: object) -> dict[str, Any]:
     payload = dict(getattr(doc, "payload", None) or {})
     doc_id = str(getattr(doc, "id", ""))
 
@@ -58,7 +58,7 @@ def normalize_ingest_metadata(doc: Any) -> dict[str, Any]:
     return payload
 
 
-def _first_present(payload: Mapping[str, Any], keys: tuple[str, ...]) -> Any | None:
+def _first_present(payload: Mapping[str, Any], keys: tuple[str, ...]) -> object | None:
     for key in keys:
         value = payload.get(key)
         if isinstance(value, str):

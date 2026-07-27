@@ -21,7 +21,7 @@ from common.text_preprocessor import ensure_tags, split_text
 logger = logging.getLogger(__name__)
 
 
-def doc_job_id(default_job_id: str | None, doc: Any) -> str | None:
+def doc_job_id(default_job_id: str | None, doc: object) -> str | None:
     payload = getattr(doc, "payload", None) or {}
     if isinstance(payload, dict):
         return str(payload.get("job_id") or payload.get("trace_id") or default_job_id or "") or None

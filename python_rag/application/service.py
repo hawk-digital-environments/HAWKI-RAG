@@ -18,7 +18,7 @@ class RAGService:
         self.working_dir = Path(self.settings.rag_working_dir).expanduser()
         self.working_dir.mkdir(parents=True, exist_ok=True)
         self._graph_service: GraphExtractionService | None = None
-        self.raganything: Any | None = None
+        self.raganything: object | None = None
         configure_service_logging(self.settings, logger)
 
     def _service_dependencies(self) -> RAGServiceDependencies:

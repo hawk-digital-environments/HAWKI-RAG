@@ -132,7 +132,7 @@ def commit_graph_triplets(
             pass
 
 
-def _optional_string(value: Any) -> str | None:
+def _optional_string(value: object) -> str | None:
     normalized = str(value or "").strip()
     return normalized or None
 

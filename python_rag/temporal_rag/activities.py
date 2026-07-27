@@ -109,7 +109,7 @@ def _scraper_start_payload(workflow_input: dict[str, Any], source_id: str, raw_d
     return payload
 
 
-def _shared_worker_path(value: Any) -> str | None:
+def _shared_worker_path(value: object) -> str | None:
     if not isinstance(value, str) or not value.strip():
         return None
 
@@ -123,7 +123,7 @@ def _shared_worker_path(value: Any) -> str | None:
     return path
 
 
-def _string_value(value: Any) -> str:
+def _string_value(value: str | int | float | None) -> str:
     if isinstance(value, (str, int, float)) and str(value).strip():
         return str(value).strip()
 
@@ -188,7 +188,7 @@ def _crawled_output_file_count(raw_dir: str) -> int:
     return sum(1 for path in root.rglob("*") if path.is_file() and path.name not in SCRAPER_BOOKKEEPING_FILENAMES)
 
 
-def _positive_int(value: Any) -> int | None:
+def _positive_int(value: str | int | float | None) -> int | None:
     if isinstance(value, bool):
         return None
 
@@ -294,7 +294,7 @@ def _record_activity_exception(
     workflow_input: dict[str, Any],
     phase: str,
     exc: Exception,
-    **details: Any,
+    **details: object,
 ) -> None:
     result = {
         "source_id": workflow_input.get("source_id"),
@@ -713,7 +713,7 @@ def _post_ingest(
     )
 
 
-def _bridge_request(settings: TemporalRagSettings, method: str, path: str, **kwargs: Any) -> dict[str, Any]:
+def _bridge_request(settings: TemporalRagSettings, method: str, path: str, **kwargs: object) -> dict[str, Any]:
     url = urljoin(settings.bridge_url.rstrip("/") + "/", path.lstrip("/"))
     last_error: Exception | None = None
     for attempt in range(1, settings.http_retry_attempts + 1):
