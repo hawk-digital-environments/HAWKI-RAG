@@ -15,7 +15,7 @@ If your app is behind a different host/port, replace `localhost` accordingly.
 
 ## About auth
 
-RAWKI's control-plane and dataset-scoped query endpoints support a trusted
+HAWKI-RAG's control-plane and dataset-scoped query endpoints support a trusted
 single-user deployment without a bearer token. A credential-free query uses
 the only active local user; zero or multiple active users fail with HTTP `503`
 instead of selecting one arbitrarily.
@@ -24,7 +24,7 @@ External API clients may optionally add `Authorization: Bearer <query-token>`
 in Swagger UI to select an explicit active user. An invalid token is rejected
 with HTTP `401` and never falls back to the implicit user.
 
-Because the whole published API is reachable without a RAWKI credential in
+Because the whole published API is reachable without a HAWKI-RAG credential in
 single-user mode, keep this UI and the endpoints on loopback or a trusted
 network, or protect them at the reverse proxy.
 

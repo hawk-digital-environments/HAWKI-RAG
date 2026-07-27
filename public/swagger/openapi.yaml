@@ -94,7 +94,7 @@ paths:
         create a missing dataset automatically, so this endpoint is most useful
         when an operator wants to prepare and inspect a workspace in advance.
 
-        This control-plane operation does not require a RAWKI bearer token.
+        This control-plane operation does not require a HAWKI-RAG bearer token.
       security:
         []
       requestBody:
@@ -136,7 +136,7 @@ paths:
         recent documents, recent pipeline tasks, and ingestion history.
 
         This endpoint reports the workspace; it does not return document content
-        or run a retrieval query. It does not require a RAWKI bearer token.
+        or run a retrieval query. It does not require a HAWKI-RAG bearer token.
       security:
         []
       responses:

@@ -228,7 +228,7 @@ Route::middleware('throttle:hawki-ui')->group(function () use ($hawkiRagExperien
     |----------------------------------------------------------------------
     | This final wildcard transparently proxies the separately built crawler
     | UI and its relative assets. It is a browser transport boundary, not a
-    | duplicate API; crawler actions exposed by RAWKI remain under /api.
+    | duplicate API; crawler actions exposed by HAWKI-RAG remain under /api.
     */
     Route::any('/ui/{path?}', ScrapeTaskUiProxyController::class)
         ->where('path', '.*');

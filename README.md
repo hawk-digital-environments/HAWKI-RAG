@@ -185,7 +185,7 @@ An explicitly supplied invalid, removed-user, or insufficient-ability token is
 rejected and never falls back to the implicit user.
 
 The entire browser and HTTP API surface, including dataset-scoped retrieval,
-is therefore reachable without a RAWKI credential in the intended single-user
+is therefore reachable without a HAWKI-RAG credential in the intended single-user
 deployment. Keep it on loopback or a trusted network, or protect it at the
 reverse proxy. Several APIs can return private document evidence, delete
 storage, clear graph data, or start and cancel work, so do not expose them

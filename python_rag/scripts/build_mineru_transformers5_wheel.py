@@ -1,4 +1,4 @@
-"""Build RAWKI's guarded MinerU 3.4.4 compatibility wheel.
+"""Build HAWKI-RAG's guarded MinerU 3.4.4 compatibility wheel.
 
 MinerU 3.4.4 is the release required by RAG-Anything 1.3.1, but its upstream
 wheel constrains Transformers to version 4. The latest MinerU prerelease keeps
@@ -6,9 +6,9 @@ the same constraint and is not compatible with RAG-Anything's parser API.
 
 This builder accepts only the known upstream MinerU wheel, verifies its SHA-256
 digest, applies the layout and formula-model Transformers 5 compatibility
-changes exercised by RAWKI's pipeline-parser test, and emits a PEP 440
+changes exercised by HAWKI-RAG's pipeline-parser test, and emits a PEP 440
 local-version wheel. The local
-``core`` extra is deliberately narrowed to the pipeline extra used by RAWKI;
+``core`` extra is deliberately narrowed to the pipeline extra used by HAWKI-RAG;
 the unvalidated VLM and Gradio extras remain opt-in and are not advertised as
 Transformers 5 compatible. No third-party wheel is stored in this repository.
 """
@@ -148,12 +148,12 @@ TRANSFORMERS_REQUIREMENT_PATCH = TextPatch(
     after='Requires-Dist: transformers==5.14.1; extra == "pipeline"',
 )
 CORE_VLM_REQUIREMENT_PATCH = TextPatch(
-    label="remove the unvalidated VLM backend from RAWKI's local core extra",
+    label="remove the unvalidated VLM backend from HAWK-RAG's local core extra",
     before='Requires-Dist: mineru[vlm]; extra == "core"\n',
     after="",
 )
 CORE_GRADIO_REQUIREMENT_PATCH = TextPatch(
-    label="remove the unused Gradio UI from RAWKI's local core extra",
+    label="remove the unused Gradio UI from HAWK-RAG's local core extra",
     before='Requires-Dist: mineru[gradio]; extra == "core"\n',
     after="",
 )

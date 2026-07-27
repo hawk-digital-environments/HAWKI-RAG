@@ -9,7 +9,7 @@ return [
     | Sanctum Routes
     |--------------------------------------------------------------------------
     |
-    | RAWKI's canonical API accepts bearer tokens and stateful first-party
+    | HAWKI-RAG's canonical API accepts bearer tokens and stateful first-party
     | requests. The default /sanctum/csrf-cookie SPA bootstrap route remains
     | disabled because the server-rendered shell already provides CSRF state.
     */

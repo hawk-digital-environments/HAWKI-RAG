@@ -26,6 +26,87 @@
 - **RAG API (Python):** Runs retrieval orchestration across Qdrant/Neo4j and reranking for query workflows.
 - **Laravel App:** Web/API frontend; starts/cancels/schedules Temporal workflows; shows ingest status; proxies queries.
 
+## Why the Python RAG Service Exists
+
+Laravel remains the public application and authorization boundary. The separate
+Python service was implemented because document parsing, embeddings, model
+providers, reranking, RAG-Anything, and LightRAG use the Python machine-learning
+ecosystem. Keeping those dependencies behind one internal FastAPI service makes
+them easier to run and change without putting ML concerns inside the Laravel
+application.
+
+The Python service receives already-authorized dataset scope from Laravel. It
+owns document ingestion and retrieval, while Temporal makes long-running
+ingestion durable and restartable.
+
+## Why Both RAG-Anything and LightRAG Are Used
+
+They are two layers of the same graph-ingestion path:
+
+1. **RAG-Anything is the outer integration layer.** It accepts normalized text
+   and associated images, coordinates multimodal processing, and uses the
+   configured chat, vision, and embedding providers.
+2. **LightRAG is the graph engine embedded inside RAG-Anything.** It extracts
+   entities and relations and exposes the generated graph edges.
+3. **HAWKI-RAG owns the final database write.** Its graph adapter exports the edges,
+   converts them to simple `(subject, relation, object)` triplets, removes
+   duplicates, and writes dataset-scoped facts to Neo4j.
+
+This is why the code contains helpers named for both RAG-Anything and LightRAG.
+They adapt different boundaries of one pipeline; they are not two competing
+graph extractors. The RAG-Anything helpers manage the ingestion lifecycle, while
+the LightRAG helpers configure its internal storage and recover or export its
+edges. If that official graph path produces no usable triplets, a small direct
+model-provider fallback is used.
+
+RAG-Anything and LightRAG run during **graph-enabled ingestion**. A normal user
+query does not call either library again; it reads the stored evidence from
+Qdrant and Neo4j through HAWKI-RAG's retrieval adapters.
+
+## Simplified Text Flow
+
+```mermaid
+flowchart TB
+    Text["Document or piece of text"] --> Laravel["Laravel starts ingestion"]
+    Laravel --> AppDB[("PostgreSQL<br/>dataset, source, and status metadata")]
+    Laravel --> Temporal["Temporal workflow + Python workers"]
+    Temporal --> TemporalDB[("PostgreSQL<br/>Temporal workflow history")]
+    Temporal --> Files["Shared storage<br/>raw files and converted Markdown"]
+    Files --> Python["Python RAG service"]
+    Python --> Chunks["Clean and split into chunks"]
+
+    Chunks --> Embed["Create embeddings"]
+    Embed --> Qdrant[("Qdrant<br/>chunk text + vectors")]
+
+    Chunks --> GraphEnabled{"Graph enabled?"}
+    GraphEnabled -- "yes" --> RAGAnything["RAG-Anything<br/>document and multimodal orchestration"]
+    RAGAnything --> LightRAG["LightRAG<br/>entity + relation extraction"]
+    LightRAG --> Normalize["HAWKI-RAG graph adapter<br/>export, normalize, deduplicate"]
+    Normalize --> Neo4j[("Neo4j<br/>dataset-scoped graph facts")]
+    GraphEnabled -- "no" --> VectorOnly["Vector index only"]
+
+    Question["User question"] --> Retrieval["Scoped retrieval + reranking"]
+    Qdrant --> Retrieval
+    Neo4j -. "when graph search is enabled" .-> Retrieval
+    Retrieval --> Answer["Answer context"]
+```
+
+Database responsibilities in one sentence: PostgreSQL stores application and
+workflow metadata, Qdrant stores searchable chunks and vectors, and Neo4j stores
+entities and relations. Raw files and converted Markdown use shared file
+storage, which is not a database.
+
+When Neo4j credentials are configured, LightRAG also uses Neo4j as temporary
+graph storage during extraction. HAWKI-RAG exports that temporary result, clears
+the extraction state, and writes the normalized dataset-scoped facts back
+through its own Neo4j adapter. The diagram combines those internal operations
+into one Neo4j destination to keep the flow readable.
+
+This design follows the same outer/inner relationship described by the
+[RAG-Anything framework](https://github.com/HKUDS/RAG-Anything), but the diagram
+above shows the components and storage responsibilities specific to this
+project.
+
 ## Core Query Workflow (Diagram)
 ```mermaid
 flowchart TB

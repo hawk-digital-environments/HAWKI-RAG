@@ -7,7 +7,7 @@ runner; it also collects the existing `unittest.TestCase` scenarios.
 
 ## System architecture and trust boundary
 
-RAWKI has two application boundaries with different security jobs:
+HAWKI-RAG has two application boundaries with different security jobs:
 
 - **Laravel gateway**
 

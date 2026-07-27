@@ -60,6 +60,17 @@ is therefore not a second selectable RAG engine running beside RAG-Anything,
 and it is not the normal query endpoint: retrieval queries Qdrant and Neo4j
 through the application's own adapters.
 
+The helpers named after both projects are adapters around those two layers, not
+duplicate graph engines. The RAG-Anything adapter controls insertion and
+extraction lifecycle. The LightRAG-facing helpers configure the embedded
+engine's graph and document-status storage, export its edges, and recover usable
+relations from its response cache when required. If the official path returns
+no triplets, the service can use a direct model-provider fallback before the
+final Neo4j write.
+
+For a shorter explanation and an end-to-end text-flow diagram, see
+[`3. Introduction & Architecture`](../_documentation/Getting%20Started/3_introduction_architecture.md).
+
 ### Data flow and storage
 
 1. **Query:** Laravel authorizes the caller and dataset, sends the resulting

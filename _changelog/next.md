@@ -32,7 +32,7 @@
   reverse proxies, and ensure `ENV_FILE` reaches service containers.
 - Reuse existing service images during `up-core-local` so ordinary frontend
   development does not rebuild the full Python/CUDA dependency image.
-- Remove the RAWKI admin/operator gate from the single-operator control plane
+- Remove the HAWKI-RAG admin/operator gate from the single-operator control plane
   and remove the browser token prompt by resolving the sole active user for
   credential-free, dataset-scoped retrieval. Explicit Sanctum bearer clients
   remain supported, while zero or multiple active users fail closed.
