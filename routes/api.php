@@ -8,7 +8,14 @@ use App\Http\Controllers\DatasetController;
 use App\Http\Controllers\DatasetQueryGrantController;
 use App\Http\Controllers\Document\UnifiedDocumentController;
 use App\Http\Controllers\DocumentBrowserController;
-use App\Http\Controllers\Graph\RagGraphController;
+use App\Http\Controllers\Graph\ClearGraphViewController;
+use App\Http\Controllers\Graph\ClearNeo4jController;
+use App\Http\Controllers\Graph\GraphExpansionController;
+use App\Http\Controllers\Graph\GraphNodeController;
+use App\Http\Controllers\Graph\GraphOverviewController;
+use App\Http\Controllers\Graph\GraphSearchController;
+use App\Http\Controllers\Graph\GraphSnapshotController;
+use App\Http\Controllers\Graph\SemanticGraphSearchController;
 use App\Http\Controllers\Health\HawkiRagSystemGateController;
 use App\Http\Controllers\Health\PipelineHealthController;
 use App\Http\Controllers\Health\RagHealthController;
@@ -247,18 +254,18 @@ Route::middleware('throttle:hawki-api')->group(function (): void {
     | view and therefore receives destructive-operation throttling.
     */
     Route::prefix('rag/neo4j')->group(function (): void {
-        Route::get('/graph/overview', [RagGraphController::class, 'overview']);
-        Route::get('/graph/search', [RagGraphController::class, 'search']);
-        Route::get('/graph/semantic-search', [RagGraphController::class, 'semanticSearch'])
+        Route::get('/graph/overview', [GraphOverviewController::class, 'index']);
+        Route::get('/graph/search', GraphSearchController::class);
+        Route::get('/graph/semantic-search', SemanticGraphSearchController::class)
             ->middleware('browser-query-principal');
-        Route::get('/graph/node', [RagGraphController::class, 'node']);
-        Route::post('/graph/expand', [RagGraphController::class, 'expand']);
-        Route::post('/graph/clear-view', [RagGraphController::class, 'clearView']);
-        Route::get('/graph/snapshots', [RagGraphController::class, 'snapshots']);
-        Route::post('/graph/snapshots', [RagGraphController::class, 'saveSnapshot']);
-        Route::get('/graph/snapshots/{id}', [RagGraphController::class, 'loadSnapshot']);
-        Route::delete('/graph/snapshots/{id}', [RagGraphController::class, 'deleteSnapshot']);
-        Route::post('/clear', [RagGraphController::class, 'clearNeo4j'])
+        Route::get('/graph/node', [GraphNodeController::class, 'show']);
+        Route::post('/graph/expand', GraphExpansionController::class);
+        Route::post('/graph/clear-view', ClearGraphViewController::class);
+        Route::get('/graph/snapshots', [GraphSnapshotController::class, 'index']);
+        Route::post('/graph/snapshots', [GraphSnapshotController::class, 'store']);
+        Route::get('/graph/snapshots/{id}', [GraphSnapshotController::class, 'show']);
+        Route::delete('/graph/snapshots/{id}', [GraphSnapshotController::class, 'destroy']);
+        Route::post('/clear', ClearNeo4jController::class)
             ->middleware('throttle:hawki-destructive');
     });
 });
