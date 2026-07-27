@@ -129,6 +129,50 @@ class ExternalRerankerContractTests(unittest.TestCase):
 
         self.assertEqual([hit["id"] for hit in ranked], ["second", "first"])
 
+    def test_mixed_reranker_exposes_comparable_final_scores(self) -> None:
+        from infrastructure.raganything.reranker import rerank_hits
+
+        fake_requests = _FakeRequests(
+            {
+                "results": [
+                    {"index": 0, "relevance_score": 0.95},
+                    {"index": 1, "relevance_score": 0.1},
+                ]
+            }
+        )
+        hits = [
+            {
+                "id": "answer",
+                "score": 1.0,
+                "payload": {"content": "3.3 für die dritte Mahnung 10"},
+            },
+            {
+                "id": "introduction",
+                "score": 0.4,
+                "payload": {"content": "Gebührenordnung und Inhaltsverzeichnis"},
+            },
+        ]
+
+        with patch.dict(
+            os.environ,
+            {"RERANKER_API_URL": "http://reranker.test/v1/rerank", "RERANKER_API_KEY": ""},
+            clear=False,
+        ), patch("infrastructure.raganything.reranker._requests_module", return_value=fake_requests):
+            ranked = rerank_hits(
+                hits=hits,
+                user_query="Was ist die dritte Mahnung?",
+                provider=SimpleNamespace(),
+                query_vector=None,
+                mode="external",
+                top_n=2,
+                mix_mode=True,
+                mix_weight=0.5,
+            )
+
+        self.assertEqual([hit["id"] for hit in ranked], ["answer", "introduction"])
+        self.assertEqual(ranked[0]["score"], 1.0)
+        self.assertEqual(ranked[1]["score"], 0.0)
+
 
 if __name__ == "__main__":
     unittest.main()

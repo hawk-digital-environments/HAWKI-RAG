@@ -47,7 +47,7 @@ def _normalize_scores(values: list[float]) -> list[float]:
 
     lo, hi = min(values), max(values)
     if math.isclose(lo, hi):
-        return [0.0 for _ in values]
+        return [1.0 if len(values) == 1 else 0.5 for _ in values]
     return [(x - lo) / (hi - lo) for x in values]
 
 
@@ -59,18 +59,28 @@ def _rank_candidates(
     mix_weight: float,
     orig_scores: list[float],
 ) -> list[dict[str, Any]]:
+    reranker_scores = _normalize_scores([float(score) for score in scores])
     if mix_mode:
-        rr_scores = [float(s) for s in scores]
-        nr = _normalize_scores(rr_scores)
-        no = _normalize_scores(orig_scores)
+        retrieval_scores = _normalize_scores(orig_scores)
         alpha = max(0.0, min(1.0, float(mix_weight)))
-        mixed = [(alpha * o + (1.0 - alpha) * r, h) for r, h, o in zip(nr, candidates, no)]
-        mixed.sort(key=lambda item: item[0], reverse=True)
-        return [h for _, h in mixed] + hits[len(mixed) :]
+        final_scores = [
+            (alpha * retrieval_score) + ((1.0 - alpha) * reranker_score)
+            for reranker_score, retrieval_score in zip(reranker_scores, retrieval_scores)
+        ]
+    else:
+        final_scores = reranker_scores
 
-    paired = list(zip(scores, candidates))
-    paired.sort(key=lambda item: item[0], reverse=True)
-    return [h for _, h in paired] + hits[len(paired) :]
+    ranked = sorted(
+        zip(final_scores, candidates),
+        key=lambda item: item[0],
+        reverse=True,
+    )
+    ranked_hits = []
+    for final_score, hit in ranked:
+        ranked_hit = dict(hit)
+        ranked_hit["score"] = final_score
+        ranked_hits.append(ranked_hit)
+    return ranked_hits + hits[len(ranked) :]
 
 
 def rerank_hits(

@@ -8,7 +8,7 @@ from application.workflows.query_context import prepare_context_summaries
 from application.workflows import query_ranking, query_rewrite
 from application.workflows.query_fallback import keyword_fallback_search
 from application.workflows.query_hits import (
-    dedupe_hits_by_title_or_url,
+    dedupe_hits_by_identity,
     normalize_title as normalize_title_raw,
     normalize_url as normalize_url_raw,
     fuse_hits,
@@ -166,7 +166,7 @@ def normalize_url(value: object) -> str:
 
 
 def dedupe_hits(hits: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    return dedupe_hits_by_title_or_url(hits)
+    return dedupe_hits_by_identity(hits)
 
 
 def text_fold(value: object) -> str:

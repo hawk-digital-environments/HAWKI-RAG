@@ -62,6 +62,16 @@ class QueryCharacterizationTests(unittest.TestCase):
         self.assertEqual([hit["payload"]["doc_id"] for hit in boosted], ["doc-a"])
         self.assertGreater(boosted[0]["score"], 0.1)
 
+    def test_query_lexical_terms_keep_ordinals_and_remove_dataset_instructions(self) -> None:
+        from application.workflows.query_lexical import extract_query_terms_for_lexical
+
+        terms = extract_query_terms_for_lexical("Was ist die dritte Mahnung in mein Dataset?")
+
+        self.assertIn("dritte", terms)
+        self.assertIn("mahnung", terms)
+        self.assertNotIn("dataset", terms)
+        self.assertNotIn("mein", terms)
+
     def test_query_settings_parse_env_with_caps_and_fallbacks(self) -> None:
         from application.workflows.query_settings import (
             context_limits,
@@ -162,19 +172,83 @@ class QueryCharacterizationTests(unittest.TestCase):
         merged = query_logic._merge_hits(primary, secondary, limit=3)
         deduped = query_stages.dedupe_hits(merged)
 
-        self.assertEqual([hit["id"] for hit in merged], ["a2", "c", "b"])
-        self.assertEqual([hit["id"] for hit in deduped], ["a2", "c"])
+        self.assertEqual(len(merged), 3)
+        self.assertEqual([hit["id"] for hit in deduped], [hit["id"] for hit in merged])
 
-    def test_query_hit_merge_keeps_primary_score_for_the_same_point(self) -> None:
+    def test_query_hit_merge_normalizes_stage_scores_for_the_same_point(self) -> None:
         from application.workflows import query_logic
 
         merged = query_logic._merge_hits(
-            [{"id": "same", "score": 0.3, "payload": {"doc_id": "doc-a"}}],
-            [{"id": "same", "score": 0.9, "payload": {"doc_id": "doc-a"}}],
-            limit=2,
+            [
+                {
+                    "id": "answer",
+                    "score": 0.246335,
+                    "payload": {"doc_id": "fees", "chunk_index": 1},
+                }
+            ],
+            [
+                {
+                    "id": "answer",
+                    "score": 0.580014,
+                    "payload": {"doc_id": "fees", "chunk_index": 1},
+                },
+                {
+                    "id": "introduction",
+                    "score": 0.523358,
+                    "payload": {"doc_id": "fees", "chunk_index": 0},
+                },
+                {
+                    "id": "trailing",
+                    "score": 0.486133,
+                    "payload": {"doc_id": "fees", "chunk_index": 2},
+                },
+            ],
+            limit=3,
         )
 
-        self.assertEqual(merged, [{"id": "same", "score": 0.3, "payload": {"doc_id": "doc-a"}}])
+        self.assertEqual([hit["id"] for hit in merged], ["answer", "introduction", "trailing"])
+        self.assertEqual(merged[0]["score"], 1.0)
+        self.assertGreater(merged[0]["score"], merged[1]["score"])
+
+    def test_query_hit_dedupe_keeps_chunks_with_the_same_document_metadata(self) -> None:
+        from application.workflows import query_stages
+
+        hits = [
+            {
+                "id": "chunk-1",
+                "score": 0.9,
+                "payload": {
+                    "doc_id": "fees",
+                    "chunk_index": 1,
+                    "title": "Gebührenordnung",
+                    "source_url": "upload://gebuehrenordnung.pdf",
+                },
+            },
+            {
+                "id": "chunk-2",
+                "score": 0.8,
+                "payload": {
+                    "doc_id": "fees",
+                    "chunk_index": 2,
+                    "title": "Gebührenordnung",
+                    "source_url": "upload://gebuehrenordnung.pdf",
+                },
+            },
+            {
+                "id": "chunk-1",
+                "score": 0.7,
+                "payload": {
+                    "doc_id": "fees",
+                    "chunk_index": 1,
+                    "title": "Gebührenordnung",
+                    "source_url": "upload://gebuehrenordnung.pdf",
+                },
+            },
+        ]
+
+        deduped = query_stages.dedupe_hits(hits)
+
+        self.assertEqual([hit["id"] for hit in deduped], ["chunk-1", "chunk-2"])
 
     def test_query_hit_merge_uses_chunk_index_when_point_id_is_missing(self) -> None:
         from application.workflows import query_logic

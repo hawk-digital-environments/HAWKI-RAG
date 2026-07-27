@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import Any, Callable, Dict, List
 
 from application.workflows.query_lexical import lexical_boost_hits
-from application.workflows.query_hits import dedupe_hits_by_title_or_url
+from application.workflows.query_hits import dedupe_hits_by_identity
 from common.text_preprocessor import _extract_terms
 
 
@@ -81,7 +81,7 @@ def filter_hits_by_score(
     fallback_min: float,
     top_k: int,
     apply_lexical_boost: Callable[[list[dict[str, Any]], str], list[dict[str, Any]]] = lexical_boost_hits,
-    dedupe_hits: DedupeHits = dedupe_hits_by_title_or_url,
+    dedupe_hits: DedupeHits = dedupe_hits_by_identity,
 ) -> list[dict[str, Any]]:
     """Apply lexical boost, then score thresholds and deduplication."""
     ranked = list(hits)

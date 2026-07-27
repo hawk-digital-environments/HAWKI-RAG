@@ -8,6 +8,29 @@ from typing import Any
 from common.text_preprocessor import _extract_terms
 
 
+_QUERY_SCOPE_INSTRUCTION_PATTERNS = (
+    re.compile(
+        r"\b(?:in|aus|innerhalb)\s+"
+        r"(?:(?:mein(?:e|em|en|er|es)?|unser(?:e|em|en|er|es)?|"
+        r"dem|dies(?:e|em|en|er|es)?)\s+)?"
+        r"(?:dataset|datensatz|datenbestand|dokument(?:e|en)?|unterlagen)\b",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"\b(?:in|from|within)\s+"
+        r"(?:(?:my|our|the|this|these)\s+)?"
+        r"(?:dataset|data\s+set|documents?|files?|sources?)\b",
+        re.IGNORECASE,
+    ),
+)
+_GERMAN_ORDINAL_PATTERN = re.compile(
+    r"\b(?:erst|zweit|dritt|viert|fünft|sechst|siebt|acht|neunt|zehnt|"
+    r"elft|zwölft|dreizehnt|vierzehnt|fünfzehnt|sechzehnt|siebzehnt|"
+    r"achtzehnt|neunzehnt|zwanzigst)(?:e|er|es|en|em)?\b",
+    re.IGNORECASE,
+)
+
+
 def fold_text(value: object) -> str:
     text = str(value or "").lower()
     if not text:
@@ -18,10 +41,23 @@ def fold_text(value: object) -> str:
     return "".join(ch for ch in normalized if not unicodedata.combining(ch))
 
 
+def strip_query_scope_instructions(query: str) -> str:
+    """Remove corpus-location phrases that should not constrain document text."""
+    cleaned = query
+    for pattern in _QUERY_SCOPE_INSTRUCTION_PATTERNS:
+        cleaned = pattern.sub(" ", cleaned)
+    return re.sub(r"\s+", " ", cleaned).strip()
+
+
 def extract_query_terms_for_lexical(query: str) -> list[str]:
-    terms = _extract_terms(query)
+    lexical_query = strip_query_scope_instructions(query)
+    terms = _extract_terms(lexical_query)
+    terms.extend(
+        match.group(0).lower()
+        for match in _GERMAN_ORDINAL_PATTERN.finditer(lexical_query)
+    )
     if not terms:
-        parts = [part for part in re.split(r"[\W_]+", query) if len(part) >= 3]
+        parts = [part for part in re.split(r"[\W_]+", lexical_query) if len(part) >= 3]
         terms = [part.lower() for part in parts]
     seen: set[str] = set()
     out: list[str] = []
