@@ -9,6 +9,32 @@ use Tests\TestCase;
 
 class OpenApiContractTest extends TestCase
 {
+    public function test_swagger_runtime_assets_are_packaged_for_docker(): void
+    {
+        $this->assertFileExists(public_path('swagger/index.html'));
+        $this->assertFileExists(public_path('swagger/openapi.yaml'));
+
+        $dockerIgnoreLines = file(
+            base_path('.dockerignore'),
+            FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES,
+        );
+        $this->assertIsArray($dockerIgnoreLines);
+        $this->assertNotContains(
+            'public/swagger/',
+            array_map('trim', $dockerIgnoreLines),
+            'Swagger runtime assets must not be excluded from the Laravel Docker image.',
+        );
+    }
+
+    public function test_swagger_urls_are_relative_to_the_deployment_path(): void
+    {
+        $index = file_get_contents(public_path('swagger/index.html'));
+        $this->assertIsString($index);
+        $this->assertStringContainsString('window.location.pathname', $index);
+        $this->assertStringNotContainsString('new URL("/swagger/openapi.yaml"', $index);
+        $this->assertStringContainsString('- url: ../api', $this->openApiContents());
+    }
+
     public function test_openapi_operations_match_registered_api_routes(): void
     {
         $documented = array_keys($this->openApiOperations());

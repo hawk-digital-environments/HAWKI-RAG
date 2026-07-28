@@ -14,6 +14,17 @@ class HawkiRagExperienceRouteTest extends TestCase
             ->assertRedirect('/admin');
     }
 
+    public function test_swagger_redirect_uses_the_configured_deployment_path(): void
+    {
+        config(['app.asset_base_path' => '/']);
+        $this->get('/swagger')
+            ->assertRedirect('/swagger/index.html');
+
+        config(['app.asset_base_path' => '/hawki-rag/']);
+        $this->get('/swagger')
+            ->assertRedirect('/hawki-rag/swagger/index.html');
+    }
+
     public function test_admin_experience_page_mounts_svelte_shell(): void
     {
         $this->withoutVite();

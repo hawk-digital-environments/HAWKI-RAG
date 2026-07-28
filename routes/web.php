@@ -107,7 +107,12 @@ Route::middleware('throttle:hawki-ui')->group(function () use ($hawkiRagExperien
     | redirect to the generated API documentation assets.
     */
     Route::redirect('/', '/admin');
-    Route::get('/swagger', static fn (): RedirectResponse => redirect('/swagger/index.html'));
+    Route::get('/swagger', static function (): RedirectResponse {
+        $basePath = '/'.trim((string) config('app.asset_base_path', '/'), '/');
+        $swaggerPath = ($basePath === '/' ? '' : $basePath).'/swagger/index.html';
+
+        return redirect($swaggerPath);
+    });
 
     /*
     |----------------------------------------------------------------------
