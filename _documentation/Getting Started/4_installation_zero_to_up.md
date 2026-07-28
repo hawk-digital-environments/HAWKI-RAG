@@ -52,3 +52,6 @@ Optionally start LiteLLM and confirm that its aliases loaded:
 CORE_PROFILES_BASE=litellm make up-core
 curl -fsS http://127.0.0.1:4000/v1/models
 ```
+
+## Step 6 - Connect HAWKI-RAG to HAWKI (MCP Tool)
+Plug HAWKI-RAG into HAWKI as an MCP tool by following the [official HAWKI AI Models & Tools guide](https://docs.hawki.info/architecture/10.2-AI%20Models%20and%20Tools).
