@@ -26,17 +26,28 @@ Open `.env` in an editor and set:
 | `OPENAI_API_KEY` | Optional | Enables the GPT chat/vision and OpenAI embedding aliases in LiteLLM |
 | `ANTHROPIC_API_KEY` | Optional | Enables the Claude chat/vision aliases in LiteLLM |
 
-## Step 3 - Create Docker networks
-- Command: `make network`
+## Step 3 - Docker networks
 
-:::tip "Network check"
-    `make network` can print `created` (first run) or `already exists` (rerun). After this step, Docker networks should include `hawki-network` and `hosting_network`.
+No separate command is required when you use one of the `make up-core*`
+commands in Step 4. The startup command creates the external `hawki-network`
+and `hosting_network` networks automatically.
+
+:::tip "Manual network recovery"
+    If you run `docker compose` directly, or Docker networks were pruned, run `make network` first. It is safe to rerun and prints whether each network was created or already existed.
 :::
 
 ## Step 4 - Start services
 - Production-mode command with UI at `http://localhost:8080`: `make up-core`
 - Reverse-proxy production command without a host port: `make up-core-server`
 - Source-mounted development command: `make up-core-local`
+
+:::tip "Database setup is automatic"
+    The startup command creates the PostgreSQL container and persistent volume, waits for PostgreSQL to become healthy, and runs all Laravel migrations before writable services start. You do not need to create the database or run `php artisan migrate` yourself.
+:::
+
+:::warning "Missing external network"
+    `network hosting_network declared as external, but could not be found` is a Docker network error, not a database migration error. Run `make network`, then repeat the startup command. Current `make up-core*`, `make migrate-core`, and `make restart-core` commands perform this check automatically.
+:::
 
 :::tip "Verification"
     `docker ps` should show containers such as `hawki_rag_app`, `hawki_qdrant`, `hawki_rag_bridge`, `hawki_rag_rerank`, `hawki_rag_neo4j`, `hawki_ollama`, `hawki_rag_postgres`, and `temporal`. `hawki_litellm` appears only when the `litellm` profile is enabled.

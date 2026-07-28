@@ -34,7 +34,10 @@ make up-core-local
 
 This starts the full local experience, including the Laravel UI, RAG services,
 Temporal workers, Qdrant, Neo4j, Ollama, reranker, and fresh Vite/Svelte UI
-assets.
+assets. It also creates the required Docker networks, creates PostgreSQL and its
+persistent volume when missing, waits for PostgreSQL to become healthy, and
+runs the Laravel migrations. You do not need to create or migrate the database
+manually.
 Use `make up-core-local` for the source-mounted development experience.
 It reuses existing service images so frontend or source edits do not trigger a
 full Python dependency rebuild. Run `BUILD_STACK=1 make up-core-local` after

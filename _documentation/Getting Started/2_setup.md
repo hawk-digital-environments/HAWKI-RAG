@@ -46,11 +46,25 @@ CORE_PROFILES_BASE=litellm make up-core
 - `Dockerfile`: builds `hawki_rag_bridge` (`python-rag` target) and `hawki_rag_rerank` (`rerank` target).
 - `docker/qdrant.Dockerfile`: extends `qdrant/qdrant` and installs `curl` for health checks.
 
-## One-time networks
+## Automatic networks and database setup
+
+The supported `make up-core`, `make up-core-local`, and `make up-core-server`
+commands create the required Docker networks automatically. They also start
+PostgreSQL, wait until it is healthy, and run the Laravel migrations before
+starting services that can write data. No separate PostgreSQL installation,
+database creation, or manual `php artisan migrate` command is required.
+
+If you need to create only the shared networks, or intend to run raw
+`docker compose` commands instead of the supported Make targets, run:
+
 ```bash
 make network   # creates shared docker networks hawki-network + hosting_network
 ```
-Run this once per machine (or after pruning Docker networks). Safe to rerun.
+
+This command is safe to rerun. The error
+`network hosting_network declared as external, but could not be found` means
+Compose did not reach PostgreSQL or Laravel; create the missing network and
+retry the original command.
 
 ## Start stack
 ```bash
