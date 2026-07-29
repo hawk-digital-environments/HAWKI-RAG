@@ -6,6 +6,18 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Sanctum Routes
+    |--------------------------------------------------------------------------
+    |
+    | HAWKI-RAG's canonical API accepts bearer tokens and stateful first-party
+    | requests. The default /sanctum/csrf-cookie SPA bootstrap route remains
+    | disabled because the server-rendered shell already provides CSRF state.
+    */
+
+    'routes' => filter_var(env('SANCTUM_ROUTES', false), FILTER_VALIDATE_BOOLEAN),
+
+    /*
+    |--------------------------------------------------------------------------
     | Stateful Domains
     |--------------------------------------------------------------------------
     |
@@ -47,7 +59,7 @@ return [
     |
     */
 
-    'expiration' => null,
+    'expiration' => env('SANCTUM_EXPIRATION', 10080),
 
     /*
     |--------------------------------------------------------------------------
@@ -62,7 +74,7 @@ return [
     |
     */
 
-    'token_prefix' => env('SANCTUM_TOKEN_PREFIX', ''),
+    'token_prefix' => env('SANCTUM_TOKEN_PREFIX', 'hawki_rag_'),
 
     /*
     |--------------------------------------------------------------------------

@@ -28,9 +28,15 @@ class ScrapeStatistics extends Model
     ];
 
     protected $casts = [
+        'sessions' => 'integer',
+        'requests' => 'integer',
         'total_urls' => 'integer',
+        'target_urls' => 'integer',
         'completed_urls' => 'integer',
         'failed_urls' => 'integer',
+        'pdfs_downloaded' => 'integer',
+        'images_downloaded' => 'integer',
+        'duration_seconds' => 'integer',
         'started_at' => 'datetime',
         'completed_at' => 'datetime',
         'current_url' => 'string',
@@ -44,14 +50,6 @@ class ScrapeStatistics extends Model
     {
         return $this->belongsTo(ScrapeProcess::class, 'job_id', 'job_id');
     }
-
-    public function progressPercentage(): int
-    {
-        return ( $this->completed_urls * 100 ) / $this->total_urls;
-    }
-
-
-
 
     public function addError(array $error): void
     {
@@ -76,6 +74,4 @@ class ScrapeStatistics extends Model
     {
         return $this->warnings ?? [];
     }
-
-
 }

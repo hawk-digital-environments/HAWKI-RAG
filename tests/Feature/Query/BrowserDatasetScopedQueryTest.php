@@ -1,0 +1,132 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Tests\Feature\Query;
+
+use App\Models\Dataset;
+use App\Models\User;
+use App\Services\Authorization\DatasetQueryAuthorizationService;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\Request;
+use Illuminate\Support\Facades\Http;
+use Tests\TestCase;
+
+class BrowserDatasetScopedQueryTest extends TestCase
+{
+    use RefreshDatabase;
+
+    public function test_browser_bearer_principal_can_list_only_granted_ready_datasets(): void
+    {
+        $user = $this->createUser('browser-bearer');
+        $ready = $this->createDataset('browser-ready', 'Browser Ready');
+        $unready = $this->createDataset('browser-unready', 'Browser Unready', qdrantCollection: '');
+        $this->createDataset('browser-not-granted', 'Browser Not Granted');
+        $this->grant($user, $ready);
+        $this->grant($user, $unready);
+        $this->fakeAvailableQdrantCollections([(string) $ready->qdrant_collection]);
+
+        $response = $this->withToken($user->createToken('browser-test')->plainTextToken)
+            ->getJson('/api/query/datasets')
+            ->assertOk()
+            ->assertExactJson([
+                'datasets' => [[
+                    'dataset_id' => 'browser-ready',
+                    'name' => 'Browser Ready',
+                ]],
+            ]);
+
+        $this->assertStringNotContainsString('qdrant_collection', $response->getContent());
+        $this->assertStringNotContainsString('neo4j_namespace', $response->getContent());
+    }
+
+    public function test_explicit_laravel_principal_reaches_the_scoped_query_form_request(): void
+    {
+        $user = $this->createUser('browser-session');
+        $dataset = $this->createDataset('browser-session-dataset', 'Browser Session Dataset');
+        $this->grant($user, $dataset);
+        Http::fake([
+            '*' => Http::response(['ok' => true, 'answer' => 'Session-scoped answer.']),
+        ]);
+
+        $this->actingAs($user)
+            ->withHeader('Origin', rtrim((string) config('app.url'), '/'))
+            ->withSession(['_token' => 'browser-csrf-token'])
+            ->postJson('/api/query', [
+                'dataset_id' => $dataset->dataset_id,
+                'query' => 'What may this session user read?',
+            ], [
+                'X-CSRF-TOKEN' => 'browser-csrf-token',
+            ])
+            ->assertOk()
+            ->assertJsonPath('answer', 'Session-scoped answer.');
+
+        Http::assertSent(function (Request $request): bool {
+            return ($request->data()['authorized_scope'] ?? null) === [
+                'dataset_id' => 'browser-session-dataset',
+                'qdrant_collection' => 'hawki_browser-session-dataset',
+                'neo4j_namespace' => 'graph_browser-session-dataset',
+                'embedding_provider' => 'ollama',
+                'embedding_model' => 'bge-m3',
+                'graph_enabled' => true,
+            ];
+        });
+    }
+
+    public function test_canonical_query_routes_report_when_no_active_user_exists(): void
+    {
+        $this->get('/api/query/datasets')
+            ->assertStatus(503)
+            ->assertExactJson([
+                'message' => 'Query access requires exactly one active user.',
+                'error' => 'single_user_query_principal_unavailable',
+            ]);
+
+        $this->getJson('/api/query/datasets')
+            ->assertStatus(503);
+
+        $this->getJson('/api/query/datasets')
+            ->assertStatus(503)
+            ->assertJsonPath('error', 'single_user_query_principal_unavailable');
+
+        $this->withSession(['_token' => 'browser-csrf-token'])
+            ->postJson('/api/query', [
+                'dataset_id' => 'browser-ready',
+                'query' => 'A query without exactly one active user must fail.',
+            ], [
+                'X-CSRF-TOKEN' => 'browser-csrf-token',
+            ])
+            ->assertStatus(503)
+            ->assertJsonPath('error', 'single_user_query_principal_unavailable');
+    }
+
+    private function createUser(string $name): User
+    {
+        return User::query()->create([
+            'username' => $name,
+            'email' => $name.'@example.test',
+            'ip' => '127.0.0.1',
+        ]);
+    }
+
+    private function createDataset(
+        string $datasetId,
+        string $name,
+        ?string $qdrantCollection = null,
+    ): Dataset {
+        return Dataset::query()->create([
+            'dataset_id' => $datasetId,
+            'name' => $name,
+            'description' => null,
+            'status' => Dataset::STATUS_ACTIVE,
+            'qdrant_collection' => $qdrantCollection ?? 'hawki_'.$datasetId,
+            'neo4j_namespace' => 'graph_'.$datasetId,
+            'created_at' => now(),
+        ]);
+    }
+
+    private function grant(User $user, Dataset $dataset): void
+    {
+        app(DatasetQueryAuthorizationService::class)->grantQueryAccess($user, $dataset);
+    }
+}

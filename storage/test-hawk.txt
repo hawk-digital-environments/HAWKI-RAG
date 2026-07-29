@@ -1,4 +1,0 @@
-# Mixed URL list for forbidden host testing
-https://www.hawki.info
-https://vpn.hawk.de
-https://campus.hawk.de

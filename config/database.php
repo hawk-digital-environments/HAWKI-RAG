@@ -1,6 +1,21 @@
 <?php
 
-use Illuminate\Support\Str;
+$resolveHostForLocalCli = static function (string $host): string {
+    $trimmed = trim($host);
+
+    if ($trimmed === '') {
+        return $host;
+    }
+
+    $runningInDocker = is_file('/.dockerenv');
+    $runningCli = PHP_SAPI === 'cli';
+
+    if ($runningCli && ! $runningInDocker && in_array($trimmed, ['postgres', 'mysql', 'mariadb'], true)) {
+        return '127.0.0.1';
+    }
+
+    return $host;
+};
 
 return [
 
@@ -16,8 +31,9 @@ return [
     |
     */
 
-    // Default to 'mysql' if DB_CONNECTION is not set
-    'default' => env('DB_CONNECTION', 'mysql'),
+    // RAG ingestion metadata is stored in PostgreSQL. Temporal uses its own
+    // PostgreSQL database and Laravel never writes to Temporal tables.
+    'default' => env('DB_CONNECTION', 'pgsql'),
 
     /*
     |--------------------------------------------------------------------------
@@ -46,7 +62,7 @@ return [
         'mysql' => [
             'driver' => 'mysql',
             'url' => env('DB_URL'),
-            'host' => env('DB_HOST', '127.0.0.1'),
+            'host' => $resolveHostForLocalCli((string) env('DB_HOST', '127.0.0.1')),
             'port' => env('DB_PORT', '3306'),
             'database' => env('DB_DATABASE', 'laravel'),
             'username' => env('DB_USERNAME', 'root'),
@@ -66,7 +82,7 @@ return [
         'mariadb' => [
             'driver' => 'mariadb',
             'url' => env('DB_URL'),
-            'host' => env('DB_HOST', '127.0.0.1'),
+            'host' => $resolveHostForLocalCli((string) env('DB_HOST', '127.0.0.1')),
             'port' => env('DB_PORT', '3306'),
             'database' => env('DB_DATABASE', 'laravel'),
             'username' => env('DB_USERNAME', 'root'),
@@ -86,7 +102,7 @@ return [
         'pgsql' => [
             'driver' => 'pgsql',
             'url' => env('DB_URL'),
-            'host' => env('DB_HOST', '127.0.0.1'),
+            'host' => $resolveHostForLocalCli((string) env('DB_HOST', '127.0.0.1')),
             'port' => env('DB_PORT', '5432'),
             'database' => env('DB_DATABASE', 'laravel'),
             'username' => env('DB_USERNAME', 'root'),
@@ -128,47 +144,6 @@ return [
     'migrations' => [
         'table' => 'migrations',
         'update_date_on_publish' => true,
-    ],
-
-    /*
-    |--------------------------------------------------------------------------
-    | Redis Databases
-    |--------------------------------------------------------------------------
-    |
-    | Redis is an open source, fast, and advanced key-value store that also
-    | provides a richer body of commands than a typical key-value system
-    | such as Memcached. You may define your connection settings here.
-    |
-    */
-
-    'redis' => [
-
-        'client' => env('REDIS_CLIENT', 'phpredis'),
-
-        'options' => [
-            'cluster' => env('REDIS_CLUSTER', 'redis'),
-            'prefix' => env('REDIS_PREFIX', Str::slug(env('APP_NAME', 'laravel'), '_') . '_database_'),
-        ],
-
-        'default' => [
-            'url' => env('REDIS_URL'),
-            'host' => env('REDIS_HOST'),
-            'username' => env('REDIS_USERNAME'),
-            'password' => env('REDIS_PASSWORD'),
-            'port' => env('REDIS_PORT', '6379'),
-            'database' => env('REDIS_DB', '0'),
-            'persistent' => false,
-        ],
-
-        'cache' => [
-            'url' => env('REDIS_URL'),
-            'host' => env('REDIS_HOST'),
-            'username' => env('REDIS_USERNAME'),
-            'password' => env('REDIS_PASSWORD'),
-            'port' => env('REDIS_PORT', '6379'),
-            'database' => env('REDIS_CACHE_DB', '1'),
-        ],
-
     ],
 
 ];

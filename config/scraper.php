@@ -1,18 +1,9 @@
 <?php
 
+$pipelineRoot = rtrim((string) env('HAWKI_RAG_PIPELINE_ROOT', '/shared'), DIRECTORY_SEPARATOR);
+$crawledDataRoot = rtrim((string) env('HAWKI_RAG_CRAWLED_DATA_ROOT', env('DEFAULT_CRAWLED_ROOT', $pipelineRoot)), DIRECTORY_SEPARATOR);
+
 return [
-
-    /*
-    |--------------------------------------------------------------------------
-    | Redis Configuration for Scrape Events
-    |--------------------------------------------------------------------------
-    |
-    | Configuration for Redis Pub/Sub communication between the Python
-    | microservice (CustomCrawler) and Laravel application.
-    |
-    */
-
-    'redis_channel' => env('SCRAPE_REDIS_CHANNEL', 'scrape-events'),
 
     /*
     |--------------------------------------------------------------------------
@@ -23,8 +14,15 @@ return [
     |
     */
 
-    'api_url' => env('CUSTOM_CRAWLER_URL', 'http://crawler:8000'),
+    'api_url' => env('CUSTOM_CRAWLER_URL', 'http://crawl4ai-service'),
     'api_key' => env('CUSTOM_CRAWLER_API_KEY', ''),
+    'tasks_path' => env('CUSTOM_CRAWLER_TASKS_PATH', '/tasks'),
+    'task_start_path' => env('CUSTOM_CRAWLER_TASK_START_PATH', '/tasks/{task}/run'),
+    'task_start_method' => env('CUSTOM_CRAWLER_TASK_START_METHOD', 'POST'),
+    'task_ui_url' => env('CUSTOM_CRAWLER_TASK_UI_URL', env('CUSTOM_CRAWLER_UI_URL', env('CUSTOM_CRAWLER_URL', 'http://crawl4ai-service'))),
+    'task_ui_profiles_path' => env('CUSTOM_CRAWLER_TASK_UI_PROFILES_PATH', '/ui/api/profiles'),
+    'task_ui_tasks_path' => env('CUSTOM_CRAWLER_TASK_UI_TASKS_PATH', '/ui/api/tasks'),
+    'task_ui_submit_path' => env('CUSTOM_CRAWLER_TASK_UI_SUBMIT_PATH', '/ui/api/crawler/submit'),
 
     /*
     |--------------------------------------------------------------------------
@@ -35,7 +33,18 @@ return [
     |
     */
 
-    'storage_path' => env('SCRAPE_STORAGE_PATH', storage_path('app/scrape-jobs')),
+    'storage_path' => env('SCRAPE_STORAGE_PATH', $crawledDataRoot),
+    'allowed_local_roots' => array_values(array_filter(array_map(
+        static fn (string $path): string => rtrim($path, DIRECTORY_SEPARATOR),
+        explode(',', (string) env(
+            'SCRAPE_ALLOWED_LOCAL_ROOTS',
+            implode(',', array_unique(array_filter([
+                $pipelineRoot,
+                $crawledDataRoot,
+                storage_path('app'),
+            ])))
+        ))
+    ))),
 
     /*
     |--------------------------------------------------------------------------
@@ -53,16 +62,5 @@ return [
         'skip_images' => env('SCRAPE_DEFAULT_SKIP_IMAGES', false),
         'discovery_mode' => env('SCRAPE_DEFAULT_DISCOVERY_MODE', false),
     ],
-
-    /*
-    |--------------------------------------------------------------------------
-    | Event Listener Configuration
-    |--------------------------------------------------------------------------
-    |
-    | Configuration for the Redis event listener that processes scrape events.
-    |
-    */
-
-    'max_job_duration' => env('SCRAPE_MAX_JOB_DURATION', 3600), // Maximum time (in seconds) to listen for job events
 
 ];

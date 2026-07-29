@@ -1,9 +1,36 @@
 #!/usr/bin/env php
 <?php
 
+declare(strict_types=1);
+
 use Symfony\Component\Console\Input\ArgvInput;
 
 define('LARAVEL_START', microtime(true));
+
+// The application image's PHP wrapper restores Compose variables before each
+// invocation. Override them before Laravel boots when the requested command is
+// the test runner, so the outer Artisan process cannot resolve live services.
+if (in_array('test', array_slice($argv, 1), true)) {
+    $testingEnvironment = [
+        'APP_ENV' => 'testing',
+        'CACHE_STORE' => 'array',
+        'DB_CONNECTION' => 'sqlite',
+        'DB_DATABASE' => ':memory:',
+        'DB_URL' => '',
+        'DB_CACHE_CONNECTION' => 'sqlite',
+        'DB_CACHE_LOCK_CONNECTION' => 'sqlite',
+        'DB_QUEUE_CONNECTION' => 'sqlite',
+        'QUEUE_CONNECTION' => 'sync',
+        'SESSION_CONNECTION' => 'sqlite',
+        'SESSION_DRIVER' => 'array',
+    ];
+
+    foreach ($testingEnvironment as $name => $value) {
+        putenv($name.'='.$value);
+        $_ENV[$name] = $value;
+        $_SERVER[$name] = $value;
+    }
+}
 
 // Register the Composer autoloader...
 require __DIR__.'/vendor/autoload.php';

@@ -1,11 +1,24 @@
 <?php
 
+$baseUrl = rtrim((string) env('EXTERNAL_CONVERTER_URL', env('FILE_CONVERTER_BASE_URL', 'http://file-converter:8000')), '/');
+$customConverterStatusPath = env('CUSTOM_CONVERTER_STATUS_PATH');
+if (! is_string($customConverterStatusPath) || trim($customConverterStatusPath) === '') {
+    $customConverterStatusPath = env('EXTERNAL_CONVERTER_STATUS_PATH');
+}
+if (! is_string($customConverterStatusPath) || trim($customConverterStatusPath) === '') {
+    $customConverterStatusPath = '/jobs/{job_id}';
+}
 
 return [
-    'url'             => env('FILE_CONVERTER_URL', 'http://127.0.0.1:8002/extract'),
-    'timeout'         => (int) env('FILE_CONVERTER_TIMEOUT', 600),
-    'connect_timeout' => (int) env('FILE_CONVERTER_CONNECT_TIMEOUT', 20),
+    'health_url'      => env('FILE_CONVERTER_HEALTH_URL', $baseUrl . '/health'),
     'retries'         => (int) env('FILE_CONVERTER_RETRIES', 3),
-    'retry_delay_ms'  => (int) env('FILE_CONVERTER_RETRY_DELAY_MS', 1500),
-    'token'           => env('FILE_CONVERTER_TOKEN'),
+    'raganything_supported_extensions' => array_values(array_filter(array_map(
+        static fn ($extension) => ltrim(strtolower(trim($extension)), '.'),
+        explode(',', env('RAGANYTHING_SUPPORTED_UPLOAD_EXTENSIONS', 'pdf,doc,docx,ppt,pptx,xls,xlsx,jpg,jpeg,png,bmp,tif,tiff,gif,webp,txt,md'))
+    ))),
+    'supported_extensions' => array_values(array_filter(array_map(
+        static fn ($extension) => ltrim(strtolower(trim($extension)), '.'),
+        explode(',', env('FILE_CONVERTER_SUPPORTED_EXTENSIONS', ''))
+    ))),
+    'custom_converter_status_path' => $customConverterStatusPath,
 ];

@@ -1,10 +1,13 @@
 FROM neunerlei/node-nginx:25 AS node-build
 
-ARG DOCKER_PROJECT_HOST
-ARG DOCKER_PROJECT_PATH
-ENV DOCKER_PROJECT_HOST=${DOCKER_PROJECT_HOST:-ixdlab.hawk.de} \
-    DOCKER_PROJECT_PATH=${DOCKER_PROJECT_PATH:-/hawki-rag/}
- 
+ARG DOCKER_PROJECT_HOST=ixdlab.hawk.de
+ARG DOCKER_PROJECT_PATH=/hawki-rag/
+ARG DOCKER_PROJECT_PROTOCOL=https
+ARG DOCKER_SERVICE_PATH
+ENV DOCKER_PROJECT_HOST=${DOCKER_PROJECT_HOST} \
+    DOCKER_PROJECT_PATH=${DOCKER_PROJECT_PATH} \
+    DOCKER_PROJECT_PROTOCOL=${DOCKER_PROJECT_PROTOCOL}
+
 # Copy only package files for caching
 COPY package.json package-lock.json ./
 
@@ -15,47 +18,35 @@ RUN npm config set fetch-retries 5 \
  && npm config set fetch-timeout 300000 \
  && npm ci --with-dev
 
+# Copy rest of application
+COPY --chown=www-data:www-data . .
+
 # Prepare container for building
 RUN rm -rf /var/www/html/public/build \
-    && /container/entrypoint/entrypoint.sh
-
-# Copy rest of application
-COPY . .
-
-# Build frontend assets
-RUN _npm run build \
- && if [ -d resources/js/crawler ]; then cd resources/js/crawler && npm ci --fetch-timeout=300000; fi
+    && gosu www-data mkdir -p /var/www/html/public/build \
+    && source /container/entrypoint/entrypoint.sh \
+    && npm run build
 
 # =================================================================
 
 FROM neunerlei/php-nginx:8.4 AS laravel-app
 
-ARG DOCKER_PROJECT_HOST
-ARG DOCKER_PROJECT_PATH
-ENV DOCKER_PROJECT_HOST=${DOCKER_PROJECT_HOST:-ixdlab.hawk.de} \
-    DOCKER_PROJECT_PATH=${DOCKER_PROJECT_PATH:-/hawki-rag/} \
-    ASSET_URL="https://${DOCKER_PROJECT_HOST}${DOCKER_PROJECT_PATH}" \
-    APP_URL="https://${DOCKER_PROJECT_HOST}${DOCKER_PROJECT_PATH}"
+ARG DOCKER_PROJECT_HOST=ixdlab.hawk.de
+ARG DOCKER_PROJECT_PATH=/hawki-rag/
+ARG DOCKER_PROJECT_PROTOCOL=https
+ENV DOCKER_PROJECT_HOST=${DOCKER_PROJECT_HOST} \
+    DOCKER_PROJECT_PATH=${DOCKER_PROJECT_PATH} \
+    DOCKER_PROJECT_PROTOCOL=${DOCKER_PROJECT_PROTOCOL}
+ENV ASSET_URL="${DOCKER_PROJECT_PROTOCOL}://${DOCKER_PROJECT_HOST}${DOCKER_PROJECT_PATH}" \
+    APP_URL="${DOCKER_PROJECT_PROTOCOL}://${DOCKER_PROJECT_HOST}${DOCKER_PROJECT_PATH}"
 
-# Install system dependencies
+# Install runtime/build dependencies. The base image already includes the PHP
+# extensions used by Laravel here: gd, pdo_mysql, pdo_pgsql, opcache, bcmath,
+# exif, pcntl, zip, and intl. Temporal client operations run in Python.
 RUN apt-get update && apt-get install -y \
     python3-requests \
-    libonig-dev \
-    libxml2-dev \
     unzip \
-    libpng-dev \
-    libjpeg-dev \
-    libfreetype6-dev \
-    libicu-dev \
-    libmagickwand-dev \
-    libzip-dev \
-    build-essential \
  && rm -rf /var/lib/apt/lists/*
-
-# Install PHP extensions
-RUN docker-php-ext-configure gd --with-freetype --with-jpeg \
- && docker-php-ext-install -j$(nproc) gd pdo_mysql opcache bcmath exif pcntl zip intl sockets \
- && rm -rf /tmp/*
 
 # Copy only composer files for caching
 COPY composer.json composer.lock ./
@@ -69,8 +60,16 @@ COPY . .
 # Copy built assets from node build stage
 COPY --chown=www-data:www-data --from=node-build /var/www/html/public/build /var/www/built_resources
 
-# Fix Laravel permissions
-RUN chown -R www-data:www-data \
+# Recreate the runtime skeleton because local storage data is excluded from the
+# build context and mounted separately at runtime.
+RUN mkdir -p \
+    /var/www/html/storage/app/public \
+    /var/www/html/storage/framework/cache/data \
+    /var/www/html/storage/framework/sessions \
+    /var/www/html/storage/framework/views \
+    /var/www/html/storage/logs \
+    /var/www/html/bootstrap/cache \
+ && chown -R www-data:www-data \
     /var/www/html/storage \
     /var/www/html/bootstrap/cache \
     /var/www/built_resources

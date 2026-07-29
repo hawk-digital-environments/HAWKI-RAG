@@ -1,45 +1,76 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Services\Profile;
 
-use Exception;
-use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Log;
-use laravel\Sanctum\NewAccessToken;
+use App\Models\User;
+use App\Services\Profile\Exceptions\ProfileTokenException;
+use App\Services\Profile\Values\ApiTokenAbility;
+use Illuminate\Contracts\Auth\Factory as AuthFactory;
+use Illuminate\Support\Collection;
+use Laravel\Sanctum\NewAccessToken;
+use Psr\Log\LoggerInterface;
 
-class ApiTokenService{
+class ApiTokenService
+{
+    public function __construct(
+        private readonly AuthFactory $auth,
+        private readonly LoggerInterface $logger,
+    ) {}
 
-    public function createApiToken(string $name): NewAccessToken{
-        $user = Auth::user();
-        return $user->createToken($name);
+    /**
+     * @param  non-empty-list<ApiTokenAbility>  $abilities
+     */
+    public function createApiToken(string $name, array $abilities): NewAccessToken
+    {
+        return $this->currentUser()->createToken(
+            $name,
+            array_map(
+                static fn (ApiTokenAbility $ability): string => $ability->value,
+                $abilities,
+            ),
+        );
     }
 
+    /**
+     * @return Collection<int, array{id: int, name: string, abilities: list<string>}>
+     */
+    public function fetchTokenList(): Collection
+    {
+        $tokens = $this->currentUser()->tokens()->get();
 
-    public function fetchTokenList(){
-        $user = Auth::user();
-        // Retrieve all tokens associated with the authenticated user
-        $tokens = $user->tokens()->get();
-        // Construct an array of token data
         return $tokens->map(function ($token) {
             return [
                 'id' => $token->id,
                 'name' => $token->name,
+                'abilities' => is_array($token->abilities) ? $token->abilities : [],
             ];
         });
     }
 
-
-    public function revokeToken(int $tokenId){
-        try{
-            $user = Auth::user();
-            $token = $user->tokens()->where('id', $tokenId);
+    public function revokeToken(int $tokenId): void
+    {
+        try {
+            $token = $this->currentUser()->tokens()->where('id', $tokenId);
             $token->delete();
-        }
-        catch(Exception $e){
-            Log::error($e->getMessage());
-            throw $e;
-        }
+        } catch (\Throwable $e) {
+            $this->logger->error('Profile API token revoke failed.', [
+                'token_id' => $tokenId,
+                'exception' => $e,
+            ]);
 
+            throw ProfileTokenException::revokeFailed($tokenId, $e);
+        }
     }
 
+    private function currentUser(): User
+    {
+        $user = $this->auth->guard()->user();
+        if (! $user instanceof User) {
+            throw ProfileTokenException::missingAuthenticatedUser();
+        }
+
+        return $user;
+    }
 }

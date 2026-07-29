@@ -1,0 +1,3336 @@
+openapi: 3.0.3
+info:
+  title: HAWKI RAG API
+  description: Local API reference generated from currently registered routes.
+  version: "1.0.0"
+servers:
+  - url: ../api
+    description: Laravel API base URL relative to the deployed Swagger path
+tags:
+  - name: Health
+    description: Control-plane checks for application, pipeline, and retrieval readiness.
+  - name: Datasets
+    description: |
+      Control-plane endpoints for organizing related documents into isolated RAG workspaces.
+      A dataset keeps its own vector collection, graph namespace, and embedding configuration.
+  - name: Documents
+    description: Control-plane endpoints for uploading, replacing, inspecting, and deleting managed documents.
+  - name: Pipeline
+    description: Control-plane endpoints for starting and observing durable ingestion tasks.
+  - name: Pipeline Recovery
+    description: Control-plane endpoints for finding failed work and requesting controlled retries.
+  - name: Query
+    description: Single-user dataset discovery and dataset-scoped retrieval, with optional bearer identity selection.
+  - name: RAG
+    description: Control-plane diagnostics for the retrieval bridge and backing data stores.
+  - name: Graph
+    description: Control-plane graph exploration, snapshots, and destructive graph maintenance.
+paths:
+  /ping:
+    get:
+      tags:
+        - Health
+      summary: Health ping
+      description: Confirms that the Laravel control-plane API is reachable. This check does not test downstream RAG services.
+      security:
+        []
+      responses:
+        "200":
+          description: Service is alive
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PingResponse"
+              example:
+                pong: true
+  /datasets:
+    get:
+      tags:
+        - Datasets
+      summary: List dataset workspaces
+      description: |
+        Returns a concise operational overview of datasets that have entered the
+        processing workflow. Each item includes its storage scope, embedding
+        configuration, document/task counts, and current vector and graph statistics.
+
+        Use `GET /datasets/{dataset_id}` when you need recent documents, tasks,
+        and ingestion history for one dataset.
+
+        This control-plane operation does not require a RAWKI bearer token.
+        Retrieval clients should use `GET /query/datasets`, which resolves the
+        sole active local user by default and returns only query-ready datasets
+        allowed by the configured policy.
+      security:
+        []
+      parameters:
+        - in: query
+          name: limit
+          required: false
+          description: Maximum number of recent dataset workspaces to return.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 250
+            default: 50
+      responses:
+        "200":
+          description: Dataset workspaces were returned successfully.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DatasetListResponse"
+    post:
+      tags:
+        - Datasets
+      summary: Create a dataset workspace
+      description: |
+        Creates an empty logical workspace for a related group of documents.
+        The server records the active embedding provider and model, and derives
+        isolated Qdrant and Neo4j names unless advanced names are supplied.
+
+        This operation creates metadata only. It does not upload a document,
+        start ingestion, populate vector or graph storage, or grant query access.
+        Upload with `POST /documents` to begin ingestion. Document upload can also
+        create a missing dataset automatically, so this endpoint is most useful
+        when an operator wants to prepare and inspect a workspace in advance.
+
+        This control-plane operation does not require a HAWKI-RAG bearer token.
+      security:
+        []
+      requestBody:
+        required: true
+        description: Human-friendly dataset metadata. Storage names are optional advanced overrides.
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DatasetCreateRequest"
+            example:
+              dataset_id: research-library
+              name: Research Library
+              description: Documents grouped for one retrieval context.
+      responses:
+        "201":
+          description: The empty dataset workspace was created successfully.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DatasetCreateResponse"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+  /datasets/{dataset_id}:
+    parameters:
+      - in: path
+        name: dataset_id
+        required: true
+        description: Stable identifier of the dataset workspace.
+        schema:
+          type: string
+          maxLength: 191
+    get:
+      tags:
+        - Datasets
+      summary: Get dataset workspace details
+      description: |
+        Returns one dataset's configuration and operational state, including its
+        vector collection, graph namespace, embedding runtime, storage statistics,
+        recent documents, recent pipeline tasks, and ingestion history.
+
+        This endpoint reports the workspace; it does not return document content
+        or run a retrieval query. It does not require a HAWKI-RAG bearer token.
+      security:
+        []
+      responses:
+        "200":
+          description: Dataset workspace details were returned successfully.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DatasetDetailResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /datasets/{dataset_id}/storage:
+    parameters:
+      - in: path
+        name: dataset_id
+        required: true
+        description: Stable identifier of the dataset workspace to remove.
+        schema:
+          type: string
+          maxLength: 191
+    delete:
+      tags:
+        - Datasets
+      summary: Delete a dataset and its derived storage
+      description: |
+        Removes the dataset's Qdrant collection and dataset-scoped Neo4j data,
+        then deletes its metadata only after both storage cleanups succeed.
+
+        This is a destructive control-plane operation. It does not silently report
+        success when a backing store could not be cleaned.
+      security:
+        []
+      responses:
+        "200":
+          description: Dataset storage and metadata were deleted successfully.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DatasetDeleteResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "502":
+          description: A backing store could not be cleaned, so dataset metadata was retained.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DatasetDeleteResponse"
+  /documents:
+    get:
+      tags:
+        - Documents
+      summary: List documents
+      description: |
+        Unified document list for HAWKI RAG.
+
+        Read behavior:
+        - returns managed upload documents with `adoc_*` or `doc_*` handles when matching managed documents exist
+        - falls back to legacy indexed document UUID records when no managed documents match the current filter
+      security:
+        []
+      parameters:
+        - in: query
+          name: dataset_id
+          required: false
+          schema:
+            type: string
+          description: Dataset filter using the snake_case query name accepted by the API.
+        - in: query
+          name: q
+          required: false
+          schema:
+            type: string
+          description: Free-text search term.
+        - in: query
+          name: search
+          required: false
+          schema:
+            type: string
+          description: Free-text search term alias.
+        - in: query
+          name: limit
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 250
+      responses:
+        "200":
+          description: Document list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UnifiedDocumentListResponse"
+    post:
+      tags:
+        - Documents
+      summary: Upload one document into a dataset and start ingest
+      description: |
+        Creates one managed document from one uploaded file.
+
+        Managed document model:
+        - the public document handle is the `adoc_*` or `doc_*` id returned in `document.document_id`
+        - one `dataset_id` groups documents that should be indexed together
+        - the managed document remains the stable public handle for later read, replace, and delete operations
+      security:
+        []
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          required: false
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+                - dataset_id
+              properties:
+                file:
+                  type: string
+                  format: binary
+                dataset_id:
+                  type: string
+                  description: Dataset identifier used to group this document with related documents.
+                source_updated_at:
+                  type: string
+                  format: date-time
+                source_checksum_sha256:
+                  type: string
+                graph:
+                  type: boolean
+                  default: false
+                  description: Optional. If omitted, ingest stays vector-only and does not write Neo4j graph data.
+                display_name:
+                  type: string
+                source_url:
+                  type: string
+                  format: uri
+                metadata_json:
+                  oneOf:
+                    - type: object
+                      additionalProperties: true
+                    - type: string
+      responses:
+        "202":
+          description: Managed document accepted for ingest
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ManagedDocumentMutationResponse"
+        "422":
+          description: Validation failed
+  /documents/batch:
+    post:
+      tags:
+        - Documents
+      summary: Upload many documents into one dataset and start one ingest workflow per file
+      description: |
+        Creates one managed document per uploaded file.
+
+        Batch behavior:
+        - all files in the same request share the same `dataset_id`
+        - each file still becomes its own managed `adoc_*` document handle
+        - deleting one managed document is intended to remove only that file's indexed outputs while keeping the rest of the dataset intact
+      security:
+        []
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          required: false
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - files
+                - dataset_id
+              properties:
+                files:
+                  type: array
+                  items:
+                    type: string
+                    format: binary
+                dataset_id:
+                  type: string
+                  description: Dataset identifier shared by every file in this batch.
+                graph:
+                  type: boolean
+                  default: false
+                  description: Optional. If omitted, ingests stay vector-only and do not write Neo4j graph data.
+                metadata_json:
+                  oneOf:
+                    - type: object
+                      additionalProperties: true
+                    - type: string
+      responses:
+        "202":
+          description: All managed documents were accepted for ingest
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ManagedDocumentBatchResponse"
+        "207":
+          description: Some managed documents were accepted and some failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ManagedDocumentBatchResponse"
+        "422":
+          description: Validation failed
+  /documents/{document_id}:
+    parameters:
+      - in: path
+        name: document_id
+        required: true
+        schema:
+          type: string
+        description: |
+          Unified document handle.
+
+          Accepted values:
+          - managed public document ids such as `adoc_...` or `doc_...`
+          - legacy indexed document UUIDs for read-only access
+    get:
+      tags:
+        - Documents
+      summary: Get document
+      description: |
+        Returns one document from the unified surface.
+
+        Read behavior:
+        - `adoc_*` and `doc_*` ids resolve to managed documents
+        - UUID ids resolve to legacy indexed documents
+      security:
+        []
+      responses:
+        "200":
+          description: Document
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UnifiedDocumentResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      tags:
+        - Documents
+      summary: Replace a managed document if the incoming file is newer
+      description: |
+        Replaces one managed document while keeping it in the same dataset.
+
+        This operation only supports managed `adoc_*` or `doc_*` document ids.
+        Passing a legacy indexed document UUID returns `404`.
+      security:
+        []
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          required: false
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+                source_updated_at:
+                  type: string
+                  format: date-time
+                source_checksum_sha256:
+                  type: string
+                graph:
+                  type: boolean
+                  description: Optional override. If omitted, the current graph setting is preserved.
+                display_name:
+                  type: string
+                source_url:
+                  type: string
+                  format: uri
+                metadata_json:
+                  oneOf:
+                    - type: object
+                      additionalProperties: true
+                    - type: string
+                force:
+                  type: boolean
+      responses:
+        "200":
+          description: Replacement skipped because the document is unchanged
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ManagedDocumentMutationResponse"
+        "202":
+          description: Replacement accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ManagedDocumentMutationResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          description: Validation failed
+    delete:
+      tags:
+        - Documents
+      summary: Delete one managed document's active indexed outputs
+      description: |
+        Deletes the active indexed outputs for one managed document.
+
+        This operation only supports managed `adoc_*` or `doc_*` document ids.
+        Passing a legacy indexed document UUID returns `404`.
+      security:
+        []
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Managed document deleted from derived indexes
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ManagedDocumentDeleteResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /pipeline/tasks:
+    get:
+      tags:
+        - Pipeline
+      summary: List pipeline tasks
+      description: Returns recent ingestion tasks with their dataset, status, counters, active-job count, and stage progress.
+      security:
+        []
+      parameters:
+        - in: query
+          name: limit
+          required: false
+          description: Maximum number of recent tasks to return.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 30
+      responses:
+        "200":
+          description: Recent pipeline tasks were returned successfully.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PipelineTaskListResponse"
+  /pipeline/tasks/start:
+    post:
+      tags:
+        - Pipeline
+      summary: Start pipeline task
+      description: |
+        Creates a dataset-backed ingestion task and starts the corresponding
+        Temporal workflow for the supplied source URL, sitemap, or URL list.
+        The dataset is created automatically when it does not yet exist.
+      security:
+        []
+      requestBody:
+        required: true
+        description: Source selection, optional stable identifiers, refresh cadence, and request metadata.
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PipelineTaskStartRequest"
+      responses:
+        "201":
+          description: The task and its Temporal workflow were created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PipelineTaskCreateResponse"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+  /pipeline/tasks/{task_id}:
+    parameters:
+      - in: path
+        name: task_id
+        required: true
+        schema:
+          type: string
+    get:
+      tags:
+        - Pipeline
+      summary: Get task
+      description: Returns one pipeline task with its jobs, managed documents, sources, counters, and stage status.
+      security:
+        []
+      responses:
+        "200":
+          description: Pipeline task details were returned successfully.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PipelineTaskDetailResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags:
+        - Pipeline
+      summary: Delete a pipeline task and its stored history
+      description: Cleans task-owned storage and deletes the pipeline task only when cleanup succeeds.
+      security:
+        []
+      responses:
+        "200":
+          description: Task storage and history were deleted successfully.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PipelineTaskDeleteResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          description: Storage cleanup failed and task history was retained.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PipelineTaskDeleteResponse"
+  /pipeline/tasks/{task_id}/jobs:
+    parameters:
+      - in: path
+        name: task_id
+        required: true
+        schema:
+          type: string
+    get:
+      tags:
+        - Pipeline
+      summary: List task jobs
+      description: Returns all jobs currently associated with one pipeline task.
+      security:
+        []
+      responses:
+        "200":
+          description: Task jobs were returned successfully.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PipelineJobListResponse"
+    post:
+      tags:
+        - Pipeline
+      summary: Upsert a job
+      description: Creates or updates one job record inside the selected pipeline task.
+      security:
+        []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PipelineJobUpsertRequest"
+      responses:
+        "200":
+          description: The pipeline job was stored successfully.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PipelineJobUpsertResponse"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+  /pipeline/tasks/{task_id}/failed-jobs:
+    parameters:
+      - in: path
+        name: task_id
+        required: true
+        schema:
+          type: string
+    get:
+      tags:
+        - Pipeline
+      summary: List failed jobs for task
+      description: Returns only failed jobs belonging to the selected pipeline task.
+      security:
+        []
+      responses:
+        "200":
+          description: Failed task jobs were returned successfully.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PipelineJobListResponse"
+  /pipeline/tasks/{task_id}/events:
+    parameters:
+      - in: path
+        name: task_id
+        required: true
+        schema:
+          type: string
+    get:
+      tags:
+        - Pipeline
+      summary: List task events
+      description: Returns the recent normalized event timeline for one task, optionally filtered by event type or job.
+      security:
+        []
+      parameters:
+        - in: query
+          name: limit
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 250
+            default: 100
+        - in: query
+          name: event_type
+          required: false
+          schema:
+            type: string
+        - in: query
+          name: job_id
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The task event timeline was returned successfully.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PipelineEventListResponse"
+  /pipeline/tasks/{task_id}/stages/{stage}/logs:
+    parameters:
+      - in: path
+        name: task_id
+        required: true
+        schema:
+          type: string
+      - in: path
+        name: stage
+        required: true
+        description: Canonical pipeline stage or supported stage alias.
+        schema:
+          type: string
+          example: ingest
+    get:
+      tags:
+        - Pipeline
+      summary: View pipeline stage logs
+      description: Returns the current human-readable log text and metadata for one stage of a pipeline task.
+      security:
+        []
+      responses:
+        "200":
+          description: Stage log details were returned successfully.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PipelineStageLogResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+  /pipeline/tasks/{task_id}/stages/{stage}/logs/download:
+    parameters:
+      - in: path
+        name: task_id
+        required: true
+        schema:
+          type: string
+      - in: path
+        name: stage
+        required: true
+        schema:
+          type: string
+          example: ingest
+    get:
+      tags:
+        - Pipeline
+      summary: Download a pipeline stage report
+      description: Downloads a UTF-8 diagnostic report for one supported pipeline stage as a text file.
+      security:
+        []
+      responses:
+        "200":
+          description: Stage diagnostic report.
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+          content:
+            text/plain:
+              schema:
+                type: string
+        "404":
+          description: Pipeline task was not found.
+        "422":
+          description: The requested stage does not expose logs.
+  /pipeline/tasks/{task_id}/cancel:
+    parameters:
+      - in: path
+        name: task_id
+        required: true
+        schema:
+          type: string
+    post:
+      tags:
+        - Pipeline
+      summary: Cancel task
+      description: Requests cancellation of the selected task and returns its refreshed status.
+      security:
+        []
+      responses:
+        "200":
+          description: Task cancellation was accepted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PipelineTaskActionResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /pipeline/health:
+    get:
+      tags:
+        - Pipeline
+      summary: Pipeline health status
+      description: Runs bounded checks for PostgreSQL, Temporal, workers, Qdrant, Neo4j, and shared storage.
+      security:
+        []
+      parameters:
+        - in: query
+          name: timeout
+          required: false
+          description: Per-network-check timeout in seconds.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 30
+            default: 5
+      responses:
+        "200":
+          description: Pipeline health checks completed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PipelineHealthResponse"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+  /health/system-gate:
+    get:
+      tags:
+        - Health
+      summary: Evaluate overall system readiness
+      description: Combines retrieval, graph, and pipeline checks into one deployment readiness decision with repair guidance.
+      security:
+        []
+      parameters:
+        - in: query
+          name: timeout
+          required: false
+          description: Per-network-check timeout in seconds.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 30
+      responses:
+        "200":
+          description: System readiness report was generated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SystemGateResponse"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+  /pipeline/controller/files:
+    post:
+      tags:
+        - Pipeline
+      summary: Upload pipeline control files
+      description: Uploads one supported file, prepares its dataset and task records, and starts conversion and ingestion through Temporal.
+      security:
+        []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/PipelineFileUploadRequest"
+      responses:
+        "201":
+          description: File was stored and handed to the pipeline.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PipelineFileUploadResponse"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "500":
+          description: Upload storage or converter-profile preparation failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PipelineFileUploadResponse"
+  /pipeline/recovery/failed-jobs:
+    get:
+      tags:
+        - Pipeline Recovery
+      summary: List failed jobs
+      description: Returns recoverable failed jobs, optionally limited to one task or dataset.
+      security:
+        []
+      parameters:
+        - in: query
+          name: limit
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+        - in: query
+          name: task_id
+          required: false
+          schema:
+            type: string
+        - in: query
+          name: dataset_id
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Recoverable failed jobs were returned successfully.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PipelineFailedJobListResponse"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+  /pipeline/recovery/jobs/retry-selected:
+    post:
+      tags:
+        - Pipeline Recovery
+      summary: Retry selected failed jobs
+      description: Requests recovery for the supplied list of failed job identifiers and reports the outcome for each job.
+      security:
+        []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PipelineRetrySelectedRequest"
+      responses:
+        "200":
+          description: Recovery attempts completed or were queued as applicable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PipelineRecoveryResponse"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+  /pipeline/recovery/jobs/{job_id}/retry:
+    parameters:
+      - in: path
+        name: job_id
+        required: true
+        schema:
+          type: string
+    post:
+      tags:
+        - Pipeline Recovery
+      summary: Retry single failed job
+      description: Requests recovery for one failed job and returns the retry decision.
+      security:
+        []
+      responses:
+        "200":
+          description: Recovery result for the selected job.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PipelineRecoveryResponse"
+  /pipeline/recovery/retry-all:
+    post:
+      tags:
+        - Pipeline Recovery
+      summary: Retry all failed jobs
+      description: Requests recovery for every currently recoverable failed job.
+      security:
+        []
+      responses:
+        "200":
+          description: Aggregate recovery result for all failed jobs.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PipelineRecoveryResponse"
+  /pipeline/recovery/tasks/{task_id}/retry-failed:
+    parameters:
+      - in: path
+        name: task_id
+        required: true
+        schema:
+          type: string
+    post:
+      tags:
+        - Pipeline Recovery
+      summary: Retry failed jobs for a task
+      description: Requests recovery for all recoverable failed jobs belonging to one task.
+      security:
+        []
+      responses:
+        "200":
+          description: Aggregate recovery result for the selected task.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PipelineRecoveryResponse"
+  /pipeline/recovery/datasets/{dataset_id}/retry-failed:
+    parameters:
+      - in: path
+        name: dataset_id
+        required: true
+        schema:
+          type: string
+    post:
+      tags:
+        - Pipeline Recovery
+      summary: Retry failed jobs for a dataset
+      description: Requests recovery for all recoverable failed jobs belonging to one dataset.
+      security:
+        []
+      responses:
+        "200":
+          description: Aggregate recovery result for the selected dataset.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PipelineRecoveryResponse"
+  /query:
+    post:
+      tags:
+        - Query
+      summary: Query an authorized dataset
+      description: |
+        Runs retrieval against one dataset allowed for the resolved query user.
+        Without a credential, Laravel uses the only active local user. An
+        optional Sanctum bearer token may select an explicit active user and
+        must include the `query` ability.
+
+        Callers cannot override storage or authorization fields. Unknown and
+        unauthorized datasets are intentionally indistinguishable. Zero or
+        multiple active local users fail closed instead of selecting a user
+        arbitrarily. An explicitly supplied invalid token never falls back to
+        the implicit user.
+      security:
+        - {}
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/QueryRequest"
+      responses:
+        "200":
+          description: Dataset-scoped retrieval completed successfully.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QueryResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "503":
+          description: No unambiguous implicit query user is available, or the authorized dataset/model/storage runtime is not ready.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /query/datasets:
+    get:
+      tags:
+        - Query
+      summary: List datasets available for querying
+      description: |
+        Returns only active datasets the resolved query user may query under the
+        configured policy and whose Qdrant collection currently exists. Without
+        a credential, the query user is the only active local user. An optional
+        Sanctum bearer token may select an explicit active user.
+
+        If physical collection readiness cannot be established, the list fails
+        closed and exposes no dataset options. Zero or multiple active local
+        users fail with HTTP 503; an explicitly supplied invalid token fails
+        with HTTP 401 and never falls back to the implicit user.
+      security:
+        - {}
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Authorized query datasets were returned successfully.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthorizedDatasetListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "503":
+          $ref: "#/components/responses/QueryPrincipalUnavailable"
+  /rag/health:
+    get:
+      tags:
+        - RAG
+      summary: Show RAG health
+      description: Probes the configured Python retrieval bridge and reports endpoint, status, and request latency.
+      security:
+        []
+      responses:
+        "200":
+          description: The retrieval bridge is reachable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RagHealthResponse"
+        "502":
+          description: The configured retrieval bridge could not be reached successfully.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RagHealthResponse"
+  /rag/monitor:
+    get:
+      tags:
+        - RAG
+      summary: RAG monitor
+      description: Returns bridge runtime details, graph configuration, recent ingestion artifacts, and graph failure diagnostics.
+      security:
+        []
+      responses:
+        "200":
+          description: RAG runtime and artifact diagnostics were returned successfully.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RagMonitorResponse"
+  /rag/stats:
+    get:
+      tags:
+        - RAG
+      summary: RAG statistics
+      description: Returns current Qdrant collection counts and Neo4j entity, relationship, label, and relationship-type statistics.
+      security:
+        []
+      responses:
+        "200":
+          description: Vector and graph statistics were returned successfully.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RagStatsResponse"
+  /rag/qdrant/collections/{collection}:
+    parameters:
+      - in: path
+        name: collection
+        required: true
+        description: Exact Qdrant collection name to delete.
+        schema:
+          type: string
+          maxLength: 191
+    delete:
+      tags:
+        - RAG
+      summary: Delete a Qdrant collection
+      description: Permanently removes one validated Qdrant collection. This low-level control-plane operation does not delete Laravel dataset metadata.
+      security:
+        []
+      responses:
+        "200":
+          description: The Qdrant collection was deleted successfully.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QdrantCollectionDeleteResponse"
+        "422":
+          description: The collection name was invalid or Qdrant rejected the deletion.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QdrantCollectionDeleteResponse"
+  /rag/neo4j/graph/overview:
+    get:
+      tags:
+        - Graph
+      summary: Get graph overview
+      description: Returns a bounded recent graph scene containing normalized nodes and relationships for control-plane visualization.
+      security:
+        []
+      parameters:
+        - in: query
+          name: limit
+          required: false
+          schema:
+            type: integer
+            minimum: 5
+            maximum: 300
+            default: 80
+      responses:
+        "200":
+          description: Overview payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GraphPayload"
+        "502":
+          $ref: "#/components/responses/BadGateway"
+  /rag/neo4j/graph/search:
+    get:
+      tags:
+        - Graph
+      summary: Search graph
+      description: Searches Neo4j entities by text and returns a graph-ready result set.
+      security:
+        []
+      parameters:
+        - in: query
+          name: q
+          required: true
+          schema:
+            type: string
+            maxLength: 200
+        - in: query
+          name: limit
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 12
+      responses:
+        "200":
+          description: Search result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GraphPayload"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "502":
+          $ref: "#/components/responses/BadGateway"
+  /rag/neo4j/graph/semantic-search:
+    get:
+      tags:
+        - Graph
+      summary: Graph semantic search
+      description: |
+        Performs semantic graph retrieval inside one dataset scope allowed for
+        the resolved query user. Credential-free requests use the only active
+        local user; an optional Sanctum bearer token may select an explicit
+        active user. Zero or multiple active local users fail closed.
+      security:
+        - {}
+        - BearerAuth: []
+      parameters:
+        - in: query
+          name: dataset_id
+          required: true
+          schema:
+            type: string
+            maxLength: 191
+        - in: query
+          name: q
+          required: true
+          schema:
+            type: string
+            maxLength: 500
+        - in: query
+          name: limit
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 25
+            default: 8
+      responses:
+        "200":
+          description: Search result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GraphPayload"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "502":
+          $ref: "#/components/responses/BadGateway"
+        "503":
+          $ref: "#/components/responses/QueryPrincipalUnavailable"
+  /rag/neo4j/graph/node:
+    get:
+      tags:
+        - Graph
+      summary: Get graph node
+      description: Loads one Neo4j node and a bounded one-hop neighborhood for graph inspection.
+      security:
+        []
+      parameters:
+        - in: query
+          name: node_id
+          required: true
+          schema:
+            type: string
+            maxLength: 255
+        - in: query
+          name: limit
+          required: false
+          schema:
+            type: integer
+            minimum: 5
+            maximum: 250
+            default: 80
+      responses:
+        "200":
+          description: Node payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GraphPayload"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "502":
+          $ref: "#/components/responses/BadGateway"
+  /rag/neo4j/graph/expand:
+    post:
+      tags:
+        - Graph
+      summary: Expand graph node
+      description: Expands a selected Neo4j node by one to three relationship hops and returns a bounded graph scene.
+      security:
+        []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GraphExpandRequest"
+      responses:
+        "200":
+          description: Expanded graph data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GraphPayload"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "502":
+          $ref: "#/components/responses/BadGateway"
+  /rag/neo4j/graph/clear-view:
+    post:
+      tags:
+        - Graph
+      summary: Clear graph view
+      description: Returns an empty graph scene for resetting the client visualization without deleting Neo4j data.
+      security:
+        []
+      responses:
+        "200":
+          description: View cleared
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GraphPayload"
+  /rag/neo4j/graph/snapshots:
+    get:
+      tags:
+        - Graph
+      summary: List graph snapshots
+      description: Lists saved graph visualization scenes available to the operator.
+      security:
+        []
+      responses:
+        "200":
+          description: Snapshot list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GraphSnapshotListResponse"
+    post:
+      tags:
+        - Graph
+      summary: Save graph snapshot
+      description: Saves a named client graph scene for later restoration.
+      security:
+        []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GraphSnapshotSaveRequest"
+      responses:
+        "200":
+          description: Snapshot saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GraphSnapshotResponse"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+  /rag/neo4j/graph/snapshots/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+    get:
+      tags:
+        - Graph
+      summary: Load graph snapshot
+      description: Loads one previously saved graph visualization scene by snapshot identifier.
+      security:
+        []
+      responses:
+        "200":
+          description: Snapshot payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GraphSnapshotResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags:
+        - Graph
+      summary: Delete snapshot
+      description: Permanently removes one saved graph visualization snapshot without changing Neo4j data.
+      security:
+        []
+      responses:
+        "200":
+          description: Snapshot deletion result.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GraphSnapshotDeleteResponse"
+  /rag/neo4j/clear:
+    post:
+      tags:
+        - Graph
+      summary: Clear Neo4j graph content
+      description: Permanently deletes all graph content and clears the bridge graph cache and visualization snapshot after Neo4j succeeds.
+      security:
+        []
+      responses:
+        "200":
+          description: Graph cleared
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GraphClearResponse"
+        "502":
+          description: Neo4j rejected the destructive operation.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GraphClearResponse"
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: Sanctum
+  responses:
+    Unauthorized:
+      description: An explicitly supplied bearer token is invalid, belongs to a removed user, or lacks the query ability.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    QueryPrincipalUnavailable:
+      description: A credential-free request could not resolve exactly one active local user.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    ValidationFailed:
+      description: One or more request fields failed validation.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ValidationError"
+    BadGateway:
+      description: A required downstream service returned an invalid response or could not be reached.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+  schemas:
+    Error:
+      type: object
+      properties:
+        message:
+          type: string
+        status:
+          type: integer
+    PingResponse:
+      type: object
+      properties:
+        pong:
+          type: boolean
+    ValidationError:
+      type: object
+      properties:
+        message:
+          type: string
+        errors:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string
+    DatasetCreateRequest:
+      type: object
+      description: |
+        Metadata used to prepare a dataset workspace. The embedding provider and
+        model are intentionally not accepted here; they are captured from the
+        active model-runtime Settings when the dataset is created.
+      additionalProperties: false
+      properties:
+        dataset_id:
+          type: string
+          maxLength: 191
+          example: research-library
+          description: |
+            Stable identifier used by document uploads and dataset-scoped queries.
+            If omitted, the server uses `default`.
+        name:
+          type: string
+          maxLength: 255
+          example: Research Library
+          description: Display name. The server derives a readable name from `dataset_id` when omitted.
+        description:
+          type: string
+          nullable: true
+          description: Optional human-readable explanation of the dataset's purpose or contents.
+        status:
+          type: string
+          maxLength: 64
+          example: active
+          description: Optional lifecycle state. New datasets are active by default.
+        qdrant_collection:
+          type: string
+          maxLength: 191
+          example: hawki_research_library
+          description: |
+            Advanced override for the isolated Qdrant collection name. Normally
+            omit this field and allow the server to derive a safe name.
+        neo4j_namespace:
+          type: string
+          maxLength: 191
+          example: hawki_research_library
+          description: |
+            Advanced override for the isolated Neo4j namespace. Normally omit
+            this field and allow the server to derive a safe name.
+    DatasetStorageStats:
+      type: object
+      description: Live storage status for the dataset's vector and graph scopes.
+      properties:
+        qdrant:
+          type: object
+          additionalProperties: true
+          description: Qdrant availability, collection name, and indexed point count.
+        neo4j:
+          type: object
+          additionalProperties: true
+          description: Neo4j availability, namespace, node count, and relationship count.
+    DatasetLastIngestion:
+      type: object
+      nullable: true
+      description: Most recent completed, failed, or skipped ingestion job, when available.
+      properties:
+        job_id:
+          type: string
+        task_id:
+          type: string
+        status:
+          type: string
+        finished_at:
+          type: string
+          format: date-time
+          nullable: true
+    DatasetTaskSummary:
+      type: object
+      properties:
+        task_id:
+          type: string
+        dataset_id:
+          type: string
+        status:
+          type: string
+        counters:
+          type: object
+          additionalProperties: true
+        started_at:
+          type: string
+          format: date-time
+          nullable: true
+        finished_at:
+          type: string
+          format: date-time
+          nullable: true
+    DatasetDocumentSummary:
+      type: object
+      properties:
+        id:
+          type: string
+        dataset_id:
+          type: string
+          nullable: true
+        collection:
+          type: string
+          nullable: true
+        source_type:
+          type: string
+          nullable: true
+        source_url:
+          type: string
+          nullable: true
+        original_filename:
+          type: string
+          nullable: true
+        storage_path:
+          type: string
+          nullable: true
+        checksum_sha256:
+          type: string
+          nullable: true
+        title:
+          type: string
+          nullable: true
+        status:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+          nullable: true
+        updated_at:
+          type: string
+          format: date-time
+          nullable: true
+    DatasetIngestionSummary:
+      type: object
+      properties:
+        job_id:
+          type: string
+        task_id:
+          type: string
+        status:
+          type: string
+        source_url:
+          type: string
+          nullable: true
+        local_path:
+          type: string
+          nullable: true
+        error_message:
+          type: string
+          nullable: true
+        started_at:
+          type: string
+          format: date-time
+          nullable: true
+        finished_at:
+          type: string
+          format: date-time
+          nullable: true
+    DatasetResource:
+      type: object
+      description: Dataset identity, model runtime, storage scope, and operational status.
+      required:
+        - id
+        - dataset_id
+        - name
+        - status
+        - qdrant_collection
+        - neo4j_namespace
+        - embedding_provider
+        - embedding_model
+        - document_count
+        - task_count
+        - graph_stats
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: Internal database identifier.
+        dataset_id:
+          type: string
+          description: Stable public identifier used by document and query operations.
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        status:
+          type: string
+          example: active
+        qdrant_collection:
+          type: string
+          description: Isolated vector collection assigned to this dataset.
+        neo4j_namespace:
+          type: string
+          description: Isolated graph namespace assigned to this dataset.
+        embedding_provider:
+          type: string
+          example: ollama
+          description: Provider that must be used to embed this dataset and its queries.
+        embedding_model:
+          type: string
+          example: bge-m3
+          description: Embedding model captured when the dataset was created.
+        created_at:
+          type: string
+          format: date-time
+          nullable: true
+        document_count:
+          type: integer
+          minimum: 0
+        task_count:
+          type: integer
+          minimum: 0
+        last_ingestion:
+          $ref: "#/components/schemas/DatasetLastIngestion"
+        graph_stats:
+          $ref: "#/components/schemas/DatasetStorageStats"
+        tasks:
+          type: array
+          description: Recent pipeline tasks. Included by the dataset detail endpoint.
+          items:
+            $ref: "#/components/schemas/DatasetTaskSummary"
+        documents:
+          type: array
+          description: Recent documents. Included by the dataset detail endpoint.
+          items:
+            $ref: "#/components/schemas/DatasetDocumentSummary"
+        ingestion_history:
+          type: array
+          description: Recent ingestion jobs. Included by the dataset detail endpoint.
+          items:
+            $ref: "#/components/schemas/DatasetIngestionSummary"
+    DatasetListResponse:
+      type: object
+      required:
+        - success
+        - datasets
+      properties:
+        success:
+          type: boolean
+          example: true
+        datasets:
+          type: array
+          items:
+            $ref: "#/components/schemas/DatasetResource"
+    DatasetCreateResponse:
+      type: object
+      required:
+        - success
+        - dataset_id
+        - dataset
+      properties:
+        success:
+          type: boolean
+          example: true
+        dataset_id:
+          type: string
+          example: research-library
+        dataset:
+          $ref: "#/components/schemas/DatasetResource"
+    DatasetDetailResponse:
+      type: object
+      required:
+        - success
+        - dataset
+      properties:
+        success:
+          type: boolean
+          example: true
+        dataset:
+          $ref: "#/components/schemas/DatasetResource"
+    DatasetDeleteResponse:
+      type: object
+      required:
+        - success
+        - message
+        - cleanup
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        cleanup:
+          type: object
+          properties:
+            qdrant:
+              type: object
+              additionalProperties: true
+            neo4j:
+              type: object
+              additionalProperties: true
+            dataset_deleted:
+              type: boolean
+    PipelineTaskStartRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        task_id:
+          type: string
+          description: Optional stable task identifier; generated when omitted.
+        dataset_id:
+          type: string
+          description: Dataset workspace to create or reuse.
+        sitemap_url:
+          type: string
+          format: uri
+        sitemap_path:
+          type: string
+        source_url:
+          type: string
+          format: uri
+        urls:
+          oneOf:
+            - type: array
+              items:
+                type: string
+                format: uri
+            - type: string
+          description: One URL, a comma/newline-separated string, or an array of URLs.
+        refresh_cadence:
+          type: string
+          enum:
+            - daily
+            - weekly
+            - monthly
+        metadata:
+          type: object
+          additionalProperties: true
+    PipelineStageState:
+      type: object
+      properties:
+        status:
+          type: string
+        message:
+          type: string
+          nullable: true
+        started_at:
+          type: string
+          format: date-time
+          nullable: true
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+        counts:
+          type: object
+          additionalProperties:
+            type: integer
+        errors:
+          type: array
+          items:
+            type: string
+    PipelineJobResource:
+      type: object
+      required:
+        - job_id
+        - task_id
+        - status
+      properties:
+        job_id:
+          type: string
+        task_id:
+          type: string
+        parent_job_id:
+          type: string
+          nullable: true
+        job_type:
+          type: string
+        source_id:
+          type: string
+          nullable: true
+        source_url:
+          type: string
+          nullable: true
+        local_path:
+          type: string
+          nullable: true
+        content_hash:
+          type: string
+          nullable: true
+        temporal_workflow_id:
+          type: string
+          nullable: true
+        temporal_run_id:
+          type: string
+          nullable: true
+        temporal_schedule_id:
+          type: string
+          nullable: true
+        index_status:
+          type: string
+          nullable: true
+        status:
+          type: string
+        error_message:
+          type: string
+          nullable: true
+        started_at:
+          type: string
+          format: date-time
+          nullable: true
+        finished_at:
+          type: string
+          format: date-time
+          nullable: true
+        metadata:
+          type: object
+          additionalProperties: true
+        managed_documents:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        managed_document_count:
+          type: integer
+          minimum: 0
+        source:
+          type: object
+          nullable: true
+          additionalProperties: true
+    PipelineTaskResource:
+      type: object
+      required:
+        - task_id
+        - dataset_id
+        - status
+        - counters
+        - active_jobs
+        - stages
+      properties:
+        task_id:
+          type: string
+        dataset_id:
+          type: string
+        status:
+          type: string
+        started_at:
+          type: string
+          format: date-time
+          nullable: true
+        finished_at:
+          type: string
+          format: date-time
+          nullable: true
+        counters:
+          type: object
+          additionalProperties:
+            type: integer
+        metadata:
+          type: object
+          additionalProperties: true
+        active_jobs:
+          type: integer
+          minimum: 0
+        updated_at:
+          type: string
+          format: date-time
+        stages:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/PipelineStageState"
+        jobs:
+          type: array
+          items:
+            $ref: "#/components/schemas/PipelineJobResource"
+        managed_documents:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        managed_document_count:
+          type: integer
+          minimum: 0
+        sources:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+    PipelineTaskListResponse:
+      type: object
+      required:
+        - success
+        - tasks
+      properties:
+        success:
+          type: boolean
+          example: true
+        tasks:
+          type: array
+          items:
+            $ref: "#/components/schemas/PipelineTaskResource"
+    PipelineTaskCreateResponse:
+      type: object
+      required:
+        - success
+        - task_id
+        - task
+      properties:
+        success:
+          type: boolean
+          example: true
+        task_id:
+          type: string
+        task:
+          $ref: "#/components/schemas/PipelineTaskResource"
+    PipelineTaskDetailResponse:
+      type: object
+      required:
+        - success
+        - task
+      properties:
+        success:
+          type: boolean
+          example: true
+        task:
+          $ref: "#/components/schemas/PipelineTaskResource"
+    PipelineTaskActionResponse:
+      type: object
+      required:
+        - success
+        - task_id
+        - task
+      properties:
+        success:
+          type: boolean
+        task_id:
+          type: string
+        task:
+          $ref: "#/components/schemas/PipelineTaskResource"
+    PipelineTaskDeleteResponse:
+      type: object
+      required:
+        - success
+        - message
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        task_id:
+          type: string
+        deleted:
+          type: boolean
+        storage_cleanup:
+          type: object
+          nullable: true
+          additionalProperties: true
+    PipelineJobUpsertRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        job_id:
+          type: string
+        parent_job_id:
+          type: string
+        job_type:
+          type: string
+        source_url:
+          type: string
+        local_path:
+          type: string
+        content_hash:
+          type: string
+        status:
+          type: string
+        error_message:
+          type: string
+        started_at:
+          type: string
+          format: date-time
+        metadata:
+          type: object
+          additionalProperties: true
+    PipelineJobUpsertResponse:
+      type: object
+      required:
+        - success
+        - task_id
+        - job_id
+        - job
+      properties:
+        success:
+          type: boolean
+          example: true
+        task_id:
+          type: string
+        job_id:
+          type: string
+        job:
+          $ref: "#/components/schemas/PipelineJobResource"
+    PipelineJobListResponse:
+      type: object
+      required:
+        - success
+        - task_id
+        - jobs
+      properties:
+        success:
+          type: boolean
+          example: true
+        task_id:
+          type: string
+        jobs:
+          type: array
+          items:
+            $ref: "#/components/schemas/PipelineJobResource"
+    PipelineEvent:
+      type: object
+      properties:
+        event_type:
+          type: string
+        event_id:
+          type: string
+          nullable: true
+        task_id:
+          type: string
+        job_id:
+          type: string
+        job_type:
+          type: string
+        status:
+          type: string
+        source_url:
+          type: string
+          nullable: true
+        local_path:
+          type: string
+          nullable: true
+        error_message:
+          type: string
+          nullable: true
+        at:
+          type: string
+          format: date-time
+          nullable: true
+    PipelineEventListResponse:
+      type: object
+      required:
+        - success
+        - task_id
+        - events
+        - filters
+      properties:
+        success:
+          type: boolean
+          example: true
+        task_id:
+          type: string
+        events:
+          type: array
+          items:
+            $ref: "#/components/schemas/PipelineEvent"
+        filters:
+          type: object
+          additionalProperties: true
+    PipelineStageLog:
+      type: object
+      required:
+        - task_id
+        - stage
+        - label
+        - filename
+        - line_count
+        - text
+        - updated_at
+      properties:
+        task_id:
+          type: string
+        dataset_id:
+          type: string
+        stage:
+          type: string
+        label:
+          type: string
+        filename:
+          type: string
+        line_count:
+          type: integer
+          minimum: 0
+        text:
+          type: string
+        updated_at:
+          type: string
+          format: date-time
+    PipelineStageLogResponse:
+      type: object
+      required:
+        - success
+        - task_id
+        - log
+      properties:
+        success:
+          type: boolean
+          example: true
+        task_id:
+          type: string
+        log:
+          $ref: "#/components/schemas/PipelineStageLog"
+    PipelineFileUploadRequest:
+      type: object
+      required:
+        - file
+      properties:
+        file:
+          type: string
+          format: binary
+        dataset_id:
+          type: string
+          maxLength: 160
+        graph:
+          type: boolean
+        converter_mode:
+          type: string
+          enum:
+            - native
+            - custom
+        converter_url:
+          type: string
+          format: uri
+        converter_token:
+          type: string
+          format: password
+        converter_start_path:
+          type: string
+    PipelineFileUploadResponse:
+      type: object
+      required:
+        - success
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        task_id:
+          type: string
+          nullable: true
+        job_id:
+          type: string
+          nullable: true
+        source_id:
+          type: string
+          nullable: true
+        dataset_id:
+          type: string
+        task:
+          $ref: "#/components/schemas/PipelineTaskResource"
+        dashboard_url:
+          type: string
+          format: uri
+        controller_url:
+          type: string
+          format: uri
+        error:
+          type: string
+          nullable: true
+        accepted_extensions:
+          type: array
+          items:
+            type: string
+    PipelineFailedJob:
+      type: object
+      required:
+        - task_id
+        - job_id
+        - status
+        - retry_count
+      properties:
+        task_id:
+          type: string
+        dataset_id:
+          type: string
+          nullable: true
+        job_id:
+          type: string
+        job_type:
+          type: string
+        source_id:
+          type: string
+          nullable: true
+        source_url:
+          type: string
+          nullable: true
+        local_path:
+          type: string
+          nullable: true
+        status:
+          type: string
+        error_message:
+          type: string
+          nullable: true
+        retry_count:
+          type: integer
+          minimum: 0
+        timestamp:
+          type: string
+          format: date-time
+          nullable: true
+        last_recovery_event:
+          type: object
+          nullable: true
+          additionalProperties: true
+    PipelineFailedJobListResponse:
+      type: object
+      required:
+        - success
+        - jobs
+      properties:
+        success:
+          type: boolean
+          example: true
+        jobs:
+          type: array
+          items:
+            $ref: "#/components/schemas/PipelineFailedJob"
+    PipelineRetrySelectedRequest:
+      type: object
+      required:
+        - job_ids
+      additionalProperties: false
+      properties:
+        job_ids:
+          type: array
+          items:
+            type: string
+    PipelineRecoveryResult:
+      type: object
+      required:
+        - scope
+        - attempted
+        - retried
+        - skipped
+        - failed
+        - jobs
+      properties:
+        scope:
+          type: string
+        scopeId:
+          type: string
+          nullable: true
+        attempted:
+          type: integer
+          minimum: 0
+        retried:
+          type: integer
+          minimum: 0
+        skipped:
+          type: integer
+          minimum: 0
+        failed:
+          type: integer
+          minimum: 0
+        jobs:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+    PipelineRecoveryResponse:
+      type: object
+      required:
+        - success
+        - recovery
+      properties:
+        success:
+          type: boolean
+          example: true
+        recovery:
+          $ref: "#/components/schemas/PipelineRecoveryResult"
+    HealthCheck:
+      type: object
+      required:
+        - name
+        - status
+        - detail
+        - fix
+      properties:
+        name:
+          type: string
+        status:
+          type: string
+          enum:
+            - ok
+            - fail
+        detail:
+          type: string
+        fix:
+          type: string
+    PipelineHealthResponse:
+      type: object
+      required:
+        - success
+        - checkedAt
+        - checks
+      properties:
+        success:
+          type: boolean
+          example: true
+        checkedAt:
+          type: string
+          format: date-time
+        checks:
+          type: array
+          items:
+            $ref: "#/components/schemas/HealthCheck"
+    SystemGateCheck:
+      type: object
+      required:
+        - key
+        - title
+        - status
+        - detail
+        - fix
+        - required
+      properties:
+        key:
+          type: string
+        title:
+          type: string
+        status:
+          type: string
+          enum:
+            - ok
+            - fail
+        detail:
+          type: string
+        fix:
+          type: string
+        required:
+          type: boolean
+        meta:
+          type: object
+          additionalProperties: true
+    SystemGateResponse:
+      type: object
+      required:
+        - success
+        - enforce
+        - status
+        - checkedAt
+        - required
+        - checks
+        - blocking
+        - repairActions
+      properties:
+        success:
+          type: boolean
+          example: true
+        enforce:
+          type: boolean
+        status:
+          type: string
+          enum:
+            - ready
+            - blocked
+            - disabled
+        checkedAt:
+          type: string
+          format: date-time
+        required:
+          type: array
+          items:
+            type: string
+        checks:
+          type: array
+          items:
+            $ref: "#/components/schemas/SystemGateCheck"
+        blocking:
+          type: array
+          items:
+            $ref: "#/components/schemas/SystemGateCheck"
+        repairActions:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+    RagHealthResponse:
+      type: object
+      required:
+        - ok
+      properties:
+        ok:
+          type: boolean
+        status:
+          type: integer
+          nullable: true
+        latency_ms:
+          type: integer
+          nullable: true
+        endpoint:
+          type: string
+          nullable: true
+        data:
+          type: object
+          nullable: true
+          additionalProperties: true
+        body:
+          type: string
+          nullable: true
+        message:
+          type: string
+          nullable: true
+    RagMonitorResponse:
+      type: object
+      required:
+        - ok
+        - bridge
+        - runtime
+        - config
+        - graph_failures
+      properties:
+        ok:
+          type: boolean
+        bridge:
+          type: object
+          additionalProperties: true
+        runtime:
+          type: object
+          additionalProperties: true
+        config:
+          type: object
+          additionalProperties: true
+        summary:
+          type: object
+          nullable: true
+          additionalProperties: true
+        graph_preview:
+          type: object
+          nullable: true
+          additionalProperties: true
+        latest_document_graph:
+          type: object
+          nullable: true
+          additionalProperties: true
+        graph_failures:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+    QdrantCollectionStat:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+        count:
+          type: integer
+          nullable: true
+          minimum: 0
+    QdrantStats:
+      type: object
+      required:
+        - ok
+      properties:
+        ok:
+          type: boolean
+        collections:
+          type: array
+          items:
+            $ref: "#/components/schemas/QdrantCollectionStat"
+        error:
+          type: string
+          nullable: true
+    Neo4jStats:
+      type: object
+      required:
+        - ok
+      properties:
+        ok:
+          type: boolean
+        entities:
+          type: integer
+          minimum: 0
+        triplets:
+          type: integer
+          minimum: 0
+        entity_label_count:
+          type: integer
+          minimum: 0
+        rel_type_count:
+          type: integer
+          minimum: 0
+        relationship_types:
+          type: array
+          items:
+            type: object
+            properties:
+              type:
+                type: string
+                nullable: true
+              count:
+                type: integer
+                minimum: 0
+        labels:
+          type: array
+          items:
+            type: object
+            properties:
+              labels:
+                type: array
+                items:
+                  type: string
+              count:
+                type: integer
+                minimum: 0
+        error:
+          type: string
+          nullable: true
+    RagStatsResponse:
+      type: object
+      required:
+        - ok
+        - qdrant
+        - neo4j
+      properties:
+        ok:
+          type: boolean
+        qdrant:
+          $ref: "#/components/schemas/QdrantStats"
+        neo4j:
+          $ref: "#/components/schemas/Neo4jStats"
+    QdrantCollectionDeleteResponse:
+      type: object
+      required:
+        - ok
+        - message
+      properties:
+        ok:
+          type: boolean
+        collection:
+          type: string
+          nullable: true
+        message:
+          type: string
+    AuthorizedDataset:
+      type: object
+      required:
+        - dataset_id
+        - name
+      properties:
+        dataset_id:
+          type: string
+        name:
+          type: string
+    AuthorizedDatasetListResponse:
+      type: object
+      required:
+        - datasets
+      properties:
+        datasets:
+          type: array
+          items:
+            $ref: "#/components/schemas/AuthorizedDataset"
+    GraphNode:
+      type: object
+      required:
+        - id
+        - label
+        - type
+        - properties
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+        type:
+          type: string
+        properties:
+          type: object
+          additionalProperties: true
+        score:
+          type: number
+          format: float
+          nullable: true
+        source_document_ids:
+          type: array
+          items:
+            type: string
+        highlighted:
+          type: boolean
+    GraphEdge:
+      type: object
+      required:
+        - id
+        - source
+        - target
+        - type
+        - properties
+        - weight
+      properties:
+        id:
+          type: string
+        source:
+          type: string
+        target:
+          type: string
+        type:
+          type: string
+        properties:
+          type: object
+          additionalProperties: true
+        weight:
+          type: integer
+          minimum: 1
+    GraphPayload:
+      type: object
+      required:
+        - ok
+        - nodes
+        - edges
+      properties:
+        ok:
+          type: boolean
+        nodes:
+          type: array
+          items:
+            $ref: "#/components/schemas/GraphNode"
+        edges:
+          type: array
+          items:
+            $ref: "#/components/schemas/GraphEdge"
+        warnings:
+          type: array
+          items:
+            type: string
+        mode:
+          type: string
+          nullable: true
+        entry_node_id:
+          type: string
+          nullable: true
+        expanded_node_id:
+          type: string
+          nullable: true
+        depth:
+          type: integer
+          nullable: true
+        message:
+          type: string
+          nullable: true
+    GraphExpandRequest:
+      type: object
+      required:
+        - node_id
+      additionalProperties: false
+      properties:
+        node_id:
+          type: string
+          maxLength: 255
+        depth:
+          type: integer
+          minimum: 1
+          maximum: 3
+          default: 1
+        limit:
+          type: integer
+          minimum: 5
+          maximum: 250
+          default: 80
+    GraphSnapshot:
+      type: object
+      required:
+        - id
+        - name
+        - created_at
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        scene:
+          oneOf:
+            - type: object
+              additionalProperties: true
+            - type: array
+              items: {}
+    GraphSnapshotSaveRequest:
+      type: object
+      required:
+        - scene
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          nullable: true
+          maxLength: 120
+        scene:
+          oneOf:
+            - type: object
+              additionalProperties: true
+            - type: array
+              items: {}
+    GraphSnapshotResponse:
+      type: object
+      required:
+        - ok
+      properties:
+        ok:
+          type: boolean
+        snapshot:
+          $ref: "#/components/schemas/GraphSnapshot"
+        message:
+          type: string
+          nullable: true
+    GraphSnapshotListResponse:
+      type: object
+      required:
+        - ok
+        - snapshots
+      properties:
+        ok:
+          type: boolean
+        snapshots:
+          type: array
+          items:
+            $ref: "#/components/schemas/GraphSnapshot"
+        message:
+          type: string
+          nullable: true
+    GraphSnapshotDeleteResponse:
+      type: object
+      required:
+        - ok
+      properties:
+        ok:
+          type: boolean
+        message:
+          type: string
+          nullable: true
+    GraphClearResponse:
+      type: object
+      required:
+        - ok
+      properties:
+        ok:
+          type: boolean
+        message:
+          type: string
+          nullable: true
+        deleted:
+          type: integer
+          nullable: true
+        graph_cache:
+          type: object
+          nullable: true
+          additionalProperties: true
+    QueryRequest:
+      type: object
+      required:
+        - dataset_id
+        - query
+      additionalProperties: false
+      properties:
+        dataset_id:
+          type: string
+          maxLength: 191
+          description: Dataset identifier selected from `GET /query/datasets`.
+        query:
+          type: string
+          maxLength: 4000
+        top_k:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 5
+        is_optimized:
+          type: boolean
+        generate:
+          type: boolean
+          default: true
+        fast_mode:
+          type: boolean
+        smart_lookup:
+          type: boolean
+        preferred_tags:
+          type: array
+          maxItems: 20
+          items:
+            type: string
+            maxLength: 80
+        filters:
+          type: object
+          maxProperties: 20
+          description: User metadata filters. Authorization and storage keys are prohibited.
+          additionalProperties:
+            oneOf:
+              - type: string
+              - type: integer
+              - type: number
+                format: float
+              - type: boolean
+    QueryResponse:
+      type: object
+      properties:
+        answer:
+          type: string
+          nullable: true
+        sources:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        results:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        mode:
+          type: string
+          nullable: true
+        error:
+          type: string
+          nullable: true
+    DocumentOperation:
+      type: object
+      properties:
+        type:
+          type: string
+        status:
+          type: string
+        reason:
+          type: string
+          nullable: true
+    DocumentPipelineReference:
+      type: object
+      properties:
+        task_id:
+          type: string
+          nullable: true
+        job_id:
+          type: string
+          nullable: true
+        source_id:
+          type: string
+          nullable: true
+    RelatedJob:
+      type: object
+      properties:
+        job_id:
+          type: string
+        task_id:
+          type: string
+          nullable: true
+        parent_job_id:
+          type: string
+          nullable: true
+        job_type:
+          type: string
+        status:
+          type: string
+        source_url:
+          type: string
+          nullable: true
+        local_path:
+          type: string
+          nullable: true
+        content_hash:
+          type: string
+          nullable: true
+        error_message:
+          type: string
+          nullable: true
+        started_at:
+          type: string
+          format: date-time
+          nullable: true
+        finished_at:
+          type: string
+          format: date-time
+          nullable: true
+    ManagedDocumentOutput:
+      type: object
+      description: One active indexed output for one managed document version.
+      properties:
+        bridge_document_id:
+          type: string
+          description: Python bridge document id used for downstream delete and replacement operations.
+        qdrant_collection:
+          type: string
+          description: Qdrant collection that holds this document's chunk points.
+        neo4j_namespace:
+          type: string
+          nullable: true
+          description: Neo4j namespace used for graph writes when graph ingest is enabled.
+        chunk_count:
+          type: integer
+          description: Number of active chunks currently indexed for this document output.
+        status:
+          type: string
+        active:
+          type: boolean
+        indexed_at:
+          type: string
+          format: date-time
+          nullable: true
+    ManagedDocumentResource:
+      type: object
+      description: |
+        Unified managed document view for uploaded files.
+
+        Preferred public handle:
+        - `document_id`
+
+        Compatibility alias:
+        - `id`
+      properties:
+        id:
+          type: string
+        document_id:
+          type: string
+        dataset_id:
+          type: string
+          description: Dataset identifier. Multiple managed documents can share this dataset and therefore share the same Qdrant collection.
+        status:
+          type: string
+        graph_enabled:
+          type: boolean
+          description: Whether new ingests for this managed document should also write graph data to Neo4j.
+        display_name:
+          type: string
+          nullable: true
+        title:
+          type: string
+        source_type:
+          type: string
+        source_url:
+          type: string
+          nullable: true
+        source_updated_at:
+          type: string
+          format: date-time
+          nullable: true
+        source_checksum_sha256:
+          type: string
+          nullable: true
+        content_hash:
+          type: string
+          nullable: true
+        latest_document_version:
+          type: string
+          nullable: true
+        indexed_at:
+          type: string
+          format: date-time
+          nullable: true
+        ingested_at:
+          type: string
+          format: date-time
+          nullable: true
+        latest_task_id:
+          type: string
+          nullable: true
+        latest_job_id:
+          type: string
+          nullable: true
+        latest_source_id:
+          type: string
+          nullable: true
+        last_error:
+          type: string
+          nullable: true
+        metadata:
+          type: object
+          nullable: true
+          additionalProperties: true
+        metadata_json:
+          type: object
+          nullable: true
+          additionalProperties: true
+        original_filename:
+          type: string
+          nullable: true
+        content_type:
+          type: string
+          nullable: true
+        local_path:
+          type: string
+          nullable: true
+        collection:
+          type: string
+          nullable: true
+        qdrant_collection:
+          type: string
+          nullable: true
+        neo4j_namespace:
+          type: string
+          nullable: true
+        qdrant_status:
+          type: string
+          nullable: true
+        neo4j_status:
+          type: string
+          nullable: true
+        file_size:
+          type: integer
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          nullable: true
+        updated_at:
+          type: string
+          format: date-time
+          nullable: true
+        outputs:
+          type: array
+          items:
+            $ref: "#/components/schemas/ManagedDocumentOutput"
+          description: Active indexed outputs for this managed document. A single uploaded PDF can produce many chunks but still appears here as one document output record.
+        active_output_count:
+          type: integer
+        active_chunk_count:
+          type: integer
+          description: Total active chunks currently indexed for this managed document across its active outputs.
+        qdrant_point_count:
+          type: integer
+          nullable: true
+        neo4j_entity_count:
+          type: integer
+          nullable: true
+        neo4j_relation_count:
+          type: integer
+          nullable: true
+        neo4j_live_stats:
+          type: object
+          nullable: true
+          additionalProperties: true
+        markdown_preview:
+          type: string
+        markdown_preview_path:
+          type: string
+          nullable: true
+        markdown_preview_error:
+          type: string
+          nullable: true
+        markdown_preview_truncated:
+          type: boolean
+        related_jobs:
+          type: array
+          items:
+            $ref: "#/components/schemas/RelatedJob"
+        indexed_document_id:
+          type: string
+          nullable: true
+          description: Backing indexed document UUID when this managed document has already produced a legacy indexed record.
+    IndexedDocumentResource:
+      type: object
+      description: Legacy indexed document view keyed by the UUID stored in `documents.id`.
+      properties:
+        id:
+          type: string
+          description: Legacy indexed document UUID.
+        dataset_id:
+          type: string
+        source_url:
+          type: string
+          nullable: true
+        content_type:
+          type: string
+          nullable: true
+        content_hash:
+          type: string
+          nullable: true
+        qdrant_status:
+          type: string
+          nullable: true
+        neo4j_status:
+          type: string
+          nullable: true
+        ingested_at:
+          type: string
+          format: date-time
+          nullable: true
+        metadata:
+          type: object
+          additionalProperties: true
+        task_id:
+          type: string
+          nullable: true
+        job_id:
+          type: string
+          nullable: true
+        title:
+          type: string
+          nullable: true
+        status:
+          type: string
+        source_type:
+          type: string
+          nullable: true
+        local_path:
+          type: string
+          nullable: true
+        original_filename:
+          type: string
+          nullable: true
+        collection:
+          type: string
+          nullable: true
+        qdrant_collection:
+          type: string
+          nullable: true
+        neo4j_namespace:
+          type: string
+          nullable: true
+        file_size:
+          type: integer
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          nullable: true
+        updated_at:
+          type: string
+          format: date-time
+          nullable: true
+        markdown_preview:
+          type: string
+        markdown_preview_path:
+          type: string
+          nullable: true
+        markdown_preview_error:
+          type: string
+          nullable: true
+        markdown_preview_truncated:
+          type: boolean
+        qdrant_point_count:
+          type: integer
+          nullable: true
+        neo4j_entity_count:
+          type: integer
+          nullable: true
+        neo4j_relation_count:
+          type: integer
+          nullable: true
+        neo4j_live_stats:
+          type: object
+          nullable: true
+          additionalProperties: true
+        related_jobs:
+          type: array
+          items:
+            $ref: "#/components/schemas/RelatedJob"
+    UnifiedDocumentResource:
+      oneOf:
+        - $ref: "#/components/schemas/ManagedDocumentResource"
+        - $ref: "#/components/schemas/IndexedDocumentResource"
+    UnifiedDocumentResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        document:
+          $ref: "#/components/schemas/UnifiedDocumentResource"
+    UnifiedDocumentListResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        documents:
+          type: array
+          items:
+            $ref: "#/components/schemas/UnifiedDocumentResource"
+    ManagedDocumentResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        document:
+          $ref: "#/components/schemas/ManagedDocumentResource"
+    ManagedDocumentMutationResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        operation:
+          $ref: "#/components/schemas/DocumentOperation"
+        document:
+          $ref: "#/components/schemas/ManagedDocumentResource"
+        pipeline:
+          $ref: "#/components/schemas/DocumentPipelineReference"
+        message:
+          type: string
+        error:
+          type: string
+          nullable: true
+    ManagedDocumentBatchItem:
+      type: object
+      properties:
+        index:
+          type: integer
+        file_name:
+          type: string
+        http_status:
+          type: integer
+        success:
+          type: boolean
+        result:
+          $ref: "#/components/schemas/ManagedDocumentMutationResponse"
+    ManagedDocumentBatchResponse:
+      type: object
+      description: Batch upload result. Each accepted file becomes a separate managed document in the same dataset.
+      properties:
+        success:
+          type: boolean
+        operation:
+          $ref: "#/components/schemas/DocumentOperation"
+        summary:
+          type: object
+          properties:
+            total:
+              type: integer
+            accepted:
+              type: integer
+            failed:
+              type: integer
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ManagedDocumentBatchItem"
+    ManagedDocumentDeleteBreakdown:
+      type: object
+      description: Per-store delete results for one managed document.
+      properties:
+        bridge_documents_deleted:
+          type: integer
+          description: Number of bridge document outputs targeted by the delete operation.
+        qdrant:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+          description: Qdrant delete results, typically one entry per active bridge document, including the affected collection and deleted point count.
+        neo4j:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+          description: Neo4j delete results, typically one entry per active bridge document when graph ingest was enabled, including the affected namespace.
+    ManagedDocumentDeleteResponse:
+      type: object
+      description: Response returned after deleting one managed document's active indexed outputs.
+      properties:
+        success:
+          type: boolean
+        operation:
+          $ref: "#/components/schemas/DocumentOperation"
+        document:
+          $ref: "#/components/schemas/ManagedDocumentResource"
+        deletion:
+          $ref: "#/components/schemas/ManagedDocumentDeleteBreakdown"

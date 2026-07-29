@@ -1,0 +1,4 @@
+interface:
+  display_name: "RAWKI Authz"
+  short_description: "Help with RAWKI authorization workflows"
+  default_prompt: "Use $rawki-authz to implement or review RAWKI authorization changes."

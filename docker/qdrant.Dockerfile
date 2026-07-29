@@ -1,4 +1,4 @@
-FROM qdrant/qdrant:latest
+FROM qdrant/qdrant:v1.18.3
 
 RUN set -e; \
     if command -v apt-get >/dev/null 2>&1; then \
