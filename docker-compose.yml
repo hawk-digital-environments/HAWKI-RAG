@@ -68,7 +68,7 @@ services:
       - hosting_network
       - default
     depends_on:
-      hawki-rag-shared-storage-init:
+      hawki_rag_migrator:
         condition: service_completed_successfully
       postgres:
         condition: service_healthy
@@ -127,17 +127,15 @@ services:
   # Qdrant Vector DB
   # -------------------------------------------------
   qdrant:
-    build:
-      context: .
-      dockerfile: docker/qdrant.Dockerfile
-    image: hawki-qdrant:local
+    image: qdrant/qdrant:v1.18.3
     pull_policy: never
     container_name: hawki_qdrant
     volumes:
       - qdrant_data:/qdrant/storage
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://localhost:6333/readyz"]
+      # Explaination for this character mumbo-jumbo: https://github.com/qdrant/qdrant/issues/4250#issuecomment-3145007055
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/6333 && echo -e 'GET /readyz HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && grep -q 'HTTP/1.1 200' <&3"]
       interval: 15s
       timeout: 5s
       retries: 10
@@ -169,8 +167,7 @@ services:
   hawki_rag_rerank:
     build:
       context: .
-      dockerfile: Dockerfile
-      target: rerank
+      dockerfile: docker/rerank.Dockerfile
     image: hawki-rag-rerank:local
     pull_policy: never
     container_name: hawki_rag_rerank
@@ -186,12 +183,11 @@ services:
   # -------------------------------------------------
   # FastAPI bridge (Python RAG API)
   # -------------------------------------------------
-  hawki-rag-shared-storage-init:
+  hawki_rag_migrator:
     build:
       context: .
-      dockerfile: Dockerfile
-      target: python-rag
-    image: hawki-rag-python:local
+      dockerfile: docker/migrator.Dockerfile
+    image: hawki-migrator:local
     pull_policy: never
     user: "0:0"
     environment:
@@ -205,7 +201,7 @@ services:
   hawki_rag_bridge:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: docker/bridge.Dockerfile
       target: python-rag
     image: hawki-rag-python:local
     pull_policy: never
@@ -234,7 +230,7 @@ services:
       - "${PGID:-1000}"
     command: ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000"]
     depends_on:
-      hawki-rag-shared-storage-init:
+      hawki_rag_migrator:
         condition: service_completed_successfully
       ollama:
         condition: service_healthy
@@ -263,7 +259,7 @@ services:
       - "${PGID:-1000}"
     command: ["python", "-m", "temporal_rag.worker_workflow"]
     depends_on:
-      hawki-rag-shared-storage-init:
+      hawki_rag_migrator:
         condition: service_completed_successfully
       temporal:
         condition: service_started
@@ -293,7 +289,7 @@ services:
       - "${PGID:-1000}"
     command: ["python", "-m", "temporal_rag.worker_scraper"]
     depends_on:
-      hawki-rag-shared-storage-init:
+      hawki_rag_migrator:
         condition: service_completed_successfully
       temporal:
         condition: service_started
@@ -325,7 +321,7 @@ services:
       - "${PGID:-1000}"
     command: ["python", "-m", "temporal_rag.worker_converter"]
     depends_on:
-      hawki-rag-shared-storage-init:
+      hawki_rag_migrator:
         condition: service_completed_successfully
       temporal:
         condition: service_started
@@ -364,7 +360,7 @@ services:
       - "${PGID:-1000}"
     command: ["python", "-m", "temporal_rag.worker_ingestion"]
     depends_on:
-      hawki-rag-shared-storage-init:
+      hawki_rag_migrator:
         condition: service_completed_successfully
       temporal:
         condition: service_started

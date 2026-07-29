@@ -1,0 +1,127 @@
+name: Release Pipeline
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - '[0-9]+.[0-9]+.[0-9]+'
+
+permissions:
+  contents: write
+
+jobs:
+  detect-version:
+    name: Detect Version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Detect latest version from changelog
+        uses: hawk-digital-environments/hawk-pipeline-actions/detect-version@v1
+        id: version
+        with:
+          strategy: 'changelog'
+
+  build-and-publish:
+    name: Build & Publish ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    needs: [ detect-version ]
+    permissions:
+      packages: write
+      contents: read
+      attestations: write
+      id-token: write
+    strategy:
+      matrix:
+        include:
+          - name: bridge
+            dockerfile: docker/bridge.Dockerfile
+            image: digitalenvironments/hawki-rag
+            target: python-rag
+          - name: laravel
+            dockerfile: docker/laravel.Dockerfile
+            image: digitalenvironments/hawki-rag
+            target: laravel-app
+          - name: rerank
+            dockerfile: docker/rerank.Dockerfile
+            image: digitalenvironments/hawki-rag
+          - name: migrator
+            dockerfile: docker/migrator.Dockerfile
+            image: digitalenvironments/hawki-rag
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build and push Docker image
+        id: push
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./${{ matrix.dockerfile }}
+          target: ${{ matrix.target }}
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: |
+            ${{ matrix.image }}:${{ matrix.name }}-latest
+            ${{ matrix.image }}:${{ matrix.name }}-${{ needs.detect-version.outputs.version }}
+          cache-from: type=gha,scope=${{ matrix.name }}-${{ needs.detect-version.outputs.version }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}-${{ needs.detect-version.outputs.version }}
+
+      - name: Generate artifact attestation
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-name: index.docker.io/${{ matrix.image }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
+
+  github-release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: [ build-and-publish, detect-version ]
+    permissions:
+      contents: write
+    outputs:
+      release-name: ${{ steps.release.outputs.release-name }}
+      release-body: ${{ steps.release.outputs.release-body }}
+      release-url: ${{ steps.release.outputs.release-url }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - id: release
+        uses: hawk-digital-environments/hawk-pipeline-actions/create-github-release@v1
+        with:
+          version: ${{ needs.detect-version.outputs.version }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+#  notify-discord:
+#    name: Notify Discord
+#    runs-on: ubuntu-latest
+#    needs: [ build-and-publish, github-release, detect-version ]
+#    if: success()
+#    steps:
+#      - uses: actions/checkout@v6
+#
+#      - uses: hawk-digital-environments/hawk-pipeline-actions/send-discord-notification@v1
+#        with:
+#          webhook-url: ${{ secrets.DISCORD_UPDATE_WEBHOOK_URL }}
+#          release-name: ${{ needs.github-release.outputs.release-name }}
+#          release-body: ${{ needs.github-release.outputs.release-body }}
+#          release-url: ${{ needs.github-release.outputs.release-url }}
+#          content: "||@everyone|| Beware! a new **HAWKI RAG** version just dropped **${{ needs.detect-version.outputs.version }}**!"
