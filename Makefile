@@ -46,6 +46,8 @@ endif
 
 OLLAMA_SERVICE := ollama
 OLLAMA_CONTAINER ?= hawki_ollama
+CRAWLER_CONTAINER ?= crawl4ai-service
+FILE_CONVERTER_CONTAINER ?= hawki-toolkit-file-converter-file-converter-1
 
 # Derived Compose suffixes and profiles.
 CORE_GPU_COMPOSE_SUFFIX :=
@@ -160,7 +162,8 @@ python-deps: ## Install locked Python runtime and test dependencies.
 ##@ Docker foundation
 
 network: ## Create the external Docker networks when they do not exist.
-	@for net in hawki-network hosting_network; do \
+	@set -e; \
+	for net in hawki-network hosting_network; do \
 		if docker network inspect $$net >/dev/null 2>&1; then \
 			echo "$$net already exists; skipping create"; \
 		else \
@@ -205,7 +208,7 @@ publish-ui: build-ui ## Publish freshly built frontend assets into the app conta
 
 ##@ Database
 
-migrate-core: ## Run Laravel migrations with startup retry handling.
+migrate-core: network ## Run Laravel migrations with startup retry handling.
 	@echo "Running Laravel migrations..."
 	@attempt=1; \
 	while [ "$$attempt" -le 30 ]; do \
@@ -221,7 +224,7 @@ migrate-core: ## Run Laravel migrations with startup retry handling.
 	echo "Laravel migrations failed after 30 attempts."; \
 	exit 1
 
-_migrate-core-before-start:
+_migrate-core-before-start: network
 	@echo "Running Laravel migrations before writable services start..."
 	@attempt=1; \
 	while [ "$$attempt" -le 30 ]; do \
@@ -263,7 +266,14 @@ _up-core: network
 		echo "Pulling $$model..."; \
 		docker exec $(OLLAMA_CONTAINER) ollama pull $$model >/dev/null 2>&1 || true; \
 	done
-	@docker network connect hawki-network hawki-toolkit-file-converter-file-converter-1 >/dev/null 2>&1 || true
+	@for container in "$(CRAWLER_CONTAINER)" "$(FILE_CONVERTER_CONTAINER)"; do \
+		if docker container inspect "$$container" >/dev/null 2>&1; then \
+			docker network connect hawki-network "$$container" >/dev/null 2>&1 || true; \
+			echo "$$container is connected to hawki-network."; \
+		else \
+			echo "Optional external service $$container is not running; skipping network connection."; \
+		fi; \
+	done
 
 up-core: COMPOSE_FILE_LIST = $(CORE_UI_COMPOSE_FILE_LIST)
 up-core: COMPOSE_PROFILES = $(CORE_PROFILES)
@@ -459,7 +469,7 @@ down-core: ## Stop and remove the active HAWKI RAG Compose stack.
 
 down-rag: down-core ## Backward-compatible alias for stopping the RAG stack.
 
-restart-core: ## Recreate all core services and Temporal workers.
+restart-core: network ## Recreate all core services and Temporal workers.
 	@echo $(PROFILE_MESSAGE)
 	@$(COMPOSE_CMD) up -d --force-recreate
 

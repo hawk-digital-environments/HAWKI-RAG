@@ -48,12 +48,12 @@ python_rag/workers/
 # Documentation and local tooling not needed in runtime images
 _documentation/
 _documentation.build/
+resources/js/crawler/
 .agents/
 .codex/
 .github/
 bruno/
 docs/
-public/swagger/
 
 # Logs and temporary files
 *.log

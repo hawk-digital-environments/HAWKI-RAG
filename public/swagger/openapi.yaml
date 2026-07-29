@@ -4,8 +4,8 @@ info:
   description: Local API reference generated from currently registered routes.
   version: "1.0.0"
 servers:
-  - url: /api
-    description: Laravel API base URL
+  - url: ../api
+    description: Laravel API base URL relative to the deployed Swagger path
 tags:
   - name: Health
     description: Control-plane checks for application, pipeline, and retrieval readiness.

@@ -12,6 +12,14 @@ By default this page loads:
 - `public/swagger/openapi.yaml` (API contract)
 
 If your app is behind a different host/port, replace `localhost` accordingly.
+For the default reverse-proxy deployment path, use:
+
+```text
+https://your-host.example/hawki-rag/swagger
+```
+
+The UI derives both `openapi.yaml` and the API server URL from its deployed
+path, so the same files work at `/swagger` and `/hawki-rag/swagger`.
 
 ## About auth
 

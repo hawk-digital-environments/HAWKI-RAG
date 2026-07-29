@@ -15,9 +15,7 @@ This portal is organized as a guided flow: from prerequisites to deployment, wit
 
 ## Overview
 
-HAWKI-RAG is a containerized Retrieval-Augmented Generation platform built to turn crawled website content into usable intelligence. It combines a Laravel admin layer (UI + API) with a FastAPI pipeline for ingestion, retrieval, and optional graph enrichment, so operations stay simple while the backend remains capable.
-
-Crawled Markdown files are processed through the RAG-Anything flow, embedded directly with local Ollama by default, indexed in Qdrant for semantic retrieval, and optionally enriched into graph triplets in Neo4j. An optional LiteLLM profile provides explicit routes to Ollama aliases, OpenAI, and Anthropic without becoming a startup dependency. The result blends fast vector search with structured graph reasoning in one operational stack.
+HAWKI-RAG is a containerized, dataset-scoped retrieval-augmented generation platform that turns uploaded documents and crawled sources into grounded, searchable knowledge. Laravel provides the admin UI, canonical API, dataset management, and operational status. The Python FastAPI service owns the ML data plane, while Temporal coordinates durable scraping, conversion, ingestion, retries, cancellation, and recovery. Documents are converted to normalized Markdown and split into searchable chunks. Local Ollama creates embeddings by default, and Qdrant stores the chunk vectors and retrieval payloads. When graph ingestion is enabled, RAG-Anything coordinates the document and multimodal extraction flow, LightRAG extracts entities and relations inside that flow, and HAWKI-RAG normalizes and deduplicates the resulting dataset-scoped facts before storing them in Neo4j. At query time, Laravel supplies the caller's authorized dataset, and the Python service combines vector, lexical, and optional graph evidence. Retrieval scores are normalized across stages, duplicate chunks are removed by chunk identity, and an optional reranker orders the strongest evidence before answer generation.
 
 ## Read in Order
 
@@ -28,7 +26,7 @@ Crawled Markdown files are processed through the RAG-Anything flow, embedded dir
   [Open chapter](./Getting%20Started/1_requirements.md)
 
 - <span className="grid-icon">🛠️</span> __2. Setup with Makefile__
-  The core operational commands for networking, startup, health checks, and logs.
+  Startup, lifecycle, health, logging, and maintenance commands with practical guidance.
   [Open chapter](./Getting%20Started/2_setup.md)
 
 - <span className="grid-icon">🏠️</span> __3. Architecture__
@@ -47,28 +45,19 @@ Crawled Markdown files are processed through the RAG-Anything flow, embedded dir
   End-to-end ingest flow, chunking/embedding behavior, and monitoring.
   [Open chapter](./Operations/6_ingestion_embeddings.md)
 
-- <span className="grid-icon">👨‍💻</span> __7. Commands Catalogue__
-  Practical command reference with purpose, expected output, and common fixes.
-  [Open chapter](./Operations/7_commands_catalogue.md)
+- <span className="grid-icon">📚️</span> __7. MCP Query Search Contract__
+  Authenticated input, trusted dataset scope, bridge payload, and normalized MCP output.
+  [Open chapter](./Operations/7_ragsearcher_triplets_update.md)
 
-- <span className="grid-icon">📚️</span> __8. RagSearcher Triplets Update__
-  Interface contract and runtime behavior for triplet-aware retrieval in MCP, Laravel, and Python.
-  [Open chapter](./Operations/8_ragsearcher_triplets_update.md)
-
-- <span className="grid-icon">🗺️</span> __9. Repository Map__
-  Folder-by-folder orientation for Laravel, Python, Docker, volumes, and logs.
-  [Open chapter](./Reference/9_repo_map.md)
-
-- __10. Security and GDPR Checklist__
-  Production security controls, GDPR duties, and RAG-specific deletion boundaries.
-  [Open chapter](./Operations/10_security_gdpr_checklist.md)
+- <span className="grid-icon">🗺️</span> __8. Repository Map__
+  Developer map from a requested change to its Laravel/Python source and tests.
+  [Open chapter](./Reference/8_repo_map.md)
 
 </div>
 
 ## Quick Start
 
 ```bash
-make network
 make up-core
 make test-services
 ```

@@ -1,139 +1,257 @@
-# Operating HAWKI RAG with Makefile
+# 2. Run HAWKI RAG
 
-## Platform defaults from `Makefile`
-Base compose is always `docker-compose.yml`, and `Makefile` exports `COMPOSE_FILE` before calling `docker compose`.
+This page helps you choose the right startup command, get the system running,
+and solve the most common startup problems.
 
-| Linux | macOS |
-| --- | --- |
-| Default `USE_OLLAMA_GPU` is `auto`. | Default `USE_OLLAMA_GPU` is `0`. |
-| If `nvidia-smi` exists, `docker-compose-gpu-override.yml` is added automatically. | Runs in CPU mode by default (no GPU override). |
-| Effective `COMPOSE_FILE`: `docker-compose.yml:docker-compose-gpu-override.yml` (when GPU is detected). | Effective `COMPOSE_FILE`: `docker-compose.yml`. |
+:::tip The usual local start
 
-## Key overrides (per run)
-- `USE_OLLAMA_GPU`:
-  - `auto` (default): detect GPU on Linux.
-  - `1`: force GPU override.
-  - `0`: force CPU mode.
-- `ENV_FILE` (default `.env`): choose the file used both for Compose
-  interpolation and as the service environment file.
-- `HAWKI_RAG_APP_ENV` / `HAWKI_RAG_APP_DEBUG`: production-mode Laravel
-  defaults used by `make up-core`; `make up-core-local` explicitly uses
-  `local` / `true`.
-- `COMPOSE_PROFILES`: optional profile toggle (for example `litellm` for the model gateway or `gpu` for `raganything_api_gpu`).
-- `BASE_COMPOSE_FILE` / `GPU_OVERRIDE_COMPOSE`: advanced override of compose filenames.
+If your `.env` is configured and you simply want to use HAWKI RAG locally, run:
 
-Examples:
-```bash
-# Force CPU mode
-USE_OLLAMA_GPU=0 make up-core
-
-# Force GPU override
-USE_OLLAMA_GPU=1 make up-core
-
-# Start with profile-gated GPU API too
-USE_OLLAMA_GPU=1 COMPOSE_PROFILES=gpu make up-core
-
-# Start the optional LiteLLM gateway too
-CORE_PROFILES_BASE=litellm make up-core
-```
-
-## Compose/Dockerfile roles
-- `docker-compose.yml`:
-  - CPU-safe base stack with direct local `ollama`; the OpenAI-compatible `litellm` gateway is profile-gated.
-- `docker-compose-gpu-override.yml`:
-  - Overrides only `ollama` to CUDA build + NVIDIA device reservation.
-- `docker/laravel.Dockerfile`: builds `hawki_rag_app`.
-- `Dockerfile`: builds `hawki_rag_bridge` (`python-rag` target) and `hawki_rag_rerank` (`rerank` target).
-- `docker/qdrant.Dockerfile`: extends `qdrant/qdrant` and installs `curl` for health checks.
-
-## One-time networks
-```bash
-make network   # creates shared docker networks hawki-network + hosting_network
-```
-Run this once per machine (or after pruning Docker networks). Safe to rerun.
-
-## Start stack
 ```bash
 make up-core
 ```
 
-What `make up-core` does:
+Then open [http://localhost:8080](http://localhost:8080).
 
-| Step | What happens |
-| --- | --- |
-| Compose context | Uses computed `COMPOSE_FILE` with `ENV_FILE` and optional `COMPOSE_PROFILES`. |
-| Safe upgrade | Builds images, stops application writers, migrates with a one-off app container, then starts the new application and workers. |
-| Model readiness | Pulls Ollama models: `bge-m3`, `llama3.1:8b`, `llama3.2:1b`, `qwen2.5vl:7b`. |
-| Gateway readiness | Starts LiteLLM only when the `litellm` profile is enabled and exposes aliases on `http://127.0.0.1:4000/v1`. |
-| Runtime mode | Uses baked application sources with production Laravel defaults and publishes the UI on `http://localhost:8080`. |
+:::
 
-For an HTTPS reverse-proxy deployment without a published host port, use
-`make up-core-server ENV_FILE=.env.production`.
+## First run in four steps
 
-For source mounts, development defaults, and live UI publishing, use:
+### 1. Start Docker
+
+Open Docker Desktop, or make sure the Docker daemon is running:
 
 ```bash
-make up-core-local
+docker ps
 ```
 
-Development startup reuses existing service images. After changing a
-Dockerfile or locked container dependency, rebuild explicitly:
+The command should return a container list without a connection error.
+
+### 2. Create your environment file
+
+From the repository root:
+
+```bash
+test -f .env || cp .env.example .env
+```
+
+Open `.env` and set at least `APP_KEY`, `DB_PASSWORD`, and
+`NEO4J_PASSWORD`. Configure the external crawler and converter URLs before
+running website-ingestion jobs.
+
+### 3. Start the stack
+
+```bash
+make up-core
+```
+
+The first start takes longer because Docker builds images and Ollama downloads
+the required models.
+
+### 4. Verify the result
+
+```bash
+make health
+```
+
+Open the UI at [http://localhost:8080](http://localhost:8080). If both work,
+the stack is ready.
+
+## Which startup command should I use?
+
+```mermaid
+flowchart LR
+    Start["What are you doing?"]
+    Start -->|"Using or testing locally"| Core["make up-core"]
+    Start -->|"Editing source code"| Local["make up-core-local"]
+    Start -->|"Deploying behind HTTPS"| Server["make up-core-server"]
+
+    Core --> CoreResult["Production-like containers<br/>UI on localhost:8080"]
+    Local --> LocalResult["Live source mounts<br/>UI on localhost:8080"]
+    Server --> ServerResult["No host UI port<br/>Reverse proxy handles access"]
+```
+
+| Goal | Command | What you get |
+|---|---|---|
+| Run the normal local stack | `make up-core` | Built production-mode images and UI at `http://localhost:8080` |
+| Develop with local source files | `make up-core-local` | Source-mounted containers, Laravel debug mode, and UI at `http://localhost:8080` |
+| Deploy behind a reverse proxy | `make up-core-server ENV_FILE=.env.production` | No published Laravel host port; the proxy reaches `hawki_rag_app:80` |
+
+:::note Local versus local development
+
+Both `make up-core` and `make up-core-local` open the UI on port `8080`.
+Use `up-core-local` only when containers need to see your source-code changes
+immediately.
+
+:::
+
+After changing a Dockerfile or locked dependency, rebuild the development
+images once:
 
 ```bash
 BUILD_STACK=1 make up-core-local
 ```
 
-## Model pulls (Ollama)
-- Default pulls: `bge-m3`, `llama3.1:8b`, `llama3.2:1b`, `qwen2.5vl:7b`.
-- Optional (manual): `llama3.2:3b`
-  - `docker exec hawki_ollama ollama pull llama3.2:3b`
-- Rough VRAM guide: `bge-m3` < 4 GB, `llama3.2:1b` ~2 GB, `llama3.1:8b` prefers 12-16 GB, `qwen2.5vl:7b` prefers 8-12 GB.
-
-HAWKI calls these local models directly by default. When the optional LiteLLM
-profile is enabled and selected in Settings, the same models are available as
-`hawki-ollama-chat`, `hawki-ollama-embedding`, and `hawki-ollama-vision` aliases.
-OpenAI and Anthropic aliases require their provider keys in `.env`.
+If only frontend assets changed, rebuild and copy them into the running app
+container without recreating the stack:
 
 ```bash
-CORE_PROFILES_BASE=litellm make up-core
-curl -fsS http://127.0.0.1:4000/v1/models
+make publish-ui
 ```
 
-## Health and logs
-```bash
-make test-services     # curl checks for Qdrant, Neo4j, bridge, reranker
-make logs-core         # follow compose logs
+## What happens during startup?
+
+You do not need to create Docker networks, initialize PostgreSQL, or run Laravel
+migrations manually when using a supported `make up-core*` command.
+
+```mermaid
+flowchart LR
+    Command["make up-core*"] --> Networks["Create Docker<br/>networks"]
+    Networks --> Database["Start and wait for<br/>PostgreSQL"]
+    Database --> Migrations["Run Laravel<br/>migrations"]
+    Migrations --> Services["Start app, workers,<br/>Qdrant and Neo4j"]
+    Services --> Models["Prepare Ollama<br/>models"]
+    Models --> Ready["HAWKI RAG<br/>ready"]
 ```
 
-## Repo hygiene / CI-ready artifacts
-Keep bytecode, cache, and test artifacts out of git by using:
+The startup process deliberately migrates the database before starting services
+that can write data. This keeps upgrades safer and prevents workers from using
+an outdated schema.
 
-```bash
-make clean
+## External crawler and converter
+
+Website ingestion depends on a crawler and file converter that run outside the
+core HAWKI RAG Compose stack.
+
+```text
+HAWKI RAG worker
+    ├── crawl request ─────> crawl4ai-service:80
+    └── conversion request > hawki-toolkit-file-converter-file-converter-1:80
 ```
 
-This clears `__pycache__`, `*.py[cod]`, `*.log`, `.pytest_cache`, `.ruff_cache`, `.mypy_cache`, `.coverage*`, `.tox`, `.venv`, `dist`, `build`.
+The external containers must already be running. A supported `make up-core*`
+command attaches them to `hawki-network` when it finds them.
 
-## Start source ingestion
+The relevant `.env` defaults are:
+
+```env
+EXTERNAL_SCRAPER_URL=http://crawl4ai-service
+EXTERNAL_SCRAPER_START_PATH=/crawl
+EXTERNAL_SCRAPER_STATUS_PATH=/status/{job_id}
+
+EXTERNAL_CONVERTER_URL=http://hawki-toolkit-file-converter-file-converter-1
+EXTERNAL_CONVERTER_START_PATH=/extract
+```
+
+Docker services must use these internal names. Do not use `localhost` for
+container-to-container requests.
+
+## Everyday commands
+
+| I want to… | Command |
+|---|---|
+| Check all service health | `make health` |
+| Run direct endpoint checks | `make test-services` |
+| Follow core service logs | `make logs-core` |
+| Restart the stack | `make restart-core` |
+| Stop the core stack | `make down-core` |
+| See every available command | `make help` |
+| Remove generated caches and test artifacts | `make clean` |
+
+## Run a first ingestion
+
+With the crawler and converter running, submit a website:
+
 ```bash
 docker exec -it hawki_rag_app php artisan pipeline:start-task \
   --source-url=https://example.edu \
   --refresh-cadence=daily
 ```
 
-Laravel starts `IngestSourceWorkflow`; Temporal then coordinates scraper, converter, and ingestion workers.
+The request flows through the system like this:
 
-### Shared volume path mapping
-Path mapping: `rawki_shared_storage` (Docker volume) -> `/app/shared` (bridge and Laravel app).
-
-## Shut down / reset
-```bash
-make down-core
-make down-rag
-make neo4j-fresh   # stops Neo4j, wipes /data, restarts clean graph
+```mermaid
+flowchart LR
+    URL["Website URL"] --> Laravel["Laravel"]
+    Laravel --> Temporal["Temporal workflow"]
+    Temporal --> Crawler["Crawler"]
+    Crawler --> Converter["File converter"]
+    Converter --> RAG["RAG ingestion"]
+    RAG --> Qdrant["Qdrant"]
+    RAG --> Neo4j["Neo4j"]
 ```
 
-## Troubleshooting tips for Make targets
-- If pulls are slow: pre-pull the direct runtime images with `make pull-core` or check VPN/proxy.
-- If Ollama pulls hang: pull manually in `hawki_ollama`.
-- If GPU is expected but not detected on Linux: install `nvidia-container-toolkit` and restart Docker, or force CPU mode with `USE_OLLAMA_GPU=0`.
+Scraped and converted files are exchanged through the `rawki_shared_storage`
+Docker volume, mounted as `/shared` in the relevant containers.
+
+## Troubleshooting by symptom
+
+| Symptom | Likely cause | What to do |
+|---|---|---|
+| `Cannot connect to the Docker daemon` | Docker is stopped | Start Docker Desktop or the Docker service, then run `docker ps` |
+| `hosting_network ... could not be found` | Commands were run outside the supported Make targets, or the network was pruned | Run `make network`, then retry |
+| UI does not open on port `8080` | Port conflict or Laravel container failed | Check `docker ps`, then run `make logs-core` |
+| `crawl4ai-service` cannot be resolved | Crawler is stopped or not attached to `hawki-network` | Start the crawler, then rerun `make up-core` |
+| Crawler responds with `404` | Old scraper paths remain in `.env` | Use `/crawl` and `/status/{job_id}` |
+| GPU is not detected on Linux | Driver or NVIDIA container toolkit is unavailable | Fix `nvidia-smi`, or run `USE_OLLAMA_GPU=0 make up-core` |
+| Ollama model download appears stuck | Large model download, proxy, or registry issue | Check `docker logs hawki_ollama` and pull the model manually |
+| Images do not include a recent dependency change | Development mode reused an old image | Run `BUILD_STACK=1 make up-core-local` |
+
+<details>
+<summary>Advanced: how the Compose files are selected</summary>
+
+The Makefile always starts with `docker-compose.yml` and layers only the files
+needed for the selected mode:
+
+| File | Responsibility |
+|---|---|
+| `docker-compose.yml` | Core services and CPU-safe defaults |
+| `docker-compose.ui.yml` | Publishes Laravel on `127.0.0.1:8080` |
+| `docker-compose.local.yml` | Adds development environment values and source mounts |
+| `docker-compose-gpu-override.yml` | Adds NVIDIA configuration when GPU mode is enabled |
+
+Useful advanced overrides:
+
+| Variable | Purpose |
+|---|---|
+| `ENV_FILE` | Select a different environment file; defaults to `.env` |
+| `USE_OLLAMA_GPU` | Choose `auto`, `1`, or `0` |
+| `CORE_PROFILES_BASE` | Enable optional profiles such as `litellm` |
+| `BASE_COMPOSE_FILE` | Replace the base Compose file |
+| `GPU_OVERRIDE_COMPOSE` | Replace the GPU override file |
+
+</details>
+
+## Optional services
+
+### LiteLLM gateway
+
+LiteLLM is optional and is not part of a normal startup. Enable it when you need
+the OpenAI-compatible gateway:
+
+```bash
+CORE_PROFILES_BASE=litellm make up-core
+curl -fsS http://127.0.0.1:4000/v1/models
+```
+
+OpenAI and Anthropic routes also require their API keys in `.env`.
+
+<details>
+<summary>Which Ollama models are prepared?</summary>
+
+The startup command prepares:
+
+| Model | Role | Practical hardware note |
+|---|---|---|
+| `bge-m3` | Embeddings | Usually below 4 GB VRAM |
+| `llama3.2:1b` | Lightweight language tasks | Roughly 2 GB VRAM |
+| `llama3.1:8b` | Main language tasks | Prefer 12–16 GB VRAM |
+| `qwen2.5vl:7b` | Vision tasks | Prefer 8–12 GB VRAM |
+
+Pull another model manually when needed:
+
+```bash
+docker exec hawki_ollama ollama pull llama3.2:3b
+```
+
+</details>
