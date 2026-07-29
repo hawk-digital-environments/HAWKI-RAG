@@ -28,8 +28,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     tesseract-ocr-deu \
     && rm -rf /var/lib/apt/lists/*
 
-COPY ../python_rag/requirements.lock.txt /app/
-COPY ../python_rag/scripts/build_mineru_transformers5_wheel.py /tmp/
+COPY python_rag/requirements.lock.txt /app/
+COPY python_rag/scripts/build_mineru_transformers5_wheel.py /tmp/
 RUN --mount=type=cache,target=/home/rawki/.cache/pip \
     python -m pip install "pip==26.1.2" "setuptools==83.0.0" \
     && mkdir -p /tmp/mineru-upstream /tmp/mineru-patched \
@@ -41,7 +41,7 @@ RUN --mount=type=cache,target=/home/rawki/.cache/pip \
        --prefer-binary --retries 25 --timeout 1200 -r requirements.lock.txt \
     && rm -rf /tmp/mineru-upstream /tmp/mineru-patched
 
-COPY ../python_rag /app
+COPY python_rag /app
 
 RUN groupadd --gid 10001 rawki \
     && useradd --uid 10001 --gid rawki --create-home --shell /usr/sbin/nologin rawki \

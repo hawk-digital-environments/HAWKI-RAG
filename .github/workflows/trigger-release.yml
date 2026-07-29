@@ -25,26 +25,58 @@ jobs:
     name: Test Docker Build
     runs-on: ubuntu-latest
     needs: validate
+    strategy:
+      matrix:
+        include:
+          - name: bridge
+            dockerfile: docker/bridge.Dockerfile
+            image: digitalenvironments/hawki-rag
+            target: python-rag
+          - name: laravel
+            dockerfile: docker/laravel.Dockerfile
+            image: digitalenvironments/hawki-rag
+            target: laravel-app
+          - name: rerank
+            dockerfile: docker/rerank.Dockerfile
+            image: digitalenvironments/hawki-rag
+          - name: migrator
+            dockerfile: docker/migrator.Dockerfile
+            image: digitalenvironments/hawki-rag
     steps:
-      - name: Checkout release branch
-        uses: actions/checkout@v5
+      - name: Checkout repository
+        uses: actions/checkout@v6
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@v4
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
-      - name: Test Docker build
-        uses: docker/build-push-action@v5
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build and push Docker image
+        id: push
+        uses: docker/build-push-action@v7
         with:
           context: .
-          file: ./Dockerfile
+          file: ./${{ matrix.dockerfile }}
+          target: ${{ matrix.target }}
           push: false
           platforms: linux/amd64,linux/arm64
-          tags: digitalenvironments/hawki:release-test
-          cache-from: type=gha,scope=${{ needs.validate.outputs.version }}
-          cache-to: type=gha,mode=max,scope=${{ needs.validate.outputs.version }}
+          tags: |
+            ${{ matrix.image }}:${{ matrix.name }}-release-test
+          cache-from: type=gha,scope=${{ matrix.name }}-${{ needs.detect-version.outputs.version }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}-${{ needs.detect-version.outputs.version }}
+      - name: Generate artifact attestation
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-name: index.docker.io/${{ matrix.image }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
 
   release:
     name: Merge and Tag Release

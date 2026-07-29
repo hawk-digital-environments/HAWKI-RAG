@@ -128,7 +128,6 @@ services:
   # -------------------------------------------------
   qdrant:
     image: qdrant/qdrant:v1.18.3
-    pull_policy: never
     container_name: hawki_qdrant
     volumes:
       - qdrant_data:/qdrant/storage

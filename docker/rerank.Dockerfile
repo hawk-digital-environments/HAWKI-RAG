@@ -17,11 +17,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl && \
     rm -rf /var/lib/apt/lists/*
 
-COPY ../python_rag/requirements-rerank.txt /app/
-RUN python -m pip install --no-cache-dir "pip==26.1.2" "setuptools==83.0.0" \
-    && pip install --no-cache-dir --retries 10 --timeout 300 -r requirements-rerank.txt
+COPY python_rag/requirements-rerank.txt /app/
 
-COPY ../python_rag /app
+RUN --mount=type=cache,target=/home/rawki/.cache/pip \
+    python -m pip install --no-cache-dir "pip==26.1.2" "setuptools==83.0.0" \
+    && pip install --retries 10 --timeout 300 -r requirements-rerank.txt
+
+COPY python_rag /app
 
 RUN groupadd --gid 10001 rawki \
     && useradd --uid 10001 --gid rawki --create-home --shell /usr/sbin/nologin rawki \
