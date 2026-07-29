@@ -78,7 +78,6 @@ Homestead.yaml
 /.zed
 
 # Local agent/tooling data
-/.agents/skills/
 /.codex/
 /tools/
 /.lightrag-audit

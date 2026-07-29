@@ -1,4 +1,4 @@
-# HAWKI RAG – Requirements
+# 1. HAWKI RAG – Requirements
 
 ## Hardware
 - CPU: 8+ cores recommended; ARM (Apple Silicon) or x86_64.
@@ -7,8 +7,41 @@
 - GPU (optional): NVIDIA with CUDA for faster rerank/model inference; verify with `nvidia-smi`.
 
 ## Network & Ports
-- Ensure host port 8080 is free for the local Laravel UI. The optional LiteLLM profile also uses host port 4000 by default.
-- RAG services (bridge, reranker, RAG API, Qdrant, Neo4j, Ollama) stay on the internal Docker network by default and do not bind host ports.
+
+Docker containers communicate with each other through service names on the
+internal Docker networks. A container port is not automatically reachable from
+the host.
+
+| Service | Purpose | Docker-internal endpoint |
+|---|---|---|
+| Laravel / Nginx | Web UI and API | `hawki_rag_app:80` |
+| PostgreSQL | Laravel metadata and Temporal persistence | `postgres:5432` |
+| Temporal | Workflow orchestration | `temporal:7233` |
+| Qdrant | Vector database HTTP API | `qdrant:6333` |
+| Neo4j HTTP | Graph database browser and HTTP API | `hawki_rag_neo4j:7474` |
+| Neo4j Bolt | Graph database driver connection | `hawki_rag_neo4j:7687` |
+| RAG bridge | FastAPI ingestion and retrieval API | `hawki_rag_bridge:8000` |
+| Reranker | Local reranking API | `hawki_rag_rerank:8000` |
+| Ollama | Local model API | `hawki_ollama:11434` |
+| RAG-Anything GPU API | Optional GPU-profile API | `raganything_api_gpu:8003` |
+| LiteLLM | Optional OpenAI-compatible gateway | `litellm:4000` |
+| External crawler | Crawl API and task UI; started outside this Compose stack | `crawl4ai-service:80` |
+
+The Temporal workers and shared-storage initialization container do not listen
+on inbound ports. They connect to the services above through Docker.
+
+- `make up-core-local` publishes the UI on `http://localhost:8080`, mounts the
+  source tree into the containers, and enables Laravel development mode.
+- `make up-core` also publishes `http://localhost:8080`, but runs the
+  production-mode images without source mounts.
+- `make up-core-server` does not bind the Laravel UI to a host port. The
+  separately managed reverse proxy on `hosting_network` supplies the public
+  HTTP/HTTPS ports and forwards requests to `hawki_rag_app:80`.
+- LiteLLM is not started by default. If its profile is enabled, its host port
+  defaults to `4000` and can be changed with `LITELLM_PORT`.
+- The crawler must already be running as `crawl4ai-service`. The supported
+  `make up-core*` commands attach that container to `hawki-network`
+  automatically so Laravel and the Temporal scraper worker can resolve it.
 
 ## Common Software (all platforms)
 - Docker Engine + Compose v2 (Docker Desktop acceptable).
@@ -53,24 +86,3 @@
 - Ports listed above are unused.
 - `.env` exists and is filled.
 - If GPU: `nvidia-smi` returns successfully.
-
-
-## Python service bootstrap (recommended)
-- Install Python dependencies for the FastAPI bridge and reranker before first use:
-
-```bash
-# From the HAWKI-RAG repository root:
-make python-deps
-```
-
-- Environment variables for startup health checks (documented in `.env.example`):
-  - `STARTUP_CHECKS_ENABLED` (default `true`)
-  - `STARTUP_CHECK_ATTEMPTS` (default `3`)
-  - `STARTUP_CHECK_TIMEOUT_SECONDS` (default `3`)
-  - `STARTUP_CHECK_BACKOFF_SECONDS` (default `0.5`)
-
-- If caches appear in repository status, run:
-
-```bash
-make clean
-```

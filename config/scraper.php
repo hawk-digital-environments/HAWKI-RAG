@@ -14,7 +14,7 @@ return [
     |
     */
 
-    'api_url' => env('CUSTOM_CRAWLER_URL', 'http://crawler:8000'),
+    'api_url' => env('CUSTOM_CRAWLER_URL', 'http://crawl4ai-service'),
     'api_key' => env('CUSTOM_CRAWLER_API_KEY', ''),
     'tasks_path' => env('CUSTOM_CRAWLER_TASKS_PATH', '/tasks'),
     'task_start_path' => env('CUSTOM_CRAWLER_TASK_START_PATH', '/tasks/{task}/run'),

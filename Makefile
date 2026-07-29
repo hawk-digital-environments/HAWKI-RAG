@@ -46,6 +46,8 @@ endif
 
 OLLAMA_SERVICE := ollama
 OLLAMA_CONTAINER ?= hawki_ollama
+CRAWLER_CONTAINER ?= crawl4ai-service
+FILE_CONVERTER_CONTAINER ?= hawki-toolkit-file-converter-file-converter-1
 
 # Derived Compose suffixes and profiles.
 CORE_GPU_COMPOSE_SUFFIX :=
@@ -264,7 +266,14 @@ _up-core: network
 		echo "Pulling $$model..."; \
 		docker exec $(OLLAMA_CONTAINER) ollama pull $$model >/dev/null 2>&1 || true; \
 	done
-	@docker network connect hawki-network hawki-toolkit-file-converter-file-converter-1 >/dev/null 2>&1 || true
+	@for container in "$(CRAWLER_CONTAINER)" "$(FILE_CONVERTER_CONTAINER)"; do \
+		if docker container inspect "$$container" >/dev/null 2>&1; then \
+			docker network connect hawki-network "$$container" >/dev/null 2>&1 || true; \
+			echo "$$container is connected to hawki-network."; \
+		else \
+			echo "Optional external service $$container is not running; skipping network connection."; \
+		fi; \
+	done
 
 up-core: COMPOSE_FILE_LIST = $(CORE_UI_COMPOSE_FILE_LIST)
 up-core: COMPOSE_PROFILES = $(CORE_PROFILES)
