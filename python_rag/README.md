@@ -106,9 +106,10 @@ make python-test
 ```
 
 Install runtime and test dependencies with `make python-deps` from a Python
-3.11 environment, matching the bridge image. The test target uses pytest so
-both `unittest.TestCase` scenarios and module-level pytest functions are
-collected:
+3.11 environment, matching the bridge image. `USE_OLLAMA_GPU=0` selects the
+CPU lock and `USE_OLLAMA_GPU=1` selects the CUDA 13.0 lock. The test target uses
+pytest so both `unittest.TestCase` scenarios and module-level pytest functions
+are collected:
 
 ```bash
 PYTHONPATH=python_rag python -m pytest -c python_rag/pytest.ini -m "not integration"
@@ -120,13 +121,22 @@ the small pipeline compatibility patch needed for Transformers 5.14.1 and
 narrows MinerU's `core` extra to that pipeline backend. MinerU's local VLM and
 Gradio extras are intentionally unsupported by this image. The generated
 third-party wheel is kept outside the repository, and the same guarded build
-runs inside the bridge image.
+runs inside the bridge image. `make python-lock` regenerates the main and
+reranker locks for both CPU and CUDA. The CPU lock check fails if a CUDA,
+NVIDIA, or Triton package is introduced accidentally.
 
-On Linux ARM64, `pip check` currently reports
-`nvidia-cusparselt-cu13 0.8.1 is not supported on this platform`. Torch 2.13.0
-pins that package, whose ARM binary is valid but whose internal wheel tag says
-`sbsa` instead of `aarch64`. This is an upstream metadata false positive; do
-not force a different CUDA library version around Torch's exact pin.
+The generated deployment locks are:
+
+- `requirements.cpu.lock.txt`
+- `requirements.gpu.lock.txt`
+- `requirements-rerank.cpu.lock.txt`
+- `requirements-rerank.gpu.lock.txt`
+
+On Linux ARM64, `pip check` on a GPU image reports
+`nvidia-cusparselt-cu13 0.8.1 is not supported on this platform`. PyTorch pins
+that package, whose ARM binary works but whose internal wheel tag says `sbsa`
+instead of `aarch64`. Importing the CUDA 13.0 PyTorch build succeeds; do not
+override PyTorch's exact CUDA dependency pin to suppress this metadata warning.
 
 When the corresponding services are reachable, run the opt-in live suites:
 

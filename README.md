@@ -14,7 +14,7 @@ You do not need to install PHP, Python, PostgreSQL, Qdrant, Neo4j, or Ollama man
 - `make`
 - Git
 - 16 GB RAM or more recommended
-- NVIDIA GPU optional; CPU mode is supported
+- NVIDIA GPU and a CUDA 13-compatible driver are optional; CPU mode is supported
 
 First startup may take several minutes because Docker images and AI models are downloaded.
 
@@ -42,6 +42,20 @@ Use `make up-core-local` for the source-mounted development experience.
 It reuses existing service images so frontend or source edits do not trigger a
 full Python dependency rebuild. Run `BUILD_STACK=1 make up-core-local` after
 changing Dockerfiles or locked container dependencies.
+
+Hardware acceleration is selected with `USE_OLLAMA_GPU`:
+
+```bash
+# CPU-only PyTorch; does not download NVIDIA Python packages
+make up-core USE_OLLAMA_GPU=0
+
+# CUDA 13 PyTorch for the GPU API and reranker; GPU-enabled Ollama
+make up-core USE_OLLAMA_GPU=1
+```
+
+The default value is `auto`: Linux hosts with `nvidia-smi` use GPU mode, while
+other hosts use CPU mode. CPU and CUDA images have separate tags and dependency
+locks, so switching modes preserves the other mode's cached image.
 
 Generate the application key once:
 

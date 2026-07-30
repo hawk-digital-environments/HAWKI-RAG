@@ -188,11 +188,13 @@ The exact ingestion commit semantics are documented in
 | `docker-compose.yml` | Base services, volumes, internal environment, and optional profiles |
 | `docker-compose.ui.yml` | Published local Laravel UI port |
 | `docker-compose.local.yml` | Source-mounted development overrides |
-| `docker-compose-gpu-override.yml` | NVIDIA-specific Ollama configuration |
+| `docker-compose-gpu-override.yml` | NVIDIA-specific Ollama, RAG API, and reranker configuration |
 | `composer.json` / `composer.lock` | Laravel/PHP dependencies |
 | `package.json` / `package-lock.json` | Frontend and root JavaScript build dependencies |
-| `python_rag/requirements.lock.txt` | Locked production bridge dependencies installed by the Python image |
-| `python_rag/requirements-rerank.txt` | Local reranker image dependencies |
+| `python_rag/requirements.txt` | Direct production bridge dependencies shared by CPU and GPU resolution |
+| `python_rag/requirements.cpu.lock.txt` / `requirements.gpu.lock.txt` | Locked production bridge dependencies for CPU and CUDA images |
+| `python_rag/requirements-rerank.in` | Direct local reranker dependencies shared by CPU and GPU resolution |
+| `python_rag/requirements-rerank.cpu.lock.txt` / `requirements-rerank.gpu.lock.txt` | Locked local reranker dependencies for CPU and CUDA images |
 | `python_rag/requirements-test.txt` | Python test-only dependencies |
 
 ## Test map

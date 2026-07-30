@@ -169,8 +169,10 @@ services:
   hawki_rag_rerank:
     build:
       context: .
-      dockerfile: Dockerfile
-      target: rerank
+      dockerfile: docker/rerank.Dockerfile
+      args:
+        PYTHON_REQUIREMENTS_FILE: python_rag/requirements-rerank.cpu.lock.txt
+        PYTORCH_WHEEL_INDEX: https://download.pytorch.org/whl/cpu
     image: hawki-rag-rerank:local
     pull_policy: never
     container_name: hawki_rag_rerank
@@ -207,6 +209,9 @@ services:
       context: .
       dockerfile: Dockerfile
       target: python-rag
+      args:
+        PYTHON_REQUIREMENTS_FILE: python_rag/requirements.cpu.lock.txt
+        PYTORCH_WHEEL_INDEX: https://download.pytorch.org/whl/cpu
     image: hawki-rag-python:local
     pull_policy: never
     container_name: hawki_rag_bridge

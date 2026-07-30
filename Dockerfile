@@ -1,6 +1,9 @@
 # Python RAG API (FastAPI bridge / RAG-Anything)
 FROM python:3.11-slim AS python-rag
 
+ARG PYTHON_REQUIREMENTS_FILE=python_rag/requirements.cpu.lock.txt
+ARG PYTORCH_WHEEL_INDEX=https://download.pytorch.org/whl/cpu
+
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     DEBIAN_FRONTEND=noninteractive \
@@ -28,7 +31,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     tesseract-ocr-deu \
     && rm -rf /var/lib/apt/lists/*
 
-COPY python_rag/requirements.lock.txt /app/
+COPY ${PYTHON_REQUIREMENTS_FILE} /app/requirements.lock.txt
 COPY python_rag/scripts/build_mineru_transformers5_wheel.py /tmp/
 RUN --mount=type=cache,target=/root/.cache/pip \
     python -m pip install --no-cache-dir "pip==26.1.2" "setuptools==83.0.0" \
@@ -38,6 +41,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
        /tmp/mineru-upstream/mineru-3.4.4-py3-none-any.whl /tmp/mineru-patched \
     && PIP_DEFAULT_TIMEOUT=1200 PIP_RETRIES=25 \
        pip install --find-links=/tmp/mineru-patched \
+       --extra-index-url="${PYTORCH_WHEEL_INDEX}" \
        --prefer-binary --retries 25 --timeout 1200 -r requirements.lock.txt \
     && rm -rf /tmp/mineru-upstream /tmp/mineru-patched
 

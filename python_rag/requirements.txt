@@ -17,7 +17,9 @@ raganything[all]==1.3.1
 mineru[core]==3.4.4+rawki.1
 transformers==5.14.1
 aiofiles>=24.1,<25
-torch>=2.2.0
+# Keep the bridge and local reranker on the same validated PyTorch release.
+# The Makefile resolves separate +cpu and +cu130 deployment locks.
+torch==2.13.0
 # python-multipart>=0.0.18,<1.0
 # Avoid PyAV source builds that require ffmpeg7 in slim/arm Docker environments.
 av==12.3.0
