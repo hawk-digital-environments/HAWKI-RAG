@@ -5,6 +5,30 @@
 # ============================================================================
 
 services:
+  hawki_rag_rerank:
+    build:
+      args:
+        PYTHON_REQUIREMENTS_FILE: python_rag/requirements-rerank.gpu.lock.txt
+        PYTORCH_WHEEL_INDEX: https://download.pytorch.org/whl/cu130
+    image: hawki-rag-rerank:cuda-local
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [ gpu ]
+
+  raganything_api_gpu:
+    build:
+      context: .
+      dockerfile: docker/bridge.Dockerfile
+      target: python-rag
+      args:
+        PYTHON_REQUIREMENTS_FILE: python_rag/requirements.gpu.lock.txt
+        PYTORCH_WHEEL_INDEX: https://download.pytorch.org/whl/cu130
+    image: hawki-rag-python:cuda-local
+
   ollama:
     build:
       context: .
