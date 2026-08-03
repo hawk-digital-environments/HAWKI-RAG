@@ -17,9 +17,7 @@ albucore==0.0.24
 albumentations==2.0.8
     # via paddleocr
 annotated-doc==0.0.4
-    # via
-    #   fastapi
-    #   typer
+    # via fastapi
 annotated-types==0.7.0
     # via pydantic
 anyio==4.14.2
@@ -58,7 +56,6 @@ charset-normalizer==3.4.9
     #   requests
 click==8.4.2
     # via
-    #   huggingface-hub
     #   magika
     #   mineru
     #   pdftext
@@ -71,7 +68,6 @@ colorama==0.4.6 ; sys_platform == 'win32'
     #   colorlog
     #   loguru
     #   tqdm
-    #   typer
     #   uvicorn
 colorlog==6.11.0
     # via robust-downloader
@@ -107,6 +103,7 @@ filelock==3.32.0
     #   modelscope
     #   modelscope-hub
     #   torch
+    #   transformers
 fire==0.7.1
     # via paddleocr
 flatbuffers==25.12.19
@@ -139,7 +136,7 @@ h11==0.16.0
     # via
     #   httpcore
     #   uvicorn
-hf-xet==1.5.2 ; platform_machine == 'AMD64' or platform_machine == 'aarch64' or platform_machine == 'amd64' or platform_machine == 'arm64' or platform_machine == 'x86_64'
+hf-xet==1.5.2 ; platform_machine == 'aarch64' or platform_machine == 'amd64' or platform_machine == 'arm64' or platform_machine == 'x86_64'
     # via huggingface-hub
 httpcore==1.0.9
     # via httpx
@@ -149,13 +146,12 @@ httpx==0.27.2
     # via
     #   -r python_rag/requirements.txt
     #   httpx-retries
-    #   huggingface-hub
     #   mineru
     #   mineru-vl-utils
     #   openai
 httpx-retries==0.6.0
     # via mineru-vl-utils
-huggingface-hub==1.24.0
+huggingface-hub==0.36.2
     # via
     #   mineru
     #   raganything
@@ -200,14 +196,11 @@ mammoth==1.12.0
     # via mineru
 markdown==3.10.2
     # via raganything
-markdown-it-py==4.2.0
-    # via rich
 markupsafe==3.0.3
     # via jinja2
-mdurl==0.1.2
-    # via markdown-it-py
-mineru==3.4.4+rawki.1
+mineru==3.4.4
     # via
+    #   --override python_rag/requirements-mineru-overrides.txt
     #   -r python_rag/requirements.txt
     #   raganything
 mineru-vl-utils==1.0.5
@@ -389,9 +382,7 @@ pydantic-settings==2.14.2
 pydyf==0.12.1
     # via weasyprint
 pygments==2.20.0
-    # via
-    #   raganything
-    #   rich
+    # via raganything
 pylatexenc==2.10
     # via mineru
 pypdf==6.14.2
@@ -452,14 +443,14 @@ requests==2.34.2
     #   fast-langdetect
     #   google-api-core
     #   google-genai
+    #   huggingface-hub
     #   mineru
     #   modelscope
     #   modelscope-hub
     #   paddleocr
     #   robust-downloader
     #   tiktoken
-rich==15.0.0
-    # via typer
+    #   transformers
 robust-downloader==0.0.2
     # via fast-langdetect
 safetensors==0.8.0
@@ -485,8 +476,6 @@ shapely==2.1.2
     # via
     #   mineru
     #   paddleocr
-shellingham==1.5.4
-    # via typer
 simsimd==6.5.16
     # via albucore
 six==1.17.0
@@ -543,14 +532,10 @@ tqdm==4.69.0
     #   raganything
     #   robust-downloader
     #   transformers
-transformers==5.14.1
-    # via
-    #   -r python_rag/requirements.txt
-    #   mineru
+transformers==4.57.6
+    # via mineru
 triton==3.7.1 ; python_full_version < '3.15' and sys_platform == 'linux'
     # via torch
-typer==0.27.0
-    # via transformers
 types-protobuf==7.34.1.20260518
     # via temporalio
 typing-extensions==4.16.0

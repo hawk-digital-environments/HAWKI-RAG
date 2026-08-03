@@ -29,12 +29,11 @@ GPU_OVERRIDE_COMPOSE ?= docker-compose-gpu-override.yml
 UI_OVERRIDE_COMPOSE ?= docker-compose.ui.yml
 LOCAL_OVERRIDE_COMPOSE ?= docker-compose.local.yml
 COMPOSE_FILE_SEP ?= :
-COMMA := ,
-PYTHON_MINERU_WHEEL_ROOT ?= /tmp/rawki-mineru-compat
 PYTHON_CPU_LOCK := python_rag/requirements.cpu.lock.txt
 PYTHON_GPU_LOCK := python_rag/requirements.gpu.lock.txt
 PYTHON_RERANK_CPU_LOCK := python_rag/requirements-rerank.cpu.lock.txt
 PYTHON_RERANK_GPU_LOCK := python_rag/requirements-rerank.gpu.lock.txt
+PYTHON_MINERU_OVERRIDES := python_rag/requirements-mineru-overrides.txt
 PYTORCH_CPU_INDEX := https://download.pytorch.org/whl/cpu
 PYTORCH_GPU_INDEX := https://download.pytorch.org/whl/cu130
 
@@ -61,10 +60,9 @@ CORE_PROFILES := $(CORE_PROFILES_BASE)
 
 ifeq ($(USE_OLLAMA_GPU),1)
 	CORE_GPU_COMPOSE_SUFFIX := $(COMPOSE_FILE_SEP)$(GPU_OVERRIDE_COMPOSE)
-	CORE_PROFILES := gpu$(if $(strip $(CORE_PROFILES_BASE)),$(COMMA)$(CORE_PROFILES_BASE),)
 	PYTHON_SELECTED_LOCK := $(PYTHON_GPU_LOCK)
 	PYTORCH_SELECTED_INDEX := $(PYTORCH_GPU_INDEX)
-	GPU_MESSAGE := Ollama and Python GPU services enabled.
+	GPU_MESSAGE := Ollama and reranker GPU acceleration enabled.
 else
 	PYTHON_SELECTED_LOCK := $(PYTHON_CPU_LOCK)
 	PYTORCH_SELECTED_INDEX := $(PYTORCH_CPU_INDEX)
@@ -144,23 +142,17 @@ clean: ## Remove generated Python caches, logs, coverage, and build artifacts.
 
 python-lock: ## Resolve CPU and CUDA Python runtime dependencies for Python 3.11.
 	@command -v uv >/dev/null 2>&1 || { echo "uv is required to regenerate Python requirement locks"; exit 1; }
-	@mkdir -p "$(PYTHON_MINERU_WHEEL_ROOT)/upstream" "$(PYTHON_MINERU_WHEEL_ROOT)/patched"
-	@uv run --python 3.11 --with pip python -m pip download --no-deps \
-		--dest "$(PYTHON_MINERU_WHEEL_ROOT)/upstream" "mineru==3.4.4"
-	@uv run --python 3.11 python python_rag/scripts/build_mineru_transformers5_wheel.py \
-		"$(PYTHON_MINERU_WHEEL_ROOT)/upstream/mineru-3.4.4-py3-none-any.whl" \
-		"$(PYTHON_MINERU_WHEEL_ROOT)/patched"
 	@uv pip compile python_rag/requirements.txt python_rag/requirements-security.txt \
+		--overrides "$(PYTHON_MINERU_OVERRIDES)" \
 		--python-version 3.11 --universal \
 		--torch-backend cpu \
-		--find-links "$(PYTHON_MINERU_WHEEL_ROOT)/patched" \
 		--custom-compile-command "make python-lock" \
 		--output-file "$(PYTHON_CPU_LOCK)"
 	@cp "$(PYTHON_CPU_LOCK)" "$(PYTHON_GPU_LOCK)"
 	@uv pip compile python_rag/requirements.txt python_rag/requirements-security.txt \
+		--overrides "$(PYTHON_MINERU_OVERRIDES)" \
 		--python-version 3.11 --universal \
 		--torch-backend cu130 \
-		--find-links "$(PYTHON_MINERU_WHEEL_ROOT)/patched" \
 		--custom-compile-command "make python-lock" \
 		--output-file "$(PYTHON_GPU_LOCK)"
 	@uv pip compile python_rag/requirements-rerank.in \
@@ -180,18 +172,17 @@ python-lock: ## Resolve CPU and CUDA Python runtime dependencies for Python 3.11
 	@grep -q '^torch==2.13.0+cpu' "$(PYTHON_RERANK_CPU_LOCK)"
 	@grep -q '^torch==2.13.0+cu130' "$(PYTHON_GPU_LOCK)"
 	@grep -q '^torch==2.13.0+cu130' "$(PYTHON_RERANK_GPU_LOCK)"
+	@grep -q '^starlette==1.3.1' "$(PYTHON_CPU_LOCK)"
+	@grep -q '^starlette==1.3.1' "$(PYTHON_GPU_LOCK)"
+	@! grep -Eq '^gradio(-pdf)?==' "$(PYTHON_CPU_LOCK)" "$(PYTHON_GPU_LOCK)" || \
+		{ echo "Python runtime locks unexpectedly contain MinerU's unused Gradio UI"; exit 1; }
 
 python-deps: ## Install the CPU or CUDA lock selected by USE_OLLAMA_GPU.
 	@python3 -m pip install --upgrade pip setuptools wheel
-	@mkdir -p "$(PYTHON_MINERU_WHEEL_ROOT)/upstream" "$(PYTHON_MINERU_WHEEL_ROOT)/patched"
-	@python3 -m pip download --no-deps --dest "$(PYTHON_MINERU_WHEEL_ROOT)/upstream" "mineru==3.4.4"
-	@python3 python_rag/scripts/build_mineru_transformers5_wheel.py \
-		"$(PYTHON_MINERU_WHEEL_ROOT)/upstream/mineru-3.4.4-py3-none-any.whl" \
-		"$(PYTHON_MINERU_WHEEL_ROOT)/patched"
-	@python3 -m pip install \
+	@python3 -m pip install --no-deps \
 		--extra-index-url "$(PYTORCH_SELECTED_INDEX)" \
-		--find-links "$(PYTHON_MINERU_WHEEL_ROOT)/patched" \
-		-r "$(PYTHON_SELECTED_LOCK)" -r python_rag/requirements-test.txt
+		-r "$(PYTHON_SELECTED_LOCK)"
+	@python3 -m pip install -r python_rag/requirements-test.txt
 
 # ==============================================================================
 # Docker foundation and application images

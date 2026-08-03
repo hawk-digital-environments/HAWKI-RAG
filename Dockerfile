@@ -32,18 +32,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY ${PYTHON_REQUIREMENTS_FILE} /app/requirements.lock.txt
-COPY python_rag/scripts/build_mineru_transformers5_wheel.py /tmp/
 RUN --mount=type=cache,target=/root/.cache/pip \
     python -m pip install --no-cache-dir "pip==26.1.2" "setuptools==83.0.0" \
-    && mkdir -p /tmp/mineru-upstream /tmp/mineru-patched \
-    && pip download --no-deps --dest /tmp/mineru-upstream "mineru==3.4.4" \
-    && python /tmp/build_mineru_transformers5_wheel.py \
-       /tmp/mineru-upstream/mineru-3.4.4-py3-none-any.whl /tmp/mineru-patched \
     && PIP_DEFAULT_TIMEOUT=1200 PIP_RETRIES=25 \
-       pip install --find-links=/tmp/mineru-patched \
-       --extra-index-url="${PYTORCH_WHEEL_INDEX}" \
-       --prefer-binary --retries 25 --timeout 1200 -r requirements.lock.txt \
-    && rm -rf /tmp/mineru-upstream /tmp/mineru-patched
+       pip install --no-deps --extra-index-url="${PYTORCH_WHEEL_INDEX}" \
+       --prefer-binary --retries 25 --timeout 1200 -r requirements.lock.txt
 
 COPY python_rag /app
 

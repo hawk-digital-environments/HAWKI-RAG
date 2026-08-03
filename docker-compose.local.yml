@@ -39,7 +39,3 @@ services:
     volumes:
       - ./python_rag:/app
       - ./public:/app/public
-
-  raganything_api_gpu:
-    volumes:
-      - ./python_rag:/app
