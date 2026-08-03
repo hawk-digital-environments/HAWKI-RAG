@@ -115,15 +115,14 @@ are collected:
 PYTHONPATH=python_rag python -m pytest -c python_rag/pytest.ini -m "not integration"
 ```
 
-The dependency target builds `mineru==3.4.4+rawki.1` locally from the official
-MinerU 3.4.4 wheel after verifying its SHA-256 digest. The local version carries
-the small pipeline compatibility patch needed for Transformers 5.14.1 and
-narrows MinerU's `core` extra to that pipeline backend. MinerU's local VLM and
-Gradio extras are intentionally unsupported by this image. The generated
-third-party wheel is kept outside the repository, and the same guarded build
-runs inside the bridge image. `make python-lock` regenerates the main and
-reranker locks for both CPU and CUDA. The CPU lock check fails if a CUDA,
-NVIDIA, or Triton package is introduced accidentally.
+The bridge uses the unmodified upstream MinerU 3.4.4 package. Because
+RAG-Anything requests MinerU's broad `core` extra, the uv override in
+`requirements-mineru-overrides.txt` selects the pipeline backend that RAWKI
+actually runs and omits the unused Gradio UI. `uv` resolves MinerU's compatible
+Transformers 4 release independently from the reranker's Transformers 5
+dependency set. `make python-lock` regenerates the main and reranker locks for
+both CPU and CUDA. The CPU lock check fails if a CUDA, NVIDIA, or Triton package
+is introduced accidentally.
 
 The generated deployment locks are:
 

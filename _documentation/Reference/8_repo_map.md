@@ -188,7 +188,7 @@ The exact ingestion commit semantics are documented in
 | `docker-compose.yml` | Base services, volumes, internal environment, and optional profiles |
 | `docker-compose.ui.yml` | Published local Laravel UI port |
 | `docker-compose.local.yml` | Source-mounted development overrides |
-| `docker-compose-gpu-override.yml` | NVIDIA-specific Ollama, RAG API, and reranker configuration |
+| `docker-compose-gpu-override.yml` | NVIDIA-specific Ollama and reranker configuration |
 | `composer.json` / `composer.lock` | Laravel/PHP dependencies |
 | `package.json` / `package-lock.json` | Frontend and root JavaScript build dependencies |
 | `python_rag/requirements.txt` | Direct production bridge dependencies shared by CPU and GPU resolution |

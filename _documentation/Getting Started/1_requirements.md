@@ -23,7 +23,6 @@ the host.
 | RAG bridge | FastAPI ingestion and retrieval API | `hawki_rag_bridge:8000` |
 | Reranker | Local reranking API | `hawki_rag_rerank:8000` |
 | Ollama | Local model API | `hawki_ollama:11434` |
-| RAG-Anything GPU API | Optional GPU-profile API | `raganything_api_gpu:8003` |
 | LiteLLM | Optional OpenAI-compatible gateway | `litellm:4000` |
 | External crawler | Crawl API and task UI; started outside this Compose stack | `crawl4ai-service:80` |
 

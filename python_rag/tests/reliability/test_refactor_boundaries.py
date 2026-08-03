@@ -82,11 +82,13 @@ def test_canonical_lightrag_doc_status_storage_import_path_resolves() -> None:
     assert module.ChunkedJsonDocStatusStorage.__name__ == "ChunkedJsonDocStatusStorage"
 
 
-def test_raganything_runtime_requirements_include_mineru_core_extra() -> None:
+def test_raganything_runtime_requirements_include_mineru_pipeline_extra() -> None:
     requirements = (ROOT / "requirements.txt").read_text(encoding="utf-8")
+    overrides = (ROOT / "requirements-mineru-overrides.txt").read_text(encoding="utf-8")
 
     assert "raganything[all]" in requirements
-    assert "mineru[core]" in requirements
+    assert "mineru[pipeline]" in requirements
+    assert "mineru[pipeline]==3.4.4" in overrides
 
 
 def test_doc_status_chunk_helpers_plan_chunks_and_duplicate_counts() -> None:
