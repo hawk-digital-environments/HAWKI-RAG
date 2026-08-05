@@ -37,7 +37,6 @@ class PdfIngestionFlowTest extends SystemTestCase
         $this->sharedRoot = storage_path('framework/testing/system-pdf-ingestion');
         File::deleteDirectory($this->sharedRoot);
         config()->set('temporal.storage.shared_root', $this->sharedRoot);
-        config()->set('temporal.storage.mode', 'shared');
         config()->set('temporal.enabled', true);
         config()->set('temporal.ingestion.provider', 'ollama');
         config()->set('file_converter.raganything_supported_extensions', ['pdf']);

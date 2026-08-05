@@ -16,6 +16,7 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
+use Psr\Log\LoggerInterface;
 use Tests\TestCase;
 
 class PipelineControllerDashboardTest extends TestCase
@@ -722,6 +723,214 @@ class PipelineControllerDashboardTest extends TestCase
         File::deleteDirectory($root);
     }
 
+    public function test_pipeline_task_history_is_retained_when_source_storage_cleanup_fails(): void
+    {
+        $root = storage_path('framework/testing/pipeline-task-delete-failure');
+        File::deleteDirectory($root);
+        config()->set('temporal.storage.shared_root', $root);
+
+        $sourceId = 'source-cache-delete-failure';
+        $sourceRoot = $root.'/sources/'.$sourceId;
+        File::ensureDirectoryExists(dirname($sourceRoot));
+        File::put($sourceRoot, 'not a directory');
+
+        $task = PipelineTask::query()->create([
+            'task_id' => 'task-cache-delete-failure',
+            'dataset_id' => 'cache-delete-failure-dataset',
+            'status' => PipelineTask::STATUS_FAILED,
+            'started_at' => now(),
+            'finished_at' => now(),
+            'counters' => ['jobs_total' => 1, 'jobs_failed' => 1],
+            'metadata' => [],
+        ]);
+        PipelineJob::query()->create([
+            'job_id' => 'job-cache-delete-failure',
+            'task_id' => $task->task_id,
+            'source_id' => $sourceId,
+            'job_type' => PipelineJob::TYPE_CONVERT,
+            'status' => PipelineJob::STATUS_FAILED,
+            'started_at' => now(),
+            'finished_at' => now(),
+            'metadata' => [],
+        ]);
+        IngestionSource::query()->create([
+            'source_id' => $sourceId,
+            'source_url' => 'upload://failed.pdf',
+            'task_id' => $task->task_id,
+            'dataset_id' => $task->dataset_id,
+            'raw_storage_path' => $sourceRoot.'/raw/',
+            'markdown_storage_path' => $sourceRoot.'/markdown/',
+            'index_status' => IngestionSource::STATUS_FAILED,
+        ]);
+
+        $logger = \Mockery::mock(LoggerInterface::class);
+        $logger->shouldReceive('error')
+            ->once()
+            ->with('Pipeline task storage cleanup failed.', [
+                'task_id' => 'task-cache-delete-failure',
+                'failed_paths' => [$sourceRoot],
+            ]);
+        $this->app->instance(LoggerInterface::class, $logger);
+
+        try {
+            $this->withSession(['_token' => 'test-token'])
+                ->deleteJson('/api/pipeline/tasks/task-cache-delete-failure', [], ['X-CSRF-TOKEN' => 'test-token'])
+                ->assertStatus(500)
+                ->assertJsonPath('success', false)
+                ->assertJsonPath('storage_cleanup.ok', false)
+                ->assertJsonPath('storage_cleanup.failed.0.path', $sourceRoot)
+                ->assertJsonPath('storage_cleanup.failed.0.message', 'expected a directory');
+
+            $this->assertDatabaseHas('pipeline_tasks', [
+                'task_id' => 'task-cache-delete-failure',
+            ]);
+            $this->assertDatabaseHas('pipeline_jobs', [
+                'job_id' => 'job-cache-delete-failure',
+            ]);
+            $this->assertDatabaseHas('ingestion_sources', [
+                'source_id' => $sourceId,
+                'task_id' => 'task-cache-delete-failure',
+            ]);
+            $this->assertFileExists($sourceRoot);
+        } finally {
+            File::deleteDirectory($root);
+        }
+    }
+
+    public function test_pipeline_task_and_source_metadata_are_deleted_when_source_storage_is_missing(): void
+    {
+        $root = storage_path('framework/testing/pipeline-task-delete-missing-storage');
+        File::deleteDirectory($root);
+        File::ensureDirectoryExists($root);
+        config()->set('temporal.storage.shared_root', $root);
+
+        $sourceId = 'source-cache-delete-missing';
+        $task = PipelineTask::query()->create([
+            'task_id' => 'task-cache-delete-missing',
+            'dataset_id' => 'cache-delete-missing-dataset',
+            'status' => PipelineTask::STATUS_COMPLETED,
+            'started_at' => now(),
+            'finished_at' => now(),
+            'counters' => ['jobs_total' => 1, 'jobs_completed' => 1],
+            'metadata' => [],
+        ]);
+        PipelineJob::query()->create([
+            'job_id' => 'job-cache-delete-missing',
+            'task_id' => $task->task_id,
+            'source_id' => $sourceId,
+            'job_type' => PipelineJob::TYPE_CONVERT,
+            'status' => PipelineJob::STATUS_COMPLETED,
+            'started_at' => now(),
+            'finished_at' => now(),
+            'metadata' => [],
+        ]);
+        IngestionSource::query()->create([
+            'source_id' => $sourceId,
+            'source_url' => 'upload://missing.pdf',
+            'task_id' => $task->task_id,
+            'dataset_id' => $task->dataset_id,
+            'raw_storage_path' => $root.'/sources/'.$sourceId.'/raw/',
+            'markdown_storage_path' => $root.'/sources/'.$sourceId.'/markdown/',
+            'index_status' => IngestionSource::STATUS_READY,
+        ]);
+
+        try {
+            $this->withSession(['_token' => 'test-token'])
+                ->deleteJson('/api/pipeline/tasks/task-cache-delete-missing', [], ['X-CSRF-TOKEN' => 'test-token'])
+                ->assertOk()
+                ->assertJsonPath('success', true)
+                ->assertJsonPath('storage_cleanup.ok', true);
+
+            $this->assertDatabaseMissing('pipeline_tasks', [
+                'task_id' => 'task-cache-delete-missing',
+            ]);
+            $this->assertDatabaseMissing('pipeline_jobs', [
+                'job_id' => 'job-cache-delete-missing',
+            ]);
+            $this->assertDatabaseMissing('ingestion_sources', [
+                'source_id' => $sourceId,
+            ]);
+        } finally {
+            File::deleteDirectory($root);
+        }
+    }
+
+    public function test_pipeline_task_history_is_retained_when_persisted_source_root_differs_from_current_config(): void
+    {
+        $oldRoot = storage_path('framework/testing/pipeline-task-delete-old-root');
+        $currentRoot = storage_path('framework/testing/pipeline-task-delete-current-root');
+        File::deleteDirectory($oldRoot);
+        File::deleteDirectory($currentRoot);
+        File::ensureDirectoryExists($currentRoot);
+        config()->set('temporal.storage.shared_root', $currentRoot);
+
+        $sourceId = 'source-cache-delete-old-root';
+        $sourceRoot = $oldRoot.'/sources/'.$sourceId;
+        File::ensureDirectoryExists($sourceRoot.'/raw');
+        File::put($sourceRoot.'/raw/upload.pdf', 'must survive');
+
+        $task = PipelineTask::query()->create([
+            'task_id' => 'task-cache-delete-old-root',
+            'dataset_id' => 'cache-delete-old-root-dataset',
+            'status' => PipelineTask::STATUS_COMPLETED,
+            'started_at' => now(),
+            'finished_at' => now(),
+            'counters' => ['jobs_total' => 1, 'jobs_completed' => 1],
+            'metadata' => [],
+        ]);
+        PipelineJob::query()->create([
+            'job_id' => 'job-cache-delete-old-root',
+            'task_id' => $task->task_id,
+            'source_id' => $sourceId,
+            'job_type' => PipelineJob::TYPE_CONVERT,
+            'status' => PipelineJob::STATUS_COMPLETED,
+            'started_at' => now(),
+            'finished_at' => now(),
+            'metadata' => [],
+        ]);
+        IngestionSource::query()->create([
+            'source_id' => $sourceId,
+            'source_url' => 'upload://old-root.pdf',
+            'task_id' => $task->task_id,
+            'dataset_id' => $task->dataset_id,
+            'raw_storage_path' => $sourceRoot.'/raw/',
+            'markdown_storage_path' => $sourceRoot.'/markdown/',
+            'index_status' => IngestionSource::STATUS_READY,
+        ]);
+
+        $logger = \Mockery::mock(LoggerInterface::class);
+        $logger->shouldReceive('error')
+            ->once()
+            ->with('Pipeline task storage cleanup failed.', [
+                'task_id' => 'task-cache-delete-old-root',
+                'failed_paths' => [$sourceRoot],
+            ]);
+        $this->app->instance(LoggerInterface::class, $logger);
+
+        try {
+            $this->withSession(['_token' => 'test-token'])
+                ->deleteJson('/api/pipeline/tasks/task-cache-delete-old-root', [], ['X-CSRF-TOKEN' => 'test-token'])
+                ->assertStatus(500)
+                ->assertJsonPath('storage_cleanup.ok', false)
+                ->assertJsonPath('storage_cleanup.failed.0.path', $sourceRoot)
+                ->assertJsonPath(
+                    'storage_cleanup.failed.0.message',
+                    'refusing to delete a path outside configured shared storage',
+                );
+
+            $this->assertDatabaseHas('pipeline_tasks', [
+                'task_id' => 'task-cache-delete-old-root',
+            ]);
+            $this->assertDatabaseHas('ingestion_sources', [
+                'source_id' => $sourceId,
+            ]);
+            $this->assertFileExists($sourceRoot.'/raw/upload.pdf');
+        } finally {
+            File::deleteDirectory($oldRoot);
+            File::deleteDirectory($currentRoot);
+        }
+    }
+
     public function test_pipeline_stage_logs_can_be_viewed_and_downloaded(): void
     {
         $logPath = storage_path('framework/testing/pipeline-stage-logs/comm_logs.json');
@@ -889,7 +1098,7 @@ class PipelineControllerDashboardTest extends TestCase
     public function test_ingest_stage_log_excludes_old_worker_entries_for_same_source(): void
     {
         $runtimeRoot = storage_path('framework/testing/pipeline-stage-runtime-ingest');
-        $runtimeLogPath = $runtimeRoot.'/ingestion_worker.log';
+        $runtimeLogPath = $runtimeRoot.'/indexer_worker.log';
         File::ensureDirectoryExists($runtimeRoot);
         File::put($runtimeLogPath, implode(PHP_EOL, [
             "2026-06-28 08:34:59,723 INFO temporal_rag.activities ingest_markdown_files:start {'source_id': 'source_repeat_upload', 'markdown_dir': '/shared/sources/source_repeat_upload/markdown', 'task_queue': 'rag-ingestion-task-queue'}",
@@ -924,7 +1133,7 @@ class PipelineControllerDashboardTest extends TestCase
             ->assertJsonPath('success', true);
 
         $text = (string) $response->json('log.text');
-        $this->assertStringContainsString('Temporal ingestion worker log entries', $text);
+        $this->assertStringContainsString('Indexer worker log entries', $text);
         $this->assertStringContainsString('2026-06-28 23:45:40,165', $text);
         $this->assertStringNotContainsString('2026-06-28 08:34:59,723', $text);
         $this->assertStringNotContainsString('source_other_upload', $text);

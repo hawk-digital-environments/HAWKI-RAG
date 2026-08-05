@@ -75,7 +75,10 @@ return [
     'pipeline_stage_runtime_log_paths' => [
         'scrape' => $stageRuntimeLogPaths('scraper', 'scraper_worker.log'),
         'convert' => $stageRuntimeLogPaths('converter', 'converter_worker.log'),
-        'ingest' => $stageRuntimeLogPaths('ingestion', 'ingestion_worker.log'),
+        'ingest' => array_values(array_unique([
+            ...$stageRuntimeLogPaths('indexer', 'indexer_worker.log'),
+            ...$stageRuntimeLogPaths('ingestion', 'ingestion_worker.log'),
+        ])),
     ],
     'pipeline_proof_log_globs' => [
         storage_path('logs/laravel-*.log'),

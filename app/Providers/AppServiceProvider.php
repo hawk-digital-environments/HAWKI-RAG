@@ -97,6 +97,7 @@ class AppServiceProvider extends ServiceProvider
         RateLimiter::for('hawki-rag-query', fn (Request $request): Limit => Limit::perMinute(30)->by($this->rateLimitKey($request)));
         RateLimiter::for('hawki-upload', fn (Request $request): Limit => Limit::perMinute(12)->by($this->rateLimitKey($request)));
         RateLimiter::for('hawki-destructive', fn (Request $request): Limit => Limit::perMinute(10)->by($this->rateLimitKey($request)));
+        RateLimiter::for('hawki-pipeline-worker-events', fn (Request $request): Limit => Limit::perMinute(600)->by('worker-ip:'.($request->ip() ?? 'unknown')));
     }
 
     private function rateLimitKey(Request $request): string

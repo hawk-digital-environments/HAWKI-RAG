@@ -11,7 +11,7 @@ class PipelineWorkersCommand extends Command
 {
     protected $signature = 'pipeline:workers';
 
-    protected $description = 'Print Temporal RAG ingestion worker startup commands and task queues.';
+    protected $description = 'Print Temporal RAG worker startup commands and task queues.';
 
     public function handle(ConfigRepository $config): int
     {
@@ -47,9 +47,9 @@ class PipelineWorkersCommand extends Command
                 'inspect_and_convert_files',
             ],
             [
-                'ingestion adapter',
-                'hawki-rag-temporal-ingestion-worker',
-                (string) ($queues['ingestion'] ?? 'rag-ingestion-task-queue'),
+                'indexer',
+                'hawki-rag-indexer-worker',
+                (string) ($queues['indexer'] ?? $queues['ingestion'] ?? 'rag-ingestion-task-queue'),
                 'ingest_markdown_files, mark_source_ready',
             ],
         ]);

@@ -16,16 +16,16 @@ readonly class PipelineSharedStorageHealthCheck
         private Application $app,
         private ConfigRepository $config,
         private Filesystem $files,
-    ) {
-    }
+    ) {}
 
     /**
      * @return array{name:string,status:string,detail:string,fix:string}
      */
     public function check(): array
     {
+        $sharedRoot = (string) $this->config->get('temporal.storage.shared_root');
         $paths = array_values(array_unique(array_filter([
-            (string) $this->config->get('temporal.storage.shared_root'),
+            $sharedRoot,
             (string) $this->config->get('scraper.storage_path'),
             (string) $this->config->get('config.shared_root'),
         ])));
@@ -39,11 +39,11 @@ readonly class PipelineSharedStorageHealthCheck
                 );
             }
 
-            if (! is_writable($path)) {
+            if (! $this->files->isWritable($path)) {
                 return $this->failureResult(
                     'Shared storage',
                     "Path is not writable: {$path}.",
-                    'Fix permissions with chown -R www-data:www-data /shared && chmod -R ug+rwX /shared, then verify HAWKI_RAG_TEMPORAL_SHARED_ROOT, SCRAPE_STORAGE_PATH, and HAWKI_RAG_PIPELINE_ROOT.',
+                    $this->permissionFix($path).' Then verify HAWKI_RAG_TEMPORAL_SHARED_ROOT, SCRAPE_STORAGE_PATH, and HAWKI_RAG_PIPELINE_ROOT.',
                 );
             }
 
@@ -55,8 +55,19 @@ readonly class PipelineSharedStorageHealthCheck
                 return $this->failureResult(
                     'Shared storage',
                     "Could not create a probe file in {$path}: {$exception->getMessage()}",
-                    'Fix permissions with chown -R www-data:www-data /shared && chmod -R ug+rwX /shared.',
+                    $this->permissionFix($path),
                 );
+            }
+
+            if ($this->samePath($path, $sharedRoot)) {
+                $workerSourceFailure = $this->workerSourceDirectoryFailure($sharedRoot);
+                if ($workerSourceFailure !== null) {
+                    return $this->failureResult(
+                        'Shared storage',
+                        $workerSourceFailure,
+                        $this->permissionFix($sharedRoot),
+                    );
+                }
             }
 
             $webUserError = $this->webUserError($path);
@@ -64,12 +75,48 @@ readonly class PipelineSharedStorageHealthCheck
                 return $this->failureResult(
                     'Shared storage',
                     $webUserError,
-                    'Fix permissions with chown -R www-data:www-data /shared && chmod -R ug+rwX /shared, or set PIPELINE_SHARED_STORAGE_WEB_USER to the PHP-FPM user.',
+                    $this->permissionFix($path).' Also verify PIPELINE_SHARED_STORAGE_WEB_USER names the PHP-FPM user.',
                 );
             }
         }
 
         return $this->ok('Shared storage', 'Writable paths: '.implode(', ', $paths).'.');
+    }
+
+    private function workerSourceDirectoryFailure(string $sharedRoot): ?string
+    {
+        $sourcesRoot = rtrim($sharedRoot, DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR.'sources';
+        if (! $this->files->isDirectory($sourcesRoot)) {
+            return null;
+        }
+
+        try {
+            $sourceDirectories = $this->files->directories($sourcesRoot);
+        } catch (\Throwable $exception) {
+            return "Could not inspect worker-created source directories in {$sourcesRoot}: {$exception->getMessage()}";
+        }
+
+        foreach ($sourceDirectories as $sourceDirectory) {
+            if ($this->files->isWritable($sourceDirectory)) {
+                continue;
+            }
+
+            return "Worker-created source directory is not writable by the PHP process: {$sourceDirectory}. "
+                .'Directory mode bits alone can be misleading when a named POSIX ACL overrides shared-group permissions.';
+        }
+
+        return null;
+    }
+
+    private function samePath(string $left, string $right): bool
+    {
+        return rtrim($left, DIRECTORY_SEPARATOR) === rtrim($right, DIRECTORY_SEPARATOR);
+    }
+
+    private function permissionFix(string $path): string
+    {
+        return "Inspect {$path} with getfacl. Repair or remove restrictive named/default POSIX ACL entries for the PHP-FPM user, "
+            .'then ensure PHP-FPM and the workers share PIPELINE_SHARED_STORAGE_GID and restore group rwX plus setgid permissions on shared directories.';
     }
 
     private function webUserError(string $path): ?string

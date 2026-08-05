@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Pipeline\Tasks;
 
+use App\Models\IngestionSource;
 use App\Models\PipelineJob;
 use App\Models\PipelineTask;
 use App\Services\Pipeline\Repositories\IngestionSourceRepository;
@@ -11,6 +12,7 @@ use App\Services\Pipeline\Repositories\PipelineTaskRepository;
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Contracts\Config\Repository as ConfigRepository;
 use Illuminate\Filesystem\Filesystem;
+use Psr\Log\LoggerInterface;
 
 #[Singleton]
 readonly class PipelineTaskStorageCleanupService
@@ -20,8 +22,8 @@ readonly class PipelineTaskStorageCleanupService
         private ConfigRepository $config,
         private PipelineTaskRepository $tasks,
         private IngestionSourceRepository $sources,
-    ) {
-    }
+        private LoggerInterface $logger,
+    ) {}
 
     /**
      * @return array{ok: bool, deleted: list<string>, skipped: list<array{path: string, reason: string}>, failed: list<array{path: string, message: string}>}
@@ -42,20 +44,38 @@ readonly class PipelineTaskStorageCleanupService
         }
 
         foreach ($this->sourceIds($task) as $sourceId) {
-            if (! $this->sourceWorkspaceCanBeDeleted($sourceId, (string) $task->task_id)) {
+            $source = $this->sources->findBySourceId($sourceId);
+            $sourceRoot = $this->sourceRoot($sourceId, $source);
+            if (! $this->sourceWorkspaceCanBeDeleted($sourceId, (string) $task->task_id, $source)) {
                 $result['skipped'][] = [
-                    'path' => $this->sourceRoot($sourceId),
+                    'path' => $sourceRoot ?? 'source:'.$sourceId,
                     'reason' => 'source is still referenced by another task or scheduled source',
                 ];
 
                 continue;
             }
 
-            $this->deleteDirectory($this->sourceRoot($sourceId), $result);
-            $this->sources->deleteIfOwnedByTask($sourceId, (string) $task->task_id);
+            if ($sourceRoot === null) {
+                $result['failed'][] = [
+                    'path' => 'source:'.$sourceId,
+                    'message' => 'persisted raw and Markdown paths do not share one source workspace',
+                ];
+
+                continue;
+            }
+
+            if ($this->deleteDirectory($sourceRoot, $result)) {
+                $this->sources->deleteIfOwnedByTask($sourceId, (string) $task->task_id);
+            }
         }
 
         $result['ok'] = $result['failed'] === [];
+        if (! $result['ok']) {
+            $this->logger->error('Pipeline task storage cleanup failed.', [
+                'task_id' => (string) $task->task_id,
+                'failed_paths' => array_column($result['failed'], 'path'),
+            ]);
+        }
 
         return $result;
     }
@@ -91,13 +111,15 @@ readonly class PipelineTaskStorageCleanupService
             ->all();
     }
 
-    private function sourceWorkspaceCanBeDeleted(string $sourceId, string $taskId): bool
-    {
+    private function sourceWorkspaceCanBeDeleted(
+        string $sourceId,
+        string $taskId,
+        ?IngestionSource $source,
+    ): bool {
         if ($this->tasks->sourceHasJobsOutsideTask($sourceId, $taskId)) {
             return false;
         }
 
-        $source = $this->sources->findBySourceId($sourceId);
         if ($source === null) {
             return true;
         }
@@ -108,13 +130,13 @@ readonly class PipelineTaskStorageCleanupService
     }
 
     /**
-     * @param array{ok: bool, deleted: list<string>, skipped: list<array{path: string, reason: string}>, failed: list<array{path: string, message: string}>} $result
+     * @param  array{ok: bool, deleted: list<string>, skipped: list<array{path: string, reason: string}>, failed: list<array{path: string, message: string}>}  $result
      */
-    private function deleteDirectory(string $path, array &$result): void
+    private function deleteDirectory(string $path, array &$result): bool
     {
         $path = rtrim($path, DIRECTORY_SEPARATOR);
         if ($path === '') {
-            return;
+            return false;
         }
 
         if (! $this->isSafeSharedPath($path)) {
@@ -123,7 +145,7 @@ readonly class PipelineTaskStorageCleanupService
                 'message' => 'refusing to delete a path outside configured shared storage',
             ];
 
-            return;
+            return false;
         }
 
         if (! $this->files->exists($path)) {
@@ -132,7 +154,7 @@ readonly class PipelineTaskStorageCleanupService
                 'reason' => 'missing',
             ];
 
-            return;
+            return true;
         }
 
         if (! $this->files->isDirectory($path)) {
@@ -141,7 +163,7 @@ readonly class PipelineTaskStorageCleanupService
                 'message' => 'expected a directory',
             ];
 
-            return;
+            return false;
         }
 
         try {
@@ -152,7 +174,7 @@ readonly class PipelineTaskStorageCleanupService
                 'message' => $exception->getMessage(),
             ];
 
-            return;
+            return false;
         }
 
         if (! $deleted || $this->files->exists($path)) {
@@ -161,10 +183,12 @@ readonly class PipelineTaskStorageCleanupService
                 'message' => 'directory could not be removed',
             ];
 
-            return;
+            return false;
         }
 
         $result['deleted'][] = $path;
+
+        return true;
     }
 
     private function taskRoot(PipelineTask $task): string
@@ -177,9 +201,27 @@ readonly class PipelineTaskStorageCleanupService
         return is_string($value) && trim($value) !== '';
     }
 
-    private function sourceRoot(string $sourceId): string
+    private function sourceRoot(string $sourceId, ?IngestionSource $source): ?string
     {
-        return $this->sharedRoot().DIRECTORY_SEPARATOR.'sources'.DIRECTORY_SEPARATOR.$sourceId;
+        if ($source === null) {
+            return $this->sharedRoot().DIRECTORY_SEPARATOR.'sources'.DIRECTORY_SEPARATOR.$sourceId;
+        }
+
+        $roots = [];
+        foreach ([$source->raw_storage_path, $source->markdown_storage_path] as $storagePath) {
+            if (! $this->filledString($storagePath)) {
+                continue;
+            }
+
+            $roots[] = dirname(rtrim((string) $storagePath, DIRECTORY_SEPARATOR));
+        }
+        $roots = array_values(array_unique($roots));
+
+        if ($roots === []) {
+            return $this->sharedRoot().DIRECTORY_SEPARATOR.'sources'.DIRECTORY_SEPARATOR.$sourceId;
+        }
+
+        return count($roots) === 1 ? $roots[0] : null;
     }
 
     private function sharedRoot(): string
@@ -190,36 +232,13 @@ readonly class PipelineTaskStorageCleanupService
     private function isSafeSharedPath(string $path): bool
     {
         $normalizedPath = $this->normalizePath($path);
-        if ($normalizedPath === null) {
+        $sharedRoot = $this->normalizePath($this->sharedRoot());
+        if ($normalizedPath === null || $sharedRoot === null) {
             return false;
         }
 
-        foreach ($this->sharedRoots() as $root) {
-            if ($normalizedPath !== $root && str_starts_with($normalizedPath, $root.DIRECTORY_SEPARATOR)) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    /**
-     * @return list<string>
-     */
-    private function sharedRoots(): array
-    {
-        return collect([
-            $this->config->get('temporal.storage.shared_root', '/shared'),
-            $this->config->get('config.shared_root', '/shared'),
-            '/shared',
-            '/app/shared',
-        ])
-            ->filter(fn (mixed $path): bool => is_scalar($path) && trim((string) $path) !== '')
-            ->map(fn (mixed $path): ?string => $this->normalizePath((string) $path))
-            ->filter(fn (?string $path): bool => $path !== null)
-            ->unique()
-            ->values()
-            ->all();
+        return $normalizedPath !== $sharedRoot
+            && str_starts_with($normalizedPath, $sharedRoot.DIRECTORY_SEPARATOR);
     }
 
     private function normalizePath(string $path): ?string

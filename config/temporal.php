@@ -17,6 +17,11 @@ return [
     'identity' => env('TEMPORAL_CLIENT_IDENTITY', 'hawki-rag-laravel'),
     'bridge_timeout' => env('HAWKI_RAG_BRIDGE_TIMEOUT', 30),
 
+    'callbacks' => [
+        'secret' => env('HAWKI_RAG_WORKER_CALLBACK_SECRET', ''),
+        'max_age_seconds' => (int) env('HAWKI_RAG_WORKER_CALLBACK_MAX_AGE_SECONDS', 300),
+    ],
+
     'workflow' => [
         'type' => env('TEMPORAL_INGEST_WORKFLOW_TYPE', 'IngestSourceWorkflow'),
         'execution_timeout' => env('TEMPORAL_WORKFLOW_EXECUTION_TIMEOUT', '86400 seconds'),
@@ -29,19 +34,20 @@ return [
         'scraper' => env('TEMPORAL_RAG_SCRAPER_TASK_QUEUE', 'rag-scraper-task-queue'),
         'converter' => env('TEMPORAL_RAG_CONVERTER_TASK_QUEUE', 'rag-converter-task-queue'),
         'ingestion' => env('TEMPORAL_RAG_INGESTION_TASK_QUEUE', 'rag-ingestion-task-queue'),
+        'indexer' => env(
+            'TEMPORAL_RAG_INDEXER_TASK_QUEUE',
+            env('TEMPORAL_RAG_INGESTION_TASK_QUEUE', 'rag-ingestion-task-queue'),
+        ),
     ],
 
     'storage' => [
-        'mode' => env('HAWKI_RAG_STORAGE_MODE', 'shared'),
         'shared_root' => env('HAWKI_RAG_TEMPORAL_SHARED_ROOT', '/shared'),
         'shared_storage_web_user' => env('PIPELINE_SHARED_STORAGE_WEB_USER', env('PHP_FPM_USER', 'www-data')),
-        'object_prefix' => env('HAWKI_RAG_OBJECT_STORAGE_PREFIX', 's3://hawki-rag'),
     ],
 
     'ingestion' => [
         'provider' => env('RAG_DEFAULT_PROVIDER', 'ollama'),
         'graph' => env('RAG_INGEST_GRAPH', false),
-        'bridge_timeout' => env('RAG_INGEST_BRIDGE_TIMEOUT', 3600),
     ],
 
     'refresh_cadences' => [
