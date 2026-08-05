@@ -20,9 +20,8 @@ readonly class IngestSourceWorkflowPayloadFactory
     public function __construct(
         private ConfigRepository $config,
         private SettingsService $settings,
-        private ClockInterface $clock = new Clock(),
-    ) {
-    }
+        private ClockInterface $clock = new Clock,
+    ) {}
 
     /**
      * @return array<string, mixed>
@@ -80,15 +79,17 @@ readonly class IngestSourceWorkflowPayloadFactory
                 'request' => $request,
             ],
             'storage' => [
-                'mode' => $this->storageMode(),
                 'shared_root' => $this->sharedRoot(),
-                'object_prefix' => $this->objectPrefix(),
             ],
             'task_queues' => [
                 'workflow' => $this->config->get('temporal.task_queues.workflow', 'rag-workflow-task-queue'),
                 'scraper' => $this->config->get('temporal.task_queues.scraper', 'rag-scraper-task-queue'),
                 'converter' => $this->config->get('temporal.task_queues.converter', 'rag-converter-task-queue'),
                 'ingestion' => $this->config->get('temporal.task_queues.ingestion', 'rag-ingestion-task-queue'),
+                'indexer' => $this->config->get(
+                    'temporal.task_queues.indexer',
+                    $this->config->get('temporal.task_queues.ingestion', 'rag-ingestion-task-queue'),
+                ),
             ],
             'ingestion' => [
                 'provider' => $modelRuntime['provider'],
@@ -96,10 +97,10 @@ readonly class IngestSourceWorkflowPayloadFactory
                 'embedding_model' => $embeddingModel,
                 'vision_model' => $modelRuntime['vision_model'],
                 'graph' => $this->graphEnabled($metadata),
-                'collection' => $metadata['dataset']['qdrant_collection'] ?? null,
-                'neo4j_namespace' => $metadata['dataset']['neo4j_namespace'] ?? null,
-                'chunk_chars' => (int) $this->config->get('config.chunk_size', env('CHUNK_SIZE', 1200)),
-                'chunk_overlap' => (int) $this->config->get('config.chunk_overlap_size', env('CHUNK_OVERLAP_SIZE', 250)),
+                'collection' => $datasetMetadata['qdrant_collection'] ?? null,
+                'neo4j_namespace' => $datasetMetadata['neo4j_namespace'] ?? null,
+                'chunk_chars' => (int) $this->config->get('config.chunk_size', 1200),
+                'chunk_overlap' => (int) $this->config->get('config.chunk_overlap_size', 250),
                 'batch_size' => (int) $this->config->get('config.ingest_batch_size', 64),
             ],
             'external_services' => $this->config->get('temporal.external_services', []),
@@ -126,9 +127,7 @@ readonly class IngestSourceWorkflowPayloadFactory
      */
     public function storagePaths(string $sourceId): array
     {
-        $base = $this->storageMode() === 'object'
-            ? rtrim($this->objectPrefix(), '/').'/sources/'.$sourceId
-            : rtrim($this->sharedRoot(), '/').'/sources/'.$sourceId;
+        $base = rtrim($this->sharedRoot(), '/').'/sources/'.$sourceId;
 
         return [
             'raw' => $base.'/raw/',
@@ -138,30 +137,30 @@ readonly class IngestSourceWorkflowPayloadFactory
 
     private function manifestPath(string $sourceId): string
     {
-        $base = $this->storageMode() === 'object'
-            ? rtrim($this->objectPrefix(), '/').'/sources/'.$sourceId
-            : rtrim($this->sharedRoot(), '/').'/sources/'.$sourceId;
+        $base = rtrim($this->sharedRoot(), '/').'/sources/'.$sourceId;
 
         return $base.'/ingest/manifest.json';
     }
 
-    private function storageMode(): string
-    {
-        return (string) $this->config->get('temporal.storage.mode', 'shared');
-    }
-
     private function sharedRoot(): string
     {
-        return (string) $this->config->get('temporal.storage.shared_root', '/shared');
-    }
+        $root = trim((string) $this->config->get('temporal.storage.shared_root', '/shared'));
+        $normalized = rtrim($root, DIRECTORY_SEPARATOR);
+        if (
+            $normalized === ''
+            || ! str_starts_with($normalized, DIRECTORY_SEPARATOR)
+            || preg_match('#(^|/)\.{1,2}(/|$)#', $normalized) === 1
+        ) {
+            throw new \LogicException(
+                'temporal.storage.shared_root must be a canonical absolute directory below the filesystem root.',
+            );
+        }
 
-    private function objectPrefix(): string
-    {
-        return (string) $this->config->get('temporal.storage.object_prefix', 's3://hawki-rag');
+        return $normalized;
     }
 
     /**
-     * @param array<string, mixed> $metadata
+     * @param  array<string, mixed>  $metadata
      */
     private function graphEnabled(array $metadata): bool
     {

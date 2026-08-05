@@ -20,6 +20,7 @@ use App\Http\Controllers\Health\HawkiRagSystemGateController;
 use App\Http\Controllers\Health\PipelineHealthController;
 use App\Http\Controllers\Health\RagHealthController;
 use App\Http\Controllers\Health\RagMonitorController;
+use App\Http\Controllers\Pipeline\PipelineWorkerEventController;
 use App\Http\Controllers\PipelineControlController;
 use App\Http\Controllers\PipelineRecoveryController;
 use App\Http\Controllers\PipelineStatusController;
@@ -27,6 +28,7 @@ use App\Http\Controllers\PipelineTaskController;
 use App\Http\Controllers\ScrapeController;
 use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\UploadedSourceDocumentController;
+use App\Http\Middleware\VerifyPipelineWorkerSignature;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Route;
 
@@ -54,6 +56,17 @@ Route::middleware(['browser-query-principal', 'throttle:hawki-api'])->group(func
     Route::post('/query', [HawkiRagProxyController::class, 'query'])
         ->middleware('throttle:hawki-rag-query');
 });
+
+/*
+|--------------------------------------------------------------------------
+| Internal Pipeline Worker Boundary
+|--------------------------------------------------------------------------
+| Workers authenticate with an exact-body HMAC instead of a browser or user
+| principal. Laravel validates and owns every resulting metadata mutation.
+*/
+Route::post('/internal/pipeline/worker-events', PipelineWorkerEventController::class)
+    ->middleware(['throttle:hawki-pipeline-worker-events', VerifyPipelineWorkerSignature::class])
+    ->defaults('openapi', false);
 
 /*
 |--------------------------------------------------------------------------

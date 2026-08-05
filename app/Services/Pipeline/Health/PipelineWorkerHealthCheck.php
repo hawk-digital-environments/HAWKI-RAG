@@ -14,8 +14,7 @@ readonly class PipelineWorkerHealthCheck
         private ConfigRepository $config,
         private HttpEndpointHealthCheck $httpChecks,
         private PipelineHealthResultFactory $results,
-    ) {
-    }
+    ) {}
 
     /**
      * @return array{name:string,status:string,detail:string,fix:string}
@@ -82,28 +81,24 @@ readonly class PipelineWorkerHealthCheck
      */
     public function ingestion(int $timeout): array
     {
-        $bridge = rtrim((string) $this->config->get('config.hawki_rag_bridge_url'), '/');
-        $taskQueue = (string) $this->config->get('temporal.task_queues.ingestion', 'rag-ingestion-task-queue');
+        $taskQueue = (string) $this->config->get(
+            'temporal.task_queues.indexer',
+            $this->config->get('temporal.task_queues.ingestion', 'rag-ingestion-task-queue'),
+        );
+        $legacyQueue = (string) $this->config->get(
+            'temporal.task_queues.ingestion',
+            'rag-ingestion-task-queue',
+        );
 
-        if ($bridge === '') {
-            return $this->results->failure(
-                'Ingestion adapter worker',
-                'HAWKI_RAG_BRIDGE_URL is empty.',
-                'Set HAWKI_RAG_BRIDGE_URL and start hawki-rag-temporal-ingestion-worker.',
-            );
-        }
-
-        return $this->httpChecks->successCheck(
-            'Ingestion adapter worker',
-            $bridge.'/health?runtime=false',
-            $timeout,
+        return $this->results->ok(
+            'Indexer worker',
             sprintf(
-                'Temporal activity task queue %s reads Markdown and writes through the RAG bridge. Provider: %s, graph: %s.',
+                'Temporal task queue %s indexes artifacts directly into Qdrant/Neo4j; legacy queue %s remains polled while executions drain. Provider: %s, graph: %s.',
                 $taskQueue,
+                $legacyQueue,
                 $this->config->get('temporal.ingestion.provider'),
                 filter_var($this->config->get('temporal.ingestion.graph'), FILTER_VALIDATE_BOOLEAN) ? 'true' : 'false',
             ),
-            'Start hawki_rag_bridge and hawki-rag-temporal-ingestion-worker, then verify HAWKI_RAG_BRIDGE_URL.',
         );
     }
 }

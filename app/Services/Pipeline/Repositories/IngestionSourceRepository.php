@@ -18,6 +18,14 @@ readonly class IngestionSourceRepository
             ->first();
     }
 
+    public function lockBySourceId(string $sourceId): ?IngestionSource
+    {
+        return IngestionSource::query()
+            ->where('source_id', $sourceId)
+            ->lockForUpdate()
+            ->first();
+    }
+
     public function deleteIfOwnedByTask(string $sourceId, string $taskId): bool
     {
         return (bool) IngestionSource::query()
@@ -27,7 +35,7 @@ readonly class IngestionSourceRepository
     }
 
     /**
-     * @param array<string, mixed> $attributes
+     * @param  array<string, mixed>  $attributes
      */
     public function upsertStarting(string $sourceId, array $attributes): IngestionSource
     {
@@ -92,5 +100,75 @@ readonly class IngestionSourceRepository
         ])->save();
 
         return $source->refresh();
+    }
+
+    /**
+     * @param  array{event_id:string,producer:string,stage:string,phase:string,status:string,occurred_at:string,workflow_id:string,run_id:string,attempt:int}  $workerEvent
+     */
+    public function markWorkerRunning(IngestionSource $source, array $workerEvent): IngestionSource
+    {
+        $source->forceFill([
+            'index_status' => IngestionSource::STATUS_RUNNING,
+            'metadata' => $this->metadataWithWorkerEvent($source, $workerEvent, clearError: true),
+        ])->save();
+
+        return $source->refresh();
+    }
+
+    /**
+     * @param  array{event_id:string,producer:string,stage:string,phase:string,status:string,occurred_at:string,workflow_id:string,run_id:string,attempt:int}  $workerEvent
+     */
+    public function markWorkerReady(
+        IngestionSource $source,
+        Carbon $readyAt,
+        ?string $documentVersion,
+        array $workerEvent,
+    ): IngestionSource {
+        $source->forceFill(array_filter([
+            'index_status' => IngestionSource::STATUS_READY,
+            'ready_at' => $readyAt,
+            'last_scraped_at' => $source->last_scraped_at ?? $readyAt,
+            'document_version' => $documentVersion,
+            'metadata' => $this->metadataWithWorkerEvent($source, $workerEvent, clearError: true),
+        ], static fn (mixed $value): bool => $value !== null))->save();
+
+        return $source->refresh();
+    }
+
+    /**
+     * @param  array{event_id:string,producer:string,stage:string,phase:string,status:string,occurred_at:string,workflow_id:string,run_id:string,attempt:int}  $workerEvent
+     */
+    public function markWorkerFailed(
+        IngestionSource $source,
+        string $message,
+        array $workerEvent,
+    ): IngestionSource {
+        $metadata = $this->metadataWithWorkerEvent($source, $workerEvent);
+        $metadata['error'] = $message;
+
+        $source->forceFill([
+            'index_status' => IngestionSource::STATUS_FAILED,
+            'metadata' => $metadata,
+        ])->save();
+
+        return $source->refresh();
+    }
+
+    /**
+     * @param  array{event_id:string,producer:string,stage:string,phase:string,status:string,occurred_at:string,workflow_id:string,run_id:string,attempt:int}  $workerEvent
+     * @return array<string, mixed>
+     */
+    private function metadataWithWorkerEvent(
+        IngestionSource $source,
+        array $workerEvent,
+        bool $clearError = false,
+    ): array {
+        $metadata = is_array($source->metadata) ? $source->metadata : [];
+        $metadata['worker_event'] = $workerEvent;
+        if ($clearError) {
+            unset($metadata['error']);
+        }
+
+        return $metadata;
     }
 }

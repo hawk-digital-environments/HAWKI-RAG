@@ -14,12 +14,12 @@ class IngestSourceWorkflowPayloadFactoryTest extends TestCase
 {
     public function test_it_builds_small_reference_payload_for_temporal_workflow(): void
     {
-        config()->set('temporal.storage.mode', 'shared');
         config()->set('temporal.storage.shared_root', '/shared');
         config()->set('temporal.task_queues.workflow', 'rag-workflow-task-queue');
         config()->set('temporal.task_queues.scraper', 'rag-scraper-task-queue');
         config()->set('temporal.task_queues.converter', 'rag-converter-task-queue');
         config()->set('temporal.task_queues.ingestion', 'rag-ingestion-task-queue');
+        config()->set('temporal.task_queues.indexer', 'rag-indexer-task-queue');
         config()->set('temporal.ingestion.provider', 'litellm');
         config()->set('temporal.ingestion.graph', true);
 
@@ -63,6 +63,7 @@ class IngestSourceWorkflowPayloadFactoryTest extends TestCase
         $this->assertSame('/shared/sources/'.$sourceId.'/raw/', $payload['raw_output_path']);
         $this->assertSame('/shared/sources/'.$sourceId.'/markdown/', $payload['markdown_output_path']);
         $this->assertSame('/shared/sources/'.$sourceId.'/ingest/manifest.json', $payload['ingest_manifest_path']);
+        $this->assertSame(['shared_root' => '/shared'], $payload['storage']);
         $this->assertSame('native', $payload['converter_mode']);
         $this->assertSame('daily', $payload['refresh']['cadence']);
         $this->assertSame('etag-a', $payload['refresh']['etag']);
@@ -70,10 +71,13 @@ class IngestSourceWorkflowPayloadFactoryTest extends TestCase
         $this->assertSame('rag-scraper-task-queue', $payload['task_queues']['scraper']);
         $this->assertSame('rag-converter-task-queue', $payload['task_queues']['converter']);
         $this->assertSame('rag-ingestion-task-queue', $payload['task_queues']['ingestion']);
+        $this->assertSame('rag-indexer-task-queue', $payload['task_queues']['indexer']);
         $this->assertSame('litellm', $payload['ingestion']['provider']);
         $this->assertSame('hawki-ollama-chat', $payload['ingestion']['graph_model']);
         $this->assertSame('hawki-ollama-embedding', $payload['ingestion']['embedding_model']);
         $this->assertSame('hawki-ollama-vision', $payload['ingestion']['vision_model']);
+        $this->assertSame('hawki_dataset_a', $payload['ingestion']['collection']);
+        $this->assertSame('hawki_dataset_a', $payload['ingestion']['neo4j_namespace']);
         $this->assertTrue($payload['ingestion']['graph']);
 
         $encoded = json_encode($payload, JSON_THROW_ON_ERROR);
@@ -84,7 +88,6 @@ class IngestSourceWorkflowPayloadFactoryTest extends TestCase
 
     public function test_it_includes_upload_handoff_and_request_graph_override(): void
     {
-        config()->set('temporal.storage.mode', 'shared');
         config()->set('temporal.storage.shared_root', '/shared');
         config()->set('temporal.ingestion.graph', true);
 
@@ -137,7 +140,6 @@ class IngestSourceWorkflowPayloadFactoryTest extends TestCase
 
     public function test_it_normalizes_legacy_assistant_document_id_into_canonical_workflow_metadata(): void
     {
-        config()->set('temporal.storage.mode', 'shared');
         config()->set('temporal.storage.shared_root', '/shared');
 
         $factory = app(IngestSourceWorkflowPayloadFactory::class);
@@ -179,7 +181,6 @@ class IngestSourceWorkflowPayloadFactoryTest extends TestCase
 
     public function test_it_includes_custom_converter_profile_path_without_secret_material(): void
     {
-        config()->set('temporal.storage.mode', 'shared');
         config()->set('temporal.storage.shared_root', '/shared');
 
         $factory = app(IngestSourceWorkflowPayloadFactory::class);
@@ -221,7 +222,6 @@ class IngestSourceWorkflowPayloadFactoryTest extends TestCase
 
     public function test_it_carries_scraper_request_metadata_for_temporal_scraper_payload(): void
     {
-        config()->set('temporal.storage.mode', 'shared');
         config()->set('temporal.storage.shared_root', '/shared');
 
         $factory = app(IngestSourceWorkflowPayloadFactory::class);
@@ -260,5 +260,15 @@ class IngestSourceWorkflowPayloadFactoryTest extends TestCase
         $this->assertSame('lubeck-1782475438791', $payload['metadata']['request']['metadata']['catalog_task_id']);
         $this->assertSame('/var/www/html/profiles/Lubeck.json', $payload['metadata']['request']['metadata']['site_profile_path']);
         $this->assertSame(25, $payload['metadata']['request']['metadata']['max_pages']);
+    }
+
+    public function test_it_rejects_a_filesystem_root_as_shared_storage(): void
+    {
+        config()->set('temporal.storage.shared_root', '/');
+
+        $this->expectException(\LogicException::class);
+        $this->expectExceptionMessage('must be a canonical absolute directory');
+
+        app(IngestSourceWorkflowPayloadFactory::class)->storagePaths('source-unsafe');
     }
 }

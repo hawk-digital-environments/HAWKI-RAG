@@ -73,4 +73,15 @@ class PipelineUploadStorageTest extends TestCase
             );
         }
     }
+
+    public function test_it_rejects_a_filesystem_root_before_storing_an_upload(): void
+    {
+        config()->set('temporal.storage.shared_root', '/');
+        $file = UploadedFile::fake()->createWithContent('unsafe.pdf', 'must not be moved');
+
+        $this->expectException(\LogicException::class);
+        $this->expectExceptionMessage('must be a canonical absolute directory');
+
+        app(PipelineUploadStorage::class)->store('task_unsafe_upload', $file, 'pdf');
+    }
 }

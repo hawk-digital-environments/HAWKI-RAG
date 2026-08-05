@@ -21,9 +21,8 @@ readonly class PipelineStageTransitionService
         private PipelineStageStateRepository $stageStates,
         private PipelineStageAttributeNormalizer $attributes,
         private PipelineStageRollupService $rollups,
-        private ClockInterface $clock = new Clock(),
-    ) {
-    }
+        private ClockInterface $clock = new Clock,
+    ) {}
 
     public function ensureJob(string $jobId, array $attributes = []): ?PipelineJob
     {
@@ -44,6 +43,8 @@ readonly class PipelineStageTransitionService
         return $this->update($jobId, $stage, array_merge($attributes, [
             'status' => $attributes['status'] ?? PipelineJob::STATUS_RUNNING,
             'started_at' => $attributes['started_at'] ?? $this->now(),
+            'completed_at' => null,
+            'failed_at' => null,
         ]));
     }
 
@@ -52,6 +53,7 @@ readonly class PipelineStageTransitionService
         return $this->update($jobId, $stage, array_merge($attributes, [
             'status' => PipelineJob::STATUS_COMPLETED,
             'completed_at' => $attributes['completed_at'] ?? $this->now(),
+            'failed_at' => null,
         ]));
     }
 
@@ -60,6 +62,7 @@ readonly class PipelineStageTransitionService
         return $this->update($jobId, $stage, array_merge($attributes, [
             'status' => PipelineJob::STATUS_SKIPPED,
             'completed_at' => $attributes['completed_at'] ?? $this->now(),
+            'failed_at' => null,
         ]));
     }
 

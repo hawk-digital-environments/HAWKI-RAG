@@ -816,7 +816,15 @@ async function deletePipelineTask(taskId, button = null) {
         });
         const data = await parseResponseJson(response);
         if (!response.ok || !data.success) {
-            throw new Error(data.message || `Pipeline task delete failed (${response.status})`);
+            const failures = Array.isArray(data?.storage_cleanup?.failed)
+                ? data.storage_cleanup.failed
+                : [];
+            const failureDetail = failures
+                .map((failure) => [failure?.path, failure?.message].filter(Boolean).join(': '))
+                .filter(Boolean)
+                .join('; ');
+            const message = data.message || `Pipeline task delete failed (${response.status})`;
+            throw new Error(failureDetail ? `${message} ${failureDetail}` : message);
         }
 
         pipelineTaskRuns = pipelineTaskRuns.filter((candidate) => candidate.task_id !== taskId);
