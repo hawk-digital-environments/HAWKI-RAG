@@ -4,14 +4,9 @@ from __future__ import annotations
 
 import logging
 import time
-from pathlib import Path
 from typing import Any
 
-from hawki_indexer_worker.indexing.summary import (
-    build_summary,
-    write_graph_preview,
-    write_ingest_summary,
-)
+from hawki_indexer_worker.indexing.summary import build_summary
 from hawki_indexer_worker.indexing.observability import pipeline_log
 
 
@@ -24,10 +19,10 @@ def build_success_ingest_response(
     collection: str,
     points_count: int,
     graph_preview: dict[str, Any] | None,
+    graph_failures: list[dict[str, Any]] | None = None,
     qdrant_ms: float | None,
     neo4j_ms: float | None,
     started_at: float,
-    public_dir: Path,
     job_id: str | None,
     operation_id: str | None,
     logger_obj: logging.Logger,
@@ -47,15 +42,6 @@ def build_success_ingest_response(
     )
     if bool(body.graph) and graph_preview:
         summary["graph_preview"] = graph_preview
-        preview_path = write_graph_preview(graph_preview, public_dir)
-        if preview_path:
-            summary["graph_preview_file"] = str(preview_path)
-
-    try:
-        summary_path = write_ingest_summary(summary, public_dir)
-        summary["summary_file"] = str(summary_path)
-    except Exception as exc:
-        summary["summary_file_error"] = str(exc)
 
     pipeline_log(
         logger_obj,
@@ -75,6 +61,8 @@ def build_success_ingest_response(
         "ok": True,
         "points": points_count,
         "summary": summary,
+        "graph_preview": graph_preview,
+        "graph_failures": list(graph_failures or []),
         "graph_only": bool(getattr(body, "graph_only", False)),
     }
 

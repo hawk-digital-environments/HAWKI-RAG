@@ -27,7 +27,7 @@ install_optional_dependency_stubs()
 
 
 class GraphFallbackCharacterizationTests(unittest.TestCase):
-    """Protect graph extraction, filtering, cleanup, and visualization behavior."""
+    """Protect graph extraction, filtering, cleanup, and persistence behavior."""
 
     def test_raganything_edge_parser_prefers_recent_edges_for_current_file(
         self,
@@ -359,92 +359,3 @@ class GraphFallbackCharacterizationTests(unittest.TestCase):
         self.assertEqual(result["ok"], True)
         self.assertEqual(result["triplets"], 2)
         self.assertIs(result["persisted"], False)
-
-    def test_graph_visualization_write_can_be_disabled_with_injected_settings(
-        self,
-    ) -> None:
-        from hawki_rag_stores.neo4j.visualization import write_graph_visualization
-        from hawki_rag_stores.neo4j.visualization_settings import (
-            GraphVisualizationSettings,
-        )
-
-        settings = GraphVisualizationSettings(
-            enabled=False,
-            uri="bolt://neo4j:7687",
-            user="neo4j",
-            password="password",
-            database=None,
-            limit=10,
-        )
-
-        with (
-            tempfile.TemporaryDirectory() as tmp,
-            patch(
-                "hawki_rag_stores.neo4j.visualization.Neo4jGraphVisualization"
-            ) as mocked_vis,
-        ):
-            result = write_graph_visualization(Path(tmp), settings=settings)
-            self.assertIsNone(result)
-            mocked_vis.assert_not_called()
-
-    def test_graph_visualization_writer_uses_injected_settings(self) -> None:
-        from hawki_rag_stores.neo4j.visualization import write_graph_visualization
-        from hawki_rag_stores.neo4j.visualization_settings import (
-            GraphVisualizationSettings,
-        )
-        from unittest.mock import MagicMock
-
-        snapshot_payload = {
-            "ok": True,
-            "generated_at": "2026-06-10T00:00:00+00:00",
-            "limit": 3,
-            "node_count": 1,
-            "relationship_count": 0,
-            "recent_doc_id": "toy-1",
-            "recent_relationship_count": 0,
-            "document_count": 0,
-            "nodes": [{"id": "a", "label": "A", "labels": []}],
-            "links": [],
-        }
-        fake_visualizer = SimpleNamespace(
-            snapshot=MagicMock(return_value=snapshot_payload),
-            close=MagicMock(),
-        )
-        settings = GraphVisualizationSettings(
-            enabled=True,
-            uri="bolt://neo4j:7687",
-            user="neo4j",
-            password="password",
-            database="neo4j_graph_db",
-            limit=7,
-        )
-
-        with (
-            tempfile.TemporaryDirectory() as tmp,
-            patch(
-                "hawki_rag_stores.neo4j.visualization.Neo4jGraphVisualization",
-                return_value=fake_visualizer,
-            ) as mocked_vis,
-        ):
-            out = write_graph_visualization(
-                Path(tmp),
-                database="db-from-arg",
-                settings=settings,
-                limit=3,
-                recent_doc_id="toy-1",
-            )
-
-            self.assertIsNotNone(out)
-            out_path = out
-            assert out_path is not None
-            self.assertTrue(out_path.exists())
-            self.assertEqual(fake_visualizer.snapshot.call_args.kwargs["limit"], 3)
-            self.assertIn("db-from-arg", mocked_vis.call_args.kwargs["database"])
-
-            written = json.loads(
-                (Path(tmp) / "neo4j_graph_visualization.json").read_text(
-                    encoding="utf-8"
-                )
-            )
-            self.assertEqual(written["ok"], True)
-            self.assertEqual(written["nodes"], snapshot_payload["nodes"])

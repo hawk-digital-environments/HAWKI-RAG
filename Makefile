@@ -114,7 +114,7 @@ UI_NODE_RUN = docker run --rm --entrypoint /usr/bin/env \
 .PHONY: help
 .PHONY: clean python-lock python-deps python-quality python-test python-integration provider-test system-test migration-test
 .PHONY: network pull-core build-app build-ui publish-ui
-.PHONY: migrate-core _migrate-core-before-start
+.PHONY: migrate-core
 .PHONY: _up-core up-core up-core-local up-core-server
 .PHONY: health test-services
 .PHONY: pull-models logs-core
@@ -213,6 +213,8 @@ publish-ui: build-ui ## Publish freshly built frontend assets into the app conta
 ##@ Database
 
 migrate-core: network ## Run Laravel migrations with startup retry handling.
+	@echo "Starting the Laravel app for database migrations..."
+	@$(COMPOSE_CMD) up -d postgres temporal hawki_rag_app
 	@echo "Running Laravel migrations..."
 	@attempt=1; \
 	while [ "$$attempt" -le 30 ]; do \
@@ -227,22 +229,6 @@ migrate-core: network ## Run Laravel migrations with startup retry handling.
 	done; \
 	echo "Laravel migrations failed after 30 attempts."; \
 	exit 1
-
-_migrate-core-before-start: network
-	@echo "Running Laravel migrations before writable services start..."
-	@attempt=1; \
-	while [ "$$attempt" -le 30 ]; do \
-		if $(COMPOSE_CMD) up --no-deps --force-recreate --abort-on-container-exit --exit-code-from hawki_rag_migrator hawki_rag_migrator; then \
-			echo "Laravel migrations are up to date."; \
-			exit 0; \
-		fi; \
-		echo "Migration attempt $$attempt failed; retrying in 2s..."; \
-		attempt=$$((attempt + 1)); \
-		sleep 2; \
-	done; \
-	echo "Laravel migrations failed after 30 attempts; writable services remain stopped."; \
-	exit 1
-
 # ==============================================================================
 # Stack startup profiles
 # ==============================================================================
@@ -259,8 +245,7 @@ _up-core: network
 	fi
 	@echo "Quiescing application writers before database migration..."
 	@$(COMPOSE_CMD) down --remove-orphans
-	@$(COMPOSE_CMD) up -d --wait postgres
-	@$(MAKE) --no-print-directory _migrate-core-before-start COMPOSE_FILE_LIST="$(COMPOSE_FILE_LIST)" COMPOSE_PROFILES="$(COMPOSE_PROFILES)" ENV_FILE="$(ENV_FILE)" COMPOSE_BIN="$(COMPOSE_BIN)"
+	@$(MAKE) --no-print-directory migrate-core COMPOSE_FILE_LIST="$(COMPOSE_FILE_LIST)" COMPOSE_PROFILES="$(COMPOSE_PROFILES)" ENV_FILE="$(ENV_FILE)" COMPOSE_BIN="$(COMPOSE_BIN)"
 	@echo "Launching the migrated stack..."
 	@$(COMPOSE_CMD) up -d --remove-orphans
 	@echo "Ensuring Ollama models are pulled..."

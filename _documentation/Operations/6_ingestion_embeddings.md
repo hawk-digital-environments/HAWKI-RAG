@@ -310,9 +310,9 @@ decisions, embedding, vector indexing, graph extraction, and completion.
 
 | Evidence | Default location or owner | What it answers |
 |---|---|---|
-| **Ingestion summary** | `/shared/public/ingest_summary.json` | How many documents, chunks, points, skips, replacements, and partial failures were observed? |
-| **Graph preview** | `/shared/public/ingest_graph_preview.json` | Which graph records were produced during the latest graph-enabled run? |
-| **Graph failure log** | `/shared/storage/logs/ingest_graph_failures.jsonl` | Which document-level graph extractions failed, and why? |
+| **Ingestion summary** | PostgreSQL `rag_ingestion_artifacts.summary` (JSONB) | How many documents, chunks, points, skips, replacements, and partial failures were observed? |
+| **Graph preview** | PostgreSQL `rag_ingestion_artifacts.graph_preview` (JSONB) | Which graph records were produced during the latest graph-enabled run? |
+| **Graph failures** | PostgreSQL `rag_graph_failures` (one row per document failure) | Which document-level graph extractions failed, and why? |
 | **Incremental state** | Dataset Qdrant payloads | Which stable source identity and content hash the indexer compares on the next run? |
 | **Vector evidence** | Dataset Qdrant collection | Which deterministic chunk points are currently searchable? |
 | **Graph evidence** | Dataset-scoped Neo4j namespace | Which normalized entities and relations are currently available? |
@@ -326,5 +326,10 @@ The authoritative system depends on the question:
 | What text and incremental content state are actually indexed? | **Qdrant** |
 | What graph facts actually exist? | **Neo4j** |
 
-The public artifact paths can be overridden by Compose settings, so use the
-configured paths when the deployment differs from the defaults.
+Laravel's `/api/rag/monitor` response remains compatible with the former file
+reader: `summary` and `graph_preview` still contain `path`, `updated_at`, and
+`data`, while `graph_failures` remains a list. The compatibility `path` now has
+a `postgresql://rag_ingestion_artifacts/...` value. Monitor records are pruned
+opportunistically after terminal artifact callbacks according to
+`HAWKI_RAG_MONITOR_RETENTION_DAYS`; deleting an artifact cascades to its
+individual failure rows.

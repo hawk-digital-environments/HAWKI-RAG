@@ -48,51 +48,16 @@ services:
       - hosting_network
       - default
     depends_on:
-      hawki_rag_migrator:
-        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       temporal:
         condition: service_started
-
-  # -------------------------------------------------
-  # One-shot shared-storage and Laravel database migrator
-  # -------------------------------------------------
-  hawki_rag_migrator:
-    <<: *service_env
-    build:
-      context: .
-      dockerfile: docker/laravel.Dockerfile
-      target: laravel-app
-      args:
-        - DOCKER_PROJECT_HOST
-        - DOCKER_PROJECT_PATH
-        - DOCKER_PROJECT_PROTOCOL
-    image: hawki-rag-app:local
-    container_name: hawki_rag_migrator
-    user: "0:0"
-    volumes:
-      - shared_storage:/shared
-      - ./storage:/var/www/html/storage
-    working_dir: /var/www/html
-    entrypoint:
-      - /bin/sh
-      - -ec
-    command:
-      - >-
-        mkdir -p /shared/sources /shared/logs /shared/public /shared/storage/logs;
-        chgrp -R "$${PIPELINE_SHARED_STORAGE_GID}" /shared;
-        chmod -R g+rwX /shared;
-        setfacl -R -P -m "u:$${PIPELINE_SHARED_STORAGE_UID}:rwX,m::rwX" /shared;
-        find /shared -type d -exec setfacl -m "d:u:$${PIPELINE_SHARED_STORAGE_UID}:rwx,d:g::rwx,d:m::rwx" {} +;
-        find /shared -type d -exec chmod g+s {} +;
-        exec php artisan migrate --force
-    depends_on:
-      postgres:
-        condition: service_healthy
-    restart: "no"
-    networks:
-      - default
+    healthcheck:
+      test: ["CMD", "test", "-f", "/tmp/hawki-rag-app-ready"]
+      interval: 5s
+      timeout: 2s
+      retries: 12
+      start_period: 10s
 
   # -------------------------------------------------
   # PostgreSQL for Laravel metadata and Temporal persistence
@@ -174,6 +139,11 @@ services:
     <<: *service_env
     image: neo4j:5.22
     container_name: hawki_rag_neo4j
+    # Neo4j converts every NEO4J_* variable into a server setting. Use a
+    # filtered adapter file so client variables such as NEO4J_HTTP_URL and
+    # NEO4J_URI are not interpreted as invalid Neo4j configuration keys.
+    env_file:
+      - docker/env/neo4j.env
     volumes:
       - neo4j_data:/data
     restart: unless-stopped
@@ -268,12 +238,10 @@ services:
     group_add:
       - "${PGID}"
     depends_on:
-      hawki_rag_migrator:
-        condition: service_completed_successfully
       temporal:
         condition: service_started
       hawki_rag_app:
-        condition: service_started
+        condition: service_healthy
     restart: unless-stopped
     networks:
       - default
@@ -293,12 +261,10 @@ services:
     group_add:
       - "${PGID}"
     depends_on:
-      hawki_rag_migrator:
-        condition: service_completed_successfully
       temporal:
         condition: service_started
       hawki_rag_app:
-        condition: service_started
+        condition: service_healthy
     restart: unless-stopped
     networks:
       - default
@@ -320,12 +286,10 @@ services:
     group_add:
       - "${PGID}"
     depends_on:
-      hawki_rag_migrator:
-        condition: service_completed_successfully
       temporal:
         condition: service_started
       hawki_rag_app:
-        condition: service_started
+        condition: service_healthy
       qdrant:
         condition: service_started
       hawki_rag_neo4j:

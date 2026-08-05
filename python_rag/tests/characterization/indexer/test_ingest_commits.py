@@ -2,14 +2,11 @@
 
 from __future__ import annotations
 
-import json
 import logging
 import tempfile
 import time
 import unittest
-from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
 
 
 class IngestCharacterizationTests(unittest.TestCase):
@@ -173,7 +170,6 @@ class IngestCharacterizationTests(unittest.TestCase):
             graph_doc_timeout_s=0.0,
             graph_doc_max_chars=0,
             graph_doc_max_chunks=0,
-            graph_failure_log="",
         )
 
         def graph_factory(
@@ -187,13 +183,7 @@ class IngestCharacterizationTests(unittest.TestCase):
             calls["neo4j_namespace"] = neo4j_namespace
             return graph
 
-        with (
-            tempfile.TemporaryDirectory() as tmp,
-            patch(
-                "hawki_indexer_worker.indexing.graph_prepare.write_graph_visualization",
-                return_value=None,
-            ),
-        ):
+        with tempfile.TemporaryDirectory():
             result = commit_graph_triplets(
                 body=SimpleNamespace(
                     graph_engine="raganything",
@@ -206,7 +196,6 @@ class IngestCharacterizationTests(unittest.TestCase):
                 rag_service=FakeRAGService(),
                 provider=provider,
                 graph_factory=graph_factory,
-                public_dir=Path(tmp),
                 job_id="job-toy",
                 operation_id="operation-toy",
                 graph_debug=False,
@@ -252,28 +241,21 @@ class IngestCharacterizationTests(unittest.TestCase):
             "per_doc": {"toy-doc": {"chunks": 1, "triplets": 1}},
         }
 
-        with tempfile.TemporaryDirectory() as tmp:
-            result = build_success_ingest_response(
-                body=SimpleNamespace(graph=True, graph_only=False),
-                doc_stats=doc_stats,
-                total_chunks=1,
-                batch_size=64,
-                collection="toy_docs",
-                points_count=3,
-                graph_preview=graph_preview,
-                qdrant_ms=12.5,
-                neo4j_ms=4.5,
-                started_at=time.perf_counter(),
-                public_dir=Path(tmp),
-                job_id="job-toy",
-                operation_id="operation-toy",
-                logger_obj=logging.getLogger("test_finalize_helper"),
-            )
-
-            summary_file = Path(result["summary"]["summary_file"])
-            preview_file = Path(result["summary"]["graph_preview_file"])
-            persisted_summary = json.loads(summary_file.read_text(encoding="utf-8"))
-            persisted_preview = json.loads(preview_file.read_text(encoding="utf-8"))
+        result = build_success_ingest_response(
+            body=SimpleNamespace(graph=True, graph_only=False),
+            doc_stats=doc_stats,
+            total_chunks=1,
+            batch_size=64,
+            collection="toy_docs",
+            points_count=3,
+            graph_preview=graph_preview,
+            qdrant_ms=12.5,
+            neo4j_ms=4.5,
+            started_at=time.perf_counter(),
+            job_id="job-toy",
+            operation_id="operation-toy",
+            logger_obj=logging.getLogger("test_finalize_helper"),
+        )
 
         self.assertTrue(result["ok"])
         self.assertEqual(result["points"], 3)
@@ -282,5 +264,6 @@ class IngestCharacterizationTests(unittest.TestCase):
         self.assertEqual(result["summary"]["qdrant_preview"]["elapsed_ms"], 12.5)
         self.assertEqual(result["summary"]["graph"]["elapsed_ms"], 4.5)
         self.assertEqual(result["summary"]["graph_preview"]["total_triplets"], 1)
-        self.assertEqual(persisted_summary["planned_points"], 1)
-        self.assertEqual(persisted_preview["total_triplets"], 1)
+        self.assertEqual(result["graph_preview"]["total_triplets"], 1)
+        self.assertNotIn("summary_file", result["summary"])
+        self.assertNotIn("graph_preview_file", result["summary"])

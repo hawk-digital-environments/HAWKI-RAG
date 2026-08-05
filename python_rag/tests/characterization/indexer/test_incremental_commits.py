@@ -135,7 +135,6 @@ class IncrementalIngestTests(unittest.TestCase):
             graph_doc_timeout_s=0.0,
             graph_doc_max_chars=0,
             graph_doc_max_chunks=0,
-            graph_failure_log="",
         )
 
         with patch(

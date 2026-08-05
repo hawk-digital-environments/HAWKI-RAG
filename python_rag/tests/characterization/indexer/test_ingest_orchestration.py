@@ -5,7 +5,6 @@ from __future__ import annotations
 import os
 import tempfile
 import unittest
-from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -90,7 +89,6 @@ class IngestCharacterizationTests(unittest.TestCase):
             graph_doc_timeout_s=0.0,
             graph_doc_max_chars=0,
             graph_doc_max_chunks=0,
-            graph_failure_log="",
         )
 
         def graph_factory(database: str | None = None) -> FakeGraph:
@@ -101,18 +99,11 @@ class IngestCharacterizationTests(unittest.TestCase):
             calls["providers"].append(name)
             return SimpleNamespace(embed_model="embed", rag_model="rag")
 
-        with (
-            tempfile.TemporaryDirectory() as tmp,
-            patch(
-                "hawki_indexer_worker.indexing.graph_prepare.write_graph_visualization",
-                return_value=None,
-            ),
-        ):
+        with tempfile.TemporaryDirectory():
             result = ingest_documents(
                 body,
                 rag_service=FakeRAGService(),
                 get_provider=get_provider,
-                public_dir=Path(tmp),
                 idempotency_key="operation-toy",
                 dependencies=IngestWorkflowDependencies(
                     graph_settings_loader=lambda: settings,
@@ -165,7 +156,6 @@ class IngestCharacterizationTests(unittest.TestCase):
         self.assertRegex(points[0]["id"], r"^[0-9a-f-]{36}$")
 
     def test_graph_ingest_settings_load_from_env(self) -> None:
-        from hawki_indexer_worker.indexing.graph_prepare import graph_failure_log_path
         from hawki_indexer_worker.indexing.graph_settings import (
             load_graph_ingest_settings,
         )
@@ -178,16 +168,10 @@ class IngestCharacterizationTests(unittest.TestCase):
                 "GRAPH_DOC_TIMEOUT": "12",
                 "GRAPH_DOC_MAX_CHARS": "777",
                 "GRAPH_DOC_MAX_CHUNKS": "5",
-                "GRAPH_FAILURE_LOG": "/tmp/custom_graph_failures.log",
             },
             clear=False,
         ):
             settings = load_graph_ingest_settings()
-            self.assertEqual(
-                str(graph_failure_log_path(Path(tempfile.gettempdir()))),
-                "/tmp/custom_graph_failures.log",
-            )
-
         self.assertTrue(settings.graph_debug)
         self.assertTrue(settings.graph_perf_log)
         self.assertEqual(settings.graph_doc_timeout_s, 12.0)

@@ -377,6 +377,96 @@ final class PostgresMigrationUpgradeTest extends TestCase
         });
     }
 
+    public function test_rag_monitor_artifact_migration_uses_jsonb_and_cascades_failure_rows(): void
+    {
+        $this->withIsolatedPostgresSchema(function (): void {
+            $this->runMigration('2026_05_29_010000_create_pipeline_state_tables.php');
+            $this->runMigration('2026_08_03_000000_create_pipeline_worker_events_table.php');
+            $this->runMigration('2026_08_05_000000_create_rag_monitor_artifact_tables.php');
+
+            $this->assertTrue(Schema::hasTable('rag_ingestion_artifacts'));
+            $this->assertTrue(Schema::hasTable('rag_graph_failures'));
+
+            foreach ([
+                ['rag_ingestion_artifacts', 'summary'],
+                ['rag_ingestion_artifacts', 'graph_preview'],
+                ['rag_graph_failures', 'context'],
+            ] as [$table, $column]) {
+                $type = DB::scalar(
+                    'SELECT data_type FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = ? AND column_name = ?',
+                    [$table, $column],
+                );
+                $this->assertSame('jsonb', $type, "Expected {$table}.{$column} to use JSONB.");
+            }
+
+            $jobId = DB::table('pipeline_jobs')->insertGetId([
+                'job_id' => 'monitor-migration-job',
+                'status' => 'running',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+            $eventId = DB::table('pipeline_worker_events')->insertGetId([
+                'pipeline_job_id' => $jobId,
+                'event_id' => 'evt_monitor_migration',
+                'job_id' => 'monitor-migration-job',
+                'task_id' => 'monitor-migration-task',
+                'source_id' => 'monitor-migration-source',
+                'workflow_id' => 'monitor-migration-workflow',
+                'run_id' => 'monitor-migration-run',
+                'activity_id' => 'mark_source_ready',
+                'attempt' => 1,
+                'event_type' => 'pipeline.stage.status',
+                'producer' => 'indexer',
+                'stage' => 'ingest',
+                'phase' => 'mark_source_ready',
+                'status' => 'completed',
+                'payload_hash' => str_repeat('a', 64),
+                'payload' => '{}',
+                'occurred_at' => now(),
+                'processed_at' => now(),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+            $artifactId = DB::table('rag_ingestion_artifacts')->insertGetId([
+                'pipeline_job_id' => $jobId,
+                'pipeline_worker_event_id' => $eventId,
+                'job_id' => 'monitor-migration-job',
+                'task_id' => 'monitor-migration-task',
+                'source_id' => 'monitor-migration-source',
+                'dataset_id' => 'monitor-migration-dataset',
+                'workflow_id' => 'monitor-migration-workflow',
+                'run_id' => 'monitor-migration-run',
+                'summary' => json_encode(['documents' => ['processed_docs' => 1]], JSON_THROW_ON_ERROR),
+                'graph_preview' => json_encode(['total_triplets' => 2], JSON_THROW_ON_ERROR),
+                'occurred_at' => now(),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+            DB::table('rag_graph_failures')->insert([
+                'rag_ingestion_artifact_id' => $artifactId,
+                'job_id' => 'monitor-migration-job',
+                'source_id' => 'monitor-migration-source',
+                'dataset_id' => 'monitor-migration-dataset',
+                'document_id' => 'monitor-migration-document',
+                'error_code' => 'graph_extraction_failed',
+                'message' => 'Synthetic migration failure.',
+                'context' => json_encode(['chunks' => 1], JSON_THROW_ON_ERROR),
+                'occurred_at' => now(),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+            $this->assertSame(
+                '1',
+                DB::scalar("SELECT summary->'documents'->>'processed_docs' FROM rag_ingestion_artifacts WHERE id = ?", [$artifactId]),
+            );
+            $this->assertDatabaseCount('rag_graph_failures', 1);
+
+            DB::table('rag_ingestion_artifacts')->where('id', $artifactId)->delete();
+            $this->assertDatabaseCount('rag_graph_failures', 0);
+        });
+    }
+
     private function createLegacyAssistantTables(): void
     {
         Schema::create('assistant_documents', function (Blueprint $table): void {

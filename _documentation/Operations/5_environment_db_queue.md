@@ -153,6 +153,7 @@ introducing Redis or another queue service for the default deployment.
 | Sessions | `SESSION_DRIVER` | `database` | Stores browser sessions in PostgreSQL |
 | Session database | `SESSION_CONNECTION` | `pgsql` | Uses the PostgreSQL connection |
 | Idle session lifetime | `SESSION_LIFETIME` | `120` | Minutes before an inactive session expires |
+| RAG monitor retention | `HAWKI_RAG_MONITOR_RETENTION_DAYS` | `30` | Days to retain ingestion summaries, graph previews, and graph-failure rows; values below `1` disable automatic pruning |
 
 :::note Laravel queues and Temporal task queues are different
 
@@ -164,9 +165,11 @@ use Laravel's `jobs` table.
 
 :::tip Database initialization is automatic
 
-Supported `make up-core*` commands wait for PostgreSQL and run Laravel
-migrations before writable services start. Use `make migrate-core` only when
-you intentionally need to rerun migrations on an existing stack.
+Supported `make up-core*` commands start PostgreSQL and the Laravel app, then
+run migrations inside the app container before writable services start. The
+same app startup also initializes shared-storage permissions, so no dedicated
+migration container is created. Use `make migrate-core` only when you
+intentionally need to rerun migrations on an existing stack.
 
 Before deploying a database upgrade, `make migration-test` runs the migration
 scenarios against an isolated temporary schema in the active PostgreSQL stack.
@@ -275,9 +278,9 @@ flowchart LR
 
 | Variable | Default | Increase when |
 |---|---|---|
-| `TEMPORAL_WORKFLOW_EXECUTION_TIMEOUT` | `172800 seconds` | A workflow may need more than 48 hours across retries |
-| `TEMPORAL_WORKFLOW_RUN_TIMEOUT` | `86400 seconds` | One run may legitimately exceed 24 hours |
-| `TEMPORAL_WORKFLOW_TASK_TIMEOUT` | `30 seconds` | Workflow task processing itself is consistently timing out |
+| `TEMPORAL_WORKFLOW_EXECUTION_TIMEOUT` | `172800` | A workflow may need more than 48 hours across retries; value is seconds |
+| `TEMPORAL_WORKFLOW_RUN_TIMEOUT` | `86400` | One run may legitimately exceed 24 hours; value is seconds |
+| `TEMPORAL_WORKFLOW_TASK_TIMEOUT` | `30` | Workflow task processing itself is consistently timing out; value is seconds |
 | `TEMPORAL_RAG_HTTP_TIMEOUT_SECONDS` | `1800` | A crawler or converter request takes longer than 30 minutes |
 | `TEMPORAL_RAG_HTTP_RETRY_ATTEMPTS` | `3` | The external service has transient request failures |
 | `TEMPORAL_RAG_EXTERNAL_POLL_INTERVAL_SECONDS` | `5` | Status checks should be less frequent |
@@ -292,11 +295,17 @@ timeouts and retries are part of the workflow contract rather than an HTTP
 
 Scraper, converter, and indexer workers report typed stage status, counters,
 artifact references, manifests, and errors to Laravel's internal callback API.
+The terminal indexer event also carries its ingestion summary, optional graph
+preview, and document-level graph failures. Laravel stores the summary and
+preview as PostgreSQL JSONB and stores every graph failure as an individual
+row. Python receives no database credentials and performs no application-table
+writes.
 Laravel verifies the HMAC over the exact request body and timestamp, rejects
 expired events, and records stable event IDs idempotently. A valid duplicate is
 acknowledged without applying its metadata transition twice. Laravel applies
-accepted transitions through its repository layer. This is the only path by
-which Python changes Laravel-owned pipeline metadata.
+accepted transitions and monitor artifacts through its repository layer in one
+database transaction. This is the only path by which Python changes
+Laravel-owned pipeline data.
 
 | Variable | Default | Operator guidance |
 |---|---|---|

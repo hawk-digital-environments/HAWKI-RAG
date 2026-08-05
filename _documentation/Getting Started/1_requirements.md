@@ -28,10 +28,11 @@ the host.
 
 The workflow, scraper, converter, and indexer workers do not listen on inbound
 ports. Together with the bridge and reranker, they form the six Python
-production service roles. The shared-storage initialization container is a
-one-shot utility, not a seventh Python service. Workers connect to Temporal and
-their owned dependencies through Docker; the indexer performs indexing directly
-in-process and does not call an ingestion endpoint on the bridge.
+production service roles. The Laravel app initializes shared storage during its
+own startup; no separate initialization or migration container is created.
+Workers connect to Temporal and their owned dependencies through Docker; the
+indexer performs indexing directly in-process and does not call an ingestion
+endpoint on the bridge.
 
 - `make up-core-local` publishes the UI on `http://localhost:8080`, mounts the
   source tree into the containers, and enables Laravel development mode.

@@ -129,7 +129,6 @@ def test_status_callback_builds_indexer_event_and_redacts_secrets(monkeypatch) -
         callback_timeout_seconds=2.0,
         callback_retry_attempts=2,
         rag_working_dir=Path("/tmp/rag"),
-        public_dir=Path("/tmp/public"),
     )
     status_callback.report_status(
         settings,

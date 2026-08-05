@@ -4,89 +4,70 @@ declare(strict_types=1);
 
 namespace App\Services\Rag;
 
+use App\Models\RagGraphFailure;
+use App\Models\RagIngestionArtifact;
+use App\Services\Rag\Repositories\RagMonitorArtifactRepository;
 use Illuminate\Container\Attributes\Singleton;
-use Illuminate\Contracts\Config\Repository as ConfigRepository;
-use Illuminate\Filesystem\Filesystem;
 
 #[Singleton]
 readonly class RagMonitorArtifactReader
 {
     public function __construct(
-        private ConfigRepository $config,
-        private Filesystem $files,
-    ) {
-    }
+        private RagMonitorArtifactRepository $artifacts,
+    ) {}
 
-    /**
-     * @return array<string, mixed>|null
-     */
-    public function firstConfiguredJson(string $key): ?array
+    /** @return array{path:string,updated_at:string,data:array<string,mixed>}|null */
+    public function latestSummary(): ?array
     {
-        foreach ($this->configList($key) as $path) {
-            $data = $this->readJson($path);
-            if (is_array($data)) {
-                return [
-                    'path' => $path,
-                    'updated_at' => date(DATE_ATOM, $this->files->lastModified($path)),
-                    'data' => $data,
-                ];
-            }
-        }
-
-        return null;
+        return $this->envelope($this->artifacts->latest(), 'summary');
     }
 
-    /**
-     * @return list<array<string, mixed>>
-     */
+    /** @return array{path:string,updated_at:string,data:array<string,mixed>}|null */
+    public function latestGraphPreview(): ?array
+    {
+        return $this->envelope($this->artifacts->latestWithGraphPreview(), 'graph_preview');
+    }
+
+    /** @return list<array<string, mixed>> */
     public function graphFailures(int $limit): array
     {
-        return $this->tailJsonLines((string) $this->config->get('config.graph_failures_path'), $limit);
+        return $this->artifacts->latestFailures($limit)
+            ->map(fn (RagGraphFailure $failure): array => $this->failurePayload($failure))
+            ->values()
+            ->all();
     }
 
-    private function readJson(string $path): ?array
+    /**
+     * @param  'summary'|'graph_preview'  $column
+     * @return array{path:string,updated_at:string,data:array<string,mixed>}|null
+     */
+    private function envelope(?RagIngestionArtifact $artifact, string $column): ?array
     {
-        if ($path === '' || ! $this->files->isFile($path)) {
+        if ($artifact === null) {
             return null;
         }
 
-        $decoded = json_decode($this->files->get($path), true);
-
-        return is_array($decoded) ? $decoded : null;
-    }
-
-    /**
-     * @return list<array<string, mixed>>
-     */
-    private function tailJsonLines(string $path, int $limit): array
-    {
-        if ($path === '' || ! $this->files->isFile($path)) {
-            return [];
+        $data = $artifact->getAttribute($column);
+        if (! is_array($data)) {
+            return null;
         }
 
-        $lines = preg_split('/\R/', trim($this->files->get($path))) ?: [];
-        $items = [];
-        foreach (array_slice($lines, -1 * max(1, $limit)) as $line) {
-            if ($line === '') {
-                continue;
-            }
-
-            $decoded = json_decode($line, true);
-            $items[] = is_array($decoded) ? $decoded : ['message' => $line];
-        }
-
-        return $items;
+        return [
+            'path' => sprintf('postgresql://rag_ingestion_artifacts/%s/%s', $artifact->getKey(), $column),
+            'updated_at' => $artifact->occurred_at->toAtomString(),
+            'data' => $data,
+        ];
     }
 
-    /**
-     * @return list<string>
-     */
-    private function configList(string $key): array
+    /** @return array<string, mixed> */
+    private function failurePayload(RagGraphFailure $failure): array
     {
-        $value = $this->config->get($key, []);
+        $context = is_array($failure->context) ? $failure->context : [];
 
-        return is_array($value)
-            ? array_values(array_filter(array_map('strval', $value)))
-            : [];
+        return array_merge($context, [
+            'doc_id' => $failure->document_id,
+            'error' => $failure->message,
+            'timestamp' => $failure->occurred_at->toAtomString(),
+        ]);
     }
 }

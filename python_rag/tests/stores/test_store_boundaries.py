@@ -41,8 +41,6 @@ def test_expected_store_modules_exist() -> None:
         "neo4j/normalization.py",
         "neo4j/text.py",
         "neo4j/traversal.py",
-        "neo4j/visualization.py",
-        "neo4j/visualization_settings.py",
     }
     actual = {str(path.relative_to(SOURCE_ROOT)) for path in SOURCE_ROOT.rglob("*.py")}
     assert expected <= actual

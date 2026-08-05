@@ -32,7 +32,6 @@ class IndexerSettings:
     callback_timeout_seconds: float
     callback_retry_attempts: int
     rag_working_dir: Path
-    public_dir: Path
     legacy_task_queue: str = LEGACY_INGESTION_TASK_QUEUE
 
     @classmethod
@@ -60,9 +59,6 @@ class IndexerSettings:
                 "HAWKI_RAG_WORKER_CALLBACK_RETRY_ATTEMPTS", 3
             ),
             rag_working_dir=Path(_env("RAG_WORKING_DIR", "/app/rag_storage")),
-            public_dir=Path(
-                _env("HAWKI_RAG_PUBLIC_DIR", _env("RAG_PUBLIC_DIR", "/app/public"))
-            ),
             legacy_task_queue=legacy_queue,
         )
         if not settings.callback_secret:

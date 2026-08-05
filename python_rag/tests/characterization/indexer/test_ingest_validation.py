@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 import logging
-import tempfile
 import unittest
-from pathlib import Path
 from types import SimpleNamespace
 
 
@@ -147,7 +145,6 @@ class IngestCharacterizationTests(unittest.TestCase):
             body,
             rag_service=object(),
             get_provider=lambda name: object(),
-            public_dir=Path(tempfile.gettempdir()),
         )
 
         self.assertTrue(result["ok"])
@@ -210,33 +207,29 @@ class IngestCharacterizationTests(unittest.TestCase):
             graph_doc_timeout_s=0.0,
             graph_doc_max_chars=0,
             graph_doc_max_chunks=0,
-            graph_failure_log="",
         )
 
-        with tempfile.TemporaryDirectory() as tmp:
-            result = build_dry_run_ingest_response(
-                body=body,
-                doc_stats=doc_stats,
-                chunk_records=chunk_records,
-                total_chunks=len(chunk_records),
-                batch_size=64,
-                collection="toy_docs",
-                rag_service=FakeRAGService(),
-                get_provider=get_provider,
-                public_dir=Path(tmp),
-                job_id="job-toy",
-                operation_id="operation-toy",
-                graph_debug=False,
-                graph_settings=settings,
-                logger_obj=logging.getLogger("test_dry_run_helper"),
-            )
-
-            preview_file = Path(result["summary"]["graph_preview_file"])
-            self.assertTrue(preview_file.exists())
+        result = build_dry_run_ingest_response(
+            body=body,
+            doc_stats=doc_stats,
+            chunk_records=chunk_records,
+            total_chunks=len(chunk_records),
+            batch_size=64,
+            collection="toy_docs",
+            rag_service=FakeRAGService(),
+            get_provider=get_provider,
+            job_id="job-toy",
+            operation_id="operation-toy",
+            graph_debug=False,
+            graph_settings=settings,
+            logger_obj=logging.getLogger("test_dry_run_helper"),
+        )
 
         self.assertTrue(result["ok"])
         self.assertTrue(result["dry_run"])
         self.assertEqual(result["summary"]["graph_preview"]["total_triplets"], 1)
+        self.assertEqual(result["graph_preview"]["total_triplets"], 1)
+        self.assertNotIn("graph_preview_file", result["summary"])
         self.assertEqual(
             result["summary"]["graph_preview"]["per_doc"]["toy-doc"]["triplets"], 1
         )

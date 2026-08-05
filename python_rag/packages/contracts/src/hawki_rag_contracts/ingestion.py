@@ -14,6 +14,7 @@ from hawki_rag_contracts.temporal import (
     WORKFLOW_TASK_QUEUE,
 )
 from hawki_rag_contracts.artifacts import MarkdownArtifact, RawArtifact
+from hawki_rag_contracts.status import GraphFailure
 
 
 class IngestionStatus(StrEnum):
@@ -188,6 +189,9 @@ class IndexResult(BaseModel):
     unchanged_documents: int = Field(default=0, ge=0)
     document_version: str | None = Field(default=None, max_length=191)
     error_details: str | None = Field(default=None, max_length=2048)
+    ingestion_summary: dict[str, JsonValue] | None = None
+    graph_preview: dict[str, JsonValue] | None = None
+    graph_failures: list[GraphFailure] = Field(default_factory=list)
 
 
 class ReadyActivityInput(BaseModel):

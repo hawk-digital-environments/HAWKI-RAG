@@ -30,8 +30,8 @@ readonly class RagMonitorService
             'bridge' => $bridge,
             'runtime' => $runtime,
             'config' => $this->graphConfig->report($runtime),
-            'summary' => $this->artifacts->firstConfiguredJson('config.ingest_summary_paths'),
-            'graph_preview' => $this->artifacts->firstConfiguredJson('config.graph_preview_paths'),
+            'summary' => $this->artifacts->latestSummary(),
+            'graph_preview' => $this->artifacts->latestGraphPreview(),
             'latest_document_graph' => $this->documentGraph->report(),
             'graph_failures' => $this->artifacts->graphFailures(5),
         ];

@@ -6,7 +6,3 @@ services:
     networks: !override
       - default
       - hawki-network
-
-  hawki_rag_migrator:
-    volumes:
-      - ./:/var/www/html

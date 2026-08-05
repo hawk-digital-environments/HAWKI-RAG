@@ -84,6 +84,29 @@ class StatusError(BaseModel):
     retryable: bool = False
 
 
+class GraphFailure(BaseModel):
+    """One graph extraction failure persisted as an individual database row."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True, str_strip_whitespace=True)
+
+    doc_id: str | None = Field(default=None, max_length=191)
+    file_path: str | None = Field(default=None, max_length=4096)
+    chunks: int = Field(default=0, ge=0)
+    chars: int = Field(default=0, ge=0)
+    error: str = Field(min_length=1, max_length=2048)
+    timestamp: AwareDatetime
+
+
+class MonitorArtifacts(BaseModel):
+    """UI monitor data delivered to Laravel through the signed callback."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    summary: dict[str, JsonValue]
+    graph_preview: dict[str, JsonValue] | None = None
+    graph_failures: list[GraphFailure] = Field(default_factory=list)
+
+
 class PipelineWorkerEvent(BaseModel):
     """Versioned, idempotent worker callback payload."""
 
@@ -115,6 +138,7 @@ class PipelineWorkerEvent(BaseModel):
     warnings: list[str] = Field(default_factory=list)
     error_details: str | None = Field(default=None, max_length=2048)
     document_version: str | None = Field(default=None, max_length=191)
+    monitor_artifacts: MonitorArtifacts | None = None
 
     @model_validator(mode="after")
     def enforce_producer_and_activity_stage(self) -> "PipelineWorkerEvent":
@@ -127,10 +151,25 @@ class PipelineWorkerEvent(BaseModel):
             raise ValueError(
                 "activity_id does not belong to the reported pipeline stage"
             )
+        if self.monitor_artifacts is not None and (
+            self.producer is not WorkerProducer.INDEXER
+            or self.activity_id != MARK_SOURCE_READY_ACTIVITY
+            or self.status
+            not in {
+                PipelineStageStatus.COMPLETED,
+                PipelineStageStatus.FAILED,
+                PipelineStageStatus.SKIPPED,
+            }
+        ):
+            raise ValueError(
+                "monitor_artifacts require a terminal mark_source_ready indexer event"
+            )
         return self
 
 
 __all__ = [
+    "GraphFailure",
+    "MonitorArtifacts",
     "PipelineStage",
     "PipelineStageStatus",
     "PipelineWorkerEvent",

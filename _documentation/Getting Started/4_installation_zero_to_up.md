@@ -183,7 +183,7 @@ and `hosting_network` networks automatically.
 - Source-mounted development command: `make up-core-local`
 
 :::tip "Database setup is automatic"
-    The startup command creates the PostgreSQL container and persistent volume, waits for PostgreSQL to become healthy, and runs all Laravel migrations before writable services start. You do not need to create the database or run `php artisan migrate` yourself.
+    The startup command creates PostgreSQL and its persistent volume, starts the Laravel app, and runs all Laravel migrations inside that app container before writable services start. You do not need to create the database or run `php artisan migrate` yourself, and no separate migration container is left behind.
 :::
 
 ## Step 5 - Health check everything
