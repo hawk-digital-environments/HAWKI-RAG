@@ -20,14 +20,18 @@ the host.
 | Qdrant | Vector database HTTP API | `qdrant:6333` |
 | Neo4j HTTP | Graph database browser and HTTP API | `hawki_rag_neo4j:7474` |
 | Neo4j Bolt | Graph database driver connection | `hawki_rag_neo4j:7687` |
-| RAG bridge | FastAPI ingestion and retrieval API | `hawki_rag_bridge:8000` |
+| RAG bridge | Read-only query, graph-read, config/health, and Temporal-control API | `hawki_rag_bridge:8000` |
 | Reranker | Local reranking API | `hawki_rag_rerank:8000` |
 | Ollama | Local model API | `hawki_ollama:11434` |
 | LiteLLM | Optional OpenAI-compatible gateway | `litellm:4000` |
 | External crawler | Crawl API and task UI; started outside this Compose stack | `crawl4ai-service:80` |
 
-The Temporal workers and shared-storage initialization container do not listen
-on inbound ports. They connect to the services above through Docker.
+The workflow, scraper, converter, and indexer workers do not listen on inbound
+ports. Together with the bridge and reranker, they form the six Python
+production service roles. The shared-storage initialization container is a
+one-shot utility, not a seventh Python service. Workers connect to Temporal and
+their owned dependencies through Docker; the indexer performs indexing directly
+in-process and does not call an ingestion endpoint on the bridge.
 
 - `make up-core-local` publishes the UI on `http://localhost:8080`, mounts the
   source tree into the containers, and enables Laravel development mode.
@@ -78,10 +82,13 @@ on inbound ports. They connect to the services above through Docker.
 
 
 ## Environment files
-- App/Laravel: copy `.env.example` → `.env`, fill secrets (DB, Temporal, external scraper/converter, keys).
+- App/Laravel: copy `.env.example` → `.env`, fill secrets (DB, the worker
+  callback HMAC, external scraper/converter, keys). Generate
+  `HAWKI_RAG_WORKER_CALLBACK_SECRET` with `openssl rand -hex 32`.
 
 ## Checklist before first run
 - Docker running and `docker ps` works.
 - Ports listed above are unused.
 - `.env` exists and is filled.
+- `HAWKI_RAG_WORKER_CALLBACK_SECRET` is non-empty.
 - If GPU: `nvidia-smi` returns successfully.

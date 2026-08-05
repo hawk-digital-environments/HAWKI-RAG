@@ -28,13 +28,13 @@ question: **where should a developer begin a code change?**
 | I need to change… | Start here | Follow the behavior into… | Primary tests |
 |---|---|---|---|
 | Query authorization or dataset scope | `routes/api.php`, `app/Http/Requests/Rag/`, `HawkiRagProxyController.php` | `app/Services/Authorization/` and `app/Services/Rag/` | `tests/Feature/Authorization/`, `tests/Feature/Query/` |
-| Retrieval, score merging, or reranking | `python_rag/api/http/routers/query.py` | `application/workflows/query_*.py`, then `infrastructure/vectorstore/`, `graph/`, or `rerank/` | `python_rag/tests/query/`, `python_rag/tests/reliability/` |
-| Pipeline creation, retry, or cancellation | `PipelineTaskController.php` and `PipelineControlController.php` | `app/Services/Pipeline/`, then `python_rag/temporal_rag/` | `tests/Feature/Pipeline/`, `python_rag/tests/temporal/` |
-| Chunking, incremental ingestion, or Qdrant commits | `python_rag/api/http/routers/ingest.py` | `application/workflows/ingest_logic.py` and `application/workflows/ingest/` | `python_rag/tests/ingest/`, `python_rag/tests/api/` |
-| Graph extraction or Neo4j behavior | `app/Http/Controllers/Graph/` or the Python ingest graph phase | `app/Services/Graph/`, `infrastructure/raganything/`, and `infrastructure/graph/` | `tests/Feature/Graph/`, `python_rag/tests/graph/` |
-| Model providers or model allowlists | `config/model_providers.php` and `python_rag/api/settings.py` | `app/Services/Settings/` and `python_rag/infrastructure/providers/` | `tests/Feature/Settings/`, `python_rag/tests/providers/` |
+| Retrieval, score merging, or reranking | `python_rag/services/hawki_bridge/src/hawki_bridge/http/routers/query.py` | `hawki_bridge/application/query/`, then `packages/stores/` or the reranker client | `python_rag/tests/bridge/`, `python_rag/tests/characterization/query/` |
+| Pipeline creation, retry, or cancellation | `PipelineTaskController.php` and `PipelineControlController.php` | `app/Services/Pipeline/`, then `services/hawki_workflow_worker/` | `tests/Feature/Pipeline/`, `python_rag/tests/workflow/` |
+| Chunking, incremental ingestion, or Qdrant commits | `services/hawki_indexer_worker/activities/index.py` | `hawki_indexer_worker/indexing/` and its narrow store adapters | `python_rag/tests/indexer/`, `python_rag/tests/characterization/indexer/` |
+| Graph extraction or Neo4j behavior | `app/Http/Controllers/Graph/` or the indexer graph phase | `app/Services/Graph/`, `hawki_indexer_worker/adapters/raganything/`, and `packages/stores/.../neo4j/` | `tests/Feature/Graph/`, `python_rag/tests/graph/` |
+| Model providers or model allowlists | `config/model_providers.php` and the owning service settings | `app/Services/Settings/`, `packages/model_providers/`, and indexer provider composition | `tests/Feature/Settings/`, `python_rag/tests/providers/` |
 | Browser UI or frontend assets | `routes/web.php` and `resources/js/svelte/` | `resources/views/`, `vite.config.js`, and `svelte.config.js` | `tests/Feature/Ui/` |
-| Containers, startup, or health wiring | `Makefile` and `docker-compose*.yml` | `Dockerfile`, `docker/laravel.Dockerfile`, and `docker/` | `tests/System/` plus `make health` and `make test-services` |
+| Containers, startup, or health wiring | `Makefile` and `docker-compose*.yml` | `python_rag/services/*/Dockerfile`, `docker/laravel.Dockerfile`, and `docker/` | `tests/System/` plus `make health` and `make test-services` |
 
 ## The dependency direction
 
@@ -78,16 +78,15 @@ RAWKI/
 ├── config/                 Laravel runtime configuration mapping
 ├── database/               Laravel database migrations
 ├── python_rag/
-│   ├── api/                FastAPI boundary and runtime assembly
-│   ├── application/        Query and ingestion use cases
-│   ├── domain/             Stable contracts and domain settings
-│   ├── infrastructure/     Qdrant, Neo4j, providers, graph, and reranking
-│   ├── temporal_rag/       Workflows, activities, clients, and workers
+│   ├── packages/           Seven narrow reusable uv packages
+│   ├── services/           Six independently built Python service roles
+│   ├── pyproject.toml      Root uv workspace configuration
+│   ├── uv.lock             Single Python dependency source of truth
 │   └── tests/              Python behavior and integration tests
 ├── tests/                  Laravel feature, unit, and system tests
 ├── docker/                 Laravel and service-specific container assets
 ├── docker-compose*.yml     Base and mode-specific Compose layers
-├── Dockerfile              Python bridge and reranker images
+├── python_rag/services/*/Dockerfile  Six service-owned Python role images
 └── Makefile                Supported build, startup, test, and lifecycle entrypoints
 ```
 
@@ -138,17 +137,15 @@ reranking, model-provider adapters, and Temporal execution.
 
 | Layer | Path | Put code here when… |
 |---|---|---|
-| **HTTP boundary** | `python_rag/api/http/` | Validating an API payload, handling request context, or exposing a route |
-| **Runtime assembly** | `python_rag/api/factory.py`, `runtime.py`, `settings.py` | Wiring providers, settings, startup checks, or application dependencies |
-| **Application** | `python_rag/application/` | Coordinating a query or ingestion use case without owning vendor transport details |
-| **Domain contracts** | `python_rag/domain/` | Defining a stable provider/store protocol used by application logic |
-| **Vector adapter** | `python_rag/infrastructure/vectorstore/` | Building Qdrant requests, interpreting responses, or implementing search strategies |
-| **Graph adapter** | `python_rag/infrastructure/graph/` | Scoping, transporting, normalizing, or visualizing Neo4j data |
-| **Graph extraction** | `python_rag/infrastructure/raganything/` | Integrating RAG-Anything/LightRAG extraction, caches, parsing, or fallbacks |
-| **Model providers** | `python_rag/infrastructure/providers/` | Implementing Ollama or LiteLLM chat/embedding behavior |
-| **Reranker** | `python_rag/infrastructure/rerank/` | Running or adapting the local reranker service |
-| **Durable execution** | `python_rag/temporal_rag/` | Changing workflow order, activity behavior, retries, storage handoff, or workers |
-| **Shared primitives** | `python_rag/common/` | Reusing a small framework-independent rule across several workflows |
+| **Read-only HTTP boundary** | `python_rag/services/hawki_bridge/src/hawki_bridge/http/` | Validating query/control payloads, handling request context, or exposing a bridge route |
+| **Bridge application** | `python_rag/services/hawki_bridge/src/hawki_bridge/application/` | Coordinating scoped retrieval, ranking, generation, and graph reads |
+| **Workflow worker** | `python_rag/services/hawki_workflow_worker/` | Changing deterministic Temporal workflow order, names, queues, or retries |
+| **Activity workers** | `python_rag/services/hawki_{scraper,converter,indexer}_worker/` | Owning scrape, conversion, or indexing business behavior |
+| **Graph extraction** | `python_rag/services/hawki_indexer_worker/src/hawki_indexer_worker/adapters/raganything/` | Integrating RAG-Anything/LightRAG extraction, caches, parsing, or fallbacks |
+| **Vector/graph stores** | `python_rag/packages/stores/src/hawki_rag_stores/` | Building typed Qdrant or Neo4j transport, request, response, and normalization behavior |
+| **Model providers** | `python_rag/packages/model_providers/` | Implementing Ollama or LiteLLM chat/embedding behavior |
+| **Reranker** | `python_rag/services/hawki_reranker/` | Hosting the standalone Cohere-compatible reranking API |
+| **Shared contracts/runtime** | `python_rag/packages/{contracts,artifact_store,worker_runtime,resilience,text_processing}/` | Reusing a narrow cross-service contract or framework-independent primitive |
 
 ### Follow one query
 
@@ -157,10 +154,10 @@ routes/api.php
 → HawkiRagProxyController
 → DatasetQueryAuthorizationService + RagProxyService
 → POST /query
-→ api/http/routers/query.py
-→ application/workflows/query_logic.py
+→ hawki_bridge/http/routers/query.py
+→ hawki_bridge/application/query/orchestration.py
 → query stages, ranking, and context assembly
-→ vector, graph, reranker, and provider adapters
+→ read-only store, reranker, and provider adapters
 ```
 
 ### Follow one ingestion
@@ -168,12 +165,11 @@ routes/api.php
 ```text
 Laravel Pipeline controllers
 → app/Services/Pipeline/
-→ FastAPI Temporal control route
-→ temporal_rag workflow and activity workers
-→ POST /ingest
-→ application/workflows/ingest_logic.py
+→ bridge Temporal-control route
+→ workflow worker → scraper worker → converter worker → indexer worker
+→ direct in-process hawki_indexer_worker/indexing/orchestration.py
 → chunking + incremental plan + vector commit + optional graph commit
-→ Qdrant and Neo4j adapters
+→ Qdrant and Neo4j store adapters + typed signed Laravel callback
 ```
 
 The exact ingestion commit semantics are documented in
@@ -184,18 +180,17 @@ The exact ingestion commit semantics are documented in
 | File | Owns |
 |---|---|
 | `docker/laravel.Dockerfile` | Node/Vite asset build and the PHP/Nginx Laravel runtime image |
-| `Dockerfile` | Separate Python bridge and local reranker image stages |
+| `python_rag/services/*/Dockerfile` | Six digest-pinned, independently built Python role images |
 | `docker-compose.yml` | Base services, volumes, internal environment, and optional profiles |
 | `docker-compose.ui.yml` | Published local Laravel UI port |
 | `docker-compose.local.yml` | Source-mounted development overrides |
 | `docker-compose-gpu-override.yml` | NVIDIA-specific Ollama and reranker configuration |
 | `composer.json` / `composer.lock` | Laravel/PHP dependencies |
 | `package.json` / `package-lock.json` | Frontend and root JavaScript build dependencies |
-| `python_rag/requirements.txt` | Direct production bridge dependencies shared by CPU and GPU resolution |
-| `python_rag/requirements.cpu.lock.txt` / `requirements.gpu.lock.txt` | Locked production bridge dependencies for CPU and CUDA images |
-| `python_rag/requirements-rerank.in` | Direct local reranker dependencies shared by CPU and GPU resolution |
-| `python_rag/requirements-rerank.cpu.lock.txt` / `requirements-rerank.gpu.lock.txt` | Locked local reranker dependencies for CPU and CUDA images |
-| `python_rag/requirements-test.txt` | Python test-only dependencies |
+| `python_rag/pyproject.toml` | uv workspace membership and cross-member resolution constraints |
+| `python_rag/packages/*/pyproject.toml` | Exact reusable-package dependencies and build backends |
+| `python_rag/services/*/pyproject.toml` | Exact service dependencies, entrypoints, and CPU/CUDA variants |
+| `python_rag/uv.lock` | The single locked dependency graph for all packages and services |
 
 ## Test map
 
@@ -206,9 +201,9 @@ The exact ingestion commit semantics are documented in
 | `tests/System/` | Container and cross-service expectations |
 | `python_rag/tests/api/` | FastAPI request/response contracts |
 | `python_rag/tests/query/` | Retrieval, ranking, scope, context, and generation behavior |
-| `python_rag/tests/ingest/` | Chunking, identity, incremental decisions, and commit behavior |
+| `python_rag/tests/indexer/` | Chunking, identity, incremental decisions, and commit behavior |
 | `python_rag/tests/graph/` | Graph extraction and dataset-scoped Neo4j writes |
-| `python_rag/tests/temporal/` | Workflow, activity, retry, and external-client behavior |
+| `python_rag/tests/workflow/`, `scraper/`, `converter/` | Workflow, activity, retry, and external-client behavior |
 | `python_rag/tests/providers/` | Provider and RAG-Anything runtime contracts |
 | `python_rag/tests/reliability/` | Idempotency, fallback, and partial-failure guarantees |
 | `python_rag/tests/integration/` | Tests that deliberately cross adapter boundaries |

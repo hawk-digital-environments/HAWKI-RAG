@@ -23,13 +23,14 @@ personal `.env` can contain passwords and API keys, so never commit it to Git.
 
 ### Change these values before the first start
 
-Only three values must be created for a normal local installation:
+Four values must be created for a normal local installation:
 
 | Variable | What it controls | What you should do |
 |---|---|---|
 | `APP_KEY` | Laravel encryption for sessions and protected application data | Generate it once and keep it private and stable. |
 | `DB_PASSWORD` | Authentication for the PostgreSQL database | Replace `change_me` with a unique password before PostgreSQL is initialized. |
 | `NEO4J_PASSWORD` | Authentication for the Neo4j graph database | Replace `change_me` with a different unique password before Neo4j is initialized. |
+| `HAWKI_RAG_WORKER_CALLBACK_SECRET` | HMAC signing between Python activity workers and Laravel | Generate one random secret and keep the same value for Laravel and all workers. |
 
 Generate a 32-byte Laravel key:
 
@@ -49,12 +50,19 @@ Generate each database password separately:
 openssl rand -hex 24
 ```
 
+Generate the worker callback secret separately:
+
+```bash
+openssl rand -hex 32
+```
+
 Your edited values should have this shape:
 
 ```env
 APP_KEY=base64:YOUR_GENERATED_APP_KEY
 DB_PASSWORD=YOUR_FIRST_GENERATED_PASSWORD
 NEO4J_PASSWORD=YOUR_SECOND_GENERATED_PASSWORD
+HAWKI_RAG_WORKER_CALLBACK_SECRET=YOUR_GENERATED_32_BYTE_HEX_SECRET
 ```
 
 :::warning Keep persistent credentials stable
@@ -75,7 +83,7 @@ use the provided Compose stack:
 |---|---|---|
 | `DB_HOST` | `postgres` | Laravel's PostgreSQL connection |
 | `TEMPORAL_ADDRESS` | `temporal:7233` | Workflow orchestration |
-| `HAWKI_RAG_BRIDGE_URL` | `http://hawki_rag_bridge:8000` | Ingestion and retrieval API |
+| `HAWKI_RAG_BRIDGE_URL` | `http://hawki_rag_bridge:8000` | Read-only retrieval and Temporal-control API |
 | `QDRANT_HTTP_URL` | `http://qdrant:6333` | Vector storage and search |
 | `NEO4J_HTTP_URL` | `http://hawki_rag_neo4j:7474` | Graph storage |
 | `OLLAMA_API_URL` | `http://hawki_ollama:11434/api` | Local embeddings and language models |
@@ -156,9 +164,8 @@ SESSION_SECURE_COOKIE=false
 For a real HTTPS deployment, set `APP_URL` to the public HAWKI-RAG address and
 set `SESSION_SECURE_COOKIE=true`. `MCP_BASE_URL` follows `APP_URL` by default.
 
-The supported Make targets control Laravel's runtime mode. You normally do not
-need to edit `APP_ENV`, `APP_DEBUG`, `HAWKI_RAG_APP_ENV`, or
-`HAWKI_RAG_APP_DEBUG`.
+Laravel's runtime mode comes directly from the selected dotenv file. Set
+`APP_ENV=production` and `APP_DEBUG=false` for a production deployment.
 
 ## Step 3 - Docker networks
 

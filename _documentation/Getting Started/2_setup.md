@@ -35,9 +35,11 @@ From the repository root:
 test -f .env || cp .env.example .env
 ```
 
-Open `.env` and set at least `APP_KEY`, `DB_PASSWORD`, and
-`NEO4J_PASSWORD`. Configure the external crawler and converter URLs before
-running website-ingestion jobs.
+Open `.env` and set at least `APP_KEY`, `DB_PASSWORD`, `NEO4J_PASSWORD`, and
+`HAWKI_RAG_WORKER_CALLBACK_SECRET`. Generate the callback secret with
+`openssl rand -hex 32` and paste the output into `.env`. Configure the external
+crawler and converter URLs before running website-ingestion jobs. Activity
+workers intentionally refuse to start with an empty callback secret.
 
 ### 3. Start the stack
 

@@ -15,8 +15,9 @@ replaced, and how to recover when graph enrichment is incomplete.
 
 The architecture guide already follows a website or upload through Laravel,
 Temporal, the crawler, the converter, and shared storage. This page begins when
-normalized Markdown reaches the FastAPI ingestion endpoint. Startup, monitoring,
-and maintenance commands remain in
+normalized Markdown reaches the indexer worker. There is no FastAPI ingestion
+endpoint: the worker invokes its indexing application directly in-process.
+Startup, monitoring, and maintenance commands remain in
 [Run HAWKI RAG](../Getting%20Started/2_setup.md).
 
 :::
@@ -24,10 +25,11 @@ and maintenance commands remain in
 ## The handoff into ingestion
 
 Temporal carries source references, storage paths, and configuration—not the
-Markdown body, chunks, or vectors—in workflow input. The ingestion activity
+Markdown body, chunks, or vectors—in workflow input. The indexer activity
 recursively discovers sorted `.md` and `.markdown` files under the source's
-shared-storage path, skips blank files, and sends the remaining documents to
-FastAPI in batches. A source with no usable Markdown fails before indexing.
+shared-storage path, skips blank files, and passes the remaining documents to
+the indexer-owned application service in batches. A source with no usable
+Markdown fails before indexing. The bridge is not involved in this handoff.
 
 :::warning Shared storage is the implemented read path
 
@@ -39,9 +41,9 @@ until an object-storage adapter is implemented.
 
 ## The ingestion commit pipeline
 
-An ingestion request is not one indivisible database transaction. Preparation,
-vector indexing, graph enrichment, and progress projection have distinct commit
-points.
+An indexing activity is not one indivisible database transaction. Preparation,
+vector indexing, graph enrichment, and Laravel status projection have distinct
+commit points.
 
 ```mermaid
 flowchart TD
@@ -52,12 +54,12 @@ flowchart TD
     Unchanged["Unchanged<br/>mark as seen"]
     Embed["Create one embedding<br/>per chunk"]
     VectorCheck{"Any embeddings<br/>succeeded?"}
-    Failed["Fail the ingestion request"]
+    Failed["Fail the indexer activity"]
     Qdrant["Replace or insert<br/>Qdrant points"]
     GraphSwitch{"Graph enrichment<br/>enabled?"}
     Extract["Extract and filter<br/>document facts"]
     Neo4j["Replace or insert<br/>Neo4j facts"]
-    Complete["Update ingestion registry<br/>write summary and status"]
+    Complete["Write summary<br/>send typed status callback"]
 
     Request --> Prepare --> Hash --> Compare
     Compare -- "same hash" --> Unchanged --> Complete
@@ -68,18 +70,19 @@ flowchart TD
     GraphSwitch -- "yes" --> Extract --> Neo4j --> Complete
 ```
 
-The request carries four contracts:
+The indexer input carries four contracts:
 
 | Contract | Required information | Why it matters |
 |---|---|---|
 | **Document** | Stable ID, text, and metadata payload | Connects every chunk and later refresh to the same source document. |
 | **Vector** | Qdrant collection, embedding provider/model, distance metric, and chunk settings | Keeps indexed vectors compatible with future query vectors. |
 | **Graph** | Dataset ID and Neo4j namespace when graph writes are enabled | Prevents extracted facts from crossing dataset boundaries. |
-| **Operation** | Request/job identity and an idempotency key | Correlates retries, writes, logs, and artifacts. The HTTP `Idempotency-Key` header takes precedence over a key in the request body. |
+| **Operation** | Workflow, run, activity, request/job identity, and a stable operation key | Correlates Temporal retries, deterministic writes, callbacks, logs, and artifacts without relying on an ingestion HTTP request. |
 
-The idempotency key is propagated to storage adapters, but the endpoint does
-not keep a cached-response ledger. Retry safety also depends on stable
-identities and deterministic upserts.
+The operation key is propagated to storage adapters. Retry safety depends on
+stable document and point identities plus deterministic upserts. Worker status
+events use their own stable event IDs; Laravel stores callback receipts so a
+duplicate event is accepted without applying the metadata transition twice.
 
 ## Stable identity and incremental ingestion
 
@@ -95,23 +98,25 @@ represents several files, the relative path participates in the identity. An
 upload keeps the source-scoped stable document ID created by the Temporal
 activity. The content hash is SHA-256 over the cleaned document text.
 
-The pipeline first checks the PostgreSQL `ingested_pages` registry and falls
-back to Qdrant metadata when necessary.
+The indexer checks the stable source identity and content hash stored in Qdrant
+payloads. This makes the indexed content and its incremental state one
+data-plane contract; Python does not read or write Laravel's PostgreSQL
+`ingested_pages` table.
 
-| Detected state | Vector action | Graph action | Registry action |
+| Detected state | Vector action | Graph action | Incremental state and metadata action |
 |---|---|---|---|
-| **New identity** | Embed and insert its chunks. | Extract and insert facts when enabled. | Record the completed identity and hash. |
-| **Same identity, same hash** | Skip embedding and Qdrant writes. | Skip graph extraction during ordinary ingestion. | Update the last-seen state. |
-| **Same identity, different hash** | Delete prior document points, then insert the new chunks. | Extract first, then replace facts for that document. | Store the new hash after the commit phases finish. |
-| **No longer submitted by the source** | No automatic action. | No automatic action. | The existing record remains until an explicit reconciliation or deletion. |
-| **Graph-only request** | Skip vector indexing and incremental filtering. | Re-extract and upsert facts for submitted documents. | Do not update the page registry. |
+| **New identity** | Embed and insert its chunks. | Extract and insert facts when enabled. | The new Qdrant payload stores identity and hash; Laravel receives the resulting counters/artifact metadata by callback. |
+| **Same identity, same hash** | Skip embedding and Qdrant writes. | Skip graph extraction during ordinary indexing. | Existing Qdrant payload remains authoritative; the callback reports the skip. |
+| **Same identity, different hash** | Delete prior document points, then insert the new chunks. | Extract first, then replace facts for that document. | The replacement Qdrant payload carries the new hash; the callback reports the changed document. |
+| **No longer submitted by the source** | No automatic action. | No automatic action. | Existing Qdrant points remain until explicit reconciliation or deletion. |
+| **Graph-only internal operation** | Skip vector indexing and incremental filtering. | Re-extract and upsert facts for submitted documents. | Do not alter Qdrant incremental state. |
 
 :::note Why an unchanged retry may not repair the graph
 
 Ordinary incremental ingestion returns early when the content hash is unchanged.
 If Qdrant is correct but Neo4j is incomplete, use the explicit graph repair or
 graph-only path with graph enrichment enabled; resubmitting the same ordinary
-ingestion request is expected to skip it.
+source workflow is expected to skip it.
 
 :::
 
@@ -145,16 +150,17 @@ differs.
 ### What “batch size” actually controls
 
 `INGEST_BATCH_SIZE` defaults to 64. The Temporal activity uses it to group
-Markdown files sent to FastAPI, and the bridge uses it for Qdrant upsert
-batches. The current embedding loop still calls the provider once per chunk;
-raising this value does not turn embedding into a provider-side batch request.
+Markdown artifacts passed to the in-process indexer, and the indexer uses it
+for Qdrant upsert batches. The current embedding loop still calls the provider
+once per chunk; raising this value does not turn embedding into a provider-side
+batch request.
 
 Embedding failures are isolated per chunk:
 
 - if some chunks fail, successful chunks are still written and the summary
   reports a partial embedding result;
 - a document for which every chunk fails is counted as skipped; and
-- if every prepared chunk in the request fails, the endpoint fails without
+- if every prepared chunk in the activity fails, the activity fails without
   performing the Qdrant upsert.
 
 ## Vector and graph commit boundaries
@@ -166,10 +172,11 @@ as the vector write.
 | Boundary | Current behavior | Operational consequence |
 |---|---|---|
 | **Changed Qdrant document** | Old points are deleted before new points are upserted. | A failed upsert can temporarily leave that document absent. Retry or re-ingest it. |
-| **Graph scope validation** | Conflicting document scope is rejected before vector writing. | Treat dataset ID and Neo4j namespace as trusted request fields, not document-controlled metadata. |
+| **Graph scope validation** | Conflicting document scope is rejected before vector writing. | Treat dataset ID and Neo4j namespace as trusted workflow fields, not document-controlled metadata. |
 | **Changed Neo4j document** | New facts are extracted first; old facts are then deleted before the new upsert. | Extraction failure preserves the old version, but a later write failure can leave a graph gap. |
 | **Per-document graph failure** | The failure is recorded and other documents continue. | Vectors can be current while graph facts are incomplete; repair the graph explicitly. |
-| **Status projection** | Registry and Laravel-facing metadata updates are separate PostgreSQL writes. | A status panel can lag behind successfully written data; correlate using the operation/job ID before replaying work. |
+| **Incremental state** | Stable identity and content hash are stored with the Qdrant content payload. | There is no Python-owned PostgreSQL page registry to reconcile. Inspect the Qdrant payload that actually participates in retrieval. |
+| **Status projection** | Workers send signed typed events; only Laravel writes its PostgreSQL metadata. | A failed or delayed callback can leave the UI behind successfully written data; correlate using the operation/job ID before replaying work. |
 
 Graph extraction groups chunks back into documents before calling the graph
 engine. By default, it considers at most the first 6 chunks and 6,000
@@ -179,12 +186,12 @@ also be supplied to the multimodal extractor.
 The graph adapter filters extracted triplets against the source text, normalizes
 them, and writes them under the trusted dataset scope. Both dataset ID and
 Neo4j namespace are required for canonical writes. A conflicting payload scope
-causes a client error before vectors are committed; a missing trusted scope
-disables the canonical graph write.
+causes an indexing validation error before vectors are committed; a missing
+trusted scope disables the canonical graph write.
 
 :::warning A ready result can still be partial
 
-Successful completion means the request reached its finalization path. It does
+Successful completion means the indexing activity reached its finalization path. It does
 not prove that every chunk embedded or that every document produced graph
 facts. Check the partial-failure counts and graph-failure evidence before
 treating the two stores as synchronized.
@@ -206,21 +213,24 @@ Start with the last completed boundary rather than restarting the whole stack.
 | Only some embedding chunks fail | Partial Qdrant write may exist | Inspect failed document/chunk identifiers and re-ingest the affected source. |
 | Qdrant fails while replacing a changed document | Old document points may already be deleted | Retry the same source with the same dataset scope. |
 | Graph failure is reported after vectors succeed | Qdrant is current; Neo4j may be partial | Repair with graph enrichment enabled; use graph-only mode when vectors must remain untouched. |
-| UI status appears stale but storage contains the new data | Data commit may be complete; metadata projection failed or lagged | Correlate the operation ID across the ingestion summary, worker logs, PostgreSQL, Qdrant, and Neo4j before replaying. |
+| UI status appears stale but storage contains the new data | Data commit may be complete; the signed callback failed or Laravel's projection lagged | Correlate the operation ID across the ingestion summary, worker logs, Laravel callback receipt/status tables, Qdrant, and Neo4j before replaying. |
 
-Temporal retries protect the stages before this endpoint as well. In
-particular, the scraper activity heartbeats the external crawler job ID so an
-activity retry can resume polling that job instead of submitting a duplicate
-crawl.
+Temporal retries protect every pipeline stage. In particular, the scraper
+activity heartbeats the external crawler job ID so an activity retry can resume
+polling that job instead of submitting a duplicate crawl.
 
 <details>
 <summary>How the retry layers differ</summary>
 
 Temporal currently retries each workflow activity up to five times with
-exponential backoff. The ingestion activity has a separate HTTP retry loop for
-calls to FastAPI. A manual retry after cancellation is different: Laravel
-starts a new workflow execution with a new workflow ID; it does not resume the
-cancelled execution.
+exponential backoff. Indexing retries execute the in-process indexer again; no
+bridge HTTP retry layer exists. Stable Qdrant identities make repeated writes
+safe, and callback delivery uses a separate bounded retry policy with an
+idempotent event ID. The terminal ready callback runs in the short
+`mark_source_ready` activity so retrying its delivery does not repeat expensive
+indexing. A manual retry after cancellation is different: Laravel starts a new
+workflow execution with a new workflow ID; it does not resume the cancelled
+execution.
 
 Because a vector commit can precede a hard graph failure, the new attempt may
 see an unchanged content hash and skip ordinary graph ingestion. Use the
@@ -257,14 +267,16 @@ as one persisted contract:
 This avoids mixing incompatible vectors or leaving a populated collection in a
 half-reindexed state.
 
-## Advanced request modes
+## Advanced indexer modes
 
 <details>
 <summary>Preview ingestion without writing canonical data</summary>
 
-Set `dry_run` to validate documents, normalize metadata, calculate chunks, and
-return planned point/batch statistics without writing Qdrant or canonical
-Neo4j data.
+The transport-neutral indexer application supports `dry_run` for tests and
+controlled maintenance tooling. It validates documents, normalizes metadata,
+calculates chunks, and returns planned point/batch statistics without writing
+Qdrant or canonical Neo4j data. The read-only bridge does not expose this as an
+HTTP ingestion route.
 
 When graph mode and `dry_include_graph` are both enabled, the preview also calls
 the configured model to extract graph facts and writes preview/failure
@@ -276,9 +288,10 @@ zero-cost or provider-free check.
 <details>
 <summary>Use graph-only mode for a targeted graph refresh</summary>
 
-Set both `graph_only` and `graph` to true. This bypasses vector embedding,
-Qdrant writes, incremental filtering, and page-registry updates while running
-the graph path over the submitted documents.
+The indexer application can run with both `graph_only` and `graph` set to true
+from trusted workflow/maintenance code. This bypasses vector embedding, Qdrant
+writes, and incremental filtering while running the graph path over the
+submitted documents. It is not a bridge API.
 
 Keep the same trusted dataset ID and Neo4j namespace used by the dataset.
 This mode upserts newly extracted facts but, because it bypasses the incremental
@@ -300,7 +313,7 @@ decisions, embedding, vector indexing, graph extraction, and completion.
 | **Ingestion summary** | `/shared/public/ingest_summary.json` | How many documents, chunks, points, skips, replacements, and partial failures were observed? |
 | **Graph preview** | `/shared/public/ingest_graph_preview.json` | Which graph records were produced during the latest graph-enabled run? |
 | **Graph failure log** | `/shared/storage/logs/ingest_graph_failures.jsonl` | Which document-level graph extractions failed, and why? |
-| **Page registry** | PostgreSQL `ingested_pages` | Which source identity and content hash are considered completed? |
+| **Incremental state** | Dataset Qdrant payloads | Which stable source identity and content hash the indexer compares on the next run? |
 | **Vector evidence** | Dataset Qdrant collection | Which deterministic chunk points are currently searchable? |
 | **Graph evidence** | Dataset-scoped Neo4j namespace | Which normalized entities and relations are currently available? |
 
@@ -310,7 +323,7 @@ The authoritative system depends on the question:
 |---|---|
 | Did the workflow run, retry, fail, or get cancelled? | **Temporal workflow history** |
 | What status is displayed to the operator? | **Laravel's PostgreSQL projection** |
-| What text is actually retrievable? | **Qdrant** |
+| What text and incremental content state are actually indexed? | **Qdrant** |
 | What graph facts actually exist? | **Neo4j** |
 
 The public artifact paths can be overridden by Compose settings, so use the

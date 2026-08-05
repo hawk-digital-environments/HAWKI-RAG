@@ -52,14 +52,28 @@ flowchart LR
     Env[".env"] --> Compose["Docker Compose"]
 
     Compose --> Laravel["Laravel"]
-    Compose --> Workers["Temporal workers"]
-    Compose --> RagServices["Python RAG services"]
+    Compose --> Workflow["Workflow worker"]
+    Compose --> PrepareWorkers["Scraper / converter workers"]
+    Compose --> Indexer["Indexer worker"]
+    Compose --> Bridge["Read-only bridge"]
+    Compose --> Reranker["Reranker"]
 
     Laravel --> Postgres["PostgreSQL<br/>metadata, jobs, cache, sessions"]
-    Workers --> TemporalCore["Temporal<br/>history and task routing"]
-    Workers --> PipelineTools["Crawler, converter<br/>and shared storage"]
-    RagServices --> DataPlane["Qdrant, Neo4j<br/>and model providers"]
+    Workflow --> TemporalCore["Temporal<br/>history and task routing"]
+    PrepareWorkers --> TemporalCore
+    Indexer --> TemporalCore
+    PrepareWorkers --> PipelineTools["Crawler, converter<br/>and shared storage"]
+    Indexer --> WritePlane["Qdrant / Neo4j<br/>indexing writes"]
+    PrepareWorkers -->|"signed typed callbacks"| Laravel
+    Indexer -->|"signed typed callbacks"| Laravel
+    Bridge --> ReadPlane["Qdrant / Neo4j<br/>read paths and model providers"]
+    Bridge --> Reranker
 ```
+
+These are six separately built Python roles. The bridge is a read-only
+query/config/health and Temporal-control service; indexing runs directly inside
+the indexer worker. Python workers receive no Laravel database credentials and
+never update application tables themselves.
 
 ## Before changing a value
 
@@ -96,8 +110,8 @@ already select production or development runtime behavior.
 | `APP_TIMEZONE` | `UTC` | Laravel timestamps should use another application timezone | Recreate Laravel; Temporal schedules remain UTC |
 | `SESSION_SECURE_COOKIE` | `false` | The public application is served over HTTPS | Set `true`, then recreate Laravel |
 
-You normally do not need to edit `APP_ENV`, `APP_DEBUG`,
-`HAWKI_RAG_APP_ENV`, or `HAWKI_RAG_APP_DEBUG`.
+`APP_ENV` and `APP_DEBUG` are loaded directly from the selected dotenv file.
+Set them to `production` and `false` for a production deployment.
 
 ## Laravel state
 
@@ -178,6 +192,16 @@ The standard Compose stack fixes its internal Temporal address to
 `temporal:7233`. An external Temporal deployment also requires a matching
 Compose override.
 
+The browser-based Temporal UI is disabled by default. Enable its dedicated
+profile only while workflow diagnostics are needed:
+
+```bash
+docker compose --env-file .env --profile temporal-ui up -d temporal-ui
+```
+
+By default it binds only to `http://127.0.0.1:8081`. Stop it again with
+`docker compose --env-file .env --profile temporal-ui stop temporal-ui`.
+
 ### How task queues divide the work
 
 ```mermaid
@@ -185,12 +209,12 @@ flowchart LR
     TemporalCore["Temporal"] --> WorkflowQueue["workflow queue"]
     TemporalCore --> ScraperQueue["scraper queue"]
     TemporalCore --> ConverterQueue["converter queue"]
-    TemporalCore --> IngestionQueue["ingestion queue"]
+    TemporalCore --> IndexerQueue["indexer queue"]
 
     WorkflowQueue --> WorkflowWorker["Workflow worker<br/>coordinates the run"]
     ScraperQueue --> ScraperWorker["Scraper worker<br/>calls the crawler"]
     ConverterQueue --> ConverterWorker["Converter worker<br/>calls the converter"]
-    IngestionQueue --> IngestionWorker["Ingestion worker<br/>indexes the result"]
+    IndexerQueue --> IndexerWorker["Indexer worker<br/>indexes in-process"]
 ```
 
 :::caution Queue names are coordination contracts
@@ -209,9 +233,18 @@ the bridge, and all Temporal workers together.
 | `TEMPORAL_RAG_WORKFLOW_TASK_QUEUE` | `rag-workflow-task-queue` | Workflow worker |
 | `TEMPORAL_RAG_SCRAPER_TASK_QUEUE` | `rag-scraper-task-queue` | Scraper activity worker |
 | `TEMPORAL_RAG_CONVERTER_TASK_QUEUE` | `rag-converter-task-queue` | Converter activity worker |
-| `TEMPORAL_RAG_INGESTION_TASK_QUEUE` | `rag-ingestion-task-queue` | Ingestion activity worker |
+| `TEMPORAL_RAG_INDEXER_TASK_QUEUE` | Falls back to `TEMPORAL_RAG_INGESTION_TASK_QUEUE`, then `rag-ingestion-task-queue` | Indexer activity worker |
+| `TEMPORAL_RAG_INGESTION_TASK_QUEUE` | `rag-ingestion-task-queue` | Legacy compatibility while pre-refactor executions drain |
 
 </details>
+
+The workflow records the versioned
+`hawki-rag-indexer-task-queue-v1` Temporal patch before using the new
+`task_queues.indexer` payload field. Pre-patch histories keep their original
+`task_queues.ingestion` command. During the transition, the indexer worker polls
+both its configured indexer queue and the legacy ingestion queue; do not retire
+the legacy queue until production histories have drained and replay has been
+verified.
 
 Inspect the workers, task queues, workflows, and activities registered by the
 running application with:
@@ -250,19 +283,49 @@ flowchart LR
 | `TEMPORAL_RAG_EXTERNAL_POLL_INTERVAL_SECONDS` | `5` | Status checks should be less frequent |
 | `TEMPORAL_RAG_EXTERNAL_POLL_TIMEOUT_SECONDS` | `43200` | An external job may run longer than 12 hours |
 
+Indexing does not have a bridge request timeout: the indexer executes the
+indexing application directly inside its Temporal activity. Its activity
+timeouts and retries are part of the workflow contract rather than an HTTP
+`/ingest` call.
+
+### Signed worker status callbacks
+
+Scraper, converter, and indexer workers report typed stage status, counters,
+artifact references, manifests, and errors to Laravel's internal callback API.
+Laravel verifies the HMAC over the exact request body and timestamp, rejects
+expired events, and records stable event IDs idempotently. A valid duplicate is
+acknowledged without applying its metadata transition twice. Laravel applies
+accepted transitions through its repository layer. This is the only path by
+which Python changes Laravel-owned pipeline metadata.
+
+| Variable | Default | Operator guidance |
+|---|---|---|
+| `HAWKI_RAG_WORKER_CALLBACK_SECRET` | Empty | Required in production. Configure the same non-empty secret for Laravel and every activity worker. |
+| `HAWKI_RAG_WORKER_CALLBACK_MAX_AGE_SECONDS` | `300` | Maximum callback timestamp age accepted by Laravel; change only with the workers and clock-skew policy considered together. |
+
+The provided Compose stack supplies the internal callback endpoint
+`http://hawki_rag_app/api/internal/pipeline/worker-events`. Callback delivery
+has its own bounded timeout and retries; it is not a database connection and no
+PostgreSQL credential is passed to a Python service.
+
+Generate this installation secret once with `openssl rand -hex 32`, store it in
+the selected private environment file, and recreate Laravel plus the three
+activity-worker containers together when rotating it.
+
 <details>
 <summary>Advanced: workflow identity and storage handoff</summary>
 
 | Variable | Default | Purpose |
 |---|---|---|
 | `TEMPORAL_CLIENT_IDENTITY` | `hawki-rag-laravel` | Identifies the HAWKI-RAG Temporal client |
-| `HAWKI_RAG_STORAGE_MODE` | `shared` | Selects the file handoff strategy |
-| `HAWKI_RAG_TEMPORAL_SHARED_ROOT` | `/shared` | Shared path seen by pipeline workers |
-| `HAWKI_RAG_OBJECT_STORAGE_PREFIX` | `s3://hawki-rag` | Reserved prefix; keep shared-storage mode for the current stack |
+| `HAWKI_RAG_TEMPORAL_SHARED_ROOT` | `/shared` | Existing canonical absolute directory seen by Laravel and all pipeline workers; never set it to `/` |
 | `RAG_INGEST_GRAPH` | `false` | Enables graph extraction for source workflows by default |
-| `RAG_INGEST_BRIDGE_TIMEOUT` | `3600` | Time allowed for the bridge ingestion request |
 
 </details>
+
+The ingestion pipeline supports only the mounted shared-volume handoff. Laravel
+allocates every raw, Markdown, and manifest path below the configured shared
+root; workers independently enforce that root before accessing the filesystem.
 
 ## External ingestion services
 
