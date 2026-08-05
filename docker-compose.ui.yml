@@ -1,15 +1,4 @@
 services:
   hawki_rag_app:
-    build:
-      args:
-        - DOCKER_PROJECT_HOST=localhost:8080
-        - DOCKER_PROJECT_PATH=/
-        - DOCKER_PROJECT_PROTOCOL=http
-    environment:
-      DOCKER_SERVICE_PROTOCOL: http
-      DOCKER_PROJECT_HOST: localhost:8080
-      DOCKER_PROJECT_PATH: /
-      DOCKER_PROJECT_PROTOCOL: http
-      ASSET_URL: ""
     ports:
       - "127.0.0.1:8080:80"

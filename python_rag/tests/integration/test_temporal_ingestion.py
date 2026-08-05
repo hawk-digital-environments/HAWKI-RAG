@@ -81,11 +81,9 @@ async def _run_live_ingestion_workflow(
         client_module = importlib.import_module("temporalio.client")
         worker_module = importlib.import_module("temporalio.worker")
     except ImportError:
-        unavailable(
-            "the 'temporalio' package is not installed; install python_rag/requirements.txt"
-        )
+        unavailable("the 'temporalio' package is not installed; run `make python-deps`")
 
-    from temporal_rag.workflows import IngestSourceWorkflow
+    from hawki_workflow_worker.workflows.ingest_source import IngestSourceWorkflow
 
     client, failures = await _connect_temporal(client_module.Client)
     if client is None:
@@ -106,7 +104,9 @@ async def _run_live_ingestion_workflow(
         return {"status": "success", "scrape_marker": marker}
 
     @activity.defn(name="inspect_and_convert_files")
-    async def inspect_and_convert_files(activity_input: dict[str, Any]) -> dict[str, Any]:
+    async def inspect_and_convert_files(
+        activity_input: dict[str, Any],
+    ) -> dict[str, Any]:
         assert activity_input["scrape_result"]["scrape_marker"] == marker
         return {"status": "success", "convert_marker": marker}
 
@@ -141,6 +141,7 @@ async def _run_live_ingestion_workflow(
         "task_queues": {
             "scraper": task_queue,
             "converter": task_queue,
+            "indexer": task_queue,
             "ingestion": task_queue,
         },
     }

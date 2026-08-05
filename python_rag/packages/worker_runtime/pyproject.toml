@@ -1,0 +1,21 @@
+[project]
+name = "hawki-worker-runtime"
+version = "0.1.0"
+description = "Shared worker callback, logging, and runtime primitives for RAWKI RAG"
+readme = "README.md"
+authors = [
+    { name = "Yazdan Asadi", email = "wentlerhiphop@gmail.com" }
+]
+requires-python = "==3.13.11"
+dependencies = [
+    "hawki-rag-contracts==0.1.0",
+    "httpx==0.27.2",
+    "requests==2.34.2",
+]
+
+[build-system]
+requires = ["uv_build==0.11.26"]
+build-backend = "uv_build"
+
+[tool.uv.sources]
+hawki-rag-contracts = { workspace = true }

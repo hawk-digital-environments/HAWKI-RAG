@@ -76,7 +76,7 @@ class TestLiveLiteLLMProvider:
         integration_unavailable: Callable[[str], NoReturn],
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        from infrastructure.providers.litellm_provider import LiteLLMProvider
+        from hawki_model_providers.litellm import LiteLLMProvider
 
         chat_model = _configured_model("LITELLM_CHAT_MODEL", "hawki-ollama-chat")
         embed_model = _configured_model(
@@ -115,7 +115,7 @@ class TestLiveLiteLLMProvider:
         integration_unavailable: Callable[[str], NoReturn],
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        from infrastructure.providers.litellm_provider import LiteLLMProvider
+        from hawki_model_providers.litellm import LiteLLMProvider
 
         chat_model = _configured_model("LITELLM_CHAT_MODEL", "hawki-ollama-chat")
         embed_model = _configured_model(

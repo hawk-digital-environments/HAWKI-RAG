@@ -20,11 +20,13 @@ from characterization_support import install_optional_dependency_stubs
 install_optional_dependency_stubs()
 
 
-
 class TemporalMarkdownCharacterizationTests(unittest.TestCase):
     """Verify Temporal reads normalized Markdown before handing documents to ingestion."""
-    def test_temporal_markdown_reader_strips_converter_noise_before_ingest(self) -> None:
-        from temporal_rag.storage import read_text_file
+
+    def test_temporal_markdown_reader_strips_converter_noise_before_ingest(
+        self,
+    ) -> None:
+        from hawki_rag_text.markdown import strip_leading_converter_markdown_noise
 
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "converted.md"
@@ -42,7 +44,9 @@ class TemporalMarkdownCharacterizationTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            text = read_text_file(str(path))
+            text = strip_leading_converter_markdown_noise(
+                path.read_text(encoding="utf-8")
+            )
 
         self.assertTrue(text.startswith("# Techniker Krankenkasse"))
         self.assertNotIn("nextChunk", text)

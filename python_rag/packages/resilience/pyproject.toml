@@ -1,0 +1,14 @@
+[project]
+name = "hawki-rag-resilience"
+version = "0.1.0"
+description = "Retry, idempotency, optional-import, and redaction primitives for RAWKI RAG"
+readme = "README.md"
+authors = [
+    { name = "Yazdan Asadi", email = "wentlerhiphop@gmail.com" }
+]
+requires-python = "==3.13.11"
+dependencies = []
+
+[build-system]
+requires = ["uv_build==0.11.26"]
+build-backend = "uv_build"

@@ -46,4 +46,6 @@ def test_mineru_pipeline_converts_pdf_to_markdown(tmp_path: Path) -> None:
 
     markdown_files = list(output.rglob("*.md"))
     assert markdown_files
-    assert any(expected_text in path.read_text(encoding="utf-8") for path in markdown_files)
+    assert any(
+        expected_text in path.read_text(encoding="utf-8") for path in markdown_files
+    )

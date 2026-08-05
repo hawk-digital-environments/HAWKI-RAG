@@ -60,7 +60,7 @@ class _ScopeAwareExecutor:
 
 
 def _graph(executor: _ScopeAwareExecutor) -> Any:
-    from infrastructure.graph.neo4j_graph import Neo4jGraph
+    from hawki_rag_stores.neo4j.graph import Neo4jGraph
 
     return Neo4jGraph(
         settings=SimpleNamespace(
@@ -77,9 +77,9 @@ class DatasetScopedGraphReadTests(unittest.TestCase):
     """Verify every structural and fact lookup remains inside the trusted graph scope."""
 
     def test_graph_utils_disables_database_fallback_and_forwards_scope(self) -> None:
-        from infrastructure.graph.graph_utils import fetch_related_terms
+        from hawki_rag_stores.neo4j.traversal import fetch_related_terms
 
-        with patch("infrastructure.graph.graph_utils.Neo4jGraph") as graph_type:
+        with patch("hawki_rag_stores.neo4j.traversal.Neo4jGraph") as graph_type:
             graph_type.return_value.fetch_related.return_value = []
 
             result = fetch_related_terms(
@@ -98,7 +98,9 @@ class DatasetScopedGraphReadTests(unittest.TestCase):
             limit=7,
         )
 
-    def test_two_dataset_fact_reads_bind_independent_scope_without_leakage(self) -> None:
+    def test_two_dataset_fact_reads_bind_independent_scope_without_leakage(
+        self,
+    ) -> None:
         executor = _ScopeAwareExecutor()
         graph = _graph(executor)
 

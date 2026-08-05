@@ -1,20 +1,15 @@
 from __future__ import annotations
 
 import unittest
-from types import SimpleNamespace
 from unittest.mock import Mock
-from unittest.mock import patch
 
-from temporal_rag import activity_scrape
-from temporal_rag.external_clients import ExternalJobClient
+from hawki_scraper_worker.activities.scrape import heartbeat_external_job_id
+from hawki_worker_runtime.external_jobs import ExternalJobClient
 
 
 class ExternalJobClientTests(unittest.TestCase):
     def test_scrape_retry_recovers_external_job_id_from_heartbeat(self) -> None:
-        info = SimpleNamespace(heartbeat_details=({"external_job_id": "existing-id"},))
-
-        with patch.object(activity_scrape.activity, "info", return_value=info):
-            job_id = activity_scrape._heartbeat_external_job_id()
+        job_id = heartbeat_external_job_id(({"external_job_id": "existing-id"},))
 
         self.assertEqual(job_id, "existing-id")
 
@@ -52,7 +47,9 @@ class ExternalJobClientTests(unittest.TestCase):
         )
         heartbeats: list[str] = []
 
-        result = client.start_and_wait({"url": "https://example.test"}, progress_callback=heartbeats.append)
+        result = client.start_and_wait(
+            {"url": "https://example.test"}, progress_callback=heartbeats.append
+        )
 
         self.assertEqual(client._request.call_args_list[0].args, ("POST", "start"))
         self.assertEqual(client._request.call_args_list[1].args, ("GET", "jobs/new-id"))

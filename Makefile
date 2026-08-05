@@ -29,13 +29,14 @@ GPU_OVERRIDE_COMPOSE ?= docker-compose-gpu-override.yml
 UI_OVERRIDE_COMPOSE ?= docker-compose.ui.yml
 LOCAL_OVERRIDE_COMPOSE ?= docker-compose.local.yml
 COMPOSE_FILE_SEP ?= :
-PYTHON_CPU_LOCK := python_rag/requirements.cpu.lock.txt
-PYTHON_GPU_LOCK := python_rag/requirements.gpu.lock.txt
-PYTHON_RERANK_CPU_LOCK := python_rag/requirements-rerank.cpu.lock.txt
-PYTHON_RERANK_GPU_LOCK := python_rag/requirements-rerank.gpu.lock.txt
-PYTHON_MINERU_OVERRIDES := python_rag/requirements-mineru-overrides.txt
-PYTORCH_CPU_INDEX := https://download.pytorch.org/whl/cpu
-PYTORCH_GPU_INDEX := https://download.pytorch.org/whl/cu130
+PYTHON_UV_CACHE ?= /tmp/rawki-uv-cache
+PYTHON_RERANKER_ENV ?= .venv-reranker
+PYTHON_DATA_PLANE_PACKAGES := \
+	--package hawki-bridge \
+	--package hawki-workflow-worker \
+	--package hawki-scraper-worker \
+	--package hawki-converter-worker \
+	--package hawki-indexer-worker
 
 # Ollama acceleration policy: auto (default), 1 (force GPU), or 0 (force CPU).
 USE_OLLAMA_GPU ?= auto
@@ -60,12 +61,10 @@ CORE_PROFILES := $(CORE_PROFILES_BASE)
 
 ifeq ($(USE_OLLAMA_GPU),1)
 	CORE_GPU_COMPOSE_SUFFIX := $(COMPOSE_FILE_SEP)$(GPU_OVERRIDE_COMPOSE)
-	PYTHON_SELECTED_LOCK := $(PYTHON_GPU_LOCK)
-	PYTORCH_SELECTED_INDEX := $(PYTORCH_GPU_INDEX)
+	PYTHON_TORCH_EXTRA := gpu
 	GPU_MESSAGE := Ollama and reranker GPU acceleration enabled.
 else
-	PYTHON_SELECTED_LOCK := $(PYTHON_CPU_LOCK)
-	PYTORCH_SELECTED_INDEX := $(PYTORCH_CPU_INDEX)
+	PYTHON_TORCH_EXTRA := cpu
 	GPU_MESSAGE := CPU mode; NVIDIA Python packages are excluded.
 endif
 
@@ -113,7 +112,7 @@ UI_NODE_RUN = docker run --rm --entrypoint /usr/bin/env \
 # ==============================================================================
 
 .PHONY: help
-.PHONY: clean python-lock python-deps python-test python-integration provider-test system-test migration-test
+.PHONY: clean python-lock python-deps python-quality python-test python-integration provider-test system-test migration-test
 .PHONY: network pull-core build-app build-ui publish-ui
 .PHONY: migrate-core _migrate-core-before-start
 .PHONY: _up-core up-core up-core-local up-core-server
@@ -138,51 +137,27 @@ clean: ## Remove generated Python caches, logs, coverage, and build artifacts.
 	@find . -type f -name "*.pyc" -delete
 	@find . -type f -name "*.pyo" -delete
 	@find . -type f -name "*.log" -delete
-	@rm -rf .pytest_cache .ruff_cache .mypy_cache .coverage* .tox .venv dist build
+	@rm -rf .pytest_cache .ruff_cache .mypy_cache .coverage* .tox .venv python_rag/.venv python_rag/.venv-reranker dist build
 
-python-lock: ## Resolve CPU and CUDA Python runtime dependencies for Python 3.11.
-	@command -v uv >/dev/null 2>&1 || { echo "uv is required to regenerate Python requirement locks"; exit 1; }
-	@uv pip compile python_rag/requirements.txt python_rag/requirements-security.txt \
-		--overrides "$(PYTHON_MINERU_OVERRIDES)" \
-		--python-version 3.11 --universal \
-		--torch-backend cpu \
-		--custom-compile-command "make python-lock" \
-		--output-file "$(PYTHON_CPU_LOCK)"
-	@cp "$(PYTHON_CPU_LOCK)" "$(PYTHON_GPU_LOCK)"
-	@uv pip compile python_rag/requirements.txt python_rag/requirements-security.txt \
-		--overrides "$(PYTHON_MINERU_OVERRIDES)" \
-		--python-version 3.11 --universal \
-		--torch-backend cu130 \
-		--custom-compile-command "make python-lock" \
-		--output-file "$(PYTHON_GPU_LOCK)"
-	@uv pip compile python_rag/requirements-rerank.in \
-		--python-version 3.11 --universal \
-		--torch-backend cpu \
-		--custom-compile-command "make python-lock" \
-		--output-file "$(PYTHON_RERANK_CPU_LOCK)"
-	@cp "$(PYTHON_RERANK_CPU_LOCK)" "$(PYTHON_RERANK_GPU_LOCK)"
-	@uv pip compile python_rag/requirements-rerank.in \
-		--python-version 3.11 --universal \
-		--torch-backend cu130 \
-		--custom-compile-command "make python-lock" \
-		--output-file "$(PYTHON_RERANK_GPU_LOCK)"
-	@! grep -Eq '^(cuda-|nvidia-|triton==)' "$(PYTHON_CPU_LOCK)" "$(PYTHON_RERANK_CPU_LOCK)" || \
-		{ echo "CPU dependency locks unexpectedly contain CUDA packages"; exit 1; }
-	@grep -q '^torch==2.13.0+cpu' "$(PYTHON_CPU_LOCK)"
-	@grep -q '^torch==2.13.0+cpu' "$(PYTHON_RERANK_CPU_LOCK)"
-	@grep -q '^torch==2.13.0+cu130' "$(PYTHON_GPU_LOCK)"
-	@grep -q '^torch==2.13.0+cu130' "$(PYTHON_RERANK_GPU_LOCK)"
-	@grep -q '^starlette==1.3.1' "$(PYTHON_CPU_LOCK)"
-	@grep -q '^starlette==1.3.1' "$(PYTHON_GPU_LOCK)"
-	@! grep -Eq '^gradio(-pdf)?==' "$(PYTHON_CPU_LOCK)" "$(PYTHON_GPU_LOCK)" || \
-		{ echo "Python runtime locks unexpectedly contain MinerU's unused Gradio UI"; exit 1; }
+python-lock: ## Resolve the Python 3.13 workspace and verify CPU and CUDA variants.
+	@command -v uv >/dev/null 2>&1 || { echo "uv is required to resolve the Python workspace"; exit 1; }
+	@cd python_rag && UV_CACHE_DIR="$(PYTHON_UV_CACHE)" uv lock
+	@cd python_rag && UV_CACHE_DIR="$(PYTHON_UV_CACHE)" uv lock --check
+	@cd python_rag && UV_CACHE_DIR="$(PYTHON_UV_CACHE)" uv export --quiet --frozen --package hawki-reranker --extra cpu --no-dev --output-file /tmp/hawki-reranker.cpu.txt
+	@cd python_rag && UV_CACHE_DIR="$(PYTHON_UV_CACHE)" uv export --quiet --frozen --package hawki-reranker --extra gpu --no-dev --output-file /tmp/hawki-reranker.gpu.txt
+	@cd python_rag && UV_CACHE_DIR="$(PYTHON_UV_CACHE)" uv export --quiet --frozen --package hawki-indexer-worker --extra cpu --no-dev --output-file /tmp/hawki-indexer.cpu.txt
+	@cd python_rag && UV_CACHE_DIR="$(PYTHON_UV_CACHE)" uv export --quiet --frozen --package hawki-indexer-worker --extra gpu --no-dev --output-file /tmp/hawki-indexer.gpu.txt
+	@! grep -Eq '^(cuda-|nvidia-)' /tmp/hawki-reranker.cpu.txt /tmp/hawki-indexer.cpu.txt || \
+		{ echo "CPU dependency resolution unexpectedly contains CUDA packages"; exit 1; }
+	@grep -q 'torch==2.13.0' /tmp/hawki-reranker.cpu.txt /tmp/hawki-reranker.gpu.txt /tmp/hawki-indexer.cpu.txt /tmp/hawki-indexer.gpu.txt
+	@grep -q 'numpy==2.5.1' /tmp/hawki-indexer.cpu.txt /tmp/hawki-indexer.gpu.txt
+	@grep -q 'av==13.1.0' /tmp/hawki-indexer.cpu.txt /tmp/hawki-indexer.gpu.txt
 
-python-deps: ## Install the CPU or CUDA lock selected by USE_OLLAMA_GPU.
-	@python3 -m pip install --upgrade pip setuptools wheel
-	@python3 -m pip install --no-deps \
-		--extra-index-url "$(PYTORCH_SELECTED_INDEX)" \
-		-r "$(PYTHON_SELECTED_LOCK)"
-	@python3 -m pip install -r python_rag/requirements-test.txt
+python-deps: ## Sync the data plane and isolated reranker uv environments.
+	@command -v uv >/dev/null 2>&1 || { echo "uv is required to sync the Python workspace"; exit 1; }
+	@cd python_rag && UV_CACHE_DIR="$(PYTHON_UV_CACHE)" uv sync --frozen --group test --extra "$(PYTHON_TORCH_EXTRA)" $(PYTHON_DATA_PLANE_PACKAGES)
+	@cd python_rag && UV_CACHE_DIR="$(PYTHON_UV_CACHE)" uv sync --frozen --only-group lint --inexact
+	@cd python_rag && UV_CACHE_DIR="$(PYTHON_UV_CACHE)" UV_PROJECT_ENVIRONMENT="$(PYTHON_RERANKER_ENV)" uv sync --frozen --group test --package hawki-reranker --extra "$(PYTHON_TORCH_EXTRA)"
 
 # ==============================================================================
 # Docker foundation and application images
@@ -257,7 +232,7 @@ _migrate-core-before-start: network
 	@echo "Running Laravel migrations before writable services start..."
 	@attempt=1; \
 	while [ "$$attempt" -le 30 ]; do \
-		if $(COMPOSE_CMD) run --rm --no-deps hawki_rag_app php artisan migrate --force; then \
+		if $(COMPOSE_CMD) up --no-deps --force-recreate --abort-on-container-exit --exit-code-from hawki_rag_migrator hawki_rag_migrator; then \
 			echo "Laravel migrations are up to date."; \
 			exit 0; \
 		fi; \
@@ -275,7 +250,7 @@ _migrate-core-before-start: network
 ##@ Stack startup
 
 _up-core: network
-	@echo $(PROFILE_MESSAGE)
+	@echo "$(PROFILE_MESSAGE)"
 	@if [ "$(BUILD_STACK)" = "1" ]; then \
 		echo "Building stack images (COMPOSE_FILE=$(COMPOSE_FILE_LIST), profiles: $(if $(strip $(COMPOSE_PROFILES)),$(COMPOSE_PROFILES),none))..."; \
 		$(COMPOSE_CMD) build; \
@@ -285,11 +260,9 @@ _up-core: network
 	@echo "Quiescing application writers before database migration..."
 	@$(COMPOSE_CMD) down --remove-orphans
 	@$(COMPOSE_CMD) up -d --wait postgres
-	@$(COMPOSE_CMD) run --rm --no-deps hawki_rag_migrator
 	@$(MAKE) --no-print-directory _migrate-core-before-start COMPOSE_FILE_LIST="$(COMPOSE_FILE_LIST)" COMPOSE_PROFILES="$(COMPOSE_PROFILES)" ENV_FILE="$(ENV_FILE)" COMPOSE_BIN="$(COMPOSE_BIN)"
 	@echo "Launching the migrated stack..."
 	@$(COMPOSE_CMD) up -d --remove-orphans
-	@$(COMPOSE_CMD) rm -f hawki_rag_migrator >/dev/null
 	@echo "Ensuring Ollama models are pulled..."
 	@for model in bge-m3 llama3.1:8b llama3.2:1b qwen2.5vl:7b; do \
 		echo "Pulling $$model..."; \
@@ -306,14 +279,14 @@ _up-core: network
 
 up-core: COMPOSE_FILE_LIST = $(CORE_UI_COMPOSE_FILE_LIST)
 up-core: COMPOSE_PROFILES = $(CORE_PROFILES)
-up-core: PROFILE_MESSAGE = $(GPU_MESSAGE) Production mode enabled with loopback UI.
-up-core: _up-core ## Start the production-mode stack at http://localhost:8080.
+up-core: PROFILE_MESSAGE = $(GPU_MESSAGE) Runtime mode loaded from $(ENV_FILE), with loopback UI.
+up-core: _up-core ## Start the stack at http://localhost:8080 using ENV_FILE.
 
 up-core-local: COMPOSE_FILE_LIST = $(CORE_LOCAL_COMPOSE_FILE_LIST)
 up-core-local: COMPOSE_PROFILES = $(CORE_PROFILES)
 up-core-local: BUILD_STACK = 0
-up-core-local: PROFILE_MESSAGE = $(GPU_MESSAGE) Local development override enabled.
-up-core-local: _up-core ## Reuse images, start source-mounted development, and publish the UI.
+up-core-local: PROFILE_MESSAGE = $(GPU_MESSAGE) Source-mounted development using $(ENV_FILE).
+up-core-local: _up-core ## Reuse images, source-mount the app, and publish the UI.
 	@if [ "$(UI_AUTO_BUILD)" = "1" ]; then \
 		$(MAKE) --no-print-directory publish-ui UI_BUILD_DIR="$(UI_BUILD_DIR)"; \
 	else \
@@ -322,8 +295,8 @@ up-core-local: _up-core ## Reuse images, start source-mounted development, and p
 
 up-core-server: COMPOSE_FILE_LIST = $(CORE_SERVER_COMPOSE_FILE_LIST)
 up-core-server: COMPOSE_PROFILES = $(CORE_PROFILES)
-up-core-server: PROFILE_MESSAGE = $(GPU_MESSAGE) Production reverse-proxy mode enabled.
-up-core-server: _up-core ## Start production mode without publishing a host UI port.
+up-core-server: PROFILE_MESSAGE = $(GPU_MESSAGE) Reverse-proxy mode loaded from $(ENV_FILE).
+up-core-server: _up-core ## Start without a host UI port, using ENV_FILE.
 
 # ==============================================================================
 # Health and service diagnostics
@@ -391,7 +364,7 @@ health: ## Check required and optional containers plus service endpoints.
 	check_running hawki_rag_temporal_workflow_worker 0; \
 	check_running hawki_rag_temporal_scraper_worker 0; \
 	check_running hawki_rag_temporal_converter_worker 0; \
-	check_running hawki_rag_temporal_ingestion_worker 0; \
+	check_running hawki_rag_indexer_worker 0; \
 	echo ""; \
 	echo "Service checks"; \
 	check_exec "PostgreSQL ping" hawki_rag_postgres 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"' 1; \
@@ -399,8 +372,8 @@ health: ## Check required and optional containers plus service endpoints.
 	check_exec "Qdrant readyz" hawki_qdrant "curl -fsS http://localhost:6333/readyz" 1; \
 	check_exec "Neo4j browser" hawki_rag_neo4j "wget --spider -q http://localhost:7474/browser" 1; \
 	check_exec "Ollama models" $(OLLAMA_CONTAINER) "ollama list" 1; \
-	check_exec "Ingestion bridge" hawki_rag_bridge "curl -fsS http://localhost:8000/health" 0; \
-	check_exec "Local reranker" hawki_rag_rerank "curl -fsS http://localhost:8000/health" 0; \
+	check_exec "Read-only RAG bridge" hawki_rag_bridge "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:8000/health?runtime=false\", timeout=5).read()'" 0; \
+	check_exec "Local reranker" hawki_rag_rerank "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:8000/health\", timeout=5).read()'" 0; \
 	check_url "Laravel HTTP" "http://127.0.0.1:8080/up" 0; \
 	echo ""; \
 	if [ "$$failed" = "0" ]; then \
@@ -426,12 +399,12 @@ test-services: ## Run focused Qdrant, Neo4j, bridge, and reranker smoke checks.
 		echo "skipped (container not running)"; \
 	fi; \
 	if docker ps --format '{{.Names}}' | grep -q hawki_rag_bridge; then \
-		printf "hawki_rag_bridge: "; docker exec hawki_rag_bridge sh -lc "curl -fsS http://localhost:8000/health" >/dev/null && echo "healthy" || (echo "WARN" && true); \
+		printf "hawki_rag_bridge: "; docker exec hawki_rag_bridge python -c 'import urllib.request; urllib.request.urlopen("http://localhost:8000/health?runtime=false", timeout=5).read()' >/dev/null && echo "healthy" || (echo "WARN" && true); \
 	else \
 		printf "hawki_rag_bridge: skipped (container not running)\n"; \
 	fi; \
 	if docker ps --format '{{.Names}}' | grep -q hawki_rag_rerank; then \
-		printf "hawki_rag_rerank: "; docker exec hawki_rag_rerank sh -lc "curl -fsS http://localhost:8000/health" >/dev/null && echo "healthy" || (echo "WARN" && true); \
+		printf "hawki_rag_rerank: "; docker exec hawki_rag_rerank python -c 'import urllib.request; urllib.request.urlopen("http://localhost:8000/health", timeout=5).read()' >/dev/null && echo "healthy" || (echo "WARN" && true); \
 	else \
 		printf "hawki_rag_rerank: skipped (container not running)\n"; \
 	fi; \
@@ -443,14 +416,18 @@ test-services: ## Run focused Qdrant, Neo4j, bridge, and reranker smoke checks.
 
 ##@ Tests
 
-python-test: ## Run deterministic Python contract and API tests.
-	@PYTHONPATH=python_rag python -m pytest -c python_rag/pytest.ini -m "not integration"
+python-quality: ## Check Python formatting and lint rules with the pinned Ruff version.
+	@cd python_rag && UV_CACHE_DIR="$(PYTHON_UV_CACHE)" uv run --frozen --no-sync ruff format --check packages services tests
+	@cd python_rag && UV_CACHE_DIR="$(PYTHON_UV_CACHE)" uv run --frozen --no-sync ruff check packages services tests
 
-python-integration: ## Run live storage and Temporal integration tests (unavailable services skip).
-	@PYTHONPATH=python_rag python -m pytest -c python_rag/pytest.ini -m "integration and not model" python_rag/tests/integration
+python-test: python-deps ## Run deterministic Python contract and API tests in the uv workspace.
+	@cd python_rag && PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH="services/hawki_reranker/src" UV_CACHE_DIR="$(PYTHON_UV_CACHE)" uv run --frozen --no-sync pytest -c pytest.ini -m "not integration"
 
-provider-test: ## Run live Ollama and LiteLLM compatibility tests (unavailable services skip).
-	@PYTHONPATH=python_rag python -m pytest -c python_rag/pytest.ini -m "integration and model" python_rag/tests/integration
+python-integration: python-deps ## Run live storage and Temporal integration tests (unavailable services skip).
+	@cd python_rag && PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH="services/hawki_reranker/src" UV_CACHE_DIR="$(PYTHON_UV_CACHE)" uv run --frozen --no-sync pytest -c pytest.ini -m "integration and not model" tests/integration
+
+provider-test: python-deps ## Run live Ollama and LiteLLM compatibility tests (unavailable services skip).
+	@cd python_rag && PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH="services/hawki_reranker/src" UV_CACHE_DIR="$(PYTHON_UV_CACHE)" uv run --frozen --no-sync pytest -c pytest.ini -m "integration and model" tests/integration
 
 system-test: ## Run Laravel authenticated query, isolation, and PDF upload system flows.
 	@php artisan test --testsuite=System
@@ -485,7 +462,7 @@ pull-models: ## Pull all local embedding, chat, and vision models into Ollama.
 ##@ Logs
 
 logs-core: ## Follow logs for the complete core stack.
-	@$(COMPOSE_CMD) logs -f postgres temporal qdrant hawki_rag_neo4j $(OLLAMA_SERVICE) hawki_rag_app hawki_rag_bridge hawki_rag_rerank hawki-rag-temporal-workflow-worker hawki-rag-temporal-scraper-worker hawki-rag-temporal-converter-worker hawki-rag-temporal-ingestion-worker
+	@$(COMPOSE_CMD) logs -f postgres temporal qdrant hawki_rag_neo4j $(OLLAMA_SERVICE) hawki_rag_app hawki_rag_bridge hawki_rag_rerank hawki-rag-temporal-workflow-worker hawki-rag-temporal-scraper-worker hawki-rag-temporal-converter-worker hawki-rag-indexer-worker
 
 # ==============================================================================
 # Stack shutdown and restart
@@ -499,7 +476,7 @@ down-core: ## Stop and remove the active HAWKI RAG Compose stack.
 down-rag: down-core ## Backward-compatible alias for stopping the RAG stack.
 
 restart-core: network ## Recreate all core services and Temporal workers.
-	@echo $(PROFILE_MESSAGE)
+	@echo "$(PROFILE_MESSAGE)"
 	@$(COMPOSE_CMD) up -d --force-recreate
 
 # ==============================================================================

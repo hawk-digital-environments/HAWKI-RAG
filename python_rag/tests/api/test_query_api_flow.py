@@ -12,7 +12,7 @@ from typing import Any
 from unittest.mock import Mock, patch
 
 from fastapi import HTTPException
-from fastapi.testclient import TestClient
+from asgi_client import ASGITestClient as TestClient
 
 
 PYTHON_RAG_ROOT = Path(__file__).resolve().parents[2]
@@ -54,6 +54,9 @@ class _FakeRagService:
         self.provider_requests.append(name)
         return self.provider
 
+    def runtime_summary(self) -> dict[str, object]:
+        return {"role": "bridge", "mode": "test"}
+
 
 class _RecordingQdrant:
     """Qdrant fake that records the physical collection selected by authorization."""
@@ -66,16 +69,15 @@ class _RecordingQdrant:
 
 
 def _build_test_client(tmp_path: Path, service: _FakeRagService) -> TestClient:
-    from api.factory import build_app
-    from api.settings import load_app_settings
+    from hawki_bridge.factory import build_app
+    from hawki_bridge.settings import load_settings
 
-    settings = load_app_settings({"PYTHON_RAG_API_FLOW_TEST": "1"})
+    settings = load_settings({"RAG_DEFAULT_PROVIDER": "test-provider"})
     app = build_app(
-        rag_service=service,
-        public_dir=tmp_path,
+        service=service,
         qdrant_factory=lambda: object(),
         logger_name="test.query_api_flow",
-        app_settings=settings,
+        settings=settings,
     )
     return TestClient(app)
 
@@ -90,7 +92,9 @@ class TestQueryApiFlow:
         service = _FakeRagService()
         captured: dict[str, Any] = {}
 
-        def query_use_case(body: Any, *, rag_service: Any, get_provider: Any) -> dict[str, Any]:
+        def query_use_case(
+            body: Any, *, rag_service: Any, get_provider: Any
+        ) -> dict[str, Any]:
             captured["body"] = body
             captured["service"] = rag_service
             captured["provider"] = get_provider(body.provider)
@@ -103,7 +107,10 @@ class TestQueryApiFlow:
                 "retrieval": {"dataset_id": body.authorized_scope.dataset_id},
             }
 
-        with patch("application.query.query_documents", side_effect=query_use_case) as delegate:
+        with patch(
+            "hawki_bridge.http.routers.query.query_documents",
+            side_effect=query_use_case,
+        ) as delegate:
             with _build_test_client(tmp_path, service) as client:
                 response = client.post(
                     "/query",
@@ -134,11 +141,13 @@ class TestQueryApiFlow:
         assert service.provider_requests == ["test-provider"]
         delegate.assert_called_once()
 
-    def test_missing_authorized_scope_is_rejected_before_delegation(self, tmp_path: Path) -> None:
+    def test_missing_authorized_scope_is_rejected_before_delegation(
+        self, tmp_path: Path
+    ) -> None:
         service = _FakeRagService()
         delegate = Mock()
 
-        with patch("application.query.query_documents", delegate):
+        with patch("hawki_bridge.http.routers.query.query_documents", delegate):
             with _build_test_client(tmp_path, service) as client:
                 response = client.post(
                     "/query",
@@ -160,7 +169,7 @@ class TestQueryApiFlow:
         self,
         tmp_path: Path,
     ) -> None:
-        from application.workflows.query_execution import run_query_documents
+        from hawki_bridge.application.query.execution import run_query_documents
 
         service = _FakeRagService()
         qdrant = _RecordingQdrant()
@@ -218,11 +227,17 @@ class TestQueryApiFlow:
                 structural_hops_fn=lambda: 0,
                 structural_limit_fn=lambda top_k: top_k,
                 fusion_weights_fn=lambda: (1.0, 0.0),
-                rerank_and_filter_hits_fn=lambda hits, **kwargs: hits[: kwargs["top_k"]],
+                rerank_and_filter_hits_fn=lambda hits, **kwargs: hits[
+                    : kwargs["top_k"]
+                ],
                 should_iterate_fn=lambda *_args: False,
                 collect_expansion_terms_fn=lambda *_args, **_kwargs: [],
-                merge_hits_fn=lambda primary, secondary, limit: (primary + secondary)[:limit],
-                build_fused_hits_fn=lambda semantic, structural, **_kwargs: semantic + structural,
+                merge_hits_fn=lambda primary, secondary, limit: (primary + secondary)[
+                    :limit
+                ],
+                build_fused_hits_fn=lambda semantic, structural, **_kwargs: (
+                    semantic + structural
+                ),
                 prepare_context_fn=lambda _hits, **_kwargs: ([], [], 0),
                 run_high_recall_fn=lambda **_kwargs: [],
                 fetch_related_terms_fn=lambda *_args, **_kwargs: [],
@@ -236,7 +251,7 @@ class TestQueryApiFlow:
             )
 
         with patch(
-            "application.workflows.query_logic.run_query_documents",
+            "hawki_bridge.application.query.orchestration.run_query_documents",
             side_effect=execute_with_fake_boundaries,
         ):
             with _build_test_client(tmp_path, service) as client:
@@ -269,7 +284,9 @@ class TestQueryApiFlow:
         assert service.provider.embed_model == "dataset-embedding-model"
         assert service.provider.embedded_queries == ["Which fees apply?"]
 
-    def test_structured_query_failure_keeps_the_public_error_envelope(self, tmp_path: Path) -> None:
+    def test_structured_query_failure_keeps_the_public_error_envelope(
+        self, tmp_path: Path
+    ) -> None:
         service = _FakeRagService()
         failure = HTTPException(
             status_code=503,
@@ -279,7 +296,10 @@ class TestQueryApiFlow:
             },
         )
 
-        with patch("application.query.query_documents", side_effect=failure):
+        with patch(
+            "hawki_bridge.http.routers.query.query_documents",
+            side_effect=failure,
+        ):
             with _build_test_client(tmp_path, service) as client:
                 response = client.post(
                     "/query",

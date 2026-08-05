@@ -1,0 +1,185 @@
+name: Python RAG
+
+on:
+  pull_request:
+    paths:
+      - "python_rag/**"
+      - "docker-compose*.yml"
+      - ".dockerignore"
+      - "Makefile"
+      - "app/**"
+      - "config/temporal.php"
+      - "config/config.php"
+      - "database/migrations/**"
+      - "routes/api.php"
+      - "tests/**"
+      - "composer.json"
+      - "composer.lock"
+      - ".github/workflows/python-rag.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "python_rag/**"
+      - "docker-compose*.yml"
+      - ".dockerignore"
+      - "Makefile"
+      - "app/**"
+      - "config/temporal.php"
+      - "config/config.php"
+      - "database/migrations/**"
+      - "routes/api.php"
+      - "tests/**"
+      - "composer.json"
+      - "composer.lock"
+      - ".github/workflows/python-rag.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  workspace:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13.11"
+
+      - name: Install pinned uv
+        run: python -m pip install "uv==0.11.26"
+
+      - name: Verify lock and CPU/CUDA resolutions
+        working-directory: python_rag
+        run: uv lock --check
+
+      - name: Verify CPU/CUDA resolution invariants
+        run: make python-lock
+
+      - name: Install the CPU data-plane environment
+        working-directory: python_rag
+        run: >-
+          uv sync --frozen --group test --extra cpu
+          --package hawki-bridge
+          --package hawki-workflow-worker
+          --package hawki-scraper-worker
+          --package hawki-converter-worker
+          --package hawki-indexer-worker
+
+      - name: Install the pinned workspace quality tools
+        working-directory: python_rag
+        run: uv sync --frozen --only-group lint --inexact
+
+      - name: Install the isolated CPU reranker environment
+        working-directory: python_rag
+        env:
+          UV_PROJECT_ENVIRONMENT: .venv-reranker
+        run: uv sync --frozen --group test --package hawki-reranker --extra cpu
+
+      - name: Verify package boundaries and line limits
+        working-directory: python_rag
+        run: |
+          services=(hawki_bridge hawki_workflow_worker hawki_scraper_worker hawki_converter_worker hawki_indexer_worker hawki_reranker)
+          for service in "${services[@]}"; do
+            for other in "${services[@]}"; do
+              if [ "$service" != "$other" ]; then
+                ! rg -n "(^|[[:space:]])(from|import)[[:space:]]+$other([.]|[[:space:]]|$)" "services/$service/src" --glob '*.py'
+              fi
+            done
+          done
+          ! rg -n '\b(psycopg|psycopg2)\b' packages services --glob '*.py'
+          ! rg -n '\b(fastapi|HTTPException)\b' services/hawki_indexer_worker/src --glob '*.py'
+          ! rg -n '(api\.main:app|raganything_api_gpu)' services ../docker-compose*.yml
+          oversized="$(find . -type f -name '*.py' ! -path '*/.venv*/*' ! -path '*/build/*' -print0 | xargs -0 wc -l | awk '$1 > 600 && $2 != "total" {print}')"
+          test -z "$oversized" || { printf '%s\n' "$oversized"; exit 1; }
+
+      - name: Verify Python formatting and linting
+        run: make python-quality
+
+      - name: Verify patch whitespace
+        run: git diff --check HEAD^ HEAD
+
+      - name: Run deterministic tests
+        working-directory: python_rag
+        env:
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+          PYTHONPATH: services/hawki_reranker/src
+        run: uv run --frozen --no-sync pytest -c pytest.ini -m "not integration"
+
+      - name: Run reranker service tests in its isolated environment
+        working-directory: python_rag
+        env:
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+          UV_PROJECT_ENVIRONMENT: .venv-reranker
+        run: uv run --frozen --no-sync pytest -c pytest.ini tests/reranker
+
+      - name: Validate Compose model
+        run: docker compose --env-file .env.example config --quiet
+
+  laravel-callbacks:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.4"
+          extensions: pdo_sqlite, sqlite3
+          coverage: none
+
+      - name: Install locked PHP dependencies
+        run: composer install --no-interaction --no-progress --prefer-dist
+
+      - name: Prepare the isolated test application
+        run: cp .env.example .env
+
+      - name: Verify callback formatting
+        run: >-
+          vendor/bin/pint --test
+          app/Http/Controllers/Pipeline/PipelineWorkerEventController.php
+          app/Http/Middleware/VerifyPipelineWorkerSignature.php
+          app/Http/Requests/Pipeline/StorePipelineWorkerEventRequest.php
+          app/Models/PipelineWorkerEventRecord.php
+          app/Services/Pipeline/Exceptions/PipelineWorkerEventException.php
+          app/Services/Pipeline/Exceptions/PipelineWorkerSignatureException.php
+          app/Services/Pipeline/PipelineWorkerEventService.php
+          app/Services/Pipeline/PipelineWorkerEventSignatureVerifier.php
+          app/Services/Pipeline/Tasks/IngestSourceWorkflowPayloadFactory.php
+          app/Services/Pipeline/Repositories/IngestionSourceRepository.php
+          app/Services/Pipeline/Repositories/PipelineScheduledRunRepository.php
+          app/Services/Pipeline/Repositories/PipelineWorkerEventRepository.php
+          app/Services/Pipeline/Repositories/Queries/PipelineWorkerEventJobQuery.php
+          app/Services/Pipeline/Values/PipelineStageStatus.php
+          app/Services/Pipeline/Values/PipelineWorker.php
+          app/Services/Pipeline/Values/PipelineWorkerEvent.php
+          config/config.php
+          config/temporal.php
+          database/migrations/2026_08_03_000000_create_pipeline_worker_events_table.php
+          routes/api.php
+          tests/Feature/Pipeline/PipelineWorkerEventCallbackTest.php
+          tests/Feature/Pipeline/PipelineWorkerEventTransportTest.php
+          tests/Feature/Pipeline/PipelineControllerDashboardTest.php
+          tests/Feature/Pipeline/PipelineOperationsCommandTest.php
+          tests/Unit/Pipeline/IngestSourceWorkflowPayloadFactoryTest.php
+          tests/Unit/Pipeline/PipelineWorkerEventSignatureVerifierTest.php
+          tests/Unit/Pipeline/PipelineWorkerEventTest.php
+          tests/Unit/Pipeline/PipelineIndexerLogConfigurationTest.php
+          tests/Unit/Pipeline/StorePipelineWorkerEventRequestTest.php
+
+      - name: Run callback contract tests with in-memory SQLite
+        run: >-
+          php artisan test --compact
+          tests/Unit/Pipeline/PipelineWorkerEventSignatureVerifierTest.php
+          tests/Unit/Pipeline/PipelineWorkerEventTest.php
+          tests/Unit/Pipeline/PipelineIndexerLogConfigurationTest.php
+          tests/Unit/Pipeline/StorePipelineWorkerEventRequestTest.php
+          tests/Unit/Pipeline/IngestSourceWorkflowPayloadFactoryTest.php
+          tests/Feature/Pipeline/PipelineWorkerEventTransportTest.php
+          tests/Feature/Pipeline/PipelineWorkerEventCallbackTest.php
+          tests/Feature/Pipeline/PipelineControllerDashboardTest.php
+          tests/Feature/Pipeline/PipelineOperationsCommandTest.php

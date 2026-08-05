@@ -2,29 +2,22 @@
 
 from __future__ import annotations
 
-import sys
 import tempfile
 import unittest
 from pathlib import Path
-
-ROOT = Path(__file__).resolve().parents[2]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
-TESTS_ROOT = ROOT / "tests"
-if str(TESTS_ROOT) not in sys.path:
-    sys.path.insert(0, str(TESTS_ROOT))
-
-from characterization_support import install_optional_dependency_stubs
-
-install_optional_dependency_stubs()
-
+from unittest.mock import patch
 
 
 class GraphProviderCharacterizationTests(unittest.TestCase):
     """Show how an explicit graph model is isolated from the main provider configuration."""
-    def test_graph_provider_helper_clones_and_applies_explicit_graph_model(self) -> None:
-        from infrastructure.raganything.provider_config import clone_provider_for_graph, provider_fingerprint
+
+    def test_graph_provider_helper_clones_and_applies_explicit_graph_model(
+        self,
+    ) -> None:
+        from hawki_indexer_worker.adapters.raganything.provider_config import (
+            clone_provider_for_graph,
+            provider_fingerprint,
+        )
 
         class Provider:
             def __init__(self) -> None:
@@ -46,107 +39,96 @@ class GraphProviderCharacterizationTests(unittest.TestCase):
         self.assertNotIn("secret-key-material", provider_fingerprint(provider))
 
 
-class RAGServiceDependencyCharacterizationTests(unittest.TestCase):
-    """Show how the RAG service receives provider, vector, and graph boundaries."""
-    def test_rag_service_uses_injected_dependency_boundaries(self) -> None:
-        from application.service import RAGService
-        from application.service_dependencies import RAGServiceDependencies
-        from domain.settings import RAGServiceSettings
+class ServiceBoundaryCharacterizationTests(unittest.TestCase):
+    """Show how the former facade is split across indexer and bridge boundaries."""
 
-        with tempfile.TemporaryDirectory() as tmp:
-            settings = RAGServiceSettings(
-                rag_working_dir=Path(tmp),
-                graph_debug=False,
-                graph_debug_llm=False,
-                graph_perf_log=True,
-                graph_provider="toy-provider",
+    def test_indexer_graph_facade_delegates_to_the_graph_service_boundary(self) -> None:
+        from hawki_indexer_worker.adapters.providers.graph import GraphExtractionFacade
+
+        provider = {"provider": "toy-provider"}
+        fake_graph_service = object()
+        calls: list[dict[str, object]] = []
+
+        def extract_triplets(
+            graph_service: object,
+            text: str,
+            engine: str | None,
+            **kwargs: object,
+        ) -> list[tuple[str, str, str]]:
+            calls.append(
+                {
+                    "graph_service": graph_service,
+                    "text": text,
+                    "engine": engine,
+                    **kwargs,
+                }
             )
-            calls: dict[str, list[object]] = {
-                "providers": [],
-                "graph_dirs": [],
-                "extract": [],
-                "rerank": [],
-            }
+            return [("Toy", "has", "Wheels")]
 
-            class FakeGraphService:
-                def __init__(self) -> None:
-                    self.client = {"client": "fake-raganything"}
-
-                def clear_graph_cache(self) -> dict[str, object]:
-                    return {"ok": True, "cleared": "fake"}
-
-                def graph_runtime_summary(self) -> dict[str, object]:
-                    return {"graph_client_initialized": True}
-
-                def triplets_from_llm_cache(self) -> list[tuple[str, str, str]]:
-                    return [("Cache", "mentions", "Toy")]
-
-            fake_graph_service = FakeGraphService()
-
-            def settings_loader() -> RAGServiceSettings:
-                return settings
-
-            def provider_factory(name: str) -> dict[str, str]:
-                calls["providers"].append(name)
-                return {"provider": name}
-
-            def graph_service_factory(working_dir: Path, logger_obj: object) -> FakeGraphService:
-                calls["graph_dirs"].append(working_dir)
-                return fake_graph_service
-
-            def triplet_extractor(graph_service: object, text: str, engine: str | None, **kwargs: object) -> list[tuple[str, str, str]]:
-                calls["extract"].append(
-                    {
-                        "graph_service": graph_service,
-                        "text": text,
-                        "engine": engine,
-                        "provider": kwargs["provider"],
-                        "doc_id": kwargs["doc_id"],
-                        "graph_perf_log": kwargs["graph_perf_log"],
-                    }
-                )
-                return [("Toy", "has", "Wheels")]
-
-            def reranker(**kwargs: object) -> list[dict[str, object]]:
-                calls["rerank"].append(kwargs)
-                return [{"id": "ranked"}]
-
-            service = RAGService(
-                dependencies=RAGServiceDependencies(
-                    settings_loader=settings_loader,
-                    provider_factory=provider_factory,
-                    graph_service_factory=graph_service_factory,
-                    triplet_extractor=triplet_extractor,
-                    reranker=reranker,
-                )
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            patch(
+                "hawki_indexer_worker.adapters.providers.graph.RagAnythingGraphService",
+                return_value=fake_graph_service,
+            ) as graph_service_factory,
+            patch(
+                "hawki_indexer_worker.adapters.providers.graph.extract_triplets_with_graph_service",
+                side_effect=extract_triplets,
+            ),
+        ):
+            facade = GraphExtractionFacade(Path(tmp), graph_perf_log=True)
+            result = facade.extract_triplets(
+                "toy text",
+                None,
+                provider=provider,
+                doc_id="toy-doc",
+                request_id="request-1",
             )
 
-            self.assertEqual(service.get_provider("manual-provider"), {"provider": "manual-provider"})
-            self.assertEqual(
-                service.extract_triplets("toy text", None, doc_id="toy-doc"),
-                [("Toy", "has", "Wheels")],
-            )
-            self.assertEqual(service.raganything, fake_graph_service.client)
-            self.assertEqual(service.graph_runtime_summary(), {"graph_client_initialized": True})
-            self.assertEqual(service.clear_graph_cache(), {"ok": True, "cleared": "fake"})
-            self.assertEqual(service._triplets_from_raganything_llm_cache(), [("Cache", "mentions", "Toy")])
-            self.assertEqual(
-                service.rerank_hits(
-                    hits=[{"id": "raw"}],
-                    user_query="toy",
-                    provider={"provider": "toy-provider"},
-                    query_vector=None,
-                    mode="cosine",
-                    top_n=1,
-                    mix_mode=False,
-                    mix_weight=0.5,
-                ),
-                [{"id": "ranked"}],
+        self.assertEqual(result, [("Toy", "has", "Wheels")])
+        graph_service_factory.assert_called_once_with(Path(tmp), logger_obj=None)
+        self.assertIs(calls[0]["graph_service"], fake_graph_service)
+        self.assertEqual(calls[0]["text"], "toy text")
+        self.assertIsNone(calls[0]["engine"])
+        self.assertIs(calls[0]["provider"], provider)
+        self.assertEqual(calls[0]["doc_id"], "toy-doc")
+        self.assertEqual(calls[0]["request_id"], "request-1")
+        self.assertTrue(calls[0]["graph_perf_log"])
+
+    def test_bridge_query_facade_delegates_to_provider_and_reranker_boundaries(
+        self,
+    ) -> None:
+        from hawki_bridge.application.service import QueryService
+
+        provider = {"provider": "toy-provider"}
+        ranked = [{"id": "ranked"}]
+        with (
+            patch(
+                "hawki_bridge.application.service.get_provider",
+                return_value=provider,
+            ) as provider_factory,
+            patch(
+                "hawki_bridge.application.service.rerank_hits",
+                return_value=ranked,
+            ) as reranker,
+        ):
+            service = QueryService()
+            selected_provider = service.get_provider("toy-provider")
+            result = service.rerank_hits(
+                hits=[{"id": "raw"}],
+                user_query="toy",
+                provider=provider,
+                query_vector=None,
+                mode="cosine",
+                top_n=1,
+                mix_mode=False,
+                mix_weight=0.5,
             )
 
-            self.assertEqual(calls["providers"], ["manual-provider", "toy-provider"])
-            self.assertEqual(calls["graph_dirs"], [Path(tmp).expanduser()])
-            self.assertEqual(calls["extract"][0]["provider"], {"provider": "toy-provider"})
-            self.assertEqual(calls["extract"][0]["doc_id"], "toy-doc")
-            self.assertTrue(calls["extract"][0]["graph_perf_log"])
-            self.assertEqual(calls["rerank"][0]["top_n"], 1)
+        self.assertIs(selected_provider, provider)
+        self.assertIs(result, ranked)
+        self.assertEqual(
+            service.runtime_summary(), {"role": "bridge", "mode": "read-only"}
+        )
+        provider_factory.assert_called_once_with("toy-provider")
+        self.assertEqual(reranker.call_args.kwargs["top_n"], 1)

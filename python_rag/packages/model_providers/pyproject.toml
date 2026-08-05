@@ -1,0 +1,20 @@
+[project]
+name = "hawki-model-providers"
+version = "0.1.0"
+description = "Model provider ports and Ollama/LiteLLM adapters for RAWKI RAG"
+readme = "README.md"
+authors = [
+    { name = "Yazdan Asadi", email = "wentlerhiphop@gmail.com" }
+]
+requires-python = "==3.13.11"
+dependencies = [
+    "hawki-rag-resilience==0.1.0",
+    "requests==2.34.2",
+]
+
+[build-system]
+requires = ["uv_build==0.11.26"]
+build-backend = "uv_build"
+
+[tool.uv.sources]
+hawki-rag-resilience = { workspace = true }

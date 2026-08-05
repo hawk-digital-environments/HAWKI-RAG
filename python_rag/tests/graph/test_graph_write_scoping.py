@@ -2,21 +2,18 @@
 
 from __future__ import annotations
 
-import logging
 import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-
-from fastapi import HTTPException
 
 
 class GraphWriteScopingTests(unittest.TestCase):
     """Verify Neo4j writes and deletes always carry the authorized logical namespace."""
 
     def test_incomplete_scope_never_dispatches_a_canonical_write(self) -> None:
-        from infrastructure.graph.neo4j_graph import Neo4jGraph
-        from infrastructure.graph.neo4j_requests import build_triplet_rows
+        from hawki_rag_stores.neo4j.graph import Neo4jGraph
+        from hawki_rag_stores.neo4j.requests import build_triplet_rows
 
         class Executor:
             def __init__(self) -> None:
@@ -29,7 +26,9 @@ class GraphWriteScopingTests(unittest.TestCase):
         executor = Executor()
         graph = Neo4jGraph(
             dataset_id="dataset-a",
-            settings=SimpleNamespace(database=None, retry_attempts=1, log_latency=False, perf_log=False),
+            settings=SimpleNamespace(
+                database=None, retry_attempts=1, log_latency=False, perf_log=False
+            ),
             query_executor=executor,  # type: ignore[arg-type]
         )
 
@@ -47,9 +46,12 @@ class GraphWriteScopingTests(unittest.TestCase):
         )
 
     def test_conflicting_payload_scope_fails_before_vector_commit(self) -> None:
-        from application.workflows.ingest.dependencies import IngestWorkflowDependencies
-        from application.workflows.ingest.settings import GraphIngestSettings
-        from application.workflows.ingest_logic import ingest_documents
+        from hawki_indexer_worker.domain.errors import IndexingValidationError
+        from hawki_indexer_worker.indexing.dependencies import (
+            IngestWorkflowDependencies,
+        )
+        from hawki_indexer_worker.indexing.graph_settings import GraphIngestSettings
+        from hawki_indexer_worker.indexing.orchestration import ingest_documents
 
         class Qdrant:
             collection = "default"
@@ -68,11 +70,13 @@ class GraphWriteScopingTests(unittest.TestCase):
 
         qdrant = Qdrant()
         body = SimpleNamespace(
-            docs=[SimpleNamespace(
-                id="doc-1",
-                text="HAWKI uses Neo4j.",
-                payload={"dataset_id": "dataset-b", "neo4j_namespace": "graph-a"},
-            )],
+            docs=[
+                SimpleNamespace(
+                    id="doc-1",
+                    text="HAWKI uses Neo4j.",
+                    payload={"dataset_id": "dataset-b", "neo4j_namespace": "graph-a"},
+                )
+            ],
             dry_run=False,
             provider="fake",
             collection="dataset_a",
@@ -104,23 +108,27 @@ class GraphWriteScopingTests(unittest.TestCase):
         )
 
         with tempfile.TemporaryDirectory() as tmp:
-            with self.assertRaises(HTTPException) as raised:
+            with self.assertRaises(IndexingValidationError) as raised:
                 ingest_documents(
                     body,
                     rag_service=object(),
                     get_provider=lambda _name: (_ for _ in ()).throw(
-                        AssertionError("provider resolution must happen after scope validation")
+                        AssertionError(
+                            "provider resolution must happen after scope validation"
+                        )
                     ),
                     public_dir=Path(tmp),
                     dependencies=dependencies,
                 )
 
-        self.assertEqual(raised.exception.status_code, 400)
-        self.assertIn("conflicts with trusted dataset_id", str(raised.exception.detail))
+        self.assertIsInstance(raised.exception, IndexingValidationError)
+        self.assertIn("conflicts with trusted dataset_id", str(raised.exception))
         self.assertEqual(qdrant.vector_writes, 0)
 
-    def test_default_graph_factory_receives_physical_and_logical_scope_separately(self) -> None:
-        from application.workflows.ingest.graph_commit import _create_graph
+    def test_default_graph_factory_receives_physical_and_logical_scope_separately(
+        self,
+    ) -> None:
+        from hawki_indexer_worker.indexing.graph_commit import _create_graph
 
         captured: dict[str, object] = {}
 
@@ -130,11 +138,13 @@ class GraphWriteScopingTests(unittest.TestCase):
             dataset_id: str | None = None,
             neo4j_namespace: str | None = None,
         ) -> object:
-            captured.update({
-                "database": database,
-                "dataset_id": dataset_id,
-                "neo4j_namespace": neo4j_namespace,
-            })
+            captured.update(
+                {
+                    "database": database,
+                    "dataset_id": dataset_id,
+                    "neo4j_namespace": neo4j_namespace,
+                }
+            )
             return object()
 
         _create_graph(
@@ -154,7 +164,7 @@ class GraphWriteScopingTests(unittest.TestCase):
         )
 
     def test_document_delete_queries_are_constrained_to_logical_namespace(self) -> None:
-        from infrastructure.graph.neo4j_graph import Neo4jGraph
+        from hawki_rag_stores.neo4j.graph import Neo4jGraph
 
         class Counters:
             relationships_deleted = 1
@@ -184,7 +194,9 @@ class GraphWriteScopingTests(unittest.TestCase):
         executor = Executor()
         graph = Neo4jGraph(
             neo4j_namespace="hawki_dataset_a",
-            settings=SimpleNamespace(database=None, retry_attempts=1, log_latency=False, perf_log=False),
+            settings=SimpleNamespace(
+                database=None, retry_attempts=1, log_latency=False, perf_log=False
+            ),
             query_executor=executor,  # type: ignore[arg-type]
         )
 

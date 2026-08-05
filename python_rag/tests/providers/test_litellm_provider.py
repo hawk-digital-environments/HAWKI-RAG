@@ -3,16 +3,9 @@
 from __future__ import annotations
 
 import os
-import sys
 import unittest
-from pathlib import Path
 from typing import Any
 from unittest.mock import patch
-
-
-ROOT = Path(__file__).resolve().parents[2]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
 
 
 class _RequestException(Exception):
@@ -24,7 +17,9 @@ class _Timeout(_RequestException):
 
 
 class _FakeResponse:
-    def __init__(self, payload: Any, *, status_code: int = 200, invalid_json: bool = False) -> None:
+    def __init__(
+        self, payload: Any, *, status_code: int = 200, invalid_json: bool = False
+    ) -> None:
         self.payload = payload
         self.status_code = status_code
         self.invalid_json = invalid_json
@@ -40,7 +35,9 @@ class _FakeRequests:
         RequestException = _RequestException
         Timeout = _Timeout
 
-    def __init__(self, *responses: _FakeResponse, error: Exception | None = None) -> None:
+    def __init__(
+        self, *responses: _FakeResponse, error: Exception | None = None
+    ) -> None:
         self.responses = list(responses)
         self.error = error
         self.posts: list[dict[str, Any]] = []
@@ -87,9 +84,9 @@ class LiteLLMProviderTests(unittest.TestCase):
     """Verify LiteLLM remains explicit, validates responses, and never exposes credentials."""
 
     def test_factory_selects_litellm_without_changing_ollama(self) -> None:
-        from infrastructure.providers.factory import get_provider
-        from infrastructure.providers.litellm_provider import LiteLLMProvider
-        from infrastructure.providers.ollama_provider import OllamaProvider
+        from hawki_model_providers.factory import get_provider
+        from hawki_model_providers.litellm import LiteLLMProvider
+        from hawki_model_providers.ollama import OllamaProvider
 
         with patch.dict(os.environ, _provider_env(), clear=True):
             litellm = get_provider(" LITELLM ")
@@ -99,7 +96,7 @@ class LiteLLMProviderTests(unittest.TestCase):
         self.assertIsInstance(ollama, OllamaProvider)
 
     def test_configuration_rejects_invalid_url_model_and_timeout(self) -> None:
-        from infrastructure.providers.litellm_provider import (
+        from hawki_model_providers.litellm import (
             LiteLLMConfigurationError,
             LiteLLMProvider,
         )
@@ -114,24 +111,32 @@ class LiteLLMProviderTests(unittest.TestCase):
                 "must not contain credentials",
             ),
             ({"LITELLM_CHAT_MODEL": ""}, "LITELLM_CHAT_MODEL must be a non-empty"),
-            ({"LITELLM_EMBED_TIMEOUT": "nan"}, "LITELLM_EMBED_TIMEOUT must be a positive"),
+            (
+                {"LITELLM_EMBED_TIMEOUT": "nan"},
+                "LITELLM_EMBED_TIMEOUT must be a positive",
+            ),
         ]
 
         for overrides, expected_message in invalid_settings:
             with self.subTest(overrides=overrides):
                 with patch.dict(os.environ, _provider_env(**overrides), clear=True):
-                    with self.assertRaisesRegex(LiteLLMConfigurationError, expected_message):
+                    with self.assertRaisesRegex(
+                        LiteLLMConfigurationError, expected_message
+                    ):
                         LiteLLMProvider()
 
     def test_chat_sends_openai_payload_and_parses_content(self) -> None:
-        from infrastructure.providers.litellm_provider import LiteLLMProvider
+        from hawki_model_providers.litellm import LiteLLMProvider
 
         fake_requests = _FakeRequests(
             _FakeResponse({"choices": [{"message": {"content": "Grounded answer"}}]})
         )
-        with patch.dict(os.environ, _provider_env(), clear=True), patch(
-            "infrastructure.providers.litellm_provider._requests_module",
-            return_value=fake_requests,
+        with (
+            patch.dict(os.environ, _provider_env(), clear=True),
+            patch(
+                "hawki_model_providers.litellm._requests_module",
+                return_value=fake_requests,
+            ),
         ):
             provider = LiteLLMProvider()
             answer = provider.chat(
@@ -158,7 +163,7 @@ class LiteLLMProviderTests(unittest.TestCase):
         )
 
     def test_chat_parses_openai_structured_text_content(self) -> None:
-        from infrastructure.providers.litellm_provider import LiteLLMProvider
+        from hawki_model_providers.litellm import LiteLLMProvider
 
         fake_requests = _FakeRequests(
             _FakeResponse(
@@ -176,23 +181,29 @@ class LiteLLMProviderTests(unittest.TestCase):
                 }
             )
         )
-        with patch.dict(os.environ, _provider_env(), clear=True), patch(
-            "infrastructure.providers.litellm_provider._requests_module",
-            return_value=fake_requests,
+        with (
+            patch.dict(os.environ, _provider_env(), clear=True),
+            patch(
+                "hawki_model_providers.litellm._requests_module",
+                return_value=fake_requests,
+            ),
         ):
             answer = LiteLLMProvider().chat("system", [])
 
         self.assertEqual(answer, "Part one. Part two.")
 
     def test_embed_sends_model_and_returns_finite_float_vector(self) -> None:
-        from infrastructure.providers.litellm_provider import LiteLLMProvider
+        from hawki_model_providers.litellm import LiteLLMProvider
 
         fake_requests = _FakeRequests(
             _FakeResponse({"data": [{"index": 0, "embedding": [0, "1.25", -2.5]}]})
         )
-        with patch.dict(os.environ, _provider_env(), clear=True), patch(
-            "infrastructure.providers.litellm_provider._requests_module",
-            return_value=fake_requests,
+        with (
+            patch.dict(os.environ, _provider_env(), clear=True),
+            patch(
+                "hawki_model_providers.litellm._requests_module",
+                return_value=fake_requests,
+            ),
         ):
             provider = LiteLLMProvider()
             vector = provider.embed("Embedding input")
@@ -208,7 +219,7 @@ class LiteLLMProviderTests(unittest.TestCase):
         )
 
     def test_embed_rejects_empty_and_non_finite_vectors(self) -> None:
-        from infrastructure.providers.litellm_provider import LiteLLMProvider
+        from hawki_model_providers.litellm import LiteLLMProvider
 
         responses = [
             (_FakeResponse({"data": []}), "unexpected response"),
@@ -220,22 +231,28 @@ class LiteLLMProviderTests(unittest.TestCase):
         for response, expected_message in responses:
             with self.subTest(expected_message=expected_message):
                 fake_requests = _FakeRequests(response)
-                with patch.dict(os.environ, _provider_env(), clear=True), patch(
-                    "infrastructure.providers.litellm_provider._requests_module",
-                    return_value=fake_requests,
+                with (
+                    patch.dict(os.environ, _provider_env(), clear=True),
+                    patch(
+                        "hawki_model_providers.litellm._requests_module",
+                        return_value=fake_requests,
+                    ),
                 ):
                     with self.assertRaisesRegex(RuntimeError, expected_message):
                         LiteLLMProvider().embed("input")
 
     def test_vision_chat_uses_openai_image_url_shape_and_vision_model(self) -> None:
-        from infrastructure.providers.litellm_provider import LiteLLMProvider
+        from hawki_model_providers.litellm import LiteLLMProvider
 
         fake_requests = _FakeRequests(
             _FakeResponse({"choices": [{"message": {"content": "A diagram"}}]})
         )
-        with patch.dict(os.environ, _provider_env(), clear=True), patch(
-            "infrastructure.providers.litellm_provider._requests_module",
-            return_value=fake_requests,
+        with (
+            patch.dict(os.environ, _provider_env(), clear=True),
+            patch(
+                "hawki_model_providers.litellm._requests_module",
+                return_value=fake_requests,
+            ),
         ):
             answer = LiteLLMProvider().vision_chat(
                 "Describe only visible details.",
@@ -259,8 +276,10 @@ class LiteLLMProviderTests(unittest.TestCase):
             ],
         )
 
-    def test_http_and_timeout_errors_are_normalized_without_exposing_api_key(self) -> None:
-        from infrastructure.providers.litellm_provider import LiteLLMProvider
+    def test_http_and_timeout_errors_are_normalized_without_exposing_api_key(
+        self,
+    ) -> None:
+        from hawki_model_providers.litellm import LiteLLMProvider
 
         http_requests = _FakeRequests(
             _FakeResponse(
@@ -268,9 +287,12 @@ class LiteLLMProviderTests(unittest.TestCase):
                 status_code=401,
             )
         )
-        with patch.dict(os.environ, _provider_env(), clear=True), patch(
-            "infrastructure.providers.litellm_provider._requests_module",
-            return_value=http_requests,
+        with (
+            patch.dict(os.environ, _provider_env(), clear=True),
+            patch(
+                "hawki_model_providers.litellm._requests_module",
+                return_value=http_requests,
+            ),
         ):
             with self.assertRaisesRegex(RuntimeError, r"HTTP error \(401\)") as raised:
                 LiteLLMProvider().chat("system", [])
@@ -279,28 +301,39 @@ class LiteLLMProviderTests(unittest.TestCase):
         self.assertIn("<redacted>", str(raised.exception))
 
         timeout_requests = _FakeRequests(error=_Timeout("gateway timeout"))
-        with patch.dict(os.environ, _provider_env(), clear=True), patch(
-            "infrastructure.providers.litellm_provider._requests_module",
-            return_value=timeout_requests,
+        with (
+            patch.dict(os.environ, _provider_env(), clear=True),
+            patch(
+                "hawki_model_providers.litellm._requests_module",
+                return_value=timeout_requests,
+            ),
         ):
-            with self.assertRaisesRegex(RuntimeError, "request timed out: gateway timeout"):
+            with self.assertRaisesRegex(
+                RuntimeError, "request timed out: gateway timeout"
+            ):
                 LiteLLMProvider().embed("input")
 
     def test_success_response_must_be_json_with_expected_shape(self) -> None:
-        from infrastructure.providers.litellm_provider import LiteLLMProvider
+        from hawki_model_providers.litellm import LiteLLMProvider
 
         invalid_json = _FakeRequests(_FakeResponse(None, invalid_json=True))
-        with patch.dict(os.environ, _provider_env(), clear=True), patch(
-            "infrastructure.providers.litellm_provider._requests_module",
-            return_value=invalid_json,
+        with (
+            patch.dict(os.environ, _provider_env(), clear=True),
+            patch(
+                "hawki_model_providers.litellm._requests_module",
+                return_value=invalid_json,
+            ),
         ):
             with self.assertRaisesRegex(RuntimeError, "returned a non-JSON response"):
                 LiteLLMProvider().chat("system", [])
 
         wrong_shape = _FakeRequests(_FakeResponse({"choices": []}))
-        with patch.dict(os.environ, _provider_env(), clear=True), patch(
-            "infrastructure.providers.litellm_provider._requests_module",
-            return_value=wrong_shape,
+        with (
+            patch.dict(os.environ, _provider_env(), clear=True),
+            patch(
+                "hawki_model_providers.litellm._requests_module",
+                return_value=wrong_shape,
+            ),
         ):
             with self.assertRaisesRegex(RuntimeError, "unexpected or empty response"):
                 LiteLLMProvider().chat("system", [])

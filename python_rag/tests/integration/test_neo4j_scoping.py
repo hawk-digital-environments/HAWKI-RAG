@@ -36,7 +36,9 @@ def neo4j_scope_resources(live_neo4j: Any) -> dict[str, str]:
     try:
         yield resources
     finally:
-        with live_neo4j.driver.session(database=live_neo4j.settings.database) as session:
+        with live_neo4j.driver.session(
+            database=live_neo4j.settings.database
+        ) as session:
             session.run(
                 "MATCH (n:Entity) "
                 "WHERE n.neo4j_namespace IN $namespaces "
@@ -53,7 +55,7 @@ class TestLiveNeo4jScoping:
         live_neo4j: Any,
         neo4j_scope_resources: dict[str, str],
     ) -> None:
-        from infrastructure.graph.neo4j_graph import Neo4jGraph
+        from hawki_rag_stores.neo4j.graph import Neo4jGraph
 
         resource = neo4j_scope_resources
         graph_a = Neo4jGraph(
@@ -144,7 +146,7 @@ class TestLiveNeo4jScoping:
         live_neo4j: Any,
         neo4j_scope_resources: dict[str, str],
     ) -> None:
-        from infrastructure.graph.neo4j_graph import Neo4jGraph
+        from hawki_rag_stores.neo4j.graph import Neo4jGraph
 
         resource = neo4j_scope_resources
         graph = Neo4jGraph(
@@ -159,7 +161,9 @@ class TestLiveNeo4jScoping:
         finally:
             graph.close()
 
-        with live_neo4j.driver.session(database=live_neo4j.settings.database) as session:
+        with live_neo4j.driver.session(
+            database=live_neo4j.settings.database
+        ) as session:
             record = session.run(
                 "MATCH (n:Entity) WHERE n.name IN $names RETURN count(n) AS count",
                 names=[resource["subject_a"], resource["object_a"]],

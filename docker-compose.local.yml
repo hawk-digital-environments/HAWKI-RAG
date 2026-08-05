@@ -1,12 +1,5 @@
 services:
   hawki_rag_app:
-    environment:
-      ENVIRONMENT: development
-      APP_ENV: local
-      APP_DEBUG: "true"
-      HAWKI_RAG_GRAPH_VISUALIZATION_PATH: /var/www/html/public/neo4j_graph_visualization.json
-      HAWKI_RAG_INGEST_SUMMARY_PUBLIC_PATH: /var/www/html/public/ingest_summary.json
-      HAWKI_RAG_GRAPH_PREVIEW_PATH: /var/www/html/public/ingest_graph_preview.json
     volumes:
       - ./docker/rag_app:/container/custom
       - ./:/var/www/html
@@ -14,28 +7,6 @@ services:
       - default
       - hawki-network
 
-  hawki_rag_bridge:
-    environment:
-      HAWKI_RAG_PUBLIC_DIR: /app/public
+  hawki_rag_migrator:
     volumes:
-      - ./python_rag:/app
-      - ./public:/app/public
-
-  hawki-rag-temporal-workflow-worker:
-    volumes:
-      - ./python_rag:/app
-
-  hawki-rag-temporal-scraper-worker:
-    volumes:
-      - ./python_rag:/app
-
-  hawki-rag-temporal-converter-worker:
-    volumes:
-      - ./python_rag:/app
-
-  hawki-rag-temporal-ingestion-worker:
-    environment:
-      HAWKI_RAG_PUBLIC_DIR: /app/public
-    volumes:
-      - ./python_rag:/app
-      - ./public:/app/public
+      - ./:/var/www/html

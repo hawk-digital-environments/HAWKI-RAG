@@ -29,7 +29,7 @@ class TestLiveOllamaProvider:
         integration_unavailable: Callable[[str], NoReturn],
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        from infrastructure.providers.ollama_provider import OllamaProvider
+        from hawki_model_providers.ollama import OllamaProvider
 
         model = _configured_model("OLLAMA_EMBED_MODEL", "bge-m3")
         if not live_ollama.has_model(model):
@@ -59,7 +59,7 @@ class TestLiveOllamaProvider:
         integration_unavailable: Callable[[str], NoReturn],
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        from infrastructure.providers.ollama_provider import OllamaProvider
+        from hawki_model_providers.ollama import OllamaProvider
 
         model = _configured_model("OLLAMA_RAG_MODEL", "llama3.1:8b")
         if not live_ollama.has_model(model):

@@ -60,7 +60,7 @@ class ExternalRerankerContractTests(unittest.TestCase):
     """Verify external reranking preserves document identity while normalizing provider scores."""
 
     def test_external_reranker_uses_string_documents_and_cohere_scores(self) -> None:
-        from infrastructure.raganything.reranker import rerank_hits
+        from hawki_bridge.adapters.reranker_client import rerank_hits
 
         fake_requests = _FakeRequests(
             {
@@ -71,11 +71,20 @@ class ExternalRerankerContractTests(unittest.TestCase):
             }
         )
 
-        with patch.dict(
-            os.environ,
-            {"RERANKER_API_URL": "http://reranker.test/v1/rerank", "RERANKER_API_KEY": ""},
-            clear=False,
-        ), patch("infrastructure.raganything.reranker._requests_module", return_value=fake_requests):
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    "RERANKER_API_URL": "http://reranker.test/v1/rerank",
+                    "RERANKER_API_KEY": "",
+                },
+                clear=False,
+            ),
+            patch(
+                "hawki_bridge.adapters.reranker_client._requests_module",
+                return_value=fake_requests,
+            ),
+        ):
             ranked = rerank_hits(
                 hits=_hits(),
                 user_query="Which keyword appears on page ten?",
@@ -100,7 +109,7 @@ class ExternalRerankerContractTests(unittest.TestCase):
         )
 
     def test_external_reranker_retains_legacy_id_score_response_support(self) -> None:
-        from infrastructure.raganything.reranker import rerank_hits
+        from hawki_bridge.adapters.reranker_client import rerank_hits
 
         fake_requests = _FakeRequests(
             {
@@ -111,11 +120,20 @@ class ExternalRerankerContractTests(unittest.TestCase):
             }
         )
 
-        with patch.dict(
-            os.environ,
-            {"RERANKER_API_URL": "http://reranker.test/v1/rerank", "RERANKER_API_KEY": ""},
-            clear=False,
-        ), patch("infrastructure.raganything.reranker._requests_module", return_value=fake_requests):
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    "RERANKER_API_URL": "http://reranker.test/v1/rerank",
+                    "RERANKER_API_KEY": "",
+                },
+                clear=False,
+            ),
+            patch(
+                "hawki_bridge.adapters.reranker_client._requests_module",
+                return_value=fake_requests,
+            ),
+        ):
             ranked = rerank_hits(
                 hits=_hits(),
                 user_query="Which keyword appears on page ten?",
@@ -130,7 +148,7 @@ class ExternalRerankerContractTests(unittest.TestCase):
         self.assertEqual([hit["id"] for hit in ranked], ["second", "first"])
 
     def test_mixed_reranker_exposes_comparable_final_scores(self) -> None:
-        from infrastructure.raganything.reranker import rerank_hits
+        from hawki_bridge.adapters.reranker_client import rerank_hits
 
         fake_requests = _FakeRequests(
             {
@@ -153,11 +171,20 @@ class ExternalRerankerContractTests(unittest.TestCase):
             },
         ]
 
-        with patch.dict(
-            os.environ,
-            {"RERANKER_API_URL": "http://reranker.test/v1/rerank", "RERANKER_API_KEY": ""},
-            clear=False,
-        ), patch("infrastructure.raganything.reranker._requests_module", return_value=fake_requests):
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    "RERANKER_API_URL": "http://reranker.test/v1/rerank",
+                    "RERANKER_API_KEY": "",
+                },
+                clear=False,
+            ),
+            patch(
+                "hawki_bridge.adapters.reranker_client._requests_module",
+                return_value=fake_requests,
+            ),
+        ):
             ranked = rerank_hits(
                 hits=hits,
                 user_query="Was ist die dritte Mahnung?",

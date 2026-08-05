@@ -5,15 +5,10 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-import sys
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
-
-ROOT = Path(__file__).resolve().parents[2]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
 
 
 class _FakeResponse:
@@ -39,7 +34,9 @@ class _FakeRequests:
     def __init__(self) -> None:
         self.posts: list[dict[str, object]] = []
 
-    def post(self, url: str, *, json: dict[str, object], timeout: float) -> _FakeResponse:
+    def post(
+        self, url: str, *, json: dict[str, object], timeout: float
+    ) -> _FakeResponse:
         self.posts.append({"url": url, "json": json, "timeout": timeout})
         return _FakeResponse()
 
@@ -48,22 +45,25 @@ class RagAnythingVisionTests(unittest.TestCase):
     """Verify RAG-Anything preserves image content and routes it to the configured vision model."""
 
     def test_ollama_provider_sends_image_data_to_configured_vision_model(self) -> None:
-        from infrastructure.providers.ollama_provider import OllamaProvider
+        from hawki_model_providers.ollama import OllamaProvider
 
         fake_requests = _FakeRequests()
 
-        with patch.dict(
-            os.environ,
-            {
-                "OLLAMA_API_URL": "http://ollama:11434/api",
-                "OLLAMA_VISION_MODEL": "vision-test",
-                "OLLAMA_CHAT_RETRIES": "0",
-                "OLLAMA_CHAT_TIMEOUT": "12",
-            },
-            clear=False,
-        ), patch(
-            "infrastructure.providers.ollama_provider._requests_module",
-            return_value=fake_requests,
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    "OLLAMA_API_URL": "http://ollama:11434/api",
+                    "OLLAMA_VISION_MODEL": "vision-test",
+                    "OLLAMA_CHAT_RETRIES": "0",
+                    "OLLAMA_CHAT_TIMEOUT": "12",
+                },
+                clear=False,
+            ),
+            patch(
+                "hawki_model_providers.ollama._requests_module",
+                return_value=fake_requests,
+            ),
         ):
             provider = OllamaProvider()
             response = provider.vision_chat(
@@ -78,13 +78,15 @@ class RagAnythingVisionTests(unittest.TestCase):
         payload = fake_requests.posts[0]["json"]
         self.assertEqual(payload["model"], "vision-test")
         self.assertEqual(fake_requests.posts[0]["timeout"], 12.0)
-        self.assertEqual(payload["messages"][0], {"role": "system", "content": "system prompt"})
+        self.assertEqual(
+            payload["messages"][0], {"role": "system", "content": "system prompt"}
+        )
         self.assertEqual(payload["messages"][1]["content"], "describe this image")
         self.assertEqual(payload["messages"][1]["images"], ["abc123"])
         self.assertEqual(payload["options"]["temperature"], 0.1)
 
     def test_ollama_provider_normalizes_raganything_multimodal_messages(self) -> None:
-        from infrastructure.providers.ollama_provider import OllamaProvider
+        from hawki_model_providers.ollama import OllamaProvider
 
         fake_requests = _FakeRequests()
         messages = [
@@ -101,25 +103,34 @@ class RagAnythingVisionTests(unittest.TestCase):
             },
         ]
 
-        with patch.dict(
-            os.environ,
-            {"OLLAMA_VISION_MODEL": "vision-test", "OLLAMA_CHAT_RETRIES": "0"},
-            clear=False,
-        ), patch(
-            "infrastructure.providers.ollama_provider._requests_module",
-            return_value=fake_requests,
+        with (
+            patch.dict(
+                os.environ,
+                {"OLLAMA_VISION_MODEL": "vision-test", "OLLAMA_CHAT_RETRIES": "0"},
+                clear=False,
+            ),
+            patch(
+                "hawki_model_providers.ollama._requests_module",
+                return_value=fake_requests,
+            ),
         ):
             provider = OllamaProvider()
             provider.vision_chat("fallback system", "", messages=messages)
 
         payload = fake_requests.posts[0]["json"]
-        self.assertEqual(payload["messages"][0], {"role": "system", "content": "existing system"})
+        self.assertEqual(
+            payload["messages"][0], {"role": "system", "content": "existing system"}
+        )
         self.assertEqual(payload["messages"][1]["content"], "Context before image.")
         self.assertEqual(payload["messages"][1]["images"], ["xyz789"])
 
     def test_raganything_settings_and_summary_include_vision_model(self) -> None:
-        from infrastructure.raganything.raganything_settings import load_raganything_graph_settings
-        from infrastructure.raganything.raganything_summary import build_graph_runtime_summary
+        from hawki_indexer_worker.adapters.raganything.settings import (
+            load_raganything_graph_settings,
+        )
+        from hawki_indexer_worker.adapters.raganything.summary import (
+            build_graph_runtime_summary,
+        )
 
         with patch.dict(
             os.environ,
@@ -144,9 +155,15 @@ class RagAnythingVisionTests(unittest.TestCase):
 
         self.assertEqual(summary["models"]["vision_model"], "vision-graph")
 
-    def test_raganything_vision_model_func_preserves_provider_vision_selection(self) -> None:
-        from infrastructure.raganything.raganything_client_config import _build_vision_model_func
-        from infrastructure.raganything.raganything_settings import load_raganything_graph_settings
+    def test_raganything_vision_model_func_preserves_provider_vision_selection(
+        self,
+    ) -> None:
+        from hawki_indexer_worker.adapters.raganything.client_config import (
+            _build_vision_model_func,
+        )
+        from hawki_indexer_worker.adapters.raganything.settings import (
+            load_raganything_graph_settings,
+        )
 
         class Provider:
             vision_model = "selected-vision"
@@ -191,7 +208,7 @@ class RagAnythingVisionTests(unittest.TestCase):
             return func(*args, **kwargs)
 
         with patch(
-            "infrastructure.raganything.raganything_client_config.asyncio.to_thread",
+            "hawki_indexer_worker.adapters.raganything.client_config.asyncio.to_thread",
             new=direct_to_thread,
         ):
             response = asyncio.run(
