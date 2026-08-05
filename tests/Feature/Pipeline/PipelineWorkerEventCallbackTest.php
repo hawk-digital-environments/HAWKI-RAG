@@ -9,7 +9,10 @@ use App\Models\IngestionSource;
 use App\Models\PipelineJob;
 use App\Models\PipelineStageState;
 use App\Models\PipelineTask;
+use App\Models\PipelineWorkerEventRecord;
+use App\Models\RagIngestionArtifact;
 use App\Services\Pipeline\PipelineWorkerEventSignatureVerifier;
+use App\Services\Rag\RagMonitorArtifactReader;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Testing\TestResponse;
 use Tests\TestCase;
@@ -402,8 +405,41 @@ final class PipelineWorkerEventCallbackTest extends TestCase
 
     public function test_completed_worker_sequence_marks_source_job_and_task_ready(): void
     {
-        $this->createExecution();
+        $execution = $this->createExecution();
         $base = time() - 10;
+
+        $oldEvent = PipelineWorkerEventRecord::query()->create([
+            'pipeline_job_id' => $execution['job']->id,
+            'event_id' => 'evt_old_monitor_artifact',
+            'job_id' => 'job-worker-1',
+            'task_id' => 'task-worker-1',
+            'source_id' => 'source-worker-1',
+            'workflow_id' => 'workflow-worker-1',
+            'run_id' => 'run-worker-1',
+            'activity_id' => 'mark_source_ready',
+            'attempt' => 1,
+            'event_type' => 'pipeline.stage.status',
+            'producer' => 'indexer',
+            'stage' => 'ingest',
+            'phase' => 'mark_source_ready',
+            'status' => 'completed',
+            'payload_hash' => str_repeat('a', 64),
+            'payload' => [],
+            'occurred_at' => now()->subDays(31),
+            'processed_at' => now()->subDays(31),
+        ]);
+        RagIngestionArtifact::query()->create([
+            'pipeline_job_id' => $execution['job']->id,
+            'pipeline_worker_event_id' => $oldEvent->id,
+            'job_id' => 'job-worker-1',
+            'task_id' => 'task-worker-1',
+            'source_id' => 'source-worker-1',
+            'dataset_id' => 'worker-dataset',
+            'workflow_id' => 'workflow-worker-1',
+            'run_id' => 'run-worker-1',
+            'summary' => ['documents' => ['processed_docs' => 99]],
+            'occurred_at' => now()->subDays(31),
+        ]);
 
         $this->sendEvent($this->event([
             'event_id' => 'evt_scrape_done',
@@ -433,7 +469,7 @@ final class PipelineWorkerEventCallbackTest extends TestCase
             'status' => 'running',
             'counts' => ['total' => 2, 'processed' => 0, 'failed' => 0, 'skipped' => 0],
         ]))->assertAccepted();
-        $this->sendEvent($this->event([
+        $terminalPayload = $this->event([
             'event_id' => 'evt_index_done',
             'producer' => 'indexer',
             'activity_id' => 'mark_source_ready',
@@ -450,7 +486,31 @@ final class PipelineWorkerEventCallbackTest extends TestCase
                 'graph_records_updated' => 3,
             ],
             'document_version' => 'abcdef1234567890',
-        ]))->assertAccepted();
+            'monitor_artifacts' => [
+                'summary' => [
+                    'timestamp' => gmdate(DATE_ATOM, $base + 3),
+                    'documents' => ['processed_docs' => 2, 'total_chunks' => 8],
+                    'graph' => ['enabled' => true],
+                ],
+                'graph_preview' => [
+                    'total_docs' => 2,
+                    'total_triplets' => 3,
+                    'per_doc' => ['doc-1' => ['chunks' => 4, 'triplets' => 3]],
+                ],
+                'graph_failures' => [[
+                    'doc_id' => 'doc-2',
+                    'file_path' => 'source/doc-2.md',
+                    'chunks' => 4,
+                    'chars' => 1200,
+                    'error' => 'Graph extraction timed out.',
+                    'timestamp' => gmdate(DATE_ATOM, $base + 2),
+                ]],
+            ],
+        ]);
+        $this->sendEvent($terminalPayload)->assertAccepted();
+        $this->sendEvent($terminalPayload)
+            ->assertOk()
+            ->assertJsonPath('duplicate', true);
 
         foreach (['scrape', 'convert', 'ingest'] as $stage) {
             $this->assertDatabaseHas('pipeline_stage_states', [
@@ -470,7 +530,23 @@ final class PipelineWorkerEventCallbackTest extends TestCase
         $this->assertSame('abcdef1234567890', $source->document_version);
         $this->assertNotNull($source->ready_at);
         $this->assertSame(PipelineTask::STATUS_COMPLETED, $task->status);
-        $this->assertDatabaseCount('pipeline_worker_events', 4);
+        $this->assertDatabaseCount('pipeline_worker_events', 5);
+        $this->assertDatabaseCount('rag_ingestion_artifacts', 1);
+        $this->assertDatabaseCount('rag_graph_failures', 1);
+
+        $artifact = RagIngestionArtifact::query()->firstOrFail();
+        $this->assertSame(2, $artifact->summary['documents']['processed_docs']);
+        $this->assertSame(3, $artifact->graph_preview['total_triplets']);
+        $this->assertSame('worker-dataset', $artifact->dataset_id);
+
+        $reader = $this->app->make(RagMonitorArtifactReader::class);
+        $this->assertSame(
+            'postgresql://rag_ingestion_artifacts/'.$artifact->id.'/summary',
+            $reader->latestSummary()['path'],
+        );
+        $this->assertSame(3, $reader->latestGraphPreview()['data']['total_triplets']);
+        $this->assertSame('doc-2', $reader->graphFailures(5)[0]['doc_id']);
+        $this->assertSame('Graph extraction timed out.', $reader->graphFailures(5)[0]['error']);
     }
 
     /**

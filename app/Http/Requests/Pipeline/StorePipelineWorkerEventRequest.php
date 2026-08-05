@@ -39,6 +39,7 @@ class StorePipelineWorkerEventRequest extends FormRequest
         'warnings',
         'error_details',
         'document_version',
+        'monitor_artifacts',
     ];
 
     /** @var list<string> */
@@ -119,6 +120,17 @@ class StorePipelineWorkerEventRequest extends FormRequest
             'warnings.*' => ['string'],
             'error_details' => ['sometimes', 'nullable', 'string', 'max:2048'],
             'document_version' => ['sometimes', 'nullable', 'string', 'max:191'],
+            'monitor_artifacts' => ['sometimes', 'nullable', 'array:summary,graph_preview,graph_failures'],
+            'monitor_artifacts.summary' => ['required_with:monitor_artifacts', 'array'],
+            'monitor_artifacts.graph_preview' => ['sometimes', 'nullable', 'array'],
+            'monitor_artifacts.graph_failures' => ['sometimes', 'array'],
+            'monitor_artifacts.graph_failures.*' => ['array:doc_id,file_path,chunks,chars,error,timestamp'],
+            'monitor_artifacts.graph_failures.*.doc_id' => ['sometimes', 'nullable', 'string', 'max:191'],
+            'monitor_artifacts.graph_failures.*.file_path' => ['sometimes', 'nullable', 'string', 'max:4096'],
+            'monitor_artifacts.graph_failures.*.chunks' => ['sometimes', 'integer', 'min:0'],
+            'monitor_artifacts.graph_failures.*.chars' => ['sometimes', 'integer', 'min:0'],
+            'monitor_artifacts.graph_failures.*.error' => ['required', 'string', 'max:2048'],
+            'monitor_artifacts.graph_failures.*.timestamp' => ['sometimes', 'string', 'date'],
         ];
 
         foreach (self::PROHIBITED_SCOPE_FIELDS as $field) {
@@ -160,6 +172,20 @@ class StorePipelineWorkerEventRequest extends FormRequest
 
             if ($this->filled('document_version') && $producer !== PipelineWorker::Indexer) {
                 $validator->errors()->add('document_version', 'Only the indexer may report a document version.');
+            }
+
+            if ($this->has('monitor_artifacts') && $this->input('monitor_artifacts') !== null) {
+                $status = $this->input('status');
+                if (
+                    $producer !== PipelineWorker::Indexer
+                    || $activityId !== 'mark_source_ready'
+                    || ! in_array($status, ['completed', 'failed', 'skipped'], true)
+                ) {
+                    $validator->errors()->add(
+                        'monitor_artifacts',
+                        'Only a terminal mark_source_ready indexer event may report monitor artifacts.',
+                    );
+                }
             }
         }];
     }

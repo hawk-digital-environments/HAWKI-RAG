@@ -21,9 +21,6 @@ docker-compose.override.yml
 public/build/
 public/hot
 public/storage/
-public/ingest_graph_preview.json
-public/ingest_summary.json
-public/neo4j_graph_visualization.json
 storage/**
 
 # Local RAG/runtime data and generated artifacts

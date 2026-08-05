@@ -118,21 +118,18 @@ def test_incremental_ingestion_skips_retry_and_replaces_changed_content(
         _request("first version", operation="op-1"),
         rag_service=object(),
         get_provider=resolve_provider,
-        public_dir=tmp_path,
         dependencies=dependencies,
     )
     retry = ingest_documents(
         _request("first version", operation="op-1"),
         rag_service=object(),
         get_provider=resolve_provider,
-        public_dir=tmp_path,
         dependencies=dependencies,
     )
     changed = ingest_documents(
         _request("changed version", operation="op-2"),
         rag_service=object(),
         get_provider=resolve_provider,
-        public_dir=tmp_path,
         dependencies=dependencies,
     )
 

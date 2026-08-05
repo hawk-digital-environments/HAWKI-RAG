@@ -244,6 +244,48 @@ def test_worker_event_accepts_timestamp_alias_and_enforces_stage_ownership() -> 
         PipelineWorkerEvent.model_validate({**payload, "producer": "scraper"})
 
 
+def test_monitor_artifacts_are_limited_to_terminal_indexer_ready_events() -> None:
+    payload = {
+        "schema_version": 1,
+        "event_id": "event-monitor-a",
+        "event_type": "pipeline.stage.status",
+        "producer": "indexer",
+        "timestamp": "2026-08-03T12:00:00Z",
+        "workflow_id": "ingest-source-source-a",
+        "run_id": "run-a",
+        "activity_id": MARK_SOURCE_READY_ACTIVITY,
+        "attempt": 1,
+        "job_id": "job-a",
+        "task_id": "task-a",
+        "source_id": "source-a",
+        "stage": "ingest",
+        "phase": MARK_SOURCE_READY_ACTIVITY,
+        "status": "completed",
+        "monitor_artifacts": {
+            "summary": {"documents": {"processed_docs": 1}},
+            "graph_preview": {"total_docs": 1},
+            "graph_failures": [
+                {
+                    "doc_id": "doc-a",
+                    "chunks": 1,
+                    "chars": 100,
+                    "error": "Graph extraction timed out.",
+                    "timestamp": "2026-08-03T11:59:59Z",
+                }
+            ],
+        },
+    }
+
+    event = PipelineWorkerEvent.model_validate(payload)
+    assert event.monitor_artifacts is not None
+    assert event.monitor_artifacts.graph_failures[0].doc_id == "doc-a"
+
+    with pytest.raises(ValidationError, match="terminal mark_source_ready"):
+        PipelineWorkerEvent.model_validate(
+            {**payload, "activity_id": INDEX_MARKDOWN_ACTIVITY}
+        )
+
+
 def test_contract_package_is_exactly_pinned_and_has_no_io_or_service_imports() -> None:
     pyproject = tomllib.loads(
         (PACKAGE_ROOT / "pyproject.toml").read_text(encoding="utf-8")

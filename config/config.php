@@ -26,7 +26,6 @@ return [
     'neo4j_password' => env('NEO4J_PASSWORD', ''),
     'neo4j_database' => env('NEO4J_DATABASE', 'neo4j'),
     'graph_snapshot_path' => env('HAWKI_RAG_GRAPH_SNAPSHOT_PATH', storage_path('app/graph_snapshots')),
-    'graph_visualization_path' => env('HAWKI_RAG_GRAPH_VISUALIZATION_PATH', public_path('neo4j_graph_visualization.json')),
     'admin_settings_path' => env(
         'HAWKI_RAG_ADMIN_SETTINGS_PATH',
         env('HAWKI_RAG_OPERATOR_SETTINGS_PATH', storage_path('app/hawki-rag/settings.json')),
@@ -34,14 +33,7 @@ return [
     'pipeline_root' => $pipelineRoot,
     'shared_root' => $pipelineRoot,
     'crawled_data_root' => $crawledDataRoot,
-    'ingest_summary_paths' => [
-        env('HAWKI_RAG_INGEST_SUMMARY_PUBLIC_PATH', public_path('ingest_summary.json')),
-        env('HAWKI_RAG_INGEST_SUMMARY_STORAGE_PATH', storage_path('logs/ingest_summary.json')),
-    ],
-    'graph_preview_paths' => [
-        env('HAWKI_RAG_GRAPH_PREVIEW_PATH', public_path('ingest_graph_preview.json')),
-    ],
-    'graph_failures_path' => env('HAWKI_RAG_GRAPH_FAILURES_PATH', public_path('ingest_graph_failures.jsonl')),
+    'rag_monitor_retention_days' => (int) env('HAWKI_RAG_MONITOR_RETENTION_DAYS', 30),
     'embedding_models' => array_values(array_filter(array_map('trim', explode(',', env('OLLAMA_EMBED_MODEL', 'bge-m3'))))),
     'embedding_default' => env('OLLAMA_EMBED_MODEL', 'bge-m3'),
     'graph_models' => array_values(array_filter(array_map(

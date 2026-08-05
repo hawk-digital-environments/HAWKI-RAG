@@ -21,6 +21,7 @@ use App\Services\Pipeline\Values\PipelineStage;
 use App\Services\Pipeline\Values\PipelineStageStatus;
 use App\Services\Pipeline\Values\PipelineWorker;
 use App\Services\Pipeline\Values\PipelineWorkerEvent;
+use App\Services\Rag\RagMonitorArtifactStore;
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Support\Carbon;
 use Psr\Clock\ClockInterface;
@@ -39,6 +40,7 @@ readonly class PipelineWorkerEventService
         private PipelineStateService $pipelineState,
         private PipelineTaskStatusRefresher $taskStatuses,
         private PipelineTransactionRepository $transactions,
+        private RagMonitorArtifactStore $monitorArtifacts,
         private ClockInterface $clock = new Clock,
     ) {}
 
@@ -97,6 +99,7 @@ readonly class PipelineWorkerEventService
             return $this->receipt($event, duplicate: false, ignored: true);
         }
 
+        $this->monitorArtifacts->record($record, $event, $job, (string) $task->dataset_id);
         $this->applyStageTransition($event, $processedAt, $laterStage);
         $this->applySourceTransition($event, $source, $processedAt, $laterStage);
         $this->taskStatuses->recalculate($taskId);

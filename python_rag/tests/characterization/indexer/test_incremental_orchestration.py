@@ -5,7 +5,6 @@ from __future__ import annotations
 import hashlib
 import tempfile
 import unittest
-from pathlib import Path
 from types import SimpleNamespace
 
 
@@ -95,18 +94,16 @@ class IncrementalIngestTests(unittest.TestCase):
                 graph_doc_timeout_s=0.0,
                 graph_doc_max_chars=0,
                 graph_doc_max_chunks=0,
-                graph_failure_log="",
             ),
         )
 
-        with tempfile.TemporaryDirectory() as tmp:
+        with tempfile.TemporaryDirectory():
             result = ingest_documents(
                 body,
                 rag_service=object(),
                 get_provider=lambda name: (_ for _ in ()).throw(
                     AssertionError("provider should not be called")
                 ),
-                public_dir=Path(tmp),
                 dependencies=dependencies,
             )
 
@@ -218,16 +215,14 @@ class IncrementalIngestTests(unittest.TestCase):
                 graph_doc_timeout_s=0.0,
                 graph_doc_max_chars=0,
                 graph_doc_max_chunks=0,
-                graph_failure_log="",
             ),
         )
 
-        with tempfile.TemporaryDirectory() as tmp:
+        with tempfile.TemporaryDirectory():
             result = ingest_documents(
                 body,
                 rag_service=object(),
                 get_provider=lambda name: Provider(),
-                public_dir=Path(tmp),
                 dependencies=dependencies,
             )
 

@@ -68,6 +68,33 @@ final class StorePipelineWorkerEventRequestTest extends TestCase
         $this->assertArrayHasKey('activity_id', $validator->errors()->toArray());
     }
 
+    public function test_monitor_artifacts_require_a_terminal_indexer_ready_event(): void
+    {
+        $monitor = [
+            'summary' => ['documents' => ['processed_docs' => 1]],
+            'graph_failures' => [[
+                'doc_id' => 'doc-1',
+                'error' => 'Timed out.',
+                'timestamp' => '2026-08-03T12:00:00Z',
+            ]],
+        ];
+        $spoofed = $this->validatorFor($this->payload(['monitor_artifacts' => $monitor]));
+
+        $this->assertTrue($spoofed->fails());
+        $this->assertArrayHasKey('monitor_artifacts', $spoofed->errors()->toArray());
+
+        $terminal = $this->validatorFor($this->payload([
+            'producer' => 'indexer',
+            'activity_id' => 'mark_source_ready',
+            'stage' => 'ingest',
+            'phase' => 'mark_source_ready',
+            'status' => 'completed',
+            'monitor_artifacts' => $monitor,
+        ]));
+
+        $this->assertFalse($terminal->fails(), json_encode($terminal->errors()->toArray()));
+    }
+
     /**
      * @param  array<string, mixed>  $payload
      */

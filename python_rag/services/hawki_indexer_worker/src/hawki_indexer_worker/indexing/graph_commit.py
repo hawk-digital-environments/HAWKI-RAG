@@ -7,14 +7,9 @@ import logging
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any
 
-from hawki_indexer_worker.indexing.graph_prepare import (
-    append_graph_failures,
-    build_triplets_by_doc,
-    graph_failure_log_path,
-)
+from hawki_indexer_worker.indexing.graph_prepare import build_triplets_by_doc
 from hawki_indexer_worker.indexing.graph_settings import GraphIngestSettings
 from hawki_indexer_worker.indexing.summary import build_graph_preview
 from hawki_indexer_worker.indexing.observability import pipeline_log
@@ -26,6 +21,7 @@ class GraphCommitResult:
     """Result of extracting graph triplets and writing them to Neo4j."""
 
     graph_preview: dict[str, Any] | None
+    graph_failures: list[dict[str, Any]]
     neo4j_ms: float | None
 
 
@@ -41,7 +37,6 @@ def commit_graph_triplets(
     rag_service: Any,
     provider: Any | None,
     graph_factory: Callable[..., Any],
-    public_dir: Path,
     job_id: str | None,
     operation_id: str | None,
     graph_debug: bool,
@@ -91,7 +86,6 @@ def commit_graph_triplets(
             neo4j_database=neo4j_database,
             dataset_id=dataset_id,
             neo4j_namespace=neo4j_namespace,
-            public_dir=public_dir,
             request_id=operation_id,
             replace_doc_ids_by_doc=replace_doc_ids_by_doc,
             graph_settings=graph_settings,
@@ -117,14 +111,16 @@ def commit_graph_triplets(
         )
         if failures:
             _record_graph_failures(
-                public_dir=public_dir,
                 failures=failures,
                 job_id=job_id,
                 operation_id=operation_id,
-                graph_settings=graph_settings,
                 logger_obj=logger_obj,
             )
-        return GraphCommitResult(graph_preview=graph_preview, neo4j_ms=neo4j_ms)
+        return GraphCommitResult(
+            graph_preview=graph_preview,
+            graph_failures=failures,
+            neo4j_ms=neo4j_ms,
+        )
     finally:
         try:
             graph.close()
@@ -201,17 +197,11 @@ def _create_graph(
 
 def _record_graph_failures(
     *,
-    public_dir: Path,
     failures: list[dict[str, Any]],
     job_id: str | None,
     operation_id: str | None,
-    graph_settings: GraphIngestSettings,
     logger_obj: logging.Logger,
 ) -> None:
-    failure_path = graph_failure_log_path(
-        public_dir, failure_log_path=graph_settings.graph_failure_log
-    )
-    append_graph_failures(failure_path, failures)
     for failure in failures:
         pipeline_log(
             logger_obj,
@@ -225,7 +215,7 @@ def _record_graph_failures(
             error_message=failure.get("error"),
             file_path=failure.get("file_path"),
         )
-    logger_obj.info("graph:failures count=%s file=%s", len(failures), failure_path)
+    logger_obj.info("graph:failures count=%s submitted_via=worker_event", len(failures))
 
 
 __all__ = [

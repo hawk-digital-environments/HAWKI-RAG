@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import tempfile
 import unittest
-from pathlib import Path
 from types import SimpleNamespace
 
 
@@ -103,11 +102,10 @@ class GraphWriteScopingTests(unittest.TestCase):
                 graph_doc_timeout_s=0.0,
                 graph_doc_max_chars=0,
                 graph_doc_max_chunks=0,
-                graph_failure_log="",
             ),
         )
 
-        with tempfile.TemporaryDirectory() as tmp:
+        with tempfile.TemporaryDirectory():
             with self.assertRaises(IndexingValidationError) as raised:
                 ingest_documents(
                     body,
@@ -117,7 +115,6 @@ class GraphWriteScopingTests(unittest.TestCase):
                             "provider resolution must happen after scope validation"
                         )
                     ),
-                    public_dir=Path(tmp),
                     dependencies=dependencies,
                 )
 

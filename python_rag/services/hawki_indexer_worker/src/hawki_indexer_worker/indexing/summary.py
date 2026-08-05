@@ -1,13 +1,8 @@
 from __future__ import annotations
 
-import json
-import logging
 import os
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any
-
-logger = logging.getLogger(__name__)
 
 
 def utc_now_iso() -> str:
@@ -102,28 +97,3 @@ def build_graph_preview(
         "total_triplets": total_triplets,
         "per_doc": per_doc,
     }
-
-
-def write_graph_preview(graph_preview: dict[str, Any], public_dir: Path) -> Path | None:
-    if not graph_preview:
-        return None
-    try:
-        public_dir.mkdir(parents=True, exist_ok=True)
-        preview_path = public_dir / "ingest_graph_preview.json"
-        preview_path.write_text(
-            json.dumps(graph_preview, indent=2, ensure_ascii=False) + "\n",
-            encoding="utf-8",
-        )
-        return preview_path
-    except Exception as exc:
-        logger.warning("ingest:failed to write graph preview: %s", exc)
-        return None
-
-
-def write_ingest_summary(summary: dict[str, Any], public_dir: Path) -> Path:
-    public_dir.mkdir(parents=True, exist_ok=True)
-    summary_path = public_dir / "ingest_summary.json"
-    summary_path.write_text(
-        json.dumps(summary, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
-    )
-    return summary_path

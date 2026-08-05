@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import logging
 from collections.abc import Callable
+from datetime import datetime, timezone
 from typing import Any
 
 from temporalio import activity
@@ -20,7 +21,7 @@ from hawki_rag_contracts.ingestion import (
     shared_storage_root,
 )
 from hawki_rag_text.markdown import strip_leading_converter_markdown_noise
-from hawki_rag_contracts.status import PipelineStageStatus
+from hawki_rag_contracts.status import MonitorArtifacts, PipelineStageStatus
 from hawki_rag_contracts.temporal import (
     INDEX_MARKDOWN_ACTIVITY,
     MARK_SOURCE_READY_ACTIVITY,
@@ -229,7 +230,6 @@ def _index_files(
             request,
             rag_service=graph_service,
             get_provider=provider_resolver,
-            public_dir=settings.public_dir,
             idempotency_key=operation_id,
             dependencies=workflow_dependencies,
         )
@@ -368,6 +368,9 @@ def _empty_result(source_id: str, *, status: str) -> dict[str, Any]:
         "unchanged_documents": 0,
         "status": status,
         "error_details": None,
+        "ingestion_summary": None,
+        "graph_preview": None,
+        "graph_failures": [],
     }
 
 
@@ -400,6 +403,17 @@ def _accumulate_response(totals: dict[str, Any], response: dict[str, Any]) -> No
         len(graph.get(key)) if isinstance(graph.get(key), list) else 0
         for key in ("nodes", "edges")
     )
+    totals["ingestion_summary"] = summary
+    preview = response.get("graph_preview")
+    if not isinstance(preview, dict):
+        preview = summary.get("graph_preview")
+    if isinstance(preview, dict):
+        totals["graph_preview"] = preview
+    failures = response.get("graph_failures")
+    if isinstance(failures, list):
+        totals["graph_failures"].extend(
+            failure for failure in failures if isinstance(failure, dict)
+        )
 
 
 def _operation_id(
@@ -425,6 +439,38 @@ def _result_metrics(result: dict[str, Any]) -> dict[str, int]:
         "unchanged_documents",
     )
     return {key: int(result.get(key) or 0) for key in keys}
+
+
+def _monitor_artifacts(
+    workflow_input: dict[str, Any], ingest_result: dict[str, Any]
+) -> MonitorArtifacts:
+    summary = ingest_result.get("ingestion_summary")
+    if not isinstance(summary, dict):
+        summary = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "estimate_only": False,
+            "documents": {
+                "processed_docs": int(ingest_result.get("documents_indexed") or 0),
+                "skipped_docs": int(ingest_result.get("skipped_documents") or 0),
+                "failed_docs": int(ingest_result.get("failed_documents") or 0),
+                "total_chunks": int(ingest_result.get("chunks_indexed") or 0),
+            },
+            "graph": {
+                "enabled": bool(
+                    (workflow_input.get("ingestion") or {}).get("graph", False)
+                )
+            },
+            "dry_run": False,
+        }
+
+    preview = ingest_result.get("graph_preview")
+    return MonitorArtifacts.model_validate(
+        {
+            "summary": summary,
+            "graph_preview": preview if isinstance(preview, dict) else None,
+            "graph_failures": ingest_result.get("graph_failures") or [],
+        }
+    )
 
 
 @activity.defn(name=MARK_SOURCE_READY_ACTIVITY)
@@ -512,6 +558,7 @@ def run_mark_source_ready(
         artifacts=artifacts,
         manifest=manifest_reference(manifest_path),
         document_version=result.get("document_version"),
+        monitor_artifacts=_monitor_artifacts(workflow_input, ingest_result),
         error=error,
         activity_info=activity_info,
     )

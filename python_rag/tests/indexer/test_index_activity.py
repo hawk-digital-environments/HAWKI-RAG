@@ -33,7 +33,6 @@ def _settings(tmp_path: Path) -> IndexerSettings:
         callback_timeout_seconds=1.0,
         callback_retry_attempts=1,
         rag_working_dir=tmp_path / "rag",
-        public_dir=tmp_path / "public",
     )
 
 
@@ -334,6 +333,21 @@ def test_ready_callback_is_a_separate_activity_with_result_references(
                 "unchanged_documents": 0,
                 "document_version": "version-1",
                 "error_details": None,
+                "ingestion_summary": {
+                    "timestamp": "2026-08-03T12:00:00Z",
+                    "documents": {"processed_docs": 2, "total_chunks": 4},
+                },
+                "graph_preview": {"total_docs": 2, "total_triplets": 1},
+                "graph_failures": [
+                    {
+                        "doc_id": "doc-2",
+                        "file_path": "doc-2.md",
+                        "chunks": 2,
+                        "chars": 500,
+                        "error": "Graph extraction timed out.",
+                        "timestamp": "2026-08-03T11:59:59Z",
+                    }
+                ],
             },
         },
         settings=_settings(tmp_path),
@@ -355,6 +369,10 @@ def test_ready_callback_is_a_separate_activity_with_result_references(
     assert callback["artifacts"][0].uri == str(markdown_dir)
     assert callback["manifest"].uri == str(manifest_path)
     assert callback["document_version"] == "version-1"
+    monitor = callback["monitor_artifacts"]
+    assert monitor.summary["documents"]["processed_docs"] == 2
+    assert monitor.graph_preview["total_triplets"] == 1
+    assert monitor.graph_failures[0].doc_id == "doc-2"
 
 
 def test_ready_callback_failure_does_not_enter_indexing_code(tmp_path: Path) -> None:

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 import time
-from pathlib import Path
 from typing import Any
 
 from hawki_indexer_worker.domain.errors import IndexingValidationError
@@ -40,7 +39,6 @@ def ingest_documents(
     *,
     rag_service: Any,
     get_provider,
-    public_dir: Path,
     idempotency_key: str | None = None,
     graph_debug: bool | None = None,
     dependencies: IngestWorkflowDependencies | None = None,
@@ -152,7 +150,6 @@ def ingest_documents(
             collection=qdrant.collection,
             rag_service=rag_service,
             get_provider=get_provider,
-            public_dir=public_dir,
             job_id=run_job_id,
             operation_id=operation_id,
             graph_debug=resolved_graph_debug,
@@ -211,10 +208,10 @@ def ingest_documents(
                 collection=qdrant.collection,
                 points_count=0,
                 graph_preview=None,
+                graph_failures=[],
                 qdrant_ms=0.0,
                 neo4j_ms=None,
                 started_at=start,
-                public_dir=public_dir,
                 job_id=run_job_id,
                 operation_id=operation_id,
                 logger_obj=logger,
@@ -258,6 +255,7 @@ def ingest_documents(
 
     neo4j_ms = None
     graph_preview = None
+    graph_failures: list[dict[str, Any]] = []
     if body.graph:
         graph_result = commit_graph_triplets(
             body=body,
@@ -266,7 +264,6 @@ def ingest_documents(
             rag_service=rag_service,
             provider=provider,
             graph_factory=dependencies.graph_factory,
-            public_dir=public_dir,
             job_id=run_job_id,
             operation_id=operation_id,
             graph_debug=resolved_graph_debug,
@@ -275,6 +272,7 @@ def ingest_documents(
             replace_doc_ids_by_doc=replace_doc_ids_by_doc,
         )
         graph_preview = graph_result.graph_preview
+        graph_failures = graph_result.graph_failures
         neo4j_ms = graph_result.neo4j_ms
 
     if not getattr(body, "graph_only", False):
@@ -296,10 +294,10 @@ def ingest_documents(
         collection=qdrant.collection,
         points_count=len(points),
         graph_preview=graph_preview,
+        graph_failures=graph_failures,
         qdrant_ms=qdrant_ms,
         neo4j_ms=neo4j_ms,
         started_at=start,
-        public_dir=public_dir,
         job_id=run_job_id,
         operation_id=operation_id,
         logger_obj=logger,

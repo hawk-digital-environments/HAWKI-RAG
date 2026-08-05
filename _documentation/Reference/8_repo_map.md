@@ -118,8 +118,8 @@ describe persisted records and relationships.
 | `Authorization/` | Query principals, dataset grants, and authorized dataset scope |
 | `Dataset/` | Dataset lifecycle, collection identity, graph/vector statistics, and cleanup |
 | `Document/` | Uploads, browsing, synchronization, previews, and document state |
-| `Pipeline/` | Tasks, uploads, Temporal bridge calls, recovery, logs, and projected status |
-| `Rag/` and `RagSearch/` | Bridge requests, response filtering, health, monitoring, and MCP search schema |
+| `Pipeline/` | Tasks, uploads, Temporal bridge calls, signed worker events, recovery, logs, and projected status |
+| `Rag/` and `RagSearch/` | PostgreSQL-backed monitor artifacts, bridge requests, response filtering, health, and MCP search schema |
 | `Graph/` | Neo4j administration, exploration, snapshots, search, and result normalization |
 | `Settings/` | Persisted operator settings and model runtime selection |
 | `Scrape/` and `Storage/` | Crawler integration and shared-file handling |

@@ -10,6 +10,7 @@ from temporalio import activity
 
 from hawki_rag_contracts.artifacts import ArtifactReference
 from hawki_rag_contracts.status import (
+    MonitorArtifacts,
     PipelineStage,
     PipelineStageStatus,
     PipelineWorkerEvent,
@@ -41,6 +42,7 @@ def report_status(
     artifacts: list[ArtifactReference] | None = None,
     manifest: ArtifactReference | None = None,
     document_version: str | None = None,
+    monitor_artifacts: MonitorArtifacts | None = None,
     error: Exception | None = None,
     activity_info: Any | None = None,
 ) -> dict[str, Any]:
@@ -88,6 +90,7 @@ def report_status(
         ),
         error_details=safe_error,
         document_version=document_version,
+        monitor_artifacts=monitor_artifacts,
     )
     callback_settings = LaravelCallbackSettings(
         endpoint=settings.callback_url,

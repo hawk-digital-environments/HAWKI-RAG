@@ -15,6 +15,7 @@ final readonly class PipelineWorkerEvent
      * @param  array{uri:string,relative_path?:string|null,sha256?:string|null,size_bytes?:int|null,media_type?:string|null}|null  $manifest
      * @param  list<array{code:string,message:string,retryable:bool}>  $errors
      * @param  list<string>  $warnings
+     * @param  array{summary:array<string,mixed>,graph_preview?:array<string,mixed>|null,graph_failures?:list<array{doc_id?:string|null,file_path?:string|null,chunks?:int,chars?:int,error:string,timestamp?:string}>}|null  $monitorArtifacts
      * @param  array<string, mixed>  $payload
      */
     private function __construct(
@@ -42,6 +43,7 @@ final readonly class PipelineWorkerEvent
         public array $warnings,
         public ?string $errorDetails,
         public ?string $documentVersion,
+        public ?array $monitorArtifacts,
         public string $payloadHash,
         public array $payload,
     ) {}
@@ -104,6 +106,9 @@ final readonly class PipelineWorkerEvent
             warnings: array_values(array_map('strval', $data['warnings'] ?? [])),
             errorDetails: isset($data['error_details']) ? (string) $data['error_details'] : null,
             documentVersion: isset($data['document_version']) ? (string) $data['document_version'] : null,
+            monitorArtifacts: isset($data['monitor_artifacts']) && is_array($data['monitor_artifacts'])
+                ? $data['monitor_artifacts']
+                : null,
             payloadHash: hash('sha256', $rawBody),
             payload: $data,
         );

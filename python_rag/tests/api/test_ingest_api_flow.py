@@ -126,7 +126,6 @@ class TestInProcessIndexingFlow:
             _request("The semester fee is listed in this document."),
             rag_service=object(),
             get_provider=lambda _name: provider,
-            public_dir=tmp_path,
             dependencies=_dependencies(qdrant),
         )
 
@@ -149,7 +148,6 @@ class TestInProcessIndexingFlow:
                 get_provider=lambda _name: (_ for _ in ()).throw(
                     AssertionError("provider must not resolve for invalid content")
                 ),
-                public_dir=tmp_path,
                 dependencies=_dependencies(qdrant),
             )
 
@@ -178,7 +176,6 @@ class TestInProcessIndexingFlow:
                 _request("Index this content.", operation_id="failed-op"),
                 rag_service=object(),
                 get_provider=lambda _name: RecordingProvider(),
-                public_dir=tmp_path,
                 dependencies=_dependencies(qdrant),
             )
 

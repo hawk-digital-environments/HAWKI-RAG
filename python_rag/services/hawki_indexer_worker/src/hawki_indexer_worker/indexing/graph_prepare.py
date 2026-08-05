@@ -1,17 +1,14 @@
 from __future__ import annotations
 
-import json
 import inspect
 import logging
 import signal
 import threading
 import time
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any
 
 from hawki_rag_stores.neo4j.traversal import filter_triplets_to_source
-from hawki_rag_stores.neo4j.visualization import write_graph_visualization
 from hawki_indexer_worker.indexing.graph_documents import prepare_graph_document
 from hawki_indexer_worker.indexing.graph_settings import (
     GraphIngestSettings,
@@ -39,32 +36,6 @@ def perf_log(
 
 def utc_now_iso() -> str:
     return datetime.now(tz=timezone.utc).isoformat()
-
-
-def graph_failure_log_path(
-    public_dir: Path, *, failure_log_path: str | Path | None = None
-) -> Path:
-    settings = load_graph_ingest_settings()
-    env_path = (
-        str(failure_log_path).strip()
-        if failure_log_path is not None
-        else settings.graph_failure_log
-    )
-    if env_path:
-        return Path(env_path)
-    return public_dir.parent / "storage" / "logs" / "ingest_graph_failures.jsonl"
-
-
-def append_graph_failures(path: Path, failures: list[dict[str, Any]]) -> None:
-    if not failures:
-        return
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with path.open("a", encoding="utf-8") as handle:
-            for item in failures:
-                handle.write(json.dumps(item, ensure_ascii=False) + "\n")
-    except Exception as exc:
-        logger.warning("graph:failed to write failures log: %s", exc)
 
 
 def run_graph_extract_with_timeout(
@@ -127,13 +98,11 @@ def build_triplets_by_doc(
     neo4j_database: str | None = None,
     dataset_id: str | None = None,
     neo4j_namespace: str | None = None,
-    public_dir: Path | None = None,
     graph_debug: bool | None = None,
     graph_perf_log: bool | None = None,
     graph_doc_timeout_s: float | None = None,
     graph_doc_max_chunks: int | None = None,
     graph_doc_max_chars: int | None = None,
-    failure_log_path: str | Path | None = None,
     graph_settings: GraphIngestSettings | None = None,
     request_id: str | None = None,
     replace_doc_ids_by_doc: dict[str, set[str]] | None = None,
@@ -373,18 +342,6 @@ def build_triplets_by_doc(
                     neo4j_namespace=neo4j_namespace,
                 )
                 neo4j_ms = (time.perf_counter() - neo4j_start) * 1000
-                if public_dir is not None:
-                    try:
-                        write_graph_visualization(
-                            public_dir, database=neo4j_database, recent_doc_id=doc_id
-                        )
-                    except Exception as exc:
-                        logger.warning(
-                            "graph-viz:update failed request_id=%s doc=%s: %s",
-                            request_id or "-",
-                            doc_id,
-                            exc,
-                        )
                 perf_log(
                     "perf:graph pipeline.ingest_logic._build_triplets_by_doc doc=%s step=neo4j_upsert triplets=%s ms=%.2f",
                     doc_id,
