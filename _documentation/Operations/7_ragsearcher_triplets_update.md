@@ -268,8 +268,8 @@ details from leaking to the MCP client.
 | Bridge call and timeout | `app/Services/RagSearch/RagSearcher.php` |
 | Inner response normalization | `app/Services/RagSearch/RagSearchResponseFilter.php` |
 | Advertised output schema | `app/Services/RagSearch/RagSearchSchemaFactory.php` |
-| FastAPI request validation | `python_rag/api/http/schemas.py` |
-| Raw query execution and response | `python_rag/application/workflows/query_execution.py` |
+| FastAPI request validation | `python_rag/services/hawki_bridge/src/hawki_bridge/http/schemas.py` |
+| Raw query execution and response | `python_rag/services/hawki_bridge/src/hawki_bridge/application/query/execution.py` |
 
 The existing `RagSearcherDatasetScopeTest` protects server-derived dataset
 scope. A dedicated MCP structured-output test is still needed to prevent the

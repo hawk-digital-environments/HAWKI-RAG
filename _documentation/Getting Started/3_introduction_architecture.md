@@ -22,9 +22,12 @@ communicate through predictable internal service names.
 
 | Component | Practical responsibility |
 |---|---|
-| **Laravel application** | Provides the UI and public API, authenticates the caller, authorizes dataset access, stores application metadata, and sends trusted internal requests to Python. |
-| **FastAPI bridge (`hawki_rag_bridge`)** | Provides the internal Python API for Temporal control, ingestion, retrieval, model providers, reranking, and graph adapters. The bridge and the Python RAG API are the same service. |
-| **Temporal and Python workers** | Coordinate long-running scrape, conversion, and ingestion work with retries, cancellation, schedules, and restart recovery. |
+| **Laravel application** | Provides the UI and public API, authenticates and authorizes callers, owns all application PostgreSQL metadata, submits trusted Temporal/query requests, and applies typed worker status callbacks. |
+| **FastAPI bridge (`hawki_rag_bridge`)** | Provides the read-only internal API for health/config, authorized query and graph reads, plus Temporal start, schedule, and cancellation commands. It has no ingestion route and no vector or graph write path. |
+| **Workflow worker** | Runs the deterministic Temporal workflow and coordinates the scraper, converter, indexer, and final-ready activities. |
+| **Scraper worker** | Calls the external crawler (or handles an uploaded artifact), writes raw artifacts, and reports signed stage events to Laravel. |
+| **Converter worker** | Inspects or converts raw artifacts into normalized Markdown and reports signed stage events to Laravel. |
+| **Indexer worker** | Reads Markdown artifacts and performs chunking, incremental planning, embeddings, Qdrant writes, and optional Neo4j/RAG-Anything work directly in-process. It never calls the bridge to ingest. |
 | **CustomCrawler** | Crawls website sources and places the resulting files into shared storage. It runs outside the core Compose project but joins the shared Docker network. |
 | **File converter** | Converts supported source files into normalized Markdown for ingestion. |
 | **Qdrant** | Stores chunk text, metadata, and embeddings for semantic and lexical retrieval. |
@@ -37,13 +40,18 @@ communicate through predictable internal service names.
 ## Control plane and data plane
 
 Laravel is the public security boundary. It identifies the caller, checks
-dataset access, and creates an authorized dataset scope before calling FastAPI.
-That scope contains the concrete Qdrant collection, Neo4j namespace, embedding
-provider, embedding model, and graph setting that Python may use.
+dataset access, and creates an authorized dataset scope before sending a query
+to the bridge or submitting ingestion work. That scope contains the concrete
+Qdrant collection, Neo4j namespace, embedding provider, embedding model, and
+graph setting that Python may use.
 
-The Python service applies this scope but does not decide which datasets a user
-may access. A query cannot silently switch embedding providers because vectors
-created by incompatible embedding models cannot be compared safely.
+Python services apply this scope but do not authenticate users or decide which
+datasets they may access. They do not connect to Laravel's PostgreSQL tables.
+Scraper, converter, and indexer workers instead send typed, HMAC-signed,
+idempotent status events to Laravel; Laravel validates each event and performs
+the metadata mutation through its own repository layer. A query cannot silently
+switch embedding providers because vectors created by incompatible embedding
+models cannot be compared safely.
 
 Laravel also does not connect directly to Temporal. It calls the FastAPI
 bridge's internal Temporal endpoints, and the Python Temporal client starts,
@@ -52,16 +60,18 @@ cancels, or schedules the workflow.
 ```mermaid
 flowchart LR
     User["User or API client"] --> Laravel["Laravel<br/>authentication, authorization,<br/>dataset scope"]
-    Laravel -->|"trusted internal request"| FastAPI["FastAPI bridge<br/>Python RAG data plane"]
-    FastAPI --> Temporal["Temporal"]
+    Laravel -->|"authorized query / Temporal command"| FastAPI["Read-only FastAPI bridge"]
+    FastAPI -->|"query reads"| Stores["Qdrant / Neo4j"]
+    FastAPI -->|"start / schedule / cancel"| Temporal["Temporal"]
     Temporal --> Workers["Python workers"]
+    Workers -->|"signed typed status event"| Laravel
 ```
 
 ## How a document enters the system
 
 A source can begin as a website URL or an uploaded file. Temporal coordinates
-the external tools and Python workers, while PostgreSQL records user-facing
-status throughout the process.
+the external tools and Python workers, while Laravel records their signed
+status events in its PostgreSQL metadata throughout the process.
 
 ```mermaid
 flowchart TB
@@ -74,6 +84,7 @@ flowchart TB
     subgraph Control["②  CREATE & ORCHESTRATE"]
         direction LR
         Laravel["Laravel control plane<br/>source · job · permissions"]
+        Callback["Laravel internal callback API<br/>typed · signed · idempotent"]
         BridgeControl["FastAPI bridge<br/>Temporal control API"]
         Temporal["Temporal<br/>durable workflow"]
         AppDB[("PostgreSQL<br/>application metadata<br/>& live pipeline status")]
@@ -119,8 +130,7 @@ flowchart TB
 
     subgraph Index["④  BUILD SEARCHABLE KNOWLEDGE"]
         direction TB
-        IngestWorker["Ingestion worker<br/>send Markdown batches"]
-        BridgeIngest["FastAPI /ingest<br/>clean + split into chunks"]
+        IndexerWorker["Indexer worker<br/>clean + split Markdown batches"]
         Embeddings["Create embeddings"]
         Qdrant[("Qdrant<br/>chunks · metadata · vectors")]
         GraphNeeded{"Graph processing<br/>requested or required?"}
@@ -130,9 +140,8 @@ flowchart TB
         Neo4j[("Neo4j<br/>dataset-scoped graph facts")]
         Ready["✓  Dataset ready to search"]
 
-        Markdown --> IngestWorker
-        IngestWorker -->|"POST /ingest"| BridgeIngest
-        BridgeIngest --> Embeddings
+        Markdown --> IndexerWorker
+        IndexerWorker -->|"direct in-process indexing"| Embeddings
         Embeddings --> Qdrant
         Qdrant --> GraphNeeded
         GraphNeeded -- "no" --> Ready
@@ -143,10 +152,11 @@ flowchart TB
         Neo4j --> Ready
     end
 
-    ScrapeWorker -. "stage status" .-> AppDB
-    ConvertWorker -. "stage status" .-> AppDB
-    IngestWorker -. "stage status" .-> AppDB
-    Ready -. "final status" .-> AppDB
+    ScrapeWorker -. "signed stage event" .-> Callback
+    ConvertWorker -. "signed stage event" .-> Callback
+    IndexerWorker -. "signed stage event" .-> Callback
+    Ready -. "signed final event" .-> Callback
+    Callback -->|"Laravel repository mutation"| AppDB
 
     classDef source fill:#7c3aed,color:#ffffff,stroke:#c4b5fd,stroke-width:2px;
     classDef control fill:#0f4c81,color:#ffffff,stroke:#7dd3fc,stroke-width:2px;
@@ -158,8 +168,8 @@ flowchart TB
     classDef success fill:#047857,color:#ffffff,stroke:#6ee7b7,stroke-width:3px;
 
     class Website,Upload source;
-    class Laravel,BridgeControl,Temporal control;
-    class ScrapeWorker,UseUpload,ConvertWorker,IngestWorker,BridgeIngest,Embeddings worker;
+    class Laravel,Callback,BridgeControl,Temporal control;
+    class ScrapeWorker,UseUpload,ConvertWorker,IndexerWorker,Embeddings worker;
     class Crawler,Converter external;
     class AppDB,TemporalDB,UploadStore,RawFiles,Markdown,Qdrant,Neo4j storage;
     class SourceRoute,GraphNeeded decision;
@@ -181,11 +191,14 @@ In practical terms:
    copies the already stored file and skips CustomCrawler.
 4. The converter worker sends raw files to the file converter and stores the
    resulting Markdown.
-5. The ingestion worker sends Markdown batches to FastAPI, which chunks the
-   content, creates embeddings, and writes the vectors to Qdrant.
-6. When graph processing is requested or required, RAG-Anything and LightRAG
-   produce normalized facts for Neo4j. Each worker projects its stage status
-   into the Laravel application database.
+5. The indexer worker reads Markdown in batches and calls its indexing
+   application logic directly. It chunks the content, creates embeddings, and
+   writes vectors and incremental content state to Qdrant without an HTTP hop
+   through the bridge.
+6. When graph processing is requested or required, indexer-owned RAG-Anything
+   and LightRAG adapters produce normalized facts for Neo4j.
+7. Workers send signed, typed stage events and artifact references to Laravel.
+   Only Laravel projects those events into its PostgreSQL metadata.
 
 ## How a question becomes an answer
 
@@ -242,16 +255,23 @@ whether an additional retrieval pass is needed.
 | **Fast** | Uses Qdrant semantic and lexical retrieval, score normalization, chunk deduplication, reranking, and answer generation. It skips graph retrieval, graph facts, and model-assisted query rewriting. |
 | **Deep** | Uses the same vector and lexical foundation, and can additionally use query rewriting, Neo4j structural retrieval, and graph facts when the authorized dataset has graph data. |
 
-## Why the Python RAG service exists
+## Why the Python RAG services exist
 
 Laravel remains focused on the public application: HTTP, authentication,
 authorization, dataset management, and operational status. Document parsing,
 embeddings, model providers, reranking, RAG-Anything, and LightRAG belong to the
 Python machine-learning ecosystem.
 
-Keeping those dependencies behind one internal FastAPI service makes the ML
-pipeline independently testable and replaceable without moving Python-specific
-concerns into Laravel.
+The Python data plane is split into six independently built roles: bridge,
+workflow worker, scraper worker, converter worker, indexer worker, and reranker.
+Shared code is supplied by narrow uv workspace packages rather than copied
+service implementations. Only the bridge and reranker expose HTTP APIs; the
+workflow and activity workers run their package entrypoints.
+
+This keeps the read-only query/control boundary small while allowing the heavy
+indexing dependencies to live only in the indexer image. Each role remains
+independently testable and replaceable without moving Python-specific concerns
+into Laravel or duplicating the same API in multiple containers.
 
 ## Why both RAG-Anything and LightRAG exist
 
@@ -296,8 +316,8 @@ RAG.
 
 | Storage | What belongs there | Isolation |
 |---|---|---|
-| **PostgreSQL** | Datasets, sources, jobs, permissions, schedules, and projected pipeline status | Laravel application records and Temporal persistence use separate databases, even when hosted by the same PostgreSQL container. |
-| **Qdrant** | Chunk text, metadata, and embedding vectors | Queries use the authorized collection and mandatory dataset filter. |
+| **PostgreSQL** | Datasets, sources, jobs, permissions, schedules, documents, ingested-page records, callback idempotency, and projected pipeline status | Laravel is the sole owner of application metadata. Temporal owns separate persistence schemas, even when hosted by the same PostgreSQL container; Python workers do not query either database directly. |
+| **Qdrant** | Chunk text, metadata, embedding vectors, content hashes, and index-internal incremental state | Queries use the authorized collection and mandatory dataset filter. The indexer reads and writes this state; the bridge reads only. |
 | **Neo4j** | Normalized entities and relations used for graph retrieval | Facts are written and queried with the authorized dataset namespace. |
 | **Shared storage** | Raw source files, converted Markdown, manifests, and pipeline artifacts | Workflow-specific paths and validated shared roots; this is not a query database. |
 

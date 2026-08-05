@@ -15,7 +15,7 @@ This portal is organized as a guided flow: from prerequisites to deployment, wit
 
 ## Overview
 
-HAWKI-RAG is a containerized, dataset-scoped retrieval-augmented generation platform that turns uploaded documents and crawled sources into grounded, searchable knowledge. Laravel provides the admin UI, canonical API, dataset management, and operational status. The Python FastAPI service owns the ML data plane, while Temporal coordinates durable scraping, conversion, ingestion, retries, cancellation, and recovery. Documents are converted to normalized Markdown and split into searchable chunks. Local Ollama creates embeddings by default, and Qdrant stores the chunk vectors and retrieval payloads. When graph ingestion is enabled, RAG-Anything coordinates the document and multimodal extraction flow, LightRAG extracts entities and relations inside that flow, and HAWKI-RAG normalizes and deduplicates the resulting dataset-scoped facts before storing them in Neo4j. At query time, Laravel supplies the caller's authorized dataset, and the Python service combines vector, lexical, and optional graph evidence. Retrieval scores are normalized across stages, duplicate chunks are removed by chunk identity, and an optional reranker orders the strongest evidence before answer generation.
+HAWKI-RAG is a containerized, dataset-scoped retrieval-augmented generation platform that turns uploaded documents and crawled sources into grounded, searchable knowledge. Laravel provides the admin UI, canonical API, dataset management, authorization, and operational status. Six narrow Python roles split the data plane: a read-only FastAPI bridge, deterministic workflow worker, scraper worker, converter worker, in-process indexer worker, and standalone reranker API. Temporal coordinates durable scraping, conversion, indexing, retries, cancellation, and recovery. Documents are converted to normalized Markdown and split into searchable chunks. Local Ollama creates embeddings by default, and Qdrant stores the chunk vectors and retrieval payloads. When graph ingestion is enabled, RAG-Anything coordinates the document and multimodal extraction flow, LightRAG extracts entities and relations inside that flow, and HAWKI-RAG normalizes and deduplicates the resulting dataset-scoped facts before storing them in Neo4j. At query time, Laravel supplies the caller's authorized dataset, and the bridge combines vector, lexical, and optional graph evidence before the optional reranker orders the strongest results.
 
 ## Read in Order
 
@@ -58,6 +58,8 @@ HAWKI-RAG is a containerized, dataset-scoped retrieval-augmented generation plat
 ## Quick Start
 
 ```bash
+test -f .env || cp .env.example .env
+# Set HAWKI_RAG_WORKER_CALLBACK_SECRET to: openssl rand -hex 32
 make up-core
 make test-services
 ```

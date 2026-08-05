@@ -24,7 +24,12 @@ Create the environment file:
 
 ```bash
 cp .env.example .env
+openssl rand -hex 32
 ```
+
+Paste the generated value into `.env` as
+`HAWKI_RAG_WORKER_CALLBACK_SECRET`. The scraper, converter, and indexer workers
+fail closed when this shared callback-signing secret is empty.
 
 Start HAWKI RAG:
 
@@ -49,13 +54,14 @@ Hardware acceleration is selected with `USE_OLLAMA_GPU`:
 # CPU-only PyTorch; does not download NVIDIA Python packages
 make up-core USE_OLLAMA_GPU=0
 
-# CUDA 13 PyTorch for the GPU API and reranker; GPU-enabled Ollama
+# CUDA 13 PyTorch for the indexer and reranker; GPU-enabled Ollama
 make up-core USE_OLLAMA_GPU=1
 ```
 
 The default value is `auto`: Linux hosts with `nvidia-smi` use GPU mode, while
-other hosts use CPU mode. CPU and CUDA images have separate tags and dependency
-locks, so switching modes preserves the other mode's cached image.
+other hosts use CPU mode. CPU and CUDA images have separate tags and alternative
+resolutions in the single `python_rag/uv.lock`, so switching modes preserves the
+other mode's cached image.
 
 Generate the application key once:
 
@@ -74,6 +80,15 @@ Open the app:
 ```text
 http://localhost:8080
 ```
+
+The Temporal UI is disabled by default. Start it only when workflow diagnostics
+are needed:
+
+```bash
+docker compose --env-file .env --profile temporal-ui up -d temporal-ui
+```
+
+It is then available at `http://127.0.0.1:8081`.
 
 ## Model Runtimes
 
@@ -141,7 +156,7 @@ After editing proxy variables, recreate the gateway and model consumers:
 docker compose --env-file .env --profile litellm up -d --force-recreate \
   litellm hawki_rag_bridge \
   hawki-rag-temporal-workflow-worker \
-  hawki-rag-temporal-ingestion-worker
+  hawki-rag-indexer-worker
 ```
 
 The local proxy is bound only to `127.0.0.1`. Verify its aliases and local
@@ -233,11 +248,12 @@ docker compose exec hawki_rag_app php artisan pipeline:health
 Before exposing HAWKI RAG, edit `.env` and change at least:
 
 ```env
-HAWKI_RAG_APP_ENV=production
-HAWKI_RAG_APP_DEBUG=false
+APP_ENV=production
+APP_DEBUG=false
 APP_URL=https://your-domain.example
 DB_PASSWORD=replace_with_a_strong_password
 NEO4J_PASSWORD=replace_with_a_strong_password
+HAWKI_RAG_WORKER_CALLBACK_SECRET=replace_with_a_random_32_byte_hex_secret
 ```
 
 For a production-mode local startup, use:
@@ -268,6 +284,8 @@ Production checklist:
 - Keep `.env` private.
 - Use HTTPS through a trusted reverse proxy.
 - Change all default passwords and tokens.
+- Set a non-empty `HAWKI_RAG_WORKER_CALLBACK_SECRET` and keep it identical for
+  Laravel and every activity worker.
 - Configure the scraper and file-converter service URLs in `.env`.
 - Back up PostgreSQL, Qdrant, Neo4j, the shared storage volume, and Laravel's
   host-mounted `storage/` directory.
