@@ -1,154 +1,139 @@
-# Python RAG Service
+# RAWKI Python RAG workspace
 
-This directory contains the FastAPI bridge, vector and graph ingestion logic,
-query pipeline, Temporal ingestion workers, and local reranker code.
+`python_rag` is one Python 3.13.11 uv workspace with one lockfile. It contains
+small reusable packages and six independently built production services. Laravel
+is the public control plane and remains the sole owner of authentication,
+authorization, and application PostgreSQL metadata.
 
-## Architecture
+## Runtime architecture
 
-The Python service is the internal RAG data plane, not the public authorization
-boundary. Browser and API requests enter through Laravel, which resolves the
-caller and the permitted dataset scope before forwarding an internal request.
-
-```mermaid
-flowchart LR
-    Client["Browser / API client"] --> Laravel["Laravel<br/>UI, authorization, dataset scope<br/>and control-plane metadata"]
-
-    Laravel -->|"authorized query"| FastAPI["Python FastAPI bridge<br/>retrieval, ingestion, and ML adapters"]
-    Laravel -->|"start, cancel, or schedule"| FastAPI
-    FastAPI -->|"Temporal client"| Temporal["Temporal<br/>durable workflow orchestration"]
-    Temporal --> Workers["Python Temporal workers<br/>scrape → convert → ingest"]
-    Workers -->|"ingest Markdown batches"| FastAPI
-    Workers <--> SharedStorage[("Shared storage<br/>raw files and Markdown")]
-
-    FastAPI -->|"graph-enabled ingestion"| RAGAnything["RAG-Anything<br/>document and multimodal orchestration"]
-    RAGAnything -->|"internal entity/relation extraction"| LightRAG["LightRAG<br/>embedded implementation detail"]
-
-    Laravel <--> AppPostgres[("PostgreSQL<br/>application metadata and projected status")]
-    Workers -->|"project stage status"| AppPostgres
-    Temporal --> TemporalPostgres[("PostgreSQL<br/>Temporal workflow history")]
-
-    FastAPI -->|"chunk vectors and payloads"| Qdrant[("Qdrant")]
-    FastAPI -->|"dataset-scoped graph facts"| Neo4j[("Neo4j")]
+```text
+Laravel --authorized scope--> bridge --read--> Qdrant / Neo4j --optional--> reranker
+   |                           |
+   +--start/cancel/schedule----+--> Temporal
+                                      |
+                                      v
+                  workflow -> scraper -> converter -> indexer
+                                |            |            |
+                                +---- artifact store -----+--> Qdrant / Neo4j
+                                +-- signed, typed callbacks --> Laravel
 ```
 
-### Component ownership
+The bridge exposes health, config, authorized query, scoped graph-read, and
+Temporal-control endpoints. It has no ingestion endpoint and no vector or graph
+write path. The indexer executes ingestion in-process; it never calls the bridge.
+Workers report status and artifact manifests through an HMAC-signed, idempotent
+Laravel callback and never connect to Laravel's database.
 
-- **Laravel is the control plane.** It owns the UI, authentication and
-  authorization, dataset grants, server-derived query scope, and application
-  metadata such as datasets, sources, pipeline jobs, and stage status.
-- **Temporal is the durable orchestrator.** Laravel requests workflow starts,
-  cancellations, and schedules through the Python bridge. Temporal coordinates
-  the scrape, conversion, ingestion, retry, and readiness phases; its activities
-  project user-facing status back into Laravel's pipeline tables.
-- **Python is the RAG data plane.** FastAPI and the Temporal workers isolate the
-  Python parser, ML, vector, and graph dependencies from the Laravel process.
-  The bridge applies Laravel's authorized dataset scope when reading Qdrant and
-  Neo4j; it does not decide which datasets a caller may access.
+## Workspace members
 
-### RAG-Anything and LightRAG
+Reusable libraries:
 
-RAG-Anything is the outer document and multimodal orchestration library **inside
-the graph-extraction path**. During graph-enabled ingestion, the service gives
-RAG-Anything normalized text blocks and any associated images. RAG-Anything
-owns the extraction lifecycle and uses the configured chat, vision, and
-embedding providers.
+- `packages/contracts`: side-effect-free Pydantic wire contracts and stable
+  Temporal names.
+- `packages/artifact_store`: root-confined local shared-volume operations,
+  atomic manifests, and stable content/document identities. Laravel allocates
+  the paths; canonical wire models live in `packages/contracts`.
+- `packages/worker_runtime`: Temporal bootstrap helpers, retries, heartbeats,
+  logging, external jobs, and signed callback delivery.
+- `packages/resilience`: retry, optional-import, redaction, and event helpers.
+- `packages/text_processing`: Markdown/text normalization, chunking, tags,
+  safety, terms, and packaged German stopwords.
+- `packages/model_providers`: provider ports plus Ollama and LiteLLM adapters.
+- `packages/stores`: typed low-level Qdrant and Neo4j clients.
 
-LightRAG is used internally by RAG-Anything to extract entities and relations
-and expose the resulting graph edges. The application then normalizes and
-deduplicates those edges before writing dataset-scoped facts to Neo4j. LightRAG
-is therefore not a second selectable RAG engine running beside RAG-Anything,
-and it is not the normal query endpoint: retrieval queries Qdrant and Neo4j
-through the application's own adapters.
+Production services and image roles:
 
-The helpers named after both projects are adapters around those two layers, not
-duplicate graph engines. The RAG-Anything adapter controls insertion and
-extraction lifecycle. The LightRAG-facing helpers configure the embedded
-engine's graph and document-status storage, export its edges, and recover usable
-relations from its response cache when required. If the official path returns
-no triplets, the service can use a direct model-provider fallback before the
-final Neo4j write.
+| Service member | Image | Responsibility |
+| --- | --- | --- |
+| `services/hawki_bridge` | `hawki-rag-bridge` | Read-only query/graph API and Temporal control |
+| `services/hawki_workflow_worker` | `hawki-rag-workflow-worker` | Deterministic ingestion workflows |
+| `services/hawki_scraper_worker` | `hawki-rag-scraper-worker` | Scraping and raw artifacts |
+| `services/hawki_converter_worker` | `hawki-rag-converter-worker` | Inspection, conversion, and Markdown artifacts |
+| `services/hawki_indexer_worker` | `hawki-rag-indexer-worker` | Incremental vector/graph indexing |
+| `services/hawki_reranker` | `hawki-rag-reranker` | Cohere-compatible local reranking API |
 
-For a shorter explanation and an end-to-end text-flow diagram, see
-[`3. Introduction & Architecture`](../_documentation/Getting%20Started/3_introduction_architecture.md).
+The indexer and reranker support `cpu` and `gpu` dependency/image variants.
+Those are alternative builds of the same two roles, not extra services.
+The two roles are intentionally separate uv environments: MinerU uses
+Transformers 4 while the reranker uses Transformers 5. uv records both exact
+resolutions in the one lockfile and prevents installing the incompatible roles
+into the same Python environment.
 
-### Data flow and storage
+LightRAG remains pinned to immutable source commit
+`c5bf73dbf6139f1b03f738a2fec4e47d5e66f3ab`, which reports package version
+`1.5.5`. That commit predates and differs from the published `1.5.5` wheel, so
+the indexer builder installs this one dependency from source. All registry
+dependencies retain exact versions in `uv.lock`; this intentional source pin is
+the only exception to a literal wheel-only install.
 
-1. **Query:** Laravel authorizes the caller and dataset, sends the resulting
-   scope to FastAPI, and FastAPI retrieves scoped vector and graph context from
-   Qdrant and Neo4j.
-2. **Ingestion:** Laravel creates the application metadata and asks the bridge
-   to start a Temporal workflow. Python workers scrape, convert to Markdown, and
-   submit batches to FastAPI. FastAPI writes chunk vectors to Qdrant and, when
-   graph ingestion is enabled, writes normalized RAG-Anything/LightRAG facts to
-   Neo4j.
-3. **Status:** Temporal activities write phase projections to the Laravel-owned
-   PostgreSQL tables. Temporal keeps its own workflow history in a separate
-   Temporal-owned PostgreSQL database; Laravel does not read or write Temporal's
-   internal tables.
+## Dependency management
 
-Storage responsibilities are intentionally separate:
-
-- **PostgreSQL:** application metadata, authorization-related records, dataset
-  configuration, ingestion sources, and projected pipeline status. The same
-  PostgreSQL service may also host Temporal's separate internal databases.
-- **Qdrant:** chunk embeddings and their retrieval payloads.
-- **Neo4j:** normalized, dataset-scoped entity and relation facts used for graph
-  retrieval.
-- **Shared storage:** raw source files, converted Markdown, manifests, and other
-  artifacts passed between Temporal activities.
-
-## Test Command
-
-Run the deterministic Python contract and API suite from the repository root:
+Install uv `0.11.26` and Python `3.13.11`, then run commands from the repository
+root:
 
 ```bash
-make python-test
+make python-lock                 # refresh one python_rag/uv.lock and verify variants
+make python-deps USE_OLLAMA_GPU=0
+make python-quality
+make python-test USE_OLLAMA_GPU=0
 ```
 
-Install runtime and test dependencies with `make python-deps` from a Python
-3.11 environment, matching the bridge image. `USE_OLLAMA_GPU=0` selects the
-CPU lock and `USE_OLLAMA_GPU=1` selects the CUDA 13.0 lock. The test target uses
-pytest so both `unittest.TestCase` scenarios and module-level pytest functions
-are collected:
+For CUDA 13.0 use `USE_OLLAMA_GPU=1`. Production Docker builds use `uv sync
+--frozen --no-dev --no-editable` against the root lock. Member projects pin all
+direct runtime, test, and build dependencies exactly. See
+[`DEPENDENCY_DELTA.md`](DEPENDENCY_DELTA.md) for intentional changes from the
+legacy requirements exports.
 
-```bash
-PYTHONPATH=python_rag python -m pytest -c python_rag/pytest.ini -m "not integration"
-```
-
-The bridge uses the unmodified upstream MinerU 3.4.4 package. Because
-RAG-Anything requests MinerU's broad `core` extra, the uv override in
-`requirements-mineru-overrides.txt` selects the pipeline backend that RAWKI
-actually runs and omits the unused Gradio UI. `uv` resolves MinerU's compatible
-Transformers 4 release independently from the reranker's Transformers 5
-dependency set. `make python-lock` regenerates the main and reranker locks for
-both CPU and CUDA. The CPU lock check fails if a CUDA, NVIDIA, or Triton package
-is introduced accidentally.
-
-The generated deployment locks are:
-
-- `requirements.cpu.lock.txt`
-- `requirements.gpu.lock.txt`
-- `requirements-rerank.cpu.lock.txt`
-- `requirements-rerank.gpu.lock.txt`
-
-On Linux ARM64, `pip check` on a GPU image reports
-`nvidia-cusparselt-cu13 0.8.1 is not supported on this platform`. PyTorch pins
-that package, whose ARM binary works but whose internal wheel tag says `sbsa`
-instead of `aarch64`. Importing the CUDA 13.0 PyTorch build succeeds; do not
-override PyTorch's exact CUDA dependency pin to suppress this metadata warning.
-
-When the corresponding services are reachable, run the opt-in live suites:
+Live tests remain opt-in:
 
 ```bash
 make python-integration
 make provider-test
 ```
 
-See [`tests/README.md`](tests/README.md) for the API flows, feature categories,
-endpoint coverage, and the Laravel/Python authorization boundary.
+## Local and production containers
 
-## Runtime Output
+Validate the model and build all six roles:
 
-The service writes runtime/cache data under directories such as
-`python_rag/rag_storage`, `python_rag/public`, and Python `__pycache__` folders.
-These are generated artifacts and should not be committed.
+```bash
+docker compose --env-file .env config --quiet
+docker compose --env-file .env build \
+  hawki_rag_bridge \
+  hawki_rag_rerank \
+  hawki-rag-temporal-workflow-worker \
+  hawki-rag-temporal-scraper-worker \
+  hawki-rag-temporal-converter-worker \
+  hawki-rag-indexer-worker
+```
+
+`make up-core` starts the production-style stack. `make up-core-local` adds the
+local UI override without bind-mounting the entire Python workspace into every
+container. Production images use allowlisted workspace members, run as a
+non-root user, and exclude tests, virtual environments, caches, build output,
+and unrelated service code.
+
+Worker callbacks require the same non-empty
+`HAWKI_RAG_WORKER_CALLBACK_SECRET` in Laravel and each activity worker. The
+callback client uses an explicit timeout, signs the exact transmitted body, and
+retries only the stable idempotent event identifier. Bridge Qdrant and Neo4j
+credentials should be read-only where the backing services support separate
+credentials.
+
+## Temporal compatibility
+
+The initial migration preserves `IngestSourceWorkflow`, `scrape_source`,
+`inspect_and_convert_files`, `ingest_markdown_files`, and `mark_source_ready`.
+The workflow uses Temporal's `workflow.patched` API when selecting the indexer
+queue. Pre-patch histories continue emitting the legacy ingestion-queue
+command; new executions may use `task_queues.indexer`. The indexer worker polls
+both the configured indexer queue and `rag-ingestion-task-queue` while old
+executions drain. Tests cover both patched and pre-patch command paths. No
+captured production histories were available in this checkout, so history
+replay must still be exercised before retiring the legacy queue.
+
+A second patch marker preserves the old early-return command history for
+unsuccessful index results. New executions run the cheap `mark_source_ready`
+activity for terminal callback delivery, while the expensive indexing activity
+remains isolated from callback retries. Tests cover both sides of this patch;
+captured production histories are still required for a real Replayer gate.

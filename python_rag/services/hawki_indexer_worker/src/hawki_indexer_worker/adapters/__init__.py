@@ -1,0 +1,1 @@
+"""Indexer infrastructure adapters."""

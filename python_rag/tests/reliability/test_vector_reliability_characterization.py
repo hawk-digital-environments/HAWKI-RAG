@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import os
 import sys
 import unittest
@@ -25,11 +24,11 @@ from characterization_support import (
 install_optional_dependency_stubs()
 
 
-
 class QdrantReliabilityCharacterizationTests(unittest.TestCase):
     """Protect Qdrant filtering, timeout policy, fault-tolerant parsing, and result normalization."""
+
     def test_qdrant_payload_helpers_build_expected_filters_and_batches(self) -> None:
-        from infrastructure.vectorstore.payloads import (
+        from hawki_rag_stores.qdrant.payloads import (
             build_delete_filter,
             build_search_body,
             build_text_filter,
@@ -42,7 +41,12 @@ class QdrantReliabilityCharacterizationTests(unittest.TestCase):
         )
         self.assertEqual(list(iter_batches([1, 2, 3, 4, 5], 2)), [[1, 2], [3, 4], [5]])
         self.assertEqual(
-            build_text_filter(["wooden", "", "blocks"], ["content", "title"], max_terms=2, require_all=True),
+            build_text_filter(
+                ["wooden", "", "blocks"],
+                ["content", "title"],
+                max_terms=2,
+                require_all=True,
+            ),
             {
                 "must": [
                     {
@@ -84,7 +88,7 @@ class QdrantReliabilityCharacterizationTests(unittest.TestCase):
         )
 
     def test_qdrant_settings_parse_env_and_fall_back_on_invalid_numbers(self) -> None:
-        from infrastructure.vectorstore.settings import qdrant_settings_from_env
+        from hawki_rag_stores.qdrant.settings import qdrant_settings_from_env
 
         with patch.dict(
             os.environ,
@@ -108,7 +112,7 @@ class QdrantReliabilityCharacterizationTests(unittest.TestCase):
         self.assertEqual(settings.max_attempts, 5)
 
     def test_qdrant_http_settings_parse_and_defaults(self) -> None:
-        from infrastructure.vectorstore.settings import qdrant_http_settings_from_env
+        from hawki_rag_stores.qdrant.settings import qdrant_http_settings_from_env
 
         with patch.dict(
             os.environ,
@@ -136,8 +140,8 @@ class QdrantReliabilityCharacterizationTests(unittest.TestCase):
         self.assertEqual(settings.text_scroll_hard_cap, 50000)
 
     def test_qdrant_http_uses_injected_http_settings_for_timeouts(self) -> None:
-        from infrastructure.vectorstore.qdrant_http import QdrantHTTP
-        from infrastructure.vectorstore.settings import QdrantHTTPSettings, QdrantSettings
+        from hawki_rag_stores.qdrant.client import QdrantHTTP
+        from hawki_rag_stores.qdrant.settings import QdrantHTTPSettings, QdrantSettings
 
         requests: list[tuple[str, str, dict[str, object]]] = []
 
@@ -155,7 +159,10 @@ class QdrantReliabilityCharacterizationTests(unittest.TestCase):
                 requests.append((method, url, dict(kwargs)))
                 return FakeResponse()
 
-        with patch("infrastructure.vectorstore.qdrant_http.requests.Session", return_value=FakeSession()):
+        with patch(
+            "hawki_rag_stores.qdrant.client.requests.Session",
+            return_value=FakeSession(),
+        ):
             client = QdrantHTTP(
                 settings=QdrantSettings(
                     scheme="http",
@@ -183,17 +190,21 @@ class QdrantReliabilityCharacterizationTests(unittest.TestCase):
                 ),
             )
 
-            self.assertEqual(client.upsert([{"id": "1", "vector": [1.0], "payload": {}}]), None)
+            self.assertEqual(
+                client.upsert([{"id": "1", "vector": [1.0], "payload": {}}]), None
+            )
 
         self.assertEqual(len(requests), 1)
         method, url, kwargs = requests[0]
         self.assertEqual(method, "PUT")
-        self.assertEqual(url, "http://qdrant-host:6333/collections/toy_collection/points")
+        self.assertEqual(
+            url, "http://qdrant-host:6333/collections/toy_collection/points"
+        )
         self.assertEqual(kwargs["timeout"], 9.0)
 
     def test_qdrant_http_delegates_requests_to_primitive_gateway(self) -> None:
-        from infrastructure.vectorstore.qdrant_http import QdrantHTTP
-        from infrastructure.vectorstore.settings import QdrantHTTPSettings, QdrantSettings
+        from hawki_rag_stores.qdrant.client import QdrantHTTP
+        from hawki_rag_stores.qdrant.settings import QdrantHTTPSettings, QdrantSettings
 
         calls: list[tuple[str, object]] = []
 
@@ -239,7 +250,9 @@ class QdrantReliabilityCharacterizationTests(unittest.TestCase):
 
             def scroll(self, collection, body, timeout):
                 calls.append(("scroll", collection, timeout))
-                return FakeResponse({"result": {"points": [], "next_page_offset": None}})
+                return FakeResponse(
+                    {"result": {"points": [], "next_page_offset": None}}
+                )
 
             def ensure_collection(self, **kwargs):
                 calls.append(("ensure_collection", kwargs))
@@ -247,7 +260,10 @@ class QdrantReliabilityCharacterizationTests(unittest.TestCase):
 
         fake_gateway = FakeGateway()
 
-        with patch("infrastructure.vectorstore.qdrant_http.QdrantHTTPGateway", return_value=fake_gateway):
+        with patch(
+            "hawki_rag_stores.qdrant.client.QdrantHTTPGateway",
+            return_value=fake_gateway,
+        ):
             client = QdrantHTTP(
                 settings=QdrantSettings(
                     scheme="http",
@@ -275,7 +291,9 @@ class QdrantReliabilityCharacterizationTests(unittest.TestCase):
                 ),
             )
 
-            self.assertEqual(client.search([0.1, 0.2], top_k=2), [{"id": "1", "score": 0.4}])
+            self.assertEqual(
+                client.search([0.1, 0.2], top_k=2), [{"id": "1", "score": 0.4}]
+            )
             client.upsert([{"id": "a", "vector": [1, 2], "payload": {}}])
             self.assertEqual(client.count_points(), 42)
             client.delete_by_filter({"must": []})
@@ -287,9 +305,11 @@ class QdrantReliabilityCharacterizationTests(unittest.TestCase):
         self.assertIn(("delete_by_filter", 2.0), calls)
         self.assertEqual(fake_gateway.collection, "runtime_collection")
 
-    def test_qdrant_http_defaults_search_all_limit_to_top_k_when_not_configured(self) -> None:
-        from infrastructure.vectorstore.qdrant_http import QdrantHTTP
-        from infrastructure.vectorstore.settings import QdrantHTTPSettings, QdrantSettings
+    def test_qdrant_http_defaults_search_all_limit_to_top_k_when_not_configured(
+        self,
+    ) -> None:
+        from hawki_rag_stores.qdrant.client import QdrantHTTP
+        from hawki_rag_stores.qdrant.settings import QdrantHTTPSettings, QdrantSettings
 
         limits: list[int] = []
 
@@ -324,36 +344,49 @@ class QdrantReliabilityCharacterizationTests(unittest.TestCase):
             ),
         )
 
-        def fake_search_collection(collection: str, body: dict[str, object], timeout: float) -> list[dict[str, object]]:
+        def fake_search_collection(
+            collection: str, body: dict[str, object], timeout: float
+        ) -> list[dict[str, object]]:
             limits.append(int(body["limit"]))
             return []
 
-        with patch("infrastructure.vectorstore.qdrant_http.requests.Session", return_value=FakeSession()), patch.object(
-            client,
-            "list_collections",
-            return_value=["a", "b"],
-        ), patch.object(
-            client,
-            "_search_collection",
-            side_effect=fake_search_collection,
+        with (
+            patch(
+                "hawki_rag_stores.qdrant.client.requests.Session",
+                return_value=FakeSession(),
+            ),
+            patch.object(
+                client,
+                "list_collections",
+                return_value=["a", "b"],
+            ),
+            patch.object(
+                client,
+                "_search_collection",
+                side_effect=fake_search_collection,
+            ),
         ):
             client.search([0.1], top_k=7, with_vector=False, with_payload=True)
 
         self.assertEqual(limits, [7, 7])
 
     def test_qdrant_collection_helpers_parse_names_counts_and_vector_size(self) -> None:
-        from infrastructure.vectorstore.collections import (
+        from hawki_rag_stores.qdrant.collections import (
             collection_names,
             pick_most_populated_collection,
             vector_size_from_config,
         )
 
         self.assertEqual(
-            collection_names({"result": {"collections": [{"name": "a"}, {"name": "b"}, {}]}}),
+            collection_names(
+                {"result": {"collections": [{"name": "a"}, {"name": "b"}, {}]}}
+            ),
             ["a", "b"],
         )
         self.assertEqual(
-            pick_most_populated_collection([("empty", 0), ("missing", None), ("full", 12)]),
+            pick_most_populated_collection(
+                [("empty", 0), ("missing", None), ("full", 12)]
+            ),
             "full",
         )
         self.assertEqual(
@@ -361,12 +394,14 @@ class QdrantReliabilityCharacterizationTests(unittest.TestCase):
             384,
         )
         self.assertEqual(
-            vector_size_from_config({"config": {"params": {"vectors": {"params": {"text": {"size": 768}}}}}}),
+            vector_size_from_config(
+                {"config": {"params": {"vectors": {"params": {"text": {"size": 768}}}}}}
+            ),
             768,
         )
 
     def test_qdrant_response_parsers_are_fault_tolerant(self) -> None:
-        from infrastructure.vectorstore.qdrant_responses import (
+        from hawki_rag_stores.qdrant.responses import (
             parse_collection_config,
             parse_collection_names,
             parse_count,
@@ -374,19 +409,29 @@ class QdrantReliabilityCharacterizationTests(unittest.TestCase):
             parse_search_result,
         )
 
-        self.assertEqual(parse_collection_names({"result": {"collections": [{"name": "a"}, {}]}}), ["a"])
-        self.assertEqual(parse_search_result({"result": [{"id": "x", "score": 0.9}]}), [{"id": "x", "score": 0.9}])
+        self.assertEqual(
+            parse_collection_names({"result": {"collections": [{"name": "a"}, {}]}}),
+            ["a"],
+        )
+        self.assertEqual(
+            parse_search_result({"result": [{"id": "x", "score": 0.9}]}),
+            [{"id": "x", "score": 0.9}],
+        )
         self.assertEqual(parse_search_result({"other": []}), [])
         self.assertEqual(parse_count({"result": {"count": "9"}}), 9)
         self.assertIsNone(parse_count({"result": {"count": None}}))
         self.assertIsNone(parse_count({"result": {}}))
-        points, next_offset = parse_scroll_points({"result": {"points": [{"id": "a"}], "next_page_offset": "abc"}})
+        points, next_offset = parse_scroll_points(
+            {"result": {"points": [{"id": "a"}], "next_page_offset": "abc"}}
+        )
         self.assertEqual(points, [{"id": "a"}])
         self.assertEqual(next_offset, "abc")
-        self.assertEqual(parse_collection_config({"result": {"config": 1}}), {"config": 1})
+        self.assertEqual(
+            parse_collection_config({"result": {"config": 1}}), {"config": 1}
+        )
 
     def test_qdrant_interpretation_helpers_handle_404_and_missing_scores(self) -> None:
-        from infrastructure.vectorstore.qdrant_interpretation import (
+        from hawki_rag_stores.qdrant.interpretation import (
             attach_collection,
             parse_scroll_payload,
             parse_search_payload,
@@ -394,8 +439,11 @@ class QdrantReliabilityCharacterizationTests(unittest.TestCase):
         )
 
         HTTPError = _requests_http_error_type()
+
         class FakeResponse:
-            def __init__(self, status_code: int, payload: dict[str, object] | None = None) -> None:
+            def __init__(
+                self, status_code: int, payload: dict[str, object] | None = None
+            ) -> None:
                 self.status_code = status_code
                 self._payload = payload or {}
 
@@ -408,7 +456,9 @@ class QdrantReliabilityCharacterizationTests(unittest.TestCase):
 
         no_rows = FakeResponse(404, {"result": []})
         self.assertEqual(parse_search_payload(no_rows, empty_on_not_found=True), [])
-        self.assertEqual(parse_scroll_payload(no_rows, empty_on_not_found=True), ([], None))
+        self.assertEqual(
+            parse_scroll_payload(no_rows, empty_on_not_found=True), ([], None)
+        )
 
         with self.assertRaises(HTTPError):
             parse_search_payload(no_rows, empty_on_not_found=False)
@@ -419,29 +469,39 @@ class QdrantReliabilityCharacterizationTests(unittest.TestCase):
             {"id": "3"},
             {"id": "4", "score": 0.5},
         ]
-        self.assertEqual(sort_hits_by_score(hits)[:2], [{"id": "2", "score": 0.87}, {"id": "4", "score": 0.5}])
+        self.assertEqual(
+            sort_hits_by_score(hits)[:2],
+            [{"id": "2", "score": 0.87}, {"id": "4", "score": 0.5}],
+        )
         self.assertEqual(
             sort_hits_by_score(hits, limit=2),
             [{"id": "2", "score": 0.87}, {"id": "4", "score": 0.5}],
         )
 
-        with_collection = attach_collection([{"id": "x"}, {"id": "y", "collection": "custom"}], "default")
+        with_collection = attach_collection(
+            [{"id": "x"}, {"id": "y", "collection": "custom"}], "default"
+        )
         self.assertEqual(with_collection[0]["collection"], "default")
         self.assertEqual(with_collection[1]["collection"], "custom")
 
         missing_payload = FakeResponse(200, {})
-        points, next_offset = parse_scroll_payload(missing_payload, empty_on_not_found=True)
+        points, next_offset = parse_scroll_payload(
+            missing_payload, empty_on_not_found=True
+        )
         self.assertEqual(points, [])
         self.assertIsNone(next_offset)
 
     def test_qdrant_search_helpers_normalize_and_merge_results(self) -> None:
-        from infrastructure.vectorstore.qdrant_search import (
+        from hawki_rag_stores.qdrant.search import (
             merge_search_results,
             normalize_query_inputs,
             search_with_fallback_collections,
         )
 
-        self.assertEqual(normalize_query_inputs(["", "toy", None, "graph"], ["", "title"]), (["toy", "graph"], ["title"]))
+        self.assertEqual(
+            normalize_query_inputs(["", "toy", None, "graph"], ["", "title"]),
+            (["toy", "graph"], ["title"]),
+        )
 
         merged = merge_search_results(
             [

@@ -3,24 +3,21 @@
 from __future__ import annotations
 
 import os
-import sys
 import unittest
-from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
-
-
-ROOT = Path(__file__).resolve().parents[2]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
 
 
 class RagAnythingProviderRuntimeTests(unittest.TestCase):
     """Verify graph extraction uses the selected provider without changing vector compatibility."""
 
-    def test_graph_clone_preserves_request_models_and_observed_embedding_dimension(self) -> None:
-        from application.workflows.provider_overrides import apply_provider_overrides
-        from infrastructure.raganything.provider_config import clone_provider_for_graph
+    def test_graph_clone_preserves_request_models_and_observed_embedding_dimension(
+        self,
+    ) -> None:
+        from hawki_indexer_worker.adapters.raganything.provider_config import (
+            clone_provider_for_graph,
+        )
+        from hawki_model_providers.overrides import apply_provider_overrides
 
         class Provider:
             def __init__(self) -> None:
@@ -58,9 +55,15 @@ class RagAnythingProviderRuntimeTests(unittest.TestCase):
         self.assertEqual(graph_provider._explicit_vision_model, "hawki-gpt-vision")
         self.assertEqual(graph_provider._last_embed_dim, 1536)
 
-    def test_observed_embedding_dimension_takes_priority_over_alias_configuration(self) -> None:
-        from infrastructure.raganything.raganything_client_config import _embed_model_dim
-        from infrastructure.raganything.raganything_settings import load_raganything_graph_settings
+    def test_observed_embedding_dimension_takes_priority_over_alias_configuration(
+        self,
+    ) -> None:
+        from hawki_indexer_worker.adapters.raganything.client_config import (
+            _embed_model_dim,
+        )
+        from hawki_indexer_worker.adapters.raganything.settings import (
+            load_raganything_graph_settings,
+        )
 
         with patch.dict(
             os.environ,
@@ -77,8 +80,12 @@ class RagAnythingProviderRuntimeTests(unittest.TestCase):
         self.assertEqual(_embed_model_dim(provider, settings), 768)
 
     def test_default_graph_only_alias_dimensions_cover_litellm_embeddings(self) -> None:
-        from infrastructure.raganything.raganything_client_config import _embed_model_dim
-        from infrastructure.raganything.raganything_settings import load_raganything_graph_settings
+        from hawki_indexer_worker.adapters.raganything.client_config import (
+            _embed_model_dim,
+        )
+        from hawki_indexer_worker.adapters.raganything.settings import (
+            load_raganything_graph_settings,
+        )
 
         with patch.dict(os.environ, {}, clear=True):
             settings = load_raganything_graph_settings()
@@ -96,7 +103,7 @@ class RagAnythingProviderRuntimeTests(unittest.TestCase):
         self.assertEqual(_embed_model_dim(openai_provider, settings), 1536)
 
     def test_embedding_dimension_alias_parser_rejects_unsafe_entries(self) -> None:
-        from infrastructure.raganything.raganything_client_config import (
+        from hawki_indexer_worker.adapters.raganything.client_config import (
             _embedding_dimension_overrides,
         )
 

@@ -19,7 +19,7 @@ pytestmark = pytest.mark.integration
 
 
 def _http_settings() -> Any:
-    from infrastructure.vectorstore.settings import QdrantHTTPSettings
+    from hawki_rag_stores.qdrant.settings import QdrantHTTPSettings
 
     return QdrantHTTPSettings(
         log_latency=False,
@@ -39,8 +39,8 @@ def _http_settings() -> Any:
 
 
 def _client(live_qdrant: Any, collection: str) -> Any:
-    from infrastructure.vectorstore.qdrant_http import QdrantHTTP
-    from infrastructure.vectorstore.settings import QdrantSettings
+    from hawki_rag_stores.qdrant.client import QdrantHTTP
+    from hawki_rag_stores.qdrant.settings import QdrantSettings
 
     parsed = urlsplit(live_qdrant.base_url)
     port = parsed.port or (443 if parsed.scheme == "https" else 80)
@@ -66,7 +66,9 @@ def _create_collection(live_qdrant: Any, collection: str) -> None:
     response.raise_for_status()
 
 
-def _upsert_and_wait(live_qdrant: Any, collection: str, points: list[dict[str, Any]]) -> None:
+def _upsert_and_wait(
+    live_qdrant: Any, collection: str, points: list[dict[str, Any]]
+) -> None:
     response = live_qdrant.session.put(
         f"{live_qdrant.base_url}/collections/{collection}/points",
         params={"wait": "true"},
@@ -85,7 +87,7 @@ def _upsert_and_wait(live_qdrant: Any, collection: str, points: list[dict[str, A
             timeout=5.0,
         )
         count_response.raise_for_status()
-        count = ((count_response.json().get("result") or {}).get("count"))
+        count = (count_response.json().get("result") or {}).get("count")
         if count == len(points):
             return
         time.sleep(0.05)
@@ -128,7 +130,7 @@ class TestLiveQdrantScoping:
         live_qdrant: Any,
         qdrant_scope_resources: dict[str, str],
     ) -> None:
-        from application.workflows.query_scope import build_scoped_query_filters
+        from hawki_bridge.application.query.scope import build_scoped_query_filters
 
         resource = qdrant_scope_resources
         _create_collection(live_qdrant, resource["collection_a"])
@@ -201,7 +203,7 @@ class TestLiveQdrantScoping:
         live_qdrant: Any,
         qdrant_scope_resources: dict[str, str],
     ) -> None:
-        from infrastructure.vectorstore.qdrant_http import ScopedCollectionNotReadyError
+        from hawki_rag_stores.qdrant.client import ScopedCollectionNotReadyError
 
         resource = qdrant_scope_resources
         _create_collection(live_qdrant, resource["collection_b"])

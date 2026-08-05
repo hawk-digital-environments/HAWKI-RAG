@@ -1,196 +1,186 @@
-"""Vertical FastAPI flow tests for document ingestion requests.
-
-The suite exercises validation and HTTP-to-application delegation with an
-injected RAG service, while persistence and model providers remain fake.
-"""
+"""In-process indexer scenarios replacing the retired bridge ingestion API."""
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 from typing import Any
-from unittest.mock import Mock, patch
 
-from fastapi.testclient import TestClient
+import pytest
 
-
-PYTHON_RAG_ROOT = Path(__file__).resolve().parents[2]
-if str(PYTHON_RAG_ROOT) not in sys.path:
-    sys.path.insert(0, str(PYTHON_RAG_ROOT))
-
-
-class _FakeProvider:
-    """Provider value returned by the injected RAG service boundary."""
-
-    embed_model = "test-embedding-model"
-    rag_model = "test-chat-model"
+from hawki_indexer_worker.domain.errors import IndexingValidationError
+from hawki_indexer_worker.domain.models import IngestDocument
+from hawki_indexer_worker.indexing.dependencies import IngestWorkflowDependencies
+from hawki_indexer_worker.indexing.orchestration import ingest_documents
+from hawki_indexer_worker.indexing.page_state import QdrantPageState
+from hawki_indexer_worker.indexing.request import IndexRequest
 
 
-class _FakeRagService:
-    """Injected service fake that records provider resolution."""
+class RecordingProvider:
+    embed_model = "bge-m3"
+    rag_model = "chat"
+    vision_model = "vision"
 
     def __init__(self) -> None:
-        self.provider = _FakeProvider()
-        self.provider_requests: list[str] = []
+        self.embedded: list[str] = []
 
-    def get_provider(self, name: str) -> _FakeProvider:
-        self.provider_requests.append(name)
-        return self.provider
-
-
-def _build_test_client(tmp_path: Path, service: _FakeRagService) -> TestClient:
-    from api.factory import build_app
-    from api.settings import load_app_settings
-
-    settings = load_app_settings({"PYTHON_RAG_API_FLOW_TEST": "1"})
-    app = build_app(
-        rag_service=service,
-        public_dir=tmp_path,
-        qdrant_factory=lambda: object(),
-        logger_name="test.ingest_api_flow",
-        app_settings=settings,
-    )
-    return TestClient(app)
+    def embed(self, text: str) -> list[float]:
+        self.embedded.append(text)
+        return [0.1, 0.2, 0.3]
 
 
-def _ingest_payload(*, idempotency_key: str = "body-ingest-key") -> dict[str, Any]:
-    return {
-        "docs": [
-            {
-                "id": "fee-document-1",
-                "text": "The semester fee is listed in this document.",
-                "payload": {"title": "Fee schedule"},
-            }
+class RecordingQdrant:
+    def __init__(self) -> None:
+        self.collection = "default"
+        self.points: list[dict[str, Any]] = []
+        self.operations: list[tuple[str, str | None]] = []
+
+    def set_collection(self, collection: str) -> None:
+        self.collection = collection
+
+    def find_points_by_payload(
+        self,
+        filters: dict[str, Any],
+        *,
+        limit: int = 1,
+    ) -> list[dict[str, Any]]:
+        matches = [
+            point
+            for point in self.points
+            if all(
+                point.get("payload", {}).get(key) == value
+                for key, value in filters.items()
+            )
+        ]
+        return matches[:limit]
+
+    def ensure_collection(self, vector_size: int, *, distance: str) -> None:
+        assert vector_size == 3
+        assert distance == "Cosine"
+
+    def upsert_points(
+        self,
+        points: list[dict[str, Any]],
+        *,
+        batch_size: int,
+        idempotency_key: str | None = None,
+    ) -> None:
+        assert batch_size > 0
+        self.operations.append(("upsert", idempotency_key))
+        self.points.extend(points)
+
+    def delete_by_doc_id(
+        self,
+        doc_id: str,
+        *,
+        idempotency_key: str | None = None,
+    ) -> dict[str, str]:
+        self.operations.append(("delete", idempotency_key))
+        self.points = [
+            point
+            for point in self.points
+            if point.get("payload", {}).get("doc_id") != doc_id
+        ]
+        return {"status": "ok"}
+
+
+def _request(text: str, *, operation_id: str = "index-op-1") -> IndexRequest:
+    return IndexRequest(
+        docs=[
+            IngestDocument(
+                id="fee-document-1",
+                text=text,
+                payload={
+                    "title": "Fees",
+                    "source_url": "https://example.test/fees",
+                    "source_format": "markdown",
+                    "job_id": "job-1",
+                },
+            )
         ],
-        "provider": "test-provider",
-        "collection": "hawki_gebuehren",
-        "dataset_id": "Gebuehren",
-        "idempotency_key": idempotency_key,
-        "graph": False,
-    }
+        provider="ollama",
+        embedding_model="bge-m3",
+        collection="dataset-1",
+        idempotency_key=operation_id,
+    )
 
 
-class TestIngestApiFlow:
-    """Describe ingestion validation, idempotency, delegation, and responses."""
+def _dependencies(qdrant: RecordingQdrant) -> IngestWorkflowDependencies:
+    return IngestWorkflowDependencies(
+        qdrant_factory=lambda: qdrant,
+        graph_factory=lambda **_kwargs: None,
+        page_state_factory=QdrantPageState,
+    )
 
-    def test_ingest_delegates_validated_input_and_prefers_header_idempotency(
+
+class TestInProcessIndexingFlow:
+    """Prove indexing owns validation and writes without bridge HTTP calls."""
+
+    def test_validated_input_is_indexed_directly_with_stable_idempotency(
         self,
         tmp_path: Path,
     ) -> None:
-        service = _FakeRagService()
-        calls: list[dict[str, Any]] = []
+        qdrant = RecordingQdrant()
+        provider = RecordingProvider()
 
-        def ingest_use_case(
-            body: Any,
-            *,
-            rag_service: Any,
-            get_provider: Any,
-            public_dir: Path,
-            idempotency_key: str | None,
-            graph_debug: bool,
-        ) -> dict[str, Any]:
-            calls.append(
-                {
-                    "body": body,
-                    "service": rag_service,
-                    "provider": get_provider(body.provider),
-                    "public_dir": public_dir,
-                    "idempotency_key": idempotency_key,
-                    "graph_debug": graph_debug,
-                }
-            )
-            return {
-                "ok": True,
-                "points": 1,
-                "summary": {
-                    "collection": body.collection,
-                    "processed_docs": len(body.docs),
-                },
-                "graph_only": False,
-            }
-
-        with patch("application.ingest.ingest_documents", side_effect=ingest_use_case) as delegate:
-            with _build_test_client(tmp_path, service) as client:
-                header_response = client.post(
-                    "/ingest",
-                    headers={
-                        "Idempotency-Key": "header-ingest-key",
-                        "X-Request-ID": "ingest-success-1",
-                    },
-                    json=_ingest_payload(),
-                )
-                body_response = client.post(
-                    "/ingest",
-                    headers={"X-Request-ID": "ingest-success-2"},
-                    json=_ingest_payload(idempotency_key="body-only-key"),
-                )
-
-        expected_response = {
-            "ok": True,
-            "points": 1,
-            "summary": {
-                "collection": "hawki_gebuehren",
-                "processed_docs": 1,
-            },
-            "graph_only": False,
-        }
-        assert header_response.status_code == 200
-        assert header_response.json() == expected_response
-        assert header_response.headers["X-Request-ID"] == "ingest-success-1"
-        assert body_response.status_code == 200
-        assert body_response.json() == expected_response
-        assert body_response.headers["X-Request-ID"] == "ingest-success-2"
-        assert [call["idempotency_key"] for call in calls] == [
-            "header-ingest-key",
-            "body-only-key",
-        ]
-        assert all(call["body"].__class__.__name__ == "IngestRequest" for call in calls)
-        assert all(call["body"].chunk_chars == 1200 for call in calls)
-        assert all(call["service"] is service for call in calls)
-        assert all(call["provider"] is service.provider for call in calls)
-        assert all(call["public_dir"] == tmp_path for call in calls)
-        assert service.provider_requests == ["test-provider", "test-provider"]
-        assert delegate.call_count == 2
-
-    def test_invalid_document_is_rejected_before_ingestion_delegation(self, tmp_path: Path) -> None:
-        service = _FakeRagService()
-        delegate = Mock()
-        invalid_payload = _ingest_payload()
-        del invalid_payload["docs"][0]["text"]
-
-        with patch("application.ingest.ingest_documents", delegate):
-            with _build_test_client(tmp_path, service) as client:
-                response = client.post("/ingest", json=invalid_payload)
-
-        assert response.status_code == 422
-        assert set(response.json()) == {"detail"}
-        assert any(
-            error["loc"] == ["body", "docs", 0, "text"] and error["type"] == "missing"
-            for error in response.json()["detail"]
+        response = ingest_documents(
+            _request("The semester fee is listed in this document."),
+            rag_service=object(),
+            get_provider=lambda _name: provider,
+            public_dir=tmp_path,
+            dependencies=_dependencies(qdrant),
         )
-        delegate.assert_not_called()
 
-    def test_ingestion_runtime_failure_keeps_the_public_error_envelope(self, tmp_path: Path) -> None:
-        service = _FakeRagService()
+        assert response["ok"] is True
+        assert response["summary"]["qdrant_preview"]["collection"] == "dataset-1"
+        assert response["points"] == 1
+        assert qdrant.operations == [("upsert", "index-op-1")]
+        assert provider.embedded == ["The semester fee is listed in this document."]
 
-        with patch(
-            "application.ingest.ingest_documents",
-            side_effect=RuntimeError("Qdrant write failed."),
-        ):
-            with _build_test_client(tmp_path, service) as client:
-                response = client.post(
-                    "/ingest",
-                    headers={"X-Request-ID": "ingest-error-1"},
-                    json=_ingest_payload(),
-                )
+    def test_invalid_document_is_rejected_before_any_store_write(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        qdrant = RecordingQdrant()
 
-        assert response.status_code == 502
-        assert response.json() == {
-            "error": {
-                "type": "RuntimeError",
-                "status": 502,
-                "message": "Qdrant write failed.",
-                "path": "/ingest",
-                "request_id": "ingest-error-1",
-            }
-        }
+        with pytest.raises(IndexingValidationError, match="No valid content"):
+            ingest_documents(
+                _request("   "),
+                rag_service=object(),
+                get_provider=lambda _name: (_ for _ in ()).throw(
+                    AssertionError("provider must not resolve for invalid content")
+                ),
+                public_dir=tmp_path,
+                dependencies=_dependencies(qdrant),
+            )
+
+        assert qdrant.operations == []
+        assert qdrant.points == []
+
+    def test_store_failure_propagates_from_the_indexer_boundary(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        class FailingQdrant(RecordingQdrant):
+            def upsert_points(
+                self,
+                points: list[dict[str, Any]],
+                *,
+                batch_size: int,
+                idempotency_key: str | None = None,
+            ) -> None:
+                self.operations.append(("upsert", idempotency_key))
+                raise RuntimeError("Qdrant write failed")
+
+        qdrant = FailingQdrant()
+
+        with pytest.raises(RuntimeError, match="Qdrant write failed"):
+            ingest_documents(
+                _request("Index this content.", operation_id="failed-op"),
+                rag_service=object(),
+                get_provider=lambda _name: RecordingProvider(),
+                public_dir=tmp_path,
+                dependencies=_dependencies(qdrant),
+            )
+
+        assert qdrant.operations == [("upsert", "failed-op")]
+        assert qdrant.points == []

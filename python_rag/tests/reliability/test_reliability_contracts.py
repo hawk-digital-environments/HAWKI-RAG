@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-import os
+from importlib import import_module
 from pathlib import Path
 from types import SimpleNamespace
 import sys
 import types
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
@@ -16,44 +16,50 @@ if str(ROOT) not in sys.path:
 
 
 if "neo4j" not in sys.modules:
-    neo4j_module = types.ModuleType("neo4j")
+    try:
+        import_module("neo4j")
+    except ModuleNotFoundError:
+        neo4j_module = types.ModuleType("neo4j")
+        neo4j_module.__path__ = []  # type: ignore[attr-defined]
+        exceptions_module = types.ModuleType("neo4j.exceptions")
 
-    class Neo4jError(Exception):
-        pass
+        class Neo4jError(Exception):
+            pass
 
-    class GraphDatabase:
-        @staticmethod
-        def driver(*_args, **_kwargs):
-            raise RuntimeError("GraphDatabase.driver should not be called in tests")
+        class GraphDatabase:
+            @staticmethod
+            def driver(*_args, **_kwargs):
+                raise RuntimeError("GraphDatabase.driver should not be called in tests")
 
-    neo4j_module.GraphDatabase = GraphDatabase
-    neo4j_module.exceptions = types.SimpleNamespace(Neo4jError=Neo4jError)
-    sys.modules["neo4j"] = neo4j_module
+        neo4j_module.GraphDatabase = GraphDatabase
+        exceptions_module.Neo4jError = Neo4jError
+        neo4j_module.exceptions = exceptions_module
+        sys.modules["neo4j"] = neo4j_module
+        sys.modules["neo4j.exceptions"] = exceptions_module
 
 
 class ReliabilityContractTests(unittest.TestCase):
     """Verify production boundaries are retry-safe, observable, secret-safe, and fail predictably."""
 
-    def test_raganything_file_logging_is_opt_in(self) -> None:
-        from api.settings import load_app_settings
+    def test_raganything_file_logging_is_not_a_bridge_setting(self) -> None:
+        from hawki_bridge.settings import load_settings
 
-        settings = load_app_settings({"RAG_DEFAULT_PROVIDER": "fake"})
-        configured_settings = load_app_settings(
+        settings = load_settings({"RAG_DEFAULT_PROVIDER": "ollama"})
+        configured_settings = load_settings(
             {
-                "RAG_DEFAULT_PROVIDER": "fake",
+                "RAG_DEFAULT_PROVIDER": "ollama",
                 "HAWKI_RAG_RAGANYTHING_LOG_PATH": "/shared/logs/raganything_runtime.log",
             }
         )
 
-        self.assertEqual(settings.raganything_log_path, "")
-        self.assertEqual(
-            configured_settings.raganything_log_path,
-            "/shared/logs/raganything_runtime.log",
-        )
+        self.assertEqual(configured_settings, settings)
+        self.assertFalse(hasattr(configured_settings, "raganything_log_path"))
 
-    def test_qdrant_gateway_marks_write_operations_retryable_only_with_idempotency_key(self) -> None:
-        from infrastructure.vectorstore.qdrant_gateway import QdrantHTTPGateway
-        from infrastructure.vectorstore.qdrant_requests import QdrantRequest
+    def test_qdrant_gateway_marks_write_operations_retryable_only_with_idempotency_key(
+        self,
+    ) -> None:
+        from hawki_rag_stores.qdrant.gateway import QdrantHTTPGateway
+        from hawki_rag_stores.qdrant.requests import QdrantRequest
 
         class FakeTransport:
             def __init__(self) -> None:
@@ -76,7 +82,12 @@ class ReliabilityContractTests(unittest.TestCase):
         self.assertEqual(transport.requests[1].operation_id, "req-doc")
 
     def test_log_redaction_masks_secrets_in_headers_and_body_snippets(self) -> None:
-        from common.reliability import log_redacted_value, preview_request_body, preview_request_headers
+        from hawki_rag_resilience.redaction import (
+            log_redacted_value,
+            preview_request_body,
+            preview_request_headers,
+            sanitize_for_log,
+        )
 
         headers = {
             "authorization": "Bearer deadbeef-token",
@@ -97,8 +108,34 @@ class ReliabilityContractTests(unittest.TestCase):
 
         self.assertIn("<redacted>", log_redacted_value("api_key=super-secret-key"))
 
-    def test_neo4j_graph_marks_write_operations_retryable_only_with_request_id(self) -> None:
-        from infrastructure.graph.neo4j_graph import Neo4jGraph
+        authorization = log_redacted_value("Authorization: Bearer super-secret-token")
+        json_authorization = log_redacted_value(
+            '{"authorization":"Bearer super-secret-token"}'
+        )
+        self.assertEqual(authorization, "Authorization=<redacted>")
+        self.assertNotIn("super-secret-token", json_authorization)
+        self.assertIn("authorization=<redacted>", json_authorization)
+
+        for unsafe in (
+            "token=query-secret-value",
+            "https://example.test/path?x=1&token=query-secret-value&safe=1",
+            "converter_token=converter-secret-value",
+            "Authorization: Basic dXNlcjpzdXBlcnNlY3JldA==",
+            'Authorization: Digest username="admin", nonce="digest-secret"',
+            "https://user:password@example.test/private",
+        ):
+            redacted = sanitize_for_log(unsafe)
+            self.assertNotIn("secret", redacted)
+            self.assertNotIn("password", redacted)
+
+        bounded = sanitize_for_log("x" * 3000, max_length=2048)
+        self.assertEqual(len(bounded), 2048)
+        self.assertTrue(bounded.endswith("..."))
+
+    def test_neo4j_graph_marks_write_operations_retryable_only_with_request_id(
+        self,
+    ) -> None:
+        from hawki_rag_stores.neo4j.graph import Neo4jGraph
 
         class FakeExecutor:
             def __init__(self) -> None:
@@ -115,7 +152,9 @@ class ReliabilityContractTests(unittest.TestCase):
         graph = Neo4jGraph(
             dataset_id="dataset-a",
             neo4j_namespace="graph-a",
-            settings=SimpleNamespace(database=None, retry_attempts=1, log_latency=False, perf_log=False),
+            settings=SimpleNamespace(
+                database=None, retry_attempts=1, log_latency=False, perf_log=False
+            ),
             query_executor=executor,  # type: ignore[arg-type]
         )
 
@@ -127,38 +166,33 @@ class ReliabilityContractTests(unittest.TestCase):
         self.assertTrue(second_request.retryable)
 
     def test_startup_checks_fail_fast_after_retry_cap(self) -> None:
-        from api.factory import _run_startup_checks
-        from api.settings import load_app_settings
+        from hawki_bridge.settings import load_settings
+        from hawki_bridge.startup_checks import run_startup_checks
 
         class FakeService:
             def get_provider(self, _name: str) -> object:
                 return SimpleNamespace()
 
-            def graph_runtime_summary(self) -> dict[str, str]:
-                return {"mode": "test"}
+        settings = load_settings({"STARTUP_CHECK_ATTEMPTS": "2"})
 
-            def clear_graph_cache(self) -> dict[str, bool]:
-                return {"ok": True}
-
-        with patch.dict(os.environ, {"STARTUP_CHECK_ATTEMPTS": "2"}, clear=False):
-            settings = load_app_settings()
-
-        with patch("api.factory._check_qdrant", side_effect=RuntimeError("qdrant unavailable")) as check_q:
-            with patch("api.factory._check_neo4j") as check_neo:
-                with patch("api.factory.time.sleep") as sleep:
-                    with self.assertRaises(RuntimeError):
-                        _run_startup_checks(
-                            settings,
-                            service=FakeService(),
-                            logger=__import__("logging").getLogger("tests.reliability.startup"),
-                        )
-            self.assertEqual(check_q.call_count, 2)
-            check_neo.assert_not_called()
-            self.assertEqual(sleep.call_count, 1)
+        check_qdrant = Mock(side_effect=RuntimeError("qdrant unavailable"))
+        check_neo4j = Mock()
+        with patch("hawki_bridge.startup_checks.time.sleep") as sleep:
+            with self.assertRaises(RuntimeError):
+                run_startup_checks(
+                    settings,
+                    service=FakeService(),
+                    logger=__import__("logging").getLogger("tests.reliability.startup"),
+                    check_qdrant_fn=check_qdrant,
+                    check_neo4j_fn=check_neo4j,
+                )
+        self.assertEqual(check_qdrant.call_count, 2)
+        check_neo4j.assert_not_called()
+        self.assertEqual(sleep.call_count, 1)
 
     def test_startup_checks_skip_provider_probe_for_non_ollama_driver(self) -> None:
-        from api.factory import _run_startup_checks
-        from api.settings import load_app_settings
+        from hawki_bridge.settings import load_settings
+        from hawki_bridge.startup_checks import run_startup_checks
 
         calls = {"provider": 0}
 
@@ -167,28 +201,22 @@ class ReliabilityContractTests(unittest.TestCase):
                 calls["provider"] += 1
                 return SimpleNamespace(base="http://provider")
 
-            def graph_runtime_summary(self) -> dict[str, str]:
-                return {"mode": "test"}
+        settings = load_settings(
+            {"RAG_DEFAULT_PROVIDER": "openai", "STARTUP_CHECK_ATTEMPTS": "1"}
+        )
 
-            def clear_graph_cache(self) -> dict[str, bool]:
-                return {"ok": True}
-
-        with patch.dict(os.environ, {"RAG_DEFAULT_PROVIDER": "openai", "STARTUP_CHECK_ATTEMPTS": "1"}, clear=False):
-            settings = load_app_settings()
-
-        with patch("api.factory._check_qdrant"):
-            with patch("api.factory._check_neo4j"):
-                _run_startup_checks(
-                    settings,
-                    service=FakeService(),
-                    logger=__import__("logging").getLogger("tests.reliability.startup"),
-                )
+        run_startup_checks(
+            settings,
+            service=FakeService(),
+            logger=__import__("logging").getLogger("tests.reliability.startup"),
+            check_qdrant_fn=lambda: None,
+            check_neo4j_fn=lambda: None,
+        )
 
         self.assertEqual(calls["provider"], 0)
 
     def test_litellm_is_not_a_bridge_startup_dependency(self) -> None:
-        from api.settings import load_app_settings
-        from api.startup_checks import check_provider_availability
+        from hawki_bridge.startup_checks import _check_provider
 
         calls = {"provider": 0}
 
@@ -197,72 +225,53 @@ class ReliabilityContractTests(unittest.TestCase):
                 calls["provider"] += 1
                 raise AssertionError("optional LiteLLM must not be probed at startup")
 
-        settings = load_app_settings({"RAG_DEFAULT_PROVIDER": "litellm"})
-        check_provider_availability(FakeService(), settings, 1.0)
+        _check_provider(FakeService(), "litellm")
 
         self.assertEqual(calls["provider"], 0)
 
-    def test_ollama_startup_probe_accepts_base_url_with_api_suffix(self) -> None:
-        from api.settings import load_app_settings
-        from api.startup_checks import check_provider_availability
+    def test_ollama_startup_probe_accepts_provider_with_api_suffix(self) -> None:
+        from hawki_bridge.startup_checks import _check_provider
 
-        calls: list[str] = []
+        calls: list[tuple[str, str]] = []
 
-        class FakeResponse:
-            status_code = 200
+        class FakeProvider:
+            base = "http://ollama:11434/api"
 
-            def raise_for_status(self) -> None:
-                raise AssertionError("raise_for_status should not be called for 200 responses")
-
-        class FakeRequests:
-            @staticmethod
-            def get(url: str, **_kwargs):
-                calls.append(url)
-                return FakeResponse()
+            def embed(self, text: str) -> list[float]:
+                calls.append((self.base, text))
+                return [0.0]
 
         class FakeService:
             def get_provider(self, _name: str) -> object:
-                return SimpleNamespace(base="http://ollama:11434/api")
+                return FakeProvider()
 
-        settings = load_app_settings({"RAG_DEFAULT_PROVIDER": "ollama"})
+        _check_provider(FakeService(), "ollama")
 
-        with patch("api.startup_checks._requests_module", return_value=FakeRequests):
-            check_provider_availability(FakeService(), settings, 1.0)
+        self.assertEqual(calls, [("http://ollama:11434/api", "health check")])
 
-        self.assertEqual(calls, ["http://ollama:11434/api/tags"])
+    def test_ollama_startup_probe_accepts_provider_without_api_suffix(self) -> None:
+        from hawki_bridge.startup_checks import _check_provider
 
-    def test_ollama_startup_probe_accepts_base_url_without_api_suffix(self) -> None:
-        from api.settings import load_app_settings
-        from api.startup_checks import check_provider_availability
+        calls: list[tuple[str, str]] = []
 
-        calls: list[str] = []
+        class FakeProvider:
+            base = "http://ollama:11434"
 
-        class FakeResponse:
-            status_code = 200
-
-            def raise_for_status(self) -> None:
-                raise AssertionError("raise_for_status should not be called for 200 responses")
-
-        class FakeRequests:
-            @staticmethod
-            def get(url: str, **_kwargs):
-                calls.append(url)
-                return FakeResponse()
+            def embed(self, text: str) -> list[float]:
+                calls.append((self.base, text))
+                return [0.0]
 
         class FakeService:
             def get_provider(self, _name: str) -> object:
-                return SimpleNamespace(base="http://ollama:11434")
+                return FakeProvider()
 
-        settings = load_app_settings({"RAG_DEFAULT_PROVIDER": "ollama"})
+        _check_provider(FakeService(), "ollama")
 
-        with patch("api.startup_checks._requests_module", return_value=FakeRequests):
-            check_provider_availability(FakeService(), settings, 1.0)
-
-        self.assertEqual(calls, ["http://ollama:11434/api/tags"])
+        self.assertEqual(calls, [("http://ollama:11434", "health check")])
 
     def test_qdrant_transport_emits_retry_attempt_telemetry(self) -> None:
-        from infrastructure.vectorstore.qdrant_requests import QdrantRequest
-        from infrastructure.vectorstore.qdrant_transport import QdrantHTTPTransport
+        from hawki_rag_stores.qdrant.requests import QdrantRequest
+        from hawki_rag_stores.qdrant.transport import QdrantHTTPTransport
 
         class FakeResponse:
             def __init__(self, status_code: int) -> None:
@@ -298,7 +307,9 @@ class ReliabilityContractTests(unittest.TestCase):
             operation_id="op-1",
         )
 
-        with self.assertLogs("infrastructure.vectorstore.qdrant_transport", level="INFO") as capture:
+        with self.assertLogs(
+            "hawki_rag_stores.qdrant.transport", level="INFO"
+        ) as capture:
             response = transport.send(request)
 
         self.assertEqual(response.status_code, 200)

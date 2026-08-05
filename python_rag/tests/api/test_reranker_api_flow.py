@@ -2,19 +2,11 @@
 
 from __future__ import annotations
 
-import importlib
-import sys
 from collections.abc import Iterator
-from pathlib import Path
-from types import ModuleType
+from types import SimpleNamespace
 
 import pytest
-from fastapi.testclient import TestClient
-
-
-PYTHON_RAG_ROOT = Path(__file__).resolve().parents[2]
-if str(PYTHON_RAG_ROOT) not in sys.path:
-    sys.path.insert(0, str(PYTHON_RAG_ROOT))
+from asgi_client import ASGITestClient as TestClient
 
 
 class _FakeCrossEncoder:
@@ -30,26 +22,18 @@ class _FakeCrossEncoder:
 
 
 @pytest.fixture
-def reranker_module(monkeypatch: pytest.MonkeyPatch) -> Iterator[ModuleType]:
-    """Import the service only after replacing its download-heavy model boundary."""
+def reranker_module() -> Iterator[SimpleNamespace]:
+    """Compose the production service with an injected no-download model."""
 
-    module_name = "infrastructure.rerank.local_reranker.app"
-    previous_module = sys.modules.pop(module_name, None)
-    fake_sentence_transformers = ModuleType("sentence_transformers")
-    fake_sentence_transformers.CrossEncoder = _FakeCrossEncoder  # type: ignore[attr-defined]
-    monkeypatch.setitem(
-        sys.modules,
-        "sentence_transformers",
-        fake_sentence_transformers,
+    from hawki_reranker.main import create_app
+    from hawki_reranker.settings import RerankerSettings
+
+    model = _FakeCrossEncoder("mixedbread-ai/mxbai-rerank-base-v1")
+    app = create_app(
+        settings=RerankerSettings(model_name=model.model_name),
+        model_factory=lambda _model_name: model,
     )
-
-    module = importlib.import_module(module_name)
-    try:
-        yield module
-    finally:
-        sys.modules.pop(module_name, None)
-        if previous_module is not None:
-            sys.modules[module_name] = previous_module
+    yield SimpleNamespace(app=app, model=model)
 
 
 class TestRerankerApiFlow:
@@ -57,7 +41,7 @@ class TestRerankerApiFlow:
 
     def test_health_reports_ready_without_invoking_the_model(
         self,
-        reranker_module: ModuleType,
+        reranker_module: SimpleNamespace,
     ) -> None:
         model = reranker_module.model
 
@@ -71,7 +55,7 @@ class TestRerankerApiFlow:
 
     def test_rerank_serializes_ranked_documents_and_scores(
         self,
-        reranker_module: ModuleType,
+        reranker_module: SimpleNamespace,
     ) -> None:
         model = reranker_module.model
 
@@ -118,7 +102,7 @@ class TestRerankerApiFlow:
 
     def test_missing_documents_is_rejected_before_model_prediction(
         self,
-        reranker_module: ModuleType,
+        reranker_module: SimpleNamespace,
     ) -> None:
         model = reranker_module.model
 
@@ -130,15 +114,14 @@ class TestRerankerApiFlow:
 
         assert response.status_code == 422
         assert any(
-            error["loc"] == ["body", "documents"]
-            and error["type"] == "missing"
+            error["loc"] == ["body", "documents"] and error["type"] == "missing"
             for error in response.json()["detail"]
         )
         assert model.predict_calls == []
 
     def test_blank_query_returns_the_service_client_error_without_model_prediction(
         self,
-        reranker_module: ModuleType,
+        reranker_module: SimpleNamespace,
     ) -> None:
         model = reranker_module.model
 

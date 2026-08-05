@@ -78,7 +78,7 @@ def _requests_module() -> Any:
     try:
         return importlib.import_module("requests")
     except ImportError:
-        unavailable("the 'requests' package is not installed; install python_rag/requirements.txt")
+        unavailable("the 'requests' package is not installed; run `make python-deps`")
 
 
 @dataclass(frozen=True)
@@ -148,11 +148,13 @@ def live_neo4j() -> LiveNeo4j:
     try:
         neo4j = importlib.import_module("neo4j")
     except ImportError:
-        unavailable("the 'neo4j' package is not installed; install python_rag/requirements.txt")
+        unavailable("the 'neo4j' package is not installed; run `make python-deps`")
 
-    from infrastructure.graph.neo4j_settings import Neo4jSettings
+    from hawki_rag_stores.neo4j.settings import Neo4jSettings
 
-    user = os.environ.get("NEO4J_USER", os.environ.get("NEO4J_USERNAME", "neo4j")).strip()
+    user = os.environ.get(
+        "NEO4J_USER", os.environ.get("NEO4J_USERNAME", "neo4j")
+    ).strip()
     password = os.environ.get("NEO4J_PASSWORD", "password").strip()
     database = os.environ.get("NEO4J_DATABASE", "").strip() or None
     candidates = _unique(
@@ -175,7 +177,9 @@ def live_neo4j() -> LiveNeo4j:
             driver.verify_connectivity()
             with driver.session(database=database) as session:
                 session.run("RETURN 1 AS ready").consume()
-        except Exception as exc:  # The driver exposes several transport/auth subclasses.
+        except (
+            Exception
+        ) as exc:  # The driver exposes several transport/auth subclasses.
             failures.append(f"{uri} ({type(exc).__name__})")
             if driver is not None:
                 driver.close()

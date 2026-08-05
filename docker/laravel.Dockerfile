@@ -44,6 +44,7 @@ ENV ASSET_URL="${DOCKER_PROJECT_PROTOCOL}://${DOCKER_PROJECT_HOST}${DOCKER_PROJE
 # extensions used by Laravel here: gd, pdo_mysql, pdo_pgsql, opcache, bcmath,
 # exif, pcntl, zip, and intl. Temporal client operations run in Python.
 RUN apt-get update && apt-get install -y \
+    acl \
     python3-requests \
     unzip \
  && rm -rf /var/lib/apt/lists/*

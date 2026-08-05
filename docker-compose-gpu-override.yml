@@ -8,9 +8,21 @@ services:
   hawki_rag_rerank:
     build:
       args:
-        PYTHON_REQUIREMENTS_FILE: python_rag/requirements-rerank.gpu.lock.txt
-        PYTORCH_WHEEL_INDEX: https://download.pytorch.org/whl/cu130
-    image: hawki-rag-rerank:cuda-local
+        TORCH_VARIANT: gpu
+    image: hawki-rag-reranker:gpu-local
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [ gpu ]
+
+  hawki-rag-indexer-worker:
+    build:
+      args:
+        TORCH_VARIANT: gpu
+    image: hawki-rag-indexer-worker:gpu-local
     deploy:
       resources:
         reservations:
@@ -20,16 +32,6 @@ services:
               capabilities: [ gpu ]
 
   ollama:
-    build:
-      context: .
-      dockerfile: docker/ollama.Dockerfile
-    image: hawki-ollama:cuda
-    pull_policy: never
-    environment:
-      OLLAMA_NUM_GPU: ${OLLAMA_NUM_GPU:-1}
-      OLLAMA_GPU_LAYERS: ${OLLAMA_GPU_LAYERS:-999}
-      OLLAMA_LLM_LIBRARY: cuda
-      OLLAMA_MMAP: "false"
     deploy:
       resources:
         reservations:

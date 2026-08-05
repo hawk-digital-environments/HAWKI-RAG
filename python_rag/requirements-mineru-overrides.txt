@@ -1,4 +1,0 @@
-# RAG-Anything requests MinerU's broad `core` extra, including a Gradio UI that
-# RAWKI does not run. Resolve the required pipeline backend from the unmodified
-# upstream wheel and keep the API's secure Starlette release independent.
-mineru[pipeline]==3.4.4

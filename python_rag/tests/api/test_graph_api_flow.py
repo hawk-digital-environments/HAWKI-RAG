@@ -1,130 +1,106 @@
-"""Direct FastAPI scenarios for graph extraction requests and public failures."""
+"""Read-only bridge graph scenarios replacing retired graph-write routes."""
 
 from __future__ import annotations
 
-import sys
-from pathlib import Path
+import pytest
+from pydantic import ValidationError
 
-from fastapi.testclient import TestClient
-
-
-PYTHON_RAG_ROOT = Path(__file__).resolve().parents[2]
-if str(PYTHON_RAG_ROOT) not in sys.path:
-    sys.path.insert(0, str(PYTHON_RAG_ROOT))
-
-
-class _FakeGraphService:
-    """Record graph extraction calls without loading a model or contacting Neo4j."""
-
-    def __init__(
-        self,
-        *,
-        triplets: list[tuple[str, str, str]] | None = None,
-        failure: RuntimeError | None = None,
-    ) -> None:
-        self.triplets = triplets if triplets is not None else [
-            ("HAWKI", "uses", "Qdrant"),
-            ("HAWKI", "stores relations in", "Neo4j"),
-        ]
-        self.failure = failure
-        self.extraction_calls: list[tuple[str, str]] = []
-
-    def extract_triplets(self, text: str, engine: str) -> list[tuple[str, str, str]]:
-        self.extraction_calls.append((text, engine))
-        if self.failure is not None:
-            raise self.failure
-        return self.triplets
+from hawki_bridge.application.graph import GraphReadService
+from hawki_bridge.factory import build_app
+from hawki_bridge.http.routers.graph import build_graph_router
+from hawki_bridge.http.schemas import GraphReadRequest
+from hawki_bridge.settings import load_settings
 
 
-def _build_test_client(tmp_path: Path, service: _FakeGraphService) -> TestClient:
-    from api.factory import build_app
-    from api.settings import load_app_settings
+def _scope(*, graph_enabled: bool = True) -> dict[str, object]:
+    return {
+        "dataset_id": "dataset-a",
+        "qdrant_collection": "hawki_dataset_a",
+        "neo4j_namespace": "hawki_dataset_a",
+        "embedding_provider": "ollama",
+        "embedding_model": "bge-m3",
+        "graph_enabled": graph_enabled,
+    }
 
-    settings = load_app_settings({"PYTHON_RAG_API_FLOW_TEST": "1"})
-    app = build_app(
-        rag_service=service,
-        public_dir=tmp_path,
-        qdrant_factory=lambda: object(),
-        logger_name="test.graph_api_flow",
-        app_settings=settings,
+
+def _related_endpoint(reader):
+    router = build_graph_router(service=GraphReadService(reader))
+    return next(
+        route.endpoint for route in router.routes if route.path == "/graph/related"
     )
-    return TestClient(app)
 
 
-class TestGraphApiFlow:
-    """Describe graph HTTP validation, delegation, and normalized error output."""
+class TestReadOnlyGraphApiFlow:
+    """Prove graph HTTP access is scoped retrieval, never extraction or mutation."""
 
-    def test_valid_text_runs_real_graph_flow_without_persisting_unscoped_facts(
-        self,
-        tmp_path: Path,
-    ) -> None:
-        service = _FakeGraphService()
+    def test_authorized_read_delegates_with_server_derived_graph_scope(self) -> None:
+        calls: list[dict[str, object]] = []
 
-        with _build_test_client(tmp_path, service) as client:
-            response = client.post(
-                "/graph/from-text",
-                headers={"X-Request-ID": "graph-success-1"},
-                json={
-                    "text": "HAWKI uses Qdrant and stores relations in Neo4j.",
-                    "engine": "raganything",
-                },
-            )
+        class Reader:
+            def fetch_related_terms(
+                self,
+                terms: list[str],
+                *,
+                dataset_id: str,
+                neo4j_namespace: str,
+                limit: int,
+            ) -> list[dict[str, str]]:
+                calls.append(
+                    {
+                        "terms": terms,
+                        "dataset_id": dataset_id,
+                        "neo4j_namespace": neo4j_namespace,
+                        "limit": limit,
+                    }
+                )
+                return [{"subject": "fee", "predicate": "costs", "object": "320"}]
 
-        assert response.status_code == 200
-        assert response.json() == {
-            "ok": True,
-            "triplets": 2,
-            "persisted": False,
+        request = GraphReadRequest(
+            authorized_scope=_scope(),
+            terms=["fee"],
+            limit=12,
+        )
+
+        response = _related_endpoint(Reader())(request)
+
+        assert response == {
+            "facts": [{"subject": "fee", "predicate": "costs", "object": "320"}]
         }
-        assert response.headers["X-Request-ID"] == "graph-success-1"
-        assert service.extraction_calls == [
-            (
-                "HAWKI uses Qdrant and stores relations in Neo4j.",
-                "raganything",
-            )
-        ]
-
-    def test_missing_text_is_rejected_before_graph_extraction(self, tmp_path: Path) -> None:
-        service = _FakeGraphService()
-
-        with _build_test_client(tmp_path, service) as client:
-            response = client.post(
-                "/graph/from-text",
-                json={"engine": "raganything"},
-            )
-
-        assert response.status_code == 422
-        assert any(
-            error["loc"] == ["body", "text"] and error["type"] == "missing"
-            for error in response.json()["detail"]
-        )
-        assert service.extraction_calls == []
-
-    def test_extraction_failure_uses_the_main_bridge_error_envelope(
-        self,
-        tmp_path: Path,
-    ) -> None:
-        service = _FakeGraphService(
-            failure=RuntimeError("Graph extraction backend unavailable."),
-        )
-
-        with _build_test_client(tmp_path, service) as client:
-            response = client.post(
-                "/graph/from-text",
-                headers={"X-Request-ID": "graph-error-1"},
-                json={"text": "Extract this graph."},
-            )
-
-        assert response.status_code == 502
-        assert response.json() == {
-            "error": {
-                "type": "RuntimeError",
-                "status": 502,
-                "message": "Graph extraction backend unavailable.",
-                "path": "/graph/from-text",
-                "request_id": "graph-error-1",
+        assert calls == [
+            {
+                "terms": ["fee"],
+                "dataset_id": "dataset-a",
+                "neo4j_namespace": "hawki_dataset_a",
+                "limit": 12,
             }
-        }
-        assert service.extraction_calls == [
-            ("Extract this graph.", "raganything")
         ]
+
+    def test_graph_disabled_scope_is_rejected_before_store_access(self) -> None:
+        with pytest.raises(ValidationError, match="graph access is not enabled"):
+            GraphReadRequest(
+                authorized_scope=_scope(graph_enabled=False),
+                terms=["fee"],
+            )
+
+    def test_bridge_registers_graph_read_but_no_graph_write_routes(self) -> None:
+        class Service:
+            @staticmethod
+            def runtime_summary() -> dict[str, str]:
+                return {"role": "bridge", "mode": "read-only"}
+
+            @staticmethod
+            def get_provider(_name: str) -> object:
+                return object()
+
+        app = build_app(
+            settings=load_settings({}),
+            service=Service(),
+            qdrant_factory=object,
+            graph_reader=object(),
+            logger_name="test.read_only_graph_api",
+        )
+        operations = app.openapi()["paths"]
+
+        assert set(operations["/graph/related"]) == {"post"}
+        assert "/graph/from-text" not in operations
+        assert "/graph/cache/clear" not in operations

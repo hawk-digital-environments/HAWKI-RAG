@@ -1,1 +1,0 @@
-"""Local reranker adapter package."""

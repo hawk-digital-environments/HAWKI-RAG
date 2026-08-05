@@ -6,6 +6,7 @@ import logging
 import importlib
 import sys
 import tempfile
+import tomllib
 import types
 from pathlib import Path
 from types import SimpleNamespace
@@ -18,7 +19,15 @@ if str(ROOT) not in sys.path:
 
 def _install_optional_dependency_stubs() -> None:
     if "neo4j" not in sys.modules:
+        try:
+            importlib.import_module("neo4j")
+            return
+        except ModuleNotFoundError:
+            pass
+
         neo4j_module = types.ModuleType("neo4j")
+        neo4j_module.__path__ = []  # type: ignore[attr-defined]
+        exceptions_module = types.ModuleType("neo4j.exceptions")
 
         class Neo4jError(Exception):
             pass
@@ -26,25 +35,35 @@ def _install_optional_dependency_stubs() -> None:
         class GraphDatabase:
             @staticmethod
             def driver(*args: object, **kwargs: object) -> object:
-                raise RuntimeError("GraphDatabase.driver should not be called in refactor boundary tests")
+                raise RuntimeError(
+                    "GraphDatabase.driver should not be called in refactor boundary tests"
+                )
 
         neo4j_module.GraphDatabase = GraphDatabase
-        neo4j_module.exceptions = types.SimpleNamespace(Neo4jError=Neo4jError)
+        exceptions_module.Neo4jError = Neo4jError
+        neo4j_module.exceptions = exceptions_module
         sys.modules["neo4j"] = neo4j_module
+        sys.modules["neo4j.exceptions"] = exceptions_module
 
 
 _install_optional_dependency_stubs()
 
 
 def test_qdrant_client_ops_capture_gateway_and_limit_policy() -> None:
-    from infrastructure.vectorstore.qdrant_client_ops import (
+    from hawki_rag_stores.qdrant._client_policy import (
         gateway_supports_operation_id,
         resolve_per_collection_limit,
         resolve_selected_collection,
     )
 
     class NewGateway:
-        def upsert(self, points: list[dict[str, object]], *, timeout: float, operation_id: str | None = None) -> None:
+        def upsert(
+            self,
+            points: list[dict[str, object]],
+            *,
+            timeout: float,
+            operation_id: str | None = None,
+        ) -> None:
             return None
 
     class LegacyGateway:
@@ -60,7 +79,10 @@ def test_qdrant_client_ops_capture_gateway_and_limit_policy() -> None:
 
 
 def test_optional_import_helper_reports_missing_runtime_dependencies() -> None:
-    from common.optional_imports import import_optional_module, import_required_module
+    from hawki_rag_resilience.optional_imports import (
+        import_optional_module,
+        import_required_module,
+    )
 
     assert import_optional_module("sys") is sys
     assert import_optional_module("__hawki_missing_dependency__") is None
@@ -77,22 +99,29 @@ def test_optional_import_helper_reports_missing_runtime_dependencies() -> None:
 
 
 def test_canonical_lightrag_doc_status_storage_import_path_resolves() -> None:
-    module = importlib.import_module("infrastructure.raganything.lightrag_chunked_doc_status_storage")
+    module = importlib.import_module(
+        "hawki_indexer_worker.adapters.raganything.lightrag_status_store"
+    )
 
     assert module.ChunkedJsonDocStatusStorage.__name__ == "ChunkedJsonDocStatusStorage"
 
 
 def test_raganything_runtime_requirements_include_mineru_pipeline_extra() -> None:
-    requirements = (ROOT / "requirements.txt").read_text(encoding="utf-8")
-    overrides = (ROOT / "requirements-mineru-overrides.txt").read_text(encoding="utf-8")
+    workspace = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    indexer = tomllib.loads(
+        (ROOT / "services" / "hawki_indexer_worker" / "pyproject.toml").read_text(
+            encoding="utf-8"
+        )
+    )
 
-    assert "raganything[all]" in requirements
-    assert "mineru[pipeline]" in requirements
-    assert "mineru[pipeline]==3.4.4" in overrides
+    assert "raganything[all]==1.3.1" in indexer["project"]["dependencies"]
+    assert workspace["tool"]["uv"]["override-dependencies"] == [
+        "mineru[pipeline]==3.4.4"
+    ]
 
 
 def test_doc_status_chunk_helpers_plan_chunks_and_duplicate_counts() -> None:
-    from infrastructure.raganything.doc_status_chunks import (
+    from hawki_indexer_worker.adapters.raganything.doc_status import (
         annotate_duplicate_skip_metadata,
         chunk_item_dicts,
         count_status_records,
@@ -112,7 +141,10 @@ def test_doc_status_chunk_helpers_plan_chunks_and_duplicate_counts() -> None:
         {"c": 3},
     ]
 
-    duplicate = {"status": "FAILED", "error_msg": "Content already exists. Original doc_id: doc-a"}
+    duplicate = {
+        "status": "FAILED",
+        "error_msg": "Content already exists. Original doc_id: doc-a",
+    }
     annotate_duplicate_skip_metadata("doc-b", duplicate, failed_status_value="FAILED")
     assert duplicate["metadata"]["effective_status"] == "skipped"
 
@@ -130,7 +162,7 @@ def test_doc_status_chunk_helpers_plan_chunks_and_duplicate_counts() -> None:
 
 
 def test_graph_document_preparation_trims_chunks_and_keeps_source() -> None:
-    from application.workflows.ingest.graph_documents import prepare_graph_document
+    from hawki_indexer_worker.indexing.graph_documents import prepare_graph_document
 
     prepared = prepare_graph_document(
         "doc-a",
@@ -153,32 +185,38 @@ def test_graph_document_preparation_trims_chunks_and_keeps_source() -> None:
 
 
 def test_graph_document_preparation_collects_original_image_paths() -> None:
-    from application.workflows.ingest.graph_documents import prepare_graph_document
+    from hawki_indexer_worker.indexing.graph_documents import prepare_graph_document
 
     prepared = prepare_graph_document(
         "image-doc",
         [
             {
-                    "content": "Temporal Workflow routes conversion activities to the converter worker.",
-                    "payload": {
-                        "file_path": "/tmp/converted.md",
-                        "original_path": "/tmp/temporal-workflow.png",
-                        "source_file": "/tmp/source-file.png",
-                        "image_path": "/tmp/temporal-workflow.png",
-                        "images": ["/tmp/flow.jpg", "/tmp/readme.md"],
-                    },
-                }
+                "content": "Temporal Workflow routes conversion activities to the converter worker.",
+                "payload": {
+                    "file_path": "/tmp/converted.md",
+                    "original_path": "/tmp/temporal-workflow.png",
+                    "source_file": "/tmp/source-file.png",
+                    "image_path": "/tmp/temporal-workflow.png",
+                    "images": ["/tmp/flow.jpg", "/tmp/readme.md"],
+                },
+            }
         ],
         max_chunks=0,
         max_chars=0,
     )
 
     assert prepared.file_path == "/tmp/converted.md"
-    assert prepared.image_paths == ["/tmp/temporal-workflow.png", "/tmp/source-file.png", "/tmp/flow.jpg"]
+    assert prepared.image_paths == [
+        "/tmp/temporal-workflow.png",
+        "/tmp/source-file.png",
+        "/tmp/flow.jpg",
+    ]
 
 
 def test_graph_content_list_includes_existing_image_blocks() -> None:
-    from infrastructure.raganything.raganything_extract import graph_content_list_from_input
+    from hawki_indexer_worker.adapters.raganything.extraction_runtime import (
+        graph_content_list_from_input,
+    )
 
     with tempfile.TemporaryDirectory() as tmp:
         image_path = Path(tmp) / "temporal-workflow.png"
@@ -187,7 +225,11 @@ def test_graph_content_list_includes_existing_image_blocks() -> None:
         content = graph_content_list_from_input(
             "",
             [" OCR text from image "],
-            image_paths=[str(image_path), str(Path(tmp) / "missing.png"), "relative.png"],
+            image_paths=[
+                str(image_path),
+                str(Path(tmp) / "missing.png"),
+                "relative.png",
+            ],
         )
 
     assert content[0] == {"type": "text", "text": "OCR text from image", "page_idx": 0}
@@ -197,7 +239,9 @@ def test_graph_content_list_includes_existing_image_blocks() -> None:
 
 
 def test_llm_triplet_fallback_parses_strict_json_response() -> None:
-    from infrastructure.raganything.llm_triplet_fallback import parse_llm_triplet_response
+    from hawki_indexer_worker.adapters.raganything.llm_fallback import (
+        parse_llm_triplet_response,
+    )
 
     response = """
     ```json
@@ -216,8 +260,12 @@ def test_llm_triplet_fallback_parses_strict_json_response() -> None:
     ]
 
 
-def test_llm_triplet_fallback_recovers_complete_objects_from_truncated_response() -> None:
-    from infrastructure.raganything.llm_triplet_fallback import parse_llm_triplet_response
+def test_llm_triplet_fallback_recovers_complete_objects_from_truncated_response() -> (
+    None
+):
+    from hawki_indexer_worker.adapters.raganything.llm_fallback import (
+        parse_llm_triplet_response,
+    )
 
     response = """
     Here is the JSON:
@@ -235,13 +283,17 @@ def test_llm_triplet_fallback_recovers_complete_objects_from_truncated_response(
 
 
 def test_triplet_extractor_uses_llm_fallback_when_raganything_returns_empty() -> None:
-    from infrastructure.raganything.extraction import extract_triplets_with_graph_service
+    from hawki_indexer_worker.adapters.raganything.extraction import (
+        extract_triplets_with_graph_service,
+    )
 
     class EmptyGraphService:
         def __init__(self) -> None:
             self.kwargs: dict[str, object] = {}
 
-        def extract_triplets(self, text: str, **kwargs: object) -> list[tuple[str, str, str]]:
+        def extract_triplets(
+            self, text: str, **kwargs: object
+        ) -> list[tuple[str, str, str]]:
             self.kwargs = kwargs
             return []
 
@@ -249,7 +301,13 @@ def test_triplet_extractor_uses_llm_fallback_when_raganything_returns_empty() ->
         def __init__(self) -> None:
             self.messages: list[dict[str, str]] = []
 
-        def chat(self, system: str, messages: list[dict[str, str]], *, temperature: float | None = None) -> str:
+        def chat(
+            self,
+            system: str,
+            messages: list[dict[str, str]],
+            *,
+            temperature: float | None = None,
+        ) -> str:
             self.messages = messages
             return (
                 '{"triplets":[{"subject":"Temporal Workflow",'
@@ -264,7 +322,9 @@ def test_triplet_extractor_uses_llm_fallback_when_raganything_returns_empty() ->
         "",
         "raganything",
         provider=provider,
-        chunks=["Temporal Workflow routes conversion activities to the converter worker."],
+        chunks=[
+            "Temporal Workflow routes conversion activities to the converter worker."
+        ],
         doc_id="image-doc",
         file_path="/tmp/converted.md",
         image_paths=["/tmp/temporal-workflow.png"],
@@ -278,9 +338,9 @@ def test_triplet_extractor_uses_llm_fallback_when_raganything_returns_empty() ->
 
 
 def test_text_helper_modules_preserve_term_tag_and_chunk_rules() -> None:
-    from common.text_chunking import split_text_into_chunks
-    from common.text_tags import fallback_tags, flatten_keywords, normalize_tags
-    from common.text_terms import STOPWORDS, extract_terms
+    from hawki_rag_text.chunking import split_text_into_chunks
+    from hawki_rag_text.tags import fallback_tags, flatten_keywords, normalize_tags
+    from hawki_rag_text.terms import STOPWORDS, extract_terms
 
     assert len(STOPWORDS) > 1800
     assert "die" in STOPWORDS
@@ -291,9 +351,13 @@ def test_text_helper_modules_preserve_term_tag_and_chunk_rules() -> None:
         "Wooden toys",
         "Teddy bears",
     ]
-    assert normalize_tags(["Wooden-Toys", "wooden toys", "A"], limit=3) == ["wooden toys"]
+    assert normalize_tags(["Wooden-Toys", "wooden toys", "A"], limit=3) == [
+        "wooden toys"
+    ]
     assert fallback_tags("train train bear bear table", limit=2) == ["train", "bear"]
-    assert split_text_into_chunks("para one\n\npara two\n\npara three", target=13, overlap=0) == [
+    assert split_text_into_chunks(
+        "para one\n\npara two\n\npara three", target=13, overlap=0
+    ) == [
         "para one",
         "para two",
         "para three",
@@ -301,20 +365,25 @@ def test_text_helper_modules_preserve_term_tag_and_chunk_rules() -> None:
 
 
 def test_neo4j_client_ops_reuse_executor_and_retry_policy() -> None:
-    from infrastructure.graph.neo4j_client_ops import ensure_query_executor, is_retryable_write
+    from hawki_rag_stores.neo4j.client import ensure_query_executor, is_retryable_write
 
     existing = object()
-    assert ensure_query_executor(
-        existing,
-        session_factory=lambda: None,
-        settings=SimpleNamespace(retry_attempts=3, log_latency=False, retry_attempts_by_operation={}),
-    ) is existing
+    assert (
+        ensure_query_executor(
+            existing,
+            session_factory=lambda: None,
+            settings=SimpleNamespace(
+                retry_attempts=3, log_latency=False, retry_attempts_by_operation={}
+            ),
+        )
+        is existing
+    )
     assert is_retryable_write(None, "neo4j.upsert_triplets") is False
     assert is_retryable_write("request-a", "neo4j.upsert_triplets") is True
 
 
 def test_ollama_helpers_parse_options_payload_and_fallbacks() -> None:
-    from infrastructure.providers.ollama_helpers import (
+    from hawki_model_providers.ollama_helpers import (
         build_chat_payload,
         chat_options_from_env,
         clean_embedding_text,
@@ -345,13 +414,19 @@ def test_ollama_helpers_parse_options_payload_and_fallbacks() -> None:
         "http://ollama:11434/generate",
         "http://ollama:11434/api/generate",
     ]
-    assert build_chat_payload(model="m", system="s", messages=[{"role": "user", "content": "q"}], options=options)[
-        "options"
-    ]["num_predict"] == 120
+    assert (
+        build_chat_payload(
+            model="m",
+            system="s",
+            messages=[{"role": "user", "content": "q"}],
+            options=options,
+        )["options"]["num_predict"]
+        == 120
+    )
 
 
 def test_startup_checks_accept_injected_dependency_checks() -> None:
-    from api.startup_checks import run_startup_checks
+    from hawki_bridge.startup_checks import run_startup_checks
 
     calls: list[str] = []
 
@@ -371,17 +446,21 @@ def test_startup_checks_accept_injected_dependency_checks() -> None:
         startup_check_timeout_seconds=1.0,
         startup_check_backoff_seconds=0.01,
         startup_checks_enabled=True,
-        rag_default_provider="ollama",
+        default_provider="ollama",
     )
 
-    with patch("api.startup_checks.time.sleep"):
+    with patch("hawki_bridge.startup_checks.time.sleep"):
         run_startup_checks(
             settings,
             service=object(),
             logger=logging.getLogger("startup-boundary-test"),
-            check_qdrant_fn=check_qdrant,
+            check_qdrant_fn=lambda: check_qdrant(1.0),
             check_neo4j_fn=check_neo4j,
-            check_provider_fn=check_provider,
+            check_provider_fn=lambda service, _provider_name: check_provider(
+                service,
+                settings,
+                1.0,
+            ),
         )
 
     assert calls == ["qdrant:1.0", "qdrant:1.0", "neo4j", "provider:1.0"]

@@ -1,0 +1,34 @@
+[project]
+name = "hawki-scraper-worker"
+version = "0.1.0"
+description = "Temporal scraper activity worker for HAWKI RAG ingestion"
+readme = "README.md"
+authors = [
+    { name = "Yazdan Asadi", email = "wentlerhiphop@gmail.com" }
+]
+requires-python = "==3.13.11"
+dependencies = [
+    "hawki-artifact-store==0.1.0",
+    "hawki-rag-contracts==0.1.0",
+    "hawki-rag-resilience==0.1.0",
+    "hawki-worker-runtime==0.1.0",
+    "temporalio==1.30.0",
+]
+
+[dependency-groups]
+test = [
+    "pytest==8.4.2",
+]
+
+[project.scripts]
+hawki-scraper-worker = "hawki_scraper_worker.main:main"
+
+[build-system]
+requires = ["uv_build==0.11.26"]
+build-backend = "uv_build"
+
+[tool.uv.sources]
+hawki-artifact-store = { workspace = true }
+hawki-rag-contracts = { workspace = true }
+hawki-rag-resilience = { workspace = true }
+hawki-worker-runtime = { workspace = true }
