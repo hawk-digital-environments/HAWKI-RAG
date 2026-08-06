@@ -160,16 +160,17 @@ services:
   hawki_rag_rerank:
     build:
       context: .
-      dockerfile: python_rag/services/hawki_reranker/Dockerfile
+      dockerfile: python_rag/Dockerfile
+      target: reranker-runtime
       args:
         TORCH_VARIANT: cpu
     image: hawki-rag-reranker:local
     pull_policy: never
     container_name: hawki_rag_rerank
-    user: "10001:10001"
     restart: unless-stopped
+    stop_grace_period: 40s
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1/health', timeout=3)"]
       interval: 15s
       timeout: 5s
       retries: 10
@@ -182,11 +183,11 @@ services:
     <<: *service_env
     build:
       context: .
-      dockerfile: python_rag/services/hawki_bridge/Dockerfile
+      dockerfile: python_rag/Dockerfile
+      target: bridge-runtime
     image: hawki-rag-bridge:local
     pull_policy: never
     container_name: hawki_rag_bridge
-    user: "10001:10001"
     depends_on:
       qdrant:
         condition: service_healthy
@@ -197,8 +198,9 @@ services:
       ollama:
         condition: service_healthy
     restart: unless-stopped
+    stop_grace_period: 40s
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health?runtime=false', timeout=3)"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1/health?runtime=false', timeout=3)"]
       interval: 15s
       timeout: 5s
       retries: 10
@@ -211,15 +213,16 @@ services:
     <<: *service_env
     build:
       context: .
-      dockerfile: python_rag/services/hawki_workflow_worker/Dockerfile
+      dockerfile: python_rag/Dockerfile
+      target: workflow-runtime
     image: hawki-rag-workflow-worker:local
     pull_policy: never
     container_name: hawki_rag_temporal_workflow_worker
-    user: "10001:10001"
     depends_on:
       temporal:
         condition: service_started
     restart: unless-stopped
+    stop_grace_period: 15s
     networks:
       - default
       - hawki-network
@@ -228,11 +231,11 @@ services:
     <<: *service_env
     build:
       context: .
-      dockerfile: python_rag/services/hawki_scraper_worker/Dockerfile
+      dockerfile: python_rag/Dockerfile
+      target: scraper-runtime
     image: hawki-rag-scraper-worker:local
     pull_policy: never
     container_name: hawki_rag_temporal_scraper_worker
-    user: "10001:10001"
     volumes:
       - shared_storage:/shared
     group_add:
@@ -243,6 +246,7 @@ services:
       hawki_rag_app:
         condition: service_healthy
     restart: unless-stopped
+    stop_grace_period: 15s
     networks:
       - default
       - hawki-network
@@ -251,11 +255,11 @@ services:
     <<: *service_env
     build:
       context: .
-      dockerfile: python_rag/services/hawki_converter_worker/Dockerfile
+      dockerfile: python_rag/Dockerfile
+      target: converter-runtime
     image: hawki-rag-converter-worker:local
     pull_policy: never
     container_name: hawki_rag_temporal_converter_worker
-    user: "10001:10001"
     volumes:
       - shared_storage:/shared
     group_add:
@@ -266,6 +270,7 @@ services:
       hawki_rag_app:
         condition: service_healthy
     restart: unless-stopped
+    stop_grace_period: 15s
     networks:
       - default
       - hawki-network
@@ -274,13 +279,13 @@ services:
     <<: *service_env
     build:
       context: .
-      dockerfile: python_rag/services/hawki_indexer_worker/Dockerfile
+      dockerfile: python_rag/Dockerfile
+      target: indexer-runtime
       args:
         TORCH_VARIANT: cpu
     image: hawki-rag-indexer-worker:local
     pull_policy: never
     container_name: hawki_rag_indexer_worker
-    user: "10001:10001"
     volumes:
       - shared_storage:/shared
     group_add:
@@ -297,6 +302,7 @@ services:
       ollama:
         condition: service_healthy
     restart: unless-stopped
+    stop_grace_period: 15s
     networks:
       - default
       - hawki-network

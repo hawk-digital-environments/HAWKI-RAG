@@ -30,13 +30,13 @@ def test_workspace_has_one_root_lock_and_no_nested_workspace_metadata() -> None:
     assert list(ROOT.rglob("uv.lock")) == [ROOT / "uv.lock"]
     assert list((ROOT / "packages").rglob(".python-version")) == []
     assert list((ROOT / "services").rglob(".python-version")) == []
-    assert (ROOT / ".python-version").read_text(encoding="utf-8") == "3.13.11\n"
+    assert (ROOT / ".python-version").read_text(encoding="utf-8") == "3.13.14\n"
 
 
 def test_every_member_uses_exact_python_build_and_direct_dependency_pins() -> None:
     for path in _members():
         manifest = tomllib.loads(path.read_text(encoding="utf-8"))
-        assert manifest["project"]["requires-python"] == "==3.13.11", path
+        assert manifest["project"]["requires-python"] == "==3.13.14", path
         assert manifest["build-system"] == {
             "requires": ["uv_build==0.11.26"],
             "build-backend": "uv_build",

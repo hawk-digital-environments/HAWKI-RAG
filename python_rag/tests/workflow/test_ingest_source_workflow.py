@@ -216,7 +216,7 @@ def test_workflow_module_is_deterministic_and_service_package_is_exactly_pinned(
     pyproject = tomllib.loads(
         (SERVICE_ROOT / "pyproject.toml").read_text(encoding="utf-8")
     )
-    assert pyproject["project"]["requires-python"] == "==3.13.11"
+    assert pyproject["project"]["requires-python"] == "==3.13.14"
     assert pyproject["project"]["dependencies"] == [
         "hawki-rag-contracts==0.1.0",
         "temporalio==1.30.0",

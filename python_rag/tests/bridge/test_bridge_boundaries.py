@@ -71,15 +71,32 @@ def test_bridge_has_no_indexer_database_or_cross_service_imports() -> None:
 
 def test_bridge_manifest_and_dockerfile_are_production_pinned() -> None:
     manifest = tomllib.loads((SERVICE / "pyproject.toml").read_text(encoding="utf-8"))
-    assert manifest["project"]["requires-python"] == "==3.13.11"
+    assert manifest["project"]["requires-python"] == "==3.13.14"
     assert all("==" in dependency for dependency in manifest["project"]["dependencies"])
     assert manifest["build-system"]["requires"] == ["uv_build==0.11.26"]
 
-    dockerfile = (SERVICE / "Dockerfile").read_text(encoding="utf-8")
+    dockerfile = (PYTHON_RAG / "Dockerfile").read_text(encoding="utf-8")
     assert dockerfile.count("FROM ") >= 3
+    assert (
+        "neunerlei/python-nginx:3.13@sha256:"
+        "05b581371d0d9faef2f160079acd0a4e18503b99d47b995825205e71fd13c136"
+    ) in dockerfile
+    assert "AS bridge-builder" in dockerfile
+    assert "AS bridge-runtime" in dockerfile
+    assert "UV_PYTHON=/usr/local/bin/python3.13" in dockerfile
+    assert "UV_PYTHON_DOWNLOADS=never" in dockerfile
     assert "--frozen --no-dev --no-editable" in dockerfile
     assert "COPY python_rag /app" not in dockerfile
-    assert "USER 10001:10001" in dockerfile
+    assert "UV_PROJECT_ENVIRONMENT=/opt/venv" not in dockerfile
+    assert (
+        "/workspace/python_rag/.venv/lib/python3.13/site-packages/ "
+        "/opt/venv/lib/python3.13/site-packages/"
+    ) in dockerfile
+    bridge_runtime = dockerfile.split("AS bridge-runtime", maxsplit=1)[1]
+    assert "PYTHON_APP_MODULE=hawki_bridge.main:app" in bridge_runtime
+    assert "GUNICORN_WORKER_CLASS=uvicorn.workers.UvicornWorker" in bridge_runtime
+    assert "GUNICORN_WORKERS=1" in bridge_runtime
+    assert "USER " not in bridge_runtime
     assert "tests" not in "\n".join(
         line for line in dockerfile.splitlines() if line.startswith("COPY ")
     )

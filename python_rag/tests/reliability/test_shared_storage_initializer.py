@@ -29,6 +29,10 @@ GRAPH_PREPARE = (
     / "indexing"
     / "graph_prepare.py"
 )
+PYTHON_RUNTIME_ENV = ROOT / "docker" / "python_rag" / "10-rawki-runtime.env"
+PYTHON_PERMISSIONS_HOOK = (
+    ROOT / "docker" / "python_rag" / "80-rawki-runtime-permissions.sh"
+)
 
 
 def _service_block(name: str) -> str:
@@ -89,14 +93,27 @@ def test_app_becomes_healthy_only_after_initialization() -> None:
     assert entrypoint.index('touch "$APP_READY_MARKER"') > entrypoint.index("setfacl")
 
 
-def test_writable_python_roles_wait_for_the_app_and_stay_nonroot() -> None:
+def test_writable_python_roles_use_root_bootstrap_and_nonroot_runtime_contract() -> (
+    None
+):
+    runtime_env = PYTHON_RUNTIME_ENV.read_text(encoding="utf-8")
+    permissions_hook = PYTHON_PERMISSIONS_HOOK.read_text(encoding="utf-8")
+
+    assert re.search(r"(?m)^PUID=10001$", runtime_env)
+    assert re.search(r"(?m)^PGID=10001$", runtime_env)
+    assert 'shared_gid="${PIPELINE_SHARED_STORAGE_GID:-}"' in permissions_hook
+    assert 'usermod --append --groups "$shared_group" www-data' in permissions_hook
+    assert 'chown -R www-data:www-data "$writable_dir"' in permissions_hook
+
     for name in (
         "hawki-rag-temporal-scraper-worker",
         "hawki-rag-temporal-converter-worker",
         "hawki-rag-indexer-worker",
     ):
         service = _service_block(name)
-        assert 'user: "10001:10001"' in service
+        assert "user:" not in service
+        assert "dockerfile: python_rag/Dockerfile" in service
+        assert "stop_grace_period: 15s" in service
         assert "hawki_rag_app:" in service
         assert "condition: service_healthy" in service
         assert '  - "${PGID}"' in service

@@ -73,7 +73,7 @@ readonly class ManagedDocumentBridgeClient
 
     private function bridgeUrl(): string
     {
-        return rtrim((string) $this->config->get('config.hawki_rag_bridge_url', 'http://hawki_rag_bridge:8000'), '/');
+        return rtrim((string) $this->config->get('config.hawki_rag_bridge_url', 'http://hawki_rag_bridge'), '/');
     }
 
     private function timeout(): int

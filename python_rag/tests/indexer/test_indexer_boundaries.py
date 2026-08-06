@@ -67,7 +67,7 @@ def test_all_indexer_source_and_tests_are_below_600_lines() -> None:
 def test_manifest_has_exact_versions_and_cpu_cuda_variants() -> None:
     manifest = tomllib.loads((SERVICE / "pyproject.toml").read_text(encoding="utf-8"))
     project = manifest["project"]
-    assert project["requires-python"] == "==3.13.11"
+    assert project["requires-python"] == "==3.13.14"
     dependencies = project["dependencies"]
     assert "av==13.1.0" in dependencies
     assert "numpy==2.5.1" in dependencies
@@ -87,10 +87,10 @@ def test_manifest_has_exact_versions_and_cpu_cuda_variants() -> None:
 def test_dockerfile_is_allowlisted_multistage_and_nonroot() -> None:
     dockerfile = (SERVICE / "Dockerfile").read_text(encoding="utf-8")
     assert dockerfile.count("FROM ") >= 3
-    python_base = "python:3.13.11-slim"
+    python_base = "python:3.13.14-slim"
     assert f"FROM {python_base} AS builder" in dockerfile
     assert f"FROM {python_base} AS runtime" in dockerfile
-    assert "python:3.13.11-slim@sha256:" not in dockerfile
+    assert "python:3.13.14-slim@sha256:" not in dockerfile
     assert "FROM ghcr.io/astral-sh/uv:0.11.26 AS uv" in dockerfile
     assert "ghcr.io/astral-sh/uv:0.11.26@sha256:" not in dockerfile
     assert "COPY python_rag /app" not in dockerfile

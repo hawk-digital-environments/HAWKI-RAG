@@ -22,7 +22,7 @@ readonly class GraphCacheService
      */
     public function clearBridgeCache(): array
     {
-        $baseUrl = rtrim((string) $this->config->get('config.hawki_rag_bridge_url', 'http://hawki_rag_bridge:8000'), '/');
+        $baseUrl = rtrim((string) $this->config->get('config.hawki_rag_bridge_url', 'http://hawki_rag_bridge'), '/');
 
         try {
             $response = $this->http->timeout(30)

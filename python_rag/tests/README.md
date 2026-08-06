@@ -1,6 +1,6 @@
 # Python RAG test suite
 
-This suite verifies the six-service Python RAG architecture on Python 3.13.11.
+This suite verifies the six-service Python RAG architecture on Python 3.13.14.
 Pytest also collects the retained `unittest.TestCase` characterization tests.
 
 ## Trust and ownership boundaries

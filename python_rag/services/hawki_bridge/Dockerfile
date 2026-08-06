@@ -1,6 +1,6 @@
 FROM ghcr.io/astral-sh/uv:0.11.26 AS uv
 
-FROM python:3.13.11-slim AS builder
+FROM python:3.13.14-slim AS builder
 
 ENV UV_LINK_MODE=copy
 WORKDIR /workspace/python_rag
@@ -20,9 +20,9 @@ COPY python_rag/services/hawki_bridge/pyproject.toml python_rag/services/hawki_b
 COPY python_rag/services/hawki_bridge/src services/hawki_bridge/src
 RUN uv sync --frozen --no-dev --no-editable --package hawki-bridge \
     && find .venv -depth -type d \( -name __pycache__ -o -name .pytest_cache -o -name tests -o -name test -o -name build -o -name dist -o -name '*.egg-info' \) -exec rm -rf '{}' + \
-    && find .venv -type f \( -name '*.pyc' -o -name '*.pyo' -o -name 'test_*.py' -o -name '*_test.py' \) -delete
+    && find .venv -type f \( -name '*.pyc' -o -name '*.pyo' \) -delete
 
-FROM python:3.13.11-slim AS runtime
+FROM python:3.13.14-slim AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \

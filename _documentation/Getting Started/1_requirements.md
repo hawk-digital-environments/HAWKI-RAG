@@ -20,8 +20,8 @@ the host.
 | Qdrant | Vector database HTTP API | `qdrant:6333` |
 | Neo4j HTTP | Graph database browser and HTTP API | `hawki_rag_neo4j:7474` |
 | Neo4j Bolt | Graph database driver connection | `hawki_rag_neo4j:7687` |
-| RAG bridge | Read-only query, graph-read, config/health, and Temporal-control API | `hawki_rag_bridge:8000` |
-| Reranker | Local reranking API | `hawki_rag_rerank:8000` |
+| RAG bridge | Read-only query, graph-read, config/health, and Temporal-control API | `hawki_rag_bridge:80` |
+| Reranker | Local reranking API | `hawki_rag_rerank:80` |
 | Ollama | Local model API | `hawki_ollama:11434` |
 | LiteLLM | Optional OpenAI-compatible gateway | `litellm:4000` |
 | External crawler | Crawl API and task UI; started outside this Compose stack | `crawl4ai-service:80` |

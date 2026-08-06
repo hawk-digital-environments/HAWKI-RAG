@@ -83,7 +83,7 @@ use the provided Compose stack:
 |---|---|---|
 | `DB_HOST` | `postgres` | Laravel's PostgreSQL connection |
 | `TEMPORAL_ADDRESS` | `temporal:7233` | Workflow orchestration |
-| `HAWKI_RAG_BRIDGE_URL` | `http://hawki_rag_bridge:8000` | Read-only retrieval and Temporal-control API |
+| `HAWKI_RAG_BRIDGE_URL` | `http://hawki_rag_bridge` | Read-only retrieval and Temporal-control API |
 | `QDRANT_HTTP_URL` | `http://qdrant:6333` | Vector storage and search |
 | `NEO4J_HTTP_URL` | `http://hawki_rag_neo4j:7474` | Graph storage |
 | `OLLAMA_API_URL` | `http://hawki_ollama:11434/api` | Local embeddings and language models |
