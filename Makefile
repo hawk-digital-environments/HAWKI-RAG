@@ -357,8 +357,8 @@ health: ## Check required and optional containers plus service endpoints.
 	check_exec "Qdrant readyz" hawki_qdrant "curl -fsS http://localhost:6333/readyz" 1; \
 	check_exec "Neo4j browser" hawki_rag_neo4j "wget --spider -q http://localhost:7474/browser" 1; \
 	check_exec "Ollama models" $(OLLAMA_CONTAINER) "ollama list" 1; \
-	check_exec "Read-only RAG bridge" hawki_rag_bridge "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:8000/health?runtime=false\", timeout=5).read()'" 0; \
-	check_exec "Local reranker" hawki_rag_rerank "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:8000/health\", timeout=5).read()'" 0; \
+	check_exec "Read-only RAG bridge" hawki_rag_bridge "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost/health?runtime=false\", timeout=5).read()'" 0; \
+	check_exec "Local reranker" hawki_rag_rerank "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost/health\", timeout=5).read()'" 0; \
 	check_url "Laravel HTTP" "http://127.0.0.1:8080/up" 0; \
 	echo ""; \
 	if [ "$$failed" = "0" ]; then \
@@ -384,12 +384,12 @@ test-services: ## Run focused Qdrant, Neo4j, bridge, and reranker smoke checks.
 		echo "skipped (container not running)"; \
 	fi; \
 	if docker ps --format '{{.Names}}' | grep -q hawki_rag_bridge; then \
-		printf "hawki_rag_bridge: "; docker exec hawki_rag_bridge python -c 'import urllib.request; urllib.request.urlopen("http://localhost:8000/health?runtime=false", timeout=5).read()' >/dev/null && echo "healthy" || (echo "WARN" && true); \
+		printf "hawki_rag_bridge: "; docker exec hawki_rag_bridge python -c 'import urllib.request; urllib.request.urlopen("http://localhost/health?runtime=false", timeout=5).read()' >/dev/null && echo "healthy" || (echo "WARN" && true); \
 	else \
 		printf "hawki_rag_bridge: skipped (container not running)\n"; \
 	fi; \
 	if docker ps --format '{{.Names}}' | grep -q hawki_rag_rerank; then \
-		printf "hawki_rag_rerank: "; docker exec hawki_rag_rerank python -c 'import urllib.request; urllib.request.urlopen("http://localhost:8000/health", timeout=5).read()' >/dev/null && echo "healthy" || (echo "WARN" && true); \
+		printf "hawki_rag_rerank: "; docker exec hawki_rag_rerank python -c 'import urllib.request; urllib.request.urlopen("http://localhost/health", timeout=5).read()' >/dev/null && echo "healthy" || (echo "WARN" && true); \
 	else \
 		printf "hawki_rag_rerank: skipped (container not running)\n"; \
 	fi; \

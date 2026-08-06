@@ -1,6 +1,6 @@
 # RAWKI Python RAG workspace
 
-`python_rag` is one Python 3.13.11 uv workspace with one lockfile. It contains
+`python_rag` is one Python 3.13.14 uv workspace with one lockfile. It contains
 small reusable packages and six independently built production services. Laravel
 is the public control plane and remains the sole owner of authentication,
 authorization, and application PostgreSQL metadata.
@@ -69,7 +69,7 @@ the only exception to a literal wheel-only install.
 
 ## Dependency management
 
-Install uv `0.11.26` and Python `3.13.11`, then run commands from the repository
+Install uv `0.11.26` and Python `3.13.14`, then run commands from the repository
 root:
 
 ```bash
@@ -109,9 +109,8 @@ docker compose --env-file .env build \
 
 `make up-core` starts the production-style stack. `make up-core-local` adds the
 local UI override without bind-mounting the entire Python workspace into every
-container. Production images use allowlisted workspace members, run as a
-non-root user, and exclude tests, virtual environments, caches, build output,
-and unrelated service code.
+container. Production images use allowlisted workspace members and exclude
+tests, caches, build output, and unrelated service code. 
 
 Worker callbacks require the same non-empty
 `HAWKI_RAG_WORKER_CALLBACK_SECRET` in Laravel and each activity worker. The

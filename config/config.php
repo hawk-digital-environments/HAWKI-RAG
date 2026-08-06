@@ -18,7 +18,7 @@ $stageRuntimeLogPaths = static function (string $stage, string $file) use ($pipe
 
 return [
 
-    'hawki_rag_bridge_url' => env('HAWKI_RAG_BRIDGE_URL', 'http://hawki_rag_bridge:8000'),
+    'hawki_rag_bridge_url' => env('HAWKI_RAG_BRIDGE_URL', 'http://hawki_rag_bridge'),
     'hawki_rag_query_timeout' => (int) env('HAWKI_RAG_QUERY_TIMEOUT', 300),
     'qdrant_http_url' => env('QDRANT_HTTP_URL', 'http://qdrant:6333'),
     'neo4j_http_url' => env('NEO4J_HTTP_URL', 'http://hawki_rag_neo4j:7474'),

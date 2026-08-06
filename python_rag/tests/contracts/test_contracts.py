@@ -290,7 +290,7 @@ def test_contract_package_is_exactly_pinned_and_has_no_io_or_service_imports() -
     pyproject = tomllib.loads(
         (PACKAGE_ROOT / "pyproject.toml").read_text(encoding="utf-8")
     )
-    assert pyproject["project"]["requires-python"] == "==3.13.11"
+    assert pyproject["project"]["requires-python"] == "==3.13.14"
     assert pyproject["project"]["dependencies"] == ["pydantic==2.13.4"]
     assert pyproject["build-system"]["requires"] == ["uv_build==0.11.26"]
 

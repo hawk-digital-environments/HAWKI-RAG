@@ -77,7 +77,7 @@ def test_store_sources_respect_line_limit() -> None:
 
 def test_store_manifest_uses_exact_versions() -> None:
     project = tomllib.loads((STORE_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-    assert project["project"]["requires-python"] == "==3.13.11"
+    assert project["project"]["requires-python"] == "==3.13.14"
     assert project["build-system"]["requires"] == ["uv_build==0.11.26"]
     dependencies = project["project"]["dependencies"]
     assert dependencies == [

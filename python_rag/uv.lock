@@ -1,6 +1,6 @@
 version = 1
 revision = 3
-requires-python = "==3.13.11"
+requires-python = "==3.13.14"
 resolution-markers = [
     "extra != 'extra-14-hawki-reranker-cpu' and extra == 'extra-14-hawki-reranker-gpu' and extra == 'project-14-hawki-reranker' and extra != 'project-20-hawki-indexer-worker'",
     "sys_platform != 'darwin' and extra == 'extra-14-hawki-reranker-cpu' and extra != 'extra-14-hawki-reranker-gpu' and extra == 'project-14-hawki-reranker' and extra != 'project-20-hawki-indexer-worker'",

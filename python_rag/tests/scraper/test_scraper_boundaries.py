@@ -24,7 +24,7 @@ def test_service_is_exactly_pinned_and_imports_no_legacy_or_other_service() -> N
     pyproject = tomllib.loads(
         (SERVICE_ROOT / "pyproject.toml").read_text(encoding="utf-8")
     )
-    assert pyproject["project"]["requires-python"] == "==3.13.11"
+    assert pyproject["project"]["requires-python"] == "==3.13.14"
     assert pyproject["project"]["dependencies"] == [
         "hawki-artifact-store==0.1.0",
         "hawki-rag-contracts==0.1.0",
@@ -64,8 +64,8 @@ def test_service_is_exactly_pinned_and_imports_no_legacy_or_other_service() -> N
 def test_dockerfile_uses_exact_multistage_nonroot_allowlisted_build() -> None:
     dockerfile = (SERVICE_ROOT / "Dockerfile").read_text(encoding="utf-8")
 
-    assert dockerfile.count("FROM python:3.13.11-slim") == 2
-    assert "python:3.13.11-slim@sha256:" not in dockerfile
+    assert dockerfile.count("FROM python:3.13.14-slim") == 2
+    assert "python:3.13.14-slim@sha256:" not in dockerfile
     assert "FROM ghcr.io/astral-sh/uv:0.11.26 AS uv" in dockerfile
     assert "ghcr.io/astral-sh/uv:0.11.26@sha256:" not in dockerfile
     assert "uv sync" in dockerfile

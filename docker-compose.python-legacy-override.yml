@@ -1,0 +1,42 @@
+# Emergency rollback to the pre-Neunerlei Python service Dockerfiles.
+services:
+  hawki_rag_app:
+    environment:
+      HAWKI_RAG_BRIDGE_URL: http://hawki_rag_bridge:8000
+      RERANKER_API_URL: http://hawki_rag_rerank:8000/v1/rerank
+
+  hawki_rag_bridge:
+    build:
+      dockerfile: python_rag/services/hawki_bridge/Dockerfile
+      target: runtime
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health?runtime=false', timeout=3)"]
+    environment:
+      RERANKER_API_URL: http://hawki_rag_rerank:8000/v1/rerank
+
+  hawki_rag_rerank:
+    build:
+      dockerfile: python_rag/services/hawki_reranker/Dockerfile
+      target: runtime
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+
+  hawki-rag-temporal-workflow-worker:
+    build:
+      dockerfile: python_rag/services/hawki_workflow_worker/Dockerfile
+      target: runtime
+
+  hawki-rag-temporal-scraper-worker:
+    build:
+      dockerfile: python_rag/services/hawki_scraper_worker/Dockerfile
+      target: runtime
+
+  hawki-rag-temporal-converter-worker:
+    build:
+      dockerfile: python_rag/services/hawki_converter_worker/Dockerfile
+      target: runtime
+
+  hawki-rag-indexer-worker:
+    build:
+      dockerfile: python_rag/services/hawki_indexer_worker/Dockerfile
+      target: runtime

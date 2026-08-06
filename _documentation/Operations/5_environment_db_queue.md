@@ -415,7 +415,7 @@ dataset to another embedding model.
 
 | Feature | Select with | Endpoint or credential | Default behavior |
 |---|---|---|---|
-| Local reranker | `RERANKER_MODE=external` | `RERANKER_API_URL=http://hawki_rag_rerank:8000/v1/rerank` | Enabled through the local Cohere-compatible service |
+| Local reranker | `RERANKER_MODE=external` | `RERANKER_API_URL=http://hawki_rag_rerank/v1/rerank` | Enabled through the local Cohere-compatible service |
 | Jina reranker | `RERANKER_MODE=jina` | `JINA_API_KEY` | Available only when a key is supplied |
 | Tavily search | `WEB_SEARCH_PROVIDER=tavily` | `TAVILY_SEARCH_API_KEY` | Provider selected, but unavailable while the key is empty |
 | Brave search | `WEB_SEARCH_PROVIDER=brave` | `BRAVE_SEARCH_API_KEY` | Available only when selected and a key is supplied |

@@ -86,7 +86,7 @@ readonly class RagHealthService
      */
     private function candidateEndpoints(): array
     {
-        $bridgeBase = (string) $this->config->get('config.hawki_rag_bridge_url', 'http://hawki_rag_bridge:8000');
+        $bridgeBase = (string) $this->config->get('config.hawki_rag_bridge_url', 'http://hawki_rag_bridge');
 
         return array_values(array_unique(array_filter([
             rtrim($bridgeBase, '/').'/health?runtime=false',

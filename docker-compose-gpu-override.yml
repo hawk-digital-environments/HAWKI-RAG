@@ -7,6 +7,7 @@
 services:
   hawki_rag_rerank:
     build:
+      target: reranker-runtime
       args:
         TORCH_VARIANT: gpu
     image: hawki-rag-reranker:gpu-local
@@ -20,6 +21,7 @@ services:
 
   hawki-rag-indexer-worker:
     build:
+      target: indexer-runtime
       args:
         TORCH_VARIANT: gpu
     image: hawki-rag-indexer-worker:gpu-local
