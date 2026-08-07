@@ -3,7 +3,8 @@
 namespace Tests\Feature\Datasets;
 
 use App\Models\Dataset;
-use App\Models\Document;
+use App\Models\ManagedDocument;
+use App\Models\ManagedDocumentOutput;
 use App\Models\PipelineJob;
 use App\Models\PipelineTask;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -42,14 +43,25 @@ class DatasetManagementTest extends TestCase
             'created_at' => now()->subHour(),
         ]);
 
-        Document::query()->create([
+        ManagedDocument::query()->create([
+            'document_id' => 'adoc_dataset_ui_1',
             'dataset_id' => 'dataset-ui',
-            'collection' => 'hawki_dataset_ui',
-            'source_type' => Document::SOURCE_SCRAPE,
+            'display_name' => 'page.md',
+            'source_type' => 'scrape',
             'source_url' => 'https://example.test/page',
-            'storage_path' => '/app/shared/dataset-ui/page.md',
-            'checksum_sha256' => hash('sha256', 'dataset-ui-doc'),
-            'status' => Document::STATUS_COMPLETED,
+            'source_checksum_sha256' => hash('sha256', 'dataset-ui-doc'),
+            'graph_enabled' => true,
+            'status' => ManagedDocument::STATUS_INDEXED,
+        ]);
+
+        ManagedDocumentOutput::query()->create([
+            'document_id' => 'adoc_dataset_ui_1',
+            'bridge_document_id' => 'doc-dataset-ui-1',
+            'qdrant_collection' => 'hawki_dataset_ui',
+            'neo4j_namespace' => 'hawki_dataset_ui',
+            'chunk_count' => 7,
+            'status' => 'indexed',
+            'active' => true,
         ]);
 
         PipelineTask::query()->create([
@@ -109,7 +121,7 @@ class DatasetManagementTest extends TestCase
             ->assertJsonPath('dataset.embedding_provider', 'ollama')
             ->assertJsonPath('dataset.embedding_model', 'bge-m3')
             ->assertJsonPath('dataset.tasks.0.task_id', 'task-dataset-ui')
-            ->assertJsonPath('dataset.documents.0.dataset_id', 'dataset-ui')
+            ->assertJsonMissingPath('dataset.documents')
             ->assertJsonPath('dataset.ingestion_history.0.job_id', 'ingest-dataset-ui');
     }
 
@@ -221,15 +233,25 @@ class DatasetManagementTest extends TestCase
             'neo4j_namespace' => 'hawki_delete_dataset',
         ]);
 
-        Document::query()->create([
-            'external_id' => 'ingest-delete-dataset',
+        ManagedDocument::query()->create([
+            'document_id' => 'adoc_delete_dataset_1',
             'dataset_id' => 'delete-dataset',
-            'collection' => 'hawki_delete_dataset',
-            'source_type' => Document::SOURCE_UPLOAD,
+            'display_name' => 'delete-dataset.pdf',
+            'source_type' => 'upload',
             'source_url' => 'file:///delete-dataset.pdf',
-            'storage_path' => '/app/shared/delete-dataset/content.md',
-            'checksum_sha256' => hash('sha256', 'delete-dataset-doc'),
-            'status' => Document::STATUS_COMPLETED,
+            'source_checksum_sha256' => hash('sha256', 'delete-dataset-doc'),
+            'graph_enabled' => true,
+            'status' => ManagedDocument::STATUS_INDEXED,
+        ]);
+
+        ManagedDocumentOutput::query()->create([
+            'document_id' => 'adoc_delete_dataset_1',
+            'bridge_document_id' => 'ingest-delete-dataset',
+            'qdrant_collection' => 'hawki_delete_dataset',
+            'neo4j_namespace' => 'hawki_delete_dataset',
+            'chunk_count' => 1,
+            'status' => 'indexed',
+            'active' => true,
         ]);
 
         $this->actingAsApiUser();

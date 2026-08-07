@@ -39,11 +39,6 @@ class Dataset extends Model
         return $this->hasMany(PipelineTask::class, 'dataset_id', 'dataset_id');
     }
 
-    public function documents(): HasMany
-    {
-        return $this->hasMany(Document::class, 'dataset_id', 'dataset_id');
-    }
-
     public function grants(): HasMany
     {
         return $this->hasMany(DatasetGrant::class, 'dataset_id', 'dataset_id');

@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Services\Document;
 
-use App\Models\Document;
 use App\Models\IngestionSource;
 use App\Models\ManagedDocument;
 use App\Models\RagIngestionArtifact;
@@ -58,38 +57,7 @@ readonly class ManagedDocumentSyncStateResolver
      */
     private function resolvedOutputs(ManagedDocument $managedDocument, IngestionSource $source): array
     {
-        $sourceId = $source->source_id;
-        $documents = $this->metadata->documentsForSource($sourceId);
-        if ($documents->isEmpty()) {
-            return $this->artifactOutputs($managedDocument, $source);
-        }
-
-        $chunkCounts = $this->metadata->chunkCountsForSource($sourceId);
-        $outputs = [];
-
-        foreach ($documents as $document) {
-            $bridgeDocumentId = $this->bridgeDocumentId($document);
-            if ($bridgeDocumentId === null) {
-                continue;
-            }
-
-            $metadata = is_array($document->metadata_json) ? $document->metadata_json : [];
-            $outputs[$bridgeDocumentId] = [
-                'bridge_document_id' => $bridgeDocumentId,
-                'qdrant_collection' => $this->stringValue($metadata['qdrant_collection'] ?? null) ?? $document->collection,
-                'neo4j_namespace' => $this->stringValue($metadata['neo4j_namespace'] ?? null),
-                'source_id' => $sourceId,
-                'task_id' => $this->stringValue($metadata['task_id'] ?? null),
-                'job_id' => $this->stringValue($metadata['job_id'] ?? null),
-                'content_hash' => $this->stringValue($document->checksum_sha256),
-                'chunk_count' => $this->chunkCount($chunkCounts, $metadata, $bridgeDocumentId),
-                'status' => 'indexed',
-                'indexed_at' => $document->updated_at ?? $document->created_at,
-                'metadata_json' => $metadata,
-            ];
-        }
-
-        return array_values($outputs);
+        return $this->artifactOutputs($managedDocument, $source);
     }
 
     /**
@@ -139,41 +107,6 @@ readonly class ManagedDocumentSyncStateResolver
         }
 
         return array_values($outputs);
-    }
-
-    /**
-     * @param  array<string, int>  $registryChunkCounts
-     * @param  array<string, mixed>  $metadata
-     */
-    private function chunkCount(array $registryChunkCounts, array $metadata, string $bridgeDocumentId): int
-    {
-        if (array_key_exists($bridgeDocumentId, $registryChunkCounts)) {
-            return max(0, (int) $registryChunkCounts[$bridgeDocumentId]);
-        }
-
-        $bridgeResponse = is_array($metadata['bridge_response'] ?? null)
-            ? $metadata['bridge_response']
-            : [];
-        $summary = is_array($bridgeResponse['summary'] ?? null)
-            ? $bridgeResponse['summary']
-            : [];
-        $documents = is_array($summary['documents'] ?? null)
-            ? $summary['documents']
-            : [];
-        $chunkCounts = is_array($documents['chunks_per_doc'] ?? null)
-            ? $documents['chunks_per_doc']
-            : [];
-
-        return max(0, (int) ($chunkCounts[$bridgeDocumentId] ?? 0));
-    }
-
-    private function bridgeDocumentId(Document $document): ?string
-    {
-        $metadata = is_array($document->metadata_json) ? $document->metadata_json : [];
-
-        return $this->stringValue($document->external_id)
-            ?? $this->stringValue($metadata['document_id'] ?? null)
-            ?? $this->stringValue($metadata['doc_id'] ?? null);
     }
 
     private function stringValue(mixed $value): ?string

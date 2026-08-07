@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Dataset;
 
 use App\Models\Dataset;
+use App\Services\Document\Repositories\ManagedDocumentOutputRepository;
 use App\Services\Graph\Neo4jQueryClient;
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Contracts\Config\Repository as ConfigRepository;
@@ -14,12 +15,11 @@ use Illuminate\Http\Client\Factory as HttpFactory;
 readonly class DatasetStorageCleanupService
 {
     public function __construct(
-        private DatasetRepository $datasets,
+        private ManagedDocumentOutputRepository $documentOutputs,
         private ConfigRepository $config,
         private HttpFactory $http,
         private Neo4jQueryClient $neo4j,
-    ) {
-    }
+    ) {}
 
     /**
      * @return array<string, mixed>
@@ -87,7 +87,7 @@ readonly class DatasetStorageCleanupService
      */
     private function deleteNeo4jData(Dataset $dataset): array
     {
-        $documentJobIds = $this->datasets->documentExternalIds($dataset);
+        $documentJobIds = $this->documentOutputs->activeBridgeDocumentIdsForDataset($dataset->dataset_id);
         $parameters = [
             'dataset_id' => $dataset->dataset_id,
             'namespace' => $dataset->neo4j_namespace,

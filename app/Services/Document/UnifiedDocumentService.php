@@ -6,28 +6,27 @@ namespace App\Services\Document;
 
 use App\Services\Document\Values\ManagedDocumentId;
 use Illuminate\Container\Attributes\Singleton;
+use Illuminate\Http\UploadedFile;
 
 #[Singleton]
 readonly class UnifiedDocumentService
 {
     public function __construct(
-        private DocumentBrowserService $browser,
         private ManagedDocumentService $managed,
-    ) {
-    }
+    ) {}
 
     /**
-     * @param array<string, mixed> $input
+     * @param  array<string, mixed>  $input
      * @return array{status:int,payload:array<string,mixed>}
      */
-    public function create(array $input, ?\Illuminate\Http\UploadedFile $file, ?string $idempotencyKey): array
+    public function create(array $input, ?UploadedFile $file, ?string $idempotencyKey): array
     {
         return $this->managed->create($input, $file, $idempotencyKey);
     }
 
     /**
-     * @param array<string, mixed> $input
-     * @param list<\Illuminate\Http\UploadedFile> $files
+     * @param  array<string, mixed>  $input
+     * @param  list<UploadedFile>  $files
      * @return array{status:int,payload:array<string,mixed>}
      */
     public function createBatch(array $input, array $files, ?string $idempotencyKey): array
@@ -36,14 +35,12 @@ readonly class UnifiedDocumentService
     }
 
     /**
-     * @param array<string, mixed> $filters
+     * @param  array<string, mixed>  $filters
      * @return list<array<string, mixed>>
      */
     public function list(int $limit = 100, array $filters = []): array
     {
-        $managed = $this->managed->list($limit, $filters);
-
-        return $managed !== [] ? $managed : $this->browser->list($limit, $filters);
+        return $this->managed->list($limit, $filters);
     }
 
     /**
@@ -51,29 +48,18 @@ readonly class UnifiedDocumentService
      */
     public function show(string $documentId): ?array
     {
-        if ($this->isManagedDocumentId($documentId)) {
-            return $this->managed->show($documentId);
-        }
-
-        $document = $this->browser->show($documentId);
-        if ($document === null) {
+        if (! $this->isManagedDocumentId($documentId)) {
             return null;
         }
 
-        return [
-            'status' => 200,
-            'payload' => [
-                'success' => true,
-                'document' => $document,
-            ],
-        ];
+        return $this->managed->show($documentId);
     }
 
     /**
-     * @param array<string, mixed> $input
+     * @param  array<string, mixed>  $input
      * @return array{status:int,payload:array<string,mixed>}|null
      */
-    public function update(string $documentId, array $input, ?\Illuminate\Http\UploadedFile $file, ?string $idempotencyKey): ?array
+    public function update(string $documentId, array $input, ?UploadedFile $file, ?string $idempotencyKey): ?array
     {
         if (! $this->isManagedDocumentId($documentId)) {
             return null;

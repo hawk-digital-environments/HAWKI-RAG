@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Services\Document;
 
-use App\Models\Document;
 use App\Models\ManagedDocument;
 use App\Models\ManagedDocumentOutput;
 use App\Services\Document\Repositories\ManagedIngestionMetadataRepository;
@@ -16,7 +15,6 @@ readonly class ManagedDocumentPayloadBuilder
 {
     public function __construct(
         private ManagedIngestionMetadataRepository $metadata,
-        private DocumentPayloadBuilder $documents,
         private PipelineStageStateRepository $stageStates,
         private DocumentMarkdownPreviewReader $previews,
     ) {}
@@ -35,7 +33,7 @@ readonly class ManagedDocumentPayloadBuilder
             ->where('active', true)
             ->values();
         $primaryOutput = $activeOutputs->first();
-        $backing = $this->backingDocumentPayload($document, $includeDetails);
+        $backing = $this->pipelineArtifactPayload($document, $includeDetails);
         $managedMetadata = is_array($document->metadata_json) ? $document->metadata_json : [];
         $contentType = $this->stringValue($backing['content_type'] ?? null);
         $qdrantCollection = $this->stringValue($backing['qdrant_collection'] ?? null)
@@ -105,7 +103,6 @@ readonly class ManagedDocumentPayloadBuilder
             ?? ($payload['markdown_preview'] === '' ? 'No extracted Markdown preview is available.' : null);
         $payload['markdown_preview_truncated'] = (bool) ($backing['markdown_preview_truncated'] ?? false);
         $payload['related_jobs'] = is_array($backing['related_jobs'] ?? null) ? $backing['related_jobs'] : [];
-        $payload['indexed_document_id'] = $this->stringValue($backing['id'] ?? null);
 
         return $payload;
     }
@@ -113,29 +110,12 @@ readonly class ManagedDocumentPayloadBuilder
     /**
      * @return array<string, mixed>
      */
-    private function backingDocumentPayload(ManagedDocument $document, bool $includeDetails): array
-    {
-        $sourceId = $this->stringValue($document->latest_source_id);
-        if ($sourceId === null) {
-            return [];
-        }
-
-        $indexedDocument = $this->metadata->documentsForSource($sourceId)->first();
-        if (! $indexedDocument instanceof Document) {
-            return $this->pipelineArtifactPayload($document, $includeDetails);
-        }
-
-        return $this->documents->payload($indexedDocument, includeDetails: $includeDetails);
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
     private function pipelineArtifactPayload(ManagedDocument $document, bool $includeDetails): array
     {
+        $payload = $this->ingestionArtifactPayload($document);
         $jobId = $this->stringValue($document->latest_job_id);
         if ($jobId === null) {
-            return [];
+            return $payload;
         }
 
         $state = $this->stageStates->findForJobStage($jobId, 'convert');
@@ -143,15 +123,15 @@ readonly class ManagedDocumentPayloadBuilder
         $artifacts = is_array($metadata['artifacts'] ?? null) ? $metadata['artifacts'] : [];
         $artifact = $this->preferredMarkdownArtifact($artifacts);
         if ($artifact === null) {
-            return [];
+            return $payload;
         }
 
         $path = $this->stringValue($artifact['uri'] ?? null);
-        $payload = [
+        $payload = array_merge($payload, [
             'content_type' => $this->stringValue($artifact['media_type'] ?? null) ?? 'text/markdown',
             'local_path' => $path,
             'file_size' => $this->intValue($artifact['size_bytes'] ?? null),
-        ];
+        ]);
 
         if (! $includeDetails) {
             return $payload;
@@ -164,6 +144,35 @@ readonly class ManagedDocumentPayloadBuilder
         $payload['markdown_preview_truncated'] = $preview['truncated'];
 
         return $payload;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function ingestionArtifactPayload(ManagedDocument $document): array
+    {
+        $sourceId = $this->stringValue($document->latest_source_id);
+        if ($sourceId === null) {
+            return [];
+        }
+
+        $artifact = $this->metadata->latestArtifactForSource($sourceId);
+        if ($artifact === null) {
+            return [];
+        }
+
+        $summary = is_array($artifact->summary) ? $artifact->summary : [];
+        $graphPreview = is_array($artifact->graph_preview)
+            ? $artifact->graph_preview
+            : $this->arrayValue($summary['graph_preview'] ?? null);
+
+        return [
+            'qdrant_point_count' => $this->intValue(data_get($summary, 'qdrant_preview.planned_points'))
+                ?? $this->intValue($summary['planned_points'] ?? null)
+                ?? $this->intValue(data_get($summary, 'documents.total_chunks')),
+            'neo4j_entity_count' => $this->intValue($graphPreview['total_entities'] ?? $graphPreview['planned_entities'] ?? null),
+            'neo4j_relation_count' => $this->intValue($graphPreview['total_triplets'] ?? $graphPreview['planned_triplets'] ?? null),
+        ];
     }
 
     /**

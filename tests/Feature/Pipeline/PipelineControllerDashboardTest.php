@@ -3,7 +3,6 @@
 namespace Tests\Feature\Pipeline;
 
 use App\Models\Dataset;
-use App\Models\Document;
 use App\Models\IngestionSource;
 use App\Models\ManagedDocument;
 use App\Models\ManagedDocumentOutput;
@@ -15,7 +14,6 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Str;
 use Psr\Log\LoggerInterface;
 use Tests\TestCase;
 
@@ -262,30 +260,6 @@ class PipelineControllerDashboardTest extends TestCase
             'status' => 'indexed',
             'active' => true,
             'indexed_at' => now(),
-        ]);
-
-        Document::query()->create([
-            'id' => (string) Str::uuid(),
-            'external_id' => 'doc-managed-read-1',
-            'dataset_id' => 'managed-read',
-            'collection' => 'hawki_managed_read',
-            'source_type' => 'upload',
-            'source_url' => 'upload://managed-read.pdf',
-            'original_filename' => 'managed-read.pdf',
-            'storage_path' => '/tmp/managed-read/managed-read.md',
-            'mime_type' => 'text/markdown',
-            'file_size' => 123,
-            'checksum_sha256' => hash('sha256', 'managed-read'),
-            'title' => 'managed-read',
-            'metadata_json' => [
-                'source_id' => 'source-managed-read',
-                'task_id' => $task->task_id,
-                'job_id' => $job->job_id,
-                'document_id' => 'doc-managed-read-1',
-                'qdrant_collection' => 'hawki_managed_read',
-                'neo4j_namespace' => 'hawki_managed_read',
-            ],
-            'status' => Document::STATUS_COMPLETED,
         ]);
 
         $this->getJson("/api/pipeline/tasks/{$task->task_id}")

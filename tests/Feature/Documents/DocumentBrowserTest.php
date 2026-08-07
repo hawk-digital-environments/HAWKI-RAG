@@ -2,105 +2,21 @@
 
 namespace Tests\Feature\Documents;
 
-use App\Models\Dataset;
-use App\Models\Document;
 use App\Models\PipelineJob;
-use App\Models\PipelineTask;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\File;
-use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
 class DocumentBrowserTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_documents_page_lists_ingested_documents(): void
+    public function test_documents_page_redirects_to_dataset_browser(): void
     {
         $this->withoutVite();
 
-        $document = $this->createIngestedDocument();
-
         $this->get('/documents')
             ->assertRedirect('/datasets');
-
-        $this->actingAsApiUser();
-
-        $this->getJson('/api/documents?dataset_id=browser-dataset')
-            ->assertOk()
-            ->assertJsonPath('success', true)
-            ->assertJsonPath('documents.0.id', $document->id)
-            ->assertJsonPath('documents.0.dataset_id', 'browser-dataset')
-            ->assertJsonPath('documents.0.content_type', 'text/markdown')
-            ->assertJsonPath('documents.0.content_hash', $document->checksum_sha256)
-            ->assertJsonPath('documents.0.qdrant_status', 'indexed')
-            ->assertJsonPath('documents.0.neo4j_status', 'indexed')
-            ->assertJsonPath('documents.0.task_id', 'task-browser')
-            ->assertJsonPath('documents.0.job_id', 'ingest-browser');
-    }
-
-    public function test_document_detail_shows_markdown_index_counts_and_related_jobs(): void
-    {
-        $document = $this->createIngestedDocument();
-
-        $this->actingAsApiUser();
-
-        $this->getJson("/api/documents/{$document->id}")
-            ->assertOk()
-            ->assertJsonPath('document.id', $document->id)
-            ->assertJsonPath('document.source_url', 'https://example.test/browser')
-            ->assertJsonPath('document.local_path', $document->storage_path)
-            ->assertJsonPath('document.markdown_preview', "# Browser document\n\nIndexed Markdown content.")
-            ->assertJsonPath('document.qdrant_point_count', 4)
-            ->assertJsonPath('document.neo4j_entity_count', 6)
-            ->assertJsonPath('document.neo4j_relation_count', 5)
-            ->assertJsonFragment([
-                'task_id' => 'task-browser',
-                'job_id' => 'scrape-browser',
-                'job_type' => PipelineJob::TYPE_SCRAPE,
-            ])
-            ->assertJsonFragment([
-                'task_id' => 'task-browser',
-                'job_id' => 'ingest-browser',
-                'job_type' => PipelineJob::TYPE_INGEST,
-            ]);
-    }
-
-    public function test_document_detail_falls_back_to_live_neo4j_entity_count_when_summary_omits_entities(): void
-    {
-        $document = $this->createIngestedDocument([
-            'bridge_response' => [
-                'ok' => true,
-                'points' => 146,
-                'summary' => [
-                    'graph' => ['enabled' => true],
-                    'graph_preview' => [
-                        'planned_entities' => null,
-                        'total_triplets' => 6,
-                    ],
-                ],
-            ],
-        ]);
-
-        Http::fake([
-            'http://neo4j.test/*' => Http::response([
-                'results' => [[
-                    'data' => [[
-                        'row' => [7, 6],
-                    ]],
-                ]],
-                'errors' => [],
-            ]),
-        ]);
-        config()->set('config.neo4j_http_url', 'http://neo4j.test');
-
-        $this->actingAsApiUser();
-
-        $this->getJson("/api/documents/{$document->id}")
-            ->assertOk()
-            ->assertJsonPath('document.qdrant_point_count', 146)
-            ->assertJsonPath('document.neo4j_entity_count', 7)
-            ->assertJsonPath('document.neo4j_relation_count', 6);
     }
 
     public function test_document_detail_returns_not_found_for_non_numeric_placeholder_id(): void
@@ -192,95 +108,6 @@ class DocumentBrowserTest extends TestCase
         $this->getJson('/api/documents/uploads/download?'.http_build_query(['source_url' => $sourceUrl]))
             ->assertNotFound()
             ->assertJsonPath('success', false);
-    }
-
-    private function createIngestedDocument(array $metadataOverrides = []): Document
-    {
-        Dataset::query()->create([
-            'dataset_id' => 'browser-dataset',
-            'name' => 'Browser Dataset',
-            'description' => null,
-            'status' => Dataset::STATUS_ACTIVE,
-            'qdrant_collection' => 'hawki_browser_dataset',
-            'neo4j_namespace' => 'hawki_browser_dataset',
-            'created_at' => now(),
-        ]);
-
-        PipelineTask::query()->create([
-            'task_id' => 'task-browser',
-            'dataset_id' => 'browser-dataset',
-            'status' => PipelineTask::STATUS_COMPLETED,
-            'started_at' => now()->subMinutes(5),
-            'finished_at' => now()->subMinute(),
-            'counters' => ['ingested' => 1],
-            'metadata' => [],
-        ]);
-
-        PipelineJob::query()->create([
-            'job_id' => 'scrape-browser',
-            'task_id' => 'task-browser',
-            'job_type' => PipelineJob::TYPE_SCRAPE,
-            'source_url' => 'https://example.test/browser',
-            'local_path' => '/app/shared/browser/page.html',
-            'content_hash' => hash('sha256', 'browser-source'),
-            'status' => PipelineJob::STATUS_COMPLETED,
-            'started_at' => now()->subMinutes(5),
-            'finished_at' => now()->subMinutes(4),
-            'metadata' => [],
-        ]);
-
-        PipelineJob::query()->create([
-            'job_id' => 'ingest-browser',
-            'task_id' => 'task-browser',
-            'parent_job_id' => 'scrape-browser',
-            'job_type' => PipelineJob::TYPE_INGEST,
-            'source_url' => 'https://example.test/browser',
-            'local_path' => storage_path('framework/testing/documents/browser.md'),
-            'content_hash' => hash('sha256', 'browser-markdown'),
-            'status' => PipelineJob::STATUS_COMPLETED,
-            'started_at' => now()->subMinutes(3),
-            'finished_at' => now()->subMinutes(2),
-            'metadata' => [],
-        ]);
-
-        $path = storage_path('framework/testing/documents/browser.md');
-        File::ensureDirectoryExists(dirname($path));
-        File::put($path, "# Browser document\n\nIndexed Markdown content.");
-
-        $metadata = array_replace_recursive([
-            'task_id' => 'task-browser',
-            'job_id' => 'ingest-browser',
-            'event_id' => 'event-browser',
-            'qdrant_collection' => 'hawki_browser_dataset',
-            'neo4j_namespace' => 'hawki_browser_dataset',
-            'bridge_response' => [
-                'ok' => true,
-                'points' => 4,
-                'summary' => [
-                    'graph' => ['enabled' => true],
-                    'graph_preview' => [
-                        'planned_entities' => 6,
-                        'total_triplets' => 5,
-                    ],
-                ],
-            ],
-        ], $metadataOverrides);
-
-        return Document::query()->create([
-            'external_id' => 'ingest-browser',
-            'dataset_id' => 'browser-dataset',
-            'collection' => 'hawki_browser_dataset',
-            'source_type' => Document::SOURCE_SCRAPE,
-            'source_url' => 'https://example.test/browser',
-            'original_filename' => 'browser.md',
-            'storage_path' => $path,
-            'mime_type' => 'text/markdown',
-            'file_size' => filesize($path),
-            'checksum_sha256' => hash_file('sha256', $path),
-            'title' => 'Browser document',
-            'metadata_json' => $metadata,
-            'status' => Document::STATUS_COMPLETED,
-        ]);
     }
 
     private function configureUploadDownloadRoot(string $root): void
