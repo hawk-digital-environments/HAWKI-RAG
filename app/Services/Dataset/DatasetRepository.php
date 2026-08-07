@@ -6,6 +6,7 @@ namespace App\Services\Dataset;
 
 use App\Models\Dataset;
 use App\Models\Document;
+use App\Models\ManagedDocument;
 use App\Models\PipelineJob;
 use App\Models\PipelineTask;
 use Illuminate\Container\Attributes\Singleton;
@@ -39,7 +40,7 @@ readonly class DatasetRepository
     }
 
     /**
-     * @param array<string, mixed> $attributes
+     * @param  array<string, mixed>  $attributes
      */
     public function create(array $attributes): Dataset
     {
@@ -47,7 +48,7 @@ readonly class DatasetRepository
     }
 
     /**
-     * @param array<string, mixed> $attributes
+     * @param  array<string, mixed>  $attributes
      */
     public function firstOrCreate(string $datasetId, array $attributes): Dataset
     {
@@ -61,6 +62,15 @@ readonly class DatasetRepository
 
     public function documentCount(Dataset $dataset): int
     {
+        $managedDocumentCount = ManagedDocument::query()
+            ->where('dataset_id', $dataset->dataset_id)
+            ->whereNull('deleted_at')
+            ->count();
+
+        if ($managedDocumentCount > 0) {
+            return $managedDocumentCount;
+        }
+
         return $this->documentQuery($dataset)->count();
     }
 

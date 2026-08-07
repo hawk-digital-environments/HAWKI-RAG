@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace App\Services\Pipeline\Values;
@@ -15,11 +16,10 @@ readonly class PipelineUploadInput
         public ?string $customConverterToken,
         public string $customConverterStartPath,
         public array $requestMetadata,
-    ) {
-    }
+    ) {}
 
     /**
-     * @param array<string, mixed> $validated
+     * @param  array<string, mixed>  $validated
      */
     public static function fromValidated(array $validated, array $customConverterDefaults = []): self
     {
@@ -45,6 +45,19 @@ readonly class PipelineUploadInput
     public function usesCustomConverter(): bool
     {
         return $this->converterMode === 'custom';
+    }
+
+    public function withManagedDocumentId(ManagedDocumentId $managedDocumentId): self
+    {
+        return new self(
+            datasetId: $this->datasetId,
+            graph: $this->graph,
+            converterMode: $this->converterMode,
+            customConverterUrl: $this->customConverterUrl,
+            customConverterToken: $this->customConverterToken,
+            customConverterStartPath: $this->customConverterStartPath,
+            requestMetadata: array_merge($this->requestMetadata, $managedDocumentId->toRequestMetadata()),
+        );
     }
 
     /**

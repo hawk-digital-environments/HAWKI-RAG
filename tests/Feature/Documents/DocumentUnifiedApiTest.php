@@ -4,11 +4,17 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Documents;
 
+use App\Models\Dataset;
 use App\Models\Document;
 use App\Models\IngestedPage;
 use App\Models\IngestionSource;
 use App\Models\ManagedDocument;
 use App\Models\ManagedDocumentOutput;
+use App\Models\PipelineJob;
+use App\Models\PipelineStageState;
+use App\Models\PipelineTask;
+use App\Models\PipelineWorkerEventRecord;
+use App\Models\RagIngestionArtifact;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
@@ -495,6 +501,166 @@ class DocumentUnifiedApiTest extends TestCase
         ]);
     }
 
+    public function test_show_builds_outputs_from_monitor_artifact_without_legacy_document_rows(): void
+    {
+        $previewPath = storage_path('framework/testing/document-unified/artifact-output.md');
+        File::ensureDirectoryExists(dirname($previewPath));
+        File::put($previewPath, "# Artifact output\n\nRecovered from the converter stage.");
+
+        Dataset::query()->create([
+            'dataset_id' => 'documents-artifact-output',
+            'name' => 'Artifact Output',
+            'status' => Dataset::STATUS_ACTIVE,
+            'qdrant_collection' => 'hawki_documents_artifact_output',
+            'neo4j_namespace' => 'hawki_documents_artifact_output',
+        ]);
+
+        $task = PipelineTask::query()->create([
+            'task_id' => 'task-artifact-output-1',
+            'dataset_id' => 'documents-artifact-output',
+            'status' => PipelineTask::STATUS_COMPLETED,
+            'metadata' => [],
+        ]);
+
+        $job = PipelineJob::query()->create([
+            'job_id' => 'ingest-artifact-output-1',
+            'task_id' => $task->task_id,
+            'source_id' => 'source-artifact-output-1',
+            'job_type' => PipelineJob::TYPE_INGEST,
+            'status' => PipelineJob::STATUS_COMPLETED,
+            'metadata' => [],
+        ]);
+
+        ManagedDocument::query()->create([
+            'document_id' => 'adoc_artifact_output_1',
+            'dataset_id' => 'documents-artifact-output',
+            'display_name' => 'artifact-output.pdf',
+            'source_type' => 'upload',
+            'source_url' => 'upload://artifact-output.pdf',
+            'graph_enabled' => true,
+            'status' => ManagedDocument::STATUS_PROCESSING,
+            'latest_source_id' => 'source-artifact-output-1',
+            'latest_task_id' => $task->task_id,
+            'latest_job_id' => $job->job_id,
+        ]);
+
+        IngestionSource::query()->create([
+            'source_id' => 'source-artifact-output-1',
+            'source_url' => 'upload://artifact-output.pdf',
+            'task_id' => $task->task_id,
+            'dataset_id' => 'documents-artifact-output',
+            'content_hash' => hash('sha256', 'artifact-output.pdf'),
+            'document_version' => 'version-artifact-output-1',
+            'index_status' => IngestionSource::STATUS_READY,
+            'metadata' => [],
+            'ready_at' => Carbon::parse('2026-08-07T01:15:30Z'),
+        ]);
+
+        $event = PipelineWorkerEventRecord::query()->create([
+            'pipeline_job_id' => $job->id,
+            'event_id' => 'evt-artifact-output-1',
+            'job_id' => $job->job_id,
+            'task_id' => $task->task_id,
+            'source_id' => 'source-artifact-output-1',
+            'workflow_id' => 'workflow-artifact-output-1',
+            'run_id' => 'run-artifact-output-1',
+            'activity_id' => 'mark_source_ready',
+            'attempt' => 1,
+            'event_type' => 'pipeline.stage.status',
+            'producer' => 'indexer',
+            'stage' => 'ingest',
+            'phase' => 'mark_source_ready',
+            'status' => 'completed',
+            'payload_hash' => hash('sha256', 'evt-artifact-output-1'),
+            'payload' => [],
+            'occurred_at' => Carbon::parse('2026-08-07T01:15:30Z'),
+            'processed_at' => Carbon::parse('2026-08-07T01:15:31Z'),
+        ]);
+
+        PipelineStageState::query()->create([
+            'pipeline_job_id' => $job->id,
+            'job_id' => $job->job_id,
+            'stage' => 'convert',
+            'status' => PipelineJob::STATUS_COMPLETED,
+            'counts' => ['total' => 1, 'processed' => 1, 'failed' => 0, 'skipped' => 0],
+            'metadata' => [
+                'artifacts' => [[
+                    'uri' => $previewPath,
+                    'relative_path' => 'output/chunks/00001.md',
+                    'sha256' => hash_file('sha256', $previewPath),
+                    'size_bytes' => filesize($previewPath),
+                    'media_type' => 'text/markdown',
+                ]],
+            ],
+            'completed_at' => Carbon::parse('2026-08-07T01:12:00Z'),
+        ]);
+
+        RagIngestionArtifact::query()->create([
+            'pipeline_job_id' => $job->id,
+            'pipeline_worker_event_id' => $event->id,
+            'job_id' => $job->job_id,
+            'task_id' => $task->task_id,
+            'source_id' => 'source-artifact-output-1',
+            'dataset_id' => 'documents-artifact-output',
+            'workflow_id' => 'workflow-artifact-output-1',
+            'run_id' => 'run-artifact-output-1',
+            'summary' => [
+                'documents' => [
+                    'doc_ids' => ['doc-artifact-1', 'doc-artifact-2'],
+                    'chunks_per_doc' => [
+                        'doc-artifact-1' => 1,
+                        'doc-artifact-2' => 2,
+                    ],
+                ],
+                'qdrant_preview' => [
+                    'collection' => 'hawki_documents_artifact_output',
+                ],
+            ],
+            'graph_preview' => [],
+            'occurred_at' => Carbon::parse('2026-08-07T01:15:30Z'),
+        ]);
+
+        $this->assertDatabaseCount('documents', 0);
+        $this->assertDatabaseCount('ingested_pages', 0);
+
+        $this->getJson('/api/documents/adoc_artifact_output_1')
+            ->assertOk()
+            ->assertJsonPath('document.status', ManagedDocument::STATUS_INDEXED)
+            ->assertJsonPath('document.qdrant_collection', 'hawki_documents_artifact_output')
+            ->assertJsonPath('document.neo4j_namespace', 'hawki_documents_artifact_output')
+            ->assertJsonPath('document.qdrant_point_count', 3)
+            ->assertJsonPath('document.active_output_count', 2)
+            ->assertJsonPath('document.active_chunk_count', 3)
+            ->assertJsonPath('document.content_type', 'text/markdown')
+            ->assertJsonPath('document.local_path', $previewPath)
+            ->assertJsonPath('document.markdown_preview', "# Artifact output\n\nRecovered from the converter stage.")
+            ->assertJsonFragment([
+                'bridge_document_id' => 'doc-artifact-1',
+                'chunk_count' => 1,
+            ])
+            ->assertJsonFragment([
+                'bridge_document_id' => 'doc-artifact-2',
+                'chunk_count' => 2,
+            ]);
+
+        $this->assertDatabaseHas('managed_document_outputs', [
+            'document_id' => 'adoc_artifact_output_1',
+            'bridge_document_id' => 'doc-artifact-1',
+            'qdrant_collection' => 'hawki_documents_artifact_output',
+            'neo4j_namespace' => 'hawki_documents_artifact_output',
+            'chunk_count' => 1,
+        ]);
+        $this->assertDatabaseHas('managed_document_outputs', [
+            'document_id' => 'adoc_artifact_output_1',
+            'bridge_document_id' => 'doc-artifact-2',
+            'qdrant_collection' => 'hawki_documents_artifact_output',
+            'neo4j_namespace' => 'hawki_documents_artifact_output',
+            'chunk_count' => 2,
+        ]);
+
+        File::delete($previewPath);
+    }
+
     public function test_update_skips_when_timestamp_is_not_newer_through_unified_documents_route(): void
     {
         $checksum = hash('sha256', 'documents-skip');
@@ -617,7 +783,7 @@ class DocumentUnifiedApiTest extends TestCase
 
     public function test_delete_backfills_missing_output_scope_from_dataset_before_bridge_delete_through_unified_documents_route(): void
     {
-        \App\Models\Dataset::query()->create([
+        Dataset::query()->create([
             'dataset_id' => 'documents-delete-backfill',
             'name' => 'documents-delete-backfill',
             'status' => 'active',
