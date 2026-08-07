@@ -6,6 +6,7 @@ namespace App\Services\Document\Repositories;
 
 use App\Models\Document;
 use App\Models\IngestedPage;
+use App\Models\RagIngestionArtifact;
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Database\DatabaseManager;
 use Illuminate\Support\Collection;
@@ -15,8 +16,7 @@ readonly class ManagedIngestionMetadataRepository
 {
     public function __construct(
         private DatabaseManager $database,
-    ) {
-    }
+    ) {}
 
     /**
      * @return Collection<int, Document>
@@ -53,5 +53,14 @@ readonly class ManagedIngestionMetadataRepository
             ->pluck('aggregate_chunks', 'doc_id')
             ->map(static fn (mixed $value): int => (int) $value)
             ->all();
+    }
+
+    public function latestArtifactForSource(string $sourceId): ?RagIngestionArtifact
+    {
+        return RagIngestionArtifact::query()
+            ->where('source_id', $sourceId)
+            ->orderByDesc('occurred_at')
+            ->orderByDesc('id')
+            ->first();
     }
 }

@@ -1,8 +1,10 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Tests\Unit\Pipeline;
 
+use App\Services\Document\Values\ManagedDocumentId;
 use App\Services\Pipeline\Values\PipelineUploadInput;
 use PHPUnit\Framework\TestCase;
 
@@ -79,5 +81,28 @@ class PipelineUploadInputTest extends TestCase
             'converter_url' => 'https://converter.example.test',
             'converter_start_path' => '/extract',
         ], $input->customConverterProfile());
+    }
+
+    public function test_it_adds_managed_document_id_without_losing_upload_options(): void
+    {
+        $input = PipelineUploadInput::fromValidated([
+            'dataset_id' => 'managed-upload',
+            'graph' => 'false',
+            'converter_mode' => 'custom',
+            'converter_url' => 'https://converter.example.test',
+            'converter_token' => 'token-123',
+            'converter_start_path' => '/extract',
+        ]);
+
+        $managedInput = $input->withManagedDocumentId(ManagedDocumentId::fromString('adoc_pipeline_upload'));
+
+        $this->assertSame('managed-upload', $managedInput->datasetId);
+        $this->assertFalse($managedInput->graph);
+        $this->assertSame('custom', $managedInput->converterMode);
+        $this->assertSame('https://converter.example.test', $managedInput->customConverterUrl);
+        $this->assertSame('token-123', $managedInput->customConverterToken);
+        $this->assertSame('/extract', $managedInput->customConverterStartPath);
+        $this->assertSame(['managed_document_id' => 'adoc_pipeline_upload'], $managedInput->requestMetadata);
+        $this->assertSame([], $input->requestMetadata);
     }
 }

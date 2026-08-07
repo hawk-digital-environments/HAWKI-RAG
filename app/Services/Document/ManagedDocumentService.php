@@ -10,6 +10,7 @@ use App\Services\Document\Repositories\ManagedDocumentRepository;
 use App\Services\Document\Values\ManagedDocumentId;
 use App\Services\Pipeline\Uploads\PipelineUploadService;
 use App\Services\Pipeline\Values\PipelineUploadInput;
+use App\Services\Pipeline\Values\PipelineUploadResult;
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
@@ -27,12 +28,11 @@ readonly class ManagedDocumentService
         private ManagedDocumentOutputDeletionService $deletions,
         private PipelineUploadService $uploads,
         private ManagedDocumentPipelineStateResolver $pipelineState,
-        private ClockInterface $clock = new Clock(),
-    ) {
-    }
+        private ClockInterface $clock = new Clock,
+    ) {}
 
     /**
-     * @param array<string, mixed> $input
+     * @param  array<string, mixed>  $input
      * @return array{status:int,payload:array<string,mixed>}
      */
     public function create(array $input, ?UploadedFile $file, ?string $idempotencyKey): array
@@ -80,8 +80,46 @@ readonly class ManagedDocumentService
     }
 
     /**
-     * @param array<string, mixed> $input
-     * @param list<UploadedFile> $files
+     * Start a Pipeline Controller upload and register it for document browsing.
+     */
+    public function createFromPipelineUpload(PipelineUploadInput $input, ?UploadedFile $file): PipelineUploadResult
+    {
+        $managedDocumentId = $this->documents->nextManagedDocumentId();
+        $upload = $this->uploads->upload($input->withManagedDocumentId($managedDocumentId), $file);
+
+        if (($upload->payload['success'] ?? false) !== true) {
+            return $upload;
+        }
+
+        $state = $this->pipelineState->resolve($upload->payload);
+        $document = $this->documents->create([
+            'document_id' => $managedDocumentId->value,
+            'dataset_id' => $input->datasetId,
+            'display_name' => $file?->getClientOriginalName(),
+            'source_type' => 'upload',
+            'source_url' => $this->uploadSourceUrl($file),
+            'source_checksum_sha256' => $state->checksumSha256,
+            'graph_enabled' => $input->graph,
+            'status' => $state->status,
+            'last_error' => $state->lastError,
+            'latest_source_id' => $state->sourceId,
+            'latest_task_id' => $state->taskId,
+            'latest_job_id' => $state->jobId,
+            'latest_document_version' => $state->documentVersion,
+            'indexed_at' => $state->indexedAt,
+        ]);
+
+        $document = $this->sync->sync($document);
+
+        return PipelineUploadResult::fromPayload(array_merge($upload->payload, [
+            'document_id' => $managedDocumentId->value,
+            'document' => $this->payloads->build($document),
+        ]), $upload->status);
+    }
+
+    /**
+     * @param  array<string, mixed>  $input
+     * @param  list<UploadedFile>  $files
      * @return array{status:int,payload:array<string,mixed>}
      */
     public function createBatch(array $input, array $files, ?string $idempotencyKey): array
@@ -124,7 +162,7 @@ readonly class ManagedDocumentService
     }
 
     /**
-     * @param array<string, mixed> $filters
+     * @param  array<string, mixed>  $filters
      * @return list<array<string, mixed>>
      */
     public function list(int $limit = 100, array $filters = []): array
@@ -158,7 +196,7 @@ readonly class ManagedDocumentService
     }
 
     /**
-     * @param array<string, mixed> $input
+     * @param  array<string, mixed>  $input
      * @return array{status:int,payload:array<string,mixed>}|null
      */
     public function update(string $managedDocumentId, array $input, ?UploadedFile $file, ?string $idempotencyKey): ?array
@@ -392,6 +430,13 @@ readonly class ManagedDocumentService
             'graph' => $graphEnabled ? 'true' : 'false',
             'request_metadata' => $managedDocumentId->toRequestMetadata(),
         ]);
+    }
+
+    private function uploadSourceUrl(?UploadedFile $file): ?string
+    {
+        $originalName = trim((string) $file?->getClientOriginalName());
+
+        return $originalName === '' ? null : 'upload://'.$originalName;
     }
 
     /**

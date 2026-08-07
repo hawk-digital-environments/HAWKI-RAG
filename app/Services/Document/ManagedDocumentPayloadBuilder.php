@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace App\Services\Document;
 
+use App\Models\Document;
 use App\Models\ManagedDocument;
 use App\Models\ManagedDocumentOutput;
 use App\Services\Document\Repositories\ManagedIngestionMetadataRepository;
+use App\Services\Pipeline\Repositories\PipelineStageStateRepository;
 use Illuminate\Container\Attributes\Singleton;
 
 #[Singleton]
@@ -15,8 +17,9 @@ readonly class ManagedDocumentPayloadBuilder
     public function __construct(
         private ManagedIngestionMetadataRepository $metadata,
         private DocumentPayloadBuilder $documents,
-    ) {
-    }
+        private PipelineStageStateRepository $stageStates,
+        private DocumentMarkdownPreviewReader $previews,
+    ) {}
 
     /**
      * @return array<string, mixed>
@@ -118,11 +121,82 @@ readonly class ManagedDocumentPayloadBuilder
         }
 
         $indexedDocument = $this->metadata->documentsForSource($sourceId)->first();
-        if (! $indexedDocument instanceof \App\Models\Document) {
-            return [];
+        if (! $indexedDocument instanceof Document) {
+            return $this->pipelineArtifactPayload($document, $includeDetails);
         }
 
         return $this->documents->payload($indexedDocument, includeDetails: $includeDetails);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function pipelineArtifactPayload(ManagedDocument $document, bool $includeDetails): array
+    {
+        $jobId = $this->stringValue($document->latest_job_id);
+        if ($jobId === null) {
+            return [];
+        }
+
+        $state = $this->stageStates->findForJobStage($jobId, 'convert');
+        $metadata = is_array($state?->metadata) ? $state->metadata : [];
+        $artifacts = is_array($metadata['artifacts'] ?? null) ? $metadata['artifacts'] : [];
+        $artifact = $this->preferredMarkdownArtifact($artifacts);
+        if ($artifact === null) {
+            return [];
+        }
+
+        $path = $this->stringValue($artifact['uri'] ?? null);
+        $payload = [
+            'content_type' => $this->stringValue($artifact['media_type'] ?? null) ?? 'text/markdown',
+            'local_path' => $path,
+            'file_size' => $this->intValue($artifact['size_bytes'] ?? null),
+        ];
+
+        if (! $includeDetails) {
+            return $payload;
+        }
+
+        $preview = $this->previews->preview($path);
+        $payload['markdown_preview'] = $preview['content'];
+        $payload['markdown_preview_path'] = $preview['path'];
+        $payload['markdown_preview_error'] = $preview['error'];
+        $payload['markdown_preview_truncated'] = $preview['truncated'];
+
+        return $payload;
+    }
+
+    /**
+     * @param  list<mixed>  $artifacts
+     * @return array<string, mixed>|null
+     */
+    private function preferredMarkdownArtifact(array $artifacts): ?array
+    {
+        $candidates = array_values(array_filter(
+            $artifacts,
+            function (mixed $artifact): bool {
+                if (! is_array($artifact)) {
+                    return false;
+                }
+
+                $path = strtolower((string) ($artifact['uri'] ?? ''));
+                $mediaType = strtolower((string) ($artifact['media_type'] ?? ''));
+
+                return $path !== '' && ($mediaType === 'text/markdown' || str_ends_with($path, '.md') || str_ends_with($path, '.markdown'));
+            },
+        ));
+
+        usort($candidates, static function (array $left, array $right): int {
+            $leftPath = strtolower((string) ($left['uri'] ?? ''));
+            $rightPath = strtolower((string) ($right['uri'] ?? ''));
+            $leftChunk = str_contains($leftPath, '/chunks/') ? 1 : 0;
+            $rightChunk = str_contains($rightPath, '/chunks/') ? 1 : 0;
+
+            return ($rightChunk <=> $leftChunk)
+                ?: ((int) ($right['size_bytes'] ?? 0) <=> (int) ($left['size_bytes'] ?? 0));
+        });
+
+        return $candidates[0] ?? null;
     }
 
     private function qdrantStatus(ManagedDocument $document): string

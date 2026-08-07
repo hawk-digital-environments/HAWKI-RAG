@@ -7,6 +7,8 @@ namespace App\Services\Document;
 use App\Models\Document;
 use App\Models\IngestionSource;
 use App\Models\ManagedDocument;
+use App\Models\RagIngestionArtifact;
+use App\Services\Dataset\DatasetRepository;
 use App\Services\Document\Repositories\ManagedIngestionMetadataRepository;
 use App\Services\Document\Values\ManagedDocumentSyncState;
 use Illuminate\Container\Attributes\Singleton;
@@ -19,9 +21,9 @@ readonly class ManagedDocumentSyncStateResolver
 {
     public function __construct(
         private ManagedIngestionMetadataRepository $metadata,
-        private ClockInterface $clock = new Clock(),
-    ) {
-    }
+        private DatasetRepository $datasets,
+        private ClockInterface $clock = new Clock,
+    ) {}
 
     public function resolve(ManagedDocument $document, IngestionSource $source): ManagedDocumentSyncState
     {
@@ -35,7 +37,7 @@ readonly class ManagedDocumentSyncStateResolver
             $attributes['indexed_at'] = $source->ready_at ?? Carbon::instance($this->clock->now());
             $attributes['last_error'] = null;
 
-            return new ManagedDocumentSyncState($attributes, $this->resolvedOutputs($source->source_id));
+            return new ManagedDocumentSyncState($attributes, $this->resolvedOutputs($document, $source));
         }
 
         if ($source->index_status === IngestionSource::STATUS_FAILED || $source->index_status === IngestionSource::STATUS_CANCELLED) {
@@ -54,11 +56,12 @@ readonly class ManagedDocumentSyncStateResolver
     /**
      * @return array<int, array<string, mixed>>
      */
-    private function resolvedOutputs(string $sourceId): array
+    private function resolvedOutputs(ManagedDocument $managedDocument, IngestionSource $source): array
     {
+        $sourceId = $source->source_id;
         $documents = $this->metadata->documentsForSource($sourceId);
         if ($documents->isEmpty()) {
-            return [];
+            return $this->artifactOutputs($managedDocument, $source);
         }
 
         $chunkCounts = $this->metadata->chunkCountsForSource($sourceId);
@@ -90,8 +93,57 @@ readonly class ManagedDocumentSyncStateResolver
     }
 
     /**
-     * @param array<string, int> $registryChunkCounts
-     * @param array<string, mixed> $metadata
+     * @return list<array<string, mixed>>
+     */
+    private function artifactOutputs(ManagedDocument $managedDocument, IngestionSource $source): array
+    {
+        $artifact = $this->metadata->latestArtifactForSource($source->source_id);
+        if (! $artifact instanceof RagIngestionArtifact) {
+            return [];
+        }
+
+        $summary = is_array($artifact->summary) ? $artifact->summary : [];
+        $documents = is_array($summary['documents'] ?? null) ? $summary['documents'] : [];
+        $chunkCounts = is_array($documents['chunks_per_doc'] ?? null) ? $documents['chunks_per_doc'] : [];
+        $documentIds = is_array($documents['doc_ids'] ?? null) ? $documents['doc_ids'] : array_keys($chunkCounts);
+        $dataset = $this->datasets->findByDatasetId($managedDocument->dataset_id);
+        $qdrantCollection = $this->stringValue(data_get($summary, 'qdrant_preview.collection'))
+            ?? $this->stringValue($dataset?->qdrant_collection);
+
+        if ($qdrantCollection === null) {
+            return [];
+        }
+
+        $outputs = [];
+        foreach ($documentIds as $documentId) {
+            $bridgeDocumentId = $this->stringValue($documentId);
+            if ($bridgeDocumentId === null || isset($outputs[$bridgeDocumentId])) {
+                continue;
+            }
+
+            $outputs[$bridgeDocumentId] = [
+                'bridge_document_id' => $bridgeDocumentId,
+                'qdrant_collection' => $qdrantCollection,
+                'neo4j_namespace' => $this->stringValue($dataset?->neo4j_namespace),
+                'source_id' => $source->source_id,
+                'task_id' => $this->stringValue($artifact->task_id) ?? $this->stringValue($source->task_id),
+                'job_id' => $this->stringValue($artifact->job_id),
+                'content_hash' => $this->stringValue($source->content_hash),
+                'chunk_count' => max(0, (int) ($chunkCounts[$bridgeDocumentId] ?? 0)),
+                'status' => 'indexed',
+                'indexed_at' => $artifact->occurred_at ?? $source->ready_at,
+                'metadata_json' => [
+                    'rag_ingestion_artifact_id' => $artifact->id,
+                ],
+            ];
+        }
+
+        return array_values($outputs);
+    }
+
+    /**
+     * @param  array<string, int>  $registryChunkCounts
+     * @param  array<string, mixed>  $metadata
      */
     private function chunkCount(array $registryChunkCounts, array $metadata, string $bridgeDocumentId): int
     {

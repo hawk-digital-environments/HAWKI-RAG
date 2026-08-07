@@ -81,6 +81,11 @@ class PipelineControllerDashboardTest extends TestCase
 
         $taskId = $response->json('task_id');
         $jobId = $response->json('job_id');
+        $documentId = $response->json('document_id');
+
+        $this->assertIsString($documentId);
+        $this->assertStringStartsWith('adoc_', $documentId);
+        $response->assertJsonPath('document.document_id', $documentId);
 
         $this->assertDatabaseHas('datasets', [
             'dataset_id' => 'controller-test',
@@ -107,9 +112,28 @@ class PipelineControllerDashboardTest extends TestCase
             'index_status' => 'running',
             'temporal_workflow_id' => 'ingest-source-upload-workflow',
         ]);
+        $this->assertDatabaseHas('managed_documents', [
+            'document_id' => $documentId,
+            'dataset_id' => 'controller-test',
+            'display_name' => 'sample.pdf',
+            'source_url' => 'upload://sample.pdf',
+            'graph_enabled' => false,
+            'status' => ManagedDocument::STATUS_PROCESSING,
+            'latest_task_id' => $taskId,
+            'latest_job_id' => $jobId,
+        ]);
+        $this->getJson('/api/documents?dataset_id=controller-test')
+            ->assertOk()
+            ->assertJsonCount(1, 'documents')
+            ->assertJsonPath('documents.0.document_id', $documentId)
+            ->assertJsonPath('documents.0.title', 'sample.pdf');
+        $this->getJson('/api/datasets/controller-test')
+            ->assertOk()
+            ->assertJsonPath('dataset.document_count', 1);
         Http::assertSent(fn ($request): bool => $request->url() === config('config.hawki_rag_bridge_url').'/temporal/workflows/ingest'
             && data_get($request->data(), 'workflow_input.upload.original_filename') === 'sample.pdf'
             && data_get($request->data(), 'workflow_input.upload.local_path') !== null
+            && data_get($request->data(), 'workflow_input.managed_document_id') === $documentId
             && data_get($request->data(), 'workflow_input.converter_mode') === 'native'
             && data_get($request->data(), 'workflow_input.ingestion.graph') === false);
 
@@ -588,6 +612,7 @@ class PipelineControllerDashboardTest extends TestCase
         ]);
         $this->assertDatabaseCount('pipeline_tasks', 0);
         $this->assertDatabaseCount('pipeline_jobs', 0);
+        $this->assertDatabaseCount('managed_documents', 0);
 
         File::delete($root);
     }
