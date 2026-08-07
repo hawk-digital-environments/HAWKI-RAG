@@ -34,7 +34,7 @@ question: **where should a developer begin a code change?**
 | Graph extraction or Neo4j behavior | `app/Http/Controllers/Graph/` or the indexer graph phase | `app/Services/Graph/`, `hawki_indexer_worker/adapters/raganything/`, and `packages/stores/.../neo4j/` | `tests/Feature/Graph/`, `python_rag/tests/graph/` |
 | Model providers or model allowlists | `config/model_providers.php` and the owning service settings | `app/Services/Settings/`, `packages/model_providers/`, and indexer provider composition | `tests/Feature/Settings/`, `python_rag/tests/providers/` |
 | Browser UI or frontend assets | `routes/web.php` and `resources/js/svelte/` | `resources/views/`, `vite.config.js`, and `svelte.config.js` | `tests/Feature/Ui/` |
-| Containers, startup, or health wiring | `Makefile` and `docker-compose*.yml` | `python_rag/services/*/Dockerfile`, `docker/laravel.Dockerfile`, and `docker/` | `tests/System/` plus `make health` and `make test-services` |
+| Containers, startup, or health wiring | `Makefile` and `docker-compose*.yml` | `python_rag/Dockerfile`, `docker/laravel.Dockerfile`, and `docker/` | `tests/System/` plus `make health` and `make test-services` |
 
 ## The dependency direction
 
@@ -86,7 +86,7 @@ RAWKI/
 ├── tests/                  Laravel feature, unit, and system tests
 ├── docker/                 Laravel and service-specific container assets
 ├── docker-compose*.yml     Base and mode-specific Compose layers
-├── python_rag/services/*/Dockerfile  Six service-owned Python role images
+├── python_rag/Dockerfile   Six isolated Python role image targets
 └── Makefile                Supported build, startup, test, and lifecycle entrypoints
 ```
 
@@ -180,7 +180,7 @@ The exact ingestion commit semantics are documented in
 | File | Owns |
 |---|---|
 | `docker/laravel.Dockerfile` | Node/Vite asset build and the PHP/Nginx Laravel runtime image |
-| `python_rag/services/*/Dockerfile` | Six digest-pinned, independently built Python role images |
+| `python_rag/Dockerfile` | Six digest-pinned, independently built Python role image targets |
 | `docker-compose.yml` | Base services, volumes, internal environment, and optional profiles |
 | `docker-compose.ui.yml` | Published local Laravel UI port |
 | `docker-compose.local.yml` | Source-mounted development overrides |

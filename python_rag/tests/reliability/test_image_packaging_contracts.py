@@ -56,11 +56,6 @@ def _stage(source: str, name: str) -> str:
     return match.group("body")
 
 
-def test_legacy_service_dockerfiles_remain_available_for_rollback() -> None:
-    dockerfiles = sorted((PYTHON_ROOT / "services").glob("*/Dockerfile"))
-    assert [item.parent.name for item in dockerfiles] == sorted(SERVICES)
-
-
 def test_unified_dockerfile_pins_the_verified_base_and_uv_toolchain() -> None:
     source = _source()
 
