@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace App\Services\Document\Repositories;
 
+use App\Models\Dataset;
 use App\Models\ManagedDocument;
 use App\Models\ManagedDocumentOutput;
 use App\Services\Document\Values\ManagedDocumentId;
-use App\Models\Dataset;
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -18,9 +18,8 @@ use Symfony\Component\Clock\Clock;
 readonly class ManagedDocumentOutputRepository
 {
     public function __construct(
-        private ClockInterface $clock = new Clock(),
-    ) {
-    }
+        private ClockInterface $clock = new Clock,
+    ) {}
 
     /**
      * @return Collection<int, ManagedDocumentOutput>
@@ -35,7 +34,27 @@ readonly class ManagedDocumentOutputRepository
     }
 
     /**
-     * @param array<int, array<string, mixed>> $outputs
+     * @return list<string>
+     */
+    public function activeBridgeDocumentIdsForDataset(string $datasetId): array
+    {
+        return ManagedDocumentOutput::query()
+            ->where('active', true)
+            ->whereNull('deleted_at')
+            ->whereHas('document', function ($query) use ($datasetId): void {
+                $query->where('dataset_id', $datasetId)
+                    ->whereNull('deleted_at');
+            })
+            ->whereNotNull('bridge_document_id')
+            ->pluck('bridge_document_id')
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $outputs
      * @return Collection<int, ManagedDocumentOutput>
      */
     public function syncActiveOutputs(ManagedDocument $document, array $outputs): Collection
@@ -111,7 +130,7 @@ readonly class ManagedDocumentOutputRepository
     }
 
     /**
-     * @param Collection<int, ManagedDocumentOutput> $outputs
+     * @param  Collection<int, ManagedDocumentOutput>  $outputs
      * @return Collection<int, ManagedDocumentOutput>
      */
     public function backfillScopes(ManagedDocument $document, Collection $outputs): Collection

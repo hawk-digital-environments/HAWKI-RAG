@@ -80,7 +80,32 @@ readonly class ManagedDocumentRepository
     }
 
     /**
-     * @param array<string, mixed> $filters
+     * @param  list<string>  $bridgeDocumentIds
+     * @return Collection<int, ManagedDocument>
+     */
+    public function forActiveBridgeDocumentIds(array $bridgeDocumentIds): Collection
+    {
+        $bridgeDocumentIds = array_values(array_unique(array_filter(array_map(
+            static fn (string $value): string => trim($value),
+            $bridgeDocumentIds,
+        ))));
+
+        if ($bridgeDocumentIds === []) {
+            return collect();
+        }
+
+        return $this->queryWithOutputs()
+            ->whereNull('deleted_at')
+            ->whereHas('outputs', function (Builder $query) use ($bridgeDocumentIds): void {
+                $query->where('active', true)
+                    ->whereNull('deleted_at')
+                    ->whereIn('bridge_document_id', $bridgeDocumentIds);
+            })
+            ->get();
+    }
+
+    /**
+     * @param  array<string, mixed>  $filters
      * @return Collection<int, ManagedDocument>
      */
     public function list(array $filters, int $limit): Collection
@@ -95,7 +120,7 @@ readonly class ManagedDocumentRepository
     }
 
     /**
-     * @param array<string, mixed> $attributes
+     * @param  array<string, mixed>  $attributes
      */
     public function create(array $attributes): ManagedDocument
     {
@@ -103,7 +128,7 @@ readonly class ManagedDocumentRepository
     }
 
     /**
-     * @param array<string, mixed> $attributes
+     * @param  array<string, mixed>  $attributes
      */
     public function save(ManagedDocument $document, array $attributes): ManagedDocument
     {
@@ -113,7 +138,7 @@ readonly class ManagedDocumentRepository
     }
 
     /**
-     * @param array<string, mixed> $filters
+     * @param  array<string, mixed>  $filters
      */
     private function filteredQuery(array $filters): Builder
     {

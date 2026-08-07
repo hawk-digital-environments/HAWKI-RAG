@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Services\Dataset;
 
 use App\Models\Dataset;
-use App\Models\Document;
 use App\Models\PipelineJob;
 use App\Models\PipelineTask;
 use Illuminate\Container\Attributes\Singleton;
@@ -17,8 +16,7 @@ readonly class DatasetPayloadBuilder
         private DatasetRepository $datasets,
         private DatasetVectorStatsService $vectorStats,
         private DatasetGraphStatsService $graphStats,
-    ) {
-    }
+    ) {}
 
     /**
      * @return array<string, mixed>
@@ -45,7 +43,6 @@ readonly class DatasetPayloadBuilder
 
         if ($includeDetails) {
             $payload['tasks'] = $this->tasks($dataset);
-            $payload['documents'] = $this->documents($dataset);
             $payload['ingestion_history'] = $this->ingestionHistory($dataset);
         }
 
@@ -81,29 +78,6 @@ readonly class DatasetPayloadBuilder
                 'counters' => $task->counters ?? [],
                 'started_at' => $task->started_at?->format(DATE_ATOM),
                 'finished_at' => $task->finished_at?->format(DATE_ATOM),
-            ])
-            ->all();
-    }
-
-    /**
-     * @return list<array<string, mixed>>
-     */
-    private function documents(Dataset $dataset): array
-    {
-        return $this->datasets->recentDocuments($dataset)
-            ->map(fn (Document $document): array => [
-                'id' => $document->id,
-                'dataset_id' => $document->dataset_id,
-                'collection' => $document->collection,
-                'source_type' => $document->source_type,
-                'source_url' => $document->source_url,
-                'original_filename' => $document->original_filename,
-                'storage_path' => $document->storage_path,
-                'checksum_sha256' => $document->checksum_sha256,
-                'title' => $document->title,
-                'status' => $document->status,
-                'created_at' => $document->created_at?->format(DATE_ATOM),
-                'updated_at' => $document->updated_at?->format(DATE_ATOM),
             ])
             ->all();
     }
