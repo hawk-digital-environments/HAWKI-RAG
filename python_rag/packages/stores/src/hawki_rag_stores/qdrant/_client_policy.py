@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from inspect import signature
 
-from hawki_rag_stores._imports import import_required_module
+from hawki_rag_resilience.optional_imports import import_required_module
 
 
 class _UnavailableRequestsError(Exception):

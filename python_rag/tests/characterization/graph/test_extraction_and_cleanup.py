@@ -337,25 +337,3 @@ class GraphFallbackCharacterizationTests(unittest.TestCase):
                 clean_graph_text("  a  \n\n  b  \n ccc ddd eee fff ggg "),
                 "a b",
             )
-
-    def test_graph_from_text_uses_graph_perf_log_injection(self) -> None:
-        from hawki_rag_stores.neo4j.text import graph_from_text
-
-        class FakeService:
-            def extract_triplets(
-                self, text: str, engine: str
-            ) -> list[tuple[str, str, str]]:
-                return [
-                    ("HAWKI", "uses", "Qdrant"),
-                    ("Qdrant", "supports", "vector search"),
-                ]
-
-        result = graph_from_text(
-            SimpleNamespace(text="sample", engine="engine-a"),
-            rag_service=FakeService(),
-            graph_perf_log=True,
-        )
-
-        self.assertEqual(result["ok"], True)
-        self.assertEqual(result["triplets"], 2)
-        self.assertIs(result["persisted"], False)

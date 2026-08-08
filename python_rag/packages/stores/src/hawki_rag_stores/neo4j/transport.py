@@ -8,7 +8,7 @@ from collections.abc import Callable, Mapping
 from typing import Any, Protocol, TypeVar
 
 from hawki_rag_stores.neo4j.requests import Neo4jQueryRequest
-from hawki_rag_stores._imports import import_optional_module
+from hawki_rag_resilience.optional_imports import import_optional_module
 from hawki_rag_resilience.reliability import (
     NEO4J_ADAPTER_EVENT,
     is_retryable_neo4j_exception,

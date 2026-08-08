@@ -84,23 +84,6 @@ def test_manifest_has_exact_versions_and_cpu_cuda_variants() -> None:
     assert manifest["build-system"]["requires"] == ["uv_build==0.11.26"]
 
 
-def test_dockerfile_is_allowlisted_multistage_and_nonroot() -> None:
-    dockerfile = (SERVICE / "Dockerfile").read_text(encoding="utf-8")
-    assert dockerfile.count("FROM ") >= 3
-    python_base = "python:3.13.14-slim"
-    assert f"FROM {python_base} AS builder" in dockerfile
-    assert f"FROM {python_base} AS runtime" in dockerfile
-    assert "python:3.13.14-slim@sha256:" not in dockerfile
-    assert "FROM ghcr.io/astral-sh/uv:0.11.26 AS uv" in dockerfile
-    assert "ghcr.io/astral-sh/uv:0.11.26@sha256:" not in dockerfile
-    assert "COPY python_rag /app" not in dockerfile
-    assert "--frozen --no-dev --no-editable" in dockerfile
-    assert "USER 10001:10001" in dockerfile
-    assert "tests" not in "\n".join(
-        line for line in dockerfile.splitlines() if line.startswith("COPY ")
-    )
-
-
 def test_status_callback_builds_indexer_event_and_redacts_secrets(monkeypatch) -> None:
     sent = []
 

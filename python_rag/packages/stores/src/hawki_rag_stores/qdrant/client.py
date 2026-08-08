@@ -47,7 +47,7 @@ from hawki_rag_stores.qdrant.interpretation import (
     sort_hits_by_score,
 )
 from hawki_rag_stores.qdrant.transport import QdrantHTTPTransport
-from hawki_rag_stores._imports import import_required_module
+from hawki_rag_resilience.optional_imports import import_required_module
 
 logger = logging.getLogger(__name__)
 
