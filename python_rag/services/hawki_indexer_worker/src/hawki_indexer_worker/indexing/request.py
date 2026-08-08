@@ -7,9 +7,9 @@ import os
 from dataclasses import dataclass, field
 from typing import Any
 
-from hawki_indexer_worker.adapters.providers.overrides import apply_provider_overrides
 from hawki_indexer_worker.domain.errors import IndexingValidationError
 from hawki_indexer_worker.domain.models import IngestDocument
+from hawki_model_providers.overrides import apply_provider_overrides
 
 
 @dataclass(slots=True)

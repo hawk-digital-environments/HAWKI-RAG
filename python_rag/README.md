@@ -80,10 +80,12 @@ make python-test USE_OLLAMA_GPU=0
 ```
 
 For CUDA 13.0 use `USE_OLLAMA_GPU=1`. Production Docker builds use `uv sync
---frozen --no-dev --no-editable` against the root lock. Member projects pin all
-direct runtime, test, and build dependencies exactly. See
-[`DEPENDENCY_DELTA.md`](DEPENDENCY_DELTA.md) for intentional changes from the
-legacy requirements exports.
+--frozen --no-dev --no-editable` against the workspace lock. Each member's
+`pyproject.toml` declares its exact direct runtime, test, and build dependencies,
+while `python_rag/uv.lock` records the complete reproducible resolution. These
+member manifests and the single workspace lockfile are the dependency source of
+truth. See the repository [purpose and directory guide](../purpose.md) for the
+current workspace boundaries and migration notes.
 
 Live tests remain opt-in:
 

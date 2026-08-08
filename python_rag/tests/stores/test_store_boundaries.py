@@ -39,7 +39,6 @@ def test_expected_store_modules_exist() -> None:
         "neo4j/client.py",
         "neo4j/graph.py",
         "neo4j/normalization.py",
-        "neo4j/text.py",
         "neo4j/traversal.py",
     }
     actual = {str(path.relative_to(SOURCE_ROOT)) for path in SOURCE_ROOT.rglob("*.py")}

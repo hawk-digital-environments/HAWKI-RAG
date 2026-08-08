@@ -15,7 +15,7 @@ from hawki_rag_resilience.reliability import (
     is_retryable_http_exception,
     sanitize_for_log,
 )
-from hawki_rag_stores._imports import import_required_module
+from hawki_rag_resilience.optional_imports import import_required_module
 
 logger = logging.getLogger(__name__)
 

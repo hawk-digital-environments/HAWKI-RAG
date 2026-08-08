@@ -6,13 +6,12 @@ import logging
 import time
 from typing import Any, Callable, Iterable
 
+from hawki_rag_resilience.optional_imports import import_required_module
 from hawki_rag_stores.neo4j.client import ensure_query_executor, is_retryable_write
 from hawki_rag_stores.neo4j.transport import (
     Neo4jQueryExecutor,
     Neo4jQueryExecutorProtocol,
 )
-from hawki_rag_stores._imports import import_required_module
-
 from hawki_rag_stores.neo4j.requests import (
     Neo4jQueryRequest,
     clean_query_terms,
