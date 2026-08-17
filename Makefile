@@ -55,6 +55,11 @@ OLLAMA_CONTAINER ?= hawki_ollama
 CRAWLER_CONTAINER ?= crawl4ai-service
 FILE_CONVERTER_CONTAINER ?= hawki-toolkit-file-converter-file-converter-1
 
+# Sibling checkouts started by the external tool targets (up-tools/down-tools).
+CRAWLER_DIR ?= ../CustomCrawler
+FILE_CONVERTER_DIR ?= ../hawki-toolkit-file-converter
+FILE_CONVERTER_PROJECT ?= hawki-toolkit-file-converter
+
 # Derived Compose suffixes and profiles.
 CORE_GPU_COMPOSE_SUFFIX :=
 CORE_PROFILES := $(CORE_PROFILES_BASE)
@@ -120,6 +125,7 @@ UI_NODE_RUN = docker run --rm --entrypoint /usr/bin/env \
 .PHONY: pull-models logs-core
 .PHONY: down-core down-rag restart-core
 .PHONY: neo4j-fresh
+.PHONY: up-tools down-tools
 
 ##@ General
 help: ## Show the available commands grouped by module.
@@ -463,6 +469,46 @@ down-rag: down-core ## Backward-compatible alias for stopping the RAG stack.
 restart-core: network ## Recreate all core services and Temporal workers.
 	@echo "$(PROFILE_MESSAGE)"
 	@$(COMPOSE_CMD) up -d --force-recreate
+
+# ==============================================================================
+# External crawler and file-converter tools
+# ==============================================================================
+
+##@ External tools
+
+up-tools: network ## Start the sibling crawler and file-converter containers.
+	@set -e; \
+	for dir in "$(CRAWLER_DIR)" "$(FILE_CONVERTER_DIR)"; do \
+		if [ ! -d "$$dir" ]; then \
+			echo "Missing sibling checkout: $$dir (override with CRAWLER_DIR or FILE_CONVERTER_DIR)."; \
+			exit 1; \
+		fi; \
+	done; \
+	if ! docker volume inspect rawki_shared_storage >/dev/null 2>&1; then \
+		echo "Creating the external rawki_shared_storage volume..."; \
+		docker volume create rawki_shared_storage; \
+	fi; \
+	echo "Starting the crawler from $(CRAWLER_DIR)..."; \
+	$(MAKE) -C "$(CRAWLER_DIR)" up; \
+	echo "Starting the file converter from $(FILE_CONVERTER_DIR)..."; \
+	converter_token=$$(grep -m1 '^EXTERNAL_CONVERTER_TOKEN=' "$(ENV_FILE)" 2>/dev/null | cut -d= -f2-); \
+	if [ -z "$$converter_token" ]; then \
+		converter_token=$$(grep -m1 '^FILE_CONVERTER_TOKEN=' "$(ENV_FILE)" 2>/dev/null | cut -d= -f2-); \
+	fi; \
+	if [ -n "$$converter_token" ]; then \
+		export F_API_KEY="$$converter_token"; \
+	fi; \
+	cd "$(FILE_CONVERTER_DIR)" && \
+		$(COMPOSE_BIN) -p "$(FILE_CONVERTER_PROJECT)" -f docker-compose.yml -f docker-compose.local.yml up -d --build; \
+	echo ""; \
+	echo "External tools are starting:"; \
+	echo "  crawler UI:        http://localhost:8041/ui/"; \
+	echo "  converter health:  http://localhost:8004/health"
+
+down-tools: ## Stop the sibling crawler and file-converter containers.
+	@$(MAKE) -C "$(CRAWLER_DIR)" down
+	@cd "$(FILE_CONVERTER_DIR)" && \
+		$(COMPOSE_BIN) -p "$(FILE_CONVERTER_PROJECT)" -f docker-compose.yml -f docker-compose.local.yml down
 
 # ==============================================================================
 # Destructive data maintenance
