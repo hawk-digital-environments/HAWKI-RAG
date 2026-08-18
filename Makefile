@@ -123,7 +123,7 @@ UI_NODE_RUN = docker run --rm --entrypoint /usr/bin/env \
 .PHONY: _up-core up-core up-core-local up-core-server
 .PHONY: health test-services
 .PHONY: pull-models logs-core
-.PHONY: down-core down-rag restart-core
+.PHONY: down-core down-rag restart-core teardown
 .PHONY: neo4j-fresh
 .PHONY: up-crawler-tool down-crawler-tool up-file-converter-tool down-file-converter-tool
 .PHONY: up-monitor-workflows-tool down-monitor-workflows-tool up-tools down-tools
@@ -462,6 +462,9 @@ logs-core: ## Follow logs for the complete core stack.
 
 ##@ Stack lifecycle
 
+KEEP_OLLAMA_MODELS ?= 0
+TEARDOWN_DATA_VOLUMES ?= hawki-rag_hawki_postgres_data hawki-rag_qdrant_data hawki-rag_neo4j_data rawki_shared_storage
+
 down-core: ## Stop and remove the active HAWKI RAG Compose stack.
 	@$(COMPOSE_CMD) down
 
@@ -470,6 +473,31 @@ down-rag: down-core ## Backward-compatible alias for stopping the RAG stack.
 restart-core: network ## Recreate all core services and Temporal workers.
 	@echo "$(PROFILE_MESSAGE)"
 	@$(COMPOSE_CMD) up -d --force-recreate
+
+teardown: ## DESTRUCTIVE: stop everything and remove all data volumes.
+	@set -e; \
+	echo "Tearing down the HAWKI RAG stack ($(if $(filter 1 true yes on,$(KEEP_OLLAMA_MODELS)),keeping,removing)) Ollama model cache..."; \
+	$(MAKE) --no-print-directory down-tools >/dev/null 2>&1 \
+		|| echo "External tools are not running or sibling checkouts are missing; continuing."; \
+	if [ "$(KEEP_OLLAMA_MODELS)" = "1" ]; then \
+		$(COMPOSE_CMD) down --remove-orphans; \
+		for volume in $(TEARDOWN_DATA_VOLUMES); do \
+			if docker volume inspect "$$volume" >/dev/null 2>&1; then \
+				if docker volume rm "$$volume" >/dev/null 2>&1; then \
+					echo "Removed volume $$volume"; \
+				else \
+					echo "WARNING: volume $$volume is still in use and was not removed."; \
+				fi; \
+			else \
+				echo "Volume $$volume already absent; skipping."; \
+			fi; \
+		done; \
+		echo "Kept volume hawki-rag_ollama (KEEP_OLLAMA_MODELS=1)."; \
+	else \
+		$(COMPOSE_CMD) down --volumes --remove-orphans; \
+		echo "Removed all project volumes including hawki-rag_ollama."; \
+	fi; \
+	echo "Teardown complete. Recreate everything with: make up-core"
 
 # ==============================================================================
 # External crawler and file-converter tools, plus Temporal workflow monitor
