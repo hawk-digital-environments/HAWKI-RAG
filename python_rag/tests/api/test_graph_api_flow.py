@@ -95,7 +95,6 @@ class TestReadOnlyGraphApiFlow:
         app = build_app(
             settings=load_settings({}),
             service=Service(),
-            qdrant_factory=object,
             graph_reader=object(),
             logger_name="test.read_only_graph_api",
         )

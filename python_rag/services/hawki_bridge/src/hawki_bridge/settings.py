@@ -21,12 +21,9 @@ def _boolean(env: Mapping[str, str], name: str, default: bool = False) -> bool:
 
 @dataclass(frozen=True, slots=True)
 class BridgeSettings:
-    default_provider: str
     reranker_mode: str
     reranker_mix_mode: bool
     reranker_mix_weight: float
-    reranker_jina_model: str
-    reranker_api_url: str
     log_level: str
     startup_checks_enabled: bool
     startup_check_attempts: int
@@ -67,16 +64,9 @@ class BridgeSettings:
 def load_settings(env: Mapping[str, str] | None = None) -> BridgeSettings:
     source = env or os.environ
     return BridgeSettings(
-        default_provider=_value(source, "RAG_DEFAULT_PROVIDER", "ollama"),
         reranker_mode=_value(source, "RERANKER_MODE", "none"),
         reranker_mix_mode=_boolean(source, "RERANKER_MIX_MODE", True),
         reranker_mix_weight=float(_value(source, "RERANKER_MIX_WEIGHT", "0.5")),
-        reranker_jina_model=_value(
-            source,
-            "JINA_RERANKER_MODEL",
-            "jina-reranker-v2-base-multilingual",
-        ),
-        reranker_api_url=_value(source, "RERANKER_API_URL", ""),
         log_level=_value(source, "LOG_LEVEL", "INFO").upper(),
         startup_checks_enabled=_boolean(source, "STARTUP_CHECKS_ENABLED", False),
         startup_check_attempts=max(

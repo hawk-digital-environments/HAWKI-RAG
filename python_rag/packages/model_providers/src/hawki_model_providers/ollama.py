@@ -56,18 +56,21 @@ class OllamaProvider:
     def __init__(self) -> None:
         base = os.environ.get("OLLAMA_API_URL", "http://ollama:11434/api").rstrip("/")
         self.base = base
-        # Recommended multilingual embedding default: BAAI/bge-m3 (Ollama must have the model pulled)
-        self.embed_model = os.environ.get("OLLAMA_EMBED_MODEL", "bge-m3")
-        # LLM used for chat/RAG; override with OLLAMA_RAG_MODEL / OLLAMA_TEXT_MODEL if desired
-        self.rag_model = os.environ.get(
-            "OLLAMA_RAG_MODEL",
-            os.environ.get("OLLAMA_TEXT_MODEL", "llama3.1:8b"),
-        )
-        self.vision_model = os.environ.get(
-            "OLLAMA_VISION_MODEL",
-            os.environ.get("GRAPH_OLLAMA_VISION_MODEL", "qwen2.5vl:7b"),
-        )
+        # Model selection is request-scoped: apply_provider_overrides injects
+        # the dataset-pinned models from Laravel before any call is made.
+        self.embed_model: str | None = None
+        self.rag_model: str | None = None
+        self.vision_model: str | None = None
         self._last_embed_dim: int | None = None
+
+    def _require_model(self, attribute: str, capability: str) -> str:
+        model = getattr(self, attribute)
+        if not model:
+            raise RuntimeError(
+                f"OllamaProvider.{attribute} is not set; the request must provide "
+                f"the {capability} model explicitly (no environment fallback)."
+            )
+        return model
 
     def _infer_embed_dim(self) -> int:
         return infer_embedding_dim(self.embed_model, self._last_embed_dim)
@@ -81,6 +84,7 @@ class OllamaProvider:
         return is_ollama_nan_embedding_error(status, message)
 
     def embed(self, text: str) -> list[float]:
+        embed_model = self._require_model("embed_model", "embedding")
         url = f"{self.base}/embeddings"
         timeout = embedding_timeout_from_env()
         requests_module = _requests_module()
@@ -98,7 +102,7 @@ class OllamaProvider:
             try:
                 r = requests_module.post(
                     url,
-                    json={"model": self.embed_model, "prompt": prompt},
+                    json={"model": embed_model, "prompt": prompt},
                     timeout=timeout,
                 )
                 r.raise_for_status()
@@ -126,8 +130,8 @@ class OllamaProvider:
                     and "model" in message.lower()
                 ):
                     raise RuntimeError(
-                        f"Ollama embeddings model '{self.embed_model}' is not installed. "
-                        f"Run `ollama pull {self.embed_model}` inside the Ollama container or host."
+                        f"Ollama embeddings model '{embed_model}' is not installed. "
+                        f"Run `ollama pull {embed_model}` inside the Ollama container or host."
                     ) from exc
                 if self._is_ollama_nan_embedding_error(
                     status, message
@@ -169,7 +173,7 @@ class OllamaProvider:
                 logger.warning(
                     "Ollama embeddings NaN bug encountered; using zero-vector fallback (dim=%s, model=%s)",
                     dim,
-                    self.embed_model,
+                    embed_model,
                 )
                 return [0.0] * dim
 
@@ -180,6 +184,7 @@ class OllamaProvider:
     def chat(
         self, system: str, messages: list, *, temperature: float | None = None
     ) -> str:
+        rag_model = self._require_model("rag_model", "chat")
         url = f"{self.base}/chat"
         requests_module = _requests_module()
         _http_error, request_error, timeout_error = _request_exception_types(
@@ -191,7 +196,7 @@ class OllamaProvider:
         backoff = chat_options.backoff
         jitter = chat_options.jitter
         payload = build_chat_payload(
-            model=self.rag_model,
+            model=rag_model,
             system=system,
             messages=messages,
             options=chat_options,
@@ -267,7 +272,7 @@ class OllamaProvider:
                 continue
             if status == 404 and "model" in detail.lower():
                 raise RuntimeError(
-                    f"Ollama chat model '{self.rag_model}' is not installed. "
+                    f"Ollama chat model '{rag_model}' is not installed. "
                     "Run `ollama pull` inside the Ollama container or host."
                 )
             if status != 404:
@@ -288,7 +293,7 @@ class OllamaProvider:
             try:
                 r2 = requests_module.post(
                     candidate,
-                    json={"model": self.rag_model, "prompt": prompt, "stream": False},
+                    json={"model": rag_model, "prompt": prompt, "stream": False},
                     timeout=timeout,
                 )
                 if r2.ok:
@@ -297,7 +302,7 @@ class OllamaProvider:
                 detail = self._extract_error_message(r2)
                 if r2.status_code == 404 and "model" in detail.lower():
                     raise RuntimeError(
-                        f"Ollama chat model '{self.rag_model}' is not installed. "
+                        f"Ollama chat model '{rag_model}' is not installed. "
                         "Run `ollama pull` inside the Ollama container or host."
                     )
                 last_error = f"HTTP {r2.status_code}: {detail}"
@@ -316,6 +321,7 @@ class OllamaProvider:
         messages: list | None = None,
         temperature: float | None = None,
     ) -> str:
+        vision_model = self._require_model("vision_model", "vision")
         url = f"{self.base}/chat"
         requests_module = _requests_module()
         _http_error, request_error, timeout_error = _request_exception_types(
@@ -327,7 +333,7 @@ class OllamaProvider:
         backoff = chat_options.backoff
         jitter = chat_options.jitter
         payload = {
-            "model": self.vision_model,
+            "model": vision_model,
             "messages": self._build_vision_messages(
                 system=system,
                 prompt=prompt,
@@ -411,8 +417,8 @@ class OllamaProvider:
                 continue
             if status == 404 and "model" in detail.lower():
                 raise RuntimeError(
-                    f"Ollama vision model '{self.vision_model}' is not installed. "
-                    f"Run `ollama pull {self.vision_model}` inside the Ollama container or host."
+                    f"Ollama vision model '{vision_model}' is not installed. "
+                    f"Run `ollama pull {vision_model}` inside the Ollama container or host."
                 )
             raise RuntimeError(f"Ollama vision chat HTTP error ({status}): {detail}")
 

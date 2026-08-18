@@ -16,19 +16,13 @@ from hawki_rag_resilience.optional_imports import import_required_module
 def run_startup_checks(
     settings: Any,
     *,
-    service: Any,
     logger: logging.Logger,
     check_qdrant_fn: Callable[[], None] | None = None,
     check_neo4j_fn: Callable[[], None] | None = None,
-    check_provider_fn: Callable[[Any, str], None] | None = None,
 ) -> None:
-    qdrant_check = check_qdrant_fn or _ping_qdrant
-    neo4j_check = check_neo4j_fn or _ping_neo4j
-    provider_check = check_provider_fn or _check_provider
-    operations = {
-        "qdrant": qdrant_check,
-        "neo4j": neo4j_check,
-        "provider": lambda: provider_check(service, settings.default_provider),
+    operations: dict[str, Callable[[], None]] = {
+        "qdrant": check_qdrant_fn or _ping_qdrant,
+        "neo4j": check_neo4j_fn or _ping_neo4j,
     }
     for operation, callback in operations.items():
         delay = settings.startup_check_backoff_seconds
@@ -68,14 +62,6 @@ def _ping_neo4j() -> None:
             session.run("RETURN 1").consume()
     finally:
         driver.close()
-
-
-def _check_provider(service: Any, provider_name: str) -> None:
-    if provider_name.lower() != "ollama":
-        # Optional providers must not become bridge startup dependencies.
-        return
-    provider = service.get_provider(provider_name)
-    provider.embed("health check")
 
 
 __all__ = ["run_startup_checks"]

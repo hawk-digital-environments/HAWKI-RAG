@@ -8,6 +8,7 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 
@@ -54,7 +55,6 @@ class RagAnythingVisionTests(unittest.TestCase):
                 os.environ,
                 {
                     "OLLAMA_API_URL": "http://ollama:11434/api",
-                    "OLLAMA_VISION_MODEL": "vision-test",
                     "OLLAMA_CHAT_RETRIES": "0",
                     "OLLAMA_CHAT_TIMEOUT": "12",
                 },
@@ -66,6 +66,7 @@ class RagAnythingVisionTests(unittest.TestCase):
             ),
         ):
             provider = OllamaProvider()
+            provider.vision_model = "vision-test"
             response = provider.vision_chat(
                 "system prompt",
                 "describe this image",
@@ -106,7 +107,7 @@ class RagAnythingVisionTests(unittest.TestCase):
         with (
             patch.dict(
                 os.environ,
-                {"OLLAMA_VISION_MODEL": "vision-test", "OLLAMA_CHAT_RETRIES": "0"},
+                {"OLLAMA_CHAT_RETRIES": "0"},
                 clear=False,
             ),
             patch(
@@ -115,6 +116,7 @@ class RagAnythingVisionTests(unittest.TestCase):
             ),
         ):
             provider = OllamaProvider()
+            provider.vision_model = "vision-test"
             provider.vision_chat("fallback system", "", messages=messages)
 
         payload = fake_requests.posts[0]["json"]
@@ -124,7 +126,7 @@ class RagAnythingVisionTests(unittest.TestCase):
         self.assertEqual(payload["messages"][1]["content"], "Context before image.")
         self.assertEqual(payload["messages"][1]["images"], ["xyz789"])
 
-    def test_raganything_settings_and_summary_include_vision_model(self) -> None:
+    def test_graph_runtime_summary_reports_request_provided_models(self) -> None:
         from hawki_indexer_worker.adapters.raganything.settings import (
             load_raganything_graph_settings,
         )
@@ -134,16 +136,16 @@ class RagAnythingVisionTests(unittest.TestCase):
 
         with patch.dict(
             os.environ,
-            {
-                "GRAPH_OLLAMA_VISION_MODEL": "vision-graph",
-                "OLLAMA_VISION_MODEL": "vision-general",
-                "NEO4J_URI": "bolt://graph:7687",
-            },
+            {"NEO4J_URI": "bolt://graph:7687"},
             clear=True,
         ):
             settings = load_raganything_graph_settings()
 
-        self.assertEqual(settings.vision_model, "vision-graph")
+        provider = SimpleNamespace(
+            rag_model="graph-model",
+            vision_model="vision-graph",
+            embed_model="embed-model",
+        )
 
         with tempfile.TemporaryDirectory() as tmp:
             summary = build_graph_runtime_summary(
@@ -151,9 +153,12 @@ class RagAnythingVisionTests(unittest.TestCase):
                 settings=settings,
                 runtime_meta={},
                 graph_client_initialized=False,
+                provider=provider,
             )
 
         self.assertEqual(summary["models"]["vision_model"], "vision-graph")
+        self.assertEqual(summary["models"]["graph_model"], "graph-model")
+        self.assertEqual(summary["models"]["embed_model"], "embed-model")
 
     def test_raganything_vision_model_func_preserves_provider_vision_selection(
         self,
@@ -192,7 +197,7 @@ class RagAnythingVisionTests(unittest.TestCase):
 
         with patch.dict(
             os.environ,
-            {"GRAPH_OLLAMA_VISION_MODEL": "vision-graph", "GRAPH_TEMPERATURE": "0.2"},
+            {"GRAPH_TEMPERATURE": "0.2"},
             clear=False,
         ):
             settings = load_raganything_graph_settings()
@@ -220,7 +225,6 @@ class RagAnythingVisionTests(unittest.TestCase):
             )
 
         self.assertEqual(response, "caption")
-        self.assertEqual(settings.vision_model, "vision-graph")
         self.assertEqual(provider.vision_model, "selected-vision")
         self.assertEqual(provider.call["system"], "vision system")
         self.assertEqual(provider.call["prompt"], "describe image")

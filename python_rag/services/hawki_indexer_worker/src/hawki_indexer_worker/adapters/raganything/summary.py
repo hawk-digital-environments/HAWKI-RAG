@@ -17,6 +17,7 @@ def build_graph_runtime_summary(
     settings: RagAnythingGraphSettings,
     runtime_meta: dict[str, Any],
     graph_client_initialized: bool,
+    provider: object | None = None,
 ) -> dict[str, Any]:
     """Build a diagnostic snapshot for graph runtime state."""
     chunk_files = sorted(working_dir.glob("kv_store_doc_status_chunk_*.json"))
@@ -43,9 +44,9 @@ def build_graph_runtime_summary(
             "files": [p.name for p in chunk_files[:5]],
         },
         "models": {
-            "graph_model": str(settings.graph_model).strip(),
-            "vision_model": str(settings.vision_model).strip(),
-            "embed_model": str(settings.embed_model).strip(),
+            "graph_model": str(getattr(provider, "rag_model", "") or "").strip(),
+            "vision_model": str(getattr(provider, "vision_model", "") or "").strip(),
+            "embed_model": str(getattr(provider, "embed_model", "") or "").strip(),
         },
         "limits": limits,
         "resilience": {

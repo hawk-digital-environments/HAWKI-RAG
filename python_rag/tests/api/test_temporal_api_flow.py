@@ -44,6 +44,8 @@ def _workflow_input(*, source_id: str = "source-1") -> dict[str, Any]:
         "ingestion": {
             "provider": "ollama",
             "embedding_model": "bge-m3",
+            "graph_model": "llama3.1:8b",
+            "vision_model": "qwen2.5vl:7b",
             "collection": None,
         },
         "external_services": {
@@ -200,7 +202,6 @@ def _build_test_client(tmp_path: Path, client_factory: Any) -> TestClient:
     settings = load_settings({})
     app = build_app(
         service=SimpleNamespace(runtime_summary=lambda: {"mode": "test"}),
-        qdrant_factory=lambda: object(),
         temporal_client_factory=client_factory,
         logger_name="test.temporal_api_flow",
         settings=settings,

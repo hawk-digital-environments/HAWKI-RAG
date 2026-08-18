@@ -7,8 +7,6 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from hawki_rag_stores.qdrant.client import QdrantHTTP
-
 from hawki_bridge.adapters.neo4j_reader import Neo4jReader
 from hawki_bridge.adapters.temporal_client import TemporalBridgeClient
 from hawki_bridge.application.graph import GraphReadService
@@ -17,7 +15,6 @@ from hawki_bridge.domain.ports import GraphReader
 from hawki_bridge.http.errors import install_exception_handlers
 from hawki_bridge.http.middleware import install_request_context_middleware
 from hawki_bridge.http.routers import (
-    build_config_router,
     build_graph_router,
     build_health_router,
     build_query_router,
@@ -32,7 +29,6 @@ def build_app(
     *,
     settings: BridgeSettings | None = None,
     service: QueryService | None = None,
-    qdrant_factory=QdrantHTTP,
     graph_reader: GraphReader | None = None,
     temporal_client_factory: Callable = TemporalBridgeClient,
     logger_name: str = "hawki_bridge",
@@ -47,7 +43,6 @@ def build_app(
         if active_settings.startup_checks_enabled:
             run_startup_checks(
                 active_settings,
-                service=active_service,
                 logger=logger,
             )
         yield
@@ -61,13 +56,6 @@ def build_app(
     install_request_context_middleware(application, logger)
     application.include_router(
         build_health_router(runtime_summary=active_service.runtime_summary)
-    )
-    application.include_router(
-        build_config_router(
-            service=active_service,
-            qdrant_factory=qdrant_factory,
-            settings=active_settings,
-        )
     )
     application.include_router(
         build_query_router(service=active_service, settings=active_settings)

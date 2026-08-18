@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import sys
 import tempfile
 import unittest
@@ -49,6 +48,9 @@ class ApiCharacterizationTests(unittest.TestCase):
                 "embedding_model": "hawki-ollama-embedding",
                 "graph_enabled": False,
             },
+            provider="ollama",
+            chat_model="llama3.1:8b",
+            vision_model="qwen2.5vl:7b",
         )
         settings = load_settings({})
 
@@ -74,6 +76,8 @@ class ApiCharacterizationTests(unittest.TestCase):
                 "graph_enabled": False,
             },
             provider="query-provider",
+            chat_model="llama3.1:8b",
+            vision_model="qwen2.5vl:7b",
             reranker="cosine",
             mix_mode=False,
         )
@@ -97,7 +101,6 @@ class ApiCharacterizationTests(unittest.TestCase):
 
         settings = load_settings(
             {
-                "RAG_DEFAULT_PROVIDER": "fake",
                 "RERANKER_MODE": "cosine",
                 "RERANKER_MIX_MODE": "false",
                 "RERANKER_MIX_WEIGHT": "0.7",
@@ -105,7 +108,6 @@ class ApiCharacterizationTests(unittest.TestCase):
             }
         )
 
-        self.assertEqual(settings.default_provider, "fake")
         self.assertEqual(settings.reranker_mode, "cosine")
         self.assertFalse(settings.reranker_mix_mode)
         self.assertEqual(settings.reranker_mix_weight, 0.7)
@@ -145,41 +147,6 @@ class ApiCharacterizationTests(unittest.TestCase):
         self.assertEqual(request.chunk_chars, 1200)
         self.assertEqual(request.chunk_overlap, 250)
         self.assertTrue(request.graph)
-
-    def test_config_response_uses_provider_and_qdrant_boundaries(self) -> None:
-        from hawki_bridge.application.config_response import build_config_response
-        from hawki_bridge.settings import load_settings
-
-        class Provider:
-            embed_model = "embed-toys"
-
-        class Qdrant:
-            collection = "toy_docs"
-
-            def get_vector_size(self) -> int:
-                return 384
-
-        with patch.dict(
-            os.environ,
-            {
-                "RAG_DEFAULT_PROVIDER": "fake",
-                "RERANKER_MODE": "none",
-                "RERANKER_MIX_MODE": "true",
-                "RERANKER_MIX_WEIGHT": "0.7",
-            },
-            clear=False,
-        ):
-            response = build_config_response(
-                get_provider=lambda name: Provider(),
-                qdrant_factory=Qdrant,
-                settings=load_settings(dict(os.environ)),
-            )
-
-        self.assertEqual(response["provider"], "fake")
-        self.assertEqual(response["embedding_model"], "embed-toys")
-        self.assertEqual(response["qdrant_collection"], "toy_docs")
-        self.assertEqual(response["qdrant_vector_size"], 384)
-        self.assertEqual(response["reranker"]["mix_weight"], 0.7)
 
     def test_app_logging_config_sets_app_and_graph_logger_levels(self) -> None:
         import logging
@@ -221,13 +188,12 @@ class ApiCharacterizationTests(unittest.TestCase):
         app = build_app(
             settings=load_settings({}),
             service=Service(),
-            qdrant_factory=object,
             logger_name="test.bridge_route_surface",
         )
         paths = set(app.openapi()["paths"])
 
         self.assertIn("/health", paths)
-        self.assertIn("/config", paths)
+        self.assertNotIn("/config", paths)
         self.assertIn("/query", paths)
         self.assertIn("/graph/related", paths)
         self.assertNotIn("/ingest", paths)
@@ -242,28 +208,16 @@ class ApiCharacterizationTests(unittest.TestCase):
         class FakeService:
             def __init__(self) -> None:
                 self.runtime_calls = 0
-                self.provider_calls = 0
 
             def runtime_summary(self) -> dict[str, object]:
                 self.runtime_calls += 1
                 return {"role": "bridge", "mode": "read-only"}
 
-            def get_provider(self, name: str) -> object:
-                self.provider_calls += 1
-                return SimpleNamespace(embed_model="test-embed")
-
-        class FakeQdrant:
-            collection = "app_test"
-
-            def get_vector_size(self) -> int:
-                return 128
-
-        app_settings = load_settings({"RAG_DEFAULT_PROVIDER": "fake"})
+        app_settings = load_settings({})
         service = FakeService()
         app = build_app(
             settings=app_settings,
             service=service,
-            qdrant_factory=FakeQdrant,
             logger_name="test.bridge_factory",
         )
         route_endpoints = {
@@ -276,7 +230,6 @@ class ApiCharacterizationTests(unittest.TestCase):
         }
         health = route_endpoints["/health"](runtime=True)
         lightweight_health = route_endpoints["/health"](runtime=False)
-        config = route_endpoints["/config"]()
 
         self.assertEqual(health["ok"], True)
         self.assertEqual(
@@ -285,11 +238,7 @@ class ApiCharacterizationTests(unittest.TestCase):
         )
         self.assertEqual(lightweight_health["ok"], True)
         self.assertEqual(lightweight_health["runtime"], {})
-        self.assertEqual(config["provider"], app_settings.default_provider)
-        self.assertEqual(config["qdrant_collection"], "app_test")
-        self.assertEqual(config["qdrant_vector_size"], 128)
         self.assertEqual(service.runtime_calls, 1)
-        self.assertEqual(service.provider_calls, 1)
 
     def test_app_query_route_uses_injected_dependencies(self) -> None:
         from hawki_bridge.factory import build_app
@@ -319,6 +268,8 @@ class ApiCharacterizationTests(unittest.TestCase):
             },
             top_k=4,
             provider="query-provider",
+            chat_model="query-chat",
+            vision_model="query-vision",
             filters={"source_format": "markdown"},
             generate=False,
             is_optimized=True,
@@ -355,7 +306,6 @@ class ApiCharacterizationTests(unittest.TestCase):
             app = build_app(
                 service=service,
                 settings=load_settings({}),
-                qdrant_factory=object,
                 logger_name="app_test_query_route",
             )
 

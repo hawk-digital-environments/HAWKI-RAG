@@ -19,7 +19,7 @@ Laravel --authorized scope--> bridge --read--> Qdrant / Neo4j --optional--> rera
                                 +-- signed, typed callbacks --> Laravel
 ```
 
-The bridge exposes health, config, authorized query, scoped graph-read, and
+The bridge exposes health, authorized query, scoped graph-read, and
 Temporal-control endpoints. It has no ingestion endpoint and no vector or graph
 write path. The indexer executes ingestion in-process; it never calls the bridge.
 Workers report status and artifact manifests through an HMAC-signed, idempotent

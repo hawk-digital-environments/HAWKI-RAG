@@ -71,7 +71,7 @@ flowchart LR
 ```
 
 These are six separately built Python roles. The bridge is a read-only
-query/config/health and Temporal-control service; indexing runs directly inside
+query/health and Temporal-control service; indexing runs directly inside
 the indexer worker. Python workers receive no Laravel database credentials and
 never update application tables themselves.
 

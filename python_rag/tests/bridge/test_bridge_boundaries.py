@@ -16,9 +16,7 @@ SERVICE = PYTHON_RAG / "services" / "hawki_bridge"
 SOURCE = SERVICE / "src" / "hawki_bridge"
 
 
-def test_bridge_registers_only_query_graph_read_health_config_and_temporal_routes() -> (
-    None
-):
+def test_bridge_registers_only_query_graph_read_health_and_temporal_routes() -> None:
     service = SimpleNamespace(runtime_summary=lambda: {"status": "ready"})
     app = build_app(settings=load_settings({}), service=service)
     routes = {
@@ -30,7 +28,7 @@ def test_bridge_registers_only_query_graph_read_health_config_and_temporal_route
     assert ("POST", "/query") in routes
     assert ("POST", "/graph/related") in routes
     assert ("GET", "/health") in routes
-    assert ("GET", "/config") in routes
+    assert ("GET", "/config") not in routes
     assert ("POST", "/temporal/workflows/ingest") in routes
     assert ("POST", "/temporal/schedules/ingest") in routes
     assert ("POST", "/temporal/schedules/delete") in routes

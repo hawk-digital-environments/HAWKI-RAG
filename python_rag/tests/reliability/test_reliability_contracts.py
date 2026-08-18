@@ -44,10 +44,9 @@ class ReliabilityContractTests(unittest.TestCase):
     def test_raganything_file_logging_is_not_a_bridge_setting(self) -> None:
         from hawki_bridge.settings import load_settings
 
-        settings = load_settings({"RAG_DEFAULT_PROVIDER": "ollama"})
+        settings = load_settings({})
         configured_settings = load_settings(
             {
-                "RAG_DEFAULT_PROVIDER": "ollama",
                 "HAWKI_RAG_RAGANYTHING_LOG_PATH": "/shared/logs/raganything_runtime.log",
             }
         )
@@ -169,10 +168,6 @@ class ReliabilityContractTests(unittest.TestCase):
         from hawki_bridge.settings import load_settings
         from hawki_bridge.startup_checks import run_startup_checks
 
-        class FakeService:
-            def get_provider(self, _name: str) -> object:
-                return SimpleNamespace()
-
         settings = load_settings({"STARTUP_CHECK_ATTEMPTS": "2"})
 
         check_qdrant = Mock(side_effect=RuntimeError("qdrant unavailable"))
@@ -181,7 +176,6 @@ class ReliabilityContractTests(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 run_startup_checks(
                     settings,
-                    service=FakeService(),
                     logger=__import__("logging").getLogger("tests.reliability.startup"),
                     check_qdrant_fn=check_qdrant,
                     check_neo4j_fn=check_neo4j,
@@ -189,85 +183,6 @@ class ReliabilityContractTests(unittest.TestCase):
         self.assertEqual(check_qdrant.call_count, 2)
         check_neo4j.assert_not_called()
         self.assertEqual(sleep.call_count, 1)
-
-    def test_startup_checks_skip_provider_probe_for_non_ollama_driver(self) -> None:
-        from hawki_bridge.settings import load_settings
-        from hawki_bridge.startup_checks import run_startup_checks
-
-        calls = {"provider": 0}
-
-        class FakeService:
-            def get_provider(self, _name: str) -> object:
-                calls["provider"] += 1
-                return SimpleNamespace(base="http://provider")
-
-        settings = load_settings(
-            {"RAG_DEFAULT_PROVIDER": "openai", "STARTUP_CHECK_ATTEMPTS": "1"}
-        )
-
-        run_startup_checks(
-            settings,
-            service=FakeService(),
-            logger=__import__("logging").getLogger("tests.reliability.startup"),
-            check_qdrant_fn=lambda: None,
-            check_neo4j_fn=lambda: None,
-        )
-
-        self.assertEqual(calls["provider"], 0)
-
-    def test_litellm_is_not_a_bridge_startup_dependency(self) -> None:
-        from hawki_bridge.startup_checks import _check_provider
-
-        calls = {"provider": 0}
-
-        class FakeService:
-            def get_provider(self, _name: str) -> object:
-                calls["provider"] += 1
-                raise AssertionError("optional LiteLLM must not be probed at startup")
-
-        _check_provider(FakeService(), "litellm")
-
-        self.assertEqual(calls["provider"], 0)
-
-    def test_ollama_startup_probe_accepts_provider_with_api_suffix(self) -> None:
-        from hawki_bridge.startup_checks import _check_provider
-
-        calls: list[tuple[str, str]] = []
-
-        class FakeProvider:
-            base = "http://ollama:11434/api"
-
-            def embed(self, text: str) -> list[float]:
-                calls.append((self.base, text))
-                return [0.0]
-
-        class FakeService:
-            def get_provider(self, _name: str) -> object:
-                return FakeProvider()
-
-        _check_provider(FakeService(), "ollama")
-
-        self.assertEqual(calls, [("http://ollama:11434/api", "health check")])
-
-    def test_ollama_startup_probe_accepts_provider_without_api_suffix(self) -> None:
-        from hawki_bridge.startup_checks import _check_provider
-
-        calls: list[tuple[str, str]] = []
-
-        class FakeProvider:
-            base = "http://ollama:11434"
-
-            def embed(self, text: str) -> list[float]:
-                calls.append((self.base, text))
-                return [0.0]
-
-        class FakeService:
-            def get_provider(self, _name: str) -> object:
-                return FakeProvider()
-
-        _check_provider(FakeService(), "ollama")
-
-        self.assertEqual(calls, [("http://ollama:11434", "health check")])
 
     def test_qdrant_transport_emits_retry_attempt_telemetry(self) -> None:
         from hawki_rag_stores.qdrant.requests import QdrantRequest
