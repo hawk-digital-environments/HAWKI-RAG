@@ -105,6 +105,22 @@ final class PostgresMigrationUpgradeTest extends TestCase
         });
     }
 
+    public function test_dataset_embedding_defaults_follow_the_configured_provider_on_a_fresh_install(): void
+    {
+        $this->withIsolatedPostgresSchema(function (): void {
+            $this->runMigration('2026_06_05_000000_create_datasets_table.php');
+
+            $this->assertTrue(Schema::hasColumn('datasets', 'embedding_provider'));
+            $this->assertTrue(Schema::hasColumn('datasets', 'embedding_model'));
+
+            $dataset = DB::table('datasets')->where('dataset_id', 'default')->first();
+
+            $this->assertNotNull($dataset);
+            $this->assertSame(config('config.embedding_default'), $dataset->embedding_model);
+            $this->assertSame('ollama', $dataset->embedding_provider);
+        });
+    }
+
     public function test_restored_storage_bridge_preserves_existing_outputs_and_normalizes_metadata(): void
     {
         $this->withIsolatedPostgresSchema(function (): void {
