@@ -102,7 +102,7 @@ services:
     container_name: temporal_ui
     restart: unless-stopped
     ports:
-      - "${TEMPORAL_UI_BIND_ADDRESS}:${TEMPORAL_UI_PORT}:8080"
+      - "${TEMPORAL_UI_HOST_BIND}:${TEMPORAL_UI_HOST_PORT}:8080"
     depends_on:
       temporal:
         condition: service_started

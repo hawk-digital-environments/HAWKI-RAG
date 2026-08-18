@@ -55,7 +55,7 @@ OLLAMA_CONTAINER ?= hawki_ollama
 CRAWLER_CONTAINER ?= crawl4ai-service
 FILE_CONVERTER_CONTAINER ?= hawki-toolkit-file-converter-file-converter-1
 
-# Sibling checkouts started by the external tool targets (up-tools/down-tools).
+# Sibling checkouts started by the external tool targets (up-*-tool/down-*-tool).
 CRAWLER_DIR ?= ../CustomCrawler
 FILE_CONVERTER_DIR ?= ../hawki-toolkit-file-converter
 FILE_CONVERTER_PROJECT ?= hawki-toolkit-file-converter
@@ -125,7 +125,8 @@ UI_NODE_RUN = docker run --rm --entrypoint /usr/bin/env \
 .PHONY: pull-models logs-core
 .PHONY: down-core down-rag restart-core
 .PHONY: neo4j-fresh
-.PHONY: up-tools down-tools
+.PHONY: up-crawler-tool down-crawler-tool up-file-converter-tool down-file-converter-tool
+.PHONY: up-monitor-workflows-tool down-monitor-workflows-tool up-tools down-tools
 
 ##@ General
 help: ## Show the available commands grouped by module.
@@ -471,25 +472,38 @@ restart-core: network ## Recreate all core services and Temporal workers.
 	@$(COMPOSE_CMD) up -d --force-recreate
 
 # ==============================================================================
-# External crawler and file-converter tools
+# External crawler and file-converter tools, plus Temporal workflow monitor
 # ==============================================================================
 
 ##@ External tools
 
-up-tools: network ## Start the sibling crawler and file-converter containers.
+up-crawler-tool: network ## Start the sibling crawler container (UI on port 8041).
 	@set -e; \
-	for dir in "$(CRAWLER_DIR)" "$(FILE_CONVERTER_DIR)"; do \
-		if [ ! -d "$$dir" ]; then \
-			echo "Missing sibling checkout: $$dir (override with CRAWLER_DIR or FILE_CONVERTER_DIR)."; \
-			exit 1; \
-		fi; \
-	done; \
+	if [ ! -d "$(CRAWLER_DIR)" ]; then \
+		echo "Missing sibling checkout: $(CRAWLER_DIR) (override with CRAWLER_DIR)."; \
+		exit 1; \
+	fi; \
 	if ! docker volume inspect rawki_shared_storage >/dev/null 2>&1; then \
 		echo "Creating the external rawki_shared_storage volume..."; \
 		docker volume create rawki_shared_storage; \
 	fi; \
 	echo "Starting the crawler from $(CRAWLER_DIR)..."; \
 	$(MAKE) -C "$(CRAWLER_DIR)" up; \
+	echo "Crawler UI: http://localhost:8041/ui/"
+
+down-crawler-tool: ## Stop the sibling crawler container.
+	@$(MAKE) -C "$(CRAWLER_DIR)" down
+
+up-file-converter-tool: network ## Start the sibling file-converter container (health on port 8004).
+	@set -e; \
+	if [ ! -d "$(FILE_CONVERTER_DIR)" ]; then \
+		echo "Missing sibling checkout: $(FILE_CONVERTER_DIR) (override with FILE_CONVERTER_DIR)."; \
+		exit 1; \
+	fi; \
+	if ! docker volume inspect rawki_shared_storage >/dev/null 2>&1; then \
+		echo "Creating the external rawki_shared_storage volume..."; \
+		docker volume create rawki_shared_storage; \
+	fi; \
 	echo "Starting the file converter from $(FILE_CONVERTER_DIR)..."; \
 	converter_token=$$(grep -m1 '^EXTERNAL_CONVERTER_TOKEN=' "$(ENV_FILE)" 2>/dev/null | cut -d= -f2-); \
 	if [ -z "$$converter_token" ]; then \
@@ -500,15 +514,36 @@ up-tools: network ## Start the sibling crawler and file-converter containers.
 	fi; \
 	cd "$(FILE_CONVERTER_DIR)" && \
 		$(COMPOSE_BIN) -p "$(FILE_CONVERTER_PROJECT)" -f docker-compose.yml -f docker-compose.local.yml up -d --build; \
+	echo "Converter health: http://localhost:8004/health"
+
+down-file-converter-tool: ## Stop the sibling file-converter container.
+	@cd "$(FILE_CONVERTER_DIR)" && \
+		$(COMPOSE_BIN) -p "$(FILE_CONVERTER_PROJECT)" -f docker-compose.yml -f docker-compose.local.yml down
+
+up-monitor-workflows-tool: COMPOSE_PROFILES = temporal-ui
+up-monitor-workflows-tool: network ## Start the Temporal workflow UI (compose profile temporal-ui).
+	@echo "Starting the Temporal workflow UI (profile temporal-ui)..."
+	@$(COMPOSE_CMD) up -d temporal-ui
+	@set -e; \
+	ui_bind=$$(grep -m1 '^TEMPORAL_UI_HOST_BIND=' "$(ENV_FILE)" 2>/dev/null | cut -d= -f2-); \
+	ui_port=$$(grep -m1 '^TEMPORAL_UI_HOST_PORT=' "$(ENV_FILE)" 2>/dev/null | cut -d= -f2-); \
+	echo "Temporal workflow UI: http://$${ui_bind:-127.0.0.1}:$${ui_port:-8081}"
+
+down-monitor-workflows-tool: COMPOSE_PROFILES = temporal-ui
+down-monitor-workflows-tool: ## Stop the Temporal workflow UI without touching the core stack.
+	@$(COMPOSE_CMD) rm --stop --force temporal-ui
+
+up-tools: up-crawler-tool up-file-converter-tool up-monitor-workflows-tool ## Start all external tools.
+	@set -e; \
+	ui_bind=$$(grep -m1 '^TEMPORAL_UI_HOST_BIND=' "$(ENV_FILE)" 2>/dev/null | cut -d= -f2-); \
+	ui_port=$$(grep -m1 '^TEMPORAL_UI_HOST_PORT=' "$(ENV_FILE)" 2>/dev/null | cut -d= -f2-); \
 	echo ""; \
 	echo "External tools are starting:"; \
 	echo "  crawler UI:        http://localhost:8041/ui/"; \
-	echo "  converter health:  http://localhost:8004/health"
+	echo "  converter health:  http://localhost:8004/health"; \
+	echo "  temporal UI:       http://$${ui_bind:-127.0.0.1}:$${ui_port:-8081}"
 
-down-tools: ## Stop the sibling crawler and file-converter containers.
-	@$(MAKE) -C "$(CRAWLER_DIR)" down
-	@cd "$(FILE_CONVERTER_DIR)" && \
-		$(COMPOSE_BIN) -p "$(FILE_CONVERTER_PROJECT)" -f docker-compose.yml -f docker-compose.local.yml down
+down-tools: down-crawler-tool down-file-converter-tool down-monitor-workflows-tool ## Stop all external tools.
 
 # ==============================================================================
 # Destructive data maintenance
