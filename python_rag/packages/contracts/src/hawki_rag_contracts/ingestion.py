@@ -81,8 +81,8 @@ class IngestionOptions(BaseModel):
 
     provider: str = Field(min_length=1, max_length=80)
     embedding_model: str = Field(min_length=1, max_length=160)
-    graph_model: str | None = Field(default=None, max_length=160)
-    vision_model: str | None = Field(default=None, max_length=160)
+    graph_model: str = Field(min_length=1, max_length=160)
+    vision_model: str = Field(min_length=1, max_length=160)
     graph: bool = False
     collection: str | None = Field(default=None, min_length=1, max_length=191)
     neo4j_namespace: str | None = Field(default=None, max_length=191)

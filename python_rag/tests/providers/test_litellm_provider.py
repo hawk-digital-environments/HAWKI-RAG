@@ -69,15 +69,21 @@ def _provider_env(**overrides: str) -> dict[str, str]:
     values = {
         "LITELLM_API_URL": "http://127.0.0.1:4000/v1/",
         "LITELLM_API_KEY": "test-secret-key",
-        "LITELLM_CHAT_MODEL": "test-chat",
-        "LITELLM_EMBED_MODEL": "test-embedding",
-        "LITELLM_VISION_MODEL": "test-vision",
         "LITELLM_CHAT_TIMEOUT": "12.5",
         "LITELLM_EMBED_TIMEOUT": "7",
         "LITELLM_TEMPERATURE": "0.2",
     }
     values.update(overrides)
     return values
+
+
+def _configured(provider: Any) -> Any:
+    """Attach the request-provided models Laravel would send."""
+
+    provider.embed_model = "test-embedding"
+    provider.rag_model = "test-chat"
+    provider.vision_model = "test-vision"
+    return provider
 
 
 class LiteLLMProviderTests(unittest.TestCase):
@@ -110,7 +116,6 @@ class LiteLLMProviderTests(unittest.TestCase):
                 {"LITELLM_API_URL": "https://user:password@litellm.example/v1"},
                 "must not contain credentials",
             ),
-            ({"LITELLM_CHAT_MODEL": ""}, "LITELLM_CHAT_MODEL must be a non-empty"),
             (
                 {"LITELLM_EMBED_TIMEOUT": "nan"},
                 "LITELLM_EMBED_TIMEOUT must be a positive",
@@ -125,6 +130,22 @@ class LiteLLMProviderTests(unittest.TestCase):
                     ):
                         LiteLLMProvider()
 
+    def test_calls_without_request_provided_models_fail_loudly(self) -> None:
+        from hawki_model_providers.litellm import LiteLLMProvider
+
+        with patch.dict(os.environ, _provider_env(), clear=True):
+            provider = LiteLLMProvider()
+
+        self.assertIsNone(provider.embed_model)
+        self.assertIsNone(provider.rag_model)
+        self.assertIsNone(provider.vision_model)
+        with self.assertRaisesRegex(RuntimeError, "embed_model.*not set"):
+            provider.embed("input")
+        with self.assertRaisesRegex(RuntimeError, "rag_model.*not set"):
+            provider.chat("system", [])
+        with self.assertRaisesRegex(RuntimeError, "vision_model.*not set"):
+            provider.vision_chat("system", "prompt")
+
     def test_chat_sends_openai_payload_and_parses_content(self) -> None:
         from hawki_model_providers.litellm import LiteLLMProvider
 
@@ -138,7 +159,7 @@ class LiteLLMProviderTests(unittest.TestCase):
                 return_value=fake_requests,
             ),
         ):
-            provider = LiteLLMProvider()
+            provider = _configured(LiteLLMProvider())
             answer = provider.chat(
                 "Answer from supplied context.",
                 [{"role": "user", "content": "What is RAWKI?"}],
@@ -188,7 +209,7 @@ class LiteLLMProviderTests(unittest.TestCase):
                 return_value=fake_requests,
             ),
         ):
-            answer = LiteLLMProvider().chat("system", [])
+            answer = _configured(LiteLLMProvider()).chat("system", [])
 
         self.assertEqual(answer, "Part one. Part two.")
 
@@ -205,7 +226,7 @@ class LiteLLMProviderTests(unittest.TestCase):
                 return_value=fake_requests,
             ),
         ):
-            provider = LiteLLMProvider()
+            provider = _configured(LiteLLMProvider())
             vector = provider.embed("Embedding input")
 
         self.assertEqual(vector, [0.0, 1.25, -2.5])
@@ -239,7 +260,7 @@ class LiteLLMProviderTests(unittest.TestCase):
                     ),
                 ):
                     with self.assertRaisesRegex(RuntimeError, expected_message):
-                        LiteLLMProvider().embed("input")
+                        _configured(LiteLLMProvider()).embed("input")
 
     def test_vision_chat_uses_openai_image_url_shape_and_vision_model(self) -> None:
         from hawki_model_providers.litellm import LiteLLMProvider
@@ -254,7 +275,7 @@ class LiteLLMProviderTests(unittest.TestCase):
                 return_value=fake_requests,
             ),
         ):
-            answer = LiteLLMProvider().vision_chat(
+            answer = _configured(LiteLLMProvider()).vision_chat(
                 "Describe only visible details.",
                 "What is shown?",
                 image_data="abc123",
@@ -295,7 +316,7 @@ class LiteLLMProviderTests(unittest.TestCase):
             ),
         ):
             with self.assertRaisesRegex(RuntimeError, r"HTTP error \(401\)") as raised:
-                LiteLLMProvider().chat("system", [])
+                _configured(LiteLLMProvider()).chat("system", [])
 
         self.assertNotIn("test-secret-key", str(raised.exception))
         self.assertIn("<redacted>", str(raised.exception))
@@ -311,7 +332,7 @@ class LiteLLMProviderTests(unittest.TestCase):
             with self.assertRaisesRegex(
                 RuntimeError, "request timed out: gateway timeout"
             ):
-                LiteLLMProvider().embed("input")
+                _configured(LiteLLMProvider()).embed("input")
 
     def test_success_response_must_be_json_with_expected_shape(self) -> None:
         from hawki_model_providers.litellm import LiteLLMProvider
@@ -325,7 +346,7 @@ class LiteLLMProviderTests(unittest.TestCase):
             ),
         ):
             with self.assertRaisesRegex(RuntimeError, "returned a non-JSON response"):
-                LiteLLMProvider().chat("system", [])
+                _configured(LiteLLMProvider()).chat("system", [])
 
         wrong_shape = _FakeRequests(_FakeResponse({"choices": []}))
         with (
@@ -336,7 +357,7 @@ class LiteLLMProviderTests(unittest.TestCase):
             ),
         ):
             with self.assertRaisesRegex(RuntimeError, "unexpected or empty response"):
-                LiteLLMProvider().chat("system", [])
+                _configured(LiteLLMProvider()).chat("system", [])
 
 
 if __name__ == "__main__":

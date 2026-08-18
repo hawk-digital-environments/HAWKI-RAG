@@ -208,13 +208,11 @@ class LiteLLMProvider:
             _required_setting("LITELLM_API_URL", _DEFAULT_BASE_URL)
         )
         self.key = str(os.environ.get("LITELLM_API_KEY", "") or "").strip()
-        self.rag_model = _required_setting("LITELLM_CHAT_MODEL", _DEFAULT_CHAT_MODEL)
-        self.embed_model = _required_setting(
-            "LITELLM_EMBED_MODEL", _DEFAULT_EMBED_MODEL
-        )
-        self.vision_model = _required_setting(
-            "LITELLM_VISION_MODEL", _DEFAULT_VISION_MODEL
-        )
+        # Model selection is request-scoped: apply_provider_overrides injects
+        # the dataset-pinned models from Laravel before any call is made.
+        self.rag_model: str | None = None
+        self.embed_model: str | None = None
+        self.vision_model: str | None = None
 
         shared_timeout = _optional_shared_timeout()
         self.chat_timeout = _positive_float_setting(
@@ -227,6 +225,15 @@ class LiteLLMProvider:
         )
         self.default_temperature = self._configured_temperature()
         self._last_embed_dim: int | None = None
+
+    def _require_model(self, attribute: str, capability: str) -> str:
+        model = getattr(self, attribute)
+        if not model:
+            raise RuntimeError(
+                f"LiteLLMProvider.{attribute} is not set; the request must provide "
+                f"the {capability} model explicitly (no environment fallback)."
+            )
+        return model
 
     @staticmethod
     def _configured_temperature() -> float:
@@ -247,8 +254,9 @@ class LiteLLMProvider:
             ) from exc
 
     def embed(self, text: str) -> list[float]:
+        embed_model = self._require_model("embed_model", "embedding")
         payload = {
-            "model": self.embed_model,
+            "model": embed_model,
             "input": str(text or ""),
         }
         response = self._post_json(
@@ -293,9 +301,10 @@ class LiteLLMProvider:
         *,
         temperature: float | None = None,
     ) -> str:
+        rag_model = self._require_model("rag_model", "chat")
         normalized_messages = _normalize_messages(messages)
         payload = {
-            "model": self.rag_model,
+            "model": rag_model,
             "messages": [{"role": "system", "content": str(system or "")}]
             + normalized_messages,
             "temperature": _temperature(temperature, self.default_temperature),
@@ -341,8 +350,9 @@ class LiteLLMProvider:
                 user_content = str(prompt or "")
             normalized_messages.append({"role": "user", "content": user_content})
 
+        vision_model = self._require_model("vision_model", "vision")
         payload = {
-            "model": self.vision_model,
+            "model": vision_model,
             "messages": normalized_messages,
             "temperature": _temperature(temperature, self.default_temperature),
             "stream": False,

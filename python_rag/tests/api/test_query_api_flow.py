@@ -72,10 +72,9 @@ def _build_test_client(tmp_path: Path, service: _FakeRagService) -> TestClient:
     from hawki_bridge.factory import build_app
     from hawki_bridge.settings import load_settings
 
-    settings = load_settings({"RAG_DEFAULT_PROVIDER": "test-provider"})
+    settings = load_settings({})
     app = build_app(
         service=service,
-        qdrant_factory=lambda: object(),
         logger_name="test.query_api_flow",
         settings=settings,
     )
@@ -119,6 +118,8 @@ class TestQueryApiFlow:
                         "query": "Which fees apply?",
                         "authorized_scope": AUTHORIZED_SCOPE,
                         "provider": "test-provider",
+                        "chat_model": "test-chat-model",
+                        "vision_model": "test-vision-model",
                         "top_k": 3,
                         "generate": False,
                     },
@@ -261,6 +262,8 @@ class TestQueryApiFlow:
                         "query": "Which fees apply?",
                         "authorized_scope": AUTHORIZED_SCOPE,
                         "provider": "test-provider",
+                        "chat_model": "test-chat-model",
+                        "vision_model": "test-vision-model",
                         "filters": {
                             "dataset_id": "OtherDataset",
                             "qdrantCollection": "global_collection",
@@ -308,6 +311,8 @@ class TestQueryApiFlow:
                         "query": "Which fees apply?",
                         "authorized_scope": AUTHORIZED_SCOPE,
                         "provider": "test-provider",
+                        "chat_model": "test-chat-model",
+                        "vision_model": "test-vision-model",
                     },
                 )
 

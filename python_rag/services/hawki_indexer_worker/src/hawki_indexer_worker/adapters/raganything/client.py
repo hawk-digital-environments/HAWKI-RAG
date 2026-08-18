@@ -85,6 +85,7 @@ class RagAnythingGraphService:
         self._rag_graph_lock = threading.RLock()
         self._rag_graph_cache_key: str | None = None
         self.client: Any | None = None
+        self._graph_provider: Any | None = None
         self._rag_graph_loop = RagAnythingGraphLoop(logger_obj=logger_obj)
         self._rag_graph_runtime_meta: dict[str, Any] = {
             "doc_status_storage": "JsonDocStatusStorage",
@@ -129,6 +130,7 @@ class RagAnythingGraphService:
         with self._rag_graph_lock:
             self._close_raganything_instance(self.client)
             self.client = None
+            self._graph_provider = None
             self._rag_graph_cache_key = None
             self._rag_graph_kv_junk_scrub_once_done = False
             return clear_graph_cache_files(self.working_dir)
@@ -151,11 +153,13 @@ class RagAnythingGraphService:
         with self._rag_graph_lock:
             meta = dict(self._rag_graph_runtime_meta)
             initialized = bool(self.client is not None)
+        provider = getattr(self, "_graph_provider", None)
         return build_graph_runtime_summary(
             working_dir=self.working_dir,
             settings=self._settings,
             runtime_meta=meta,
             graph_client_initialized=initialized,
+            provider=provider,
         )
 
     @staticmethod
@@ -234,6 +238,7 @@ class RagAnythingGraphService:
 
             client = self._init_client(provider, neo4j_database=neo4j_database)
             self.client = client
+            self._graph_provider = provider
             self._rag_graph_cache_key = cache_key if client is not None else None
             if client is not None and not self._rag_graph_kv_junk_scrub_once_done:
                 try:

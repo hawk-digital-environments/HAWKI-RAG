@@ -438,29 +438,19 @@ def test_startup_checks_accept_injected_dependency_checks() -> None:
     def check_neo4j() -> None:
         calls.append("neo4j")
 
-    def check_provider(service: object, settings: object, timeout: float) -> None:
-        calls.append(f"provider:{timeout}")
-
     settings = SimpleNamespace(
         startup_check_attempts=2,
         startup_check_timeout_seconds=1.0,
         startup_check_backoff_seconds=0.01,
         startup_checks_enabled=True,
-        default_provider="ollama",
     )
 
     with patch("hawki_bridge.startup_checks.time.sleep"):
         run_startup_checks(
             settings,
-            service=object(),
             logger=logging.getLogger("startup-boundary-test"),
             check_qdrant_fn=lambda: check_qdrant(1.0),
             check_neo4j_fn=check_neo4j,
-            check_provider_fn=lambda service, _provider_name: check_provider(
-                service,
-                settings,
-                1.0,
-            ),
         )
 
-    assert calls == ["qdrant:1.0", "qdrant:1.0", "neo4j", "provider:1.0"]
+    assert calls == ["qdrant:1.0", "qdrant:1.0", "neo4j"]

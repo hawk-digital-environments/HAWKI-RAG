@@ -111,6 +111,8 @@ def test_query_provider_must_match_the_authorized_vector_space() -> None:
         query="How does Temporal route activities?",
         authorized_scope=_authorized_scope(),
         provider="OLLAMA",
+        chat_model="llama3.1:8b",
+        vision_model="qwen2.5vl:7b",
     )
     assert request.provider == "ollama"
 
@@ -119,6 +121,8 @@ def test_query_provider_must_match_the_authorized_vector_space() -> None:
             query="How does Temporal route activities?",
             authorized_scope=_authorized_scope(),
             provider="litellm",
+            chat_model="llama3.1:8b",
+            vision_model="qwen2.5vl:7b",
         )
 
 
@@ -164,6 +168,8 @@ def test_laravel_workflow_payload_accepts_flat_services_and_optional_collection(
             "ingestion": {
                 "provider": "ollama",
                 "embedding_model": "bge-m3",
+                "graph_model": "llama3.1:8b",
+                "vision_model": "qwen2.5vl:7b",
                 "collection": None,
             },
             "external_services": {

@@ -74,6 +74,9 @@ class AuthorizedScopeSchemaTests(unittest.TestCase):
 
         request = QueryRequest(
             query="Find the PDF",
+            provider="ollama",
+            chat_model="llama3.1:8b",
+            vision_model="qwen2.5vl:7b",
             authorized_scope={
                 "dataset_id": " dataset-a ",
                 "qdrant_collection": " hawki_dataset_a ",
@@ -162,6 +165,8 @@ class AuthorizedScopeSchemaTests(unittest.TestCase):
             QueryRequest(
                 query="Find the PDF",
                 provider="litellm",
+                chat_model="hawki-ollama-chat",
+                vision_model="hawki-ollama-vision",
                 authorized_scope={
                     "dataset_id": "dataset-a",
                     "qdrant_collection": "hawki_dataset_a",

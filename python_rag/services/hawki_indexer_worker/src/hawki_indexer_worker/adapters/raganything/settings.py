@@ -71,9 +71,6 @@ class RagAnythingGraphSettings:
     graph_doc_max_chunks: int | None
     graph_min_chunk_chars: int | None
     graph_min_doc_chars: int | None
-    graph_model: str
-    vision_model: str
-    embed_model: str
     graph_embedding_dimensions: str
     neo4j_uri: str
     neo4j_user: str
@@ -90,14 +87,6 @@ def load_raganything_graph_settings() -> RagAnythingGraphSettings:
         os.environ.get("NEO4J_BOLT_URL", "").strip(),
         os.environ.get("NEO4J_HTTP_URL", "").strip(),
     )
-
-    graph_model = os.environ.get("GRAPH_OLLAMA_RAG_MODEL", "").strip()
-    if not graph_model:
-        graph_model = os.environ.get("OLLAMA_RAG_MODEL", "").strip()
-
-    vision_model = os.environ.get("GRAPH_OLLAMA_VISION_MODEL", "").strip()
-    if not vision_model:
-        vision_model = os.environ.get("OLLAMA_VISION_MODEL", "qwen2.5vl:7b").strip()
 
     custom_embedding_dimensions = os.environ.get(
         "GRAPH_EMBEDDING_DIMENSIONS",
@@ -130,9 +119,6 @@ def load_raganything_graph_settings() -> RagAnythingGraphSettings:
         graph_doc_max_chunks=_int_env("GRAPH_DOC_MAX_CHUNKS"),
         graph_min_chunk_chars=_int_env("GRAPH_MIN_CHUNK_CHARS"),
         graph_min_doc_chars=_int_env("GRAPH_MIN_DOC_CHARS"),
-        graph_model=graph_model,
-        vision_model=vision_model,
-        embed_model=os.environ.get("OLLAMA_EMBED_MODEL", "").strip(),
         graph_embedding_dimensions=graph_embedding_dimensions,
         neo4j_uri=neo4j_uri,
         neo4j_user=os.environ.get("NEO4J_USER", "").strip(),

@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import Callable
-from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
@@ -19,7 +18,6 @@ from hawki_bridge.adapters.temporal_client import (
     TemporalExecution,
 )
 from hawki_bridge.application.graph import GraphReadService
-from hawki_bridge.http.routers.config import build_config_router
 from hawki_bridge.http.routers.graph import build_graph_router
 from hawki_bridge.http.routers.health import build_health_router
 from hawki_bridge.http.routers.query import build_query_router
@@ -71,6 +69,8 @@ def _workflow_input(*, source_id: str) -> dict[str, Any]:
         "ingestion": {
             "provider": "ollama",
             "embedding_model": "nomic-embed-text",
+            "graph_model": "llama3.1:8b",
+            "vision_model": "qwen2.5vl:7b",
             "collection": "dataset_42_vectors",
         },
     }
@@ -114,6 +114,9 @@ def test_query_route_applies_defaults_and_delegates_to_application(
     request = QueryRequest(
         query="What is scoped retrieval?",
         authorized_scope=_scope(),
+        provider="ollama",
+        chat_model="llama3.1:8b",
+        vision_model="qwen2.5vl:7b",
     )
 
     assert endpoint(request) == {"ok": True, "count": 0, "hits": []}
@@ -204,39 +207,6 @@ def test_neo4j_adapter_delegates_a_read_without_changing_scope(
         "neo4j_namespace": "dataset_42_graph",
         "limit": 11,
     }
-
-
-def test_config_route_reports_read_only_runtime_dependencies() -> None:
-    class Service:
-        @staticmethod
-        def get_provider(name: str) -> object:
-            assert name == "ollama"
-            return SimpleNamespace(embed_model="nomic-embed-text")
-
-    class QdrantReader:
-        collection = "scoped_documents"
-
-        @staticmethod
-        def get_vector_size() -> int:
-            return 768
-
-    settings = load_settings({"RERANKER_MODE": "external"})
-    endpoint = _endpoint(
-        build_config_router(
-            service=Service(),
-            qdrant_factory=QdrantReader,
-            settings=settings,
-        ),
-        "/config",
-        "GET",
-    )
-
-    response = endpoint()
-    assert response["provider"] == "ollama"
-    assert response["embedding_model"] == "nomic-embed-text"
-    assert response["qdrant_collection"] == "scoped_documents"
-    assert response["qdrant_vector_size"] == 768
-    assert response["reranker"]["mode"] == "external"
 
 
 def test_health_route_can_include_or_omit_the_runtime_summary() -> None:

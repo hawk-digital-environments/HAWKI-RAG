@@ -1,31 +1,22 @@
+"""Graph-scoped provider configuration helpers."""
+
 from __future__ import annotations
 
-import os
 from typing import Any
-
-from hawki_model_providers.ollama import OllamaProvider
 
 
 def graph_model_override(provider: object) -> str | None:
+    """Return the request-provided graph model, if any."""
+
     explicit = str(getattr(provider, "_explicit_graph_model", "") or "").strip()
-    if explicit:
-        return explicit
-    if isinstance(provider, OllamaProvider):
-        val = os.environ.get("GRAPH_OLLAMA_RAG_MODEL", "").strip()
-        return val or None
-    return None
+    return explicit or None
 
 
 def graph_vision_model_override(provider: object) -> str | None:
-    """Return an explicit vision selection or Ollama's legacy graph override."""
+    """Return the request-provided vision model, if any."""
 
     explicit = str(getattr(provider, "_explicit_vision_model", "") or "").strip()
-    if explicit:
-        return explicit
-    if isinstance(provider, OllamaProvider):
-        val = os.environ.get("GRAPH_OLLAMA_VISION_MODEL", "").strip()
-        return val or None
-    return None
+    return explicit or None
 
 
 def provider_fingerprint(provider: object) -> str:

@@ -23,7 +23,7 @@ communicate through predictable internal service names.
 | Component | Practical responsibility |
 |---|---|
 | **Laravel application** | Provides the UI and public API, authenticates and authorizes callers, owns all application PostgreSQL metadata, submits trusted Temporal/query requests, and applies typed worker status callbacks. |
-| **FastAPI bridge (`hawki_rag_bridge`)** | Provides the read-only internal API for health/config, authorized query and graph reads, plus Temporal start, schedule, and cancellation commands. It has no ingestion route and no vector or graph write path. |
+| **FastAPI bridge (`hawki_rag_bridge`)** | Provides the read-only internal API for health, authorized query and graph reads, plus Temporal start, schedule, and cancellation commands. It has no ingestion route and no vector or graph write path. |
 | **Workflow worker** | Runs the deterministic Temporal workflow and coordinates the scraper, converter, indexer, and final-ready activities. |
 | **Scraper worker** | Calls the external crawler (or handles an uploaded artifact), writes raw artifacts, and reports signed stage events to Laravel. |
 | **Converter worker** | Inspects or converts raw artifacts into normalized Markdown and reports signed stage events to Laravel. |

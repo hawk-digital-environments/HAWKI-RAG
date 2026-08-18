@@ -25,14 +25,14 @@ class QueryRequest(BaseModel):
     query: str = Field(min_length=1)
     authorized_scope: AuthorizedQueryScope
     top_k: int = Field(default=5, gt=0)
-    provider: str = Field(default="ollama", min_length=1, max_length=80)
-    chat_model: str | None = Field(
-        default=None,
+    provider: str = Field(min_length=1, max_length=80)
+    chat_model: str = Field(
+        min_length=1,
         max_length=160,
         pattern=r"^[A-Za-z0-9][A-Za-z0-9._:/-]*$",
     )
-    vision_model: str | None = Field(
-        default=None,
+    vision_model: str = Field(
+        min_length=1,
         max_length=160,
         pattern=r"^[A-Za-z0-9][A-Za-z0-9._:/-]*$",
     )

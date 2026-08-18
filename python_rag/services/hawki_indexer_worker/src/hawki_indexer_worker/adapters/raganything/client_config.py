@@ -12,6 +12,7 @@ from hawki_rag_resilience.optional_imports import import_required_module
 from hawki_indexer_worker.adapters.raganything.provider_config import (
     clone_provider_for_graph,
     graph_model_override,
+    graph_vision_model_override,
     provider_fingerprint,
 )
 from hawki_indexer_worker.adapters.raganything.runtime import prepare_lightrag_neo4j_env
@@ -51,7 +52,7 @@ def graph_runtime_cache_key(
             str(db_name),
             str(settings.graph_temperature).strip(),
             str(settings.ollama_chat_timeout).strip(),
-            str(settings.vision_model).strip(),
+            str(graph_vision_model_override(provider) or ""),
             str(settings.graph_embedding_dimensions).strip(),
         ]
     )

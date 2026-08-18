@@ -58,8 +58,6 @@ class RagAnythingGraphSettingsCharacterizationTests(unittest.TestCase):
                 "GRAPH_DOC_MAX_CHUNKS": "2",
                 "GRAPH_MIN_CHUNK_CHARS": "40",
                 "GRAPH_MIN_DOC_CHARS": "120",
-                "GRAPH_OLLAMA_RAG_MODEL": "graph-model-v1",
-                "OLLAMA_EMBED_MODEL": "embed-model-v1",
             },
             clear=False,
         ):
@@ -82,8 +80,9 @@ class RagAnythingGraphSettingsCharacterizationTests(unittest.TestCase):
 
         self.assertEqual(summary["neo4j"]["uri"], "bolt://127.0.0.1:7687")
         self.assertEqual(summary["neo4j"]["database"], "rag-db")
-        self.assertEqual(summary["models"]["graph_model"], "graph-model-v1")
-        self.assertEqual(summary["models"]["embed_model"], "embed-model-v1")
+        # No provider wired yet: model names stay empty until a request provides them.
+        self.assertEqual(summary["models"]["graph_model"], "")
+        self.assertEqual(summary["models"]["embed_model"], "")
         self.assertEqual(summary["limits"]["graph_doc_max_chars"], 2500)
         self.assertFalse(summary["resilience"]["graph_embed_junk_strict"])
 

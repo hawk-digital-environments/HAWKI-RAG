@@ -61,7 +61,7 @@ business layer.
 
 ### The Backbone of the System
 
-The bridge is Laravel’s read-only HTTP connection to the Python side. Laravel sends requests with an already trusted authorization scope, and the bridge takes care of getting the right information back—whether that’s query results, related graph facts, runtime configuration and health information, or Temporal control results. Behind the scenes, it talks to Qdrant, Neo4j, model providers, the reranker, and Temporal as needed.
+The bridge is Laravel’s read-only HTTP connection to the Python side. Laravel sends requests with an already trusted authorization scope, and the bridge takes care of getting the right information back—whether that’s query results, related graph facts, health information, or Temporal control results. Behind the scenes, it talks to Qdrant, Neo4j, model providers, the reranker, and Temporal as needed.
 Its job is mainly retrieval orchestration and translating between HTTP requests and the services behind them. It doesn’t handle authentication, ingestion, persistence writes, Laravel metadata, or worker execution. Laravel is always the caller; the bridge simply connects it to the Python services it needs.
 
 
@@ -70,7 +70,6 @@ Its job is mainly retrieval orchestration and translating between HTTP requests 
 | Route | Responsibility |
 | --- | --- |
 | `GET /health` | Liveness and optional lightweight runtime summary |
-| `GET /config` | Read-only provider and collection configuration |
 | `POST /query` | Authorized, dataset-scoped retrieval and grounded generation |
 | `POST /graph/related` | Authorized, dataset- and namespace-scoped graph read |
 | `POST /temporal/workflows/ingest` | Start the stable ingestion workflow |
@@ -90,7 +89,7 @@ Its job is mainly retrieval orchestration and translating between HTTP requests 
 | `http/` | FastAPI schemas, dependencies, and transport composition |
 | `http/errors/` | Stable JSON exception translation |
 | `http/middleware/` | Request-ID propagation and request logging |
-| `http/routers/` | Thin route adapters for health, config, query, graph, and Temporal control |
+| `http/routers/` | Thin route adapters for health, query, graph, and Temporal control |
 
 
 ## `hawki_workflow_worker`
