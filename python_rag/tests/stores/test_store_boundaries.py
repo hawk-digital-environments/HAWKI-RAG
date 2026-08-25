@@ -82,7 +82,7 @@ def test_store_manifest_uses_exact_versions() -> None:
     assert dependencies == [
         "hawki-rag-resilience==0.1.0",
         "hawki-rag-text==0.1.0",
-        "neo4j==5.23.0",
+        "neo4j==6.2.0",
         "requests==2.34.2",
     ]
     assert all("==" in dependency for dependency in dependencies)
