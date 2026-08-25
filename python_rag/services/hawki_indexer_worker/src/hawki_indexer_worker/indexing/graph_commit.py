@@ -9,6 +9,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
+from neo4j.exceptions import DriverError
+
 from hawki_indexer_worker.indexing.graph_prepare import build_triplets_by_doc
 from hawki_indexer_worker.indexing.graph_settings import GraphIngestSettings
 from hawki_indexer_worker.indexing.summary import build_graph_preview
@@ -124,8 +126,8 @@ def commit_graph_triplets(
     finally:
         try:
             graph.close()
-        except Exception:
-            pass
+        except DriverError as exc:
+            logger_obj.warning("graph:neo4j close failed error=%s", type(exc).__name__)
 
 
 def _optional_string(value: object) -> str | None:

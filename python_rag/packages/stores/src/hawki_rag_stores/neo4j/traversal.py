@@ -11,7 +11,10 @@ import time
 import unicodedata
 from typing import Any, Iterable
 
+from neo4j.exceptions import DriverError
+
 from hawki_rag_text.terms import STOPWORDS
+from hawki_rag_stores.neo4j.errors import NEO4J_READ_DEGRADATION_ERRORS
 from hawki_rag_stores.neo4j.graph import Neo4jGraph
 from hawki_rag_stores.neo4j.normalization import (
     dedupe_one_way_triplets,
@@ -341,8 +344,9 @@ def fetch_related_terms(
     dataset_id, neo4j_namespace = _required_graph_scope(dataset_id, neo4j_namespace)
     if not terms:
         return []
-    g = Neo4jGraph(allow_database_fallback=False)
+    g: Neo4jGraph | None = None
     try:
+        g = Neo4jGraph(allow_database_fallback=False)
         results = g.fetch_related(
             terms,
             dataset_id=dataset_id,
@@ -353,13 +357,11 @@ def fetch_related_terms(
             "graph:fetch_related terms=%s results=%s", len(terms), len(results)
         )
         return results
-    except Exception:
+    except NEO4J_READ_DEGRADATION_ERRORS as exc:
+        logger.warning("graph:fetch_related unavailable error=%s", type(exc).__name__)
         return []
     finally:
-        try:
-            g.close()
-        except Exception:
-            pass
+        _close_graph(g)
 
 
 def structural_limit(top_k: int) -> int:
@@ -383,8 +385,9 @@ def build_structural_hits(
     dataset_id, neo4j_namespace = _required_graph_scope(dataset_id, neo4j_namespace)
     if not terms:
         return []
-    g = Neo4jGraph(allow_database_fallback=False)
+    g: Neo4jGraph | None = None
     try:
+        g = Neo4jGraph(allow_database_fallback=False)
         rows = g.search_structural(
             terms,
             dataset_id=dataset_id,
@@ -393,13 +396,13 @@ def build_structural_hits(
             hops=hops,
             include_rel_match=include_rel_match,
         )
-    except Exception:
+    except NEO4J_READ_DEGRADATION_ERRORS as exc:
+        logger.warning(
+            "graph:structural_search unavailable error=%s", type(exc).__name__
+        )
         rows = []
     finally:
-        try:
-            g.close()
-        except Exception:
-            pass
+        _close_graph(g)
 
     hits: list[dict[str, Any]] = []
     for row in rows:
@@ -430,3 +433,14 @@ def build_structural_hits(
         )
     logger.debug("graph:structural_hits terms=%s hits=%s", len(terms), len(hits))
     return hits
+
+
+def _close_graph(graph: Neo4jGraph | None) -> None:
+    """Close an initialized graph without hiding an earlier query failure."""
+
+    if graph is None:
+        return
+    try:
+        graph.close()
+    except DriverError as exc:
+        logger.warning("graph:close failed error=%s", type(exc).__name__)

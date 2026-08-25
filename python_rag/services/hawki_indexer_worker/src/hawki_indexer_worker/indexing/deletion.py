@@ -160,10 +160,7 @@ def delete_document_entries(
         else:
             raw_neo4j_result = graph.delete_by_doc_id(normalized_doc_id)
     finally:
-        try:
-            graph.close()
-        except Exception:
-            pass
+        graph.close()
 
     qdrant_result: QdrantDeletionSummary = {
         "doc_id": normalized_doc_id,

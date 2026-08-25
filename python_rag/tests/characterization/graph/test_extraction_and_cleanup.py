@@ -19,12 +19,6 @@ TESTS_ROOT = ROOT / "tests"
 if str(TESTS_ROOT) not in sys.path:
     sys.path.insert(0, str(TESTS_ROOT))
 
-from characterization_support import (
-    install_optional_dependency_stubs,
-)
-
-install_optional_dependency_stubs()
-
 
 class GraphFallbackCharacterizationTests(unittest.TestCase):
     """Protect graph extraction, filtering, cleanup, and persistence behavior."""

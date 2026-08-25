@@ -25,9 +25,7 @@ class GraphWriteScopingTests(unittest.TestCase):
         executor = Executor()
         graph = Neo4jGraph(
             dataset_id="dataset-a",
-            settings=SimpleNamespace(
-                database=None, retry_attempts=1, log_latency=False, perf_log=False
-            ),
+            settings=SimpleNamespace(database=None, log_latency=False, perf_log=False),
             query_executor=executor,  # type: ignore[arg-type]
         )
 
@@ -191,9 +189,7 @@ class GraphWriteScopingTests(unittest.TestCase):
         executor = Executor()
         graph = Neo4jGraph(
             neo4j_namespace="hawki_dataset_a",
-            settings=SimpleNamespace(
-                database=None, retry_attempts=1, log_latency=False, perf_log=False
-            ),
+            settings=SimpleNamespace(database=None, log_latency=False, perf_log=False),
             query_executor=executor,  # type: ignore[arg-type]
         )
 

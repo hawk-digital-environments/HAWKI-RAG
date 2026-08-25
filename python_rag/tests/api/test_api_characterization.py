@@ -20,15 +20,35 @@ if str(TESTS_ROOT) not in sys.path:
 from characterization_support import (
     fastapi_http_exception_type as _fastapi_http_exception_type,
     fastapi_test_client_class,
-    install_optional_dependency_stubs,
 )
 
-install_optional_dependency_stubs()
 TestClient = fastapi_test_client_class()
 
 
 class ApiCharacterizationTests(unittest.TestCase):
     """Describe bridge reads plus transport-neutral indexer mutation boundaries."""
+
+    def test_neo4j_driver_errors_use_the_explicit_api_boundary(self) -> None:
+        import logging
+
+        from fastapi import FastAPI
+        from neo4j.exceptions import ServiceUnavailable
+
+        from hawki_bridge.http.errors.handlers import install_exception_handlers
+
+        app = FastAPI()
+        install_exception_handlers(app, logging.getLogger("neo4j-handler-test"))
+
+        @app.get("/graph-failure")
+        def graph_failure() -> None:
+            raise ServiceUnavailable("connection details must stay private")
+
+        with TestClient(app) as client:
+            response = client.get("/graph-failure")
+
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.json()["error"]["type"], "Neo4jUnavailable")
+        self.assertNotIn("connection details", response.text)
 
     def test_api_schema_defaults_and_provider_errors_are_validation_boundaries(
         self,

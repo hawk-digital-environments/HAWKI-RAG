@@ -6,8 +6,11 @@ import logging
 import time
 from typing import Any, Callable, Iterable
 
-from hawki_rag_resilience.optional_imports import import_required_module
-from hawki_rag_stores.neo4j.client import ensure_query_executor, is_retryable_write
+from neo4j import GraphDatabase
+from neo4j.exceptions import ClientError, DriverError, Neo4jError
+
+from hawki_rag_stores.neo4j.client import ensure_query_executor
+from hawki_rag_stores.neo4j.errors import is_database_not_found_error
 from hawki_rag_stores.neo4j.transport import (
     Neo4jQueryExecutor,
     Neo4jQueryExecutorProtocol,
@@ -37,28 +40,6 @@ from hawki_rag_stores.neo4j.responses import (
 )
 
 logger = logging.getLogger(__name__)
-
-
-class _UnavailableNeo4jError(Exception):
-    """Sentinel exception type used when the Neo4j package is not installed."""
-
-
-def _neo4j_module() -> Any:
-    return import_required_module(
-        "neo4j",
-        install_hint="Install hawki-rag-stores to use the Neo4j graph adapter.",
-    )
-
-
-def _neo4j_driver_factory() -> Any:
-    return _neo4j_module().GraphDatabase.driver
-
-
-def _neo4j_error_type() -> type[BaseException]:
-    try:
-        return _neo4j_module().exceptions.Neo4jError
-    except RuntimeError:
-        return _UnavailableNeo4jError
 
 
 def _perf_log(enabled: bool, msg: str, *args: object) -> None:
@@ -95,31 +76,32 @@ class Neo4jGraph:
         self._database = self._settings.database
         self._query_executor: Neo4jQueryExecutorProtocol
         if query_executor is None:
-            self._driver = _neo4j_driver_factory()(
+            self._driver = GraphDatabase.driver(
                 self._settings.uri,
                 auth=(self._settings.user, self._settings.password),
+                max_transaction_retry_time=self._settings.max_transaction_retry_time,
             )
             if self._database:
                 try:
                     with self._driver.session(database=self._database) as session:
                         session.run("RETURN 1").consume()
-                except _neo4j_error_type() as exc:
-                    if not allow_database_fallback:
+                except ClientError as exc:
+                    if not (
+                        allow_database_fallback and is_database_not_found_error(exc)
+                    ):
                         self._driver.close()
                         raise
                     logger.warning(
-                        "neo4j:requested database '%s' is unavailable (%s); falling back to default database",
+                        "neo4j:requested database '%s' does not exist; falling back to the default database",
                         self._database,
-                        exc,
                     )
                     self._database = None
+                except (Neo4jError, DriverError):
+                    self._driver.close()
+                    raise
             self._query_executor = Neo4jQueryExecutor(
                 self._session,
-                retry_attempts=getattr(self._settings, "retry_attempts", 3),
                 log_latency=getattr(self._settings, "log_latency", False),
-                operation_attempts=getattr(
-                    self._settings, "retry_attempts_by_operation", None
-                ),
             )
         else:
             self._driver = None
@@ -257,18 +239,16 @@ class Neo4jGraph:
             )
             return
 
-        is_retryable = is_retryable_write(request_id, "neo4j.upsert_triplets")
         query = Neo4jQueryRequest(
             build_upsert_triplets_query(),
             {"rows": rows},
             operation="neo4j.upsert_triplets",
             request_id=request_id,
-            retryable=is_retryable,
         )
         exec_start = time.perf_counter()
         self._run_write(
             query,
-            callback=lambda tx: tx.run(query.statement, **query.params),
+            callback=lambda tx: tx.run(query.statement, **query.params).consume(),
         )
         exec_ms = (time.perf_counter() - exec_start) * 1000
 
@@ -295,13 +275,11 @@ class Neo4jGraph:
             logger.warning("neo4j:refusing unscoped document delete doc_id=%s", doc_key)
             return {"relationships_deleted": 0, "entities_deleted": 0}
 
-        is_retryable = is_retryable_write(request_id, "neo4j.delete_by_doc_id")
         remove_edges_query = Neo4jQueryRequest(
             build_delete_doc_edges_query(),
             {"doc_id": doc_key, "neo4j_namespace": neo4j_namespace},
             operation="neo4j.delete_by_doc_id",
             request_id=request_id,
-            retryable=is_retryable,
         )
         relationships_touched = self._run_write(
             remove_edges_query,
@@ -317,7 +295,6 @@ class Neo4jGraph:
             {"neo4j_namespace": neo4j_namespace},
             operation="neo4j.delete_by_doc_id",
             request_id=request_id,
-            retryable=is_retryable,
         )
         relationships_deleted = self._run_write(
             orphaned_query,
@@ -335,7 +312,6 @@ class Neo4jGraph:
                 {"doc_id": doc_key, "neo4j_namespace": neo4j_namespace},
                 operation="neo4j.delete_by_doc_id",
                 request_id=request_id,
-                retryable=is_retryable,
             )
             nodes_deleted = self._run_write(
                 cleanup_query,
@@ -381,13 +357,10 @@ class Neo4jGraph:
             },
             operation="neo4j.fetch_related",
         )
-        try:
-            result = self._run_read(
-                query,
-                callback=lambda tx: list(tx.run(query.statement, **query.params)),
-            )
-        except _neo4j_error_type():
-            return []
+        result = self._run_read(
+            query,
+            callback=lambda tx: list(tx.run(query.statement, **query.params)),
+        )
 
         return parse_fact_rows(result)
 
@@ -421,11 +394,8 @@ class Neo4jGraph:
             },
             operation="neo4j.search_structural",
         )
-        try:
-            result = self._run_read(
-                query,
-                callback=lambda tx: list(tx.run(query.statement, **query.params)),
-            )
-        except _neo4j_error_type():
-            return []
+        result = self._run_read(
+            query,
+            callback=lambda tx: list(tx.run(query.statement, **query.params)),
+        )
         return parse_structural_rows(result)

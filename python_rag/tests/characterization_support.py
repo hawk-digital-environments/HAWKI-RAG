@@ -1,10 +1,7 @@
-"""Shared test doubles and optional dependency adapters for characterization scenarios."""
+"""Shared test doubles and dependency adapters for characterization scenarios."""
 
 from __future__ import annotations
 
-import sys
-import types
-from importlib import import_module
 from types import SimpleNamespace
 
 from hawki_rag_resilience.optional_imports import import_required_module
@@ -23,14 +20,6 @@ def fastapi_test_client_class():
     from asgi_client import ASGITestClient
 
     return ASGITestClient
-
-
-def neo4j_exceptions_module():
-    """Return Neo4j exceptions through the optional-dependency boundary."""
-    return import_required_module(
-        "neo4j",
-        install_hint="Run `make python-deps` to install the pinned test dependencies.",
-    ).exceptions
 
 
 def requests_http_error_type() -> type[BaseException]:
@@ -59,37 +48,3 @@ class ScopedQdrantStub:
 
     def select_scoped_collection(self, collection: str) -> None:
         self.collection = collection
-
-
-def install_optional_dependency_stubs() -> None:
-    """Install the minimal Neo4j surface used by tests when the driver is absent."""
-    if "neo4j" in sys.modules:
-        return
-
-    try:
-        import_module("neo4j")
-        return
-    except ModuleNotFoundError:
-        pass
-
-    neo4j_module = types.ModuleType("neo4j")
-    neo4j_module.__path__ = []  # type: ignore[attr-defined]
-    exceptions_module = types.ModuleType("neo4j.exceptions")
-
-    class Neo4jError(Exception):
-        """Stand in for the driver's base error during isolated tests."""
-
-    class GraphDatabase:
-        """Prevent characterization tests from creating a real Neo4j driver."""
-
-        @staticmethod
-        def driver(*args, **kwargs):
-            raise RuntimeError(
-                "GraphDatabase.driver should not be called in characterization tests"
-            )
-
-    neo4j_module.GraphDatabase = GraphDatabase
-    exceptions_module.Neo4jError = Neo4jError
-    neo4j_module.exceptions = exceptions_module
-    sys.modules["neo4j"] = neo4j_module
-    sys.modules["neo4j.exceptions"] = exceptions_module
