@@ -8,7 +8,6 @@ from hawki_rag_stores.neo4j.transport import (
     Neo4jQueryExecutor,
     Neo4jQueryExecutorProtocol,
 )
-from hawki_rag_resilience.reliability import is_retry_safe_write
 
 
 def ensure_query_executor(
@@ -23,16 +22,8 @@ def ensure_query_executor(
         return current
     return Neo4jQueryExecutor(
         session_factory,
-        retry_attempts=max(1, int(getattr(settings, "retry_attempts", 1))),
         log_latency=bool(getattr(settings, "log_latency", False)),
-        operation_attempts=getattr(settings, "retry_attempts_by_operation", None),
     )
 
 
-def is_retryable_write(request_id: str | None, operation: str) -> bool:
-    """Retry writes only when a caller provided an idempotency/request id."""
-
-    return bool(request_id and is_retry_safe_write(operation))
-
-
-__all__ = ["ensure_query_executor", "is_retryable_write"]
+__all__ = ["ensure_query_executor"]

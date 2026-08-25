@@ -177,9 +177,7 @@ def live_neo4j() -> LiveNeo4j:
             driver.verify_connectivity()
             with driver.session(database=database) as session:
                 session.run("RETURN 1 AS ready").consume()
-        except (
-            Exception
-        ) as exc:  # The driver exposes several transport/auth subclasses.
+        except (neo4j.exceptions.Neo4jError, neo4j.exceptions.DriverError) as exc:
             failures.append(f"{uri} ({type(exc).__name__})")
             if driver is not None:
                 driver.close()
@@ -190,13 +188,7 @@ def live_neo4j() -> LiveNeo4j:
             user=user or "neo4j",
             password=password,
             database=database,
-            retry_attempts=1,
-            retry_attempts_by_operation={
-                "neo4j.upsert_triplets": 1,
-                "neo4j.delete_by_doc_id": 1,
-                "neo4j.fetch_related": 1,
-                "neo4j.search_structural": 1,
-            },
+            max_transaction_retry_time=1.0,
             log_latency=False,
             perf_log=False,
         )

@@ -1,10 +1,9 @@
-"""Neo4j connection and retry settings."""
+"""Neo4j connection and driver-managed transaction settings."""
 
 from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from typing import Final
 
 
 @dataclass(frozen=True)
@@ -13,8 +12,7 @@ class Neo4jSettings:
     user: str
     password: str
     database: str | None
-    retry_attempts: int
-    retry_attempts_by_operation: dict[str, int]
+    max_transaction_retry_time: float
     log_latency: bool
     perf_log: bool
 
@@ -27,28 +25,14 @@ def load_neo4j_settings(database: str | None = None) -> Neo4jSettings:
     configured_database = (
         database or os.environ.get("NEO4J_DATABASE") or ""
     ).strip() or None
-    default_retry_attempts = _int_env("NEO4J_RETRY_ATTEMPTS", 3)
-    op_default: Final = default_retry_attempts
-    op_upsert = _int_env("NEO4J_RETRY_ATTEMPTS_UPSERT", op_default)
-    op_delete = _int_env("NEO4J_RETRY_ATTEMPTS_DELETE", op_default)
-    op_read = _int_env("NEO4J_RETRY_ATTEMPTS_READ", op_default)
     return Neo4jSettings(
         uri=uri,
         user=(user or "neo4j").strip(),
         password=(password or "").strip(),
         database=configured_database,
-        retry_attempts=default_retry_attempts,
-        retry_attempts_by_operation={
-            "neo4j.upsert_triplets": op_upsert,
-            "neo4j.delete_by_doc_id": op_delete,
-            "neo4j.count_entities": op_read,
-            "neo4j.count_triplets": op_read,
-            "neo4j.count_relationships": op_read,
-            "neo4j.count_labels": op_read,
-            "neo4j.fetch_related": op_read,
-            "neo4j.search_structural": op_read,
-            "neo4j.visualization_cleanup": op_read,
-        },
+        max_transaction_retry_time=max(
+            0.0, _float_env("NEO4J_MAX_TRANSACTION_RETRY_TIME", 30.0)
+        ),
         log_latency=_bool_env("NEO4J_LOG_LATENCY"),
         perf_log=_bool_env("GRAPH_PERF_LOG"),
     )
@@ -61,8 +45,8 @@ def _bool_env(name: str, default: bool = False) -> bool:
     return str(value).strip().lower() in ("1", "true", "yes", "on")
 
 
-def _int_env(name: str, default: int) -> int:
+def _float_env(name: str, default: float) -> float:
     try:
-        return int(os.environ.get(name, default))
-    except Exception:
+        return float(os.environ.get(name, default))
+    except (TypeError, ValueError):
         return default

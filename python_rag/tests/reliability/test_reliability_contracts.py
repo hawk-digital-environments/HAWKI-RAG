@@ -2,40 +2,18 @@
 
 from __future__ import annotations
 
-from importlib import import_module
 from pathlib import Path
 from types import SimpleNamespace
 import sys
-import types
 import unittest
 from unittest.mock import Mock, patch
+
+from neo4j.exceptions import ClientError, ServiceUnavailable
+from requests import ConnectionError as RequestsConnectionError
 
 ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
-
-
-if "neo4j" not in sys.modules:
-    try:
-        import_module("neo4j")
-    except ModuleNotFoundError:
-        neo4j_module = types.ModuleType("neo4j")
-        neo4j_module.__path__ = []  # type: ignore[attr-defined]
-        exceptions_module = types.ModuleType("neo4j.exceptions")
-
-        class Neo4jError(Exception):
-            pass
-
-        class GraphDatabase:
-            @staticmethod
-            def driver(*_args, **_kwargs):
-                raise RuntimeError("GraphDatabase.driver should not be called in tests")
-
-        neo4j_module.GraphDatabase = GraphDatabase
-        exceptions_module.Neo4jError = Neo4jError
-        neo4j_module.exceptions = exceptions_module
-        sys.modules["neo4j"] = neo4j_module
-        sys.modules["neo4j.exceptions"] = exceptions_module
 
 
 class ReliabilityContractTests(unittest.TestCase):
@@ -131,7 +109,7 @@ class ReliabilityContractTests(unittest.TestCase):
         self.assertEqual(len(bounded), 2048)
         self.assertTrue(bounded.endswith("..."))
 
-    def test_neo4j_graph_marks_write_operations_retryable_only_with_request_id(
+    def test_neo4j_graph_preserves_request_id_for_managed_write_telemetry(
         self,
     ) -> None:
         from hawki_rag_stores.neo4j.graph import Neo4jGraph
@@ -145,15 +123,14 @@ class ReliabilityContractTests(unittest.TestCase):
 
             def run_write(self, request, callback):
                 self.requests.append(request)
-                return callback(SimpleNamespace(run=lambda *_a, **_k: None))
+                result = SimpleNamespace(consume=lambda: None)
+                return callback(SimpleNamespace(run=lambda *_a, **_k: result))
 
         executor = FakeExecutor()
         graph = Neo4jGraph(
             dataset_id="dataset-a",
             neo4j_namespace="graph-a",
-            settings=SimpleNamespace(
-                database=None, retry_attempts=1, log_latency=False, perf_log=False
-            ),
+            settings=SimpleNamespace(database=None, log_latency=False, perf_log=False),
             query_executor=executor,  # type: ignore[arg-type]
         )
 
@@ -161,8 +138,8 @@ class ReliabilityContractTests(unittest.TestCase):
         graph.upsert_triplets([("A", "R", "B")], doc_id="doc-id", request_id="op-1")
 
         first_request, second_request = executor.requests[0], executor.requests[1]
-        self.assertFalse(first_request.retryable)
-        self.assertTrue(second_request.retryable)
+        self.assertIsNone(first_request.request_id)
+        self.assertEqual(second_request.request_id, "op-1")
 
     def test_startup_checks_fail_fast_after_retry_cap(self) -> None:
         from hawki_bridge.settings import load_settings
@@ -170,10 +147,10 @@ class ReliabilityContractTests(unittest.TestCase):
 
         settings = load_settings({"STARTUP_CHECK_ATTEMPTS": "2"})
 
-        check_qdrant = Mock(side_effect=RuntimeError("qdrant unavailable"))
+        check_qdrant = Mock(side_effect=RequestsConnectionError("qdrant unavailable"))
         check_neo4j = Mock()
         with patch("hawki_bridge.startup_checks.time.sleep") as sleep:
-            with self.assertRaises(RuntimeError):
+            with self.assertRaises(RequestsConnectionError):
                 run_startup_checks(
                     settings,
                     logger=__import__("logging").getLogger("tests.reliability.startup"),
@@ -183,6 +160,39 @@ class ReliabilityContractTests(unittest.TestCase):
         self.assertEqual(check_qdrant.call_count, 2)
         check_neo4j.assert_not_called()
         self.assertEqual(sleep.call_count, 1)
+
+    def test_neo4j_startup_check_retries_only_driver_classified_failures(
+        self,
+    ) -> None:
+        from hawki_bridge.settings import load_settings
+        from hawki_bridge.startup_checks import run_startup_checks
+
+        settings = load_settings({"STARTUP_CHECK_ATTEMPTS": "2"})
+        logger = __import__("logging").getLogger("tests.reliability.neo4j-startup")
+
+        retryable_check = Mock(side_effect=ServiceUnavailable("not ready"))
+        with patch("hawki_bridge.startup_checks.time.sleep") as sleep:
+            with self.assertRaises(ServiceUnavailable):
+                run_startup_checks(
+                    settings,
+                    logger=logger,
+                    check_qdrant_fn=Mock(),
+                    check_neo4j_fn=retryable_check,
+                )
+        self.assertEqual(retryable_check.call_count, 2)
+        self.assertEqual(sleep.call_count, 1)
+
+        fail_fast_check = Mock(side_effect=ClientError("bad query or credentials"))
+        with patch("hawki_bridge.startup_checks.time.sleep") as sleep:
+            with self.assertRaises(ClientError):
+                run_startup_checks(
+                    settings,
+                    logger=logger,
+                    check_qdrant_fn=Mock(),
+                    check_neo4j_fn=fail_fast_check,
+                )
+        self.assertEqual(fail_fast_check.call_count, 1)
+        sleep.assert_not_called()
 
     def test_qdrant_transport_emits_retry_attempt_telemetry(self) -> None:
         from hawki_rag_stores.qdrant.requests import QdrantRequest

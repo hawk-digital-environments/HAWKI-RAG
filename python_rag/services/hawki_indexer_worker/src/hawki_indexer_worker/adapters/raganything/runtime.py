@@ -8,8 +8,10 @@ import os
 import re
 from typing import Any
 
+from neo4j import GraphDatabase
+from neo4j.exceptions import DriverError, Neo4jError
+
 from hawki_indexer_worker.adapters.raganything.settings import RagAnythingGraphSettings
-from hawki_rag_resilience.optional_imports import import_required_module
 
 logger = logging.getLogger(__name__)
 
@@ -98,19 +100,13 @@ def clear_lightrag_temp_graph(
     neo4j_user: str | None = None,
     neo4j_password: str | None = None,
 ) -> None:
-    """Delete temporary LightRAG + Neo4j graph state from a local DB."""
-    try:
-        neo4j_module = import_required_module(
-            "neo4j",
-            install_hint="Run `make python-deps` to install the pinned indexer dependencies.",
-        )
-        GraphDatabase = neo4j_module.GraphDatabase
-    except Exception as exc:
-        logger.debug(
-            "LightRAG Neo4j temp graph cleanup skipped; driver unavailable: %s", exc
-        )
-        return
+    """Delete temporary LightRAG graph data with a managed, idempotent write.
 
+    ``execute_write`` owns retries and may replay the callback.  ``DETACH
+    DELETE`` is safe to replay.  A final server or driver failure is logged and
+    ignored because this cleanup is best-effort; programming errors still
+    propagate.
+    """
     uri = (neo4j_uri or "").strip() or os.environ.get("NEO4J_URI", "bolt://neo4j:7687")
     user = (
         (neo4j_user or "").strip()
@@ -132,7 +128,15 @@ def clear_lightrag_temp_graph(
             session.execute_write(
                 lambda tx: tx.run("MATCH (n:base) DETACH DELETE n").consume()
             )
-    except Exception as exc:
-        logger.debug("LightRAG Neo4j temp graph cleanup failed: %s", exc)
+    except (Neo4jError, DriverError) as exc:
+        logger.warning(
+            "LightRAG Neo4j temp graph cleanup failed error=%s",
+            type(exc).__name__,
+        )
     finally:
-        driver.close()
+        try:
+            driver.close()
+        except DriverError as exc:
+            logger.warning(
+                "LightRAG Neo4j driver close failed error=%s", type(exc).__name__
+            )

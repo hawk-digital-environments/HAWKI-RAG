@@ -15,10 +15,6 @@ TESTS_ROOT = ROOT / "tests"
 if str(TESTS_ROOT) not in sys.path:
     sys.path.insert(0, str(TESTS_ROOT))
 
-from characterization_support import install_optional_dependency_stubs
-
-install_optional_dependency_stubs()
-
 
 class TemporalMarkdownCharacterizationTests(unittest.TestCase):
     """Verify Temporal reads normalized Markdown before handing documents to ingestion."""

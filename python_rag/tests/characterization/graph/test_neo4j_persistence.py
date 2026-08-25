@@ -7,6 +7,8 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 
+from neo4j.exceptions import ServiceUnavailable
+
 ROOT = Path(__file__).resolve().parents[3]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
@@ -15,16 +17,9 @@ TESTS_ROOT = ROOT / "tests"
 if str(TESTS_ROOT) not in sys.path:
     sys.path.insert(0, str(TESTS_ROOT))
 
-from characterization_support import (
-    install_optional_dependency_stubs,
-    neo4j_exceptions_module as _neo4j_exceptions_module,
-)
-
-install_optional_dependency_stubs()
-
 
 class Neo4jCharacterizationTests(unittest.TestCase):
-    """Protect resilient parsing, dataset-scoped writes, retries, and executor injection."""
+    """Protect parsing, scoped writes, managed retries, and executor injection."""
 
     def test_neo4j_response_parsing_is_robust(self) -> None:
         from hawki_rag_stores.neo4j.responses import (
@@ -130,6 +125,7 @@ class Neo4jCharacterizationTests(unittest.TestCase):
         class Tx:
             def run(self, cypher: str, **params):
                 calls.append((cypher, params))
+                return SimpleNamespace(consume=lambda: None)
 
         class Session:
             def __enter__(self):
@@ -221,17 +217,15 @@ class Neo4jCharacterizationTests(unittest.TestCase):
             ],
         )
 
-    def test_neo4j_query_executor_retries_transient_errors(self) -> None:
+    def test_neo4j_query_executor_does_not_wrap_managed_transaction_retries(
+        self,
+    ) -> None:
         from hawki_rag_stores.neo4j.requests import Neo4jQueryRequest
         from hawki_rag_stores.neo4j.transport import Neo4jQueryExecutor
 
-        neo4j_exceptions = _neo4j_exceptions_module()
-        attempts: list[int] = []
+        execute_read_calls: list[int] = []
 
         class Session:
-            def __init__(self) -> None:
-                attempts.append(1)
-
             def __enter__(self):
                 return self
 
@@ -239,25 +233,20 @@ class Neo4jCharacterizationTests(unittest.TestCase):
                 return False
 
             def execute_read(self, callback):
-                if len(attempts) < 2:
-                    raise neo4j_exceptions.Neo4jError("retry now")
-                return callback(self)
+                execute_read_calls.append(1)
+                raise ServiceUnavailable("driver retry window exhausted")
 
-        executed: list[bool] = []
         executor = Neo4jQueryExecutor(
             session_factory=Session,
-            retry_attempts=3,
             log_latency=False,
-            backoff_seconds=0.0,
         )
-        result = executor.run_read(
-            Neo4jQueryRequest("RETURN 1", {}),
-            callback=lambda tx: executed.append(True) or "ok",
-        )
+        with self.assertRaises(ServiceUnavailable):
+            executor.run_read(
+                Neo4jQueryRequest("RETURN 1", {}),
+                callback=lambda _tx: "unreachable",
+            )
 
-        self.assertEqual(result, "ok")
-        self.assertEqual(len(attempts), 2)
-        self.assertEqual(executed, [True])
+        self.assertEqual(execute_read_calls, [1])
 
     def test_neo4j_graph_accepts_injected_query_executor(self) -> None:
         from hawki_rag_stores.neo4j.graph import Neo4jGraph
@@ -286,7 +275,7 @@ class Neo4jCharacterizationTests(unittest.TestCase):
 
                 class Tx:
                     def run(self, statement: str, **_params: str):
-                        return {"statement": statement}
+                        return SimpleNamespace(consume=lambda: {"statement": statement})
 
                 return callback(Tx())
 
@@ -294,9 +283,7 @@ class Neo4jCharacterizationTests(unittest.TestCase):
         graph = Neo4jGraph(
             dataset_id="dataset-a",
             neo4j_namespace="graph-a",
-            settings=SimpleNamespace(
-                database=None, retry_attempts=1, log_latency=False, perf_log=False
-            ),
+            settings=SimpleNamespace(database=None, log_latency=False, perf_log=False),
             query_executor=executor,  # type: ignore[arg-type]
         )
         fetch_result = graph.fetch_related(

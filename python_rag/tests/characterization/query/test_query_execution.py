@@ -20,10 +20,7 @@ if str(TESTS_ROOT) not in sys.path:
 from characterization_support import (
     ScopedQdrantStub as _ScopedQdrantStub,
     authorized_query_scope as _authorized_query_scope,
-    install_optional_dependency_stubs,
 )
-
-install_optional_dependency_stubs()
 
 
 class QueryCharacterizationTests(unittest.TestCase):

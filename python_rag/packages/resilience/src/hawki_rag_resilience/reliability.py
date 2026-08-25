@@ -21,13 +21,6 @@ def _requests_exceptions_module() -> object | None:
     return requests_module.exceptions
 
 
-def _neo4j_error_type() -> type[BaseException] | None:
-    neo4j_module = import_optional_module("neo4j")
-    if neo4j_module is None:
-        return None
-    return neo4j_module.exceptions.Neo4jError
-
-
 def _qdrant_retryable_exception_types() -> tuple[type[BaseException], ...]:
     request_exceptions = _requests_exceptions_module()
     if request_exceptions is None:
@@ -44,8 +37,6 @@ RETRY_SAFE_WRITE_OPERATIONS: frozenset[str] = frozenset(
     {
         "qdrant.upsert_points",
         "qdrant.delete_by_filter",
-        "neo4j.upsert_triplets",
-        "neo4j.delete_by_doc_id",
     }
 )
 
@@ -53,19 +44,6 @@ QDRANT_RETRYABLE_STATUS_CODES: frozenset[int] = frozenset({429, 500, 502, 503, 5
 QDRANT_RETRYABLE_EXCEPTIONS: tuple[type[BaseException], ...] = (
     _qdrant_retryable_exception_types()
 )
-NEO4J_RETRYABLE_ERROR_TOKENS: tuple[str, ...] = (
-    "transient",
-    "retry",
-    "timeout",
-    "timed out",
-    "connection",
-    "temporarily",
-    "service unavailable",
-    "database unavailable",
-    "connection refused",
-    "temporary",
-)
-
 API_REQUEST_START_EVENT = "api.request_start"
 API_REQUEST_END_EVENT = "api.request_end"
 API_REQUEST_ERROR_EVENT = "api.request_error"
@@ -159,17 +137,6 @@ def is_retryable_http_exception(exc: Exception) -> bool:
         status = getattr(response, "status_code", None)
         return status in QDRANT_RETRYABLE_STATUS_CODES
     return False
-
-
-def is_retryable_neo4j_exception(exc: Exception) -> bool:
-    """Classify transient Neo4j exceptions as retryable."""
-    neo4j_error_type = _neo4j_error_type()
-    if neo4j_error_type is None:
-        return False
-    if not isinstance(exc, neo4j_error_type):
-        return False
-    lowered = str(exc).lower()
-    return any(token in lowered for token in NEO4J_RETRYABLE_ERROR_TOKENS)
 
 
 def normalize_retry_attempt_limit(value: int | str, *, minimum: int = 1) -> int:

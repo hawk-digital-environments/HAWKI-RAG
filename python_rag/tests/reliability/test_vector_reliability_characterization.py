@@ -17,11 +17,8 @@ if str(TESTS_ROOT) not in sys.path:
     sys.path.insert(0, str(TESTS_ROOT))
 
 from characterization_support import (
-    install_optional_dependency_stubs,
     requests_http_error_type as _requests_http_error_type,
 )
-
-install_optional_dependency_stubs()
 
 
 class QdrantReliabilityCharacterizationTests(unittest.TestCase):

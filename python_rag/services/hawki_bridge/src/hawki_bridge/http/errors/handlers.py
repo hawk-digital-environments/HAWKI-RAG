@@ -7,9 +7,15 @@ from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
+from neo4j.exceptions import DriverError, Neo4jError
 from requests import RequestException
 
 from hawki_rag_resilience.reliability import API_REQUEST_ERROR_EVENT, log_redacted_value
+from hawki_rag_stores.neo4j.errors import (
+    NEO4J_READ_DEGRADATION_ERRORS,
+    Neo4jOperationError,
+    classify_neo4j_error,
+)
 
 
 def build_error_payload(
@@ -114,6 +120,33 @@ def install_exception_handlers(app: FastAPI, logger) -> None:
             ),
         )
 
+    def handle_neo4j_error(request: Request, exc: Neo4jOperationError) -> JSONResponse:
+        policy = classify_neo4j_error(exc)
+        status_code = 503 if isinstance(exc, NEO4J_READ_DEGRADATION_ERRORS) else 500
+        logger.error(
+            "event=%s type=neo4j_error path=%s status=%s family=%s "
+            "retryable=%s commit_outcome_unknown=%s",
+            API_REQUEST_ERROR_EVENT,
+            getattr(request.url, "path", ""),
+            status_code,
+            policy.family,
+            policy.retryable,
+            policy.commit_outcome_unknown,
+        )
+        return JSONResponse(
+            status_code=status_code,
+            content=build_error_payload(
+                request,
+                status=status_code,
+                error_type="Neo4jUnavailable"
+                if status_code == 503
+                else "Neo4jOperationError",
+                message="Graph storage is temporarily unavailable."
+                if status_code == 503
+                else "Graph storage rejected the operation.",
+            ),
+        )
+
     def handle_runtime_error(request: Request, exc: RuntimeError) -> JSONResponse:
         status_code = 502
         logger.error(
@@ -154,5 +187,7 @@ def install_exception_handlers(app: FastAPI, logger) -> None:
     app.add_exception_handler(HTTPException, handle_http_error)
     app.add_exception_handler(ValueError, handle_value_error)
     app.add_exception_handler(RequestException, handle_request_error)
+    app.add_exception_handler(Neo4jError, handle_neo4j_error)
+    app.add_exception_handler(DriverError, handle_neo4j_error)
     app.add_exception_handler(RuntimeError, handle_runtime_error)
     app.add_exception_handler(Exception, handle_unexpected)

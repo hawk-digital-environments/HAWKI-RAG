@@ -7,46 +7,15 @@ import importlib
 import sys
 import tempfile
 import tomllib
-import types
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from requests import ConnectionError as RequestsConnectionError
+
 ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
-
-
-def _install_optional_dependency_stubs() -> None:
-    if "neo4j" not in sys.modules:
-        try:
-            importlib.import_module("neo4j")
-            return
-        except ModuleNotFoundError:
-            pass
-
-        neo4j_module = types.ModuleType("neo4j")
-        neo4j_module.__path__ = []  # type: ignore[attr-defined]
-        exceptions_module = types.ModuleType("neo4j.exceptions")
-
-        class Neo4jError(Exception):
-            pass
-
-        class GraphDatabase:
-            @staticmethod
-            def driver(*args: object, **kwargs: object) -> object:
-                raise RuntimeError(
-                    "GraphDatabase.driver should not be called in refactor boundary tests"
-                )
-
-        neo4j_module.GraphDatabase = GraphDatabase
-        exceptions_module.Neo4jError = Neo4jError
-        neo4j_module.exceptions = exceptions_module
-        sys.modules["neo4j"] = neo4j_module
-        sys.modules["neo4j.exceptions"] = exceptions_module
-
-
-_install_optional_dependency_stubs()
 
 
 def test_qdrant_client_ops_capture_gateway_and_limit_policy() -> None:
@@ -364,22 +333,18 @@ def test_text_helper_modules_preserve_term_tag_and_chunk_rules() -> None:
     ]
 
 
-def test_neo4j_client_ops_reuse_executor_and_retry_policy() -> None:
-    from hawki_rag_stores.neo4j.client import ensure_query_executor, is_retryable_write
+def test_neo4j_client_ops_reuse_managed_transaction_executor() -> None:
+    from hawki_rag_stores.neo4j.client import ensure_query_executor
 
     existing = object()
     assert (
         ensure_query_executor(
             existing,
             session_factory=lambda: None,
-            settings=SimpleNamespace(
-                retry_attempts=3, log_latency=False, retry_attempts_by_operation={}
-            ),
+            settings=SimpleNamespace(log_latency=False),
         )
         is existing
     )
-    assert is_retryable_write(None, "neo4j.upsert_triplets") is False
-    assert is_retryable_write("request-a", "neo4j.upsert_triplets") is True
 
 
 def test_ollama_helpers_parse_options_payload_and_fallbacks() -> None:
@@ -433,7 +398,7 @@ def test_startup_checks_accept_injected_dependency_checks() -> None:
     def check_qdrant(timeout: float) -> None:
         calls.append(f"qdrant:{timeout}")
         if calls.count(f"qdrant:{timeout}") == 1:
-            raise RuntimeError("not yet")
+            raise RequestsConnectionError("not yet")
 
     def check_neo4j() -> None:
         calls.append("neo4j")

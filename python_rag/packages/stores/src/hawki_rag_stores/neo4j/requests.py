@@ -30,7 +30,6 @@ class Neo4jQueryRequest:
     statement: str
     params: dict[str, Any]
     operation: str | None = None
-    retryable: bool = True
     request_id: str | None = None
 
 

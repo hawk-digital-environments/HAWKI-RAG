@@ -18,12 +18,6 @@ TESTS_ROOT = ROOT / "tests"
 if str(TESTS_ROOT) not in sys.path:
     sys.path.insert(0, str(TESTS_ROOT))
 
-from characterization_support import (
-    install_optional_dependency_stubs,
-)
-
-install_optional_dependency_stubs()
-
 
 class RagAnythingGraphSettingsCharacterizationTests(unittest.TestCase):
     """Explain how graph runtime settings are parsed and reported."""
@@ -143,6 +137,54 @@ class RagAnythingUtilsCharacterizationTests(unittest.TestCase):
 
 class RagAnythingClientModuleCharacterizationTests(unittest.TestCase):
     """Protect graph cache identity, extraction IDs, and scoped cleanup."""
+
+    def test_temp_graph_cleanup_handles_only_neo4j_operation_errors(self) -> None:
+        from neo4j.exceptions import ServiceUnavailable
+
+        from hawki_indexer_worker.adapters.raganything.runtime import (
+            clear_lightrag_temp_graph,
+        )
+
+        class Session:
+            def __init__(self, failure: BaseException) -> None:
+                self.failure = failure
+
+            def __enter__(self) -> "Session":
+                return self
+
+            def __exit__(self, *_args: object) -> None:
+                return None
+
+            def execute_write(self, _callback) -> None:
+                raise self.failure
+
+        class Driver:
+            def __init__(self, failure: BaseException) -> None:
+                self.failure = failure
+                self.closed = False
+
+            def session(self, **_kwargs: object) -> Session:
+                return Session(self.failure)
+
+            def close(self) -> None:
+                self.closed = True
+
+        driver = Driver(ServiceUnavailable("not ready"))
+        with patch(
+            "hawki_indexer_worker.adapters.raganything.runtime.GraphDatabase.driver",
+            return_value=driver,
+        ):
+            clear_lightrag_temp_graph()
+        self.assertTrue(driver.closed)
+
+        programming_failure_driver = Driver(ValueError("callback bug"))
+        with patch(
+            "hawki_indexer_worker.adapters.raganything.runtime.GraphDatabase.driver",
+            return_value=programming_failure_driver,
+        ):
+            with self.assertRaises(ValueError):
+                clear_lightrag_temp_graph()
+        self.assertTrue(programming_failure_driver.closed)
 
     def test_graph_cache_key_changes_with_db_name(self) -> None:
         from hawki_indexer_worker.adapters.raganything.client_config import (

@@ -65,7 +65,6 @@ def _graph(executor: _ScopeAwareExecutor) -> Any:
     return Neo4jGraph(
         settings=SimpleNamespace(
             database=None,
-            retry_attempts=1,
             log_latency=False,
             perf_log=False,
         ),
