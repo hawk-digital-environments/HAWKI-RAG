@@ -10,7 +10,7 @@ from typing import Any, TypeVar
 from requests import RequestException
 
 from hawki_vector_store.client import QdrantHTTP, ScopedCollectionNotReadyError
-from hawki_vector_store.strategies import (
+from hawki_bridge.adapters.qdrant_search_policy import (
     semantic_search_basic,
     semantic_search_high_recall,
     optimized_semantic_search,

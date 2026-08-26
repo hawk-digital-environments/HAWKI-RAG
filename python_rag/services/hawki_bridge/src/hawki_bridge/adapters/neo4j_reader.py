@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import logging
 from typing import Any
 
 from neo4j import GraphDatabase
@@ -12,11 +13,106 @@ from hawki_graph_store.errors import (
     NEO4J_ERRORS,
     NEO4J_UNAVAILABLE_ERRORS,
 )
+from hawki_graph_store.graph import Neo4jGraph
 from hawki_graph_store.settings import load_neo4j_settings
-from hawki_graph_store.traversal import (
-    build_structural_hits,
-    fetch_related_terms,
-)
+
+logger = logging.getLogger(__name__)
+
+
+def fetch_related_terms(
+    terms: list[str],
+    *,
+    dataset_id: str,
+    neo4j_namespace: str,
+    limit: int = 30,
+) -> list[dict[str, str]]:
+    """Read dataset-scoped graph facts and degrade only availability failures."""
+
+    if not terms:
+        return []
+    graph: Neo4jGraph | None = None
+    try:
+        graph = Neo4jGraph(allow_database_fallback=False)
+        return graph.fetch_related(
+            terms,
+            dataset_id=dataset_id,
+            neo4j_namespace=neo4j_namespace,
+            limit=limit,
+        )
+    except NEO4J_UNAVAILABLE_ERRORS as exc:
+        logger.warning("graph:fetch_related unavailable error=%s", type(exc).__name__)
+        return []
+    finally:
+        _close_graph(graph)
+
+
+def build_structural_hits(
+    terms: list[str],
+    *,
+    dataset_id: str,
+    neo4j_namespace: str,
+    limit: int,
+    hops: int,
+    include_rel_match: bool = False,
+) -> list[dict[str, Any]]:
+    """Project dataset-scoped Neo4j rows into bridge retrieval candidates."""
+
+    if not terms:
+        return []
+    graph: Neo4jGraph | None = None
+    try:
+        graph = Neo4jGraph(allow_database_fallback=False)
+        rows = graph.search_structural(
+            terms,
+            dataset_id=dataset_id,
+            neo4j_namespace=neo4j_namespace,
+            limit=limit,
+            hops=hops,
+            include_rel_match=include_rel_match,
+        )
+    except NEO4J_UNAVAILABLE_ERRORS as exc:
+        logger.warning(
+            "graph:structural_search unavailable error=%s", type(exc).__name__
+        )
+        rows = []
+    finally:
+        _close_graph(graph)
+
+    hits: list[dict[str, Any]] = []
+    for row in rows:
+        subject = row.get("subject") or ""
+        relation = row.get("relation") or ""
+        object_ = row.get("object") or ""
+        hops_used = int(row.get("hops") or 1)
+        doc_id = row.get("doc_id")
+        hits.append(
+            {
+                "id": f"neo4j:{subject}:{relation}:{object_}:{doc_id or ''}",
+                "score": 1.0 / max(1, hops_used),
+                "payload": {
+                    "component_type": "relation",
+                    "subject": subject,
+                    "relation": relation,
+                    "object": object_,
+                    "doc_id": doc_id,
+                    "dataset_id": dataset_id,
+                    "neo4j_namespace": neo4j_namespace,
+                    "content": f"{subject} -{relation}-> {object_}".strip(" -"),
+                    "title": "Graph relation",
+                },
+                "source": "neo4j",
+            }
+        )
+    return hits
+
+
+def _close_graph(graph: Neo4jGraph | None) -> None:
+    if graph is None:
+        return
+    try:
+        graph.close()
+    except DriverError as exc:
+        logger.warning("graph:close failed error=%s", type(exc).__name__)
 
 
 @dataclass(frozen=True, slots=True)

@@ -124,6 +124,7 @@ def test_query_use_case_has_one_typed_boundary_without_forwarding_modules() -> N
 def test_bridge_store_packages_are_visible_only_to_their_adapters() -> None:
     allowed = {
         SOURCE / "adapters" / "qdrant_reader.py": {"hawki_vector_store"},
+        SOURCE / "adapters" / "qdrant_search_policy.py": {"hawki_vector_store"},
         SOURCE / "adapters" / "neo4j_reader.py": {"hawki_graph_store", "neo4j"},
     }
     violations: list[str] = []
