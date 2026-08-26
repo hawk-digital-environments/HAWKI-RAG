@@ -9,7 +9,8 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from requests import RequestException
 
-from hawki_rag_resilience.reliability import API_REQUEST_ERROR_EVENT, log_redacted_value
+from hawki_observability.events import API_REQUEST_ERROR as API_REQUEST_ERROR_EVENT
+from hawki_observability.redaction import log_redacted_value
 from hawki_bridge.adapters.neo4j_reader import (
     DriverError,
     NEO4J_ERRORS,

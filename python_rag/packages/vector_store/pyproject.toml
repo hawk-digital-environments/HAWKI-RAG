@@ -8,7 +8,7 @@ authors = [
 ]
 requires-python = "==3.13.14"
 dependencies = [
-    "hawki-rag-resilience==0.1.0",
+    "hawki-observability==0.1.0",
     "requests==2.34.2",
 ]
 
@@ -20,4 +20,4 @@ build-backend = "uv_build"
 module-name = "hawki_vector_store"
 
 [tool.uv.sources]
-hawki-rag-resilience = { workspace = true }
+hawki-observability = { workspace = true }

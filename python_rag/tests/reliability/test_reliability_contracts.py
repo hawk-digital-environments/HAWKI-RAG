@@ -59,7 +59,7 @@ class ReliabilityContractTests(unittest.TestCase):
         self.assertEqual(transport.requests[1].operation_id, "req-doc")
 
     def test_log_redaction_masks_secrets_in_headers_and_body_snippets(self) -> None:
-        from hawki_rag_resilience.redaction import (
+        from hawki_observability.redaction import (
             log_redacted_value,
             preview_request_body,
             preview_request_headers,

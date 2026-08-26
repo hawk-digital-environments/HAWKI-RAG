@@ -8,7 +8,7 @@ authors = [
 ]
 requires-python = "==3.13.14"
 dependencies = [
-    "hawki-rag-resilience==0.1.0",
+    "hawki-observability==0.1.0",
     "neo4j==6.2.0",
 ]
 
@@ -20,5 +20,5 @@ build-backend = "uv_build"
 module-name = "hawki_graph_store"
 
 [tool.uv.sources]
-hawki-rag-resilience = { workspace = true }
+hawki-observability = { workspace = true }
 hawki-rag-text = { workspace = true }

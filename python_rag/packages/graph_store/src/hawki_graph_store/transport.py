@@ -7,11 +7,10 @@ import time
 from collections.abc import Callable
 from typing import Any, Protocol, TypeVar
 
+from hawki_observability.events import NEO4J_ADAPTER_QUERY
+from hawki_observability.redaction import sanitize_for_log
+
 from hawki_graph_store.requests import Neo4jQueryRequest
-from hawki_rag_resilience.reliability import (
-    NEO4J_ADAPTER_EVENT,
-    sanitize_for_log,
-)
 
 SessionFactory = Callable[[], Any]
 QueryResult = TypeVar("QueryResult")
@@ -83,7 +82,7 @@ class Neo4jQueryExecutor:
             logger.info(
                 "event=%s operation=%s request_id=%s elapsed_ms=%.3f "
                 "retry_owner=neo4j_driver_managed_transaction",
-                NEO4J_ADAPTER_EVENT,
+                NEO4J_ADAPTER_QUERY,
                 op,
                 sanitize_for_log(request_id),
                 (time.perf_counter() - started) * 1000,

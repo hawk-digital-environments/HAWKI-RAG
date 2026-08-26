@@ -27,8 +27,10 @@ def test_service_is_exactly_pinned_and_imports_no_legacy_or_other_service() -> N
     assert pyproject["project"]["requires-python"] == "==3.13.14"
     assert pyproject["project"]["dependencies"] == [
         "hawki-artifact-store==0.1.0",
+        "hawki-external-jobs==0.1.0",
+        "hawki-observability==0.1.0",
+        "hawki-pipeline-callbacks==0.1.0",
         "hawki-rag-contracts==0.1.0",
-        "hawki-rag-resilience==0.1.0",
         "hawki-worker-runtime==0.1.0",
         "temporalio==1.30.0",
     ]

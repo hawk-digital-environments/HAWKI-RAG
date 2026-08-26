@@ -8,10 +8,12 @@ from uuid import uuid4
 from fastapi import FastAPI, Request
 from starlette.responses import Response
 
-from hawki_rag_resilience.reliability import (
-    API_REQUEST_END_EVENT,
-    API_REQUEST_ERROR_EVENT,
-    API_REQUEST_START_EVENT,
+from hawki_observability.events import (
+    API_REQUEST_END as API_REQUEST_END_EVENT,
+    API_REQUEST_ERROR as API_REQUEST_ERROR_EVENT,
+    API_REQUEST_START as API_REQUEST_START_EVENT,
+)
+from hawki_observability.redaction import (
     DEFAULT_REQUEST_BODY_SNIPPET_BYTES,
     pick_request_id,
     preview_request_body,

@@ -7,7 +7,7 @@ from typing import Any, Protocol
 
 from hawki_artifact_store.local import LocalArtifactStore
 from hawki_rag_contracts.ingestion import shared_storage_root
-from hawki_worker_runtime.external_jobs import ExternalJobClient
+from hawki_external_jobs import ExternalJobClient
 
 from hawki_scraper_worker.adapters.artifact_store import LocalUploadArtifactStager
 from hawki_scraper_worker.scraping.client import create_scraper_client

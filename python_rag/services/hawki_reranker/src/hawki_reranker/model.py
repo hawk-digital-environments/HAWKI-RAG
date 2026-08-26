@@ -5,8 +5,6 @@ from __future__ import annotations
 from threading import Lock
 from typing import Any, Protocol
 
-from hawki_rag_resilience.optional_imports import import_required_module
-
 
 class RerankingModel(Protocol):
     def predict(self, pairs: list[list[str]]) -> Any:
@@ -27,11 +25,9 @@ class LazyCrossEncoder:
             return self._model
         with self._lock:
             if self._model is None:
-                module = import_required_module(
-                    "sentence_transformers",
-                    install_hint="Install the hawki-reranker service dependencies.",
-                )
-                self._model = module.CrossEncoder(self.model_name)
+                from sentence_transformers import CrossEncoder
+
+                self._model = CrossEncoder(self.model_name)
         return self._model
 
 

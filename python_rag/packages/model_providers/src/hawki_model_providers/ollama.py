@@ -5,6 +5,8 @@ import random
 import time
 from typing import Any
 
+import requests
+
 from hawki_model_providers.ollama_helpers import (
     build_chat_payload,
     chat_options_from_env,
@@ -16,7 +18,6 @@ from hawki_model_providers.ollama_helpers import (
     infer_embedding_dim,
     is_ollama_nan_embedding_error,
 )
-from hawki_rag_resilience.optional_imports import import_required_module
 
 
 logger = logging.getLogger(__name__)
@@ -38,10 +39,7 @@ def _clean_ollama_image_data(value: object) -> str | None:
 
 
 def _requests_module() -> Any:
-    return import_required_module(
-        "requests",
-        install_hint="Run `make python-deps` to install the pinned Ollama provider dependencies.",
-    )
+    return requests
 
 
 def _request_exception_types(
@@ -62,6 +60,8 @@ class OllamaProvider:
         self.rag_model: str | None = None
         self.vision_model: str | None = None
         self._last_embed_dim: int | None = None
+        self._explicit_graph_model: str | None = None
+        self._explicit_vision_model: str | None = None
 
     def _require_model(self, attribute: str, capability: str) -> str:
         model = getattr(self, attribute)

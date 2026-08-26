@@ -34,9 +34,11 @@ Reusable libraries:
 - `packages/artifact_store`: root-confined local shared-volume operations,
   atomic manifests, and stable content/document identities. Laravel allocates
   the paths; canonical wire models live in `packages/contracts`.
-- `packages/worker_runtime`: Temporal bootstrap helpers, retries, heartbeats,
-  logging, external jobs, and signed callback delivery.
-- `packages/resilience`: retry, optional-import, redaction, and event helpers.
+- `packages/worker_runtime`: Temporal bootstrap, retry-delay, heartbeat, and
+  worker-logging helpers.
+- `packages/pipeline_callbacks`: signed Laravel callback delivery.
+- `packages/external_jobs`: external start/status HTTP polling.
+- `packages/observability`: secret-safe logging and stable event names.
 - `packages/text_processing`: Markdown/text normalization, chunking, tags,
   safety, terms, and packaged German stopwords.
 - `packages/model_providers`: provider ports plus Ollama and LiteLLM adapters.

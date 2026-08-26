@@ -5,8 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 import os
 
+from hawki_pipeline_callbacks import LaravelCallbackSettings
 from hawki_rag_contracts.temporal import SCRAPER_TASK_QUEUE
-from hawki_worker_runtime.callbacks import LaravelCallbackSettings
 from hawki_worker_runtime.settings import (
     WorkerRuntimeSettings,
     load_worker_runtime_settings,
@@ -56,10 +56,16 @@ class ScraperWorkerSettings:
 
         runtime = load_worker_runtime_settings()
         callback = LaravelCallbackSettings(
-            endpoint=runtime.laravel_callback_url,
-            secret=runtime.laravel_callback_secret,
-            timeout_seconds=runtime.laravel_callback_timeout_seconds,
-            retry_attempts=runtime.laravel_callback_retry_attempts,
+            endpoint=_environment_value("HAWKI_RAG_WORKER_CALLBACK_URL", ""),
+            secret=os.environ.get("HAWKI_RAG_WORKER_CALLBACK_SECRET", ""),
+            timeout_seconds=max(
+                0.1,
+                _environment_float("HAWKI_RAG_WORKER_CALLBACK_TIMEOUT_SECONDS", 10.0),
+            ),
+            retry_attempts=max(
+                1,
+                _environment_int("HAWKI_RAG_WORKER_CALLBACK_RETRY_ATTEMPTS", 3),
+            ),
         )
         return cls(
             runtime=runtime,

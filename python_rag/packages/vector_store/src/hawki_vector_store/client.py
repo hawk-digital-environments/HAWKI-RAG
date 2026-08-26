@@ -3,6 +3,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+import requests
+
 from hawki_vector_store.collections import (
     pick_most_populated_collection,
     vector_size_from_config,
@@ -47,26 +49,12 @@ from hawki_vector_store.interpretation import (
     sort_hits_by_score,
 )
 from hawki_vector_store.transport import QdrantHTTPTransport
-from hawki_rag_resilience.optional_imports import import_required_module
 
 logger = logging.getLogger(__name__)
 
 
 class ScopedCollectionNotReadyError(RuntimeError):
     """The authorized query collection does not exist in Qdrant."""
-
-
-class _RequestsProxy:
-    """Patchable proxy that lazily loads requests for session construction."""
-
-    def Session(self) -> Any:
-        return import_required_module(
-            "requests",
-            install_hint="Install hawki-vector-store to use Qdrant HTTP transport.",
-        ).Session()
-
-
-requests = _RequestsProxy()
 
 
 class QdrantHTTP:
