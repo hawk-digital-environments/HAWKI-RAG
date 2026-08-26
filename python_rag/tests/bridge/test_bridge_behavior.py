@@ -10,6 +10,7 @@ from typing import Any, cast
 import pytest
 from fastapi import APIRouter
 from fastapi.routing import APIRoute
+from neo4j.exceptions import Neo4jError, ServiceUnavailable
 from temporalio.service import RPCError, RPCStatusCode
 
 from hawki_bridge.adapters.neo4j_reader import Neo4jReader
@@ -255,6 +256,96 @@ def test_neo4j_adapter_delegates_a_read_without_changing_scope(
         "neo4j_namespace": "dataset_42_graph",
         "limit": 11,
     }
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        Neo4jError._hydrate_neo4j(
+            code="Neo.ClientError.Security.Unauthorized",
+            message="bad credentials",
+        ),
+        ValueError("result contract is invalid"),
+    ],
+)
+@pytest.mark.parametrize("operation", ["related", "structural"])
+def test_neo4j_adapter_propagates_non_availability_errors(
+    monkeypatch: pytest.MonkeyPatch,
+    error: BaseException,
+    operation: str,
+) -> None:
+    from hawki_bridge.adapters import neo4j_reader as reader_module
+
+    class FailingGraph:
+        def __init__(self, **_kwargs: Any) -> None:
+            pass
+
+        def fetch_related(self, *_args: Any, **_kwargs: Any) -> list[dict[str, str]]:
+            raise error
+
+        def search_structural(
+            self, *_args: Any, **_kwargs: Any
+        ) -> list[dict[str, Any]]:
+            raise error
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(reader_module, "Neo4jGraph", FailingGraph)
+
+    with pytest.raises(type(error)):
+        if operation == "related":
+            reader_module.fetch_related_terms(
+                ["term"], dataset_id="dataset-a", neo4j_namespace="graph-a"
+            )
+        else:
+            reader_module.build_structural_hits(
+                ["term"],
+                dataset_id="dataset-a",
+                neo4j_namespace="graph-a",
+                limit=10,
+                hops=2,
+            )
+
+
+@pytest.mark.parametrize("operation", ["related", "structural"])
+def test_neo4j_adapter_degrades_only_unavailability_to_empty(
+    monkeypatch: pytest.MonkeyPatch,
+    operation: str,
+) -> None:
+    from hawki_bridge.adapters import neo4j_reader as reader_module
+
+    class UnavailableGraph:
+        def __init__(self, **_kwargs: Any) -> None:
+            pass
+
+        def fetch_related(self, *_args: Any, **_kwargs: Any) -> list[dict[str, str]]:
+            raise ServiceUnavailable("connection details must stay private")
+
+        def search_structural(
+            self, *_args: Any, **_kwargs: Any
+        ) -> list[dict[str, Any]]:
+            raise ServiceUnavailable("connection details must stay private")
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(reader_module, "Neo4jGraph", UnavailableGraph)
+
+    if operation == "related":
+        result = reader_module.fetch_related_terms(
+            ["term"], dataset_id="dataset-a", neo4j_namespace="graph-a"
+        )
+    else:
+        result = reader_module.build_structural_hits(
+            ["term"],
+            dataset_id="dataset-a",
+            neo4j_namespace="graph-a",
+            limit=10,
+            hops=2,
+        )
+
+    assert result == []
 
 
 def test_health_route_can_include_or_omit_the_runtime_summary() -> None:

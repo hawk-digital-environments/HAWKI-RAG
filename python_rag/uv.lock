@@ -859,14 +859,12 @@ version = "0.1.0"
 source = { editable = "packages/graph_store" }
 dependencies = [
     { name = "hawki-rag-resilience" },
-    { name = "hawki-rag-text" },
     { name = "neo4j" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "hawki-rag-resilience", editable = "packages/resilience" },
-    { name = "hawki-rag-text", editable = "packages/text_processing" },
     { name = "neo4j", specifier = "==6.2.0" },
 ]
 

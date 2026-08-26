@@ -1,14 +1,10 @@
-"""
-Reusable Qdrant search strategies for the FastAPI bridge.
-Each function encapsulates one retrieval approach so the caller can
-choose the behaviour that best matches the query. When `is_optimized`
-is enabled we can switch to the `optimized_semantic_search` helper.
-"""
+"""Bridge-owned Qdrant search and fallback policy."""
 
 from __future__ import annotations
 
-from typing import Any, Iterable, Optional
+from collections.abc import Iterable
 import logging
+from typing import Any
 
 from hawki_vector_store.client import QdrantHTTP
 
@@ -20,7 +16,7 @@ def semantic_search_basic(
     vector: list[float],
     *,
     top_k: int = 5,
-    filters: Optional[dict[str, Any]] = None,
+    filters: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """Plain dense vector search with whatever filters the caller provides."""
     result = qdrant.search(vector, top_k=top_k, filters=filters)
@@ -33,7 +29,7 @@ def semantic_search_high_recall(
     vector: list[float],
     *,
     top_k: int = 5,
-    filters: Optional[dict[str, Any]] = None,
+    filters: dict[str, Any] | None = None,
     ef_multiplier: int = 6,
 ) -> list[dict[str, Any]]:
     """Increase `hnsw_ef` to favour recall over latency."""
@@ -48,7 +44,7 @@ def semantic_search_with_threshold(
     vector: list[float],
     *,
     top_k: int = 5,
-    filters: Optional[dict[str, Any]] = None,
+    filters: dict[str, Any] | None = None,
     score_threshold: float = 0.32,
     ef_multiplier: int = 6,
 ) -> list[dict[str, Any]]:
@@ -70,8 +66,8 @@ def optimized_semantic_search(
     vector: list[float],
     *,
     top_k: int = 5,
-    filters: Optional[dict[str, Any]] = None,
-    preferred_tags: Optional[Iterable[str]] = None,
+    filters: dict[str, Any] | None = None,
+    preferred_tags: Iterable[str] | None = None,
     score_threshold: float = 0.28,
 ) -> list[dict[str, Any]]:
     """Composite search tuned for quality: metadata filter + threshold + high recall."""
@@ -109,9 +105,9 @@ def semantic_search_smart(
     vector: list[float],
     *,
     top_k: int = 5,
-    filters: Optional[dict[str, Any]] = None,
-    keyword_terms: Optional[Iterable[str]] = None,
-    keyword_fields: Optional[Iterable[str]] = None,
+    filters: dict[str, Any] | None = None,
+    keyword_terms: Iterable[str] | None = None,
+    keyword_fields: Iterable[str] | None = None,
 ) -> list[dict[str, Any]]:
     """Semantic search with keyword-aware filtering across payload fields."""
     terms = list(keyword_terms or [])

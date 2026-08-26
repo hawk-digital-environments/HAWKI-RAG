@@ -49,7 +49,6 @@ def test_vector_and_graph_packages_own_distinct_public_modules() -> None:
         "gateway.py",
         "client.py",
         "search.py",
-        "strategies.py",
         "interpretation.py",
         "settings.py",
     }
@@ -62,7 +61,6 @@ def test_vector_and_graph_packages_own_distinct_public_modules() -> None:
         "client.py",
         "graph.py",
         "normalization.py",
-        "traversal.py",
         "settings.py",
         "errors.py",
     }
@@ -138,7 +136,6 @@ def test_store_manifests_have_independent_exact_dependencies() -> None:
     assert graph_project["name"] == "hawki-graph-store"
     assert graph_project["dependencies"] == [
         "hawki-rag-resilience==0.1.0",
-        "hawki-rag-text==0.1.0",
         "neo4j==6.2.0",
     ]
     assert "hawki-graph-store==0.1.0" not in vector_project["dependencies"]

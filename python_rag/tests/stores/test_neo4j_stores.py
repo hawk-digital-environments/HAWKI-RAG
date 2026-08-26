@@ -26,11 +26,6 @@ from hawki_graph_store.requests import (
 )
 from hawki_graph_store.responses import parse_fact_rows, parse_structural_rows
 from hawki_graph_store.transport import Neo4jQueryExecutor
-from hawki_graph_store.traversal import (
-    build_structural_hits,
-    clean_triplets,
-    fetch_related_terms,
-)
 from hawki_graph_store.ports import GraphReader, GraphWriter
 
 
@@ -95,14 +90,6 @@ def test_graph_normalization_preserves_cleanup_contracts() -> None:
     assert dedupe_one_way_triplets([("A", "R", "B"), ("B", "R", "A")]) == [
         ("A", "R", "B")
     ]
-    assert clean_triplets(
-        [
-            ("University", "located in", "Lübeck"),
-            ("Lübeck", "located in", "University"),
-            ("page 12", "has title", "image.png"),
-        ],
-        graph_perf_log=False,
-    ) == [("University", "located in", "Lübeck")]
 
 
 def test_graph_uses_injected_executor_and_materializes_write_result() -> None:
@@ -172,92 +159,6 @@ def test_query_executor_delegates_retry_ownership_to_managed_transaction(
     with pytest.raises(ServiceUnavailable):
         getattr(executor, method)(query, callback=lambda tx: str(tx))
     assert Session.attempts == 1
-
-
-@pytest.mark.parametrize(
-    "error",
-    [
-        Neo4jError._hydrate_neo4j(
-            code="Neo.ClientError.Security.Unauthorized",
-            message="bad credentials",
-        ),
-        ValueError("result contract is invalid"),
-    ],
-)
-@pytest.mark.parametrize("operation", ["related", "structural"])
-def test_optional_graph_read_propagates_non_availability_errors(
-    monkeypatch: pytest.MonkeyPatch,
-    error: BaseException,
-    operation: str,
-) -> None:
-    class FailingGraph:
-        def __init__(self, **_kwargs: Any) -> None:
-            pass
-
-        def fetch_related(self, *_args: Any, **_kwargs: Any) -> list[dict[str, str]]:
-            raise error
-
-        def search_structural(
-            self, *_args: Any, **_kwargs: Any
-        ) -> list[dict[str, Any]]:
-            raise error
-
-        def close(self) -> None:
-            pass
-
-    monkeypatch.setattr("hawki_graph_store.traversal.Neo4jGraph", FailingGraph)
-
-    with pytest.raises(type(error)):
-        if operation == "related":
-            fetch_related_terms(
-                ["term"], dataset_id="dataset-a", neo4j_namespace="graph-a"
-            )
-        else:
-            build_structural_hits(
-                ["term"],
-                dataset_id="dataset-a",
-                neo4j_namespace="graph-a",
-                limit=10,
-                hops=2,
-            )
-
-
-@pytest.mark.parametrize("operation", ["related", "structural"])
-def test_optional_graph_read_degrades_only_unavailability_to_empty(
-    monkeypatch: pytest.MonkeyPatch,
-    operation: str,
-) -> None:
-    class UnavailableGraph:
-        def __init__(self, **_kwargs: Any) -> None:
-            pass
-
-        def fetch_related(self, *_args: Any, **_kwargs: Any) -> list[dict[str, str]]:
-            raise ServiceUnavailable("connection details must stay private")
-
-        def search_structural(
-            self, *_args: Any, **_kwargs: Any
-        ) -> list[dict[str, Any]]:
-            raise ServiceUnavailable("connection details must stay private")
-
-        def close(self) -> None:
-            pass
-
-    monkeypatch.setattr("hawki_graph_store.traversal.Neo4jGraph", UnavailableGraph)
-
-    if operation == "related":
-        result = fetch_related_terms(
-            ["term"], dataset_id="dataset-a", neo4j_namespace="graph-a"
-        )
-    else:
-        result = build_structural_hits(
-            ["term"],
-            dataset_id="dataset-a",
-            neo4j_namespace="graph-a",
-            limit=10,
-            hops=2,
-        )
-
-    assert result == []
 
 
 def test_graph_configures_driver_managed_retry_window(
