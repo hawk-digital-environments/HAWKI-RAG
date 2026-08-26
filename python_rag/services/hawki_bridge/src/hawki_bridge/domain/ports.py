@@ -1,11 +1,27 @@
-"""Bridge-owned ports for model, vector, and graph dependencies."""
+"""Bridge-owned ports for model, vector, graph, and reranking dependencies."""
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from typing import Any, Protocol
 
-from hawki_model_providers.ports import ModelProvider, ProviderResolver
+
+class ModelProvider(Protocol):
+    """Model capabilities required by authorized query execution."""
+
+    embed_model: str
+    rag_model: str
+    vision_model: str
+
+    def embed(self, text: str) -> list[float]: ...
+
+    def chat(
+        self,
+        system: str,
+        messages: list[Mapping[str, object]],
+        *,
+        temperature: float | None = None,
+    ) -> str: ...
 
 
 class VectorSearchPort(Protocol):
@@ -95,6 +111,24 @@ class GraphSearchPort(GraphReader, Protocol):
     ) -> list[dict[str, Any]]: ...
 
 
+class RerankHitsPort(Protocol):
+    """Ranking operation supplied by the configured reranker adapter."""
+
+    def __call__(
+        self,
+        *,
+        hits: list[dict[str, Any]],
+        user_query: str,
+        provider: ModelProvider,
+        query_vector: list[float] | None,
+        mode: str | None,
+        top_n: int,
+        mix_mode: bool,
+        mix_weight: float,
+    ) -> list[dict[str, Any]]: ...
+
+
+ModelProviderResolver = Callable[[str], ModelProvider]
 VectorSearchFactory = Callable[[], VectorSearchPort]
 
 
@@ -102,7 +136,8 @@ __all__ = [
     "GraphReader",
     "GraphSearchPort",
     "ModelProvider",
-    "ProviderResolver",
+    "ModelProviderResolver",
+    "RerankHitsPort",
     "VectorSearchFactory",
     "VectorSearchPort",
 ]

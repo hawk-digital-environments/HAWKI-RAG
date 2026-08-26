@@ -1,4 +1,4 @@
-"""Query scenarios from lexical fallback and rewrite through scoped ranking and context assembly."""
+"""End-to-end query use-case characterization through bridge-owned ports."""
 
 from __future__ import annotations
 
@@ -6,253 +6,216 @@ import os
 import sys
 import unittest
 from pathlib import Path
-from types import SimpleNamespace
+from typing import Any
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[3]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-TESTS_ROOT = ROOT / "tests"
-if str(TESTS_ROOT) not in sys.path:
-    sys.path.insert(0, str(TESTS_ROOT))
 
-from characterization_support import (
-    ScopedQdrantStub as _ScopedQdrantStub,
-    authorized_query_scope as _authorized_query_scope,
-)
+class _VectorSearch:
+    def __init__(self, hits: list[dict[str, Any]]) -> None:
+        self.hits = hits
+        self.collection = ""
+
+    def select_scoped_collection(self, collection: str) -> None:
+        self.collection = collection
+
+    def search_candidates(self, **_kwargs: Any) -> list[dict[str, Any]]:
+        return list(self.hits)
+
+    def search_high_recall(self, **_kwargs: Any) -> list[dict[str, Any]]:
+        return []
+
+    def search_with_text(self, *_args: Any, **_kwargs: Any) -> list[dict[str, Any]]:
+        return []
+
+    def scroll_with_text(self, **_kwargs: Any) -> list[dict[str, Any]]:
+        return []
+
+    def scroll_with_text_all(self, **_kwargs: Any) -> list[dict[str, Any]]:
+        return []
+
+
+class _Provider:
+    embed_model = "provider-embed"
+    rag_model = "provider-chat"
+    vision_model = "provider-vision"
+
+    def __init__(self, calls: list[str]) -> None:
+        self.calls = calls
+
+    def embed(self, text: str) -> list[float]:
+        self.calls.append("embed")
+        return [0.5, 0.25]
+
+    def chat(self, *_args: Any, **_kwargs: Any) -> str:
+        self.calls.append("chat")
+        return "unused"
+
+
+def _request(*, graph_enabled: bool):
+    from hawki_rag_contracts.auth_scope import AuthorizedQueryScope
+    from hawki_rag_contracts.query import QueryRequest
+
+    return QueryRequest(
+        query="toy train",
+        authorized_scope=AuthorizedQueryScope(
+            dataset_id="dataset-a",
+            qdrant_collection="hawki_dataset_a",
+            neo4j_namespace="hawki_dataset_a" if graph_enabled else None,
+            embedding_provider="fake",
+            embedding_model="authorized-embedding",
+            graph_enabled=graph_enabled,
+        ),
+        top_k=2,
+        provider="fake",
+        chat_model="selected-chat",
+        vision_model="selected-vision",
+        filters={"source_format": "markdown"},
+        generate=False,
+        fast_mode=False,
+        structural_hops=1,
+        reranker="none",
+        rerank_top_n=4,
+        mix_mode=False,
+        mix_weight=0.25,
+    )
 
 
 class QueryCharacterizationTests(unittest.TestCase):
-    """Protect query settings, fallback, deduplication, reranking, rewriting, and execution flow."""
+    """Protect the public query workflow without implementation-level injection."""
 
-    def test_query_uses_reranked_order_without_external_services(self) -> None:
-        from hawki_bridge.application.query import orchestration as query_logic
+    def test_query_uses_reranked_order_through_typed_dependencies(self) -> None:
+        from hawki_bridge.application.dependencies import QueryDependencies
+        from hawki_bridge.application.query.execution import execute_authorized_query
 
-        class Provider:
-            def embed(self, text: str) -> list[float]:
-                return [0.5, 0.25]
-
-        class RagService:
-            def rerank_hits(self, *, hits, **kwargs):
-                return sorted(hits, key=lambda hit: hit["payload"]["title"])
-
-        body = SimpleNamespace(
-            query="HAWKI architecture",
-            authorized_scope=_authorized_query_scope(),
-            top_k=2,
-            provider="fake",
-            filters={},
-            generate=False,
-            is_optimized=False,
-            fast_mode=True,
-            smart_lookup=False,
-            structural_hops=0,
-            preferred_tags=None,
-            reranker="none",
-            rerank_top_n=10,
-            mix_mode=False,
-            mix_weight=0.5,
-        )
-        hits = [
-            {
-                "id": "b",
-                "score": 0.6,
-                "payload": {
-                    "title": "Vector",
-                    "content": "Qdrant vector search",
-                    "component_type": "chunk",
-                    "doc_id": "doc-b",
-                },
-            },
-            {
-                "id": "a",
-                "score": 0.5,
-                "payload": {
-                    "title": "Graph",
-                    "content": "Neo4j graph search",
-                    "component_type": "chunk",
-                    "doc_id": "doc-a",
-                },
-            },
-        ]
-
-        class VectorSearch(_ScopedQdrantStub):
-            def search_candidates(self, **_kwargs):
-                return list(hits)
-
-        graph_search = SimpleNamespace(
-            build_structural_hits=lambda *args, **kwargs: [],
-            fetch_related_terms=lambda *args, **kwargs: [],
-        )
-        dependencies = SimpleNamespace(
-            vector_search_factory=VectorSearch,
-            graph_search=graph_search,
-        )
-
-        with (
-            patch.dict(
-                os.environ,
+        calls: list[str] = []
+        vector_search = _VectorSearch(
+            [
                 {
-                    "RAG_ITERATIVE_RETRIEVAL": "false",
-                    "RAG_MIN_SCORE": "0.0",
-                    "RAG_CONTEXT_DOCS": "2",
-                    "RAG_GENERATE_ANSWER": "false",
+                    "id": "b",
+                    "score": 0.6,
+                    "payload": {
+                        "title": "Vector",
+                        "content": "Qdrant vector search",
+                        "component_type": "chunk",
+                        "doc_id": "doc-b",
+                    },
                 },
-                clear=False,
+                {
+                    "id": "a",
+                    "score": 0.5,
+                    "payload": {
+                        "title": "Graph",
+                        "content": "Neo4j graph search",
+                        "component_type": "chunk",
+                        "doc_id": "doc-a",
+                    },
+                },
+            ]
+        )
+        graph_search = type(
+            "GraphSearch",
+            (),
+            {
+                "build_structural_hits": lambda self, *args, **kwargs: [],
+                "fetch_related_terms": lambda self, *args, **kwargs: [],
+            },
+        )()
+        dependencies = QueryDependencies(
+            vector_search_factory=lambda: vector_search,
+            graph_search=graph_search,
+            resolve_model_provider=lambda _name: _Provider(calls),
+            rerank_hits=lambda *, hits, **kwargs: sorted(
+                hits, key=lambda hit: hit["payload"]["title"]
             ),
-            patch.object(
-                query_logic, "_keyword_fallback_search", lambda *args, **kwargs: []
-            ),
+        )
+
+        with patch.dict(
+            os.environ,
+            {
+                "RAG_ITERATIVE_RETRIEVAL": "false",
+                "RAG_MIN_SCORE": "0.0",
+                "RAG_CONTEXT_DOCS": "2",
+                "RAG_GENERATE_ANSWER": "false",
+            },
+            clear=False,
         ):
-            result = query_logic.query_documents(
-                body,
-                rag_service=RagService(),
-                get_provider=lambda name: Provider(),
+            result = execute_authorized_query(
+                _request(graph_enabled=False),
                 dependencies=dependencies,
             )
 
-        self.assertTrue(result["ok"])
+        self.assertTrue(result.ok)
         self.assertEqual(
-            [hit["payload"]["title"] for hit in result["hits"]], ["Graph", "Vector"]
+            [hit.payload["title"] for hit in result.hits], ["Graph", "Vector"]
         )
-        self.assertEqual(result["retrieval"]["context_docs"], 2)
+        self.assertEqual(result.retrieval["context_docs"], 2)
+        self.assertEqual(vector_search.collection, "hawki_dataset_a")
+        self.assertEqual(calls, ["embed"])
 
-    def test_query_execution_module_injection_and_flow(self) -> None:
-        from hawki_bridge.application.query import execution as query_execution
+    def test_query_passes_authorized_scope_to_both_graph_operations(self) -> None:
+        from hawki_bridge.application.dependencies import QueryDependencies
+        from hawki_bridge.application.query.execution import execute_authorized_query
 
-        calls: list[str] = []
         graph_calls: list[tuple[str, dict[str, object]]] = []
-        kg_term_calls: list[list[str]] = []
 
-        class Provider:
-            embed_model = "provider-embed"
-            rag_model = "provider-rag"
+        class GraphSearch:
+            def build_structural_hits(
+                self, _terms: list[str], **scope: object
+            ) -> list[dict[str, Any]]:
+                graph_calls.append(("structural", scope))
+                return []
 
-            def embed(self, text: str) -> list[float]:
-                calls.append("embed")
-                return [0.1, 0.2, 0.3]
+            def fetch_related_terms(
+                self, _terms: list[str], **scope: object
+            ) -> list[dict[str, str]]:
+                graph_calls.append(("facts", scope))
+                return [{"subject": "HAWKI", "relation": "related", "object": "RAG"}]
 
-        body = SimpleNamespace(
-            query="toy train",
-            authorized_scope=_authorized_query_scope(graph_enabled=True),
-            top_k=2,
-            provider="fake",
-            filters={"source_format": "markdown"},
-            generate=False,
-            is_optimized=False,
-            fast_mode=False,
-            smart_lookup=False,
-            structural_hops=1,
-            preferred_tags=None,
-            reranker="none",
-            rerank_top_n=4,
-            mix_mode=False,
-            mix_weight=0.25,
-        )
-
-        def fetch_scoped_terms(
-            terms: list[str], **kwargs: object
-        ) -> list[dict[str, str]]:
-            kg_term_calls.append(terms)
-            graph_calls.append(("kg", kwargs))
-            return [{"subject": "HAWKI", "predicate": "related", "object": "RAG"}]
-
-        result = query_execution.run_query_documents(
-            body,
-            rag_service=SimpleNamespace(
-                rerank_hits=lambda **kwargs: [
-                    {
-                        "id": "fallback",
-                        "score": 0.1,
-                        "payload": {"title": "Fallback", "content": "", "doc_id": "z"},
-                    }
-                ]
-            ),
-            get_provider=lambda name: Provider(),
-            qdrant_ctor=_ScopedQdrantStub,
-            analyze_prompt_fn=lambda query: {
-                "blocked": False,
-                "issues": [],
-                "sanitized": query,
-            },
-            enforce_output_safety_fn=lambda answer: {
-                "blocked": False,
-                "issues": [],
-                "answer": answer,
-            },
-            sanitize_prompt_text_fn=lambda query: query,
-            build_query_rewrite_fn=lambda provider, query, **kwargs: {
-                "enabled": True,
-                "rewritten_query": "rewritten",
-                "high_level_keys": ["toys"],
-                "low_level_keys": ["trains"],
-                "entity_terms": ["train"],
-                "modality_hints": [],
-            },
-            build_query_terms_fn=lambda rewritten_query, high_level_keys, low_level_keys, entity_terms: [
-                "train",
-                "toy",
-            ],
-            run_search_fn=lambda **kwargs: [
+        vector_search = _VectorSearch(
+            [
                 {
                     "id": "a",
-                    "score": 0.6,
+                    "score": 0.9,
                     "payload": {
                         "title": "A",
+                        "content": "toy train",
                         "component_type": "chunk",
-                        "content": "train",
-                        "doc_id": "a",
+                        "doc_id": "doc-a",
                     },
-                },
-                {
-                    "id": "b",
-                    "score": 0.4,
-                    "payload": {
-                        "title": "B",
-                        "component_type": "chunk",
-                        "content": "toy",
-                        "doc_id": "b",
-                    },
-                },
-            ],
-            keyword_fallback_fn=lambda *args, **kwargs: [],
-            build_structural_hits_fn=lambda *args, **kwargs: (
-                graph_calls.append(("structural", kwargs))
-                or [
-                    {"id": "s", "payload": {"component_type": "relation", "title": "s"}}
-                ]
-            ),
-            structural_hops_fn=lambda: 1,
-            structural_limit_fn=lambda top_k: top_k,
-            fusion_weights_fn=lambda: (1.0, 0.5),
-            rerank_and_filter_hits_fn=lambda hits, **kwargs: hits,
-            should_iterate_fn=lambda query, hits, top_k: False,
-            collect_expansion_terms_fn=lambda hits: ["x"],
-            merge_hits_fn=lambda primary, secondary, limit: secondary + primary,
-            build_fused_hits_fn=lambda sem_hits, struct_hits, sem_weight=0.0, str_weight=0.0: (
-                sem_hits + struct_hits
-            ),
-            prepare_context_fn=lambda hits, max_docs, max_tokens: (hits, [], 0),
-            run_high_recall_fn=lambda **kwargs: [],
-            fetch_related_terms_fn=fetch_scoped_terms,
-            context_limits_fn=lambda: (400, 10),
-            score_thresholds_fn=lambda: (0.0, 0.0),
-            iterative_retrieval_enabled_fn=lambda: False,
-            generation_enabled_fn=lambda: False,
-            configured_search_top_k_fn=lambda top_k: top_k,
-            extract_terms_fn=lambda text: text.lower().split(),
-            terms_from_payload_fn=lambda payload: ["kg"],
+                }
+            ]
+        )
+        calls: list[str] = []
+        dependencies = QueryDependencies(
+            vector_search_factory=lambda: vector_search,
+            graph_search=GraphSearch(),
+            resolve_model_provider=lambda _name: _Provider(calls),
+            rerank_hits=lambda *, hits, **kwargs: hits,
         )
 
-        self.assertEqual(result["ok"], True)
-        self.assertEqual(len(result["hits"]), 3)
-        self.assertEqual(result["count"], 3)
-        self.assertTrue(any(h["id"] == "a" for h in result["hits"]))
-        self.assertEqual(result["retrieval"]["iterative_pass"], False)
-        self.assertIn("embed", calls)
-        self.assertEqual([call[0] for call in graph_calls], ["structural", "kg"])
+        with patch.dict(
+            os.environ,
+            {
+                "RAG_ITERATIVE_RETRIEVAL": "false",
+                "RAG_MIN_SCORE": "0.0",
+                "RAG_GENERATE_ANSWER": "false",
+            },
+            clear=False,
+        ):
+            result = execute_authorized_query(
+                _request(graph_enabled=True),
+                dependencies=dependencies,
+            )
+
+        self.assertEqual(result.count, 1)
+        self.assertEqual(
+            [operation for operation, _scope in graph_calls],
+            ["structural", "facts"],
+        )
         for _operation, scope in graph_calls:
             self.assertEqual(scope["dataset_id"], "dataset-a")
             self.assertEqual(scope["neo4j_namespace"], "hawki_dataset_a")
-        self.assertEqual(kg_term_calls, [["rewritten", "train", "toy", "kg"]])

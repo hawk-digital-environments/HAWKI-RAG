@@ -20,18 +20,18 @@ if str(TESTS_ROOT) not in sys.path:
 class QueryCharacterizationTests(unittest.TestCase):
     """Protect query settings, fallback, deduplication, reranking, rewriting, and execution flow."""
 
-    def test_query_stages_rewrite_contract_is_multimodal_and_dedupe_terms(self) -> None:
-        from hawki_bridge.application.query import stages as query_stages
+    def test_query_rewrite_contract_is_multimodal_and_dedupes_terms(self) -> None:
+        from hawki_bridge.application.query import rewrite as query_rewrite
 
         with (
             patch.object(
-                query_stages,
-                "_is_multimodal_query",
+                query_rewrite,
+                "is_multimodal_query",
                 return_value=True,
             ) as multimodal_check,
             patch.object(
-                query_stages,
-                "_rewrite_query",
+                query_rewrite,
+                "request_query_rewrite",
                 return_value={
                     "rewritten_query": "Compare wooden blocks and toy trains",
                     "high_level_keys": ["toys", "toys"],
@@ -41,7 +41,7 @@ class QueryCharacterizationTests(unittest.TestCase):
                 },
             ),
         ):
-            rewrite = query_stages.build_query_rewrite(
+            rewrite = query_rewrite.build_query_rewrite(
                 SimpleNamespace(chat=lambda system, messages: "{}"),
                 "How to show toy train figure?",
                 fast_mode=False,
@@ -53,8 +53,8 @@ class QueryCharacterizationTests(unittest.TestCase):
         self.assertEqual(rewrite["modality_hints"], ["image"])
         self.assertEqual(rewrite["entity_terms"], ["train", "train"])
 
-        with patch.object(query_stages, "_extract_terms", return_value=["compare"]):
-            query_terms = query_stages.build_query_terms(
+        with patch.object(query_rewrite, "extract_terms", return_value=["compare"]):
+            query_terms = query_rewrite.build_query_terms(
                 "Compare wooden blocks and toy trains",
                 rewrite["high_level_keys"],
                 rewrite["low_level_keys"],
@@ -64,10 +64,10 @@ class QueryCharacterizationTests(unittest.TestCase):
         self.assertEqual(query_terms, ["train", "blocks", "toys", "compare"])
         multimodal_check.assert_called_once()
 
-    def test_query_stages_rerank_and_filter_preserves_best_path_and_fallback(
+    def test_query_ranking_preserves_best_path_and_fallback(
         self,
     ) -> None:
-        from hawki_bridge.application.query import stages as query_stages
+        from hawki_bridge.application.query import ranking as query_ranking
 
         class RerankService:
             def __init__(self) -> None:
@@ -89,60 +89,62 @@ class QueryCharacterizationTests(unittest.TestCase):
         ]
         provider = SimpleNamespace(embed_model="toy", rag_model="rag")
 
-        with patch.object(query_stages, "apply_lexical_boost", return_value=[]):
-            no_match = query_stages.rerank_and_filter_hits(
-                hits,
-                user_query="unrelated",
-                provider=provider,
-                query_vector=[0.1],
-                rag_service=rerank_service,
-                mode="none",
-                top_n=12,
-                mix_mode=False,
-                mix_weight=0.4,
-                min_score=0.5,
-                fallback_min=0.3,
-                top_k=2,
-            )
+        no_match = query_ranking.rerank_and_filter_hits(
+            hits,
+            user_query="unrelated",
+            provider=provider,
+            query_vector=[0.1],
+            rerank_hits=rerank_service.rerank_hits,
+            mode="none",
+            top_n=12,
+            mix_mode=False,
+            mix_weight=0.4,
+            min_score=0.5,
+            fallback_min=0.3,
+            top_k=2,
+            filter_hits=lambda ranked, **kwargs: query_ranking.filter_hits_by_score(
+                ranked,
+                apply_lexical_boost=lambda selected, query: [],
+                **kwargs,
+            ),
+        )
 
         self.assertEqual([item["id"] for item in no_match], ["b"])
         self.assertEqual(rerank_service.calls, 1)
 
-        with (
-            patch.object(query_stages, "apply_lexical_boost", return_value=[]),
-            patch.object(
-                query_stages,
-                "_extract_terms",
-                return_value=["compare"],
-            ),
-        ):
-            fallback = query_stages.filter_hits_by_score(
-                hits,
-                query="unrelated",
-                min_score=0.9,
-                fallback_min=0.9,
-                top_k=2,
-            )
+        fallback = query_ranking.filter_hits_by_score(
+            hits,
+            query="unrelated",
+            min_score=0.9,
+            fallback_min=0.9,
+            top_k=2,
+            apply_lexical_boost=lambda selected, query: [],
+        )
 
         self.assertEqual([item["id"] for item in fallback], ["a", "b"])
 
-    def test_query_rewrite_module_handles_injected_policy_dependencies(self) -> None:
+    def test_query_rewrite_module_normalizes_model_response(self) -> None:
         from hawki_bridge.application.query import rewrite as query_rewrite
 
-        rewrite = query_rewrite.build_query_rewrite(
-            SimpleNamespace(chat=lambda system, messages: "{}"),
-            "Show toy planes and trains",
-            fast_mode=False,
-            is_multimodal_query=lambda text: True,
-            rewrite_query=lambda provider, text: {
-                "rewritten_query": "visual toy planes",
-                "high_level_keys": ["toys", "", None, "toys"],
-                "low_level_keys": ["planes", None],
-                "modality_hints": [None, "image"],
-                "entity_terms": ["train", "train"],
-            },
-            normalize_list=lambda values: [v for v in (values or []) if v],
-        )
+        with (
+            patch.object(query_rewrite, "is_multimodal_query", return_value=True),
+            patch.object(
+                query_rewrite,
+                "request_query_rewrite",
+                return_value={
+                    "rewritten_query": "visual toy planes",
+                    "high_level_keys": ["toys", "", None, "toys"],
+                    "low_level_keys": ["planes", None],
+                    "modality_hints": [None, "image"],
+                    "entity_terms": ["train", "train"],
+                },
+            ),
+        ):
+            rewrite = query_rewrite.build_query_rewrite(
+                SimpleNamespace(chat=lambda system, messages: "{}"),
+                "Show toy planes and trains",
+                fast_mode=False,
+            )
 
         self.assertEqual(
             rewrite["high_level_keys"],
@@ -152,13 +154,17 @@ class QueryCharacterizationTests(unittest.TestCase):
         self.assertEqual(rewrite["modality_hints"], ["image"])
         self.assertEqual(rewrite["entity_terms"], ["train", "train"])
 
-        terms = query_rewrite.build_query_terms(
-            "Visual toy planes",
-            rewrite["high_level_keys"],
-            rewrite["low_level_keys"],
-            rewrite["entity_terms"],
-            extract_terms=lambda query: ["visual", "train", "train"],
-        )
+        with patch.object(
+            query_rewrite,
+            "extract_terms",
+            return_value=["visual", "train", "train"],
+        ):
+            terms = query_rewrite.build_query_terms(
+                "Visual toy planes",
+                rewrite["high_level_keys"],
+                rewrite["low_level_keys"],
+                rewrite["entity_terms"],
+            )
         self.assertEqual(terms, ["train", "planes", "toys", "visual"])
 
     def test_query_ranking_module_iterate_and_expansion_terms(self) -> None:
@@ -176,7 +182,7 @@ class QueryCharacterizationTests(unittest.TestCase):
             user_query="toy train",
             provider=SimpleNamespace(),
             query_vector=[0.1],
-            rag_service=RerankService(),
+            rerank_hits=RerankService().rerank_hits,
             mode="none",
             top_n=5,
             mix_mode=False,
@@ -211,6 +217,6 @@ class QueryCharacterizationTests(unittest.TestCase):
                 {"payload": {"content": "builds and more"}},
             ],
             limit=2,
-            extract_terms=lambda text: ["blocks", "blocks", "toys", ""],
+            extract_terms_fn=lambda text: ["blocks", "blocks", "toys", ""],
         )
         self.assertEqual(expansion, ["blocks", "toys"])

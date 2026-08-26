@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import ast
+import inspect
 from pathlib import Path
-from types import SimpleNamespace
 import tomllib
 
 from hawki_bridge.factory import build_app
@@ -28,8 +28,10 @@ def _imports(path: Path) -> list[tuple[int, str]]:
 
 
 def test_bridge_registers_only_query_graph_read_health_and_temporal_routes() -> None:
-    service = SimpleNamespace(runtime_summary=lambda: {"status": "ready"})
-    app = build_app(settings=load_settings({}), service=service)
+    app = build_app(
+        settings=load_settings({}),
+        runtime_summary=lambda: {"status": "ready"},
+    )
     routes = {
         (method.upper(), path)
         for path, operations in app.openapi()["paths"].items()
@@ -87,6 +89,36 @@ def test_bridge_application_depends_on_storage_ports_not_store_packages() -> Non
                 if name.split(".", 1)[0] in forbidden_roots:
                     violations.append(f"{path}:{line}: {name}")
     assert violations == []
+
+
+def test_bridge_application_has_no_http_adapter_or_private_package_imports() -> None:
+    forbidden_roots = {"fastapi", "starlette"}
+    violations: list[str] = []
+    for layer in (SOURCE / "application", SOURCE / "domain"):
+        for path in sorted(layer.rglob("*.py")):
+            for line, name in _imports(path):
+                if name.split(".", 1)[0] in forbidden_roots or name.startswith(
+                    "hawki_bridge.adapters"
+                ):
+                    violations.append(f"{path}:{line}: {name}")
+                package_parts = name.split(".")[1:]
+                if name.startswith("hawki_") and any(
+                    part.startswith("_") for part in package_parts
+                ):
+                    violations.append(f"{path}:{line}: private import {name}")
+    assert violations == []
+
+
+def test_query_use_case_has_one_typed_boundary_without_forwarding_modules() -> None:
+    from hawki_bridge.application.query.execution import execute_authorized_query
+
+    signature = inspect.signature(execute_authorized_query)
+    assert list(signature.parameters) == ["request", "dependencies"]
+    assert signature.return_annotation == "QueryResponse"
+    assert not (SOURCE / "application" / "service.py").exists()
+    assert not (SOURCE / "application" / "query" / "orchestration.py").exists()
+    assert not (SOURCE / "application" / "query" / "stages.py").exists()
+    assert not (SOURCE / "http" / "dependencies.py").exists()
 
 
 def test_bridge_store_packages_are_visible_only_to_their_adapters() -> None:

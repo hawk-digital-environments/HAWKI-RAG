@@ -83,18 +83,9 @@ class TestReadOnlyGraphApiFlow:
             )
 
     def test_bridge_registers_graph_read_but_no_graph_write_routes(self) -> None:
-        class Service:
-            @staticmethod
-            def runtime_summary() -> dict[str, str]:
-                return {"role": "bridge", "mode": "read-only"}
-
-            @staticmethod
-            def get_provider(_name: str) -> object:
-                return object()
-
         app = build_app(
             settings=load_settings({}),
-            service=Service(),
+            runtime_summary=lambda: {"role": "bridge", "mode": "read-only"},
             graph_reader=object(),
             logger_name="test.read_only_graph_api",
         )

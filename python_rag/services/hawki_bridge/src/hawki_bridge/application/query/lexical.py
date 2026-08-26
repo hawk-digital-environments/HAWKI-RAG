@@ -6,7 +6,7 @@ import re
 import unicodedata
 from typing import Any
 
-from hawki_rag_text.preprocessing import _extract_terms
+from hawki_rag_text.terms import extract_terms
 
 
 _QUERY_SCOPE_INSTRUCTION_PATTERNS = (
@@ -52,7 +52,7 @@ def strip_query_scope_instructions(query: str) -> str:
 
 def extract_query_terms_for_lexical(query: str) -> list[str]:
     lexical_query = strip_query_scope_instructions(query)
-    terms = _extract_terms(lexical_query)
+    terms = extract_terms(lexical_query)
     terms.extend(
         match.group(0).lower()
         for match in _GERMAN_ORDINAL_PATTERN.finditer(lexical_query)

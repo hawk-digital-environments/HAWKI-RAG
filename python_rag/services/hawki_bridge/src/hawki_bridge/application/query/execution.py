@@ -1,50 +1,503 @@
-"""Composable query orchestration for query documents."""
+"""Typed application use case for authorized document queries."""
 
 from __future__ import annotations
 
 import logging
 import time
-from typing import Any, Callable
+from dataclasses import dataclass
+from typing import Any
 
-from fastapi import HTTPException
-
-from hawki_bridge.domain.errors import DatasetVectorStoreNotReadyError
-from hawki_bridge.domain.ports import VectorSearchPort
+from hawki_model_providers.overrides import apply_provider_overrides
+from hawki_rag_contracts.query import QueryRequest, QueryResponse
 from hawki_rag_text.safety import (
     analyze_prompt,
     enforce_output_safety,
     sanitize_prompt_text,
 )
-from hawki_rag_text.preprocessing import _extract_terms, _terms_from_payload
+from hawki_rag_text.terms import extract_terms
+
+from hawki_bridge.application.dependencies import QueryDependencies
+from hawki_bridge.application.query.context import (
+    build_grounded_answer_prompt,
+    prepare_context_summaries,
+)
+from hawki_bridge.application.query.fallback import keyword_fallback_search
+from hawki_bridge.application.query.hits import fuse_hits, merge_hits
+from hawki_bridge.application.query.ranking import (
+    collect_expansion_terms,
+    filter_hits_by_score,
+    rerank_and_filter_hits,
+    should_iterate,
+)
+from hawki_bridge.application.query.rewrite import (
+    build_query_rewrite,
+    build_query_terms,
+)
+from hawki_bridge.application.query.scope import build_scoped_query_filters
 from hawki_bridge.application.query.settings import (
     context_limits,
     fusion_weights,
     generation_enabled,
     iterative_retrieval_enabled,
     score_thresholds,
-    search_top_k as configured_search_top_k,
+    search_top_k,
     structural_hops,
     structural_limit,
 )
-from hawki_bridge.application.query.scope import build_scoped_query_filters
-from hawki_model_providers.overrides import apply_provider_overrides
-from hawki_bridge.application.query.context import build_grounded_answer_prompt
+from hawki_bridge.domain.errors import (
+    AnswerGenerationError,
+    EmbeddingGenerationError,
+    InvalidQueryError,
+    UnsupportedModelProviderError,
+)
+from hawki_bridge.domain.ports import ModelProvider, VectorSearchPort
 
 logger = logging.getLogger(__name__)
 
-VectorSearch = Callable[..., list[dict[str, Any]]]
+_KEYWORD_FIELDS = [
+    "title",
+    "page_url",
+    "source_url",
+    "canonical_url",
+    "tags",
+    "content",
+    "pdfs",
+]
 
 
-def _search_via_port(*, qdrant: VectorSearchPort, vec: list[float], **kwargs):
-    return qdrant.search_candidates(vector=vec, **kwargs)
+@dataclass(frozen=True, slots=True)
+class QueryRuntime:
+    """Request-scoped provider, storage client, and authorized filter state."""
+
+    provider: ModelProvider
+    vector_search: VectorSearchPort
+    user_query: str
+    filters: dict[str, Any]
 
 
-def _high_recall_via_port(*, qdrant: VectorSearchPort, vec: list[float], **kwargs):
-    return qdrant.search_high_recall(vector=vec, **kwargs)
+@dataclass(frozen=True, slots=True)
+class PreparedQuery:
+    """Rewritten query values and embedding shared by retrieval stages."""
+
+    text: str
+    vector: list[float]
+    terms: list[str]
+    rewrite: dict[str, Any]
+
+
+@dataclass(frozen=True, slots=True)
+class RankedEvidence:
+    """Ranked hits plus iterative-retrieval telemetry."""
+
+    hits: list[dict[str, Any]]
+    iterative_pass: bool
+    expansion_terms: list[str]
+
+
+def execute_authorized_query(
+    request: QueryRequest,
+    *,
+    dependencies: QueryDependencies,
+) -> QueryResponse:
+    """Execute the bridge query workflow and return its stable contract.
+
+    1. Validate and sanitize the query, then bind the authorized provider and
+       vector collection.
+    2. Optionally rewrite the query, create its embedding, and retrieve scoped
+       semantic, lexical, and structural candidates.
+    3. Fuse, rerank, and optionally expand weak retrieval results.
+    4. Build bounded evidence, load related graph facts, and optionally produce
+       a grounded answer.
+    """
+
+    timings: dict[str, float] = {}
+    runtime = _initialize_query_runtime(request, dependencies)
+    prepared = _rewrite_and_embed(request, runtime, timings)
+    initial_hits = _retrieve_initial_evidence(
+        request,
+        runtime,
+        prepared,
+        dependencies,
+        timings,
+    )
+    ranked = _rank_and_expand_evidence(
+        request,
+        runtime,
+        prepared,
+        initial_hits,
+        dependencies,
+        timings,
+    )
+
+    max_context_tokens, max_context_docs = context_limits()
+    final_hits = ranked.hits[: max(request.top_k, max_context_docs)]
+    context_summaries, trimmed_sources, context_tokens_used = prepare_context_summaries(
+        final_hits,
+        max_docs=max_context_docs,
+        max_tokens=max_context_tokens,
+    )
+    graph_facts = _load_related_graph_facts(
+        request,
+        prepared,
+        final_hits,
+        dependencies,
+        timings,
+    )
+    answer = _generate_grounded_answer(
+        request,
+        runtime.provider,
+        prepared.text,
+        context_summaries,
+        graph_facts,
+        timings,
+    )
+
+    return QueryResponse.model_validate(
+        {
+            "ok": True,
+            "count": len(final_hits),
+            "hits": final_hits,
+            "kg": graph_facts,
+            "answer": answer,
+            "retrieval": {
+                "dataset_id": request.authorized_scope.dataset_id,
+                "graph_enabled": request.authorized_scope.graph_enabled,
+                "graph_disabled_reason": None
+                if request.authorized_scope.graph_enabled
+                else "dataset_scope_not_enforced",
+                "iterative_pass": ranked.iterative_pass,
+                "expansion_terms": ranked.expansion_terms,
+                "context_tokens_used": context_tokens_used,
+                "context_docs": len(context_summaries),
+                "context_trimmed": trimmed_sources,
+                "max_context_tokens": max_context_tokens,
+                "rewrite": {
+                    "query": prepared.text
+                    if prepared.text != runtime.user_query
+                    else None,
+                    "high_level_keys": prepared.rewrite["high_level_keys"],
+                    "low_level_keys": prepared.rewrite["low_level_keys"],
+                    "entity_terms": prepared.rewrite["entity_terms"],
+                    "modality_hints": prepared.rewrite["modality_hints"],
+                    "enabled": prepared.rewrite["enabled"],
+                },
+                "timings_ms": {
+                    "rewrite": timings.get("rewrite_ms"),
+                    "embed": timings.get("embed_ms"),
+                    "qdrant": timings.get("qdrant_ms"),
+                    "graph": timings.get("graph_ms"),
+                    "rerank": timings.get("rerank_ms"),
+                    "kg": timings.get("kg_ms"),
+                    "generation": timings.get("generation_ms"),
+                },
+            },
+        }
+    )
+
+
+def _initialize_query_runtime(
+    request: QueryRequest,
+    dependencies: QueryDependencies,
+) -> QueryRuntime:
+    prompt_safety = analyze_prompt(request.query)
+    if prompt_safety["blocked"]:
+        message = "Query blocked by content safety filters."
+        if prompt_safety["issues"]:
+            message += f" Reasons: {', '.join(prompt_safety['issues'])}."
+        raise InvalidQueryError(message)
+
+    user_query = str(prompt_safety["sanitized"])
+    if not user_query.strip():
+        raise InvalidQueryError("Query is empty after sanitization.")
+
+    try:
+        provider = dependencies.resolve_model_provider(request.provider)
+    except ValueError as exc:
+        raise UnsupportedModelProviderError(str(exc)) from exc
+    apply_provider_overrides(provider, request)
+
+    vector_search = dependencies.vector_search_factory()
+    vector_search.select_scoped_collection(request.authorized_scope.qdrant_collection)
+    filters = build_scoped_query_filters(
+        request.authorized_scope.dataset_id,
+        request.filters,
+    )
+    logger.info(
+        "query:start provider=%s dataset_id=%s top_k=%s fast=%s smart=%s optimized=%s",
+        request.provider,
+        request.authorized_scope.dataset_id,
+        request.top_k,
+        request.fast_mode,
+        request.smart_lookup,
+        request.is_optimized,
+    )
+    return QueryRuntime(provider, vector_search, user_query, filters)
+
+
+def _rewrite_and_embed(
+    request: QueryRequest,
+    runtime: QueryRuntime,
+    timings: dict[str, float],
+) -> PreparedQuery:
+    started = time.perf_counter()
+    rewrite = build_query_rewrite(
+        runtime.provider,
+        runtime.user_query,
+        fast_mode=request.fast_mode,
+    )
+    timings["rewrite_ms"] = (time.perf_counter() - started) * 1000
+
+    rewritten_query = sanitize_prompt_text(
+        str(rewrite.get("rewritten_query") or runtime.user_query)
+    )
+    query_terms = build_query_terms(
+        rewritten_query,
+        rewrite["high_level_keys"],
+        rewrite["low_level_keys"],
+        rewrite["entity_terms"],
+    )
+
+    started = time.perf_counter()
+    try:
+        vector = runtime.provider.embed(rewritten_query)
+    except Exception as exc:
+        logger.exception("query:embedding failed")
+        raise EmbeddingGenerationError("Embedding generation failed.") from exc
+    timings["embed_ms"] = (time.perf_counter() - started) * 1000
+    return PreparedQuery(rewritten_query, vector, query_terms, rewrite)
+
+
+def _retrieve_initial_evidence(
+    request: QueryRequest,
+    runtime: QueryRuntime,
+    prepared: PreparedQuery,
+    dependencies: QueryDependencies,
+    timings: dict[str, float],
+) -> list[dict[str, Any]]:
+    candidate_limit = search_top_k(request.top_k)
+    started = time.perf_counter()
+    hits = runtime.vector_search.search_candidates(
+        vector=prepared.vector,
+        top_k=candidate_limit,
+        filters=runtime.filters,
+        query_terms=prepared.terms,
+        keyword_fields=_KEYWORD_FIELDS,
+        smart_lookup=request.smart_lookup,
+        fast_mode=request.fast_mode,
+        is_optimized=request.is_optimized,
+        preferred_tags=request.preferred_tags,
+    )
+    keyword_hits = keyword_fallback_search(
+        runtime.vector_search,
+        prepared.vector,
+        prepared.text,
+        candidate_limit,
+        filters=runtime.filters,
+    )
+    if keyword_hits:
+        hits = merge_hits(
+            hits,
+            keyword_hits,
+            max(candidate_limit * 2, len(hits) + len(keyword_hits)),
+        )
+    timings["qdrant_ms"] = (time.perf_counter() - started) * 1000
+    logger.info("query:qdrant hits=%s ms=%.2f", len(hits), timings["qdrant_ms"])
+
+    hops = request.structural_hops
+    if hops is None:
+        hops = structural_hops()
+    started = time.perf_counter()
+    structural_hits = (
+        []
+        if not request.authorized_scope.graph_enabled or request.fast_mode or hops == 0
+        else dependencies.graph_search.build_structural_hits(
+            prepared.terms,
+            dataset_id=request.authorized_scope.dataset_id,
+            neo4j_namespace=str(request.authorized_scope.neo4j_namespace),
+            limit=structural_limit(request.top_k),
+            hops=hops,
+            include_rel_match=request.smart_lookup,
+        )
+    )
+    timings["graph_ms"] = (time.perf_counter() - started) * 1000
+    logger.info(
+        "query:graph hits=%s ms=%.2f", len(structural_hits), timings["graph_ms"]
+    )
+
+    semantic_weight, graph_weight = fusion_weights()
+    fused = fuse_hits(
+        hits,
+        structural_hits,
+        sem_weight=semantic_weight,
+        str_weight=graph_weight,
+    )
+    return [
+        hit
+        for hit in fused
+        if (hit.get("payload") or {}).get("component_type")
+        in (None, "", "chunk", "relation")
+    ]
+
+
+def _rank_and_expand_evidence(
+    request: QueryRequest,
+    runtime: QueryRuntime,
+    prepared: PreparedQuery,
+    hits: list[dict[str, Any]],
+    dependencies: QueryDependencies,
+    timings: dict[str, float],
+) -> RankedEvidence:
+    minimum_score, fallback_minimum = score_thresholds()
+    started = time.perf_counter()
+    ranked_hits = rerank_and_filter_hits(
+        hits,
+        user_query=prepared.text,
+        provider=runtime.provider,
+        query_vector=prepared.vector,
+        rerank_hits=dependencies.rerank_hits,
+        mode=request.reranker,
+        top_n=request.rerank_top_n,
+        mix_mode=request.mix_mode,
+        mix_weight=request.mix_weight,
+        min_score=minimum_score,
+        fallback_min=fallback_minimum,
+        top_k=request.top_k,
+        filter_hits=filter_hits_by_score,
+    )
+    timings["rerank_ms"] = (time.perf_counter() - started) * 1000
+    logger.info("query:rerank hits=%s ms=%.2f", len(ranked_hits), timings["rerank_ms"])
+
+    if not iterative_retrieval_enabled() or not should_iterate(
+        prepared.text, ranked_hits, request.top_k
+    ):
+        return RankedEvidence(ranked_hits, False, [])
+
+    expansion_terms = collect_expansion_terms(ranked_hits)
+    expanded_query = prepared.text
+    if expansion_terms:
+        expanded_query = (
+            f"{prepared.text}\nKey entities: {', '.join(expansion_terms[:6])}"
+        )
+    try:
+        expanded_vector = (
+            runtime.provider.embed(expanded_query)
+            if expansion_terms
+            else prepared.vector
+        )
+    except Exception:
+        expanded_vector = prepared.vector
+
+    secondary_hits = runtime.vector_search.search_high_recall(
+        vector=expanded_vector,
+        top_k=max(request.top_k * 2, len(ranked_hits) or request.top_k),
+        filters=runtime.filters,
+        preferred_tags=request.preferred_tags,
+    )
+    if secondary_hits:
+        ranked_hits = merge_hits(
+            ranked_hits,
+            secondary_hits,
+            max(request.top_k * 2, 12),
+        )
+        ranked_hits = rerank_and_filter_hits(
+            ranked_hits,
+            user_query=prepared.text,
+            provider=runtime.provider,
+            query_vector=prepared.vector,
+            rerank_hits=dependencies.rerank_hits,
+            mode=request.reranker,
+            top_n=request.rerank_top_n,
+            mix_mode=request.mix_mode,
+            mix_weight=request.mix_weight,
+            min_score=minimum_score,
+            fallback_min=fallback_minimum,
+            top_k=request.top_k,
+            filter_hits=filter_hits_by_score,
+        )
+    return RankedEvidence(ranked_hits, True, expansion_terms)
+
+
+def _load_related_graph_facts(
+    request: QueryRequest,
+    prepared: PreparedQuery,
+    hits: list[dict[str, Any]],
+    dependencies: QueryDependencies,
+    timings: dict[str, float],
+) -> list[dict[str, str]]:
+    started = time.perf_counter()
+    facts: list[dict[str, str]] = []
+    if request.authorized_scope.graph_enabled and hits and not request.fast_mode:
+        terms: list[str] = []
+        seen: set[str] = set()
+        _extend_unique_terms(terms, seen, extract_terms(prepared.text))
+        _extend_unique_terms(terms, seen, prepared.terms)
+        for hit in hits[: request.top_k]:
+            payload = hit.get("payload") or {}
+            _extend_unique_terms(terms, seen, _terms_from_payload(payload))
+            _extend_unique_terms(
+                terms,
+                seen,
+                extract_terms(str(payload.get("content") or "")[:160]),
+            )
+        if terms:
+            facts = dependencies.graph_search.fetch_related_terms(
+                terms[:30],
+                dataset_id=request.authorized_scope.dataset_id,
+                neo4j_namespace=str(request.authorized_scope.neo4j_namespace),
+                limit=30,
+            )
+    timings["kg_ms"] = (time.perf_counter() - started) * 1000
+    logger.info("query:kg facts=%s ms=%.2f", len(facts), timings["kg_ms"])
+    return facts
+
+
+def _generate_grounded_answer(
+    request: QueryRequest,
+    provider: ModelProvider,
+    query: str,
+    context_summaries: list[dict[str, Any]],
+    graph_facts: list[dict[str, str]],
+    timings: dict[str, float],
+) -> str:
+    started = time.perf_counter()
+    answer = ""
+    if request.generate and generation_enabled() and context_summaries:
+        system_prompt, user_prompt = build_grounded_answer_prompt(
+            query,
+            context_summaries,
+            graph_facts,
+        )
+        try:
+            generated = provider.chat(
+                system_prompt,
+                [{"role": "user", "content": user_prompt}],
+                temperature=0.0,
+            )
+        except Exception as exc:
+            logger.exception("query:generation failed")
+            raise AnswerGenerationError("Answer generation failed.") from exc
+        answer = str(enforce_output_safety(str(generated or ""))["answer"])
+    timings["generation_ms"] = (time.perf_counter() - started) * 1000
+    return answer
+
+
+def _terms_from_payload(payload: dict[str, Any]) -> list[str]:
+    terms: list[str] = []
+    tags = payload.get("tags")
+    if isinstance(tags, str):
+        terms.extend(extract_terms(tags))
+    elif isinstance(tags, list):
+        for tag in tags:
+            terms.extend(extract_terms(str(tag)))
+    for key in ("title", "page_url", "source_url"):
+        terms.extend(extract_terms(str(payload.get(key) or "")))
+    return terms
 
 
 def _extend_unique_terms(
-    target: list[str], seen: set[str], candidates: list[str]
+    target: list[str],
+    seen: set[str],
+    candidates: list[str],
 ) -> None:
     for candidate in candidates:
         term = str(candidate or "").strip()
@@ -54,375 +507,4 @@ def _extend_unique_terms(
         target.append(term)
 
 
-def _dataset_not_ready(exc: Exception) -> HTTPException:
-    return HTTPException(
-        status_code=503,
-        detail={
-            "code": "dataset_not_ready",
-            "message": "The authorized dataset storage is not ready.",
-        },
-    )
-
-
-def run_query_documents(
-    body: Any,
-    *,
-    rag_service: Any,
-    get_provider: Callable[[str], Any],
-    qdrant_ctor: Callable[[], VectorSearchPort],
-    analyze_prompt_fn: Callable[[str], dict[str, Any]] = analyze_prompt,
-    enforce_output_safety_fn: Callable[[str], dict[str, Any]] = enforce_output_safety,
-    sanitize_prompt_text_fn: Callable[[str], str] = sanitize_prompt_text,
-    build_query_rewrite_fn: Callable[
-        ..., dict[str, Any]
-    ] = lambda provider, query, **kwargs: {},
-    build_query_terms_fn: Callable[
-        [str, list[str], list[str], list[str]], list[str]
-    ] = lambda *args: [],
-    run_search_fn: VectorSearch = _search_via_port,
-    keyword_fallback_fn: VectorSearch = lambda *args, **kwargs: [],
-    build_structural_hits_fn: Callable[
-        ..., list[dict[str, Any]]
-    ] = lambda *args, **kwargs: [],
-    structural_hops_fn: Callable[[], int] = structural_hops,
-    structural_limit_fn: Callable[[int], int] = structural_limit,
-    fusion_weights_fn: Callable[[], tuple[float, float]] = fusion_weights,
-    rerank_and_filter_hits_fn: Callable[
-        ..., list[dict[str, Any]]
-    ] = lambda hits, **kwargs: hits,
-    should_iterate_fn: Callable[
-        [str, list[dict[str, Any]], int], bool
-    ] = lambda q, h, k: False,
-    collect_expansion_terms_fn: Callable[
-        [list[dict[str, Any]], int], list[str]
-    ] = lambda hits, limit=8: [],
-    merge_hits_fn: Callable[
-        [list[dict[str, Any]], list[dict[str, Any]], int], list[dict[str, Any]]
-    ] = (lambda primary, secondary, limit: secondary),
-    build_fused_hits_fn: Callable[
-        [list[dict[str, Any]], list[dict[str, Any]], float, float], list[dict[str, Any]]
-    ] = (lambda sem_hits, struct_hits, sem_weight=0.0, str_weight=0.0: sem_hits),
-    prepare_context_fn: Callable[
-        [list[dict[str, Any]], Any, Any], tuple[list[dict[str, Any]], list[int], int]
-    ] = (lambda hits, max_docs, max_tokens: ([], [], 0)),
-    run_high_recall_fn: VectorSearch = _high_recall_via_port,
-    fetch_related_terms_fn: Callable[..., list[dict[str, str]]] = (
-        lambda *args, **kwargs: []
-    ),
-    context_limits_fn: Callable[[], tuple[int, int]] = context_limits,
-    score_thresholds_fn: Callable[[], tuple[float, float]] = score_thresholds,
-    iterative_retrieval_enabled_fn: Callable[[], bool] = iterative_retrieval_enabled,
-    generation_enabled_fn: Callable[[], bool] = generation_enabled,
-    configured_search_top_k_fn: Callable[[int], int] = configured_search_top_k,
-    extract_terms_fn: Callable[[str], list[str]] = _extract_terms,
-    terms_from_payload_fn: Callable[[dict[str, Any]], list[str]] = _terms_from_payload,
-    build_grounded_answer_prompt_fn: Callable[
-        [str, list[dict[str, Any]], list[dict[str, str]]], tuple[str, str]
-    ] = build_grounded_answer_prompt,
-) -> dict[str, Any]:
-    """Execute safety, retrieval, fusion, reranking, and answer generation.
-
-    The function coordinates the query stages but receives every external
-    storage operation through bridge-owned ports or injected callables.
-    """
-    timings: dict[str, float] = {}
-    prompt_safety = analyze_prompt_fn(body.query)
-    if prompt_safety["blocked"]:
-        detail = "Query blocked by content safety filters."
-        if prompt_safety["issues"]:
-            detail += f" Reasons: {', '.join(prompt_safety['issues'])}."
-        raise HTTPException(status_code=400, detail=detail)
-
-    user_query = prompt_safety["sanitized"]
-    if not user_query.strip():
-        raise HTTPException(
-            status_code=400, detail="Query is empty after sanitization."
-        )
-
-    provider = get_provider(body.provider)
-    apply_provider_overrides(provider, body)
-    qdrant = qdrant_ctor()
-    authorized_scope = body.authorized_scope
-    qdrant.select_scoped_collection(authorized_scope.qdrant_collection)
-    filters = build_scoped_query_filters(authorized_scope.dataset_id, body.filters)
-    graph_enabled = bool(authorized_scope.graph_enabled)
-    logger.info(
-        "query:start provider=%s dataset_id=%s top_k=%s fast=%s smart=%s optimized=%s",
-        body.provider,
-        authorized_scope.dataset_id,
-        body.top_k,
-        body.fast_mode,
-        body.smart_lookup,
-        body.is_optimized,
-    )
-
-    t_rewrite_start = time.perf_counter()
-    rewrite = build_query_rewrite_fn(
-        provider,
-        user_query,
-        fast_mode=body.fast_mode,
-    )
-    rewrite_enabled = rewrite["enabled"]
-    timings["rewrite_ms"] = (time.perf_counter() - t_rewrite_start) * 1000
-    rewritten_query = sanitize_prompt_text_fn(
-        rewrite.get("rewritten_query") or user_query
-    )
-    high_level_keys = rewrite["high_level_keys"]
-    low_level_keys = rewrite["low_level_keys"]
-    modality_hints = rewrite["modality_hints"]
-    entity_terms = rewrite["entity_terms"]
-    query_terms = build_query_terms_fn(
-        rewritten_query, high_level_keys, low_level_keys, entity_terms
-    )
-
-    t_embed_start = time.perf_counter()
-    try:
-        vec = provider.embed(rewritten_query)
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Embedding failed: {exc}") from exc
-    timings["embed_ms"] = (time.perf_counter() - t_embed_start) * 1000
-
-    t_qdrant_start = time.perf_counter()
-    keyword_fields = [
-        "title",
-        "page_url",
-        "source_url",
-        "canonical_url",
-        "tags",
-        "content",
-        "pdfs",
-    ]
-    search_top_k = configured_search_top_k_fn(body.top_k)
-    try:
-        hits = run_search_fn(
-            qdrant=qdrant,
-            vec=vec,
-            top_k=search_top_k,
-            filters=filters,
-            query_terms=query_terms,
-            keyword_fields=keyword_fields,
-            smart_lookup=body.smart_lookup,
-            fast_mode=body.fast_mode,
-            is_optimized=body.is_optimized,
-            preferred_tags=body.preferred_tags,
-        )
-        keyword_hits = keyword_fallback_fn(
-            qdrant,
-            vec,
-            rewritten_query,
-            search_top_k,
-            filters=filters,
-        )
-    except DatasetVectorStoreNotReadyError as exc:
-        raise _dataset_not_ready(exc) from exc
-    if keyword_hits:
-        hits = merge_hits_fn(
-            hits, keyword_hits, max(search_top_k * 2, len(hits) + len(keyword_hits))
-        )
-    timings["qdrant_ms"] = (time.perf_counter() - t_qdrant_start) * 1000
-    logger.info("query:qdrant hits=%s ms=%.2f", len(hits), timings["qdrant_ms"])
-
-    struct_hops = (
-        body.structural_hops
-        if getattr(body, "structural_hops", None) is not None
-        else structural_hops_fn()
-    )
-    t_graph_start = time.perf_counter()
-    structural_hits = (
-        []
-        if not graph_enabled or body.fast_mode or struct_hops == 0
-        else build_structural_hits_fn(
-            query_terms,
-            dataset_id=authorized_scope.dataset_id,
-            neo4j_namespace=authorized_scope.neo4j_namespace,
-            limit=structural_limit_fn(body.top_k),
-            hops=struct_hops,
-            include_rel_match=body.smart_lookup,
-        )
-    )
-    timings["graph_ms"] = (time.perf_counter() - t_graph_start) * 1000
-    logger.info(
-        "query:graph hits=%s ms=%.2f", len(structural_hits), timings["graph_ms"]
-    )
-
-    sem_weight, str_weight = fusion_weights_fn()
-    hits = build_fused_hits_fn(
-        hits,
-        structural_hits,
-        sem_weight=sem_weight,
-        str_weight=str_weight,
-    )
-    hits = [
-        h
-        for h in hits
-        if (h.get("payload") or {}).get("component_type")
-        in (None, "", "chunk", "relation")
-    ]
-
-    t_rerank_start = time.perf_counter()
-    min_score, fallback_min = score_thresholds_fn()
-    hits = rerank_and_filter_hits_fn(
-        hits,
-        user_query=rewritten_query,
-        provider=provider,
-        query_vector=vec,
-        rag_service=rag_service,
-        mode=body.reranker,
-        top_n=body.rerank_top_n,
-        mix_mode=body.mix_mode,
-        mix_weight=body.mix_weight,
-        min_score=min_score,
-        fallback_min=fallback_min,
-        top_k=body.top_k,
-    )
-    timings["rerank_ms"] = (time.perf_counter() - t_rerank_start) * 1000
-    logger.info("query:rerank hits=%s ms=%.2f", len(hits), timings["rerank_ms"])
-
-    iterative_enabled = iterative_retrieval_enabled_fn()
-    iteration_used = False
-    expansion_terms: list[str] = []
-    if iterative_enabled and should_iterate_fn(rewritten_query, hits, body.top_k):
-        iteration_used = True
-        expansion_terms = collect_expansion_terms_fn(hits)
-        expanded_query = rewritten_query
-        if expansion_terms:
-            expanded_query = (
-                f"{rewritten_query}\nKey entities: {', '.join(expansion_terms[:6])}"
-            )
-        try:
-            iter_vec = provider.embed(expanded_query) if expansion_terms else vec
-        except Exception:
-            iter_vec = vec
-
-        try:
-            secondary_hits = run_high_recall_fn(
-                qdrant=qdrant,
-                vec=iter_vec,
-                top_k=max(body.top_k * 2, len(hits) or body.top_k),
-                filters=filters,
-                preferred_tags=body.preferred_tags,
-            )
-        except DatasetVectorStoreNotReadyError as exc:
-            raise _dataset_not_ready(exc) from exc
-        if secondary_hits:
-            hits = merge_hits_fn(hits, secondary_hits, max(body.top_k * 2, 12))
-            hits = rerank_and_filter_hits_fn(
-                hits,
-                user_query=rewritten_query,
-                provider=provider,
-                query_vector=vec,
-                rag_service=rag_service,
-                mode=body.reranker,
-                top_n=body.rerank_top_n,
-                mix_mode=body.mix_mode,
-                mix_weight=body.mix_weight,
-                min_score=min_score,
-                fallback_min=fallback_min,
-                top_k=body.top_k,
-            )
-
-    max_context_tokens, max_context_docs = context_limits_fn()
-
-    final_hit_limit = max(body.top_k, max_context_docs)
-    if len(hits) > final_hit_limit:
-        hits = hits[:final_hit_limit]
-
-    context_summaries, trimmed_sources, context_tokens_used = prepare_context_fn(
-        hits,
-        max_docs=max_context_docs,
-        max_tokens=max_context_tokens,
-    )
-
-    kg_facts: list[dict[str, str]] = []
-    t_kg_start = time.perf_counter()
-    if graph_enabled and hits and not body.fast_mode:
-        kg_terms: list[str] = []
-        seen_kg_terms: set[str] = set()
-        _extend_unique_terms(kg_terms, seen_kg_terms, extract_terms_fn(rewritten_query))
-        _extend_unique_terms(kg_terms, seen_kg_terms, query_terms)
-        for h in hits[: body.top_k]:
-            payload = h.get("payload") or {}
-            _extend_unique_terms(
-                kg_terms, seen_kg_terms, terms_from_payload_fn(payload)
-            )
-            content_sample = (payload.get("content") or "")[:160]
-            _extend_unique_terms(
-                kg_terms, seen_kg_terms, extract_terms_fn(content_sample)
-            )
-        limited_terms = kg_terms[:30]
-        if limited_terms:
-            kg_facts = fetch_related_terms_fn(
-                limited_terms,
-                dataset_id=authorized_scope.dataset_id,
-                neo4j_namespace=authorized_scope.neo4j_namespace,
-                limit=30,
-            )
-    timings["kg_ms"] = (time.perf_counter() - t_kg_start) * 1000
-    logger.info("query:kg facts=%s ms=%.2f", len(kg_facts), timings["kg_ms"])
-
-    answer = ""
-    output_safety = {"blocked": False, "issues": [], "answer": ""}
-    t_generation_start = time.perf_counter()
-    if (
-        bool(getattr(body, "generate", True))
-        and generation_enabled_fn()
-        and context_summaries
-    ):
-        system_prompt, user_prompt = build_grounded_answer_prompt_fn(
-            rewritten_query,
-            context_summaries,
-            kg_facts,
-        )
-        try:
-            generated_answer = provider.chat(
-                system_prompt,
-                [{"role": "user", "content": user_prompt}],
-                temperature=0.0,
-            )
-        except Exception as exc:
-            logger.exception("query:generation failed")
-            raise HTTPException(
-                status_code=502, detail="Answer generation failed."
-            ) from exc
-
-        output_safety = enforce_output_safety_fn(str(generated_answer or ""))
-        answer = output_safety["answer"]
-    timings["generation_ms"] = (time.perf_counter() - t_generation_start) * 1000
-
-    return {
-        "ok": True,
-        "count": len(hits),
-        "hits": hits,
-        "kg": kg_facts,
-        "answer": answer,
-        "retrieval": {
-            "dataset_id": authorized_scope.dataset_id,
-            "graph_enabled": graph_enabled,
-            "graph_disabled_reason": None
-            if graph_enabled
-            else "dataset_scope_not_enforced",
-            "iterative_pass": iteration_used,
-            "expansion_terms": expansion_terms if expansion_terms else [],
-            "context_tokens_used": context_tokens_used,
-            "context_docs": len(context_summaries),
-            "context_trimmed": trimmed_sources,
-            "max_context_tokens": max_context_tokens,
-            "rewrite": {
-                "query": rewritten_query if rewritten_query != user_query else None,
-                "high_level_keys": high_level_keys,
-                "low_level_keys": low_level_keys,
-                "entity_terms": entity_terms,
-                "modality_hints": modality_hints,
-                "enabled": rewrite_enabled,
-            },
-            "timings_ms": {
-                "rewrite": timings.get("rewrite_ms"),
-                "embed": timings.get("embed_ms"),
-                "qdrant": timings.get("qdrant_ms"),
-                "graph": timings.get("graph_ms"),
-                "rerank": timings.get("rerank_ms"),
-                "kg": timings.get("kg_ms"),
-                "generation": timings.get("generation_ms"),
-            },
-        },
-    }
+__all__ = ["execute_authorized_query"]

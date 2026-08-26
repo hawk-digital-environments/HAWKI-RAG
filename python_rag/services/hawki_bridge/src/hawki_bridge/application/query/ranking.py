@@ -6,7 +6,8 @@ from typing import Any, Callable
 
 from hawki_bridge.application.query.lexical import lexical_boost_hits
 from hawki_bridge.application.query.hits import dedupe_hits_by_identity
-from hawki_rag_text.preprocessing import _extract_terms
+from hawki_bridge.domain.ports import ModelProvider, RerankHitsPort
+from hawki_rag_text.terms import extract_terms
 
 
 DedupeHits = Callable[[list[dict[str, Any]]], list[dict[str, Any]]]
@@ -42,9 +43,9 @@ def rerank_and_filter_hits(
     hits: list[dict[str, Any]],
     *,
     user_query: str,
-    provider: Any,
+    provider: ModelProvider,
     query_vector: list[float],
-    rag_service,
+    rerank_hits: RerankHitsPort,
     mode: str,
     top_n: int,
     mix_mode: bool,
@@ -55,7 +56,7 @@ def rerank_and_filter_hits(
     filter_hits: Callable[..., list[dict[str, Any]]],
 ) -> list[dict[str, Any]]:
     """Apply reranker and score-based filtering in one policy step."""
-    ranked_hits = rag_service.rerank_hits(
+    ranked_hits = rerank_hits(
         hits=hits,
         user_query=user_query,
         provider=provider,
@@ -107,14 +108,14 @@ def collect_expansion_terms(
     hits: list[dict[str, Any]],
     limit: int = 8,
     *,
-    extract_terms: ExtractTerms = _extract_terms,
+    extract_terms_fn: ExtractTerms = extract_terms,
 ) -> list[str]:
     """Collect unique terms from ranked content snippets for iterative retrieval."""
     seen: set[str] = set()
     terms: list[str] = []
     for h in hits:
         payload = h.get("payload") or {}
-        for term in extract_terms(payload.get("content") or ""):
+        for term in extract_terms_fn(payload.get("content") or ""):
             if term not in seen:
                 seen.add(term)
                 terms.append(term)

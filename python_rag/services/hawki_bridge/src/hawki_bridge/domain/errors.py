@@ -9,4 +9,27 @@ class DatasetVectorStoreNotReadyError(BridgeQueryError):
     """The authorized dataset has no ready vector collection."""
 
 
-__all__ = ["BridgeQueryError", "DatasetVectorStoreNotReadyError"]
+class InvalidQueryError(BridgeQueryError):
+    """The query cannot safely or meaningfully enter retrieval."""
+
+
+class UnsupportedModelProviderError(InvalidQueryError):
+    """The request names a model provider unavailable to this bridge."""
+
+
+class EmbeddingGenerationError(BridgeQueryError):
+    """The selected provider could not embed the authorized query."""
+
+
+class AnswerGenerationError(BridgeQueryError):
+    """The selected provider could not generate the grounded answer."""
+
+
+__all__ = [
+    "AnswerGenerationError",
+    "BridgeQueryError",
+    "DatasetVectorStoreNotReadyError",
+    "EmbeddingGenerationError",
+    "InvalidQueryError",
+    "UnsupportedModelProviderError",
+]

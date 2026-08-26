@@ -18,8 +18,17 @@ from hawki_bridge.adapters.temporal_client import (
     TemporalBridgeClient,
     TemporalExecution,
 )
+from hawki_bridge.application.dependencies import QueryDependencies
 from hawki_bridge.application.graph import GraphReadService
-from hawki_bridge.domain.errors import DatasetVectorStoreNotReadyError
+from hawki_bridge.domain.errors import (
+    AnswerGenerationError,
+    BridgeQueryError,
+    DatasetVectorStoreNotReadyError,
+    EmbeddingGenerationError,
+    InvalidQueryError,
+    UnsupportedModelProviderError,
+)
+from hawki_bridge.http.errors import query_error_to_http_exception
 from hawki_bridge.http.routers.graph import build_graph_router
 from hawki_bridge.http.routers.health import build_health_router
 from hawki_bridge.http.routers.query import build_query_router
@@ -65,6 +74,23 @@ def test_qdrant_adapter_translates_missing_scoped_collection() -> None:
         )
 
 
+@pytest.mark.parametrize(
+    ("error", "status_code"),
+    [
+        (InvalidQueryError("invalid"), 400),
+        (UnsupportedModelProviderError("missing"), 400),
+        (EmbeddingGenerationError("failed"), 500),
+        (AnswerGenerationError("failed"), 502),
+        (DatasetVectorStoreNotReadyError("missing"), 503),
+    ],
+)
+def test_query_errors_are_translated_only_at_the_http_boundary(
+    error: BridgeQueryError,
+    status_code: int,
+) -> None:
+    assert query_error_to_http_exception(error).status_code == status_code
+
+
 def _scope(*, graph_enabled: bool = False) -> AuthorizedQueryScope:
     return AuthorizedQueryScope(
         dataset_id="dataset-42",
@@ -101,24 +127,18 @@ def test_query_route_applies_defaults_and_delegates_to_application(
 ) -> None:
     from hawki_bridge.http.routers import query as query_router_module
 
-    provider = object()
-
-    class Service:
-        @staticmethod
-        def get_provider(name: str) -> object:
-            assert name == "ollama"
-            return provider
-
     observed: dict[str, Any] = {}
 
-    def fake_query_documents(body, *, rag_service, get_provider, dependencies):
+    def fake_execute_authorized_query(body, *, dependencies):
         observed["body"] = body
-        observed["service"] = rag_service
-        observed["provider"] = get_provider(body.provider)
         observed["dependencies"] = dependencies
         return {"ok": True, "count": 0, "hits": []}
 
-    monkeypatch.setattr(query_router_module, "query_documents", fake_query_documents)
+    monkeypatch.setattr(
+        query_router_module,
+        "execute_authorized_query",
+        fake_execute_authorized_query,
+    )
     settings = load_settings(
         {
             "RERANKER_MODE": "external",
@@ -126,11 +146,14 @@ def test_query_route_applies_defaults_and_delegates_to_application(
             "RERANKER_MIX_WEIGHT": "0.25",
         }
     )
-    service = Service()
-    dependencies = object()
+    dependencies = QueryDependencies(
+        vector_search_factory=lambda: cast(Any, object()),
+        graph_search=cast(Any, object()),
+        resolve_model_provider=lambda _name: cast(Any, object()),
+        rerank_hits=lambda **kwargs: kwargs["hits"],
+    )
     endpoint = _endpoint(
         build_query_router(
-            service=service,
             settings=settings,
             dependencies=dependencies,
         ),
@@ -152,8 +175,6 @@ def test_query_route_applies_defaults_and_delegates_to_application(
     assert configured.reranker == "external"
     assert configured.mix_mode is False
     assert configured.mix_weight == 0.25
-    assert observed["service"] is service
-    assert observed["provider"] is provider
     assert request.reranker == "none"
 
 

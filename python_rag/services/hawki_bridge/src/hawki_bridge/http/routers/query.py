@@ -2,23 +2,32 @@
 
 from fastapi import APIRouter
 
-from hawki_bridge.application.query.orchestration import query_documents
-from hawki_bridge.http.dependencies import get_provider_or_400
+from hawki_rag_contracts.query import QueryResponse
+
+from hawki_bridge.application.dependencies import QueryDependencies
+from hawki_bridge.application.query.execution import execute_authorized_query
+from hawki_bridge.domain.errors import BridgeQueryError
+from hawki_bridge.http.errors import query_error_to_http_exception
 from hawki_bridge.http.schemas import QueryRequest, apply_query_settings
+from hawki_bridge.settings import BridgeSettings
 
 
-def build_query_router(*, service, settings, dependencies) -> APIRouter:
+def build_query_router(
+    *,
+    settings: BridgeSettings,
+    dependencies: QueryDependencies,
+) -> APIRouter:
+    """Build the HTTP adapter around the typed query application use case."""
+
     router = APIRouter()
 
-    @router.post("/query")
-    def query(body: QueryRequest) -> dict[str, object]:
+    @router.post("/query", response_model=QueryResponse)
+    def query(body: QueryRequest) -> QueryResponse:
         configured = apply_query_settings(body, settings)
-        return query_documents(
-            configured,
-            rag_service=service,
-            get_provider=lambda name: get_provider_or_400(service, name),
-            dependencies=dependencies,
-        )
+        try:
+            return execute_authorized_query(configured, dependencies=dependencies)
+        except BridgeQueryError as exc:
+            raise query_error_to_http_exception(exc) from exc
 
     return router
 
