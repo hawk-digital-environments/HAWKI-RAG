@@ -18,8 +18,8 @@ from hawki_rag_contracts.status import (
     StatusError,
     WorkerProducer,
 )
-from hawki_rag_resilience.redaction import sanitize_for_log
-from hawki_worker_runtime.callbacks import (
+from hawki_observability.redaction import sanitize_for_log
+from hawki_pipeline_callbacks import (
     LaravelCallbackClient,
     LaravelCallbackSettings,
 )

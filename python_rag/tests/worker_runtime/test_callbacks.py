@@ -10,7 +10,7 @@ from typing import Any
 import httpx
 import pytest
 
-from hawki_worker_runtime.callbacks import (
+from hawki_pipeline_callbacks import (
     LaravelCallbackClient,
     LaravelCallbackError,
     LaravelCallbackSettings,
@@ -109,7 +109,7 @@ def test_retry_reuses_one_payload_timestamp_and_signature(
         return httpx.Response(status, json={"status": status}, request=request)
 
     monkeypatch.setattr(
-        "hawki_worker_runtime.callbacks.time.sleep",
+        "hawki_pipeline_callbacks.client.time.sleep",
         lambda seconds: sleeps.append(seconds),
     )
     event = CountingEvent()
@@ -137,7 +137,7 @@ def test_timeout_is_explicit_and_retried_without_reflecting_secrets(
         )
 
     monkeypatch.setattr(
-        "hawki_worker_runtime.callbacks.time.sleep",
+        "hawki_pipeline_callbacks.client.time.sleep",
         lambda seconds: sleeps.append(seconds),
     )
 
@@ -195,7 +195,7 @@ def test_exhausted_server_errors_do_not_expose_endpoint_body_or_secret(
         )
 
     monkeypatch.setattr(
-        "hawki_worker_runtime.callbacks.time.sleep", lambda _seconds: None
+        "hawki_pipeline_callbacks.client.time.sleep", lambda _seconds: None
     )
 
     with pytest.raises(LaravelCallbackError) as caught:
@@ -255,7 +255,7 @@ def test_transient_laravel_conflicts_are_retried(
         return httpx.Response(202, json={"accepted": True}, request=request)
 
     monkeypatch.setattr(
-        "hawki_worker_runtime.callbacks.time.sleep", lambda _seconds: None
+        "hawki_pipeline_callbacks.client.time.sleep", lambda _seconds: None
     )
 
     assert _client(respond).send(_event(), timestamp=1_775_210_405) == {

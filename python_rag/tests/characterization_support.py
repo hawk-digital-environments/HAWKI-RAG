@@ -4,15 +4,12 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from hawki_rag_resilience.optional_imports import import_required_module
-
-
 def fastapi_http_exception_type() -> type[BaseException]:
-    """Return FastAPI's HTTP exception without making it an import-time dependency."""
-    return import_required_module(
-        "fastapi",
-        install_hint="Run `make python-deps` to install the pinned test dependencies.",
-    ).HTTPException
+    """Return FastAPI's installed HTTP exception type."""
+
+    from fastapi import HTTPException
+
+    return HTTPException
 
 
 def fastapi_test_client_class():
@@ -23,11 +20,11 @@ def fastapi_test_client_class():
 
 
 def requests_http_error_type() -> type[BaseException]:
-    """Return Requests' HTTP error through the optional-dependency boundary."""
-    return import_required_module(
-        "requests",
-        install_hint="Run `make python-deps` to install the pinned test dependencies.",
-    ).exceptions.HTTPError
+    """Return Requests' installed HTTP error type."""
+
+    from requests import HTTPError
+
+    return HTTPError
 
 
 def authorized_query_scope(*, graph_enabled: bool = False) -> SimpleNamespace:

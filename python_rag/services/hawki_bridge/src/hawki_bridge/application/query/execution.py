@@ -7,7 +7,6 @@ import time
 from dataclasses import dataclass
 from typing import Any
 
-from hawki_model_providers.overrides import apply_provider_overrides
 from hawki_rag_contracts.query import QueryRequest, QueryResponse
 from hawki_rag_text.safety import (
     analyze_prompt,
@@ -23,6 +22,7 @@ from hawki_bridge.application.query.context import (
 )
 from hawki_bridge.application.query.fallback import keyword_fallback_search
 from hawki_bridge.application.query.hits import fuse_hits, merge_hits
+from hawki_bridge.application.query.model_selection import configure_query_provider
 from hawki_bridge.application.query.ranking import (
     collect_expansion_terms,
     filter_hits_by_score,
@@ -214,7 +214,7 @@ def _initialize_query_runtime(
         provider = dependencies.resolve_model_provider(request.provider)
     except ValueError as exc:
         raise UnsupportedModelProviderError(str(exc)) from exc
-    apply_provider_overrides(provider, request)
+    configure_query_provider(provider, request)
 
     vector_search = dependencies.vector_search_factory()
     vector_search.select_scoped_collection(request.authorized_scope.qdrant_collection)

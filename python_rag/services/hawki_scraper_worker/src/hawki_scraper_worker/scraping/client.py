@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from hawki_worker_runtime.external_jobs import ExternalJobClient
+from hawki_external_jobs import ExternalJobClient
 
 from hawki_scraper_worker.settings import ScraperWorkerSettings
 

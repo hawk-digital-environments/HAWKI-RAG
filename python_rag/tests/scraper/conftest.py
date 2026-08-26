@@ -11,7 +11,9 @@ for member in (
     "packages/contracts/src",
     "packages/text_processing/src",
     "packages/artifact_store/src",
-    "packages/resilience/src",
+    "packages/observability/src",
+    "packages/pipeline_callbacks/src",
+    "packages/external_jobs/src",
     "packages/worker_runtime/src",
     "services/hawki_scraper_worker/src",
 ):

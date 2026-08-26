@@ -8,7 +8,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-from hawki_rag_resilience.optional_imports import import_required_module
+import numpy
 from hawki_indexer_worker.adapters.raganything.provider_config import (
     clone_provider_for_graph,
     graph_model_override,
@@ -30,10 +30,7 @@ logger = logging.getLogger(__name__)
 
 
 def _numpy_module() -> Any:
-    return import_required_module(
-        "numpy",
-        install_hint="Run `make python-deps` to install the pinned indexer dependencies.",
-    )
+    return numpy
 
 
 def graph_runtime_cache_key(

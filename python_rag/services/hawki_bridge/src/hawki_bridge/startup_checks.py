@@ -7,7 +7,7 @@ import time
 from collections.abc import Callable
 from typing import Any
 
-from hawki_rag_resilience.redaction import sanitize_for_log
+from hawki_observability.redaction import sanitize_for_log
 from hawki_bridge.adapters.neo4j_reader import (
     NEO4J_ERRORS,
     ping_neo4j,

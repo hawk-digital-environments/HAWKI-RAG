@@ -21,7 +21,7 @@ from hawki_vector_store.requests import (
     build_upsert_points_request,
 )
 from hawki_vector_store.transport import QdrantHTTPTransport
-from hawki_rag_resilience.reliability import is_retry_safe_write
+from hawki_vector_store.retry_policy import is_retry_safe_write
 
 
 class QdrantHTTPGateway:

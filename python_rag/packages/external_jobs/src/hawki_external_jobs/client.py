@@ -1,4 +1,4 @@
-"""Adapters around external scraper and converter services."""
+"""HTTP adapter for external start/status job APIs."""
 
 from __future__ import annotations
 

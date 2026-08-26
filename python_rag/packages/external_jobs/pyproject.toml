@@ -1,0 +1,14 @@
+[project]
+name = "hawki-external-jobs"
+version = "0.1.0"
+description = "HTTP start/status polling client for RAWKI external jobs"
+readme = "README.md"
+authors = [
+    { name = "Yazdan Asadi", email = "wentlerhiphop@gmail.com" }
+]
+requires-python = "==3.13.14"
+dependencies = ["requests==2.34.2"]
+
+[build-system]
+requires = ["uv_build==0.11.26"]
+build-backend = "uv_build"

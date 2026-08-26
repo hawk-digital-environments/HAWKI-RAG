@@ -17,7 +17,7 @@ class RagAnythingProviderRuntimeTests(unittest.TestCase):
         from hawki_indexer_worker.adapters.raganything.provider_config import (
             clone_provider_for_graph,
         )
-        from hawki_model_providers.overrides import apply_provider_overrides
+        from hawki_indexer_worker.indexing.request import apply_provider_overrides
 
         class Provider:
             def __init__(self) -> None:
@@ -27,6 +27,8 @@ class RagAnythingProviderRuntimeTests(unittest.TestCase):
                 self.embed_model = "hawki-embedding"
                 self.vision_model = "hawki-vision"
                 self._last_embed_dim = None
+                self._explicit_graph_model = None
+                self._explicit_vision_model = None
 
         provider = Provider()
         provider._last_embed_dim = 1024

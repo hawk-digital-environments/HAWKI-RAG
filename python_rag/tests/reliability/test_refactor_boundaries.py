@@ -1,4 +1,4 @@
-"""Architecture-boundary scenarios that keep adapters injectable and optional imports explicit."""
+"""Architecture-boundary scenarios that keep adapters explicit and injectable."""
 
 from __future__ import annotations
 
@@ -47,24 +47,15 @@ def test_qdrant_client_ops_capture_gateway_and_limit_policy() -> None:
     assert resolve_selected_collection("explicit", lambda: "picked") == "explicit"
 
 
-def test_optional_import_helper_reports_missing_runtime_dependencies() -> None:
-    from hawki_rag_resilience.optional_imports import (
-        import_optional_module,
-        import_required_module,
-    )
-
-    assert import_optional_module("sys") is sys
-    assert import_optional_module("__hawki_missing_dependency__") is None
-
-    try:
-        import_required_module(
-            "__hawki_missing_dependency__",
-            install_hint="install the project requirements",
-        )
-    except RuntimeError as exc:
-        assert "install the project requirements" in str(exc)
-    else:
-        raise AssertionError("missing required dependency should raise RuntimeError")
+def test_production_code_has_no_optional_dependency_import_guards() -> None:
+    production_roots = [ROOT / "packages", ROOT / "services"]
+    violations = [
+        str(path.relative_to(ROOT))
+        for root in production_roots
+        for path in root.rglob("*.py")
+        if "hawki_rag_resilience" in path.read_text(encoding="utf-8")
+    ]
+    assert violations == []
 
 
 def test_canonical_lightrag_doc_status_storage_import_path_resolves() -> None:

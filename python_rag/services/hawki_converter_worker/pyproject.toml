@@ -9,8 +9,10 @@ authors = [
 requires-python = "==3.13.14"
 dependencies = [
     "hawki-artifact-store==0.1.0",
+    "hawki-external-jobs==0.1.0",
+    "hawki-observability==0.1.0",
+    "hawki-pipeline-callbacks==0.1.0",
     "hawki-rag-contracts==0.1.0",
-    "hawki-rag-resilience==0.1.0",
     "hawki-rag-text==0.1.0",
     "hawki-worker-runtime==0.1.0",
     "requests==2.34.2",
@@ -31,7 +33,9 @@ build-backend = "uv_build"
 
 [tool.uv.sources]
 hawki-artifact-store = { workspace = true }
+hawki-external-jobs = { workspace = true }
+hawki-observability = { workspace = true }
+hawki-pipeline-callbacks = { workspace = true }
 hawki-rag-contracts = { workspace = true }
-hawki-rag-resilience = { workspace = true }
 hawki-rag-text = { workspace = true }
 hawki-worker-runtime = { workspace = true }

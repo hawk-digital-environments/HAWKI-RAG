@@ -4,7 +4,7 @@ import unittest
 from unittest.mock import Mock
 
 from hawki_scraper_worker.activities.scrape import heartbeat_external_job_id
-from hawki_worker_runtime.external_jobs import ExternalJobClient
+from hawki_external_jobs import ExternalJobClient
 
 
 class ExternalJobClientTests(unittest.TestCase):

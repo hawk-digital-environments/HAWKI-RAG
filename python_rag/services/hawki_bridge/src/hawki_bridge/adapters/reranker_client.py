@@ -4,16 +4,13 @@ import logging
 import os
 from typing import Any, Optional
 
-from hawki_rag_resilience.optional_imports import import_required_module
+import requests as requests_module
 
 logger = logging.getLogger(__name__)
 
 
 def _requests_module() -> Any:
-    return import_required_module(
-        "requests",
-        install_hint="Run `make python-deps` to install the pinned bridge dependencies.",
-    )
+    return requests_module
 
 
 def _strip_control_chars(text: str | None) -> str:

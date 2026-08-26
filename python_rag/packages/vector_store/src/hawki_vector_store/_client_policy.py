@@ -5,23 +5,13 @@ from __future__ import annotations
 from collections.abc import Callable
 from inspect import signature
 
-from hawki_rag_resilience.optional_imports import import_required_module
-
-
-class _UnavailableRequestsError(Exception):
-    """Internal sentinel used when requests is not installed."""
+from requests import RequestException
 
 
 def request_exception_type() -> type[BaseException]:
-    """Return requests' base exception without importing it at module load."""
+    """Return the base exception raised by the required requests dependency."""
 
-    try:
-        return import_required_module(
-            "requests",
-            install_hint="Install hawki-vector-store to use Qdrant HTTP transport.",
-        ).exceptions.RequestException
-    except RuntimeError:
-        return _UnavailableRequestsError
+    return RequestException
 
 
 def callable_supports_kwarg(target: object, method_name: str, kwarg: str) -> bool:

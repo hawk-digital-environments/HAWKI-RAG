@@ -10,7 +10,6 @@ requires-python = "==3.13.14"
 dependencies = [
     "fastapi==0.139.2",
     "hawki-rag-contracts==0.1.0",
-    "hawki-rag-resilience==0.1.0",
     "sentence-transformers==5.6.0",
     "transformers==5.14.1",
     "uvicorn[standard]==0.30.6",
@@ -43,7 +42,6 @@ conflicts = [
 
 [tool.uv.sources]
 hawki-rag-contracts = { workspace = true }
-hawki-rag-resilience = { workspace = true }
 torch = [
     { index = "pytorch-cpu", extra = "cpu" },
     { index = "pytorch-cu130", extra = "gpu" },

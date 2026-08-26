@@ -8,7 +8,7 @@ import re
 from typing import Any
 from urllib.parse import urlsplit
 
-from hawki_rag_resilience.optional_imports import import_required_module
+import requests
 
 
 _DEFAULT_BASE_URL = "http://litellm:4000/v1"
@@ -23,10 +23,7 @@ class LiteLLMConfigurationError(ValueError):
 
 
 def _requests_module() -> Any:
-    return import_required_module(
-        "requests",
-        install_hint="Run `make python-deps` to install the pinned LiteLLM provider dependencies.",
-    )
+    return requests
 
 
 def _required_setting(name: str, default: str) -> str:
@@ -225,6 +222,8 @@ class LiteLLMProvider:
         )
         self.default_temperature = self._configured_temperature()
         self._last_embed_dim: int | None = None
+        self._explicit_graph_model: str | None = None
+        self._explicit_vision_model: str | None = None
 
     def _require_model(self, attribute: str, capability: str) -> str:
         model = getattr(self, attribute)

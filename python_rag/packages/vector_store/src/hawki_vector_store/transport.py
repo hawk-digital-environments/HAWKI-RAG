@@ -7,39 +7,26 @@ import time
 from collections.abc import Mapping
 from typing import Any
 
+import requests
+
+from hawki_observability.events import QDRANT_ADAPTER_REQUEST
+from hawki_observability.redaction import sanitize_for_log
 from hawki_vector_store.requests import QdrantRequest
-from hawki_rag_resilience.reliability import (
-    QDRANT_ADAPTER_EVENT,
+from hawki_vector_store.retry_policy import (
     QDRANT_RETRYABLE_STATUS_CODES,
-    normalize_retry_attempt_limit,
     is_retryable_http_exception,
-    sanitize_for_log,
+    normalize_retry_attempt_limit,
 )
-from hawki_rag_resilience.optional_imports import import_required_module
 
 logger = logging.getLogger(__name__)
 
 
-class _UnavailableRequestsError(Exception):
-    """Internal sentinel used when requests is not installed."""
-
-
-def _requests_module() -> Any:
-    return import_required_module(
-        "requests",
-        install_hint="Install hawki-vector-store to use Qdrant HTTP transport.",
-    )
-
-
 def _requests_session() -> Any:
-    return _requests_module().Session()
+    return requests.Session()
 
 
 def _request_exception_type() -> type[BaseException]:
-    try:
-        return _requests_module().exceptions.RequestException
-    except RuntimeError:
-        return _UnavailableRequestsError
+    return requests.exceptions.RequestException
 
 
 class QdrantHTTPTransport:
@@ -112,7 +99,7 @@ class QdrantHTTPTransport:
                 elapsed_ms = (time.perf_counter() - started) * 1000
                 logger.info(
                     "event=%s operation=%s request_id=%s attempt=%s/%s status=%s elapsed_ms=%.3f timeout_ms=%.2f backoff_ms=%.2f retryable=%s",
-                    QDRANT_ADAPTER_EVENT,
+                    QDRANT_ADAPTER_REQUEST,
                     operation,
                     sanitize_for_log(request.operation_id or ""),
                     attempt,
@@ -131,7 +118,7 @@ class QdrantHTTPTransport:
                 if should_retry:
                     logger.warning(
                         "event=%s operation=%s request_id=%s attempt=%s/%s elapsed_ms=%.3f retry_after_ms=%.2f reason=status=%s timeout_ms=%.2f",
-                        QDRANT_ADAPTER_EVENT,
+                        QDRANT_ADAPTER_REQUEST,
                         operation,
                         sanitize_for_log(request.operation_id or ""),
                         attempt,
@@ -157,7 +144,7 @@ class QdrantHTTPTransport:
                 ):
                     logger.error(
                         "event=%s operation=%s request_id=%s attempt=%s/%s elapsed_ms=%.3f timeout_ms=%.2f reason=%s",
-                        QDRANT_ADAPTER_EVENT,
+                        QDRANT_ADAPTER_REQUEST,
                         operation,
                         sanitize_for_log(request.operation_id or ""),
                         attempt,
@@ -169,7 +156,7 @@ class QdrantHTTPTransport:
                     raise
                 logger.warning(
                     "event=%s operation=%s request_id=%s attempt=%s/%s elapsed_ms=%.3f retry_after_ms=%.2f timeout_ms=%.2f reason=%s",
-                    QDRANT_ADAPTER_EVENT,
+                    QDRANT_ADAPTER_REQUEST,
                     operation,
                     sanitize_for_log(request.operation_id or ""),
                     attempt,

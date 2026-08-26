@@ -18,8 +18,8 @@ FROM python-builder-base AS bridge-builder
 
 COPY python_rag/packages/contracts/pyproject.toml python_rag/packages/contracts/README.md packages/contracts/
 COPY python_rag/packages/contracts/src packages/contracts/src
-COPY python_rag/packages/resilience/pyproject.toml python_rag/packages/resilience/README.md packages/resilience/
-COPY python_rag/packages/resilience/src packages/resilience/src
+COPY python_rag/packages/observability/pyproject.toml python_rag/packages/observability/README.md packages/observability/
+COPY python_rag/packages/observability/src packages/observability/src
 COPY python_rag/packages/text_processing/pyproject.toml python_rag/packages/text_processing/README.md packages/text_processing/
 COPY python_rag/packages/text_processing/src packages/text_processing/src
 COPY python_rag/packages/model_providers/pyproject.toml python_rag/packages/model_providers/README.md packages/model_providers/
@@ -54,8 +54,12 @@ COPY python_rag/packages/text_processing/pyproject.toml python_rag/packages/text
 COPY python_rag/packages/text_processing/src packages/text_processing/src
 COPY python_rag/packages/artifact_store/pyproject.toml python_rag/packages/artifact_store/README.md packages/artifact_store/
 COPY python_rag/packages/artifact_store/src packages/artifact_store/src
-COPY python_rag/packages/resilience/pyproject.toml python_rag/packages/resilience/README.md packages/resilience/
-COPY python_rag/packages/resilience/src packages/resilience/src
+COPY python_rag/packages/observability/pyproject.toml python_rag/packages/observability/README.md packages/observability/
+COPY python_rag/packages/observability/src packages/observability/src
+COPY python_rag/packages/pipeline_callbacks/pyproject.toml python_rag/packages/pipeline_callbacks/README.md packages/pipeline_callbacks/
+COPY python_rag/packages/pipeline_callbacks/src packages/pipeline_callbacks/src
+COPY python_rag/packages/external_jobs/pyproject.toml python_rag/packages/external_jobs/README.md packages/external_jobs/
+COPY python_rag/packages/external_jobs/src packages/external_jobs/src
 COPY python_rag/packages/worker_runtime/pyproject.toml python_rag/packages/worker_runtime/README.md packages/worker_runtime/
 COPY python_rag/packages/worker_runtime/src packages/worker_runtime/src
 COPY python_rag/services/hawki_scraper_worker/pyproject.toml python_rag/services/hawki_scraper_worker/README.md services/hawki_scraper_worker/
@@ -73,8 +77,12 @@ COPY python_rag/packages/text_processing/pyproject.toml python_rag/packages/text
 COPY python_rag/packages/text_processing/src packages/text_processing/src
 COPY python_rag/packages/artifact_store/pyproject.toml python_rag/packages/artifact_store/README.md packages/artifact_store/
 COPY python_rag/packages/artifact_store/src packages/artifact_store/src
-COPY python_rag/packages/resilience/pyproject.toml python_rag/packages/resilience/README.md packages/resilience/
-COPY python_rag/packages/resilience/src packages/resilience/src
+COPY python_rag/packages/observability/pyproject.toml python_rag/packages/observability/README.md packages/observability/
+COPY python_rag/packages/observability/src packages/observability/src
+COPY python_rag/packages/pipeline_callbacks/pyproject.toml python_rag/packages/pipeline_callbacks/README.md packages/pipeline_callbacks/
+COPY python_rag/packages/pipeline_callbacks/src packages/pipeline_callbacks/src
+COPY python_rag/packages/external_jobs/pyproject.toml python_rag/packages/external_jobs/README.md packages/external_jobs/
+COPY python_rag/packages/external_jobs/src packages/external_jobs/src
 COPY python_rag/packages/worker_runtime/pyproject.toml python_rag/packages/worker_runtime/README.md packages/worker_runtime/
 COPY python_rag/packages/worker_runtime/src packages/worker_runtime/src
 COPY python_rag/services/hawki_converter_worker/pyproject.toml python_rag/services/hawki_converter_worker/README.md services/hawki_converter_worker/
@@ -96,8 +104,10 @@ COPY python_rag/packages/artifact_store/pyproject.toml python_rag/packages/artif
 COPY python_rag/packages/artifact_store/src packages/artifact_store/src
 COPY python_rag/packages/worker_runtime/pyproject.toml python_rag/packages/worker_runtime/README.md packages/worker_runtime/
 COPY python_rag/packages/worker_runtime/src packages/worker_runtime/src
-COPY python_rag/packages/resilience/pyproject.toml python_rag/packages/resilience/README.md packages/resilience/
-COPY python_rag/packages/resilience/src packages/resilience/src
+COPY python_rag/packages/observability/pyproject.toml python_rag/packages/observability/README.md packages/observability/
+COPY python_rag/packages/observability/src packages/observability/src
+COPY python_rag/packages/pipeline_callbacks/pyproject.toml python_rag/packages/pipeline_callbacks/README.md packages/pipeline_callbacks/
+COPY python_rag/packages/pipeline_callbacks/src packages/pipeline_callbacks/src
 COPY python_rag/packages/text_processing/pyproject.toml python_rag/packages/text_processing/README.md packages/text_processing/
 COPY python_rag/packages/text_processing/src packages/text_processing/src
 COPY python_rag/packages/model_providers/pyproject.toml python_rag/packages/model_providers/README.md packages/model_providers/
@@ -119,8 +129,6 @@ FROM python-builder-base AS reranker-builder
 ARG TORCH_VARIANT=cpu
 COPY python_rag/packages/contracts/pyproject.toml python_rag/packages/contracts/README.md packages/contracts/
 COPY python_rag/packages/contracts/src packages/contracts/src
-COPY python_rag/packages/resilience/pyproject.toml python_rag/packages/resilience/README.md packages/resilience/
-COPY python_rag/packages/resilience/src packages/resilience/src
 COPY python_rag/services/hawki_reranker/pyproject.toml python_rag/services/hawki_reranker/README.md services/hawki_reranker/
 COPY python_rag/services/hawki_reranker/src services/hawki_reranker/src
 RUN --mount=type=cache,id=rawki-uv,target=/root/.cache/uv,sharing=locked \

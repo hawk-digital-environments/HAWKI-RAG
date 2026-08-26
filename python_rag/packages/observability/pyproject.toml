@@ -1,7 +1,7 @@
 [project]
-name = "hawki-rag-resilience"
+name = "hawki-observability"
 version = "0.1.0"
-description = "Retry, idempotency, optional-import, and redaction primitives for RAWKI RAG"
+description = "Secret-safe logging and stable observability events for RAWKI RAG"
 readme = "README.md"
 authors = [
     { name = "Yazdan Asadi", email = "wentlerhiphop@gmail.com" }

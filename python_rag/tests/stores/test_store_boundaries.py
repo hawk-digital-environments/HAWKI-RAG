@@ -130,12 +130,12 @@ def test_store_manifests_have_independent_exact_dependencies() -> None:
 
     assert vector_project["name"] == "hawki-vector-store"
     assert vector_project["dependencies"] == [
-        "hawki-rag-resilience==0.1.0",
+        "hawki-observability==0.1.0",
         "requests==2.34.2",
     ]
     assert graph_project["name"] == "hawki-graph-store"
     assert graph_project["dependencies"] == [
-        "hawki-rag-resilience==0.1.0",
+        "hawki-observability==0.1.0",
         "neo4j==6.2.0",
     ]
     assert "hawki-graph-store==0.1.0" not in vector_project["dependencies"]

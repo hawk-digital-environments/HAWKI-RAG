@@ -1,6 +1,6 @@
 """External converter job client adapter."""
 
-from hawki_worker_runtime.external_jobs import ExternalJobClient
+from hawki_external_jobs import ExternalJobClient
 
 from hawki_converter_worker.domain.models import ConverterEndpointConfig
 

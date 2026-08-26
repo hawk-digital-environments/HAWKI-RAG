@@ -1,0 +1,14 @@
+[project]
+name = "hawki-pipeline-callbacks"
+version = "0.1.0"
+description = "Signed Laravel pipeline callback client for RAWKI workers"
+readme = "README.md"
+authors = [
+    { name = "Yazdan Asadi", email = "wentlerhiphop@gmail.com" }
+]
+requires-python = "==3.13.14"
+dependencies = ["httpx==0.27.2"]
+
+[build-system]
+requires = ["uv_build==0.11.26"]
+build-backend = "uv_build"

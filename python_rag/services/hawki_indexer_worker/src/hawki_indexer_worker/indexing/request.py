@@ -9,7 +9,10 @@ from typing import Any
 
 from hawki_indexer_worker.domain.errors import IndexingValidationError
 from hawki_indexer_worker.domain.models import IngestDocument
-from hawki_model_providers.overrides import apply_provider_overrides
+from hawki_model_providers.configuration import (
+    ProviderModelSelection,
+    configure_provider_models,
+)
 
 
 @dataclass(slots=True)
@@ -154,6 +157,22 @@ def float_env(name: str, default: float) -> float:
         return float(raw)
     except ValueError:
         return default
+
+
+def apply_provider_overrides(provider: object, body: object) -> None:
+    """Translate indexer request fields into explicit provider model selection."""
+
+    configure_provider_models(
+        provider,
+        ProviderModelSelection(
+            embedding_model=getattr(body, "embedding_model", None),
+            chat_model=(
+                getattr(body, "chat_model", None)
+                or getattr(body, "graph_model", None)
+            ),
+            vision_model=getattr(body, "vision_model", None),
+        ),
+    )
 
 
 __all__ = [
