@@ -5,9 +5,10 @@ from __future__ import annotations
 import hashlib
 
 from hawki_artifact_store.identity import document_id, sha256_text
-from hawki_artifact_store.local import LocalArtifactStore
 from hawki_rag_contracts.artifacts import MarkdownArtifact
 from hawki_rag_text.markdown import strip_leading_converter_markdown_noise
+
+from hawki_converter_worker.domain.ports import ConverterArtifactStorePort
 
 
 def collect_markdown_artifacts(
@@ -15,7 +16,7 @@ def collect_markdown_artifacts(
     *,
     source_id: str,
     source_artifact_uri: str | None,
-    artifact_store: LocalArtifactStore,
+    artifact_store: ConverterArtifactStorePort,
 ) -> list[MarkdownArtifact]:
     """Describe converted local Markdown files without embedding their content."""
 
