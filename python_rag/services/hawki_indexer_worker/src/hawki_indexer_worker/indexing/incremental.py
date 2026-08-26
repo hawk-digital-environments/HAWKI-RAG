@@ -13,7 +13,6 @@ from hawki_indexer_worker.indexing.page_state import (
     IndexedPageRecord,
     build_page_state_record,
 )
-from hawki_rag_stores.qdrant.payloads import build_match_filter
 
 PAGE_URL_KEYS = ("canonical_url", "page_url", "original_url", "url")
 URL_LOOKUP_KEYS = ("canonical_url", "page_url", "original_url", "url", "source_url")
@@ -243,12 +242,7 @@ def _find_existing_payload(
 ) -> dict[str, Any] | None:
     for filters in _lookup_filters(doc_id, payload):
         try:
-            if hasattr(qdrant, "find_points_by_payload"):
-                points = qdrant.find_points_by_payload(filters, limit=1)
-            elif hasattr(qdrant, "scroll_by_filter"):
-                points = qdrant.scroll_by_filter(build_match_filter(filters), limit=1)
-            else:
-                return None
+            points = qdrant.find_points_by_payload(filters, limit=1)
         except Exception:
             raise
         if not points:

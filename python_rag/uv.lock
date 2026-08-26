@@ -28,14 +28,15 @@ members = [
     "hawki-artifact-store",
     "hawki-bridge",
     "hawki-converter-worker",
+    "hawki-graph-store",
     "hawki-indexer-worker",
     "hawki-model-providers",
     "hawki-rag-contracts",
     "hawki-rag-resilience",
-    "hawki-rag-stores",
     "hawki-rag-text",
     "hawki-reranker",
     "hawki-scraper-worker",
+    "hawki-vector-store",
     "hawki-worker-runtime",
     "hawki-workflow-worker",
 ]
@@ -778,11 +779,12 @@ version = "0.1.0"
 source = { editable = "services/hawki_bridge" }
 dependencies = [
     { name = "fastapi" },
+    { name = "hawki-graph-store" },
     { name = "hawki-model-providers" },
     { name = "hawki-rag-contracts" },
     { name = "hawki-rag-resilience" },
-    { name = "hawki-rag-stores" },
     { name = "hawki-rag-text" },
+    { name = "hawki-vector-store" },
     { name = "pydantic" },
     { name = "requests" },
     { name = "starlette" },
@@ -799,11 +801,12 @@ test = [
 [package.metadata]
 requires-dist = [
     { name = "fastapi", specifier = "==0.139.2" },
+    { name = "hawki-graph-store", editable = "packages/graph_store" },
     { name = "hawki-model-providers", editable = "packages/model_providers" },
     { name = "hawki-rag-contracts", editable = "packages/contracts" },
     { name = "hawki-rag-resilience", editable = "packages/resilience" },
-    { name = "hawki-rag-stores", editable = "packages/stores" },
     { name = "hawki-rag-text", editable = "packages/text_processing" },
+    { name = "hawki-vector-store", editable = "packages/vector_store" },
     { name = "pydantic", specifier = "==2.13.4" },
     { name = "requests", specifier = "==2.34.2" },
     { name = "starlette", specifier = "==1.3.1" },
@@ -851,17 +854,35 @@ requires-dist = [
 test = [{ name = "pytest", specifier = "==8.4.2" }]
 
 [[package]]
+name = "hawki-graph-store"
+version = "0.1.0"
+source = { editable = "packages/graph_store" }
+dependencies = [
+    { name = "hawki-rag-resilience" },
+    { name = "hawki-rag-text" },
+    { name = "neo4j" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "hawki-rag-resilience", editable = "packages/resilience" },
+    { name = "hawki-rag-text", editable = "packages/text_processing" },
+    { name = "neo4j", specifier = "==6.2.0" },
+]
+
+[[package]]
 name = "hawki-indexer-worker"
 version = "0.1.0"
 source = { editable = "services/hawki_indexer_worker" }
 dependencies = [
     { name = "av", marker = "(extra == 'extra-14-hawki-reranker-cpu' and extra == 'extra-14-hawki-reranker-gpu') or (extra != 'extra-14-hawki-reranker-gpu' and extra == 'project-20-hawki-indexer-worker') or (extra != 'extra-14-hawki-reranker-gpu' and extra == 'extra-20-hawki-indexer-worker-cpu' and extra == 'extra-20-hawki-indexer-worker-gpu') or (extra != 'extra-14-hawki-reranker-cpu' and extra == 'extra-20-hawki-indexer-worker-cpu' and extra == 'extra-20-hawki-indexer-worker-gpu') or (extra != 'extra-14-hawki-reranker-cpu' and extra != 'extra-20-hawki-indexer-worker-gpu' and extra == 'project-20-hawki-indexer-worker') or (extra != 'extra-14-hawki-reranker-cpu' and extra != 'extra-20-hawki-indexer-worker-cpu' and extra == 'project-20-hawki-indexer-worker')" },
     { name = "hawki-artifact-store", marker = "(extra == 'extra-14-hawki-reranker-cpu' and extra == 'extra-14-hawki-reranker-gpu') or (extra != 'extra-14-hawki-reranker-gpu' and extra == 'project-20-hawki-indexer-worker') or (extra != 'extra-14-hawki-reranker-gpu' and extra == 'extra-20-hawki-indexer-worker-cpu' and extra == 'extra-20-hawki-indexer-worker-gpu') or (extra != 'extra-14-hawki-reranker-cpu' and extra == 'extra-20-hawki-indexer-worker-cpu' and extra == 'extra-20-hawki-indexer-worker-gpu') or (extra != 'extra-14-hawki-reranker-cpu' and extra != 'extra-20-hawki-indexer-worker-gpu' and extra == 'project-20-hawki-indexer-worker') or (extra != 'extra-14-hawki-reranker-cpu' and extra != 'extra-20-hawki-indexer-worker-cpu' and extra == 'project-20-hawki-indexer-worker')" },
+    { name = "hawki-graph-store", marker = "(extra == 'extra-14-hawki-reranker-cpu' and extra == 'extra-14-hawki-reranker-gpu') or (extra != 'extra-14-hawki-reranker-gpu' and extra == 'project-20-hawki-indexer-worker') or (extra != 'extra-14-hawki-reranker-gpu' and extra == 'extra-20-hawki-indexer-worker-cpu' and extra == 'extra-20-hawki-indexer-worker-gpu') or (extra != 'extra-14-hawki-reranker-cpu' and extra == 'extra-20-hawki-indexer-worker-cpu' and extra == 'extra-20-hawki-indexer-worker-gpu') or (extra != 'extra-14-hawki-reranker-cpu' and extra != 'extra-20-hawki-indexer-worker-gpu' and extra == 'project-20-hawki-indexer-worker') or (extra != 'extra-14-hawki-reranker-cpu' and extra != 'extra-20-hawki-indexer-worker-cpu' and extra == 'project-20-hawki-indexer-worker')" },
     { name = "hawki-model-providers", marker = "(extra == 'extra-14-hawki-reranker-cpu' and extra == 'extra-14-hawki-reranker-gpu') or (extra != 'extra-14-hawki-reranker-gpu' and extra == 'project-20-hawki-indexer-worker') or (extra != 'extra-14-hawki-reranker-gpu' and extra == 'extra-20-hawki-indexer-worker-cpu' and extra == 'extra-20-hawki-indexer-worker-gpu') or (extra != 'extra-14-hawki-reranker-cpu' and extra == 'extra-20-hawki-indexer-worker-cpu' and extra == 'extra-20-hawki-indexer-worker-gpu') or (extra != 'extra-14-hawki-reranker-cpu' and extra != 'extra-20-hawki-indexer-worker-gpu' and extra == 'project-20-hawki-indexer-worker') or (extra != 'extra-14-hawki-reranker-cpu' and extra != 'extra-20-hawki-indexer-worker-cpu' and extra == 'project-20-hawki-indexer-worker')" },
     { name = "hawki-rag-contracts", marker = "(extra == 'extra-14-hawki-reranker-cpu' and extra == 'extra-14-hawki-reranker-gpu') or (extra != 'extra-14-hawki-reranker-gpu' and extra == 'project-20-hawki-indexer-worker') or (extra != 'extra-14-hawki-reranker-gpu' and extra == 'extra-20-hawki-indexer-worker-cpu' and extra == 'extra-20-hawki-indexer-worker-gpu') or (extra != 'extra-14-hawki-reranker-cpu' and extra == 'extra-20-hawki-indexer-worker-cpu' and extra == 'extra-20-hawki-indexer-worker-gpu') or (extra != 'extra-14-hawki-reranker-cpu' and extra != 'extra-20-hawki-indexer-worker-gpu' and extra == 'project-20-hawki-indexer-worker') or (extra != 'extra-14-hawki-reranker-cpu' and extra != 'extra-20-hawki-indexer-worker-cpu' and extra == 'project-20-hawki-indexer-worker')" },
     { name = "hawki-rag-resilience", marker = "(extra == 'extra-14-hawki-reranker-cpu' and extra == 'extra-14-hawki-reranker-gpu') or (extra != 'extra-14-hawki-reranker-gpu' and extra == 'project-20-hawki-indexer-worker') or (extra != 'extra-14-hawki-reranker-gpu' and extra == 'extra-20-hawki-indexer-worker-cpu' and extra == 'extra-20-hawki-indexer-worker-gpu') or (extra != 'extra-14-hawki-reranker-cpu' and extra == 'extra-20-hawki-indexer-worker-cpu' and extra == 'extra-20-hawki-indexer-worker-gpu') or (extra != 'extra-14-hawki-reranker-cpu' and extra != 'extra-20-hawki-indexer-worker-gpu' and extra == 'project-20-hawki-indexer-worker') or (extra != 'extra-14-hawki-reranker-cpu' and extra != 'extra-20-hawki-indexer-worker-cpu' and extra == 'project-20-hawki-indexer-worker')" },
-    { name = "hawki-rag-stores", marker = "(extra == 'extra-14-hawki-reranker-cpu' and extra == 'extra-14-hawki-reranker-gpu') or (extra != 'extra-14-hawki-reranker-gpu' and extra == 'project-20-hawki-indexer-worker') or (extra != 'extra-14-hawki-reranker-gpu' and extra == 'extra-20-hawki-indexer-worker-cpu' and extra == 'extra-20-hawki-indexer-worker-gpu') or (extra != 'extra-14-hawki-reranker-cpu' and extra == 'extra-20-hawki-indexer-worker-cpu' and extra == 'extra-20-hawki-indexer-worker-gpu') or (extra != 'extra-14-hawki-reranker-cpu' and extra != 'extra-20-hawki-indexer-worker-gpu' and extra == 'project-20-hawki-indexer-worker') or (extra != 'extra-14-hawki-reranker-cpu' and extra != 'extra-20-hawki-indexer-worker-cpu' and extra == 'project-20-hawki-indexer-worker')" },
     { name = "hawki-rag-text", marker = "(extra == 'extra-14-hawki-reranker-cpu' and extra == 'extra-14-hawki-reranker-gpu') or (extra != 'extra-14-hawki-reranker-gpu' and extra == 'project-20-hawki-indexer-worker') or (extra != 'extra-14-hawki-reranker-gpu' and extra == 'extra-20-hawki-indexer-worker-cpu' and extra == 'extra-20-hawki-indexer-worker-gpu') or (extra != 'extra-14-hawki-reranker-cpu' and extra == 'extra-20-hawki-indexer-worker-cpu' and extra == 'extra-20-hawki-indexer-worker-gpu') or (extra != 'extra-14-hawki-reranker-cpu' and extra != 'extra-20-hawki-indexer-worker-gpu' and extra == 'project-20-hawki-indexer-worker') or (extra != 'extra-14-hawki-reranker-cpu' and extra != 'extra-20-hawki-indexer-worker-cpu' and extra == 'project-20-hawki-indexer-worker')" },
+    { name = "hawki-vector-store", marker = "(extra == 'extra-14-hawki-reranker-cpu' and extra == 'extra-14-hawki-reranker-gpu') or (extra != 'extra-14-hawki-reranker-gpu' and extra == 'project-20-hawki-indexer-worker') or (extra != 'extra-14-hawki-reranker-gpu' and extra == 'extra-20-hawki-indexer-worker-cpu' and extra == 'extra-20-hawki-indexer-worker-gpu') or (extra != 'extra-14-hawki-reranker-cpu' and extra == 'extra-20-hawki-indexer-worker-cpu' and extra == 'extra-20-hawki-indexer-worker-gpu') or (extra != 'extra-14-hawki-reranker-cpu' and extra != 'extra-20-hawki-indexer-worker-gpu' and extra == 'project-20-hawki-indexer-worker') or (extra != 'extra-14-hawki-reranker-cpu' and extra != 'extra-20-hawki-indexer-worker-cpu' and extra == 'project-20-hawki-indexer-worker')" },
     { name = "hawki-worker-runtime", marker = "(extra == 'extra-14-hawki-reranker-cpu' and extra == 'extra-14-hawki-reranker-gpu') or (extra != 'extra-14-hawki-reranker-gpu' and extra == 'project-20-hawki-indexer-worker') or (extra != 'extra-14-hawki-reranker-gpu' and extra == 'extra-20-hawki-indexer-worker-cpu' and extra == 'extra-20-hawki-indexer-worker-gpu') or (extra != 'extra-14-hawki-reranker-cpu' and extra == 'extra-20-hawki-indexer-worker-cpu' and extra == 'extra-20-hawki-indexer-worker-gpu') or (extra != 'extra-14-hawki-reranker-cpu' and extra != 'extra-20-hawki-indexer-worker-gpu' and extra == 'project-20-hawki-indexer-worker') or (extra != 'extra-14-hawki-reranker-cpu' and extra != 'extra-20-hawki-indexer-worker-cpu' and extra == 'project-20-hawki-indexer-worker')" },
     { name = "lightrag-hku", marker = "(extra == 'extra-14-hawki-reranker-cpu' and extra == 'extra-14-hawki-reranker-gpu') or (extra != 'extra-14-hawki-reranker-gpu' and extra == 'project-20-hawki-indexer-worker') or (extra != 'extra-14-hawki-reranker-gpu' and extra == 'extra-20-hawki-indexer-worker-cpu' and extra == 'extra-20-hawki-indexer-worker-gpu') or (extra != 'extra-14-hawki-reranker-cpu' and extra == 'extra-20-hawki-indexer-worker-cpu' and extra == 'extra-20-hawki-indexer-worker-gpu') or (extra != 'extra-14-hawki-reranker-cpu' and extra != 'extra-20-hawki-indexer-worker-gpu' and extra == 'project-20-hawki-indexer-worker') or (extra != 'extra-14-hawki-reranker-cpu' and extra != 'extra-20-hawki-indexer-worker-cpu' and extra == 'project-20-hawki-indexer-worker')" },
     { name = "mineru", extra = ["pipeline"], marker = "(extra == 'extra-14-hawki-reranker-cpu' and extra == 'extra-14-hawki-reranker-gpu') or (extra != 'extra-14-hawki-reranker-gpu' and extra == 'project-20-hawki-indexer-worker') or (extra != 'extra-14-hawki-reranker-gpu' and extra == 'extra-20-hawki-indexer-worker-cpu' and extra == 'extra-20-hawki-indexer-worker-gpu') or (extra != 'extra-14-hawki-reranker-cpu' and extra == 'extra-20-hawki-indexer-worker-cpu' and extra == 'extra-20-hawki-indexer-worker-gpu') or (extra != 'extra-14-hawki-reranker-cpu' and extra != 'extra-20-hawki-indexer-worker-gpu' and extra == 'project-20-hawki-indexer-worker') or (extra != 'extra-14-hawki-reranker-cpu' and extra != 'extra-20-hawki-indexer-worker-cpu' and extra == 'project-20-hawki-indexer-worker')" },
@@ -891,11 +912,12 @@ test = [
 requires-dist = [
     { name = "av", specifier = "==13.1.0" },
     { name = "hawki-artifact-store", editable = "packages/artifact_store" },
+    { name = "hawki-graph-store", editable = "packages/graph_store" },
     { name = "hawki-model-providers", editable = "packages/model_providers" },
     { name = "hawki-rag-contracts", editable = "packages/contracts" },
     { name = "hawki-rag-resilience", editable = "packages/resilience" },
-    { name = "hawki-rag-stores", editable = "packages/stores" },
     { name = "hawki-rag-text", editable = "packages/text_processing" },
+    { name = "hawki-vector-store", editable = "packages/vector_store" },
     { name = "hawki-worker-runtime", editable = "packages/worker_runtime" },
     { name = "lightrag-hku", git = "https://github.com/HKUDS/LightRAG.git?rev=c5bf73dbf6139f1b03f738a2fec4e47d5e66f3ab" },
     { name = "mineru", extras = ["pipeline"], specifier = "==3.4.4" },
@@ -950,25 +972,6 @@ test = [{ name = "pytest", specifier = "==8.4.2" }]
 name = "hawki-rag-resilience"
 version = "0.1.0"
 source = { editable = "packages/resilience" }
-
-[[package]]
-name = "hawki-rag-stores"
-version = "0.1.0"
-source = { editable = "packages/stores" }
-dependencies = [
-    { name = "hawki-rag-resilience" },
-    { name = "hawki-rag-text" },
-    { name = "neo4j" },
-    { name = "requests" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "hawki-rag-resilience", editable = "packages/resilience" },
-    { name = "hawki-rag-text", editable = "packages/text_processing" },
-    { name = "neo4j", specifier = "==6.2.0" },
-    { name = "requests", specifier = "==2.34.2" },
-]
 
 [[package]]
 name = "hawki-rag-text"
@@ -1050,6 +1053,21 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 test = [{ name = "pytest", specifier = "==8.4.2" }]
+
+[[package]]
+name = "hawki-vector-store"
+version = "0.1.0"
+source = { editable = "packages/vector_store" }
+dependencies = [
+    { name = "hawki-rag-resilience" },
+    { name = "requests" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "hawki-rag-resilience", editable = "packages/resilience" },
+    { name = "requests", specifier = "==2.34.2" },
+]
 
 [[package]]
 name = "hawki-worker-runtime"

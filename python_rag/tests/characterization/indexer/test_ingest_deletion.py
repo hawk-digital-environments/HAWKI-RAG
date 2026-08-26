@@ -46,8 +46,8 @@ class IngestDeletionCharacterizationTests(unittest.TestCase):
 
         result = delete_document_entries(
             "doc-read-only-result",
-            qdrant_factory=Qdrant,
-            graph_factory=Graph,
+            vector_writer_factory=Qdrant,
+            graph_writer_factory=Graph,
         )
 
         self.assertEqual(result["qdrant"]["deleted_points"], 3)
@@ -134,8 +134,8 @@ class IngestDeletionCharacterizationTests(unittest.TestCase):
             idempotency_key="delete-op-1",
             collection="student_space",
             neo4j_namespace="student_graph",
-            qdrant_factory=Qdrant,
-            graph_factory=Graph,
+            vector_writer_factory=Qdrant,
+            graph_writer_factory=Graph,
         )
 
         self.assertEqual(
@@ -184,3 +184,60 @@ class IngestDeletionCharacterizationTests(unittest.TestCase):
                 ("graph_close", ""),
             ],
         )
+
+    def test_graph_close_driver_error_does_not_fail_successful_deletion(self) -> None:
+        from neo4j.exceptions import DriverError
+
+        from hawki_indexer_worker.indexing.deletion import delete_document_entries
+
+        class Qdrant:
+            collection = "documents"
+
+            def delete_by_doc_id(self, _doc_id: str) -> dict[str, object]:
+                return {"result": {"deleted": 1}}
+
+        class Graph:
+            def delete_by_doc_id(self, _doc_id: str) -> dict[str, int]:
+                return {"relationships_deleted": 1, "entities_deleted": 0}
+
+            def close(self) -> None:
+                raise DriverError("private connection details")
+
+        with self.assertLogs(
+            "hawki_indexer_worker.indexing.deletion", level="WARNING"
+        ) as captured:
+            result = delete_document_entries(
+                "doc-1",
+                vector_writer_factory=Qdrant,
+                graph_writer_factory=Graph,
+            )
+
+        self.assertEqual(result["neo4j"]["relationships_deleted"], 1)
+        self.assertIn("DriverError", "\n".join(captured.output))
+        self.assertNotIn("private connection details", "\n".join(captured.output))
+
+    def test_graph_close_driver_error_does_not_mask_deletion_error(self) -> None:
+        from neo4j.exceptions import DriverError
+
+        from hawki_indexer_worker.indexing.deletion import delete_document_entries
+
+        class Qdrant:
+            collection = "documents"
+
+            def delete_by_doc_id(self, _doc_id: str) -> dict[str, object]:
+                return {"result": {"deleted": 1}}
+
+        class Graph:
+            def delete_by_doc_id(self, _doc_id: str) -> None:
+                raise ValueError("primary deletion failure")
+
+            def close(self) -> None:
+                raise DriverError("secondary close failure")
+
+        with self.assertLogs("hawki_indexer_worker.indexing.deletion", level="WARNING"):
+            with self.assertRaisesRegex(ValueError, "primary deletion failure"):
+                delete_document_entries(
+                    "doc-1",
+                    vector_writer_factory=Qdrant,
+                    graph_writer_factory=Graph,
+                )

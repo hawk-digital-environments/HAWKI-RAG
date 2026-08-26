@@ -107,8 +107,9 @@ class IngestCharacterizationTests(unittest.TestCase):
                 idempotency_key="operation-toy",
                 dependencies=IngestWorkflowDependencies(
                     graph_settings_loader=lambda: settings,
-                    qdrant_factory=lambda: qdrant,
-                    graph_factory=graph_factory,
+                    vector_writer_factory=lambda: qdrant,
+                    graph_writer_factory=graph_factory,
+                    page_state_factory=lambda _writer: None,
                 ),
             )
 

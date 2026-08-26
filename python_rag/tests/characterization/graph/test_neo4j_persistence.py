@@ -22,7 +22,7 @@ class Neo4jCharacterizationTests(unittest.TestCase):
     """Protect parsing, scoped writes, managed retries, and executor injection."""
 
     def test_neo4j_response_parsing_is_robust(self) -> None:
-        from hawki_rag_stores.neo4j.responses import (
+        from hawki_graph_store.responses import (
             parse_count,
             parse_fact_rows,
             parse_label_counts,
@@ -118,7 +118,7 @@ class Neo4jCharacterizationTests(unittest.TestCase):
         )
 
     def test_upsert_triplets_builds_doc_scoped_rows_for_neo4j(self) -> None:
-        from hawki_rag_stores.neo4j.graph import Neo4jGraph
+        from hawki_graph_store.graph import Neo4jGraph
 
         calls: list[tuple[str, dict]] = []
 
@@ -181,7 +181,7 @@ class Neo4jCharacterizationTests(unittest.TestCase):
         )
 
     def test_upsert_triplet_rows_use_case_insensitive_entity_keys(self) -> None:
-        from hawki_rag_stores.neo4j.requests import build_triplet_rows
+        from hawki_graph_store.requests import build_triplet_rows
 
         self.assertEqual(
             build_triplet_rows(
@@ -220,8 +220,8 @@ class Neo4jCharacterizationTests(unittest.TestCase):
     def test_neo4j_query_executor_does_not_wrap_managed_transaction_retries(
         self,
     ) -> None:
-        from hawki_rag_stores.neo4j.requests import Neo4jQueryRequest
-        from hawki_rag_stores.neo4j.transport import Neo4jQueryExecutor
+        from hawki_graph_store.requests import Neo4jQueryRequest
+        from hawki_graph_store.transport import Neo4jQueryExecutor
 
         execute_read_calls: list[int] = []
 
@@ -249,7 +249,7 @@ class Neo4jCharacterizationTests(unittest.TestCase):
         self.assertEqual(execute_read_calls, [1])
 
     def test_neo4j_graph_accepts_injected_query_executor(self) -> None:
-        from hawki_rag_stores.neo4j.graph import Neo4jGraph
+        from hawki_graph_store.graph import Neo4jGraph
 
         class FakeExecutor:
             def __init__(self) -> None:

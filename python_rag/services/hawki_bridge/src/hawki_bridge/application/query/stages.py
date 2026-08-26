@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from hawki_rag_stores.qdrant.client import QdrantHTTP
 from hawki_bridge.application.query.context import prepare_context_summaries
 from hawki_bridge.application.query import ranking as query_ranking
 from hawki_bridge.application.query import rewrite as query_rewrite
@@ -25,6 +24,7 @@ from hawki_bridge.application.query.lexical import (
     fuzzy_term_in_words,
     tokenize_words,
 )
+from hawki_bridge.domain.ports import VectorSearchPort
 from hawki_rag_text.preprocessing import (
     _extract_terms,
     _is_multimodal_query,
@@ -157,7 +157,7 @@ def prepare_context(
 
 
 def keyword_fallback(
-    qdrant: QdrantHTTP,
+    qdrant: VectorSearchPort,
     vec: list[float],
     query: str,
     top_k: int,

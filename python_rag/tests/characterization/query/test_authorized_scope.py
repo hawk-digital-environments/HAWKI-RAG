@@ -30,7 +30,7 @@ class _FakeResponse:
 
 
 def _qdrant_settings() -> Any:
-    from hawki_rag_stores.qdrant.settings import QdrantSettings
+    from hawki_vector_store.settings import QdrantSettings
 
     return QdrantSettings(
         scheme="http",
@@ -44,7 +44,7 @@ def _qdrant_settings() -> Any:
 
 
 def _qdrant_http_settings(*, search_all: bool = True, fallback_all: bool = True) -> Any:
-    from hawki_rag_stores.qdrant.settings import QdrantHTTPSettings
+    from hawki_vector_store.settings import QdrantHTTPSettings
 
     return QdrantHTTPSettings(
         log_latency=False,

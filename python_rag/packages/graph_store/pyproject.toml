@@ -1,0 +1,25 @@
+[project]
+name = "hawki-graph-store"
+version = "0.1.0"
+description = "Typed graph-store contracts and Neo4j adapter for RAWKI RAG"
+readme = "README.md"
+authors = [
+    { name = "Yazdan Asadi", email = "wentlerhiphop@gmail.com" }
+]
+requires-python = "==3.13.14"
+dependencies = [
+    "hawki-rag-resilience==0.1.0",
+    "hawki-rag-text==0.1.0",
+    "neo4j==6.2.0",
+]
+
+[build-system]
+requires = ["uv_build==0.11.26"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "hawki_graph_store"
+
+[tool.uv.sources]
+hawki-rag-resilience = { workspace = true }
+hawki-rag-text = { workspace = true }

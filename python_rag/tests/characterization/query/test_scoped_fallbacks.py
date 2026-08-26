@@ -31,7 +31,7 @@ class _FakeResponse:
 
 
 def _qdrant_settings() -> Any:
-    from hawki_rag_stores.qdrant.settings import QdrantSettings
+    from hawki_vector_store.settings import QdrantSettings
 
     return QdrantSettings(
         scheme="http",
@@ -45,7 +45,7 @@ def _qdrant_settings() -> Any:
 
 
 def _qdrant_http_settings(*, search_all: bool = True, fallback_all: bool = True) -> Any:
-    from hawki_rag_stores.qdrant.settings import QdrantHTTPSettings
+    from hawki_vector_store.settings import QdrantHTTPSettings
 
     return QdrantHTTPSettings(
         log_latency=False,
@@ -156,7 +156,7 @@ class QdrantStrictCollectionTests(unittest.TestCase):
     """Verify scoped search never reaches global collection search or fallback paths."""
 
     def test_scoped_search_bypasses_search_all_and_global_fallback(self) -> None:
-        from hawki_rag_stores.qdrant.client import QdrantHTTP
+        from hawki_vector_store.client import QdrantHTTP
 
         calls: list[tuple[str, Any]] = []
 
@@ -175,11 +175,11 @@ class QdrantStrictCollectionTests(unittest.TestCase):
 
         with (
             patch(
-                "hawki_rag_stores.qdrant.client.requests.Session",
+                "hawki_vector_store.client.requests.Session",
                 return_value=SimpleNamespace(),
             ),
             patch(
-                "hawki_rag_stores.qdrant.client.QdrantHTTPGateway",
+                "hawki_vector_store.client.QdrantHTTPGateway",
                 return_value=FakeGateway(),
             ),
         ):
@@ -205,7 +205,7 @@ class QdrantStrictCollectionTests(unittest.TestCase):
     def test_text_vector_and_scroll_requests_and_dataset_filter_with_lexical_filter(
         self,
     ) -> None:
-        from hawki_rag_stores.qdrant.client import QdrantHTTP
+        from hawki_vector_store.client import QdrantHTTP
 
         search_filters: list[dict[str, Any]] = []
         scroll_filters: list[dict[str, Any]] = []
@@ -230,11 +230,11 @@ class QdrantStrictCollectionTests(unittest.TestCase):
 
         with (
             patch(
-                "hawki_rag_stores.qdrant.client.requests.Session",
+                "hawki_vector_store.client.requests.Session",
                 return_value=SimpleNamespace(),
             ),
             patch(
-                "hawki_rag_stores.qdrant.client.QdrantHTTPGateway",
+                "hawki_vector_store.client.QdrantHTTPGateway",
                 return_value=FakeGateway(),
             ),
         ):
@@ -279,7 +279,7 @@ class QdrantStrictCollectionTests(unittest.TestCase):
         )
 
     def test_missing_scoped_collection_fails_without_global_fallback(self) -> None:
-        from hawki_rag_stores.qdrant.client import (
+        from hawki_vector_store.client import (
             QdrantHTTP,
             ScopedCollectionNotReadyError,
         )
@@ -297,11 +297,11 @@ class QdrantStrictCollectionTests(unittest.TestCase):
 
         with (
             patch(
-                "hawki_rag_stores.qdrant.client.requests.Session",
+                "hawki_vector_store.client.requests.Session",
                 return_value=SimpleNamespace(),
             ),
             patch(
-                "hawki_rag_stores.qdrant.client.QdrantHTTPGateway",
+                "hawki_vector_store.client.QdrantHTTPGateway",
                 return_value=FakeGateway(),
             ),
         ):

@@ -13,11 +13,13 @@ from fastapi.routing import APIRoute
 from temporalio.service import RPCError, RPCStatusCode
 
 from hawki_bridge.adapters.neo4j_reader import Neo4jReader
+from hawki_bridge.adapters.qdrant_reader import QdrantReader
 from hawki_bridge.adapters.temporal_client import (
     TemporalBridgeClient,
     TemporalExecution,
 )
 from hawki_bridge.application.graph import GraphReadService
+from hawki_bridge.domain.errors import DatasetVectorStoreNotReadyError
 from hawki_bridge.http.routers.graph import build_graph_router
 from hawki_bridge.http.routers.health import build_health_router
 from hawki_bridge.http.routers.query import build_query_router
@@ -43,6 +45,24 @@ def _endpoint(router: APIRouter, path: str, method: str) -> Callable[..., Any]:
         ):
             return cast(Callable[..., Any], route.endpoint)
     raise AssertionError(f"Missing {method} {path}")
+
+
+def test_qdrant_adapter_translates_missing_scoped_collection() -> None:
+    from hawki_vector_store.client import ScopedCollectionNotReadyError
+
+    class MissingCollectionClient:
+        def search_with_text(self, *_args, **_kwargs):
+            raise ScopedCollectionNotReadyError("missing")
+
+    reader = QdrantReader(client=cast(Any, MissingCollectionClient()))
+
+    with pytest.raises(DatasetVectorStoreNotReadyError, match="missing"):
+        reader.search_with_text(
+            [0.1],
+            top_k=1,
+            terms=["fee"],
+            fields=["content"],
+        )
 
 
 def _scope(*, graph_enabled: bool = False) -> AuthorizedQueryScope:
@@ -91,10 +111,11 @@ def test_query_route_applies_defaults_and_delegates_to_application(
 
     observed: dict[str, Any] = {}
 
-    def fake_query_documents(body, *, rag_service, get_provider):
+    def fake_query_documents(body, *, rag_service, get_provider, dependencies):
         observed["body"] = body
         observed["service"] = rag_service
         observed["provider"] = get_provider(body.provider)
+        observed["dependencies"] = dependencies
         return {"ok": True, "count": 0, "hits": []}
 
     monkeypatch.setattr(query_router_module, "query_documents", fake_query_documents)
@@ -106,8 +127,13 @@ def test_query_route_applies_defaults_and_delegates_to_application(
         }
     )
     service = Service()
+    dependencies = object()
     endpoint = _endpoint(
-        build_query_router(service=service, settings=settings),
+        build_query_router(
+            service=service,
+            settings=settings,
+            dependencies=dependencies,
+        ),
         "/query",
         "POST",
     )
@@ -122,6 +148,7 @@ def test_query_route_applies_defaults_and_delegates_to_application(
     assert endpoint(request) == {"ok": True, "count": 0, "hits": []}
     configured = observed["body"]
     assert configured.authorized_scope.dataset_id == "dataset-42"
+    assert observed["dependencies"] is dependencies
     assert configured.reranker == "external"
     assert configured.mix_mode is False
     assert configured.mix_weight == 0.25

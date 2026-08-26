@@ -209,8 +209,8 @@ class IncrementalIngestTests(unittest.TestCase):
             idempotency_key="delete-student-doc",
             collection="student_space",
             neo4j_namespace="student_graph",
-            qdrant_factory=lambda: qdrant,
-            graph_factory=FakeGraph,
+            vector_writer_factory=lambda: qdrant,
+            graph_writer_factory=FakeGraph,
         )
 
         self.assertEqual(delete_result["qdrant"]["collection"], "student_space")

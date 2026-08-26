@@ -105,6 +105,8 @@ class IngestCharacterizationTests(unittest.TestCase):
         self.assertEqual(doc_stats["doc_ids"], ["toy-good"])
 
     def test_graph_commit_helper_extracts_upserts_and_closes_graph(self) -> None:
+        from neo4j.exceptions import DriverError
+
         from hawki_indexer_worker.indexing.graph_commit import commit_graph_triplets
         from hawki_indexer_worker.indexing.graph_settings import GraphIngestSettings
 
@@ -134,6 +136,7 @@ class IngestCharacterizationTests(unittest.TestCase):
 
             def close(self) -> None:
                 self.closed = True
+                raise DriverError("close failed after successful commit")
 
         class FakeRAGService:
             def extract_triplets(

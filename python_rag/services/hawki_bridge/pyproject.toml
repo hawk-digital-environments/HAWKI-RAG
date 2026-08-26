@@ -9,11 +9,12 @@ authors = [
 requires-python = "==3.13.14"
 dependencies = [
     "fastapi==0.139.2",
+    "hawki-graph-store==0.1.0",
     "hawki-model-providers==0.1.0",
     "hawki-rag-contracts==0.1.0",
     "hawki-rag-resilience==0.1.0",
-    "hawki-rag-stores==0.1.0",
     "hawki-rag-text==0.1.0",
+    "hawki-vector-store==0.1.0",
     "pydantic==2.13.4",
     "requests==2.34.2",
     "starlette==1.3.1",
@@ -35,8 +36,9 @@ requires = ["uv_build==0.11.26"]
 build-backend = "uv_build"
 
 [tool.uv.sources]
+hawki-graph-store = { workspace = true }
 hawki-model-providers = { workspace = true }
 hawki-rag-contracts = { workspace = true }
 hawki-rag-resilience = { workspace = true }
-hawki-rag-stores = { workspace = true }
 hawki-rag-text = { workspace = true }
+hawki-vector-store = { workspace = true }

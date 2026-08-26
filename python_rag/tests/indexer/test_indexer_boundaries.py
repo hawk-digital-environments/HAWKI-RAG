@@ -19,6 +19,17 @@ SERVICE = PYTHON_RAG / "services" / "hawki_indexer_worker"
 SOURCE = SERVICE / "src" / "hawki_indexer_worker"
 
 
+def _imports(path: Path) -> list[tuple[int, str]]:
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    imports: list[tuple[int, str]] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            imports.extend((node.lineno, alias.name) for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            imports.append((node.lineno, node.module))
+    return imports
+
+
 def test_production_imports_never_cross_legacy_or_service_boundaries() -> None:
     forbidden = {
         "api",
@@ -47,6 +58,35 @@ def test_production_imports_never_cross_legacy_or_service_boundaries() -> None:
         assert "POST /ingest" not in source
         assert "api.main" not in source
         assert "bridge_url" not in source
+    assert violations == []
+
+
+def test_indexing_application_depends_on_ports_not_store_packages() -> None:
+    forbidden_roots = {"hawki_vector_store", "hawki_graph_store"}
+    violations: list[str] = []
+    for layer in (SOURCE / "indexing", SOURCE / "domain"):
+        for path in sorted(layer.rglob("*.py")):
+            for line, name in _imports(path):
+                if name.split(".", 1)[0] in forbidden_roots:
+                    violations.append(f"{path}:{line}: {name}")
+    assert violations == []
+
+
+def test_indexer_store_packages_are_visible_only_to_database_adapters() -> None:
+    allowed = {
+        SOURCE / "adapters" / "qdrant_writer.py": {"hawki_vector_store"},
+        SOURCE / "adapters" / "neo4j_writer.py": {"hawki_graph_store", "neo4j"},
+        SOURCE / "adapters" / "neo4j_cleanup.py": {"neo4j"},
+        SOURCE / "indexing" / "graph_cleanup.py": {"neo4j"},
+    }
+    violations: list[str] = []
+    for path in sorted(SOURCE.rglob("*.py")):
+        for line, name in _imports(path):
+            root = name.split(".", 1)[0]
+            if root not in {"hawki_vector_store", "hawki_graph_store", "neo4j"}:
+                continue
+            if root not in allowed.get(path, set()):
+                violations.append(f"{path}:{line}: {name}")
     assert violations == []
 
 

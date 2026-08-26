@@ -86,7 +86,8 @@ class IncrementalIngestTests(unittest.TestCase):
         )
         page_registry = FakePageRegistry()
         dependencies = IngestWorkflowDependencies(
-            qdrant_factory=FakeQdrant,
+            vector_writer_factory=FakeQdrant,
+            graph_writer_factory=lambda **_kwargs: None,
             page_state_factory=lambda _qdrant: page_registry,
             graph_settings_loader=lambda: GraphIngestSettings(
                 graph_debug=False,
@@ -207,7 +208,8 @@ class IncrementalIngestTests(unittest.TestCase):
             job_id="job-new",
         )
         dependencies = IngestWorkflowDependencies(
-            qdrant_factory=lambda: qdrant,
+            vector_writer_factory=lambda: qdrant,
+            graph_writer_factory=lambda **_kwargs: None,
             page_state_factory=lambda _qdrant: page_registry,
             graph_settings_loader=lambda: GraphIngestSettings(
                 graph_debug=False,

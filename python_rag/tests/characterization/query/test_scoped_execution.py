@@ -30,7 +30,7 @@ class _FakeResponse:
 
 
 def _qdrant_settings() -> Any:
-    from hawki_rag_stores.qdrant.settings import QdrantSettings
+    from hawki_vector_store.settings import QdrantSettings
 
     return QdrantSettings(
         scheme="http",
@@ -44,7 +44,7 @@ def _qdrant_settings() -> Any:
 
 
 def _qdrant_http_settings(*, search_all: bool = True, fallback_all: bool = True) -> Any:
-    from hawki_rag_stores.qdrant.settings import QdrantHTTPSettings
+    from hawki_vector_store.settings import QdrantHTTPSettings
 
     return QdrantHTTPSettings(
         log_latency=False,
@@ -375,7 +375,7 @@ class QueryExecutionScopeTests(unittest.TestCase):
         from fastapi import HTTPException
 
         from hawki_bridge.application.query.execution import run_query_documents
-        from hawki_rag_stores.qdrant.client import ScopedCollectionNotReadyError
+        from hawki_bridge.domain.errors import DatasetVectorStoreNotReadyError
 
         class FakeQdrant:
             def select_scoped_collection(self, collection: str) -> None:
@@ -426,7 +426,7 @@ class QueryExecutionScopeTests(unittest.TestCase):
                 },
                 build_query_terms_fn=lambda *args: [],
                 run_search_fn=lambda **kwargs: (_ for _ in ()).throw(
-                    ScopedCollectionNotReadyError("missing")
+                    DatasetVectorStoreNotReadyError("missing")
                 ),
                 keyword_fallback_fn=lambda *args, **kwargs: [],
             )

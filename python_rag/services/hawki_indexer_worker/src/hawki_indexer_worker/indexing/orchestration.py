@@ -7,6 +7,7 @@ import time
 from typing import Any
 
 from hawki_indexer_worker.domain.errors import IndexingValidationError
+from hawki_indexer_worker.domain.graph import normalize_graph_write_scope
 from hawki_indexer_worker.indexing.observability import pipeline_log
 from hawki_indexer_worker.indexing.chunking import prepare_documents
 from hawki_indexer_worker.indexing.deletion import (
@@ -29,7 +30,6 @@ from hawki_indexer_worker.indexing.request import (
     infer_operation_id,
 )
 from hawki_indexer_worker.indexing.vector_commit import commit_vector_points
-from hawki_rag_stores.neo4j.requests import normalize_graph_write_scope
 
 logger = logging.getLogger(__name__)
 
@@ -41,9 +41,15 @@ def ingest_documents(
     get_provider,
     idempotency_key: str | None = None,
     graph_debug: bool | None = None,
-    dependencies: IngestWorkflowDependencies | None = None,
+    dependencies: IngestWorkflowDependencies,
 ) -> dict[str, Any]:
-    dependencies = dependencies or IngestWorkflowDependencies()
+    """Coordinate scoped vector indexing and optional graph extraction.
+
+    1. Validate and chunk input documents under the requested dataset scope.
+    2. Compare vector-backed page state and skip unchanged documents.
+    3. Commit vectors, then extract and commit graph triplets when enabled.
+    4. Persist incremental state and return one stable ingestion summary.
+    """
     graph_settings = dependencies.graph_settings_loader()
     resolved_graph_debug = graph_debug
     if resolved_graph_debug is None:
@@ -91,7 +97,7 @@ def ingest_documents(
             getattr(body, "distance", None),
         )
 
-    qdrant = dependencies.qdrant_factory()
+    qdrant = dependencies.vector_writer_factory()
     if body.collection:
         if hasattr(qdrant, "set_collection"):
             qdrant.set_collection(body.collection)
@@ -263,7 +269,7 @@ def ingest_documents(
             doc_stats=doc_stats,
             rag_service=rag_service,
             provider=provider,
-            graph_factory=dependencies.graph_factory,
+            graph_factory=dependencies.graph_writer_factory,
             job_id=run_job_id,
             operation_id=operation_id,
             graph_debug=resolved_graph_debug,
@@ -310,6 +316,7 @@ def delete_document(
     idempotency_key: str | None = None,
     collection: str | None = None,
     neo4j_namespace: str | None = None,
+    dependencies: IngestWorkflowDependencies,
 ) -> DocumentDeletionResult:
     if not doc_id:
         raise IndexingValidationError("doc_id is required")
@@ -318,6 +325,8 @@ def delete_document(
         idempotency_key=idempotency_key,
         collection=collection,
         neo4j_namespace=neo4j_namespace,
+        vector_writer_factory=dependencies.vector_writer_factory,
+        graph_writer_factory=dependencies.graph_writer_factory,
     )
 
 

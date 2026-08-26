@@ -7,7 +7,7 @@ from hawki_bridge.http.dependencies import get_provider_or_400
 from hawki_bridge.http.schemas import QueryRequest, apply_query_settings
 
 
-def build_query_router(*, service, settings) -> APIRouter:
+def build_query_router(*, service, settings, dependencies) -> APIRouter:
     router = APIRouter()
 
     @router.post("/query")
@@ -17,6 +17,7 @@ def build_query_router(*, service, settings) -> APIRouter:
             configured,
             rag_service=service,
             get_provider=lambda name: get_provider_or_400(service, name),
+            dependencies=dependencies,
         )
 
     return router

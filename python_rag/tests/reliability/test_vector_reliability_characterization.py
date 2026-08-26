@@ -25,7 +25,7 @@ class QdrantReliabilityCharacterizationTests(unittest.TestCase):
     """Protect Qdrant filtering, timeout policy, fault-tolerant parsing, and result normalization."""
 
     def test_qdrant_payload_helpers_build_expected_filters_and_batches(self) -> None:
-        from hawki_rag_stores.qdrant.payloads import (
+        from hawki_vector_store.payloads import (
             build_delete_filter,
             build_search_body,
             build_text_filter,
@@ -85,7 +85,7 @@ class QdrantReliabilityCharacterizationTests(unittest.TestCase):
         )
 
     def test_qdrant_settings_parse_env_and_fall_back_on_invalid_numbers(self) -> None:
-        from hawki_rag_stores.qdrant.settings import qdrant_settings_from_env
+        from hawki_vector_store.settings import qdrant_settings_from_env
 
         with patch.dict(
             os.environ,
@@ -109,7 +109,7 @@ class QdrantReliabilityCharacterizationTests(unittest.TestCase):
         self.assertEqual(settings.max_attempts, 5)
 
     def test_qdrant_http_settings_parse_and_defaults(self) -> None:
-        from hawki_rag_stores.qdrant.settings import qdrant_http_settings_from_env
+        from hawki_vector_store.settings import qdrant_http_settings_from_env
 
         with patch.dict(
             os.environ,
@@ -137,8 +137,8 @@ class QdrantReliabilityCharacterizationTests(unittest.TestCase):
         self.assertEqual(settings.text_scroll_hard_cap, 50000)
 
     def test_qdrant_http_uses_injected_http_settings_for_timeouts(self) -> None:
-        from hawki_rag_stores.qdrant.client import QdrantHTTP
-        from hawki_rag_stores.qdrant.settings import QdrantHTTPSettings, QdrantSettings
+        from hawki_vector_store.client import QdrantHTTP
+        from hawki_vector_store.settings import QdrantHTTPSettings, QdrantSettings
 
         requests: list[tuple[str, str, dict[str, object]]] = []
 
@@ -157,7 +157,7 @@ class QdrantReliabilityCharacterizationTests(unittest.TestCase):
                 return FakeResponse()
 
         with patch(
-            "hawki_rag_stores.qdrant.client.requests.Session",
+            "hawki_vector_store.client.requests.Session",
             return_value=FakeSession(),
         ):
             client = QdrantHTTP(
@@ -200,8 +200,8 @@ class QdrantReliabilityCharacterizationTests(unittest.TestCase):
         self.assertEqual(kwargs["timeout"], 9.0)
 
     def test_qdrant_http_delegates_requests_to_primitive_gateway(self) -> None:
-        from hawki_rag_stores.qdrant.client import QdrantHTTP
-        from hawki_rag_stores.qdrant.settings import QdrantHTTPSettings, QdrantSettings
+        from hawki_vector_store.client import QdrantHTTP
+        from hawki_vector_store.settings import QdrantHTTPSettings, QdrantSettings
 
         calls: list[tuple[str, object]] = []
 
@@ -258,7 +258,7 @@ class QdrantReliabilityCharacterizationTests(unittest.TestCase):
         fake_gateway = FakeGateway()
 
         with patch(
-            "hawki_rag_stores.qdrant.client.QdrantHTTPGateway",
+            "hawki_vector_store.client.QdrantHTTPGateway",
             return_value=fake_gateway,
         ):
             client = QdrantHTTP(
@@ -305,8 +305,8 @@ class QdrantReliabilityCharacterizationTests(unittest.TestCase):
     def test_qdrant_http_defaults_search_all_limit_to_top_k_when_not_configured(
         self,
     ) -> None:
-        from hawki_rag_stores.qdrant.client import QdrantHTTP
-        from hawki_rag_stores.qdrant.settings import QdrantHTTPSettings, QdrantSettings
+        from hawki_vector_store.client import QdrantHTTP
+        from hawki_vector_store.settings import QdrantHTTPSettings, QdrantSettings
 
         limits: list[int] = []
 
@@ -349,7 +349,7 @@ class QdrantReliabilityCharacterizationTests(unittest.TestCase):
 
         with (
             patch(
-                "hawki_rag_stores.qdrant.client.requests.Session",
+                "hawki_vector_store.client.requests.Session",
                 return_value=FakeSession(),
             ),
             patch.object(
@@ -368,7 +368,7 @@ class QdrantReliabilityCharacterizationTests(unittest.TestCase):
         self.assertEqual(limits, [7, 7])
 
     def test_qdrant_collection_helpers_parse_names_counts_and_vector_size(self) -> None:
-        from hawki_rag_stores.qdrant.collections import (
+        from hawki_vector_store.collections import (
             collection_names,
             pick_most_populated_collection,
             vector_size_from_config,
@@ -398,7 +398,7 @@ class QdrantReliabilityCharacterizationTests(unittest.TestCase):
         )
 
     def test_qdrant_response_parsers_are_fault_tolerant(self) -> None:
-        from hawki_rag_stores.qdrant.responses import (
+        from hawki_vector_store.responses import (
             parse_collection_config,
             parse_collection_names,
             parse_count,
@@ -428,7 +428,7 @@ class QdrantReliabilityCharacterizationTests(unittest.TestCase):
         )
 
     def test_qdrant_interpretation_helpers_handle_404_and_missing_scores(self) -> None:
-        from hawki_rag_stores.qdrant.interpretation import (
+        from hawki_vector_store.interpretation import (
             attach_collection,
             parse_scroll_payload,
             parse_search_payload,
@@ -489,7 +489,7 @@ class QdrantReliabilityCharacterizationTests(unittest.TestCase):
         self.assertIsNone(next_offset)
 
     def test_qdrant_search_helpers_normalize_and_merge_results(self) -> None:
-        from hawki_rag_stores.qdrant.search import (
+        from hawki_vector_store.search import (
             merge_search_results,
             normalize_query_inputs,
             search_with_fallback_collections,

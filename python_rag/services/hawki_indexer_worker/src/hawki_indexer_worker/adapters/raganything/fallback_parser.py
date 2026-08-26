@@ -6,7 +6,7 @@ import re
 from pathlib import Path
 from typing import Iterable
 
-from hawki_rag_stores.neo4j.normalization import normalize_relation_label
+from hawki_indexer_worker.domain.graph import normalize_relation_label
 
 logger = logging.getLogger(__name__)
 

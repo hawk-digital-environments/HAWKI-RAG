@@ -26,7 +26,7 @@ def test_workspace_has_one_root_lock_and_no_nested_workspace_metadata() -> None:
     ]
 
     assert workspace_owners == [ROOT / "pyproject.toml"]
-    assert len(_members()) == 13
+    assert len(_members()) == 14
     assert list(ROOT.rglob("uv.lock")) == [ROOT / "uv.lock"]
     assert list((ROOT / "packages").rglob(".python-version")) == []
     assert list((ROOT / "services").rglob(".python-version")) == []

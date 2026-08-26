@@ -11,6 +11,8 @@ from hawki_bridge.adapters.neo4j_reader import Neo4jReader
 from hawki_bridge.adapters.temporal_client import TemporalBridgeClient
 from hawki_bridge.application.graph import GraphReadService
 from hawki_bridge.application.service import QueryService
+from hawki_bridge.application.dependencies import BridgeDependencies
+from hawki_bridge.composition import build_bridge_dependencies
 from hawki_bridge.domain.ports import GraphReader
 from hawki_bridge.http.errors import install_exception_handlers
 from hawki_bridge.http.middleware import install_request_context_middleware
@@ -30,12 +32,14 @@ def build_app(
     settings: BridgeSettings | None = None,
     service: QueryService | None = None,
     graph_reader: GraphReader | None = None,
+    dependencies: BridgeDependencies | None = None,
     temporal_client_factory: Callable = TemporalBridgeClient,
     logger_name: str = "hawki_bridge",
 ) -> FastAPI:
     active_settings = settings or load_settings()
     active_service = service or QueryService()
     active_graph_service = GraphReadService(graph_reader or Neo4jReader())
+    active_dependencies = dependencies or build_bridge_dependencies()
     logger = configure_logging(active_settings, logger_name=logger_name)
 
     @asynccontextmanager
@@ -58,7 +62,11 @@ def build_app(
         build_health_router(runtime_summary=active_service.runtime_summary)
     )
     application.include_router(
-        build_query_router(service=active_service, settings=active_settings)
+        build_query_router(
+            service=active_service,
+            settings=active_settings,
+            dependencies=active_dependencies,
+        )
     )
     application.include_router(build_graph_router(service=active_graph_service))
     application.include_router(

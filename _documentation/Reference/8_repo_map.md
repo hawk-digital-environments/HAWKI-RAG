@@ -28,10 +28,10 @@ question: **where should a developer begin a code change?**
 | I need to change… | Start here | Follow the behavior into… | Primary tests |
 |---|---|---|---|
 | Query authorization or dataset scope | `routes/api.php`, `app/Http/Requests/Rag/`, `HawkiRagProxyController.php` | `app/Services/Authorization/` and `app/Services/Rag/` | `tests/Feature/Authorization/`, `tests/Feature/Query/` |
-| Retrieval, score merging, or reranking | `python_rag/services/hawki_bridge/src/hawki_bridge/http/routers/query.py` | `hawki_bridge/application/query/`, then `packages/stores/` or the reranker client | `python_rag/tests/bridge/`, `python_rag/tests/characterization/query/` |
+| Retrieval, score merging, or reranking | `python_rag/services/hawki_bridge/src/hawki_bridge/http/routers/query.py` | `hawki_bridge/application/query/`, then `packages/vector_store/`, `packages/graph_store/`, or the reranker client | `python_rag/tests/bridge/`, `python_rag/tests/characterization/query/` |
 | Pipeline creation, retry, or cancellation | `PipelineTaskController.php` and `PipelineControlController.php` | `app/Services/Pipeline/`, then `services/hawki_workflow_worker/` | `tests/Feature/Pipeline/`, `python_rag/tests/workflow/` |
 | Chunking, incremental ingestion, or Qdrant commits | `services/hawki_indexer_worker/activities/index.py` | `hawki_indexer_worker/indexing/` and its narrow store adapters | `python_rag/tests/indexer/`, `python_rag/tests/characterization/indexer/` |
-| Graph extraction or Neo4j behavior | `app/Http/Controllers/Graph/` or the indexer graph phase | `app/Services/Graph/`, `hawki_indexer_worker/adapters/raganything/`, and `packages/stores/.../neo4j/` | `tests/Feature/Graph/`, `python_rag/tests/graph/` |
+| Graph extraction or Neo4j behavior | `app/Http/Controllers/Graph/` or the indexer graph phase | `app/Services/Graph/`, `hawki_indexer_worker/adapters/raganything/`, and `packages/graph_store/` | `tests/Feature/Graph/`, `python_rag/tests/graph/` |
 | Model providers or model allowlists | `config/model_providers.php` and the owning service settings | `app/Services/Settings/`, `packages/model_providers/`, and indexer provider composition | `tests/Feature/Settings/`, `python_rag/tests/providers/` |
 | Browser UI or frontend assets | `routes/web.php` and `resources/js/svelte/` | `resources/views/`, `vite.config.js`, and `svelte.config.js` | `tests/Feature/Ui/` |
 | Containers, startup, or health wiring | `Makefile` and `docker-compose*.yml` | `python_rag/Dockerfile`, `docker/laravel.Dockerfile`, and `docker/` | `tests/System/` plus `make health` and `make test-services` |
@@ -142,7 +142,8 @@ reranking, model-provider adapters, and Temporal execution.
 | **Workflow worker** | `python_rag/services/hawki_workflow_worker/` | Changing deterministic Temporal workflow order, names, queues, or retries |
 | **Activity workers** | `python_rag/services/hawki_{scraper,converter,indexer}_worker/` | Owning scrape, conversion, or indexing business behavior |
 | **Graph extraction** | `python_rag/services/hawki_indexer_worker/src/hawki_indexer_worker/adapters/raganything/` | Integrating RAG-Anything/LightRAG extraction, caches, parsing, or fallbacks |
-| **Vector/graph stores** | `python_rag/packages/stores/src/hawki_rag_stores/` | Building typed Qdrant or Neo4j transport, request, response, and normalization behavior |
+| **Vector store** | `python_rag/packages/vector_store/src/hawki_vector_store/` | Building typed Qdrant transport, request, response, and vector-search behavior |
+| **Graph store** | `python_rag/packages/graph_store/src/hawki_graph_store/` | Building typed Neo4j transport, request, response, and graph-normalization behavior |
 | **Model providers** | `python_rag/packages/model_providers/` | Implementing Ollama or LiteLLM chat/embedding behavior |
 | **Reranker** | `python_rag/services/hawki_reranker/` | Hosting the standalone Cohere-compatible reranking API |
 | **Shared contracts/runtime** | `python_rag/packages/{contracts,artifact_store,worker_runtime,resilience,text_processing}/` | Reusing a narrow cross-service contract or framework-independent primitive |

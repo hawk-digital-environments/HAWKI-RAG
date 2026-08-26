@@ -98,8 +98,8 @@ def _request(text: str, *, operation: str) -> IndexRequest:
 
 def _dependencies(qdrant: MemoryQdrant) -> IngestWorkflowDependencies:
     return IngestWorkflowDependencies(
-        qdrant_factory=lambda: qdrant,
-        graph_factory=lambda **_kwargs: None,
+        vector_writer_factory=lambda: qdrant,
+        graph_writer_factory=lambda **_kwargs: None,
         page_state_factory=QdrantPageState,
     )
 

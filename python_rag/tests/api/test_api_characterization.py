@@ -50,6 +50,32 @@ class ApiCharacterizationTests(unittest.TestCase):
         self.assertEqual(response.json()["error"]["type"], "Neo4jUnavailable")
         self.assertNotIn("connection details", response.text)
 
+    def test_non_availability_neo4j_errors_are_safe_internal_failures(self) -> None:
+        import logging
+
+        from fastapi import FastAPI
+        from neo4j.exceptions import Neo4jError
+
+        from hawki_bridge.http.errors.handlers import install_exception_handlers
+
+        app = FastAPI()
+        install_exception_handlers(app, logging.getLogger("neo4j-handler-test"))
+        syntax_error = Neo4jError._hydrate_neo4j(
+            code="Neo.ClientError.Statement.SyntaxError",
+            message="MATCH secret-password-token",
+        )
+
+        @app.get("/invalid-graph-query")
+        def invalid_graph_query() -> None:
+            raise syntax_error
+
+        with TestClient(app) as client:
+            response = client.get("/invalid-graph-query")
+
+        self.assertEqual(response.status_code, 500)
+        self.assertEqual(response.json()["error"]["type"], "GraphStorageError")
+        self.assertNotIn("secret-password-token", response.text)
+
     def test_api_schema_defaults_and_provider_errors_are_validation_boundaries(
         self,
     ) -> None:
@@ -308,6 +334,7 @@ class ApiCharacterizationTests(unittest.TestCase):
             body: QueryRequest,
             rag_service: object,
             get_provider,
+            dependencies,
         ) -> dict[str, object]:
             captured["body_type"] = type(body).__name__
             captured["body_provider"] = body.provider
@@ -315,6 +342,7 @@ class ApiCharacterizationTests(unittest.TestCase):
             captured["service_is_injected"] = rag_service is service
             captured["provider_fn_called"] = callable(get_provider)
             captured["provider_value"] = get_provider(body.provider)
+            captured["storage_dependencies"] = dependencies
             return {
                 "ok": True,
                 "query": body.query,
@@ -348,6 +376,7 @@ class ApiCharacterizationTests(unittest.TestCase):
         self.assertEqual(captured["body_top_k"], 4)
         self.assertEqual(captured["provider_fn_called"], True)
         self.assertEqual(captured["service_is_injected"], True)
+        self.assertIsNotNone(captured["storage_dependencies"])
         self.assertEqual(captured["provider_value"].embed_model, "query-embed")
         self.assertEqual(service.provider_calls, [query_body.provider])
 
@@ -436,8 +465,8 @@ class ApiCharacterizationTests(unittest.TestCase):
             idempotency_key="delete-op-1",
             collection="toy_docs",
             neo4j_namespace="toy_graph",
-            qdrant_factory=lambda: qdrant,
-            graph_factory=FakeGraph,
+            vector_writer_factory=lambda: qdrant,
+            graph_writer_factory=FakeGraph,
         )
 
         self.assertEqual(

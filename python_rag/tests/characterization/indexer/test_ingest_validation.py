@@ -114,6 +114,9 @@ class IngestCharacterizationTests(unittest.TestCase):
 
     def test_ingest_documents_dry_run_returns_request_summary_shape(self) -> None:
         from hawki_indexer_worker.indexing.orchestration import ingest_documents
+        from hawki_indexer_worker.adapters.composition import (
+            build_ingest_workflow_dependencies,
+        )
 
         body = SimpleNamespace(
             docs=[
@@ -145,6 +148,7 @@ class IngestCharacterizationTests(unittest.TestCase):
             body,
             rag_service=object(),
             get_provider=lambda name: object(),
+            dependencies=build_ingest_workflow_dependencies(),
         )
 
         self.assertTrue(result["ok"])

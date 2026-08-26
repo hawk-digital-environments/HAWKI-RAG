@@ -18,7 +18,9 @@ from hawki_rag_contracts.temporal import (
 )
 from hawki_indexer_worker.activities import index as index_activity
 from hawki_indexer_worker.adapters.artifact_store import load_passthrough_metadata
-from hawki_indexer_worker.indexing.dependencies import IngestWorkflowDependencies
+from hawki_indexer_worker.adapters.composition import (
+    build_ingest_workflow_dependencies,
+)
 from hawki_indexer_worker.settings import IndexerSettings
 
 
@@ -141,7 +143,7 @@ def test_activity_calls_indexing_logic_directly_and_writes_manifest(
         artifact_store=HandoffOnlyArtifactStore(tmp_path),
         graph_service=object(),
         provider_resolver=lambda _name: object(),
-        workflow_dependencies=IngestWorkflowDependencies(),
+        workflow_dependencies=build_ingest_workflow_dependencies(),
         status_reporter=fake_status,
         activity_info=SimpleNamespace(
             workflow_id="workflow-1", workflow_run_id="run-1", attempt=1
@@ -206,7 +208,7 @@ def test_activity_rejects_converter_metadata_that_does_not_match_file(
             artifact_store=LocalArtifactStore(tmp_path),
             graph_service=object(),
             provider_resolver=lambda _name: object(),
-            workflow_dependencies=IngestWorkflowDependencies(),
+            workflow_dependencies=build_ingest_workflow_dependencies(),
             status_reporter=lambda *_args, **kwargs: (
                 callback_statuses.append(kwargs["status"]) or {"accepted": True}
             ),
@@ -245,7 +247,7 @@ def test_empty_artifact_directory_returns_skipped_without_index_call(
         artifact_store=LocalArtifactStore(tmp_path),
         graph_service=object(),
         provider_resolver=lambda _name: object(),
-        workflow_dependencies=IngestWorkflowDependencies(),
+        workflow_dependencies=build_ingest_workflow_dependencies(),
         status_reporter=lambda *_args, **kwargs: (
             callback_statuses.append(kwargs["status"]) or {"accepted": True}
         ),
@@ -291,7 +293,7 @@ def test_indexer_reports_shared_storage_initialization_failure(tmp_path: Path) -
             artifact_store=None,
             graph_service=object(),
             provider_resolver=lambda _name: object(),
-            workflow_dependencies=IngestWorkflowDependencies(),
+            workflow_dependencies=build_ingest_workflow_dependencies(),
             status_reporter=lambda *_args, **kwargs: (
                 callback_statuses.append(kwargs["status"]) or {"accepted": True}
             ),
@@ -456,7 +458,7 @@ def test_passthrough_artifact_forces_graph_indexing_without_bridge_http(
         artifact_store=LocalArtifactStore(tmp_path),
         graph_service=object(),
         provider_resolver=lambda _name: object(),
-        workflow_dependencies=IngestWorkflowDependencies(),
+        workflow_dependencies=build_ingest_workflow_dependencies(),
         status_reporter=lambda *_args, **_kwargs: {"accepted": True},
         activity_info=SimpleNamespace(
             workflow_id="workflow-1",

@@ -1,6 +1,6 @@
 # Shared Python packages
 
-`python_rag/packages/` is the shared toolbox behind HAWKI RAG’s Python services. It contains seven reusable libraries that give every service the same contracts, safety rules, and core behavior without forcing them to depend on each other. This is where common concerns live: validating serialized inputs, keeping artifact paths safely inside Laravel’s allocated storage, providing typed interfaces for model providers and backing stores, and making sure text normalization and chunking behave consistently across the pipeline. It also provides shared handling for retries, safe logging, signed callbacks, and external jobs, so each worker doesn’t have to reinvent the same infrastructure.
+`python_rag/packages/` is the shared toolbox behind HAWKI RAG’s Python services. It contains eight reusable libraries that give every service the same contracts, safety rules, and core behavior without forcing them to depend on each other. This is where common concerns live: validating serialized inputs, keeping artifact paths safely inside Laravel’s allocated storage, providing typed interfaces for model providers and backing stores, and making sure text normalization and chunking behave consistently across the pipeline. It also provides shared handling for retries, safe logging, signed callbacks, and external jobs, so each worker doesn’t have to reinvent the same infrastructure.
 
 The important distinction is that these packages **support the system; they don’t control it**. They don’t run services, decide the order of the ingestion workflow, or determine what should happen next. Laravel remains the control plane and owns authentication, authorization, application metadata, dataset configuration, and the pipeline state shown to operators. The shared Python packages simply operate within the trusted scope they receive, providing a reliable foundation that the bridge, workflow, and workers can build on.
 
@@ -119,35 +119,40 @@ This package gives HAWKI RAG’s adapters and services a shared way to deal with
 - `reliability.py` is the canonical implementation. Do not recreate facade
   modules that can diverge from it.
 
-## `stores/`
+## `vector_store/`
 
-### Our Gateway to the Data Layer
+### Qdrant ownership
 
-`stores` is HAWKI RAG’s shared gateway to Qdrant and Neo4j. It handles the low-level details that services shouldn’t have to repeat: configuration, request construction, response parsing, transport, retries, storage-shape normalization, and scoped access through clean facades. This gives the bridge a consistent way to read and the indexer a consistent way to write, without either of them needing to understand or duplicate the underlying database protocols. Its responsibility is **how HAWKI talks to its data stores, not what it asks them to do**. 
-
-### Directory map
-
-- `src/hawki_rag_stores/`: common namespace and public Qdrant/Neo4j exports.
-- `src/hawki_rag_stores/qdrant/`: settings, collections, payload builders,
-  request/response parsing, HTTP transport, idempotent gateway, scoped client,
-  interpretation, and search strategies.
-- `src/hawki_rag_stores/neo4j/`: settings, relation normalization, scoped
-  Cypher request builders, response parsing, driver transport, persistence
-  facade, and traversal.
+`vector_store` is the only package that understands Qdrant's HTTP protocol and
+persisted vector shape. It exposes explicit vector contracts plus independent
+reader and writer ports. The bridge and indexer depend on those capabilities,
+not on graph storage.
 
 ### Rules
 
-- A scoped Qdrant client is locked to one authorized collection and must never
-  fall back to another collection.
-- Qdrant writes retry only when supplied an operation ID. Request construction
-  and response interpretation remain separate from transport.
-- Neo4j reads and writes require both dataset and namespace. Missing scope must
-  fail or skip safely; it must never become a global read, write, or delete.
+- A scoped client is locked to one authorized collection and must never fall
+  back to another collection.
+- Writes retry only when supplied an operation ID.
+- Vector request construction and response interpretation remain separate from
+  transport.
+- This package must never import `hawki_graph_store`.
+
+## `graph_store/`
+
+### Neo4j ownership
+
+`graph_store` is the only package that understands Neo4j, Cypher, and the
+persisted entity/relationship shape. It exposes explicit graph contracts plus
+independent reader and writer ports. It does not store or search embedding
+vectors.
+
+### Rules
+
+- Reads and writes require both dataset and namespace. Missing scope must fail
+  or skip safely; it must never become a global operation.
 - Normalize relationship labels and reverse duplicate triplets before use.
-- Keep historical persisted shapes readable until deployed data has been
-  inventoried and migrated.
-- Optional dependency behavior comes from
-  `hawki_rag_resilience.optional_imports`; do not restore a private copy.
+- Neo4j managed transactions exclusively own driver retries.
+- This package must never import `hawki_vector_store`.
 
 ## `text_processing/`
 
@@ -182,5 +187,4 @@ This package provides common infrastructure for scraper, converter, and indexer 
 - `logging.py`: worker log setup and structured event output.
 - `settings.py`: common worker runtime settings.
 - `temporal.py`: bounded activity-executor construction.
-
 

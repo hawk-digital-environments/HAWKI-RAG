@@ -8,7 +8,7 @@ import time
 from datetime import datetime, timezone
 from typing import Any
 
-from hawki_rag_stores.neo4j.traversal import filter_triplets_to_source
+from hawki_indexer_worker.domain.graph import filter_triplets_to_source
 from hawki_indexer_worker.indexing.graph_documents import prepare_graph_document
 from hawki_indexer_worker.indexing.graph_settings import (
     GraphIngestSettings,
