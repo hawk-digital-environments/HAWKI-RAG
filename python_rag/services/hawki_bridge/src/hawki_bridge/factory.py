@@ -7,12 +7,10 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from hawki_bridge.adapters.neo4j_reader import Neo4jReader
 from hawki_bridge.adapters.temporal_client import TemporalBridgeClient
 from hawki_bridge.application.graph import GraphReadService
-from hawki_bridge.application.service import QueryService
-from hawki_bridge.application.dependencies import BridgeDependencies
-from hawki_bridge.composition import build_bridge_dependencies
+from hawki_bridge.application.dependencies import QueryDependencies
+from hawki_bridge.composition import build_query_dependencies
 from hawki_bridge.domain.ports import GraphReader
 from hawki_bridge.http.errors import install_exception_handlers
 from hawki_bridge.http.middleware import install_request_context_middleware
@@ -30,16 +28,18 @@ from hawki_bridge.startup_checks import run_startup_checks
 def build_app(
     *,
     settings: BridgeSettings | None = None,
-    service: QueryService | None = None,
     graph_reader: GraphReader | None = None,
-    dependencies: BridgeDependencies | None = None,
+    query_dependencies: QueryDependencies | None = None,
     temporal_client_factory: Callable = TemporalBridgeClient,
+    runtime_summary: Callable[[], dict[str, object]] | None = None,
     logger_name: str = "hawki_bridge",
 ) -> FastAPI:
     active_settings = settings or load_settings()
-    active_service = service or QueryService()
-    active_graph_service = GraphReadService(graph_reader or Neo4jReader())
-    active_dependencies = dependencies or build_bridge_dependencies()
+    active_dependencies = query_dependencies or build_query_dependencies()
+    active_graph_service = GraphReadService(
+        graph_reader or active_dependencies.graph_search
+    )
+    active_runtime_summary = runtime_summary or bridge_runtime_summary
     logger = configure_logging(active_settings, logger_name=logger_name)
 
     @asynccontextmanager
@@ -59,11 +59,10 @@ def build_app(
     install_exception_handlers(application, logger)
     install_request_context_middleware(application, logger)
     application.include_router(
-        build_health_router(runtime_summary=active_service.runtime_summary)
+        build_health_router(runtime_summary=active_runtime_summary)
     )
     application.include_router(
         build_query_router(
-            service=active_service,
             settings=active_settings,
             dependencies=active_dependencies,
         )
@@ -98,4 +97,10 @@ def build_app(
     return application
 
 
-__all__ = ["build_app"]
+def bridge_runtime_summary() -> dict[str, object]:
+    """Return stable process metadata for the optional health payload."""
+
+    return {"role": "bridge", "mode": "read-only"}
+
+
+__all__ = ["bridge_runtime_summary", "build_app"]

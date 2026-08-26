@@ -5,7 +5,6 @@ from __future__ import annotations
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from types import SimpleNamespace
 from typing import Any
 from unittest.mock import Mock
 
@@ -201,7 +200,7 @@ def _build_test_client(tmp_path: Path, client_factory: Any) -> TestClient:
 
     settings = load_settings({})
     app = build_app(
-        service=SimpleNamespace(runtime_summary=lambda: {"mode": "test"}),
+        runtime_summary=lambda: {"mode": "test"},
         temporal_client_factory=client_factory,
         logger_name="test.temporal_api_flow",
         settings=settings,

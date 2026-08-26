@@ -18,7 +18,6 @@ if str(TESTS_ROOT) not in sys.path:
     sys.path.insert(0, str(TESTS_ROOT))
 
 from characterization_support import (
-    fastapi_http_exception_type as _fastapi_http_exception_type,
     fastapi_test_client_class,
 )
 
@@ -76,14 +75,14 @@ class ApiCharacterizationTests(unittest.TestCase):
         self.assertEqual(response.json()["error"]["type"], "GraphStorageError")
         self.assertNotIn("secret-password-token", response.text)
 
-    def test_api_schema_defaults_and_provider_errors_are_validation_boundaries(
+    def test_api_schema_defaults_and_query_errors_are_validation_boundaries(
         self,
     ) -> None:
-        from hawki_bridge.http.dependencies import get_provider_or_400
+        from hawki_bridge.domain.errors import UnsupportedModelProviderError
+        from hawki_bridge.http.errors import query_error_to_http_exception
         from hawki_bridge.http.schemas import QueryRequest, apply_query_settings
         from hawki_bridge.settings import load_settings
 
-        HTTPException = _fastapi_http_exception_type()
         query = QueryRequest(
             query="Which toys are wooden?",
             authorized_scope={
@@ -132,15 +131,11 @@ class ApiCharacterizationTests(unittest.TestCase):
         self.assertEqual(patched.reranker, "cosine")
         self.assertFalse(patched.mix_mode)
 
-        class Service:
-            def get_provider(self, name: str):
-                raise ValueError(f"unknown provider {name}")
-
-        with self.assertRaises(HTTPException) as raised:
-            get_provider_or_400(Service(), "missing")
-
-        self.assertEqual(raised.exception.status_code, 400)
-        self.assertIn("unknown provider missing", raised.exception.detail)
+        error = query_error_to_http_exception(
+            UnsupportedModelProviderError("unknown provider missing")
+        )
+        self.assertEqual(error.status_code, 400)
+        self.assertIn("unknown provider missing", error.detail)
 
     def test_app_settings_includes_runtime_env_overrides(self) -> None:
         from hawki_bridge.settings import load_settings
@@ -202,7 +197,7 @@ class ApiCharacterizationTests(unittest.TestCase):
 
         app_logger = logging.getLogger("tests.logging_config")
         ingest_logger = logging.getLogger("hawki_indexer_worker.indexing.orchestration")
-        rag_logger = logging.getLogger("hawki_bridge.application.service")
+        rag_logger = logging.getLogger("hawki_bridge.application.query.execution")
         old_levels = (app_logger.level, ingest_logger.level, rag_logger.level)
         try:
             logger = configure_logging(
@@ -222,18 +217,9 @@ class ApiCharacterizationTests(unittest.TestCase):
         from hawki_bridge.factory import build_app
         from hawki_bridge.settings import load_settings
 
-        class Service:
-            @staticmethod
-            def runtime_summary() -> dict[str, str]:
-                return {"role": "bridge", "mode": "read-only"}
-
-            @staticmethod
-            def get_provider(_name: str) -> object:
-                return object()
-
         app = build_app(
             settings=load_settings({}),
-            service=Service(),
+            runtime_summary=lambda: {"role": "bridge", "mode": "read-only"},
             logger_name="test.bridge_route_surface",
         )
         paths = set(app.openapi()["paths"])
@@ -251,19 +237,19 @@ class ApiCharacterizationTests(unittest.TestCase):
         from hawki_bridge.factory import build_app
         from hawki_bridge.settings import load_settings
 
-        class FakeService:
+        class RuntimeSummary:
             def __init__(self) -> None:
-                self.runtime_calls = 0
+                self.calls = 0
 
-            def runtime_summary(self) -> dict[str, object]:
-                self.runtime_calls += 1
+            def __call__(self) -> dict[str, object]:
+                self.calls += 1
                 return {"role": "bridge", "mode": "read-only"}
 
         app_settings = load_settings({})
-        service = FakeService()
+        runtime_summary = RuntimeSummary()
         app = build_app(
             settings=app_settings,
-            service=service,
+            runtime_summary=runtime_summary,
             logger_name="test.bridge_factory",
         )
         route_endpoints = {
@@ -284,23 +270,13 @@ class ApiCharacterizationTests(unittest.TestCase):
         )
         self.assertEqual(lightweight_health["ok"], True)
         self.assertEqual(lightweight_health["runtime"], {})
-        self.assertEqual(service.runtime_calls, 1)
+        self.assertEqual(runtime_summary.calls, 1)
 
     def test_app_query_route_uses_injected_dependencies(self) -> None:
+        from hawki_bridge.application.dependencies import QueryDependencies
         from hawki_bridge.factory import build_app
         from hawki_bridge.http.schemas import QueryRequest
         from hawki_bridge.settings import load_settings
-
-        class FakeService:
-            def __init__(self) -> None:
-                self.provider_calls: list[str] = []
-
-            def get_provider(self, name: str) -> object:
-                self.provider_calls.append(name)
-                return SimpleNamespace(embed_model="query-embed", rag_model="query-rag")
-
-            def runtime_summary(self) -> dict[str, str]:
-                return {"mode": "test"}
 
         query_body = QueryRequest(
             query="Why wooden toys are safe?",
@@ -329,37 +305,51 @@ class ApiCharacterizationTests(unittest.TestCase):
             mix_weight=0.4,
         )
         captured: dict[str, object] = {}
+        provider_calls: list[str] = []
 
-        def fake_query_documents(
+        def resolve_provider(name: str) -> object:
+            provider_calls.append(name)
+            return SimpleNamespace(embed_model="query-embed", rag_model="query-rag")
+
+        dependencies = QueryDependencies(
+            vector_search_factory=lambda: SimpleNamespace(),
+            graph_search=SimpleNamespace(),
+            resolve_model_provider=resolve_provider,
+            rerank_hits=lambda **kwargs: kwargs["hits"],
+        )
+
+        def fake_execute_authorized_query(
             body: QueryRequest,
-            rag_service: object,
-            get_provider,
-            dependencies,
+            *,
+            dependencies: QueryDependencies,
         ) -> dict[str, object]:
             captured["body_type"] = type(body).__name__
             captured["body_provider"] = body.provider
             captured["body_top_k"] = body.top_k
-            captured["service_is_injected"] = rag_service is service
-            captured["provider_fn_called"] = callable(get_provider)
-            captured["provider_value"] = get_provider(body.provider)
-            captured["storage_dependencies"] = dependencies
+            captured["dependencies"] = dependencies
+            captured["provider_value"] = dependencies.resolve_model_provider(
+                body.provider
+            )
             return {
                 "ok": True,
-                "query": body.query,
-                "top_k": body.top_k,
+                "count": 0,
+                "hits": [],
+                "kg": [],
+                "answer": "",
+                "retrieval": {"top_k": body.top_k},
             }
 
         with tempfile.TemporaryDirectory():
-            service = FakeService()
             app = build_app(
-                service=service,
+                query_dependencies=dependencies,
+                runtime_summary=lambda: {"mode": "test"},
                 settings=load_settings({}),
                 logger_name="app_test_query_route",
             )
 
             with patch(
-                "hawki_bridge.http.routers.query.query_documents",
-                side_effect=fake_query_documents,
+                "hawki_bridge.http.routers.query.execute_authorized_query",
+                side_effect=fake_execute_authorized_query,
             ):
                 with TestClient(app) as client:
                     response = client.post(
@@ -369,16 +359,22 @@ class ApiCharacterizationTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(
-            response.json(), {"ok": True, "query": query_body.query, "top_k": 4}
+            response.json(),
+            {
+                "ok": True,
+                "count": 0,
+                "hits": [],
+                "kg": [],
+                "answer": "",
+                "retrieval": {"top_k": 4},
+            },
         )
         self.assertEqual(captured["body_type"], "QueryRequest")
         self.assertEqual(captured["body_provider"], query_body.provider)
         self.assertEqual(captured["body_top_k"], 4)
-        self.assertEqual(captured["provider_fn_called"], True)
-        self.assertEqual(captured["service_is_injected"], True)
-        self.assertIsNotNone(captured["storage_dependencies"])
+        self.assertIs(captured["dependencies"], dependencies)
         self.assertEqual(captured["provider_value"].embed_model, "query-embed")
-        self.assertEqual(service.provider_calls, [query_body.provider])
+        self.assertEqual(provider_calls, [query_body.provider])
 
     def test_index_request_is_built_from_workflow_input_without_http(self) -> None:
         from hawki_indexer_worker.domain.models import IngestDocument

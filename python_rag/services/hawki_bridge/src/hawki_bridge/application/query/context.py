@@ -1,13 +1,16 @@
-"""Context summary preparation for query responses."""
+"""Bounded context and grounded-prompt construction for query responses."""
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
-from hawki_rag_text.preprocessing import (
-    _estimate_tokens,
-    _sanitize_context_snippet,
-    _truncate_to_tokens,
+_CONTEXT_STRIP_TOKENS = (
+    "<<SYS>>",
+    "<<SYSTEM>>",
+    "<|im_start|>",
+    "<|im_end|>",
+    "BEGIN PROMPT INJECTION",
 )
 
 
@@ -16,7 +19,7 @@ def build_grounded_answer_prompt(
     context_summaries: list[dict[str, Any]],
     kg_facts: list[dict[str, str]],
 ) -> tuple[str, str]:
-    """Build a bounded prompt that treats retrieved content as untrusted evidence."""
+    """Build a prompt that treats retrieved content as untrusted evidence."""
 
     source_blocks: list[str] = []
     for source in context_summaries:
@@ -61,6 +64,8 @@ def prepare_context_summaries(
     max_docs: int,
     max_tokens: int,
 ) -> tuple[list[dict[str, Any]], list[int], int]:
+    """Build safe source summaries within the configured document/token limits."""
+
     summaries: list[dict[str, Any]] = []
     trimmed: list[int] = []
     used_tokens = 0
@@ -73,24 +78,23 @@ def prepare_context_summaries(
         component_type = payload.get("component_type") or payload.get("type") or "chunk"
         source_format = payload.get("source_format") or payload.get("format")
 
-        title = _sanitize_context_snippet(title_raw) or "Untitled"
-        url = _sanitize_context_snippet(url_raw)
-        clean_snippet = _sanitize_context_snippet(snippet_raw)
-        base_tokens = _estimate_tokens(title) + _estimate_tokens(url)
+        title = sanitize_context_text(title_raw) or "Untitled"
+        url = sanitize_context_text(url_raw)
+        clean_snippet = sanitize_context_text(snippet_raw)
+        base_tokens = estimate_tokens(title) + estimate_tokens(url)
 
         remaining = max_tokens - used_tokens - base_tokens
         if remaining <= 0:
             trimmed.append(idx)
             continue
 
-        snippet = _truncate_to_tokens(clean_snippet, remaining)
+        snippet = truncate_to_tokens(clean_snippet, remaining)
         if snippet != clean_snippet:
             trimmed.append(idx)
         if not snippet:
             snippet = "[Excerpt removed by content safety]"
 
-        doc_tokens = base_tokens + _estimate_tokens(snippet)
-        used_tokens += doc_tokens
+        used_tokens += base_tokens + estimate_tokens(snippet)
         summaries.append(
             {
                 "idx": idx,
@@ -105,3 +109,40 @@ def prepare_context_summaries(
             break
 
     return summaries, trimmed, used_tokens
+
+
+def sanitize_context_text(value: object) -> str:
+    """Remove control and prompt-marker text from untrusted evidence."""
+
+    cleaned = "".join(
+        character
+        for character in str(value or "")
+        if character in "\n\r\t" or ord(character) >= 32
+    )
+    for token in _CONTEXT_STRIP_TOKENS:
+        cleaned = cleaned.replace(token, "")
+    cleaned = re.sub(r"(?i)prompt injection:", "", cleaned)
+    return cleaned.strip()
+
+
+def estimate_tokens(text: str) -> int:
+    """Estimate token usage using the established four-characters heuristic."""
+
+    return max(1, len(text) // 4) if text else 0
+
+
+def truncate_to_tokens(text: str, token_budget: int) -> str:
+    """Truncate text to the approximate token budget."""
+
+    if token_budget <= 0 or not text:
+        return ""
+    return text[: token_budget * 4 + 32].strip()
+
+
+__all__ = [
+    "build_grounded_answer_prompt",
+    "estimate_tokens",
+    "prepare_context_summaries",
+    "sanitize_context_text",
+    "truncate_to_tokens",
+]

@@ -19,8 +19,7 @@ class QueryCharacterizationTests(unittest.TestCase):
     """Protect query settings, fallback, deduplication, reranking, rewriting, and execution flow."""
 
     def test_query_hit_helpers_preserve_distinct_chunks_until_ranking(self) -> None:
-        from hawki_bridge.application.query import orchestration as query_logic
-        from hawki_bridge.application.query import stages as query_stages
+        from hawki_bridge.application.query import hits as query_hits
 
         primary = [
             {
@@ -47,16 +46,16 @@ class QueryCharacterizationTests(unittest.TestCase):
             },
         ]
 
-        merged = query_logic._merge_hits(primary, secondary, limit=3)
-        deduped = query_stages.dedupe_hits(merged)
+        merged = query_hits.merge_hits(primary, secondary, limit=3)
+        deduped = query_hits.dedupe_hits_by_identity(merged)
 
         self.assertEqual(len(merged), 3)
         self.assertEqual([hit["id"] for hit in deduped], [hit["id"] for hit in merged])
 
     def test_query_hit_merge_normalizes_stage_scores_for_the_same_point(self) -> None:
-        from hawki_bridge.application.query import orchestration as query_logic
+        from hawki_bridge.application.query import hits as query_hits
 
-        merged = query_logic._merge_hits(
+        merged = query_hits.merge_hits(
             [
                 {
                     "id": "answer",
@@ -93,7 +92,7 @@ class QueryCharacterizationTests(unittest.TestCase):
     def test_query_hit_dedupe_keeps_chunks_with_the_same_document_metadata(
         self,
     ) -> None:
-        from hawki_bridge.application.query import stages as query_stages
+        from hawki_bridge.application.query import hits as query_hits
 
         hits = [
             {
@@ -128,14 +127,14 @@ class QueryCharacterizationTests(unittest.TestCase):
             },
         ]
 
-        deduped = query_stages.dedupe_hits(hits)
+        deduped = query_hits.dedupe_hits_by_identity(hits)
 
         self.assertEqual([hit["id"] for hit in deduped], ["chunk-1", "chunk-2"])
 
     def test_query_hit_merge_uses_chunk_index_when_point_id_is_missing(self) -> None:
-        from hawki_bridge.application.query import orchestration as query_logic
+        from hawki_bridge.application.query import hits as query_hits
 
-        merged = query_logic._merge_hits(
+        merged = query_hits.merge_hits(
             [{"score": 0.4, "payload": {"doc_id": "doc-a", "chunk_index": 0}}],
             [{"score": 0.8, "payload": {"doc_id": "doc-a", "chunk_index": 1}}],
             limit=2,
@@ -147,9 +146,9 @@ class QueryCharacterizationTests(unittest.TestCase):
         )
 
     def test_graph_fusion_does_not_collapse_chunks_from_the_same_document(self) -> None:
-        from hawki_bridge.application.query import orchestration as query_logic
+        from hawki_bridge.application.query import hits as query_hits
 
-        fused = query_logic._fuse_hits(
+        fused = query_hits.fuse_hits(
             [
                 {"id": "chunk-1", "score": 0.8, "payload": {"doc_id": "doc-a"}},
                 {"id": "chunk-2", "score": 0.6, "payload": {"doc_id": "doc-a"}},
@@ -168,9 +167,9 @@ class QueryCharacterizationTests(unittest.TestCase):
     def test_graph_fusion_keeps_one_aggregate_for_a_structural_only_document(
         self,
     ) -> None:
-        from hawki_bridge.application.query import orchestration as query_logic
+        from hawki_bridge.application.query import hits as query_hits
 
-        fused = query_logic._fuse_hits(
+        fused = query_hits.fuse_hits(
             [],
             [
                 {"id": "relation-1", "score": 0.5, "payload": {"doc_id": "doc-a"}},
@@ -184,7 +183,7 @@ class QueryCharacterizationTests(unittest.TestCase):
         self.assertAlmostEqual(fused[0]["score"], 0.3)
 
     def test_query_context_summaries_trim_to_token_budget(self) -> None:
-        from hawki_bridge.application.query import orchestration as query_logic
+        from hawki_bridge.application.query import context as query_context
 
         hits = [
             {
@@ -199,7 +198,7 @@ class QueryCharacterizationTests(unittest.TestCase):
             }
         ]
 
-        summaries, trimmed, used_tokens = query_logic._prepare_context_summaries(
+        summaries, trimmed, used_tokens = query_context.prepare_context_summaries(
             hits,
             max_docs=1,
             max_tokens=20,

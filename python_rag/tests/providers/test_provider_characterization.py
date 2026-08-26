@@ -95,26 +95,26 @@ class ServiceBoundaryCharacterizationTests(unittest.TestCase):
         self.assertEqual(calls[0]["request_id"], "request-1")
         self.assertTrue(calls[0]["graph_perf_log"])
 
-    def test_bridge_query_facade_delegates_to_provider_and_reranker_boundaries(
+    def test_bridge_composition_binds_provider_and_reranker_boundaries(
         self,
     ) -> None:
-        from hawki_bridge.application.service import QueryService
+        from hawki_bridge import composition
 
         provider = {"provider": "toy-provider"}
         ranked = [{"id": "ranked"}]
+        graph_search = object()
+        vector_factory = object()
         with (
-            patch(
-                "hawki_bridge.application.service.get_provider",
-                return_value=provider,
+            patch.object(
+                composition, "get_provider", return_value=provider
             ) as provider_factory,
-            patch(
-                "hawki_bridge.application.service.rerank_hits",
-                return_value=ranked,
-            ) as reranker,
+            patch.object(composition, "rerank_hits", return_value=ranked) as reranker,
+            patch.object(composition, "Neo4jReader", return_value=graph_search),
+            patch.object(composition, "QdrantReader", vector_factory),
         ):
-            service = QueryService()
-            selected_provider = service.get_provider("toy-provider")
-            result = service.rerank_hits(
+            dependencies = composition.build_query_dependencies()
+            selected_provider = dependencies.resolve_model_provider("toy-provider")
+            result = dependencies.rerank_hits(
                 hits=[{"id": "raw"}],
                 user_query="toy",
                 provider=provider,
@@ -127,8 +127,7 @@ class ServiceBoundaryCharacterizationTests(unittest.TestCase):
 
         self.assertIs(selected_provider, provider)
         self.assertIs(result, ranked)
-        self.assertEqual(
-            service.runtime_summary(), {"role": "bridge", "mode": "read-only"}
-        )
+        self.assertIs(dependencies.vector_search_factory, vector_factory)
+        self.assertIs(dependencies.graph_search, graph_search)
         provider_factory.assert_called_once_with("toy-provider")
         self.assertEqual(reranker.call_args.kwargs["top_n"], 1)
