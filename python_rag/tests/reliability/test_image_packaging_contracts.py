@@ -88,6 +88,18 @@ def test_each_role_has_an_isolated_frozen_builder_and_runtime_target() -> None:
         assert "USER " not in runtime
 
 
+def test_store_consumers_copy_the_independent_store_packages() -> None:
+    source = _source()
+
+    assert "python_rag/packages/stores" not in source
+    for target in ("bridge-builder", "indexer-builder"):
+        builder = _stage(source, target)
+        assert "python_rag/packages/graph_store/pyproject.toml" in builder
+        assert "python_rag/packages/graph_store/src" in builder
+        assert "python_rag/packages/vector_store/pyproject.toml" in builder
+        assert "python_rag/packages/vector_store/src" in builder
+
+
 def test_builders_strip_nonruntime_content_before_copying_site_packages() -> None:
     source = _source()
 

@@ -24,8 +24,10 @@ COPY python_rag/packages/text_processing/pyproject.toml python_rag/packages/text
 COPY python_rag/packages/text_processing/src packages/text_processing/src
 COPY python_rag/packages/model_providers/pyproject.toml python_rag/packages/model_providers/README.md packages/model_providers/
 COPY python_rag/packages/model_providers/src packages/model_providers/src
-COPY python_rag/packages/stores/pyproject.toml python_rag/packages/stores/README.md packages/stores/
-COPY python_rag/packages/stores/src packages/stores/src
+COPY python_rag/packages/graph_store/pyproject.toml python_rag/packages/graph_store/README.md packages/graph_store/
+COPY python_rag/packages/graph_store/src packages/graph_store/src
+COPY python_rag/packages/vector_store/pyproject.toml python_rag/packages/vector_store/README.md packages/vector_store/
+COPY python_rag/packages/vector_store/src packages/vector_store/src
 COPY python_rag/services/hawki_bridge/pyproject.toml python_rag/services/hawki_bridge/README.md services/hawki_bridge/
 COPY python_rag/services/hawki_bridge/src services/hawki_bridge/src
 RUN --mount=type=cache,id=rawki-uv,target=/root/.cache/uv,sharing=locked \
@@ -100,8 +102,10 @@ COPY python_rag/packages/text_processing/pyproject.toml python_rag/packages/text
 COPY python_rag/packages/text_processing/src packages/text_processing/src
 COPY python_rag/packages/model_providers/pyproject.toml python_rag/packages/model_providers/README.md packages/model_providers/
 COPY python_rag/packages/model_providers/src packages/model_providers/src
-COPY python_rag/packages/stores/pyproject.toml python_rag/packages/stores/README.md packages/stores/
-COPY python_rag/packages/stores/src packages/stores/src
+COPY python_rag/packages/graph_store/pyproject.toml python_rag/packages/graph_store/README.md packages/graph_store/
+COPY python_rag/packages/graph_store/src packages/graph_store/src
+COPY python_rag/packages/vector_store/pyproject.toml python_rag/packages/vector_store/README.md packages/vector_store/
+COPY python_rag/packages/vector_store/src packages/vector_store/src
 COPY python_rag/services/hawki_indexer_worker/pyproject.toml python_rag/services/hawki_indexer_worker/README.md services/hawki_indexer_worker/
 COPY python_rag/services/hawki_indexer_worker/src services/hawki_indexer_worker/src
 RUN --mount=type=cache,id=rawki-uv,target=/root/.cache/uv,sharing=locked \
