@@ -19,7 +19,7 @@ if str(ROOT) not in sys.path:
 
 
 def test_qdrant_client_ops_capture_gateway_and_limit_policy() -> None:
-    from hawki_rag_stores.qdrant._client_policy import (
+    from hawki_vector_store._client_policy import (
         gateway_supports_operation_id,
         resolve_per_collection_limit,
         resolve_selected_collection,
@@ -334,7 +334,7 @@ def test_text_helper_modules_preserve_term_tag_and_chunk_rules() -> None:
 
 
 def test_neo4j_client_ops_reuse_managed_transaction_executor() -> None:
-    from hawki_rag_stores.neo4j.client import ensure_query_executor
+    from hawki_graph_store.client import ensure_query_executor
 
     existing = object()
     assert (

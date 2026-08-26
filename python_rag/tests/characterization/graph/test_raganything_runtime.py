@@ -171,7 +171,7 @@ class RagAnythingClientModuleCharacterizationTests(unittest.TestCase):
 
         driver = Driver(ServiceUnavailable("not ready"))
         with patch(
-            "hawki_indexer_worker.adapters.raganything.runtime.GraphDatabase.driver",
+            "hawki_indexer_worker.adapters.neo4j_cleanup.GraphDatabase.driver",
             return_value=driver,
         ):
             clear_lightrag_temp_graph()
@@ -179,7 +179,7 @@ class RagAnythingClientModuleCharacterizationTests(unittest.TestCase):
 
         programming_failure_driver = Driver(ValueError("callback bug"))
         with patch(
-            "hawki_indexer_worker.adapters.raganything.runtime.GraphDatabase.driver",
+            "hawki_indexer_worker.adapters.neo4j_cleanup.GraphDatabase.driver",
             return_value=programming_failure_driver,
         ):
             with self.assertRaises(ValueError):

@@ -7,14 +7,14 @@ from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
-from neo4j.exceptions import DriverError, Neo4jError
 from requests import RequestException
 
 from hawki_rag_resilience.reliability import API_REQUEST_ERROR_EVENT, log_redacted_value
-from hawki_rag_stores.neo4j.errors import (
-    NEO4J_READ_DEGRADATION_ERRORS,
-    Neo4jOperationError,
-    classify_neo4j_error,
+from hawki_bridge.adapters.neo4j_reader import (
+    DriverError,
+    NEO4J_ERRORS,
+    NEO4J_UNAVAILABLE_ERRORS,
+    Neo4jError,
 )
 
 
@@ -120,18 +120,17 @@ def install_exception_handlers(app: FastAPI, logger) -> None:
             ),
         )
 
-    def handle_neo4j_error(request: Request, exc: Neo4jOperationError) -> JSONResponse:
-        policy = classify_neo4j_error(exc)
-        status_code = 503 if isinstance(exc, NEO4J_READ_DEGRADATION_ERRORS) else 500
+    def handle_neo4j_error(
+        request: Request, exc: Neo4jError | DriverError
+    ) -> JSONResponse:
+        status_code = 503 if isinstance(exc, NEO4J_UNAVAILABLE_ERRORS) else 500
         logger.error(
-            "event=%s type=neo4j_error path=%s status=%s family=%s "
-            "retryable=%s commit_outcome_unknown=%s",
+            "event=%s type=neo4j_error exception=%s path=%s status=%s retryable=%s",
             API_REQUEST_ERROR_EVENT,
+            type(exc).__name__,
             getattr(request.url, "path", ""),
             status_code,
-            policy.family,
-            policy.retryable,
-            policy.commit_outcome_unknown,
+            exc.is_retryable(),
         )
         return JSONResponse(
             status_code=status_code,
@@ -140,7 +139,7 @@ def install_exception_handlers(app: FastAPI, logger) -> None:
                 status=status_code,
                 error_type="Neo4jUnavailable"
                 if status_code == 503
-                else "Neo4jOperationError",
+                else "GraphStorageError",
                 message="Graph storage is temporarily unavailable."
                 if status_code == 503
                 else "Graph storage rejected the operation.",
@@ -187,7 +186,7 @@ def install_exception_handlers(app: FastAPI, logger) -> None:
     app.add_exception_handler(HTTPException, handle_http_error)
     app.add_exception_handler(ValueError, handle_value_error)
     app.add_exception_handler(RequestException, handle_request_error)
-    app.add_exception_handler(Neo4jError, handle_neo4j_error)
-    app.add_exception_handler(DriverError, handle_neo4j_error)
+    for neo4j_error_type in NEO4J_ERRORS:
+        app.add_exception_handler(neo4j_error_type, handle_neo4j_error)
     app.add_exception_handler(RuntimeError, handle_runtime_error)
     app.add_exception_handler(Exception, handle_unexpected)

@@ -35,8 +35,8 @@ class ReliabilityContractTests(unittest.TestCase):
     def test_qdrant_gateway_marks_write_operations_retryable_only_with_idempotency_key(
         self,
     ) -> None:
-        from hawki_rag_stores.qdrant.gateway import QdrantHTTPGateway
-        from hawki_rag_stores.qdrant.requests import QdrantRequest
+        from hawki_vector_store.gateway import QdrantHTTPGateway
+        from hawki_vector_store.requests import QdrantRequest
 
         class FakeTransport:
             def __init__(self) -> None:
@@ -112,7 +112,7 @@ class ReliabilityContractTests(unittest.TestCase):
     def test_neo4j_graph_preserves_request_id_for_managed_write_telemetry(
         self,
     ) -> None:
-        from hawki_rag_stores.neo4j.graph import Neo4jGraph
+        from hawki_graph_store.graph import Neo4jGraph
 
         class FakeExecutor:
             def __init__(self) -> None:
@@ -161,7 +161,7 @@ class ReliabilityContractTests(unittest.TestCase):
         check_neo4j.assert_not_called()
         self.assertEqual(sleep.call_count, 1)
 
-    def test_neo4j_startup_check_retries_only_driver_classified_failures(
+    def test_neo4j_startup_check_uses_driver_retryability(
         self,
     ) -> None:
         from hawki_bridge.settings import load_settings
@@ -195,8 +195,8 @@ class ReliabilityContractTests(unittest.TestCase):
         sleep.assert_not_called()
 
     def test_qdrant_transport_emits_retry_attempt_telemetry(self) -> None:
-        from hawki_rag_stores.qdrant.requests import QdrantRequest
-        from hawki_rag_stores.qdrant.transport import QdrantHTTPTransport
+        from hawki_vector_store.requests import QdrantRequest
+        from hawki_vector_store.transport import QdrantHTTPTransport
 
         class FakeResponse:
             def __init__(self, status_code: int) -> None:
@@ -232,9 +232,7 @@ class ReliabilityContractTests(unittest.TestCase):
             operation_id="op-1",
         )
 
-        with self.assertLogs(
-            "hawki_rag_stores.qdrant.transport", level="INFO"
-        ) as capture:
+        with self.assertLogs("hawki_vector_store.transport", level="INFO") as capture:
             response = transport.send(request)
 
         self.assertEqual(response.status_code, 200)

@@ -9,13 +9,12 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
-from neo4j.exceptions import DriverError
-
+from hawki_indexer_worker.domain.graph import normalize_graph_write_scope
 from hawki_indexer_worker.indexing.graph_prepare import build_triplets_by_doc
+from hawki_indexer_worker.indexing.graph_cleanup import close_graph_safely
 from hawki_indexer_worker.indexing.graph_settings import GraphIngestSettings
 from hawki_indexer_worker.indexing.summary import build_graph_preview
 from hawki_indexer_worker.indexing.observability import pipeline_log
-from hawki_rag_stores.neo4j.requests import normalize_graph_write_scope
 
 
 @dataclass(slots=True)
@@ -124,10 +123,7 @@ def commit_graph_triplets(
             neo4j_ms=neo4j_ms,
         )
     finally:
-        try:
-            graph.close()
-        except DriverError as exc:
-            logger_obj.warning("graph:neo4j close failed error=%s", type(exc).__name__)
+        close_graph_safely(graph, logger_obj=logger_obj, operation="commit_triplets")
 
 
 def _optional_string(value: object) -> str | None:

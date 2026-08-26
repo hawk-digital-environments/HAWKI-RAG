@@ -8,18 +8,20 @@ from unittest.mock import patch
 
 import pytest
 
-from hawki_rag_stores.qdrant.client import QdrantHTTP, ScopedCollectionNotReadyError
-from hawki_rag_stores.qdrant.gateway import QdrantHTTPGateway
-from hawki_rag_stores.qdrant.payloads import (
+from hawki_vector_store.client import QdrantHTTP, ScopedCollectionNotReadyError
+from hawki_vector_store.contracts import VectorPoint, VectorSearchHit
+from hawki_vector_store.gateway import QdrantHTTPGateway
+from hawki_vector_store.payloads import (
     build_match_filter,
     build_search_body,
     combine_filter_bodies,
     iter_batches,
 )
-from hawki_rag_stores.qdrant.requests import QdrantRequest
-from hawki_rag_stores.qdrant.responses import parse_count, parse_scroll_points
-from hawki_rag_stores.qdrant.settings import QdrantHTTPSettings, QdrantSettings
-from hawki_rag_stores.qdrant.transport import QdrantHTTPTransport
+from hawki_vector_store.requests import QdrantRequest
+from hawki_vector_store.responses import parse_count, parse_scroll_points
+from hawki_vector_store.settings import QdrantHTTPSettings, QdrantSettings
+from hawki_vector_store.transport import QdrantHTTPTransport
+from hawki_vector_store.ports import VectorReader, VectorWriter
 
 
 class _Response:
@@ -65,6 +67,33 @@ def _http_settings() -> QdrantHTTPSettings:
         text_scroll_hard_cap=500,
         text_scroll_batch=64,
     )
+
+
+def test_qdrant_adapter_preserves_the_vector_ports_and_contract_shapes() -> None:
+    point: VectorPoint = {
+        "id": "chunk-1",
+        "vector": [0.1, 0.2],
+        "payload": {"dataset_id": "dataset-a"},
+    }
+    hit: VectorSearchHit = {
+        "id": point["id"],
+        "score": 0.9,
+        "payload": point["payload"],
+    }
+
+    with patch(
+        "hawki_vector_store.client.requests.Session",
+        return_value=SimpleNamespace(),
+    ):
+        client = QdrantHTTP(settings=_settings(), http_settings=_http_settings())
+
+    assert isinstance(client, VectorReader)
+    assert isinstance(client, VectorWriter)
+    assert hit == {
+        "id": "chunk-1",
+        "score": 0.9,
+        "payload": {"dataset_id": "dataset-a"},
+    }
 
 
 def test_payload_and_response_primitives_preserve_existing_shapes() -> None:
@@ -154,7 +183,7 @@ def test_scoped_collection_cannot_be_replaced_or_fall_back() -> None:
             return _Response(404)
 
     with patch(
-        "hawki_rag_stores.qdrant.client.requests.Session",
+        "hawki_vector_store.client.requests.Session",
         return_value=SimpleNamespace(),
     ):
         client = QdrantHTTP(settings=_settings(), http_settings=_http_settings())

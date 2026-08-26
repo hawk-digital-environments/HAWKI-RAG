@@ -8,20 +8,14 @@ from typing import Any, Callable
 
 from fastapi import HTTPException
 
-from hawki_bridge.adapters.qdrant_reader import run_high_recall, run_search
-from hawki_rag_stores.qdrant.client import QdrantHTTP, ScopedCollectionNotReadyError
+from hawki_bridge.domain.errors import DatasetVectorStoreNotReadyError
+from hawki_bridge.domain.ports import VectorSearchPort
 from hawki_rag_text.safety import (
     analyze_prompt,
     enforce_output_safety,
     sanitize_prompt_text,
 )
 from hawki_rag_text.preprocessing import _extract_terms, _terms_from_payload
-from hawki_rag_stores.neo4j.traversal import (
-    fetch_related_terms,
-    structural_hops,
-    structural_limit,
-    build_structural_hits,
-)
 from hawki_bridge.application.query.settings import (
     context_limits,
     fusion_weights,
@@ -29,6 +23,8 @@ from hawki_bridge.application.query.settings import (
     iterative_retrieval_enabled,
     score_thresholds,
     search_top_k as configured_search_top_k,
+    structural_hops,
+    structural_limit,
 )
 from hawki_bridge.application.query.scope import build_scoped_query_filters
 from hawki_model_providers.overrides import apply_provider_overrides
@@ -37,6 +33,14 @@ from hawki_bridge.application.query.context import build_grounded_answer_prompt
 logger = logging.getLogger(__name__)
 
 VectorSearch = Callable[..., list[dict[str, Any]]]
+
+
+def _search_via_port(*, qdrant: VectorSearchPort, vec: list[float], **kwargs):
+    return qdrant.search_candidates(vector=vec, **kwargs)
+
+
+def _high_recall_via_port(*, qdrant: VectorSearchPort, vec: list[float], **kwargs):
+    return qdrant.search_high_recall(vector=vec, **kwargs)
 
 
 def _extend_unique_terms(
@@ -65,7 +69,7 @@ def run_query_documents(
     *,
     rag_service: Any,
     get_provider: Callable[[str], Any],
-    qdrant_ctor: Callable[[], Any] = QdrantHTTP,
+    qdrant_ctor: Callable[[], VectorSearchPort],
     analyze_prompt_fn: Callable[[str], dict[str, Any]] = analyze_prompt,
     enforce_output_safety_fn: Callable[[str], dict[str, Any]] = enforce_output_safety,
     sanitize_prompt_text_fn: Callable[[str], str] = sanitize_prompt_text,
@@ -75,11 +79,11 @@ def run_query_documents(
     build_query_terms_fn: Callable[
         [str, list[str], list[str], list[str]], list[str]
     ] = lambda *args: [],
-    run_search_fn: VectorSearch = run_search,
+    run_search_fn: VectorSearch = _search_via_port,
     keyword_fallback_fn: VectorSearch = lambda *args, **kwargs: [],
     build_structural_hits_fn: Callable[
         ..., list[dict[str, Any]]
-    ] = build_structural_hits,
+    ] = lambda *args, **kwargs: [],
     structural_hops_fn: Callable[[], int] = structural_hops,
     structural_limit_fn: Callable[[int], int] = structural_limit,
     fusion_weights_fn: Callable[[], tuple[float, float]] = fusion_weights,
@@ -101,8 +105,10 @@ def run_query_documents(
     prepare_context_fn: Callable[
         [list[dict[str, Any]], Any, Any], tuple[list[dict[str, Any]], list[int], int]
     ] = (lambda hits, max_docs, max_tokens: ([], [], 0)),
-    run_high_recall_fn: VectorSearch = run_high_recall,
-    fetch_related_terms_fn: Callable[..., list[dict[str, str]]] = fetch_related_terms,
+    run_high_recall_fn: VectorSearch = _high_recall_via_port,
+    fetch_related_terms_fn: Callable[..., list[dict[str, str]]] = (
+        lambda *args, **kwargs: []
+    ),
     context_limits_fn: Callable[[], tuple[int, int]] = context_limits,
     score_thresholds_fn: Callable[[], tuple[float, float]] = score_thresholds,
     iterative_retrieval_enabled_fn: Callable[[], bool] = iterative_retrieval_enabled,
@@ -114,7 +120,11 @@ def run_query_documents(
         [str, list[dict[str, Any]], list[dict[str, str]]], tuple[str, str]
     ] = build_grounded_answer_prompt,
 ) -> dict[str, Any]:
-    """Run the query orchestration used by `/query` with injectable collaborators."""
+    """Execute safety, retrieval, fusion, reranking, and answer generation.
+
+    The function coordinates the query stages but receives every external
+    storage operation through bridge-owned ports or injected callables.
+    """
     timings: dict[str, float] = {}
     prompt_safety = analyze_prompt_fn(body.query)
     if prompt_safety["blocked"]:
@@ -203,7 +213,7 @@ def run_query_documents(
             search_top_k,
             filters=filters,
         )
-    except ScopedCollectionNotReadyError as exc:
+    except DatasetVectorStoreNotReadyError as exc:
         raise _dataset_not_ready(exc) from exc
     if keyword_hits:
         hits = merge_hits_fn(
@@ -292,7 +302,7 @@ def run_query_documents(
                 filters=filters,
                 preferred_tags=body.preferred_tags,
             )
-        except ScopedCollectionNotReadyError as exc:
+        except DatasetVectorStoreNotReadyError as exc:
             raise _dataset_not_ready(exc) from exc
         if secondary_hits:
             hits = merge_hits_fn(hits, secondary_hits, max(body.top_k * 2, 12))

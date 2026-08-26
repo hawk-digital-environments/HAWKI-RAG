@@ -19,7 +19,7 @@ pytestmark = pytest.mark.integration
 
 
 def _http_settings() -> Any:
-    from hawki_rag_stores.qdrant.settings import QdrantHTTPSettings
+    from hawki_vector_store.settings import QdrantHTTPSettings
 
     return QdrantHTTPSettings(
         log_latency=False,
@@ -39,8 +39,8 @@ def _http_settings() -> Any:
 
 
 def _client(live_qdrant: Any, collection: str) -> Any:
-    from hawki_rag_stores.qdrant.client import QdrantHTTP
-    from hawki_rag_stores.qdrant.settings import QdrantSettings
+    from hawki_vector_store.client import QdrantHTTP
+    from hawki_vector_store.settings import QdrantSettings
 
     parsed = urlsplit(live_qdrant.base_url)
     port = parsed.port or (443 if parsed.scheme == "https" else 80)
@@ -203,7 +203,7 @@ class TestLiveQdrantScoping:
         live_qdrant: Any,
         qdrant_scope_resources: dict[str, str],
     ) -> None:
-        from hawki_rag_stores.qdrant.client import ScopedCollectionNotReadyError
+        from hawki_vector_store.client import ScopedCollectionNotReadyError
 
         resource = qdrant_scope_resources
         _create_collection(live_qdrant, resource["collection_b"])

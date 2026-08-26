@@ -62,3 +62,15 @@ def iterative_retrieval_enabled() -> bool:
 
 def generation_enabled() -> bool:
     return bool_env("RAG_GENERATE_ANSWER", False)
+
+
+def structural_limit(top_k: int) -> int:
+    """Return the maximum number of graph-derived retrieval candidates."""
+
+    return int_env("RAG_STRUCTURAL_LIMIT", max(top_k * 2, 12))
+
+
+def structural_hops(default_hops: int = 2) -> int:
+    """Return the configured traversal depth for structural retrieval."""
+
+    return int_env("RAG_STRUCTURAL_HOPS", default_hops)

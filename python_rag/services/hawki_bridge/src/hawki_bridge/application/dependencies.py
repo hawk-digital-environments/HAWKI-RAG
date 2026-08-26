@@ -1,16 +1,16 @@
-"""Explicit bridge dependency composition."""
+"""Bridge application dependency contracts."""
 
 from dataclasses import dataclass
-from typing import Callable
 
-from hawki_model_providers.factory import get_provider
-from hawki_rag_stores.qdrant.client import QdrantHTTP
+from hawki_bridge.domain.ports import GraphSearchPort, VectorSearchFactory
 
 
 @dataclass(frozen=True, slots=True)
 class BridgeDependencies:
-    provider_factory: Callable = get_provider
-    qdrant_factory: Callable = QdrantHTTP
+    """Storage collaborators supplied by the bridge composition root."""
+
+    vector_search_factory: VectorSearchFactory
+    graph_search: GraphSearchPort
 
 
 __all__ = ["BridgeDependencies"]

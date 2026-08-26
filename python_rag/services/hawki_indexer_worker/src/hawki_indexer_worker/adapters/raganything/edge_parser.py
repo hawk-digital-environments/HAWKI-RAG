@@ -4,7 +4,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from hawki_rag_stores.neo4j.normalization import normalize_relation_label
+from hawki_indexer_worker.domain.graph import normalize_relation_label
 from hawki_indexer_worker.adapters.raganything.fallback_parser import (
     Triplet,
     dedupe_triplets,

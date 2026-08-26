@@ -92,11 +92,12 @@ class TestQueryApiFlow:
         captured: dict[str, Any] = {}
 
         def query_use_case(
-            body: Any, *, rag_service: Any, get_provider: Any
+            body: Any, *, rag_service: Any, get_provider: Any, dependencies: Any
         ) -> dict[str, Any]:
             captured["body"] = body
             captured["service"] = rag_service
             captured["provider"] = get_provider(body.provider)
+            captured["dependencies"] = dependencies
             return {
                 "ok": True,
                 "count": 1,
@@ -138,6 +139,7 @@ class TestQueryApiFlow:
         assert captured["body"].__class__.__name__ == "QueryRequest"
         assert captured["body"].top_k == 3
         assert captured["service"] is service
+        assert captured["dependencies"] is not None
         assert captured["provider"] is service.provider
         assert service.provider_requests == ["test-provider"]
         delegate.assert_called_once()

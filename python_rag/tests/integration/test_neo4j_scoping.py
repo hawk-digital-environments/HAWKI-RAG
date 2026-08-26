@@ -55,7 +55,7 @@ class TestLiveNeo4jScoping:
         live_neo4j: Any,
         neo4j_scope_resources: dict[str, str],
     ) -> None:
-        from hawki_rag_stores.neo4j.graph import Neo4jGraph
+        from hawki_graph_store.graph import Neo4jGraph
 
         resource = neo4j_scope_resources
         graph_a = Neo4jGraph(
@@ -146,7 +146,7 @@ class TestLiveNeo4jScoping:
         live_neo4j: Any,
         neo4j_scope_resources: dict[str, str],
     ) -> None:
-        from hawki_rag_stores.neo4j.graph import Neo4jGraph
+        from hawki_graph_store.graph import Neo4jGraph
 
         resource = neo4j_scope_resources
         graph = Neo4jGraph(

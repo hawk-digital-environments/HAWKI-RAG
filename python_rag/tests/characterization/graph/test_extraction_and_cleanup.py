@@ -173,7 +173,7 @@ class GraphFallbackCharacterizationTests(unittest.TestCase):
     def test_source_filter_drops_prompt_examples_and_keeps_grounded_triplets(
         self,
     ) -> None:
-        from hawki_rag_stores.neo4j.traversal import filter_triplets_to_source
+        from hawki_graph_store.traversal import filter_triplets_to_source
 
         source = (
             "HAWKI uses Qdrant for vector search and Neo4j for graph relationships."
@@ -190,7 +190,7 @@ class GraphFallbackCharacterizationTests(unittest.TestCase):
         )
 
     def test_graph_cleanup_returns_bidirectional_duplicates_once(self) -> None:
-        from hawki_rag_stores.neo4j.traversal import clean_triplets
+        from hawki_graph_store.traversal import clean_triplets
 
         self.assertEqual(
             clean_triplets(
@@ -212,7 +212,7 @@ class GraphFallbackCharacterizationTests(unittest.TestCase):
     def test_graph_triplet_filter_drops_runtime_metadata_and_malformed_relations(
         self,
     ) -> None:
-        from hawki_rag_stores.neo4j.traversal import filter_triplets_to_source
+        from hawki_graph_store.traversal import filter_triplets_to_source
 
         source = (
             "chunk file nextChunk next file Chunk Number File Name\n"

@@ -40,7 +40,8 @@ Reusable libraries:
 - `packages/text_processing`: Markdown/text normalization, chunking, tags,
   safety, terms, and packaged German stopwords.
 - `packages/model_providers`: provider ports plus Ollama and LiteLLM adapters.
-- `packages/stores`: typed low-level Qdrant and Neo4j clients.
+- `packages/vector_store`: vector contracts and the typed Qdrant adapter.
+- `packages/graph_store`: graph contracts and the typed Neo4j adapter.
 
 Production services and image roles:
 

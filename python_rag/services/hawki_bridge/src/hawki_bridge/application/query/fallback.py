@@ -9,7 +9,8 @@ from typing import Any
 
 from hawki_bridge.application.query.hits import merge_hits
 from hawki_bridge.application.query.lexical import extract_query_terms_for_lexical
-from hawki_rag_stores.qdrant.client import ScopedCollectionNotReadyError
+from hawki_bridge.domain.errors import DatasetVectorStoreNotReadyError
+from hawki_bridge.domain.ports import VectorSearchPort
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +35,7 @@ def _exhaustive_text_default() -> bool:
 
 
 def keyword_fallback_search(
-    qdrant: Any,
+    qdrant: VectorSearchPort,
     vec: list[float],
     query: str,
     top_k: int,
@@ -75,7 +76,7 @@ def keyword_fallback_search(
         if filters:
             search_kwargs["filters"] = filters
         hits = qdrant.search_with_text(vec, **search_kwargs)
-    except ScopedCollectionNotReadyError:
+    except DatasetVectorStoreNotReadyError:
         raise
     except Exception as exc:
         logger.warning("query:text-fallback search failed: %s", exc)
@@ -96,7 +97,7 @@ def keyword_fallback_search(
 
 
 def fallback_scroll_hits(
-    qdrant: Any,
+    qdrant: VectorSearchPort,
     *,
     terms: list[str],
     fields: list[str],
@@ -134,7 +135,7 @@ def fallback_scroll_hits(
             scroll_kwargs["require_all"] = False
             scroll_hits = qdrant.scroll_with_text(**scroll_kwargs)
         return scroll_hits
-    except ScopedCollectionNotReadyError:
+    except DatasetVectorStoreNotReadyError:
         raise
     except Exception as exc:
         logger.warning("query:text-fallback scroll failed: %s", exc)

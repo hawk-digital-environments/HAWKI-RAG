@@ -11,8 +11,8 @@ class GraphWriteScopingTests(unittest.TestCase):
     """Verify Neo4j writes and deletes always carry the authorized logical namespace."""
 
     def test_incomplete_scope_never_dispatches_a_canonical_write(self) -> None:
-        from hawki_rag_stores.neo4j.graph import Neo4jGraph
-        from hawki_rag_stores.neo4j.requests import build_triplet_rows
+        from hawki_graph_store.graph import Neo4jGraph
+        from hawki_graph_store.requests import build_triplet_rows
 
         class Executor:
             def __init__(self) -> None:
@@ -93,7 +93,9 @@ class GraphWriteScopingTests(unittest.TestCase):
             job_id="job-1",
         )
         dependencies = IngestWorkflowDependencies(
-            qdrant_factory=lambda: qdrant,
+            vector_writer_factory=lambda: qdrant,
+            graph_writer_factory=lambda **_kwargs: None,
+            page_state_factory=lambda _writer: None,
             graph_settings_loader=lambda: GraphIngestSettings(
                 graph_debug=False,
                 graph_perf_log=False,
@@ -159,7 +161,7 @@ class GraphWriteScopingTests(unittest.TestCase):
         )
 
     def test_document_delete_queries_are_constrained_to_logical_namespace(self) -> None:
-        from hawki_rag_stores.neo4j.graph import Neo4jGraph
+        from hawki_graph_store.graph import Neo4jGraph
 
         class Counters:
             relationships_deleted = 1

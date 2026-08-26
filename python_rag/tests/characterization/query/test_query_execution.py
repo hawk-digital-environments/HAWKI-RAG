@@ -77,6 +77,19 @@ class QueryCharacterizationTests(unittest.TestCase):
             },
         ]
 
+        class VectorSearch(_ScopedQdrantStub):
+            def search_candidates(self, **_kwargs):
+                return list(hits)
+
+        graph_search = SimpleNamespace(
+            build_structural_hits=lambda *args, **kwargs: [],
+            fetch_related_terms=lambda *args, **kwargs: [],
+        )
+        dependencies = SimpleNamespace(
+            vector_search_factory=VectorSearch,
+            graph_search=graph_search,
+        )
+
         with (
             patch.dict(
                 os.environ,
@@ -88,22 +101,15 @@ class QueryCharacterizationTests(unittest.TestCase):
                 },
                 clear=False,
             ),
-            patch.object(query_logic, "QdrantHTTP", _ScopedQdrantStub),
-            patch.object(query_logic, "run_search", lambda **kwargs: list(hits)),
             patch.object(
                 query_logic, "_keyword_fallback_search", lambda *args, **kwargs: []
-            ),
-            patch.object(
-                query_logic, "build_structural_hits", lambda *args, **kwargs: []
-            ),
-            patch.object(
-                query_logic, "fetch_related_terms", lambda *args, **kwargs: []
             ),
         ):
             result = query_logic.query_documents(
                 body,
                 rag_service=RagService(),
                 get_provider=lambda name: Provider(),
+                dependencies=dependencies,
             )
 
         self.assertTrue(result["ok"])

@@ -4,10 +4,12 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
 from inspect import signature
+import logging
 from typing import NotRequired, Protocol, TypedDict, cast, runtime_checkable
 
-from hawki_rag_stores.neo4j.graph import Neo4jGraph
-from hawki_rag_stores.qdrant.client import QdrantHTTP
+from hawki_indexer_worker.indexing.graph_cleanup import close_graph_safely
+
+logger = logging.getLogger(__name__)
 
 
 class QdrantDeletionSummary(TypedDict):
@@ -92,8 +94,8 @@ class _QdrantPayloadFinder(Protocol):
         """Return points matching a payload filter."""
 
 
-QdrantDeletionFactory = Callable[[], QdrantDeletionStore]
-Neo4jDeletionFactory = Callable[..., Neo4jDeletionStore]
+VectorDeletionFactory = Callable[[], QdrantDeletionStore]
+GraphDeletionFactory = Callable[..., Neo4jDeletionStore]
 
 
 def _method_supports_kwarg(target: object, method_name: str, kwarg: str) -> bool:
@@ -115,8 +117,8 @@ def delete_document_entries(
     idempotency_key: str | None = None,
     collection: str | None = None,
     neo4j_namespace: str | None = None,
-    qdrant_factory: QdrantDeletionFactory = QdrantHTTP,
-    graph_factory: Neo4jDeletionFactory = Neo4jGraph,
+    vector_writer_factory: VectorDeletionFactory,
+    graph_writer_factory: GraphDeletionFactory,
 ) -> DocumentDeletionResult:
     normalized_doc_id = str(doc_id or "").strip()
     normalized_collection = _string_value(collection)
@@ -136,7 +138,7 @@ def delete_document_entries(
         }
         return {"qdrant": qdrant_result, "neo4j": neo4j_result}
 
-    qdrant = qdrant_factory()
+    qdrant = vector_writer_factory()
     _apply_collection_scope(qdrant, normalized_collection)
     qdrant_collection = normalized_collection or _string_value(
         getattr(qdrant, "collection", None)
@@ -150,7 +152,7 @@ def delete_document_entries(
     else:
         raw_qdrant_result = qdrant.delete_by_doc_id(normalized_doc_id)
 
-    graph = _instantiate_graph(graph_factory, normalized_namespace)
+    graph = _instantiate_graph(graph_writer_factory, normalized_namespace)
     graph_namespace = normalized_namespace or _graph_namespace(graph)
     try:
         if _method_supports_kwarg(graph, "delete_by_doc_id", "request_id"):
@@ -160,7 +162,7 @@ def delete_document_entries(
         else:
             raw_neo4j_result = graph.delete_by_doc_id(normalized_doc_id)
     finally:
-        graph.close()
+        close_graph_safely(graph, logger_obj=logger, operation="delete_document")
 
     qdrant_result: QdrantDeletionSummary = {
         "doc_id": normalized_doc_id,
@@ -214,7 +216,7 @@ def _factory_supports_kwarg(factory: Callable[..., object], kwarg: str) -> bool:
 
 
 def _instantiate_graph(
-    graph_factory: Neo4jDeletionFactory,
+    graph_factory: GraphDeletionFactory,
     namespace: str | None,
 ) -> Neo4jDeletionStore:
     if namespace and _factory_supports_kwarg(graph_factory, "neo4j_namespace"):

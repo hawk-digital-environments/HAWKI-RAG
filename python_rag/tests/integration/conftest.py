@@ -150,7 +150,7 @@ def live_neo4j() -> LiveNeo4j:
     except ImportError:
         unavailable("the 'neo4j' package is not installed; run `make python-deps`")
 
-    from hawki_rag_stores.neo4j.settings import Neo4jSettings
+    from hawki_graph_store.settings import Neo4jSettings
 
     user = os.environ.get(
         "NEO4J_USER", os.environ.get("NEO4J_USERNAME", "neo4j")

@@ -1,40 +1,33 @@
-"""Concrete, injectable dependency factories for indexing orchestration."""
+"""Indexer application dependency contracts."""
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any
 
-from hawki_indexer_worker.adapters.neo4j_writer import create_neo4j_writer
-from hawki_indexer_worker.adapters.qdrant_writer import create_qdrant_writer
+from hawki_indexer_worker.domain.ports import (
+    GraphWriterFactory,
+    PageStateFactory,
+    VectorWriterFactory,
+)
 from hawki_indexer_worker.indexing.graph_settings import (
     GraphIngestSettings,
     load_graph_ingest_settings,
 )
-from hawki_indexer_worker.indexing.page_state import QdrantPageState
+from collections.abc import Callable
 
 GraphSettingsLoader = Callable[[], GraphIngestSettings]
-QdrantFactory = Callable[[], Any]
-GraphFactory = Callable[..., Any]
-PageStateFactory = Callable[[Any], Any | None]
-
-
-def create_page_state(qdrant: Any) -> QdrantPageState:
-    return QdrantPageState(qdrant)
 
 
 @dataclass(frozen=True, slots=True)
 class IngestWorkflowDependencies:
+    """Infrastructure supplied to vector and graph ingestion workflows."""
+
+    vector_writer_factory: VectorWriterFactory
+    graph_writer_factory: GraphWriterFactory
+    page_state_factory: PageStateFactory
     graph_settings_loader: GraphSettingsLoader = load_graph_ingest_settings
-    qdrant_factory: QdrantFactory = create_qdrant_writer
-    graph_factory: GraphFactory = create_neo4j_writer
-    page_state_factory: PageStateFactory = create_page_state
 
 
 __all__ = [
     "IngestWorkflowDependencies",
-    "create_neo4j_writer",
-    "create_page_state",
-    "create_qdrant_writer",
 ]

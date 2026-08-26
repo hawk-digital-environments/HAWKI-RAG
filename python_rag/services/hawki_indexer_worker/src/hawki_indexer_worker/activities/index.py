@@ -31,6 +31,9 @@ from hawki_worker_runtime.logging import log_event
 from hawki_indexer_worker.adapters.artifact_store import (
     load_passthrough_metadata,
 )
+from hawki_indexer_worker.adapters.composition import (
+    build_ingest_workflow_dependencies,
+)
 from hawki_indexer_worker.adapters.laravel_metadata_client import (
     directory_reference,
     manifest_reference,
@@ -63,7 +66,7 @@ def ingest_markdown_files(payload: dict[str, Any]) -> dict[str, Any]:
             logger_obj=logger,
         ),
         provider_resolver=get_provider,
-        workflow_dependencies=IngestWorkflowDependencies(),
+        workflow_dependencies=build_ingest_workflow_dependencies(),
         status_reporter=report_status,
         activity_info=info,
         heartbeat_sender=activity.heartbeat,

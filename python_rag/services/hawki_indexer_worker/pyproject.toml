@@ -10,11 +10,12 @@ requires-python = "==3.13.14"
 dependencies = [
     "av==13.1.0",
     "hawki-artifact-store==0.1.0",
+    "hawki-graph-store==0.1.0",
     "hawki-model-providers==0.1.0",
     "hawki-rag-contracts==0.1.0",
     "hawki-rag-resilience==0.1.0",
-    "hawki-rag-stores==0.1.0",
     "hawki-rag-text==0.1.0",
+    "hawki-vector-store==0.1.0",
     "hawki-worker-runtime==0.1.0",
     "lightrag-hku==1.5.5",
     "mineru[pipeline]==3.4.4",
@@ -55,11 +56,12 @@ conflicts = [
 
 [tool.uv.sources]
 hawki-artifact-store = { workspace = true }
+hawki-graph-store = { workspace = true }
 hawki-model-providers = { workspace = true }
 hawki-rag-contracts = { workspace = true }
 hawki-rag-resilience = { workspace = true }
-hawki-rag-stores = { workspace = true }
 hawki-rag-text = { workspace = true }
+hawki-vector-store = { workspace = true }
 hawki-worker-runtime = { workspace = true }
 lightrag-hku = { git = "https://github.com/HKUDS/LightRAG.git", rev = "c5bf73dbf6139f1b03f738a2fec4e47d5e66f3ab" }
 torch = [

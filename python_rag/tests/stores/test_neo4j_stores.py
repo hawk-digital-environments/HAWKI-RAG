@@ -7,60 +7,48 @@ from typing import Any
 
 import pytest
 from neo4j.exceptions import (
-    AuthConfigurationError,
     AuthError,
-    BrokenRecordError,
-    CertificateConfigurationError,
-    ClientError,
-    ConfigurationError,
-    ConnectionAcquisitionTimeoutError,
-    ConnectionPoolError,
-    ConstraintError,
-    CypherSyntaxError,
-    CypherTypeError,
-    DatabaseError,
-    DatabaseUnavailable,
     DriverError,
-    Forbidden,
-    ForbiddenOnReadOnlyDatabase,
-    IncompleteCommit,
     Neo4jError,
-    NotALeader,
-    ReadServiceUnavailable,
-    ResultConsumedError,
-    ResultError,
-    ResultFailedError,
-    ResultNotSingleError,
-    RoutingServiceUnavailable,
     ServiceUnavailable,
-    SessionError,
-    SessionExpired,
-    TokenExpired,
-    TransactionError,
-    TransactionNestingError,
-    TransientError,
-    UnsupportedServerProduct,
-    WriteServiceUnavailable,
 )
 
-from hawki_rag_stores.neo4j.errors import (
-    Neo4jFailureFamily,
-    classify_neo4j_error,
-    is_database_not_found_error,
-)
-from hawki_rag_stores.neo4j.graph import Neo4jGraph
-from hawki_rag_stores.neo4j.normalization import (
+from hawki_graph_store.contracts import GraphScope
+from hawki_graph_store.graph import Neo4jGraph
+from hawki_graph_store.normalization import (
     dedupe_one_way_triplets,
     normalize_relation_label,
 )
-from hawki_rag_stores.neo4j.requests import (
+from hawki_graph_store.requests import (
     Neo4jQueryRequest,
     build_search_structural_query,
     build_triplet_rows,
 )
-from hawki_rag_stores.neo4j.responses import parse_fact_rows, parse_structural_rows
-from hawki_rag_stores.neo4j.transport import Neo4jQueryExecutor
-from hawki_rag_stores.neo4j.traversal import clean_triplets
+from hawki_graph_store.responses import parse_fact_rows, parse_structural_rows
+from hawki_graph_store.transport import Neo4jQueryExecutor
+from hawki_graph_store.traversal import (
+    build_structural_hits,
+    clean_triplets,
+    fetch_related_terms,
+)
+from hawki_graph_store.ports import GraphReader, GraphWriter
+
+
+def test_neo4j_adapter_preserves_the_graph_ports_and_scope_contract() -> None:
+    scope = GraphScope(" dataset-a ", " graph-a ")
+    graph = Neo4jGraph(
+        dataset_id=scope.dataset_id,
+        neo4j_namespace=scope.neo4j_namespace,
+        settings=SimpleNamespace(database=None, log_latency=False, perf_log=False),
+        query_executor=SimpleNamespace(run_read=None, run_write=None),
+    )
+
+    assert scope.dataset_id == "dataset-a"
+    assert scope.neo4j_namespace == "graph-a"
+    assert isinstance(graph, GraphReader)
+    assert isinstance(graph, GraphWriter)
+    with pytest.raises(ValueError, match="requires non-empty"):
+        GraphScope("", "graph-a")
 
 
 def test_request_and_response_primitives_enforce_dataset_scope() -> None:
@@ -118,17 +106,29 @@ def test_graph_normalization_preserves_cleanup_contracts() -> None:
 
 
 def test_graph_uses_injected_executor_and_materializes_write_result() -> None:
+    materialized = {"write": False, "read": False}
+
+    class WriteResult:
+        def consume(self) -> None:
+            materialized["write"] = True
+
+    class ReadResult:
+        def __iter__(self):
+            materialized["read"] = True
+            yield {"rel_type": "R", "count": 1}
+
     class RecordingExecutor:
         def __init__(self) -> None:
             self.requests: list[Neo4jQueryRequest] = []
 
         def run_read(self, request: Neo4jQueryRequest, callback: Any) -> Any:
-            return callback(SimpleNamespace(run=lambda *_args, **_kwargs: None))
+            return callback(SimpleNamespace(run=lambda *_args, **_kwargs: ReadResult()))
 
         def run_write(self, request: Neo4jQueryRequest, callback: Any) -> Any:
             self.requests.append(request)
-            result = SimpleNamespace(consume=lambda: None)
-            return callback(SimpleNamespace(run=lambda *_args, **_kwargs: result))
+            return callback(
+                SimpleNamespace(run=lambda *_args, **_kwargs: WriteResult())
+            )
 
     executor = RecordingExecutor()
     settings = SimpleNamespace(database=None, log_latency=False, perf_log=False)
@@ -141,12 +141,15 @@ def test_graph_uses_injected_executor_and_materializes_write_result() -> None:
 
     graph.upsert_triplets([("A", "R", "B")], doc_id="doc-1")
     graph.upsert_triplets([("A", "R", "B")], doc_id="doc-1", request_id="job:one")
+    assert graph.count_relationships_by_type() == [{"type": "R", "count": 1}]
 
     assert executor.requests[1].request_id == "job:one"
+    assert materialized == {"write": True, "read": True}
 
 
+@pytest.mark.parametrize("method", ["run_read", "run_write"])
 def test_query_executor_delegates_retry_ownership_to_managed_transaction(
-    caplog: pytest.LogCaptureFixture,
+    method: str,
 ) -> None:
     class Session:
         attempts = 0
@@ -161,83 +164,100 @@ def test_query_executor_delegates_retry_ownership_to_managed_transaction(
             type(self).attempts += 1
             raise ServiceUnavailable("managed retry window exhausted")
 
+        execute_write = execute_read
+
     executor = Neo4jQueryExecutor(Session)
     query = Neo4jQueryRequest("RETURN 1", {}, operation="neo4j.fetch_related")
 
-    with caplog.at_level("WARNING", logger="hawki_rag_stores.neo4j.transport"):
-        with pytest.raises(ServiceUnavailable):
-            executor.run_read(query, callback=lambda tx: str(tx))
+    with pytest.raises(ServiceUnavailable):
+        getattr(executor, method)(query, callback=lambda tx: str(tx))
     assert Session.attempts == 1
-    assert "retry_owner=neo4j_driver_managed_transaction" in caplog.text
 
 
 @pytest.mark.parametrize(
-    ("error_type", "family"),
+    "error",
     [
-        (Neo4jError, Neo4jFailureFamily.SERVER_OTHER),
-        (ClientError, Neo4jFailureFamily.SERVER_CLIENT),
-        (CypherSyntaxError, Neo4jFailureFamily.SERVER_CLIENT),
-        (CypherTypeError, Neo4jFailureFamily.SERVER_CLIENT),
-        (ConstraintError, Neo4jFailureFamily.SERVER_CLIENT),
-        (AuthError, Neo4jFailureFamily.SERVER_CLIENT),
-        (TokenExpired, Neo4jFailureFamily.SERVER_CLIENT),
-        (Forbidden, Neo4jFailureFamily.SERVER_CLIENT),
-        (DatabaseError, Neo4jFailureFamily.SERVER_DATABASE),
-        (TransientError, Neo4jFailureFamily.SERVER_TRANSIENT),
-        (DatabaseUnavailable, Neo4jFailureFamily.SERVER_TRANSIENT),
-        (NotALeader, Neo4jFailureFamily.SERVER_TRANSIENT),
-        (ForbiddenOnReadOnlyDatabase, Neo4jFailureFamily.SERVER_TRANSIENT),
-        (DriverError, Neo4jFailureFamily.DRIVER_OTHER),
-        (SessionError, Neo4jFailureFamily.DRIVER_SESSION),
-        (SessionExpired, Neo4jFailureFamily.DRIVER_SESSION),
-        (TransactionError, Neo4jFailureFamily.DRIVER_TRANSACTION),
-        (TransactionNestingError, Neo4jFailureFamily.DRIVER_TRANSACTION),
-        (ResultError, Neo4jFailureFamily.DRIVER_RESULT),
-        (ResultFailedError, Neo4jFailureFamily.DRIVER_RESULT),
-        (ResultConsumedError, Neo4jFailureFamily.DRIVER_RESULT),
-        (ResultNotSingleError, Neo4jFailureFamily.DRIVER_RESULT),
-        (BrokenRecordError, Neo4jFailureFamily.DRIVER_BROKEN_RECORD),
-        (ServiceUnavailable, Neo4jFailureFamily.DRIVER_SERVICE),
-        (RoutingServiceUnavailable, Neo4jFailureFamily.DRIVER_SERVICE),
-        (WriteServiceUnavailable, Neo4jFailureFamily.DRIVER_SERVICE),
-        (ReadServiceUnavailable, Neo4jFailureFamily.DRIVER_SERVICE),
-        (IncompleteCommit, Neo4jFailureFamily.DRIVER_INCOMPLETE_COMMIT),
-        (ConfigurationError, Neo4jFailureFamily.DRIVER_CONFIGURATION),
-        (AuthConfigurationError, Neo4jFailureFamily.DRIVER_CONFIGURATION),
-        (CertificateConfigurationError, Neo4jFailureFamily.DRIVER_CONFIGURATION),
-        (UnsupportedServerProduct, Neo4jFailureFamily.DRIVER_CONFIGURATION),
-        (ConnectionPoolError, Neo4jFailureFamily.DRIVER_CONNECTION_POOL),
-        (
-            ConnectionAcquisitionTimeoutError,
-            Neo4jFailureFamily.DRIVER_CONNECTION_POOL,
+        Neo4jError._hydrate_neo4j(
+            code="Neo.ClientError.Security.Unauthorized",
+            message="bad credentials",
         ),
+        ValueError("result contract is invalid"),
     ],
 )
-def test_driver_6_public_exception_hierarchy_has_an_explicit_policy(
-    error_type: type[Neo4jError] | type[DriverError],
-    family: Neo4jFailureFamily,
+@pytest.mark.parametrize("operation", ["related", "structural"])
+def test_optional_graph_read_propagates_non_availability_errors(
+    monkeypatch: pytest.MonkeyPatch,
+    error: BaseException,
+    operation: str,
 ) -> None:
-    policy = classify_neo4j_error(error_type("test failure"))
+    class FailingGraph:
+        def __init__(self, **_kwargs: Any) -> None:
+            pass
 
-    assert policy.family is family
-    assert policy.retryable is error_type("test failure").is_retryable()
-    assert policy.commit_outcome_unknown is (error_type is IncompleteCommit)
+        def fetch_related(self, *_args: Any, **_kwargs: Any) -> list[dict[str, str]]:
+            raise error
+
+        def search_structural(
+            self, *_args: Any, **_kwargs: Any
+        ) -> list[dict[str, Any]]:
+            raise error
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr("hawki_graph_store.traversal.Neo4jGraph", FailingGraph)
+
+    with pytest.raises(type(error)):
+        if operation == "related":
+            fetch_related_terms(
+                ["term"], dataset_id="dataset-a", neo4j_namespace="graph-a"
+            )
+        else:
+            build_structural_hits(
+                ["term"],
+                dataset_id="dataset-a",
+                neo4j_namespace="graph-a",
+                limit=10,
+                hops=2,
+            )
 
 
-def test_database_fallback_is_limited_to_database_not_found() -> None:
-    missing = Neo4jError._hydrate_neo4j(
-        code="Neo.ClientError.Database.DatabaseNotFound",
-        message="missing",
-    )
-    unauthorized = Neo4jError._hydrate_neo4j(
-        code="Neo.ClientError.Security.Unauthorized",
-        message="bad credentials",
-    )
+@pytest.mark.parametrize("operation", ["related", "structural"])
+def test_optional_graph_read_degrades_only_unavailability_to_empty(
+    monkeypatch: pytest.MonkeyPatch,
+    operation: str,
+) -> None:
+    class UnavailableGraph:
+        def __init__(self, **_kwargs: Any) -> None:
+            pass
 
-    assert isinstance(missing, ClientError)
-    assert is_database_not_found_error(missing)
-    assert isinstance(unauthorized, ClientError)
-    assert not is_database_not_found_error(unauthorized)
+        def fetch_related(self, *_args: Any, **_kwargs: Any) -> list[dict[str, str]]:
+            raise ServiceUnavailable("connection details must stay private")
+
+        def search_structural(
+            self, *_args: Any, **_kwargs: Any
+        ) -> list[dict[str, Any]]:
+            raise ServiceUnavailable("connection details must stay private")
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr("hawki_graph_store.traversal.Neo4jGraph", UnavailableGraph)
+
+    if operation == "related":
+        result = fetch_related_terms(
+            ["term"], dataset_id="dataset-a", neo4j_namespace="graph-a"
+        )
+    else:
+        result = build_structural_hits(
+            ["term"],
+            dataset_id="dataset-a",
+            neo4j_namespace="graph-a",
+            limit=10,
+            hops=2,
+        )
+
+    assert result == []
 
 
 def test_graph_configures_driver_managed_retry_window(
@@ -253,9 +273,7 @@ def test_graph_configures_driver_managed_retry_window(
         captured.update(uri=uri, **kwargs)
         return Driver()
 
-    monkeypatch.setattr(
-        "hawki_rag_stores.neo4j.graph.GraphDatabase.driver", create_driver
-    )
+    monkeypatch.setattr("hawki_graph_store.graph.GraphDatabase.driver", create_driver)
     graph = Neo4jGraph(
         settings=SimpleNamespace(
             uri="bolt://graph:7687",
@@ -276,7 +294,7 @@ def test_graph_configures_driver_managed_retry_window(
 def test_neo4j_settings_parse_the_driver_managed_retry_window(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from hawki_rag_stores.neo4j.settings import load_neo4j_settings
+    from hawki_graph_store.settings import load_neo4j_settings
 
     monkeypatch.setenv("NEO4J_MAX_TRANSACTION_RETRY_TIME", "8.5")
     assert load_neo4j_settings().max_transaction_retry_time == 8.5
@@ -313,7 +331,7 @@ def test_graph_falls_back_only_for_database_not_found(
 
     driver = Driver()
     monkeypatch.setattr(
-        "hawki_rag_stores.neo4j.graph.GraphDatabase.driver",
+        "hawki_graph_store.graph.GraphDatabase.driver",
         lambda *_args, **_kwargs: driver,
     )
     graph = Neo4jGraph(
@@ -357,10 +375,11 @@ def test_graph_does_not_fallback_for_authentication_errors(
 
         def close(self) -> None:
             self.closed = True
+            raise DriverError("close failed")
 
     driver = Driver()
     monkeypatch.setattr(
-        "hawki_rag_stores.neo4j.graph.GraphDatabase.driver",
+        "hawki_graph_store.graph.GraphDatabase.driver",
         lambda *_args, **_kwargs: driver,
     )
 
