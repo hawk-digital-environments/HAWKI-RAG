@@ -22,3 +22,8 @@ Optional graph reads return an empty result only for Neo4j availability
 failures. Other server and driver failures propagate to their handling
 boundary. An explicitly configured database falls back to the default database
 only when Neo4j reports `Neo.ClientError.Database.DatabaseNotFound`.
+
+## Tests
+
+From `python_rag`, run `uv run --group test --package hawki-graph-store pytest
+packages/graph_store/tests`. The `integration/` category requires live Neo4j.

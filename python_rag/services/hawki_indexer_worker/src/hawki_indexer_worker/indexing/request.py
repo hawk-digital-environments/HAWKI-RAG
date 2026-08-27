@@ -167,8 +167,7 @@ def apply_provider_overrides(provider: object, body: object) -> None:
         ProviderModelSelection(
             embedding_model=getattr(body, "embedding_model", None),
             chat_model=(
-                getattr(body, "chat_model", None)
-                or getattr(body, "graph_model", None)
+                getattr(body, "chat_model", None) or getattr(body, "graph_model", None)
             ),
             vision_model=getattr(body, "vision_model", None),
         ),

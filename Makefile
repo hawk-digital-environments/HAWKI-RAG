@@ -117,11 +117,11 @@ UI_NODE_RUN = docker run --rm --entrypoint /usr/bin/env \
 # ==============================================================================
 
 .PHONY: help
-.PHONY: clean python-lock python-deps python-quality python-test python-integration provider-test system-test migration-test
+.PHONY: clean python-lock python-deps system-test migration-test
 .PHONY: network pull-core build-app build-ui publish-ui
 .PHONY: migrate-core
 .PHONY: _up-core up-core up-core-local up-core-server
-.PHONY: health test-services
+.PHONY: health
 .PHONY: pull-models logs-core
 .PHONY: down-core down-rag restart-core teardown
 .PHONY: neo4j-fresh
@@ -375,51 +375,11 @@ health: ## Check required and optional containers plus service endpoints.
 		exit 1; \
 	fi
 
-test-services: ## Run focused Qdrant, Neo4j, bridge, and reranker smoke checks.
-	@set -e; \
-	printf "qdrant: "; \
-	if docker ps --format '{{.Names}}' | grep -q hawki_qdrant; then \
-		code=$$(docker exec hawki_qdrant sh -lc "curl -s -o /dev/null -w \"%{http_code}\" http://localhost:6333/readyz" || echo 000); \
-		if [ "$$code" = "200" ] || [ "$$code" = "204" ] || [ "$$code" = "404" ]; then echo "healthy ($$code)"; else echo "FAIL ($$code)"; exit 1; fi; \
-	else \
-		echo "skipped (container not running)"; \
-	fi; \
-	printf "neo4j: "; \
-	if docker ps --format '{{.Names}}' | grep -q hawki_rag_neo4j; then \
-		docker exec hawki_rag_neo4j sh -lc "wget --spider -q http://localhost:7474/browser" >/dev/null && echo "healthy" || (echo "FAIL" && exit 1); \
-	else \
-		echo "skipped (container not running)"; \
-	fi; \
-	if docker ps --format '{{.Names}}' | grep -q hawki_rag_bridge; then \
-		printf "hawki_rag_bridge: "; docker exec hawki_rag_bridge python -c 'import urllib.request; urllib.request.urlopen("http://localhost/health?runtime=false", timeout=5).read()' >/dev/null && echo "healthy" || (echo "WARN" && true); \
-	else \
-		printf "hawki_rag_bridge: skipped (container not running)\n"; \
-	fi; \
-	if docker ps --format '{{.Names}}' | grep -q hawki_rag_rerank; then \
-		printf "hawki_rag_rerank: "; docker exec hawki_rag_rerank python -c 'import urllib.request; urllib.request.urlopen("http://localhost/health", timeout=5).read()' >/dev/null && echo "healthy" || (echo "WARN" && true); \
-	else \
-		printf "hawki_rag_rerank: skipped (container not running)\n"; \
-	fi; \
-	echo "Service checks completed."
-
 # ==============================================================================
-# Automated tests
+# Laravel automated tests
 # ==============================================================================
 
 ##@ Tests
-
-python-quality: ## Check Python formatting and lint rules with the pinned Ruff version.
-	@cd python_rag && UV_CACHE_DIR="$(PYTHON_UV_CACHE)" uv run --frozen --no-sync ruff format --check packages services tests
-	@cd python_rag && UV_CACHE_DIR="$(PYTHON_UV_CACHE)" uv run --frozen --no-sync ruff check packages services tests
-
-python-test: python-deps ## Run deterministic Python contract and API tests in the uv workspace.
-	@cd python_rag && PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH="services/hawki_reranker/src" UV_CACHE_DIR="$(PYTHON_UV_CACHE)" uv run --frozen --no-sync pytest -c pytest.ini -m "not integration"
-
-python-integration: python-deps ## Run live storage and Temporal integration tests (unavailable services skip).
-	@cd python_rag && PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH="services/hawki_reranker/src" UV_CACHE_DIR="$(PYTHON_UV_CACHE)" uv run --frozen --no-sync pytest -c pytest.ini -m "integration and not model" tests/integration
-
-provider-test: python-deps ## Run live Ollama and LiteLLM compatibility tests (unavailable services skip).
-	@cd python_rag && PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH="services/hawki_reranker/src" UV_CACHE_DIR="$(PYTHON_UV_CACHE)" uv run --frozen --no-sync pytest -c pytest.ini -m "integration and model" tests/integration
 
 system-test: ## Run Laravel authenticated query, isolation, and PDF upload system flows.
 	@php artisan test --testsuite=System

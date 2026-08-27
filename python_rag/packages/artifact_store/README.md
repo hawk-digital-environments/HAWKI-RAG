@@ -70,3 +70,8 @@ Manifests are serialized with sorted object keys and a final newline, written to
 a unique temporary file beside the destination, and committed with
 `os.replace()`. A reader therefore sees either the previous complete manifest or
 the new complete manifest, never a partially written file.
+
+## Tests
+
+From `python_rag`, run `uv run --group test --package hawki-artifact-store pytest
+packages/artifact_store/tests`.

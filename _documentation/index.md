@@ -61,5 +61,5 @@ HAWKI-RAG is a containerized, dataset-scoped retrieval-augmented generation plat
 test -f .env || cp .env.example .env
 # Set HAWKI_RAG_WORKER_CALLBACK_SECRET to: openssl rand -hex 32
 make up-core
-make test-services
+make health
 ```

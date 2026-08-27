@@ -187,7 +187,7 @@ and `hosting_network` networks automatically.
 :::
 
 ## Step 5 - Health check everything
-- Commands: `make health` and `make test-services`
+- Command: `make health`
 - You should be able to see `OK` for all components.
 
 Optionally start LiteLLM and confirm that its aliases loaded:

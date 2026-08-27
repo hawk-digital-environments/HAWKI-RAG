@@ -153,7 +153,6 @@ container-to-container requests.
 | I want to… | Command |
 |---|---|
 | Check all service health | `make health` |
-| Run direct endpoint checks | `make test-services` |
 | Follow core service logs | `make logs-core` |
 | Restart the stack | `make restart-core` |
 | Stop the core stack | `make down-core` |

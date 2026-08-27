@@ -74,8 +74,7 @@ def analyze_prompt(prompt: str) -> dict[str, Any]:
     if len(sanitized) > 8000:
         issues.append("prompt_too_long")
     blocked = any(
-        issue.startswith(("prompt_injection", "disallowed_token"))
-        for issue in issues
+        issue.startswith(("prompt_injection", "disallowed_token")) for issue in issues
     )
     result = {
         "sanitized": sanitize_prompt_text(sanitized),

@@ -44,8 +44,9 @@ resolve incompatible Transformers generations.
 ## Directory conventions
 
 Every member root owns a `pyproject.toml`, a member-focused `README.md`, and one
-deployable entrypoint. `src/` is only the Python packaging boundary; it is not a
-business layer.
+deployable entrypoint. It also owns a `tests/` directory beside `src/`, divided
+by `unit`, `integration`, `contract`, and `characterization` where applicable.
+`src/` is only the Python packaging boundary; it is not a business layer.
 
 | Directory name | Ownership rule |
 | --- | --- |
@@ -56,6 +57,11 @@ business layer.
 | `http/` | FastAPI schemas, dependencies, routers, middleware, and error translation only |
 | `activities/` | Temporal activity validation, side effects, heartbeats, callbacks, and result boundary |
 | `workflows/` | Deterministic Temporal orchestration and retry policy only |
+
+Run one service from `python_rag` with `uv run --group test --package
+<distribution-name> pytest services/<member>/tests`. The reranker uses the
+separate `.venv-reranker` environment documented in `tests/README.md` because
+its Transformers resolution intentionally conflicts with the indexer.
 
 ## `hawki_bridge`
 
