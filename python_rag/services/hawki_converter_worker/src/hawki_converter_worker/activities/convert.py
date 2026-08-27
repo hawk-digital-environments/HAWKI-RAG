@@ -15,7 +15,7 @@ from hawki_rag_contracts.ingestion import (
 )
 from hawki_rag_contracts.status import PipelineStageStatus
 from hawki_rag_contracts.temporal import CONVERT_FILES_ACTIVITY
-from hawki_worker_runtime.logging import log_event
+from hawki_observability.event_logging import log_event
 
 from hawki_converter_worker.adapters.status_callback import report_status
 from hawki_converter_worker.application.source_conversion import (

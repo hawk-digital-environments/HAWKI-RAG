@@ -2,10 +2,30 @@
 
 from __future__ import annotations
 
+import logging
 import unittest
 
 
 class RedactionTests(unittest.TestCase):
+    def test_event_logging_recursively_redacts_and_bounds_fields(self) -> None:
+        from hawki_observability.event_logging import log_event
+
+        logger = logging.getLogger("tests.observability.event")
+        with self.assertLogs(logger, level=logging.INFO) as captured:
+            log_event(
+                logger,
+                "pipeline.completed",
+                result={
+                    "error_details": "Authorization: Bearer super-secret-token",
+                    "documents": [1, 2],
+                },
+            )
+
+        output = captured.output[0]
+        self.assertIn("pipeline.completed", output)
+        self.assertIn("Authorization=<redacted>", output)
+        self.assertNotIn("super-secret-token", output)
+
     def test_log_redaction_masks_secrets_in_headers_and_body_snippets(self) -> None:
         from hawki_observability.redaction import (
             log_redacted_value,

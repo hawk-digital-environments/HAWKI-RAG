@@ -1,5 +1,6 @@
 """Secret-safe observability primitives shared by RAWKI services."""
 
+from hawki_observability.event_logging import log_event
 from hawki_observability.redaction import (
     log_redacted_value,
     pick_request_id,
@@ -9,6 +10,7 @@ from hawki_observability.redaction import (
 )
 
 __all__ = [
+    "log_event",
     "log_redacted_value",
     "pick_request_id",
     "preview_request_body",
