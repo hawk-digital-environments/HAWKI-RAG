@@ -10,12 +10,25 @@ from typing import Any
 import pytest
 
 from hawki_artifact_store.local import LocalArtifactStore
-from hawki_rag_contracts.pipeline.ingestion import IndexResult
+from hawki_rag_contracts.pipeline.ingestion import (
+    IndexActivityInput,
+    IndexResult,
+    ReadyActivityInput,
+)
 from hawki_rag_contracts.pipeline.status import PipelineStageStatus
-from hawki_indexer_worker.activities import index as index_activity
 from hawki_indexer_worker.adapters.composition import (
     build_ingest_workflow_dependencies,
 )
+from hawki_indexer_worker.application.index_execution import (
+    IndexActivityContext,
+    IndexActivityDependencies,
+    execute_index_activity,
+)
+from hawki_indexer_worker.application.ready_projection import (
+    ReadyProjectionContext,
+    project_source_ready,
+)
+from hawki_indexer_worker.indexing.batch_execution import IngestDocuments
 from hawki_indexer_worker.settings import IndexerSettings
 
 
@@ -72,33 +85,40 @@ def _run_index_activity(
     workflow_input: dict[str, Any],
     *,
     status_reporter: Callable[..., dict[str, Any]],
+    document_ingester: IngestDocuments,
     heartbeat_sender: Callable[[object], None] | None = None,
 ) -> IndexResult:
-    return index_activity.run_index_activity(
-        {
-            "workflow_input": workflow_input,
-            "convert_result": {
-                "markdown_dir": workflow_input["markdown_output_path"],
-            },
-        },
-        settings=_settings(tmp_path),
-        artifact_store=LocalArtifactStore(tmp_path),
-        graph_service=object(),
-        provider_resolver=lambda _name: object(),
-        workflow_dependencies=build_ingest_workflow_dependencies(),
-        status_reporter=status_reporter,
-        activity_info=SimpleNamespace(
-            workflow_id="workflow-1",
-            workflow_run_id="run-1",
-            attempt=1,
+    return execute_index_activity(
+        IndexActivityInput.model_validate(
+            {
+                "workflow_input": workflow_input,
+                "convert_result": {
+                    "markdown_dir": workflow_input["markdown_output_path"],
+                },
+            }
         ),
-        heartbeat_sender=heartbeat_sender,
+        context=IndexActivityContext(
+            settings=_settings(tmp_path),
+            activity_info=SimpleNamespace(
+                workflow_id="workflow-1",
+                workflow_run_id="run-1",
+                attempt=1,
+            ),
+            heartbeat_sender=heartbeat_sender,
+        ),
+        dependencies=IndexActivityDependencies(
+            artifact_store=LocalArtifactStore(tmp_path),
+            graph_service=object(),
+            provider_resolver=lambda _name: object(),
+            workflow_dependencies=build_ingest_workflow_dependencies(),
+            status_reporter=status_reporter,
+            ingest_documents=document_ingester,
+        ),
     )
 
 
 def test_index_activity_batches_documents_and_accumulates_graph_results(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     workflow_input = _workflow_input(tmp_path, batch_size=2)
     markdown_files = _write_markdown_files(
@@ -164,13 +184,13 @@ def test_index_activity_batches_documents_and_accumulates_graph_results(
         requests.append(request)
         return next(responses)
 
-    monkeypatch.setattr(index_activity, "ingest_documents", fake_ingest)
     result = _run_index_activity(
         tmp_path,
         workflow_input,
         status_reporter=lambda *_args, **kwargs: (
             statuses.append(kwargs["status"]) or {"accepted": True}
         ),
+        document_ingester=fake_ingest,
         heartbeat_sender=heartbeats.append,
     )
 
@@ -243,7 +263,6 @@ def test_index_activity_batches_documents_and_accumulates_graph_results(
 
 def test_index_activity_reports_failure_after_completed_batch_without_manifest(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     workflow_input = _workflow_input(tmp_path, batch_size=1)
     _write_markdown_files(Path(workflow_input["markdown_output_path"]), 2)
@@ -270,8 +289,6 @@ def test_index_activity_reports_failure_after_completed_batch_without_manifest(
             },
         }
 
-    monkeypatch.setattr(index_activity, "ingest_documents", fake_ingest)
-
     with pytest.raises(RuntimeError, match="second batch failed"):
         _run_index_activity(
             tmp_path,
@@ -279,6 +296,7 @@ def test_index_activity_reports_failure_after_completed_batch_without_manifest(
             status_reporter=lambda *_args, **kwargs: (
                 statuses.append(kwargs["status"]) or {"accepted": True}
             ),
+            document_ingester=fake_ingest,
             heartbeat_sender=heartbeats.append,
         )
 
@@ -300,29 +318,34 @@ def test_ready_projection_reports_failed_index_result(tmp_path: Path) -> None:
     workflow_input = _workflow_input(tmp_path)
     callbacks: list[dict[str, Any]] = []
 
-    result = index_activity.run_mark_source_ready(
-        {
-            "workflow_input": workflow_input,
-            "convert_result": {
-                "markdown_dir": workflow_input["markdown_output_path"],
-            },
-            "ingest_result": {
-                "status": "failed",
-                "documents_indexed": 1,
-                "failed_documents": 2,
-                "error_details": "indexing incomplete",
-            },
-        },
-        settings=_settings(tmp_path),
-        status_reporter=lambda *_args, **kwargs: (
-            callbacks.append(kwargs) or {"accepted": True}
+    projection = project_source_ready(
+        ReadyActivityInput.model_validate(
+            {
+                "workflow_input": workflow_input,
+                "convert_result": {
+                    "markdown_dir": workflow_input["markdown_output_path"],
+                },
+                "ingest_result": {
+                    "status": "failed",
+                    "documents_indexed": 1,
+                    "failed_documents": 2,
+                    "error_details": "indexing incomplete",
+                },
+            }
         ),
-        activity_info=SimpleNamespace(
-            workflow_id="workflow-1",
-            workflow_run_id="run-1",
-            attempt=1,
+        context=ReadyProjectionContext(
+            settings=_settings(tmp_path),
+            status_reporter=lambda *_args, **kwargs: (
+                callbacks.append(kwargs) or {"accepted": True}
+            ),
+            activity_info=SimpleNamespace(
+                workflow_id="workflow-1",
+                workflow_run_id="run-1",
+                attempt=1,
+            ),
         ),
     )
+    result = projection.to_wire()
 
     assert result["status"] == "failed"
     assert result["documents_indexed"] == 1

@@ -11,6 +11,11 @@ from temporalio import activity
 
 from hawki_artifact_store.local import LocalArtifactStore
 from hawki_rag_contracts.pipeline.identity import document_id
+from hawki_rag_contracts.pipeline.ingestion import (
+    IndexActivityInput,
+    IndexResult,
+    ReadyActivityInput,
+)
 from hawki_rag_contracts.pipeline.status import PipelineStageStatus
 from hawki_rag_contracts.pipeline.temporal import (
     INDEX_MARKDOWN_ACTIVITY,
@@ -21,6 +26,18 @@ from hawki_indexer_worker.adapters.artifact_store import load_passthrough_metada
 from hawki_indexer_worker.adapters.composition import (
     build_ingest_workflow_dependencies,
 )
+from hawki_indexer_worker.application.index_execution import (
+    IndexActivityContext,
+    IndexActivityDependencies,
+    execute_index_activity,
+)
+from hawki_indexer_worker.application.ready_projection import (
+    ReadyProjectionContext,
+    project_source_ready,
+)
+from hawki_indexer_worker.indexing.batch_execution import IngestDocuments
+from hawki_indexer_worker.indexing.dependencies import IngestWorkflowDependencies
+from hawki_indexer_worker.indexing.orchestration import ingest_documents
 from hawki_indexer_worker.settings import IndexerSettings
 
 
@@ -61,6 +78,55 @@ def _workflow_input(tmp_path: Path) -> dict[str, Any]:
     }
 
 
+def _execute_index_activity(
+    payload: dict[str, Any],
+    *,
+    settings: IndexerSettings,
+    artifact_store: LocalArtifactStore | None,
+    graph_service: Any,
+    provider_resolver,
+    workflow_dependencies: IngestWorkflowDependencies,
+    status_reporter,
+    activity_info,
+    heartbeat_sender=None,
+    document_ingester: IngestDocuments = ingest_documents,
+) -> IndexResult:
+    return execute_index_activity(
+        IndexActivityInput.model_validate(payload),
+        context=IndexActivityContext(
+            settings=settings,
+            activity_info=activity_info,
+            heartbeat_sender=heartbeat_sender,
+        ),
+        dependencies=IndexActivityDependencies(
+            artifact_store=artifact_store,
+            graph_service=graph_service,
+            provider_resolver=provider_resolver,
+            workflow_dependencies=workflow_dependencies,
+            status_reporter=status_reporter,
+            ingest_documents=document_ingester,
+        ),
+    )
+
+
+def _project_source_ready(
+    payload: dict[str, Any],
+    *,
+    settings: IndexerSettings,
+    status_reporter,
+    activity_info,
+) -> dict[str, Any]:
+    projection = project_source_ready(
+        ReadyActivityInput.model_validate(payload),
+        context=ReadyProjectionContext(
+            settings=settings,
+            status_reporter=status_reporter,
+            activity_info=activity_info,
+        ),
+    )
+    return projection.to_wire()
+
+
 def test_temporal_activity_names_remain_compatible() -> None:
     index_definition = activity._Definition.must_from_callable(
         index_activity.ingest_markdown_files
@@ -74,7 +140,6 @@ def test_temporal_activity_names_remain_compatible() -> None:
 
 def test_activity_calls_indexing_logic_directly_and_writes_manifest(
     tmp_path: Path,
-    monkeypatch,
 ) -> None:
     workflow_input = _workflow_input(tmp_path)
     markdown_dir = Path(workflow_input["markdown_output_path"])
@@ -111,9 +176,8 @@ def test_activity_calls_indexing_logic_directly_and_writes_manifest(
         def list_markdown(self, _location: str) -> list[str]:
             raise AssertionError("typed converter artifacts must avoid rediscovery")
 
-    monkeypatch.setattr(index_activity, "ingest_documents", fake_ingest)
     content = markdown_file.read_text(encoding="utf-8")
-    result = index_activity.run_index_activity(
+    result = _execute_index_activity(
         {
             "workflow_input": workflow_input,
             "convert_result": {
@@ -149,6 +213,7 @@ def test_activity_calls_indexing_logic_directly_and_writes_manifest(
             workflow_id="workflow-1", workflow_run_id="run-1", attempt=1
         ),
         heartbeat_sender=heartbeats.append,
+        document_ingester=fake_ingest,
     )
 
     assert result.status.value == "success"
@@ -167,7 +232,6 @@ def test_activity_calls_indexing_logic_directly_and_writes_manifest(
 
 def test_activity_rejects_converter_metadata_that_does_not_match_file(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     workflow_input = _workflow_input(tmp_path)
     markdown_dir = Path(workflow_input["markdown_output_path"])
@@ -179,9 +243,8 @@ def test_activity_rejects_converter_metadata_that_does_not_match_file(
     def unexpected(*_args, **_kwargs):
         raise AssertionError("mismatched artifacts must not reach indexing")
 
-    monkeypatch.setattr(index_activity, "ingest_documents", unexpected)
     with pytest.raises(RuntimeError, match="content_hash"):
-        index_activity.run_index_activity(
+        _execute_index_activity(
             {
                 "workflow_input": workflow_input,
                 "convert_result": {
@@ -217,6 +280,7 @@ def test_activity_rejects_converter_metadata_that_does_not_match_file(
                 workflow_run_id="run-1",
                 attempt=1,
             ),
+            document_ingester=unexpected,
         )
 
     assert callback_statuses == [
@@ -227,7 +291,6 @@ def test_activity_rejects_converter_metadata_that_does_not_match_file(
 
 def test_empty_artifact_directory_returns_skipped_without_index_call(
     tmp_path: Path,
-    monkeypatch,
 ) -> None:
     workflow_input = _workflow_input(tmp_path)
     markdown_dir = Path(workflow_input["markdown_output_path"])
@@ -237,8 +300,7 @@ def test_empty_artifact_directory_returns_skipped_without_index_call(
     def unexpected(*_args, **_kwargs):
         raise AssertionError("indexing must not run for an empty artifact directory")
 
-    monkeypatch.setattr(index_activity, "ingest_documents", unexpected)
-    result = index_activity.run_index_activity(
+    result = _execute_index_activity(
         {
             "workflow_input": workflow_input,
             "convert_result": {"markdown_dir": str(markdown_dir)},
@@ -254,11 +316,12 @@ def test_empty_artifact_directory_returns_skipped_without_index_call(
         activity_info=SimpleNamespace(
             workflow_id="workflow-1", workflow_run_id="run-1", attempt=1
         ),
+        document_ingester=unexpected,
     )
     assert result.status.value == "skipped"
     assert callback_statuses == [PipelineStageStatus.RUNNING]
 
-    index_activity.run_mark_source_ready(
+    _project_source_ready(
         {
             "workflow_input": workflow_input,
             "convert_result": {"markdown_dir": str(markdown_dir)},
@@ -282,7 +345,7 @@ def test_indexer_reports_shared_storage_initialization_failure(tmp_path: Path) -
     callback_statuses: list[PipelineStageStatus] = []
 
     with pytest.raises(FileNotFoundError, match="Shared artifact root"):
-        index_activity.run_index_activity(
+        _execute_index_activity(
             {
                 "workflow_input": workflow_input,
                 "convert_result": {
@@ -318,7 +381,7 @@ def test_ready_callback_is_a_separate_activity_with_result_references(
     manifest_path.write_text("[]", encoding="utf-8")
     callbacks: list[dict[str, Any]] = []
 
-    result = index_activity.run_mark_source_ready(
+    result = _project_source_ready(
         {
             "workflow_input": workflow_input,
             "convert_result": {"markdown_dir": str(markdown_dir)},
@@ -384,7 +447,7 @@ def test_ready_callback_failure_does_not_enter_indexing_code(tmp_path: Path) -> 
         raise RuntimeError("callback unavailable")
 
     with pytest.raises(RuntimeError, match="callback unavailable"):
-        index_activity.run_mark_source_ready(
+        _project_source_ready(
             {
                 "workflow_input": workflow_input,
                 "convert_result": {
@@ -405,7 +468,6 @@ def test_ready_callback_failure_does_not_enter_indexing_code(tmp_path: Path) -> 
 
 def test_passthrough_artifact_forces_graph_indexing_without_bridge_http(
     tmp_path: Path,
-    monkeypatch,
 ) -> None:
     workflow_input = _workflow_input(tmp_path)
     workflow_input["ingestion"]["neo4j_namespace"] = "hawki_dataset_1"
@@ -448,8 +510,7 @@ def test_passthrough_artifact_forces_graph_indexing_without_bridge_http(
             },
         }
 
-    monkeypatch.setattr(index_activity, "ingest_documents", fake_ingest)
-    index_activity.run_index_activity(
+    _execute_index_activity(
         {
             "workflow_input": workflow_input,
             "convert_result": {"markdown_dir": str(markdown_dir)},
@@ -465,6 +526,7 @@ def test_passthrough_artifact_forces_graph_indexing_without_bridge_http(
             workflow_run_id="run-1",
             attempt=1,
         ),
+        document_ingester=fake_ingest,
     )
 
     assert len(requests) == 1
