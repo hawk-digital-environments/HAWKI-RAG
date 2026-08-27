@@ -26,4 +26,3 @@ module-name = "hawki_graph_store"
 
 [tool.uv.sources]
 hawki-observability = { workspace = true }
-hawki-rag-text = { workspace = true }

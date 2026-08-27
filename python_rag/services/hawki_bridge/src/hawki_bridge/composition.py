@@ -1,6 +1,6 @@
 """Concrete query dependency composition for the bridge process."""
 
-from hawki_model_providers.factory import get_provider
+from hawki_model_providers.factory import create_model_provider
 
 from hawki_bridge.adapters.neo4j_reader import Neo4jReader
 from hawki_bridge.adapters.qdrant_reader import QdrantReader
@@ -14,7 +14,7 @@ def build_query_dependencies() -> QueryDependencies:
     return QueryDependencies(
         vector_search_factory=QdrantReader,
         graph_search=Neo4jReader(),
-        resolve_model_provider=get_provider,
+        resolve_model_provider=create_model_provider,
         rerank_hits=rerank_hits,
     )
 

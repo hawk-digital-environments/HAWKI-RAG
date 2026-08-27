@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 from pathlib import Path
 import re
 import tomllib
@@ -70,3 +71,46 @@ def test_vcs_source_and_workspace_override_are_immutable() -> None:
     source = indexer["tool"]["uv"]["sources"]["lightrag-hku"]
     assert source["git"] == "https://github.com/HKUDS/LightRAG.git"
     assert re.fullmatch(r"[0-9a-f]{40}", source["rev"])
+
+
+def test_package_dependencies_are_limited_to_intentional_observability_edges() -> None:
+    package_manifests = sorted((ROOT / "packages").glob("*/pyproject.toml"))
+    projects = {
+        path: tomllib.loads(path.read_text(encoding="utf-8"))["project"]
+        for path in package_manifests
+    }
+    distribution_names = {project["name"] for project in projects.values()}
+    declared_edges = {
+        (project["name"], dependency.split("==", 1)[0].split("[", 1)[0])
+        for project in projects.values()
+        for dependency in project.get("dependencies", [])
+        if dependency.split("==", 1)[0].split("[", 1)[0] in distribution_names
+    }
+
+    module_owners = {
+        module_root.name: project["name"]
+        for path, project in projects.items()
+        for module_root in (path.parent / "src").iterdir()
+        if module_root.is_dir()
+    }
+    imported_edges: set[tuple[str, str]] = set()
+    for path, project in projects.items():
+        for source in (path.parent / "src").rglob("*.py"):
+            tree = ast.parse(source.read_text(encoding="utf-8"), filename=str(source))
+            for node in ast.walk(tree):
+                imported_modules: list[str] = []
+                if isinstance(node, ast.Import):
+                    imported_modules = [alias.name for alias in node.names]
+                elif isinstance(node, ast.ImportFrom) and node.module:
+                    imported_modules = [node.module]
+                for module in imported_modules:
+                    imported_owner = module_owners.get(module.split(".", 1)[0])
+                    if imported_owner and imported_owner != project["name"]:
+                        imported_edges.add((project["name"], imported_owner))
+
+    expected_edges = {
+        ("hawki-graph-store", "hawki-observability"),
+        ("hawki-vector-store", "hawki-observability"),
+    }
+    assert declared_edges == expected_edges
+    assert imported_edges == expected_edges

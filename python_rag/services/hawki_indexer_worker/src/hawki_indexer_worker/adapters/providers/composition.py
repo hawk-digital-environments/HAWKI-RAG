@@ -6,13 +6,15 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from hawki_model_providers.factory import get_provider as _get_provider
+from hawki_model_providers.factory import create_model_provider
 
 from hawki_indexer_worker.adapters.providers.graph import GraphExtractionFacade
 
 
 def get_provider(name: str) -> Any:
-    return _get_provider(name)
+    """Create the configured provider behind the indexer-owned adapter seam."""
+
+    return create_model_provider(name)
 
 
 def create_graph_extractor(

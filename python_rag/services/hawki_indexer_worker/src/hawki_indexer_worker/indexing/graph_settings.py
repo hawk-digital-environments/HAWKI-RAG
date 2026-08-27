@@ -56,7 +56,7 @@ def load_graph_ingest_settings(
 ) -> GraphIngestSettings:
     """Load graph ingestion settings with explicit defaults."""
 
-    env_map = env or os.environ
+    env_map = os.environ if env is None else env
     return GraphIngestSettings(
         graph_debug=_env_bool(env_map, "GRAPH_DEBUG", False),
         graph_perf_log=_env_bool(env_map, "GRAPH_PERF_LOG", False),

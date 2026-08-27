@@ -2,7 +2,6 @@
 
 from hawki_vector_store.client import QdrantHTTP, ScopedCollectionNotReadyError
 from hawki_vector_store.contracts import VectorPoint, VectorSearchHit
-from hawki_vector_store.ports import VectorReader, VectorWriter
 from hawki_vector_store.settings import (
     QdrantHTTPSettings,
     QdrantSettings,
@@ -16,9 +15,7 @@ __all__ = [
     "QdrantSettings",
     "ScopedCollectionNotReadyError",
     "VectorPoint",
-    "VectorReader",
     "VectorSearchHit",
-    "VectorWriter",
     "qdrant_http_settings_from_env",
     "qdrant_settings_from_env",
 ]

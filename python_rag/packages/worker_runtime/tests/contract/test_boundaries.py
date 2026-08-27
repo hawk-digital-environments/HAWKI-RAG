@@ -26,3 +26,5 @@ def test_worker_runtime_contains_no_http_clients_or_pipeline_protocols() -> None
     assert _import_roots(SOURCE).isdisjoint({"httpx", "requests"})
     assert not (SOURCE / "callbacks.py").exists()
     assert not (SOURCE / "external_jobs.py").exists()
+    assert not (SOURCE / "heartbeats.py").exists()
+    assert not (SOURCE / "retries.py").exists()

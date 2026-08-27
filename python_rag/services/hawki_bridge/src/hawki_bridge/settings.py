@@ -65,7 +65,7 @@ class BridgeSettings:
 
 
 def load_settings(env: Mapping[str, str] | None = None) -> BridgeSettings:
-    source = env or os.environ
+    source = os.environ if env is None else env
     return BridgeSettings(
         reranker_mode=_value(source, "RERANKER_MODE", "none"),
         reranker_mix_mode=_boolean(source, "RERANKER_MIX_MODE", True),

@@ -21,7 +21,6 @@ from hawki_vector_store.requests import QdrantRequest
 from hawki_vector_store.responses import parse_count, parse_scroll_points
 from hawki_vector_store.settings import QdrantHTTPSettings, QdrantSettings
 from hawki_vector_store.transport import QdrantHTTPTransport
-from hawki_vector_store.ports import VectorReader, VectorWriter
 
 
 class _Response:
@@ -69,7 +68,7 @@ def _http_settings() -> QdrantHTTPSettings:
     )
 
 
-def test_qdrant_adapter_preserves_the_vector_ports_and_contract_shapes() -> None:
+def test_qdrant_adapter_preserves_vector_contract_shapes() -> None:
     point: VectorPoint = {
         "id": "chunk-1",
         "vector": [0.1, 0.2],
@@ -87,8 +86,8 @@ def test_qdrant_adapter_preserves_the_vector_ports_and_contract_shapes() -> None
     ):
         client = QdrantHTTP(settings=_settings(), http_settings=_http_settings())
 
-    assert isinstance(client, VectorReader)
-    assert isinstance(client, VectorWriter)
+    assert callable(client.search)
+    assert callable(client.upsert_points)
     assert hit == {
         "id": "chunk-1",
         "score": 0.9,

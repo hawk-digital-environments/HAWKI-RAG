@@ -45,7 +45,6 @@ def _imports_under(source_root: Path) -> list[tuple[Path, int, str]]:
 def test_vector_and_graph_packages_own_distinct_public_modules() -> None:
     vector_expected = {
         "contracts.py",
-        "ports.py",
         "transport.py",
         "requests.py",
         "responses.py",
@@ -59,7 +58,6 @@ def test_vector_and_graph_packages_own_distinct_public_modules() -> None:
     }
     graph_expected = {
         "contracts.py",
-        "ports.py",
         "transport.py",
         "requests.py",
         "responses.py",
@@ -79,6 +77,8 @@ def test_vector_and_graph_packages_own_distinct_public_modules() -> None:
 
     assert vector_expected <= vector_actual
     assert graph_expected <= graph_actual
+    assert "ports.py" not in vector_actual
+    assert "ports.py" not in graph_actual
 
 
 def test_store_packages_do_not_depend_on_each_other_or_service_code() -> None:

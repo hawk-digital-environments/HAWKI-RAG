@@ -1,8 +1,9 @@
 # HAWKI worker runtime
 
-This package contains only Temporal activity-executor construction, heartbeat
-delivery, retry-delay values, and worker logging setup. Laravel callbacks and
-external HTTP job polling live in independently installable packages.
+This package contains only Temporal activity-executor construction, connection
+settings, and worker logging setup. Heartbeat contents and retry policy belong
+to the activity or client that understands the operation. Laravel callbacks
+and external HTTP job polling live in independently installable packages.
 
 ## Tests
 

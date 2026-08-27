@@ -1,13 +1,13 @@
 # HAWKI graph store
 
 This package owns RAWKI's graph persistence boundary and Neo4j adapter. It
-contains graph contracts, reader and writer ports, scoped Cypher requests,
+contains graph value contracts, scoped Cypher requests,
 response parsing, and managed-transaction behavior. Graph cleanup, retrieval
 ranking, and RAG-hit projection remain application-owned. It has no dependency
 on the vector-store or text-processing packages.
 
-Callers should type application dependencies against `GraphReader` or
-`GraphWriter`. Construct `Neo4jGraph` only in an adapter or composition root.
+Callers define the reader or writer port required by their own application.
+Construct `Neo4jGraph` only in an adapter or composition root.
 Entities and relationships are stored in Neo4j; embeddings and vector search
 are outside this package's ownership.
 

@@ -26,10 +26,9 @@ from hawki_graph_store.requests import (
 )
 from hawki_graph_store.responses import parse_fact_rows, parse_structural_rows
 from hawki_graph_store.transport import Neo4jQueryExecutor
-from hawki_graph_store.ports import GraphReader, GraphWriter
 
 
-def test_neo4j_adapter_preserves_the_graph_ports_and_scope_contract() -> None:
+def test_neo4j_adapter_preserves_the_graph_scope_contract() -> None:
     scope = GraphScope(" dataset-a ", " graph-a ")
     graph = Neo4jGraph(
         dataset_id=scope.dataset_id,
@@ -40,8 +39,8 @@ def test_neo4j_adapter_preserves_the_graph_ports_and_scope_contract() -> None:
 
     assert scope.dataset_id == "dataset-a"
     assert scope.neo4j_namespace == "graph-a"
-    assert isinstance(graph, GraphReader)
-    assert isinstance(graph, GraphWriter)
+    assert callable(graph.fetch_related)
+    assert callable(graph.upsert_triplets)
     with pytest.raises(ValueError, match="requires non-empty"):
         GraphScope("", "graph-a")
 
