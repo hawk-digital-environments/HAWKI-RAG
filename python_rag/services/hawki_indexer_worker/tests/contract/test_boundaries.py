@@ -8,8 +8,8 @@ from types import SimpleNamespace
 
 import tomllib
 
-from hawki_rag_contracts.status import PipelineStageStatus
-from hawki_rag_contracts.temporal import INDEX_MARKDOWN_ACTIVITY
+from hawki_rag_contracts.pipeline.status import PipelineStageStatus
+from hawki_rag_contracts.pipeline.temporal import INDEX_MARKDOWN_ACTIVITY
 from hawki_indexer_worker.adapters import status_callback
 from hawki_indexer_worker import main as indexer_main
 from hawki_indexer_worker.settings import IndexerSettings

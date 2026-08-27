@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from hawki_rag_contracts.rerank import RerankRequest as ContractRerankRequest
+from hawki_rag_contracts.retrieval.rerank import RerankRequest as ContractRerankRequest
 from hawki_reranker.main import create_app
 from hawki_reranker.schemas import RerankRequest as ServiceRerankRequest
 from hawki_reranker.settings import RerankerSettings

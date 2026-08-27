@@ -8,8 +8,8 @@ from typing import Any
 
 from temporalio import activity
 
-from hawki_rag_contracts.artifacts import ArtifactReference
-from hawki_rag_contracts.status import (
+from hawki_rag_contracts.pipeline.artifacts import ArtifactReference
+from hawki_rag_contracts.pipeline.status import (
     PipelineStage,
     PipelineStageStatus,
     PipelineWorkerEvent,
@@ -17,7 +17,7 @@ from hawki_rag_contracts.status import (
     StatusError,
     WorkerProducer,
 )
-from hawki_rag_contracts.temporal import CONVERT_FILES_ACTIVITY
+from hawki_rag_contracts.pipeline.temporal import CONVERT_FILES_ACTIVITY
 from hawki_observability.redaction import sanitize_for_log
 from hawki_pipeline_callbacks import (
     LaravelCallbackClient,

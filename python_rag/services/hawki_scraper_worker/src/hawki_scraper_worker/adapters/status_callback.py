@@ -9,8 +9,8 @@ import hashlib
 import re
 from typing import Any, Protocol
 
-from hawki_rag_contracts.artifacts import ArtifactReference
-from hawki_rag_contracts.status import (
+from hawki_rag_contracts.pipeline.artifacts import ArtifactReference
+from hawki_rag_contracts.pipeline.status import (
     PipelineStage,
     PipelineStageStatus,
     PipelineWorkerEvent,
@@ -18,7 +18,7 @@ from hawki_rag_contracts.status import (
     StatusError,
     WorkerProducer,
 )
-from hawki_rag_contracts.temporal import SCRAPE_SOURCE_ACTIVITY
+from hawki_rag_contracts.pipeline.temporal import SCRAPE_SOURCE_ACTIVITY
 from hawki_observability.redaction import sanitize_for_log
 from hawki_pipeline_callbacks import (
     LaravelCallbackClient,

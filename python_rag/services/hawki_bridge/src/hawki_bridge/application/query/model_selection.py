@@ -6,7 +6,7 @@ from hawki_model_providers.configuration import (
     ProviderModelSelection,
     configure_provider_models,
 )
-from hawki_rag_contracts.query import QueryRequest
+from hawki_rag_contracts.retrieval.query import QueryRequest
 
 
 def configure_query_provider(provider: object, request: QueryRequest) -> None:

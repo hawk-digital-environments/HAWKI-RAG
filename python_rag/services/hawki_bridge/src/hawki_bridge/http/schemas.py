@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from hawki_rag_contracts.auth_scope import AuthorizedQueryScope
-from hawki_rag_contracts.ingestion import IngestSourceWorkflowInput
-from hawki_rag_contracts.query import QueryRequest
+from hawki_rag_contracts.retrieval.auth_scope import AuthorizedQueryScope
+from hawki_rag_contracts.pipeline.ingestion import IngestSourceWorkflowInput
+from hawki_rag_contracts.retrieval.query import QueryRequest
 
 from hawki_bridge.settings import BridgeSettings
 

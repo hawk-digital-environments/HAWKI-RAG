@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 
-from hawki_rag_contracts.ingestion import IngestionStatus
+from hawki_rag_contracts.pipeline.ingestion import IngestionStatus
 
 
 @dataclass(frozen=True, slots=True)

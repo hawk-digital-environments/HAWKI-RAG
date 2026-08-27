@@ -92,8 +92,8 @@ class _DisabledGraph:
 
 
 def _request(*, generate: bool, filters: dict[str, Any] | None = None):
-    from hawki_rag_contracts.auth_scope import AuthorizedQueryScope
-    from hawki_rag_contracts.query import QueryRequest
+    from hawki_rag_contracts.retrieval.auth_scope import AuthorizedQueryScope
+    from hawki_rag_contracts.retrieval.query import QueryRequest
 
     return QueryRequest(
         query="find page ten",

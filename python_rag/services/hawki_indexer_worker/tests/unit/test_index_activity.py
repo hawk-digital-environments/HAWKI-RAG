@@ -9,10 +9,10 @@ from typing import Any
 import pytest
 from temporalio import activity
 
-from hawki_artifact_store.identity import document_id
 from hawki_artifact_store.local import LocalArtifactStore
-from hawki_rag_contracts.status import PipelineStageStatus
-from hawki_rag_contracts.temporal import (
+from hawki_rag_contracts.pipeline.identity import document_id
+from hawki_rag_contracts.pipeline.status import PipelineStageStatus
+from hawki_rag_contracts.pipeline.temporal import (
     INDEX_MARKDOWN_ACTIVITY,
     MARK_SOURCE_READY_ACTIVITY,
 )

@@ -43,7 +43,7 @@ from hawki_bridge.http.schemas import (
     UpsertIngestScheduleRequest,
 )
 from hawki_bridge.settings import load_settings
-from hawki_rag_contracts.auth_scope import AuthorizedQueryScope
+from hawki_rag_contracts.retrieval.auth_scope import AuthorizedQueryScope
 
 
 def _endpoint(router: APIRouter, path: str, method: str) -> Callable[..., Any]:

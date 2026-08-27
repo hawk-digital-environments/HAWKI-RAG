@@ -21,7 +21,6 @@ Python workers own only activity-local artifact work:
 - copying a Laravel-owned upload into its raw stage directory;
 - resetting the specific retry-local stage directories Laravel supplied;
 - listing and reading converted files;
-- calculating Markdown content and document identities;
 - writing the manifest that describes what the indexer actually processed.
 
 ## Supported storage
@@ -42,16 +41,10 @@ S3 adapter or fallback behavior in this package.
   recreation, and atomic JSON manifest replacement. Its mutation preflight also
   rejects symlink components so one source cannot redirect a write or deletion
   into another source workspace.
-- `hawki_artifact_store.identity.sha256_text` hashes caller-provided text as
-  UTF-8; normalization remains an explicit caller concern.
-- `hawki_artifact_store.identity.document_id` derives a stable ID from a source
-  ID and a POSIX-relative artifact path.
-
 Storage reads never normalize or otherwise alter content. Converter-specific
 Markdown cleanup must be called explicitly by the converter or indexer.
 
 ```python
-from hawki_artifact_store.identity import document_id, sha256_text
 from hawki_artifact_store.local import LocalArtifactStore
 
 store = LocalArtifactStore("/shared")
@@ -61,10 +54,10 @@ relative_path = store.relative_path(
     markdown_files[0],
     "/shared/sources/source-a/markdown",
 )
-
-content_hash = sha256_text(text)
-artifact_id = document_id("source-a", relative_path)
 ```
+
+Stable content hashes and document IDs are pipeline policy and live in
+`hawki_rag_contracts.pipeline.identity`, not in this storage adapter.
 
 Manifests are serialized with sorted object keys and a final newline, written to
 a unique temporary file beside the destination, and committed with

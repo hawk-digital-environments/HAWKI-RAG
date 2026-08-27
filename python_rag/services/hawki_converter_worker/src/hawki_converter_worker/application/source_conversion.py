@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from hawki_rag_contracts.ingestion import (
+from hawki_rag_contracts.pipeline.ingestion import (
     ConvertActivityInput,
     ConvertResult,
     IngestionStatus,

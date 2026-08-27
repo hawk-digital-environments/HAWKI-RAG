@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import hashlib
 
-from hawki_artifact_store.identity import document_id, sha256_text
-from hawki_rag_contracts.artifacts import MarkdownArtifact
+from hawki_rag_contracts.pipeline.artifacts import MarkdownArtifact
+from hawki_rag_contracts.pipeline.identity import document_id, sha256_text
 from hawki_rag_text.markdown import strip_leading_converter_markdown_noise
 
 from hawki_converter_worker.domain.ports import ConverterArtifactStorePort

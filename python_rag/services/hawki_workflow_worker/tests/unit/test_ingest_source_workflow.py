@@ -9,7 +9,7 @@ from pathlib import Path
 import tomllib
 from typing import Any
 
-from hawki_rag_contracts.temporal import (
+from hawki_rag_contracts.pipeline.temporal import (
     CONVERT_FILES_ACTIVITY,
     INDEX_MARKDOWN_ACTIVITY,
     MARK_SOURCE_READY_ACTIVITY,

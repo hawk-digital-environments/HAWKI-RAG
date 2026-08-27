@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter
 
-from hawki_rag_contracts.query import QueryResponse
+from hawki_rag_contracts.retrieval.query import QueryResponse
 
 from hawki_bridge.application.dependencies import QueryDependencies
 from hawki_bridge.application.query.execution import execute_authorized_query

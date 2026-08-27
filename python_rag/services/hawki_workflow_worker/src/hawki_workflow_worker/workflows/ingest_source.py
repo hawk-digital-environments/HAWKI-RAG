@@ -7,7 +7,7 @@ from typing import Any
 
 from temporalio import workflow
 
-from hawki_rag_contracts.temporal import (
+from hawki_rag_contracts.pipeline.temporal import (
     ActivityQueueRole,
     CONVERT_FILES_ACTIVITY,
     INDEXER_QUEUE_PATCH_ID,

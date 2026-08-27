@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from hawki_rag_contracts.artifacts import ArtifactReference
+from hawki_rag_contracts.pipeline.artifacts import ArtifactReference
 
 
 def directory_reference(path: str) -> ArtifactReference:

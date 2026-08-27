@@ -1,8 +1,9 @@
 """Side-effect-free contracts shared by HAWKI RAG services.
 
-Import concrete contracts from their owning modules. Keeping this package
+Canonical contracts live below ``pipeline`` or ``retrieval``. Keeping this
 initializer deliberately small lets deterministic Temporal workflows import
-``hawki_rag_contracts.temporal`` without importing Pydantic models.
+``hawki_rag_contracts.pipeline.temporal`` without importing Pydantic models.
+Top-level contract modules remain compatibility aliases for existing clients.
 """
 
 __version__ = "0.1.0"

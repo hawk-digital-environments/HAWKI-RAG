@@ -6,7 +6,7 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-from hawki_rag_contracts.temporal import LEGACY_INGESTION_TASK_QUEUE
+from hawki_rag_contracts.pipeline.temporal import LEGACY_INGESTION_TASK_QUEUE
 
 
 def _env(name: str, default: str) -> str:
