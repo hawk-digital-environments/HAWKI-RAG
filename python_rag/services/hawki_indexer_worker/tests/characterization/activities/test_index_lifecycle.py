@@ -10,6 +10,7 @@ from typing import Any
 import pytest
 
 from hawki_artifact_store.local import LocalArtifactStore
+from hawki_rag_contracts.pipeline.ingestion import IndexResult
 from hawki_rag_contracts.pipeline.status import PipelineStageStatus
 from hawki_indexer_worker.activities import index as index_activity
 from hawki_indexer_worker.adapters.composition import (
@@ -72,7 +73,7 @@ def _run_index_activity(
     *,
     status_reporter: Callable[..., dict[str, Any]],
     heartbeat_sender: Callable[[object], None] | None = None,
-) -> dict[str, Any]:
+) -> IndexResult:
     return index_activity.run_index_activity(
         {
             "workflow_input": workflow_input,
@@ -191,7 +192,7 @@ def test_index_activity_batches_documents_and_accumulates_graph_results(
             "documents_indexed": 3,
         },
     ]
-    assert result == {
+    assert result.model_dump(mode="json") == {
         "source_id": "source-1",
         "documents_indexed": 3,
         "chunks_indexed": 5,
