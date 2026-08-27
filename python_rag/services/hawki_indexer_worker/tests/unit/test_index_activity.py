@@ -151,8 +151,8 @@ def test_activity_calls_indexing_logic_directly_and_writes_manifest(
         heartbeat_sender=heartbeats.append,
     )
 
-    assert result["status"] == "success"
-    assert result["documents_indexed"] == 1
+    assert result.status.value == "success"
+    assert result.documents_indexed == 1
     assert callback_statuses == [PipelineStageStatus.RUNNING]
     assert len(calls) == 1
     body, kwargs = calls[0]
@@ -255,14 +255,14 @@ def test_empty_artifact_directory_returns_skipped_without_index_call(
             workflow_id="workflow-1", workflow_run_id="run-1", attempt=1
         ),
     )
-    assert result["status"] == "skipped"
+    assert result.status.value == "skipped"
     assert callback_statuses == [PipelineStageStatus.RUNNING]
 
     index_activity.run_mark_source_ready(
         {
             "workflow_input": workflow_input,
             "convert_result": {"markdown_dir": str(markdown_dir)},
-            "ingest_result": result,
+            "ingest_result": result.model_dump(mode="json"),
         },
         settings=_settings(tmp_path),
         status_reporter=lambda *_args, **kwargs: (
