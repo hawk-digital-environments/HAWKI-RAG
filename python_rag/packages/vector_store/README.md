@@ -10,3 +10,8 @@ Callers should type application dependencies against `VectorReader` or
 `VectorWriter`. Construct `QdrantHTTP` only in an adapter or composition root.
 Vectors and their chunk payloads are stored in Qdrant; graph entities and
 relationships are outside this package's ownership.
+
+## Tests
+
+From `python_rag`, run `uv run --group test --package hawki-vector-store pytest
+packages/vector_store/tests`.

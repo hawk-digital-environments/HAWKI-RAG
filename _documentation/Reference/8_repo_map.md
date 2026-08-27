@@ -34,7 +34,7 @@ question: **where should a developer begin a code change?**
 | Graph extraction or Neo4j behavior | `app/Http/Controllers/Graph/` or the indexer graph phase | `app/Services/Graph/`, `hawki_indexer_worker/adapters/raganything/`, and `packages/graph_store/` | `tests/Feature/Graph/`, `python_rag/tests/graph/` |
 | Model providers or model allowlists | `config/model_providers.php` and the owning service settings | `app/Services/Settings/`, `packages/model_providers/`, and indexer provider composition | `tests/Feature/Settings/`, `python_rag/tests/providers/` |
 | Browser UI or frontend assets | `routes/web.php` and `resources/js/svelte/` | `resources/views/`, `vite.config.js`, and `svelte.config.js` | `tests/Feature/Ui/` |
-| Containers, startup, or health wiring | `Makefile` and `docker-compose*.yml` | `python_rag/Dockerfile`, `docker/laravel.Dockerfile`, and `docker/` | `tests/System/` plus `make health` and `make test-services` |
+| Containers, startup, or health wiring | `Makefile` and `docker-compose*.yml` | `python_rag/Dockerfile`, `docker/laravel.Dockerfile`, and `docker/` | `tests/System/` plus `make health` |
 
 ## The dependency direction
 

@@ -42,7 +42,10 @@ real Laravel authentication, authorization, persistence, and orchestration
 boundary while explicitly replacing external Python HTTP calls:
 
 ```bash
-make system-test
+php artisan test --testsuite=System
 ```
+
+See the root [test command guide](../README.md) for system-test and PostgreSQL
+migration-test prerequisites and commands.
 
 When adding a test, place it in the directory representing the behavior under test. Prefer the user-visible feature over the implementation layer; for example, a query authorization test belongs in `Query` unless it primarily verifies authentication/session behavior.

@@ -15,6 +15,13 @@ own workflow order.
 - Required dependencies use direct imports and fail during startup/import when
   the deployment is incomplete.
 
+Each package keeps its tests beside its source in `packages/<member>/tests/`.
+The `unit`, `integration`, `contract`, and `characterization` subdirectories make
+the kind and owner of a test visible from its path. Run one package from
+`python_rag` with `uv run --group test --package <distribution-name> pytest
+packages/<member>/tests`; uv installs the package instead of relying on the
+working directory or `PYTHONPATH`.
+
 ## Package map
 
 ### `artifact_store/`

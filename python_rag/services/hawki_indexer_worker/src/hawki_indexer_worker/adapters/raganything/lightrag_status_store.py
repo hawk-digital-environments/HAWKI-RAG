@@ -43,6 +43,7 @@ from hawki_indexer_worker.adapters.raganything.doc_status import (
     merge_chunk_payloads,
     sort_chunk_files,
 )
+
 _RecordT = TypeVar("_RecordT")
 
 

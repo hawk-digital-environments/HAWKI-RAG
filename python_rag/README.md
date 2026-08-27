@@ -78,9 +78,11 @@ root:
 ```bash
 make python-lock                 # refresh one python_rag/uv.lock and verify variants
 make python-deps USE_OLLAMA_GPU=0
-make python-quality
-make python-test USE_OLLAMA_GPU=0
 ```
+
+Run Python quality checks and tests directly through uv. The canonical commands
+for deterministic tests, the isolated reranker, live integrations, model
+providers, coverage, and Ruff are in [`tests/README.md`](tests/README.md).
 
 For CUDA 13.0 use `USE_OLLAMA_GPU=1`. Production Docker builds use `uv sync
 --frozen --no-dev --no-editable` against the workspace lock. Each member's
@@ -90,12 +92,14 @@ member manifests and the single workspace lockfile are the dependency source of
 truth. See the repository [purpose and directory guide](../purpose.md) for the
 current workspace boundaries and migration notes.
 
-Live tests remain opt-in:
+Live tests remain opt-in and are documented separately from deterministic
+checks in [`tests/README.md`](tests/README.md).
 
-```bash
-make python-integration
-make provider-test
-```
+Tests are co-located with their owning workspace member under
+`packages/<member>/tests/` or `services/<member>/tests/`. The root `tests/`
+contains only end-to-end flows and their test-suite documentation. See
+[`tests/README.md`](tests/README.md) for categories, focused member commands,
+coverage, live-test selection, and the isolated reranker run.
 
 ## Local and production containers
 

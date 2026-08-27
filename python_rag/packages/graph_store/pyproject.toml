@@ -12,6 +12,11 @@ dependencies = [
     "neo4j==6.2.0",
 ]
 
+[dependency-groups]
+test = [
+    "pytest==8.4.2",
+]
+
 [build-system]
 requires = ["uv_build==0.11.26"]
 build-backend = "uv_build"

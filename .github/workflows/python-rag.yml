@@ -100,7 +100,10 @@ jobs:
           test -z "$oversized" || { printf '%s\n' "$oversized"; exit 1; }
 
       - name: Verify Python formatting and linting
-        run: make python-quality
+        working-directory: python_rag
+        run: |
+          uv run --frozen --no-sync ruff format --check packages services tests
+          uv run --frozen --no-sync ruff check packages services tests
 
       - name: Verify patch whitespace
         run: git diff --check HEAD^ HEAD
@@ -109,15 +112,17 @@ jobs:
         working-directory: python_rag
         env:
           PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
-          PYTHONPATH: services/hawki_reranker/src
-        run: uv run --frozen --no-sync pytest -c pytest.ini -m "not integration"
+        run: >-
+          uv run --frozen --no-sync pytest -c pytest.ini -m "not integration"
 
       - name: Run reranker service tests in its isolated environment
         working-directory: python_rag
         env:
           PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
           UV_PROJECT_ENVIRONMENT: .venv-reranker
-        run: uv run --frozen --no-sync pytest -c pytest.ini tests/reranker
+        run: >-
+          uv run --frozen --no-sync pytest -c pytest.ini
+          services/hawki_reranker/tests
 
       - name: Validate Compose model
         run: docker compose --env-file .env.example config --quiet
