@@ -76,6 +76,25 @@ def test_indexing_application_depends_on_ports_not_store_packages() -> None:
     assert violations == []
 
 
+def test_temporal_activity_module_contains_only_transport_wrappers() -> None:
+    activity_module = SOURCE / "activities" / "index.py"
+    tree = ast.parse(
+        activity_module.read_text(encoding="utf-8"),
+        filename=str(activity_module),
+    )
+    functions = {node.name for node in tree.body if isinstance(node, ast.FunctionDef)}
+
+    assert functions == {"ingest_markdown_files", "mark_source_ready"}
+    assert len(activity_module.read_text(encoding="utf-8").splitlines()) < 100
+
+    temporal_imports = []
+    for path in sorted((SOURCE / "application").rglob("*.py")):
+        for line, name in _imports(path):
+            if name.split(".", 1)[0] == "temporalio":
+                temporal_imports.append(f"{path}:{line}: {name}")
+    assert temporal_imports == []
+
+
 def test_indexer_store_packages_are_visible_only_to_database_adapters() -> None:
     allowed = {
         SOURCE / "adapters" / "qdrant_writer.py": {"hawki_vector_store"},
