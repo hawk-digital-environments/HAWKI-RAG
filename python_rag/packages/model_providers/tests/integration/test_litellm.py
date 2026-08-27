@@ -53,15 +53,9 @@ def _call_configured_model(
 def _configure_provider(
     monkeypatch: pytest.MonkeyPatch,
     live_litellm: Any,
-    *,
-    chat_model: str,
-    embed_model: str,
 ) -> None:
     monkeypatch.setenv("LITELLM_API_URL", live_litellm.api_url)
     monkeypatch.setenv("LITELLM_API_KEY", live_litellm.api_key)
-    monkeypatch.setenv("LITELLM_CHAT_MODEL", chat_model)
-    monkeypatch.setenv("LITELLM_EMBED_MODEL", embed_model)
-    monkeypatch.setenv("LITELLM_VISION_MODEL", chat_model)
     timeout = os.environ.get("RAWKI_INTEGRATION_MODEL_TIMEOUT", "120")
     monkeypatch.setenv("LITELLM_CHAT_TIMEOUT", timeout)
     monkeypatch.setenv("LITELLM_EMBED_TIMEOUT", timeout)
@@ -88,13 +82,11 @@ class TestLiveLiteLLMProvider:
                 f"LiteLLM model alias '{embed_model}' is not advertised by /v1/models"
             )
 
-        _configure_provider(
-            monkeypatch,
-            live_litellm,
-            chat_model=chat_model,
-            embed_model=embed_model,
-        )
+        _configure_provider(monkeypatch, live_litellm)
         provider = LiteLLMProvider()
+        provider.rag_model = chat_model
+        provider.embed_model = embed_model
+        provider.vision_model = chat_model
         vector = _call_configured_model(
             lambda: provider.embed(
                 "RAWKI live integration probe routed through the LiteLLM gateway."
@@ -127,13 +119,11 @@ class TestLiveLiteLLMProvider:
                 f"LiteLLM model alias '{chat_model}' is not advertised by /v1/models"
             )
 
-        _configure_provider(
-            monkeypatch,
-            live_litellm,
-            chat_model=chat_model,
-            embed_model=embed_model,
-        )
+        _configure_provider(monkeypatch, live_litellm)
         provider = LiteLLMProvider()
+        provider.rag_model = chat_model
+        provider.embed_model = embed_model
+        provider.vision_model = chat_model
         answer = _call_configured_model(
             lambda: provider.chat(
                 "Reply with one short word.",

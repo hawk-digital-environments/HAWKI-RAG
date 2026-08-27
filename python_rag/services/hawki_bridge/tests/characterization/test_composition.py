@@ -18,7 +18,9 @@ class BridgeCompositionCharacterizationTests(unittest.TestCase):
         vector_factory = object()
         with (
             patch.object(
-                composition, "get_provider", return_value=provider
+                composition,
+                "create_model_provider",
+                return_value=provider,
             ) as provider_factory,
             patch.object(composition, "rerank_hits", return_value=ranked) as reranker,
             patch.object(composition, "Neo4jReader", return_value=graph_search),

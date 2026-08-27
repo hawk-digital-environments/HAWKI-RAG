@@ -90,13 +90,13 @@ class LiteLLMProviderTests(unittest.TestCase):
     """Verify LiteLLM remains explicit, validates responses, and never exposes credentials."""
 
     def test_factory_selects_litellm_without_changing_ollama(self) -> None:
-        from hawki_model_providers.factory import get_provider
+        from hawki_model_providers.factory import create_model_provider
         from hawki_model_providers.litellm import LiteLLMProvider
         from hawki_model_providers.ollama import OllamaProvider
 
         with patch.dict(os.environ, _provider_env(), clear=True):
-            litellm = get_provider(" LITELLM ")
-            ollama = get_provider("ollama")
+            litellm = create_model_provider(" LITELLM ")
+            ollama = create_model_provider("ollama")
 
         self.assertIsInstance(litellm, LiteLLMProvider)
         self.assertIsInstance(ollama, OllamaProvider)

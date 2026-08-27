@@ -178,3 +178,27 @@ class IngestCharacterizationTests(unittest.TestCase):
         self.assertEqual(settings.graph_doc_timeout_s, 12.0)
         self.assertEqual(settings.graph_doc_max_chars, 777)
         self.assertEqual(settings.graph_doc_max_chunks, 5)
+
+    def test_graph_ingest_settings_honor_an_explicit_empty_mapping(self) -> None:
+        from hawki_indexer_worker.indexing.graph_settings import (
+            load_graph_ingest_settings,
+        )
+
+        with patch.dict(
+            os.environ,
+            {
+                "GRAPH_DEBUG": "true",
+                "GRAPH_PERF_LOG": "true",
+                "GRAPH_DOC_TIMEOUT": "12",
+                "GRAPH_DOC_MAX_CHARS": "777",
+                "GRAPH_DOC_MAX_CHUNKS": "5",
+            },
+            clear=False,
+        ):
+            settings = load_graph_ingest_settings({})
+
+        self.assertFalse(settings.graph_debug)
+        self.assertFalse(settings.graph_perf_log)
+        self.assertEqual(settings.graph_doc_timeout_s, 0.0)
+        self.assertEqual(settings.graph_doc_max_chars, 0)
+        self.assertEqual(settings.graph_doc_max_chunks, 0)
