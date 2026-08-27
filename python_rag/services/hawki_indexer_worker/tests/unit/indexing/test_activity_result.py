@@ -6,7 +6,7 @@ from hawki_indexer_worker.indexing.activity_result import IndexActivityAccumulat
 
 def test_accumulator_produces_validated_index_result() -> None:
     accumulator = IndexActivityAccumulator("source-1")
-    accumulator.record_skipped_document()
+    accumulator.record_skipped_documents()
     accumulator.accumulate_response(
         {
             "points": 3,

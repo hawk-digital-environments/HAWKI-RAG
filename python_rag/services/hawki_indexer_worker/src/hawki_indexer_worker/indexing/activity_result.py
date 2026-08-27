@@ -28,10 +28,10 @@ class IndexActivityAccumulator:
     graph_preview: dict[str, Any] | None = None
     graph_failures: list[dict[str, Any]] = field(default_factory=list)
 
-    def record_skipped_document(self) -> None:
-        """Record a Markdown artifact that contained no indexable text."""
+    def record_skipped_documents(self, count: int = 1) -> None:
+        """Record Markdown artifacts that contained no indexable text."""
 
-        self.skipped_documents += 1
+        self.skipped_documents += count
 
     def accumulate_response(self, response: Mapping[str, Any]) -> None:
         """Merge one ingestion batch response into the activity totals."""
