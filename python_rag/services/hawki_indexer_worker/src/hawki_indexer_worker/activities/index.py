@@ -26,7 +26,7 @@ from hawki_rag_contracts.temporal import (
     INDEX_MARKDOWN_ACTIVITY,
     MARK_SOURCE_READY_ACTIVITY,
 )
-from hawki_worker_runtime.logging import log_event
+from hawki_observability.event_logging import log_event
 
 from hawki_indexer_worker.adapters.artifact_store import (
     load_passthrough_metadata,
