@@ -6,7 +6,7 @@ from dataclasses import dataclass
 import os
 
 from hawki_pipeline_callbacks import LaravelCallbackSettings
-from hawki_rag_contracts.temporal import SCRAPER_TASK_QUEUE
+from hawki_rag_contracts.pipeline.temporal import SCRAPER_TASK_QUEUE
 from hawki_worker_runtime.settings import (
     WorkerRuntimeSettings,
     load_worker_runtime_settings,

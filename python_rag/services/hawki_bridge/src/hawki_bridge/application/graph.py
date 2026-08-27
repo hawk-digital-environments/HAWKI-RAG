@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from hawki_rag_contracts.auth_scope import AuthorizedQueryScope
+from hawki_rag_contracts.retrieval.auth_scope import AuthorizedQueryScope
 
 from hawki_bridge.domain.ports import GraphReader
 

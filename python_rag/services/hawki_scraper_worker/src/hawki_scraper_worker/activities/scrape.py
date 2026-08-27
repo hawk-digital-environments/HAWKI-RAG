@@ -7,9 +7,9 @@ from typing import Any
 
 from temporalio import activity
 
-from hawki_rag_contracts.artifacts import RawArtifact
-from hawki_rag_contracts.ingestion import ScrapeResult
-from hawki_rag_contracts.temporal import SCRAPE_SOURCE_ACTIVITY
+from hawki_rag_contracts.pipeline.artifacts import RawArtifact
+from hawki_rag_contracts.pipeline.ingestion import ScrapeResult
+from hawki_rag_contracts.pipeline.temporal import SCRAPE_SOURCE_ACTIVITY
 from hawki_observability.event_logging import log_event
 
 from hawki_scraper_worker.adapters.status_callback import (

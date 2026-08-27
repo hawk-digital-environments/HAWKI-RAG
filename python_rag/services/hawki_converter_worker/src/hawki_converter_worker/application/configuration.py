@@ -6,7 +6,7 @@ import json
 import logging
 from typing import Any
 
-from hawki_rag_contracts.ingestion import IngestionStatus
+from hawki_rag_contracts.pipeline.ingestion import IngestionStatus
 
 from hawki_converter_worker.domain.models import ConverterEndpointConfig
 from hawki_converter_worker.domain.ports import ConverterArtifactStorePort

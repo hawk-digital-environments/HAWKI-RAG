@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 from pathlib import Path
 
 import pytest
 
-from hawki_artifact_store.identity import document_id, sha256_text
 from hawki_artifact_store.local import LocalArtifactStore
 
 
@@ -237,17 +235,3 @@ def test_recreate_directory_clears_only_the_requested_directory(
     assert target.is_dir()
     assert list(target.iterdir()) == []
     assert sibling.read_text(encoding="utf-8") == "keep"
-
-
-def test_identity_helpers_use_utf8_and_posix_relative_paths() -> None:
-    source_id = "source-\u00e4"
-    relative_path = Path("nested") / "\u00dcberblick.md"
-    text = "Gr\u00fc\u00dfe \u2615\n"
-
-    expected_hash = hashlib.sha256(text.encode("utf-8")).hexdigest()
-    expected_document_hash = hashlib.sha256(
-        f"{source_id}|nested/\u00dcberblick.md".encode("utf-8")
-    ).hexdigest()[:40]
-
-    assert sha256_text(text) == expected_hash
-    assert document_id(source_id, relative_path) == f"doc_{expected_document_hash}"

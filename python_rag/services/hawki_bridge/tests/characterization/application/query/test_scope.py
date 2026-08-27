@@ -60,7 +60,7 @@ class AuthorizedScopeSchemaTests(unittest.TestCase):
     """Verify the Python boundary accepts only Laravel-derived trusted retrieval scope."""
 
     def test_query_requires_a_typed_authorized_scope(self) -> None:
-        from hawki_rag_contracts.query import QueryRequest
+        from hawki_rag_contracts.retrieval.query import QueryRequest
 
         with self.assertRaises(ValidationError):
             QueryRequest(query="Find the PDF")
@@ -89,8 +89,8 @@ class AuthorizedScopeSchemaTests(unittest.TestCase):
         self.assertFalse(request.authorized_scope.graph_enabled)
 
     def test_scope_rejects_unknown_internal_fields(self) -> None:
-        from hawki_rag_contracts.auth_scope import AuthorizedQueryScope
-        from hawki_rag_contracts.query import QueryRequest
+        from hawki_rag_contracts.retrieval.auth_scope import AuthorizedQueryScope
+        from hawki_rag_contracts.retrieval.query import QueryRequest
 
         with self.assertRaises(ValidationError):
             AuthorizedQueryScope(
@@ -113,7 +113,7 @@ class AuthorizedScopeSchemaTests(unittest.TestCase):
             )
 
     def test_trusted_scope_accepts_graph_only_with_a_namespace(self) -> None:
-        from hawki_rag_contracts.auth_scope import AuthorizedQueryScope
+        from hawki_rag_contracts.retrieval.auth_scope import AuthorizedQueryScope
 
         scope = AuthorizedQueryScope(
             dataset_id="dataset-a",
@@ -149,7 +149,7 @@ class AuthorizedScopeSchemaTests(unittest.TestCase):
             )
 
     def test_query_rejects_provider_mismatch_instead_of_falling_back(self) -> None:
-        from hawki_rag_contracts.query import QueryRequest
+        from hawki_rag_contracts.retrieval.query import QueryRequest
 
         with self.assertRaisesRegex(
             ValidationError,
@@ -171,7 +171,7 @@ class AuthorizedScopeSchemaTests(unittest.TestCase):
             )
 
     def test_query_filters_reject_unsupported_nested_values(self) -> None:
-        from hawki_rag_contracts.query import QueryRequest
+        from hawki_rag_contracts.retrieval.query import QueryRequest
 
         with self.assertRaises(ValidationError):
             QueryRequest(

@@ -2,23 +2,25 @@
 
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 import tomllib
 
 import pytest
 from pydantic import ValidationError
 
-from hawki_rag_contracts.artifacts import MarkdownArtifact
-from hawki_rag_contracts.auth_scope import AuthorizedQueryScope
-from hawki_rag_contracts.ingestion import (
+from hawki_rag_contracts.pipeline.artifacts import MarkdownArtifact
+from hawki_rag_contracts.retrieval.auth_scope import AuthorizedQueryScope
+from hawki_rag_contracts.pipeline.ingestion import (
     IngestSourceWorkflowInput,
     TaskQueueConfig,
     shared_storage_root,
 )
-from hawki_rag_contracts.query import QueryRequest
-from hawki_rag_contracts.rerank import RerankRequest, RerankResponse
-from hawki_rag_contracts.status import PipelineWorkerEvent
-from hawki_rag_contracts.temporal import (
+from hawki_rag_contracts.pipeline.identity import document_id, sha256_text
+from hawki_rag_contracts.retrieval.query import QueryRequest
+from hawki_rag_contracts.retrieval.rerank import RerankRequest, RerankResponse
+from hawki_rag_contracts.pipeline.status import PipelineWorkerEvent
+from hawki_rag_contracts.pipeline.temporal import (
     ActivityQueueRole,
     CONVERT_FILES_ACTIVITY,
     INDEX_MARKDOWN_ACTIVITY,
@@ -220,6 +222,33 @@ def test_shared_storage_root_rejects_missing_or_object_storage(
         shared_storage_root(workflow_input)
 
 
+def test_document_identity_uses_utf8_and_posix_relative_paths() -> None:
+    source_id = "source-\u00e4"
+    relative_path = Path("nested") / "\u00dcberblick.md"
+    text = "Gr\u00fc\u00dfe \u2615\n"
+
+    expected_hash = hashlib.sha256(text.encode("utf-8")).hexdigest()
+    expected_document_hash = hashlib.sha256(
+        f"{source_id}|nested/\u00dcberblick.md".encode("utf-8")
+    ).hexdigest()[:40]
+
+    assert sha256_text(text) == expected_hash
+    assert document_id(source_id, relative_path) == f"doc_{expected_document_hash}"
+
+
+@pytest.mark.parametrize("relative_path", ["/absolute.md", "../escape.md", ""])
+def test_document_identity_rejects_paths_outside_the_artifact_directory(
+    relative_path: str,
+) -> None:
+    with pytest.raises(ValueError, match="relative_path"):
+        document_id("source-a", relative_path)
+
+
+def test_document_identity_rejects_empty_source_id() -> None:
+    with pytest.raises(ValueError, match="source_id"):
+        document_id("", "page.md")
+
+
 def test_worker_event_accepts_timestamp_alias_and_enforces_stage_ownership() -> None:
     payload = {
         "schema_version": 1,
@@ -318,7 +347,46 @@ def test_contract_package_is_exactly_pinned_and_has_no_io_or_service_imports() -
         "hawki_reranker",
     )
     source_root = PACKAGE_ROOT / "src" / "hawki_rag_contracts"
-    for source in source_root.glob("*.py"):
+    for source in source_root.rglob("*.py"):
         contents = source.read_text(encoding="utf-8")
         assert not any(name in contents for name in forbidden), source
         assert len(contents.splitlines()) < 600, source
+
+
+def test_contract_domains_do_not_import_each_other() -> None:
+    source_root = PACKAGE_ROOT / "src" / "hawki_rag_contracts"
+    pipeline_sources = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in (source_root / "pipeline").glob("*.py")
+    )
+    retrieval_sources = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in (source_root / "retrieval").glob("*.py")
+    )
+
+    assert "hawki_rag_contracts.retrieval" not in pipeline_sources
+    assert "hawki_rag_contracts.pipeline" not in retrieval_sources
+
+
+def test_legacy_contract_modules_are_identity_preserving_aliases() -> None:
+    from hawki_rag_contracts.artifacts import MarkdownArtifact as LegacyArtifact
+    from hawki_rag_contracts.auth_scope import (
+        AuthorizedQueryScope as LegacyAuthorizedQueryScope,
+    )
+    from hawki_rag_contracts.ingestion import (
+        IngestSourceWorkflowInput as LegacyWorkflowInput,
+    )
+    from hawki_rag_contracts.query import QueryRequest as LegacyQueryRequest
+    from hawki_rag_contracts.rerank import RerankRequest as LegacyRerankRequest
+    from hawki_rag_contracts.status import PipelineWorkerEvent as LegacyWorkerEvent
+    from hawki_rag_contracts.temporal import (
+        ActivityQueueRole as LegacyActivityQueueRole,
+    )
+
+    assert LegacyArtifact is MarkdownArtifact
+    assert LegacyAuthorizedQueryScope is AuthorizedQueryScope
+    assert LegacyWorkflowInput is IngestSourceWorkflowInput
+    assert LegacyQueryRequest is QueryRequest
+    assert LegacyRerankRequest is RerankRequest
+    assert LegacyWorkerEvent is PipelineWorkerEvent
+    assert LegacyActivityQueueRole is ActivityQueueRole

@@ -41,7 +41,7 @@ from hawki_converter_worker.domain.errors import (
     RetryableConverterRequestError,
 )
 from hawki_converter_worker.domain.models import ConverterEndpointConfig
-from hawki_rag_contracts.ingestion import ConvertActivityInput, ConvertResult
+from hawki_rag_contracts.pipeline.ingestion import ConvertActivityInput, ConvertResult
 
 
 class UnsupportedResponse:

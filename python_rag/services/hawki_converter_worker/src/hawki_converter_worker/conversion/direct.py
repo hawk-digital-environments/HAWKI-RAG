@@ -7,7 +7,7 @@ import logging
 from pathlib import Path
 import shutil
 
-from hawki_rag_contracts.ingestion import IngestionStatus
+from hawki_rag_contracts.pipeline.ingestion import IngestionStatus
 
 from hawki_converter_worker.conversion.archive import unpack_converter_archive
 from hawki_converter_worker.conversion.discovery import (

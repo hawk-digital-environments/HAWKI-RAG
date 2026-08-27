@@ -7,7 +7,10 @@ from dataclasses import dataclass
 from datetime import timedelta
 from typing import Mapping
 
-from hawki_rag_contracts.temporal import INGEST_SOURCE_WORKFLOW, WORKFLOW_TASK_QUEUE
+from hawki_rag_contracts.pipeline.temporal import (
+    INGEST_SOURCE_WORKFLOW,
+    WORKFLOW_TASK_QUEUE,
+)
 
 
 def _value(env: Mapping[str, str], name: str, default: str) -> str:

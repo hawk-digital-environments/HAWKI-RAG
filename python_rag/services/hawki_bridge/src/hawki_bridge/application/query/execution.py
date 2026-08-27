@@ -7,7 +7,7 @@ import time
 from dataclasses import dataclass
 from typing import Any
 
-from hawki_rag_contracts.query import QueryRequest, QueryResponse
+from hawki_rag_contracts.retrieval.query import QueryRequest, QueryResponse
 from hawki_rag_text.safety import (
     analyze_prompt,
     enforce_output_safety,

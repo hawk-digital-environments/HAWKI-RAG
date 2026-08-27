@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 
-from hawki_rag_contracts.temporal import CONVERTER_TASK_QUEUE
+from hawki_rag_contracts.pipeline.temporal import CONVERTER_TASK_QUEUE
 
 
 def _env(name: str, default: str) -> str:

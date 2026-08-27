@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import os
 
-from hawki_rag_contracts.temporal import WORKFLOW_TASK_QUEUE
+from hawki_rag_contracts.pipeline.temporal import WORKFLOW_TASK_QUEUE
 
 
 def _environment_value(name: str, default: str) -> str:

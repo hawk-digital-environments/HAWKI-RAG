@@ -8,8 +8,8 @@ from typing import Any
 
 from temporalio import activity
 
-from hawki_rag_contracts.artifacts import ArtifactReference
-from hawki_rag_contracts.status import (
+from hawki_rag_contracts.pipeline.artifacts import ArtifactReference
+from hawki_rag_contracts.pipeline.status import (
     MonitorArtifacts,
     PipelineStage,
     PipelineStageStatus,

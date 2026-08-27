@@ -1,4 +1,4 @@
-"""Pure identity rules shared by converter and indexer workers."""
+"""Stable document identity rules shared by pipeline workers."""
 
 from __future__ import annotations
 
@@ -26,3 +26,6 @@ def document_id(source_id: str, relative_path: str | Path) -> str:
         f"{source_id}|{normalized_path}".encode("utf-8")
     ).hexdigest()[:40]
     return f"doc_{digest}"
+
+
+__all__ = ["document_id", "sha256_text"]

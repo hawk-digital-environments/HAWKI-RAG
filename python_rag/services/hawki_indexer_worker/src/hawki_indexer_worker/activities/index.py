@@ -10,10 +10,10 @@ from typing import Any
 
 from temporalio import activity
 
-from hawki_artifact_store.identity import document_id, sha256_text
 from hawki_artifact_store.local import LocalArtifactStore
-from hawki_rag_contracts.artifacts import MarkdownArtifact
-from hawki_rag_contracts.ingestion import (
+from hawki_rag_contracts.pipeline.artifacts import MarkdownArtifact
+from hawki_rag_contracts.pipeline.identity import document_id, sha256_text
+from hawki_rag_contracts.pipeline.ingestion import (
     ConvertResult,
     IndexActivityInput,
     IndexResult,
@@ -21,8 +21,8 @@ from hawki_rag_contracts.ingestion import (
     shared_storage_root,
 )
 from hawki_rag_text.markdown import strip_leading_converter_markdown_noise
-from hawki_rag_contracts.status import MonitorArtifacts, PipelineStageStatus
-from hawki_rag_contracts.temporal import (
+from hawki_rag_contracts.pipeline.status import MonitorArtifacts, PipelineStageStatus
+from hawki_rag_contracts.pipeline.temporal import (
     INDEX_MARKDOWN_ACTIVITY,
     MARK_SOURCE_READY_ACTIVITY,
 )
