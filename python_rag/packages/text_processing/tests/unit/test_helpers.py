@@ -28,3 +28,10 @@ def test_text_helper_modules_preserve_term_tag_and_chunk_rules() -> None:
         "para two",
         "para three",
     ]
+
+
+def test_strip_control_characters_preserves_text_whitespace_only() -> None:
+    from hawki_rag_text.safety import strip_control_characters
+
+    assert strip_control_characters(None) == ""
+    assert strip_control_characters("a\x00b\tc\nd\re\x1f") == "ab\tc\nd\re"

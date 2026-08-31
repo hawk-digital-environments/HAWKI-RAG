@@ -6,11 +6,12 @@ import re
 import unicodedata
 from collections.abc import Iterable
 
+from hawki_graph_store import normalization as graph_normalization
+from hawki_graph_store.contracts import GraphScope
 from hawki_rag_text.terms import STOPWORDS
 
 Triplet = tuple[str, str, str]
 
-_RELATION_ALIASES = {"equivalent_to": "equivalent"}
 _IMAGE_EXT_RE = re.compile(r"\.(png|jpe?g|gif|webp|svg)(?:\\?|#|$)", re.IGNORECASE)
 _PAGE_MARK_RE = re.compile(r"^(?:p|page)\\s*\\d+$", re.IGNORECASE)
 _URL_RE = re.compile(r"^(?:https?://|www\.)", re.IGNORECASE)
@@ -63,60 +64,16 @@ _KNOWN_PROMPT_EXAMPLE_TERMS = {
 }
 
 
-def normalize_graph_write_scope(
+def resolve_indexing_graph_scope(
     dataset_id: str | None, neo4j_namespace: str | None
-) -> tuple[str, str] | None:
-    """Return a complete logical graph scope or disable the graph write."""
+) -> GraphScope | None:
+    """Resolve authorized indexing inputs or disable graph persistence."""
 
     normalized_dataset_id = str(dataset_id or "").strip()
     normalized_namespace = str(neo4j_namespace or "").strip()
     if not normalized_dataset_id or not normalized_namespace:
         return None
-    return normalized_dataset_id, normalized_namespace
-
-
-def normalize_relation_label(value: object) -> str:
-    """Return a clean and stable predicate label."""
-
-    relation = (
-        "".join(
-            character
-            for character in str(value or "")
-            if character in {"\n", "\r", "\t"} or ord(character) >= 32
-        )
-        .replace("\n", " ")
-        .replace("\r", " ")
-    )
-    if "\t" in relation:
-        relation = relation.split("\t", 1)[0]
-    if "," in relation:
-        relation = relation.split(",", 1)[0]
-    relation = " ".join(relation.split()).strip(" ;:")
-    if not relation:
-        return ""
-    relation = relation[:120].rstrip()
-    alias_key = re.sub(r"[\s-]+", "_", relation.casefold())
-    return _RELATION_ALIASES.get(alias_key, relation)
-
-
-def dedupe_one_way_triplets(triplets: Iterable[Triplet]) -> list[Triplet]:
-    """Keep the first orientation of each normalized relationship."""
-
-    seen: set[tuple[str, str, str]] = set()
-    normalized: list[Triplet] = []
-    for raw_subject, raw_relation, raw_object in triplets:
-        subject = " ".join(str(raw_subject or "").split())
-        relation = normalize_relation_label(raw_relation)
-        obj = " ".join(str(raw_object or "").split())
-        if not subject or not relation or not obj:
-            continue
-        key = (subject.casefold(), relation.casefold(), obj.casefold())
-        reverse_key = (key[2], key[1], key[0])
-        if key in seen or reverse_key in seen:
-            continue
-        seen.add(key)
-        normalized.append((subject, relation, obj))
-    return normalized
+    return GraphScope(normalized_dataset_id, normalized_namespace)
 
 
 def _normalize_match_text(value: object) -> str:
@@ -195,7 +152,7 @@ def clean_triplets(triplets: Iterable[Triplet], **_kwargs: object) -> list[Tripl
     candidates: list[Triplet] = []
     for subject, relation, obj in triplets:
         normalized_subject = " ".join(str(subject or "").split())
-        normalized_relation = normalize_relation_label(relation)
+        normalized_relation = graph_normalization.normalize_relation_label(relation)
         normalized_object = " ".join(str(obj or "").split())
         if (
             _is_noise_entity(normalized_subject)
@@ -204,7 +161,7 @@ def clean_triplets(triplets: Iterable[Triplet], **_kwargs: object) -> list[Tripl
         ):
             continue
         candidates.append((normalized_subject, normalized_relation, normalized_object))
-    return dedupe_one_way_triplets(candidates)
+    return graph_normalization.dedupe_one_way_triplets(candidates)
 
 
 def filter_triplets_to_source(
@@ -231,8 +188,6 @@ def filter_triplets_to_source(
 __all__ = [
     "Triplet",
     "clean_triplets",
-    "dedupe_one_way_triplets",
     "filter_triplets_to_source",
-    "normalize_graph_write_scope",
-    "normalize_relation_label",
+    "resolve_indexing_graph_scope",
 ]

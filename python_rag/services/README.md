@@ -91,7 +91,7 @@ Its job is mainly retrieval orchestration and translating between HTTP requests 
 | `adapters/` | Qdrant/Neo4j reads, external/local reranking, and Temporal client calls |
 | `application/` | Query and graph-read use cases plus composition helpers |
 | `application/query/` | Scope, rewrite, vector/lexical retrieval, recovery, hit fusion, ranking, reranking, context, generation, and output safety stages |
-| `domain/` | Ports, errors, and shared-contract compatibility aliases |
+| `domain/` | Bridge-owned ports and application errors |
 | `http/` | FastAPI schemas, dependencies, and transport composition |
 | `http/errors/` | Stable JSON exception translation |
 | `http/middleware/` | Request-ID propagation and request logging |

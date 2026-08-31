@@ -5,6 +5,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from hawki_rag_text.safety import strip_control_characters
+
 _CONTEXT_STRIP_TOKENS = (
     "<<SYS>>",
     "<<SYSTEM>>",
@@ -114,11 +116,7 @@ def prepare_context_summaries(
 def sanitize_context_text(value: object) -> str:
     """Remove control and prompt-marker text from untrusted evidence."""
 
-    cleaned = "".join(
-        character
-        for character in str(value or "")
-        if character in "\n\r\t" or ord(character) >= 32
-    )
+    cleaned = strip_control_characters(str(value or ""))
     for token in _CONTEXT_STRIP_TOKENS:
         cleaned = cleaned.replace(token, "")
     cleaned = re.sub(r"(?i)prompt injection:", "", cleaned)

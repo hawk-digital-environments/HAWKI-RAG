@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import inspect
 import logging
 import signal
 import threading
@@ -9,6 +8,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from hawki_indexer_worker.domain.graph import filter_triplets_to_source
+from hawki_indexer_worker.domain.ports import GraphWriterPort
 from hawki_indexer_worker.indexing.graph_documents import prepare_graph_document
 from hawki_indexer_worker.indexing.graph_settings import (
     GraphIngestSettings,
@@ -94,7 +94,7 @@ def build_triplets_by_doc(
     rag_service: Any,
     provider: Any | None,
     *,
-    graph: Any | None = None,
+    graph: GraphWriterPort | None = None,
     neo4j_database: str | None = None,
     dataset_id: str | None = None,
     neo4j_namespace: str | None = None,
@@ -305,18 +305,12 @@ def build_triplets_by_doc(
                 for delete_doc_id in sorted(delete_doc_ids):
                     if not delete_doc_id:
                         continue
-                    if hasattr(graph, "delete_by_doc_id"):
-                        graph.delete_by_doc_id(
-                            delete_doc_id,
-                            request_id=f"{request_id}:replace_graph:{delete_doc_id}"
-                            if request_id
-                            else None,
-                        )
-                    else:
-                        logger.warning(
-                            "graph:neo4j replace skipped; graph has no delete_by_doc_id doc=%s",
-                            delete_doc_id,
-                        )
+                    graph.delete_by_doc_id(
+                        delete_doc_id,
+                        request_id=f"{request_id}:replace_graph:{delete_doc_id}"
+                        if request_id
+                        else None,
+                    )
                 perf_log(
                     "perf:graph pipeline.ingest_logic._build_triplets_by_doc doc=%s step=neo4j_delete replaced_docs=%s ms=%.2f",
                     doc_id,
@@ -378,7 +372,7 @@ def build_triplets_by_doc(
 
 
 def _upsert_scoped_triplets(
-    graph: Any,
+    graph: GraphWriterPort,
     triplets: list[tuple[str, str, str]],
     *,
     doc_id: str,
@@ -386,7 +380,7 @@ def _upsert_scoped_triplets(
     dataset_id: str | None,
     neo4j_namespace: str | None,
 ) -> None:
-    """Forward write scope while retaining compatibility with legacy graph doubles."""
+    """Write triplets only when the trusted dataset graph scope is complete."""
 
     if not str(dataset_id or "").strip() or not str(neo4j_namespace or "").strip():
         logger.warning(
@@ -394,18 +388,10 @@ def _upsert_scoped_triplets(
             doc_id,
         )
         return
-    upsert = graph.upsert_triplets
-    try:
-        parameters = inspect.signature(upsert).parameters.values()
-    except (TypeError, ValueError):
-        parameters = ()
-    names = {parameter.name for parameter in parameters}
-    accepts_kwargs = any(
-        parameter.kind is inspect.Parameter.VAR_KEYWORD for parameter in parameters
+    graph.upsert_triplets(
+        triplets,
+        doc_id=doc_id,
+        request_id=request_id,
+        dataset_id=str(dataset_id),
+        neo4j_namespace=str(neo4j_namespace),
     )
-    kwargs: dict[str, Any] = {"doc_id": doc_id, "request_id": request_id}
-    if accepts_kwargs or "dataset_id" in names:
-        kwargs["dataset_id"] = dataset_id
-    if accepts_kwargs or "neo4j_namespace" in names:
-        kwargs["neo4j_namespace"] = neo4j_namespace
-    upsert(triplets, **kwargs)

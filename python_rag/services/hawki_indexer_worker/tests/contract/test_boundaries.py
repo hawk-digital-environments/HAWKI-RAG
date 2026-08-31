@@ -65,13 +65,21 @@ def test_production_imports_never_cross_legacy_or_service_boundaries() -> None:
     assert violations == []
 
 
-def test_indexing_application_depends_on_ports_not_store_packages() -> None:
+def test_indexing_application_uses_only_canonical_graph_store_primitives() -> None:
     forbidden_roots = {"hawki_vector_store", "hawki_graph_store"}
+    allowed = {
+        SOURCE / "domain" / "graph.py": {
+            "hawki_graph_store",
+            "hawki_graph_store.contracts",
+        },
+    }
     violations: list[str] = []
     for layer in (SOURCE / "indexing", SOURCE / "domain"):
         for path in sorted(layer.rglob("*.py")):
             for line, name in _imports(path):
-                if name.split(".", 1)[0] in forbidden_roots:
+                if name.split(".", 1)[0] in forbidden_roots and name not in allowed.get(
+                    path, set()
+                ):
                     violations.append(f"{path}:{line}: {name}")
     assert violations == []
 
@@ -97,10 +105,20 @@ def test_temporal_activity_module_contains_only_transport_wrappers() -> None:
 
 def test_indexer_store_packages_are_visible_only_to_database_adapters() -> None:
     allowed = {
-        SOURCE / "adapters" / "qdrant_writer.py": {"hawki_vector_store"},
-        SOURCE / "adapters" / "neo4j_writer.py": {"hawki_graph_store", "neo4j"},
-        SOURCE / "adapters" / "neo4j_cleanup.py": {"neo4j"},
-        SOURCE / "indexing" / "graph_cleanup.py": {"neo4j"},
+        SOURCE / "adapters" / "qdrant_writer.py": {"hawki_vector_store.client"},
+        SOURCE / "adapters" / "neo4j_writer.py": {"hawki_graph_store.graph"},
+        SOURCE / "adapters" / "neo4j_cleanup.py": {"neo4j", "neo4j.exceptions"},
+        SOURCE / "adapters" / "raganything" / "edge_parser.py": {
+            "hawki_graph_store.normalization"
+        },
+        SOURCE / "adapters" / "raganything" / "fallback_parser.py": {
+            "hawki_graph_store.normalization"
+        },
+        SOURCE / "domain" / "graph.py": {
+            "hawki_graph_store",
+            "hawki_graph_store.contracts",
+        },
+        SOURCE / "indexing" / "graph_cleanup.py": {"neo4j.exceptions"},
     }
     violations: list[str] = []
     for path in sorted(SOURCE.rglob("*.py")):
@@ -108,7 +126,7 @@ def test_indexer_store_packages_are_visible_only_to_database_adapters() -> None:
             root = name.split(".", 1)[0]
             if root not in {"hawki_vector_store", "hawki_graph_store", "neo4j"}:
                 continue
-            if root not in allowed.get(path, set()):
+            if name not in allowed.get(path, set()):
                 violations.append(f"{path}:{line}: {name}")
     assert violations == []
 

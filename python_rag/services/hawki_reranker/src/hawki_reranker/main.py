@@ -5,10 +5,14 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from fastapi import FastAPI
+from hawki_rag_contracts.retrieval.rerank import (
+    RerankRequest,
+    RerankResponse,
+    RerankResult,
+)
 
 from hawki_reranker.errors import InvalidRerankRequest
 from hawki_reranker.model import LazyCrossEncoder, RerankingModel
-from hawki_reranker.schemas import RerankRequest, RerankResponse, RerankResult
 from hawki_reranker.settings import RerankerSettings, load_settings
 
 

@@ -95,6 +95,20 @@ def test_bridge_application_depends_on_storage_ports_not_store_packages() -> Non
     assert violations == []
 
 
+def test_bridge_domain_models_reexport_canonical_contracts() -> None:
+    from hawki_bridge.domain.models import (
+        AuthorizedQueryScope as BridgeAuthorizedQueryScope,
+        QueryHit as BridgeQueryHit,
+        QueryResponse as BridgeQueryResponse,
+    )
+    from hawki_rag_contracts.retrieval.auth_scope import AuthorizedQueryScope
+    from hawki_rag_contracts.retrieval.query import QueryHit, QueryResponse
+
+    assert BridgeAuthorizedQueryScope is AuthorizedQueryScope
+    assert BridgeQueryHit is QueryHit
+    assert BridgeQueryResponse is QueryResponse
+
+
 def test_bridge_application_has_no_http_adapter_or_private_package_imports() -> None:
     forbidden_roots = {"fastapi", "starlette"}
     violations: list[str] = []

@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
-import hashlib
 import re
-from typing import Any, Protocol
+from typing import Any
 
 from hawki_rag_contracts.pipeline.artifacts import ArtifactReference
 from hawki_rag_contracts.pipeline.status import (
@@ -21,17 +20,11 @@ from hawki_rag_contracts.pipeline.status import (
 from hawki_rag_contracts.pipeline.temporal import SCRAPE_SOURCE_ACTIVITY
 from hawki_observability.redaction import sanitize_for_log
 from hawki_pipeline_callbacks import (
+    CallbackSender,
     LaravelCallbackClient,
     LaravelCallbackSettings,
+    deterministic_event_id,
 )
-
-
-class CallbackSender(Protocol):
-    """Small callback-client surface used by this adapter."""
-
-    def send(self, event: Mapping[str, Any]) -> dict[str, Any]: ...
-
-    def close(self) -> None: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -187,16 +180,14 @@ class ScraperStatusReporter:
 
 
 def _event_id(execution: ActivityExecution, status: PipelineStageStatus) -> str:
-    raw = "|".join(
-        (
-            execution.workflow_id,
-            execution.run_id,
-            execution.temporal_activity_id,
-            str(execution.attempt),
-            status.value,
-        )
+    return deterministic_event_id(
+        workflow_id=execution.workflow_id,
+        run_id=execution.run_id,
+        activity_id=execution.temporal_activity_id,
+        attempt=execution.attempt,
+        status=status.value,
+        prefix="scraper.",
     )
-    return f"scraper.{hashlib.sha256(raw.encode('utf-8')).hexdigest()}"
 
 
 def _required_identity(payload: dict[str, Any], key: str) -> str:

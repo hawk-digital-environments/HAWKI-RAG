@@ -23,20 +23,32 @@ class IngestCharacterizationTests(unittest.TestCase):
             def __init__(self) -> None:
                 self.collection = "default_collection"
 
+            def set_collection(self, collection: str) -> None:
+                self.collection = collection
+
         class FakeGraph:
             def __init__(self) -> None:
                 self.upserts: list[dict[str, object]] = []
                 self.closed = False
+                self.neo4j_namespace: str | None = None
 
             def upsert_triplets(
                 self,
                 triplets: list[tuple[str, str, str]],
                 *,
-                doc_id: str | None = None,
-                request_id: str | None = None,
+                doc_id: str,
+                request_id: str | None,
+                dataset_id: str,
+                neo4j_namespace: str,
             ) -> None:
                 self.upserts.append(
-                    {"triplets": triplets, "doc_id": doc_id, "request_id": request_id}
+                    {
+                        "triplets": triplets,
+                        "doc_id": doc_id,
+                        "request_id": request_id,
+                        "dataset_id": dataset_id,
+                        "neo4j_namespace": neo4j_namespace,
+                    }
                 )
 
             def close(self) -> None:
@@ -91,8 +103,16 @@ class IngestCharacterizationTests(unittest.TestCase):
             graph_doc_max_chunks=0,
         )
 
-        def graph_factory(database: str | None = None) -> FakeGraph:
+        def graph_factory(
+            *,
+            database: str | None = None,
+            dataset_id: str | None = None,
+            neo4j_namespace: str | None = None,
+        ) -> FakeGraph:
             calls["graph_database"] = database
+            calls["graph_dataset_id"] = dataset_id
+            calls["graph_namespace"] = neo4j_namespace
+            graph.neo4j_namespace = neo4j_namespace
             return graph
 
         def get_provider(name: str) -> object:
@@ -119,6 +139,8 @@ class IngestCharacterizationTests(unittest.TestCase):
         self.assertEqual(result["summary"]["qdrant_preview"]["collection"], "toy_docs")
         self.assertEqual(calls["providers"], ["fake"])
         self.assertEqual(calls["graph_database"], "toy-graph")
+        self.assertEqual(calls["graph_dataset_id"], "dataset-toy")
+        self.assertEqual(calls["graph_namespace"], "toy-graph")
         self.assertTrue(graph.closed)
         self.assertEqual(graph.upserts[0]["doc_id"], "toy-doc")
         self.assertEqual(graph.upserts[0]["request_id"], "job-toy")

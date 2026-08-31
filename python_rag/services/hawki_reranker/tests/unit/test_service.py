@@ -5,9 +5,11 @@ from __future__ import annotations
 from typing import Any
 
 from hawki_rag_contracts.retrieval.rerank import RerankRequest as ContractRerankRequest
-from hawki_reranker.main import create_app
+from hawki_reranker import main
 from hawki_reranker.schemas import RerankRequest as ServiceRerankRequest
 from hawki_reranker.settings import RerankerSettings
+
+create_app = main.create_app
 
 
 class FakeModel:
@@ -22,6 +24,7 @@ class FakeModel:
 
 def test_service_reexports_the_canonical_reranker_contract() -> None:
     assert ServiceRerankRequest is ContractRerankRequest
+    assert main.RerankRequest is ContractRerankRequest
 
 
 def test_health_does_not_invoke_the_model(

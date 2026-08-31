@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 import os
 import re
-from typing import Any
+from typing import Any, Protocol, cast
 from urllib.parse import urlsplit
 
 import requests
@@ -22,8 +22,25 @@ class LiteLLMConfigurationError(ValueError):
     """Raised when the LiteLLM provider configuration is unusable."""
 
 
-def _requests_module() -> Any:
-    return requests
+class _LiteLLMHTTPResponse(Protocol):
+    """Response surface consumed from the injected HTTP client."""
+
+    status_code: int
+
+    def json(self) -> object: ...
+
+
+class _LiteLLMHTTPClient(Protocol):
+    """HTTP operation required by the LiteLLM adapter."""
+
+    def post(
+        self,
+        url: str,
+        *,
+        json: dict[str, Any],
+        headers: dict[str, str],
+        timeout: float,
+    ) -> _LiteLLMHTTPResponse: ...
 
 
 def _required_setting(name: str, default: str) -> str:
@@ -200,7 +217,10 @@ def _chat_content(payload: object) -> str | None:
 class LiteLLMProvider:
     """Provide HAWKI's model interface through a LiteLLM proxy."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, http_client: _LiteLLMHTTPClient | None = None) -> None:
+        self._http_client = (
+            cast(_LiteLLMHTTPClient, requests) if http_client is None else http_client
+        )
         self.base = _normalize_base_url(
             _required_setting("LITELLM_API_URL", _DEFAULT_BASE_URL)
         )
@@ -377,9 +397,6 @@ class LiteLLMProvider:
         timeout: float,
         operation: str,
     ) -> dict[str, Any]:
-        requests_module = _requests_module()
-        request_error = requests_module.exceptions.RequestException
-        timeout_error = requests_module.exceptions.Timeout
         headers = {
             "Accept": "application/json",
             "Content-Type": "application/json",
@@ -388,18 +405,18 @@ class LiteLLMProvider:
             headers["Authorization"] = f"Bearer {self.key}"
 
         try:
-            response = requests_module.post(
+            response = self._http_client.post(
                 f"{self.base}/{endpoint.lstrip('/')}",
                 json=payload,
                 headers=headers,
                 timeout=timeout,
             )
-        except timeout_error as exc:
+        except requests.Timeout as exc:
             detail = self._safe_detail(exc)
             raise RuntimeError(
                 f"LiteLLM {operation} request timed out: {detail}"
             ) from exc
-        except request_error as exc:
+        except requests.RequestException as exc:
             detail = self._safe_detail(exc)
             raise RuntimeError(f"LiteLLM {operation} request failed: {detail}") from exc
 

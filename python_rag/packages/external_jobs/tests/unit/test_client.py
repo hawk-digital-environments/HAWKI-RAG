@@ -3,10 +3,26 @@ from __future__ import annotations
 import unittest
 from unittest.mock import Mock
 
-from hawki_external_jobs import ExternalJobClient
+from hawki_external_jobs import ExternalJobClient, normalize_external_job_status
 
 
 class ExternalJobClientTests(unittest.TestCase):
+    def test_normalize_external_job_status_preserves_shared_vocabulary(self) -> None:
+        for status in (
+            "completed",
+            "complete",
+            "succeeded",
+            "success",
+            "done",
+            "ready",
+        ):
+            self.assertEqual(normalize_external_job_status(status), "success")
+        for status in ("failed", "error", "timeout", "cancelled", "canceled"):
+            self.assertEqual(normalize_external_job_status(status), "failed")
+
+        self.assertEqual(normalize_external_job_status(None), "running")
+        self.assertEqual(normalize_external_job_status(" Queued "), "queued")
+
     def test_resume_polls_existing_job_without_submitting_duplicate(self) -> None:
         client = ExternalJobClient(
             base_url="http://scraper.test",

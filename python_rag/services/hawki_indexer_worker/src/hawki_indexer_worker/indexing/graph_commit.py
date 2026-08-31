@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-import inspect
 import logging
 import time
-from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
-from hawki_indexer_worker.domain.graph import normalize_graph_write_scope
+from hawki_indexer_worker.domain.graph import resolve_indexing_graph_scope
+from hawki_indexer_worker.domain.ports import GraphWriterFactory
 from hawki_indexer_worker.indexing.graph_prepare import build_triplets_by_doc
 from hawki_indexer_worker.indexing.graph_cleanup import close_graph_safely
 from hawki_indexer_worker.indexing.graph_settings import GraphIngestSettings
@@ -37,7 +36,7 @@ def commit_graph_triplets(
     doc_stats: dict[str, Any],
     rag_service: Any,
     provider: Any | None,
-    graph_factory: Callable[..., Any],
+    graph_factory: GraphWriterFactory,
     job_id: str | None,
     operation_id: str | None,
     graph_debug: bool,
@@ -50,7 +49,7 @@ def commit_graph_triplets(
     neo4j_database = _optional_string(getattr(body, "neo4j_database", None))
     requested_dataset_id = _optional_string(getattr(body, "dataset_id", None))
     requested_namespace = _optional_string(getattr(body, "neo4j_namespace", None))
-    write_scope = normalize_graph_write_scope(
+    write_scope = resolve_indexing_graph_scope(
         requested_dataset_id,
         requested_namespace,
     )
@@ -60,16 +59,15 @@ def commit_graph_triplets(
             requested_dataset_id or "-",
             requested_namespace or "-",
         )
-    dataset_id = write_scope[0] if write_scope else None
-    neo4j_namespace = write_scope[1] if write_scope else None
+    dataset_id = write_scope.dataset_id if write_scope else None
+    neo4j_namespace = write_scope.neo4j_namespace if write_scope else None
     if write_scope is not None:
         validate_and_stamp_chunk_scope(
             chunk_records,
-            dataset_id=write_scope[0],
-            neo4j_namespace=write_scope[1],
+            dataset_id=write_scope.dataset_id,
+            neo4j_namespace=write_scope.neo4j_namespace,
         )
-    graph = _create_graph(
-        graph_factory,
+    graph = graph_factory(
         database=neo4j_database,
         dataset_id=dataset_id,
         neo4j_namespace=neo4j_namespace,
@@ -156,41 +154,6 @@ def validate_and_stamp_chunk_scope(
                 )
         payload["dataset_id"] = dataset_id
         payload["neo4j_namespace"] = neo4j_namespace
-
-
-def _create_graph(
-    graph_factory: Callable[..., Any],
-    *,
-    database: str | None,
-    dataset_id: str | None,
-    neo4j_namespace: str | None,
-) -> Any:
-    """Pass logical scope where supported without breaking legacy test factories."""
-
-    try:
-        parameters = inspect.signature(graph_factory).parameters.values()
-    except (TypeError, ValueError):
-        parameters = ()
-    parameter_by_name = {parameter.name: parameter for parameter in parameters}
-    names = set(parameter_by_name)
-    accepts_kwargs = any(
-        parameter.kind is inspect.Parameter.VAR_KEYWORD for parameter in parameters
-    )
-    kwargs: dict[str, str | None] = {}
-    if accepts_kwargs or "dataset_id" in names:
-        kwargs["dataset_id"] = dataset_id
-    if accepts_kwargs or "neo4j_namespace" in names:
-        kwargs["neo4j_namespace"] = neo4j_namespace
-    database_parameter = parameter_by_name.get("database")
-    if accepts_kwargs or (
-        database_parameter is not None
-        and database_parameter.kind is not inspect.Parameter.POSITIONAL_ONLY
-    ):
-        kwargs["database"] = database
-        return graph_factory(**kwargs)
-    if database is not None:
-        return graph_factory(database, **kwargs)
-    return graph_factory(**kwargs)
 
 
 def _record_graph_failures(

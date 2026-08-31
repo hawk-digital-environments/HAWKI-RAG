@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping, Sequence
-from inspect import signature
+from collections.abc import Mapping
 import logging
-from typing import NotRequired, Protocol, TypedDict, cast, runtime_checkable
+from typing import NotRequired, TypedDict, cast
 
+from hawki_indexer_worker.domain.ports import (
+    GraphWriterFactory,
+    VectorWriterFactory,
+    VectorWriterPort,
+)
 from hawki_indexer_worker.indexing.graph_cleanup import close_graph_safely
 
 logger = logging.getLogger(__name__)
@@ -44,81 +48,14 @@ class _Neo4jDeletePayload(TypedDict):
     result: NotRequired[object]
 
 
-class QdrantDeletionStore(Protocol):
-    """Required Qdrant operation for deleting one document."""
-
-    def delete_by_doc_id(
-        self,
-        doc_id: str,
-        *,
-        idempotency_key: str | None = None,
-    ) -> object:
-        """Delete all vector points belonging to ``doc_id``."""
-
-
-class Neo4jDeletionStore(Protocol):
-    """Required Neo4j operations for deleting one document."""
-
-    def delete_by_doc_id(
-        self,
-        doc_id: str,
-        *,
-        request_id: str | None = None,
-    ) -> object:
-        """Delete graph facts belonging to ``doc_id``."""
-
-    def close(self) -> None:
-        """Release graph driver resources."""
-
-
-@runtime_checkable
-class _CollectionSetter(Protocol):
-    def set_collection(self, collection: str) -> None:
-        """Select the Qdrant collection used by subsequent operations."""
-
-
-@runtime_checkable
-class _QdrantPointCounter(Protocol):
-    def count_points_by_doc_id(self, doc_id: str, **kwargs: object) -> object:
-        """Return the number of points currently stored for ``doc_id``."""
-
-
-@runtime_checkable
-class _QdrantPayloadFinder(Protocol):
-    def find_points_by_payload(
-        self,
-        filters: Mapping[str, object],
-        *,
-        limit: int = 1,
-    ) -> Sequence[object]:
-        """Return points matching a payload filter."""
-
-
-VectorDeletionFactory = Callable[[], QdrantDeletionStore]
-GraphDeletionFactory = Callable[..., Neo4jDeletionStore]
-
-
-def _method_supports_kwarg(target: object, method_name: str, kwarg: str) -> bool:
-    method = getattr(target, method_name, None)
-    if not callable(method):
-        return False
-    try:
-        params = signature(method).parameters.values()
-    except (TypeError, ValueError):
-        return False
-    return any(
-        param.name == kwarg or param.kind == param.VAR_KEYWORD for param in params
-    )
-
-
 def delete_document_entries(
     doc_id: str,
     *,
     idempotency_key: str | None = None,
     collection: str | None = None,
     neo4j_namespace: str | None = None,
-    vector_writer_factory: VectorDeletionFactory,
-    graph_writer_factory: GraphDeletionFactory,
+    vector_writer_factory: VectorWriterFactory,
+    graph_writer_factory: GraphWriterFactory,
 ) -> DocumentDeletionResult:
     normalized_doc_id = str(doc_id or "").strip()
     normalized_collection = _string_value(collection)
@@ -139,28 +76,24 @@ def delete_document_entries(
         return {"qdrant": qdrant_result, "neo4j": neo4j_result}
 
     qdrant = vector_writer_factory()
-    _apply_collection_scope(qdrant, normalized_collection)
-    qdrant_collection = normalized_collection or _string_value(
-        getattr(qdrant, "collection", None)
-    )
+    if normalized_collection:
+        qdrant.set_collection(normalized_collection)
+    qdrant_collection = normalized_collection or _string_value(qdrant.collection)
     deleted_points = _count_qdrant_points(qdrant, normalized_doc_id, qdrant_collection)
-    if _method_supports_kwarg(qdrant, "delete_by_doc_id", "idempotency_key"):
-        raw_qdrant_result = qdrant.delete_by_doc_id(
-            normalized_doc_id,
-            idempotency_key=idempotency_key,
-        )
-    else:
-        raw_qdrant_result = qdrant.delete_by_doc_id(normalized_doc_id)
+    raw_qdrant_result = qdrant.delete_by_doc_id(
+        normalized_doc_id,
+        idempotency_key=idempotency_key,
+    )
 
-    graph = _instantiate_graph(graph_writer_factory, normalized_namespace)
-    graph_namespace = normalized_namespace or _graph_namespace(graph)
+    graph = graph_writer_factory(
+        database=None,
+        dataset_id=None,
+        neo4j_namespace=normalized_namespace,
+    )
     try:
-        if _method_supports_kwarg(graph, "delete_by_doc_id", "request_id"):
-            raw_neo4j_result = graph.delete_by_doc_id(
-                normalized_doc_id, request_id=idempotency_key
-            )
-        else:
-            raw_neo4j_result = graph.delete_by_doc_id(normalized_doc_id)
+        raw_neo4j_result = graph.delete_by_doc_id(
+            normalized_doc_id, request_id=idempotency_key
+        )
     finally:
         close_graph_safely(graph, logger_obj=logger, operation="delete_document")
 
@@ -173,7 +106,7 @@ def delete_document_entries(
     neo4j_payload = _neo4j_delete_payload(raw_neo4j_result)
     neo4j_result: Neo4jDeletionSummary = {
         "doc_id": normalized_doc_id,
-        "namespace": graph_namespace,
+        "namespace": normalized_namespace,
         "relationships_deleted": neo4j_payload["relationships_deleted"],
         "entities_deleted": neo4j_payload["entities_deleted"],
     }
@@ -193,67 +126,20 @@ def _string_value(value: object) -> str | None:
     return None
 
 
-def _apply_collection_scope(
-    qdrant: QdrantDeletionStore, collection: str | None
-) -> None:
-    if not collection:
-        return
-    if isinstance(qdrant, _CollectionSetter):
-        qdrant.set_collection(collection)
-        return
-    if hasattr(qdrant, "collection"):
-        setattr(qdrant, "collection", collection)
-
-
-def _factory_supports_kwarg(factory: Callable[..., object], kwarg: str) -> bool:
-    try:
-        params = signature(factory).parameters.values()
-    except (TypeError, ValueError):
-        return False
-    return any(
-        param.name == kwarg or param.kind == param.VAR_KEYWORD for param in params
-    )
-
-
-def _instantiate_graph(
-    graph_factory: GraphDeletionFactory,
-    namespace: str | None,
-) -> Neo4jDeletionStore:
-    if namespace and _factory_supports_kwarg(graph_factory, "neo4j_namespace"):
-        return graph_factory(neo4j_namespace=namespace)
-    return graph_factory()
-
-
-def _graph_namespace(graph: Neo4jDeletionStore) -> str | None:
-    return _string_value(getattr(graph, "_neo4j_namespace", None))
-
-
 def _count_qdrant_points(
-    qdrant: QdrantDeletionStore,
+    qdrant: VectorWriterPort,
     doc_id: str,
     collection: str | None,
 ) -> int | None:
-    if isinstance(qdrant, _QdrantPointCounter):
-        count_kwargs: dict[str, object] = {}
-        if collection and _method_supports_kwarg(
-            qdrant, "count_points_by_doc_id", "collection"
-        ):
-            count_kwargs["collection"] = collection
-        if _method_supports_kwarg(qdrant, "count_points_by_doc_id", "exact"):
-            count_kwargs["exact"] = True
-        try:
-            count = qdrant.count_points_by_doc_id(doc_id, **count_kwargs)
-        except Exception:
-            return None
-        return _optional_count(count)
-
-    if isinstance(qdrant, _QdrantPayloadFinder):
-        try:
-            return len(qdrant.find_points_by_payload({"doc_id": doc_id}, limit=100000))
-        except Exception:
-            return None
-
-    return None
+    try:
+        count = qdrant.count_points_by_doc_id(
+            doc_id,
+            collection=collection,
+            exact=True,
+        )
+    except Exception:
+        return None
+    return _optional_count(count)
 
 
 def _deleted_points(count: int | None, result: object) -> int | None:
@@ -315,7 +201,5 @@ def _count_or_zero(value: object) -> int:
 
 __all__ = [
     "DocumentDeletionResult",
-    "Neo4jDeletionStore",
-    "QdrantDeletionStore",
     "delete_document_entries",
 ]

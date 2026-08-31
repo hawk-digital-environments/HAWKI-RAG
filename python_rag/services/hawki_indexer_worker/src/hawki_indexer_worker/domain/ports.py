@@ -52,10 +52,21 @@ class GraphWriterPort(Protocol):
     """Graph persistence operations required by indexing workflows."""
 
     def upsert_triplets(
-        self, triplets: list[tuple[str, str, str]], **kwargs: Any
+        self,
+        triplets: list[tuple[str, str, str]],
+        *,
+        doc_id: str,
+        request_id: str | None,
+        dataset_id: str,
+        neo4j_namespace: str,
     ) -> object: ...
 
-    def delete_by_doc_id(self, doc_id: str, **kwargs: Any) -> object: ...
+    def delete_by_doc_id(
+        self,
+        doc_id: str,
+        *,
+        request_id: str | None = None,
+    ) -> object: ...
 
     def close(self) -> None: ...
 
@@ -72,21 +83,33 @@ class PageStatePort(Protocol):
     def mark_seen(self, records: list[Any]) -> None: ...
 
 
-GraphWriter = GraphWriterPort
-VectorWriter = VectorWriterPort
-GraphWriterFactory = Callable[..., GraphWriterPort]
-VectorWriterFactory = Callable[[], VectorWriterPort]
+class GraphWriterFactory(Protocol):
+    """Construct one graph writer with explicit physical and logical scope."""
+
+    def __call__(
+        self,
+        *,
+        database: str | None = None,
+        dataset_id: str | None = None,
+        neo4j_namespace: str | None = None,
+    ) -> GraphWriterPort: ...
+
+
+class VectorWriterFactory(Protocol):
+    """Construct one vector writer for an indexing operation."""
+
+    def __call__(self) -> VectorWriterPort: ...
+
+
 PageStateFactory = Callable[[VectorWriterPort], PageStatePort | None]
 
 
 __all__ = [
     "EmbeddingProvider",
-    "GraphWriter",
     "GraphWriterFactory",
     "GraphWriterPort",
     "PageStateFactory",
     "PageStatePort",
-    "VectorWriter",
     "VectorWriterFactory",
     "VectorWriterPort",
 ]

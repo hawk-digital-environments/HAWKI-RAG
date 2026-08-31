@@ -15,18 +15,11 @@ class _FakeResponse:
     def json(self) -> dict[str, object]:
         return {"message": {"content": "caption"}}
 
+    def raise_for_status(self) -> None:
+        return None
+
 
 class _FakeRequests:
-    class exceptions:
-        class HTTPError(Exception):
-            pass
-
-        class RequestException(Exception):
-            pass
-
-        class Timeout(RequestException):
-            pass
-
     def __init__(self) -> None:
         self.posts: list[dict[str, object]] = []
 
@@ -37,28 +30,86 @@ class _FakeRequests:
         return _FakeResponse()
 
 
+class _FallbackResponse:
+    text = ""
+
+    def __init__(self, status_code: int, payload: dict[str, object]) -> None:
+        self.status_code = status_code
+        self.payload = payload
+        self.ok = 200 <= status_code < 300
+
+    def json(self) -> dict[str, object]:
+        return self.payload
+
+    def raise_for_status(self) -> None:
+        return None
+
+
+class _FallbackRequests:
+    def __init__(self, responses: list[_FallbackResponse]) -> None:
+        self.responses = list(responses)
+        self.posts: list[dict[str, object]] = []
+
+    def post(
+        self, url: str, *, json: dict[str, object], timeout: float
+    ) -> _FallbackResponse:
+        self.posts.append({"url": url, "json": json, "timeout": timeout})
+        return self.responses.pop(0)
+
+
 class OllamaVisionTests(unittest.TestCase):
+    def test_chat_preserves_legacy_generate_endpoint_fallback_order(self) -> None:
+        from hawki_model_providers.ollama import OllamaProvider
+
+        fake_requests = _FallbackRequests(
+            [
+                _FallbackResponse(404, {"error": "route not found"}),
+                _FallbackResponse(404, {"error": "route not found"}),
+                _FallbackResponse(200, {"response": "legacy answer"}),
+            ]
+        )
+
+        with patch.dict(
+            os.environ,
+            {
+                "OLLAMA_API_URL": "http://ollama:11434/api",
+                "OLLAMA_CHAT_RETRIES": "0",
+                "OLLAMA_CHAT_BACKOFF": "0",
+            },
+            clear=False,
+        ):
+            provider = OllamaProvider(http_client=fake_requests)
+            provider.rag_model = "chat-test"
+            answer = provider.chat(
+                "Use the supplied context.",
+                [{"role": "user", "content": "Question"}],
+            )
+
+        self.assertEqual(answer, "legacy answer")
+        self.assertEqual(
+            [request["url"] for request in fake_requests.posts],
+            [
+                "http://ollama:11434/api/chat",
+                "http://ollama:11434/api/generate",
+                "http://ollama:11434/generate",
+            ],
+        )
+
     def test_ollama_provider_sends_image_data_to_configured_vision_model(self) -> None:
         from hawki_model_providers.ollama import OllamaProvider
 
         fake_requests = _FakeRequests()
 
-        with (
-            patch.dict(
-                os.environ,
-                {
-                    "OLLAMA_API_URL": "http://ollama:11434/api",
-                    "OLLAMA_CHAT_RETRIES": "0",
-                    "OLLAMA_CHAT_TIMEOUT": "12",
-                },
-                clear=False,
-            ),
-            patch(
-                "hawki_model_providers.ollama._requests_module",
-                return_value=fake_requests,
-            ),
+        with patch.dict(
+            os.environ,
+            {
+                "OLLAMA_API_URL": "http://ollama:11434/api",
+                "OLLAMA_CHAT_RETRIES": "0",
+                "OLLAMA_CHAT_TIMEOUT": "12",
+            },
+            clear=False,
         ):
-            provider = OllamaProvider()
+            provider = OllamaProvider(http_client=fake_requests)
             provider.vision_model = "vision-test"
             response = provider.vision_chat(
                 "system prompt",
@@ -97,18 +148,12 @@ class OllamaVisionTests(unittest.TestCase):
             },
         ]
 
-        with (
-            patch.dict(
-                os.environ,
-                {"OLLAMA_CHAT_RETRIES": "0"},
-                clear=False,
-            ),
-            patch(
-                "hawki_model_providers.ollama._requests_module",
-                return_value=fake_requests,
-            ),
+        with patch.dict(
+            os.environ,
+            {"OLLAMA_CHAT_RETRIES": "0"},
+            clear=False,
         ):
-            provider = OllamaProvider()
+            provider = OllamaProvider(http_client=fake_requests)
             provider.vision_model = "vision-test"
             provider.vision_chat("fallback system", "", messages=messages)
 

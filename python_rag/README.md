@@ -56,51 +56,6 @@ Production services and image roles:
 | `services/hawki_indexer_worker` | `hawki-rag-indexer-worker` | Incremental vector/graph indexing |
 | `services/hawki_reranker` | `hawki-rag-reranker` | Cohere-compatible local reranking API |
 
-The indexer and reranker support `cpu` and `gpu` dependency/image variants.
-Those are alternative builds of the same two roles, not extra services.
-The two roles are intentionally separate uv environments: MinerU uses
-Transformers 4 while the reranker uses Transformers 5. uv records both exact
-resolutions in the one lockfile and prevents installing the incompatible roles
-into the same Python environment.
-
-LightRAG remains pinned to immutable source commit
-`c5bf73dbf6139f1b03f738a2fec4e47d5e66f3ab`, which reports package version
-`1.5.5`. That commit predates and differs from the published `1.5.5` wheel, so
-the indexer builder installs this one dependency from source. All registry
-dependencies retain exact versions in `uv.lock`; this intentional source pin is
-the only exception to a literal wheel-only install.
-
-## Dependency management
-
-Install uv `0.11.26` and Python `3.13.14`, then run commands from the repository
-root:
-
-```bash
-make python-lock                 # refresh one python_rag/uv.lock and verify variants
-make python-deps USE_OLLAMA_GPU=0
-```
-
-Run Python quality checks and tests directly through uv. The canonical commands
-for deterministic tests, the isolated reranker, live integrations, model
-providers, coverage, and Ruff are in [`tests/README.md`](tests/README.md).
-
-For CUDA 13.0 use `USE_OLLAMA_GPU=1`. Production Docker builds use `uv sync
---frozen --no-dev --no-editable` against the workspace lock. Each member's
-`pyproject.toml` declares its exact direct runtime, test, and build dependencies,
-while `python_rag/uv.lock` records the complete reproducible resolution. These
-member manifests and the single workspace lockfile are the dependency source of
-truth. See the repository [purpose and directory guide](../purpose.md) for the
-current workspace boundaries and migration notes.
-
-Live tests remain opt-in and are documented separately from deterministic
-checks in [`tests/README.md`](tests/README.md).
-
-Tests are co-located with their owning workspace member under
-`packages/<member>/tests/` or `services/<member>/tests/`. The root `tests/`
-contains only end-to-end flows and their test-suite documentation. See
-[`tests/README.md`](tests/README.md) for categories, focused member commands,
-coverage, live-test selection, and the isolated reranker run.
-
 ## Local and production containers
 
 Validate the model and build all six roles:
@@ -140,8 +95,3 @@ executions drain. Tests cover both patched and pre-patch command paths. No
 captured production histories were available in this checkout, so history
 replay must still be exercised before retiring the legacy queue.
 
-A second patch marker preserves the old early-return command history for
-unsuccessful index results. New executions run the cheap `mark_source_ready`
-activity for terminal callback delivery, while the expensive indexing activity
-remains isolated from callback retries. Tests cover both sides of this patch;
-captured production histories are still required for a real Replayer gate.

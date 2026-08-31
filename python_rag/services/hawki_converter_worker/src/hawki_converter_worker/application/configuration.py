@@ -6,6 +6,7 @@ import json
 import logging
 from typing import Any
 
+from hawki_external_jobs import normalize_external_job_status
 from hawki_rag_contracts.pipeline.ingestion import IngestionStatus
 
 from hawki_converter_worker.domain.models import ConverterEndpointConfig
@@ -64,12 +65,7 @@ def should_fallback_to_direct_extract(
 def normalize_converter_status(payload: dict[str, Any]) -> IngestionStatus:
     """Normalize external converter status variants to pipeline statuses."""
 
-    status = str(payload.get("status") or "running").strip().lower()
-    if status in {"completed", "complete", "succeeded", "success", "done", "ready"}:
-        return IngestionStatus.SUCCESS
-    if status in {"failed", "error", "timeout", "cancelled", "canceled"}:
-        return IngestionStatus.FAILED
-    return IngestionStatus(status)
+    return IngestionStatus(normalize_external_job_status(payload.get("status")))
 
 
 def _load_custom_converter_profile(

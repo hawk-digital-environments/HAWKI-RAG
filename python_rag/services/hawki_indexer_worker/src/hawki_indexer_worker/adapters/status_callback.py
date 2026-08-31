@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import hashlib
+from collections.abc import Callable
 from datetime import datetime, timezone
 from typing import Any
 
@@ -20,8 +20,10 @@ from hawki_rag_contracts.pipeline.status import (
 )
 from hawki_observability.redaction import sanitize_for_log
 from hawki_pipeline_callbacks import (
+    CallbackSender,
     LaravelCallbackClient,
     LaravelCallbackSettings,
+    deterministic_event_id,
 )
 
 from hawki_indexer_worker.settings import IndexerSettings
@@ -45,17 +47,25 @@ def report_status(
     monitor_artifacts: MonitorArtifacts | None = None,
     error: Exception | None = None,
     activity_info: Any | None = None,
+    sender: CallbackSender | None = None,
+    clock: Callable[[], datetime] | None = None,
 ) -> dict[str, Any]:
     info = activity_info or activity.info()
     workflow_id = str(info.workflow_id)
     run_id = str(info.workflow_run_id)
     attempt = int(info.attempt)
-    event_key = "|".join([workflow_id, run_id, activity_id, str(attempt), status.value])
     safe_error = sanitize_for_log(error) if error is not None else None
     event = PipelineWorkerEvent(
-        event_id="evt_" + hashlib.sha256(event_key.encode("utf-8")).hexdigest(),
+        event_id=deterministic_event_id(
+            workflow_id=workflow_id,
+            run_id=run_id,
+            activity_id=activity_id,
+            attempt=attempt,
+            status=status.value,
+            prefix="evt_",
+        ),
         producer=WorkerProducer.INDEXER,
-        occurred_at=datetime.now(timezone.utc),
+        occurred_at=(clock or _utc_now)(),
         workflow_id=workflow_id,
         run_id=run_id,
         activity_id=activity_id,
@@ -92,14 +102,26 @@ def report_status(
         document_version=document_version,
         monitor_artifacts=monitor_artifacts,
     )
+    if sender is not None:
+        return sender.send(event)
+    with create_callback_sender(settings) as client:
+        return client.send(event)
+
+
+def create_callback_sender(settings: IndexerSettings) -> LaravelCallbackClient:
+    """Create a reusable sender from indexer-owned callback settings."""
+
     callback_settings = LaravelCallbackSettings(
         endpoint=settings.callback_url,
         secret=settings.callback_secret,
         timeout_seconds=settings.callback_timeout_seconds,
         retry_attempts=settings.callback_retry_attempts,
     )
-    with LaravelCallbackClient(callback_settings) as client:
-        return client.send(event)
+    return LaravelCallbackClient(callback_settings)
 
 
-__all__ = ["report_status"]
+def _utc_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+__all__ = ["create_callback_sender", "report_status"]

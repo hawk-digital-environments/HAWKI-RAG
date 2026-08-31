@@ -20,6 +20,17 @@ class CallbackEvent(Protocol):
         """Return a JSON-compatible event object."""
 
 
+class CallbackSender(Protocol):
+    """Delivery surface consumed by worker-owned event publishers."""
+
+    def send(
+        self,
+        event: CallbackEvent | Mapping[str, Any],
+    ) -> dict[str, Any]: ...
+
+    def close(self) -> None: ...
+
+
 @dataclass(frozen=True, slots=True)
 class LaravelCallbackSettings:
     endpoint: str
@@ -52,7 +63,11 @@ class LaravelCallbackClient:
         client: httpx.Client | None = None,
     ) -> None:
         self.settings = settings
-        self._client = client or httpx.Client(timeout=settings.timeout_seconds)
+        self._client = (
+            client
+            if client is not None
+            else httpx.Client(timeout=settings.timeout_seconds)
+        )
         self._owns_client = client is None
 
     def close(self) -> None:
@@ -196,6 +211,7 @@ class LaravelCallbackClient:
 
 __all__ = [
     "CallbackEvent",
+    "CallbackSender",
     "LaravelCallbackClient",
     "LaravelCallbackError",
     "LaravelCallbackSettings",

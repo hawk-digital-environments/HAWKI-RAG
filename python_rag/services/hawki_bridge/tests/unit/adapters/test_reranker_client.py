@@ -23,8 +23,22 @@ class _FakeRequests:
         self.response_payload = response_payload
         self.posts: list[dict[str, object]] = []
 
-    def post(self, url: str, **kwargs: object) -> _FakeResponse:
-        self.posts.append({"url": url, **kwargs})
+    def post(
+        self,
+        url: str,
+        *,
+        headers: dict[str, str],
+        json: dict[str, object],
+        timeout: float,
+    ) -> _FakeResponse:
+        self.posts.append(
+            {
+                "url": url,
+                "headers": headers,
+                "json": json,
+                "timeout": timeout,
+            }
+        )
         return _FakeResponse(self.response_payload)
 
 
@@ -64,19 +78,13 @@ class ExternalRerankerContractTests(unittest.TestCase):
             }
         )
 
-        with (
-            patch.dict(
-                os.environ,
-                {
-                    "RERANKER_API_URL": "http://reranker.test/v1/rerank",
-                    "RERANKER_API_KEY": "",
-                },
-                clear=False,
-            ),
-            patch(
-                "hawki_bridge.adapters.reranker_client._requests_module",
-                return_value=fake_requests,
-            ),
+        with patch.dict(
+            os.environ,
+            {
+                "RERANKER_API_URL": "http://reranker.test/v1/rerank",
+                "RERANKER_API_KEY": "",
+            },
+            clear=False,
         ):
             ranked = rerank_hits(
                 hits=_hits(),
@@ -87,6 +95,7 @@ class ExternalRerankerContractTests(unittest.TestCase):
                 top_n=2,
                 mix_mode=False,
                 mix_weight=0.5,
+                http_client=fake_requests,
             )
 
         self.assertEqual([hit["id"] for hit in ranked], ["second", "first"])
@@ -113,19 +122,13 @@ class ExternalRerankerContractTests(unittest.TestCase):
             }
         )
 
-        with (
-            patch.dict(
-                os.environ,
-                {
-                    "RERANKER_API_URL": "http://reranker.test/v1/rerank",
-                    "RERANKER_API_KEY": "",
-                },
-                clear=False,
-            ),
-            patch(
-                "hawki_bridge.adapters.reranker_client._requests_module",
-                return_value=fake_requests,
-            ),
+        with patch.dict(
+            os.environ,
+            {
+                "RERANKER_API_URL": "http://reranker.test/v1/rerank",
+                "RERANKER_API_KEY": "",
+            },
+            clear=False,
         ):
             ranked = rerank_hits(
                 hits=_hits(),
@@ -136,6 +139,7 @@ class ExternalRerankerContractTests(unittest.TestCase):
                 top_n=2,
                 mix_mode=False,
                 mix_weight=0.5,
+                http_client=fake_requests,
             )
 
         self.assertEqual([hit["id"] for hit in ranked], ["second", "first"])
@@ -164,19 +168,13 @@ class ExternalRerankerContractTests(unittest.TestCase):
             },
         ]
 
-        with (
-            patch.dict(
-                os.environ,
-                {
-                    "RERANKER_API_URL": "http://reranker.test/v1/rerank",
-                    "RERANKER_API_KEY": "",
-                },
-                clear=False,
-            ),
-            patch(
-                "hawki_bridge.adapters.reranker_client._requests_module",
-                return_value=fake_requests,
-            ),
+        with patch.dict(
+            os.environ,
+            {
+                "RERANKER_API_URL": "http://reranker.test/v1/rerank",
+                "RERANKER_API_KEY": "",
+            },
+            clear=False,
         ):
             ranked = rerank_hits(
                 hits=hits,
@@ -187,6 +185,7 @@ class ExternalRerankerContractTests(unittest.TestCase):
                 top_n=2,
                 mix_mode=True,
                 mix_weight=0.5,
+                http_client=fake_requests,
             )
 
         self.assertEqual([hit["id"] for hit in ranked], ["answer", "introduction"])

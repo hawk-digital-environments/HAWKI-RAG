@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib
+import inspect
 import tempfile
 import tomllib
 from pathlib import Path
@@ -12,6 +13,62 @@ ROOT = next(
     for parent in Path(__file__).resolve().parents
     if (parent / "uv.lock").is_file()
 )
+
+
+def test_persistence_ports_are_explicit_without_runtime_signature_dispatch() -> None:
+    from hawki_indexer_worker.domain.ports import GraphWriterPort, VectorWriterPort
+
+    graph_parameters = inspect.signature(GraphWriterPort.upsert_triplets).parameters
+    assert list(graph_parameters) == [
+        "self",
+        "triplets",
+        "doc_id",
+        "request_id",
+        "dataset_id",
+        "neo4j_namespace",
+    ]
+    assert all(
+        parameter.kind is not inspect.Parameter.VAR_KEYWORD
+        for parameter in graph_parameters.values()
+    )
+
+    vector_parameters = inspect.signature(VectorWriterPort.upsert_points).parameters
+    assert list(vector_parameters) == [
+        "self",
+        "points",
+        "batch_size",
+        "idempotency_key",
+    ]
+
+    runtime_dispatch_files = [
+        ROOT
+        / "services"
+        / "hawki_indexer_worker"
+        / "src"
+        / "hawki_indexer_worker"
+        / "indexing"
+        / name
+        for name in ("deletion.py", "graph_commit.py", "graph_prepare.py")
+    ]
+    for path in runtime_dispatch_files:
+        source = path.read_text(encoding="utf-8")
+        assert "inspect.signature" not in source
+        assert "from inspect import signature" not in source
+
+
+def test_graph_storage_normalization_has_one_canonical_owner() -> None:
+    domain_graph = (
+        ROOT
+        / "services"
+        / "hawki_indexer_worker"
+        / "src"
+        / "hawki_indexer_worker"
+        / "domain"
+        / "graph.py"
+    ).read_text(encoding="utf-8")
+
+    assert "def normalize_relation_label" not in domain_graph
+    assert "def dedupe_one_way_triplets" not in domain_graph
 
 
 def test_canonical_lightrag_doc_status_storage_import_path_resolves() -> None:

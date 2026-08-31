@@ -7,7 +7,7 @@ import time
 from typing import Any
 
 from hawki_indexer_worker.domain.errors import IndexingValidationError
-from hawki_indexer_worker.domain.graph import normalize_graph_write_scope
+from hawki_indexer_worker.domain.graph import resolve_indexing_graph_scope
 from hawki_indexer_worker.indexing.observability import pipeline_log
 from hawki_indexer_worker.indexing.chunking import prepare_documents
 from hawki_indexer_worker.indexing.deletion import (
@@ -99,10 +99,7 @@ def ingest_documents(
 
     qdrant = dependencies.vector_writer_factory()
     if body.collection:
-        if hasattr(qdrant, "set_collection"):
-            qdrant.set_collection(body.collection)
-        else:
-            qdrant.collection = body.collection
+        qdrant.set_collection(body.collection)
 
     chunk_records, doc_stats = prepare_documents(
         docs,
@@ -112,7 +109,7 @@ def ingest_documents(
         graph_debug=resolved_graph_debug,
     )
     if body.graph:
-        write_scope = normalize_graph_write_scope(
+        write_scope = resolve_indexing_graph_scope(
             getattr(body, "dataset_id", None),
             getattr(body, "neo4j_namespace", None),
         )
@@ -120,8 +117,8 @@ def ingest_documents(
             try:
                 validate_and_stamp_chunk_scope(
                     chunk_records,
-                    dataset_id=write_scope[0],
-                    neo4j_namespace=write_scope[1],
+                    dataset_id=write_scope.dataset_id,
+                    neo4j_namespace=write_scope.neo4j_namespace,
                 )
             except GraphScopeMismatchError as exc:
                 raise IndexingValidationError(str(exc)) from exc

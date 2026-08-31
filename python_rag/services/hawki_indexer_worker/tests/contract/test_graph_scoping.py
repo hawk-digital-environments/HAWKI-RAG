@@ -10,6 +10,18 @@ from types import SimpleNamespace
 class GraphWriteScopingTests(unittest.TestCase):
     """Verify Neo4j writes and deletes always carry the authorized logical namespace."""
 
+    def test_indexer_resolves_optional_policy_to_strict_graph_scope(self) -> None:
+        from hawki_graph_store.contracts import GraphScope
+        from hawki_indexer_worker.domain.graph import resolve_indexing_graph_scope
+
+        scope = resolve_indexing_graph_scope(" dataset-a ", " graph-a ")
+
+        self.assertIsInstance(scope, GraphScope)
+        assert scope is not None
+        self.assertEqual(scope.dataset_id, "dataset-a")
+        self.assertEqual(scope.neo4j_namespace, "graph-a")
+        self.assertIsNone(resolve_indexing_graph_scope("dataset-a", None))
+
     def test_incomplete_scope_never_dispatches_a_canonical_write(self) -> None:
         from hawki_graph_store.graph import Neo4jGraph
         from hawki_graph_store.requests import build_triplet_rows
@@ -122,19 +134,25 @@ class GraphWriteScopingTests(unittest.TestCase):
         self.assertIn("conflicts with trusted dataset_id", str(raised.exception))
         self.assertEqual(qdrant.vector_writes, 0)
 
-    def test_default_graph_factory_receives_physical_and_logical_scope_separately(
+    def test_default_graph_factory_accepts_positional_database_and_logical_scope(
         self,
     ) -> None:
-        from hawki_indexer_worker.indexing.graph_commit import _create_graph
+        from unittest.mock import patch
+
+        from hawki_indexer_worker.adapters.neo4j_writer import create_neo4j_writer
 
         captured: dict[str, object] = {}
 
-        def keyword_only_factory(
+        class Client:
+            def close(self) -> None:
+                return None
+
+        def create_client(
             *,
             database: str | None = None,
             dataset_id: str | None = None,
             neo4j_namespace: str | None = None,
-        ) -> object:
+        ) -> Client:
             captured.update(
                 {
                     "database": database,
@@ -142,19 +160,22 @@ class GraphWriteScopingTests(unittest.TestCase):
                     "neo4j_namespace": neo4j_namespace,
                 }
             )
-            return object()
+            return Client()
 
-        _create_graph(
-            keyword_only_factory,
-            database=None,
-            dataset_id="dataset-a",
-            neo4j_namespace="hawki_dataset_a",
-        )
+        with patch(
+            "hawki_indexer_worker.adapters.neo4j_writer.Neo4jGraph",
+            side_effect=create_client,
+        ):
+            create_neo4j_writer(
+                "physical-graph",
+                dataset_id="dataset-a",
+                neo4j_namespace="hawki_dataset_a",
+            )
 
         self.assertEqual(
             captured,
             {
-                "database": None,
+                "database": "physical-graph",
                 "dataset_id": "dataset-a",
                 "neo4j_namespace": "hawki_dataset_a",
             },

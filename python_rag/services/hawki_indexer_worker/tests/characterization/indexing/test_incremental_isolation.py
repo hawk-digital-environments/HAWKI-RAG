@@ -85,17 +85,22 @@ class IncrementalIngestTests(unittest.TestCase):
                 self,
                 *,
                 database: str | None = None,
+                dataset_id: str | None = None,
                 neo4j_namespace: str | None = None,
             ) -> None:
                 self.database = neo4j_namespace or database or "default"
+                self.dataset_id = dataset_id
+                self.neo4j_namespace = neo4j_namespace
                 graph_state.setdefault(self.database, set())
 
             def upsert_triplets(
                 self,
                 triplets: list[tuple[str, str, str]],
                 *,
-                doc_id: str | None = None,
-                request_id: str | None = None,
+                doc_id: str,
+                request_id: str | None,
+                dataset_id: str,
+                neo4j_namespace: str,
             ) -> None:
                 if doc_id:
                     graph_state[self.database].add(doc_id)
@@ -194,6 +199,9 @@ class IncrementalIngestTests(unittest.TestCase):
             graph_writer.upsert_triplets(
                 [("Student", "uploaded", str(payload["managed_document_id"]))],
                 doc_id=str(payload["doc_id"]),
+                request_id="op-student",
+                dataset_id="student-dataset",
+                neo4j_namespace="student_graph",
             )
 
         target_points_before = qdrant.count_points_by_doc_id(
