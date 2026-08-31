@@ -3,7 +3,7 @@ import math
 import os
 import random
 import time
-from typing import Any
+from typing import Any, Protocol, cast
 
 import requests
 
@@ -23,6 +23,30 @@ from hawki_model_providers.ollama_helpers import (
 logger = logging.getLogger(__name__)
 
 
+class _OllamaHTTPResponse(Protocol):
+    """Response surface consumed from the injected HTTP client."""
+
+    ok: bool
+    status_code: int
+    text: str
+
+    def json(self) -> dict[str, Any]: ...
+
+    def raise_for_status(self) -> None: ...
+
+
+class _OllamaHTTPClient(Protocol):
+    """HTTP operation required by the Ollama adapter."""
+
+    def post(
+        self,
+        url: str,
+        *,
+        json: dict[str, Any],
+        timeout: float,
+    ) -> _OllamaHTTPResponse: ...
+
+
 def _clean_ollama_image_data(value: object) -> str | None:
     raw = str(value or "").strip()
     if not raw:
@@ -38,20 +62,11 @@ def _clean_ollama_image_data(value: object) -> str | None:
     return raw
 
 
-def _requests_module() -> Any:
-    return requests
-
-
-def _request_exception_types(
-    requests_module: Any | None = None,
-) -> tuple[type[BaseException], type[BaseException], type[BaseException]]:
-    module = requests_module or _requests_module()
-    exceptions = module.exceptions
-    return exceptions.HTTPError, exceptions.RequestException, exceptions.Timeout
-
-
 class OllamaProvider:
-    def __init__(self) -> None:
+    def __init__(self, *, http_client: _OllamaHTTPClient | None = None) -> None:
+        self._http_client = (
+            cast(_OllamaHTTPClient, requests) if http_client is None else http_client
+        )
         base = os.environ.get("OLLAMA_API_URL", "http://ollama:11434/api").rstrip("/")
         self.base = base
         # Model selection is request-scoped: apply_provider_overrides injects
@@ -87,11 +102,6 @@ class OllamaProvider:
         embed_model = self._require_model("embed_model", "embedding")
         url = f"{self.base}/embeddings"
         timeout = embedding_timeout_from_env()
-        requests_module = _requests_module()
-        http_error, request_error, _timeout_error = _request_exception_types(
-            requests_module
-        )
-
         prompts = [str(text or "")]
         cleaned_prompt = self._clean_embedding_text(text)
         if cleaned_prompt != prompts[0]:
@@ -100,13 +110,13 @@ class OllamaProvider:
         last_error: RuntimeError | None = None
         for attempt_idx, prompt in enumerate(prompts, start=1):
             try:
-                r = requests_module.post(
+                r = self._http_client.post(
                     url,
                     json={"model": embed_model, "prompt": prompt},
                     timeout=timeout,
                 )
                 r.raise_for_status()
-            except http_error as exc:
+            except requests.HTTPError as exc:
                 resp = exc.response
                 status = resp.status_code if resp is not None else None
                 detail = ""
@@ -145,7 +155,7 @@ class OllamaProvider:
                 last_error = RuntimeError(
                     f"Ollama embeddings HTTP error ({status}): {message}"
                 )
-            except request_error as exc:
+            except requests.RequestException as exc:
                 last_error = RuntimeError(f"Ollama embeddings request failed: {exc}")
             else:
                 data = r.json()
@@ -186,10 +196,6 @@ class OllamaProvider:
     ) -> str:
         rag_model = self._require_model("rag_model", "chat")
         url = f"{self.base}/chat"
-        requests_module = _requests_module()
-        _http_error, request_error, timeout_error = _request_exception_types(
-            requests_module
-        )
         chat_options = chat_options_from_env(temperature)
         timeout = chat_options.timeout
         retries = chat_options.retries
@@ -214,8 +220,8 @@ class OllamaProvider:
         fallback_needed = False
         for attempt in range(1, max_attempts + 1):
             try:
-                r = requests_module.post(url, json=payload, timeout=timeout)
-            except timeout_error as exc:
+                r = self._http_client.post(url, json=payload, timeout=timeout)
+            except requests.Timeout as exc:
                 if attempt < max_attempts:
                     logger.warning(
                         "Ollama chat timed out (attempt %s/%s), retrying...",
@@ -227,7 +233,7 @@ class OllamaProvider:
                 raise RuntimeError(
                     f"Ollama chat request timed out after {max_attempts} attempt(s): {exc}"
                 ) from exc
-            except request_error as exc:
+            except requests.RequestException as exc:
                 if attempt < max_attempts:
                     logger.warning(
                         "Ollama chat request failed (attempt %s/%s): %s",
@@ -291,7 +297,7 @@ class OllamaProvider:
         last_error: str | None = None
         for candidate in candidates:
             try:
-                r2 = requests_module.post(
+                r2 = self._http_client.post(
                     candidate,
                     json={"model": rag_model, "prompt": prompt, "stream": False},
                     timeout=timeout,
@@ -306,7 +312,7 @@ class OllamaProvider:
                         "Run `ollama pull` inside the Ollama container or host."
                     )
                 last_error = f"HTTP {r2.status_code}: {detail}"
-            except request_error as exc:
+            except requests.RequestException as exc:
                 last_error = str(exc)
         raise RuntimeError(
             f"Ollama chat request failed after trying {len(candidates)} endpoints: {last_error}"
@@ -323,10 +329,6 @@ class OllamaProvider:
     ) -> str:
         vision_model = self._require_model("vision_model", "vision")
         url = f"{self.base}/chat"
-        requests_module = _requests_module()
-        _http_error, request_error, timeout_error = _request_exception_types(
-            requests_module
-        )
         chat_options = chat_options_from_env(temperature)
         timeout = chat_options.timeout
         retries = chat_options.retries
@@ -359,8 +361,8 @@ class OllamaProvider:
         max_attempts = max(1, retries + 1)
         for attempt in range(1, max_attempts + 1):
             try:
-                r = requests_module.post(url, json=payload, timeout=timeout)
-            except timeout_error as exc:
+                r = self._http_client.post(url, json=payload, timeout=timeout)
+            except requests.Timeout as exc:
                 if attempt < max_attempts:
                     logger.warning(
                         "Ollama vision chat timed out (attempt %s/%s), retrying...",
@@ -372,7 +374,7 @@ class OllamaProvider:
                 raise RuntimeError(
                     f"Ollama vision chat request timed out after {max_attempts} attempt(s): {exc}"
                 ) from exc
-            except request_error as exc:
+            except requests.RequestException as exc:
                 if attempt < max_attempts:
                     logger.warning(
                         "Ollama vision chat request failed (attempt %s/%s): %s",
@@ -513,5 +515,5 @@ class OllamaProvider:
         return normalized
 
     @staticmethod
-    def _extract_error_message(resp: Any) -> str:
+    def _extract_error_message(resp: _OllamaHTTPResponse) -> str:
         return extract_error_message(resp)

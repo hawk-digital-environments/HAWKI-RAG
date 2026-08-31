@@ -6,24 +6,13 @@ import hashlib
 import re
 from functools import lru_cache
 
+from hawki_rag_text.safety import strip_control_characters
+
 Triplet = tuple[str, str, str]
 
 
-def strip_control_chars(text: str | None) -> str:
-    if text is None:
-        return ""
-    cleaned_chars: list[str] = []
-    for ch in str(text):
-        code = ord(ch)
-        if ch in ("\n", "\r", "\t"):
-            cleaned_chars.append(ch)
-        elif code >= 32:
-            cleaned_chars.append(ch)
-    return "".join(cleaned_chars)
-
-
 def normalize_graph_embed_text(text: object) -> str:
-    cleaned = strip_control_chars(str(text or ""))
+    cleaned = strip_control_characters(str(text or ""))
     cleaned = cleaned.encode("utf-8", errors="ignore").decode("utf-8", errors="ignore")
     cleaned = re.sub(r"\s+", " ", cleaned).strip()
     return cleaned

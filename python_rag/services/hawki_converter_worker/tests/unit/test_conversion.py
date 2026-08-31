@@ -81,6 +81,10 @@ def settings(*, start_path: str = "/extract") -> SimpleNamespace:
         http_retry_attempts=1,
         poll_interval_seconds=1,
         poll_timeout_seconds=2,
+        callback_url="http://laravel.test/internal/events",
+        callback_secret="test-secret",
+        callback_timeout_seconds=1.0,
+        callback_retry_attempts=1,
     )
 
 

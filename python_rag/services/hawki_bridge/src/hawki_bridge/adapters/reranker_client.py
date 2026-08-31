@@ -2,28 +2,33 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Any, Optional
+from typing import Any, Optional, Protocol, cast
 
 import requests as requests_module
+from hawki_rag_text.safety import strip_control_characters
 
 logger = logging.getLogger(__name__)
 
 
-def _requests_module() -> Any:
-    return requests_module
+class _RerankerHTTPResponse(Protocol):
+    """Response surface consumed from an external reranker."""
+
+    ok: bool
+
+    def json(self) -> object: ...
 
 
-def _strip_control_chars(text: str | None) -> str:
-    if text is None:
-        return ""
-    cleaned_chars: list[str] = []
-    for ch in str(text):
-        code = ord(ch)
-        if ch in ("\n", "\r", "\t"):
-            cleaned_chars.append(ch)
-        elif code >= 32:
-            cleaned_chars.append(ch)
-    return "".join(cleaned_chars)
+class _RerankerHTTPClient(Protocol):
+    """HTTP operation required by external reranker modes."""
+
+    def post(
+        self,
+        url: str,
+        *,
+        headers: dict[str, str],
+        json: dict[str, object],
+        timeout: float,
+    ) -> _RerankerHTTPResponse: ...
 
 
 def _cosine(a: list[float], b: list[float]) -> float:
@@ -40,6 +45,12 @@ def _cosine(a: list[float], b: list[float]) -> float:
 
 
 def _normalize_scores(values: list[float]) -> list[float]:
+    """Scale one reranker signal for ranking or retrieval/reranker blending.
+
+    Unlike retrieval-stage fusion, a tied multi-candidate signal remains neutral
+    at 0.5 so it does not add artificial preference during weighted blending.
+    """
+
     import math
 
     lo, hi = min(values), max(values)
@@ -92,11 +103,17 @@ def rerank_hits(
     top_n: int,
     mix_mode: bool,
     mix_weight: float,
+    http_client: _RerankerHTTPClient | None = None,
 ) -> list[dict[str, Any]]:
     if not (mode and mode.lower() != "none" and hits):
         return hits
 
     mode = mode.lower()
+    resolved_http_client = (
+        cast(_RerankerHTTPClient, requests_module)
+        if http_client is None
+        else http_client
+    )
     candidates = hits[: max(1, min(top_n, len(hits)))]
     orig_scores = [float(hit.get("score") or 0.0) for hit in candidates]
     logger.info(
@@ -117,7 +134,7 @@ def rerank_hits(
             scores = []
             for h in candidates:
                 payload = h.get("payload") or {}
-                text = _strip_control_chars(
+                text = strip_control_characters(
                     payload.get("snippet")
                     or payload.get("content")
                     or payload.get("title")
@@ -138,12 +155,11 @@ def rerank_hits(
         if mode == "external":
             rr_url = os.environ.get("RERANKER_API_URL", "").strip()
             if rr_url:
-                requests = _requests_module()
                 docs: list[str] = []
                 for h in candidates:
                     payload = h.get("payload") or {}
                     docs.append(
-                        _strip_control_chars(
+                        strip_control_characters(
                             (
                                 payload.get("snippet")
                                 or payload.get("content")
@@ -156,7 +172,7 @@ def rerank_hits(
                 rr_key = os.environ.get("RERANKER_API_KEY", "").strip()
                 if rr_key:
                     headers["Authorization"] = f"Bearer {rr_key}"
-                response = requests.post(
+                response = resolved_http_client.post(
                     rr_url,
                     headers=headers,
                     json={"query": user_query, "documents": docs},
@@ -220,12 +236,11 @@ def rerank_hits(
         if mode == "jina":
             jina_key = os.environ.get("JINA_API_KEY", "").strip()
             if jina_key:
-                requests = _requests_module()
                 docs = []
                 for h in candidates:
                     payload = h.get("payload") or {}
                     docs.append(
-                        _strip_control_chars(
+                        strip_control_characters(
                             (
                                 payload.get("snippet")
                                 or payload.get("content")
@@ -245,14 +260,14 @@ def rerank_hits(
                     "Content-Type": "application/json",
                     "Authorization": f"Bearer {jina_key}",
                 }
-                response = requests.post(
+                response = resolved_http_client.post(
                     "https://api.jina.ai/v1/rerank",
                     headers=headers,
                     json=req_body,
                     timeout=30,
                 )
                 if response.ok:
-                    payload = response.json()
+                    payload = cast(dict[str, Any], response.json())
                     rr_scores = [0.0] * len(candidates)
                     results = payload.get("results") or []
                     for item in results:
@@ -263,6 +278,8 @@ def rerank_hits(
                     return _rank_candidates(
                         candidates, rr_scores, hits, mix_mode, mix_weight, orig_scores
                     )
+    except requests_module.RequestException:
+        logger.exception("Reranker failed; continuing with original order")
     except Exception:
         logger.exception("Reranker failed; continuing with original order")
     return hits

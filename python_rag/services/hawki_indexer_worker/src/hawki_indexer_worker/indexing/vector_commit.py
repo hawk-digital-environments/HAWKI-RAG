@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from hawki_indexer_worker.domain.errors import EmbeddingError
+from hawki_indexer_worker.domain.ports import VectorWriterPort
 from hawki_indexer_worker.indexing.vector_prepare import (
     build_points,
     record_embedding_failures,
@@ -30,7 +31,7 @@ def commit_vector_points(
     chunk_records: list[dict[str, Any]],
     doc_stats: dict[str, Any],
     provider: Any,
-    qdrant: Any,
+    qdrant: VectorWriterPort,
     batch_size: int,
     job_id: str | None,
     operation_id: str | None,
@@ -95,18 +96,12 @@ def commit_vector_points(
     for doc_id in sorted(replace_doc_ids or set()):
         if not doc_id:
             continue
-        if hasattr(qdrant, "delete_by_doc_id"):
-            qdrant.delete_by_doc_id(
-                doc_id,
-                idempotency_key=f"{operation_id}:replace:{doc_id}"
-                if operation_id
-                else None,
-            )
-        else:
-            logger_obj.warning(
-                "ingest:qdrant replace skipped; client has no delete_by_doc_id doc=%s",
-                doc_id,
-            )
+        qdrant.delete_by_doc_id(
+            doc_id,
+            idempotency_key=f"{operation_id}:replace:{doc_id}"
+            if operation_id
+            else None,
+        )
     qdrant.upsert_points(
         points,
         batch_size=batch_size,

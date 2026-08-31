@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
 
 from hawki_graph_store.graph import Neo4jGraph
 from hawki_indexer_worker.domain.ports import GraphWriterPort
@@ -15,17 +14,30 @@ class Neo4jWriter:
 
     client: Neo4jGraph
 
-    @property
-    def _neo4j_namespace(self) -> str | None:
-        return getattr(self.client, "_neo4j_namespace", None)
-
     def upsert_triplets(
-        self, triplets: list[tuple[str, str, str]], **kwargs: Any
+        self,
+        triplets: list[tuple[str, str, str]],
+        *,
+        doc_id: str,
+        request_id: str | None,
+        dataset_id: str,
+        neo4j_namespace: str,
     ) -> object:
-        return self.client.upsert_triplets(triplets, **kwargs)
+        return self.client.upsert_triplets(
+            triplets,
+            doc_id=doc_id,
+            request_id=request_id,
+            dataset_id=dataset_id,
+            neo4j_namespace=neo4j_namespace,
+        )
 
-    def delete_by_doc_id(self, doc_id: str, **kwargs: Any) -> object:
-        return self.client.delete_by_doc_id(doc_id, **kwargs)
+    def delete_by_doc_id(
+        self,
+        doc_id: str,
+        *,
+        request_id: str | None = None,
+    ) -> object:
+        return self.client.delete_by_doc_id(doc_id, request_id=request_id)
 
     def close(self) -> None:
         self.client.close()

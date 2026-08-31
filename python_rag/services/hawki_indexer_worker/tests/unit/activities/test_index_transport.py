@@ -4,6 +4,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from pydantic import ValidationError
 
 from hawki_rag_contracts.pipeline.ingestion import (
     IndexActivityInput,
@@ -28,6 +29,59 @@ def _settings(tmp_path: Path) -> IndexerSettings:
         callback_retry_attempts=1,
         rag_working_dir=tmp_path / "rag",
     )
+
+
+def test_index_transport_validates_after_settings_before_creating_sender(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+
+    def load_settings(_cls: type[IndexerSettings]) -> IndexerSettings:
+        calls.append("settings")
+        return _settings(tmp_path)
+
+    def create_sender(_settings: IndexerSettings) -> None:
+        calls.append("sender")
+        raise AssertionError("invalid input must not create a callback sender")
+
+    monkeypatch.setattr(
+        index_activity.IndexerSettings,
+        "from_env",
+        classmethod(load_settings),
+    )
+    monkeypatch.setattr(index_activity, "create_callback_sender", create_sender)
+
+    with pytest.raises(ValidationError):
+        index_activity.ingest_markdown_files({})
+
+    assert calls == ["settings"]
+
+
+def test_ready_transport_validates_before_settings_or_sender_creation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+
+    def load_settings(_cls: type[IndexerSettings]) -> IndexerSettings:
+        calls.append("settings")
+        raise AssertionError("invalid input must not load settings")
+
+    def create_sender(_settings: IndexerSettings) -> None:
+        calls.append("sender")
+        raise AssertionError("invalid input must not create a callback sender")
+
+    monkeypatch.setattr(
+        index_activity.IndexerSettings,
+        "from_env",
+        classmethod(load_settings),
+    )
+    monkeypatch.setattr(index_activity, "create_callback_sender", create_sender)
+
+    with pytest.raises(ValidationError):
+        index_activity.mark_source_ready({})
+
+    assert calls == []
 
 
 def test_index_transport_decodes_composes_and_encodes(

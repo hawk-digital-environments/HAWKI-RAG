@@ -41,7 +41,9 @@ _MULTIMODAL_HINT_PATTERN = re.compile(
 )
 
 
-def _strip_control_chars(text: str | None) -> str:
+def strip_control_characters(text: str | None) -> str:
+    """Remove non-whitespace ASCII control characters from text."""
+
     if text is None:
         return ""
     return "".join(
@@ -54,14 +56,14 @@ def _strip_control_chars(text: str | None) -> str:
 def sanitize_prompt_text(prompt: str) -> str:
     """Remove control characters and collapse horizontal whitespace."""
 
-    cleaned = _strip_control_chars(prompt)
+    cleaned = strip_control_characters(prompt)
     return re.sub(r"[^\S\r\n]+", " ", cleaned).strip()
 
 
 def analyze_prompt(prompt: str) -> dict[str, Any]:
     """Identify known prompt-injection markers without invoking a model."""
 
-    sanitized = _strip_control_chars(prompt)
+    sanitized = strip_control_characters(prompt)
     lowered = sanitized.lower()
     issues: list[str] = []
     if any(pattern.search(sanitized) for pattern in _PROMPT_INJECTION_PATTERNS):
@@ -88,7 +90,7 @@ def analyze_prompt(prompt: str) -> dict[str, Any]:
 def enforce_output_safety(answer: str) -> dict[str, Any]:
     """Block generated output containing known instruction-bypass markers."""
 
-    sanitized = _strip_control_chars(answer)
+    sanitized = strip_control_characters(answer)
     issues = (
         ["unsafe_output_pattern"]
         if any(pattern.search(sanitized) for pattern in _OUTPUT_BLOCK_PATTERNS)
@@ -111,7 +113,7 @@ def enforce_output_safety(answer: str) -> dict[str, Any]:
 def clean_snippet(snippet: str) -> str:
     """Remove non-whitespace control characters from one context snippet."""
 
-    return _strip_control_chars(snippet)
+    return strip_control_characters(snippet)
 
 
 def is_multimodal_query(text: str) -> bool:
@@ -126,4 +128,5 @@ __all__ = [
     "enforce_output_safety",
     "is_multimodal_query",
     "sanitize_prompt_text",
+    "strip_control_characters",
 ]

@@ -4,6 +4,7 @@ import logging
 from typing import Any
 
 import requests
+from requests import RequestException
 
 from hawki_vector_store.collections import (
     pick_most_populated_collection,
@@ -27,9 +28,6 @@ from hawki_vector_store.settings import (
 )
 from hawki_vector_store.gateway import QdrantHTTPGateway
 from hawki_vector_store._client_policy import (
-    callable_supports_kwarg,
-    gateway_supports_operation_id,
-    request_exception_type,
     resolve_per_collection_limit,
     resolve_selected_collection,
 )
@@ -160,17 +158,11 @@ class QdrantHTTP:
         """Upsert batches of points into the chosen collection."""
         if not points:
             return
-        if gateway_supports_operation_id(self._gateway, "upsert"):
-            r = self._gateway.upsert(
-                points,
-                timeout=self._http_settings.upsert_timeout,
-                operation_id=idempotency_key,
-            )
-        else:
-            r = self._gateway.upsert(
-                points,
-                timeout=self._http_settings.upsert_timeout,
-            )
+        r = self._gateway.upsert(
+            points,
+            timeout=self._http_settings.upsert_timeout,
+            operation_id=idempotency_key,
+        )
         if r.status_code >= 400:
             logger.error(
                 "Qdrant upsert failed status=%s body=%s", r.status_code, r.text
@@ -201,21 +193,15 @@ class QdrantHTTP:
         """Return the number of points stored in a collection."""
         col = collection or self.collection
         try:
-            count_kwargs: dict[str, Any] = {
-                "exact": exact,
-                "timeout": self._http_settings.count_timeout,
-            }
-            if filter_body and callable_supports_kwarg(
-                self._gateway, "count_points", "filter_body"
-            ):
-                count_kwargs["filter_body"] = filter_body
-            r = self._gateway.count_points(col, **count_kwargs)
+            r = self._gateway.count_points(
+                col,
+                exact=exact,
+                timeout=self._http_settings.count_timeout,
+                filter_body=filter_body,
+            )
             r.raise_for_status()
             return parse_count(r.json())
-        except Exception as exc:
-            requests_error = request_exception_type()
-            if not isinstance(exc, requests_error):
-                raise
+        except RequestException as exc:
             status = getattr(getattr(exc, "response", None), "status_code", None)
             if status == 404:
                 return None
@@ -527,17 +513,11 @@ class QdrantHTTP:
         self, filter_body: dict[str, Any], *, idempotency_key: str | None = None
     ) -> dict[str, Any]:
         """Delete points matching the supplied Qdrant filter."""
-        if gateway_supports_operation_id(self._gateway, "delete_by_filter"):
-            r = self._gateway.delete_by_filter(
-                filter_body,
-                timeout=self._http_settings.delete_timeout,
-                operation_id=idempotency_key,
-            )
-        else:
-            r = self._gateway.delete_by_filter(
-                filter_body,
-                timeout=self._http_settings.delete_timeout,
-            )
+        r = self._gateway.delete_by_filter(
+            filter_body,
+            timeout=self._http_settings.delete_timeout,
+            operation_id=idempotency_key,
+        )
         if r.status_code == 404:
             return {"result": {"status": "not_found", "deleted": 0}}
         if r.status_code == 400:

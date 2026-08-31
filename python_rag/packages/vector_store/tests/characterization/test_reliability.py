@@ -217,23 +217,23 @@ class QdrantReliabilityCharacterizationTests(unittest.TestCase):
                 calls.append(("list_collections", self))
                 return FakeResponse({"result": {"collections": []}})
 
-            def search(self, collection, body, timeout):
+            def search(self, collection, body, *, timeout):
                 calls.append(("search", collection, timeout))
                 return FakeResponse({"result": [{"id": "1", "score": 0.4}]})
 
-            def upsert(self, points, timeout):
-                calls.append(("upsert", len(points), timeout))
+            def upsert(self, points, *, timeout, operation_id=None):
+                calls.append(("upsert", len(points), timeout, operation_id))
                 return FakeResponse({})
 
-            def count_points(self, collection, exact, timeout):
-                calls.append(("count", collection, exact, timeout))
+            def count_points(self, collection, *, exact, timeout, filter_body=None):
+                calls.append(("count", collection, exact, timeout, filter_body))
                 return FakeResponse({"result": {"count": 42}})
 
-            def delete_by_filter(self, filter_body, timeout):
-                calls.append(("delete_by_filter", timeout))
+            def delete_by_filter(self, filter_body, *, timeout, operation_id=None):
+                calls.append(("delete_by_filter", timeout, operation_id))
                 return FakeResponse({})
 
-            def scroll(self, collection, body, timeout):
+            def scroll(self, collection, body, *, timeout):
                 calls.append(("scroll", collection, timeout))
                 return FakeResponse(
                     {"result": {"points": [], "next_page_offset": None}}
@@ -285,9 +285,9 @@ class QdrantReliabilityCharacterizationTests(unittest.TestCase):
             client.set_collection("runtime_collection")
 
         self.assertIn(("search", "toy_collection", 2.0), calls)
-        self.assertIn(("upsert", 1, 2.0), calls)
-        self.assertIn(("count", "toy_collection", True, 2.0), calls)
-        self.assertIn(("delete_by_filter", 2.0), calls)
+        self.assertIn(("upsert", 1, 2.0, None), calls)
+        self.assertIn(("count", "toy_collection", True, 2.0, None), calls)
+        self.assertIn(("delete_by_filter", 2.0, None), calls)
         self.assertEqual(fake_gateway.collection, "runtime_collection")
 
     def test_qdrant_http_defaults_search_all_limit_to_top_k_when_not_configured(

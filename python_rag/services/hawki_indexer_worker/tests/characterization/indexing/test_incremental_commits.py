@@ -108,8 +108,10 @@ class IncrementalIngestTests(unittest.TestCase):
                 self,
                 triplets: list[tuple[str, str, str]],
                 *,
-                doc_id: str | None = None,
-                request_id: str | None = None,
+                doc_id: str,
+                request_id: str | None,
+                dataset_id: str,
+                neo4j_namespace: str,
             ) -> None:
                 self.events.append(
                     (
@@ -118,6 +120,8 @@ class IncrementalIngestTests(unittest.TestCase):
                             "triplets": triplets,
                             "doc_id": doc_id,
                             "request_id": request_id,
+                            "dataset_id": dataset_id,
+                            "neo4j_namespace": neo4j_namespace,
                         },
                     )
                 )

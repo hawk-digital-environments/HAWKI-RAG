@@ -15,6 +15,18 @@ class IngestDeletionCharacterizationTests(unittest.TestCase):
         class Qdrant:
             collection = "student_space"
 
+            def set_collection(self, collection: str) -> None:
+                self.collection = collection
+
+            def count_points_by_doc_id(
+                self,
+                doc_id: str,
+                *,
+                collection: str | None = None,
+                exact: bool = True,
+            ) -> None:
+                return None
+
             def delete_by_doc_id(
                 self,
                 doc_id: str,
@@ -28,6 +40,15 @@ class IngestDeletionCharacterizationTests(unittest.TestCase):
                 )
 
         class Graph:
+            def __init__(
+                self,
+                *,
+                database: str | None = None,
+                dataset_id: str | None = None,
+                neo4j_namespace: str | None = None,
+            ) -> None:
+                self.neo4j_namespace = neo4j_namespace
+
             def delete_by_doc_id(
                 self,
                 doc_id: str,
@@ -99,9 +120,11 @@ class IngestDeletionCharacterizationTests(unittest.TestCase):
                 self,
                 *,
                 database: str | None = None,
+                dataset_id: str | None = None,
                 neo4j_namespace: str | None = None,
             ) -> None:
                 self.database = database
+                self.dataset_id = dataset_id
                 self.neo4j_namespace = neo4j_namespace
                 events.append(
                     (
@@ -193,11 +216,42 @@ class IngestDeletionCharacterizationTests(unittest.TestCase):
         class Qdrant:
             collection = "documents"
 
-            def delete_by_doc_id(self, _doc_id: str) -> dict[str, object]:
+            def set_collection(self, collection: str) -> None:
+                self.collection = collection
+
+            def count_points_by_doc_id(
+                self,
+                doc_id: str,
+                *,
+                collection: str | None = None,
+                exact: bool = True,
+            ) -> None:
+                return None
+
+            def delete_by_doc_id(
+                self,
+                _doc_id: str,
+                *,
+                idempotency_key: str | None = None,
+            ) -> dict[str, object]:
                 return {"result": {"deleted": 1}}
 
         class Graph:
-            def delete_by_doc_id(self, _doc_id: str) -> dict[str, int]:
+            def __init__(
+                self,
+                *,
+                database: str | None = None,
+                dataset_id: str | None = None,
+                neo4j_namespace: str | None = None,
+            ) -> None:
+                self.neo4j_namespace = neo4j_namespace
+
+            def delete_by_doc_id(
+                self,
+                _doc_id: str,
+                *,
+                request_id: str | None = None,
+            ) -> dict[str, int]:
                 return {"relationships_deleted": 1, "entities_deleted": 0}
 
             def close(self) -> None:
@@ -224,11 +278,42 @@ class IngestDeletionCharacterizationTests(unittest.TestCase):
         class Qdrant:
             collection = "documents"
 
-            def delete_by_doc_id(self, _doc_id: str) -> dict[str, object]:
+            def set_collection(self, collection: str) -> None:
+                self.collection = collection
+
+            def count_points_by_doc_id(
+                self,
+                doc_id: str,
+                *,
+                collection: str | None = None,
+                exact: bool = True,
+            ) -> None:
+                return None
+
+            def delete_by_doc_id(
+                self,
+                _doc_id: str,
+                *,
+                idempotency_key: str | None = None,
+            ) -> dict[str, object]:
                 return {"result": {"deleted": 1}}
 
         class Graph:
-            def delete_by_doc_id(self, _doc_id: str) -> None:
+            def __init__(
+                self,
+                *,
+                database: str | None = None,
+                dataset_id: str | None = None,
+                neo4j_namespace: str | None = None,
+            ) -> None:
+                self.neo4j_namespace = neo4j_namespace
+
+            def delete_by_doc_id(
+                self,
+                _doc_id: str,
+                *,
+                request_id: str | None = None,
+            ) -> None:
                 raise ValueError("primary deletion failure")
 
             def close(self) -> None:

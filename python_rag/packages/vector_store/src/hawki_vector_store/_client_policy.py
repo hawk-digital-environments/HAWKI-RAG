@@ -3,46 +3,6 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from inspect import signature
-
-from requests import RequestException
-
-
-def request_exception_type() -> type[BaseException]:
-    """Return the base exception raised by the required requests dependency."""
-
-    return RequestException
-
-
-def callable_supports_kwarg(target: object, method_name: str, kwarg: str) -> bool:
-    """Return whether a method accepts one named keyword or arbitrary keywords."""
-
-    method = getattr(target, method_name, None)
-    if method is None:
-        return False
-    try:
-        params = signature(method).parameters.values()
-    except (TypeError, ValueError):
-        return False
-    return any(
-        param.name == kwarg or param.kind == param.VAR_KEYWORD for param in params
-    )
-
-
-def gateway_supports_operation_id(gateway: object, method_name: str) -> bool:
-    """Return whether a gateway method accepts an idempotency operation id."""
-
-    method = getattr(gateway, method_name, None)
-    if method is None:
-        return False
-    try:
-        params = signature(method).parameters.values()
-    except (TypeError, ValueError):
-        return False
-    return any(
-        param.name == "operation_id" or param.kind == param.VAR_KEYWORD
-        for param in params
-    )
 
 
 def resolve_per_collection_limit(requested_limit: int, fallback_limit: int) -> int:
@@ -65,9 +25,6 @@ def resolve_selected_collection(
 
 
 __all__ = [
-    "callable_supports_kwarg",
-    "gateway_supports_operation_id",
-    "request_exception_type",
     "resolve_per_collection_limit",
     "resolve_selected_collection",
 ]

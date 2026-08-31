@@ -86,8 +86,16 @@ class IndexRequestCharacterizationTests(unittest.TestCase):
             def set_collection(self, collection: str) -> None:
                 self.collection = collection
 
-            def count_points_by_doc_id(self, doc_id: str, **_kwargs) -> int:
+            def count_points_by_doc_id(
+                self,
+                doc_id: str,
+                *,
+                collection: str | None = None,
+                exact: bool = True,
+            ) -> int:
                 assert doc_id == "doc-replace-1"
+                assert collection == "toy_docs"
+                assert exact is True
                 return 2
 
             def delete_by_doc_id(
@@ -102,8 +110,16 @@ class IndexRequestCharacterizationTests(unittest.TestCase):
         graph_instances = []
 
         class FakeGraph:
-            def __init__(self, *, neo4j_namespace: str | None = None) -> None:
-                self._neo4j_namespace = neo4j_namespace
+            def __init__(
+                self,
+                *,
+                database: str | None = None,
+                dataset_id: str | None = None,
+                neo4j_namespace: str | None = None,
+            ) -> None:
+                self.database = database
+                self.dataset_id = dataset_id
+                self.neo4j_namespace = neo4j_namespace
                 self.calls: list[tuple[str, str | None]] = []
                 self.closed = False
                 graph_instances.append(self)

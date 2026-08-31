@@ -6,28 +6,19 @@ import re
 from pathlib import Path
 from typing import Iterable
 
-from hawki_indexer_worker.domain.graph import normalize_relation_label
+from hawki_graph_store.normalization import normalize_relation_label
+from hawki_rag_text.safety import strip_control_characters
 
 logger = logging.getLogger(__name__)
 
 Triplet = tuple[str, str, str]
 
 
-def strip_control_chars(text: str | None) -> str:
-    if text is None:
-        return ""
-    cleaned_chars: list[str] = []
-    for ch in str(text):
-        code = ord(ch)
-        if ch in ("\n", "\r", "\t"):
-            cleaned_chars.append(ch)
-        elif code >= 32:
-            cleaned_chars.append(ch)
-    return "".join(cleaned_chars)
-
-
 def relation_label_from_text(raw: str) -> str:
-    return normalize_relation_label(strip_control_chars(str(raw or ""))) or "RELATED_TO"
+    return (
+        normalize_relation_label(strip_control_characters(str(raw or "")))
+        or "RELATED_TO"
+    )
 
 
 def parse_raganything_llm_cache(

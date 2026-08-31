@@ -21,14 +21,6 @@ from hawki_vector_store.retry_policy import (
 logger = logging.getLogger(__name__)
 
 
-def _requests_session() -> Any:
-    return requests.Session()
-
-
-def _request_exception_type() -> type[BaseException]:
-    return requests.exceptions.RequestException
-
-
 class QdrantHTTPTransport:
     """Reusable transport for request execution with retry and latency logging."""
 
@@ -54,7 +46,7 @@ class QdrantHTTPTransport:
         self.log_latency = log_latency
         self._backoff_cap_seconds = max(0.0, float(backoff_cap_seconds))
         self._backoff_seconds = max(0.0, float(backoff_seconds))
-        self._session = session or _requests_session()
+        self._session = session if session is not None else requests.Session()
         self._default_retryable = bool(default_retryable)
 
     def _headers(self) -> dict[str, str]:
@@ -132,10 +124,7 @@ class QdrantHTTPTransport:
                     backoff = min(backoff * 2, self._backoff_cap_seconds)
                     continue
                 return response
-            except Exception as exc:
-                request_exception_type = _request_exception_type()
-                if not isinstance(exc, request_exception_type):
-                    raise
+            except requests.RequestException as exc:
                 elapsed_ms = (time.perf_counter() - started) * 1000
                 if (
                     attempt >= max_attempts

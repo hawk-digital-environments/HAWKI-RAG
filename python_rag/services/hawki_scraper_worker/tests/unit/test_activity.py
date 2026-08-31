@@ -11,11 +11,13 @@ from typing import Any
 import pytest
 
 from hawki_artifact_store.local import LocalArtifactStore
+from hawki_pipeline_callbacks import CallbackSender as SharedCallbackSender
 from hawki_scraper_worker.activities.scrape import (
     activity_execution,
     heartbeat_external_job_id,
     run_scrape_activity,
 )
+from hawki_scraper_worker.adapters import status_callback
 from hawki_scraper_worker.adapters.artifact_store import LocalUploadArtifactStager
 from hawki_scraper_worker.adapters.status_callback import (
     ActivityExecution,
@@ -147,6 +149,11 @@ def test_heartbeat_and_temporal_identity_parsing_preserve_retry_context() -> Non
         temporal_activity_id="activity-a",
         attempt=2,
     )
+
+
+def test_status_callback_reexports_the_shared_callback_sender() -> None:
+    assert status_callback.CallbackSender is SharedCallbackSender
+    assert "CallbackSender" in status_callback.__all__
 
 
 def test_upload_stager_recreates_artifact_directories_and_preserves_result_shape() -> (

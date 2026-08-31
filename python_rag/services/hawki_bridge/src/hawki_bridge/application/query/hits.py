@@ -99,7 +99,11 @@ def fuse_hits(
 
 
 def normalize_hit_scores(hits: list[Hit]) -> list[Hit]:
-    """Return copies whose scores are comparable within one retrieval stage."""
+    """Make one retrieval stage comparable before cross-stage evidence fusion.
+
+    A tied stage assigns full evidence to every hit. This is intentionally
+    different from the reranker's neutral handling of tied blend signals.
+    """
     if not hits:
         return []
 

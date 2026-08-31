@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from hawki_artifact_store.local import LocalArtifactStore
+from hawki_external_jobs import normalize_external_job_status
 
 
 SCRAPER_BOOKKEEPING_FILENAMES = frozenset(
@@ -125,9 +126,4 @@ def positive_int(value: object) -> int | None:
 def normalize_status(payload: dict[str, Any]) -> str:
     """Normalize external service terminal-state vocabulary."""
 
-    status = str(payload.get("status") or "running").strip().lower()
-    if status in {"completed", "complete", "succeeded", "success", "done", "ready"}:
-        return "success"
-    if status in {"failed", "error", "timeout", "cancelled", "canceled"}:
-        return "failed"
-    return status
+    return normalize_external_job_status(payload.get("status"))

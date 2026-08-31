@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
 
 
 class QueryCharacterizationTests(unittest.TestCase):
@@ -120,6 +121,22 @@ class QueryCharacterizationTests(unittest.TestCase):
         deduped = query_hits.dedupe_hits_by_identity(hits)
 
         self.assertEqual([hit["id"] for hit in deduped], ["chunk-1", "chunk-2"])
+
+    def test_legacy_dedupe_helper_delegates_to_identity_deduplication(self) -> None:
+        from hawki_bridge.application.query import hits as query_hits
+
+        hits = [{"id": "chunk-1", "payload": {"title": "Shared title"}}]
+        delegated_result = [{"id": "delegated"}]
+
+        with patch.object(
+            query_hits,
+            "dedupe_hits_by_identity",
+            return_value=delegated_result,
+        ) as dedupe:
+            result = query_hits.dedupe_hits_by_title_or_url(hits)
+
+        dedupe.assert_called_once_with(hits)
+        self.assertIs(result, delegated_result)
 
     def test_query_hit_merge_uses_chunk_index_when_point_id_is_missing(self) -> None:
         from hawki_bridge.application.query import hits as query_hits
