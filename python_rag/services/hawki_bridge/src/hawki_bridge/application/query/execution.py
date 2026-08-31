@@ -18,6 +18,7 @@ from hawki_rag_text.terms import extract_terms
 from hawki_bridge.application.dependencies import QueryDependencies
 from hawki_bridge.application.query.context import (
     build_grounded_answer_prompt,
+    normalize_generated_answer,
     prepare_context_summaries,
 )
 from hawki_bridge.application.query.fallback import keyword_fallback_search
@@ -476,7 +477,8 @@ def _generate_grounded_answer(
         except Exception as exc:
             logger.exception("query:generation failed")
             raise AnswerGenerationError("Answer generation failed.") from exc
-        answer = str(enforce_output_safety(str(generated or ""))["answer"])
+        safe_answer = str(enforce_output_safety(str(generated or ""))["answer"])
+        answer = normalize_generated_answer(safe_answer)
     timings["generation_ms"] = (time.perf_counter() - started) * 1000
     return answer
 
