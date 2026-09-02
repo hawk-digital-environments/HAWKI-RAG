@@ -1,153 +1,70 @@
-"""Query scenarios from lexical fallback and rewrite through scoped ranking and context assembly."""
+"""Characterization of the unified query and document term-extraction seam."""
 
 from __future__ import annotations
 
-import os
 import unittest
-from unittest.mock import patch
 
 
-class QueryCharacterizationTests(unittest.TestCase):
-    """Protect query settings, fallback, deduplication, reranking, rewriting, and execution flow."""
+class QueryTermExtractionTests(unittest.TestCase):
+    """Protect query term policy: folding, ordinals, scope stripping."""
 
-    def test_query_lexical_helpers_fold_fuzzy_match_and_boost_scores(self) -> None:
-        from hawki_bridge.application.query.lexical import (
-            extract_lexical_terms,
-            fold_text,
-            fuzzy_term_in_words,
-            boost_lexical_hits,
-        )
+    def test_query_terms_keep_folded_pairs_for_lexical_matching(self) -> None:
+        from hawki_bridge.application.query.lexical import fold_text, query_terms
 
-        hits = [
-            {
-                "id": "a",
-                "score": 0.1,
-                "payload": {
-                    "title": "Holzspielzeug",
-                    "content": "Robuste Baukloetze und Holzspielzeug fuer Kinder",
-                    "doc_id": "doc-a",
-                },
-            },
-            {
-                "id": "b",
-                "score": 0.9,
-                "payload": {
-                    "title": "Other",
-                    "content": "Unrelated text",
-                    "doc_id": "doc-b",
-                },
-            },
-        ]
+        terms = query_terms("Bauklötze")
 
-        boosted = boost_lexical_hits(hits, "Bauklötze Holzspielzeug")
-
+        self.assertEqual(terms.terms, ("bauklötze",))
+        self.assertEqual(terms.folded, ("bauklötze", "bauklotze"))
         self.assertEqual(
             fold_text("Bauklötze für große Kinder"), "bauklotze fur grosse kinder"
         )
-        self.assertTrue(fuzzy_term_in_words("blocks", ["block"]))
-        self.assertIn("bauklotze", extract_lexical_terms("Bauklötze"))
-        self.assertEqual([hit["payload"]["doc_id"] for hit in boosted], ["doc-a"])
-        self.assertGreater(boosted[0]["score"], 0.1)
 
-    def test_query_lexical_terms_keep_ordinals_and_remove_dataset_instructions(
-        self,
-    ) -> None:
-        from hawki_bridge.application.query.lexical import (
-            extract_lexical_terms,
-        )
+    def test_query_terms_keep_ordinals_and_remove_dataset_instructions(self) -> None:
+        from hawki_bridge.application.query.lexical import query_terms
 
-        terms = extract_lexical_terms("Was ist die dritte Mahnung in mein Dataset?")
+        terms = query_terms("Was ist die dritte Mahnung in mein Dataset?")
 
-        self.assertIn("dritte", terms)
-        self.assertIn("mahnung", terms)
-        self.assertNotIn("dataset", terms)
-        self.assertNotIn("mein", terms)
+        self.assertIn("dritte", terms.terms)
+        self.assertIn("mahnung", terms.terms)
+        self.assertNotIn("dataset", terms.terms)
+        self.assertNotIn("mein", terms.terms)
 
-    def test_query_settings_parse_env_with_caps_and_fallbacks(self) -> None:
-        from hawki_bridge.application.query.settings import (
-            context_limits,
-            fusion_weights,
-            generation_enabled,
-            iterative_retrieval_enabled,
-            score_thresholds,
-            search_top_k,
-        )
+    def test_query_terms_fallback_keeps_short_words(self) -> None:
+        from hawki_bridge.application.query.lexical import query_terms
 
-        with patch.dict(
-            os.environ,
-            {
-                "RAG_SEARCH_TOP_K_MULT": "4",
-                "RAG_SEARCH_TOP_K_CAP": "15",
-                "RAG_FUSION_SEM_WEIGHT": "bad",
-                "RAG_FUSION_STR_WEIGHT": "0.25",
-                "RAG_MIN_SCORE": "0.3",
-                "RAG_MIN_SCORE_FALLBACK": "bad",
-                "RAG_CONTEXT_TOKENS": "120",
-                "RAG_CONTEXT_DOCS": "bad",
-                "RAG_ITERATIVE_RETRIEVAL": "no",
-                "RAG_GENERATE_ANSWER": "yes",
-            },
-            clear=False,
-        ):
-            self.assertEqual(search_top_k(5), 15)
-            self.assertEqual(fusion_weights(), (0.6, 0.25))
-            self.assertEqual(score_thresholds(), (0.3, 0.2))
-            self.assertEqual(context_limits(), (120, 6))
-            self.assertFalse(iterative_retrieval_enabled())
-            self.assertTrue(generation_enabled())
+        terms = query_terms("Was ist das?")
 
-    def test_query_fallback_uses_text_search_then_relaxed_scroll(self) -> None:
-        from hawki_bridge.application.query.fallback import retrieve_lexical_hits
+        self.assertEqual(terms.terms, ("was", "ist", "das"))
+        self.assertEqual(terms.folded, ("was", "ist", "das"))
 
-        calls: list[tuple[str, bool | None]] = []
+    def test_query_terms_behave_like_an_ordered_term_collection(self) -> None:
+        from hawki_bridge.application.query.lexical import query_terms
 
-        class Qdrant:
-            def search_with_text(self, vector, *, top_k, terms, fields):
-                calls.append(("search", None))
-                return [{"id": "a", "score": 0.5, "payload": {"doc_id": "doc-a"}}]
+        terms = query_terms("Bauklötze Holzspielzeug")
 
-            def scroll_with_text(self, *, terms, fields, limit, require_all):
-                calls.append(("scroll", require_all))
-                if require_all:
-                    return []
-                return [{"id": "b", "score": 0.8, "payload": {"doc_id": "doc-b"}}]
+        self.assertEqual(len(terms), 2)
+        self.assertTrue("holzspielzeug" in terms)
+        self.assertEqual(list(terms), ["bauklötze", "holzspielzeug"])
 
-        with patch.dict(
-            os.environ,
-            {"RAG_EXHAUSTIVE_TEXT": "false", "QDRANT_TEXT_SCROLL_LIMIT": "10"},
-            clear=False,
-        ):
-            hits = retrieve_lexical_hits(Qdrant(), [0.1], "wooden toys", 3)
 
-        self.assertEqual([hit["payload"]["doc_id"] for hit in hits], ["doc-b", "doc-a"])
-        self.assertEqual(calls, [("search", None), ("scroll", True), ("scroll", False)])
+class DocumentTermExtractionTests(unittest.TestCase):
+    """Protect document term policy: plain extraction without query heuristics."""
 
-    def test_query_fallback_uses_injected_scroll_controls(self) -> None:
-        from hawki_bridge.application.query.fallback import retrieve_lexical_hits
+    def test_document_terms_filter_stopwords_without_folding(self) -> None:
+        from hawki_bridge.application.query.lexical import document_terms
 
-        calls: list[tuple[str, int | bool | None]] = []
+        terms = document_terms("Termine für neue Mitarbeiter")
 
-        class Qdrant:
-            def search_with_text(self, vector, *, top_k, terms, fields):
-                calls.append(("search", top_k))
-                return []
+        self.assertEqual(terms.terms, ("termine", "mitarbeiter"))
 
-            def scroll_with_text_all(self, *, terms, fields, limit, require_all):
-                calls.append(("scroll_all", limit))
-                return [{"id": "a", "score": 0.4, "payload": {"doc_id": "doc-a"}}]
+    def test_document_terms_do_not_strip_dataset_instructions(self) -> None:
+        from hawki_bridge.application.query.lexical import document_terms
 
-            def scroll_with_text(self, *, terms, fields, limit, require_all):
-                calls.append(("scroll", limit))
-                return []
+        terms = document_terms("Weiterführende Einträge in unserem Datensatz")
 
-        hits = retrieve_lexical_hits(
-            Qdrant(),
-            [0.1],
-            "wooden toys",
-            3,
-            text_scroll_limit_fn=lambda top_k: 7,
-            exhaustive_text_fn=lambda: True,
-        )
+        self.assertIn("datensatz", terms.terms)
+        self.assertIn("weiterführende", terms.terms)
 
-        self.assertEqual([hit["payload"]["doc_id"] for hit in hits], ["doc-a"])
-        self.assertEqual(calls, [("search", 3), ("scroll_all", 7)])
+
+if __name__ == "__main__":
+    unittest.main()

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any
 
@@ -13,7 +14,6 @@ from hawki_rag_text.safety import (
     enforce_output_safety,
     sanitize_prompt_text,
 )
-from hawki_rag_text.terms import extract_terms
 
 from hawki_bridge.application.dependencies import QueryDependencies
 from hawki_bridge.application.query.context import (
@@ -28,6 +28,7 @@ from hawki_bridge.application.query.hits import (
     merge_retrieval_hits,
 )
 from hawki_bridge.application.query.model_selection import apply_query_models
+from hawki_bridge.application.query.lexical import document_terms, query_terms
 from hawki_bridge.application.query.ranking import (
     collect_expansion_terms,
     rerank_and_filter_hits,
@@ -45,6 +46,7 @@ from hawki_bridge.application.query.settings import (
     context_limits,
     fusion_weights,
     generation_enabled,
+    graph_term_limits,
     iterative_retrieval_enabled,
     score_thresholds,
     search_top_k,
@@ -502,28 +504,26 @@ def retrieve_query_graph(
     receives the authorized dataset and graph namespace; disabled or empty paths
     produce no graph facts.
     """
-
+    terms_per_hit, term_limit = graph_term_limits()
     started = time.perf_counter()
     facts: list[dict[str, str]] = []
     if request.authorized_scope.graph_enabled and hits and not request.fast_mode:
-        terms: list[str] = []
-        seen: set[str] = set()
-        _extend_unique_terms(terms, seen, extract_terms(prepared.text))
-        _extend_unique_terms(terms, seen, prepared.terms)
+        term_groups: list[Iterable[str]] = [
+            query_terms(prepared.text).terms,
+            prepared.terms,
+        ]
         for hit in hits[: request.top_k]:
             payload = hit.get("payload") or {}
-            _extend_unique_terms(terms, seen, _terms_from_payload(payload))
-            _extend_unique_terms(
-                terms,
-                seen,
-                extract_terms(str(payload.get("content") or "")[:160]),
-            )
+            content = str(payload.get("content") or "")
+            term_groups.append(_terms_from_payload(payload))
+            term_groups.append(document_terms(content).terms[:terms_per_hit])
+        terms = _unique_terms(term_groups)
         if terms:
             facts = graph_search.fetch_related_graph(
-                terms[:30],
+                terms[:term_limit],
                 dataset_id=request.authorized_scope.dataset_id,
                 neo4j_namespace=str(request.authorized_scope.neo4j_namespace),
-                limit=30,
+                limit=term_limit,
             )
     timings["kg_ms"] = (time.perf_counter() - started) * 1000
     logger.info("query:kg facts=%s ms=%.2f", len(facts), timings["kg_ms"])
@@ -569,29 +569,30 @@ def _generate_grounded_answer(
 
 
 def _terms_from_payload(payload: dict[str, Any]) -> list[str]:
+    """Collect document terms from payload tags, titles, and source URLs."""
     terms: list[str] = []
     tags = payload.get("tags")
     if isinstance(tags, str):
-        terms.extend(extract_terms(tags))
+        terms.extend(document_terms(tags).terms)
     elif isinstance(tags, list):
         for tag in tags:
-            terms.extend(extract_terms(str(tag)))
+            terms.extend(document_terms(str(tag)).terms)
     for key in ("title", "page_url", "source_url"):
-        terms.extend(extract_terms(str(payload.get(key) or "")))
+        terms.extend(document_terms(str(payload.get(key) or "")).terms)
     return terms
 
 
-def _extend_unique_terms(
-    target: list[str],
-    seen: set[str],
-    candidates: list[str],
-) -> None:
-    for candidate in candidates:
-        term = str(candidate or "").strip()
-        if not term or term in seen:
-            continue
-        seen.add(term)
-        target.append(term)
+def _unique_terms(groups: Iterable[Iterable[object]]) -> list[str]:
+    """Return stripped, ordered, deduplicated terms across candidate groups."""
+    seen: set[str] = set()
+    unique: list[str] = []
+    for group in groups:
+        for candidate in group:
+            term = str(candidate or "").strip()
+            if term and term not in seen:
+                seen.add(term)
+                unique.append(term)
+    return unique
 
 
 __all__ = ["execute_authorized_query"]
