@@ -8,7 +8,7 @@ from collections.abc import Callable
 from typing import Any
 
 from hawki_bridge.application.query.hits import merge_retrieval_hits
-from hawki_bridge.application.query.lexical import extract_lexical_terms
+from hawki_bridge.application.query.lexical import query_terms
 from hawki_bridge.domain.errors import DatasetVectorStoreNotReadyError
 from hawki_bridge.domain.ports import ScopedFilters, VectorSearchPort
 
@@ -50,7 +50,7 @@ def retrieve_lexical_hits(
     collection propagates, while other search or scroll failures degrade to the
     remaining results.
     """
-    terms = extract_lexical_terms(query)
+    terms = list(query_terms(query).folded)
     if not terms:
         return []
 

@@ -1,7 +1,8 @@
-"""Query scenarios from lexical fallback and rewrite through scoped ranking and context assembly."""
+"""Query scenarios from lexical boosting and rewrite through scoped ranking and context assembly."""
 
 from __future__ import annotations
 
+import os
 import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -43,7 +44,11 @@ class QueryCharacterizationTests(unittest.TestCase):
         self.assertEqual(rewrite["modality_hints"], ["image"])
         self.assertEqual(rewrite["entity_terms"], ["train", "train"])
 
-        with patch.object(query_rewrite, "extract_terms", return_value=["compare"]):
+        with patch.object(
+            query_rewrite,
+            "query_terms",
+            return_value=SimpleNamespace(terms=["compare"]),
+        ):
             query_terms = query_rewrite.build_query_terms(
                 "Compare wooden blocks and toy trains",
                 rewrite["high_level_keys"],
@@ -170,8 +175,8 @@ class QueryCharacterizationTests(unittest.TestCase):
 
         with patch.object(
             query_rewrite,
-            "extract_terms",
-            return_value=["visual", "train", "train"],
+            "query_terms",
+            return_value=SimpleNamespace(terms=["visual", "train", "train"]),
         ):
             terms = query_rewrite.build_query_terms(
                 "Visual toy planes",
@@ -234,3 +239,74 @@ class QueryCharacterizationTests(unittest.TestCase):
             extract_terms_fn=lambda text: ["blocks", "blocks", "toys", ""],
         )
         self.assertEqual(expansion, ["blocks", "toys"])
+
+    def test_query_lexical_boost_folds_fuzzy_matches_and_boosts_scores(self) -> None:
+        from hawki_bridge.application.query.lexical import (
+            boost_lexical_hits,
+            fold_text,
+            fuzzy_term_in_words,
+        )
+
+        hits = [
+            {
+                "id": "a",
+                "score": 0.1,
+                "payload": {
+                    "title": "Holzspielzeug",
+                    "content": "Robuste Baukloetze und Holzspielzeug fuer Kinder",
+                    "doc_id": "doc-a",
+                },
+            },
+            {
+                "id": "b",
+                "score": 0.9,
+                "payload": {
+                    "title": "Other",
+                    "content": "Unrelated text",
+                    "doc_id": "doc-b",
+                },
+            },
+        ]
+
+        boosted = boost_lexical_hits(hits, "Bauklötze Holzspielzeug")
+
+        self.assertEqual(
+            fold_text("Bauklötze für große Kinder"), "bauklotze fur grosse kinder"
+        )
+        self.assertTrue(fuzzy_term_in_words("blocks", ["block"]))
+        self.assertEqual([hit["payload"]["doc_id"] for hit in boosted], ["doc-a"])
+        self.assertGreater(boosted[0]["score"], 0.1)
+        self.assertEqual(boosted[0]["score"], 0.25)
+
+    def test_query_settings_parse_env_with_caps_and_fallbacks(self) -> None:
+        from hawki_bridge.application.query.settings import (
+            context_limits,
+            fusion_weights,
+            generation_enabled,
+            iterative_retrieval_enabled,
+            score_thresholds,
+            search_top_k,
+        )
+
+        with patch.dict(
+            os.environ,
+            {
+                "RAG_SEARCH_TOP_K_MULT": "4",
+                "RAG_SEARCH_TOP_K_CAP": "15",
+                "RAG_FUSION_SEM_WEIGHT": "bad",
+                "RAG_FUSION_STR_WEIGHT": "0.25",
+                "RAG_MIN_SCORE": "0.3",
+                "RAG_MIN_SCORE_FALLBACK": "bad",
+                "RAG_CONTEXT_TOKENS": "120",
+                "RAG_CONTEXT_DOCS": "bad",
+                "RAG_ITERATIVE_RETRIEVAL": "no",
+                "RAG_GENERATE_ANSWER": "yes",
+            },
+            clear=False,
+        ):
+            self.assertEqual(search_top_k(5), 15)
+            self.assertEqual(fusion_weights(), (0.6, 0.25))
+            self.assertEqual(score_thresholds(), (0.3, 0.2))
+            self.assertEqual(context_limits(), (120, 6))
+            self.assertFalse(iterative_retrieval_enabled())
+            self.assertTrue(generation_enabled())
