@@ -213,3 +213,27 @@ class AuthorizedScopeSchemaTests(unittest.TestCase):
         )
 
         self.assertEqual(filters, {"source_format": "pdf", "dataset_id": "dataset-a"})
+
+    def test_scoped_filters_preserve_supported_scalar_values(self) -> None:
+        from hawki_bridge.application.query.scope import build_scoped_query_filters
+
+        filters = build_scoped_query_filters(
+            "dataset-a",
+            {
+                "source_format": "pdf",
+                "version": 3,
+                "score": 0.75,
+                "archived": False,
+            },
+        )
+
+        self.assertEqual(
+            filters,
+            {
+                "source_format": "pdf",
+                "version": 3,
+                "score": 0.75,
+                "archived": False,
+                "dataset_id": "dataset-a",
+            },
+        )

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from typing import Any
+from typing import Any, TypedDict
 
 from hawki_rag_text.safety import strip_control_characters
 
@@ -22,9 +22,20 @@ _EMPTY_DRAFT_MESSAGE = (
 )
 
 
+class ContextSummary(TypedDict):
+    """Sanitized, bounded source evidence prepared for answer generation."""
+
+    idx: int
+    title: str
+    url: str
+    snippet: str
+    component_type: object
+    source_format: object | None
+
+
 def build_grounded_answer_prompt(
     query: str,
-    context_summaries: list[dict[str, Any]],
+    context_summaries: list[ContextSummary],
     kg_facts: list[dict[str, str]],
 ) -> tuple[str, str]:
     """Build a prompt that treats retrieved content as untrusted evidence."""
@@ -67,15 +78,20 @@ def build_grounded_answer_prompt(
     return system_prompt, "\n\n".join(sections)
 
 
-def prepare_context_summaries(
+def build_context_summaries(
     hits: list[dict[str, Any]],
     *,
     max_docs: int,
     max_tokens: int,
-) -> tuple[list[dict[str, Any]], list[int], int]:
-    """Build safe source summaries within the configured document/token limits."""
+) -> tuple[list[ContextSummary], list[int], int]:
+    """Build sanitized source context within document and token limits.
 
-    summaries: list[dict[str, Any]] = []
+    Token use follows the established approximation, and source indexes retain
+    their bounded hit positions. The result reports sources omitted or shortened
+    by the remaining token budget.
+    """
+
+    summaries: list[ContextSummary] = []
     trimmed: list[int] = []
     used_tokens = 0
 
@@ -155,10 +171,11 @@ def truncate_to_tokens(text: str, token_budget: int) -> str:
 
 
 __all__ = [
+    "ContextSummary",
     "build_grounded_answer_prompt",
     "estimate_tokens",
     "normalize_generated_answer",
-    "prepare_context_summaries",
+    "build_context_summaries",
     "sanitize_context_text",
     "truncate_to_tokens",
 ]

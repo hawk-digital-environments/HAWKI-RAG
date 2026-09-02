@@ -37,7 +37,7 @@ class QueryCharacterizationTests(unittest.TestCase):
             },
         ]
 
-        merged = query_hits.merge_hits(primary, secondary, limit=3)
+        merged = query_hits.merge_retrieval_hits(primary, secondary, limit=3)
         deduped = query_hits.dedupe_hits_by_identity(merged)
 
         self.assertEqual(len(merged), 3)
@@ -46,7 +46,7 @@ class QueryCharacterizationTests(unittest.TestCase):
     def test_query_hit_merge_normalizes_stage_scores_for_the_same_point(self) -> None:
         from hawki_bridge.application.query import hits as query_hits
 
-        merged = query_hits.merge_hits(
+        merged = query_hits.merge_retrieval_hits(
             [
                 {
                     "id": "answer",
@@ -141,7 +141,7 @@ class QueryCharacterizationTests(unittest.TestCase):
     def test_query_hit_merge_uses_chunk_index_when_point_id_is_missing(self) -> None:
         from hawki_bridge.application.query import hits as query_hits
 
-        merged = query_hits.merge_hits(
+        merged = query_hits.merge_retrieval_hits(
             [{"score": 0.4, "payload": {"doc_id": "doc-a", "chunk_index": 0}}],
             [{"score": 0.8, "payload": {"doc_id": "doc-a", "chunk_index": 1}}],
             limit=2,
@@ -155,7 +155,7 @@ class QueryCharacterizationTests(unittest.TestCase):
     def test_graph_fusion_does_not_collapse_chunks_from_the_same_document(self) -> None:
         from hawki_bridge.application.query import hits as query_hits
 
-        fused = query_hits.fuse_hits(
+        fused = query_hits.fuse_retrieval_hits(
             [
                 {"id": "chunk-1", "score": 0.8, "payload": {"doc_id": "doc-a"}},
                 {"id": "chunk-2", "score": 0.6, "payload": {"doc_id": "doc-a"}},
@@ -176,7 +176,7 @@ class QueryCharacterizationTests(unittest.TestCase):
     ) -> None:
         from hawki_bridge.application.query import hits as query_hits
 
-        fused = query_hits.fuse_hits(
+        fused = query_hits.fuse_retrieval_hits(
             [],
             [
                 {"id": "relation-1", "score": 0.5, "payload": {"doc_id": "doc-a"}},
@@ -205,7 +205,7 @@ class QueryCharacterizationTests(unittest.TestCase):
             }
         ]
 
-        summaries, trimmed, used_tokens = query_context.prepare_context_summaries(
+        summaries, trimmed, used_tokens = query_context.build_context_summaries(
             hits,
             max_docs=1,
             max_tokens=20,
@@ -214,4 +214,12 @@ class QueryCharacterizationTests(unittest.TestCase):
         self.assertEqual(len(summaries), 1)
         self.assertEqual(trimmed, [1])
         self.assertLessEqual(used_tokens, 30)
+        self.assertEqual(
+            set(summaries[0]),
+            {"idx", "title", "url", "snippet", "component_type", "source_format"},
+        )
+        self.assertEqual(summaries[0]["idx"], 1)
         self.assertEqual(summaries[0]["title"], "Toy Catalog")
+        self.assertEqual(summaries[0]["url"], "upload://toys.md")
+        self.assertEqual(summaries[0]["component_type"], "chunk")
+        self.assertIsNone(summaries[0]["source_format"])

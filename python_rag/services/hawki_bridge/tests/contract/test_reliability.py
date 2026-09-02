@@ -25,7 +25,7 @@ class BridgeReliabilityTests(unittest.TestCase):
 
     def test_startup_checks_fail_fast_after_retry_cap(self) -> None:
         from hawki_bridge.settings import load_settings
-        from hawki_bridge.startup_checks import run_startup_checks
+        from hawki_bridge.startup_checks import verify_dependencies
 
         settings = load_settings({"STARTUP_CHECK_ATTEMPTS": "2"})
 
@@ -33,7 +33,7 @@ class BridgeReliabilityTests(unittest.TestCase):
         check_neo4j = Mock()
         with patch("hawki_bridge.startup_checks.time.sleep") as sleep:
             with self.assertRaises(RequestsConnectionError):
-                run_startup_checks(
+                verify_dependencies(
                     settings,
                     logger=__import__("logging").getLogger("tests.reliability.startup"),
                     check_qdrant_fn=check_qdrant,
@@ -47,7 +47,7 @@ class BridgeReliabilityTests(unittest.TestCase):
         self,
     ) -> None:
         from hawki_bridge.settings import load_settings
-        from hawki_bridge.startup_checks import run_startup_checks
+        from hawki_bridge.startup_checks import verify_dependencies
 
         settings = load_settings({"STARTUP_CHECK_ATTEMPTS": "2"})
         logger = __import__("logging").getLogger("tests.reliability.neo4j-startup")
@@ -55,7 +55,7 @@ class BridgeReliabilityTests(unittest.TestCase):
         retryable_check = Mock(side_effect=ServiceUnavailable("not ready"))
         with patch("hawki_bridge.startup_checks.time.sleep") as sleep:
             with self.assertRaises(ServiceUnavailable):
-                run_startup_checks(
+                verify_dependencies(
                     settings,
                     logger=logger,
                     check_qdrant_fn=Mock(),
@@ -67,7 +67,7 @@ class BridgeReliabilityTests(unittest.TestCase):
         fail_fast_check = Mock(side_effect=ClientError("bad query or credentials"))
         with patch("hawki_bridge.startup_checks.time.sleep") as sleep:
             with self.assertRaises(ClientError):
-                run_startup_checks(
+                verify_dependencies(
                     settings,
                     logger=logger,
                     check_qdrant_fn=Mock(),

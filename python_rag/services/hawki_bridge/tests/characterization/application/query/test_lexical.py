@@ -12,10 +12,10 @@ class QueryCharacterizationTests(unittest.TestCase):
 
     def test_query_lexical_helpers_fold_fuzzy_match_and_boost_scores(self) -> None:
         from hawki_bridge.application.query.lexical import (
-            extract_query_terms_for_lexical,
+            extract_lexical_terms,
             fold_text,
             fuzzy_term_in_words,
-            lexical_boost_hits,
+            boost_lexical_hits,
         )
 
         hits = [
@@ -39,13 +39,13 @@ class QueryCharacterizationTests(unittest.TestCase):
             },
         ]
 
-        boosted = lexical_boost_hits(hits, "Bauklötze Holzspielzeug")
+        boosted = boost_lexical_hits(hits, "Bauklötze Holzspielzeug")
 
         self.assertEqual(
             fold_text("Bauklötze für große Kinder"), "bauklotze fur grosse kinder"
         )
         self.assertTrue(fuzzy_term_in_words("blocks", ["block"]))
-        self.assertIn("bauklotze", extract_query_terms_for_lexical("Bauklötze"))
+        self.assertIn("bauklotze", extract_lexical_terms("Bauklötze"))
         self.assertEqual([hit["payload"]["doc_id"] for hit in boosted], ["doc-a"])
         self.assertGreater(boosted[0]["score"], 0.1)
 
@@ -53,12 +53,10 @@ class QueryCharacterizationTests(unittest.TestCase):
         self,
     ) -> None:
         from hawki_bridge.application.query.lexical import (
-            extract_query_terms_for_lexical,
+            extract_lexical_terms,
         )
 
-        terms = extract_query_terms_for_lexical(
-            "Was ist die dritte Mahnung in mein Dataset?"
-        )
+        terms = extract_lexical_terms("Was ist die dritte Mahnung in mein Dataset?")
 
         self.assertIn("dritte", terms)
         self.assertIn("mahnung", terms)
@@ -99,7 +97,7 @@ class QueryCharacterizationTests(unittest.TestCase):
             self.assertTrue(generation_enabled())
 
     def test_query_fallback_uses_text_search_then_relaxed_scroll(self) -> None:
-        from hawki_bridge.application.query.fallback import keyword_fallback_search
+        from hawki_bridge.application.query.fallback import retrieve_lexical_hits
 
         calls: list[tuple[str, bool | None]] = []
 
@@ -119,13 +117,13 @@ class QueryCharacterizationTests(unittest.TestCase):
             {"RAG_EXHAUSTIVE_TEXT": "false", "QDRANT_TEXT_SCROLL_LIMIT": "10"},
             clear=False,
         ):
-            hits = keyword_fallback_search(Qdrant(), [0.1], "wooden toys", 3)
+            hits = retrieve_lexical_hits(Qdrant(), [0.1], "wooden toys", 3)
 
         self.assertEqual([hit["payload"]["doc_id"] for hit in hits], ["doc-b", "doc-a"])
         self.assertEqual(calls, [("search", None), ("scroll", True), ("scroll", False)])
 
     def test_query_fallback_uses_injected_scroll_controls(self) -> None:
-        from hawki_bridge.application.query.fallback import keyword_fallback_search
+        from hawki_bridge.application.query.fallback import retrieve_lexical_hits
 
         calls: list[tuple[str, int | bool | None]] = []
 
@@ -142,7 +140,7 @@ class QueryCharacterizationTests(unittest.TestCase):
                 calls.append(("scroll", limit))
                 return []
 
-        hits = keyword_fallback_search(
+        hits = retrieve_lexical_hits(
             Qdrant(),
             [0.1],
             "wooden toys",

@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import re
-from typing import Any
+from typing import Any, TypedDict
 
 from hawki_bridge.domain.ports import ModelProvider
 from hawki_rag_text.terms import extract_terms
@@ -17,6 +17,18 @@ _MULTIMODAL_HINT_PATTERN = re.compile(
     r"abbildung|tabelle|diagramm|bild|foto|gleichung)\b",
     re.IGNORECASE,
 )
+
+
+class QueryRewrite(TypedDict):
+    """Normalized query rewrite produced from optional model output."""
+
+    enabled: bool
+    raw: dict[str, Any]
+    high_level_keys: list[str]
+    low_level_keys: list[str]
+    modality_hints: list[str]
+    entity_terms: list[str]
+    rewritten_query: object
 
 
 def is_multimodal_query(text: str) -> bool:
@@ -60,7 +72,7 @@ def build_query_rewrite(
     query: str,
     *,
     fast_mode: bool,
-) -> dict[str, Any]:
+) -> QueryRewrite:
     """Return the optional rewrite and its normalized retrieval terms."""
 
     enabled = not fast_mode and is_multimodal_query(query)
@@ -111,6 +123,7 @@ def _parse_json_object(text: str) -> dict[str, Any]:
 
 
 __all__ = [
+    "QueryRewrite",
     "build_query_rewrite",
     "build_query_terms",
     "is_multimodal_query",

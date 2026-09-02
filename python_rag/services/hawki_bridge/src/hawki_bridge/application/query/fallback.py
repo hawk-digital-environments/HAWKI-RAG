@@ -7,10 +7,10 @@ import os
 from collections.abc import Callable
 from typing import Any
 
-from hawki_bridge.application.query.hits import merge_hits
-from hawki_bridge.application.query.lexical import extract_query_terms_for_lexical
+from hawki_bridge.application.query.hits import merge_retrieval_hits
+from hawki_bridge.application.query.lexical import extract_lexical_terms
 from hawki_bridge.domain.errors import DatasetVectorStoreNotReadyError
-from hawki_bridge.domain.ports import VectorSearchPort
+from hawki_bridge.domain.ports import ScopedFilters, VectorSearchPort
 
 logger = logging.getLogger(__name__)
 
@@ -34,22 +34,23 @@ def _exhaustive_text_default() -> bool:
     )
 
 
-def keyword_fallback_search(
+def retrieve_lexical_hits(
     qdrant: VectorSearchPort,
     vec: list[float],
     query: str,
     top_k: int,
     *,
-    filters: dict[str, Any] | None = None,
+    filters: ScopedFilters | None = None,
     text_scroll_limit_fn: Callable[[int], int] | None = None,
     exhaustive_text_fn: Callable[[], bool] | None = None,
 ) -> list[dict[str, Any]]:
-    """Run lexical fallback search and merge vector+scroll candidates.
+    """Retrieve lexical hits through scoped search and scroll fallbacks.
 
-    The two callables are injectable to make tests deterministic without touching
-    process environment.
+    Mandatory dataset filters are forwarded to every path. A missing scoped
+    collection propagates, while other search or scroll failures degrade to the
+    remaining results.
     """
-    terms = extract_query_terms_for_lexical(query)
+    terms = extract_lexical_terms(query)
     if not terms:
         return []
 
@@ -81,7 +82,7 @@ def keyword_fallback_search(
     except Exception as exc:
         logger.warning("query:text-fallback search failed: %s", exc)
 
-    scroll_hits = fallback_scroll_hits(
+    scroll_hits = scroll_lexical_hits(
         qdrant,
         terms=terms,
         fields=fields,
@@ -90,13 +91,13 @@ def keyword_fallback_search(
         filters=filters,
     )
     if hits and scroll_hits:
-        return merge_hits(
+        return merge_retrieval_hits(
             hits, scroll_hits, max(top_k * 2, len(hits) + len(scroll_hits))
         )
     return hits or scroll_hits
 
 
-def fallback_scroll_hits(
+def scroll_lexical_hits(
     qdrant: VectorSearchPort,
     *,
     terms: list[str],
@@ -104,8 +105,13 @@ def fallback_scroll_hits(
     fallback_limit: int,
     exhaustive_text: bool | None = None,
     exhaustive_text_fn: Callable[[], bool] | None = None,
-    filters: dict[str, Any] | None = None,
+    filters: ScopedFilters | None = None,
 ) -> list[dict[str, Any]]:
+    """Scroll scoped lexical hits with strict-then-relaxed term matching.
+
+    Exhaustive mode selects the all-pages operation. A missing scoped collection
+    propagates; other scroll failures degrade to an empty result.
+    """
     if exhaustive_text is None:
         exhaustive_text = (
             exhaustive_text_fn()

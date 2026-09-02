@@ -12,7 +12,7 @@ def build_graph_router(*, service: GraphReadService) -> APIRouter:
     @router.post("/related")
     def related(body: GraphReadRequest) -> dict[str, object]:
         return {
-            "facts": service.related_terms(
+            "facts": service.retrieve_related_graph(
                 body.terms,
                 authorized_scope=body.authorized_scope,
                 limit=body.limit,

@@ -24,7 +24,16 @@ class GeneratedAnswerContextTests(unittest.TestCase):
     def test_grounded_prompt_rejects_standalone_citations(self) -> None:
         system_prompt, _user_prompt = build_grounded_answer_prompt(
             "What fee applies?",
-            [{"idx": 1, "title": "Fee regulation", "snippet": "A fee applies."}],
+            [
+                {
+                    "idx": 1,
+                    "title": "Fee regulation",
+                    "url": "",
+                    "snippet": "A fee applies.",
+                    "component_type": "chunk",
+                    "source_format": None,
+                }
+            ],
             [],
         )
 

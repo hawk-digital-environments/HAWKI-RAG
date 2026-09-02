@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import math
 from typing import Any, Callable
 
-from hawki_bridge.application.query.lexical import lexical_boost_hits
 from hawki_bridge.application.query.hits import dedupe_hits_by_identity
+from hawki_bridge.application.query.lexical import boost_lexical_hits
 from hawki_bridge.domain.ports import ModelProvider, RerankHitsPort
 from hawki_rag_text.terms import extract_terms
 
@@ -14,8 +15,34 @@ DedupeHits = Callable[[list[dict[str, Any]]], list[dict[str, Any]]]
 ExtractTerms = Callable[[str], list[str]]
 
 
-def should_iterate(query: str, hits: list[dict[str, Any]], top_k: int) -> bool:
-    """Decide whether query should trigger second-pass retrieval."""
+def validate_vector(vector: object, expected_dim: int) -> str | None:
+    """Return a bounded reason when an expansion vector is unsafe to search."""
+
+    if not isinstance(vector, list):
+        return "shape"
+    if not vector:
+        return "empty"
+    if len(vector) != expected_dim:
+        return "dimension"
+    if any(
+        isinstance(value, bool) or not isinstance(value, (int, float))
+        for value in vector
+    ):
+        return "type"
+    try:
+        if any(not math.isfinite(value) for value in vector):
+            return "non_finite"
+    except OverflowError:
+        return "non_finite"
+    return None
+
+
+def should_expand_retrieval(query: str, hits: list[dict[str, Any]], top_k: int) -> bool:
+    """Return whether weak or multi-step results need a second retrieval pass.
+
+    No hits, sequencing or comparison language, low hit density, or a weak
+    maximum score trigger expansion.
+    """
     if not hits:
         return True
     lowered = query.lower()
@@ -75,7 +102,7 @@ def rerank_and_filter_hits(
     )
 
 
-def filter_hits_by_score(
+def select_ranked_hits(
     hits: list[dict[str, Any]],
     *,
     query: str,
@@ -84,10 +111,14 @@ def filter_hits_by_score(
     top_k: int,
     apply_lexical_boost: Callable[
         [list[dict[str, Any]], str], list[dict[str, Any]]
-    ] = lexical_boost_hits,
+    ] = boost_lexical_hits,
     dedupe_hits: DedupeHits = dedupe_hits_by_identity,
 ) -> list[dict[str, Any]]:
-    """Apply lexical boost, then score thresholds and deduplication."""
+    """Select final hits using lexical, threshold, fallback, and dedupe policy.
+
+    Lexical matches win when present, followed by primary and fallback score
+    thresholds; otherwise the top-k prefix is retained.
+    """
     ranked = list(hits)
     lexical = apply_lexical_boost(ranked, query)
     if lexical:

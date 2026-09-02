@@ -18,13 +18,19 @@ from hawki_bridge.adapters.qdrant_reader import (
 )
 
 
-def run_startup_checks(
+def verify_dependencies(
     settings: Any,
     *,
     logger: logging.Logger,
     check_qdrant_fn: Callable[[], None] | None = None,
     check_neo4j_fn: Callable[[], None] | None = None,
 ) -> None:
+    """Verify Qdrant and Neo4j availability within the startup retry budget.
+
+    Qdrant operation errors retry with bounded exponential backoff. Neo4j errors
+    retry only when marked retryable; non-retryable errors or exhausted attempts
+    propagate and fail application startup.
+    """
     operations: dict[
         str, tuple[Callable[[], None], tuple[type[BaseException], ...]]
     ] = {
@@ -53,4 +59,4 @@ def run_startup_checks(
                 delay = min(delay * 2, 30.0)
 
 
-__all__ = ["run_startup_checks"]
+__all__ = ["verify_dependencies"]

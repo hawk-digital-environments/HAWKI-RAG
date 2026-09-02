@@ -17,20 +17,26 @@ from hawki_rag_text.terms import extract_terms
 
 from hawki_bridge.application.dependencies import QueryDependencies
 from hawki_bridge.application.query.context import (
+    ContextSummary,
     build_grounded_answer_prompt,
+    build_context_summaries,
     normalize_generated_answer,
-    prepare_context_summaries,
 )
-from hawki_bridge.application.query.fallback import keyword_fallback_search
-from hawki_bridge.application.query.hits import fuse_hits, merge_hits
-from hawki_bridge.application.query.model_selection import configure_query_provider
+from hawki_bridge.application.query.fallback import retrieve_lexical_hits
+from hawki_bridge.application.query.hits import (
+    fuse_retrieval_hits,
+    merge_retrieval_hits,
+)
+from hawki_bridge.application.query.model_selection import apply_query_models
 from hawki_bridge.application.query.ranking import (
     collect_expansion_terms,
-    filter_hits_by_score,
     rerank_and_filter_hits,
-    should_iterate,
+    select_ranked_hits,
+    should_expand_retrieval,
+    validate_vector,
 )
 from hawki_bridge.application.query.rewrite import (
+    QueryRewrite,
     build_query_rewrite,
     build_query_terms,
 )
@@ -51,7 +57,15 @@ from hawki_bridge.domain.errors import (
     InvalidQueryError,
     UnsupportedModelProviderError,
 )
-from hawki_bridge.domain.ports import ModelProvider, VectorSearchPort
+from hawki_bridge.domain.ports import (
+    GraphSearchPort,
+    ModelProvider,
+    ModelProviderResolver,
+    RerankHitsPort,
+    ScopedFilters,
+    VectorSearchFactory,
+    VectorSearchPort,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -73,7 +87,7 @@ class QueryRuntime:
     provider: ModelProvider
     vector_search: VectorSearchPort
     user_query: str
-    filters: dict[str, Any]
+    filters: ScopedFilters
 
 
 @dataclass(frozen=True, slots=True)
@@ -83,7 +97,7 @@ class PreparedQuery:
     text: str
     vector: list[float]
     terms: list[str]
-    rewrite: dict[str, Any]
+    rewrite: QueryRewrite
 
 
 @dataclass(frozen=True, slots=True)
@@ -100,49 +114,49 @@ def execute_authorized_query(
     *,
     dependencies: QueryDependencies,
 ) -> QueryResponse:
-    """Execute the bridge query workflow and return its stable contract.
+    """Execute an authorized query and return the stable response contract.
 
-    1. Validate and sanitize the query, then bind the authorized provider and
-       vector collection.
-    2. Optionally rewrite the query, create its embedding, and retrieve scoped
-       semantic, lexical, and structural candidates.
-    3. Fuse, rerank, and optionally expand weak retrieval results.
-    4. Build bounded evidence, load related graph facts, and optionally produce
-       a grounded answer.
+    Vector and graph access remain bound to the trusted authorization scope.
+    Caller-controlled filters cannot replace mandatory dataset isolation, and
+    generation receives only sanitized, bounded context.
     """
 
     timings: dict[str, float] = {}
-    runtime = _initialize_query_runtime(request, dependencies)
-    prepared = _rewrite_and_embed(request, runtime, timings)
-    initial_hits = _retrieve_initial_evidence(
+    runtime = build_query_runtime(
+        request,
+        resolve_model_provider=dependencies.resolve_model_provider,
+        vector_search_factory=dependencies.vector_search_factory,
+    )
+    prepared = prepare_query(request, runtime, timings)
+    initial_hits = retrieve_query_hits(
         request,
         runtime,
         prepared,
-        dependencies,
-        timings,
+        graph_search=dependencies.graph_search,
+        timings=timings,
     )
-    ranked = _rank_and_expand_evidence(
+    ranked = expand_query_hits(
         request,
         runtime,
         prepared,
         initial_hits,
-        dependencies,
-        timings,
+        rerank_hits=dependencies.rerank_hits,
+        timings=timings,
     )
 
     max_context_tokens, max_context_docs = context_limits()
     final_hits = ranked.hits[: max(request.top_k, max_context_docs)]
-    context_summaries, trimmed_sources, context_tokens_used = prepare_context_summaries(
+    context_summaries, trimmed_sources, context_tokens_used = build_context_summaries(
         final_hits,
         max_docs=max_context_docs,
         max_tokens=max_context_tokens,
     )
-    graph_facts = _load_related_graph_facts(
+    graph_facts = retrieve_query_graph(
         request,
         prepared,
         final_hits,
-        dependencies,
-        timings,
+        graph_search=dependencies.graph_search,
+        timings=timings,
     )
     answer = _generate_grounded_answer(
         request,
@@ -196,10 +210,19 @@ def execute_authorized_query(
     )
 
 
-def _initialize_query_runtime(
+def build_query_runtime(
     request: QueryRequest,
-    dependencies: QueryDependencies,
+    *,
+    resolve_model_provider: ModelProviderResolver,
+    vector_search_factory: VectorSearchFactory,
 ) -> QueryRuntime:
+    """Bind sanitized query text to authorized models and physical storage.
+
+    The collection and mandatory dataset predicate come from the authorized
+    scope. Caller-controlled filters are sanitized before that predicate is
+    applied, and the authorized embedding configuration remains on the provider.
+    """
+
     prompt_safety = analyze_prompt(request.query)
     if prompt_safety["blocked"]:
         message = "Query blocked by content safety filters."
@@ -212,12 +235,12 @@ def _initialize_query_runtime(
         raise InvalidQueryError("Query is empty after sanitization.")
 
     try:
-        provider = dependencies.resolve_model_provider(request.provider)
+        provider = resolve_model_provider(request.provider)
     except ValueError as exc:
         raise UnsupportedModelProviderError(str(exc)) from exc
-    configure_query_provider(provider, request)
+    apply_query_models(provider, request)
 
-    vector_search = dependencies.vector_search_factory()
+    vector_search = vector_search_factory()
     vector_search.select_scoped_collection(request.authorized_scope.qdrant_collection)
     filters = build_scoped_query_filters(
         request.authorized_scope.dataset_id,
@@ -235,11 +258,18 @@ def _initialize_query_runtime(
     return QueryRuntime(provider, vector_search, user_query, filters)
 
 
-def _rewrite_and_embed(
+def prepare_query(
     request: QueryRequest,
     runtime: QueryRuntime,
     timings: dict[str, float],
 ) -> PreparedQuery:
+    """Prepare normalized retrieval terms and the query embedding.
+
+    The provider already carries the authorized model selection. Rewrite
+    failures degrade to the original query, while embedding failures become a
+    stable application error.
+    """
+
     started = time.perf_counter()
     rewrite = build_query_rewrite(
         runtime.provider,
@@ -268,13 +298,20 @@ def _rewrite_and_embed(
     return PreparedQuery(rewritten_query, vector, query_terms, rewrite)
 
 
-def _retrieve_initial_evidence(
+def retrieve_query_hits(
     request: QueryRequest,
     runtime: QueryRuntime,
     prepared: PreparedQuery,
-    dependencies: QueryDependencies,
+    graph_search: GraphSearchPort,
     timings: dict[str, float],
 ) -> list[dict[str, Any]]:
+    """Retrieve and fuse hits within the authorized storage boundary.
+
+    Vector and lexical paths share the mandatory dataset filters. Structural
+    graph search uses the authorized dataset and namespace and is skipped when
+    graph access is disabled, fast mode is active, or traversal depth is zero.
+    """
+
     candidate_limit = search_top_k(request.top_k)
     started = time.perf_counter()
     hits = runtime.vector_search.search_candidates(
@@ -288,7 +325,7 @@ def _retrieve_initial_evidence(
         is_optimized=request.is_optimized,
         preferred_tags=request.preferred_tags,
     )
-    keyword_hits = keyword_fallback_search(
+    keyword_hits = retrieve_lexical_hits(
         runtime.vector_search,
         prepared.vector,
         prepared.text,
@@ -296,7 +333,7 @@ def _retrieve_initial_evidence(
         filters=runtime.filters,
     )
     if keyword_hits:
-        hits = merge_hits(
+        hits = merge_retrieval_hits(
             hits,
             keyword_hits,
             max(candidate_limit * 2, len(hits) + len(keyword_hits)),
@@ -311,7 +348,7 @@ def _retrieve_initial_evidence(
     structural_hits = (
         []
         if not request.authorized_scope.graph_enabled or request.fast_mode or hops == 0
-        else dependencies.graph_search.build_structural_hits(
+        else graph_search.build_structural_hits(
             prepared.terms,
             dataset_id=request.authorized_scope.dataset_id,
             neo4j_namespace=str(request.authorized_scope.neo4j_namespace),
@@ -326,7 +363,7 @@ def _retrieve_initial_evidence(
     )
 
     semantic_weight, graph_weight = fusion_weights()
-    fused = fuse_hits(
+    fused = fuse_retrieval_hits(
         hits,
         structural_hits,
         sem_weight=semantic_weight,
@@ -340,14 +377,21 @@ def _retrieve_initial_evidence(
     ]
 
 
-def _rank_and_expand_evidence(
+def expand_query_hits(
     request: QueryRequest,
     runtime: QueryRuntime,
     prepared: PreparedQuery,
     hits: list[dict[str, Any]],
-    dependencies: QueryDependencies,
+    rerank_hits: RerankHitsPort,
     timings: dict[str, float],
 ) -> RankedEvidence:
+    """Rerank hits and optionally perform one high-recall retrieval pass.
+
+    The second pass reuses the scoped vector reader and mandatory filters.
+    Expansion-embedding failures or invalid results retain the original query
+    vector, and an empty second pass preserves the first-pass ranking.
+    """
+
     minimum_score, fallback_minimum = score_thresholds()
     started = time.perf_counter()
     ranked_hits = rerank_and_filter_hits(
@@ -355,7 +399,7 @@ def _rank_and_expand_evidence(
         user_query=prepared.text,
         provider=runtime.provider,
         query_vector=prepared.vector,
-        rerank_hits=dependencies.rerank_hits,
+        rerank_hits=rerank_hits,
         mode=request.reranker,
         top_n=request.rerank_top_n,
         mix_mode=request.mix_mode,
@@ -363,12 +407,12 @@ def _rank_and_expand_evidence(
         min_score=minimum_score,
         fallback_min=fallback_minimum,
         top_k=request.top_k,
-        filter_hits=filter_hits_by_score,
+        filter_hits=select_ranked_hits,
     )
     timings["rerank_ms"] = (time.perf_counter() - started) * 1000
     logger.info("query:rerank hits=%s ms=%.2f", len(ranked_hits), timings["rerank_ms"])
 
-    if not iterative_retrieval_enabled() or not should_iterate(
+    if not iterative_retrieval_enabled() or not should_expand_retrieval(
         prepared.text, ranked_hits, request.top_k
     ):
         return RankedEvidence(ranked_hits, False, [])
@@ -385,8 +429,35 @@ def _rank_and_expand_evidence(
             if expansion_terms
             else prepared.vector
         )
-    except Exception:
+    except Exception as exc:
+        logger.warning(
+            "query:expansion_embedding failed provider=%s dataset_id=%s "
+            "error=%s fallback=original_vector",
+            request.provider,
+            request.authorized_scope.dataset_id,
+            type(exc).__name__,
+        )
         expanded_vector = prepared.vector
+    else:
+        invalid_reason = (
+            validate_vector(expanded_vector, len(prepared.vector))
+            if expansion_terms
+            else None
+        )
+        if invalid_reason is not None:
+            actual_dim = (
+                len(expanded_vector) if isinstance(expanded_vector, list) else None
+            )
+            logger.warning(
+                "query:expansion_embedding invalid provider=%s dataset_id=%s "
+                "reason=%s expected_dim=%s actual_dim=%s fallback=original_vector",
+                request.provider,
+                request.authorized_scope.dataset_id,
+                invalid_reason,
+                len(prepared.vector),
+                actual_dim,
+            )
+            expanded_vector = prepared.vector
 
     secondary_hits = runtime.vector_search.search_high_recall(
         vector=expanded_vector,
@@ -395,7 +466,7 @@ def _rank_and_expand_evidence(
         preferred_tags=request.preferred_tags,
     )
     if secondary_hits:
-        ranked_hits = merge_hits(
+        ranked_hits = merge_retrieval_hits(
             ranked_hits,
             secondary_hits,
             max(request.top_k * 2, 12),
@@ -405,7 +476,7 @@ def _rank_and_expand_evidence(
             user_query=prepared.text,
             provider=runtime.provider,
             query_vector=prepared.vector,
-            rerank_hits=dependencies.rerank_hits,
+            rerank_hits=rerank_hits,
             mode=request.reranker,
             top_n=request.rerank_top_n,
             mix_mode=request.mix_mode,
@@ -413,18 +484,25 @@ def _rank_and_expand_evidence(
             min_score=minimum_score,
             fallback_min=fallback_minimum,
             top_k=request.top_k,
-            filter_hits=filter_hits_by_score,
+            filter_hits=select_ranked_hits,
         )
     return RankedEvidence(ranked_hits, True, expansion_terms)
 
 
-def _load_related_graph_facts(
+def retrieve_query_graph(
     request: QueryRequest,
     prepared: PreparedQuery,
     hits: list[dict[str, Any]],
-    dependencies: QueryDependencies,
+    graph_search: GraphSearchPort,
     timings: dict[str, float],
 ) -> list[dict[str, str]]:
+    """Retrieve graph data for answer context within the authorized scope.
+
+    Retrieval requires graph access, ranked hits, and non-fast mode. Every read
+    receives the authorized dataset and graph namespace; disabled or empty paths
+    produce no graph facts.
+    """
+
     started = time.perf_counter()
     facts: list[dict[str, str]] = []
     if request.authorized_scope.graph_enabled and hits and not request.fast_mode:
@@ -441,7 +519,7 @@ def _load_related_graph_facts(
                 extract_terms(str(payload.get("content") or "")[:160]),
             )
         if terms:
-            facts = dependencies.graph_search.fetch_related_terms(
+            facts = graph_search.fetch_related_graph(
                 terms[:30],
                 dataset_id=request.authorized_scope.dataset_id,
                 neo4j_namespace=str(request.authorized_scope.neo4j_namespace),
@@ -456,10 +534,17 @@ def _generate_grounded_answer(
     request: QueryRequest,
     provider: ModelProvider,
     query: str,
-    context_summaries: list[dict[str, Any]],
+    context_summaries: list[ContextSummary],
     graph_facts: list[dict[str, str]],
     timings: dict[str, float],
 ) -> str:
+    """Generate an answer from sanitized, bounded context and graph data.
+
+    Generation requires both request and process configuration plus non-empty
+    context. Model output passes through output-safety and answer normalization;
+    provider failures become a stable application error.
+    """
+
     started = time.perf_counter()
     answer = ""
     if request.generate and generation_enabled() and context_summaries:

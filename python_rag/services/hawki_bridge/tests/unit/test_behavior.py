@@ -103,6 +103,38 @@ def _scope(*, graph_enabled: bool = False) -> AuthorizedQueryScope:
     )
 
 
+def test_query_model_selection_uses_validated_contract_fields() -> None:
+    from hawki_bridge.application.query.model_selection import apply_query_models
+
+    class Provider:
+        embed_model = "initial-embedding"
+        rag_model = "initial-chat"
+        vision_model = "initial-vision"
+
+    request = QueryRequest(
+        query="How does model selection work?",
+        authorized_scope=AuthorizedQueryScope(
+            dataset_id="dataset-42",
+            qdrant_collection="dataset_42_vectors",
+            embedding_provider="ollama",
+            embedding_model="authorized-embedding",
+        ),
+        provider="ollama",
+        chat_model="selected-chat",
+        vision_model="selected-vision",
+    )
+    provider = Provider()
+
+    assert not hasattr(request, "embedding_model")
+    assert not hasattr(request, "graph_model")
+
+    apply_query_models(provider, request)
+
+    assert provider.embed_model == "authorized-embedding"
+    assert provider.rag_model == "selected-chat"
+    assert provider.vision_model == "selected-vision"
+
+
 def _workflow_input(*, source_id: str) -> dict[str, Any]:
     return {
         "source_id": source_id,
@@ -184,7 +216,7 @@ def test_graph_route_delegates_only_the_authorized_dataset_scope() -> None:
         def __init__(self) -> None:
             self.calls: list[dict[str, Any]] = []
 
-        def fetch_related_terms(self, terms: list[str], **scope: Any):
+        def fetch_related_graph(self, terms: list[str], **scope: Any):
             self.calls.append({"terms": terms, **scope})
             return [{"subject": "A", "relation": "uses", "object": "B"}]
 
@@ -216,13 +248,13 @@ def test_graph_route_delegates_only_the_authorized_dataset_scope() -> None:
 
 def test_graph_application_rejects_a_scope_without_graph_authorization() -> None:
     class FailIfCalledReader:
-        def fetch_related_terms(self, *_args: Any, **_kwargs: Any):
+        def fetch_related_graph(self, *_args: Any, **_kwargs: Any):
             raise AssertionError("unauthorized graph read reached the store")
 
     service = GraphReadService(FailIfCalledReader())
 
     with pytest.raises(ValueError, match="graph access is not enabled"):
-        service.related_terms(
+        service.retrieve_related_graph(
             ["forbidden"],
             authorized_scope=_scope(),
             limit=5,
@@ -236,13 +268,13 @@ def test_neo4j_adapter_delegates_a_read_without_changing_scope(
 
     observed: dict[str, Any] = {}
 
-    def fake_fetch_related_terms(terms: list[str], **scope: Any):
+    def fake_fetch_related_graph(terms: list[str], **scope: Any):
         observed.update({"terms": terms, **scope})
         return [{"subject": "A", "relation": "uses", "object": "B"}]
 
-    monkeypatch.setattr(reader_module, "fetch_related_terms", fake_fetch_related_terms)
+    monkeypatch.setattr(reader_module, "fetch_related_graph", fake_fetch_related_graph)
 
-    result = Neo4jReader().fetch_related_terms(
+    result = Neo4jReader().fetch_related_graph(
         ["authorization"],
         dataset_id="dataset-42",
         neo4j_namespace="dataset_42_graph",
@@ -295,7 +327,7 @@ def test_neo4j_adapter_propagates_non_availability_errors(
 
     with pytest.raises(type(error)):
         if operation == "related":
-            reader_module.fetch_related_terms(
+            reader_module.fetch_related_graph(
                 ["term"], dataset_id="dataset-a", neo4j_namespace="graph-a"
             )
         else:
@@ -333,7 +365,7 @@ def test_neo4j_adapter_degrades_only_unavailability_to_empty(
     monkeypatch.setattr(reader_module, "Neo4jGraph", UnavailableGraph)
 
     if operation == "related":
-        result = reader_module.fetch_related_terms(
+        result = reader_module.fetch_related_graph(
             ["term"], dataset_id="dataset-a", neo4j_namespace="graph-a"
         )
     else:
@@ -488,7 +520,7 @@ def test_temporal_cancel_is_idempotent_only_when_the_execution_is_absent(
     async def client(_self):
         return TemporalClient()
 
-    monkeypatch.setattr(TemporalBridgeClient, "_client", client)
+    monkeypatch.setattr(TemporalBridgeClient, "connect_temporal", client)
     bridge = TemporalBridgeClient(load_settings({}))
     cancellation = bridge.cancel_workflow(
         workflow_id="ingest-source-stale",

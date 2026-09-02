@@ -1,13 +1,15 @@
-"""Authorization-owned query scope helpers.
+"""Trusted authorization-scope helpers for document queries.
 
-Laravel authorizes the logical dataset and derives its physical storage targets.
-This module keeps caller metadata filters from changing that trusted scope.
+The control plane authorizes the logical dataset and derives its physical
+storage targets. Caller metadata filters cannot change that trusted scope.
 """
 
 from __future__ import annotations
 
 import math
 from typing import Any
+
+from hawki_bridge.domain.ports import ScopedFilters
 
 
 _RESERVED_FILTER_KEYS = frozenset(
@@ -23,7 +25,7 @@ _RESERVED_FILTER_KEYS = frozenset(
 )
 
 
-def _normalized_filter_key(key: str) -> str:
+def normalize_filter_key(key: str) -> str:
     """Normalize public filter keys before checking authorization-owned names."""
 
     characters: list[str] = []
@@ -42,19 +44,19 @@ def _normalized_filter_key(key: str) -> str:
 def build_scoped_query_filters(
     dataset_id: str,
     user_filters: dict[str, Any] | None,
-) -> dict[str, Any]:
+) -> ScopedFilters:
     """Combine sanitized user metadata with the mandatory dataset predicate.
 
     The mandatory value is written last so a caller cannot replace it. Storage
     routing keys are not user-searchable metadata and are removed as well.
     """
 
-    sanitized_filters: dict[str, Any] = {}
+    sanitized_filters: ScopedFilters = {}
     for key, value in (user_filters or {}).items():
         normalized_key = str(key).strip()
         if (
             not normalized_key
-            or _normalized_filter_key(normalized_key) in _RESERVED_FILTER_KEYS
+            or normalize_filter_key(normalized_key) in _RESERVED_FILTER_KEYS
         ):
             continue
         if not isinstance(value, (str, int, float, bool)):

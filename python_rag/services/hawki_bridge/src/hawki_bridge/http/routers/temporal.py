@@ -1,4 +1,4 @@
-"""Temporal control endpoints used by Laravel."""
+"""Temporal control endpoints used by the authorized control plane."""
 
 from __future__ import annotations
 

@@ -22,7 +22,7 @@ from hawki_bridge.http.routers import (
 )
 from hawki_bridge.logging_config import configure_logging
 from hawki_bridge.settings import BridgeSettings, load_settings
-from hawki_bridge.startup_checks import run_startup_checks
+from hawki_bridge.startup_checks import verify_dependencies
 
 
 def build_app(
@@ -34,6 +34,11 @@ def build_app(
     runtime_summary: Callable[[], dict[str, object]] | None = None,
     logger_name: str = "hawki_bridge",
 ) -> FastAPI:
+    """Compose the read-only bridge with scoped dependencies and startup checks.
+
+    The lifespan verifies configured external dependencies, and composition
+    rejects forbidden document or graph mutation routes.
+    """
     active_settings = settings or load_settings()
     active_dependencies = query_dependencies or build_query_dependencies()
     active_graph_service = GraphReadService(
@@ -45,7 +50,7 @@ def build_app(
     @asynccontextmanager
     async def lifespan(_application: FastAPI):
         if active_settings.startup_checks_enabled:
-            run_startup_checks(
+            verify_dependencies(
                 active_settings,
                 logger=logger,
             )

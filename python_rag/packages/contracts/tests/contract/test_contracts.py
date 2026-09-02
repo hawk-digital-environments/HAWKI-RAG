@@ -132,6 +132,26 @@ def test_query_provider_must_match_the_authorized_vector_space() -> None:
         )
 
 
+@pytest.mark.parametrize("legacy_field", ["embedding_model", "graph_model"])
+def test_query_rejects_legacy_root_model_fields(legacy_field: str) -> None:
+    payload: dict[str, object] = {
+        "query": "How does Temporal route activities?",
+        "authorized_scope": _authorized_scope(),
+        "provider": "ollama",
+        "chat_model": "llama3.1:8b",
+        "vision_model": "qwen2.5vl:7b",
+        legacy_field: "some-model",
+    }
+
+    with pytest.raises(ValidationError) as exc_info:
+        QueryRequest.model_validate(payload)
+
+    assert any(
+        error["type"] == "extra_forbidden" and error["loc"] == (legacy_field,)
+        for error in exc_info.value.errors()
+    )
+
+
 def test_artifact_and_reranker_contracts_reject_malformed_wire_data() -> None:
     artifact = MarkdownArtifact(
         uri="file:///shared/sources/source-a/markdown/page.md",

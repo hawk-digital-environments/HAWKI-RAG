@@ -62,7 +62,7 @@ class _EmptyGraphSearch:
     def build_structural_hits(self, *_args: Any, **_kwargs: Any) -> list[Any]:
         return []
 
-    def fetch_related_terms(self, *_args: Any, **_kwargs: Any) -> list[Any]:
+    def fetch_related_graph(self, *_args: Any, **_kwargs: Any) -> list[Any]:
         return []
 
 

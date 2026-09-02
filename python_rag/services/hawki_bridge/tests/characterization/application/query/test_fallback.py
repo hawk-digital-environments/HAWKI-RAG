@@ -60,7 +60,7 @@ class QueryFallbackScopeTests(unittest.TestCase):
     """Verify lexical and scroll fallbacks inherit the mandatory dataset filter."""
 
     def test_keyword_and_scroll_fallbacks_receive_mandatory_filters(self) -> None:
-        from hawki_bridge.application.query.fallback import keyword_fallback_search
+        from hawki_bridge.application.query.fallback import retrieve_lexical_hits
 
         calls: list[tuple[str, dict[str, Any]]] = []
         expected_filters = {"source_format": "pdf", "dataset_id": "dataset-a"}
@@ -80,7 +80,7 @@ class QueryFallbackScopeTests(unittest.TestCase):
                     {"id": "a", "score": 0.5, "payload": {"dataset_id": "dataset-a"}}
                 ]
 
-        hits = keyword_fallback_search(
+        hits = retrieve_lexical_hits(
             FakeQdrant(),
             [0.1],
             "page ten",

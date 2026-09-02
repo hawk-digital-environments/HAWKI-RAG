@@ -52,7 +52,7 @@ class QdrantReader:
         preferred_tags: list[str] | None,
     ) -> list[dict[str, Any]]:
         return _translate_not_ready(
-            lambda: run_search(
+            lambda: search_qdrant_hits(
                 qdrant=self.client,
                 vec=vector,
                 top_k=top_k,
@@ -75,7 +75,7 @@ class QdrantReader:
         preferred_tags: list[str] | None,
     ) -> list[dict[str, Any]]:
         return _translate_not_ready(
-            lambda: run_high_recall(
+            lambda: search_high_recall(
                 qdrant=self.client,
                 vec=vector,
                 top_k=top_k,
@@ -155,7 +155,7 @@ def ping_qdrant() -> None:
     QdrantHTTP().list_collections()
 
 
-def run_search(
+def search_qdrant_hits(
     *,
     qdrant: QdrantHTTP,
     vec: list[float],
@@ -168,6 +168,11 @@ def run_search(
     is_optimized: bool,
     preferred_tags: list[str] | None,
 ) -> list[dict[str, Any]]:
+    """Search Qdrant with the current smart, optimized, or basic strategy.
+
+    Fast mode selects basic search. An empty smart result falls back to the
+    basic strategy, while optimized search retains preferred-tag handling.
+    """
     if smart_lookup and not fast_mode:
         hits = semantic_search_smart(
             qdrant,
@@ -205,7 +210,7 @@ def run_search(
     return hits
 
 
-def run_high_recall(
+def search_high_recall(
     *,
     qdrant: QdrantHTTP,
     vec: list[float],
@@ -213,6 +218,8 @@ def run_high_recall(
     filters: dict[str, Any] | None,
     preferred_tags: list[str] | None,
 ) -> list[dict[str, Any]]:
+    """Search for high recall, then fall back to optimized semantic search."""
+
     hits = semantic_search_high_recall(
         qdrant,
         vec,

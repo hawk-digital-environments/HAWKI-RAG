@@ -15,13 +15,18 @@ class GraphReadService:
 
     reader: GraphReader
 
-    def related_terms(
+    def retrieve_related_graph(
         self,
         terms: list[str],
         *,
         authorized_scope: AuthorizedQueryScope,
         limit: int,
     ) -> list[dict[str, str]]:
+        """Retrieve relationship records within the authorized graph scope.
+
+        Graph access requires both an enabled dataset scope and its physical
+        Neo4j namespace; trusted scope values are forwarded unchanged.
+        """
         if not authorized_scope.graph_enabled:
             raise ValueError("graph access is not enabled for the authorized dataset")
 
@@ -29,7 +34,7 @@ class GraphReadService:
         if not namespace:
             raise ValueError("neo4j_namespace is required for graph retrieval")
 
-        return self.reader.fetch_related_terms(
+        return self.reader.fetch_related_graph(
             terms,
             dataset_id=authorized_scope.dataset_id,
             neo4j_namespace=namespace,

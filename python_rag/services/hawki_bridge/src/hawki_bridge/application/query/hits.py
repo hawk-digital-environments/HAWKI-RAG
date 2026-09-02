@@ -51,13 +51,18 @@ def hit_identity(hit: Hit) -> str:
     return f"doc:{doc_id}" if doc_id else ""
 
 
-def fuse_hits(
+def fuse_retrieval_hits(
     sem_hits: list[Hit],
     struct_hits: list[Hit],
     *,
     sem_weight: float,
     str_weight: float,
 ) -> list[Hit]:
+    """Fuse semantic and graph relevance signals without collapsing chunks.
+
+    Graph scores aggregate by document and augment each semantic chunk for that
+    document. A graph-only document retains one structural representative.
+    """
     structural_scores_by_doc: dict[str, float] = {}
     structural_representatives: dict[str, Hit] = {}
     for hit in struct_hits or []:
@@ -124,8 +129,14 @@ def normalize_hit_scores(hits: list[Hit]) -> list[Hit]:
     return normalized
 
 
-def merge_hits(primary: list[Hit], secondary: list[Hit], limit: int) -> list[Hit]:
-    """Merge retrieval stages after normalizing each stage's score scale."""
+def merge_retrieval_hits(
+    primary: list[Hit], secondary: list[Hit], limit: int
+) -> list[Hit]:
+    """Merge retrieval sets after normalizing each stage independently.
+
+    Scores for the same stable hit identity are averaged across active stages;
+    the strongest normalized and raw representative breaks ties before limiting.
+    """
     by_id: dict[str, Hit] = {}
     evidence_by_id: dict[str, float] = {}
     representative_score_by_id: dict[str, float] = {}

@@ -169,7 +169,7 @@ class ApiCharacterizationTests(unittest.TestCase):
     ) -> None:
         from hawki_bridge.domain.errors import UnsupportedModelProviderError
         from hawki_bridge.http.errors import query_error_to_http_exception
-        from hawki_bridge.http.schemas import QueryRequest, apply_query_settings
+        from hawki_bridge.http.schemas import QueryRequest, apply_query_defaults
         from hawki_bridge.settings import load_settings
 
         query = QueryRequest(
@@ -191,7 +191,7 @@ class ApiCharacterizationTests(unittest.TestCase):
         self.assertEqual(query.top_k, 5)
         self.assertEqual(query.filters, {})
 
-        patched_query = apply_query_settings(query, settings)
+        patched_query = apply_query_defaults(query, settings)
         self.assertEqual(
             patched_query.provider, query.authorized_scope.embedding_provider
         )
@@ -215,7 +215,7 @@ class ApiCharacterizationTests(unittest.TestCase):
             reranker="cosine",
             mix_mode=False,
         )
-        patched = apply_query_settings(custom_query, settings)
+        patched = apply_query_defaults(custom_query, settings)
         self.assertEqual(patched.provider, "query-provider")
         self.assertEqual(patched.reranker, "cosine")
         self.assertFalse(patched.mix_mode)

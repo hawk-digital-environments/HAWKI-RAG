@@ -19,14 +19,18 @@ from hawki_graph_store.settings import load_neo4j_settings
 logger = logging.getLogger(__name__)
 
 
-def fetch_related_terms(
+def fetch_related_graph(
     terms: list[str],
     *,
     dataset_id: str,
     neo4j_namespace: str,
     limit: int = 30,
 ) -> list[dict[str, str]]:
-    """Read dataset-scoped graph facts and degrade only availability failures."""
+    """Fetch scoped relationship records and degrade availability failures.
+
+    Dataset and namespace values reach Neo4j unchanged, database fallback stays
+    disabled, and non-availability errors propagate.
+    """
 
     if not terms:
         return []
@@ -119,7 +123,7 @@ def _close_graph(graph: Neo4jGraph | None) -> None:
 class Neo4jReader:
     """Adapt dataset-scoped graph-store reads to the bridge graph port."""
 
-    def fetch_related_terms(
+    def fetch_related_graph(
         self,
         terms: list[str],
         *,
@@ -127,7 +131,8 @@ class Neo4jReader:
         neo4j_namespace: str,
         limit: int,
     ) -> list[dict[str, str]]:
-        return fetch_related_terms(
+        """Forward trusted dataset and namespace scope to the Neo4j read."""
+        return fetch_related_graph(
             terms,
             dataset_id=dataset_id,
             neo4j_namespace=neo4j_namespace,

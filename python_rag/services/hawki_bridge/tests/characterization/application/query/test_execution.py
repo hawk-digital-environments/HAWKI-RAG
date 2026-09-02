@@ -115,7 +115,7 @@ class QueryCharacterizationTests(unittest.TestCase):
             (),
             {
                 "build_structural_hits": lambda self, *args, **kwargs: [],
-                "fetch_related_terms": lambda self, *args, **kwargs: [],
+                "fetch_related_graph": lambda self, *args, **kwargs: [],
             },
         )()
         dependencies = QueryDependencies(
@@ -163,7 +163,7 @@ class QueryCharacterizationTests(unittest.TestCase):
                 graph_calls.append(("structural", scope))
                 return []
 
-            def fetch_related_terms(
+            def fetch_related_graph(
                 self, _terms: list[str], **scope: object
             ) -> list[dict[str, str]]:
                 graph_calls.append(("facts", scope))

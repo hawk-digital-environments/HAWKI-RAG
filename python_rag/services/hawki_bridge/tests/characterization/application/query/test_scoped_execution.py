@@ -87,7 +87,7 @@ class _DisabledGraph:
     def build_structural_hits(self, *_args: Any, **_kwargs: Any) -> list[Any]:
         raise AssertionError("disabled graph retrieval must not run")
 
-    def fetch_related_terms(self, *_args: Any, **_kwargs: Any) -> list[Any]:
+    def fetch_related_graph(self, *_args: Any, **_kwargs: Any) -> list[Any]:
         raise AssertionError("disabled graph fact retrieval must not run")
 
 
@@ -170,6 +170,82 @@ class QueryExecutionScopeTests(unittest.TestCase):
             )
 
         return result, calls, provider
+
+    def execute_expansion_case(self, expanded_vector: Any) -> dict[str, Any]:
+        from hawki_bridge.application.dependencies import QueryDependencies
+        from hawki_bridge.application.query.execution import execute_authorized_query
+
+        captured: dict[str, Any] = {}
+
+        class ExpansionProvider(_Provider):
+            def __init__(self) -> None:
+                super().__init__([])
+                self.embedding_calls = 0
+                self.expanded_query = ""
+                self.original_vector = [0.1, 0.2]
+
+            def embed(self, text: str) -> list[float]:
+                self.embedding_calls += 1
+                if self.embedding_calls == 1:
+                    return self.original_vector
+                self.expanded_query = text
+                return expanded_vector
+
+        class ExpansionVectorSearch(_VectorSearch):
+            def search_high_recall(self, **kwargs: Any) -> list[dict[str, Any]]:
+                captured["iterative_calls"] = captured.get("iterative_calls", 0) + 1
+                captured["iterative_vector"] = kwargs["vector"]
+                return super().search_high_recall(**kwargs)
+
+        provider = ExpansionProvider()
+        vector_search = ExpansionVectorSearch(
+            [
+                {
+                    "id": "first-pass",
+                    "score": 0.9,
+                    "payload": {
+                        "dataset_id": "dataset-a",
+                        "component_type": "chunk",
+                        "content": "expansion concepts relationships",
+                    },
+                }
+            ],
+            captured,
+        )
+        dependencies = QueryDependencies(
+            vector_search_factory=lambda: vector_search,
+            graph_search=_DisabledGraph(),
+            resolve_model_provider=lambda _name: provider,
+            rerank_hits=lambda *, hits, **kwargs: hits,
+        )
+        request = _request(
+            generate=False,
+            filters={"dataset_id": "dataset-b", "source_format": "pdf"},
+        )
+
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    "RAG_GENERATE_ANSWER": "false",
+                    "RAG_ITERATIVE_RETRIEVAL": "true",
+                    "RAG_MIN_SCORE": "0.0",
+                },
+                clear=False,
+            ),
+            patch(
+                "hawki_bridge.application.query.execution.logger.warning"
+            ) as log_warning,
+        ):
+            result = execute_authorized_query(request, dependencies=dependencies)
+
+        return {
+            "captured": captured,
+            "log_warning": log_warning,
+            "provider": provider,
+            "request": request,
+            "result": result,
+        }
 
     def test_authorized_model_aliases_apply_before_provider_calls(self) -> None:
         result, calls, provider = self._run_generation_query(generate=True)
@@ -259,6 +335,181 @@ class QueryExecutionScopeTests(unittest.TestCase):
         self.assertEqual(captured["keyword_filters"], expected_filters)
         self.assertEqual(captured["scroll_filters"], expected_filters)
         self.assertEqual(captured["iterative_filters"], expected_filters)
+
+    def test_invalid_vectors(self) -> None:
+        invalid_cases = [
+            ("empty", [], "empty"),
+            ("tuple", (0.1, 0.2), "shape"),
+            ("bool", [True, False], "type"),
+            ("nan", [float("nan"), 0.2], "non_finite"),
+            ("positive_inf", [float("inf"), 0.2], "non_finite"),
+            ("negative_inf", [float("-inf"), 0.2], "non_finite"),
+            ("numeric_strings", ["0.1", "0.2"], "type"),
+            ("strings", ["x", "y"], "type"),
+            ("none", [None, 0.2], "type"),
+            ("nested", [[0.1], [0.2]], "type"),
+            ("short", [0.1], "dimension"),
+            ("long", [0.1, 0.2, 0.3], "dimension"),
+        ]
+
+        for case_name, expanded_vector, expected_reason in invalid_cases:
+            with self.subTest(case=case_name):
+                outcome = self.execute_expansion_case(expanded_vector)
+                captured = outcome["captured"]
+                provider = outcome["provider"]
+                request = outcome["request"]
+                result = outcome["result"]
+                log_warning = outcome["log_warning"]
+                actual_dim = (
+                    len(expanded_vector) if isinstance(expanded_vector, list) else None
+                )
+
+                log_warning.assert_called_once_with(
+                    "query:expansion_embedding invalid provider=%s dataset_id=%s "
+                    "reason=%s expected_dim=%s actual_dim=%s "
+                    "fallback=original_vector",
+                    "litellm",
+                    "dataset-a",
+                    expected_reason,
+                    2,
+                    actual_dim,
+                )
+                warning_values = " ".join(
+                    str(value) for value in log_warning.call_args.args
+                )
+                self.assertNotIn(request.query, warning_values)
+                self.assertNotIn(provider.expanded_query, warning_values)
+                self.assertNotIn(str(expanded_vector), warning_values)
+
+                self.assertEqual(provider.embedding_calls, 2)
+                self.assertIn("Key entities:", provider.expanded_query)
+                self.assertEqual(captured["iterative_calls"], 1)
+                self.assertIs(captured["iterative_vector"], provider.original_vector)
+                self.assertEqual(
+                    captured["iterative_filters"],
+                    {"source_format": "pdf", "dataset_id": "dataset-a"},
+                )
+                self.assertEqual([hit.id for hit in result.hits], ["first-pass"])
+                self.assertIs(result.retrieval["iterative_pass"], True)
+                self.assertTrue(result.retrieval["expansion_terms"])
+
+    def test_valid_vectors(self) -> None:
+        for case_name, expanded_vector in (
+            ("integers", [1, 2]),
+            ("floats", [0.3, 0.4]),
+        ):
+            with self.subTest(case=case_name):
+                outcome = self.execute_expansion_case(expanded_vector)
+                captured = outcome["captured"]
+                provider = outcome["provider"]
+                result = outcome["result"]
+
+                outcome["log_warning"].assert_not_called()
+                self.assertEqual(provider.embedding_calls, 2)
+                self.assertIs(captured["iterative_vector"], expanded_vector)
+                self.assertIsNot(captured["iterative_vector"], provider.original_vector)
+                self.assertEqual(
+                    captured["iterative_filters"],
+                    {"source_format": "pdf", "dataset_id": "dataset-a"},
+                )
+                self.assertEqual([hit.id for hit in result.hits], ["first-pass"])
+                self.assertIs(result.retrieval["iterative_pass"], True)
+                self.assertTrue(result.retrieval["expansion_terms"])
+
+    def test_expansion_embedding_failure_logs_safe_metadata_and_reuses_original_vector(
+        self,
+    ) -> None:
+        from hawki_bridge.application.dependencies import QueryDependencies
+        from hawki_bridge.application.query.execution import execute_authorized_query
+
+        secret_error = "DO-NOT-LOG-THIS-SECRET"
+        original_vector = [0.1, 0.2]
+        captured: dict[str, Any] = {}
+
+        class ExpansionFailureProvider(_Provider):
+            def __init__(self) -> None:
+                super().__init__([])
+                self.embedding_calls = 0
+                self.expanded_query = ""
+
+            def embed(self, text: str) -> list[float]:
+                self.embedding_calls += 1
+                if self.embedding_calls == 1:
+                    return super().embed(text)
+                self.expanded_query = text
+                raise RuntimeError(secret_error)
+
+        class ExpansionVectorSearch(_VectorSearch):
+            def search_high_recall(self, **kwargs: Any) -> list[dict[str, Any]]:
+                captured["iterative_calls"] = captured.get("iterative_calls", 0) + 1
+                captured["iterative_vector"] = kwargs["vector"]
+                return super().search_high_recall(**kwargs)
+
+        provider = ExpansionFailureProvider()
+        vector_search = ExpansionVectorSearch(
+            [
+                {
+                    "id": "first-pass",
+                    "score": 0.9,
+                    "payload": {
+                        "dataset_id": "dataset-a",
+                        "component_type": "chunk",
+                        "content": "expansion concepts relationships",
+                    },
+                }
+            ],
+            captured,
+        )
+        dependencies = QueryDependencies(
+            vector_search_factory=lambda: vector_search,
+            graph_search=_DisabledGraph(),
+            resolve_model_provider=lambda _name: provider,
+            rerank_hits=lambda *, hits, **kwargs: hits,
+        )
+        request = _request(
+            generate=False,
+            filters={"dataset_id": "dataset-b", "source_format": "pdf"},
+        )
+
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    "RAG_GENERATE_ANSWER": "false",
+                    "RAG_ITERATIVE_RETRIEVAL": "true",
+                    "RAG_MIN_SCORE": "0.0",
+                },
+                clear=False,
+            ),
+            patch(
+                "hawki_bridge.application.query.execution.logger.warning"
+            ) as log_warning,
+        ):
+            result = execute_authorized_query(request, dependencies=dependencies)
+
+        log_warning.assert_called_once_with(
+            "query:expansion_embedding failed provider=%s dataset_id=%s "
+            "error=%s fallback=original_vector",
+            "litellm",
+            "dataset-a",
+            "RuntimeError",
+        )
+        warning_values = " ".join(str(value) for value in log_warning.call_args.args)
+        self.assertNotIn(request.query, warning_values)
+        self.assertNotIn(provider.expanded_query, warning_values)
+        self.assertNotIn(secret_error, warning_values)
+
+        self.assertEqual(provider.embedding_calls, 2)
+        self.assertIn("Key entities:", provider.expanded_query)
+        self.assertEqual(captured["iterative_calls"], 1)
+        self.assertEqual(captured["iterative_vector"], original_vector)
+        self.assertEqual(
+            captured["iterative_filters"],
+            {"source_format": "pdf", "dataset_id": "dataset-a"},
+        )
+        self.assertEqual([hit.id for hit in result.hits], ["first-pass"])
+        self.assertIs(result.retrieval["iterative_pass"], True)
+        self.assertTrue(result.retrieval["expansion_terms"])
 
     def test_missing_scoped_collection_raises_application_error(self) -> None:
         from hawki_bridge.application.dependencies import QueryDependencies
