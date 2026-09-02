@@ -50,7 +50,12 @@ def strip_query_scope_instructions(query: str) -> str:
     return re.sub(r"\s+", " ", cleaned).strip()
 
 
-def extract_query_terms_for_lexical(query: str) -> list[str]:
+def extract_lexical_terms(query: str) -> list[str]:
+    """Extract normalized terms for lexical retrieval.
+
+    Dataset-location instructions are removed before term extraction. Lowercase
+    and folded variants, including German ordinals, remain ordered and unique.
+    """
     lexical_query = strip_query_scope_instructions(query)
     terms = extract_terms(lexical_query)
     terms.extend(
@@ -74,10 +79,15 @@ def extract_query_terms_for_lexical(query: str) -> list[str]:
     return out
 
 
-def lexical_boost_hits(hits: list[dict[str, Any]], query: str) -> list[dict[str, Any]]:
+def boost_lexical_hits(hits: list[dict[str, Any]], query: str) -> list[dict[str, Any]]:
+    """Boost lexically matching hits and discard insufficient matches.
+
+    Bonuses reflect term count plus title and URL matches. Returned copies are
+    sorted by adjusted score; nonmatching hits are omitted.
+    """
     if not hits:
         return hits
-    terms = extract_query_terms_for_lexical(query)
+    terms = extract_lexical_terms(query)
     if not terms:
         return hits
     min_required = min_lexical_match_count(terms)

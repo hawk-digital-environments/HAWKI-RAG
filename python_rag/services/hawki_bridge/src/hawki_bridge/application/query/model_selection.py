@@ -8,20 +8,25 @@ from hawki_model_providers.configuration import (
 )
 from hawki_rag_contracts.retrieval.query import QueryRequest
 
+from hawki_bridge.domain.ports import ModelProvider
 
-def configure_query_provider(provider: object, request: QueryRequest) -> None:
-    """Apply only the model aliases selected by the authorized request."""
+
+def apply_query_models(provider: ModelProvider, request: QueryRequest) -> None:
+    """Apply validated query model choices to the existing provider instance.
+
+    The embedding model comes from the authorized dataset scope; chat and vision
+    models come from the validated request. Provider identity and credentials
+    remain unchanged.
+    """
 
     configure_provider_models(
         provider,
         ProviderModelSelection(
-            embedding_model=(
-                request.authorized_scope.embedding_model or request.embedding_model
-            ),
-            chat_model=request.chat_model or request.graph_model,
+            embedding_model=request.authorized_scope.embedding_model,
+            chat_model=request.chat_model,
             vision_model=request.vision_model,
         ),
     )
 
 
-__all__ = ["configure_query_provider"]
+__all__ = ["apply_query_models"]

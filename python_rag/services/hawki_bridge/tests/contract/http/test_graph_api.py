@@ -37,7 +37,7 @@ class TestReadOnlyGraphApiFlow:
         calls: list[dict[str, object]] = []
 
         class Reader:
-            def fetch_related_terms(
+            def fetch_related_graph(
                 self,
                 terms: list[str],
                 *,

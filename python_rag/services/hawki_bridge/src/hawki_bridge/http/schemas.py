@@ -11,7 +11,9 @@ from hawki_rag_contracts.retrieval.query import QueryRequest
 from hawki_bridge.settings import BridgeSettings
 
 
-def apply_query_settings(body: QueryRequest, settings: BridgeSettings) -> QueryRequest:
+def apply_query_defaults(body: QueryRequest, settings: BridgeSettings) -> QueryRequest:
+    """Fill omitted reranker values without replacing explicit request values."""
+
     updates: dict[str, object] = {}
     if "reranker" not in body.model_fields_set:
         updates["reranker"] = settings.reranker_mode
@@ -68,5 +70,5 @@ __all__ = [
     "QueryRequest",
     "StartIngestWorkflowRequest",
     "UpsertIngestScheduleRequest",
-    "apply_query_settings",
+    "apply_query_defaults",
 ]

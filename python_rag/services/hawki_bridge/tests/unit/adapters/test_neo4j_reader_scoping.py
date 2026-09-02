@@ -69,12 +69,12 @@ class DatasetScopedGraphReadTests(unittest.TestCase):
     """Verify every structural and fact lookup remains inside the trusted graph scope."""
 
     def test_graph_utils_disables_database_fallback_and_forwards_scope(self) -> None:
-        from hawki_bridge.adapters.neo4j_reader import fetch_related_terms
+        from hawki_bridge.adapters.neo4j_reader import fetch_related_graph
 
         with patch("hawki_bridge.adapters.neo4j_reader.Neo4jGraph") as graph_type:
             graph_type.return_value.fetch_related.return_value = []
 
-            result = fetch_related_terms(
+            result = fetch_related_graph(
                 ["subject"],
                 dataset_id="dataset-a",
                 neo4j_namespace="graph-a",

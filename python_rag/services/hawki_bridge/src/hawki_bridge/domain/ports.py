@@ -3,7 +3,12 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
-from typing import Any, Protocol
+from typing import Any, Protocol, TypeAlias
+
+from hawki_rag_contracts.retrieval.query import QueryFilterScalar
+
+
+ScopedFilters: TypeAlias = dict[str, QueryFilterScalar]
 
 
 class ModelProvider(Protocol):
@@ -34,7 +39,7 @@ class VectorSearchPort(Protocol):
         *,
         vector: list[float],
         top_k: int,
-        filters: dict[str, Any] | None,
+        filters: ScopedFilters | None,
         query_terms: list[str],
         keyword_fields: list[str],
         smart_lookup: bool,
@@ -48,7 +53,7 @@ class VectorSearchPort(Protocol):
         *,
         vector: list[float],
         top_k: int,
-        filters: dict[str, Any] | None,
+        filters: ScopedFilters | None,
         preferred_tags: list[str] | None,
     ) -> list[dict[str, Any]]: ...
 
@@ -59,7 +64,7 @@ class VectorSearchPort(Protocol):
         top_k: int,
         terms: list[str],
         fields: list[str],
-        filters: dict[str, Any] | None = None,
+        filters: ScopedFilters | None = None,
     ) -> list[dict[str, Any]]: ...
 
     def scroll_with_text(
@@ -69,7 +74,7 @@ class VectorSearchPort(Protocol):
         fields: list[str],
         limit: int,
         require_all: bool = True,
-        filters: dict[str, Any] | None = None,
+        filters: ScopedFilters | None = None,
     ) -> list[dict[str, Any]]: ...
 
     def scroll_with_text_all(
@@ -79,21 +84,23 @@ class VectorSearchPort(Protocol):
         fields: list[str],
         limit: int,
         require_all: bool = True,
-        filters: dict[str, Any] | None = None,
+        filters: ScopedFilters | None = None,
     ) -> list[dict[str, Any]]: ...
 
 
 class GraphReader(Protocol):
     """Read-only graph operation required by the graph endpoint."""
 
-    def fetch_related_terms(
+    def fetch_related_graph(
         self,
         terms: list[str],
         *,
         dataset_id: str,
         neo4j_namespace: str,
         limit: int,
-    ) -> list[dict[str, str]]: ...
+    ) -> list[dict[str, str]]:
+        """Fetch relationship records from the trusted dataset and namespace."""
+        ...
 
 
 class GraphSearchPort(GraphReader, Protocol):
@@ -138,6 +145,7 @@ __all__ = [
     "ModelProvider",
     "ModelProviderResolver",
     "RerankHitsPort",
+    "ScopedFilters",
     "VectorSearchFactory",
     "VectorSearchPort",
 ]

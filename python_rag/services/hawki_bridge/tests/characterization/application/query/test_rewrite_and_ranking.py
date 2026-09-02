@@ -54,6 +54,30 @@ class QueryCharacterizationTests(unittest.TestCase):
         self.assertEqual(query_terms, ["train", "blocks", "toys", "compare"])
         multimodal_check.assert_called_once()
 
+    def test_disabled_query_rewrite_returns_complete_normalized_shape(self) -> None:
+        from hawki_bridge.application.query import rewrite as query_rewrite
+
+        with patch.object(query_rewrite, "request_query_rewrite") as rewrite_request:
+            rewrite = query_rewrite.build_query_rewrite(
+                SimpleNamespace(chat=lambda system, messages: "{}"),
+                "plain text query",
+                fast_mode=True,
+            )
+
+        self.assertEqual(
+            rewrite,
+            {
+                "enabled": False,
+                "raw": {},
+                "high_level_keys": [],
+                "low_level_keys": [],
+                "modality_hints": [],
+                "entity_terms": [],
+                "rewritten_query": None,
+            },
+        )
+        rewrite_request.assert_not_called()
+
     def test_query_ranking_preserves_best_path_and_fallback(
         self,
     ) -> None:
@@ -92,7 +116,7 @@ class QueryCharacterizationTests(unittest.TestCase):
             min_score=0.5,
             fallback_min=0.3,
             top_k=2,
-            filter_hits=lambda ranked, **kwargs: query_ranking.filter_hits_by_score(
+            filter_hits=lambda ranked, **kwargs: query_ranking.select_ranked_hits(
                 ranked,
                 apply_lexical_boost=lambda selected, query: [],
                 **kwargs,
@@ -102,7 +126,7 @@ class QueryCharacterizationTests(unittest.TestCase):
         self.assertEqual([item["id"] for item in no_match], ["b"])
         self.assertEqual(rerank_service.calls, 1)
 
-        fallback = query_ranking.filter_hits_by_score(
+        fallback = query_ranking.select_ranked_hits(
             hits,
             query="unrelated",
             min_score=0.9,
@@ -191,12 +215,12 @@ class QueryCharacterizationTests(unittest.TestCase):
         )
 
         self.assertTrue(
-            query_ranking.should_iterate(
+            query_ranking.should_expand_retrieval(
                 "then compare toy trains", [{"score": 0.8}], top_k=3
             )
         )
         self.assertFalse(
-            query_ranking.should_iterate(
+            query_ranking.should_expand_retrieval(
                 "toy blocks", [{"score": 0.9}, {"score": 0.8}, {"score": 0.7}], top_k=3
             )
         )

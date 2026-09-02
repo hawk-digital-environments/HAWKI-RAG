@@ -10,7 +10,7 @@ from requests import ConnectionError as RequestsConnectionError
 
 
 def test_startup_checks_accept_injected_dependency_checks() -> None:
-    from hawki_bridge.startup_checks import run_startup_checks
+    from hawki_bridge.startup_checks import verify_dependencies
 
     calls: list[str] = []
 
@@ -30,7 +30,7 @@ def test_startup_checks_accept_injected_dependency_checks() -> None:
     )
 
     with patch("hawki_bridge.startup_checks.time.sleep"):
-        run_startup_checks(
+        verify_dependencies(
             settings,
             logger=logging.getLogger("startup-boundary-test"),
             check_qdrant_fn=lambda: check_qdrant(1.0),

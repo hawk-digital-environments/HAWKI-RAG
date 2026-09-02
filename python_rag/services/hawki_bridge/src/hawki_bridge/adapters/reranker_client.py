@@ -105,6 +105,11 @@ def rerank_hits(
     mix_weight: float,
     http_client: _RerankerHTTPClient | None = None,
 ) -> list[dict[str, Any]]:
+    """Rerank bounded leading hits while retaining the untouched result tail.
+
+    Cosine and external modes can blend normalized retrieval scores. External
+    request or response failures degrade to the original hit ordering.
+    """
     if not (mode and mode.lower() != "none" and hits):
         return hits
 
@@ -185,7 +190,8 @@ def rerank_hits(
                     )
                     if isinstance(order, list):
 
-                        def key_for(hit: dict[str, Any]) -> str:
+                        def resolve_hit_key(hit: dict[str, Any]) -> str:
+                            """Resolve URL/title identity used by reranker results."""
                             p = hit.get("payload") or {}
                             page_url = (
                                 p.get("page_url_text")
@@ -225,7 +231,7 @@ def rerank_hits(
 
                         scores = [
                             scores_by_index.get(
-                                index, scores_by_id.get(key_for(hit), 0.0)
+                                index, scores_by_id.get(resolve_hit_key(hit), 0.0)
                             )
                             for index, hit in enumerate(candidates)
                         ]
