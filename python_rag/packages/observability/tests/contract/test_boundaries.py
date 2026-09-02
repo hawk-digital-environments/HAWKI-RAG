@@ -30,3 +30,12 @@ def test_observability_contains_no_retry_or_transport_dependencies() -> None:
         path.read_text(encoding="utf-8") for path in SOURCE.rglob("*.py")
     )
     assert "retryable" not in combined.lower()
+
+
+def test_observability_contains_no_store_specific_event_names() -> None:
+    combined = "\n".join(
+        path.read_text(encoding="utf-8") for path in SOURCE.rglob("*.py")
+    )
+
+    assert "adapter.neo4j" not in combined
+    assert "adapter.qdrant" not in combined

@@ -54,6 +54,7 @@ def test_vector_and_graph_packages_own_distinct_public_modules() -> None:
         "client.py",
         "search.py",
         "interpretation.py",
+        "logging_events.py",
         "settings.py",
     }
     graph_expected = {
@@ -63,6 +64,7 @@ def test_vector_and_graph_packages_own_distinct_public_modules() -> None:
         "responses.py",
         "client.py",
         "graph.py",
+        "logging_events.py",
         "normalization.py",
         "settings.py",
         "errors.py",
@@ -79,6 +81,16 @@ def test_vector_and_graph_packages_own_distinct_public_modules() -> None:
     assert graph_expected <= graph_actual
     assert "ports.py" not in vector_actual
     assert "ports.py" not in graph_actual
+
+
+def test_store_packages_own_their_adapter_logging_events() -> None:
+    vector_events = (VECTOR_SOURCE / "logging_events.py").read_text(encoding="utf-8")
+    graph_events = (GRAPH_SOURCE / "logging_events.py").read_text(encoding="utf-8")
+
+    assert 'QDRANT_ADAPTER_REQUEST = "adapter.qdrant.request"' in vector_events
+    assert 'NEO4J_ADAPTER_QUERY = "adapter.neo4j.query"' in graph_events
+    assert "NEO4J_ADAPTER_QUERY" not in vector_events
+    assert "QDRANT_ADAPTER_REQUEST" not in graph_events
 
 
 def test_store_packages_do_not_depend_on_each_other_or_service_code() -> None:

@@ -9,8 +9,8 @@ from typing import Any
 
 import requests
 
-from hawki_observability.events import QDRANT_ADAPTER_REQUEST
 from hawki_observability.redaction import sanitize_for_log
+from hawki_vector_store.logging_events import QDRANT_ADAPTER_REQUEST
 from hawki_vector_store.requests import QdrantRequest
 from hawki_vector_store.retry_policy import (
     QDRANT_RETRYABLE_STATUS_CODES,
