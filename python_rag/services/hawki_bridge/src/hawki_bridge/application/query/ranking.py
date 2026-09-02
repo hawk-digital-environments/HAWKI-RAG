@@ -3,16 +3,16 @@
 from __future__ import annotations
 
 import math
+from collections.abc import Iterable
 from typing import Any, Callable
 
 from hawki_bridge.application.query.hits import dedupe_hits_by_identity
-from hawki_bridge.application.query.lexical import boost_lexical_hits
+from hawki_bridge.application.query.lexical import boost_lexical_hits, document_terms
 from hawki_bridge.domain.ports import ModelProvider, RerankHitsPort
-from hawki_rag_text.terms import extract_terms
 
 
 DedupeHits = Callable[[list[dict[str, Any]]], list[dict[str, Any]]]
-ExtractTerms = Callable[[str], list[str]]
+ExtractTerms = Callable[[str | None], Iterable[str]]
 
 
 def validate_vector(vector: object, expected_dim: int) -> str | None:
@@ -139,7 +139,7 @@ def collect_expansion_terms(
     hits: list[dict[str, Any]],
     limit: int = 8,
     *,
-    extract_terms_fn: ExtractTerms = extract_terms,
+    extract_terms_fn: ExtractTerms = document_terms,
 ) -> list[str]:
     """Collect unique terms from ranked content snippets for iterative retrieval."""
     seen: set[str] = set()
