@@ -7,9 +7,9 @@ import time
 from collections.abc import Callable
 from typing import Any, Protocol, TypeVar
 
-from hawki_observability.events import NEO4J_ADAPTER_QUERY
 from hawki_observability.redaction import sanitize_for_log
 
+from hawki_graph_store.logging_events import NEO4J_ADAPTER_QUERY
 from hawki_graph_store.requests import Neo4jQueryRequest
 
 SessionFactory = Callable[[], Any]
