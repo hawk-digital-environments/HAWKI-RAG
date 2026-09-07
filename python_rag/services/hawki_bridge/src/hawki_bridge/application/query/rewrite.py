@@ -7,8 +7,8 @@ import logging
 import re
 from typing import Any, TypedDict
 
+from hawki_bridge.application.query.lexical import query_terms
 from hawki_bridge.domain.ports import ModelProvider
-from hawki_rag_text.terms import extract_terms
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +38,14 @@ def is_multimodal_query(text: str) -> bool:
 
 
 def request_query_rewrite(provider: ModelProvider, query: str) -> dict[str, Any]:
-    """Ask the configured model for one structured multimodal query rewrite."""
+    """Ask the model to interpret the query into structured retrieval metadata.
+
+    One chat call returns raw JSON with ``rewritten_query``,
+    ``high_level_keys``, ``low_level_keys``, ``modality_hints``, and
+    ``entity_terms``. Provider failures and unparseable responses degrade
+    to an empty dict so callers fall back to the original query;
+    normalization happens in ``build_query_rewrite``.
+    """
 
     system = (
         "You are a RAG-Anything query interpreter. "
@@ -101,7 +108,7 @@ def build_query_terms(
             entity_terms
             + low_level_keys
             + high_level_keys
-            + extract_terms(rewritten_query)
+            + list(query_terms(rewritten_query).terms)
         )
     )
 

@@ -74,3 +74,16 @@ def structural_hops(default_hops: int = 2) -> int:
     """Return the configured traversal depth for structural retrieval."""
 
     return int_env("RAG_STRUCTURAL_HOPS", default_hops)
+
+
+def graph_term_limits() -> tuple[int, int]:
+    """Return per-hit and total term caps for graph fact retrieval.
+
+    ~12 terms per hit matches the measured yield of the former 160-char
+    content sample, which could cut words mid-token.
+    """
+
+    return (
+        int_env("RAG_GRAPH_TERMS_PER_HIT", 12),
+        int_env("RAG_GRAPH_TERM_LIMIT", 30),
+    )

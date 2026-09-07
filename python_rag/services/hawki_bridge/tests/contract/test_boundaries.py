@@ -139,6 +139,20 @@ def test_query_use_case_has_one_typed_boundary_without_forwarding_modules() -> N
     assert not (SOURCE / "http" / "dependencies.py").exists()
 
 
+def test_query_term_extraction_is_declared_only_in_the_lexical_seam() -> None:
+    seam = SOURCE / "application" / "query" / "lexical.py"
+    assert seam.is_file()
+    violations: list[str] = []
+    for layer in (SOURCE / "application", SOURCE / "domain"):
+        for path in sorted(layer.rglob("*.py")):
+            if path == seam:
+                continue
+            for line, name in _imports(path):
+                if name == "hawki_rag_text" or name.startswith("hawki_rag_text.terms"):
+                    violations.append(f"{path}:{line}: {name}")
+    assert violations == []
+
+
 def test_bridge_store_packages_are_visible_only_to_their_adapters() -> None:
     allowed = {
         SOURCE / "adapters" / "qdrant_reader.py": {"hawki_vector_store"},

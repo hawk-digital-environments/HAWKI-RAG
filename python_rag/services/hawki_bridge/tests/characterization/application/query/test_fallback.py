@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import unittest
 from types import SimpleNamespace
 from typing import Any
@@ -99,6 +100,62 @@ class QueryFallbackScopeTests(unittest.TestCase):
                 ("scroll:False", expected_filters),
             ],
         )
+
+    def test_fallback_uses_text_search_then_relaxed_scroll(self) -> None:
+        from hawki_bridge.application.query.fallback import retrieve_lexical_hits
+
+        calls: list[tuple[str, bool | None]] = []
+
+        class Qdrant:
+            def search_with_text(self, vector, *, top_k, terms, fields):
+                calls.append(("search", None))
+                return [{"id": "a", "score": 0.5, "payload": {"doc_id": "doc-a"}}]
+
+            def scroll_with_text(self, *, terms, fields, limit, require_all):
+                calls.append(("scroll", require_all))
+                if require_all:
+                    return []
+                return [{"id": "b", "score": 0.8, "payload": {"doc_id": "doc-b"}}]
+
+        with patch.dict(
+            os.environ,
+            {"RAG_EXHAUSTIVE_TEXT": "false", "QDRANT_TEXT_SCROLL_LIMIT": "10"},
+            clear=False,
+        ):
+            hits = retrieve_lexical_hits(Qdrant(), [0.1], "wooden toys", 3)
+
+        self.assertEqual([hit["payload"]["doc_id"] for hit in hits], ["doc-b", "doc-a"])
+        self.assertEqual(calls, [("search", None), ("scroll", True), ("scroll", False)])
+
+    def test_fallback_uses_injected_scroll_controls(self) -> None:
+        from hawki_bridge.application.query.fallback import retrieve_lexical_hits
+
+        calls: list[tuple[str, int | bool | None]] = []
+
+        class Qdrant:
+            def search_with_text(self, vector, *, top_k, terms, fields):
+                calls.append(("search", top_k))
+                return []
+
+            def scroll_with_text_all(self, *, terms, fields, limit, require_all):
+                calls.append(("scroll_all", limit))
+                return [{"id": "a", "score": 0.4, "payload": {"doc_id": "doc-a"}}]
+
+            def scroll_with_text(self, *, terms, fields, limit, require_all):
+                calls.append(("scroll", limit))
+                return []
+
+        hits = retrieve_lexical_hits(
+            Qdrant(),
+            [0.1],
+            "wooden toys",
+            3,
+            text_scroll_limit_fn=lambda top_k: 7,
+            exhaustive_text_fn=lambda: True,
+        )
+
+        self.assertEqual([hit["payload"]["doc_id"] for hit in hits], ["doc-a"])
+        self.assertEqual(calls, [("search", 3), ("scroll_all", 7)])
 
 
 class QdrantStrictCollectionTests(unittest.TestCase):
