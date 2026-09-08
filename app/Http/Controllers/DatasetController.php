@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace App\Http\Controllers;
@@ -12,8 +13,7 @@ class DatasetController extends Controller
 {
     public function __construct(
         private readonly DatasetService $datasets,
-    ) {
-    }
+    ) {}
 
     public function index(ListDatasetsRequest $request): JsonResponse
     {
@@ -31,13 +31,13 @@ class DatasetController extends Controller
             'success' => true,
             'dataset_id' => $dataset->dataset_id,
             'dataset' => $this->datasets->show($dataset->dataset_id),
-        ], 201);
+        ], $dataset->wasRecentlyCreated ? 201 : 200);
     }
 
     public function show(string $datasetId): JsonResponse
     {
         $dataset = $this->datasets->show($datasetId);
-        if (!$dataset) {
+        if (! $dataset) {
             return response()->json([
                 'success' => false,
                 'message' => "Dataset {$datasetId} was not found.",
@@ -53,7 +53,7 @@ class DatasetController extends Controller
     public function destroyStorage(string $datasetId): JsonResponse
     {
         $result = $this->datasets->delete($datasetId);
-        if (!$result) {
+        if (! $result) {
             return response()->json([
                 'success' => false,
                 'message' => "Dataset {$datasetId} was not found.",

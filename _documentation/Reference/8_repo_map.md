@@ -71,7 +71,7 @@ helper may need no infrastructure adapter.
 ## Repository at a glance
 
 ```text
-RAWKI/
+HAWKI-RAG/
 ├── app/                    Laravel HTTP and domain code
 ├── routes/                 Browser, API, health, and MCP entrypoints
 ├── resources/              Svelte, JavaScript, CSS, and Blade source

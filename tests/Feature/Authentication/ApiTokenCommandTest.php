@@ -46,6 +46,23 @@ class ApiTokenCommandTest extends TestCase
         $this->assertSame(['admin'], $user->tokens()->sole()->abilities);
     }
 
+    public function test_token_command_issues_the_text_ingestion_ability_when_requested(): void
+    {
+        $user = $this->createUser('text-ingestion-token');
+
+        $this->artisan('user:token', ['--abilities' => 'rag:text-ingest'])
+            ->expectsChoice(
+                'How would you like to identify the user?',
+                'Username',
+                ['Username', 'Email Address', 'UserID'],
+            )
+            ->expectsQuestion('Please enter the Username', $user->username)
+            ->expectsQuestion('Enter a name for the token (max 16 characters)', 'text-ingestion')
+            ->assertSuccessful();
+
+        $this->assertSame(['rag:text-ingest'], $user->tokens()->sole()->abilities);
+    }
+
     public function test_token_command_rejects_wildcard_abilities(): void
     {
         $user = $this->createUser('wildcard-token');
@@ -58,7 +75,7 @@ class ApiTokenCommandTest extends TestCase
             )
             ->expectsQuestion('Please enter the Username', $user->username)
             ->expectsQuestion('Enter a name for the token (max 16 characters)', 'wildcard')
-            ->expectsOutput('Token ability * is invalid. Expected query or admin.')
+            ->expectsOutput('Token ability * is invalid. Expected query, admin, or rag:text-ingest.')
             ->assertFailed();
 
         $this->assertDatabaseCount('personal_access_tokens', 0);

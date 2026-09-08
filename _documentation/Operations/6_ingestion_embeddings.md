@@ -31,6 +31,52 @@ shared-storage path, skips blank files, and passes the remaining documents to
 the indexer-owned application service in batches. A source with no usable
 Markdown fails before indexing. The bridge is not involved in this handoff.
 
+### Direct text integration
+
+An integration can bypass scraping and file conversion by sending plain text or
+Markdown to `POST /api/integrations/text-ingestions`. The selected dataset must
+already exist and be active. HAWKI-RAG writes an immutable Markdown revision plus
+its metadata sidecar, creates the pipeline records, and starts
+`IngestTextWorkflow`. That workflow schedules only indexing and the terminal
+ready callback. It always sets graph ingestion to `false`.
+
+Create dataset metadata through `POST /api/datasets` before direct ingestion.
+Repeating a compatible dataset-creation request returns the existing dataset;
+conflicting metadata returns `409`.
+
+The text-ingestion endpoint requires a real Sanctum personal access token with
+the exact `rag:text-ingest` ability and an explicit `ingest` dataset grant for
+its local user. Session-only authentication and wildcard abilities do not pass
+this boundary. Create the token and grant with:
+
+```bash
+php artisan user:token --abilities=rag:text-ingest
+php artisan dataset:grant-ingest DATASET_ID USER_ID
+```
+
+Each request must include the resulting bearer token and an `Idempotency-Key`.
+A retry must reuse both the original body and idempotency key. Text is limited
+to 1,048,576 characters, serialized metadata is limited to 65,536 bytes, the
+complete JSON body is limited to 4,300,000 bytes, and the upload rate limit
+remains active.
+
+After the first ingestion reaches `ready` and Qdrant contains vectors, the
+querying principal can call `POST /api/datasets/{datasetId}/query-grants/self`.
+If workflow startup is uncertain, HAWKI-RAG returns `502`; the caller should retry
+that same request because the stable Temporal workflow ID reuses an active
+execution. A closed failed execution can be started again so its idempotent index
+writes and terminal callback can finish; a completed execution is never started
+again under that ID.
+
+Provider, embedding model, Qdrant collection, and Neo4j namespace are rejected
+as caller inputs and resolved from the selected dataset. If artifact storage
+succeeds but relational persistence rolls back,
+HAWKI-RAG leaves the immutable revision in place with a reconciliation marker.
+A successful retry clears the marker. It is deliberately not deleted during the
+failure path because another concurrent ingestion may already reference the same
+content-addressed revision. The complete request and response contract is
+published in Swagger.
+
 :::warning Shared storage is the implemented read path
 
 The current Temporal storage adapter reads local/shared Docker paths. It rejects

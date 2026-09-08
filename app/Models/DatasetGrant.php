@@ -11,6 +11,8 @@ class DatasetGrant extends Model
 {
     public const PERMISSION_QUERY = 'query';
 
+    public const PERMISSION_INGEST = 'ingest';
+
     public const PRINCIPAL_USER = 'user';
 
     protected $fillable = [

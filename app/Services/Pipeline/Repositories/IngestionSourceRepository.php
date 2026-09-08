@@ -70,6 +70,43 @@ readonly class IngestionSourceRepository
         return $source->refresh();
     }
 
+    public function confirmWorkflowStarted(
+        IngestionSource $source,
+        string $workflowId,
+        ?string $runId,
+    ): IngestionSource {
+        $current = IngestionSource::query()
+            ->whereKey($source->getKey())
+            ->lockForUpdate()
+            ->firstOrFail();
+        if (
+            $current->temporal_workflow_id
+            && ! hash_equals((string) $current->temporal_workflow_id, $workflowId)
+        ) {
+            throw new \RuntimeException('Temporal workflow confirmation does not match the ingestion source.');
+        }
+
+        $metadata = is_array($current->metadata) ? $current->metadata : [];
+        $temporal = is_array($metadata['temporal'] ?? null)
+            ? $metadata['temporal']
+            : [];
+        $workerEvent = is_array($metadata['worker_event'] ?? null)
+            ? $metadata['worker_event']
+            : [];
+        $metadata['temporal'] = array_filter([
+            ...$temporal,
+            'workflow_id' => $workflowId,
+            'run_id' => $runId
+                ?: ($temporal['run_id'] ?? $workerEvent['run_id'] ?? null),
+        ], static fn (mixed $value): bool => $value !== null && $value !== '');
+        $current->forceFill([
+            'temporal_workflow_id' => $workflowId,
+            'metadata' => $metadata,
+        ])->save();
+
+        return $current->refresh();
+    }
+
     public function markReady(IngestionSource $source, Carbon $readyAt): IngestionSource
     {
         $source->forceFill([

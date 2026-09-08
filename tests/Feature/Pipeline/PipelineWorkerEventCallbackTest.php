@@ -12,6 +12,8 @@ use App\Models\PipelineTask;
 use App\Models\PipelineWorkerEventRecord;
 use App\Models\RagIngestionArtifact;
 use App\Services\Pipeline\PipelineWorkerEventSignatureVerifier;
+use App\Services\Pipeline\Repositories\IngestionSourceRepository;
+use App\Services\Pipeline\Repositories\PipelineJobStateMutationRepository;
 use App\Services\Rag\RagMonitorArtifactReader;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Testing\TestResponse;
@@ -246,6 +248,47 @@ final class PipelineWorkerEventCallbackTest extends TestCase
                 'status' => 'pending',
             ]);
         }
+    }
+
+    public function test_the_first_callback_adopts_an_unconfirmed_temporal_run(): void
+    {
+        $execution = $this->createExecution();
+        $execution['job']->forceFill([
+            'current_stage' => 'temporal.workflow_starting',
+            'temporal_run_id' => null,
+        ])->save();
+
+        $this->sendEvent($this->event([
+            'event_id' => 'evt_initial_run_adopted',
+            'producer' => 'indexer',
+            'run_id' => 'run-direct-1',
+            'activity_id' => 'ingest_markdown_files',
+            'stage' => 'ingest',
+            'phase' => 'ingest_markdown_files',
+        ]))
+            ->assertAccepted()
+            ->assertJsonPath('ignored', false);
+
+        $jobMetadata = $execution['job']->refresh()->metadata;
+        app(IngestionSourceRepository::class)->confirmWorkflowStarted(
+            $execution['source'],
+            'workflow-worker-1',
+            null,
+        );
+        app(PipelineJobStateMutationRepository::class)->confirmTemporalStarted(
+            $execution['job'],
+            'workflow-worker-1',
+            null,
+            ['request' => ['should_not' => 'replace_callback_metadata']],
+        );
+
+        $job = $execution['job']->refresh();
+        $source = $execution['source']->refresh();
+        $this->assertSame('run-direct-1', $job->temporal_run_id);
+        $this->assertSame('ingest', $job->current_stage);
+        $this->assertSame($jobMetadata, $job->metadata);
+        $this->assertSame('evt_initial_run_adopted', $source->metadata['worker_event']['event_id']);
+        $this->assertSame('run-direct-1', $source->metadata['temporal']['run_id']);
     }
 
     public function test_terminal_state_does_not_regress_from_a_late_running_event(): void

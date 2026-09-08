@@ -23,6 +23,7 @@ from temporalio.common import (
 from temporalio.service import RPCError, RPCStatusCode
 
 from hawki_bridge.settings import BridgeSettings
+from hawki_rag_contracts.pipeline.temporal import INGEST_TEXT_WORKFLOW
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +75,34 @@ class TemporalBridgeClient:
         run_id = self.resolve_run_id(handle)
         logger.info(
             "temporal_bridge:start workflow_id=%s run_id=%s", workflow_id, run_id
+        )
+        return TemporalExecution(workflow_id=workflow_id, run_id=run_id)
+
+    async def start_text_ingest_workflow(
+        self,
+        *,
+        workflow_id: str,
+        workflow_input: dict[str, Any],
+    ) -> TemporalExecution:
+        """Reuse an active run or restart only a failed direct indexing run."""
+
+        client = await self.connect_temporal()
+        handle = await client.start_workflow(
+            INGEST_TEXT_WORKFLOW,
+            workflow_input,
+            id=workflow_id,
+            task_queue=self.settings.workflow_task_queue,
+            id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE_FAILED_ONLY,
+            id_conflict_policy=WorkflowIDConflictPolicy.USE_EXISTING,
+            execution_timeout=self.settings.workflow_execution_timeout,
+            run_timeout=self.settings.workflow_run_timeout,
+            task_timeout=self.settings.workflow_task_timeout,
+        )
+        run_id = self.resolve_run_id(handle)
+        logger.info(
+            "temporal_bridge:start_text workflow_id=%s run_id=%s",
+            workflow_id,
+            run_id,
         )
         return TemporalExecution(workflow_id=workflow_id, run_id=run_id)
 

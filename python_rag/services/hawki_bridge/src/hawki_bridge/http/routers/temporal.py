@@ -12,6 +12,7 @@ from hawki_bridge.http.schemas import (
     CancelWorkflowRequest,
     DeleteScheduleRequest,
     StartIngestWorkflowRequest,
+    StartTextIngestWorkflowRequest,
     UpsertIngestScheduleRequest,
 )
 
@@ -40,6 +41,25 @@ def build_temporal_router(
         except Exception as exc:
             logger.exception("temporal:start failed")
             raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    @router.post("/workflows/ingest-text")
+    async def start_text(
+        body: StartTextIngestWorkflowRequest,
+    ) -> dict[str, str | None]:
+        try:
+            result = await client().start_text_ingest_workflow(
+                workflow_id=body.workflow_id,
+                workflow_input=body.workflow_input.model_dump(
+                    mode="json", exclude_unset=True
+                ),
+            )
+            return result.to_payload()
+        except Exception as exc:
+            logger.exception("temporal:start_text failed")
+            raise HTTPException(
+                status_code=502,
+                detail="Temporal text ingestion workflow could not be started.",
+            ) from exc
 
     @router.post("/schedules/ingest")
     async def upsert(body: UpsertIngestScheduleRequest) -> dict[str, str | None]:

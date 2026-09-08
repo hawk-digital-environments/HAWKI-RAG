@@ -5,6 +5,9 @@ declare(strict_types=1);
 namespace App\Services\Dataset;
 
 use App\Models\Dataset;
+use App\Services\Dataset\Exceptions\DatasetCreationConflictException;
+use App\Services\Dataset\Exceptions\DatasetInactiveException;
+use App\Services\Dataset\Exceptions\DatasetNotFoundException;
 use App\Services\Settings\SettingsService;
 use Illuminate\Container\Attributes\Singleton;
 use Psr\Clock\ClockInterface;
@@ -44,7 +47,7 @@ readonly class DatasetService
         $safe = $this->identifiers->safeName($datasetId);
         $embedding = $this->embeddingRuntime();
 
-        return $this->datasets->create([
+        $dataset = $this->datasets->firstOrCreate($datasetId, [
             'dataset_id' => $datasetId,
             'name' => $this->identifiers->displayName($datasetId, $input['name'] ?? null),
             'description' => $this->identifiers->stringValue($input['description'] ?? null),
@@ -57,6 +60,26 @@ readonly class DatasetService
             'embedding_model' => $embedding['model'],
             'created_at' => $this->clock->now(),
         ]);
+
+        if (! $dataset->wasRecentlyCreated) {
+            $this->ensureCompatibleCreationRequest($dataset, $input);
+        }
+
+        return $dataset;
+    }
+
+    public function requireActive(string $datasetId): Dataset
+    {
+        $normalizedDatasetId = trim($datasetId);
+        $dataset = $this->datasets->findByDatasetId($normalizedDatasetId);
+        if (! $dataset) {
+            throw DatasetNotFoundException::forId($normalizedDatasetId);
+        }
+        if ($dataset->status !== Dataset::STATUS_ACTIVE) {
+            throw DatasetInactiveException::forId($normalizedDatasetId);
+        }
+
+        return $dataset;
     }
 
     public function ensure(string|array|null $dataset = null, array $input = []): Dataset
@@ -117,5 +140,46 @@ readonly class DatasetService
             'provider' => $provider !== '' ? $provider : 'ollama',
             'model' => $embeddingModel !== '' ? $embeddingModel : 'bge-m3',
         ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $input
+     */
+    private function ensureCompatibleCreationRequest(Dataset $dataset, array $input): void
+    {
+        $requestedValues = [
+            'name' => $this->requestedString($input, 'name'),
+            'description' => $this->requestedString($input, 'description'),
+            'status' => $this->requestedString($input, 'status'),
+            'qdrant_collection' => $this->requestedString($input, 'qdrant_collection', 'qdrantCollection'),
+            'neo4j_namespace' => $this->requestedString($input, 'neo4j_namespace', 'neo4jNamespace'),
+        ];
+
+        foreach ($requestedValues as $field => $requestedValue) {
+            if ($requestedValue === null) {
+                continue;
+            }
+
+            if (! hash_equals((string) $dataset->getAttribute($field), $requestedValue)) {
+                throw DatasetCreationConflictException::forField(
+                    (string) $dataset->dataset_id,
+                    $field,
+                );
+            }
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $input
+     */
+    private function requestedString(array $input, string $key, ?string $alias = null): ?string
+    {
+        foreach (array_filter([$key, $alias]) as $candidate) {
+            if (array_key_exists($candidate, $input)) {
+                return $this->identifiers->stringValue($input[$candidate]);
+            }
+        }
+
+        return null;
     }
 }

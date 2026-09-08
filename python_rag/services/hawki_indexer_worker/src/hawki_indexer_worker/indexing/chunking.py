@@ -111,7 +111,10 @@ def prepare_documents(
             )
 
         document_text = d.text
-        if should_strip_converter_markdown_noise(normalized_payload):
+        is_direct_text = normalized_payload.get("ingestion_mode") == "direct_text"
+        if not is_direct_text and should_strip_converter_markdown_noise(
+            normalized_payload
+        ):
             document_text = strip_leading_converter_markdown_noise(document_text)
 
         if not str(normalized_payload.get("content_hash") or "").strip():

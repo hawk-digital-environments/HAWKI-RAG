@@ -103,6 +103,24 @@ class OpenApiContractTest extends TestCase
         }
     }
 
+    public function test_direct_text_contract_documents_its_security_and_limits(): void
+    {
+        $operation = $this->openApiOperations()['POST /integrations/text-ingestions'];
+
+        $this->assertStringContainsString('- BearerAuth: []', $operation);
+        $this->assertStringContainsString('`rag:text-ingest`', $operation);
+        $this->assertStringContainsString('explicit `ingest` grant', $operation);
+        $this->assertStringContainsString('"401":', $operation);
+        $this->assertStringContainsString('"403":', $operation);
+        $this->assertStringContainsString('"404":', $operation);
+        $this->assertStringContainsString('"413":', $operation);
+
+        $contents = $this->openApiContents();
+        $this->assertStringContainsString('maxLength: 1048576', $contents);
+        $this->assertStringContainsString('65,536 bytes', $contents);
+        $this->assertStringContainsString('4,300,000 bytes', $contents);
+    }
+
     /**
      * @return array<string, string>
      */

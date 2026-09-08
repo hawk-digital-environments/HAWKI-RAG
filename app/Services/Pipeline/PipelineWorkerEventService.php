@@ -9,6 +9,7 @@ use App\Models\PipelineJob;
 use App\Models\PipelineStageState;
 use App\Services\Pipeline\Exceptions\PipelineWorkerEventException;
 use App\Services\Pipeline\Repositories\IngestionSourceRepository;
+use App\Services\Pipeline\Repositories\PipelineJobStateMutationRepository;
 use App\Services\Pipeline\Repositories\PipelineScheduledRunRepository;
 use App\Services\Pipeline\Repositories\PipelineStageStateRepository;
 use App\Services\Pipeline\Repositories\PipelineTaskRepository;
@@ -33,6 +34,7 @@ readonly class PipelineWorkerEventService
     public function __construct(
         private PipelineWorkerEventRepository $events,
         private PipelineWorkerEventJobQuery $jobs,
+        private PipelineJobStateMutationRepository $jobStates,
         private PipelineTaskRepository $tasks,
         private IngestionSourceRepository $sources,
         private PipelineScheduledRunRepository $scheduledRuns,
@@ -140,6 +142,12 @@ readonly class PipelineWorkerEventService
             return;
         }
 
+        if ($this->canAdoptInitialRun($event, $job, $source)) {
+            $this->jobStates->adoptInitialTemporalRun($job, $event->runId);
+
+            return;
+        }
+
         if ($this->canAdoptScheduledRun($event, $job, $source)) {
             $this->scheduledRuns->adopt($job, $source, $event, $this->now());
 
@@ -147,6 +155,18 @@ readonly class PipelineWorkerEventService
         }
 
         throw PipelineWorkerEventException::targetMismatch();
+    }
+
+    private function canAdoptInitialRun(
+        PipelineWorkerEvent $event,
+        PipelineJob $job,
+        IngestionSource $source,
+    ): bool {
+        return trim((string) $job->temporal_run_id) === ''
+            && $job->current_stage === 'temporal.workflow_starting'
+            && trim((string) $job->temporal_schedule_id) === ''
+            && trim((string) $source->temporal_schedule_id) === ''
+            && trim($event->runId) !== '';
     }
 
     private function canAdoptScheduledRun(
