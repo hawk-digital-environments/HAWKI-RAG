@@ -6,7 +6,10 @@ import logging
 import time
 from typing import Any
 
-from hawki_indexer_worker.domain.errors import IndexingValidationError
+from hawki_indexer_worker.domain.errors import (
+    DocumentCompletionError,
+    IndexingValidationError,
+)
 from hawki_indexer_worker.domain.graph import resolve_indexing_graph_scope
 from hawki_indexer_worker.indexing.observability import pipeline_log
 from hawki_indexer_worker.indexing.chunking import prepare_documents
@@ -123,6 +126,11 @@ def ingest_documents(
             except GraphScopeMismatchError as exc:
                 raise IndexingValidationError(str(exc)) from exc
     total_chunks = len(chunk_records)
+    direct_text_doc_ids = {
+        str(record.get("doc_id") or "")
+        for record in chunk_records
+        if (record.get("payload") or {}).get("ingestion_mode") == "direct_text"
+    }
 
     if total_chunks == 0:
         pipeline_log(
@@ -186,6 +194,7 @@ def ingest_documents(
         replace_doc_ids = incremental_plan.replace_doc_ids
         replace_doc_ids_by_doc = incremental_plan.replace_doc_ids_by_doc
         unchanged_page_records = incremental_plan.unchanged_page_records
+        direct_text_doc_ids -= incremental_plan.unchanged_doc_ids
         total_chunks = len(chunk_records)
         if (
             total_chunks == 0
@@ -285,7 +294,10 @@ def ingest_documents(
             neo4j_database=getattr(body, "neo4j_namespace", None),
         )
         _mark_page_state_completed(
-            page_state, completed_page_records, logger_obj=logger
+            page_state,
+            completed_page_records,
+            required_doc_ids=direct_text_doc_ids,
+            logger_obj=logger,
         )
         _mark_page_state_seen(page_state, unchanged_page_records, logger_obj=logger)
 
@@ -331,13 +343,30 @@ def _mark_page_state_completed(
     page_state: Any | None,
     records: list[Any],
     *,
+    required_doc_ids: set[str],
     logger_obj: logging.Logger,
 ) -> None:
-    if page_state is None or not records:
+    recorded_doc_ids = {str(record.doc_id) for record in records}
+    missing_required = required_doc_ids - recorded_doc_ids
+    if missing_required:
+        raise DocumentCompletionError(
+            "Direct-text document completion state could not be constructed."
+        )
+    if page_state is None:
+        if required_doc_ids:
+            raise DocumentCompletionError(
+                "Direct-text document completion state is unavailable."
+            )
+        return
+    if not records:
         return
     try:
         page_state.mark_completed(records)
     except Exception as exc:
+        if required_doc_ids:
+            raise DocumentCompletionError(
+                "Direct-text document completion could not be recorded."
+            ) from exc
         logger_obj.warning(
             "ingest:page state completed update failed records=%s error=%s",
             len(records),

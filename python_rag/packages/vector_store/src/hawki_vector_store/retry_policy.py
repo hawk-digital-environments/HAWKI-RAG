@@ -8,6 +8,7 @@ RETRY_SAFE_WRITE_OPERATIONS = frozenset(
     {
         "qdrant.upsert_points",
         "qdrant.delete_by_filter",
+        "qdrant.set_payload",
     }
 )
 QDRANT_RETRYABLE_STATUS_CODES = frozenset({429, 500, 502, 503, 504})

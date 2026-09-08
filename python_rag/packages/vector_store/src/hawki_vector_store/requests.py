@@ -53,10 +53,30 @@ def build_upsert_points_request(
 ) -> QdrantRequest:
     return QdrantRequest(
         "PUT",
-        f"/collections/{collection}/points",
+        f"/collections/{collection}/points?wait=true",
         json_body={"points": points},
         timeout=timeout,
         operation="qdrant.upsert_points",
+        operation_id=operation_id,
+        retryable=retryable,
+    )
+
+
+def build_set_payload_request(
+    collection: str,
+    point_ids: list[str | int],
+    payload: dict[str, Any],
+    *,
+    timeout: float,
+    operation_id: str | None = None,
+    retryable: bool = False,
+) -> QdrantRequest:
+    return QdrantRequest(
+        "POST",
+        f"/collections/{collection}/points/payload?wait=true",
+        json_body={"points": point_ids, "payload": payload},
+        timeout=timeout,
+        operation="qdrant.set_payload",
         operation_id=operation_id,
         retryable=retryable,
     )
@@ -114,7 +134,7 @@ def build_delete_by_filter_request(
 ) -> QdrantRequest:
     return QdrantRequest(
         "POST",
-        f"/collections/{collection}/points/delete",
+        f"/collections/{collection}/points/delete?wait=true",
         json_body={"filter": filter_body},
         timeout=timeout,
         operation="qdrant.delete_by_filter",

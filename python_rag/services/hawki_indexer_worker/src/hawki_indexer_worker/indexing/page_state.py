@@ -11,6 +11,17 @@ import hashlib
 from dataclasses import dataclass
 from typing import Any, Mapping
 
+from hawki_indexer_worker.indexing.point_identity import (
+    deterministic_point_id,
+    document_completion_fingerprint,
+)
+
+DOCUMENT_COMPLETION_VERSION = 1
+DOCUMENT_COMPLETE_FIELD = "rawki_document_complete"
+DOCUMENT_COMPLETION_VERSION_FIELD = "rawki_document_completion_version"
+DOCUMENT_COMPLETION_FINGERPRINT_FIELD = "rawki_document_completion_fingerprint"
+DOCUMENT_COMPLETION_CHUNKS_FIELD = "rawki_document_completion_chunks"
+
 
 @dataclass(frozen=True, slots=True)
 class IndexedPageRecord:
@@ -27,6 +38,9 @@ class IndexedPageRecord:
     job_id: str | None
     neo4j_database: str | None
     chunks_count: int
+    point_ids: tuple[str, ...]
+    completion_fingerprint: str
+    ingestion_mode: str | None
     metadata: dict[str, Any]
 
 
@@ -57,8 +71,62 @@ class QdrantPageState:
         payload = points[0].get("payload")
         return dict(payload) if isinstance(payload, Mapping) else None
 
+    def find_completed(
+        self,
+        *,
+        collection: str,
+        source_identity: str,
+        completion_fingerprint: str,
+        chunks_count: int,
+    ) -> dict[str, Any] | None:
+        """Return the marker proving an exact document revision was completed."""
+
+        if not collection or not source_identity or not completion_fingerprint:
+            return None
+        if getattr(self._qdrant, "collection", collection) != collection:
+            setter = getattr(self._qdrant, "set_collection", None)
+            if callable(setter):
+                setter(collection)
+        finder = getattr(self._qdrant, "find_points_by_payload", None)
+        if not callable(finder):
+            return None
+        points = finder(
+            {
+                "source_identity": source_identity,
+                DOCUMENT_COMPLETE_FIELD: True,
+                DOCUMENT_COMPLETION_VERSION_FIELD: DOCUMENT_COMPLETION_VERSION,
+                DOCUMENT_COMPLETION_FINGERPRINT_FIELD: completion_fingerprint,
+                DOCUMENT_COMPLETION_CHUNKS_FIELD: chunks_count,
+            },
+            limit=1,
+        )
+        if not points or not isinstance(points[0], Mapping):
+            return None
+        payload = points[0].get("payload")
+        return dict(payload) if isinstance(payload, Mapping) else None
+
     def mark_completed(self, records: list[IndexedPageRecord]) -> None:
-        """No-op: successful content upserts durably stored this state."""
+        """Publish direct-text completion only after every point was committed."""
+
+        setter = getattr(self._qdrant, "set_payload", None)
+        for record in records:
+            if record.ingestion_mode != "direct_text":
+                continue
+            if not callable(setter) or not record.point_ids:
+                raise RuntimeError("Qdrant cannot publish document completion state")
+            setter(
+                list(record.point_ids),
+                {
+                    DOCUMENT_COMPLETE_FIELD: True,
+                    DOCUMENT_COMPLETION_VERSION_FIELD: DOCUMENT_COMPLETION_VERSION,
+                    DOCUMENT_COMPLETION_FINGERPRINT_FIELD: record.completion_fingerprint,
+                    DOCUMENT_COMPLETION_CHUNKS_FIELD: record.chunks_count,
+                },
+                idempotency_key=(
+                    f"complete:{record.source_identity_hash}:"
+                    f"{record.completion_fingerprint}"
+                ),
+            )
 
     def mark_seen(self, records: list[IndexedPageRecord]) -> None:
         """No-op: unchanged content points remain the authoritative state."""
@@ -115,6 +183,13 @@ def build_page_state_record(
         }.items()
         if value is not None
     }
+    point_ids = tuple(
+        deterministic_point_id(
+            doc_id,
+            int((record.get("payload") or {}).get("chunk_index", index)),
+        )
+        for index, record in enumerate(records)
+    )
     return IndexedPageRecord(
         collection=collection,
         source_identity=source_identity,
@@ -133,6 +208,13 @@ def build_page_state_record(
         job_id=_text(payload.get("job_id") or payload.get("trace_id")),
         neo4j_database=neo4j_database,
         chunks_count=len(records),
+        point_ids=point_ids,
+        completion_fingerprint=document_completion_fingerprint(
+            doc_id,
+            content_hash,
+            point_ids,
+        ),
+        ingestion_mode=_text(payload.get("ingestion_mode")),
         metadata=metadata,
     )
 
@@ -143,6 +225,11 @@ def _text(value: object) -> str | None:
 
 
 __all__ = [
+    "DOCUMENT_COMPLETE_FIELD",
+    "DOCUMENT_COMPLETION_CHUNKS_FIELD",
+    "DOCUMENT_COMPLETION_FINGERPRINT_FIELD",
+    "DOCUMENT_COMPLETION_VERSION",
+    "DOCUMENT_COMPLETION_VERSION_FIELD",
     "IndexedPageRecord",
     "QdrantPageState",
     "build_page_state_record",

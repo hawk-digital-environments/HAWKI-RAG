@@ -10,6 +10,7 @@ from typing import Any, Mapping
 from urllib.parse import urlsplit, urlunsplit
 
 from hawki_indexer_worker.indexing.page_state import (
+    DOCUMENT_COMPLETE_FIELD,
     IndexedPageRecord,
     build_page_state_record,
 )
@@ -114,7 +115,19 @@ def plan_incremental_ingest(
     for doc_id, records in grouped.items():
         payload = dict(records[0].get("payload") or {})
         content_hash = str(payload.get("content_hash") or "")
-        existing_payload = _find_registry_payload(
+        expected_page_record = build_page_state_record(
+            doc_id=doc_id,
+            records=records,
+            collection=collection,
+            neo4j_database=neo4j_database,
+        )
+        is_direct_text = payload.get("ingestion_mode") == "direct_text"
+        completed_payload = (
+            _find_completed_payload(page_registry, expected_page_record)
+            if is_direct_text and expected_page_record is not None
+            else None
+        )
+        existing_payload = completed_payload or _find_registry_payload(
             page_registry,
             collection=collection,
             payload=payload,
@@ -130,28 +143,35 @@ def plan_incremental_ingest(
             str(existing_payload.get("content_hash") or "") if existing_payload else ""
         )
 
-        if existing_payload and existing_hash and existing_hash == content_hash:
+        unchanged_is_proven = bool(
+            existing_payload and existing_hash and existing_hash == content_hash
+        )
+        if is_direct_text:
+            unchanged_is_proven = completed_payload is not None
+
+        if unchanged_is_proven:
             plan.unchanged_doc_ids.add(doc_id)
             plan.unchanged_chunks += len(records)
-            page_record = build_page_state_record(
-                doc_id=doc_id,
-                records=records,
-                collection=collection,
-                neo4j_database=neo4j_database,
-            )
-            if page_record is not None:
-                plan.unchanged_page_records.append(page_record)
+            if expected_page_record is not None:
+                plan.unchanged_page_records.append(expected_page_record)
             _mark_doc_skipped(doc_stats, doc_id, payload, len(records))
             continue
 
         kept.extend(records)
         if existing_payload:
             plan.changed_doc_ids.add(doc_id)
-            delete_ids = {doc_id}
-            if existing_doc_id:
-                delete_ids.add(existing_doc_id)
-            plan.replace_doc_ids.update(delete_ids)
-            plan.replace_doc_ids_by_doc[doc_id] = delete_ids
+            incomplete_direct_retry = bool(
+                is_direct_text
+                and existing_hash == content_hash
+                and existing_doc_id in {"", doc_id}
+                and existing_payload.get(DOCUMENT_COMPLETE_FIELD) is not True
+            )
+            if not incomplete_direct_retry:
+                delete_ids = {doc_id}
+                if existing_doc_id:
+                    delete_ids.add(existing_doc_id)
+                plan.replace_doc_ids.update(delete_ids)
+                plan.replace_doc_ids_by_doc[doc_id] = delete_ids
         else:
             plan.new_doc_ids.add(doc_id)
 
@@ -197,6 +217,24 @@ def _find_registry_payload(
     if isinstance(record, dict):
         return record
     return None
+
+
+def _find_completed_payload(
+    page_registry: Any | None,
+    record: IndexedPageRecord,
+) -> dict[str, Any] | None:
+    if page_registry is None:
+        return None
+    finder = getattr(page_registry, "find_completed", None)
+    if not callable(finder):
+        return None
+    result = finder(
+        collection=record.collection,
+        source_identity=record.source_identity,
+        completion_fingerprint=record.completion_fingerprint,
+        chunks_count=record.chunks_count,
+    )
+    return result if isinstance(result, dict) else None
 
 
 def _mark_doc_skipped(

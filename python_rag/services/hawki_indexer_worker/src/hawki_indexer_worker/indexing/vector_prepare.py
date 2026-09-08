@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 import logging
-import uuid
 from typing import Any
 
 from hawki_indexer_worker.indexing.observability import pipeline_log
+from hawki_indexer_worker.indexing.point_identity import deterministic_point_id
 
 logger = logging.getLogger(__name__)
-_POINT_NAMESPACE = uuid.NAMESPACE_URL
 
 
 def build_points(
@@ -30,7 +29,8 @@ def build_points(
             failure = {
                 "doc_id": doc_id,
                 "chunk_index": chunk_index,
-                "error": str(exc),
+                "error": "Embedding failed.",
+                "exception_type": type(exc).__name__,
                 "source_url": payload.get("source_url") or payload.get("page_url"),
                 "title": payload.get("title"),
             }
@@ -44,15 +44,14 @@ def build_points(
                 doc_id=doc_id,
                 pipeline_stage="embedding",
                 chunk_index=chunk_index,
-                error_message=f"Embedding failed: {exc}",
+                error_message="Embedding failed.",
+                exception_type=type(exc).__name__,
                 source_url=payload.get("source_url") or payload.get("page_url"),
                 title=payload.get("title"),
             )
             continue
         vector_size = vector_size or len(vec)
-        point_key = f"{rec['doc_id']}:{chunk_index}"
-        # Qdrant point IDs must be UUID or integer; use deterministic UUID per chunk.
-        point_id = str(uuid.uuid5(_POINT_NAMESPACE, point_key))
+        point_id = deterministic_point_id(str(rec["doc_id"]), int(chunk_index))
         points.append(
             {
                 "id": point_id,

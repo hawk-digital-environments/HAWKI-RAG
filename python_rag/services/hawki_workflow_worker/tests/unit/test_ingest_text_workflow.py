@@ -6,6 +6,8 @@ import asyncio
 from collections import deque
 from typing import Any
 
+import pytest
+
 from hawki_rag_contracts.pipeline.temporal import (
     INDEX_MARKDOWN_ACTIVITY,
     MARK_SOURCE_READY_ACTIVITY,
@@ -123,3 +125,36 @@ def test_workflow_projects_skipped_indexing_as_a_terminal_callback(monkeypatch) 
         INDEX_MARKDOWN_ACTIVITY,
         MARK_SOURCE_READY_ACTIVITY,
     ]
+
+
+def test_workflow_does_not_project_ready_when_indexing_raises(monkeypatch) -> None:
+    class FailingIndexRuntime:
+        def __init__(self) -> None:
+            self.calls: list[str] = []
+
+        async def execute_activity(
+            self,
+            name: str,
+            payload: dict[str, Any],
+            **options: Any,
+        ) -> dict[str, Any]:
+            del payload, options
+            self.calls.append(name)
+            raise RuntimeError("indexing incomplete")
+
+    runtime = FailingIndexRuntime()
+    monkeypatch.setattr(ingest_text, "workflow", runtime)
+
+    with pytest.raises(RuntimeError, match="indexing incomplete"):
+        asyncio.run(
+            IngestTextWorkflow().run(
+                {
+                    "source_id": "source-a",
+                    "markdown_path": "/shared/document.md",
+                    "markdown_output_path": "/shared",
+                    "content_hash": "a" * 64,
+                }
+            )
+        )
+
+    assert runtime.calls == [INDEX_MARKDOWN_ACTIVITY]

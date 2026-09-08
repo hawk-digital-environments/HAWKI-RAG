@@ -184,6 +184,25 @@ class QdrantHTTP:
         for batch in iter_batches(points, size):
             self.upsert(batch, idempotency_key=idempotency_key)
 
+    def set_payload(
+        self,
+        point_ids: list[str | int],
+        payload: dict[str, Any],
+        *,
+        idempotency_key: str | None = None,
+    ) -> None:
+        """Merge payload fields into deterministic points and wait for commit."""
+
+        if not point_ids or not payload:
+            return
+        response = self._gateway.set_payload(
+            point_ids,
+            payload,
+            timeout=self._http_settings.upsert_timeout,
+            operation_id=idempotency_key,
+        )
+        response.raise_for_status()
+
     def count_points(
         self,
         collection: str | None = None,
