@@ -7,6 +7,7 @@ namespace App\Services\TextIngestion;
 use App\Services\TextIngestion\Exceptions\TextIngestionStorageException;
 use App\Services\TextIngestion\Values\StoredTextArtifact;
 use App\Services\TextIngestion\Values\TextIngestionInput;
+use App\Services\TextIngestion\Values\TextIngestionMode;
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Contracts\Config\Repository as ConfigRepository;
 use Illuminate\Filesystem\Filesystem;
@@ -71,7 +72,7 @@ use Illuminate\Filesystem\Filesystem;
  *
  * In that situation, we create reconciliation-required.json.
  * The marker tells us that this revision may need to be checked later.
- * 
+ *
  * Why don't we immediately delete the artifact after a database failure?
  *
  * Another request may be using the same artifact.
@@ -86,6 +87,10 @@ use Illuminate\Filesystem\Filesystem;
 final readonly class TextIngestionArtifactStorage
 {
     private const RECONCILIATION_MARKER = 'reconciliation-required.json';
+
+    private const SHARED_DIRECTORY_MODE = 02775;
+
+    private const SHARED_FILE_MODE = 0664;
 
     public function __construct(
         private ConfigRepository $config,
@@ -103,11 +108,14 @@ final readonly class TextIngestionArtifactStorage
             json_encode($input->toArray(), JSON_THROW_ON_ERROR),
         );
 
-        $markdownDirectory = $this->sharedRoot()
+        $sourceDirectory = $this->sharedRoot()
             .DIRECTORY_SEPARATOR.'sources'
-            .DIRECTORY_SEPARATOR.$sourceId
-            .DIRECTORY_SEPARATOR.'revisions'
-            .DIRECTORY_SEPARATOR.$revisionHash
+            .DIRECTORY_SEPARATOR.$sourceId;
+        $revisionsDirectory = $sourceDirectory
+            .DIRECTORY_SEPARATOR.'revisions';
+        $revisionDirectory = $revisionsDirectory
+            .DIRECTORY_SEPARATOR.$revisionHash;
+        $markdownDirectory = $revisionDirectory
             .DIRECTORY_SEPARATOR.'markdown';
 
         $markdownPath = $markdownDirectory
@@ -115,7 +123,7 @@ final readonly class TextIngestionArtifactStorage
         $metadataPath = $markdownDirectory
             .DIRECTORY_SEPARATOR.'rawki_passthrough.json';
         $metadata = json_encode([
-            'ingestion_mode' => 'direct_text',
+            'ingestion_mode' => TextIngestionMode::DirectText->value,
             'external_document_id' => $input->externalDocumentId,
             'display_name' => $input->displayName,
             'content_format' => $input->contentFormat->value,
@@ -123,7 +131,9 @@ final readonly class TextIngestionArtifactStorage
         ], JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
 
         try {
-            $this->files->ensureDirectoryExists($markdownDirectory);
+            foreach ([$sourceDirectory, $revisionsDirectory, $revisionDirectory, $markdownDirectory] as $directory) {
+                $this->ensureSharedDirectory($directory);
+            }
             $this->writeImmutable($markdownPath, $input->text);
             $this->writeImmutable($metadataPath, $metadata."\n");
         } catch (TextIngestionStorageException $exception) {
@@ -167,6 +177,15 @@ final readonly class TextIngestionArtifactStorage
         $this->files->delete($this->reconciliationMarkerPath($artifact));
     }
 
+    private function ensureSharedDirectory(string $path): void
+    {
+        $this->files->ensureDirectoryExists($path, self::SHARED_DIRECTORY_MODE);
+
+        if ($this->files->chmod($path, self::SHARED_DIRECTORY_MODE) !== true) {
+            throw new \RuntimeException("Could not publish shared directory permissions [{$path}].");
+        }
+    }
+
     private function writeImmutable(string $path, string $contents): void
     {
         if ($this->files->exists($path)) {
@@ -179,6 +198,9 @@ final readonly class TextIngestionArtifactStorage
         try {
             if ($this->files->put($temporaryPath, $contents, true) === false) {
                 throw new \RuntimeException("Could not write temporary artifact [{$temporaryPath}].");
+            }
+            if ($this->files->chmod($temporaryPath, self::SHARED_FILE_MODE) !== true) {
+                throw new \RuntimeException("Could not publish shared artifact permissions [{$temporaryPath}].");
             }
 
             if (! @link($temporaryPath, $path)) {

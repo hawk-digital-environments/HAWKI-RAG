@@ -98,6 +98,43 @@ final class TextIngestionArtifactStorageTest extends TestCase
         );
     }
 
+    public function test_it_publishes_shared_artifacts_with_worker_writable_permissions_under_a_restrictive_umask(): void
+    {
+        $input = TextIngestionInput::fromValidated([
+            'external_document_id' => 'document-shared-permissions',
+            'dataset_id' => 'default',
+            'text' => 'Shared worker content.',
+            'content_format' => 'plain_text',
+        ]);
+
+        $previousUmask = umask(0022);
+        try {
+            $artifact = $this->storage()->store($input);
+        } finally {
+            umask($previousUmask);
+        }
+
+        $markdownDirectory = dirname($artifact->markdownPath);
+        $revisionDirectory = dirname($markdownDirectory);
+        $revisionsDirectory = dirname($revisionDirectory);
+        $sourceDirectory = dirname($revisionsDirectory);
+
+        foreach ([$sourceDirectory, $revisionsDirectory, $revisionDirectory, $markdownDirectory] as $directory) {
+            $mode = $this->mode($directory);
+            self::assertSame(0775, $mode & 0777, "Directory is not group writable: {$directory}");
+
+            if (PHP_OS_FAMILY === 'Linux') {
+                self::assertSame(02775, $mode, "Directory does not preserve setgid: {$directory}");
+            }
+        }
+
+        self::assertSame(0664, $this->mode($artifact->markdownPath));
+        self::assertSame(
+            0664,
+            $this->mode($markdownDirectory.DIRECTORY_SEPARATOR.'rawki_passthrough.json'),
+        );
+    }
+
     public function test_it_does_not_overwrite_an_existing_revision(): void
     {
         $input = TextIngestionInput::fromValidated([
@@ -154,5 +191,14 @@ final class TextIngestionArtifactStorageTest extends TestCase
             ]),
             $this->files,
         );
+    }
+
+    private function mode(string $path): int
+    {
+        clearstatcache(true, $path);
+        $mode = fileperms($path);
+        self::assertNotFalse($mode, "Could not read permissions for {$path}");
+
+        return $mode & 07777;
     }
 }

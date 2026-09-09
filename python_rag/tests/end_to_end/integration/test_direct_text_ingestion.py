@@ -177,7 +177,16 @@ class TestLiveDirectTextIngestion:
         job = next(job for job in task["jobs"] if job["job_id"] == response["job_id"])
         assert job["source_id"] == response["source_id"]
         assert job["temporal_workflow_id"] == response["workflow_id"]
-        assert job["index_status"] == "completed"
+        assert task["status"] == "completed"
+
+        job = task["jobs"][0]
+        assert job["status"] == "completed"
+        assert job["index_status"] == "ready"
+        assert job["error_message"] is None
+
+        source = task["sources"][0]
+        assert source["index_status"] == "ready"
+        assert source["ready_at"] is not None
         assert job["metadata"]["graph"] is False
 
         collection = dataset_response["dataset"]["qdrant_collection"]
@@ -187,6 +196,7 @@ class TestLiveDirectTextIngestion:
             integration_unavailable(f"Qdrant was not reachable ({exc!r})")
 
         assert len(points) == 1
-        assert points[0]["payload"]["content"] == text
+        expected_chunk_content = text.rstrip()
+        assert points[0]["payload"]["content"] == expected_chunk_content
         assert points[0]["payload"]["source_id"] == response["source_id"]
         assert points[0]["payload"]["ingestion_mode"] == "direct_text"
