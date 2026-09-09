@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Pipeline\Repositories;
 
+use App\Models\IngestionSource;
 use App\Models\PipelineJob;
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Support\Carbon;
@@ -64,7 +65,29 @@ readonly class PipelineJobStateMutationRepository
             ->lockForUpdate()
             ->firstOrFail();
 
-        if ($current->current_stage === 'temporal.workflow_starting') {
+        if (
+            $current->temporal_workflow_id
+            && ! hash_equals((string) $current->temporal_workflow_id, $workflowId)
+        ) {
+            throw new \RuntimeException('Temporal workflow confirmation does not match the pipeline job.');
+        }
+
+        if (
+            $current->index_status === IngestionSource::STATUS_READY
+            || $current->status === PipelineJob::STATUS_COMPLETED
+        ) {
+            return $current;
+        }
+
+        $runChanged = $current->temporal_run_id
+            && $runId
+            && ! hash_equals((string) $current->temporal_run_id, $runId);
+        if (
+            $current->current_stage === 'temporal.workflow_starting'
+            || $current->status === PipelineJob::STATUS_FAILED
+            || $current->index_status === IngestionSource::STATUS_FAILED
+            || $runChanged
+        ) {
             return $this->markTemporalStarted(
                 $current,
                 $workflowId,
@@ -72,18 +95,6 @@ readonly class PipelineJobStateMutationRepository
                 null,
                 $metadata,
             );
-        }
-
-        if (! hash_equals((string) $current->temporal_workflow_id, $workflowId)) {
-            throw new \RuntimeException('Temporal workflow confirmation does not match the pipeline job.');
-        }
-
-        if (
-            $current->temporal_run_id
-            && $runId
-            && ! hash_equals((string) $current->temporal_run_id, $runId)
-        ) {
-            throw new \RuntimeException('Temporal run confirmation does not match the pipeline job.');
         }
 
         if (! $current->temporal_run_id && $runId) {

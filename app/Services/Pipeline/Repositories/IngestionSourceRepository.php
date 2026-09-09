@@ -99,10 +99,15 @@ readonly class IngestionSourceRepository
             'run_id' => $runId
                 ?: ($temporal['run_id'] ?? $workerEvent['run_id'] ?? null),
         ], static fn (mixed $value): bool => $value !== null && $value !== '');
-        $current->forceFill([
+        $attributes = [
             'temporal_workflow_id' => $workflowId,
             'metadata' => $metadata,
-        ])->save();
+        ];
+        if ($current->index_status !== IngestionSource::STATUS_READY) {
+            $attributes['index_status'] = IngestionSource::STATUS_RUNNING;
+            $attributes['ready_at'] = null;
+        }
+        $current->forceFill($attributes)->save();
 
         return $current->refresh();
     }

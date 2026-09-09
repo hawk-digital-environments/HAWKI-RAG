@@ -321,6 +321,10 @@ readonly class PipelineWorkerEventService
      */
     private function stageAttributes(PipelineWorkerEvent $event, Carbon $processedAt): array
     {
+        $terminalReady = $event->producer === PipelineWorker::Indexer
+            && $event->activityId === 'mark_source_ready'
+            && $event->stage === PipelineStage::Ingest
+            && $event->status === PipelineStageStatus::Completed;
         $finalSuccess = $event->stage === PipelineStage::Ingest
             && $event->status === PipelineStageStatus::Completed;
         $failed = in_array($event->status, [PipelineStageStatus::Failed, PipelineStageStatus::Skipped], true);
@@ -355,6 +359,10 @@ readonly class PipelineWorkerEventService
             'error_message' => $failed ? $this->failureMessage($event) : null,
             'finished_at' => ($finalSuccess || $failed) ? $processedAt : null,
         ];
+
+        if ($terminalReady) {
+            $attributes['job_status'] = PipelineJob::STATUS_COMPLETED;
+        }
 
         if ($event->status === PipelineStageStatus::Skipped) {
             $attributes['job_status'] = PipelineJob::STATUS_SKIPPED;

@@ -6,11 +6,12 @@ namespace App\Services\Pipeline\Tasks;
 
 use App\Models\PipelineJob;
 use App\Models\PipelineTask;
+use App\Services\Pipeline\Clients\PythonTemporalBridgeClient;
 use App\Services\Pipeline\Repositories\IngestionSourceRepository;
 use App\Services\Pipeline\Repositories\PipelineJobStateMutationRepository;
 use App\Services\Pipeline\Repositories\PipelineTaskRepository;
 use App\Services\Pipeline\Repositories\Queries\FailedPipelineJobsQuery;
-use App\Services\Pipeline\Clients\PythonTemporalBridgeClient;
+use App\Services\TextIngestion\TextIngestionRecoveryService;
 use Illuminate\Container\Attributes\Singleton;
 use Psr\Clock\ClockInterface;
 use Symfony\Component\Clock\Clock;
@@ -27,9 +28,9 @@ readonly class PipelineTaskRetryService
         private PipelineJobStateMutationRepository $jobStates,
         private PipelineTaskStatusRefresher $refresher,
         private PythonTemporalBridgeClient $temporalBridge,
-        private ClockInterface $clock = new Clock(),
-    ) {
-    }
+        private TextIngestionRecoveryService $textIngestionRecovery,
+        private ClockInterface $clock = new Clock,
+    ) {}
 
     public function retryFailedJobs(string $taskId): ?PipelineTask
     {
@@ -59,7 +60,7 @@ readonly class PipelineTaskRetryService
     }
 
     /**
-     * @param array<string, mixed> $metadata
+     * @param  array<string, mixed>  $metadata
      */
     private function restartTemporalWorkflow(PipelineTask $task, PipelineJob $job, array $metadata): void
     {
@@ -72,7 +73,7 @@ readonly class PipelineTaskRetryService
             return;
         }
 
-        $workflowId = $this->retryWorkflowId($job, $source->source_id, (int) ($metadata['retry_count'] ?? 1));
+        $directText = $this->textIngestionRecovery->supports($job, $source);
 
         $source = $this->ingestionSources->upsertStarting($source->source_id, [
             'source_url' => $source->source_url,
@@ -86,8 +87,17 @@ readonly class PipelineTaskRetryService
             ]),
         ]);
 
-        $workflowInput = $this->workflowPayloads->input($task, $job, $source);
-        $execution = $this->temporalBridge->startIngestWorkflow($workflowInput, $workflowId);
+        if ($directText) {
+            $execution = $this->textIngestionRecovery->startOrReuse($task, $job, $source);
+        } else {
+            $workflowId = $this->retryWorkflowId(
+                $job,
+                $source->source_id,
+                (int) ($metadata['retry_count'] ?? 1),
+            );
+            $workflowInput = $this->workflowPayloads->input($task, $job, $source);
+            $execution = $this->temporalBridge->startIngestWorkflow($workflowInput, $workflowId);
+        }
         $metadata['temporal'] = array_filter([
             'workflow_id' => $execution->workflowId,
             'run_id' => $execution->runId,

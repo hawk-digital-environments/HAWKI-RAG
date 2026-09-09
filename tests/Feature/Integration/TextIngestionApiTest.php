@@ -92,6 +92,9 @@ final class TextIngestionApiTest extends TestCase
             'index_status' => 'running',
         ]);
         $job = PipelineJob::query()->where('job_id', $response->json('job_id'))->firstOrFail();
+        $source = IngestionSource::query()->where('source_id', $sourceId)->firstOrFail();
+        $this->assertSame('direct_text', $job->metadata['ingestion_mode']);
+        $this->assertSame('direct_text', $source->metadata['ingestion_mode']);
         $this->assertFileExists($job->local_path);
         Http::assertSentCount(1);
         Http::assertSent(fn ($request): bool => data_get($request->data(), 'workflow_input.ingestion.graph') === false
@@ -99,7 +102,7 @@ final class TextIngestionApiTest extends TestCase
             && data_get($request->data(), 'workflow_input.ingestion.embedding_model') === 'bge-m3');
     }
 
-    public function test_same_request_is_replayed_without_starting_another_workflow(): void
+    public function test_running_request_rechecks_the_deterministic_workflow_without_creating_records(): void
     {
         $first = $this->send($this->payload());
         $second = $this->send($this->payload());
@@ -109,7 +112,86 @@ final class TextIngestionApiTest extends TestCase
             ->assertOk()
             ->assertJsonPath('task_id', $first->json('task_id'))
             ->assertJsonPath('replayed', true);
+        Http::assertSentCount(2);
+        $requests = Http::recorded();
+        $this->assertSame(
+            app(TextIngestionIdentifierFactory::class)->workflowId((string) $first->json('task_id')),
+            $requests[1][0]->data()['workflow_id'],
+        );
+        $this->assertDatabaseCount('pipeline_tasks', 1);
+        $this->assertDatabaseCount('ingestion_sources', 1);
+        $this->assertDatabaseCount('pipeline_jobs', 1);
+        $this->assertCount(1, File::glob(
+            $this->sharedRoot.'/sources/*/revisions/*/markdown/document.md',
+        ));
+    }
+
+    public function test_ready_request_is_replayed_without_contacting_temporal(): void
+    {
+        $first = $this->send($this->payload());
+        $job = PipelineJob::query()->firstOrFail();
+        $source = IngestionSource::query()->firstOrFail();
+        $job->forceFill([
+            'status' => PipelineJob::STATUS_COMPLETED,
+            'current_stage' => 'ingest',
+            'index_status' => IngestionSource::STATUS_READY,
+        ])->save();
+        $source->forceFill([
+            'index_status' => IngestionSource::STATUS_READY,
+            'ready_at' => now(),
+        ])->save();
+
+        $this->send($this->payload())
+            ->assertOk()
+            ->assertJsonPath('task_id', $first->json('task_id'))
+            ->assertJsonPath('status', IngestionSource::STATUS_READY)
+            ->assertJsonPath('replayed', true);
+
         Http::assertSentCount(1);
+    }
+
+    public function test_failed_request_restarts_the_deterministic_text_workflow(): void
+    {
+        $identifiers = app(TextIngestionIdentifierFactory::class);
+        $workflowId = $identifiers->workflowId(
+            $identifiers->taskId('assistant_42', 'document-123-v1'),
+        );
+        Http::swap(new HttpFactory($this->app['events']));
+        Http::fake([
+            '*temporal/workflows/ingest-text' => Http::sequence()
+                ->push(['workflow_id' => $workflowId, 'run_id' => 'run-initial'], 202)
+                ->push(['workflow_id' => $workflowId, 'run_id' => 'run-restarted'], 200),
+        ]);
+
+        $this->send($this->payload())->assertAccepted();
+        $job = PipelineJob::query()->firstOrFail();
+        $source = IngestionSource::query()->firstOrFail();
+        $job->forceFill([
+            'status' => PipelineJob::STATUS_FAILED,
+            'current_stage' => 'ingest',
+            'index_status' => IngestionSource::STATUS_FAILED,
+            'error_message' => 'Indexer failed.',
+        ])->save();
+        $source->forceFill([
+            'index_status' => IngestionSource::STATUS_FAILED,
+        ])->save();
+
+        $this->send($this->payload())
+            ->assertOk()
+            ->assertJsonPath('workflow_id', $workflowId)
+            ->assertJsonPath('status', IngestionSource::STATUS_RUNNING)
+            ->assertJsonPath('replayed', true);
+
+        $job->refresh();
+        $source->refresh();
+        $this->assertSame('run-restarted', $job->temporal_run_id);
+        $this->assertSame(PipelineJob::STATUS_RUNNING, $job->status);
+        $this->assertSame(IngestionSource::STATUS_RUNNING, $source->index_status);
+        Http::assertSentCount(2);
+        Http::assertSent(fn ($request): bool => data_get($request->data(), 'workflow_id') === $workflowId);
+        $this->assertDatabaseCount('pipeline_tasks', 1);
+        $this->assertDatabaseCount('ingestion_sources', 1);
+        $this->assertDatabaseCount('pipeline_jobs', 1);
     }
 
     public function test_reusing_a_key_with_different_text_is_rejected(): void

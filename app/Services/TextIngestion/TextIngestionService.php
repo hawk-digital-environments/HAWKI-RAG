@@ -21,6 +21,7 @@ use App\Services\TextIngestion\Exceptions\TextIngestionSourceBusyException;
 use App\Services\TextIngestion\Exceptions\TextIngestionWorkflowStartException;
 use App\Services\TextIngestion\Values\StoredTextArtifact;
 use App\Services\TextIngestion\Values\TextIngestionInput;
+use App\Services\TextIngestion\Values\TextIngestionMode;
 use App\Services\TextIngestion\Values\TextIngestionResult;
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Database\QueryException;
@@ -28,6 +29,7 @@ use Illuminate\Support\Carbon;
 use Psr\Clock\ClockInterface;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\Clock\Clock;
+
 /**
  * Service Responsibility:
  * This is the main coordinator for direct-text ingestion.
@@ -35,7 +37,7 @@ use Symfony\Component\Clock\Clock;
  * until the indexing work has been safely handed to Temporal.
  * ==========================================================================
  * Basic Workflow:
- * 
+ *
  *   request
  *     -> check for an existing idempotent operation
  *     -> require an active dataset
@@ -56,7 +58,7 @@ use Symfony\Component\Clock\Clock;
  * request_hash represents the complete direct-ingestion request.
  * When the same idempotency key is used again, the stored request hash is
  * compared with the new request.
- * 
+ *
  * Same key + same request:
  *   The existing ingestion can be replayed or resumed.
  * Same key + different request:
@@ -123,8 +125,9 @@ use Symfony\Component\Clock\Clock;
  *
  * What does "replay" mean?
  *
- * If the existing task has already moved beyond workflow startup, the service
- * does not start another workflow. It returns the current state of the existing ingestion to the caller.
+ * If the source is already ready, the service does not contact Temporal again.
+ * For every non-ready state, it asks the bridge to resolve the deterministic
+ * workflow so an active run is reused and a failed run can restart.
  * ==========================================================================
  * Why is the Temporal workflow ID deterministic?
  *
@@ -245,6 +248,7 @@ final readonly class TextIngestionService
                     'raw_storage_path' => null,
                     'markdown_storage_path' => dirname($artifact->markdownPath),
                     'metadata' => [
+                        'ingestion_mode' => TextIngestionMode::DirectText->value,
                         'request' => $requestMetadata,
                         'dataset' => $datasetMetadata,
                         'text_ingestion' => [
@@ -354,16 +358,12 @@ final readonly class TextIngestionService
         if (! $job) {
             throw TextIngestionIdempotencyException::incompleteTask($task->task_id);
         }
-        if (
-            $job->temporal_workflow_id
-            && $job->current_stage !== 'temporal.workflow_starting'
-        ) {
-            return $this->replayedResult($task, $job);
-        }
-
         $source = $this->sources->findBySourceId((string) $job->source_id);
         if (! $source) {
             throw TextIngestionIdempotencyException::incompleteSource((string) $job->source_id);
+        }
+        if ($source->index_status === IngestionSource::STATUS_READY) {
+            return $this->replayedResult($task, $job, $source);
         }
 
         $dataset = $this->datasets->requireActive($input->datasetId);
@@ -452,14 +452,17 @@ final readonly class TextIngestionService
         );
     }
 
-    private function replayedResult(PipelineTask $task, PipelineJob $job): TextIngestionResult
-    {
+    private function replayedResult(
+        PipelineTask $task,
+        PipelineJob $job,
+        IngestionSource $source,
+    ): TextIngestionResult {
         return TextIngestionResult::replayed(
             $task->task_id,
             $job->job_id,
             (string) $job->source_id,
-            $job->temporal_workflow_id,
-            (string) ($job->index_status ?: $job->status),
+            $job->temporal_workflow_id ?: $source->temporal_workflow_id,
+            IngestionSource::STATUS_READY,
         );
     }
 
@@ -500,6 +503,7 @@ final readonly class TextIngestionService
         array $datasetMetadata,
     ): array {
         return [
+            'ingestion_mode' => TextIngestionMode::DirectText->value,
             'request' => $requestMetadata,
             'dataset' => $datasetMetadata,
             'source_id' => $artifact->sourceId,
