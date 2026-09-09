@@ -248,12 +248,14 @@ class IncrementalIngestTests(unittest.TestCase):
                 source_identity: str,
                 completion_fingerprint: str,
                 chunks_count: int,
+                point_ids: tuple[str, ...],
             ) -> dict[str, object] | None:
                 self.completed_lookup = (
                     collection,
                     source_identity,
                     completion_fingerprint,
                     chunks_count,
+                    point_ids,
                 )
                 if completion_fingerprint != old_state.completion_fingerprint:
                     return None
@@ -284,7 +286,11 @@ class IncrementalIngestTests(unittest.TestCase):
             page_registry=registry,
         )
 
-        self.assertEqual(replay_plan.unchanged_doc_ids, {artifact_doc_id})
+        self.assertEqual(replay_plan.unchanged_doc_ids, set())
+        self.assertEqual(
+            [record.doc_id for record in replay_plan.payload_refresh_page_records],
+            [artifact_doc_id],
+        )
         self.assertEqual(replay_plan.replace_doc_ids, set())
         self.assertEqual(registry.completed_lookup[1], f"doc:{artifact_doc_id}")
 

@@ -6,164 +6,21 @@ import uuid
 
 import pytest
 
-from hawki_indexer_worker.domain.errors import EmbeddingError
-from hawki_indexer_worker.domain.models import IngestDocument
-from hawki_indexer_worker.indexing.dependencies import IngestWorkflowDependencies
+from hawki_indexer_worker.domain.errors import DocumentCompletionError, EmbeddingError
 from hawki_indexer_worker.indexing.incremental import plan_incremental_ingest
 from hawki_indexer_worker.indexing.orchestration import ingest_documents
 from hawki_indexer_worker.indexing.page_state import (
     QdrantPageState,
     build_page_state_record,
+    direct_text_metadata_fingerprint,
 )
-from hawki_indexer_worker.indexing.request import IndexRequest
-
-
-class RecordingProvider:
-    embed_model = "embed-test"
-
-    def __init__(self, *, fail_on: str | None = None) -> None:
-        self.fail_on = fail_on
-        self.embedded: list[str] = []
-
-    def embed(self, text: str) -> list[float]:
-        self.embedded.append(text)
-        if text == self.fail_on:
-            raise RuntimeError("provider response included sensitive details")
-        return [0.1, 0.2, 0.3]
-
-
-class MemoryQdrant:
-    def __init__(self) -> None:
-        self.collection = "default"
-        self.points: dict[str, dict[str, Any]] = {}
-        self.upsert_batches: list[list[str]] = []
-        self.fail_on_batch: int | None = None
-        self.fail_completion = False
-        self.completion_writes = 0
-        self.delete_calls = 0
-
-    def set_collection(self, collection: str) -> None:
-        self.collection = collection
-
-    def find_points_by_payload(
-        self,
-        filters: dict[str, Any],
-        *,
-        limit: int = 1,
-    ) -> list[dict[str, Any]]:
-        matches = [
-            point
-            for point in self.points.values()
-            if all(
-                point.get("payload", {}).get(key) == value
-                for key, value in filters.items()
-            )
-        ]
-        return matches[:limit]
-
-    def ensure_collection(self, vector_size: int, *, distance: str) -> None:
-        assert vector_size == 3
-        assert distance == "Cosine"
-
-    def upsert_points(
-        self,
-        points: list[dict[str, Any]],
-        *,
-        batch_size: int,
-        idempotency_key: str | None = None,
-    ) -> None:
-        del idempotency_key
-        for batch_number, start in enumerate(
-            range(0, len(points), batch_size), start=1
-        ):
-            batch = points[start : start + batch_size]
-            self.upsert_batches.append([str(point["id"]) for point in batch])
-            if self.fail_on_batch == batch_number:
-                raise RuntimeError("Qdrant batch failed")
-            for point in batch:
-                self.points[str(point["id"])] = {
-                    **point,
-                    "payload": dict(point["payload"]),
-                }
-
-    def set_payload(
-        self,
-        point_ids: list[str],
-        payload: dict[str, Any],
-        *,
-        idempotency_key: str | None = None,
-    ) -> None:
-        del idempotency_key
-        if self.fail_completion:
-            raise RuntimeError("completion write failed")
-        self.completion_writes += 1
-        for point_id in point_ids:
-            self.points[point_id]["payload"].update(payload)
-
-    def delete_by_doc_id(
-        self,
-        doc_id: str,
-        *,
-        idempotency_key: str | None = None,
-    ) -> dict[str, str]:
-        del idempotency_key
-        self.delete_calls += 1
-        self.points = {
-            point_id: point
-            for point_id, point in self.points.items()
-            if point.get("payload", {}).get("doc_id") != doc_id
-        }
-        return {"status": "ok"}
-
-    def completion_points(self) -> list[dict[str, Any]]:
-        return [
-            point
-            for point in self.points.values()
-            if point.get("payload", {}).get("rawki_document_complete") is True
-        ]
-
-
-def _request(
-    text: str,
-    *,
-    operation_id: str,
-    chunk_chars: int = 5,
-) -> IndexRequest:
-    return IndexRequest(
-        docs=[
-            IngestDocument(
-                id="direct-document",
-                text=text,
-                payload={
-                    "ingestion_mode": "direct_text",
-                    "source_format": "markdown",
-                    "source_id": "source-direct",
-                    "job_id": "job-direct",
-                },
-            )
-        ],
-        provider="fake",
-        collection="direct-text",
-        chunk_chars=chunk_chars,
-        chunk_overlap=0,
-        batch_size=2,
-        idempotency_key=operation_id,
-    )
-
-
-def _dependencies(qdrant: MemoryQdrant) -> IngestWorkflowDependencies:
-    return IngestWorkflowDependencies(
-        vector_writer_factory=lambda: qdrant,
-        graph_writer_factory=lambda **_kwargs: None,
-        page_state_factory=QdrantPageState,
-    )
-
-
-def _expected_point_ids() -> set[str]:
-    return {
-        str(uuid.uuid5(uuid.NAMESPACE_URL, f"direct-document:{index}"))
-        for index in range(3)
-    }
+from services.hawki_indexer_worker.tests.unit.indexing.direct_text_test_support import (
+    MemoryQdrant,
+    RecordingProvider,
+    direct_text_dependencies as _dependencies,
+    direct_text_request as _request,
+    expected_point_ids as _expected_point_ids,
+)
 
 
 def test_partial_qdrant_batch_is_reprocessed_before_completion() -> None:
@@ -377,3 +234,322 @@ def test_changed_chunk_shape_removes_stale_completed_points() -> None:
     }
     assert qdrant.delete_calls == 1
     assert len(qdrant.completion_points()) == 2
+
+
+def test_same_text_and_metadata_skips_all_vector_and_payload_writes() -> None:
+    qdrant = MemoryQdrant()
+    provider = RecordingProvider()
+    request = _request(
+        "AAAAABBBBBCCCCC",
+        operation_id="initial",
+        metadata={"audience": "students", "nested": {"a": 1, "b": 2}},
+    )
+    ingest_documents(
+        request,
+        rag_service=object(),
+        get_provider=lambda _name: provider,
+        dependencies=_dependencies(qdrant),
+    )
+    embeddings_before = list(provider.embedded)
+    batches_before = list(qdrant.upsert_batches)
+    completion_writes_before = qdrant.completion_writes
+
+    result = ingest_documents(
+        _request(
+            "AAAAABBBBBCCCCC",
+            operation_id="replay",
+            metadata={"nested": {"b": 2, "a": 1}, "audience": "students"},
+        ),
+        rag_service=object(),
+        get_provider=lambda _name: provider,
+        dependencies=_dependencies(qdrant),
+    )
+
+    assert result["points"] == 0
+    assert result["summary"]["documents"]["incremental_unchanged_docs"] == 1
+    assert provider.embedded == embeddings_before
+    assert qdrant.upsert_batches == batches_before
+    assert qdrant.payload_refresh_writes == 0
+    assert qdrant.completion_writes == completion_writes_before
+
+
+def test_metadata_fingerprint_sorts_objects_and_preserves_list_order() -> None:
+    first = {
+        "metadata": {"nested": {"a": 1, "b": 2}, "ordered": ["one", "two"]},
+        "content": "first chunk",
+        "job_id": "job-1",
+    }
+    reordered = {
+        "metadata": {"ordered": ["one", "two"], "nested": {"b": 2, "a": 1}},
+        "content": "different chunk",
+        "job_id": "job-2",
+        "workflow_id": "workflow-2",
+    }
+    list_changed = {"metadata": {"nested": {"a": 1, "b": 2}, "ordered": ["two", "one"]}}
+
+    assert direct_text_metadata_fingerprint(first) == direct_text_metadata_fingerprint(
+        reordered
+    )
+    assert direct_text_metadata_fingerprint(first) != direct_text_metadata_fingerprint(
+        list_changed
+    )
+
+
+def test_metadata_only_change_refreshes_every_point_without_embedding() -> None:
+    qdrant = MemoryQdrant()
+    provider = RecordingProvider()
+    ingest_documents(
+        _request(
+            "AAAAABBBBBCCCCC",
+            operation_id="initial",
+            metadata={"audience": "students"},
+        ),
+        rag_service=object(),
+        get_provider=lambda _name: provider,
+        dependencies=_dependencies(qdrant),
+    )
+    point_ids = set(qdrant.points)
+    vectors = {
+        point_id: list(point["vector"]) for point_id, point in qdrant.points.items()
+    }
+    embeddings_before = list(provider.embedded)
+
+    result = ingest_documents(
+        _request(
+            "AAAAABBBBBCCCCC",
+            operation_id="metadata-change",
+            metadata={"audience": "staff", "labels": ["one", "two"]},
+        ),
+        rag_service=object(),
+        get_provider=lambda _name: provider,
+        dependencies=_dependencies(qdrant),
+    )
+
+    assert result["points"] == 0
+    assert set(qdrant.points) == point_ids
+    assert provider.embedded == embeddings_before
+    assert qdrant.payload_refresh_writes == 1
+    for point_id, point in qdrant.points.items():
+        assert point["vector"] == vectors[point_id]
+        assert point["payload"]["metadata"] == {
+            "audience": "staff",
+            "labels": ["one", "two"],
+        }
+        assert point["payload"]["rawki_document_complete"] is True
+
+
+def test_display_name_change_refreshes_title_without_embedding() -> None:
+    qdrant = MemoryQdrant()
+    provider = RecordingProvider()
+    ingest_documents(
+        _request(
+            "AAAAABBBBBCCCCC",
+            operation_id="initial",
+            display_name="Old title",
+        ),
+        rag_service=object(),
+        get_provider=lambda _name: provider,
+        dependencies=_dependencies(qdrant),
+    )
+    embeddings_before = list(provider.embedded)
+
+    ingest_documents(
+        _request(
+            "AAAAABBBBBCCCCC",
+            operation_id="rename",
+            display_name="New title",
+        ),
+        rag_service=object(),
+        get_provider=lambda _name: provider,
+        dependencies=_dependencies(qdrant),
+    )
+
+    assert provider.embedded == embeddings_before
+    assert qdrant.payload_refresh_writes == 1
+    assert {point["payload"]["display_name"] for point in qdrant.points.values()} == {
+        "New title"
+    }
+    assert {point["payload"]["title"] for point in qdrant.points.values()} == {
+        "New title"
+    }
+
+
+def test_source_url_change_preserves_direct_identity_and_vectors() -> None:
+    qdrant = MemoryQdrant()
+    provider = RecordingProvider()
+    ingest_documents(
+        _request(
+            "AAAAABBBBBCCCCC",
+            operation_id="initial",
+            source_url="https://example.test/old",
+        ),
+        rag_service=object(),
+        get_provider=lambda _name: provider,
+        dependencies=_dependencies(qdrant),
+    )
+    point_ids = set(qdrant.points)
+    embeddings_before = list(provider.embedded)
+
+    ingest_documents(
+        _request(
+            "AAAAABBBBBCCCCC",
+            operation_id="url-change",
+            source_url="https://example.test/new",
+        ),
+        rag_service=object(),
+        get_provider=lambda _name: provider,
+        dependencies=_dependencies(qdrant),
+    )
+
+    assert set(qdrant.points) == point_ids
+    assert provider.embedded == embeddings_before
+    assert qdrant.delete_calls == 0
+    for point in qdrant.points.values():
+        assert point["payload"]["doc_id"] == "direct-document"
+        assert point["payload"]["source_url"] == "https://example.test/new"
+        assert point["payload"]["canonical_url"] == "https://example.test/new"
+
+
+def test_partial_metadata_refresh_is_reapplied_before_completion() -> None:
+    qdrant = MemoryQdrant()
+    provider = RecordingProvider()
+    ingest_documents(
+        _request(
+            "AAAAABBBBBCCCCC",
+            operation_id="initial",
+            metadata={"revision": 1},
+        ),
+        rag_service=object(),
+        get_provider=lambda _name: provider,
+        dependencies=_dependencies(qdrant),
+    )
+    embeddings_before = list(provider.embedded)
+    qdrant.fail_payload_refresh_after = 1
+
+    with pytest.raises(DocumentCompletionError, match="metadata"):
+        ingest_documents(
+            _request(
+                "AAAAABBBBBCCCCC",
+                operation_id="metadata-failure",
+                metadata={"revision": 2},
+            ),
+            rag_service=object(),
+            get_provider=lambda _name: provider,
+            dependencies=_dependencies(qdrant),
+        )
+
+    assert provider.embedded == embeddings_before
+    assert {
+        point["payload"]["metadata"]["revision"] for point in qdrant.points.values()
+    } == {1, 2}
+
+    qdrant.fail_payload_refresh_after = None
+    result = ingest_documents(
+        _request(
+            "AAAAABBBBBCCCCC",
+            operation_id="metadata-retry",
+            metadata={"revision": 2},
+        ),
+        rag_service=object(),
+        get_provider=lambda _name: provider,
+        dependencies=_dependencies(qdrant),
+    )
+
+    assert result["ok"] is True
+    assert provider.embedded == embeddings_before
+    assert qdrant.payload_refresh_writes == 2
+    assert {
+        point["payload"]["metadata"]["revision"] for point in qdrant.points.values()
+    } == {2}
+    assert len(qdrant.completion_points()) == 3
+
+
+def test_metadata_refresh_is_retried_when_completion_publication_fails() -> None:
+    qdrant = MemoryQdrant()
+    provider = RecordingProvider()
+    ingest_documents(
+        _request(
+            "AAAAABBBBBCCCCC",
+            operation_id="initial",
+            metadata={"revision": 1},
+        ),
+        rag_service=object(),
+        get_provider=lambda _name: provider,
+        dependencies=_dependencies(qdrant),
+    )
+    embeddings_before = list(provider.embedded)
+    previous_fingerprints = {
+        point["payload"]["rawki_document_metadata_fingerprint"]
+        for point in qdrant.points.values()
+    }
+    qdrant.fail_completion = True
+
+    with pytest.raises(DocumentCompletionError, match="completion"):
+        ingest_documents(
+            _request(
+                "AAAAABBBBBCCCCC",
+                operation_id="completion-failure",
+                metadata={"revision": 2},
+            ),
+            rag_service=object(),
+            get_provider=lambda _name: provider,
+            dependencies=_dependencies(qdrant),
+        )
+
+    assert provider.embedded == embeddings_before
+    assert {
+        point["payload"]["metadata"]["revision"] for point in qdrant.points.values()
+    } == {2}
+    assert {
+        point["payload"]["rawki_document_metadata_fingerprint"]
+        for point in qdrant.points.values()
+    } == previous_fingerprints
+
+    qdrant.fail_completion = False
+    ingest_documents(
+        _request(
+            "AAAAABBBBBCCCCC",
+            operation_id="completion-retry",
+            metadata={"revision": 2},
+        ),
+        rag_service=object(),
+        get_provider=lambda _name: provider,
+        dependencies=_dependencies(qdrant),
+    )
+
+    expected_fingerprint = direct_text_metadata_fingerprint(
+        next(iter(qdrant.points.values()))["payload"]
+    )
+    assert provider.embedded == embeddings_before
+    assert qdrant.payload_refresh_writes == 2
+    assert {
+        point["payload"]["rawki_document_metadata_fingerprint"]
+        for point in qdrant.points.values()
+    } == {expected_fingerprint}
+
+
+def test_changed_text_still_reembeds_and_replaces_points() -> None:
+    qdrant = MemoryQdrant()
+    provider = RecordingProvider()
+    ingest_documents(
+        _request("AAAAABBBBBCCCCC", operation_id="initial"),
+        rag_service=object(),
+        get_provider=lambda _name: provider,
+        dependencies=_dependencies(qdrant),
+    )
+    embedding_count = len(provider.embedded)
+
+    ingest_documents(
+        _request("DDDDDEEEEEFFFFF", operation_id="content-change"),
+        rag_service=object(),
+        get_provider=lambda _name: provider,
+        dependencies=_dependencies(qdrant),
+    )
+
+    assert len(provider.embedded) == embedding_count + 3
+    assert qdrant.delete_calls == 1
+    assert {point["payload"]["content"] for point in qdrant.points.values()} == {
+        "DDDDD",
+        "EEEEE",
+        "FFFFF",
+    }

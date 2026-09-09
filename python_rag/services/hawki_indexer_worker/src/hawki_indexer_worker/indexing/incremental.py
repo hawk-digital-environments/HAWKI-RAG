@@ -11,8 +11,11 @@ from urllib.parse import urlsplit, urlunsplit
 
 from hawki_indexer_worker.indexing.page_state import (
     DOCUMENT_COMPLETE_FIELD,
+    DOCUMENT_METADATA_FINGERPRINT_FIELD,
+    CompletedPageState,
     IndexedPageRecord,
     build_page_state_record,
+    direct_text_metadata_fingerprint,
 )
 
 PAGE_URL_KEYS = ("canonical_url", "page_url", "original_url", "url")
@@ -37,7 +40,9 @@ class IncrementalIngestPlan:
     replace_doc_ids: set[str] = field(default_factory=set)
     replace_doc_ids_by_doc: dict[str, set[str]] = field(default_factory=dict)
     unchanged_page_records: list[IndexedPageRecord] = field(default_factory=list)
+    payload_refresh_page_records: list[IndexedPageRecord] = field(default_factory=list)
     unchanged_chunks: int = 0
+    payload_refresh_chunks: int = 0
 
 
 def stable_document_id_from_payload(
@@ -122,11 +127,12 @@ def plan_incremental_ingest(
             neo4j_database=neo4j_database,
         )
         is_direct_text = payload.get("ingestion_mode") == "direct_text"
-        completed_payload = (
-            _find_completed_payload(page_registry, expected_page_record)
+        completed_state = (
+            _find_completed_state(page_registry, expected_page_record)
             if is_direct_text and expected_page_record is not None
             else None
         )
+        completed_payload = completed_state.payload if completed_state else None
         existing_payload = completed_payload or _find_registry_payload(
             page_registry,
             collection=collection,
@@ -147,7 +153,31 @@ def plan_incremental_ingest(
             existing_payload and existing_hash and existing_hash == content_hash
         )
         if is_direct_text:
-            unchanged_is_proven = completed_payload is not None
+            unchanged_is_proven = completed_state is not None
+
+        metadata_refresh_required = bool(
+            is_direct_text
+            and completed_state is not None
+            and expected_page_record is not None
+            and (
+                completed_state.metadata_fingerprint
+                != expected_page_record.metadata_fingerprint
+                or completed_state.completed_metadata_fingerprint
+                != expected_page_record.metadata_fingerprint
+            )
+        )
+
+        if metadata_refresh_required:
+            plan.payload_refresh_page_records.append(expected_page_record)
+            plan.payload_refresh_chunks += len(records)
+            _mark_doc_skipped(
+                doc_stats,
+                doc_id,
+                payload,
+                len(records),
+                reason="metadata_payload_changed",
+            )
+            continue
 
         if unchanged_is_proven:
             plan.unchanged_doc_ids.add(doc_id)
@@ -179,15 +209,20 @@ def plan_incremental_ingest(
     doc_stats["incremental_changed_docs"] = len(plan.changed_doc_ids)
     doc_stats["incremental_unchanged_docs"] = len(plan.unchanged_doc_ids)
     doc_stats["incremental_unchanged_chunks"] = plan.unchanged_chunks
+    doc_stats["incremental_payload_refresh_docs"] = len(
+        plan.payload_refresh_page_records
+    )
+    doc_stats["incremental_payload_refresh_chunks"] = plan.payload_refresh_chunks
     doc_stats["incremental_replacement_doc_ids"] = sorted(plan.replace_doc_ids)
     doc_stats["incremental_registry_hits"] = registry_hits
     doc_stats["total_chunks"] = len(kept)
 
     logger_obj.info(
-        "ingest:incremental new=%s changed=%s unchanged=%s registry_hits=%s kept_chunks=%s skipped_chunks=%s operation_id=%s",
+        "ingest:incremental new=%s changed=%s unchanged=%s payload_refresh=%s registry_hits=%s kept_chunks=%s skipped_chunks=%s operation_id=%s",
         len(plan.new_doc_ids),
         len(plan.changed_doc_ids),
         len(plan.unchanged_doc_ids),
+        len(plan.payload_refresh_page_records),
         registry_hits,
         len(kept),
         plan.unchanged_chunks,
@@ -219,10 +254,10 @@ def _find_registry_payload(
     return None
 
 
-def _find_completed_payload(
+def _find_completed_state(
     page_registry: Any | None,
     record: IndexedPageRecord,
-) -> dict[str, Any] | None:
+) -> CompletedPageState | None:
     if page_registry is None:
         return None
     finder = getattr(page_registry, "find_completed", None)
@@ -233,8 +268,21 @@ def _find_completed_payload(
         source_identity=record.source_identity,
         completion_fingerprint=record.completion_fingerprint,
         chunks_count=record.chunks_count,
+        point_ids=record.point_ids,
     )
-    return result if isinstance(result, dict) else None
+    if isinstance(result, CompletedPageState):
+        return result
+    if isinstance(result, dict):
+        fingerprint = direct_text_metadata_fingerprint(result)
+        completed_fingerprint = str(
+            result.get(DOCUMENT_METADATA_FINGERPRINT_FIELD) or ""
+        ).strip()
+        return CompletedPageState(
+            payload=result,
+            metadata_fingerprint=fingerprint,
+            completed_metadata_fingerprint=completed_fingerprint or None,
+        )
+    return None
 
 
 def _mark_doc_skipped(
@@ -242,6 +290,8 @@ def _mark_doc_skipped(
     doc_id: str,
     payload: Mapping[str, Any],
     chunk_count: int,
+    *,
+    reason: str = "unchanged_content_hash",
 ) -> None:
     doc_stats["processed_docs"] = max(0, int(doc_stats.get("processed_docs") or 0) - 1)
     doc_stats["skipped_docs"] = int(doc_stats.get("skipped_docs") or 0) + 1
@@ -269,7 +319,7 @@ def _mark_doc_skipped(
             {
                 "doc_id": doc_id,
                 "chunks": chunk_count,
-                "reason": "unchanged_content_hash",
+                "reason": reason,
                 "source_url": payload.get("page_url") or payload.get("source_url"),
             }
         )

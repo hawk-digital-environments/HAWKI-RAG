@@ -172,6 +172,7 @@ def ingest_documents(
     replace_doc_ids: set[str] = set()
     replace_doc_ids_by_doc: dict[str, set[str]] = {}
     unchanged_page_records: list[Any] = []
+    payload_refresh_page_records: list[Any] = []
     page_state = None
 
     try:
@@ -194,12 +195,23 @@ def ingest_documents(
         replace_doc_ids = incremental_plan.replace_doc_ids
         replace_doc_ids_by_doc = incremental_plan.replace_doc_ids_by_doc
         unchanged_page_records = incremental_plan.unchanged_page_records
+        payload_refresh_page_records = incremental_plan.payload_refresh_page_records
         direct_text_doc_ids -= incremental_plan.unchanged_doc_ids
         total_chunks = len(chunk_records)
-        if (
-            total_chunks == 0
-            and int(doc_stats.get("incremental_unchanged_docs") or 0) > 0
+        if total_chunks == 0 and (
+            int(doc_stats.get("incremental_unchanged_docs") or 0) > 0
+            or payload_refresh_page_records
         ):
+            _refresh_page_state_payloads(
+                page_state,
+                payload_refresh_page_records,
+            )
+            _mark_page_state_completed(
+                page_state,
+                payload_refresh_page_records,
+                required_doc_ids=direct_text_doc_ids,
+                logger_obj=logger,
+            )
             _mark_page_state_seen(page_state, unchanged_page_records, logger_obj=logger)
             pipeline_log(
                 logger,
@@ -293,6 +305,11 @@ def ingest_documents(
             collection=qdrant.collection,
             neo4j_database=getattr(body, "neo4j_namespace", None),
         )
+        _refresh_page_state_payloads(
+            page_state,
+            payload_refresh_page_records,
+        )
+        completed_page_records.extend(payload_refresh_page_records)
         _mark_page_state_completed(
             page_state,
             completed_page_records,
@@ -337,6 +354,24 @@ def delete_document(
         vector_writer_factory=dependencies.vector_writer_factory,
         graph_writer_factory=dependencies.graph_writer_factory,
     )
+
+
+def _refresh_page_state_payloads(
+    page_state: Any | None,
+    records: list[Any],
+) -> None:
+    if not records:
+        return
+    if page_state is None:
+        raise DocumentCompletionError(
+            "Direct-text document payload state is unavailable."
+        )
+    try:
+        page_state.refresh_payloads(records)
+    except Exception as exc:
+        raise DocumentCompletionError(
+            "Direct-text document payload metadata could not be refreshed."
+        ) from exc
 
 
 def _mark_page_state_completed(
