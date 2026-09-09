@@ -135,7 +135,7 @@ def test_prepare_direct_text_artifact_without_a_raw_directory(tmp_path: Path) ->
     context = ArtifactPreparationContext(
         workflow_input={
             "source_id": "source-direct",
-            "source_url": "external://document-direct",
+            "source_url": "https://example.test/direct-document",
             "dataset_id": "dataset-1",
             "job_id": "job-1",
             "task_id": "task-1",
@@ -152,6 +152,19 @@ def test_prepare_direct_text_artifact_without_a_raw_directory(tmp_path: Path) ->
     assert prepared.documents[0].payload["ingestion_mode"] == "direct_text"
     assert prepared.documents[0].payload["display_name"] == "Direct document"
     assert prepared.documents[0].payload["metadata"] == {"assistant_id": "assistant-42"}
+
+    chunks, _stats = prepare_documents(
+        prepared.documents,
+        chunk_chars=1000,
+        chunk_overlap=0,
+        default_job_id="job-1",
+    )
+
+    assert chunks[0]["doc_id"] == artifact.document_id
+    assert chunks[0]["payload"]["source_identity"] == f"doc:{artifact.document_id}"
+    assert chunks[0]["payload"]["source_url"] == (
+        "https://example.test/direct-document"
+    )
 
 
 def test_prepare_direct_text_preserves_converter_like_markdown(tmp_path: Path) -> None:

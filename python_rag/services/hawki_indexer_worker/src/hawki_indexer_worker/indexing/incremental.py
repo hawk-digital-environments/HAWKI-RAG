@@ -300,6 +300,14 @@ def _lookup_filters(doc_id: str, payload: Mapping[str, Any]) -> list[dict[str, A
     if source_identity:
         _append_filter(filters, seen, {"source_identity": str(source_identity)})
 
+    if payload.get("ingestion_mode") == "direct_text":
+        # The stable source ID can identify points written before direct-text
+        # document identity was fixed. URLs cannot prove point ownership.
+        source_id = _first_present(payload, ("source_id",))
+        if source_id:
+            _append_filter(filters, seen, {"source_id": source_id})
+        return filters
+
     relative_identity = _first_present(payload, PATH_IDENTITY_KEYS)
     for key in URL_LOOKUP_KEYS:
         raw = _first_present(payload, (key,))
