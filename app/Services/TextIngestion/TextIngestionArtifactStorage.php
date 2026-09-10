@@ -95,6 +95,7 @@ final readonly class TextIngestionArtifactStorage
     public function __construct(
         private ConfigRepository $config,
         private Filesystem $files,
+        private TextIngestionRequestFingerprint $fingerprints,
     ) {}
 
     public function store(TextIngestionInput $input): StoredTextArtifact
@@ -103,10 +104,7 @@ final readonly class TextIngestionArtifactStorage
         $sourceUrl = $input->sourceUrl
             ?? 'external://'.$input->externalDocumentId;
         $contentHash = hash('sha256', $input->text);
-        $revisionHash = hash(
-            'sha256',
-            json_encode($input->toArray(), JSON_THROW_ON_ERROR),
-        );
+        $revisionHash = $this->fingerprints->forInput($input);
 
         $sourceDirectory = $this->sharedRoot()
             .DIRECTORY_SEPARATOR.'sources'
@@ -135,7 +133,11 @@ final readonly class TextIngestionArtifactStorage
                 $this->ensureSharedDirectory($directory);
             }
             $this->writeImmutable($markdownPath, $input->text);
-            $this->writeImmutable($metadataPath, $metadata."\n");
+            $this->writeImmutable(
+                $metadataPath,
+                $metadata."\n",
+                $this->fingerprints->jsonHasSameCanonicalValue(...),
+            );
         } catch (TextIngestionStorageException $exception) {
             throw $exception;
         } catch (\Throwable $exception) {
@@ -186,10 +188,16 @@ final readonly class TextIngestionArtifactStorage
         }
     }
 
-    private function writeImmutable(string $path, string $contents): void
-    {
+    /**
+     * @param  (callable(string, string): bool)|null  $contentsMatch
+     */
+    private function writeImmutable(
+        string $path,
+        string $contents,
+        ?callable $contentsMatch = null,
+    ): void {
         if ($this->files->exists($path)) {
-            $this->assertStoredContents($path, $contents);
+            $this->assertStoredContents($path, $contents, $contentsMatch);
 
             return;
         }
@@ -207,17 +215,26 @@ final readonly class TextIngestionArtifactStorage
                 if (! $this->files->exists($path)) {
                     throw new \RuntimeException("Could not publish immutable artifact [{$path}].");
                 }
-                $this->assertStoredContents($path, $contents);
+                $this->assertStoredContents($path, $contents, $contentsMatch);
             }
         } finally {
             $this->files->delete($temporaryPath);
         }
     }
 
-    private function assertStoredContents(string $path, string $expected): void
-    {
+    /**
+     * @param  (callable(string, string): bool)|null  $contentsMatch
+     */
+    private function assertStoredContents(
+        string $path,
+        string $expected,
+        ?callable $contentsMatch,
+    ): void {
         $stored = $this->files->get($path);
-        if (! hash_equals(hash('sha256', $expected), hash('sha256', $stored))) {
+        $matches = $contentsMatch
+            ? $contentsMatch($stored, $expected)
+            : hash_equals(hash('sha256', $expected), hash('sha256', $stored));
+        if (! $matches) {
             throw new \RuntimeException("Immutable artifact already exists with different contents [{$path}].");
         }
     }

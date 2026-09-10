@@ -26,4 +26,11 @@ final class TextIngestionIdempotencyException extends \RuntimeException implemen
             "The existing text ingestion source [{$sourceId}] could not be found.",
         );
     }
+
+    public static function incompleteArtifact(string $jobId): self
+    {
+        return new self(
+            "The existing text ingestion job [{$jobId}] has no persisted Markdown artifact.",
+        );
+    }
 }

@@ -178,6 +178,7 @@ final readonly class TextIngestionService
     public function __construct(
         private DatasetService $datasets,
         private TextIngestionArtifactStorage $storage,
+        private TextIngestionRequestFingerprint $fingerprints,
         private TextIngestionIdentifierFactory $identifiers,
         private TextIngestionWorkflowPayloadFactory $payloads,
         private PipelineTaskRepository $tasks,
@@ -202,10 +203,10 @@ final readonly class TextIngestionService
     public function ingest(TextIngestionInput $input, string $idempotencyKey): TextIngestionResult
     {
         $taskId = $this->identifiers->taskId($input->datasetId, $idempotencyKey);
-        $requestHash = hash('sha256', json_encode($input->toArray(), JSON_THROW_ON_ERROR));
+        $requestHash = $this->fingerprints->forInput($input);
         $existing = $this->tasks->findWithOrderedJobs($taskId);
         if ($existing) {
-            return $this->resumeOrReplay($input, $existing, $idempotencyKey, $requestHash);
+            return $this->resumeOrReplay($input, $existing, $idempotencyKey);
         }
 
         $dataset = $this->datasets->requireActive($input->datasetId);
@@ -237,6 +238,7 @@ final readonly class TextIngestionService
                     'dataset' => $datasetMetadata,
                     'source_id' => $artifact->sourceId,
                     'request_hash' => $requestHash,
+                    'request_hash_version' => TextIngestionRequestFingerprint::VERSION,
                 ]);
                 $source = $this->sources->upsertStarting($artifact->sourceId, [
                     'source_url' => $artifact->sourceUrl,
@@ -285,7 +287,7 @@ final readonly class TextIngestionService
             }
 
             try {
-                $result = $this->resumeOrReplay($input, $existing, $idempotencyKey, $requestHash);
+                $result = $this->resumeOrReplay($input, $existing, $idempotencyKey);
             } catch (\Throwable $resumeException) {
                 $this->markArtifactForReconciliation($artifact, $resumeException);
 
@@ -347,11 +349,13 @@ final readonly class TextIngestionService
         TextIngestionInput $input,
         PipelineTask $task,
         string $idempotencyKey,
-        string $requestHash,
     ): TextIngestionResult {
-        if (($task->metadata['request_hash'] ?? null) !== $requestHash) {
+        $taskMetadata = is_array($task->metadata) ? $task->metadata : [];
+        if (! $this->fingerprints->matchesPersisted($input, $taskMetadata)) {
             throw TextIngestionIdempotencyException::payloadMismatch($idempotencyKey);
         }
+
+        $dataset = $this->datasets->requireActive($input->datasetId);
 
         /** @var PipelineJob|null $job */
         $job = $task->jobs->first();
@@ -366,8 +370,9 @@ final readonly class TextIngestionService
             return $this->replayedResult($task, $job, $source);
         }
 
-        $dataset = $this->datasets->requireActive($input->datasetId);
-        $artifact = $this->storage->store($input);
+        $artifact = $this->fingerprints->isCurrent($taskMetadata)
+            ? $this->storage->store($input)
+            : $this->legacyArtifact($input, $job, $source);
 
         return $this->startWorkflow(
             $input,
@@ -378,6 +383,32 @@ final readonly class TextIngestionService
             $job,
             is_array($job->metadata) ? $job->metadata : [],
             replayed: true,
+        );
+    }
+
+    private function legacyArtifact(
+        TextIngestionInput $input,
+        PipelineJob $job,
+        IngestionSource $source,
+    ): StoredTextArtifact {
+        $sourceMetadata = is_array($source->metadata) ? $source->metadata : [];
+        $textIngestion = is_array($sourceMetadata['text_ingestion'] ?? null)
+            ? $sourceMetadata['text_ingestion']
+            : [];
+        $jobMetadata = is_array($job->metadata) ? $job->metadata : [];
+        $markdownPath = $textIngestion['markdown_path']
+            ?? $jobMetadata['markdown_path']
+            ?? $job->local_path;
+        $contentHash = $source->content_hash ?: $job->content_hash;
+        if (! is_string($markdownPath) || $markdownPath === '' || ! is_string($contentHash) || $contentHash === '') {
+            throw TextIngestionIdempotencyException::incompleteArtifact((string) $job->job_id);
+        }
+
+        return StoredTextArtifact::fromStoredText(
+            sourceId: (string) $source->source_id,
+            sourceUrl: (string) ($source->source_url ?: $job->source_url ?: 'external://'.$input->externalDocumentId),
+            contentHash: $contentHash,
+            markdownPath: $markdownPath,
         );
     }
 

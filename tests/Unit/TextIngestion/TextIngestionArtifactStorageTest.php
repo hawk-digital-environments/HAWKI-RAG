@@ -6,6 +6,7 @@ namespace Tests\Unit\TextIngestion;
 
 use App\Services\TextIngestion\Exceptions\TextIngestionStorageException;
 use App\Services\TextIngestion\TextIngestionArtifactStorage;
+use App\Services\TextIngestion\TextIngestionRequestFingerprint;
 use App\Services\TextIngestion\Values\TextIngestionInput;
 use Illuminate\Config\Repository as ConfigRepository;
 use Illuminate\Filesystem\Filesystem;
@@ -152,6 +153,36 @@ final class TextIngestionArtifactStorageTest extends TestCase
         $storage->store($input);
     }
 
+    public function test_reordered_metadata_reuses_one_immutable_revision_without_rewriting_metadata(): void
+    {
+        $firstInput = TextIngestionInput::fromValidated([
+            'external_document_id' => 'document-canonical-metadata',
+            'dataset_id' => 'default',
+            'text' => 'Canonical metadata content.',
+            'content_format' => 'plain_text',
+            'metadata' => ['a' => 1, 'nested' => ['x' => true, 'y' => false]],
+        ]);
+        $secondInput = TextIngestionInput::fromValidated([
+            'external_document_id' => 'document-canonical-metadata',
+            'dataset_id' => 'default',
+            'text' => 'Canonical metadata content.',
+            'content_format' => 'plain_text',
+            'metadata' => ['nested' => ['y' => false, 'x' => true], 'a' => 1],
+        ]);
+        $storage = $this->storage();
+        $first = $storage->store($firstInput);
+        $metadataPath = dirname($first->markdownPath).'/rawki_passthrough.json';
+        $originalMetadata = $this->files->get($metadataPath);
+
+        $second = $storage->store($secondInput);
+
+        self::assertSame($first->markdownPath, $second->markdownPath);
+        self::assertSame($originalMetadata, $this->files->get($metadataPath));
+        self::assertCount(1, $this->files->glob(
+            $this->sharedRoot.'/sources/*/revisions/*/markdown/document.md',
+        ));
+    }
+
     public function test_reconciliation_marker_contains_identifiers_but_not_document_text(): void
     {
         $input = TextIngestionInput::fromValidated([
@@ -190,6 +221,7 @@ final class TextIngestionArtifactStorageTest extends TestCase
                 ],
             ]),
             $this->files,
+            new TextIngestionRequestFingerprint,
         );
     }
 
