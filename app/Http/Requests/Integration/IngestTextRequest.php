@@ -7,9 +7,24 @@ namespace App\Http\Requests\Integration;
 use App\Models\User;
 use App\Services\TextIngestion\Values\TextIngestionInput;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Validator;
 
 final class IngestTextRequest extends FormRequest
 {
+    /** @var list<string> */
+    private const ALLOWED_BODY_FIELDS = [
+        'external_document_id',
+        'dataset_id',
+        'text',
+        'content_format',
+        'display_name',
+        'source_url',
+        'metadata',
+    ];
+
+    /** @var list<string> */
+    private array $submittedBodyFields = [];
+
     public function authorize(): bool
     {
         return true;
@@ -17,6 +32,14 @@ final class IngestTextRequest extends FormRequest
 
     protected function prepareForValidation(): void
     {
+        $body = $this->isJson()
+            ? $this->json()->all()
+            : $this->request->all();
+        $this->submittedBodyFields = array_map(
+            static fn (int|string $field): string => (string) $field,
+            array_keys($body),
+        );
+
         $this->merge([
             'idempotency_key' => $this->header('Idempotency-Key'),
         ]);
@@ -67,6 +90,30 @@ final class IngestTextRequest extends FormRequest
             'qdrant_collection' => 'prohibited',
             'neo4j_namespace' => 'prohibited',
         ];
+    }
+
+    /**
+     * @return list<callable>
+     */
+    public function after(): array
+    {
+        return [function (Validator $validator): void {
+            $unexpectedFields = array_diff(
+                $this->submittedBodyFields,
+                self::ALLOWED_BODY_FIELDS,
+            );
+
+            foreach ($unexpectedFields as $field) {
+                if ($validator->errors()->has($field)) {
+                    continue;
+                }
+
+                $validator->errors()->add(
+                    $field,
+                    'The field is not part of the direct-text ingestion contract.',
+                );
+            }
+        }];
     }
 
     public function idempotencyKey(): string

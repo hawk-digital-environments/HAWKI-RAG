@@ -102,6 +102,21 @@ final class TextIngestionApiTest extends TestCase
             && data_get($request->data(), 'workflow_input.ingestion.embedding_model') === 'bge-m3');
     }
 
+    public function test_unknown_field_is_rejected_before_any_ingestion_side_effect(): void
+    {
+        $this->send($this->payload([
+            'display_nam' => 'Typo',
+        ]))
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('display_nam');
+
+        $this->assertDatabaseCount('pipeline_tasks', 0);
+        $this->assertDatabaseCount('ingestion_sources', 0);
+        $this->assertDatabaseCount('pipeline_jobs', 0);
+        $this->assertFalse(File::exists($this->sharedRoot.DIRECTORY_SEPARATOR.'sources'));
+        Http::assertNothingSent();
+    }
+
     public function test_running_request_rechecks_the_deterministic_workflow_without_creating_records(): void
     {
         $first = $this->send($this->payload());

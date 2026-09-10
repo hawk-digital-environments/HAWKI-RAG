@@ -88,6 +88,64 @@ final class TextIngestionReqTest extends TestCase
             ]);
     }
 
+    public function test_unknown_top_level_field_is_rejected(): void
+    {
+        $this->send($this->validPayload([
+            'display_nam' => 'Typo',
+        ]))
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('display_nam')
+            ->assertJsonPath(
+                'errors.display_nam.0',
+                'The field is not part of the direct-text ingestion contract.',
+            );
+    }
+
+    public function test_multiple_unknown_top_level_fields_are_rejected(): void
+    {
+        $this->send($this->validPayload([
+            'provider' => 'ollama',
+            'workflow_id' => 'caller-workflow',
+            'markdown_storage_path' => '/caller/path',
+            'idempotency_key' => 'body-key-must-not-be-accepted',
+        ]))
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors([
+                'provider',
+                'workflow_id',
+                'markdown_storage_path',
+                'idempotency_key',
+            ]);
+    }
+
+    public function test_arbitrary_nested_metadata_fields_remain_allowed(): void
+    {
+        $this->send($this->validPayload([
+            'metadata' => [
+                'project_specific_key' => 'value',
+                'nested' => [
+                    'any_key' => true,
+                ],
+            ],
+        ]))
+            ->assertAccepted()
+            ->assertJsonPath('input.metadata.project_specific_key', 'value')
+            ->assertJsonPath('input.metadata.nested.any_key', true);
+    }
+
+    public function test_known_optional_fields_may_be_null(): void
+    {
+        $this->send($this->validPayload([
+            'display_name' => null,
+            'source_url' => null,
+            'metadata' => null,
+        ]))
+            ->assertAccepted()
+            ->assertJsonPath('input.display_name', null)
+            ->assertJsonPath('input.source_url', null)
+            ->assertJsonPath('input.metadata', []);
+    }
+
     public function test_metadata_must_be_a_json_object(): void
     {
         $this->send($this->validPayload([

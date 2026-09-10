@@ -119,6 +119,29 @@ class OpenApiContractTest extends TestCase
         $this->assertStringContainsString('maxLength: 1048576', $contents);
         $this->assertStringContainsString('65,536 bytes', $contents);
         $this->assertStringContainsString('4,300,000 bytes', $contents);
+
+        $schemaStart = strpos($contents, '    TextIngestionRequest:');
+        $responseStart = strpos($contents, '    TextIngestionResponse:');
+        $this->assertNotFalse($schemaStart);
+        $this->assertNotFalse($responseStart);
+        $schema = substr(
+            $contents,
+            (int) $schemaStart,
+            (int) $responseStart - (int) $schemaStart,
+        );
+        $this->assertStringContainsString('additionalProperties: false', $schema);
+        $this->assertStringContainsString('additionalProperties: true', $schema);
+
+        preg_match_all('/^        ([a-z_]+):$/m', $schema, $properties);
+        $this->assertSame([
+            'external_document_id',
+            'dataset_id',
+            'text',
+            'content_format',
+            'display_name',
+            'source_url',
+            'metadata',
+        ], $properties[1]);
     }
 
     /**
