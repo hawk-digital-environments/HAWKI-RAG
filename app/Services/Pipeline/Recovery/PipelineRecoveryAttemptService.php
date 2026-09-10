@@ -6,6 +6,7 @@ namespace App\Services\Pipeline\Recovery;
 
 use App\Models\PipelineJob;
 use App\Models\PipelineTask;
+use App\Services\Pipeline\Clients\PythonTemporalBridgeClient;
 use App\Services\Pipeline\Repositories\IngestionSourceRepository;
 use App\Services\Pipeline\Repositories\PipelineJobRecoveryRepository;
 use App\Services\Pipeline\Repositories\PipelineJobStateMutationRepository;
@@ -13,7 +14,7 @@ use App\Services\Pipeline\Repositories\PipelineTaskRepository;
 use App\Services\Pipeline\Repositories\PipelineTransactionRepository;
 use App\Services\Pipeline\Tasks\IngestSourceWorkflowPayloadFactory;
 use App\Services\Pipeline\Tasks\PipelineTaskService;
-use App\Services\Pipeline\Clients\PythonTemporalBridgeClient;
+use App\Services\TextIngestion\TextIngestionRecoveryService;
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Support\Carbon;
 use Psr\Clock\ClockInterface;
@@ -34,10 +35,10 @@ readonly class PipelineRecoveryAttemptService
         private PipelineTaskRepository $taskRepository,
         private PipelineTransactionRepository $transactions,
         private PythonTemporalBridgeClient $temporalBridge,
+        private TextIngestionRecoveryService $textIngestionRecovery,
         private LoggerInterface $logger,
-        private ClockInterface $clock = new Clock(),
-    ) {
-    }
+        private ClockInterface $clock = new Clock,
+    ) {}
 
     /**
      * @return array<string, mixed>
@@ -150,7 +151,7 @@ readonly class PipelineRecoveryAttemptService
     }
 
     /**
-     * @param array<string, mixed> $metadata
+     * @param  array<string, mixed>  $metadata
      */
     private function startTemporalRetry(PipelineTask $task, PipelineJob $job, array $metadata): PipelineJob
     {
@@ -171,11 +172,19 @@ readonly class PipelineRecoveryAttemptService
             ]),
         ]);
 
-        $workflowId = $this->retryWorkflowId($job, $source->source_id, (int) ($metadata['retry_count'] ?? 1));
-        $execution = $this->temporalBridge->startIngestWorkflow(
-            $this->workflowPayloads->input($task, $job, $source),
-            $workflowId,
-        );
+        if ($this->textIngestionRecovery->supports($job, $source)) {
+            $execution = $this->textIngestionRecovery->startOrReuse($task, $job, $source);
+        } else {
+            $workflowId = $this->retryWorkflowId(
+                $job,
+                $source->source_id,
+                (int) ($metadata['retry_count'] ?? 1),
+            );
+            $execution = $this->temporalBridge->startIngestWorkflow(
+                $this->workflowPayloads->input($task, $job, $source),
+                $workflowId,
+            );
+        }
         $scheduleId = is_string($job->temporal_schedule_id) ? $job->temporal_schedule_id : null;
         $metadata['temporal'] = array_filter([
             'workflow_id' => $execution->workflowId,

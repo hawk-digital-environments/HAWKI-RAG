@@ -1,7 +1,7 @@
 # Shared Python packages
 
 `python_rag/packages/` contains focused libraries shared by independently
-deployed RAWKI Python services. Packages provide stable contracts and reusable
+deployed HAWKI-RAG Python services. Packages provide stable contracts and reusable
 infrastructure; they do not orchestrate services, interpret authorization, or
 own workflow order.
 

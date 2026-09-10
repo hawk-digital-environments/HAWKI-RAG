@@ -20,6 +20,7 @@ use App\Http\Controllers\Health\HawkiRagSystemGateController;
 use App\Http\Controllers\Health\PipelineHealthController;
 use App\Http\Controllers\Health\RagHealthController;
 use App\Http\Controllers\Health\RagMonitorController;
+use App\Http\Controllers\Integration\TextIngestionController;
 use App\Http\Controllers\Pipeline\PipelineWorkerEventController;
 use App\Http\Controllers\PipelineControlController;
 use App\Http\Controllers\PipelineRecoveryController;
@@ -28,6 +29,8 @@ use App\Http\Controllers\PipelineTaskController;
 use App\Http\Controllers\ScrapeController;
 use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\UploadedSourceDocumentController;
+use App\Http\Middleware\LimitTextIngestionRequestSize;
+use App\Http\Middleware\RequireTextIngestionToken;
 use App\Http\Middleware\VerifyPipelineWorkerSignature;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Route;
@@ -67,6 +70,22 @@ Route::middleware(['browser-query-principal', 'throttle:hawki-api'])->group(func
 Route::post('/internal/pipeline/worker-events', PipelineWorkerEventController::class)
     ->middleware(['throttle:hawki-pipeline-worker-events', VerifyPipelineWorkerSignature::class])
     ->defaults('openapi', false);
+
+/*
+|--------------------------------------------------------------------------
+| Direct Text Integration Boundary
+|--------------------------------------------------------------------------
+| A real Sanctum personal access token must carry the exact text-ingestion
+| ability. A separate dataset grant constrains which dataset the principal may
+| write. Session-only authentication and wildcard token abilities are rejected.
+*/
+Route::post('/integrations/text-ingestions', TextIngestionController::class)
+    ->middleware([
+        'auth:sanctum',
+        RequireTextIngestionToken::class,
+        'throttle:hawki-upload',
+        LimitTextIngestionRequestSize::class,
+    ]);
 
 /*
 |--------------------------------------------------------------------------

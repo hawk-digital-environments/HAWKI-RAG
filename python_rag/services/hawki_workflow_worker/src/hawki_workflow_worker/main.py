@@ -9,7 +9,7 @@ from temporalio.client import Client
 from temporalio.worker import Worker
 
 from hawki_workflow_worker.settings import WorkflowWorkerSettings
-from hawki_workflow_worker.workflows import IngestSourceWorkflow
+from hawki_workflow_worker.workflows import IngestSourceWorkflow, IngestTextWorkflow
 
 
 async def run_worker(settings: WorkflowWorkerSettings | None = None) -> None:
@@ -23,7 +23,7 @@ async def run_worker(settings: WorkflowWorkerSettings | None = None) -> None:
     worker = Worker(
         client,
         task_queue=resolved_settings.workflow_task_queue,
-        workflows=[IngestSourceWorkflow],
+        workflows=[IngestSourceWorkflow, IngestTextWorkflow],
     )
     await worker.run()
 

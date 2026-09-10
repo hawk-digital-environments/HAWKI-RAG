@@ -42,7 +42,7 @@ class HawkiRagSearchTool extends Tool
                 The tool returns the most relevant structured results for downstream answer generation, reranking, or reasoning.')
                 ->required(),
             'dataset_id' => $schema->string()
-                ->description('Authorized RAWKI dataset identifier to search.')
+                ->description('Authorized HAWKI-RAG dataset identifier to search.')
                 ->required(),
             'top_k' => $schema->integer()
                 ->description('Number of chunks to retrieve'),

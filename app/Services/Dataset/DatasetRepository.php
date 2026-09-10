@@ -41,14 +41,6 @@ readonly class DatasetRepository
     /**
      * @param  array<string, mixed>  $attributes
      */
-    public function create(array $attributes): Dataset
-    {
-        return Dataset::query()->create($attributes);
-    }
-
-    /**
-     * @param  array<string, mixed>  $attributes
-     */
     public function firstOrCreate(string $datasetId, array $attributes): Dataset
     {
         return Dataset::query()->firstOrCreate(['dataset_id' => $datasetId], $attributes);

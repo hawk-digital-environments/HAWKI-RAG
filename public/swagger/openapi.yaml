@@ -25,6 +25,8 @@ tags:
     description: Control-plane diagnostics for the retrieval bridge and backing data stores.
   - name: Graph
     description: Control-plane graph exploration, snapshots, and destructive graph maintenance.
+  - name: Integrations
+    description: Token-authenticated external ingestion endpoints with dataset-scoped write access.
 paths:
   /ping:
     get:
@@ -43,6 +45,101 @@ paths:
                 $ref: "#/components/schemas/PingResponse"
               example:
                 pong: true
+  /integrations/text-ingestions:
+    post:
+      tags:
+        - Integrations
+      summary: Ingest text directly into a dataset
+      description: |
+        Accepts plain text or Markdown, stores
+        an immutable internal Markdown artifact, and starts a Temporal workflow
+        that indexes directly into Qdrant. Scraping, file conversion, and Neo4j
+        graph extraction are always skipped.
+
+        This operation requires a real Laravel Sanctum personal access token with
+        the exact `rag:text-ingest` ability. Session-only authentication and
+        wildcard abilities are rejected. The token's user must also have an
+        explicit `ingest` grant for the requested dataset; unauthorized and
+        missing datasets receive the same `404` response.
+
+        Replaying the same idempotency key and payload returns the original
+        operation; using the key with a different payload returns `409`.
+
+        The dataset must first be created through `POST /datasets` and must be
+        active. The selected dataset—not this request—supplies the embedding
+        provider, model, and Qdrant collection. Document text is never returned.
+        Text is limited to 1,048,576 characters and serialized metadata is
+        limited to 65,536 bytes. The complete JSON request is limited to
+        4,300,000 bytes. The upload rate limit also applies.
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          required: true
+          schema:
+            type: string
+            maxLength: 191
+            pattern: "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+          description: Stable request identity persisted by HAWKI-RAG.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TextIngestionRequest"
+            example:
+              external_document_id: document_123
+              dataset_id: assistant_42
+              text: "# Example\n\nDocument content."
+              content_format: markdown
+              display_name: Example document
+              source_url: https://hawki.example/documents/123
+              metadata:
+                assistant_id: "42"
+      responses:
+        "200":
+          description: The idempotent request was already accepted and its current operation identity is returned.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TextIngestionResponse"
+        "202":
+          description: The artifact and records were created and the direct indexing workflow was accepted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TextIngestionResponse"
+        "409":
+          description: The dataset is inactive, the idempotency key has a different payload, or the document source is already being processed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TextIngestionError"
+        "413":
+          description: The complete JSON request exceeds 4,300,000 bytes.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TextIngestionError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: The requested dataset is unavailable or the token principal has no ingestion grant.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TextIngestionError"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "502":
+          description: Temporal workflow startup could not be confirmed; retry the same request and idempotency key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TextIngestionError"
   /datasets:
     get:
       tags:
@@ -87,6 +184,8 @@ paths:
         Creates an empty logical workspace for a related group of documents.
         The server records the active embedding provider and model, and derives
         isolated Qdrant and Neo4j names unless advanced names are supplied.
+        Repeating a compatible request returns the existing dataset; reusing a
+        dataset ID with conflicting metadata returns `409`.
 
         This operation creates metadata only. It does not upload a document,
         start ingestion, populate vector or graph storage, or grant query access.
@@ -109,12 +208,24 @@ paths:
               name: Research Library
               description: Documents grouped for one retrieval context.
       responses:
+        "200":
+          description: A compatible dataset already existed and was returned.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DatasetCreateResponse"
         "201":
           description: The empty dataset workspace was created successfully.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/DatasetCreateResponse"
+        "409":
+          description: The dataset ID already exists with conflicting metadata.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "422":
           $ref: "#/components/responses/ValidationFailed"
   /datasets/{dataset_id}:
@@ -1431,7 +1542,13 @@ components:
       bearerFormat: Sanctum
   responses:
     Unauthorized:
-      description: An explicitly supplied bearer token is invalid, belongs to a removed user, or lacks the query ability.
+      description: A required bearer token is missing or invalid, or the endpoint requires a personal access token but received session-only authentication.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Forbidden:
+      description: The authenticated personal access token lacks the exact ability required by the operation.
       content:
         application/json:
           schema:
@@ -1461,6 +1578,83 @@ components:
           schema:
             $ref: "#/components/schemas/Error"
   schemas:
+    TextIngestionRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - external_document_id
+        - dataset_id
+        - text
+        - content_format
+      properties:
+        external_document_id:
+          type: string
+          maxLength: 191
+          pattern: "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+          description: Stable caller-owned document identity within the dataset.
+        dataset_id:
+          type: string
+          maxLength: 160
+          pattern: "^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$"
+          description: Stable identifier of an existing active dataset created through POST /datasets.
+        text:
+          type: string
+          minLength: 1
+          maxLength: 1048576
+          description: Non-whitespace plain text or Markdown stored without file conversion.
+        content_format:
+          type: string
+          enum:
+            - plain_text
+            - markdown
+        display_name:
+          type: string
+          nullable: true
+          maxLength: 255
+        source_url:
+          type: string
+          nullable: true
+          format: uri
+          maxLength: 2048
+          description: Optional HTTP or HTTPS source reference; omitted values receive an internal external URI.
+        metadata:
+          type: object
+          nullable: true
+          additionalProperties: true
+          description: Optional JSON object whose serialized representation must not exceed 65,536 bytes.
+    TextIngestionResponse:
+      type: object
+      required:
+        - task_id
+        - job_id
+        - source_id
+        - workflow_id
+        - status
+        - replayed
+      properties:
+        task_id:
+          type: string
+        job_id:
+          type: string
+        source_id:
+          type: string
+        workflow_id:
+          type: string
+          nullable: true
+        status:
+          type: string
+        replayed:
+          type: boolean
+    TextIngestionError:
+      type: object
+      required:
+        - error
+        - message
+      properties:
+        error:
+          type: string
+        message:
+          type: string
     Error:
       type: object
       properties:

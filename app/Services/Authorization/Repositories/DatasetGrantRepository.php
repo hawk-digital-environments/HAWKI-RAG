@@ -30,8 +30,7 @@ readonly class DatasetGrantRepository
     public function listActiveDatasetsForQuery(
         AuthenticatedPrincipal $principal,
         bool $canQueryAllDatasets = false,
-    ): Collection
-    {
+    ): Collection {
         return $this->activeDatasetsForQuery($principal, $canQueryAllDatasets)
             ->select([
                 'datasets.dataset_id',
@@ -50,11 +49,37 @@ readonly class DatasetGrantRepository
         Dataset $dataset,
         AuthenticatedPrincipal $principal,
     ): DatasetGrant {
+        return $this->grant($dataset, $principal, DatasetGrant::PERMISSION_QUERY);
+    }
+
+    public function findDatasetForPermission(
+        AuthenticatedPrincipal $principal,
+        string $datasetId,
+        string $permission,
+    ): ?Dataset {
+        return Dataset::query()
+            ->where('datasets.dataset_id', $datasetId)
+            ->whereExists(function ($query) use ($permission, $principal): void {
+                $query->selectRaw('1')
+                    ->from('dataset_grants')
+                    ->whereColumn('dataset_grants.dataset_id', 'datasets.dataset_id')
+                    ->where('dataset_grants.principal_type', $principal->type)
+                    ->where('dataset_grants.principal_id', $principal->id)
+                    ->where('dataset_grants.permission', $permission);
+            })
+            ->first();
+    }
+
+    public function grant(
+        Dataset $dataset,
+        AuthenticatedPrincipal $principal,
+        string $permission,
+    ): DatasetGrant {
         return DatasetGrant::query()->firstOrCreate([
             'dataset_id' => $dataset->dataset_id,
             'principal_type' => $principal->type,
             'principal_id' => $principal->id,
-            'permission' => DatasetGrant::PERMISSION_QUERY,
+            'permission' => $permission,
         ]);
     }
 
@@ -64,8 +89,7 @@ readonly class DatasetGrantRepository
     private function activeDatasetsForQuery(
         AuthenticatedPrincipal $principal,
         bool $canQueryAllDatasets,
-    ): Builder
-    {
+    ): Builder {
         $query = Dataset::query()
             ->where('datasets.status', Dataset::STATUS_ACTIVE);
 

@@ -16,11 +16,10 @@ readonly class PythonTemporalBridgeClient
     public function __construct(
         private ConfigRepository $config,
         private LoggerInterface $logger,
-    ) {
-    }
+    ) {}
 
     /**
-     * @param array<string, mixed> $input
+     * @param  array<string, mixed>  $input
      */
     public function startIngestWorkflow(array $input, ?string $workflowId = null): TemporalWorkflowExecution
     {
@@ -49,7 +48,49 @@ readonly class PythonTemporalBridgeClient
     }
 
     /**
-     * @param array<string, mixed> $input
+     * @param  array<string, mixed>  $input
+     */
+    public function startTextIngestWorkflow(
+        array $input,
+        string $workflowId,
+    ): TemporalWorkflowExecution {
+        $this->ensureEnabled();
+
+        $payload = [
+            'workflow_id' => $workflowId,
+            'workflow_input' => $input,
+        ];
+
+        $body = $this->post(
+            '/temporal/workflows/ingest-text',
+            $payload,
+        );
+
+        $returnedWorkflowId = $this->stringValue($body['workflow_id'] ?? $workflowId);
+        if (! hash_equals($workflowId, $returnedWorkflowId)) {
+            throw new \RuntimeException('Python Temporal bridge returned an unexpected workflow ID.');
+        }
+
+        $execution = new TemporalWorkflowExecution(
+            $returnedWorkflowId,
+            $this->nullableString($body['run_id'] ?? null),
+            null,
+        );
+
+        $this->logger->info(
+            'Temporal text ingestion workflow requested through Python bridge.',
+            [
+                'source_id' => $input['source_id'] ?? null,
+                'workflow_id' => $execution->workflowId,
+                'run_id' => $execution->runId,
+            ],
+        );
+
+        return $execution;
+    }
+
+    /**
+     * @param  array<string, mixed>  $input
      */
     public function upsertIngestSchedule(string $scheduleId, string $workflowId, string $cadence, array $input): TemporalWorkflowExecution
     {
@@ -111,7 +152,7 @@ readonly class PythonTemporalBridgeClient
     }
 
     /**
-     * @param array<string, mixed> $payload
+     * @param  array<string, mixed>  $payload
      * @return array<string, mixed>
      */
     private function post(string $path, array $payload): array
@@ -139,7 +180,7 @@ readonly class PythonTemporalBridgeClient
     }
 
     /**
-     * @param array<string, mixed> $input
+     * @param  array<string, mixed>  $input
      */
     private function workflowIdFor(array $input): string
     {

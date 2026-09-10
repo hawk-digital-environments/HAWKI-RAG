@@ -12,7 +12,11 @@ use App\Models\PipelineTask;
 use App\Models\PipelineWorkerEventRecord;
 use App\Models\RagIngestionArtifact;
 use App\Services\Pipeline\PipelineWorkerEventSignatureVerifier;
+use App\Services\Pipeline\Repositories\IngestionSourceRepository;
+use App\Services\Pipeline\Repositories\PipelineJobStateMutationRepository;
+use App\Services\Pipeline\Values\PipelineStage;
 use App\Services\Rag\RagMonitorArtifactReader;
+use App\Services\TextIngestion\Values\TextIngestionMode;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Testing\TestResponse;
 use Tests\TestCase;
@@ -248,6 +252,47 @@ final class PipelineWorkerEventCallbackTest extends TestCase
         }
     }
 
+    public function test_the_first_callback_adopts_an_unconfirmed_temporal_run(): void
+    {
+        $execution = $this->createExecution();
+        $execution['job']->forceFill([
+            'current_stage' => 'temporal.workflow_starting',
+            'temporal_run_id' => null,
+        ])->save();
+
+        $this->sendEvent($this->event([
+            'event_id' => 'evt_initial_run_adopted',
+            'producer' => 'indexer',
+            'run_id' => 'run-direct-1',
+            'activity_id' => 'ingest_markdown_files',
+            'stage' => 'ingest',
+            'phase' => 'ingest_markdown_files',
+        ]))
+            ->assertAccepted()
+            ->assertJsonPath('ignored', false);
+
+        $jobMetadata = $execution['job']->refresh()->metadata;
+        app(IngestionSourceRepository::class)->confirmWorkflowStarted(
+            $execution['source'],
+            'workflow-worker-1',
+            null,
+        );
+        app(PipelineJobStateMutationRepository::class)->confirmTemporalStarted(
+            $execution['job'],
+            'workflow-worker-1',
+            null,
+            ['request' => ['should_not' => 'replace_callback_metadata']],
+        );
+
+        $job = $execution['job']->refresh();
+        $source = $execution['source']->refresh();
+        $this->assertSame('run-direct-1', $job->temporal_run_id);
+        $this->assertSame('ingest', $job->current_stage);
+        $this->assertSame($jobMetadata, $job->metadata);
+        $this->assertSame('evt_initial_run_adopted', $source->metadata['worker_event']['event_id']);
+        $this->assertSame('run-direct-1', $source->metadata['temporal']['run_id']);
+    }
+
     public function test_terminal_state_does_not_regress_from_a_late_running_event(): void
     {
         $this->createExecution();
@@ -344,6 +389,133 @@ final class PipelineWorkerEventCallbackTest extends TestCase
         $this->assertArrayNotHasKey('error', $source->metadata);
         $this->assertSame('convert', $job->current_stage);
         $this->assertDatabaseCount('pipeline_worker_events', 4);
+    }
+
+    public function test_terminal_ready_event_completes_a_recovered_direct_text_execution(): void
+    {
+        $execution = $this->createExecution();
+        $execution['source']->forceFill([
+            'metadata' => ['ingestion_mode' => TextIngestionMode::DirectText->value],
+        ])->save();
+        $execution['job']->forceFill([
+            'metadata' => ['ingestion_mode' => TextIngestionMode::DirectText->value],
+        ])->save();
+        $base = time() - 20;
+
+        $this->sendEvent($this->event([
+            'event_id' => 'evt_direct_run_1_failed',
+            'producer' => 'indexer',
+            'activity_id' => 'ingest_markdown_files',
+            'stage' => 'ingest',
+            'phase' => 'ingest_markdown_files',
+            'timestamp' => gmdate(DATE_ATOM, $base),
+            'status' => 'failed',
+            'counts' => ['total' => 1, 'processed' => 0, 'failed' => 1, 'skipped' => 0],
+            'errors' => [[
+                'code' => 'temporary_index_failure',
+                'message' => 'The first indexing run failed.',
+                'retryable' => true,
+            ]],
+        ]))
+            ->assertAccepted()
+            ->assertJsonPath('ignored', false);
+
+        $this->assertSame(PipelineJob::STATUS_FAILED, $execution['job']->refresh()->status);
+        $this->assertSame(IngestionSource::STATUS_FAILED, $execution['source']->refresh()->index_status);
+        $this->assertSame(PipelineTask::STATUS_FAILED, $execution['task']->refresh()->status);
+
+        app(IngestionSourceRepository::class)->markWorkflowStarted(
+            $execution['source'],
+            'workflow-worker-1',
+            'run-worker-2',
+            null,
+        );
+        app(PipelineJobStateMutationRepository::class)->markTemporalStarted(
+            $execution['job'],
+            'workflow-worker-1',
+            'run-worker-2',
+            null,
+            $execution['job']->metadata,
+        );
+
+        $this->assertSame(PipelineJob::STATUS_RUNNING, $execution['job']->refresh()->status);
+        $this->assertSame(IngestionSource::STATUS_RUNNING, $execution['source']->refresh()->index_status);
+
+        $this->sendEvent($this->event([
+            'event_id' => 'evt_direct_run_2_indexing',
+            'producer' => 'indexer',
+            'run_id' => 'run-worker-2',
+            'activity_id' => 'ingest_markdown_files',
+            'stage' => 'ingest',
+            'phase' => 'ingest_markdown_files',
+            'timestamp' => gmdate(DATE_ATOM, $base + 1),
+            'status' => 'running',
+            'counts' => ['total' => 1, 'processed' => 0, 'failed' => 0, 'skipped' => 0],
+        ]))
+            ->assertAccepted()
+            ->assertJsonPath('ignored', false);
+
+        $this->sendEvent($this->event([
+            'event_id' => 'evt_direct_run_2_ready',
+            'producer' => 'indexer',
+            'run_id' => 'run-worker-2',
+            'activity_id' => 'mark_source_ready',
+            'stage' => 'ingest',
+            'phase' => 'mark_source_ready',
+            'timestamp' => gmdate(DATE_ATOM, $base + 2),
+            'status' => 'completed',
+            'counts' => ['total' => 1, 'processed' => 1, 'failed' => 0, 'skipped' => 0],
+            'document_version' => 'direct-text-version-2',
+        ]))
+            ->assertAccepted()
+            ->assertJsonPath('ignored', false);
+
+        $stage = PipelineStageState::query()
+            ->where('job_id', 'job-worker-1')
+            ->where('stage', PipelineStage::Ingest->value)
+            ->firstOrFail();
+        $job = $execution['job']->refresh();
+        $source = $execution['source']->refresh();
+        $task = $execution['task']->refresh();
+
+        $this->assertSame(PipelineJob::STATUS_COMPLETED, $stage->status);
+        $this->assertSame(IngestionSource::STATUS_READY, $source->index_status);
+        $this->assertNotNull($source->ready_at);
+        $this->assertSame(PipelineJob::STATUS_COMPLETED, $job->status);
+        $this->assertSame(IngestionSource::STATUS_READY, $job->index_status);
+        $this->assertNull($job->error_message);
+        $this->assertSame(PipelineTask::STATUS_COMPLETED, $task->status);
+        $this->assertSame(0, $task->counters['jobs_failed']);
+        $this->assertSame(1, $task->counters['jobs_completed']);
+
+        $this->sendEvent($this->event([
+            'event_id' => 'evt_direct_run_1_late_failure',
+            'producer' => 'indexer',
+            'run_id' => 'run-worker-1',
+            'activity_id' => 'ingest_markdown_files',
+            'stage' => 'ingest',
+            'phase' => 'ingest_markdown_files',
+            'timestamp' => gmdate(DATE_ATOM, $base + 3),
+            'status' => 'failed',
+            'counts' => ['total' => 1, 'processed' => 0, 'failed' => 1, 'skipped' => 0],
+        ]))
+            ->assertConflict()
+            ->assertJsonPath('error', 'pipeline_worker_event_target_mismatch');
+
+        $stage->refresh();
+        $job->refresh();
+        $source->refresh();
+        $task->refresh();
+        $this->assertSame(PipelineJob::STATUS_COMPLETED, $stage->status);
+        $this->assertSame(PipelineJob::STATUS_COMPLETED, $job->status);
+        $this->assertSame(IngestionSource::STATUS_READY, $job->index_status);
+        $this->assertNull($job->error_message);
+        $this->assertSame('run-worker-2', $job->temporal_run_id);
+        $this->assertSame(IngestionSource::STATUS_READY, $source->index_status);
+        $this->assertNotNull($source->ready_at);
+        $this->assertSame(PipelineTask::STATUS_COMPLETED, $task->status);
+        $this->assertSame(0, $task->counters['jobs_failed']);
+        $this->assertSame(1, $task->counters['jobs_completed']);
     }
 
     public function test_late_completed_stage_does_not_regress_a_later_running_stage(): void

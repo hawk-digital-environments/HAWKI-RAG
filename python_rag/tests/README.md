@@ -141,6 +141,15 @@ failure. Endpoint overrides include `RAWKI_INTEGRATION_QDRANT_URL`,
 `RAWKI_INTEGRATION_NEO4J_URI`, `RAWKI_INTEGRATION_TEMPORAL_ADDRESS`,
 `RAWKI_INTEGRATION_OLLAMA_API_URL`, and `RAWKI_INTEGRATION_LITELLM_API_URL`.
 
+The black-box direct-text test additionally requires an already-running Laravel,
+bridge, Temporal, workflow-worker, indexer, and Qdrant stack. Set
+`RAWKI_INTEGRATION_TEXT_INGEST_TOKEN` to a real Sanctum token with exactly the
+`rag:text-ingest` ability and set `RAWKI_INTEGRATION_TEXT_INGEST_DATASET_ID` to
+an active dataset for which that token's user has an explicit ingestion grant.
+`RAWKI_INTEGRATION_LARAVEL_URL` defaults to `http://127.0.0.1:8080`, and
+`RAWKI_INTEGRATION_INGEST_TIMEOUT` defaults to 180 seconds. The test does not
+create credentials, datasets, or grants.
+
 ## Coverage and locked CI
 
 ```bash

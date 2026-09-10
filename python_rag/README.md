@@ -1,4 +1,4 @@
-# RAWKI Python RAG workspace
+# HAWKI-RAG Python RAG workspace
 
 `python_rag` is one Python 3.13.14 uv workspace with one lockfile. It contains
 small reusable packages and six independently built production services. Laravel

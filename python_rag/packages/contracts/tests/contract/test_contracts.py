@@ -13,6 +13,7 @@ from hawki_rag_contracts.pipeline.artifacts import MarkdownArtifact
 from hawki_rag_contracts.retrieval.auth_scope import AuthorizedQueryScope
 from hawki_rag_contracts.pipeline.ingestion import (
     IngestSourceWorkflowInput,
+    IngestTextWorkflowInput,
     TaskQueueConfig,
     shared_storage_root,
 )
@@ -209,6 +210,31 @@ def test_laravel_workflow_payload_accepts_flat_services_and_optional_collection(
     assert workflow_input.external_services["scraper_url"] == (
         "http://crawl4ai-service"
     )
+
+
+def test_direct_text_workflow_contract_requires_vector_only_ingestion() -> None:
+    payload = {
+        "source_id": "source-a",
+        "source_url": "external://document-a",
+        "task_id": "task-a",
+        "job_id": "job-a",
+        "dataset_id": "dataset-a",
+        "external_document_id": "document-a",
+        "markdown_path": "/shared/sources/source-a/markdown/document.md",
+        "markdown_output_path": "/shared/sources/source-a/markdown",
+        "content_hash": "a" * 64,
+        "storage": {"shared_root": "/shared"},
+        "ingestion": {
+            "provider": "ollama",
+            "embedding_model": "bge-m3",
+            "graph_model": "llama3.1:8b",
+            "vision_model": "qwen2.5vl:7b",
+            "graph": True,
+        },
+    }
+
+    with pytest.raises(ValidationError, match="does not support graph indexing"):
+        IngestTextWorkflowInput.model_validate(payload)
 
 
 def test_shared_storage_root_accepts_current_and_legacy_shared_payloads() -> None:

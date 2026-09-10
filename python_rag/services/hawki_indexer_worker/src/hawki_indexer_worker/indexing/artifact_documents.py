@@ -58,7 +58,9 @@ def prepare_artifact_batch(
     for markdown_location in markdown_files:
         markdown_file = str(context.artifact_store.resolve(markdown_location))
         content = context.artifact_store.read_bytes(markdown_file)
-        text = strip_leading_converter_markdown_noise(content.decode("utf-8"))
+        decoded_text = content.decode("utf-8")
+        artifact = context.artifacts_by_path.get(markdown_file)
+        text = _artifact_text(decoded_text, artifact)
         if not text.strip():
             skipped_documents += 1
             continue
@@ -67,7 +69,7 @@ def prepare_artifact_batch(
             markdown_file=markdown_file,
             text=text,
             content=content,
-            artifact=context.artifacts_by_path.get(markdown_file),
+            artifact=artifact,
         )
         documents.append(document)
         manifest_records.append(record)
@@ -77,6 +79,17 @@ def prepare_artifact_batch(
         manifest_records=manifest_records,
         skipped_documents=skipped_documents,
     )
+
+
+def _artifact_text(
+    decoded_text: str,
+    artifact: MarkdownArtifact | None,
+) -> str:
+    """Preserve explicitly hashed text and clean only converter-style artifacts."""
+
+    if artifact is not None and artifact.content_hash == sha256_text(decoded_text):
+        return decoded_text
+    return strip_leading_converter_markdown_noise(decoded_text)
 
 
 def _document_from_artifact(
@@ -107,13 +120,15 @@ def _document_from_artifact(
         doc_id = artifact.document_id
         content_hash = artifact.content_hash
 
+    allowed_metadata_directories = [context.markdown_dir]
+    raw_output_path = workflow_input.get("raw_output_path")
+    if isinstance(raw_output_path, str) and raw_output_path.strip():
+        allowed_metadata_directories.append(raw_output_path)
+
     passthrough = load_passthrough_metadata(
         context.artifact_store,
         markdown_file,
-        allowed_directories=(
-            context.markdown_dir,
-            str(workflow_input["raw_output_path"]),
-        ),
+        allowed_directories=allowed_metadata_directories,
     )
     payload = dict(passthrough)
     payload.update(

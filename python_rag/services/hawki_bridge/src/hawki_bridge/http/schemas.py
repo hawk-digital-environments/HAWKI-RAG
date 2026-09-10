@@ -5,7 +5,10 @@ from __future__ import annotations
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from hawki_rag_contracts.retrieval.auth_scope import AuthorizedQueryScope
-from hawki_rag_contracts.pipeline.ingestion import IngestSourceWorkflowInput
+from hawki_rag_contracts.pipeline.ingestion import (
+    IngestSourceWorkflowInput,
+    IngestTextWorkflowInput,
+)
 from hawki_rag_contracts.retrieval.query import QueryRequest
 
 from hawki_bridge.settings import BridgeSettings
@@ -44,6 +47,12 @@ class StartIngestWorkflowRequest(BaseModel):
     workflow_input: IngestSourceWorkflowInput
 
 
+class StartTextIngestWorkflowRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    workflow_id: str = Field(min_length=1, max_length=255)
+    workflow_input: IngestTextWorkflowInput
+
+
 class UpsertIngestScheduleRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     schedule_id: str = Field(min_length=1, max_length=255)
@@ -69,6 +78,7 @@ __all__ = [
     "GraphReadRequest",
     "QueryRequest",
     "StartIngestWorkflowRequest",
+    "StartTextIngestWorkflowRequest",
     "UpsertIngestScheduleRequest",
     "apply_query_defaults",
 ]

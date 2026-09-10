@@ -21,6 +21,7 @@ class _TemporalRouteCase:
     operation: str
     expected_call: dict[str, Any]
     expected_response: dict[str, Any]
+    public_error: str | None = None
 
 
 def _workflow_input(*, source_id: str = "source-1") -> dict[str, Any]:
@@ -48,9 +49,49 @@ def _workflow_input(*, source_id: str = "source-1") -> dict[str, Any]:
 
 
 WORKFLOW_INPUT = _workflow_input()
+TEXT_WORKFLOW_INPUT = {
+    "source_id": "source-1",
+    "source_url": "external://document-1",
+    "task_id": "task-1",
+    "job_id": "job-1",
+    "dataset_id": "dataset-a",
+    "external_document_id": "document-1",
+    "markdown_path": "/shared/sources/source-1/markdown/document.md",
+    "markdown_output_path": "/shared/sources/source-1/markdown",
+    "content_hash": "a" * 64,
+    "storage": {"mode": "shared", "shared_root": "/shared"},
+    "ingestion": {
+        "provider": "ollama",
+        "embedding_model": "bge-m3",
+        "graph_model": "llama3.1:8b",
+        "vision_model": "qwen2.5vl:7b",
+        "graph": False,
+        "collection": "hawki_dataset_a",
+    },
+}
 
 
 TEMPORAL_ROUTE_CASES = [
+    _TemporalRouteCase(
+        name="start-text-workflow",
+        path="/temporal/workflows/ingest-text",
+        payload={
+            "workflow_id": "ingest-text-dataset-a",
+            "workflow_input": TEXT_WORKFLOW_INPUT,
+        },
+        required_field="workflow_id",
+        operation="start_text",
+        expected_call={
+            "workflow_id": "ingest-text-dataset-a",
+            "workflow_input": TEXT_WORKFLOW_INPUT,
+        },
+        expected_response={
+            "workflow_id": "ingest-text-dataset-a",
+            "run_id": "run-ingest-text-dataset-a",
+            "schedule_id": None,
+        },
+        public_error="Temporal text ingestion workflow could not be started.",
+    ),
     _TemporalRouteCase(
         name="start-workflow",
         path="/temporal/workflows/ingest",
@@ -145,6 +186,24 @@ class _FakeTemporalBridgeClient:
             "workflow_input": workflow_input,
         }
         self._record("start", arguments)
+        return TemporalExecution(
+            workflow_id=workflow_id,
+            run_id=f"run-{workflow_id}",
+        )
+
+    async def start_text_ingest_workflow(
+        self,
+        *,
+        workflow_id: str,
+        workflow_input: dict[str, Any],
+    ) -> Any:
+        from hawki_bridge.adapters.temporal_client import TemporalExecution
+
+        arguments = {
+            "workflow_id": workflow_id,
+            "workflow_input": workflow_input,
+        }
+        self._record("start_text", arguments)
         return TemporalExecution(
             workflow_id=workflow_id,
             run_id=f"run-{workflow_id}",
@@ -296,7 +355,7 @@ class TestTemporalApiFlow:
             "error": {
                 "type": "HTTPException",
                 "status": 502,
-                "message": f"Temporal {case.operation} failed.",
+                "message": case.public_error or f"Temporal {case.operation} failed.",
                 "path": case.path,
                 "request_id": request_id,
             }

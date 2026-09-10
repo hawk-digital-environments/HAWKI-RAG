@@ -8,4 +8,5 @@ enum ApiTokenAbility: string
 {
     case Query = 'query';
     case Admin = 'admin';
+    case RagTextIngest = 'rag:text-ingest';
 }

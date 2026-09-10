@@ -12,6 +12,7 @@ from fastapi import APIRouter
 from fastapi.routing import APIRoute
 from neo4j.exceptions import Neo4jError, ServiceUnavailable
 from temporalio.service import RPCError, RPCStatusCode
+from temporalio.common import WorkflowIDConflictPolicy, WorkflowIDReusePolicy
 
 from hawki_bridge.adapters.neo4j_reader import Neo4jReader
 from hawki_bridge.adapters.qdrant_reader import QdrantReader
@@ -533,3 +534,42 @@ def test_temporal_cancel_is_idempotent_only_when_the_execution_is_absent(
         assert captured.value.status == status
     else:
         asyncio.run(cancellation)
+
+
+def test_direct_text_workflow_reuses_active_or_failed_executions_only(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, Any] = {}
+
+    class Handle:
+        first_execution_run_id = "run-direct"
+
+    class TemporalClient:
+        @staticmethod
+        async def start_workflow(*args: Any, **kwargs: Any) -> Handle:
+            captured["args"] = args
+            captured["kwargs"] = kwargs
+            return Handle()
+
+    async def client(_self: Any) -> TemporalClient:
+        return TemporalClient()
+
+    monkeypatch.setattr(TemporalBridgeClient, "connect_temporal", client)
+    bridge = TemporalBridgeClient(load_settings({}))
+
+    execution = asyncio.run(
+        bridge.start_text_ingest_workflow(
+            workflow_id="ingest-text-source-1",
+            workflow_input={"source_id": "source-1"},
+        )
+    )
+
+    assert execution.run_id == "run-direct"
+    assert (
+        captured["kwargs"]["id_reuse_policy"]
+        == WorkflowIDReusePolicy.ALLOW_DUPLICATE_FAILED_ONLY
+    )
+    assert (
+        captured["kwargs"]["id_conflict_policy"]
+        == WorkflowIDConflictPolicy.USE_EXISTING
+    )
