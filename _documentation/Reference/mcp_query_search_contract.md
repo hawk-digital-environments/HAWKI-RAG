@@ -1,4 +1,9 @@
-# 7. MCP Query Search Contract
+---
+title: MCP Query Search Contract
+slug: /Operations/ragsearcher_triplets_update
+---
+
+# MCP Query Search Contract
 
 <div className="hero">
 
@@ -6,7 +11,7 @@ This page defines the **query-search** MCP tool boundary: accepted input,
 dataset authorization, the server-derived FastAPI request, and the structured
 result returned to an MCP client.
 
-[Understand retrieval behavior](../Getting%20Started/3_introduction_architecture.md#how-a-question-becomes-an-answer)
+[Understand retrieval behavior](../Core%20Concepts/query_retrieval.md)
 · [Find the implementation](../Reference/8_repo_map.md#follow-one-query)
 
 </div>
@@ -254,8 +259,8 @@ order.
 | FastAPI connection failure or non-success response | Generic search failure; detailed exception is logged server-side |
 | Bridge request exceeds 60 seconds | Generic search failure from the same exception path |
 
-The generic error prevents internal collection names, namespaces, or backend
-details from leaking to the MCP client.
+The generic error keeps backend details out of the MCP client response. The
+catch path logs the query and exception; those logs still require access control.
 
 ## Sources of truth
 

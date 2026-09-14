@@ -1,183 +1,78 @@
-# Python RAG test layout
+# Python live integration tests
 
-# Live direct-text E2E
+[Testing](../../_documentation/Developer/testing.md) owns deterministic suites,
+locked environment setup, and the isolated reranker environment. This page
+covers live cross-service tests under [end_to_end/integration](end_to_end/integration).
 
-Run every command below from the RAWKI repository root in your VS Code
-terminal.
+## What the tests prove
 
-## 1. Start Docker
+| Test | Live dependencies and effects |
+|---|---|
+| [Direct text](end_to_end/integration/test_direct_text_ingestion.py) | Laravel, bridge, Temporal, indexer, shared artifacts, embedding runtime, Qdrant; creates persistent test source/task/points and verifies exact content plus ready projection |
+| [Temporal dispatch](end_to_end/integration/test_temporal_ingestion.py) | Real Temporal with the production source workflow on a unique test queue, using deterministic test activities; writes workflow history, but does not test crawler/converter/model/store adapters |
 
-Start the RAWKI stack and confirm its containers are running.
+The Temporal dispatch test is not the full external-tool ingestion smoke.
+Use [Run HAWKI RAG](../../_documentation/Getting%20Started/2_setup.md#full-ingestion-smoke-test)
+for that check.
 
-```bash
-make up-core
-docker compose ps
-```
+## Direct-text setup
 
-## 2. Create the token
+Start the stack and follow
+[dataset/token preparation](../../_documentation/Reference/direct_text_ingestion.md#prepare-a-dataset-and-token)
+for a disposable dataset. Use a token containing `rag:text-ingest` and an
+explicit ingest grant; it need not contain only that ability.
 
-Create a Laravel Sanctum token for local user ID. When prompted, choose
-that user and give the token a name such as `direct-text-e2e`. The token must
-have exactly the `rag:text-ingest` ability.
-
-```bash
-docker exec -it hawki_rag_app \
-  php artisan user:token --abilities=rag:text-ingest
-```
-
-Copy the generated token.
-
-## 3. Grant dataset access
-
-Grant user [X] ingest access to the existing active `direct-text-e2e`
-dataset. The argument order is
-`dataset:grant-ingest <dataset_id> <user_id>`.
+From the repository root, export the test inputs without printing the token:
 
 ```bash
-docker exec -it hawki_rag_app \
-  php artisan dataset:grant-ingest direct-text-e2e [USER_ID]
-```
-
-## 4. Export the dataset
-
-Set the dataset ID in the current terminal.
-
-```bash
-export RAWKI_INTEGRATION_TEXT_INGEST_DATASET_ID=direct-text-e2e
-```
-
-## 5. Export the token
-
-Read the token without writing it to shell history. Paste it when the terminal
-waits, then press Enter.
-
-```bash
-read -s RAWKI_INTEGRATION_TEXT_INGEST_TOKEN
+export RAWKI_INTEGRATION_TEXT_INGEST_DATASET_ID=docs-smoke
+read -r -s RAWKI_INTEGRATION_TEXT_INGEST_TOKEN
 export RAWKI_INTEGRATION_TEXT_INGEST_TOKEN
-echo
 ```
 
-These exports disappear when you open a new terminal.
+The test creates unique sources but does not clean them up automatically.
 
-## 6. Check both values
+## Run on the Compose network
 
-Confirm the token is present without printing it, and confirm the dataset ID.
+Qdrant and Temporal are Docker-internal by default. Inspect the Qdrant container
+and select its Compose default network (the project prefix depends on your checkout):
 
 ```bash
-[ -n "$RAWKI_INTEGRATION_TEXT_INGEST_TOKEN" ] \
-  && echo "TOKEN=set" \
-  || echo "TOKEN=EMPTY"
-echo "DATASET=$RAWKI_INTEGRATION_TEXT_INGEST_DATASET_ID"
+docker inspect hawki_qdrant --format '{{json .NetworkSettings.Networks}}'
 ```
 
-Expected output:
-
-```text
-TOKEN=set
-DATASET=direct-text-e2e
-```
-
-## 7. Run direct-text E2E
-
-Run the focused direct-text test in Python `3.13.14` on the
-`rawki_default` Docker network.
+Set `HAWKI_TEST_NETWORK` to that actual network name in your terminal.
+The following runner mounts the workspace read-only and installs a temporary
+test environment. It requires image/package network access:
 
 ```bash
 docker run --rm \
-  --network rawki_default \
+  --network "$HAWKI_TEST_NETWORK" \
   -v "$PWD/python_rag:/work:ro" \
   -v hawki-uv-cache:/root/.cache/uv \
   -w /work \
   -e RAWKI_INTEGRATION_REQUIRED=1 \
-  -e RAWKI_INTEGRATION_TEXT_INGEST_TOKEN="$RAWKI_INTEGRATION_TEXT_INGEST_TOKEN" \
-  -e RAWKI_INTEGRATION_TEXT_INGEST_DATASET_ID="$RAWKI_INTEGRATION_TEXT_INGEST_DATASET_ID" \
+  -e RAWKI_INTEGRATION_TEXT_INGEST_TOKEN \
+  -e RAWKI_INTEGRATION_TEXT_INGEST_DATASET_ID \
   -e RAWKI_INTEGRATION_INGEST_TIMEOUT=600 \
   -e RAWKI_INTEGRATION_LARAVEL_URL=http://hawki_rag_app \
   -e RAWKI_INTEGRATION_QDRANT_URL=http://qdrant:6333 \
+  -e RAWKI_INTEGRATION_TEMPORAL_ADDRESS=temporal:7233 \
   -e UV_PROJECT_ENVIRONMENT=/tmp/hawki-e2e-venv \
   -e UV_LINK_MODE=copy \
   python:3.13.14-slim-bookworm \
   sh -lc '
-    pip install --quiet --no-cache-dir uv &&
-    uv run \
-      --frozen \
-      --package hawki-workflow-worker \
-      --with pytest \
-      pytest \
-        -p no:cacheprovider \
-        -c pytest.ini \
-        -vv \
-        -ra \
-        --tb=short \
-        tests/end_to_end/integration/test_direct_text_ingestion.py
+    pip install --quiet --no-cache-dir uv==0.11.26 &&
+    uv run --frozen --package hawki-workflow-worker --with pytest \
+      pytest -p no:cacheprovider -c pytest.ini -vv -ra --tb=short \
+      tests/end_to_end/integration/test_direct_text_ingestion.py
   '
 ```
 
-The test should finish with `PASSED`.
+For both live tests, change only the final test path to
+`tests/end_to_end/integration`. Pass `TEMPORAL_NAMESPACE` if using a nondefault
+namespace and `QDRANT_API_KEY` if your Qdrant deployment requires it.
 
-## 8. Run all E2E tests
-
-After the focused test passes, run the complete live E2E directory.
-
-```bash
-docker run --rm \
-  --network rawki_default \
-  -v "$PWD/python_rag:/work:ro" \
-  -v hawki-uv-cache:/root/.cache/uv \
-  -w /work \
-  -e RAWKI_INTEGRATION_REQUIRED=1 \
-  -e RAWKI_INTEGRATION_TEXT_INGEST_TOKEN="$RAWKI_INTEGRATION_TEXT_INGEST_TOKEN" \
-  -e RAWKI_INTEGRATION_TEXT_INGEST_DATASET_ID="$RAWKI_INTEGRATION_TEXT_INGEST_DATASET_ID" \
-  -e RAWKI_INTEGRATION_INGEST_TIMEOUT=600 \
-  -e RAWKI_INTEGRATION_LARAVEL_URL=http://hawki_rag_app \
-  -e RAWKI_INTEGRATION_QDRANT_URL=http://qdrant:6333 \
-  -e UV_PROJECT_ENVIRONMENT=/tmp/hawki-e2e-venv \
-  -e UV_LINK_MODE=copy \
-  python:3.13.14-slim-bookworm \
-  sh -lc '
-    pip install --quiet --no-cache-dir uv &&
-    uv run \
-      --frozen \
-      --package hawki-workflow-worker \
-      --with pytest \
-      pytest \
-        -p no:cacheprovider \
-        -c pytest.ini \
-        -vv \
-        -ra \
-        --tb=short \
-        tests/end_to_end/integration
-  '
-```
-
-## Coverage and locked CI
-
-```bash
-uv run --frozen --group test pytest services/hawki_bridge/tests \
-  --cov=hawki_bridge --cov-report=term-missing
-
-uv lock --check
-
-uv sync --locked --group test --extra cpu \
-  --package hawki-bridge \
-  --package hawki-workflow-worker \
-  --package hawki-scraper-worker \
-  --package hawki-converter-worker \
-  --package hawki-indexer-worker
-
-PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 \
-  uv run --locked --no-sync pytest -c pytest.ini -m "not integration"
-
-UV_PROJECT_ENVIRONMENT=.venv-reranker \
-  uv sync --locked --group test --package hawki-reranker --extra cpu
-
-PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 \
-UV_PROJECT_ENVIRONMENT=.venv-reranker \
-  uv run --locked --no-sync pytest -c pytest.ini \
-  services/hawki_reranker/tests
-```
-
-CI uses the lockfile and runs the reranker in its isolated uv environment.
-
-Production images copy member `src/` trees rather than member `tests/` trees, so
-the co-located tests are not installed into runtime images.
+`RAWKI_INTEGRATION_REQUIRED=1` makes missing dependencies fail. Without it,
+unavailable infrastructure can skip tests. Read the final pytest summary;
+a skip is not a passing end-to-end verification.

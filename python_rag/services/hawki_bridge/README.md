@@ -1,7 +1,11 @@
 # HAWKI bridge
 
-Read-only query, graph-read, and Temporal-control API for Laravel-authorized
-requests.
+Read-only data-plane bridge for Laravel-authorized query and graph reads,
+with health and Temporal-control endpoints. Temporal controls start/schedule/cancel
+work; there is no Qdrant/Neo4j ingestion write route.
+
+See [Query & Retrieval](../../../_documentation/Core%20Concepts/query_retrieval.md)
+and [REST APIs](../../../_documentation/Reference/rest_apis.md).
 
 ## Tests
 
