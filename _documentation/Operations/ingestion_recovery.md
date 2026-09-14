@@ -2,6 +2,14 @@
 
 Find the last completed boundary before deciding what to retry.
 
+:::warning Recover the smallest affected scope
+
+Avoid whole-store deletion for a single-source problem. Identify the affected
+dataset and source/document, preserve evidence, and repair only that scope.
+Consider broader cleanup only after establishing broader corruption.
+
+:::
+
 ## Choose the authoritative system
 
 | Question | Authority |
@@ -82,7 +90,129 @@ Exact replacement needs dataset/document-scoped cleanup followed by rebuild.
 There is no public graph-only endpoint or turnkey repair command; see
 [Graph Enrichment](../Core%20Concepts/Ingestion/graph_enrichment.md#graph-repair-and-preview).
 
-Avoid whole-store deletion for a single-source problem.
+## Worked example: vectors are current but graph enrichment failed
+
+This illustrative case uses an ordinary website source with graph ingestion
+enabled. A changed document's vectors were replaced successfully, then its graph
+extraction failed. The identifiers below are fictional correlation labels, not
+a captured production response:
+
+```text
+dataset_id: dataset_example
+task_id: task_example
+source_id: source_example
+job_id: ingest_example
+workflow_id: ingest-source-example
+```
+
+Laravel accepted the source; Temporal completed scraping and conversion, then
+ran `ingest_markdown_files`. The indexer embedded the chunks and committed them
+to Qdrant before attempting graph extraction. A document-level extraction error
+became `graph_failures` evidence, carried to Laravel by the terminal callback.
+The source can still be projected as ready in this case.
+
+```mermaid
+flowchart TB
+    History["Temporal: scrape → convert → index"] --> Vectors["Qdrant commit succeeds"]
+    Vectors --> Graph["Document graph extraction fails"]
+    Graph --> Callback["Terminal callback carries graph failure"]
+    Callback --> Projection["Laravel projection and monitor evidence"]
+    Projection --> Check{"Check canonical stores"}
+    Check -->|"Vectors current"| Repair["Target affected graph scope"]
+    Check -->|"Vectors incomplete too"| Rebuild["Rebuild affected source"]
+```
+
+### 1. Inspect Laravel projection
+
+Through the protected management surface, inspect these existing routes with
+the actual task ID substituted:
+
+```text
+GET /api/pipeline/tasks/task_example
+GET /api/pipeline/tasks/task_example/events
+GET /api/rag/monitor
+```
+
+Match the task, job, and source; record `index_status`, `ready_at`, the current
+stage, `temporal_workflow_id`, and `temporal_run_id` where present. Correlate
+callback receipts and the document's graph error with the same execution and
+operation identifiers. The monitor exposes recent failures and the latest
+summary/preview, not a complete history filtered to this source; verify document
+identity and timestamps. [Monitoring](./monitoring.md#follow-one-ingestion) owns
+the evidence locations.
+
+### 2. Inspect Temporal history
+
+Use `make up-monitor-workflows-tool` and open the
+[Temporal UI](./temporal_operations.md#diagnostics). Locate the workflow and run,
+then inspect `ingest_markdown_files`, its attempts, and `mark_source_ready`.
+Pair that history with `docker logs --tail=200 hawki_rag_indexer_worker`: an
+`ingest:qdrant upserted=...` log before the matching `graph:extract ... failed=...`
+establishes the stage order. Correlate the adjacent `index_vector` event's
+`job_id` and `idempotency_key` (operation ID), rather than relying on log order
+across concurrent jobs. Temporal does not record each internal store write as
+a separate activity.
+
+In this extraction-error case, indexing can return success with graph failures,
+so no Temporal retry is required. A raised Neo4j write exception instead fails
+the index activity: inspect whether retries are pending or exhausted, including
+the original failed attempt. A later unchanged-content attempt may skip graph
+work. Workflow completion alone proves neither graph recovery nor store rollback.
+
+### 3. Inspect Qdrant
+
+Inspect the collection selected by the dataset record. Match its `dataset_id`,
+document identity, chunk indices/point IDs, text, and current `content_hash` to
+the converted artifact. In this example, every expected chunk exists with the
+new content and hash. One matching point or a successful upsert log alone does
+not prove full coverage; ordinary ingestion can commit partial embeddings.
+
+Direct-text completion markers apply to the separate direct-text path, which
+disables graph ingestion. Do not require that stronger proof for this website
+example. If coverage is incomplete, follow
+[partial-vector recovery](../Core%20Concepts/Ingestion/chunking_embeddings.md#batches-and-partial-failures)
+instead.
+
+### 4. Inspect graph evidence
+
+Check canonical Neo4j facts under the trusted dataset ID and namespace, using
+the affected document's provenance. In this example, extraction failed before
+replacement cleanup, so old facts remain. If extraction succeeded but a later
+Neo4j delete/write failed, the graph may instead contain a gap or partial writes.
+An empty successful extraction is another distinct outcome.
+
+A Neo4j write exception can reach Laravel as a failed activity callback without
+a completed graph preview or document-level extraction-failure record. Match
+worker logs and activity errors as well as monitor evidence. See
+[graph commit behavior](../Core%20Concepts/Ingestion/graph_enrichment.md#scope-and-commits).
+
+### 5. Choose the recovery scope
+
+Qdrant is current, so preserve it. Do not delete the collection, reindex every
+dataset, clear Neo4j globally, or restart the entire stack. First correct the
+extraction/provider failure, then arrange developer-assisted recovery for this
+document's graph scope.
+
+The internal `graph_only=true, graph=true` capability bypasses vector writes and
+ordinary incremental skipping. Use it only through maintenance/workflow code
+that supplies the trusted scope and handles results. There is currently no
+public turnkey graph-only repair API/CLI. Graph-only upserts do not guarantee
+stale-fact removal; exact replacement can require scoped cleanup followed by
+rebuild. See [graph repair limitations](../Core%20Concepts/Ingestion/graph_enrichment.md#graph-repair-and-preview).
+
+### 6. Verify recovery
+
+Verify that Qdrant's chunk coverage and hashes remained intact, and that Neo4j
+now contains the expected current facts for the affected document. Check that
+obsolete facts were removed if exact replacement was required.
+
+Record the recovery execution in Temporal when maintenance used a workflow.
+Reconcile Laravel's projection and monitor evidence with its callbacks; direct
+internal maintenance may not emit those callbacks automatically. Retained failure
+records can describe the original attempt rather than a new failure. If projection
+lags, diagnose [callback delivery](./temporal_operations.md#signed-worker-callbacks)
+instead of repeating indexing. Recovery does not atomically synchronize the stores,
+workflow history, and application projection.
 
 ## Preserve evidence
 
@@ -94,7 +224,12 @@ Qdrant payload state, and Neo4j scope before cleanup.
 diagnostic commands. Embedding/chunk changes require the planned migration
 described in [Chunking & Embeddings](../Core%20Concepts/Ingestion/chunking_embeddings.md#embedding-migration).
 
+<details>
+<summary>Implementation references</summary>
+
 Sources: [ready projection](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/python_rag/services/hawki_indexer_worker/src/hawki_indexer_worker/application/ready_projection.py),
 [activity result](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/python_rag/services/hawki_indexer_worker/src/hawki_indexer_worker/indexing/activity_result.py),
 [manual recovery](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/app/Services/Pipeline/Recovery/PipelineRecoveryAttemptService.php),
 [direct-text recovery](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/app/Services/TextIngestion/TextIngestionRecoveryService.php).
+
+</details>

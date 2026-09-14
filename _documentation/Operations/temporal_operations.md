@@ -40,6 +40,11 @@ Do not confuse task queues with Laravel's PostgreSQL-backed application queue.
 
 ## Activity budgets and retries
 
+These activity deadlines and the five-attempt retry policy are **hard-coded in
+the current workflow implementation**. They are not dotenv controls. Workflow
+execution/run/task budgets and external HTTP/callback settings below are
+operator-configurable; changing them does not rewrite existing workflow history.
+
 | Activity | Start-to-close (one attempt) | Schedule-to-close (total, including queue/retries) | Heartbeat timeout |
 |---|---|---|---|
 | Scrape | 13 hours | 14 hours | 2 minutes |
@@ -107,6 +112,14 @@ Changing this behavior requires application code.
 Schedule upsert deletes then creates; it is not atomic. The bridge suppresses
 schedule-delete errors, so a successful delete response is not proof that a
 schedule disappeared. Verify it in Temporal.
+
+## Cancellation and source deletion
+
+The internal `/temporal/workflows/cancel` operation requests cancellation;
+acknowledgment alone is not proof that an active execution has closed.
+Direct-text deletion uses `/temporal/workflows/cancel-and-wait` to establish
+closure before removing source vectors and artifacts. Laravel exposes this
+through the [source deletion contract](../Reference/direct_text_ingestion.md#delete-a-source).
 
 ## Signed worker callbacks
 
@@ -182,9 +195,14 @@ Inspect task-queue pollers, pending activities, attempts, results, and history t
 core services. See [Monitoring](./monitoring.md) for logs and
 [Recovery](./ingestion_recovery.md) for choosing the next action.
 
+<details>
+<summary>Implementation references</summary>
+
 Sources: [workflow definitions](https://github.com/hawk-digital-environments/HAWKI-RAG/tree/main/python_rag/services/hawki_workflow_worker/src/hawki_workflow_worker/workflows),
 [Temporal contracts](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/python_rag/packages/contracts/src/hawki_rag_contracts/pipeline/temporal.py),
 [bridge client](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/python_rag/services/hawki_bridge/src/hawki_bridge/adapters/temporal_client.py),
 [bridge settings](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/python_rag/services/hawki_bridge/src/hawki_bridge/settings.py),
 [callback client](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/python_rag/packages/pipeline_callbacks/src/hawki_pipeline_callbacks/client.py),
 [signature verifier](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/app/Services/Pipeline/PipelineWorkerEventSignatureVerifier.php).
+
+</details>

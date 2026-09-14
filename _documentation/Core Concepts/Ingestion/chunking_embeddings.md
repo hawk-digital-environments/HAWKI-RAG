@@ -3,6 +3,10 @@
 A chunk is one retrievable passage. Each successfully embedded chunk becomes a
 Qdrant point containing the vector, text, and source metadata.
 
+```text
+Document → character-based chunks → embedding per chunk → Qdrant points
+```
+
 ## Chunk boundaries
 
 Current chunking is **character-based**, not token-based.
@@ -29,11 +33,15 @@ Laravel persists the dataset's embedding provider/model and sends it to the
 indexer and query bridge. Queries must use that embedding space. Equal vector
 dimensions alone do not make two models compatible.
 
+:::warning Existing collections are not fully preflighted
+
 Indexing infers dimension from returned embeddings when creating a collection.
 For an existing collection, `ensure_collection()` returns after an existence
 check: it does not compare dimension or distance. Incompatibility can therefore
 surface at upsert, after changed-document deletion. Verify the target before a
 model migration; this is a current preflight-validation gap.
+
+:::
 
 Graph-only work has no vector response from which to infer dimension, so its
 model adapter needs a known model dimension or the trusted alias-to-dimension map.
@@ -89,8 +97,13 @@ Ordinary unchanged content can bypass work after a setting change. See
 
 No automated embedding migration command is documented by this repository.
 
+<details>
+<summary>Implementation references</summary>
+
 Sources: [splitter](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/python_rag/packages/text_processing/src/hawki_rag_text/chunking.py),
 [vector preparation](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/python_rag/services/hawki_indexer_worker/src/hawki_indexer_worker/indexing/vector_prepare.py),
 [vector commit](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/python_rag/services/hawki_indexer_worker/src/hawki_indexer_worker/indexing/vector_commit.py),
 [request validation](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/python_rag/services/hawki_indexer_worker/src/hawki_indexer_worker/indexing/request.py),
 [collection client](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/python_rag/packages/vector_store/src/hawki_vector_store/client.py).
+
+</details>

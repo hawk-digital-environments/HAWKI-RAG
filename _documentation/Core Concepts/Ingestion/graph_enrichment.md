@@ -67,9 +67,16 @@ failure and preserves old facts. Successful extraction, including an empty fact
 set, can trigger replacement cleanup; a later Neo4j delete/write failure can
 leave a gap and abort indexing.
 
+:::warning Ready does not guarantee graph coverage
+
 Per-document extraction failures are collected while other documents continue.
 They do not necessarily make the source fail. A ready source does not prove all
 documents yielded facts.
+
+Check graph failures and canonical facts for the affected document; an empty
+fact set and a failed extraction are different outcomes.
+
+:::
 
 ## Graph repair and preview
 
@@ -84,7 +91,12 @@ not public REST parameters or an existing graph-repair CLI. Exact replacement
 requires scoped cleanup and rebuild; the repository does not expose a turnkey
 targeted graph repair command. See [Ingestion Recovery](../../Operations/ingestion_recovery.md).
 
+<details>
+<summary>Implementation references</summary>
+
 Sources: [graph commit](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/python_rag/services/hawki_indexer_worker/src/hawki_indexer_worker/indexing/graph_commit.py),
 [graph preparation](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/python_rag/services/hawki_indexer_worker/src/hawki_indexer_worker/indexing/graph_prepare.py),
 [RAG-Anything adapters](https://github.com/hawk-digital-environments/HAWKI-RAG/tree/main/python_rag/services/hawki_indexer_worker/src/hawki_indexer_worker/adapters/raganything),
 [batch routing](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/python_rag/services/hawki_indexer_worker/src/hawki_indexer_worker/indexing/batch_execution.py).
+
+</details>

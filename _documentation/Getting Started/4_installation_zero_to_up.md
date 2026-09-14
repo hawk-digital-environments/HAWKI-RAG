@@ -149,5 +149,10 @@ if explicit grants are enabled.
 The [MCP query-search contract](../Reference/mcp_query_search_contract.md)
 documents tool input, output, and the verified output-schema mismatch.
 
+<details>
+<summary>Implementation references</summary>
+
 Sources: [Makefile](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/Makefile), [environment template](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/.env.example),
 [Composer scripts](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/composer.json), [MCP route](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/routes/ai.php).
+
+</details>

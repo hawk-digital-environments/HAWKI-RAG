@@ -85,7 +85,7 @@ tests. The import package root owns composition/settings; it is not a business l
 
 | Service | Owns |
 |---|---|
-| [hawki_bridge](https://github.com/hawk-digital-environments/HAWKI-RAG/tree/main/python_rag/services/hawki_bridge) | Read-only data-plane bridge: query/graph reads, health, plus Temporal control |
+| [hawki_bridge](https://github.com/hawk-digital-environments/HAWKI-RAG/tree/main/python_rag/services/hawki_bridge) | Query/graph reads and health; Temporal controls; no canonical Qdrant/Neo4j ingestion writes |
 | [hawki_workflow_worker](https://github.com/hawk-digital-environments/HAWKI-RAG/tree/main/python_rag/services/hawki_workflow_worker) | Deterministic source/text workflows, queue selection, retries |
 | [hawki_scraper_worker](https://github.com/hawk-digital-environments/HAWKI-RAG/tree/main/python_rag/services/hawki_scraper_worker) | Website crawl or upload staging, raw artifacts |
 | [hawki_converter_worker](https://github.com/hawk-digital-environments/HAWKI-RAG/tree/main/python_rag/services/hawki_converter_worker) | Inspection/conversion and normalized Markdown artifacts |

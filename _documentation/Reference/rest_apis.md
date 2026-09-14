@@ -1,8 +1,9 @@
 # REST APIs
 
 Laravel is the public HTTP boundary. Its canonical JSON routes use `/api`.
-The browser uses these same routes. FastAPI is the internal read-only data-plane
-bridge, with additional Temporal control operations.
+The browser uses these same routes. FastAPI is the internal **read-only data-plane
+bridge**: it has no canonical Qdrant/Neo4j ingestion write route, but also exposes
+Temporal control operations.
 
 The local Swagger UI is at `http://localhost:8080/swagger`. It loads the
 [checked-in OpenAPI contract](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/public/swagger/openapi.yaml); some UI/internal
@@ -91,13 +92,19 @@ These routes are internal service contracts, reached through Laravel:
 | `POST /temporal/schedules/ingest` | Create/replace ingestion schedule |
 | `POST /temporal/schedules/delete` | Delete schedule |
 | `POST /temporal/workflows/cancel` | Cancel workflow |
+| `POST /temporal/workflows/cancel-and-wait` | Request cancellation and wait for closure before direct-text source deletion |
 
 The bridge has no ingestion write route to Qdrant or Neo4j. Its Temporal start
 operations dispatch durable work to activity workers. Its internal trusted
 scope is not a client credential; direct public exposure bypasses Laravel's
 authorization boundary.
 
+<details>
+<summary>Implementation references</summary>
+
 Implementation: [Laravel query validation](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/app/Http/Requests/Rag/QueryDatasetRequest.php),
 [proxy service](https://github.com/hawk-digital-environments/HAWKI-RAG/tree/main/app/Services/Rag),
 [bridge schemas](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/python_rag/services/hawki_bridge/src/hawki_bridge/http/schemas.py),
 [bridge routers](https://github.com/hawk-digital-environments/HAWKI-RAG/tree/main/python_rag/services/hawki_bridge/src/hawki_bridge/http/routers).
+
+</details>

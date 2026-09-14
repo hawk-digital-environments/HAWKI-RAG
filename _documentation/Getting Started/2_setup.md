@@ -42,10 +42,12 @@ flowchart TB
 | `make up-core-local` | Reuses images; bind-mounts the repository and development entrypoint into **Laravel**; publishes rebuilt UI assets by default | Same loopback URL |
 | `make up-core-server ENV_FILE=.env.production` | Builds images; base Compose plus any GPU override | No host Laravel port; reverse proxy on `hosting_network` |
 
-:::note Local versus local development
+:::warning Local development mounts Laravel source only
 
 All modes read `APP_ENV` and `APP_DEBUG` from the selected environment file.
 The local override does **not** mount Python source into the Python services.
+Editing Python files on the host therefore requires rebuilding and recreating
+the affected Python service before those changes run.
 
 :::
 

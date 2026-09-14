@@ -4,6 +4,15 @@ Choose checks for the boundary being changed. Unit/contract suites provide
 deterministic evidence; live smoke tests prove deployed services cooperate.
 One does not substitute for the other.
 
+| Change | Minimum relevant validation |
+|---|---|
+| Laravel request/auth | Relevant Feature/Unit tests for validation, identity, and grants |
+| Query pipeline | Bridge/query tests, including scope and fallback behavior |
+| Ingestion | Indexer tests, including incremental and partial-write behavior |
+| Graph extraction | Graph/indexer tests for scope, filtering, and failure handling |
+| Temporal workflow | Workflow compatibility tests for old/new history branches |
+| Documentation | Existing documentation build, link checks, and `git diff --check` |
+
 ## Laravel
 
 From the repository root with Composer dependencies installed:
@@ -40,8 +49,8 @@ PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 \
   uv run --frozen --no-sync pytest -c pytest.ini -m "not integration"
 ```
 
-The root [pytest configuration](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/python_rag/pytest.ini) includes all ten
-package suites, five service suites, and cross-service tests. The reranker is
+The root [pytest configuration](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/python_rag/pytest.ini) selects package,
+data-plane service, and cross-service tests. The reranker is
 intentionally separate:
 
 ```bash
@@ -59,8 +68,16 @@ Tests live beside member `src/` trees; production images omit them.
 [Python CI](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/.github/workflows/python-rag.yml) also checks Ruff formatting,
 lint, dependency boundaries, file length, lock CPU/CUDA invariants, and Compose.
 Run its exact commands when changing those concerns. From the repository root,
-`make python-lock` verifies lock invariants and `make python-deps` provisions
-the separate development environments.
+`make python-deps` provisions the separate development environments.
+
+:::note Checking versus resolving the lock
+
+Use `uv lock --check` from `python_rag` to check the committed lock without
+resolving a new one. `make python-lock` first runs `uv lock`, which can modify
+`uv.lock`, then verifies the lock and CPU/CUDA invariants. Use that target when
+intentionally maintaining dependencies, and review any lockfile diff.
+
+:::
 
 ## Live integration
 

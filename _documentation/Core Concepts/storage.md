@@ -18,7 +18,11 @@ read a `chunks.md` artifact or reconstruct chunks from PostgreSQL.
 
 A query uses the collection from trusted dataset scope and a mandatory
 `dataset_id` payload filter. The reader does not create a missing collection.
-Indexing creates/validates the collection dimension and writes its content.
+Indexing creates a missing collection using the embedding dimension and requested
+distance. An existing collection receives only an existence check, not a
+dimension/distance compatibility preflight. See the
+[embedding compatibility warning](./Ingestion/chunking_embeddings.md#embedding-compatibility-is-a-dataset-invariant)
+before replacing indexed content.
 
 Source identity, content hash, and direct-text completion information are stored
 with Qdrant payloads. Historical/application `ingested_pages` records in
@@ -62,7 +66,12 @@ command. Quiesce ingestion and coordinate snapshots operationally.
 For mismatched state, begin with
 [Ingestion Recovery](../Operations/ingestion_recovery.md), not a whole-stack reset.
 
+<details>
+<summary>Implementation references</summary>
+
 Sources: [Compose volumes](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/docker-compose.yml),
 [artifact store](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/python_rag/packages/artifact_store/src/hawki_artifact_store/local.py),
 [Qdrant state](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/python_rag/services/hawki_indexer_worker/src/hawki_indexer_worker/indexing/page_state.py),
 [graph store](https://github.com/hawk-digital-environments/HAWKI-RAG/tree/main/python_rag/packages/graph_store/src/hawki_graph_store).
+
+</details>

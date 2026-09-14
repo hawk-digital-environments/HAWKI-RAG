@@ -31,10 +31,10 @@ flowchart LR
 | **PostgreSQL = application metadata and separate Temporal persistence** | Laravel tables and Temporal-owned persistence are different responsibilities on the supplied database server |
 | **Shared storage = ingestion artifact handoff** | Raw files, normalized Markdown, metadata sidecars, and manifests |
 
-The **read-only data-plane bridge** provides query/graph reads and health. It
-also exposes Temporal start, schedule, delete-schedule, and cancellation controls.
-“Read-only” describes its Qdrant/Neo4j data routes: it has no ingestion or
-canonical store-write route.
+The **read-only data-plane bridge** has no canonical Qdrant/Neo4j ingestion
+write route; “read-only” refers to those stores. It provides query/graph reads
+and health, and also exposes Temporal start, schedule, delete-schedule, and
+cancellation controls.
 
 Laravel calls those bridge controls rather than a PHP Temporal SDK. The Python
 bridge uses the Temporal client; Python activity workers index directly
@@ -145,8 +145,13 @@ Continue with [Storage](../Core%20Concepts/storage.md) for persistence and
 isolation, or the [Repository Map](../Reference/8_repo_map.md) for implementation
 ownership and declared Python dependencies.
 
+<details>
+<summary>Implementation references</summary>
+
 Sources: [Compose](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/docker-compose.yml),
 [bridge routers](https://github.com/hawk-digital-environments/HAWKI-RAG/tree/main/python_rag/services/hawki_bridge/src/hawki_bridge/http/routers),
 [source workflow](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/python_rag/services/hawki_workflow_worker/src/hawki_workflow_worker/workflows/ingest_source.py),
 [query execution](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/python_rag/services/hawki_bridge/src/hawki_bridge/application/query/execution.py),
 [worker event service](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/app/Services/Pipeline/PipelineWorkerEventService.php).
+
+</details>

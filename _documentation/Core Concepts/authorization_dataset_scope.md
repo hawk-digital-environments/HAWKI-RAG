@@ -32,9 +32,15 @@ The environment template sets
 active datasets. With that option disabled, explicit query grants are required.
 This default never grants direct-text write access.
 
+:::warning Management routes have a separate security boundary
+
+Dataset creation, pipeline management, and storage cleanup do not inherit the
+MCP or direct-text authentication policy merely because they use `/api`.
 Protect the management surface through the deployment's network/reverse proxy
 boundary. `SANCTUM_ROUTES` is not a blanket switch that authenticates every
 management route.
+
+:::
 
 ## Grant access
 
@@ -76,9 +82,18 @@ and embedding model. That check does not query Qdrant or establish that a
 particular source is ready. The authorized dataset listing additionally checks
 collection existence; the Python query path fails when its collection is missing.
 
+:::warning Current implementation limitation: graph query flag
+
+Laravel's `AuthorizedDatasetScope::fromStorageTargets()` currently sets
+`graph_enabled=true` for every constructed query scope. This is a current
+factory limitation, not a permanent architectural requirement or a per-dataset
+graph setting.
+
 `graph_enabled` is a query capability, not evidence that optional graph
 extraction succeeded. It is distinct from source ingestion `graph` and
 `RAG_INGEST_GRAPH`; direct text always ingests with graph off.
+
+:::
 
 ## Scope cannot be overridden by query/document metadata
 
@@ -97,6 +112,9 @@ Dataset **management** is a separate boundary: its create request can supply
 storage target names. The no-override guarantee applies to query/direct-text
 metadata; it does not make the management API untrusted-client-safe.
 
+<details>
+<summary>Implementation references</summary>
+
 Sources:
 [query authorization](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/app/Services/Authorization/DatasetQueryAuthorizationService.php),
 [scope value](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/app/Services/Authorization/Values/AuthorizedDatasetScope.php),
@@ -105,3 +123,5 @@ Sources:
 [self grant](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/app/Services/Authorization/DatasetQueryGrantService.php),
 [public routes](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/routes/api.php),
 [Python scope](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/python_rag/services/hawki_bridge/src/hawki_bridge/application/query/scope.py).
+
+</details>

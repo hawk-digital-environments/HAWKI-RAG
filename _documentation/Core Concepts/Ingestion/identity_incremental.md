@@ -1,10 +1,13 @@
 # Identity & Incremental Ingestion
 
-**Source identity** asks: is this the same logical document?
-**Content hash** asks: has its normalized content changed?
+| Concept | Question it answers | Direct-text example |
+|---|---|---|
+| Source identity | Which logical document is this? | Keep the dataset and `external_document_id` across revisions |
+| Content hash | Did normalized content change? | Changed text produces a different hash |
+| Idempotency key | Is this the same submitted operation/replay? | Retry an uncertain submission with the same key and identical body |
 
-These values solve different problems. Reusing an integration request's
-idempotency key is a third concern: replaying the same operation.
+A new revision keeps source identity but uses a new idempotency key. The key
+belongs to the submission, not to the document's identity.
 
 ## Identity rules
 
@@ -69,7 +72,12 @@ See [Chunking & Embeddings](./chunking_embeddings.md#embedding-migration) for a
 safe embedding migration and [Ingestion Recovery](../../Operations/ingestion_recovery.md)
 when graph state lags vectors.
 
+<details>
+<summary>Implementation references</summary>
+
 Sources: [incremental planner](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/python_rag/services/hawki_indexer_worker/src/hawki_indexer_worker/indexing/incremental.py),
 [page state](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/python_rag/services/hawki_indexer_worker/src/hawki_indexer_worker/indexing/page_state.py),
 [point identity](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/python_rag/services/hawki_indexer_worker/src/hawki_indexer_worker/indexing/point_identity.py),
 [text artifact storage](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/app/Services/TextIngestion/TextIngestionArtifactStorage.php).
+
+</details>

@@ -24,10 +24,22 @@ evidence and a [smoke test](../Getting%20Started/2_setup.md#direct-text-smoke-te
 
 ## Follow one ingestion
 
-Keep the returned `task_id`, `job_id`, `source_id`, and `workflow_id`.
-Match the workflow to its Temporal run/activity/attempt and signed callback event.
-Then compare the source's projected `index_status` with Qdrant content and,
-when relevant, Neo4j facts.
+1. Capture `task_id`, `job_id`, and `source_id`. Direct-text acceptance also
+   returns `workflow_id`; Laravel job records use `temporal_workflow_id` and
+   `temporal_run_id` for execution correlation.
+2. Inspect `GET /api/pipeline/tasks/{taskId}` for projected task/job/source state,
+   including `index_status` and `ready_at`. Record the last reported stage.
+3. Open that workflow and run in Temporal. Inspect its result, pending activity,
+   task queue, retry attempt, and terminal callback history.
+4. Read logs from the worker that owns the failing activity. Match workflow/run
+   and source identifiers; retain the callback `event_id` when diagnosing delivery.
+5. Check the dataset's Qdrant collection and source/document payloads. Verify
+   expected chunk coverage; for direct text, inspect completion state as well.
+6. When graph ingestion was enabled or required, check canonical Neo4j facts
+   using the dataset ID, namespace, and document provenance. A monitor preview
+   alone is insufficient.
+7. Use [Ingestion Recovery](./ingestion_recovery.md#diagnose-by-completed-boundary)
+   to choose a retry or targeted repair at the last completed boundary.
 
 Read bounded logs before restarting:
 
@@ -61,13 +73,25 @@ document.
 
 ## Logging boundaries
 
+The supplied repository provides health/status endpoints, Temporal history,
+container logs, request IDs, and bounded event-logging helpers. It does **not**
+configure an application Prometheus metrics endpoint/scraper, OpenTelemetry
+tracing/exporter, or centralized log collector. Infrastructure services may
+have their own telemetry capabilities; those are not an integrated observability
+pipeline in this Compose stack. Correlate identifiers across the surfaces above.
+
 Python's observability utilities redact common secret keys and bound log values.
 The bridge carries request IDs and returns categorized HTTP failures. This does
 not make every log content-free: exception paths and Laravel MCP logging can
 include query text and backend details. Limit log access and avoid putting
 credentials into queries, metadata, or source URLs.
 
+<details>
+<summary>Implementation references</summary>
+
 Implementation: [monitor service](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/app/Services/Rag/RagMonitorService.php),
 [artifact reader](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/app/Services/Rag/RagMonitorArtifactReader.php),
 [worker events](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/app/Services/Pipeline/PipelineWorkerEventService.php),
 [observability package](https://github.com/hawk-digital-environments/HAWKI-RAG/tree/main/python_rag/packages/observability).
+
+</details>

@@ -5,6 +5,9 @@ without a crawler or file converter. Laravel stores immutable artifacts and
 starts `IngestTextWorkflow`; the indexer writes Qdrant and reports readiness.
 This path always sets graph ingestion to false.
 
+See [Authorization & Dataset Scope](../Core%20Concepts/authorization_dataset_scope.md)
+for the token, dataset-grant, and trusted storage boundaries.
+
 ## Prepare a dataset and token
 
 Complete [Installation](../Getting%20Started/4_installation_zero_to_up.md) first.
@@ -12,6 +15,14 @@ You need Laravel, the bridge, Temporal, workflow/indexer workers, shared storage
 Qdrant, and the dataset's embedding runtime.
 
 For a local smoke test, create dataset metadata through the management API:
+
+:::note Dataset creation is a management operation
+
+The following command uses the locally protected management surface. Dataset
+creation has its own [security boundary](../Core%20Concepts/authorization_dataset_scope.md#access-boundaries);
+the ingestion token does not establish a management authorization policy.
+
+:::
 
 ```bash
 curl --fail-with-body http://localhost:8080/api/datasets \
@@ -165,6 +176,8 @@ and artifacts, and retains its audit record as `deleted`. It returns 200 with
 `replayed`. Repeated deletion is supported. A workflow whose start cannot yet
 be confirmed may produce a 409 busy result; deletion failures use 502.
 A deleted source can be ingested again with a new idempotency key.
+Replaying the old ingestion key returns recorded state and does not resurrect
+the deleted source.
 
 ## Error guide
 
@@ -179,9 +192,14 @@ A deleted source can be ingested again with a new idempotency key.
 | 502 | Workflow start cannot be confirmed, or deletion fails |
 | 429 | Operation throttle |
 
+<details>
+<summary>Implementation references</summary>
+
 Implementation: [request validation](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/app/Http/Requests/Integration/IngestTextRequest.php),
 [service](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/app/Services/TextIngestion/TextIngestionService.php),
 [deletion](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/app/Services/TextIngestion/TextIngestionDeletionService.php),
 [workflow](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/python_rag/services/hawki_workflow_worker/src/hawki_workflow_worker/workflows/ingest_text.py),
 [API tests](https://github.com/hawk-digital-environments/HAWKI-RAG/tree/main/tests/Feature/Integration),
 [live test](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/python_rag/tests/end_to_end/integration/test_direct_text_ingestion.py).
+
+</details>

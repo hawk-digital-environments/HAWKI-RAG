@@ -43,6 +43,14 @@ to mirror this table.
 These are architectural constraints, not a claim of per-container secret
 isolation: current Compose uses shared dotenv injection.
 
+### Concrete examples
+
+| Do | Do not | Why |
+|---|---|---|
+| Keep query ordering in `hawki_bridge/application/query` | Move bridge-specific orchestration to a shared package merely to shorten files | The bridge owns retrieval policy; packages supply reusable primitives |
+| Let Laravel construct `AuthorizedDatasetScope` | Let user query/document metadata select a Qdrant collection or Neo4j namespace | Trusted scope must come from the authorized dataset |
+| Let an activity call the indexer's application code and emit signed status events | Add canonical ingestion writes to the bridge or update Laravel tables from Python | Store writes and application projections have separate owners |
+
 ## Change contracts deliberately
 
 For HTTP, update request validation, the consumer, contract tests, and relevant

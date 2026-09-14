@@ -19,6 +19,17 @@ Keep a WSL checkout in its Linux filesystem for source-mount performance.
 Developers running tools outside containers should consult
 [Testing](../Developer/testing.md) for the locked Python workspace.
 
+Verify the host tools before installation:
+
+```bash
+docker --version
+docker compose version
+make --version
+```
+
+The `!override` requirement comes specifically from `networks` in
+`docker-compose.local.yml`; it matters when selecting local development mode.
+
 ## Hardware planning
 
 The repository does **not** establish a tested minimum hardware specification or
@@ -62,7 +73,7 @@ These do **not** need to be free on the host.
 | Temporal | `temporal:7233` |
 | Qdrant HTTP | `qdrant:6333` |
 | Neo4j HTTP / Bolt | `hawki_rag_neo4j:7474` / `hawki_rag_neo4j:7687` |
-| Read-only data-plane bridge | `hawki_rag_bridge:80` |
+| Query / Temporal-control bridge | `hawki_rag_bridge:80` |
 | Reranker / Ollama | `hawki_rag_rerank:80` / `hawki_ollama:11434` |
 | Optional LiteLLM / Temporal UI | `litellm:4000` / `temporal-ui:8080` |
 | External crawler | `crawl4ai-service:80` |
@@ -78,8 +89,13 @@ The external tools must share the expected network and artifact volume.
 [Installation](./4_installation_zero_to_up.md) explains first startup;
 [Run HAWKI RAG](./2_setup.md#external-tools) covers the sibling-tool commands.
 
+<details>
+<summary>Implementation references</summary>
+
 Sources: [Makefile](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/Makefile),
 [base Compose](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/docker-compose.yml),
 [UI override](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/docker-compose.ui.yml),
 [development override](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/docker-compose.local.yml),
 [GPU override](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/docker-compose-gpu-override.yml).
+
+</details>

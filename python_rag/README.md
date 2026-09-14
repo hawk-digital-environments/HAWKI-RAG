@@ -1,12 +1,13 @@
 # HAWKI RAG Python workspace
 
-One Python **3.13.14** uv workspace and one lockfile contain six production
-service roles and ten reusable packages. Laravel owns public authorization and
-application PostgreSQL records. Python performs RAG work and reports application
-state through signed callbacks.
+This Python **3.13.14** uv workspace contains the RAG services and reusable
+packages, managed by [pyproject.toml](pyproject.toml) and one [lockfile](uv.lock).
+It owns Python retrieval and ingestion implementation, not Laravel's public
+authorization or application records.
 
-Start with [runtime architecture](../_documentation/Getting%20Started/3_introduction_architecture.md)
-and the [workspace dependency map](../_documentation/Reference/8_repo_map.md#actual-workspace-dependencies).
+The handbook is authoritative for
+[runtime architecture](../_documentation/Getting%20Started/3_introduction_architecture.md)
+and [workspace dependencies](../_documentation/Reference/8_repo_map.md#actual-workspace-dependencies).
 
 | Concern | Documentation owner |
 |---|---|
@@ -19,12 +20,17 @@ and the [workspace dependency map](../_documentation/Reference/8_repo_map.md#act
 | Live integration tests | [Test README](tests/README.md) |
 | Ownership rules | [Architecture Rules](../_documentation/Developer/architecture_rules.md) |
 
-The bridge is a read-only data-plane bridge with query/graph reads and health,
-plus Temporal control operations. It has no Qdrant/Neo4j ingestion write route.
-The indexer calls its application logic directly. Python does not issue SQL
-against Laravel tables; current Compose still injects shared dotenv variables,
-including database credentials, into Python containers.
+## Local development
 
-Production images include allowlisted member source and exclude tests/caches.
-Local mode mounts Laravel source only. CPU/GPU variants remain the same service
-roles; reranker and indexer model dependencies require separate uv environments.
+From the repository root, `make python-deps` provisions the data-plane and
+separate reranker environments. From this directory, `uv lock --check` checks
+the committed lock. Follow [Testing](../_documentation/Developer/testing.md#python-workspace)
+for the exact sync and focused test commands.
+
+There is no single workspace server entrypoint. Each member declares its command
+in `services/<member>/pyproject.toml`; implementations live under that member's
+`src/`, with tests beside it in `tests/`. Cross-service tests live in
+[tests/](tests/README.md).
+
+For container development and Python image rebuilds, use
+[Run HAWKI RAG](../_documentation/Getting%20Started/2_setup.md#choose-a-startup-mode).

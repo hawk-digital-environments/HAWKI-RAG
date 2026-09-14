@@ -147,6 +147,10 @@ collection selector for authorized queries. Dataset scope owns that selection.
 `NEO4J_USERNAME` is a COMPATIBILITY fallback; prefer `NEO4J_USER`.
 The graph driver consumes `NEO4J_URI`, not the commented `NEO4J_BOLT_URL`.
 
+Before changing collection/model settings, read the
+[existing-collection preflight limitation](../Core%20Concepts/Ingestion/chunking_embeddings.md#embedding-compatibility-is-a-dataset-invariant).
+An existence check does not establish compatible vector dimensions or distance.
+
 ## Model providers and embeddings
 
 | Variable | Template default | Read by | Change when | Restart? | Data impact |
@@ -290,8 +294,13 @@ Web search is separate from dataset retrieval: `WEB_SEARCH_PROVIDER=tavily`
 needs `TAVILY_SEARCH_API_KEY`; selecting Brave needs `BRAVE_SEARCH_API_KEY`.
 Empty web-search keys do not disable local RAG.
 
+<details>
+<summary>Implementation references</summary>
+
 Implementation owners: [Laravel config](https://github.com/hawk-digital-environments/HAWKI-RAG/tree/main/config),
 [model settings](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/config/model_providers.php),
 [bridge settings](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/python_rag/services/hawki_bridge/src/hawki_bridge/settings.py),
 [query tuning](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/python_rag/services/hawki_bridge/src/hawki_bridge/application/query/settings.py),
 [Neo4j settings](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/python_rag/packages/graph_store/src/hawki_graph_store/settings.py).
+
+</details>

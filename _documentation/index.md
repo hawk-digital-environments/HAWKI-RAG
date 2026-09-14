@@ -93,8 +93,8 @@ to verify ingestion and retrieval.
 
 **Getting Started** takes you from prerequisites to daily use. **Core Concepts**
 explains behavior and storage boundaries. **Operations** covers configuration,
-Temporal, diagnostics, and recovery. **API & Integration Reference** owns wire
-contracts. **Developer Guide** maps code, dependencies, tests, and architecture rules.
+Temporal, diagnostics, and recovery. **Reference** owns wire contracts and the
+repository map. **Developer** covers tests and architecture rules.
 
 Examples describe this checkout. Environment defaults mean the supplied
 `.env.example` unless a page explicitly identifies a code fallback.
