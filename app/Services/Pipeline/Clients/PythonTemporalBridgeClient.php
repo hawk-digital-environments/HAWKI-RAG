@@ -151,6 +151,21 @@ readonly class PythonTemporalBridgeClient
         ]);
     }
 
+    public function cancelWorkflowAndWait(string $workflowId, ?string $runId = null): void
+    {
+        $this->ensureEnabled();
+
+        $this->post('/temporal/workflows/cancel-and-wait', [
+            'workflow_id' => $workflowId,
+            'run_id' => $runId,
+        ]);
+
+        $this->logger->info('Temporal ingest workflow stopped before deletion.', [
+            'workflow_id' => $workflowId,
+            'run_id' => $runId,
+        ]);
+    }
+
     /**
      * @param  array<string, mixed>  $payload
      * @return array<string, mixed>

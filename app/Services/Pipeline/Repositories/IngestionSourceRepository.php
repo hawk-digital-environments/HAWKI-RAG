@@ -144,6 +144,71 @@ readonly class IngestionSourceRepository
         return $source->refresh();
     }
 
+    public function markDeletionRequested(
+        IngestionSource $source,
+        string $idempotencyHash,
+        Carbon $requestedAt,
+        bool $workflowClosed,
+    ): IngestionSource {
+        $metadata = is_array($source->metadata) ? $source->metadata : [];
+        $deletion = is_array($metadata['text_deletion'] ?? null)
+            ? $metadata['text_deletion']
+            : [];
+        $metadata['text_deletion'] = [
+            ...$deletion,
+            'status' => IngestionSource::STATUS_DELETING,
+            'idempotency_hash' => $idempotencyHash,
+            'requested_at' => $requestedAt->toAtomString(),
+            'workflow_closed' => $workflowClosed,
+        ];
+
+        $source->forceFill([
+            'index_status' => IngestionSource::STATUS_DELETING,
+            'metadata' => $metadata,
+        ])->save();
+
+        return $source->refresh();
+    }
+
+    public function markDeletionWorkflowClosed(IngestionSource $source): IngestionSource
+    {
+        $metadata = is_array($source->metadata) ? $source->metadata : [];
+        $deletion = is_array($metadata['text_deletion'] ?? null)
+            ? $metadata['text_deletion']
+            : [];
+        $metadata['text_deletion'] = [
+            ...$deletion,
+            'workflow_closed' => true,
+        ];
+
+        $source->forceFill(['metadata' => $metadata])->save();
+
+        return $source->refresh();
+    }
+
+    public function markDeleted(IngestionSource $source, Carbon $deletedAt): IngestionSource
+    {
+        $metadata = is_array($source->metadata) ? $source->metadata : [];
+        $deletion = is_array($metadata['text_deletion'] ?? null)
+            ? $metadata['text_deletion']
+            : [];
+        $metadata['text_deletion'] = [
+            ...$deletion,
+            'status' => IngestionSource::STATUS_DELETED,
+            'deleted_at' => $deletedAt->toAtomString(),
+        ];
+
+        $source->forceFill([
+            'index_status' => IngestionSource::STATUS_DELETED,
+            'markdown_storage_path' => null,
+            'raw_storage_path' => null,
+            'ready_at' => null,
+            'metadata' => $metadata,
+        ])->save();
+
+        return $source->refresh();
+    }
+
     /**
      * @param  array{event_id:string,producer:string,stage:string,phase:string,status:string,occurred_at:string,workflow_id:string,run_id:string,attempt:int}  $workerEvent
      */

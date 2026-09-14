@@ -96,4 +96,14 @@ final class TextIngestionIdentifierFactoryTest extends TestCase
             $this->identifiers->workflowId($taskId),
         );
     }
+
+    public function test_document_id_matches_the_python_direct_text_identity(): void
+    {
+        $sourceId = 'source_0123456789abcdef0123456789abcdef';
+
+        self::assertSame(
+            'doc_cf31c8c5475f2b56eb57e7f037317d26f330cd48',
+            $this->identifiers->documentId($sourceId),
+        );
+    }
 }

@@ -21,6 +21,7 @@ use App\Http\Controllers\Health\PipelineHealthController;
 use App\Http\Controllers\Health\RagHealthController;
 use App\Http\Controllers\Health\RagMonitorController;
 use App\Http\Controllers\Integration\TextIngestionController;
+use App\Http\Controllers\Integration\TextIngestionDeletionController;
 use App\Http\Controllers\Pipeline\PipelineWorkerEventController;
 use App\Http\Controllers\PipelineControlController;
 use App\Http\Controllers\PipelineRecoveryController;
@@ -85,6 +86,13 @@ Route::post('/integrations/text-ingestions', TextIngestionController::class)
         RequireTextIngestionToken::class,
         'throttle:hawki-upload',
         LimitTextIngestionRequestSize::class,
+    ]);
+Route::delete('/integrations/text-ingestions/{sourceId}', TextIngestionDeletionController::class)
+    ->where('sourceId', 'source_[0-9a-f]{32}')
+    ->middleware([
+        'auth:sanctum',
+        RequireTextIngestionToken::class,
+        'throttle:hawki-destructive',
     ]);
 
 /*

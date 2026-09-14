@@ -158,6 +158,22 @@ TEMPORAL_ROUTE_CASES = [
         },
         expected_response={"ok": True},
     ),
+    _TemporalRouteCase(
+        name="cancel-workflow-and-wait",
+        path="/temporal/workflows/cancel-and-wait",
+        payload={
+            "workflow_id": "ingest-dataset-a",
+            "run_id": "run-ingest-dataset-a",
+        },
+        required_field="workflow_id",
+        operation="cancel_and_wait",
+        expected_call={
+            "workflow_id": "ingest-dataset-a",
+            "run_id": "run-ingest-dataset-a",
+        },
+        expected_response={"ok": True},
+        public_error="Temporal workflow could not be stopped before deletion.",
+    ),
 ]
 
 
@@ -242,6 +258,17 @@ class _FakeTemporalBridgeClient:
     ) -> None:
         self._record(
             "cancel",
+            {"workflow_id": workflow_id, "run_id": run_id},
+        )
+
+    async def cancel_workflow_and_wait(
+        self,
+        *,
+        workflow_id: str,
+        run_id: str | None = None,
+    ) -> None:
+        self._record(
+            "cancel_and_wait",
             {"workflow_id": workflow_id, "run_id": run_id},
         )
 

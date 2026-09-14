@@ -131,6 +131,20 @@ readonly class PipelineRecoveryAttemptService
                 ];
             }
 
+            $source = $this->ingestionSources->lockBySourceId($locked->source_id);
+            if (
+                $source
+                && $this->textIngestionRecovery->supports($locked, $source)
+                && $this->textIngestionRecovery->isDeletionTombstone($source)
+            ) {
+                return [
+                    'result' => 'skipped',
+                    'jobId' => $locked->job_id,
+                    'taskId' => $locked->task_id,
+                    'message' => 'Deleted direct-text ingestions cannot be recovered.',
+                ];
+            }
+
             $metadata = is_array($locked->metadata) ? $locked->metadata : [];
             $retryCount = (int) ($metadata['retry_count'] ?? 0) + 1;
             $recoveryEvent = $this->metadata->recoveryEvent($locked, $scope, $scopeId, $retryCount);
@@ -158,6 +172,13 @@ readonly class PipelineRecoveryAttemptService
         $source = $this->ingestionSources->findBySourceId((string) $job->source_id);
         if (! $source) {
             throw new \RuntimeException("Ingestion source {$job->source_id} was not found.");
+        }
+
+        if (
+            $this->textIngestionRecovery->supports($job, $source)
+            && $this->textIngestionRecovery->isDeletionTombstone($source)
+        ) {
+            throw new \RuntimeException('Deleted direct-text ingestions cannot be recovered.');
         }
 
         $source = $this->ingestionSources->upsertStarting($source->source_id, [

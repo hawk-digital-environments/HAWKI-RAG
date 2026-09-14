@@ -140,6 +140,68 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/TextIngestionError"
+  /integrations/text-ingestions/{source_id}:
+    delete:
+      tags:
+        - Integrations
+      summary: Delete a direct-text ingestion
+      description: |
+        Deletes the source's vectors from its dataset-owned Qdrant collection
+        and removes its immutable shared-storage artifacts. Audit records remain
+        in Laravel with a `deleted` source status.
+
+        The same Sanctum token and dataset-level `ingest` grant required for
+        direct ingestion are required here. If ingestion is still active,
+        RAWKI waits for Temporal cancellation before deleting vectors so a late
+        index activity cannot recreate them. Repeating the request is safe.
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: source_id
+          required: true
+          schema:
+            type: string
+            pattern: "^source_[0-9a-f]{32}$"
+          description: Source ID returned by the direct-text ingestion endpoint.
+        - in: header
+          name: Idempotency-Key
+          required: true
+          schema:
+            type: string
+            maxLength: 191
+            pattern: "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+      responses:
+        "200":
+          description: The source was deleted or had already been deleted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TextIngestionDeletionResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: The source is unavailable or the token principal has no dataset ingestion grant.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TextIngestionError"
+        "409":
+          description: Temporal startup is still unconfirmed; retry the deletion after startup resolves.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TextIngestionError"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "502":
+          description: Temporal, Qdrant, or artifact cleanup could not be confirmed. Retry with the same idempotency key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TextIngestionError"
   /datasets:
     get:
       tags:
@@ -1643,6 +1705,27 @@ components:
           nullable: true
         status:
           type: string
+        replayed:
+          type: boolean
+    TextIngestionDeletionResponse:
+      type: object
+      required:
+        - source_id
+        - dataset_id
+        - status
+        - deleted
+        - replayed
+      properties:
+        source_id:
+          type: string
+        dataset_id:
+          type: string
+        status:
+          type: string
+          enum:
+            - deleted
+        deleted:
+          type: boolean
         replayed:
           type: boolean
     TextIngestionError:

@@ -179,6 +179,43 @@ final readonly class TextIngestionArtifactStorage
         $this->files->delete($this->reconciliationMarkerPath($artifact));
     }
 
+    public function deleteSourceArtifacts(string $sourceId): void
+    {
+        if (preg_match('/\Asource_[0-9a-f]{32}\z/', $sourceId) !== 1) {
+            throw TextIngestionStorageException::couldNotStore(
+                $sourceId,
+                new \InvalidArgumentException('The direct-text source ID is invalid.'),
+            );
+        }
+
+        $sourcesDirectory = $this->sharedRoot().DIRECTORY_SEPARATOR.'sources';
+        $sourceDirectory = $sourcesDirectory.DIRECTORY_SEPARATOR.$sourceId;
+        if (! $this->files->exists($sourceDirectory)) {
+            return;
+        }
+
+        $resolvedSources = realpath($sourcesDirectory);
+        $resolvedSource = realpath($sourceDirectory);
+        if (
+            $resolvedSources === false
+            || $resolvedSource === false
+            || ! str_starts_with($resolvedSource, $resolvedSources.DIRECTORY_SEPARATOR)
+            || is_link($sourceDirectory)
+        ) {
+            throw TextIngestionStorageException::couldNotStore(
+                $sourceDirectory,
+                new \RuntimeException('The direct-text artifact path is outside shared storage.'),
+            );
+        }
+
+        if (! $this->files->deleteDirectory($sourceDirectory)) {
+            throw TextIngestionStorageException::couldNotStore(
+                $sourceDirectory,
+                new \RuntimeException('The direct-text artifact directory could not be deleted.'),
+            );
+        }
+    }
+
     private function ensureSharedDirectory(string $path): void
     {
         $this->files->ensureDirectoryExists($path, self::SHARED_DIRECTORY_MODE);

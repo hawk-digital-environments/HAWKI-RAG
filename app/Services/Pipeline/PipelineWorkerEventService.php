@@ -92,6 +92,15 @@ readonly class PipelineWorkerEventService
 
         $this->ensureMatchingTarget($event, $job, $source, $taskId, (string) $task->dataset_id);
 
+        if (in_array($source->index_status, [
+            IngestionSource::STATUS_DELETING,
+            IngestionSource::STATUS_DELETED,
+        ], true)) {
+            $this->events->markProcessed($record, $this->now());
+
+            return $this->receipt($event, duplicate: false, ignored: true);
+        }
+
         $existingStage = $this->stageStates->findForJobStage($event->jobId, $event->stage->value);
         $processedAt = $this->now();
         $laterStage = $this->furthestLaterStageForRun($event);

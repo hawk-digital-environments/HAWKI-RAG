@@ -37,4 +37,13 @@ final readonly class TextIngestionIdentifierFactory
             32,
         );
     }
+
+    public function documentId(string $sourceId): string
+    {
+        return 'doc_'.substr(
+            hash('sha256', $sourceId.'|document.md'),
+            0,
+            40,
+        );
+    }
 }

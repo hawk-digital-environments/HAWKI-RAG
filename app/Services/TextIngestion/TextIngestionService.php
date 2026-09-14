@@ -125,8 +125,9 @@ use Symfony\Component\Clock\Clock;
  *
  * What does "replay" mean?
  *
- * If the source is already ready, the service does not contact Temporal again.
- * For every non-ready state, it asks the bridge to resolve the deterministic
+ * If the source is already ready, deleting, or deleted, the service does not
+ * contact Temporal again. A deleted source can be ingested again with a new
+ * idempotency key. For every other state, the bridge resolves the deterministic
  * workflow so an active run is reused and a failed run can restart.
  * ==========================================================================
  * Why is the Temporal workflow ID deterministic?
@@ -322,7 +323,10 @@ final readonly class TextIngestionService
         $source = $this->sources->lockBySourceId($sourceId);
         if (
             $source
-            && $source->index_status === IngestionSource::STATUS_RUNNING
+            && in_array($source->index_status, [
+                IngestionSource::STATUS_RUNNING,
+                IngestionSource::STATUS_DELETING,
+            ], true)
             && ! hash_equals((string) $source->task_id, $taskId)
         ) {
             throw TextIngestionSourceBusyException::forSource($sourceId);
@@ -366,8 +370,12 @@ final readonly class TextIngestionService
         if (! $source) {
             throw TextIngestionIdempotencyException::incompleteSource((string) $job->source_id);
         }
-        if ($source->index_status === IngestionSource::STATUS_READY) {
-            return $this->replayedResult($task, $job, $source);
+        if (in_array($source->index_status, [
+            IngestionSource::STATUS_READY,
+            IngestionSource::STATUS_DELETING,
+            IngestionSource::STATUS_DELETED,
+        ], true)) {
+            return $this->replayedResult($task, $job, $source, (string) $source->index_status);
         }
 
         $artifact = $this->fingerprints->isCurrent($taskMetadata)
@@ -487,13 +495,14 @@ final readonly class TextIngestionService
         PipelineTask $task,
         PipelineJob $job,
         IngestionSource $source,
+        string $status = IngestionSource::STATUS_READY,
     ): TextIngestionResult {
         return TextIngestionResult::replayed(
             $task->task_id,
             $job->job_id,
             (string) $job->source_id,
             $job->temporal_workflow_id ?: $source->temporal_workflow_id,
-            IngestionSource::STATUS_READY,
+            $status,
         );
     }
 

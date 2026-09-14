@@ -98,6 +98,21 @@ def build_temporal_router(
             logger.exception("temporal:cancel failed")
             raise HTTPException(status_code=502, detail=str(exc)) from exc
 
+    @router.post("/workflows/cancel-and-wait")
+    async def cancel_and_wait(body: CancelWorkflowRequest) -> dict[str, bool]:
+        try:
+            await client().cancel_workflow_and_wait(
+                workflow_id=body.workflow_id,
+                run_id=body.run_id,
+            )
+            return {"ok": True}
+        except Exception as exc:
+            logger.exception("temporal:cancel_wait failed")
+            raise HTTPException(
+                status_code=502,
+                detail="Temporal workflow could not be stopped before deletion.",
+            ) from exc
+
     return router
 
 

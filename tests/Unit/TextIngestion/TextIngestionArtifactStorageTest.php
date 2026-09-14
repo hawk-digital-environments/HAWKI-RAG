@@ -210,6 +210,38 @@ final class TextIngestionArtifactStorageTest extends TestCase
         self::assertFileExists($artifact->markdownPath);
     }
 
+    public function test_it_deletes_only_the_requested_source_artifacts(): void
+    {
+        $storage = $this->storage();
+        $first = $storage->store(TextIngestionInput::fromValidated([
+            'external_document_id' => 'document-delete-one',
+            'dataset_id' => 'default',
+            'text' => 'Delete this artifact.',
+            'content_format' => 'plain_text',
+        ]));
+        $second = $storage->store(TextIngestionInput::fromValidated([
+            'external_document_id' => 'document-keep-two',
+            'dataset_id' => 'default',
+            'text' => 'Keep this artifact.',
+            'content_format' => 'plain_text',
+        ]));
+
+        $storage->deleteSourceArtifacts($first->sourceId);
+        $storage->deleteSourceArtifacts($first->sourceId);
+
+        self::assertDirectoryDoesNotExist(
+            dirname(dirname(dirname(dirname($first->markdownPath)))),
+        );
+        self::assertFileExists($second->markdownPath);
+    }
+
+    public function test_it_rejects_an_untrusted_source_path(): void
+    {
+        $this->expectException(TextIngestionStorageException::class);
+
+        $this->storage()->deleteSourceArtifacts('../outside');
+    }
+
     private function storage(): TextIngestionArtifactStorage
     {
         return new TextIngestionArtifactStorage(

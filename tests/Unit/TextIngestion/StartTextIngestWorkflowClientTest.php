@@ -71,4 +71,29 @@ final class StartTextIngestWorkflowClientTest extends TestCase
             'expected-workflow',
         );
     }
+
+    public function test_it_waits_for_workflow_cancellation_before_deletion(): void
+    {
+        config()->set([
+            'temporal.enabled' => true,
+            'config.hawki_rag_bridge_url' => 'http://bridge.test',
+        ]);
+        Http::fake([
+            'http://bridge.test/temporal/workflows/cancel-and-wait' => Http::response([
+                'ok' => true,
+            ]),
+        ]);
+
+        app(PythonTemporalBridgeClient::class)->cancelWorkflowAndWait(
+            'ingest-text-workflow-123',
+            'run-123',
+        );
+
+        Http::assertSent(static fn (Request $request): bool => $request->method() === 'POST'
+            && $request->url() === 'http://bridge.test/temporal/workflows/cancel-and-wait'
+            && $request->data() === [
+                'workflow_id' => 'ingest-text-workflow-123',
+                'run_id' => 'run-123',
+            ]);
+    }
 }

@@ -68,6 +68,13 @@ execution. A closed failed execution can be started again so its idempotent inde
 writes and terminal callback can finish; a completed execution is never started
 again under that ID.
 
+Delete one direct-text source with
+`DELETE /api/integrations/text-ingestions/{source_id}` and a new
+`Idempotency-Key`. The same token ability and dataset grant apply. RAWKI waits
+for an active ingestion workflow to stop, deletes only that source's Qdrant
+points and shared artifacts, and keeps the Laravel audit records with source
+status `deleted`. Repeating the delete is safe.
+
 Provider, embedding model, Qdrant collection, and Neo4j namespace are rejected
 as caller inputs and resolved from the selected dataset. If artifact storage
 succeeds but relational persistence rolls back,

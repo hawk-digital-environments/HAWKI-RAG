@@ -91,6 +91,23 @@ final class DirectTextIngestionRecoveryTest extends TestCase
         $this->assertSame(PipelineJob::STATUS_RUNNING, $job->refresh()->status);
     }
 
+    public function test_task_retry_does_not_restart_a_deleted_direct_text_source(): void
+    {
+        [$task, $job, $source] = $this->failedDirectTextIngestion();
+        $source->forceFill([
+            'index_status' => IngestionSource::STATUS_DELETED,
+            'metadata' => array_merge($source->metadata ?? [], [
+                'text_deletion' => ['status' => IngestionSource::STATUS_DELETED],
+            ]),
+        ])->save();
+
+        app(PipelineTaskRetryService::class)->retryFailedJobs($task->task_id);
+
+        Http::assertNothingSent();
+        $this->assertSame(IngestionSource::STATUS_DELETED, $source->refresh()->index_status);
+        $this->assertSame(PipelineJob::STATUS_FAILED, $job->refresh()->status);
+    }
+
     public function test_recovery_routes_direct_text_callback_failure_to_text_workflow(): void
     {
         [$task, $job, $source] = $this->failedDirectTextIngestion();
@@ -131,6 +148,28 @@ final class DirectTextIngestionRecoveryTest extends TestCase
             $request->url(),
             '/temporal/workflows/ingest',
         ));
+    }
+
+    public function test_recovery_skips_a_deleted_direct_text_source(): void
+    {
+        [, $job, $source] = $this->failedDirectTextIngestion();
+        $source->forceFill([
+            'index_status' => IngestionSource::STATUS_DELETED,
+            'metadata' => array_merge($source->metadata ?? [], [
+                'text_deletion' => ['status' => IngestionSource::STATUS_DELETED],
+            ]),
+        ])->save();
+
+        $result = app(PipelineRecoveryAttemptService::class)->retry(
+            $job,
+            'job',
+            $job->job_id,
+        );
+
+        $this->assertSame('skipped', $result['result']);
+        Http::assertNothingSent();
+        $this->assertSame(IngestionSource::STATUS_DELETED, $source->refresh()->index_status);
+        $this->assertSame(PipelineJob::STATUS_FAILED, $job->refresh()->status);
     }
 
     /**

@@ -31,6 +31,14 @@ final readonly class TextIngestionRecoveryService
         );
     }
 
+    public function isDeletionTombstone(IngestionSource $source): bool
+    {
+        return in_array($source->index_status, [
+            IngestionSource::STATUS_DELETING,
+            IngestionSource::STATUS_DELETED,
+        ], true);
+    }
+
     public function startOrReuse(
         PipelineTask $task,
         PipelineJob $job,

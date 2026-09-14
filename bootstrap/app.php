@@ -2,6 +2,7 @@
 
 use App\Http\Middleware\RequireBrowserQueryPrincipal;
 use App\Http\Middleware\SecurityHeaders;
+use App\Services\TextIngestion\Exceptions\TextIngestionDeletionException;
 use App\Services\TextIngestion\Exceptions\TextIngestionIdempotencyException;
 use App\Services\TextIngestion\Exceptions\TextIngestionSourceBusyException;
 use App\Services\TextIngestion\Exceptions\TextIngestionWorkflowStartException;
@@ -55,6 +56,12 @@ return Application::configure(basePath: dirname(__DIR__))
         $exceptions->render(
             fn (TextIngestionWorkflowStartException $exception): JsonResponse => response()->json([
                 'error' => 'text_ingestion_workflow_unconfirmed',
+                'message' => $exception->getMessage(),
+            ], 502),
+        );
+        $exceptions->render(
+            fn (TextIngestionDeletionException $exception): JsonResponse => response()->json([
+                'error' => 'text_ingestion_deletion_failed',
                 'message' => $exception->getMessage(),
             ], 502),
         );

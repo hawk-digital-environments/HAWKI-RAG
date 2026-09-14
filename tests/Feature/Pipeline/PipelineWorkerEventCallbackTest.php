@@ -721,6 +721,38 @@ final class PipelineWorkerEventCallbackTest extends TestCase
         $this->assertSame('Graph extraction timed out.', $reader->graphFailures(5)[0]['error']);
     }
 
+    public function test_worker_events_cannot_restore_a_source_being_deleted(): void
+    {
+        $execution = $this->createExecution();
+        $execution['source']->forceFill([
+            'index_status' => IngestionSource::STATUS_DELETING,
+            'metadata' => [
+                'ingestion_mode' => TextIngestionMode::DirectText->value,
+                'text_deletion' => ['status' => IngestionSource::STATUS_DELETING],
+            ],
+        ])->save();
+
+        $this->sendEvent($this->event([
+            'event_id' => 'evt_ready_during_deletion',
+            'producer' => 'indexer',
+            'activity_id' => 'mark_source_ready',
+            'stage' => 'ingest',
+            'phase' => 'mark_source_ready',
+            'status' => 'completed',
+            'counts' => ['total' => 1, 'processed' => 1, 'failed' => 0, 'skipped' => 0],
+        ]))
+            ->assertAccepted()
+            ->assertJsonPath('ignored', true);
+
+        $this->assertSame(
+            IngestionSource::STATUS_DELETING,
+            $execution['source']->refresh()->index_status,
+        );
+        $this->assertSame(PipelineJob::STATUS_RUNNING, $execution['job']->refresh()->status);
+        $this->assertSame(PipelineTask::STATUS_RUNNING, $execution['task']->refresh()->status);
+        $this->assertDatabaseCount('pipeline_stage_states', 0);
+    }
+
     /**
      * @return array{dataset:Dataset,task:PipelineTask,source:IngestionSource,job:PipelineJob}
      */

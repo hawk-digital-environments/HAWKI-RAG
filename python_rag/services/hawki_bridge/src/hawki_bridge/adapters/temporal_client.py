@@ -15,6 +15,8 @@ from temporalio.client import (
     SchedulePolicy,
     ScheduleSpec,
     WorkflowHandle,
+    WorkflowExecutionStatus,
+    WorkflowFailureError,
 )
 from temporalio.common import (
     WorkflowIDConflictPolicy,
@@ -169,6 +171,50 @@ class TemporalBridgeClient:
 
         logger.info(
             "temporal_bridge:cancel workflow_id=%s run_id=%s", workflow_id, run_id
+        )
+
+    async def cancel_workflow_and_wait(
+        self, *, workflow_id: str, run_id: str | None = None
+    ) -> None:
+        """Wait until an active workflow is closed before destructive cleanup."""
+
+        client = await self.connect_temporal()
+        handle = client.get_workflow_handle(workflow_id, run_id=run_id)
+        try:
+            description = await handle.describe()
+        except RPCError as exc:
+            if exc.status != RPCStatusCode.NOT_FOUND:
+                raise
+            logger.info(
+                "temporal_bridge:cancel_wait already_absent workflow_id=%s run_id=%s",
+                workflow_id,
+                run_id,
+            )
+            return
+
+        if description.status != WorkflowExecutionStatus.RUNNING:
+            return
+
+        try:
+            await handle.cancel()
+        except RPCError as exc:
+            if exc.status not in {
+                RPCStatusCode.NOT_FOUND,
+                RPCStatusCode.FAILED_PRECONDITION,
+            }:
+                raise
+            return
+
+        try:
+            await handle.result()
+        except WorkflowFailureError:
+            # Cancellation and failed executions are both safely closed.
+            pass
+
+        logger.info(
+            "temporal_bridge:cancel_wait closed workflow_id=%s run_id=%s",
+            workflow_id,
+            run_id,
         )
 
     async def connect_temporal(self) -> Client:

@@ -74,6 +74,9 @@ readonly class PipelineTaskRetryService
         }
 
         $directText = $this->textIngestionRecovery->supports($job, $source);
+        if ($directText && $this->textIngestionRecovery->isDeletionTombstone($source)) {
+            return;
+        }
 
         $source = $this->ingestionSources->upsertStarting($source->source_id, [
             'source_url' => $source->source_url,
