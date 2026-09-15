@@ -35,6 +35,14 @@ class VectorWriterPort(Protocol):
         self, doc_id: str, *, idempotency_key: str | None = None
     ) -> object: ...
 
+    def set_payload(
+        self,
+        point_ids: Sequence[str | int],
+        payload: Mapping[str, Any],
+        *,
+        idempotency_key: str | None = None,
+    ) -> object: ...
+
     def find_points_by_payload(
         self, filters: Mapping[str, object], *, limit: int = 1
     ) -> Sequence[object]: ...
@@ -77,6 +85,18 @@ class PageStatePort(Protocol):
     def find_by_source_identity(
         self, *, collection: str, source_identity: str
     ) -> dict[str, Any] | None: ...
+
+    def find_completed(
+        self,
+        *,
+        collection: str,
+        source_identity: str,
+        completion_fingerprint: str,
+        chunks_count: int,
+        point_ids: Sequence[str],
+    ) -> object | None: ...
+
+    def refresh_payloads(self, records: list[Any]) -> None: ...
 
     def mark_completed(self, records: list[Any]) -> None: ...
 

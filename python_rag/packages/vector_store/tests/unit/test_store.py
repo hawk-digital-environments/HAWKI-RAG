@@ -17,7 +17,12 @@ from hawki_vector_store.payloads import (
     combine_filter_bodies,
     iter_batches,
 )
-from hawki_vector_store.requests import QdrantRequest
+from hawki_vector_store.requests import (
+    QdrantRequest,
+    build_delete_by_filter_request,
+    build_set_payload_request,
+    build_upsert_points_request,
+)
 from hawki_vector_store.responses import parse_count, parse_scroll_points
 from hawki_vector_store.settings import QdrantHTTPSettings, QdrantSettings
 from hawki_vector_store.transport import QdrantHTTPTransport
@@ -131,12 +136,53 @@ def test_gateway_retries_writes_only_when_operation_id_exists() -> None:
 
     gateway.upsert([{"id": "one"}], timeout=1.0)
     gateway.upsert([{"id": "two"}], timeout=1.0, operation_id="job:one")
+    gateway.set_payload(
+        ["two"],
+        {"rawki_document_complete": True},
+        timeout=1.0,
+        operation_id="job:complete",
+    )
     gateway.delete_by_filter({"must": []}, timeout=1.0, operation_id="job:delete")
 
     assert transport.requests[0].retryable is False
     assert transport.requests[1].retryable is True
     assert transport.requests[2].retryable is True
+    assert transport.requests[3].retryable is True
     assert transport.requests[1].operation_id == "job:one"
+    assert transport.requests[2].operation_id == "job:complete"
+
+
+def test_qdrant_document_writes_wait_for_durable_application() -> None:
+    upsert = build_upsert_points_request(
+        "dataset-a",
+        [{"id": "one"}],
+        timeout=1.0,
+        operation_id="operation-1",
+        retryable=True,
+    )
+    delete = build_delete_by_filter_request(
+        "dataset-a",
+        {"must": []},
+        timeout=1.0,
+        operation_id="operation-1",
+        retryable=True,
+    )
+    completion = build_set_payload_request(
+        "dataset-a",
+        ["one"],
+        {"rawki_document_complete": True},
+        timeout=1.0,
+        operation_id="operation-1",
+        retryable=True,
+    )
+
+    assert upsert.path.endswith("/points?wait=true")
+    assert delete.path.endswith("/points/delete?wait=true")
+    assert completion.path.endswith("/points/payload?wait=true")
+    assert completion.json_body == {
+        "points": ["one"],
+        "payload": {"rawki_document_complete": True},
+    }
 
 
 def test_transport_uses_injected_session_and_bounded_status_retry() -> None:

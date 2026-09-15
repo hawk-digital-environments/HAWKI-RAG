@@ -53,11 +53,20 @@ def commit_vector_points(
     )
     if embedding_failures:
         record_embedding_failures(doc_stats, points, embedding_failures)
+        direct_text_doc_ids = {
+            str(record.get("doc_id") or "")
+            for record in chunk_records
+            if (record.get("payload") or {}).get("ingestion_mode") == "direct_text"
+        }
+        failed_doc_ids = {
+            str(failure.get("doc_id") or "") for failure in embedding_failures
+        }
+        direct_failure_doc_ids = direct_text_doc_ids & failed_doc_ids
         pipeline_log(
             logger_obj,
             logging.WARNING,
             stage="ingest",
-            status="partial",
+            status="failed" if direct_failure_doc_ids else "partial",
             job_id=job_id,
             idempotency_key=operation_id,
             pipeline_stage="embedding",
@@ -65,6 +74,11 @@ def commit_vector_points(
             failed_chunks=len(embedding_failures),
             failed_docs=doc_stats.get("embedding_failed_docs", 0),
         )
+        if direct_failure_doc_ids:
+            raise EmbeddingError(
+                "Embedding failed for a direct-text document; the complete "
+                "document must be retried."
+            )
     if not points:
         pipeline_log(
             logger_obj,

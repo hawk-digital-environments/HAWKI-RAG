@@ -47,9 +47,11 @@ def test_bridge_registers_only_query_graph_read_health_and_temporal_routes() -> 
     assert ("GET", "/health") in routes
     assert ("GET", "/config") not in routes
     assert ("POST", "/temporal/workflows/ingest") in routes
+    assert ("POST", "/temporal/workflows/ingest-text") in routes
     assert ("POST", "/temporal/schedules/ingest") in routes
     assert ("POST", "/temporal/schedules/delete") in routes
     assert ("POST", "/temporal/workflows/cancel") in routes
+    assert ("POST", "/temporal/workflows/cancel-and-wait") in routes
     assert not any(path == "/ingest" for _method, path in routes)
     assert not any(path.startswith("/documents/") for _method, path in routes)
     assert not any(path == "/graph/from-text" for _method, path in routes)

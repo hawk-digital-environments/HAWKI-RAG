@@ -1,10 +1,13 @@
-# 5. Environment, Database & Temporal
+---
+title: Environment & Configuration
+---
+
+# Environment & Configuration
 
 <div className="hero">
 
-Your .env is the control panel for the running stack—not a checklist where
-every blank must be filled. Use this page to see what a setting changes, which
-service reads it, and whether existing data is affected.
+Before changing a value, ask whether services must be recreated, data must be
+re-ingested, or persistent state is affected.
 
 [Configuring a new installation? Start here](../Getting%20Started/4_installation_zero_to_up.md)
 
@@ -12,11 +15,10 @@ service reads it, and whether existing data is affected.
 
 :::info How to use this reference
 
-`.env.example` is the canonical starting template. Compose and application code
-also provide a small number of runtime fallbacks and overrides. This page
-focuses on values an operator may realistically change. First-run secrets are explained in
-[Installation](../Getting%20Started/4_installation_zero_to_up.md); startup and
-recovery commands live in [Run HAWKI RAG](../Getting%20Started/2_setup.md).
+This is the configuration reference. First-install secrets belong in
+[Installation](../Getting%20Started/4_installation_zero_to_up.md);
+queues, timeouts, schedules, and callback protocol belong in
+[Temporal Operations](./temporal_operations.md).
 
 :::
 
@@ -26,437 +28,279 @@ recovery commands live in [Run HAWKI RAG](../Getting%20Started/2_setup.md).
 
 - <span className="grid-icon">🗄️</span> __Laravel state__
   PostgreSQL, database queues, cache, and sessions.
-  [Open section](#laravel-state)
+  [Open section](#postgresql-and-laravel-state)
 
 - <span className="grid-icon">⏱️</span> __Temporal__
-  Workflow routing, refresh schedules, retries, and time limits.
-  [Open section](#temporal-orchestration)
+  Workflow routing, schedules, retries, and time limits.
+  [Open guide](./temporal_operations.md)
 
 - <span className="grid-icon">🔌</span> __Ingestion tools__
-  Crawler, converter, authentication, and polling.
-  [Open section](#external-ingestion-services)
+  Crawler, converter, endpoints, and authentication.
+  [Open section](#external-ingestion-tools)
 
 - <span className="grid-icon">🧠</span> __Models and retrieval__
-  Ollama, LiteLLM, reranking, web search, and embedding safety.
-  [Open section](#providers-and-model-contracts)
+  Ollama, LiteLLM, embeddings, and reranking.
+  [Open section](#model-providers-and-embeddings)
 
 </div>
 
-## What reads `.env`?
+## How defaults reach a service
 
-Docker Compose passes the same environment file to several services, but each
-service consumes only the settings it owns.
+[.env.example](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/.env.example) is the installation template.
+[Compose](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/docker-compose.yml) injects the selected environment file into
+Laravel, bridge, workers, and several infrastructure containers. Their code
+reads the subset it uses. Reranker and Qdrant do not inherit that shared env
+block; Neo4j uses [a filtered adapter](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/docker/env/neo4j.env).
 
-```mermaid
-flowchart LR
-    Env[".env"] --> Compose["Docker Compose"]
+The template values below are not necessarily code fallbacks. Persisted
+Settings selections can override model defaults for new work; a dataset retains
+its embedding provider/model. Existing workflow input can retain an earlier
+configuration snapshot.
 
-    Compose --> Laravel["Laravel"]
-    Compose --> Workflow["Workflow worker"]
-    Compose --> PrepareWorkers["Scraper / converter workers"]
-    Compose --> Indexer["Indexer worker"]
-    Compose --> Bridge["Read-only bridge"]
-    Compose --> Reranker["Reranker"]
-
-    Laravel --> Postgres["PostgreSQL<br/>metadata, jobs, cache, sessions"]
-    Workflow --> TemporalCore["Temporal<br/>history and task routing"]
-    PrepareWorkers --> TemporalCore
-    Indexer --> TemporalCore
-    PrepareWorkers --> PipelineTools["Crawler, converter<br/>and shared storage"]
-    Indexer --> WritePlane["Qdrant / Neo4j<br/>indexing writes"]
-    PrepareWorkers -->|"signed typed callbacks"| Laravel
-    Indexer -->|"signed typed callbacks"| Laravel
-    Bridge --> ReadPlane["Qdrant / Neo4j<br/>read paths and model providers"]
-    Bridge --> Reranker
-```
-
-These are six separately built Python roles. The bridge is a read-only
-query/health and Temporal-control service; indexing runs directly inside
-the indexer worker. Python workers receive no Laravel database credentials and
-never update application tables themselves.
+**ACTIVE** means a current control. **COMPATIBILITY** means an alias or retained
+setting with limited/no effect on the current path. **ADVANCED** means an
+implementation-specific tuning control. No variable is labelled deprecated
+without an actual deprecation policy.
 
 ## Before changing a value
 
-The important question is not only “what value should I enter?” but also “what
-must happen after I change it?”
-
-| Type of change | Recreate services? | Re-ingest existing datasets? | Persistent-state concern |
-|---|:---:|:---:|---|
-| Endpoint, timeout, or retry | Yes | No | None |
-| Temporal schedule | Yes | No | Existing schedules may also need to be updated |
-| Chat or vision model | Yes | Usually no | An active workflow may retain the settings captured when it started |
-| Embedding provider or model | Yes | Yes, to move an existing dataset | Stored vectors must remain in one compatible embedding space |
-| PostgreSQL or Neo4j password | Yes | No | The user inside the existing database must be updated as well |
-| `APP_KEY` | Yes | No | Existing sessions and encrypted values may become unreadable |
-
-:::warning Secrets are durable configuration
-
-Do not rotate `APP_KEY`, `DB_PASSWORD`, or `NEO4J_PASSWORD` by editing `.env`
-alone. Follow a credential-rotation procedure for the persistent service first,
-then recreate the consumers.
-
-:::
-
-## Application and deployment
-
-These settings describe how Laravel presents itself. The supported Make targets
-already select production or development runtime behavior.
-
-| Variable | `.env.example` value | Change when | Impact |
-|---|---|---|---|
-| `APP_NAME` | `HAWKI RAG` | A deployment needs different branding | Recreate Laravel |
-| `APP_URL` | `http://localhost:8080` | The application has a public reverse-proxy URL | Recreate Laravel; generated and MCP URLs follow it |
-| `APP_KEY` | Installation secret | Only during deliberate key rotation | Recreate Laravel; encrypted state may be invalidated |
-| `APP_TIMEZONE` | `UTC` | Laravel timestamps should use another application timezone | Recreate Laravel; Temporal schedules remain UTC |
-| `SESSION_SECURE_COOKIE` | `false` | The public application is served over HTTPS | Set `true`, then recreate Laravel |
-
-`APP_ENV` and `APP_DEBUG` are loaded directly from the selected dotenv file.
-Set them to `production` and `false` for a production deployment.
-
-## Laravel state
-
-### PostgreSQL connection
-
-Laravel metadata and Temporal persistence use the same PostgreSQL server. They
-remain separate data owners: Laravel uses its application tables, while
-Temporal owns its workflow-history schemas.
-
-| Variable | Default | Operator guidance |
+| Change | Recreate? | Data impact |
 |---|---|---|
-| `DB_CONNECTION` | `pgsql` | Keep for the provided stack |
-| `DB_HOST` | `postgres` | Keep unless PostgreSQL is deployed under a different service name |
-| `DB_PORT` | `5432` | Change only when the PostgreSQL service listens on another internal port |
-| `DB_DATABASE` | `hawki_rag` | Laravel application database |
-| `DB_USERNAME` | `rag_user` | Credential used by Laravel and the local Temporal server |
-| `DB_PASSWORD` | Installation secret | Set before first start and keep synchronized with PostgreSQL |
+| URL, timeout, retry setting | Recreate consumers | Usually none; existing workflow input may retain old options |
+| Chat/vision model | Recreate consumers or use supported Settings | Existing graph facts do not change automatically |
+| Embedding model/provider or chunking | Recreate; plan a rebuild | Existing vectors are not converted; ordinary unchanged sources may skip |
+| Database credentials | Rotate persistent account, then recreate consumers | Editing dotenv alone does not rotate existing database users |
+| `APP_KEY` | Recreate Laravel after deliberate rotation | Encrypted state may become unreadable |
+| Shared storage root | Coordinate mounts and consumers | Existing artifact references may become invalid |
 
-:::note Core database topology comes from Compose
+Use the matching [lifecycle mode](../Getting%20Started/2_setup.md#choose-a-startup-mode)
+when recreating services. A container restart alone does not reload Compose's
+environment. Laravel config cache must also be cleared if configuration remains
+cached; the supported migration startup runs `optimize:clear`.
 
-The provided Compose stack fixes the core containers to `postgres:5432`.
-Pointing the standard stack at another PostgreSQL host therefore requires a
-Compose override as well as matching `.env` values.
+## Application and access
 
-:::
+All rows are ACTIVE unless marked otherwise. “Yes” below means recreate the
+listed consumers after editing dotenv.
 
-### Queues, cache, and sessions
+| Variable | Template default | Read by | Change when | Restart? | Data impact |
+|---|---|---|---|---|---|
+| `APP_NAME` | HAWKI RAG | Laravel | Branding changes | Yes | None |
+| `APP_ENV`, `APP_DEBUG` | `local`, `true` | Laravel | Deploying production: use `production`, `false` | Yes | None |
+| `APP_URL` | `http://localhost:8080` | Laravel | Public URL/path changes | Yes | Generated URLs |
+| `APP_TIMEZONE` | `UTC` | Laravel | Application timezone changes | Yes | Timestamp presentation; Temporal schedules use UTC |
+| `APP_KEY` | Placeholder | Laravel | Initial setup / planned rotation | Yes | Encryption |
+| `SESSION_SECURE_COOKIE` | `false` | Laravel | HTTPS deployment | Yes | Browser cookies |
+| `HAWKI_RAG_BRIDGE_URL` | `http://hawki_rag_bridge` | Laravel | Bridge location changes | Yes | None |
+| `HAWKI_RAG_QUERY_TIMEOUT` | `300` seconds | REST query proxy | Query budget changes | Yes | None; MCP has its own fixed 60-second bridge timeout |
+| `HAWKI_RAG_QUERY_ALL_DATASETS_BY_DEFAULT` | `true` | Laravel | Require explicit query grants | Yes | Changes access policy; never grants ingestion |
+| `HAWKI_RAG_HEALTH_GATE_ENABLED` | `true` | Laravel | Change UI/system gate behavior | Yes | None |
+| `HAWKI_RAG_HEALTH_GATE_REQUIRED` | `retrieval,graph,pipeline` | Laravel | Select gate components | Yes | None |
 
-The standard stack keeps Laravel's operational state in PostgreSQL. This avoids
-introducing Redis or another queue service for the default deployment.
+See [Authorization](../Core%20Concepts/authorization_dataset_scope.md) for the
+actual single-user and management boundaries.
 
-| Purpose | Variable | Default | Operator guidance |
-|---|---|---|---|
-| Laravel jobs | `QUEUE_CONNECTION` | `database` | Keep unless another Laravel queue backend and its workers are deliberately deployed |
-| Queue database | `DB_QUEUE_CONNECTION` | `pgsql` | Uses the PostgreSQL connection |
-| Failed jobs | `QUEUE_FAILED_DRIVER` | `database-uuids` | Keeps failed-job records available for inspection |
-| Cache | `CACHE_STORE` | `database` | Stores application cache and locks in PostgreSQL |
-| Cache database | `DB_CACHE_CONNECTION` | `pgsql` | Uses the PostgreSQL connection |
-| Sessions | `SESSION_DRIVER` | `database` | Stores browser sessions in PostgreSQL |
-| Session database | `SESSION_CONNECTION` | `pgsql` | Uses the PostgreSQL connection |
-| Idle session lifetime | `SESSION_LIFETIME` | `120` | Minutes before an inactive session expires |
-| RAG monitor retention | `HAWKI_RAG_MONITOR_RETENTION_DAYS` | `30` | Days to retain ingestion summaries, graph previews, and graph-failure rows; values below `1` disable automatic pruning |
+## PostgreSQL and Laravel state
 
-:::note Laravel queues and Temporal task queues are different
+| Variable | Template default | Read by | Change when | Restart? | Data impact |
+|---|---|---|---|---|---|
+| `DB_CONNECTION` | `pgsql` | Laravel | Custom database deployment | Yes | Schema compatibility |
+| `DB_HOST`, `DB_PORT` | `postgres`, `5432` | Laravel | Application database endpoint changes | Yes | Does not relocate data |
+| `DB_DATABASE` | `hawki_rag` | Laravel; PostgreSQL adapter | New application database | Yes | Existing data stays in old DB |
+| `DB_USERNAME`, `DB_PASSWORD` | `rag_user`, `change_me` | Laravel; image adapters | Initial credentials / rotation | Yes | Persistent account change |
+| `QUEUE_CONNECTION` | `database` | Laravel | Deploy another job backend | Yes | Existing queued jobs |
+| `DB_QUEUE_CONNECTION`, `QUEUE_FAILED_DRIVER` | `pgsql`, `database-uuids` | Laravel | Queue persistence changes | Yes | Job/failure records |
+| `CACHE_STORE`, `DB_CACHE_CONNECTION` | `database`, `pgsql` | Laravel | Cache backend changes | Yes | Cache/locks |
+| `SESSION_DRIVER`, `SESSION_CONNECTION` | `database`, `pgsql` | Laravel | Session backend changes | Yes | Sessions |
+| `SESSION_LIFETIME` | `120` minutes | Laravel | Idle session policy | Yes | Sessions |
+| `HAWKI_RAG_MONITOR_RETENTION_DAYS` | `30` | Laravel | Monitor retention; below 1 disables pruning | Yes | Monitor evidence removed on opportunistic prune |
 
-Laravel's database queue stores application jobs in PostgreSQL. Temporal task
-queues route durable workflow and activity tasks to Python workers; they do not
-use Laravel's `jobs` table.
+The dotenv adapter variables `POSTGRES_DB`, `POSTGRES_USER`,
+`POSTGRES_PASSWORD`, and `POSTGRES_PWD` reference the canonical `DB_*` values.
+Temporal's image uses `POSTGRES_SEEDS=postgres` and `DB=postgres12`.
+Changing `DB_HOST` alone does not reconfigure Temporal persistence.
 
-:::
+Compose no longer hard-codes all client addresses in an `environment:` block.
+Moving to external infrastructure still requires coordinating service dependencies,
+networks, image adapters, and persistent data.
 
-:::tip Database initialization is automatic
+Laravel's database job queue is unrelated to Temporal's task queues.
+Python code does not access application PostgreSQL tables, but shared dotenv
+injection means database variables are present in Python container environments.
 
-Supported `make up-core*` commands start PostgreSQL and the Laravel app, then
-run migrations inside the app container before writable services start. The
-same app startup also initializes shared-storage permissions, so no dedicated
-migration container is created. Use `make migrate-core` only when you
-intentionally need to rerun migrations on an existing stack.
+## Vector and graph stores
 
-Before deploying a database upgrade, `make migration-test` runs the migration
-scenarios against an isolated temporary schema in the active PostgreSQL stack.
+| Variable | Template default | Read by | Change when | Restart? | Data impact |
+|---|---|---|---|---|---|
+| `QDRANT_HTTP_URL` | `http://qdrant:6333` | Python and Laravel store clients | Vector endpoint changes | Yes | Target state changes |
+| `QDRANT_SCHEME`, `QDRANT_HOST`, `QDRANT_PORT` | `http`, `qdrant`, `6333` | Laravel vector configuration | Match Laravel store route | Yes | Keep aligned with HTTP URL |
+| `QDRANT_API_KEY` | Empty | Store clients | Authenticated Qdrant deployment | Yes | Client credential only; does not enable server auth |
+| `QDRANT_DISTANCE` | `Cosine` | Indexer/source options | Deliberate new index metric | Yes | Existing collection must be compatible |
+| `NEO4J_URI` | `bolt://hawki_rag_neo4j:7687` | Python Neo4j driver | Bolt endpoint changes | Yes | Target graph changes |
+| `NEO4J_HTTP_URL` | `http://hawki_rag_neo4j:7474` | Laravel graph/health clients | HTTP endpoint changes | Yes | Target graph changes |
+| `NEO4J_USER`, `NEO4J_PASSWORD` | `neo4j`, `change_me` | Store clients / Neo4j adapter | Initial credentials / rotation | Yes | Persistent account change |
+| `NEO4J_DATABASE` | Empty | Python driver | Explicit physical DB | Yes | Distinct from dataset namespace |
+| `NEO4J_MAX_TRANSACTION_RETRY_TIME` | `30` seconds | Python driver | ADVANCED transaction retry window | Yes | No re-ingestion |
 
-:::
+`QDRANT_COLLECTION=hawki_docs` is a default for generic clients, not the
+collection selector for authorized queries. Dataset scope owns that selection.
+`NEO4J_USERNAME` is a COMPATIBILITY fallback; prefer `NEO4J_USER`.
+The graph driver consumes `NEO4J_URI`, not the commented `NEO4J_BOLT_URL`.
 
-## Temporal orchestration
+Before changing collection/model settings, read the
+[existing-collection preflight limitation](../Core%20Concepts/Ingestion/chunking_embeddings.md#embedding-compatibility-is-a-dataset-invariant).
+An existence check does not establish compatible vector dimensions or distance.
 
-Temporal makes long-running ingestion recoverable. The settings in this section
-control where tasks go, when recurring refreshes run, and how long external
-work may take.
+## Model providers and embeddings
 
-### Connection and workflow identity
+| Variable | Template default | Read by | Change when | Restart? | Data impact |
+|---|---|---|---|---|---|
+| `RAG_DEFAULT_PROVIDER`, `GRAPH_PROVIDER` | `ollama` | Laravel defaults/settings | Change default runtime | Yes | Existing dataset scope persists |
+| `OLLAMA_API_URL` | `http://hawki_ollama:11434/api` | Provider clients | Ollama endpoint changes | Yes | None |
+| `OLLAMA_RAG_MODEL` | `llama3.1:8b` | Laravel settings / provider | Chat/graph default changes | Yes | New answers/extraction |
+| `OLLAMA_EMBED_MODEL` | `bge-m3` | Laravel settings / provider | New embedding contract | Yes | Rebuild existing target intentionally |
+| `OLLAMA_VISION_MODEL` | `qwen2.5vl:7b` | Laravel settings / provider | Vision model changes | Yes | New multimodal extraction |
+| `OLLAMA_CHAT_MODELS`, `OLLAMA_EMBED_MODELS`, `OLLAMA_VISION_MODELS` | The matching models above | Laravel Settings allowlists | Offer additional models | Yes | Dataset model selected at creation |
+| `CHUNK_SIZE`, `CHUNK_OVERLAP_SIZE` | `1200`, `250` | Laravel workflow payloads | Change text segmentation | Yes | Controlled reindex |
+| `INGEST_BATCH_SIZE` | `64` | Laravel / indexer options | Throughput tuning | Yes | No semantic rebuild |
+| `RAG_GENERATE_ANSWER` | `true` | Bridge | Enable generated answers | Yes | No index change |
 
-| Variable | Default | Change when |
+The code fallback for generation is false if the variable is absent. Request
+`generate=false` still disables it when the process flag is true.
+
+[Embedding compatibility](../Core%20Concepts/Ingestion/chunking_embeddings.md)
+is a dataset invariant; a new default does not migrate a populated collection.
+
+### Optional LiteLLM
+
+Activate with `CORE_PROFILES_BASE=litellm make up-core`, then select its aliases
+through Settings. No upstream cloud key is needed for direct Ollama.
+
+| Variable | Template default | Purpose |
 |---|---|---|
-| `HAWKI_RAG_TEMPORAL_ENABLED` | `true` | Temporal orchestration is intentionally disabled |
-| `TEMPORAL_ADDRESS` | `temporal:7233` | Temporal is hosted under another internal address |
-| `TEMPORAL_NAMESPACE` | `default` | The deployment uses a dedicated Temporal namespace |
-| `TEMPORAL_INGEST_WORKFLOW_TYPE` | `IngestSourceWorkflow` | Only when application and workers are upgraded together to another workflow contract |
+| `LITELLM_API_URL` | `http://litellm:4000/v1` | Gateway endpoint |
+| `LITELLM_API_KEY` | Empty | Client bearer credential if gateway requires it |
+| `LITELLM_CHAT_MODEL` | `hawki-ollama-chat` | Chat/graph alias |
+| `LITELLM_EMBED_MODEL` | `hawki-ollama-embedding` | Embedding alias |
+| `LITELLM_VISION_MODEL` | `hawki-ollama-vision` | Vision alias |
+| `LITELLM_CHAT_ALIASES`, `LITELLM_EMBED_ALIASES`, `LITELLM_VISION_ALIASES` | Lists in the template | Settings allowlists |
+| `OPENAI_API_KEY`, `ANTHROPIC_API_KEY` | Empty | Upstream gateway credentials |
+| `LITELLM_PORT` | `4000` | Loopback host port |
 
-The standard Compose stack fixes its internal Temporal address to
-`temporal:7233`. An external Temporal deployment also requires a matching
-Compose override.
+`LITELLM_OLLAMA_*`, `LITELLM_OPENAI_*`, and `LITELLM_ANTHROPIC_*` map aliases
+to upstream models in [gateway config](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/docker/litellm/config.yaml).
+Legacy aliases `hawki-chat`, `hawki-embedding`, and `hawki-vision` are
+COMPATIBILITY options; prefer explicit provider aliases.
+Cloud keys are consumed for gateway calls, but are not exclusively injected into
+that container under the current shared-env wiring.
 
-The browser-based Temporal UI is disabled by default. Enable its dedicated
-profile only while workflow diagnostics are needed:
+## Reranker and retrieval controls
 
-```bash
-docker compose --env-file .env --profile temporal-ui up -d temporal-ui
-```
+| Variable | Template default | Read by / effect |
+|---|---|---|
+| `RERANKER_MODE` | `external` | Bridge default when request omits mode; code fallback `none` |
+| `RERANKER_API_URL` | `http://hawki_rag_rerank/v1/rerank` | Bridge external reranker endpoint |
+| `RERANKER_MIX_MODE` | `true` | Blend reranker and retrieval scores |
+| `RERANKER_MIX_WEIGHT` | Code fallback `0.5` | ADVANCED retrieval share in blend |
+| `RERANKER_API_KEY` | Code fallback empty | ADVANCED bearer credential for external endpoint |
+| `JINA_API_KEY`, `JINA_RERANKER_MODEL` | Empty; `mixedbread-ai/mxbai-rerank-base-v1` | Jina mode uses these directly; the template model is also the local model name, so verify a valid Jina model before using that route |
+| `RERANKER_PROVIDER`, `QUERY_MODE` | `cohere`, `mix` | COMPATIBILITY values with no current Python routing consumer |
 
-By default it binds only to `http://127.0.0.1:8081`. Stop it again with
-`docker compose --env-file .env --profile temporal-ui stop temporal-ui`.
-
-### How task queues divide the work
-
-```mermaid
-flowchart LR
-    TemporalCore["Temporal"] --> WorkflowQueue["workflow queue"]
-    TemporalCore --> ScraperQueue["scraper queue"]
-    TemporalCore --> ConverterQueue["converter queue"]
-    TemporalCore --> IndexerQueue["indexer queue"]
-
-    WorkflowQueue --> WorkflowWorker["Workflow worker<br/>coordinates the run"]
-    ScraperQueue --> ScraperWorker["Scraper worker<br/>calls the crawler"]
-    ConverterQueue --> ConverterWorker["Converter worker<br/>calls the converter"]
-    IndexerQueue --> IndexerWorker["Indexer worker<br/>indexes in-process"]
-```
-
-:::caution Queue names are coordination contracts
-
-The client and the matching worker must use exactly the same task-queue name.
-Do not rename one value in isolation. If queue names change, recreate Laravel,
-the bridge, and all Temporal workers together.
-
-:::
+The local reranker defaults to `mixedbread-ai/mxbai-rerank-base-v1`.
+Its `HAWKI_RERANKER_MODEL` control is not wired through the shared dotenv in
+base Compose; a service override is needed to pass it. Cohere-compatible means
+API shape, not a default call to Cohere's cloud service.
 
 <details>
-<summary>Advanced: exact Temporal task-queue names</summary>
+<summary>Advanced query tuning: code defaults</summary>
 
-| Variable | Default | Consumer |
-|---|---|---|
-| `TEMPORAL_RAG_WORKFLOW_TASK_QUEUE` | `rag-workflow-task-queue` | Workflow worker |
-| `TEMPORAL_RAG_SCRAPER_TASK_QUEUE` | `rag-scraper-task-queue` | Scraper activity worker |
-| `TEMPORAL_RAG_CONVERTER_TASK_QUEUE` | `rag-converter-task-queue` | Converter activity worker |
-| `TEMPORAL_RAG_INDEXER_TASK_QUEUE` | Falls back to `TEMPORAL_RAG_INGESTION_TASK_QUEUE`, then `rag-ingestion-task-queue` | Indexer activity worker |
-| `TEMPORAL_RAG_INGESTION_TASK_QUEUE` | `rag-ingestion-task-queue` | Legacy compatibility while pre-refactor executions drain |
+These absent-from-template variables are read by the bridge. Recreate it after
+changing them; they affect retrieval behavior, not stored embeddings.
+
+| Variable | Code default |
+|---|---|
+| `RAG_SEARCH_TOP_K_MULT`, `RAG_SEARCH_TOP_K_CAP` | `3`, `50` |
+| `RAG_FUSION_SEM_WEIGHT`, `RAG_FUSION_STR_WEIGHT` | `0.6`, `0.4` |
+| `RAG_MIN_SCORE`, `RAG_MIN_SCORE_FALLBACK` | `0.1`, `0.2` |
+| `RAG_CONTEXT_TOKENS`, `RAG_CONTEXT_DOCS` | `2800`, `6` |
+| `RAG_ITERATIVE_RETRIEVAL` | `true` |
+| `RAG_STRUCTURAL_HOPS` | `2` |
+| `RAG_GRAPH_TERMS_PER_HIT`, `RAG_GRAPH_TERM_LIMIT` | `12`, `30` |
+| `QDRANT_TEXT_SCROLL_LIMIT`, `RAG_EXHAUSTIVE_TEXT` | `200`, `false` |
+
+See [Query & Retrieval](../Core%20Concepts/query_retrieval.md) before tuning:
+thresholds do not guarantee abstention, and the context budget is approximate.
 
 </details>
 
-The workflow records the versioned
-`hawki-rag-indexer-task-queue-v1` Temporal patch before using the new
-`task_queues.indexer` payload field. Pre-patch histories keep their original
-`task_queues.ingestion` command. During the transition, the indexer worker polls
-both its configured indexer queue and the legacy ingestion queue; do not retire
-the legacy queue until production histories have drained and replay has been
-verified.
+## Graph extraction
 
-Inspect the workers, task queues, workflows, and activities registered by the
-running application with:
-
-```bash
-docker exec -it hawki_rag_app php artisan pipeline:workers
-```
-
-### Refresh schedule defaults
-
-These expressions are used when daily, weekly, or monthly source refreshes are
-created. Temporal schedules use UTC.
-
-| Variable | Default | Practical meaning |
+| Variable | Template default | Change impact |
 |---|---|---|
-| `TEMPORAL_RAG_DAILY_CRON` | `0 2 * * *` | Every day at 02:00 UTC |
-| `TEMPORAL_RAG_WEEKLY_CRON` | `0 2 * * 0` | Every Sunday at 02:00 UTC |
-| `TEMPORAL_RAG_MONTHLY_CRON` | `0 2 1 * *` | First day of every month at 02:00 UTC |
+| `RAG_INGEST_GRAPH` | `false` | New source workflow option; direct text remains graph-off |
+| `GRAPH_ENGINE` | `raganything` | Current extraction engine |
+| `GRAPH_DOC_MAX_CHUNKS`, `GRAPH_DOC_MAX_CHARS` | `6`, `6000` | ADVANCED evidence window; rebuild graph to apply to existing facts |
+| `GRAPH_RESET_CACHE_PER_DOC` | `true` | ADVANCED extraction cache lifecycle |
+| `GRAPH_EMBEDDING_DIMENSIONS` | `hawki-ollama-embedding=1024,hawki-openai-embedding=1536,hawki-embedding=1024` | ADVANCED trusted dimensions for graph-only alias use |
+| `RAG_WORKING_DIR` | `/app/rag_storage` | Intermediate extraction files; not the shared artifact root |
 
-### Time budget for one ingestion run
+[Graph Enrichment](../Core%20Concepts/Ingestion/graph_enrichment.md) owns library
+internals and graph-only repair limitations.
 
-```mermaid
-flowchart LR
-    Execution["Workflow execution<br/>48 hours"] --> Run["One workflow run<br/>24 hours"]
-    Run --> Request["One external request<br/>30 minutes"]
-    Request --> Polling["Poll every 5 seconds<br/>for up to 12 hours"]
-```
+## External ingestion tools
 
-| Variable | Default | Increase when |
+| Variable | Template default | Read by |
 |---|---|---|
-| `TEMPORAL_WORKFLOW_EXECUTION_TIMEOUT` | `172800` | A workflow may need more than 48 hours across retries; value is seconds |
-| `TEMPORAL_WORKFLOW_RUN_TIMEOUT` | `86400` | One run may legitimately exceed 24 hours; value is seconds |
-| `TEMPORAL_WORKFLOW_TASK_TIMEOUT` | `30` | Workflow task processing itself is consistently timing out; value is seconds |
-| `TEMPORAL_RAG_HTTP_TIMEOUT_SECONDS` | `1800` | A crawler or converter request takes longer than 30 minutes |
-| `TEMPORAL_RAG_HTTP_RETRY_ATTEMPTS` | `3` | The external service has transient request failures |
-| `TEMPORAL_RAG_EXTERNAL_POLL_INTERVAL_SECONDS` | `5` | Status checks should be less frequent |
-| `TEMPORAL_RAG_EXTERNAL_POLL_TIMEOUT_SECONDS` | `43200` | An external job may run longer than 12 hours |
+| `CUSTOM_CRAWLER_URL`, `CUSTOM_CRAWLER_TASK_UI_URL` | `http://crawl4ai-service` | Laravel crawler/API UI integration |
+| `EXTERNAL_SCRAPER_URL` | `http://crawl4ai-service` | Scraper worker and Laravel workflow configuration |
+| `EXTERNAL_SCRAPER_START_PATH` | `/crawl` | Scraper |
+| `EXTERNAL_SCRAPER_STATUS_PATH` | `/status/{job_id}` | Scraper |
+| `EXTERNAL_SCRAPER_TOKEN` | Empty | Scraper bearer token |
+| `CUSTOM_CRAWLER_API_KEY` | Empty | Laravel crawler token; worker fallback |
+| `FILE_CONVERTER_BASE_URL` | `http://hawki-toolkit-file-converter-file-converter-1` | Laravel / converter worker fallback |
+| `FILE_CONVERTER_URL` | Same base + `/extract` | Laravel converter configuration |
+| `FILE_CONVERTER_HEALTH_URL` | Same base + `/health` | Laravel health checks |
+| `EXTERNAL_CONVERTER_URL` | Same converter base | Converter worker |
+| `EXTERNAL_CONVERTER_START_PATH` | `/extract` | Converter |
+| `EXTERNAL_CONVERTER_STATUS_PATH` | Empty | Optional asynchronous status endpoint |
+| `EXTERNAL_CONVERTER_TOKEN`, `FILE_CONVERTER_TOKEN` | `file-converter-key` | Worker / Laravel credentials; replace to match the external deployment |
 
-Indexing does not have a bridge request timeout: the indexer executes the
-indexing application directly inside its Temporal activity. Its activity
-timeouts and retries are part of the workflow contract rather than an HTTP
-`/ingest` call.
+Prefer explicit `EXTERNAL_*` settings for worker calls. The workers fall back to
+Laravel's crawler/converter variables when their explicit values are blank.
+Laravel `env()` defaults apply when absent, so blank and omitted aliases can
+behave differently. Keep corresponding values aligned.
 
-### Signed worker status callbacks
+Changing URLs does not start those external services.
+[Run HAWKI RAG](../Getting%20Started/2_setup.md#external-tools) owns startup.
+Polling/retry budgets live in [Temporal Operations](./temporal_operations.md).
 
-Scraper, converter, and indexer workers report typed stage status, counters,
-artifact references, manifests, and errors to Laravel's internal callback API.
-The terminal indexer event also carries its ingestion summary, optional graph
-preview, and document-level graph failures. Laravel stores the summary and
-preview as PostgreSQL JSONB and stores every graph failure as an individual
-row. Python receives no database credentials and performs no application-table
-writes.
-Laravel verifies the HMAC over the exact request body and timestamp, rejects
-expired events, and records stable event IDs idempotently. A valid duplicate is
-acknowledged without applying its metadata transition twice. Laravel applies
-accepted transitions and monitor artifacts through its repository layer in one
-database transaction. This is the only path by which Python changes
-Laravel-owned pipeline data.
+## Shared storage, secrets, and MCP
 
-| Variable | Default | Operator guidance |
-|---|---|---|
-| `HAWKI_RAG_WORKER_CALLBACK_SECRET` | Empty | Required in production. Configure the same non-empty secret for Laravel and every activity worker. |
-| `HAWKI_RAG_WORKER_CALLBACK_MAX_AGE_SECONDS` | `300` | Maximum callback timestamp age accepted by Laravel; change only with the workers and clock-skew policy considered together. |
+Keep `SHARED_STORAGE_ROOT`, `HAWKI_RAG_PIPELINE_ROOT`,
+`HAWKI_RAG_TEMPORAL_SHARED_ROOT`, and the mounted artifact paths aligned
+(default `/shared`). `PUID`/`PGID` default to 1000; shared permission adapter
+values derive from them. Changing these requires coordinated permissions/mounts.
 
-The provided Compose stack supplies the internal callback endpoint
-`http://hawki_rag_app/api/internal/pipeline/worker-events`. Callback delivery
-has its own bounded timeout and retries; it is not a database connection and no
-PostgreSQL credential is passed to a Python service.
+`HAWKI_RAG_WORKER_CALLBACK_SECRET` is required for activity-worker startup.
+Its endpoint, age window, delivery settings, and rotation are owned by
+[Temporal Operations](./temporal_operations.md#signed-worker-callbacks).
 
-Generate this installation secret once with `openssl rand -hex 32`, store it in
-the selected private environment file, and recreate Laravel plus the three
-activity-worker containers together when rotating it.
+`MCP_SERVER` registers the transport path (`hawki_rag` in the template);
+`MCP_BASE_URL` follows `APP_URL` in the template but does not change that route.
+Retained ingestion/tool flags do not register an MCP ingestion tool:
+the [server registry](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/app/Mcp/Servers/HawkiRagServer.php) is authoritative.
+
+Web search is separate from dataset retrieval: `WEB_SEARCH_PROVIDER=tavily`
+needs `TAVILY_SEARCH_API_KEY`; selecting Brave needs `BRAVE_SEARCH_API_KEY`.
+Empty web-search keys do not disable local RAG.
 
 <details>
-<summary>Advanced: workflow identity and storage handoff</summary>
+<summary>Implementation references</summary>
 
-| Variable | Default | Purpose |
-|---|---|---|
-| `TEMPORAL_CLIENT_IDENTITY` | `hawki-rag-laravel` | Identifies the HAWKI-RAG Temporal client |
-| `HAWKI_RAG_TEMPORAL_SHARED_ROOT` | `/shared` | Existing canonical absolute directory seen by Laravel and all pipeline workers; never set it to `/` |
-| `RAG_INGEST_GRAPH` | `false` | Enables graph extraction for source workflows by default |
-
-</details>
-
-The ingestion pipeline supports only the mounted shared-volume handoff. Laravel
-allocates every raw, Markdown, and manifest path below the configured shared
-root; workers independently enforce that root before accessing the filesystem.
-
-## External ingestion services
-
-The installation guide explains how the crawler and converter join the stack.
-This section only maps operational overrides to the consumer that uses them.
-
-```mermaid
-flowchart LR
-    Browser["Browser"] --> Laravel["Laravel"]
-    Laravel -->|"CUSTOM_CRAWLER_*"| Crawler["Crawler"]
-    TemporalWorkers["Temporal workers"] -->|"EXTERNAL_SCRAPER_*"| Crawler
-    TemporalWorkers -->|"EXTERNAL_CONVERTER_*"| Converter["File converter"]
-```
-
-### Crawler
-
-| Variable | Default | Used by | Change when |
-|---|---|---|---|
-| `CUSTOM_CRAWLER_URL` | `http://crawl4ai-service` | Laravel crawler integration | Laravel must reach a differently named crawler |
-| `CUSTOM_CRAWLER_TASK_UI_URL` | `http://crawl4ai-service` | Laravel task-UI proxy | The crawler UI uses another base address |
-| `EXTERNAL_SCRAPER_URL` | `http://crawl4ai-service` | Temporal scraper worker | Workflow calls use another crawler address |
-| `EXTERNAL_SCRAPER_START_PATH` | `/crawl` | Temporal scraper worker | The crawler exposes another submission route |
-| `EXTERNAL_SCRAPER_STATUS_PATH` | `/status/{job_id}` | Temporal scraper worker | The crawler exposes another status route |
-| `EXTERNAL_SCRAPER_TOKEN` | Empty | Temporal scraper worker | The crawler requires a bearer token |
-| `CUSTOM_CRAWLER_API_KEY` | Empty | Laravel and scraper fallback | Laravel access needs authentication or no explicit scraper token is set |
-
-### File converter
-
-| Variable | Default | Used by | Change when |
-|---|---|---|---|
-| `FILE_CONVERTER_BASE_URL` | `http://hawki-toolkit-file-converter-file-converter-1` | Laravel converter integration | Laravel must reach another converter address |
-| `EXTERNAL_CONVERTER_URL` | `http://hawki-toolkit-file-converter-file-converter-1` | Temporal converter worker | Workflow calls use another converter address |
-| `EXTERNAL_CONVERTER_START_PATH` | `/extract` | Temporal converter worker | The converter exposes another submission route |
-| `EXTERNAL_CONVERTER_STATUS_PATH` | Empty | Temporal converter worker | A custom asynchronous converter exposes a status route |
-| `EXTERNAL_CONVERTER_TOKEN` | `file-converter-key` | Temporal converter worker | The converter uses another bearer token |
-| `FILE_CONVERTER_TOKEN` | `file-converter-key` | Laravel and converter fallback | Laravel access uses another token or no explicit workflow token is set |
-
-The retry and polling behavior for both tools is controlled by the
-`TEMPORAL_RAG_HTTP_*` and `TEMPORAL_RAG_EXTERNAL_POLL_*` variables in the
-[Temporal time-budget table](#time-budget-for-one-ingestion-run).
-
-## Providers and model contracts
-
-Direct Ollama is the normal path. LiteLLM is an optional gateway selected
-explicitly for Ollama aliases or cloud providers.
-
-```mermaid
-flowchart LR
-    Selection["Provider selection"] -->|"default"| Ollama["Direct Ollama"]
-    Selection -->|"optional"| LiteLLM["LiteLLM gateway"]
-    LiteLLM --> OllamaRoute["Ollama aliases"]
-    LiteLLM --> OpenAIRoute["OpenAI routes"]
-    LiteLLM --> AnthropicRoute["Anthropic routes"]
-```
-
-### Direct Ollama defaults
-
-| Variable | Default | Role | Change impact |
-|---|---|---|---|
-| `RAG_DEFAULT_PROVIDER` | `ollama` | Default provider for ingestion and queries | New work uses the selected provider |
-| `GRAPH_PROVIDER` | `ollama` | Default provider for graph/model operations | New graph work uses the selected provider |
-| `OLLAMA_API_URL` | `http://hawki_ollama:11434/api` | Direct Ollama endpoint | Recreate Python services |
-| `OLLAMA_RAG_MODEL` | `llama3.1:8b` | Chat, answer, and graph language tasks | Recreate Python services |
-| `OLLAMA_EMBED_MODEL` | `bge-m3` | Dataset embeddings | Existing datasets must retain or intentionally rebuild their vectors |
-| `OLLAMA_VISION_MODEL` | `qwen2.5vl:7b` | Image and multimodal tasks | Recreate Python services |
-
-:::warning Embeddings are a dataset contract
-
-Changing the default embedding provider or model does not convert existing
-vectors. Query vectors must use the same model family and dimensions as the
-indexed vectors. See
-[Ingestion & Embeddings](./6_ingestion_embeddings.md) before moving an existing
-dataset to another embedding model.
-
-:::
-
-### Reranking and web search
-
-| Feature | Select with | Endpoint or credential | Default behavior |
-|---|---|---|---|
-| Local reranker | `RERANKER_MODE=external` | `RERANKER_API_URL=http://hawki_rag_rerank/v1/rerank` | Enabled through the local Cohere-compatible service |
-| Jina reranker | `RERANKER_MODE=jina` | `JINA_API_KEY` | Available only when a key is supplied |
-| Tavily search | `WEB_SEARCH_PROVIDER=tavily` | `TAVILY_SEARCH_API_KEY` | Provider selected, but unavailable while the key is empty |
-| Brave search | `WEB_SEARCH_PROVIDER=brave` | `BRAVE_SEARCH_API_KEY` | Available only when selected and a key is supplied |
-
-`RERANKER_PROVIDER` and `QUERY_MODE` remain in `.env.example` for compatibility,
-but current reranker routing is selected by `RERANKER_MODE` and
-`RERANKER_API_URL`. Do not treat the compatibility values as active controls.
-
-<details>
-<summary>Advanced: LiteLLM routes and aliases</summary>
-
-| Variable | Default | Purpose |
-|---|---|---|
-| `LITELLM_API_URL` | `http://litellm:4000/v1` | Gateway endpoint used when LiteLLM is selected |
-| `LITELLM_API_KEY` | Empty | Optional bearer token for a protected LiteLLM gateway |
-| `LITELLM_CHAT_MODEL` | `hawki-ollama-chat` | Default chat and graph alias |
-| `LITELLM_EMBED_MODEL` | `hawki-ollama-embedding` | Default embedding alias |
-| `LITELLM_VISION_MODEL` | `hawki-ollama-vision` | Default vision alias |
-| `LITELLM_CHAT_ALIASES` | Ollama, GPT, and Claude aliases | Chat and graph allowlist accepted by Settings |
-| `LITELLM_EMBED_ALIASES` | Ollama and OpenAI aliases | Embedding allowlist accepted by Settings |
-| `LITELLM_VISION_ALIASES` | Ollama, GPT, and Claude aliases | Vision allowlist accepted by Settings |
-| `GRAPH_EMBEDDING_DIMENSIONS` | Ollama `1024`; OpenAI small `1536` | Trusted alias-to-dimension map for graph-only ingestion |
-
-| Upstream | Configuration family | Required credential |
-|---|---|---|
-| Local Ollama | `LITELLM_OLLAMA_*` | None |
-| OpenAI | `LITELLM_OPENAI_*` | `OPENAI_API_KEY` |
-| Anthropic | `LITELLM_ANTHROPIC_*` | `ANTHROPIC_API_KEY` |
-
-OpenAI and Anthropic keys are passed only to the optional LiteLLM container.
-They can remain empty for the default direct-Ollama stack.
+Implementation owners: [Laravel config](https://github.com/hawk-digital-environments/HAWKI-RAG/tree/main/config),
+[model settings](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/config/model_providers.php),
+[bridge settings](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/python_rag/services/hawki_bridge/src/hawki_bridge/settings.py),
+[query tuning](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/python_rag/services/hawki_bridge/src/hawki_bridge/application/query/settings.py),
+[Neo4j settings](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/python_rag/packages/graph_store/src/hawki_graph_store/settings.py).
 
 </details>
-
-### Vector and graph stores
-
-| Variable | Default | Operator guidance |
-|---|---|---|
-| `QDRANT_HTTP_URL` | `http://qdrant:6333` | Keep for the provided vector-store service |
-| `QDRANT_API_KEY` | Empty | Set only when Qdrant authentication is enabled |
-| `NEO4J_HTTP_URL` | `http://hawki_rag_neo4j:7474` | Keep for the provided graph-store service |
-| `NEO4J_USER` | `neo4j` | Keep synchronized with Neo4j authentication |
-| `NEO4J_PASSWORD` | Installation secret | Set before first start; rotate inside Neo4j before changing consumers |
-| `GRAPH_ENGINE` | `raganything` | Change only when another supported graph engine is implemented |

@@ -48,7 +48,15 @@ def normalize_ingest_metadata(doc: object) -> dict[str, Any]:
     doc_id = str(getattr(doc, "id", ""))
 
     if not payload.get("title"):
-        payload["title"] = _title_from_payload(payload) or doc_id or "Untitled document"
+        display_name = None
+        if payload.get("ingestion_mode") == "direct_text":
+            display_name = _first_present(payload, ("display_name",))
+        payload["title"] = (
+            display_name
+            or _title_from_payload(payload)
+            or doc_id
+            or "Untitled document"
+        )
 
     url = _first_present(payload, URL_KEYS)
     if url:

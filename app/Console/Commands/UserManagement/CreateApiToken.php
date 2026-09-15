@@ -11,7 +11,7 @@ use App\Services\User\Repositories\UserRepository;
 use Illuminate\Console\Command;
 use Illuminate\Contracts\Auth\Factory as AuthFactory;
 
-class CreateSanctumTokenForUser extends Command
+class CreateApiToken extends Command
 {
     /**
      * The name and signature of the console command.
@@ -20,14 +20,14 @@ class CreateSanctumTokenForUser extends Command
      */
     protected $signature = 'user:token
         {--revoke : Revoke a token instead of creating one}
-        {--abilities=query : Comma-separated token abilities: query, admin}';
+        {--abilities=query : Comma-separated token abilities: query, admin, rag:text-ingest}';
 
     /**
      * The console command description.
      *
      * @var string
      */
-    protected $description = 'Create or revoke Sanctum API tokens for a user';
+    protected $description = 'Create or revoke API tokens for a user';
 
     /**
      * {@inheritDoc}
@@ -174,7 +174,7 @@ class CreateSanctumTokenForUser extends Command
         foreach ($values as $value) {
             $ability = ApiTokenAbility::tryFrom($value);
             if ($ability === null) {
-                $this->error("Token ability {$value} is invalid. Expected query or admin.");
+                $this->error("Token ability {$value} is invalid. Expected query, admin, or rag:text-ingest.");
 
                 return null;
             }

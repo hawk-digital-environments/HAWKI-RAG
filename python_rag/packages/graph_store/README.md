@@ -1,6 +1,6 @@
 # HAWKI graph store
 
-This package owns RAWKI's graph persistence boundary and Neo4j adapter. It
+This package owns HAWKI RAG's graph persistence boundary and Neo4j adapter. It
 contains graph value contracts, scoped Cypher requests,
 response parsing, and managed-transaction behavior. Graph cleanup, retrieval
 ranking, and RAG-hit projection remain application-owned. It has no dependency

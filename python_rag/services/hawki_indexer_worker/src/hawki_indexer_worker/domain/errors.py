@@ -10,7 +10,16 @@ class IndexingValidationError(IndexerError, ValueError):
 
 
 class EmbeddingError(IndexerError):
-    """No prepared chunk could be embedded."""
+    """One or more required chunks could not be embedded."""
 
 
-__all__ = ["EmbeddingError", "IndexerError", "IndexingValidationError"]
+class DocumentCompletionError(IndexerError):
+    """A complete document revision could not be durably proven."""
+
+
+__all__ = [
+    "DocumentCompletionError",
+    "EmbeddingError",
+    "IndexerError",
+    "IndexingValidationError",
+]

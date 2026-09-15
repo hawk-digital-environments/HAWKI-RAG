@@ -45,6 +45,11 @@ return [
     'chunk_size' => (int) env('CHUNK_SIZE', 1200),
     'chunk_overlap_size' => (int) env('CHUNK_OVERLAP_SIZE', 250),
     'ingest_batch_size' => (int) env('INGEST_BATCH_SIZE', 64),
+    'text_ingestion' => [
+        'max_text_characters' => 1_048_576,
+        'max_metadata_bytes' => 65_536,
+        'max_request_bytes' => 4_300_000,
+    ],
     'graph_engine' => env('GRAPH_ENGINE', 'raganything'),
     'graph_provider' => env('GRAPH_PROVIDER', 'ollama'),
     'graph_doc_max_chars' => (int) env('GRAPH_DOC_MAX_CHARS', 0),
