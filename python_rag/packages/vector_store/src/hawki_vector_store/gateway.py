@@ -18,6 +18,7 @@ from hawki_vector_store.requests import (
     build_list_collections_request,
     build_scroll_request,
     build_search_request,
+    build_set_payload_request,
     build_upsert_points_request,
 )
 from hawki_vector_store.transport import QdrantHTTPTransport
@@ -91,6 +92,28 @@ class QdrantHTTPGateway:
             )
         return self.send(
             build_count_points_request(collection, exact=exact, timeout=timeout)
+        )
+
+    def set_payload(
+        self,
+        point_ids: list[str | int],
+        payload: dict[str, Any],
+        *,
+        timeout: float,
+        operation_id: str | None = None,
+    ) -> Any:
+        operation_retryable = bool(
+            operation_id and is_retry_safe_write("qdrant.set_payload")
+        )
+        return self.send(
+            build_set_payload_request(
+                self.collection,
+                point_ids,
+                payload,
+                timeout=timeout,
+                operation_id=operation_id,
+                retryable=operation_retryable,
+            )
         )
 
     def delete_by_filter(

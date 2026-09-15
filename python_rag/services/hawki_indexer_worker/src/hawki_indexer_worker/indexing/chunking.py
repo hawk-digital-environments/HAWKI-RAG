@@ -111,14 +111,23 @@ def prepare_documents(
             )
 
         document_text = d.text
-        if should_strip_converter_markdown_noise(normalized_payload):
+        is_direct_text = normalized_payload.get("ingestion_mode") == "direct_text"
+        if not is_direct_text and should_strip_converter_markdown_noise(
+            normalized_payload
+        ):
             document_text = strip_leading_converter_markdown_noise(document_text)
 
         if not str(normalized_payload.get("content_hash") or "").strip():
             normalized_payload["content_hash"] = content_hash_for_text(document_text)
-        stable_doc_id, source_identity = stable_document_id_from_payload(
-            normalized_payload, source_doc_id
-        )
+        if is_direct_text:
+            # The artifact document ID is already scoped to the stable source.
+            # A URL is descriptive metadata for direct text, not its identity.
+            stable_doc_id = source_doc_id
+            source_identity = f"doc:{source_doc_id}"
+        else:
+            stable_doc_id, source_identity = stable_document_id_from_payload(
+                normalized_payload, source_doc_id
+            )
         doc_id = stable_doc_id
         if source_doc_id and source_doc_id != doc_id:
             normalized_payload.setdefault("source_document_id", source_doc_id)

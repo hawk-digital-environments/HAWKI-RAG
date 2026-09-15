@@ -9,6 +9,7 @@ use App\Models\PipelineJob;
 use App\Models\PipelineStageState;
 use App\Services\Pipeline\Exceptions\PipelineWorkerEventException;
 use App\Services\Pipeline\Repositories\IngestionSourceRepository;
+use App\Services\Pipeline\Repositories\PipelineJobStateMutationRepository;
 use App\Services\Pipeline\Repositories\PipelineScheduledRunRepository;
 use App\Services\Pipeline\Repositories\PipelineStageStateRepository;
 use App\Services\Pipeline\Repositories\PipelineTaskRepository;
@@ -33,6 +34,7 @@ readonly class PipelineWorkerEventService
     public function __construct(
         private PipelineWorkerEventRepository $events,
         private PipelineWorkerEventJobQuery $jobs,
+        private PipelineJobStateMutationRepository $jobStates,
         private PipelineTaskRepository $tasks,
         private IngestionSourceRepository $sources,
         private PipelineScheduledRunRepository $scheduledRuns,
@@ -90,6 +92,15 @@ readonly class PipelineWorkerEventService
 
         $this->ensureMatchingTarget($event, $job, $source, $taskId, (string) $task->dataset_id);
 
+        if (in_array($source->index_status, [
+            IngestionSource::STATUS_DELETING,
+            IngestionSource::STATUS_DELETED,
+        ], true)) {
+            $this->events->markProcessed($record, $this->now());
+
+            return $this->receipt($event, duplicate: false, ignored: true);
+        }
+
         $existingStage = $this->stageStates->findForJobStage($event->jobId, $event->stage->value);
         $processedAt = $this->now();
         $laterStage = $this->furthestLaterStageForRun($event);
@@ -140,6 +151,12 @@ readonly class PipelineWorkerEventService
             return;
         }
 
+        if ($this->canAdoptInitialRun($event, $job, $source)) {
+            $this->jobStates->adoptInitialTemporalRun($job, $event->runId);
+
+            return;
+        }
+
         if ($this->canAdoptScheduledRun($event, $job, $source)) {
             $this->scheduledRuns->adopt($job, $source, $event, $this->now());
 
@@ -147,6 +164,18 @@ readonly class PipelineWorkerEventService
         }
 
         throw PipelineWorkerEventException::targetMismatch();
+    }
+
+    private function canAdoptInitialRun(
+        PipelineWorkerEvent $event,
+        PipelineJob $job,
+        IngestionSource $source,
+    ): bool {
+        return trim((string) $job->temporal_run_id) === ''
+            && $job->current_stage === 'temporal.workflow_starting'
+            && trim((string) $job->temporal_schedule_id) === ''
+            && trim((string) $source->temporal_schedule_id) === ''
+            && trim($event->runId) !== '';
     }
 
     private function canAdoptScheduledRun(
@@ -301,6 +330,10 @@ readonly class PipelineWorkerEventService
      */
     private function stageAttributes(PipelineWorkerEvent $event, Carbon $processedAt): array
     {
+        $terminalReady = $event->producer === PipelineWorker::Indexer
+            && $event->activityId === 'mark_source_ready'
+            && $event->stage === PipelineStage::Ingest
+            && $event->status === PipelineStageStatus::Completed;
         $finalSuccess = $event->stage === PipelineStage::Ingest
             && $event->status === PipelineStageStatus::Completed;
         $failed = in_array($event->status, [PipelineStageStatus::Failed, PipelineStageStatus::Skipped], true);
@@ -335,6 +368,10 @@ readonly class PipelineWorkerEventService
             'error_message' => $failed ? $this->failureMessage($event) : null,
             'finished_at' => ($finalSuccess || $failed) ? $processedAt : null,
         ];
+
+        if ($terminalReady) {
+            $attributes['job_status'] = PipelineJob::STATUS_COMPLETED;
+        }
 
         if ($event->status === PipelineStageStatus::Skipped) {
             $attributes['job_status'] = PipelineJob::STATUS_SKIPPED;

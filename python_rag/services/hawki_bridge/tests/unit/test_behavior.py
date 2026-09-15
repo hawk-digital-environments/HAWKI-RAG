@@ -11,6 +11,8 @@ import pytest
 from fastapi import APIRouter
 from fastapi.routing import APIRoute
 from neo4j.exceptions import Neo4jError, ServiceUnavailable
+from temporalio.client import WorkflowExecutionStatus, WorkflowFailureError
+from temporalio.common import WorkflowIDConflictPolicy, WorkflowIDReusePolicy
 from temporalio.service import RPCError, RPCStatusCode
 
 from hawki_bridge.adapters.neo4j_reader import Neo4jReader
@@ -425,6 +427,9 @@ def test_temporal_routes_delegate_to_the_injected_client() -> None:
         async def cancel_workflow(self, **arguments: Any) -> None:
             calls.append(("cancel", arguments))
 
+        async def cancel_workflow_and_wait(self, **arguments: Any) -> None:
+            calls.append(("cancel_and_wait", arguments))
+
     settings = load_settings({})
     temporal_client = TemporalClient()
 
@@ -441,6 +446,11 @@ def test_temporal_routes_delegate_to_the_injected_client() -> None:
     upsert = _endpoint(router, "/temporal/schedules/ingest", "POST")
     delete = _endpoint(router, "/temporal/schedules/delete", "POST")
     cancel = _endpoint(router, "/temporal/workflows/cancel", "POST")
+    cancel_and_wait = _endpoint(
+        router,
+        "/temporal/workflows/cancel-and-wait",
+        "POST",
+    )
     workflow_input = _workflow_input(source_id="source-9")
 
     assert asyncio.run(
@@ -475,6 +485,14 @@ def test_temporal_routes_delegate_to_the_injected_client() -> None:
     assert asyncio.run(
         cancel(CancelWorkflowRequest(workflow_id="ingest-source-9", run_id="run-7"))
     ) == {"ok": True}
+    assert asyncio.run(
+        cancel_and_wait(
+            CancelWorkflowRequest(
+                workflow_id="ingest-source-9",
+                run_id="run-7",
+            )
+        )
+    ) == {"ok": True}
     assert calls == [
         (
             "start",
@@ -491,7 +509,128 @@ def test_temporal_routes_delegate_to_the_injected_client() -> None:
         ),
         ("delete", {"schedule_id": "refresh-source-9"}),
         ("cancel", {"workflow_id": "ingest-source-9", "run_id": "run-7"}),
+        (
+            "cancel_and_wait",
+            {"workflow_id": "ingest-source-9", "run_id": "run-7"},
+        ),
     ]
+
+
+def test_temporal_cancel_and_wait_closes_a_running_execution_before_returning(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+
+    class Description:
+        status = WorkflowExecutionStatus.RUNNING
+
+    class Handle:
+        async def describe(self) -> Description:
+            calls.append("describe")
+            return Description()
+
+        async def cancel(self) -> None:
+            calls.append("cancel")
+
+        async def result(self) -> None:
+            calls.append("result")
+
+    class TemporalClient:
+        @staticmethod
+        def get_workflow_handle(workflow_id: str, *, run_id: str | None = None):
+            assert workflow_id == "ingest-text-source-1"
+            assert run_id == "run-direct"
+            return Handle()
+
+    async def client(_self: Any) -> TemporalClient:
+        return TemporalClient()
+
+    monkeypatch.setattr(TemporalBridgeClient, "connect_temporal", client)
+
+    asyncio.run(
+        TemporalBridgeClient(load_settings({})).cancel_workflow_and_wait(
+            workflow_id="ingest-text-source-1",
+            run_id="run-direct",
+        )
+    )
+
+    assert calls == ["describe", "cancel", "result"]
+
+
+def test_temporal_cancel_and_wait_leaves_a_closed_execution_unchanged(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+
+    class Description:
+        status = WorkflowExecutionStatus.COMPLETED
+
+    class Handle:
+        async def describe(self) -> Description:
+            calls.append("describe")
+            return Description()
+
+        async def cancel(self) -> None:
+            calls.append("cancel")
+
+    class TemporalClient:
+        @staticmethod
+        def get_workflow_handle(workflow_id: str, *, run_id: str | None = None):
+            return Handle()
+
+    async def client(_self: Any) -> TemporalClient:
+        return TemporalClient()
+
+    monkeypatch.setattr(TemporalBridgeClient, "connect_temporal", client)
+
+    asyncio.run(
+        TemporalBridgeClient(load_settings({})).cancel_workflow_and_wait(
+            workflow_id="ingest-text-source-1",
+            run_id="run-direct",
+        )
+    )
+
+    assert calls == ["describe"]
+
+
+def test_temporal_cancel_and_wait_accepts_the_expected_cancelled_result(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+
+    class Description:
+        status = WorkflowExecutionStatus.RUNNING
+
+    class Handle:
+        async def describe(self) -> Description:
+            calls.append("describe")
+            return Description()
+
+        async def cancel(self) -> None:
+            calls.append("cancel")
+
+        async def result(self) -> None:
+            calls.append("result")
+            raise WorkflowFailureError(cause=RuntimeError("cancelled"))
+
+    class TemporalClient:
+        @staticmethod
+        def get_workflow_handle(workflow_id: str, *, run_id: str | None = None):
+            return Handle()
+
+    async def client(_self: Any) -> TemporalClient:
+        return TemporalClient()
+
+    monkeypatch.setattr(TemporalBridgeClient, "connect_temporal", client)
+
+    asyncio.run(
+        TemporalBridgeClient(load_settings({})).cancel_workflow_and_wait(
+            workflow_id="ingest-text-source-1",
+            run_id="run-direct",
+        )
+    )
+
+    assert calls == ["describe", "cancel", "result"]
 
 
 @pytest.mark.parametrize(
@@ -533,3 +672,42 @@ def test_temporal_cancel_is_idempotent_only_when_the_execution_is_absent(
         assert captured.value.status == status
     else:
         asyncio.run(cancellation)
+
+
+def test_direct_text_workflow_reuses_active_or_failed_executions_only(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, Any] = {}
+
+    class Handle:
+        first_execution_run_id = "run-direct"
+
+    class TemporalClient:
+        @staticmethod
+        async def start_workflow(*args: Any, **kwargs: Any) -> Handle:
+            captured["args"] = args
+            captured["kwargs"] = kwargs
+            return Handle()
+
+    async def client(_self: Any) -> TemporalClient:
+        return TemporalClient()
+
+    monkeypatch.setattr(TemporalBridgeClient, "connect_temporal", client)
+    bridge = TemporalBridgeClient(load_settings({}))
+
+    execution = asyncio.run(
+        bridge.start_text_ingest_workflow(
+            workflow_id="ingest-text-source-1",
+            workflow_input={"source_id": "source-1"},
+        )
+    )
+
+    assert execution.run_id == "run-direct"
+    assert (
+        captured["kwargs"]["id_reuse_policy"]
+        == WorkflowIDReusePolicy.ALLOW_DUPLICATE_FAILED_ONLY
+    )
+    assert (
+        captured["kwargs"]["id_conflict_policy"]
+        == WorkflowIDConflictPolicy.USE_EXISTING
+    )

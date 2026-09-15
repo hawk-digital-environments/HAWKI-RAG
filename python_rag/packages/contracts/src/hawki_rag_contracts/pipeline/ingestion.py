@@ -124,6 +124,35 @@ class IngestSourceWorkflowInput(BaseModel):
     external_services: dict[str, JsonValue] = Field(default_factory=dict)
 
 
+class IngestTextWorkflowInput(BaseModel):
+    """Payload for indexing an existing Markdown artifact without conversion."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True, str_strip_whitespace=True)
+
+    source_id: str = Field(min_length=1, max_length=191)
+    source_url: str = Field(min_length=1, max_length=4096)
+    task_id: str = Field(min_length=1, max_length=191)
+    job_id: str = Field(min_length=1, max_length=191)
+    dataset_id: str = Field(min_length=1, max_length=191)
+    external_document_id: str = Field(min_length=1, max_length=191)
+    markdown_path: str = Field(min_length=1, max_length=4096)
+    markdown_output_path: str = Field(min_length=1, max_length=4096)
+    ingest_manifest_path: str | None = Field(default=None, max_length=4096)
+    content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    display_name: str | None = Field(default=None, max_length=255)
+    storage: StorageConfig
+    task_queues: TaskQueueConfig = Field(default_factory=TaskQueueConfig)
+    ingestion: IngestionOptions
+
+    @model_validator(mode="after")
+    def require_vector_only_ingestion(self) -> "IngestTextWorkflowInput":
+        """Keep graph ingestion disabled at the Python contract boundary."""
+
+        if self.ingestion.graph:
+            raise ValueError("Direct text ingestion does not support graph indexing")
+        return self
+
+
 class ScrapeResult(BaseModel):
     """Result returned by the scraper activity."""
 
@@ -224,6 +253,7 @@ __all__ = [
     "IndexActivityInput",
     "IndexResult",
     "IngestSourceWorkflowInput",
+    "IngestTextWorkflowInput",
     "IngestionOptions",
     "IngestionStatus",
     "ReadyActivityInput",

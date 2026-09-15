@@ -7,6 +7,7 @@ from enum import StrEnum
 
 
 INGEST_SOURCE_WORKFLOW = "IngestSourceWorkflow"
+INGEST_TEXT_WORKFLOW = "IngestTextWorkflow"
 SCRAPE_SOURCE_ACTIVITY = "scrape_source"
 CONVERT_FILES_ACTIVITY = "inspect_and_convert_files"
 INDEX_MARKDOWN_ACTIVITY = "ingest_markdown_files"
@@ -81,6 +82,7 @@ __all__ = [
     "INDEXER_TERMINAL_CALLBACK_PATCH_ID",
     "INDEX_MARKDOWN_ACTIVITY",
     "INGEST_SOURCE_WORKFLOW",
+    "INGEST_TEXT_WORKFLOW",
     "LEGACY_INGESTION_TASK_QUEUE",
     "MARK_SOURCE_READY_ACTIVITY",
     "SCRAPER_TASK_QUEUE",

@@ -28,6 +28,54 @@ class DatasetManagementTest extends TestCase
         config()->set('config.graph_provider', 'ollama');
     }
 
+    public function test_dataset_creation_is_retry_safe_for_compatible_metadata(): void
+    {
+        $this->actingAsApiUser();
+        $this->fakeGraphStats(points: 0, nodes: 0, relationships: 0);
+        $payload = [
+            'dataset_id' => 'assistant_42',
+            'name' => 'Assistant 42',
+            'description' => 'Knowledge for Assistant 42',
+        ];
+
+        $this->postJson('/api/datasets', $payload)
+            ->assertCreated()
+            ->assertJsonPath('dataset_id', 'assistant_42')
+            ->assertJsonPath('dataset.qdrant_collection', 'hawki_assistant_42');
+
+        $this->postJson('/api/datasets', $payload)
+            ->assertOk()
+            ->assertJsonPath('dataset_id', 'assistant_42');
+
+        $this->assertSame(
+            1,
+            Dataset::query()->where('dataset_id', 'assistant_42')->count(),
+        );
+    }
+
+    public function test_dataset_creation_rejects_conflicting_metadata(): void
+    {
+        $this->actingAsApiUser();
+        $this->fakeGraphStats(points: 0, nodes: 0, relationships: 0);
+
+        $this->postJson('/api/datasets', [
+            'dataset_id' => 'assistant_42',
+            'name' => 'Assistant 42',
+        ])->assertCreated();
+
+        $this->postJson('/api/datasets', [
+            'dataset_id' => 'assistant_42',
+            'name' => 'Different assistant',
+        ])
+            ->assertConflict()
+            ->assertJsonPath('error', 'dataset_creation_conflict');
+
+        $this->assertDatabaseHas('datasets', [
+            'dataset_id' => 'assistant_42',
+            'name' => 'Assistant 42',
+        ]);
+    }
+
     public function test_datasets_are_visible_with_counts_last_ingestion_and_graph_stats(): void
     {
         $this->withoutVite();

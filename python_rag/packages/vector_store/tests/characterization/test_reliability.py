@@ -183,7 +183,8 @@ class QdrantReliabilityCharacterizationTests(unittest.TestCase):
         method, url, kwargs = requests[0]
         self.assertEqual(method, "PUT")
         self.assertEqual(
-            url, "http://qdrant-host:6333/collections/toy_collection/points"
+            url,
+            "http://qdrant-host:6333/collections/toy_collection/points?wait=true",
         )
         self.assertEqual(kwargs["timeout"], 9.0)
 
@@ -223,6 +224,10 @@ class QdrantReliabilityCharacterizationTests(unittest.TestCase):
 
             def upsert(self, points, *, timeout, operation_id=None):
                 calls.append(("upsert", len(points), timeout, operation_id))
+                return FakeResponse({})
+
+            def set_payload(self, point_ids, payload, *, timeout, operation_id=None):
+                calls.append(("set_payload", point_ids, payload, timeout, operation_id))
                 return FakeResponse({})
 
             def count_points(self, collection, *, exact, timeout, filter_body=None):
@@ -280,12 +285,27 @@ class QdrantReliabilityCharacterizationTests(unittest.TestCase):
                 client.search([0.1, 0.2], top_k=2), [{"id": "1", "score": 0.4}]
             )
             client.upsert([{"id": "a", "vector": [1, 2], "payload": {}}])
+            client.set_payload(
+                ["a"],
+                {"rawki_document_complete": True},
+                idempotency_key="complete-a",
+            )
             self.assertEqual(client.count_points(), 42)
             client.delete_by_filter({"must": []})
             client.set_collection("runtime_collection")
 
         self.assertIn(("search", "toy_collection", 2.0), calls)
         self.assertIn(("upsert", 1, 2.0, None), calls)
+        self.assertIn(
+            (
+                "set_payload",
+                ["a"],
+                {"rawki_document_complete": True},
+                2.0,
+                "complete-a",
+            ),
+            calls,
+        )
         self.assertIn(("count", "toy_collection", True, 2.0, None), calls)
         self.assertIn(("delete_by_filter", 2.0, None), calls)
         self.assertEqual(fake_gateway.collection, "runtime_collection")

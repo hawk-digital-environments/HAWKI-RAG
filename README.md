@@ -191,7 +191,7 @@ docker compose exec hawki_rag_app php artisan user:create
 ```
 
 The browser does not need a token or sign-in step. When a credential-free query
-arrives, RAWKI uses the only active local user as its internal query identity.
+arrives, HAWKI-RAG uses the only active local user as its internal query identity.
 Removed users do not count. If there are no active users, or more than one,
 query and dataset-scoped semantic-search requests fail with HTTP `503` instead
 of selecting an identity arbitrarily.
