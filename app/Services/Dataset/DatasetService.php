@@ -5,9 +5,11 @@ declare(strict_types=1);
 namespace App\Services\Dataset;
 
 use App\Models\Dataset;
+use App\Services\Authorization\DatasetGrantTokenService;
 use App\Services\Dataset\Exceptions\DatasetCreationConflictException;
 use App\Services\Dataset\Exceptions\DatasetInactiveException;
 use App\Services\Dataset\Exceptions\DatasetNotFoundException;
+use App\Services\Dataset\Values\DatasetCreationResult;
 use App\Services\Settings\SettingsService;
 use Illuminate\Container\Attributes\Singleton;
 use Psr\Clock\ClockInterface;
@@ -22,6 +24,7 @@ readonly class DatasetService
         private DatasetPayloadBuilder $payloads,
         private DatasetStorageCleanupService $storageCleanup,
         private SettingsService $settings,
+        private DatasetGrantTokenService $grantTokens,
         private ClockInterface $clock = new Clock,
     ) {}
 
@@ -41,7 +44,7 @@ readonly class DatasetService
         return $dataset ? $this->payloads->payload($dataset, includeDetails: true) : null;
     }
 
-    public function create(array $input): Dataset
+    public function create(array $input): DatasetCreationResult
     {
         $datasetId = $this->identifiers->datasetId($input['dataset_id'] ?? $input['datasetId'] ?? null);
         $safe = $this->identifiers->safeName($datasetId);
@@ -63,9 +66,13 @@ readonly class DatasetService
 
         if (! $dataset->wasRecentlyCreated) {
             $this->ensureCompatibleCreationRequest($dataset, $input);
+
+            // A compatible replay never re-issues the creator's bootstrap
+            // token: ownership was proven at first creation.
+            return new DatasetCreationResult($dataset, false, null);
         }
 
-        return $dataset;
+        return new DatasetCreationResult($dataset, true, $this->grantTokens->issue($dataset));
     }
 
     public function requireActive(string $datasetId): Dataset

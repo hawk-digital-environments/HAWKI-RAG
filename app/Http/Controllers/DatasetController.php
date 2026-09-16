@@ -25,13 +25,21 @@ class DatasetController extends Controller
 
     public function store(CreateDatasetRequest $request): JsonResponse
     {
-        $dataset = $this->datasets->create($request->validated());
+        $creation = $this->datasets->create($request->validated());
 
-        return response()->json([
+        $payload = [
             'success' => true,
-            'dataset_id' => $dataset->dataset_id,
-            'dataset' => $this->datasets->show($dataset->dataset_id),
-        ], $dataset->wasRecentlyCreated ? 201 : 200);
+            'dataset_id' => $creation->dataset->dataset_id,
+            'dataset' => $this->datasets->show($creation->dataset->dataset_id),
+        ];
+
+        if ($creation->grantToken !== null) {
+            // One-time bootstrap capability for the creator: redeem it via
+            // POST /datasets/{id}/ingest-grants/self. Shown exactly once.
+            $payload['grant_token'] = $creation->grantToken;
+        }
+
+        return response()->json($payload, $creation->created ? 201 : 200);
     }
 
     public function show(string $datasetId): JsonResponse
