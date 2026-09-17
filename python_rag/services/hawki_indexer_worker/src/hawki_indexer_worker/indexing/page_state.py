@@ -185,11 +185,14 @@ class QdrantPageState:
             )
 
     def mark_completed(self, records: list[IndexedPageRecord]) -> None:
-        """Publish direct-text completion only after every point was committed."""
+        """Publish completion only after every point and required graph write."""
 
         setter = getattr(self._qdrant, "set_payload", None)
         for record in records:
-            if record.ingestion_mode != "direct_text":
+            if (
+                record.ingestion_mode != "direct_text"
+                and record.metadata.get("document_identity") != "source_path"
+            ):
                 continue
             if not callable(setter) or not record.point_ids:
                 raise RuntimeError("Qdrant cannot publish document completion state")
@@ -260,6 +263,7 @@ def build_page_state_record(
             "title": _text(payload.get("title")),
             "source_format": _text(payload.get("source_format")),
             "relative_path": _text(payload.get("relative_path")),
+            "document_identity": _text(payload.get("document_identity")),
         }.items()
         if value is not None
     }

@@ -14,6 +14,8 @@ from hawki_indexer_worker.indexing.vector_prepare import (
     record_embedding_failures,
 )
 from hawki_indexer_worker.indexing.observability import pipeline_log
+from hawki_indexer_worker.indexing.point_identity import validate_unique_point_ids
+from hawki_indexer_worker.indexing.artifact_identity import has_artifact_identity
 
 
 @dataclass(slots=True)
@@ -40,6 +42,8 @@ def commit_vector_points(
 ) -> VectorCommitResult:
     """Embed prepared chunks and commit them to the configured Qdrant collection."""
 
+    validate_unique_point_ids(chunk_records)
+
     logger_obj.info(
         "ingest:provider=%s embed_model=%s batch_size=%s",
         body.provider,
@@ -53,20 +57,21 @@ def commit_vector_points(
     )
     if embedding_failures:
         record_embedding_failures(doc_stats, points, embedding_failures)
-        direct_text_doc_ids = {
+        required_doc_ids = {
             str(record.get("doc_id") or "")
             for record in chunk_records
             if (record.get("payload") or {}).get("ingestion_mode") == "direct_text"
+            or has_artifact_identity(record.get("payload") or {})
         }
         failed_doc_ids = {
             str(failure.get("doc_id") or "") for failure in embedding_failures
         }
-        direct_failure_doc_ids = direct_text_doc_ids & failed_doc_ids
+        required_failure_doc_ids = required_doc_ids & failed_doc_ids
         pipeline_log(
             logger_obj,
             logging.WARNING,
             stage="ingest",
-            status="failed" if direct_failure_doc_ids else "partial",
+            status="failed" if required_failure_doc_ids else "partial",
             job_id=job_id,
             idempotency_key=operation_id,
             pipeline_stage="embedding",
@@ -74,9 +79,18 @@ def commit_vector_points(
             failed_chunks=len(embedding_failures),
             failed_docs=doc_stats.get("embedding_failed_docs", 0),
         )
-        if direct_failure_doc_ids:
+        if required_failure_doc_ids:
+            document_kind = (
+                "source/path artifact"
+                if any(
+                    str(record.get("doc_id") or "") in required_failure_doc_ids
+                    and has_artifact_identity(record.get("payload") or {})
+                    for record in chunk_records
+                )
+                else "direct-text document"
+            )
             raise EmbeddingError(
-                "Embedding failed for a direct-text document; the complete "
+                f"Embedding failed for a {document_kind}; the complete "
                 "document must be retried."
             )
     if not points:
