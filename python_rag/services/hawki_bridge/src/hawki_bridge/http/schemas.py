@@ -66,6 +66,12 @@ class DeleteScheduleRequest(BaseModel):
     schedule_id: str = Field(min_length=1, max_length=255)
 
 
+class WorkflowStatusRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    workflow_id: str = Field(min_length=1, max_length=255)
+    run_id: str = Field(min_length=1, max_length=255)
+
+
 class CancelWorkflowRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     workflow_id: str = Field(min_length=1, max_length=255)

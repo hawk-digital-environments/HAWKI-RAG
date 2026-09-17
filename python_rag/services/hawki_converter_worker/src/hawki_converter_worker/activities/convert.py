@@ -78,7 +78,10 @@ def inspect_and_convert_files(payload: dict[str, Any]) -> dict[str, Any]:
                 ) from exc
             raise
 
-        result = result_contract.model_dump(mode="json")
+        # Temporal persists activity results in workflow history. Keep the per-file
+        # references in the callback/storage; the indexer can discover Markdown
+        # from this directory without a multi-megabyte activity result.
+        result = result_contract.model_dump(mode="json", exclude={"artifacts"})
         callback_status = (
             PipelineStageStatus.COMPLETED
             if result_contract.status is IngestionStatus.SUCCESS
