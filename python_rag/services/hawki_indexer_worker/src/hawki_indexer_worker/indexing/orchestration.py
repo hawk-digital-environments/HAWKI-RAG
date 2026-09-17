@@ -188,6 +188,7 @@ def ingest_documents(
             collection=qdrant.collection,
             neo4j_database=getattr(body, "neo4j_namespace", None),
             page_registry=page_state,
+            reprocess_unchanged=getattr(body, "reprocess_unchanged", False),
             operation_id=operation_id,
             logger_obj=logger,
         )

@@ -103,6 +103,7 @@ def plan_incremental_ingest(
     logger_obj: logging.Logger,
     neo4j_database: str | None = None,
     page_registry: Any | None = None,
+    reprocess_unchanged: bool = False,
 ) -> IncrementalIngestPlan:
     """Skip unchanged docs and mark changed docs for page-scoped replacement."""
 
@@ -155,8 +156,15 @@ def plan_incremental_ingest(
         if is_direct_text:
             unchanged_is_proven = completed_state is not None
 
+        # A previous attempt may have written vectors before its graph write or
+        # remaining vector batches failed. Matching content alone cannot prove
+        # that the requested ingestion retry has finished both stores.
+        if reprocess_unchanged:
+            unchanged_is_proven = False
+
         metadata_refresh_required = bool(
-            is_direct_text
+            not reprocess_unchanged
+            and is_direct_text
             and completed_state is not None
             and expected_page_record is not None
             and (

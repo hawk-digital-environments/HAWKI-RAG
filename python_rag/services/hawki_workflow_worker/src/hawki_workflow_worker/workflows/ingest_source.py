@@ -6,6 +6,10 @@ from datetime import timedelta
 from typing import Any
 
 from temporalio import workflow
+from temporalio.exceptions import ApplicationError
+from pydantic import ValidationError
+
+from hawki_rag_contracts.pipeline.ingestion import SourceWorkflowResume
 
 from hawki_rag_contracts.pipeline.temporal import (
     ActivityQueueRole,
@@ -52,37 +56,68 @@ class IngestSourceWorkflow:
         workflow.logger.info("IngestSourceWorkflow started source_id=%s", source_id)
         retry_policy = ingestion_activity_retry_policy()
 
-        scrape_result = await workflow.execute_activity(
-            SCRAPE_SOURCE_ACTIVITY,
-            workflow_input,
-            task_queue=resolve_activity_task_queue(
-                workflow_input, ActivityQueueRole.SCRAPER
-            ),
-            start_to_close_timeout=_SCRAPE_START_TO_CLOSE_TIMEOUT,
-            schedule_to_close_timeout=_SCRAPE_SCHEDULE_TO_CLOSE_TIMEOUT,
-            heartbeat_timeout=timedelta(minutes=2),
-            retry_policy=retry_policy,
-        )
-        if scrape_result.get("status") != "success":
-            return _failed_result(workflow_input, SCRAPE_SOURCE_ACTIVITY, scrape_result)
+        # Old histories have no resume payload and keep exactly the same commands.
+        # Only newly started recovery workflows can skip completed activities.
+        resume = None
+        if workflow_input.get("resume") is not None:
+            try:
+                resume = SourceWorkflowResume.model_validate(workflow_input["resume"])
+            except ValidationError as exc:
+                raise ApplicationError(
+                    "Invalid stage recovery configuration",
+                    type="InvalidStageRecovery",
+                    non_retryable=True,
+                ) from exc
+        start_stage = resume.stage if resume else "scrape"
 
-        convert_result = await workflow.execute_activity(
-            CONVERT_FILES_ACTIVITY,
-            {
-                "workflow_input": workflow_input,
-                "scrape_result": scrape_result,
-            },
-            task_queue=resolve_activity_task_queue(
-                workflow_input, ActivityQueueRole.CONVERTER
-            ),
-            start_to_close_timeout=timedelta(hours=2),
-            schedule_to_close_timeout=timedelta(hours=3),
-            retry_policy=retry_policy,
-        )
-        if convert_result.get("status") != "success":
-            return _failed_result(
-                workflow_input, CONVERT_FILES_ACTIVITY, convert_result
+        scrape_result: dict[str, Any] = {}
+        if start_stage == "scrape":
+            scrape_result = await workflow.execute_activity(
+                SCRAPE_SOURCE_ACTIVITY,
+                workflow_input,
+                task_queue=resolve_activity_task_queue(
+                    workflow_input, ActivityQueueRole.SCRAPER
+                ),
+                start_to_close_timeout=_SCRAPE_START_TO_CLOSE_TIMEOUT,
+                schedule_to_close_timeout=_SCRAPE_SCHEDULE_TO_CLOSE_TIMEOUT,
+                heartbeat_timeout=timedelta(minutes=2),
+                retry_policy=retry_policy,
             )
+            if scrape_result.get("status") != "success":
+                return _failed_result(
+                    workflow_input, SCRAPE_SOURCE_ACTIVITY, scrape_result
+                )
+        elif start_stage == "convert":
+            scrape_result = {
+                "source_id": source_id,
+                "status": "success",
+                "raw_dir": resume.raw_dir,
+            }
+
+        if start_stage == "ingest":
+            convert_result = {
+                "source_id": source_id,
+                "status": "success",
+                "markdown_dir": resume.markdown_dir,
+            }
+        else:
+            convert_result = await workflow.execute_activity(
+                CONVERT_FILES_ACTIVITY,
+                {
+                    "workflow_input": workflow_input,
+                    "scrape_result": scrape_result,
+                },
+                task_queue=resolve_activity_task_queue(
+                    workflow_input, ActivityQueueRole.CONVERTER
+                ),
+                start_to_close_timeout=timedelta(hours=2),
+                schedule_to_close_timeout=timedelta(hours=3),
+                retry_policy=retry_policy,
+            )
+            if convert_result.get("status") != "success":
+                return _failed_result(
+                    workflow_input, CONVERT_FILES_ACTIVITY, convert_result
+                )
 
         # Histories created before the indexer queue existed must continue to
         # emit the legacy task-queue command during replay. New executions
