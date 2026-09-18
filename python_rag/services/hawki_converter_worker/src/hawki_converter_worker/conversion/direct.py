@@ -11,10 +11,10 @@ from hawki_rag_contracts.pipeline.ingestion import IngestionStatus
 
 from hawki_converter_worker.conversion.archive import unpack_converter_archive
 from hawki_converter_worker.conversion.discovery import (
-    converter_output_directory_name,
     find_raw_conversion_candidates,
     resolve_conversion_directory,
 )
+from hawki_converter_worker.conversion.output_paths import plan_output_paths
 from hawki_converter_worker.conversion.passthrough import (
     write_raganything_passthrough,
 )
@@ -66,8 +66,8 @@ def convert_files_direct(
     converted_files: list[str] = []
     passthrough_files: list[str] = []
     markdown_files_created = 0
-    for raw_file in candidates:
-        result = _convert_candidate(raw_file, markdown_root, extract_client)
+    for raw_file, output_dir in plan_output_paths(candidates, raw_root, markdown_root):
+        result = _convert_candidate(raw_file, output_dir, extract_client)
         markdown_files_created += result.markdown_files_created
         converted_files.append(result.source_path)
         if result.used_passthrough:
@@ -92,11 +92,10 @@ def convert_files_direct(
 
 def _convert_candidate(
     raw_file: Path,
-    markdown_root: Path,
+    output_dir: Path,
     extract_client: DirectExtractClientPort,
 ) -> _ConvertedFile:
     source_path = str(raw_file)
-    output_dir = markdown_root / converter_output_directory_name(raw_file)
     if output_dir.exists():
         shutil.rmtree(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)

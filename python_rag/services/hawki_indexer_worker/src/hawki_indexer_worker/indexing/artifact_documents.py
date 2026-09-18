@@ -13,6 +13,7 @@ from hawki_rag_text.markdown import strip_leading_converter_markdown_noise
 
 from hawki_indexer_worker.adapters.artifact_store import load_passthrough_metadata
 from hawki_indexer_worker.domain.models import IngestDocument
+from hawki_indexer_worker.domain.errors import IndexingValidationError
 
 
 class IngestManifestRecord(TypedDict):
@@ -101,7 +102,9 @@ def _document_from_artifact(
     artifact: MarkdownArtifact | None,
 ) -> tuple[IngestDocument, IngestManifestRecord]:
     workflow_input = context.workflow_input
-    source_id = str(workflow_input["source_id"])
+    source_id = workflow_input.get("source_id")
+    if not isinstance(source_id, str) or not source_id.strip():
+        raise IndexingValidationError("Artifact source_id must be a nonempty string")
     relative_path = context.artifact_store.relative_path(
         markdown_file,
         context.markdown_dir,
@@ -137,6 +140,7 @@ def _document_from_artifact(
             "dataset_id": workflow_input.get("dataset_id"),
             "source_id": source_id,
             "document_id": doc_id,
+            "document_identity": "source_path",
             "doc_id": doc_id,
             "chunk_id": None,
             "version": content_hash[:16],

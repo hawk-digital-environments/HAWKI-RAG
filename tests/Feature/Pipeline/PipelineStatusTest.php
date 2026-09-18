@@ -101,6 +101,29 @@ final class PipelineStatusTest extends TestCase
         }
     }
 
+    public function test_temporal_status_does_not_reconcile_old_scraper_or_converter_results(): void
+    {
+        $job = $this->createJob('temporal-ingestion');
+        $job->update(['temporal_workflow_id' => 'workflow', 'temporal_run_id' => 'run']);
+        foreach (['scrape' => 'completed', 'convert' => 'completed', 'ingest' => 'running'] as $stage => $status) {
+            PipelineStageState::query()->create([
+                'pipeline_job_id' => $job->id, 'job_id' => $job->job_id,
+                'stage' => $stage, 'status' => $status,
+            ]);
+        }
+        Http::fake(['*' => Http::response([
+            'workflow_id' => 'workflow', 'run_id' => 'run', 'status' => 'RUNNING', 'error' => null,
+        ])]);
+
+        $this->getJson("/api/pipeline/status/{$job->job_id}")
+            ->assertOk()
+            ->assertJsonPath('current_stage', 'ingest')
+            ->assertJsonPath('stages.ingest.status', 'running');
+        Http::assertSentCount(1);
+        Http::assertSent(fn ($request) => str_ends_with($request->url(), '/temporal/workflows/status'));
+        $this->assertSame('ingest', $job->refresh()->current_stage);
+    }
+
     private function createJob(string $jobId, ?string $datasetPath = null): PipelineJob
     {
         return PipelineJob::query()->create([

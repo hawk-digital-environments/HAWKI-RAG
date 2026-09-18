@@ -7,6 +7,7 @@ namespace Tests\Feature\Integration;
 use App\Models\Dataset;
 use App\Models\IngestionSource;
 use App\Models\PipelineJob;
+use App\Models\PipelineStageState;
 use App\Models\PipelineTask;
 use App\Services\Pipeline\Recovery\PipelineRecoveryAttemptService;
 use App\Services\Pipeline\Tasks\PipelineTaskRetryService;
@@ -106,6 +107,52 @@ final class DirectTextIngestionRecoveryTest extends TestCase
         Http::assertNothingSent();
         $this->assertSame(IngestionSource::STATUS_DELETED, $source->refresh()->index_status);
         $this->assertSame(PipelineJob::STATUS_FAILED, $job->refresh()->status);
+    }
+
+    public function test_conversion_recovery_reuses_scrape_output_and_current_converter_key(): void
+    {
+        [, $job] = $this->failedOrdinaryIngestion();
+        $job->stages()->where('stage', 'ingest')->delete();
+        $job->stages()->where('stage', 'convert')->update(['status' => 'failed']);
+        $job->forceFill(['current_stage' => 'convert'])->save();
+        config()->set('temporal.external_services.converter_token', 'updated-test-key');
+
+        $result = app(PipelineRecoveryAttemptService::class)->retry($job, 'job', $job->job_id);
+
+        $this->assertSame('retried', $result['result']);
+        Http::assertSent(function ($request): bool {
+            $input = $request->data()['workflow_input'];
+
+            return $input['resume'] === ['stage' => 'convert', 'raw_dir' => $this->sharedRoot.'/raw']
+                && $input['external_services']['converter_token'] === 'updated-test-key';
+        });
+        $this->assertSame('completed', $job->stages()->where('stage', 'scrape')->value('status'));
+    }
+
+    public function test_ingestion_recovery_reuses_completed_markdown(): void
+    {
+        [$task, $job] = $this->failedOrdinaryIngestion();
+        File::deleteDirectory($this->sharedRoot.'/raw');
+
+        app(PipelineTaskRetryService::class)->retryFailedJobs($task->task_id);
+
+        Http::assertSent(fn ($request): bool => $request->data()['workflow_input']['resume'] === [
+            'stage' => 'ingest', 'markdown_dir' => $this->sharedRoot.'/markdown',
+        ]);
+        $this->assertSame('completed', $job->stages()->where('stage', 'convert')->value('status'));
+    }
+
+    public function test_missing_artifacts_returns_a_recovery_error_without_starting_a_workflow(): void
+    {
+        [, $job, $source] = $this->failedOrdinaryIngestion();
+        File::deleteDirectory($this->sharedRoot.'/markdown');
+
+        $result = app(PipelineRecoveryAttemptService::class)->retry($job, 'job', $job->job_id);
+
+        $this->assertSame('failed', $result['result']);
+        $this->assertStringContainsString('output directory', $result['message']);
+        $this->assertSame(IngestionSource::STATUS_FAILED, $source->refresh()->index_status);
+        Http::assertNothingSent();
     }
 
     public function test_recovery_routes_direct_text_callback_failure_to_text_workflow(): void
@@ -236,6 +283,10 @@ final class DirectTextIngestionRecoveryTest extends TestCase
      */
     private function failedOrdinaryIngestion(): array
     {
+        File::ensureDirectoryExists($this->sharedRoot.'/raw');
+        File::ensureDirectoryExists($this->sharedRoot.'/markdown');
+        File::put($this->sharedRoot.'/raw/page.html', '<p>Saved scrape</p>');
+        File::put($this->sharedRoot.'/markdown/page.md', '# Saved Markdown');
         $dataset = $this->dataset('web_docs');
         $task = $this->task($dataset, 'task-web');
         $source = IngestionSource::query()->create([
@@ -268,6 +319,18 @@ final class DirectTextIngestionRecoveryTest extends TestCase
             'error_message' => 'Indexer failed.',
             'metadata' => ['dataset' => $this->datasetMetadata($dataset)],
         ]);
+
+        foreach (['scrape' => 'raw', 'convert' => 'markdown', 'ingest' => null] as $stage => $directory) {
+            PipelineStageState::query()->create([
+                'pipeline_job_id' => $job->id,
+                'job_id' => $job->job_id,
+                'stage' => $stage,
+                'status' => $directory === null ? 'failed' : 'completed',
+                'metadata' => ['artifacts' => $directory === null ? [] : [
+                    ['uri' => $this->sharedRoot.'/'.$directory, 'media_type' => 'inode/directory'],
+                ]],
+            ]);
+        }
 
         return [$task, $job, $source];
     }

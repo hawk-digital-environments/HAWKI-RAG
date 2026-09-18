@@ -10,6 +10,7 @@ from fastapi import APIRouter, HTTPException
 from hawki_bridge.adapters.temporal_client import TemporalBridgeClient
 from hawki_bridge.http.schemas import (
     CancelWorkflowRequest,
+    WorkflowStatusRequest,
     DeleteScheduleRequest,
     StartIngestWorkflowRequest,
     StartTextIngestWorkflowRequest,
@@ -27,6 +28,18 @@ def build_temporal_router(
 
     def client() -> TemporalBridgeClient:
         return client_factory(settings)
+
+    @router.post("/workflows/status")
+    async def status(body: WorkflowStatusRequest) -> dict[str, str | None]:
+        try:
+            return await client().workflow_status(
+                workflow_id=body.workflow_id, run_id=body.run_id
+            )
+        except Exception as exc:
+            logger.exception("temporal:status failed")
+            raise HTTPException(
+                status_code=502, detail="Temporal workflow status is unavailable."
+            ) from exc
 
     @router.post("/workflows/ingest")
     async def start(body: StartIngestWorkflowRequest) -> dict[str, str | None]:

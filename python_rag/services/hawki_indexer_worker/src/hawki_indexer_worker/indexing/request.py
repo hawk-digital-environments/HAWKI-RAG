@@ -35,6 +35,7 @@ class IndexRequest:
     graph_model: str | None = None
     vision_model: str | None = None
     graph_only: bool = False
+    reprocess_unchanged: bool = False
     idempotency_key: str | None = None
     job_id: str | None = None
     dry_run: bool = False
@@ -90,6 +91,8 @@ class IndexRequest:
             graph_model=_optional_text(options.get("graph_model")),
             vision_model=_optional_text(options.get("vision_model")),
             graph_only=bool(options.get("graph_only", False)),
+            reprocess_unchanged=(workflow_input.get("resume") or {}).get("stage")
+            == "ingest",
             idempotency_key=operation_id,
             job_id=_optional_text(workflow_input.get("job_id")),
             dry_run=bool(options.get("dry_run", False)),

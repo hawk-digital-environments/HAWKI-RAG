@@ -33,6 +33,11 @@ from hawki_indexer_worker.indexing.request import (
     infer_operation_id,
 )
 from hawki_indexer_worker.indexing.vector_commit import commit_vector_points
+from hawki_indexer_worker.indexing.document_requirements import (
+    artifact_document_ids,
+    complete_document_ids,
+)
+from hawki_indexer_worker.indexing.point_identity import validate_unique_point_ids
 
 logger = logging.getLogger(__name__)
 
@@ -111,6 +116,7 @@ def ingest_documents(
         default_job_id=run_job_id,
         graph_debug=resolved_graph_debug,
     )
+    validate_unique_point_ids(chunk_records)
     if body.graph:
         write_scope = resolve_indexing_graph_scope(
             getattr(body, "dataset_id", None),
@@ -126,11 +132,8 @@ def ingest_documents(
             except GraphScopeMismatchError as exc:
                 raise IndexingValidationError(str(exc)) from exc
     total_chunks = len(chunk_records)
-    direct_text_doc_ids = {
-        str(record.get("doc_id") or "")
-        for record in chunk_records
-        if (record.get("payload") or {}).get("ingestion_mode") == "direct_text"
-    }
+    artifact_doc_ids = artifact_document_ids(chunk_records)
+    required_doc_ids = complete_document_ids(chunk_records)
 
     if total_chunks == 0:
         pipeline_log(
@@ -188,6 +191,7 @@ def ingest_documents(
             collection=qdrant.collection,
             neo4j_database=getattr(body, "neo4j_namespace", None),
             page_registry=page_state,
+            reprocess_unchanged=getattr(body, "reprocess_unchanged", False),
             operation_id=operation_id,
             logger_obj=logger,
         )
@@ -196,7 +200,7 @@ def ingest_documents(
         replace_doc_ids_by_doc = incremental_plan.replace_doc_ids_by_doc
         unchanged_page_records = incremental_plan.unchanged_page_records
         payload_refresh_page_records = incremental_plan.payload_refresh_page_records
-        direct_text_doc_ids -= incremental_plan.unchanged_doc_ids
+        required_doc_ids -= incremental_plan.unchanged_doc_ids
         total_chunks = len(chunk_records)
         if total_chunks == 0 and (
             int(doc_stats.get("incremental_unchanged_docs") or 0) > 0
@@ -209,7 +213,7 @@ def ingest_documents(
             _mark_page_state_completed(
                 page_state,
                 payload_refresh_page_records,
-                required_doc_ids=direct_text_doc_ids,
+                required_doc_ids=required_doc_ids,
                 logger_obj=logger,
             )
             _mark_page_state_seen(page_state, unchanged_page_records, logger_obj=logger)
@@ -298,6 +302,12 @@ def ingest_documents(
         graph_preview = graph_result.graph_preview
         graph_failures = graph_result.graph_failures
         neo4j_ms = graph_result.neo4j_ms
+        if artifact_doc_ids & {
+            str(failure.get("doc_id")) for failure in graph_failures
+        }:
+            raise DocumentCompletionError(
+                "Graph processing failed for a document requiring completion; retry ingestion."
+            )
 
     if not getattr(body, "graph_only", False):
         completed_page_records = build_page_state_records(
@@ -313,7 +323,7 @@ def ingest_documents(
         _mark_page_state_completed(
             page_state,
             completed_page_records,
-            required_doc_ids=direct_text_doc_ids,
+            required_doc_ids=required_doc_ids,
             logger_obj=logger,
         )
         _mark_page_state_seen(page_state, unchanged_page_records, logger_obj=logger)
@@ -385,13 +395,11 @@ def _mark_page_state_completed(
     missing_required = required_doc_ids - recorded_doc_ids
     if missing_required:
         raise DocumentCompletionError(
-            "Direct-text document completion state could not be constructed."
+            "Document completion state could not be constructed."
         )
     if page_state is None:
         if required_doc_ids:
-            raise DocumentCompletionError(
-                "Direct-text document completion state is unavailable."
-            )
+            raise DocumentCompletionError("Document completion state is unavailable.")
         return
     if not records:
         return
@@ -400,7 +408,7 @@ def _mark_page_state_completed(
     except Exception as exc:
         if required_doc_ids:
             raise DocumentCompletionError(
-                "Direct-text document completion could not be recorded."
+                "Document completion could not be recorded."
             ) from exc
         logger_obj.warning(
             "ingest:page state completed update failed records=%s error=%s",
