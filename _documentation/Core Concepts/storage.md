@@ -12,36 +12,72 @@ Each store answers a different question. They are not interchangeable replicas.
 
 ## Qdrant
 
-Each deterministic point represents one chunk, not one entire document.
-The payload contains the text required for retrieval, so searching does not
-read a `chunks.md` artifact or reconstruct chunks from PostgreSQL.
+Qdrant stores the document passages used for search together with their
+embeddings. A **collection** is a named container for these records, called
+**points**. A dataset's configuration identifies the collection to use, and one
+collection can hold points from many documents.
 
-A query uses the collection from trusted dataset scope and a mandatory
-`dataset_id` payload filter. The reader does not create a missing collection.
-Indexing creates a missing collection using the embedding dimension and requested
-distance. An existing collection receives only an existence check, not a
-dimension/distance compatibility preflight. See the
-[embedding compatibility warning](./Ingestion/chunking_embeddings.md#embedding-compatibility-is-a-dataset-invariant)
-before replacing indexed content.
+Each point represents one **chunk**, a passage split from a document, and contains:
 
-Source identity, content hash, and direct-text completion information are stored
-with Qdrant payloads. Historical/application `ingested_pages` records in
-PostgreSQL are not a competing indexer registry.
-[Identity & Incremental Ingestion](./Ingestion/identity_incremental.md) explains
-the comparison and replacement rules.
+| Component | Purpose |
+|---|---|
+| Point ID | Derived from the document ID and chunk position, so retrying the same chunk writes to the same point |
+| Vector | The chunk's embedding: a list of numbers used to compare its meaning with a query |
+| Payload | The chunk text and metadata, including its document ID, dataset ID, and source information |
+
+For example, fully indexing a document with ten chunks stores ten points in the
+selected collection. Retrieval reads the matching passages directly from their
+point payloads.
+
+During ingestion, the indexer prepares the chunks and their embeddings, then
+checks whether the target collection exists. If needed, it creates the collection
+with the embedding's **dimension** (the number of values in each vector) and the
+configured **distance metric** (the method used to compare vectors, such as
+cosine similarity). The new collection starts empty. The indexer then writes the
+prepared points in batches; a failure before the first successful write can leave
+it empty.
+
+For an existing collection, the indexer confirms its existence and proceeds with
+its stored dimension and distance settings. A dimension mismatch can cause a
+point write to fail. Before changing the embedding model or collection settings,
+follow the [embedding compatibility and migration guidance](./Ingestion/chunking_embeddings.md#embedding-compatibility-is-a-dataset-invariant).
+
+During a query, Laravel supplies the collection selected for the authorized
+dataset. The query bridge searches that collection and applies a mandatory
+`dataset_id` payload filter to restrict results to that dataset. If the collection
+is missing, the query returns `dataset_not_ready` (HTTP 503); collection creation
+takes place during ingestion.
+
+The indexer also reads source identity, content hashes, and direct-text completion
+markers from Qdrant payloads to decide whether to skip, retry, or replace a
+document. Laravel's PostgreSQL `ingested_pages` records serve application and
+history needs. [Identity & Incremental Ingestion](./Ingestion/identity_incremental.md)
+explains how the indexer uses the stored points to make those decisions.
+
+For a full explanation of Qdrant's concepts, please refer to the official
+[Collections](https://qdrant.tech/documentation/manage-data/collections/) and
+[Points](https://qdrant.tech/documentation/manage-data/points/) documentation.
 
 ## Neo4j
 
-A namespace is a logical graph scope, not a separate Neo4j database.
+Neo4j represents entities as **nodes** and connections between them as
+**relationships**. Both can carry **properties**, which store additional data as
+key-value pairs.
+
+In HAWKI RAG, a namespace identifies a logical graph scope within a Neo4j database.
 Canonical facts carry dataset and namespace scope; reads and writes use those
 trusted values. Document provenance permits targeted graph replacement.
 
 RAG-Anything/LightRAG extraction can maintain intermediate graph state.
 That state is distinct from the canonical facts HAWKI RAG normalizes and writes.
-See [Graph Enrichment](./Ingestion/graph_enrichment.md).
+See [Ingestion with Graph Processing Enabled](./Ingestion/graph_enrichment.md).
 
 Neo4j enrichment is optional behavior, although Compose starts Neo4j and the
 default health gate includes graph checks.
+
+For a full explanation of Neo4j's concepts, please refer to the official
+[Graph database concepts](https://neo4j.com/docs/getting-started/appendix/graphdb-concepts/)
+documentation.
 
 ## Shared storage
 

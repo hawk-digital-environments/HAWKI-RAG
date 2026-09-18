@@ -2,8 +2,7 @@
 
 Use `POST /api/integrations/text-ingestions` to index supplied text or Markdown
 without a crawler or file converter. Laravel stores immutable artifacts and
-starts `IngestTextWorkflow`; the indexer writes Qdrant and reports readiness.
-This path always sets graph ingestion to false.
+starts `IngestTextWorkflow`; The indexer stores the text chunks and their embeddings in Qdrant, then reports when indexing is complete. This path always sets graph ingestion to false.
 
 See [Authorization & Dataset Scope](../Core%20Concepts/authorization_dataset_scope.md)
 for the token, dataset-grant, and trusted storage boundaries.
@@ -152,9 +151,12 @@ completed workflow IDs are not restarted. Artifact/metadata reconciliation may
 leave a marker after a failed database transaction so that a retry can recover
 safely without deleting artifacts referenced by concurrent work.
 
-Direct-text incremental checks verify a completion marker, expected point set,
-and fingerprint. They can repair incomplete vector state; metadata-only changes
-can refresh payloads without embedding again. See
+When the indexing activity executes again after a failure, it checks the stored
+chunk points and completion markers and reprocesses an incomplete document.
+This is recovery under the existing indexing configuration. An HTTP replay
+returns the recorded operation status; the completion check runs inside an
+executing indexing activity. Metadata-only changes can refresh payloads while
+reusing embeddings. See
 [Identity & Incremental Ingestion](../Core%20Concepts/Ingestion/identity_incremental.md)
 and [Chunking & Embeddings](../Core%20Concepts/Ingestion/chunking_embeddings.md).
 

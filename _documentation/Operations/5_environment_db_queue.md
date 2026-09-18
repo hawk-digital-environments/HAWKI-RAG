@@ -44,6 +44,36 @@ queues, timeouts, schedules, and callback protocol belong in
 
 </div>
 
+## Runtime options and system configuration
+
+**Runtime options** are values supplied through supported requests or the Settings
+UI while services are running. They affect the request or new work that reads
+them. **System configuration** is the environment, service setup, and stored
+dataset configuration that operators manage through deployment or migration.
+
+| Kind of change | Can it be changed during normal operation? | When it takes effect and what to preserve |
+|---|---|---|
+| Document text/metadata and query options such as `top_k`, `generate`, and `fast_mode` | Yes, through the documented API | Applies to that submission or query; a document revision uses a new idempotency key |
+| Supported chat/graph/vision model selections in Settings | Yes, select an available model through Settings | New requests or workflow inputs use the selection; existing graph facts retain their previous extraction results |
+| Default embedding provider/model in Settings | Yes, as a default for new datasets | Existing datasets keep their stored embedding provider/model; changing an existing dataset's embedding space requires a new target and re-ingestion |
+| A request's `graph` option on supported managed-document/upload routes | Yes, when creating or updating work through those routes | Applies to that ingestion operation; processing existing unchanged documents may require graph repair; direct-text ingestion always sets `graph=false` |
+| Environment values for batching, timeouts, reranking, or retrieval limits | Apply through a controlled deployment | Recreate the services that read the values; existing vectors remain valid, and saved workflow inputs can retain earlier options |
+| Chunking rules, embedding space, collection distance, or graph extraction limits | Apply as a planned indexing change | Coordinate active ingestion, apply configuration, and rebuild affected data; use a new compatible collection for an embedding-space or distance change |
+| Database accounts, storage locations, service routing, or `APP_KEY` | Apply through planned maintenance or migration | Coordinate persistent state, dependent services, and in-flight work before switching |
+
+A request option and an environment default have different lifecycles. For
+example, `generate` can vary per query, while `RAG_GENERATE_ANSWER` is a deployment
+setting that controls whether generation is available. Changing `.env` takes
+effect when the affected containers are recreated and Laravel's configuration
+cache is refreshed. Persisted Settings changes take effect through the supported
+application path.
+
+Keep the embedding model and storage targets compatible for active datasets.
+Keep indexing rules stable during failure recovery. A retry resumes the existing
+ingestion operation; a configuration migration deliberately rebuilds data under
+new rules. See [Before changing a value](#before-changing-a-value) for deployment
+requirements and the variable tables below for specific settings.
+
 ## How defaults reach a service
 
 [.env.example](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/.env.example) is the installation template.
@@ -239,12 +269,13 @@ thresholds do not guarantee abstention, and the context budget is approximate.
 |---|---|---|
 | `RAG_INGEST_GRAPH` | `false` | New source workflow option; direct text remains graph-off |
 | `GRAPH_ENGINE` | `raganything` | Current extraction engine |
-| `GRAPH_DOC_MAX_CHUNKS`, `GRAPH_DOC_MAX_CHARS` | `6`, `6000` | ADVANCED evidence window; rebuild graph to apply to existing facts |
+| `GRAPH_DOC_MAX_CHUNKS` | `6` | First N chunks per document; `0` selects all chunks; rebuild graph to apply to existing facts |
+| `GRAPH_DOC_MAX_CHARS` | `6000` | Total characters across selected chunks per document; `0` keeps all selected text; rebuild graph to apply to existing facts |
 | `GRAPH_RESET_CACHE_PER_DOC` | `true` | ADVANCED extraction cache lifecycle |
 | `GRAPH_EMBEDDING_DIMENSIONS` | `hawki-ollama-embedding=1024,hawki-openai-embedding=1536,hawki-embedding=1024` | ADVANCED trusted dimensions for graph-only alias use |
 | `RAG_WORKING_DIR` | `/app/rag_storage` | Intermediate extraction files; not the shared artifact root |
 
-[Graph Enrichment](../Core%20Concepts/Ingestion/graph_enrichment.md) owns library
+[Ingestion with Graph Processing Enabled](../Core%20Concepts/Ingestion/graph_enrichment.md) explains library
 internals and graph-only repair limitations.
 
 ## External ingestion tools

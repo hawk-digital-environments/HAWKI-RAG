@@ -1,12 +1,50 @@
 # Query & Retrieval
 
 Retrieval finds evidence inside the dataset authorized by Laravel. The bridge
-combines Qdrant content with optional Neo4j structure, ranks candidates, and
-optionally asks a model to answer from the evidence.
+combines searches for similar meaning, matching words, and optional graph
+relationships, then selects evidence for an optional model-generated answer.
+
+The searches interact in this order:
+
+1. **Semantic search** compares the query's embedding with chunk embeddings in
+   Qdrant to find passages with similar meaning.
+2. **Lexical search** finds query terms in chunk text and metadata, such as titles
+   and tags. The bridge merges these results with the semantic results. A chunk
+   found by both searches becomes one candidate with a combined score; distinct
+   chunks from the same document remain separate candidates.
+3. **Optional graph search** uses query terms to find entities and relationships
+   in Neo4j. The bridge combines these graph results with the already merged
+   semantic and lexical candidates. Graph matches add a weighted relevance score
+   to chunks from the same document. A document found through the graph alone
+   can contribute a relationship as an additional candidate.
+4. **Ranking and answer preparation** order and select the combined candidates,
+   with an optional second retrieval pass. A later, separate Neo4j read uses terms
+   from the query and selected results to gather related facts for answer context.
+   When generation is enabled, the model receives the selected passages and facts.
+
+Graph search therefore runs **after the semantic and lexical results are merged,
+and before reranking**. It augments that combined candidate set. The later
+related-fact read supplies additional answer context while preserving the
+selected candidate ranking. Fast mode uses semantic and lexical retrieval;
+graph reads run in non-fast mode when authorized graph access is enabled.
 
 Use [REST APIs](../Reference/rest_apis.md) or
 [MCP query-search](../Reference/mcp_query_search_contract.md) for wire contracts.
 This page explains the shared execution behavior.
+
+## Runtime request options
+
+Users can change `top_k`, `generate`, `fast_mode`, `smart_lookup`, `is_optimized`,
+`preferred_tags`, and permitted metadata `filters` for each `POST /api/query`
+request while the system is running. These options control retrieval or answer
+generation for that query and leave the stored index in place. Laravel supplies
+the authorized dataset's collection and embedding model. See the
+[query request contract](../Reference/rest_apis.md#query-request) for accepted fields.
+
+Environment settings take effect when the affected services are recreated. For
+example, `generate=false` applies to one query, while `RAG_GENERATE_ANSWER` controls
+the service's generation capability. See
+[Runtime options and system configuration](../Operations/5_environment_db_queue.md#runtime-options-and-system-configuration).
 
 ## Execution order
 
@@ -17,13 +55,13 @@ flowchart TB
     Rewrite --> Dense["Scoped semantic search"]
     Dense --> Lexical["Scoped lexical search and scroll"]
     Lexical --> Merge["Normalize and merge matching chunk identities"]
-    Merge --> Graph["Optional structural graph search and weighted fusion"]
+    Merge --> Graph["Optional Neo4j search using query terms<br/>Combine graph scores with merged candidates"]
     Graph --> Rank["Rerank → lexical preference / score selection → deduplicate"]
     Rank --> Expand{"Second pass needed?"}
     Expand -->|"yes"| Recall["High-recall search → merge → rerank / select"]
     Expand -->|"no"| Context["Bound source snippets"]
     Recall --> Context
-    Context --> KG["Optional separate related-fact read"]
+    Context --> KG["Optional second Neo4j read<br/>Related facts for answer context"]
     KG --> Answer["Optional grounded generation and output safety"]
 ```
 
@@ -77,9 +115,10 @@ The optimized strategy starts with score threshold 0.28.
 
 ## 3. Add lexical evidence
 
-Lexical retrieval runs alongside the semantic strategy, including fast mode.
-It uses the existing dense vector with text predicates and a separate
-payload-text scroll; it is not a sparse-vector/BM25 index.
+Lexical retrieval runs after semantic candidate retrieval, including in fast mode.
+It reuses the query embedding for a search constrained by matching text and also
+reads matching payload text through Qdrant scroll requests. The resulting lexical
+candidates are merged with the semantic candidates in the next stage.
 
 Text matching supplements dense similarity, including when semantic search
 misses a literal phrase.
@@ -126,15 +165,17 @@ Structural search requires graph scope, non-fast mode, and a nonzero traversal
 depth (default two hops). Reads carry both dataset ID and Neo4j namespace.
 Returned relations receive a score based on inverse hop count.
 
-Graph evidence can boost content from the same document or contribute a
-structural relation when no semantic chunk represents that document.
+This stage receives the merged semantic and lexical candidates. Graph evidence
+adds relevance to their chunks using the shared document ID, or contributes a
+relationship candidate for a document found through graph search alone.
 
 <details>
 <summary>Graph weights and retained candidate types</summary>
 
-Graph scores aggregate by document and augment each semantic chunk for that
-document. The default weights are 0.6 for semantic/lexical evidence and 0.4 for
-structure. A graph-only document retains one structural representative.
+Graph scores aggregate by document and augment each chunk in the merged
+semantic/lexical set for that document. The default weights are 0.6 for the merged
+semantic/lexical score and 0.4 for structure. A document found only through graph
+search retains one relationship candidate.
 Only chunk/relation candidates and candidates with no component type continue.
 
 </details>
@@ -266,6 +307,20 @@ messages for known upstream failures. This is not a promise that every log or
 public response is confidential: the MCP catch path logs the full query, and
 the Laravel REST proxy can return transport exception text or an invalid
 upstream body. Those are existing implementation limitations.
+
+## Relationship to RAG-Anything
+
+RAG-Anything describes a retrieval approach that combines semantic matching with
+navigation through graph relationships and combines their relevance signals
+before answer generation. HAWKI RAG uses the RAG-Anything library during
+[graph extraction at ingestion time](./Ingestion/graph_enrichment.md).
+HAWKI RAG implements the query workflow documented here, including lexical
+retrieval, the order of merging and graph scoring, and the separate read of
+related facts for answer context.
+
+For the original framework and its hybrid retrieval approach, please refer to
+Guo et al. (2025), [*RAG-Anything: All-in-One RAG Framework*](https://arxiv.org/abs/2510.12323),
+especially [Section 2.3, Cross-Modal Hybrid Retrieval](https://arxiv.org/html/2510.12323v1#S2.SS3).
 
 <details>
 <summary>Implementation references</summary>

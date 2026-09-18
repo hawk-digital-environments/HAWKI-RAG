@@ -1,19 +1,72 @@
-# Graph Enrichment
+# Ingestion with Graph Processing Enabled
 
-Graph enrichment extracts relationships from indexed documents and writes
-normalized facts to Neo4j. Retrieval reads these stored facts; it does not
-rerun extraction.
+When graph processing is enabled for a website or uploaded file, the indexer
+extracts entities and relationships from the document content and stores them
+as facts in the dataset's Neo4j graph. This adds a graph representation of the
+documents alongside their searchable chunk vectors in Qdrant.
+
+Graph processing runs inside the `ingest_markdown_files` activity of
+`IngestSourceWorkflow`. During normal ingestion, the indexer writes the chunk
+vectors to Qdrant, then extracts and stores graph facts with references to their
+source documents. Graph retrieval reads these stored facts from Neo4j.
+
+## Ingestion with and without graph processing
+
+Both normal ingestion modes create searchable chunk vectors. Enabling graph
+processing adds a second step that builds relationships between entities found
+in the documents.
+
+| Ingestion mode | What the indexer does | Stored result |
+|---|---|---|
+| Graph processing disabled (`graph=false`) | Split documents into chunks → generate embeddings → write points to Qdrant | Chunk text, vectors, and source metadata for passage retrieval |
+| Graph processing enabled (`graph=true`) | Perform the same vector indexing → extract entities and relationships → write facts to Neo4j | Qdrant chunk points plus a document-linked graph for relationship retrieval |
+
+For example, a document might say, "Course A requires Course B." Both modes store
+that passage with its embedding in Qdrant. With graph processing enabled, the
+extractor can also store the relationship `Course A → requires → Course B` in
+Neo4j, linked to the source document.
+
+Graph processing adds model calls and Neo4j writes to the ingestion work. Vector
+indexing finishes first, followed by graph extraction and storage. The
+[Scope and commits](#scope-and-commits) section explains how failures in that
+second step affect the stored data and ingestion status.
 
 ## When graph processing runs
 
-Source workflows normally use `RAG_INGEST_GRAPH` (template default false).
-A converted document marked `converter_fallback=raganything_passthrough` can
-require graph processing for its batch even when ordinary graph ingestion was
-not requested. Direct-text ingestion forces graph off.
+Website and uploaded-file ingestion normally use `RAG_INGEST_GRAPH` to control
+graph processing; `true` enables it, and the template default is `false`.
+Supported managed-document and upload requests can supply a `graph` option for
+that ingestion operation; Laravel carries the selection into the workflow input.
+A converted document marked `converter_fallback=raganything_passthrough` also
+enables graph processing for its batch. Direct-text ingestion
+(`IngestTextWorkflow`) sets `graph=false` and performs vector indexing.
 
-Ordinary unchanged documents skip graph extraction. Internal graph-only mode
-bypasses that incremental filter. See
+For websites and uploaded files, the incremental planner skips graph extraction
+for documents whose content hash is unchanged. Enabling graph processing for
+previously indexed content therefore requires a planned graph rebuild so those
+documents are processed again. Existing graph facts remain stored when later
+ingestion runs with graph processing disabled. See
 [Identity & Incremental Ingestion](./identity_incremental.md).
+
+The internal `graph_only=true, graph=true` option is a maintenance mode: it
+extracts graph facts from the supplied documents while preserving existing
+vectors. It processes documents independently of the unchanged-content check.
+Its cleanup behavior and invocation requirements are described under
+[Graph repair and preview](#graph-repair-and-preview).
+
+## Sources, documents, chunks, and facts
+
+| Term | Meaning in this workflow |
+|---|---|
+| Source | The website or uploaded file submitted for ingestion; a website crawl can produce many documents |
+| Document | One indexed Markdown artifact, usually representing a web page or converted file, identified by `doc_id` |
+| Chunk | A passage split from a document; several chunks can share the same `doc_id` |
+| Graph fact | An extracted subject, relationship, and object, linked to the document that supplied it |
+
+For graph extraction, the indexer groups chunks by `doc_id`, applies the configured
+chunk and character limits, and submits the selected text in one extraction call
+for that document. The extraction libraries can split the text internally; the
+indexer records the result or failure for the document as a whole.
 
 ## Extraction layers
 
@@ -34,10 +87,32 @@ flowchart TB
 | HAWKI RAG adapter | Exports edges, normalizes subject/relation/object tuples, filters against source text, removes duplicates |
 | Neo4j writer | Persists canonical facts with document provenance and trusted dataset/namespace |
 
-The extraction window defaults to the first six chunks and 6,000 characters per
-document. It does not necessarily cover an entire long document. Chat/vision
-models and graph extraction controls are in
-[Configuration](../../Operations/5_environment_db_queue.md#graph-extraction).
+## System configuration and setup
+
+The request's `graph` option controls a supported ingestion operation while the
+system is running. The default `RAG_INGEST_GRAPH` and the extraction limits below
+take effect when the services that read them are recreated.
+
+The indexer reads the amount of document text to use for graph extraction from
+its worker environment:
+
+| Setting | Value in `.env.example` | Behavior |
+|---|---|---|
+| `GRAPH_DOC_MAX_CHUNKS` | `6` | Select the first N chunks of each document; `0` selects all available chunks |
+| `GRAPH_DOC_MAX_CHARS` | `6000` | Limit the total characters across the selected chunks of each document; `0` keeps all selected text |
+
+The indexer applies the chunk limit first, then the character limit. With the
+template values, it passes up to 6,000 characters from the first six chunks of
+each document to graph extraction. That character budget applies to the combined
+selected text for one document. Operators can adjust both values to change how
+much text the extractor receives. An unset setting uses `0` in the code.
+
+New limits and model selections apply to future extraction. Rebuild affected graph
+data when existing facts should reflect those changes. See
+[Runtime options and system configuration](../../Operations/5_environment_db_queue.md#runtime-options-and-system-configuration)
+for when settings take effect, and
+[graph model configuration](../../Operations/5_environment_db_queue.md#graph-extraction)
+for model selection.
 
 <details>
 <summary>Intermediate storage, cache, and model fallback</summary>
@@ -48,55 +123,39 @@ fallback storage otherwise. Intermediate nodes/cache files are not the canonical
 dataset graph.
 
 The adapter can clear extraction cache per document and run direct model-provider
-fallback extraction if the library path yields no usable triplets. An empty
-result after filtering is valid; no fact is invented to make a document appear
-complete. Cache lifecycle and temporary graph cleanup are internal details.
+fallback extraction if the library path yields no usable triplets. Filtering can
+leave zero facts. Some adapter errors also produce an empty result, as described
+under [Empty results and extraction failures](#empty-results-and-extraction-failures).
+Cache lifecycle and temporary graph cleanup are internal details.
 
 </details>
 
-## Scope and commits
+## Scope and update order
 
-Trusted dataset ID and Neo4j namespace are required by graph-enabled
-`IndexRequest`. Existing chunk scope must match; validation occurs before
-vector commit. Canonical graph upserts use both fields. Namespace is a logical
-scope, not an instruction to create a separate database.
+For graph-enabled indexing, the request must include a trusted dataset ID and Neo4j namespace. Existing chunks must belong to the same scope, and this is checked before vectors are written. The dataset ID and namespace are also used when writing graph data to Neo4j. The namespace is only a logical separation of data; it does not create a separate Neo4j database.
 
-Qdrant commits **before** extraction. For changed documents, extraction happens
-before deleting old graph facts. An extraction error records a per-document
-failure and preserves old facts. Successful extraction, including an empty fact
-set, can trigger replacement cleanup; a later Neo4j delete/write failure can
-leave a gap and abort indexing.
+Qdrant is updated **before** graph extraction and Neo4j updates. For changed documents, the system first extracts the new graph information while keeping the existing graph data unchanged. If extraction fails or times out, the
+document is marked as failed and the old graph data is preserved.
 
-:::warning Ready does not guarantee graph coverage
+If extraction finishes successfully, the system replaces the old graph data with the new result. This also happens when extraction succeeds but returns no graph facts. If the later Neo4j delete or write step fails, the graph update can be left incomplete and the indexing operation fails.
 
-Per-document extraction failures are collected while other documents continue.
-They do not necessarily make the source fail. A ready source does not prove all
-documents yielded facts.
+## When graph extraction returns no facts
 
-Check graph failures and canonical facts for the affected document; an empty
-fact set and a failed extraction are different outcomes.
+Graph extraction can produce zero facts for two different reasons:
+
+- **No facts were found:** extraction completed successfully, so any previous
+  graph facts for the changed document are removed.
+- **Extraction failed:** the failure is recorded and the previous graph facts
+  are normally preserved.
+
+In some cases, an adapter may handle an extraction error internally and return
+an empty result. The indexer then treats it as a successful extraction with zero
+facts, which can remove the document's previous graph data.
+
+:::warning Check graph results
+
+A source can still reach `ready` even when some documents have no graph facts or
+experienced extraction problems. Check `graph_failures`, the logs for the
+document's `doc_id`, and the stored Neo4j data when investigating these cases.
 
 :::
-
-## Graph repair and preview
-
-| Internal mode | Effect | Limitation |
-|---|---|---|
-| `graph_only=true, graph=true` | Re-extract/upsert facts; no vector embedding, Qdrant writes, or incremental filtering | Does not automatically remove all stale facts |
-| `dry_run=true` | Validate/prepare without canonical vector/graph writes | Not exposed as a public bridge route |
-| `dry_run=true, graph=true, dry_include_graph=true` | Also runs model extraction and produces preview/failure evidence | Has provider cost and may create intermediate extraction artifacts |
-
-These are indexer application capabilities for controlled maintenance code,
-not public REST parameters or an existing graph-repair CLI. Exact replacement
-requires scoped cleanup and rebuild; the repository does not expose a turnkey
-targeted graph repair command. See [Ingestion Recovery](../../Operations/ingestion_recovery.md).
-
-<details>
-<summary>Implementation references</summary>
-
-Sources: [graph commit](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/python_rag/services/hawki_indexer_worker/src/hawki_indexer_worker/indexing/graph_commit.py),
-[graph preparation](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/python_rag/services/hawki_indexer_worker/src/hawki_indexer_worker/indexing/graph_prepare.py),
-[RAG-Anything adapters](https://github.com/hawk-digital-environments/HAWKI-RAG/tree/main/python_rag/services/hawki_indexer_worker/src/hawki_indexer_worker/adapters/raganything),
-[batch routing](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/python_rag/services/hawki_indexer_worker/src/hawki_indexer_worker/indexing/batch_execution.py).
-
-</details>

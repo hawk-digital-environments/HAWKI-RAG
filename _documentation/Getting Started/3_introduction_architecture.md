@@ -138,7 +138,7 @@ Only the bridge and reranker expose application HTTP APIs.
 
 RAG-Anything and its embedded LightRAG extraction run within optional ingestion.
 Normal queries read stored facts; they do not run those extraction libraries.
-[Graph Enrichment](../Core%20Concepts/Ingestion/graph_enrichment.md) explains the
+[Ingestion with Graph Processing Enabled](../Core%20Concepts/Ingestion/graph_enrichment.md) explains the
 adapter layers and failure boundaries.
 
 Continue with [Storage](../Core%20Concepts/storage.md) for persistence and

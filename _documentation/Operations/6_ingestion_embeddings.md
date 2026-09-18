@@ -85,7 +85,7 @@ in memory; there is no separate `chunks.md` handoff file.
 |---|---|
 | Same logical document versus changed contents | [Identity & Incremental Ingestion](../Core%20Concepts/Ingestion/identity_incremental.md) |
 | Chunk boundaries, point IDs, provider compatibility, partial embeddings | [Chunking & Embeddings](../Core%20Concepts/Ingestion/chunking_embeddings.md) |
-| RAG-Anything, LightRAG, normalization, graph scope | [Graph Enrichment](../Core%20Concepts/Ingestion/graph_enrichment.md) |
+| RAG-Anything, LightRAG, normalization, graph scope | [Ingestion with Graph Processing Enabled](../Core%20Concepts/Ingestion/graph_enrichment.md) |
 | Partial writes, graph repair, retries, source lifecycle | [Ingestion Recovery](./ingestion_recovery.md) |
 | Workflow queues, activity budgets, signed callbacks | [Temporal Operations](./temporal_operations.md) |
 

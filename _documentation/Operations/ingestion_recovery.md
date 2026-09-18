@@ -88,7 +88,7 @@ The indexer has an internal graph-only capability that can restore missing
 facts without touching vectors. It does not guarantee deletion of stale facts.
 Exact replacement needs dataset/document-scoped cleanup followed by rebuild.
 There is no public graph-only endpoint or turnkey repair command; see
-[Graph Enrichment](../Core%20Concepts/Ingestion/graph_enrichment.md#graph-repair-and-preview).
+[Ingestion with Graph Processing Enabled](../Core%20Concepts/Ingestion/graph_enrichment.md#graph-repair-and-preview).
 
 ## Worked example: vectors are current but graph enrichment failed
 
