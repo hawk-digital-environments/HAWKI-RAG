@@ -8,6 +8,7 @@ use App\Models\Dataset;
 use App\Models\DatasetGrantToken;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
 final class SelfDatasetIngestionGrantTest extends TestCase
@@ -35,6 +36,35 @@ final class SelfDatasetIngestionGrantTest extends TestCase
         $this->postJson('/api/datasets', ['dataset_id' => 'token-issue-dataset'])
             ->assertOk()
             ->assertJsonMissing(['grant_token']);
+    }
+
+    public function test_failed_token_issuance_rolls_back_dataset_creation_and_retry_succeeds(): void
+    {
+        // The token service is final, so issuance is failed for real: the
+        // underlying table is renamed away to make its INSERT blow up.
+        Schema::rename('dataset_grant_tokens', 'dataset_grant_tokens_broken');
+
+        $this->postJson('/api/datasets', ['dataset_id' => 'rollback-dataset'])
+            ->assertStatus(500);
+
+        $this->assertDatabaseMissing('datasets', ['dataset_id' => 'rollback-dataset']);
+        $this->assertDatabaseCount('dataset_grant_tokens_broken', 0);
+
+        Schema::rename('dataset_grant_tokens_broken', 'dataset_grant_tokens');
+
+        $response = $this->postJson('/api/datasets', ['dataset_id' => 'rollback-dataset']);
+
+        $response->assertCreated()
+            ->assertJsonStructure(['success', 'dataset_id', 'dataset', 'grant_token']);
+
+        $token = $response->json('grant_token');
+        $this->assertMatchesRegularExpression('/^dgt_[0-9a-f]{64}$/', $token);
+
+        $this->assertDatabaseHas('dataset_grant_tokens', [
+            'dataset_id' => 'rollback-dataset',
+            'token_hash' => hash('sha256', $token),
+            'consumed_at' => null,
+        ]);
     }
 
     public function test_text_ingestion_token_can_redeem_the_grant_token(): void
