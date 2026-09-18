@@ -9,7 +9,12 @@ from temporalio import workflow
 from temporalio.exceptions import ApplicationError
 from pydantic import ValidationError
 
-from hawki_rag_contracts.pipeline.ingestion import SourceWorkflowResume
+from hawki_rag_contracts.pipeline.ingestion import (
+    ConvertResult,
+    IngestionStatus,
+    ScrapeResult,
+    SourceWorkflowResume,
+)
 
 from hawki_rag_contracts.pipeline.temporal import (
     ActivityQueueRole,
@@ -46,9 +51,68 @@ def _failed_result(
     }
 
 
+def _parse_resume(workflow_input: dict[str, Any]) -> SourceWorkflowResume | None:
+    """Validate the recovery payload before any activity is scheduled."""
+
+    resume = workflow_input.get("resume")
+    if resume is None:
+        return None
+    try:
+        return SourceWorkflowResume.model_validate(resume)
+    except ValidationError as exc:
+        raise ApplicationError(
+            "Invalid stage recovery configuration",
+            type="InvalidStageRecovery",
+            non_retryable=True,
+        ) from exc
+
+
+def _resumed_scrape_result(
+    resume: SourceWorkflowResume, source_id: Any
+) -> dict[str, Any]:
+    """Rebuild the scrape result that a convert retry starts from.
+
+    A resume at convert means the previous attempt's scrape output was
+    verified before this run started, so scraping is skipped and its raw_dir
+    is reused. The converter's contract still requires a ScrapeResult-shaped
+    input, so the result is reconstructed here; its required "success"
+    status records that verified fact.
+    """
+
+    return ScrapeResult(
+        source_id=source_id,
+        status=IngestionStatus.SUCCESS,
+        raw_dir=resume.raw_dir,
+    ).model_dump(mode="json", exclude_defaults=True)
+
+
+def _resumed_convert_result(
+    resume: SourceWorkflowResume, source_id: Any
+) -> dict[str, Any]:
+    """Rebuild the convert result that an ingest retry starts from.
+
+    Analogous to _resumed_scrape_result: the verified markdown_dir is reused
+    without re-running the converter, and the indexer receives the
+    ConvertResult-shaped input its contract requires.
+    """
+
+    return ConvertResult(
+        source_id=source_id,
+        status=IngestionStatus.SUCCESS,
+        markdown_dir=resume.markdown_dir,
+    ).model_dump(mode="json", exclude_defaults=True)
+
+
 @workflow.defn(name=INGEST_SOURCE_WORKFLOW)
 class IngestSourceWorkflow:
-    """Coordinate scrape, conversion, indexing, and readiness activities."""
+    """Run scrape -> convert -> index -> mark-ready for one source.
+
+    Failures return the legacy failure envelope instead of raising. A retry
+    is a new run whose resume payload names the failed stage plus the
+    previous attempt's verified output directories (README, "Failed-stage
+    recovery"): execution starts at that stage, earlier activities are
+    skipped, and their results are rebuilt from those directories.
+    """
 
     @workflow.run
     async def run(self, workflow_input: dict[str, Any]) -> dict[str, Any]:
@@ -58,16 +122,7 @@ class IngestSourceWorkflow:
 
         # Old histories have no resume payload and keep exactly the same commands.
         # Only newly started recovery workflows can skip completed activities.
-        resume = None
-        if workflow_input.get("resume") is not None:
-            try:
-                resume = SourceWorkflowResume.model_validate(workflow_input["resume"])
-            except ValidationError as exc:
-                raise ApplicationError(
-                    "Invalid stage recovery configuration",
-                    type="InvalidStageRecovery",
-                    non_retryable=True,
-                ) from exc
+        resume = _parse_resume(workflow_input)
         start_stage = resume.stage if resume else "scrape"
 
         scrape_result: dict[str, Any] = {}
@@ -88,18 +143,10 @@ class IngestSourceWorkflow:
                     workflow_input, SCRAPE_SOURCE_ACTIVITY, scrape_result
                 )
         elif start_stage == "convert":
-            scrape_result = {
-                "source_id": source_id,
-                "status": "success",
-                "raw_dir": resume.raw_dir,
-            }
+            scrape_result = _resumed_scrape_result(resume, source_id)
 
         if start_stage == "ingest":
-            convert_result = {
-                "source_id": source_id,
-                "status": "success",
-                "markdown_dir": resume.markdown_dir,
-            }
+            convert_result = _resumed_convert_result(resume, source_id)
         else:
             convert_result = await workflow.execute_activity(
                 CONVERT_FILES_ACTIVITY,

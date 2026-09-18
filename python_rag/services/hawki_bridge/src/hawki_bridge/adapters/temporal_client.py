@@ -23,10 +23,24 @@ from temporalio.common import (
     WorkflowIDConflictPolicy,
     WorkflowIDReusePolicy,
 )
+from temporalio.api.failure.v1 import Failure
 from temporalio.service import RPCError, RPCStatusCode
 
 from hawki_bridge.settings import BridgeSettings
 from hawki_rag_contracts.pipeline.temporal import INGEST_TEXT_WORKFLOW
+
+
+def _failure_chain_message(failure: Failure) -> str:
+    """Join a failure with its cause chain, truncated for error reporting."""
+
+    messages: list[str] = []
+    while failure:
+        if failure.message:
+            messages.append(failure.message)
+        if not failure.HasField("cause"):
+            break
+        failure = failure.cause
+    return ": ".join(messages)[:2048]
 
 logger = logging.getLogger(__name__)
 
@@ -68,14 +82,7 @@ class TemporalBridgeClient:
             for event in history.events:
                 if event.HasField("workflow_execution_failed_event_attributes"):
                     failure = event.workflow_execution_failed_event_attributes.failure
-                    messages = []
-                    while failure:
-                        if failure.message:
-                            messages.append(failure.message)
-                        if not failure.HasField("cause"):
-                            break
-                        failure = failure.cause
-                    error = ": ".join(messages)[:2048]
+                    error = _failure_chain_message(failure)
         return {
             "workflow_id": workflow_id,
             "run_id": run_id,

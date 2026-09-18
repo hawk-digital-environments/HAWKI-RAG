@@ -9,10 +9,13 @@ use App\Models\PipelineJob;
 use App\Models\PipelineStageState;
 use App\Services\Pipeline\Exceptions\PipelineRetryException;
 use App\Services\Pipeline\Repositories\PipelineStageStateRepository;
+use App\Services\Pipeline\Values\PipelineResumePlan;
 use App\Services\Pipeline\Values\PipelineStage;
+use App\Services\Pipeline\Values\PipelineStageArtifact;
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Contracts\Config\Repository as ConfigRepository;
 use Illuminate\Filesystem\Filesystem;
+use Illuminate\Support\Collection;
 
 #[Singleton]
 readonly class PipelineRetryResumeService
@@ -23,92 +26,178 @@ readonly class PipelineRetryResumeService
         private ConfigRepository $config,
     ) {}
 
-    /** @return array{stage: string, raw_dir?: string, markdown_dir?: string} */
-    public function forJob(PipelineJob $job, IngestionSource $source): array
+    public function forJob(PipelineJob $job, IngestionSource $source): PipelineResumePlan
     {
         $states = $this->stages->forPipelineJob($job)->keyBy('stage');
-        $stage = PipelineStage::tryFrom((string) $job->current_stage);
-        foreach (PipelineStage::cases() as $candidate) {
-            if ($states->get($candidate->value)?->status === 'failed') {
-                $stage = $candidate;
-                break;
-            }
-        }
-        if ($stage === null) {
-            // Workflow timeouts may leave only a running stage, while a failure
-            // before the first worker callback has no stage record at all.
-            foreach (PipelineStage::cases() as $candidate) {
-                if ($states->get($candidate->value)?->status !== 'completed') {
-                    $stage = $candidate;
-                    break;
-                }
-            }
-        }
-        $stage ??= PipelineStage::Ingest;
-        $resume = ['stage' => $stage->value];
+        $stage = $this->resolveResumeStageFromStageStates($job, $states);
 
+        $rawDir = null;
+        $markdownDir = null;
         if ($stage === PipelineStage::Convert) {
-            $resume['raw_dir'] = $this->completedDirectory(
-                $states->get('scrape'), 'scrape', (string) $source->raw_storage_path,
+            $rawDir = $this->resolveCompletedStageDirectory(
+                $states->get(PipelineStage::Scrape->value),
+                PipelineStage::Scrape,
+                (string) $source->raw_storage_path,
             );
         } elseif ($stage === PipelineStage::Ingest) {
             // Ingestion needs only converted artifacts; raw files may have expired.
-            $resume['markdown_dir'] = $this->completedDirectory(
-                $states->get('convert'), 'convert', (string) $source->markdown_storage_path,
+            $markdownDir = $this->resolveCompletedStageDirectory(
+                $states->get(PipelineStage::Convert->value),
+                PipelineStage::Convert,
+                (string) $source->markdown_storage_path,
             );
         }
 
-        return $resume;
+        return new PipelineResumePlan($stage, $rawDir, $markdownDir);
     }
 
-    private function completedDirectory(?PipelineStageState $state, string $stage, string $fallback): string
+    /**
+     * Derives the resume stage from PipelineStageState records and the job's
+     * current_stage pointer; a failed stage record wins over both.
+     *
+     * @param  Collection<string, PipelineStageState>  $states
+     */
+    private function resolveResumeStageFromStageStates(PipelineJob $job, Collection $states): PipelineStage
+    {
+        $failed = $this->firstFailedStage($states);
+        if ($failed !== null) {
+            return $failed;
+        }
+
+        $current = PipelineStage::tryFrom((string) $job->current_stage);
+        if ($current !== null) {
+            return $current;
+        }
+
+        // Workflow timeouts may leave only a running stage, while a failure
+        // before the first worker callback has no stage record at all.
+        return $this->firstUnfinishedStage($states) ?? PipelineStage::Ingest;
+    }
+
+    /**
+     * Returns the first stage whose recorded status is 'failed'.
+     *
+     * @param  Collection<string, PipelineStageState>  $states
+     */
+    private function firstFailedStage(Collection $states): ?PipelineStage
+    {
+        foreach (PipelineStage::cases() as $candidate) {
+            if ($states->get($candidate->value)?->status === 'failed') {
+                return $candidate;
+            }
+        }
+
+        return null;
+    }
+
+    /** @param Collection<string, PipelineStageState> $states */
+    private function firstUnfinishedStage(Collection $states): ?PipelineStage
+    {
+        foreach (PipelineStage::cases() as $candidate) {
+            if ($states->get($candidate->value)?->status !== 'completed') {
+                return $candidate;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Resolves a completed stage's output directory from its recorded
+     * artifacts, falling back to the source's configured storage path.
+     */
+    private function resolveCompletedStageDirectory(?PipelineStageState $state, PipelineStage $stage, string $fallback): string
     {
         if ($state?->status !== 'completed') {
-            throw PipelineRetryException::incompleteStage($stage);
+            throw PipelineRetryException::incompleteStage($stage->value);
         }
 
-        $path = $fallback;
         $artifacts = $state->metadata['artifacts'] ?? [];
-        foreach ($artifacts as $artifact) {
-            if (($artifact['media_type'] ?? null) === 'inode/directory' && is_string($artifact['uri'] ?? null)) {
-                $path = $artifact['uri'];
-                break;
-            }
-            // Converter callbacks can contain file references rather than a
-            // directory. Their relative paths retain the actual output root.
-            if ($stage === 'convert' && is_string($artifact['uri'] ?? null)
-                && is_string($artifact['relative_path'] ?? null) && $artifact['relative_path'] !== ''
-                && str_ends_with($artifact['uri'], '/'.$artifact['relative_path'])) {
-                $path = substr($artifact['uri'], 0, -strlen('/'.$artifact['relative_path']));
-                break;
-            }
-        }
+        $path = $this->directoryFromArtifacts($artifacts, $stage, $fallback);
 
-        $root = realpath((string) $this->config->get('temporal.storage.shared_root', '/shared'));
         $resolved = realpath($path);
-        if ($root === false || $resolved === false
-            || ! str_starts_with($resolved, rtrim($root, DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR)
-            || ! $this->files->isDirectory($resolved) || ! $this->files->isReadable($resolved)) {
-            throw PipelineRetryException::unavailableArtifact($stage);
+        if (! $this->isValidSharedStorageDirectory($resolved)) {
+            throw PipelineRetryException::unavailableArtifact($stage->value);
         }
 
-        foreach ($artifacts as $artifact) {
-            if ($stage !== 'convert' || ($artifact['media_type'] ?? null) !== 'text/markdown') {
+        $this->assertMarkdownArtifactsIntact($artifacts, $resolved, $stage);
+
+        if ($this->hasReadableOutput($resolved, $stage)) {
+            return $path;
+        }
+
+        throw PipelineRetryException::unavailableArtifact($stage->value);
+    }
+
+    /** @param array<mixed> $artifacts */
+    private function directoryFromArtifacts(array $artifacts, PipelineStage $stage, string $fallback): string
+    {
+        foreach ($artifacts as $metadata) {
+            $artifact = PipelineStageArtifact::tryFromArtifactMetadata($metadata);
+            if ($artifact?->isDirectoryOutput()) {
+                return $artifact->uri;
+            }
+            $outputRoot = $stage === PipelineStage::Convert ? $artifact?->outputRoot() : null;
+            if ($outputRoot !== null) {
+                return $outputRoot;
+            }
+        }
+
+        return $fallback;
+    }
+
+    /** True when the resolved path is a readable directory inside the configured shared storage root. */
+    private function isValidSharedStorageDirectory(string|false $resolved): bool
+    {
+        $root = realpath((string) $this->config->get('temporal.storage.shared_root', '/shared'));
+
+        return $root !== false && $resolved !== false
+            && str_starts_with($resolved, rtrim($root, DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR)
+            && $this->files->isDirectory($resolved)
+            && $this->files->isReadable($resolved);
+    }
+
+    /** @param array<mixed> $artifacts */
+    private function assertMarkdownArtifactsIntact(array $artifacts, string $resolved, PipelineStage $stage): void
+    {
+        if ($stage !== PipelineStage::Convert) {
+            return;
+        }
+
+        foreach ($artifacts as $metadata) {
+            $artifact = PipelineStageArtifact::tryFromArtifactMetadata($metadata);
+            if (! $artifact?->isMarkdownOutput()) {
                 continue;
             }
-            $file = realpath((string) ($artifact['uri'] ?? ''));
-            if ($file === false || ! str_starts_with($file, $resolved.DIRECTORY_SEPARATOR)
-                || ! $this->files->isFile($file) || ! $this->files->isReadable($file)) {
-                throw PipelineRetryException::unavailableArtifact($stage);
+            if (! $this->isValidMarkdownArtifact($artifact, $resolved)) {
+                throw PipelineRetryException::unavailableArtifact($stage->value);
             }
         }
+    }
 
+    private function isValidMarkdownArtifact(PipelineStageArtifact $artifact, string $resolved): bool
+    {
+        if ($artifact->uri === null) {
+            return false;
+        }
+
+        $file = realpath($artifact->uri);
+
+        return $file !== false
+            && str_starts_with($file, $resolved.DIRECTORY_SEPARATOR)
+            && $this->files->isFile($file)
+            && $this->files->isReadable($file);
+    }
+
+    private function hasReadableOutput(string $resolved, PipelineStage $stage): bool
+    {
         foreach ($this->files->allFiles($resolved) as $file) {
-            if ($file->isReadable() && ($stage !== 'convert' || strtolower($file->getExtension()) === 'md')) {
-                return $path;
+            if ($file->isReadable()
+                && ($stage !== PipelineStage::Convert || strtolower($file->getExtension()) === 'md')) {
+                return true;
             }
         }
 
-        throw PipelineRetryException::unavailableArtifact($stage);
+        return false;
     }
 }

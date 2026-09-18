@@ -70,6 +70,15 @@ class CompletedPageState:
     completed_metadata_fingerprint: str | None
 
 
+def requires_completion_tracking(record: IndexedPageRecord) -> bool:
+    """Direct-text and source/path artifacts publish explicit completion state."""
+
+    return (
+        record.ingestion_mode == "direct_text"
+        or record.metadata.get("document_identity") == "source_path"
+    )
+
+
 class QdrantPageState:
     """Read incremental state from the content collection itself."""
 
@@ -189,10 +198,7 @@ class QdrantPageState:
 
         setter = getattr(self._qdrant, "set_payload", None)
         for record in records:
-            if (
-                record.ingestion_mode != "direct_text"
-                and record.metadata.get("document_identity") != "source_path"
-            ):
+            if not requires_completion_tracking(record):
                 continue
             if not callable(setter) or not record.point_ids:
                 raise RuntimeError("Qdrant cannot publish document completion state")
@@ -344,4 +350,5 @@ __all__ = [
     "build_page_state_records",
     "direct_text_metadata_fingerprint",
     "direct_text_payload_metadata",
+    "requires_completion_tracking",
 ]

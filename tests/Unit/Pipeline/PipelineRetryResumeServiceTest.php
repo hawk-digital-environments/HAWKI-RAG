@@ -158,7 +158,7 @@ class PipelineRetryResumeServiceTest extends TestCase
                 'raw_storage_path' => $this->root.'/source/raw',
                 'markdown_storage_path' => $this->root.'/markdown',
             ]),
-        );
+        )->toArray();
     }
 
     private function state(string $stage, string $status, ?string $directory = null): PipelineStageState

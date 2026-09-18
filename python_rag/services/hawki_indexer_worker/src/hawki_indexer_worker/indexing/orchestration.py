@@ -33,7 +33,10 @@ from hawki_indexer_worker.indexing.request import (
     infer_operation_id,
 )
 from hawki_indexer_worker.indexing.vector_commit import commit_vector_points
-from hawki_indexer_worker.indexing.artifact_identity import has_artifact_identity
+from hawki_indexer_worker.indexing.document_requirements import (
+    artifact_document_ids,
+    complete_document_ids,
+)
 from hawki_indexer_worker.indexing.point_identity import validate_unique_point_ids
 
 logger = logging.getLogger(__name__)
@@ -129,17 +132,8 @@ def ingest_documents(
             except GraphScopeMismatchError as exc:
                 raise IndexingValidationError(str(exc)) from exc
     total_chunks = len(chunk_records)
-    artifact_doc_ids = {
-        str(record.get("doc_id") or "")
-        for record in chunk_records
-        if has_artifact_identity(record.get("payload") or {})
-    }
-    required_doc_ids = {
-        str(record.get("doc_id") or "")
-        for record in chunk_records
-        if (record.get("payload") or {}).get("ingestion_mode") == "direct_text"
-        or has_artifact_identity(record.get("payload") or {})
-    }
+    artifact_doc_ids = artifact_document_ids(chunk_records)
+    required_doc_ids = complete_document_ids(chunk_records)
 
     if total_chunks == 0:
         pipeline_log(
@@ -308,9 +302,9 @@ def ingest_documents(
         graph_preview = graph_result.graph_preview
         graph_failures = graph_result.graph_failures
         neo4j_ms = graph_result.neo4j_ms
-        if any(
-            str(failure.get("doc_id")) in artifact_doc_ids for failure in graph_failures
-        ):
+        if artifact_doc_ids & {
+            str(failure.get("doc_id")) for failure in graph_failures
+        }:
             raise DocumentCompletionError(
                 "Graph processing failed for a document requiring completion; retry ingestion."
             )

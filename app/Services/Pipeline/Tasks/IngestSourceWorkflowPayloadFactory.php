@@ -113,7 +113,7 @@ readonly class IngestSourceWorkflowPayloadFactory
     public function retryInput(PipelineTask $task, PipelineJob $job, IngestionSource $source): array
     {
         return array_merge($this->input($task, $job, $source), [
-            'resume' => $this->resume->forJob($job, $source),
+            'resume' => $this->resume->forJob($job, $source)->toArray(),
         ]);
     }
 

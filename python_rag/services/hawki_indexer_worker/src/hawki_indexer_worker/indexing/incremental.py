@@ -14,6 +14,9 @@ from hawki_indexer_worker.indexing.artifact_identity import (
     matches_artifact_owner,
     validate_artifact_identity,
 )
+from hawki_indexer_worker.indexing.document_requirements import (
+    requires_complete_document,
+)
 
 from hawki_indexer_worker.indexing.page_state import (
     DOCUMENT_COMPLETE_FIELD,
@@ -140,7 +143,8 @@ def plan_incremental_ingest(
         is_artifact = has_artifact_identity(payload)
         completed_state = (
             _find_completed_state(page_registry, expected_page_record)
-            if (is_direct_text or is_artifact) and expected_page_record is not None
+            if requires_complete_document(payload)
+            and expected_page_record is not None
             else None
         )
         completed_payload = completed_state.payload if completed_state else None
@@ -170,7 +174,7 @@ def plan_incremental_ingest(
         unchanged_is_proven = bool(
             existing_payload and existing_hash and existing_hash == content_hash
         )
-        if is_direct_text or is_artifact:
+        if requires_complete_document(payload):
             unchanged_is_proven = completed_state is not None
 
         # A previous attempt may have written vectors before its graph write or

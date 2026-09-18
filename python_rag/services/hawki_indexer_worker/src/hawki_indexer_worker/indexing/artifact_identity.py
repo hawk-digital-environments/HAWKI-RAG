@@ -19,6 +19,12 @@ def has_artifact_identity(payload: Mapping[str, Any]) -> bool:
     )
 
 
+def is_artifact_payload(payload: object) -> bool:
+    """True for any mapping that carries a source-relative artifact identity."""
+
+    return isinstance(payload, Mapping) and has_artifact_identity(payload)
+
+
 def validate_artifact_identity(payload: Mapping[str, Any], doc_id: str) -> None:
     """Reject incomplete or conflicting artifact identity before any writes."""
 
