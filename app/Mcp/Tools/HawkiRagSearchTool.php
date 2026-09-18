@@ -31,6 +31,12 @@ class HawkiRagSearchTool extends Tool
 
     /**
      * The input schema of the tool.
+     *
+     * `dataset_id` is intentionally NOT advertised: it is a trusted-caller
+     * concern (e.g. HAWKI injects the requesting assistant's dataset
+     * server-side) and must stay invisible to AI models, which would
+     * otherwise guess dataset identifiers. {@see handle()} still requires
+     * it in the call arguments.
      */
     public function schema(JsonSchema $schema): array
     {
@@ -40,9 +46,6 @@ class HawkiRagSearchTool extends Tool
                 Formulate a precise and context-rich search query including specific names, entities, relationships, dates, or domain terminology.
                 Avoid vague or generic wording.
                 The tool returns the most relevant structured results for downstream answer generation, reranking, or reasoning.')
-                ->required(),
-            'dataset_id' => $schema->string()
-                ->description('Authorized HAWKI-RAG dataset identifier to search.')
                 ->required(),
             'top_k' => $schema->integer()
                 ->description('Number of chunks to retrieve'),
@@ -81,13 +84,58 @@ class HawkiRagSearchTool extends Tool
                 ->execute();
 
             return Response::structured([
-                'instructions' => 'When using this tool, always rely on the response from the RAG system. The response contains all relevant information and includes any possible links associated with the retrieved documents. Use the content and links comprehensively to answer queries, provide context, or perform reasoning. Prioritize completeness and relevance: incorporate all useful information from the RAG payload, and reference the links where applicable. Do not ignore any parts of the response that may aid in generating accurate and informative outputs.',
+                'instructions' => 'When using this tool, always rely on the response from the RAG system. The response contains all relevant information, and the `documents` list names every source it was built from. Use the content comprehensively to answer queries, provide context, or perform reasoning; prioritize completeness and relevance. Cite sources by the document names from the `documents` list. Never quote, extract, or cite URLs that appear inside the retrieved content (such as printed page footers or body text) as source links — those are content, not sources.',
                 'response' => $response,
+                'documents' => $this->sourceDocuments($response),
             ]);
         } catch (\Throwable $e) {
             $log->error(sprintf('Failed to retrieve hawki-rag search query: %s, with error: %s', $query, $e->getMessage()), ['exception' => $e]);
 
             return Response::error('We could not retrieve hawki-rag search query.');
         }
+    }
+
+    /**
+     * The distinct source documents the search hits were drawn from, keyed
+     * by the identity each ingestion mode stored on every chunk:
+     * `metadata.external_document_id` (the caller-owned document id of
+     * direct-text ingestions) and `metadata.document_id` (managed
+     * documents, `adoc_*`). Named by the hit title.
+     *
+     * @param array<string, mixed> $response
+     *
+     * @return list<array{kind: string, document_id: string, name: string}>
+     */
+    private function sourceDocuments(array $response): array
+    {
+        $documents = [];
+        $seen = [];
+
+        foreach (is_array($response['results'] ?? null) ? $response['results'] : [] as $result) {
+            $title = is_string(data_get($result, 'metadata.title')) && trim((string) data_get($result, 'metadata.title')) !== ''
+                ? (string) data_get($result, 'metadata.title')
+                : null;
+
+            $references = [
+                ['attachments', data_get($result, 'metadata.external_document_id')],
+                ['documents', data_get($result, 'metadata.document_id')],
+            ];
+
+            foreach ($references as [$kind, $id]) {
+                if (!is_string($id) || trim($id) === '' || isset($seen[$kind . ':' . $id])) {
+                    continue;
+                }
+
+                $seen[$kind . ':' . $id] = true;
+
+                $documents[] = [
+                    'kind' => $kind,
+                    'document_id' => $id,
+                    'name' => $title ?? $id,
+                ];
+            }
+        }
+
+        return $documents;
     }
 }

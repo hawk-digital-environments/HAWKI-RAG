@@ -321,6 +321,57 @@ paths:
                 $ref: "#/components/schemas/DatasetDetailResponse"
         "404":
           $ref: "#/components/responses/NotFound"
+  /datasets/{dataset_id}/ingest-grants/self:
+    post:
+      tags:
+        - Datasets
+      summary: Self-grant dataset ingestion access
+      description: |
+        Grants the calling token's local user the `ingest` permission for one
+        active dataset, so the same token may call the direct-text ingestion
+        endpoints for it.
+
+        Strict by design: a first grant requires a valid one-time `grant_token`
+        from the dataset's creation response (`POST /datasets`, HTTP 201) —
+        possession of that token is the creator's proof of ownership, so an
+        ingest token alone can never widen its own reach. Callers who already
+        hold the grant are answered idempotently (`replayed: true`) without a
+        token.
+
+        Requires a real Sanctum personal access token with the exact
+        `rag:text-ingest` ability — the same credential boundary as the
+        text-ingestion endpoints themselves. The dataset must already exist
+        and be active; otherwise the request receives the same `404` response
+        as any other unavailable dataset.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DatasetIngestionGrantRequest"
+      responses:
+        "200":
+          description: The ingest grant exists (created now or previously) for the calling user.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DatasetIngestionGrantResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: The token lacks the rag:text-ingest ability, or a first grant was attempted without a valid one-time token (`grant_token_required` / `grant_token_invalid`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: The requested dataset is unavailable (missing or inactive).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /datasets/{dataset_id}/storage:
     parameters:
       - in: path
@@ -1728,6 +1779,44 @@ components:
           type: boolean
         replayed:
           type: boolean
+    DatasetIngestionGrantResponse:
+      type: object
+      required:
+        - success
+        - dataset_id
+        - ingest_access
+        - replayed
+      properties:
+        success:
+          type: boolean
+        dataset_id:
+          type: string
+        ingest_access:
+          type: object
+          required:
+            - granted
+            - permission
+          properties:
+            granted:
+              type: boolean
+            permission:
+              type: string
+              enum:
+                - ingest
+        replayed:
+          type: boolean
+          description: True when the caller already held the grant (no token consumed).
+    DatasetIngestionGrantRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        grant_token:
+          type: string
+          maxLength: 191
+          description: |
+            One-time bootstrap token from the dataset's creation response.
+            Required for a first grant; unnecessary when the caller already
+            holds the grant.
     TextIngestionError:
       type: object
       required:
@@ -2018,6 +2107,15 @@ components:
           example: research-library
         dataset:
           $ref: "#/components/schemas/DatasetResource"
+        grant_token:
+          type: string
+          example: dgt_5f4dcc3b5aa765d61d8327deb882cf99
+          description: |
+            One-time ingest-grant bootstrap token, present only on first
+            creation (HTTP 201). Redeem it via
+            `POST /datasets/{dataset_id}/ingest-grants/self`. It is never
+            shown again; only its hash is stored server-side and it expires
+            after 24 hours.
     DatasetDetailResponse:
       type: object
       required:

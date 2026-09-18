@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Http\Controllers\API\HawkiRagProxyController;
 use App\Http\Controllers\API\RagStatsController;
 use App\Http\Controllers\DatasetController;
+use App\Http\Controllers\DatasetIngestionGrantController;
 use App\Http\Controllers\DatasetQueryGrantController;
 use App\Http\Controllers\Document\UnifiedDocumentController;
 use App\Http\Controllers\DocumentBrowserController;
@@ -135,7 +136,9 @@ Route::middleware('throttle:hawki-api')->group(function (): void {
     | separated from metadata reads and creation because it deletes Qdrant and
     | Neo4j data and therefore receives the destructive-operation throttle.
     | Self-granting query access requires a query principal and applies only to
-    | that current user and the selected dataset.
+    | that current user and the selected dataset. Self-granting ingest access
+    | requires a personal access token with the rag:text-ingest ability — the
+    | same credential boundary as the text-ingestion endpoints themselves.
     */
     Route::prefix('datasets')->group(function (): void {
         Route::get('/', [DatasetController::class, 'index']);
@@ -144,6 +147,8 @@ Route::middleware('throttle:hawki-api')->group(function (): void {
         Route::post('/{datasetId}/query-grants/self', [DatasetQueryGrantController::class, 'store'])
             ->middleware(['browser-query-principal', 'throttle:hawki-destructive'])
             ->defaults('openapi', false);
+        Route::post('/{datasetId}/ingest-grants/self', [DatasetIngestionGrantController::class, 'store'])
+            ->middleware(['auth:sanctum', RequireTextIngestionToken::class, 'throttle:hawki-destructive']);
         Route::delete('/{datasetId}/storage', [DatasetController::class, 'destroyStorage'])
             ->middleware('throttle:hawki-destructive');
     });

@@ -42,15 +42,26 @@ ready callback. It always sets graph ingestion to `false`.
 
 Create dataset metadata through `POST /api/datasets` before direct ingestion.
 Repeating a compatible dataset-creation request returns the existing dataset;
-conflicting metadata returns `409`.
+conflicting metadata returns `409`. A first creation (`201`) also returns a
+one-time `grant_token`: possession of that token is the creator's proof of
+ownership, it is stored only as a hash, and it expires after 24 hours.
 
 The text-ingestion endpoint requires a real Sanctum personal access token with
 the exact `rag:text-ingest` ability and an explicit `ingest` dataset grant for
 its local user. Session-only authentication and wildcard abilities do not pass
-this boundary. Create the token and grant with:
+this boundary. Create the token with:
 
 ```bash
 php artisan user:token --abilities=rag:text-ingest
+```
+
+A client who created the dataset and recieved the `grant_token` in the response can grant himself
+one time access to that dataset via:
+`POST /api/datasets/{datasetId}/ingest-grants/self`.
+Callers who already hold the grant are answered idempotently without a token.
+An operator can still manage dataset access via:
+
+```bash
 php artisan dataset:grant-ingest DATASET_ID USER_ID
 ```
 
