@@ -99,12 +99,3 @@ operations dispatch durable work to activity workers. Its internal trusted
 scope is not a client credential; direct public exposure bypasses Laravel's
 authorization boundary.
 
-<details>
-<summary>Implementation references</summary>
-
-Implementation: [Laravel query validation](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/app/Http/Requests/Rag/QueryDatasetRequest.php),
-[proxy service](https://github.com/hawk-digital-environments/HAWKI-RAG/tree/main/app/Services/Rag),
-[bridge schemas](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/python_rag/services/hawki_bridge/src/hawki_bridge/http/schemas.py),
-[bridge routers](https://github.com/hawk-digital-environments/HAWKI-RAG/tree/main/python_rag/services/hawki_bridge/src/hawki_bridge/http/routers).
-
-</details>

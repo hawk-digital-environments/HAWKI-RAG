@@ -145,13 +145,3 @@ Continue with [Storage](../Core%20Concepts/storage.md) for persistence and
 isolation, or the [Repository Map](../Reference/8_repo_map.md) for implementation
 ownership and declared Python dependencies.
 
-<details>
-<summary>Implementation references</summary>
-
-Sources: [Compose](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/docker-compose.yml),
-[bridge routers](https://github.com/hawk-digital-environments/HAWKI-RAG/tree/main/python_rag/services/hawki_bridge/src/hawki_bridge/http/routers),
-[source workflow](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/python_rag/services/hawki_workflow_worker/src/hawki_workflow_worker/workflows/ingest_source.py),
-[query execution](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/python_rag/services/hawki_bridge/src/hawki_bridge/application/query/execution.py),
-[worker event service](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/app/Services/Pipeline/PipelineWorkerEventService.php).
-
-</details>

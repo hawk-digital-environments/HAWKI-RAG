@@ -92,7 +92,3 @@ in memory; there is no separate `chunks.md` handoff file.
 Operation/job/document identifiers correlate retries, deterministic upserts,
 manifests and callbacks. Idempotent identities reduce duplicate writes; they do
 not turn the multi-store pipeline into a transaction.
-
-Sources: [index activity](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/python_rag/services/hawki_indexer_worker/src/hawki_indexer_worker/application/index_execution.py),
-[artifact validation](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/python_rag/services/hawki_indexer_worker/src/hawki_indexer_worker/indexing/artifact_documents.py),
-[index orchestration](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/python_rag/services/hawki_indexer_worker/src/hawki_indexer_worker/indexing/orchestration.py).

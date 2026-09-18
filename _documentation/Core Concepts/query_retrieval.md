@@ -321,14 +321,3 @@ related facts for answer context.
 For the original framework and its hybrid retrieval approach, please refer to
 Guo et al. (2025), [*RAG-Anything: All-in-One RAG Framework*](https://arxiv.org/abs/2510.12323),
 especially [Section 2.3, Cross-Modal Hybrid Retrieval](https://arxiv.org/html/2510.12323v1#S2.SS3).
-
-<details>
-<summary>Implementation references</summary>
-
-Sources: [query application modules](https://github.com/hawk-digital-environments/HAWKI-RAG/tree/main/python_rag/services/hawki_bridge/src/hawki_bridge/application/query),
-[Qdrant reader](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/python_rag/services/hawki_bridge/src/hawki_bridge/adapters/qdrant_reader.py),
-[reranker client](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/python_rag/services/hawki_bridge/src/hawki_bridge/adapters/reranker_client.py),
-[Neo4j reader](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/python_rag/services/hawki_bridge/src/hawki_bridge/adapters/neo4j_reader.py),
-[HTTP errors](https://github.com/hawk-digital-environments/HAWKI-RAG/tree/main/python_rag/services/hawki_bridge/src/hawki_bridge/http/errors).
-
-</details>

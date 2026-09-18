@@ -85,13 +85,3 @@ The bridge carries request IDs and returns categorized HTTP failures. This does
 not make every log content-free: exception paths and Laravel MCP logging can
 include query text and backend details. Limit log access and avoid putting
 credentials into queries, metadata, or source URLs.
-
-<details>
-<summary>Implementation references</summary>
-
-Implementation: [monitor service](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/app/Services/Rag/RagMonitorService.php),
-[artifact reader](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/app/Services/Rag/RagMonitorArtifactReader.php),
-[worker events](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/app/Services/Pipeline/PipelineWorkerEventService.php),
-[observability package](https://github.com/hawk-digital-environments/HAWKI-RAG/tree/main/python_rag/packages/observability).
-
-</details>

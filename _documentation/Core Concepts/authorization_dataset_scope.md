@@ -112,16 +112,3 @@ Dataset **management** is a separate boundary: its create request can supply
 storage target names. The no-override guarantee applies to query/direct-text
 metadata; it does not make the management API untrusted-client-safe.
 
-<details>
-<summary>Implementation references</summary>
-
-Sources:
-[query authorization](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/app/Services/Authorization/DatasetQueryAuthorizationService.php),
-[scope value](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/app/Services/Authorization/Values/AuthorizedDatasetScope.php),
-[principal resolution](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/app/Services/Authorization/BrowserQueryPrincipalService.php),
-[ingest authorization](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/app/Services/Authorization/DatasetIngestionAuthorizationService.php),
-[self grant](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/app/Services/Authorization/DatasetQueryGrantService.php),
-[public routes](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/routes/api.php),
-[Python scope](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/python_rag/services/hawki_bridge/src/hawki_bridge/application/query/scope.py).
-
-</details>

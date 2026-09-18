@@ -224,12 +224,3 @@ Qdrant payload state, and Neo4j scope before cleanup.
 diagnostic commands. Embedding/chunk changes require the planned migration
 described in [Chunking & Embeddings](../Core%20Concepts/Ingestion/chunking_embeddings.md#embedding-migration).
 
-<details>
-<summary>Implementation references</summary>
-
-Sources: [ready projection](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/python_rag/services/hawki_indexer_worker/src/hawki_indexer_worker/application/ready_projection.py),
-[activity result](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/python_rag/services/hawki_indexer_worker/src/hawki_indexer_worker/indexing/activity_result.py),
-[manual recovery](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/app/Services/Pipeline/Recovery/PipelineRecoveryAttemptService.php),
-[direct-text recovery](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/app/Services/TextIngestion/TextIngestionRecoveryService.php).
-
-</details>

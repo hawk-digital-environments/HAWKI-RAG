@@ -89,13 +89,3 @@ The external tools must share the expected network and artifact volume.
 [Installation](./4_installation_zero_to_up.md) explains first startup;
 [Run HAWKI RAG](./2_setup.md#external-tools) covers the sibling-tool commands.
 
-<details>
-<summary>Implementation references</summary>
-
-Sources: [Makefile](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/Makefile),
-[base Compose](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/docker-compose.yml),
-[UI override](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/docker-compose.ui.yml),
-[development override](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/docker-compose.local.yml),
-[GPU override](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/docker-compose-gpu-override.yml).
-
-</details>

@@ -102,12 +102,3 @@ command. Quiesce ingestion and coordinate snapshots operationally.
 For mismatched state, begin with
 [Ingestion Recovery](../Operations/ingestion_recovery.md), not a whole-stack reset.
 
-<details>
-<summary>Implementation references</summary>
-
-Sources: [Compose volumes](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/docker-compose.yml),
-[artifact store](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/python_rag/packages/artifact_store/src/hawki_artifact_store/local.py),
-[Qdrant state](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/python_rag/services/hawki_indexer_worker/src/hawki_indexer_worker/indexing/page_state.py),
-[graph store](https://github.com/hawk-digital-environments/HAWKI-RAG/tree/main/python_rag/packages/graph_store/src/hawki_graph_store).
-
-</details>

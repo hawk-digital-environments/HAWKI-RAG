@@ -194,14 +194,3 @@ the deleted source.
 | 502 | Workflow start cannot be confirmed, or deletion fails |
 | 429 | Operation throttle |
 
-<details>
-<summary>Implementation references</summary>
-
-Implementation: [request validation](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/app/Http/Requests/Integration/IngestTextRequest.php),
-[service](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/app/Services/TextIngestion/TextIngestionService.php),
-[deletion](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/app/Services/TextIngestion/TextIngestionDeletionService.php),
-[workflow](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/python_rag/services/hawki_workflow_worker/src/hawki_workflow_worker/workflows/ingest_text.py),
-[API tests](https://github.com/hawk-digital-environments/HAWKI-RAG/tree/main/tests/Feature/Integration),
-[live test](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/python_rag/tests/end_to_end/integration/test_direct_text_ingestion.py).
-
-</details>

@@ -195,14 +195,3 @@ Inspect task-queue pollers, pending activities, attempts, results, and history t
 core services. See [Monitoring](./monitoring.md) for logs and
 [Recovery](./ingestion_recovery.md) for choosing the next action.
 
-<details>
-<summary>Implementation references</summary>
-
-Sources: [workflow definitions](https://github.com/hawk-digital-environments/HAWKI-RAG/tree/main/python_rag/services/hawki_workflow_worker/src/hawki_workflow_worker/workflows),
-[Temporal contracts](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/python_rag/packages/contracts/src/hawki_rag_contracts/pipeline/temporal.py),
-[bridge client](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/python_rag/services/hawki_bridge/src/hawki_bridge/adapters/temporal_client.py),
-[bridge settings](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/python_rag/services/hawki_bridge/src/hawki_bridge/settings.py),
-[callback client](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/python_rag/packages/pipeline_callbacks/src/hawki_pipeline_callbacks/client.py),
-[signature verifier](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/app/Services/Pipeline/PipelineWorkerEventSignatureVerifier.php).
-
-</details>
