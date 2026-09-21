@@ -9,6 +9,9 @@ from pathlib import Path
 import tomllib
 from typing import Any
 
+import pytest
+from temporalio.exceptions import ApplicationError
+
 from hawki_rag_contracts.pipeline.temporal import (
     CONVERT_FILES_ACTIVITY,
     INDEX_MARKDOWN_ACTIVITY,
@@ -56,6 +59,91 @@ class _WorkflowRuntime:
     ) -> dict[str, Any]:
         self.calls.append((name, payload, options))
         return self.results.popleft()
+
+
+@pytest.mark.parametrize(
+    ("resume", "activities"),
+    [
+        (
+            {"stage": "scrape"},
+            [
+                SCRAPE_SOURCE_ACTIVITY,
+                CONVERT_FILES_ACTIVITY,
+                INDEX_MARKDOWN_ACTIVITY,
+                MARK_SOURCE_READY_ACTIVITY,
+            ],
+        ),
+        (
+            {"stage": "convert", "raw_dir": "/shared/crawler-job"},
+            [
+                CONVERT_FILES_ACTIVITY,
+                INDEX_MARKDOWN_ACTIVITY,
+                MARK_SOURCE_READY_ACTIVITY,
+            ],
+        ),
+        (
+            {"stage": "ingest", "markdown_dir": "/shared/saved-markdown"},
+            [INDEX_MARKDOWN_ACTIVITY, MARK_SOURCE_READY_ACTIVITY],
+        ),
+    ],
+)
+def test_retry_starts_at_failed_stage_and_runs_remaining_stages(
+    monkeypatch,
+    resume,
+    activities,
+) -> None:
+    runtime = _WorkflowRuntime([{"status": "success"} for _ in activities])
+    monkeypatch.setattr(ingest_source, "workflow", runtime)
+
+    asyncio.run(IngestSourceWorkflow().run({"source_id": "source-a", "resume": resume}))
+
+    assert [call[0] for call in runtime.calls] == activities
+    if resume["stage"] == "convert":
+        assert runtime.calls[0][1]["scrape_result"] == {
+            "source_id": "source-a",
+            "status": "success",
+            "raw_dir": "/shared/crawler-job",
+        }
+    if resume["stage"] == "ingest":
+        assert runtime.calls[0][1]["convert_result"] == {
+            "source_id": "source-a",
+            "status": "success",
+            "markdown_dir": "/shared/saved-markdown",
+        }
+
+
+@pytest.mark.parametrize(
+    "resume",
+    [
+        {"stage": "convert"},
+        {"stage": "ingest"},
+        {"stage": "unknown"},
+    ],
+)
+def test_invalid_retry_does_not_run_or_restart_earlier_stages(
+    monkeypatch, resume
+) -> None:
+    runtime = _WorkflowRuntime([])
+    monkeypatch.setattr(ingest_source, "workflow", runtime)
+
+    with pytest.raises(ApplicationError) as error:
+        asyncio.run(
+            IngestSourceWorkflow().run({"source_id": "source-a", "resume": resume})
+        )
+
+    assert error.value.non_retryable
+    assert runtime.calls == []
+
+
+def test_workflow_can_be_prepared_in_the_temporal_sandbox() -> None:
+    from temporalio import workflow as temporal_workflow
+    from temporalio.worker.workflow_sandbox import SandboxedWorkflowRunner
+
+    async def prepare() -> None:
+        definition = temporal_workflow._Definition.must_from_class(IngestSourceWorkflow)
+        SandboxedWorkflowRunner().prepare_workflow(definition)
+
+    asyncio.run(prepare())
 
 
 def test_workflow_preserves_activity_order_and_prefers_the_indexer_queue(

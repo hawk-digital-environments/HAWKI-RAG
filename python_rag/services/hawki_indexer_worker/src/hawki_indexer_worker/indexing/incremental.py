@@ -9,6 +9,15 @@ from dataclasses import dataclass, field
 from typing import Any, Mapping
 from urllib.parse import urlsplit, urlunsplit
 
+from hawki_indexer_worker.indexing.artifact_identity import (
+    has_artifact_identity,
+    matches_artifact_owner,
+    validate_artifact_identity,
+)
+from hawki_indexer_worker.indexing.document_requirements import (
+    requires_complete_document,
+)
+
 from hawki_indexer_worker.indexing.page_state import (
     DOCUMENT_COMPLETE_FIELD,
     DOCUMENT_METADATA_FINGERPRINT_FIELD,
@@ -50,6 +59,9 @@ def stable_document_id_from_payload(
 ) -> tuple[str, str | None]:
     """Return a durable doc id for website pages and the identity key used."""
 
+    if has_artifact_identity(payload):
+        validate_artifact_identity(payload, fallback_doc_id)
+        return fallback_doc_id, f"doc:{fallback_doc_id}"
     identity_key = page_identity_key(payload)
     if not identity_key:
         return str(fallback_doc_id), None
@@ -103,6 +115,7 @@ def plan_incremental_ingest(
     logger_obj: logging.Logger,
     neo4j_database: str | None = None,
     page_registry: Any | None = None,
+    reprocess_unchanged: bool = False,
 ) -> IncrementalIngestPlan:
     """Skip unchanged docs and mark changed docs for page-scoped replacement."""
 
@@ -127,9 +140,11 @@ def plan_incremental_ingest(
             neo4j_database=neo4j_database,
         )
         is_direct_text = payload.get("ingestion_mode") == "direct_text"
+        is_artifact = has_artifact_identity(payload)
         completed_state = (
             _find_completed_state(page_registry, expected_page_record)
-            if is_direct_text and expected_page_record is not None
+            if requires_complete_document(payload)
+            and expected_page_record is not None
             else None
         )
         completed_payload = completed_state.payload if completed_state else None
@@ -138,6 +153,13 @@ def plan_incremental_ingest(
             collection=collection,
             payload=payload,
         )
+        if (
+            is_artifact
+            and existing_payload
+            and not matches_artifact_owner(existing_payload, payload)
+        ):
+            existing_payload = None
+            completed_state = None
         if existing_payload:
             registry_hits += 1
         if not existing_payload:
@@ -152,11 +174,18 @@ def plan_incremental_ingest(
         unchanged_is_proven = bool(
             existing_payload and existing_hash and existing_hash == content_hash
         )
-        if is_direct_text:
+        if requires_complete_document(payload):
             unchanged_is_proven = completed_state is not None
 
+        # A previous attempt may have written vectors before its graph write or
+        # remaining vector batches failed. Matching content alone cannot prove
+        # that the requested ingestion retry has finished both stores.
+        if reprocess_unchanged:
+            unchanged_is_proven = False
+
         metadata_refresh_required = bool(
-            is_direct_text
+            not reprocess_unchanged
+            and is_direct_text
             and completed_state is not None
             and expected_page_record is not None
             and (
@@ -337,12 +366,25 @@ def _find_existing_payload(
             continue
         point = points[0] if isinstance(points[0], dict) else {}
         point_payload = point.get("payload") if isinstance(point, dict) else None
-        if isinstance(point_payload, dict):
+        if isinstance(point_payload, dict) and (
+            not has_artifact_identity(payload)
+            or matches_artifact_owner(point_payload, payload)
+        ):
             return point_payload
     return None
 
 
 def _lookup_filters(doc_id: str, payload: Mapping[str, Any]) -> list[dict[str, Any]]:
+    if has_artifact_identity(payload):
+        # An old URL-based ID can contain contributions from several files.
+        # Leave that data for explicit recovery, never infer its ownership.
+        return [
+            {
+                "doc_id": str(doc_id),
+                "source_id": payload["source_id"],
+                "relative_path": payload["relative_path"],
+            }
+        ]
     filters: list[dict[str, Any]] = [{"doc_id": str(doc_id)}]
     seen = {tuple(filters[0].items())}
 

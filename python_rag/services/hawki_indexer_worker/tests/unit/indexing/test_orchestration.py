@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
+from types import SimpleNamespace
 
 import pytest
 
@@ -102,6 +103,62 @@ def _dependencies(qdrant: MemoryQdrant) -> IngestWorkflowDependencies:
         graph_writer_factory=lambda **_kwargs: None,
         page_state_factory=QdrantPageState,
     )
+
+
+def test_ingestion_recovery_retries_graph_after_vectors_already_succeeded(
+    monkeypatch,
+) -> None:
+    from hawki_indexer_worker.indexing import orchestration
+
+    qdrant = MemoryQdrant()
+    provider = RecordingProvider()
+    dependencies = _dependencies(qdrant)
+    graph_attempts = []
+
+    def commit_graph(**kwargs):
+        graph_attempts.append(kwargs["chunk_records"])
+        if len(graph_attempts) == 1:
+            raise RuntimeError("Neo4j unavailable after vector write")
+        return SimpleNamespace(graph_preview=None, graph_failures=[], neo4j_ms=1.0)
+
+    monkeypatch.setattr(orchestration, "commit_graph_triplets", commit_graph)
+    request = _request("saved Markdown", operation="operation-recovery")
+    request.graph = True
+    request.dataset_id = "dataset-1"
+    request.neo4j_namespace = "dataset-1"
+    with pytest.raises(RuntimeError, match="Neo4j unavailable"):
+        ingest_documents(
+            request,
+            rag_service=object(),
+            get_provider=lambda _: provider,
+            dependencies=dependencies,
+        )
+    assert qdrant.points
+
+    request.reprocess_unchanged = True
+    result = ingest_documents(
+        request,
+        rag_service=object(),
+        get_provider=lambda _: provider,
+        dependencies=dependencies,
+    )
+
+    assert result["ok"]
+    assert len(graph_attempts) == 2
+    assert graph_attempts[1]
+    assert len(qdrant.points) == 1
+
+
+def test_only_ingestion_recovery_reprocesses_unchanged_content() -> None:
+    for stage in (None, "scrape", "convert", "ingest"):
+        workflow_input = {"resume": {"stage": stage}} if stage else {}
+        request = IndexRequest.from_options(
+            [],
+            workflow_input=workflow_input,
+            options={},
+            operation_id="operation",
+        )
+        assert request.reprocess_unchanged is (stage == "ingest")
 
 
 def test_incremental_ingestion_skips_retry_and_replaces_changed_content(

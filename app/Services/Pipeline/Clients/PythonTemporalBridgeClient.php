@@ -136,6 +136,17 @@ readonly class PythonTemporalBridgeClient
         }
     }
 
+    /** @return array<string, mixed> */
+    public function workflowStatus(string $workflowId, string $runId): array
+    {
+        $this->ensureEnabled();
+
+        return $this->post('/temporal/workflows/status', [
+            'workflow_id' => $workflowId,
+            'run_id' => $runId,
+        ]);
+    }
+
     public function cancelWorkflow(string $workflowId, ?string $runId = null): void
     {
         $this->ensureEnabled();

@@ -78,6 +78,8 @@ readonly class PipelineTaskRetryService
             return;
         }
 
+        $workflowInput = $directText ? null : $this->workflowPayloads->retryInput($task, $job, $source);
+
         $source = $this->ingestionSources->upsertStarting($source->source_id, [
             'source_url' => $source->source_url,
             'task_id' => $task->task_id,
@@ -98,7 +100,6 @@ readonly class PipelineTaskRetryService
                 $source->source_id,
                 (int) ($metadata['retry_count'] ?? 1),
             );
-            $workflowInput = $this->workflowPayloads->input($task, $job, $source);
             $execution = $this->temporalBridge->startIngestWorkflow($workflowInput, $workflowId);
         }
         $metadata['temporal'] = array_filter([

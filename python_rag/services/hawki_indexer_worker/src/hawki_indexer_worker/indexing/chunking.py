@@ -3,7 +3,16 @@
 from __future__ import annotations
 
 import logging
+from pathlib import PurePosixPath
 from typing import Any, Optional
+
+from hawki_indexer_worker.indexing.artifact_identity import (
+    is_artifact_payload,
+    validate_artifact_identity,
+)
+from hawki_indexer_worker.indexing.document_requirements import (
+    requires_complete_document,
+)
 
 from hawki_indexer_worker.indexing.observability import pipeline_log
 from hawki_indexer_worker.indexing.validation import (
@@ -72,6 +81,10 @@ def prepare_documents(
         source_doc_id = str(getattr(d, "id", ""))
         doc_id = source_doc_id
         current_doc_job_id = doc_job_id(default_job_id, d)
+        raw_payload = getattr(d, "payload", None)
+        is_artifact = is_artifact_payload(raw_payload)
+        if is_artifact:
+            validate_artifact_identity(raw_payload, source_doc_id)
         errors, warnings = validate_ingest_document(d)
         if errors:
             message = "; ".join(errors)
@@ -93,6 +106,11 @@ def prepare_documents(
             continue
 
         normalized_payload = normalize_ingest_metadata(d)
+        if is_artifact:
+            normalized_payload["relative_path"] = PurePosixPath(
+                normalized_payload["relative_path"]
+            ).as_posix()
+            normalized_payload["document_identity"] = "source_path"
         if warnings:
             doc_stats["validation_warnings"].append(
                 {"doc_id": doc_id, "warnings": warnings}
@@ -119,9 +137,9 @@ def prepare_documents(
 
         if not str(normalized_payload.get("content_hash") or "").strip():
             normalized_payload["content_hash"] = content_hash_for_text(document_text)
-        if is_direct_text:
-            # The artifact document ID is already scoped to the stable source.
-            # A URL is descriptive metadata for direct text, not its identity.
+        if requires_complete_document(normalized_payload):
+            # Artifact IDs are already scoped to the stable source and path.
+            # URLs describe these documents; they do not determine ownership.
             stable_doc_id = source_doc_id
             source_identity = f"doc:{source_doc_id}"
         else:
