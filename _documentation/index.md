@@ -1,65 +1,100 @@
 ---
 sidebar_position: 1
 slug: /
+title: HAWKI RAG Documentation Portal
 ---
 
-# HAWKI-RAG Documentation Portal
+# HAWKI RAG Documentation Portal
 
 <div className="hero">
-This portal is organized as a guided flow: from prerequisites to deployment, with chapter-by-chapter operational detail.
+
+Start with the prerequisites and installation, then explore the architecture,
+ingestion, retrieval, and operations guides.
 
 [Start with Requirements](./Getting%20Started/1_requirements.md)
+
 </div>
 
 ![HAWKI RAG Screen](assets/HAWKI_RAG_Screen.png)
 
 ## Overview
 
-HAWKI-RAG is a containerized, dataset-scoped retrieval-augmented generation platform that turns uploaded documents and crawled sources into grounded, searchable knowledge. Laravel provides the admin UI, canonical API, dataset management, authorization, and operational status. Six narrow Python roles split the data plane: a read-only FastAPI bridge, deterministic workflow worker, scraper worker, converter worker, in-process indexer worker, and standalone reranker API. Temporal coordinates durable scraping, conversion, indexing, retries, cancellation, and recovery. Documents are converted to normalized Markdown and split into searchable chunks. Local Ollama creates embeddings by default, and Qdrant stores the chunk vectors and retrieval payloads. When graph ingestion is enabled, RAG-Anything coordinates the document and multimodal extraction flow, LightRAG extracts entities and relations inside that flow, and HAWKI-RAG normalizes and deduplicates the resulting dataset-scoped facts before storing them in Neo4j. At query time, Laravel supplies the caller's authorized dataset, and the bridge combines vector, lexical, and optional graph evidence before the optional reranker orders the strongest results.
+HAWKI RAG turns websites, uploaded files, and submitted text into searchable,
+dataset-scoped evidence. Laravel owns the control and security plane, Python
+performs ingestion and retrieval, and Temporal coordinates durable work.
+Qdrant stores searchable content and vectors; optional Neo4j enrichment adds
+graph facts. Retrieve passages for another application or generate an answer
+grounded in those passages.
 
 ## Read in Order
 
 <div className="grid-cards">
 
 - <span className="grid-icon">✔️</span> __1. Requirements__
-  Hardware, software, ports, and platform prerequisites before you run anything.
+  Hardware, software, ports, and platform prerequisites.
   [Open chapter](./Getting%20Started/1_requirements.md)
 
-- <span className="grid-icon">🛠️</span> __2. Setup with Makefile__
-  Startup, lifecycle, health, logging, and maintenance commands with practical guidance.
-  [Open chapter](./Getting%20Started/2_setup.md)
-
-- <span className="grid-icon">🏠️</span> __3. Architecture__
-  Beginner-friendly explanation of the full RAG system and service interactions.
-  [Open chapter](./Getting%20Started/3_introduction_architecture.md)
-
-- <span className="grid-icon">🚀</span> __4. Installation__
-  Zero-to-running installation sequence with expected outputs and failure fixes.
+- <span className="grid-icon">🚀</span> __2. Installation__
+  First-time secrets, startup, health verification, and a smoke test.
   [Open chapter](./Getting%20Started/4_installation_zero_to_up.md)
 
-- <span className="grid-icon">💾</span> __5. Environment, DB, Queue__
-  Complete environment variable map, migrations, and queue setup details.
+- <span className="grid-icon">🛠️</span> __3. Run HAWKI RAG__
+  Everyday startup, lifecycle, logging, and external-tool commands.
+  [Open chapter](./Getting%20Started/2_setup.md)
+
+- <span className="grid-icon">🏠️</span> __4. Architecture__
+  The system overview and detailed ingestion and query flows.
+  [Open chapter](./Getting%20Started/3_introduction_architecture.md)
+
+- <span className="grid-icon">💾</span> __5. Environment & Configuration__
+  Settings, service consumers, restart requirements, and data impact.
   [Open chapter](./Operations/5_environment_db_queue.md)
 
-- <span className="grid-icon">👨‍🍳</span> __6. Ingestion and Embeddings__
-  End-to-end ingest flow, chunking/embedding behavior, and monitoring.
+- <span className="grid-icon">👨‍🍳</span> __6. Ingestion__
+  Document identity, chunking, embeddings, graph enrichment, and recovery.
   [Open chapter](./Operations/6_ingestion_embeddings.md)
 
 - <span className="grid-icon">📚️</span> __7. MCP Query Search Contract__
-  Authenticated input, trusted dataset scope, bridge payload, and normalized MCP output.
-  [Open chapter](./Operations/7_ragsearcher_triplets_update.md)
+  Authenticated input, trusted scope, and normalized MCP output.
+  [Open chapter](./Reference/mcp_query_search_contract.md)
 
 - <span className="grid-icon">🗺️</span> __8. Repository Map__
-  Developer map from a requested change to its Laravel/Python source and tests.
+  Find the Laravel/Python implementation and tests for a change.
   [Open chapter](./Reference/8_repo_map.md)
 
 </div>
 
+## Explore by Topic
+
+| I want to… | Read |
+|---|---|
+| Understand how a query finds evidence | [Query & Retrieval](./Core%20Concepts/query_retrieval.md) |
+| Understand who can access a dataset | [Authorization & Dataset Scope](./Core%20Concepts/authorization_dataset_scope.md) |
+| Understand vector, graph, and application state | [Storage](./Core%20Concepts/storage.md) |
+| Inspect workflows, queues, and callbacks | [Temporal Operations](./Operations/temporal_operations.md) |
+| Diagnose a failed or incomplete run | [Monitoring](./Operations/monitoring.md), [Troubleshooting](./Operations/troubleshooting.md), and [Recovery](./Operations/ingestion_recovery.md) |
+| Integrate an application | [REST APIs](./Reference/rest_apis.md) and [Direct Text Ingestion](./Reference/direct_text_ingestion.md) |
+| Contribute a change | [Testing](./Developer/testing.md) and [Architecture Rules](./Developer/architecture_rules.md) |
+
 ## Quick Start
 
+Follow [Installation](./Getting%20Started/4_installation_zero_to_up.md) to prepare
+the environment and secrets. Once configured:
+
 ```bash
-test -f .env || cp .env.example .env
-# Set HAWKI_RAG_WORKER_CALLBACK_SECRET to: openssl rand -hex 32
 make up-core
 make health
 ```
+
+Run the [direct-text smoke test](./Getting%20Started/2_setup.md#direct-text-smoke-test)
+to verify ingestion and retrieval.
+
+## Documentation Ownership
+
+**Getting Started** takes you from prerequisites to daily use. **Core Concepts**
+explains behavior and storage boundaries. **Operations** covers configuration,
+Temporal, diagnostics, and recovery. **Reference** owns wire contracts and the
+repository map. **Developer** covers tests and architecture rules.
+
+Examples describe this checkout. Environment defaults mean the supplied
+`.env.example` unless a page explicitly identifies a code fallback.
