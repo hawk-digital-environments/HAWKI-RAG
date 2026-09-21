@@ -181,6 +181,9 @@ readonly class PipelineRecoveryAttemptService
             throw new \RuntimeException('Deleted direct-text ingestions cannot be recovered.');
         }
 
+        $directText = $this->textIngestionRecovery->supports($job, $source);
+        $workflowInput = $directText ? null : $this->workflowPayloads->retryInput($task, $job, $source);
+
         $source = $this->ingestionSources->upsertStarting($source->source_id, [
             'source_url' => $source->source_url,
             'task_id' => $task->task_id,
@@ -193,7 +196,7 @@ readonly class PipelineRecoveryAttemptService
             ]),
         ]);
 
-        if ($this->textIngestionRecovery->supports($job, $source)) {
+        if ($directText) {
             $execution = $this->textIngestionRecovery->startOrReuse($task, $job, $source);
         } else {
             $workflowId = $this->retryWorkflowId(
@@ -202,7 +205,7 @@ readonly class PipelineRecoveryAttemptService
                 (int) ($metadata['retry_count'] ?? 1),
             );
             $execution = $this->temporalBridge->startIngestWorkflow(
-                $this->workflowPayloads->input($task, $job, $source),
+                $workflowInput,
                 $workflowId,
             );
         }

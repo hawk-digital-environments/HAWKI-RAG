@@ -432,7 +432,7 @@ def test_converter_candidates_cannot_follow_symlinks_outside_raw_directory(
         find_raw_conversion_candidates(store, raw_dir)
 
 
-def test_converter_activity_returns_typed_markdown_artifacts(
+def test_converter_activity_keeps_artifacts_out_of_temporal_result(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -462,7 +462,10 @@ def test_converter_activity_returns_typed_markdown_artifacts(
 
     result = convert_activity.inspect_and_convert_files(activity_payload(tmp_path))
 
-    artifact = result["artifacts"][0]
+    assert "artifacts" not in result
+    assert result["markdown_files_created"] == 1
+    assert result["markdown_dir"] == str(tmp_path / "markdown")
+    artifact = callbacks[-1]["artifacts"][0].model_dump()
     assert artifact["uri"].endswith("/page.md")
     assert artifact["source_id"] == "source-1"
     assert artifact["source_artifact_uri"] == str(raw_dir)
@@ -516,3 +519,33 @@ def test_application_use_case_routes_non_direct_profiles_to_external_client(
             "markdown_dir": str(markdown_dir),
         }
     ]
+
+
+def test_large_conversion_result_stays_below_temporal_payload_limit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from hawki_rag_contracts.pipeline.artifacts import MarkdownArtifact
+
+    artifact = MarkdownArtifact(
+        uri="/shared/markdown/page.md",
+        source_id="source-1",
+        document_id="doc-1",
+        content_hash="a" * 64,
+    )
+    conversion = ConvertResult(
+        source_id="source-1",
+        status="success",
+        markdown_dir=str(tmp_path / "markdown"),
+        markdown_files_created=10000,
+        artifacts=[artifact] * 10000,
+    )
+    assert len(conversion.model_dump_json().encode()) > 2 * 1024 * 1024
+    monkeypatch.setattr(convert_activity.ConverterSettings, "from_env", settings)
+    monkeypatch.setattr(convert_activity, "build_conversion_dependencies", lambda: None)
+    monkeypatch.setattr(
+        convert_activity, "execute_source_conversion", lambda *a, **kw: conversion
+    )
+    monkeypatch.setattr(convert_activity, "report_status", lambda *a, **kw: None)
+    result = convert_activity.inspect_and_convert_files(activity_payload(tmp_path))
+    assert result["markdown_files_created"] == 10000
+    assert len(json.dumps(result).encode()) < 4096

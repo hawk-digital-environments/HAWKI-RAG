@@ -5,11 +5,14 @@ declare(strict_types=1);
 namespace App\Services\Dataset;
 
 use App\Models\Dataset;
+use App\Services\Authorization\DatasetGrantTokenService;
 use App\Services\Dataset\Exceptions\DatasetCreationConflictException;
 use App\Services\Dataset\Exceptions\DatasetInactiveException;
 use App\Services\Dataset\Exceptions\DatasetNotFoundException;
+use App\Services\Dataset\Values\DatasetCreationResult;
 use App\Services\Settings\SettingsService;
 use Illuminate\Container\Attributes\Singleton;
+use Illuminate\Database\DatabaseManager;
 use Psr\Clock\ClockInterface;
 use Symfony\Component\Clock\Clock;
 
@@ -22,6 +25,8 @@ readonly class DatasetService
         private DatasetPayloadBuilder $payloads,
         private DatasetStorageCleanupService $storageCleanup,
         private SettingsService $settings,
+        private DatasetGrantTokenService $grantTokens,
+        private DatabaseManager $database,
         private ClockInterface $clock = new Clock,
     ) {}
 
@@ -41,31 +46,37 @@ readonly class DatasetService
         return $dataset ? $this->payloads->payload($dataset, includeDetails: true) : null;
     }
 
-    public function create(array $input): Dataset
+    public function create(array $input): DatasetCreationResult
     {
-        $datasetId = $this->identifiers->datasetId($input['dataset_id'] ?? $input['datasetId'] ?? null);
-        $safe = $this->identifiers->safeName($datasetId);
-        $embedding = $this->embeddingRuntime();
+        return $this->database->transaction(function () use ($input): DatasetCreationResult {
+            $datasetId = $this->identifiers->datasetId($input['dataset_id'] ?? $input['datasetId'] ?? null);
+            $safe = $this->identifiers->safeName($datasetId);
+            $embedding = $this->embeddingRuntime();
 
-        $dataset = $this->datasets->firstOrCreate($datasetId, [
-            'dataset_id' => $datasetId,
-            'name' => $this->identifiers->displayName($datasetId, $input['name'] ?? null),
-            'description' => $this->identifiers->stringValue($input['description'] ?? null),
-            'status' => $this->identifiers->stringValue($input['status'] ?? null) ?? Dataset::STATUS_ACTIVE,
-            'qdrant_collection' => $this->identifiers->stringValue($input['qdrant_collection'] ?? $input['qdrantCollection'] ?? null)
-                ?? $this->identifiers->qdrantCollection($safe),
-            'neo4j_namespace' => $this->identifiers->stringValue($input['neo4j_namespace'] ?? $input['neo4jNamespace'] ?? null)
-                ?? $this->identifiers->neo4jNamespace($safe),
-            'embedding_provider' => $embedding['provider'],
-            'embedding_model' => $embedding['model'],
-            'created_at' => $this->clock->now(),
-        ]);
+            $dataset = $this->datasets->firstOrCreate($datasetId, [
+                'dataset_id' => $datasetId,
+                'name' => $this->identifiers->displayName($datasetId, $input['name'] ?? null),
+                'description' => $this->identifiers->stringValue($input['description'] ?? null),
+                'status' => $this->identifiers->stringValue($input['status'] ?? null) ?? Dataset::STATUS_ACTIVE,
+                'qdrant_collection' => $this->identifiers->stringValue($input['qdrant_collection'] ?? $input['qdrantCollection'] ?? null)
+                    ?? $this->identifiers->qdrantCollection($safe),
+                'neo4j_namespace' => $this->identifiers->stringValue($input['neo4j_namespace'] ?? $input['neo4jNamespace'] ?? null)
+                    ?? $this->identifiers->neo4jNamespace($safe),
+                'embedding_provider' => $embedding['provider'],
+                'embedding_model' => $embedding['model'],
+                'created_at' => $this->clock->now(),
+            ]);
 
-        if (! $dataset->wasRecentlyCreated) {
-            $this->ensureCompatibleCreationRequest($dataset, $input);
-        }
+            if (! $dataset->wasRecentlyCreated) {
+                $this->ensureCompatibleCreationRequest($dataset, $input);
 
-        return $dataset;
+                // A compatible replay never re-issues the creator's bootstrap
+                // token: ownership was proven at first creation.
+                return new DatasetCreationResult($dataset, false, null);
+            }
+
+            return new DatasetCreationResult($dataset, true, $this->grantTokens->issue($dataset));
+        });
     }
 
     public function requireActive(string $datasetId): Dataset

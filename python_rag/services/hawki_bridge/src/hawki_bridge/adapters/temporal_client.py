@@ -15,6 +15,7 @@ from temporalio.client import (
     SchedulePolicy,
     ScheduleSpec,
     WorkflowHandle,
+    WorkflowHistoryEventFilterType,
     WorkflowExecutionStatus,
     WorkflowFailureError,
 )
@@ -22,10 +23,24 @@ from temporalio.common import (
     WorkflowIDConflictPolicy,
     WorkflowIDReusePolicy,
 )
+from temporalio.api.failure.v1 import Failure
 from temporalio.service import RPCError, RPCStatusCode
 
 from hawki_bridge.settings import BridgeSettings
 from hawki_rag_contracts.pipeline.temporal import INGEST_TEXT_WORKFLOW
+
+
+def _failure_chain_message(failure: Failure) -> str:
+    """Join a failure with its cause chain, truncated for error reporting."""
+
+    messages: list[str] = []
+    while failure:
+        if failure.message:
+            messages.append(failure.message)
+        if not failure.HasField("cause"):
+            break
+        failure = failure.cause
+    return ": ".join(messages)[:2048]
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +64,31 @@ class TemporalBridgeClient:
 
     def __init__(self, settings: BridgeSettings) -> None:
         self.settings = settings
+
+    async def workflow_status(
+        self, *, workflow_id: str, run_id: str
+    ) -> dict[str, str | None]:
+        """Read a specific execution; never wait for a running workflow's result."""
+        client = await self.connect_temporal()
+        handle = client.get_workflow_handle(workflow_id, run_id=run_id)
+        description = await handle.describe(rpc_timeout=timedelta(seconds=5))
+        status = description.status.name if description.status else "UNKNOWN"
+        error = None
+        if status == "FAILED":
+            history = await handle.fetch_history(
+                event_filter_type=WorkflowHistoryEventFilterType.CLOSE_EVENT,
+                rpc_timeout=timedelta(seconds=5),
+            )
+            for event in history.events:
+                if event.HasField("workflow_execution_failed_event_attributes"):
+                    failure = event.workflow_execution_failed_event_attributes.failure
+                    error = _failure_chain_message(failure)
+        return {
+            "workflow_id": workflow_id,
+            "run_id": run_id,
+            "status": status,
+            "error": error,
+        }
 
     async def start_ingest_workflow(
         self,

@@ -33,6 +33,15 @@ final readonly class DatasetIngestionAuthorizationService
         }
     }
 
+    public function hasAccess(User $user, string $datasetId): bool
+    {
+        return $this->grants->findDatasetForPermission(
+            $this->principalFor($user),
+            trim($datasetId),
+            DatasetGrant::PERMISSION_INGEST,
+        ) instanceof Dataset;
+    }
+
     public function grantAccess(User $user, Dataset $dataset): DatasetGrant
     {
         return $this->grants->grant(

@@ -33,6 +33,7 @@ let taskListPollTimer = null;
 let runListPollTimer = null;
 let taskCatalogLoading = false;
 let taskRunLoading = false;
+const retryingPipelineTasks = new Set();
 
 localStorage.removeItem('hawkiPipelineJobId');
 localStorage.removeItem('hawkiPipelineRunTaskId');
@@ -584,6 +585,17 @@ function renderPipelineTaskRuns(tasks) {
         const actions = document.createElement('div');
         actions.className = 'pipeline-run-actions';
 
+        if (String(task.status || '').toLowerCase() === 'failed' || Number(task.counters?.jobs_failed || 0) > 0) {
+            const retry = document.createElement('button');
+            retry.type = 'button';
+            retry.className = 'pipeline-run-retry';
+            retry.textContent = retryingPipelineTasks.has(task.task_id) ? 'Retrying…' : 'Retry';
+            retry.disabled = retryingPipelineTasks.has(task.task_id);
+            retry.title = 'Resume each failed job at its failed stage using the current configuration';
+            retry.addEventListener('click', () => retryPipelineTask(task.task_id));
+            actions.appendChild(retry);
+        }
+
         if (isPipelineTaskCancellable(task)) {
             const cancel = document.createElement('button');
             cancel.type = 'button';
@@ -747,6 +759,49 @@ async function selectPipelineTask(taskId) {
     setActivePipelineTask(taskId);
     startPolling();
     await pollPipeline();
+}
+
+async function retryPipelineTask(taskId) {
+    if (!taskId || retryingPipelineTasks.has(taskId)) return;
+
+    retryingPipelineTasks.add(taskId);
+    renderPipelineTaskRuns(pipelineTaskRuns);
+    setTaskNote(`Resuming failed jobs for ${taskId} at their failed stages...`);
+
+    try {
+        const response = await fetch(apiUrl(`pipeline/recovery/tasks/${encodeURIComponent(taskId)}/retry-failed`), {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: {
+                'Accept': 'application/json',
+                'X-CSRF-TOKEN': csrfToken(),
+            },
+        });
+        const data = await parseResponseJson(response);
+        if (!response.ok || !data.success) {
+            throw new Error(data.message || `Pipeline task retry failed (${response.status})`);
+        }
+
+        const recovery = data.recovery;
+        if (!recovery || Number(recovery.retried || 0) === 0) {
+            const failure = recovery?.jobs?.find((job) => job.result === 'failed');
+            throw new Error(failure?.message || 'No failed jobs were eligible for retry.');
+        }
+
+        const failed = Number(recovery.failed || 0);
+        const message = `Started ${recovery.retried} job retries for ${taskId}.`
+            + (failed > 0 ? ` ${failed} retries could not be started.` : '');
+        setTaskNote(message, failed > 0 ? 'warn' : 'success');
+        pushActivity('Pipeline', message);
+        await loadPipelineTaskRuns({ quiet: true });
+        await selectPipelineTask(taskId);
+    } catch (error) {
+        setTaskNote(error.message || 'Pipeline task retry failed.', 'error');
+        pushActivity('Pipeline', error.message || 'Pipeline task retry failed.');
+    } finally {
+        retryingPipelineTasks.delete(taskId);
+        renderPipelineTaskRuns(pipelineTaskRuns);
+    }
 }
 
 async function cancelPipelineTask(taskId, button = null) {
