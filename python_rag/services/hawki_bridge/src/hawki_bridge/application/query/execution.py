@@ -169,6 +169,9 @@ def execute_authorized_query(
         timings,
     )
 
+    graph_enabled = request.authorized_scope.graph_enabled and not request.fast_mode
+    graph_disabled_reason = "fast_mode" if request.fast_mode else "graph_not_enabled"
+
     return QueryResponse.model_validate(
         {
             "ok": True,
@@ -178,10 +181,10 @@ def execute_authorized_query(
             "answer": answer,
             "retrieval": {
                 "dataset_id": request.authorized_scope.dataset_id,
-                "graph_enabled": request.authorized_scope.graph_enabled,
+                "graph_enabled": graph_enabled,
                 "graph_disabled_reason": None
-                if request.authorized_scope.graph_enabled
-                else "dataset_scope_not_enforced",
+                if graph_enabled
+                else graph_disabled_reason,
                 "iterative_pass": ranked.iterative_pass,
                 "expansion_terms": ranked.expansion_terms,
                 "context_tokens_used": context_tokens_used,

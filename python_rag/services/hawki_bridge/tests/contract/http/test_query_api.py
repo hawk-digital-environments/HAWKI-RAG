@@ -162,6 +162,7 @@ class TestQueryApiFlow:
         }
         assert response.headers["X-Request-ID"] == "query-success-1"
         assert captured["body"].__class__.__name__ == "QueryRequest"
+        assert captured["body"].fast_mode is True
         assert captured["body"].top_k == 3
         assert captured["dependencies"] is dependencies
         delegate.assert_called_once()

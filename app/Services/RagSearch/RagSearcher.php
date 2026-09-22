@@ -18,6 +18,8 @@ class RagSearcher
 
     private int $topK = 15;
 
+    private bool $fastMode = true;
+
     private ?AuthorizedDatasetScope $scope = null;
 
     public function __construct(
@@ -65,10 +67,11 @@ class RagSearcher
         return $this->topK;
     }
 
-    public function forDataset(User $user, string $datasetId): static
+    public function forDataset(User $user, string $datasetId, bool $fastMode = true): static
     {
         $clone = clone $this;
-        $clone->scope = $this->authorization->authorize($user, $datasetId);
+        $clone->fastMode = $fastMode;
+        $clone->scope = $this->authorization->authorize($user, $datasetId, includeGraph: ! $fastMode);
 
         return $clone;
     }
@@ -92,7 +95,7 @@ class RagSearcher
 
         try {
             $response = $this->http->timeout(60)
-                ->post($baseUrl.'/query', $this->payloads->make($this->query, $this->topK, $this->scope));
+                ->post($baseUrl.'/query', $this->payloads->make($this->query, $this->topK, $this->scope, $this->fastMode));
 
             if (! $response->successful()) {
                 throw RagSearcherFailedException::backendRequestFailed($this->query, $baseUrl);

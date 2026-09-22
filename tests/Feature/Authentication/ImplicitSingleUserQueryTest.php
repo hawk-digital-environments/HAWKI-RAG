@@ -78,7 +78,7 @@ final class ImplicitSingleUserQueryTest extends TestCase
                     'neo4j_namespace' => 'graph_implicit-scope',
                     'embedding_provider' => 'ollama',
                     'embedding_model' => 'bge-m3',
-                    'graph_enabled' => true,
+                    'graph_enabled' => false,
                 ]
                 && ! array_key_exists('auth_context', $payload);
         });
