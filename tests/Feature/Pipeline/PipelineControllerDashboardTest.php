@@ -46,7 +46,7 @@ class PipelineControllerDashboardTest extends TestCase
             ->assertDontSee('pipeline-task-select', false);
     }
 
-    public function test_uploading_file_starts_temporal_ingest_workflow(): void
+    public function test_uploading_file_defaults_to_vector_only_temporal_ingest(): void
     {
         $root = storage_path('framework/testing/pipeline-controller');
         File::deleteDirectory($root);
@@ -63,7 +63,6 @@ class PipelineControllerDashboardTest extends TestCase
 
         $response = $this->post('/api/pipeline/controller/files', [
             'dataset_id' => 'controller-test',
-            'graph' => 'false',
             'file' => UploadedFile::fake()->create('sample.pdf', 12, 'application/pdf'),
         ], [
             'Accept' => 'application/json',

@@ -18,6 +18,19 @@ The Docker stack supplies the application, Python roles, stores, workflow
 engine, and local model runtime. Website/file ingestion also uses external
 crawler/converter projects; direct-text ingestion does not require them.
 
+## Retrieval Modes
+
+Fast retrieval is the default in the Playground and query API (`fast_mode: true`).
+It uses vector retrieval without graph expansion or KG facts. Select **Deep
+retrieval**, or send `fast_mode: false`, to include available dataset graph data.
+Deep retrieval remains vector-only when the dataset has no ready graph-enabled
+sources or active graph-enabled document outputs.
+
+Graph ingestion is off by default for file uploads and crawler tasks. Enable it
+explicitly when ingesting content that should populate Neo4j. Direct text
+integration always skips graph ingestion-in this release-. Enabling graph ingestion does not
+change the default retrieval mode.
+
 ## Documentation
 
 | Task | Guide |

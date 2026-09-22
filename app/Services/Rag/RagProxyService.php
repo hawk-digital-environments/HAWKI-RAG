@@ -27,7 +27,8 @@ readonly class RagProxyService
      */
     public function query(User $user, array $data): array
     {
-        $scope = $this->authorization->authorize($user, (string) $data['dataset_id']);
+        $fastMode = filter_var($data['fast_mode'] ?? true, FILTER_VALIDATE_BOOLEAN);
+        $scope = $this->authorization->authorize($user, (string) $data['dataset_id'], includeGraph: ! $fastMode);
         $modelRuntime = $this->settings->modelRuntimeForProvider($scope->embeddingProvider);
         $payload = [
             'query' => $data['query'],
@@ -37,7 +38,7 @@ readonly class RagProxyService
             'vision_model' => $modelRuntime['vision_model'],
             'is_optimized' => $data['is_optimized'] ?? false,
             'generate' => $data['generate'] ?? true,
-            'fast_mode' => $data['fast_mode'] ?? false,
+            'fast_mode' => $fastMode,
             'smart_lookup' => $data['smart_lookup'] ?? false,
             'authorized_scope' => $scope->toArray(),
         ];

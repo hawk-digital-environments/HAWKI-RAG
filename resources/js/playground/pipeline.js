@@ -943,7 +943,7 @@ function settingsMetadata(task) {
 function pipelineTaskPayload(task) {
     const sourceUrl = task.primaryUrl || '';
     const sitemapUrl = task.sitemapUrl || '';
-    const graphEnabled = taskGraphInput instanceof HTMLInputElement ? taskGraphInput.checked : true;
+    const graphEnabled = taskGraphInput instanceof HTMLInputElement ? taskGraphInput.checked : false;
     const metadata = {
         source: task.source || 'scraper-task',
         catalog_task_id: task.id,

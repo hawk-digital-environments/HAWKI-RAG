@@ -78,7 +78,7 @@ class GraphSearchService
 
     public function semanticSearch(User $user, string $datasetId, string $query, int $limit = 8): array
     {
-        $scope = $this->authorization->authorize($user, $datasetId);
+        $scope = $this->authorization->authorize($user, $datasetId, includeGraph: true);
         $query = trim($query);
         $limit = max(1, min(25, $limit));
         if ($query === '') {
@@ -104,7 +104,7 @@ class GraphSearchService
 
         try {
             $rag = $this->ragSearcher
-                ->forDataset($user, $scope->datasetId)
+                ->forDataset($user, $scope->datasetId, fastMode: false)
                 ->withQuery($query)
                 ->withTopK($limit)
                 ->execute();

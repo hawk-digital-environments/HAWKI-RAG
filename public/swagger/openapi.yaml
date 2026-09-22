@@ -1225,6 +1225,10 @@ paths:
         optional Sanctum bearer token may select an explicit active user and
         must include the `query` ability.
 
+        Retrieval defaults to Fast (`fast_mode: true`), which skips graph search
+        and KG facts. Set `fast_mode: false` for Deep retrieval, which can use
+        graph data only when the dataset has ready graph-enabled ingestion.
+
         Callers cannot override storage or authorization fields. Unknown and
         unauthorized datasets are intentionally indistinguishable. Zero or
         multiple active local users fail closed instead of selecting a user
@@ -1437,6 +1441,8 @@ paths:
         the resolved query user. Credential-free requests use the only active
         local user; an optional Sanctum bearer token may select an explicit
         active user. Zero or multiple active local users fail closed.
+        This explicit graph operation requires ready graph-enabled ingestion;
+        otherwise it returns 409 without querying Neo4j.
       security:
         - {}
         - BearerAuth: []
@@ -1472,6 +1478,8 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
+        "409":
+          description: Dataset graph retrieval is not ready or enabled.
         "422":
           $ref: "#/components/responses/ValidationFailed"
         "502":
@@ -2567,6 +2575,8 @@ components:
           maxLength: 160
         graph:
           type: boolean
+          default: false
+          description: Graph ingestion is opt-in. Omitted values keep the upload vector-only.
         converter_mode:
           type: string
           enum:
@@ -3230,6 +3240,8 @@ components:
           default: true
         fast_mode:
           type: boolean
+          default: true
+          description: Fast skips graph retrieval. Set false for Deep retrieval with available dataset graph facts.
         smart_lookup:
           type: boolean
         preferred_tags:
