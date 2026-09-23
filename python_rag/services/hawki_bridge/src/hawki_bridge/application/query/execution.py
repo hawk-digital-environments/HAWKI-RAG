@@ -23,6 +23,7 @@ from hawki_bridge.application.query.context import (
     normalize_generated_answer,
 )
 from hawki_bridge.application.query.fallback import retrieve_lexical_hits
+from hawki_bridge.application.query.graph_terms import terms_from_payload, unique_terms
 from hawki_bridge.application.query.hits import (
     fuse_retrieval_hits,
     merge_retrieval_hits,
@@ -518,9 +519,9 @@ def retrieve_query_graph(
         for hit in hits[: request.top_k]:
             payload = hit.get("payload") or {}
             content = str(payload.get("content") or "")
-            term_groups.append(_terms_from_payload(payload))
+            term_groups.append(terms_from_payload(payload))
             term_groups.append(document_terms(content).terms[:terms_per_hit])
-        terms = _unique_terms(term_groups)
+        terms = unique_terms(term_groups)
         if terms:
             facts = graph_search.fetch_related_graph(
                 terms[:term_limit],
@@ -569,33 +570,6 @@ def _generate_grounded_answer(
         answer = normalize_generated_answer(safe_answer)
     timings["generation_ms"] = (time.perf_counter() - started) * 1000
     return answer
-
-
-def _terms_from_payload(payload: dict[str, Any]) -> list[str]:
-    """Collect document terms from payload tags, titles, and source URLs."""
-    terms: list[str] = []
-    tags = payload.get("tags")
-    if isinstance(tags, str):
-        terms.extend(document_terms(tags).terms)
-    elif isinstance(tags, list):
-        for tag in tags:
-            terms.extend(document_terms(str(tag)).terms)
-    for key in ("title", "page_url", "source_url"):
-        terms.extend(document_terms(str(payload.get(key) or "")).terms)
-    return terms
-
-
-def _unique_terms(groups: Iterable[Iterable[object]]) -> list[str]:
-    """Return stripped, ordered, deduplicated terms across candidate groups."""
-    seen: set[str] = set()
-    unique: list[str] = []
-    for group in groups:
-        for candidate in group:
-            term = str(candidate or "").strip()
-            if term and term not in seen:
-                seen.add(term)
-                unique.append(term)
-    return unique
 
 
 __all__ = ["execute_authorized_query"]
