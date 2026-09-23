@@ -144,6 +144,8 @@ jobs:
           services/hawki_reranker/tests
 
       - name: Validate Compose model
+        env:
+          HAWKI_RAG_COMPOSE_ENV_FILE: .env.example
         run: docker compose --env-file .env.example config --quiet
 
   laravel-callbacks:
