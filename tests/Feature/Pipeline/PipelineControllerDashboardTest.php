@@ -384,8 +384,7 @@ class PipelineControllerDashboardTest extends TestCase
             ->assertJsonPath('success', true)
             ->assertJsonPath('dataset_id', 'custom-converter-test');
 
-        $profilePath = null;
-        Http::assertSent(function ($request) use (&$profilePath): bool {
+        Http::assertSent(function ($request): bool {
             $data = $request->data();
             $profilePath = data_get($data, 'workflow_input.custom_converter_profile_path');
 
@@ -396,6 +395,9 @@ class PipelineControllerDashboardTest extends TestCase
                 && ! str_contains(json_encode($data, JSON_UNESCAPED_SLASHES), 'secret-user-api-key');
         });
 
+        $ingestRequest = Http::recorded(fn ($request): bool => $request->url() === config('config.hawki_rag_bridge_url').'/temporal/workflows/ingest'
+        )->first()[0];
+        $profilePath = data_get($ingestRequest->data(), 'workflow_input.custom_converter_profile_path');
         $this->assertIsString($profilePath);
         $this->assertFileExists($profilePath);
         $profile = json_decode(File::get($profilePath), true);
@@ -459,8 +461,7 @@ class PipelineControllerDashboardTest extends TestCase
             ->assertJsonPath('success', true)
             ->assertJsonPath('dataset_id', 'saved-converter-test');
 
-        $profilePath = null;
-        Http::assertSent(function ($request) use (&$profilePath): bool {
+        Http::assertSent(function ($request): bool {
             $data = $request->data();
             $profilePath = data_get($data, 'workflow_input.custom_converter_profile_path');
 
@@ -474,6 +475,9 @@ class PipelineControllerDashboardTest extends TestCase
                 && ! str_contains(json_encode($data, JSON_UNESCAPED_SLASHES), 'stored-converter-key');
         });
 
+        $ingestRequest = Http::recorded(fn ($request): bool => $request->url() === config('config.hawki_rag_bridge_url').'/temporal/workflows/ingest'
+        )->first()[0];
+        $profilePath = data_get($ingestRequest->data(), 'workflow_input.custom_converter_profile_path');
         $this->assertIsString($profilePath);
         $profile = json_decode(File::get($profilePath), true);
         $this->assertSame('https://converter.example.test', $profile['converter_url']);
