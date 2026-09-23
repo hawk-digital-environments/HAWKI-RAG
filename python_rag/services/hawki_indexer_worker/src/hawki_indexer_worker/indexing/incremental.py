@@ -143,8 +143,7 @@ def plan_incremental_ingest(
         is_artifact = has_artifact_identity(payload)
         completed_state = (
             _find_completed_state(page_registry, expected_page_record)
-            if requires_complete_document(payload)
-            and expected_page_record is not None
+            if requires_complete_document(payload) and expected_page_record is not None
             else None
         )
         completed_payload = completed_state.payload if completed_state else None

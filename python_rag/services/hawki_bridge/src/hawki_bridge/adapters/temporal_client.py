@@ -42,6 +42,7 @@ def _failure_chain_message(failure: Failure) -> str:
         failure = failure.cause
     return ": ".join(messages)[:2048]
 
+
 logger = logging.getLogger(__name__)
 
 
