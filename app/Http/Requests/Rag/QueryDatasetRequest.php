@@ -40,7 +40,7 @@ class QueryDatasetRequest extends FormRequest
     {
         return [
             'dataset_id' => ['required', 'string', 'max:191', 'regex:/\A[A-Za-z0-9][A-Za-z0-9._:-]{0,190}\z/'],
-            'query' => ['required', 'string', 'max:4000'],
+            'query' => ['required', 'string', 'max:6000'],
             'top_k' => ['sometimes', 'integer', 'min:1', 'max:100'],
             'is_optimized' => ['sometimes', 'boolean'],
             'generate' => ['sometimes', 'boolean'],

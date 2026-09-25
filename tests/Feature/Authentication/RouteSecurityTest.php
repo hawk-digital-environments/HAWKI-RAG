@@ -113,7 +113,7 @@ class RouteSecurityTest extends TestCase
             'ip' => '127.0.0.1',
         ]), ['query']);
 
-        $this->postJson('/api/query', ['query' => str_repeat('x', 4001)])
+        $this->postJson('/api/query', ['query' => str_repeat('x', 6001)])
             ->assertUnprocessable()
             ->assertJsonValidationErrors('query');
     }

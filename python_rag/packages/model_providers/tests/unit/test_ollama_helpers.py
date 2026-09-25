@@ -5,6 +5,15 @@ from __future__ import annotations
 from unittest.mock import patch
 
 
+def test_embedding_cleanup_keeps_six_thousand_query_characters_by_default() -> None:
+    from hawki_model_providers.ollama_helpers import clean_embedding_text
+
+    query = "🦅" * 6000
+    with patch.dict("os.environ", {}, clear=True):
+        assert clean_embedding_text(query) == query
+        assert clean_embedding_text(query + "x") == query
+
+
 def test_ollama_helpers_parse_options_payload_and_fallbacks() -> None:
     from hawki_model_providers.ollama_helpers import (
         build_chat_payload,

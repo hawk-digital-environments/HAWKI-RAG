@@ -67,11 +67,19 @@ class RagSearcher
         return $this->topK;
     }
 
-    public function forDataset(User $user, string $datasetId, bool $fastMode = true): static
-    {
+    public function forDataset(
+        User $user,
+        string $datasetId,
+        bool $fastMode = true,
+        ?string $requiredCollection = null,
+    ): static {
         $clone = clone $this;
         $clone->fastMode = $fastMode;
         $clone->scope = $this->authorization->authorize($user, $datasetId, includeGraph: ! $fastMode);
+
+        if ($requiredCollection !== null && $clone->scope->qdrantCollection !== $requiredCollection) {
+            throw RagSearcherFailedException::unexpectedCollection($datasetId, $requiredCollection);
+        }
 
         return $clone;
     }
