@@ -133,6 +133,29 @@ def test_query_provider_must_match_the_authorized_vector_space() -> None:
         )
 
 
+@pytest.mark.parametrize("query_length", [4001, 6000, 6001])
+def test_query_length_is_limited_by_characters_not_utf8_bytes(
+    query_length: int,
+) -> None:
+    payload = {
+        "query": "🦅" * query_length,
+        "authorized_scope": _authorized_scope(),
+        "provider": "ollama",
+        "chat_model": "llama3.1:8b",
+        "vision_model": "qwen2.5vl:7b",
+    }
+
+    if query_length <= 6000:
+        assert QueryRequest.model_validate(payload).query == payload["query"]
+    else:
+        with pytest.raises(ValidationError) as exc_info:
+            QueryRequest.model_validate(payload)
+        assert any(
+            error["type"] == "string_too_long" and error["loc"] == ("query",)
+            for error in exc_info.value.errors()
+        )
+
+
 @pytest.mark.parametrize("legacy_field", ["embedding_model", "graph_model"])
 def test_query_rejects_legacy_root_model_fields(legacy_field: str) -> None:
     payload: dict[str, object] = {

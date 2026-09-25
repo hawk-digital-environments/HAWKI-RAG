@@ -36,7 +36,7 @@ before exposing this deployment.
 | Field | Meaning |
 |---|---|
 | `dataset_id` | Required active authorized dataset; up to 191 characters, restricted identifier syntax |
-| `query` | Required string, maximum 4000 characters |
+| `query` | Required string, maximum 6000 characters |
 | `top_k` | Optional integer 1–100; default 5 |
 | `generate` | Optional boolean; also gated by bridge configuration |
 | `fast_mode`, `smart_lookup`, `is_optimized` | Optional booleans; see retrieval behavior |
