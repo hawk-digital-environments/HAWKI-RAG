@@ -11,13 +11,10 @@ use App\Services\WebSearch\Exceptions\WebSearchFailedException;
 use App\Services\WebSearch\Implementations\BraveSearch;
 use App\Services\WebSearch\Implementations\TavilySearch;
 use App\Support\Clock\CarbonClock;
-use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Contracts\Config\Repository as ConfigRepository;
 use Illuminate\Contracts\Foundation\Application;
-use Illuminate\Http\Request;
 use Illuminate\Routing\UrlGenerator as LaravelUrlGenerator;
 use Illuminate\Support\Facades\Gate;
-use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Vite;
 use Illuminate\Support\ServiceProvider;
@@ -62,7 +59,6 @@ class AppServiceProvider extends ServiceProvider
         $this->configureViteAssetPaths($config);
         $this->registerAuthorizationGates();
         $this->registerRouteConstraints();
-        $this->registerRateLimits();
     }
 
     private function registerAuthorizationGates(): void
@@ -87,26 +83,5 @@ class AppServiceProvider extends ServiceProvider
         foreach (['datasetId', 'documentId', 'id', 'jobId', 'taskId'] as $parameter) {
             Route::pattern($parameter, self::SAFE_ROUTE_IDENTIFIER);
         }
-    }
-
-    private function registerRateLimits(): void
-    {
-        RateLimiter::for('hawki-ui', fn (Request $request): Limit => Limit::perMinute(240)->by($this->rateLimitKey($request)));
-        RateLimiter::for('hawki-health', fn (Request $request): Limit => Limit::perMinute(120)->by($this->rateLimitKey($request)));
-        RateLimiter::for('hawki-api', fn (Request $request): Limit => Limit::perMinute(180)->by($this->rateLimitKey($request)));
-        RateLimiter::for('hawki-rag-query', fn (Request $request): Limit => Limit::perMinute(30)->by($this->rateLimitKey($request)));
-        RateLimiter::for('hawki-upload', fn (Request $request): Limit => Limit::perMinute(12)->by($this->rateLimitKey($request)));
-        RateLimiter::for('hawki-destructive', fn (Request $request): Limit => Limit::perMinute(10)->by($this->rateLimitKey($request)));
-        RateLimiter::for('hawki-pipeline-worker-events', fn (Request $request): Limit => Limit::perMinute(600)->by('worker-ip:'.($request->ip() ?? 'unknown')));
-    }
-
-    private function rateLimitKey(Request $request): string
-    {
-        $user = $request->user();
-        if ($user !== null) {
-            return 'user:'.$user->getAuthIdentifier();
-        }
-
-        return 'ip:'.($request->ip() ?? 'unknown');
     }
 }
