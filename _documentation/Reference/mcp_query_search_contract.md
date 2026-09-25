@@ -55,7 +55,7 @@ The tool name is `query-search`.
 | `top_k` | integer | No | Range 1–50; defaults to 5 in the MCP tool. |
 
 The MCP route itself is protected by Sanctum authentication, the `query`
-ability, query-principal authorization, and API throttling. The tool also
+ability, and query-principal authorization. The tool also
 requires the resolved principal to be an application `User`.
 
 ### Dataset authorization
