@@ -12,6 +12,7 @@ from hawki_rag_contracts.pipeline.ingestion import (
 from hawki_rag_contracts.retrieval.query import QueryRequest
 
 from hawki_bridge.settings import BridgeSettings
+from hawki_rag_contracts.pipeline.deletion import DeleteManagedDocumentInput
 
 
 def apply_query_defaults(body: QueryRequest, settings: BridgeSettings) -> QueryRequest:
@@ -51,6 +52,18 @@ class StartTextIngestWorkflowRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     workflow_id: str = Field(min_length=1, max_length=255)
     workflow_input: IngestTextWorkflowInput
+
+
+class StartManagedDeletionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    workflow_id: str = Field(min_length=1, max_length=255)
+    workflow_input: DeleteManagedDocumentInput
+
+    @model_validator(mode="after")
+    def deterministic_workflow(self) -> StartManagedDeletionRequest:
+        if self.workflow_id != "managed-" + self.workflow_input.operation_id:
+            raise ValueError("workflow_id must match the deletion operation")
+        return self
 
 
 class UpsertIngestScheduleRequest(BaseModel):

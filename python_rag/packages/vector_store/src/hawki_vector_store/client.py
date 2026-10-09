@@ -227,6 +227,21 @@ class QdrantHTTP:
             logger.warning("Qdrant count failed for collection %s: %s", col, exc)
             return None
 
+    def count_points_verified(self, filter_body: dict[str, Any]) -> int:
+        """Exact deletion proof; transport errors must never look like zero points."""
+        response = self._gateway.count_points(
+            self.collection, exact=True, timeout=self._http_settings.count_timeout,
+            filter_body=filter_body,
+        )
+        if response.status_code == 404:
+            return 0  # An absent explicitly selected collection has no points.
+        response.raise_for_status()
+        result = response.json().get("result")
+        count = result.get("count") if isinstance(result, dict) else None
+        if type(count) is not int or count < 0:
+            raise RuntimeError("Qdrant did not provide an exact deletion count")
+        return count
+
     def count_points_by_doc_id(
         self,
         doc_id: str,

@@ -39,12 +39,30 @@ readonly class IngestionSourceRepository
      */
     public function upsertStarting(string $sourceId, array $attributes): IngestionSource
     {
-        return IngestionSource::query()->updateOrCreate(
-            ['source_id' => $sourceId],
-            array_merge($attributes, [
+        return \Illuminate\Support\Facades\DB::transaction(function () use ($sourceId, $attributes): IngestionSource {
+            $current = $this->lockBySourceId($sourceId);
+            if ($current && isset($current->metadata['managed_deletion'])
+                && in_array($current->index_status, [IngestionSource::STATUS_DELETING, IngestionSource::STATUS_DELETED], true)) {
+                throw new \RuntimeException('Managed deletion prevents restarting this ingestion source.');
+            }
+            return IngestionSource::query()->updateOrCreate(['source_id' => $sourceId], array_merge($attributes, [
                 'index_status' => IngestionSource::STATUS_RUNNING,
-            ]),
-        )->refresh();
+            ]))->refresh();
+        });
+    }
+
+    public function recordPlannedWorkflow(IngestionSource $source, string $workflowId): IngestionSource
+    {
+        $source->forceFill(['temporal_workflow_id' => $workflowId])->save();
+        return $source->refresh();
+    }
+
+    public function markManagedDeletion(IngestionSource $source, string $operationId, string $status): IngestionSource
+    {
+        $metadata = $source->metadata ?? [];
+        $metadata['managed_deletion'] = ['operation_id' => $operationId, 'status' => $status];
+        $source->forceFill(['metadata' => $metadata, 'index_status' => $status])->save();
+        return $source->refresh();
     }
 
     public function markWorkflowStarted(

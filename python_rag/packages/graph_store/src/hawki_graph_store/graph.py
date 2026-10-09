@@ -341,6 +341,54 @@ class Neo4jGraph:
             "entities_deleted": nodes_deleted,
         }
 
+    def delete_scoped_document(self, doc_id: str, *, request_id: str | None = None) -> dict[str, Any]:
+        """Remove one dataset's provenance atomically and verify both edge/node references.
+
+        This stricter operation is used by managed deletion. Legacy indexing cleanup
+        keeps its existing contract. Shared contributions and entities are retained.
+        """
+        scope = normalize_graph_write_scope(self._dataset_id, self._neo4j_namespace)
+        if scope is None or not str(doc_id).strip():
+            raise ValueError("Scoped deletion requires document, dataset and namespace")
+        params = {"doc_id": doc_id, "dataset_id": scope[0], "neo4j_namespace": scope[1]}
+        edge_scope = "r.dataset_id = $dataset_id AND r.neo4j_namespace = $neo4j_namespace"
+        node_scope = "n.dataset_id = $dataset_id AND n.neo4j_namespace = $neo4j_namespace"
+        query = Neo4jQueryRequest("scoped document deletion", params,
+            operation="neo4j.delete_by_doc_id", request_id=request_id)
+
+        def remove(tx):
+            edges = tx.run(
+                "MATCH ()-[r:REL]->() WHERE " + edge_scope +
+                " AND (r.doc_id = $doc_id OR $doc_id IN coalesce(r.doc_ids, [])) "
+                "SET r.doc_ids = [id IN coalesce(r.doc_ids, []) WHERE id <> $doc_id] "
+                "SET r.doc_id = CASE WHEN r.doc_id = $doc_id THEN head(r.doc_ids) ELSE r.doc_id END "
+                "WITH r WHERE size(r.doc_ids) = 0 AND r.doc_id IS NULL DELETE r",
+                **params,
+            ).consume().counters.relationships_deleted
+            nodes = tx.run(
+                "MATCH (n:Entity) WHERE " + node_scope +
+                " AND $doc_id IN coalesce(n.doc_ids, []) "
+                "SET n.doc_ids = [id IN n.doc_ids WHERE id <> $doc_id] "
+                "WITH n WHERE size(n.doc_ids) = 0 AND NOT (n)--() DELETE n",
+                **params,
+            ).consume().counters.nodes_deleted
+            remaining_edges = tx.run(
+                "MATCH ()-[r:REL]->() WHERE " + edge_scope +
+                " AND (r.doc_id = $doc_id OR $doc_id IN coalesce(r.doc_ids, [])) RETURN count(r) AS c",
+                **params,
+            ).single()["c"]
+            remaining_nodes = tx.run(
+                "MATCH (n:Entity) WHERE " + node_scope +
+                " AND $doc_id IN coalesce(n.doc_ids, []) RETURN count(n) AS c",
+                **params,
+            ).single()["c"]
+            if remaining_edges or remaining_nodes:
+                raise RuntimeError("Neo4j document contributions remain after deletion")
+            return {"verified": True, "remaining_contributions": 0,
+                "relationships_deleted": edges, "entities_deleted": nodes}
+
+        return self._run_write(query, callback=remove)
+
     def fetch_related(
         self,
         terms: Iterable[str],

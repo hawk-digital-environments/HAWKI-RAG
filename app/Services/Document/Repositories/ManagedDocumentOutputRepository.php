@@ -165,6 +165,21 @@ readonly class ManagedDocumentOutputRepository
         return $this->activeForDocument($document->documentId());
     }
 
+    /** Only frozen output rows may become inactive after verified cleanup. */
+    public function deactivateSelected(ManagedDocument $document, array $targets, Carbon $deletedAt): void
+    {
+        foreach ($targets as $target) {
+            $query = ManagedDocumentOutput::query()->where('document_id', $document->document_id)
+                ->whereKey($target['output_id'])->where('bridge_document_id', $target['doc_id'])
+                ->where('source_id', $target['source_id'])->where('qdrant_collection', $target['collection'])
+                ->where('neo4j_namespace', $target['neo4j_namespace']);
+            if (! $query->exists()) {
+                throw new \RuntimeException('Recorded deletion output scope has changed.');
+            }
+            $query->update(['active' => false, 'status' => 'deleted', 'deleted_at' => $deletedAt, 'updated_at' => $deletedAt]);
+        }
+    }
+
     private function now(): Carbon
     {
         return Carbon::instance($this->clock->now());

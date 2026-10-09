@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
+from hawki_rag_contracts.pipeline.deletion import DELETE_MANAGED_DOCUMENT_WORKFLOW
+from temporalio.exceptions import WorkflowAlreadyStartedError
+
 from dataclasses import dataclass
 from datetime import timedelta
 import logging
@@ -120,6 +124,29 @@ class TemporalBridgeClient:
             "temporal_bridge:start workflow_id=%s run_id=%s", workflow_id, run_id
         )
         return TemporalExecution(workflow_id=workflow_id, run_id=run_id)
+
+    async def start_managed_deletion(self, *, workflow_id: str, workflow_input: dict[str, Any]) -> dict[str, Any]:
+        """Reuse active/completed deletion; only failed runs may restart under the same ID."""
+        client = await self.connect_temporal()
+        try:
+            handle = await client.start_workflow(
+                DELETE_MANAGED_DOCUMENT_WORKFLOW, workflow_input, id=workflow_id,
+                task_queue=self.settings.workflow_task_queue,
+                id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE_FAILED_ONLY,
+                id_conflict_policy=WorkflowIDConflictPolicy.USE_EXISTING,
+                execution_timeout=self.settings.workflow_execution_timeout,
+                run_timeout=self.settings.workflow_run_timeout,
+                task_timeout=self.settings.workflow_task_timeout,
+            )
+        except WorkflowAlreadyStartedError:
+            handle = client.get_workflow_handle(workflow_id)
+        description = await handle.describe()
+        receipt = {"workflow_id": workflow_id, "run_id": description.run_id, "status": "pending"}
+        try:
+            result = await asyncio.wait_for(handle.result(), timeout=3)
+        except (TimeoutError, WorkflowFailureError):
+            return receipt
+        return {**receipt, "status": "completed", "result": result}
 
     async def start_text_ingest_workflow(
         self,

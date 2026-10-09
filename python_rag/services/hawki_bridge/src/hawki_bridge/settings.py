@@ -39,6 +39,7 @@ class BridgeSettings:
     workflow_execution_timeout_seconds: int
     workflow_run_timeout_seconds: int
     workflow_task_timeout_seconds: int
+    control_plane_secret: str = ""
 
     @property
     def workflow_execution_timeout(self) -> timedelta:
@@ -102,6 +103,7 @@ def load_settings(env: Mapping[str, str] | None = None) -> BridgeSettings:
         workflow_task_timeout_seconds=int(
             _value(source, "TEMPORAL_WORKFLOW_TASK_TIMEOUT", "30")
         ),
+        control_plane_secret=source.get("HAWKI_RAG_WORKER_CALLBACK_SECRET", ""),
     )
 
 

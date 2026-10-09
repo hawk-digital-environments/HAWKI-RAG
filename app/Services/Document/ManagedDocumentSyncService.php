@@ -18,12 +18,17 @@ readonly class ManagedDocumentSyncService
         private ManagedDocumentOutputRepository $outputs,
         private IngestionSourceRepository $sources,
         private ManagedDocumentSyncStateResolver $resolver,
+        private \App\Services\Document\Repositories\ManagedDocumentDeletionRepository $deletions,
+        private \App\Services\Pipeline\Repositories\PipelineTransactionRepository $transactions,
     ) {
     }
 
     public function sync(ManagedDocument $document): ManagedDocument
     {
-        if ($document->status === ManagedDocument::STATUS_DELETED || $document->deleted_at !== null) {
+        return $this->transactions->run(function () use ($document): ManagedDocument {
+        $document = $this->deletions->lockDocument($document->document_id);
+        if ($document->status === ManagedDocument::STATUS_DELETED || $document->deleted_at !== null
+            || $this->deletions->blocksSync($document->document_id)) {
             return $this->documents->find($document->documentId()) ?? $document;
         }
 
@@ -53,6 +58,7 @@ readonly class ManagedDocumentSyncService
         );
 
         return $this->documents->find($document->documentId()) ?? $document;
+        });
     }
 
     private function stringValue(mixed $value): ?string

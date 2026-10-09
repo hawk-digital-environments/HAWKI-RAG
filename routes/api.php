@@ -72,6 +72,10 @@ Route::post('/internal/pipeline/worker-events', PipelineWorkerEventController::c
     ->middleware(VerifyPipelineWorkerSignature::class)
     ->defaults('openapi', false);
 
+Route::post('/internal/pipeline/managed-deletion-events', \App\Http\Controllers\Document\ManagedDocumentDeletionEventController::class)
+    ->middleware(VerifyPipelineWorkerSignature::class)
+    ->defaults('openapi', false);
+
 /*
 |--------------------------------------------------------------------------
 | Direct Text Integration Boundary
@@ -160,8 +164,8 @@ Route::prefix('documents')->group(function (): void {
         ->name('documents.uploads.download')
         ->defaults('openapi', false);
     Route::get('/{documentId}', [DocumentBrowserController::class, 'show']);
-    Route::put('/{documentId}', [UnifiedDocumentController::class, 'update']);
-    Route::delete('/{documentId}', [UnifiedDocumentController::class, 'destroy']);
+    Route::put('/{documentId}', [UnifiedDocumentController::class, 'update'])->middleware('auth:sanctum');
+    Route::delete('/{documentId}', [UnifiedDocumentController::class, 'destroy'])->middleware('auth:sanctum');
 });
 
 /*

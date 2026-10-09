@@ -15,6 +15,8 @@ class UnifiedDocumentController extends Controller
 {
     public function __construct(
         private readonly UnifiedDocumentService $documents,
+        private readonly \App\Services\Document\Repositories\ManagedDocumentRepository $managed,
+        private readonly \App\Services\Authorization\DatasetIngestionAuthorizationService $authorization,
     ) {
     }
 
@@ -42,6 +44,7 @@ class UnifiedDocumentController extends Controller
 
     public function update(UpdateManagedDocumentRequest $request, string $documentId): JsonResponse
     {
+        $this->authorizeMutation($documentId);
         $result = $this->documents->update(
             $documentId,
             $request->managedInput(false),
@@ -61,6 +64,7 @@ class UnifiedDocumentController extends Controller
 
     public function destroy(string $documentId): JsonResponse
     {
+        $this->authorizeMutation($documentId);
         $result = $this->documents->delete($documentId, request()->header('Idempotency-Key'));
 
         if ($result === null) {
@@ -71,5 +75,11 @@ class UnifiedDocumentController extends Controller
         }
 
         return response()->json($result['payload'], $result['status']);
+    }
+    private function authorizeMutation(string $documentId): void
+    {
+        $document = $this->managed->find($documentId);
+        abort_if($document === null, 404, 'Document was not found.');
+        $this->authorization->authorize(request()->user(), $document->dataset_id);
     }
 }

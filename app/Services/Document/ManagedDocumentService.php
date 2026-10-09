@@ -214,7 +214,7 @@ readonly class ManagedDocumentService
             (bool) ($input['force'] ?? false),
         );
 
-        if (! $decision['replace']) {
+        if (! $decision['replace'] && ! $this->deletions->pending($managedDocumentId) && ! $this->deletions->hasRequest($managedDocumentId, $idempotencyKey)) {
             $document = $this->documents->save($document, $this->nonContentUpdates($document, $input));
 
             return [
@@ -231,24 +231,20 @@ readonly class ManagedDocumentService
             ];
         }
 
+        $requestHash = hash('sha256', json_encode([
+            $input, $file?->getClientOriginalName(), $file ? hash_file('sha256', $file->getRealPath()) : null,
+        ], JSON_THROW_ON_ERROR));
         try {
-            $activeOutputs = $this->outputs->backfillScopes(
-                $document,
-                $this->outputs->activeForDocument($document->documentId()),
-            );
-            $this->deletions->deleteActiveOutputs($activeOutputs, $idempotencyKey);
-            if ($activeOutputs->isNotEmpty()) {
-                $this->outputs->deactivateActiveOutputs($document, $this->now());
-            }
-        } catch (\Throwable $exception) {
-            $document = $this->documents->save($document, [
-                'status' => ManagedDocument::STATUS_FAILED,
-                'last_error' => $exception->getMessage(),
-            ]);
-
-            return $this->failurePayload($document, 'update', 502, 'Failed to delete the existing indexed document.', $exception->getMessage());
+            $operation = $this->deletions->prepare($document, 'update', $idempotencyKey, $requestHash);
+        } catch (\App\Services\Document\Exceptions\ManagedDeletionException $error) {
+            return $this->failurePayload($document, 'update', 409, $error->getMessage());
         }
-
+        $operation = $this->deletions->dispatch($operation);
+        if (! in_array($operation->status, ['completed', 'continued'], true)) {
+            return $this->deletionPayload($operation);
+        }
+        return $this->deletions->continueUpdate($operation, function (string $taskId) use ($managedDocumentId, $input, $file): array {
+            $document = $this->documents->find($managedDocumentId);
         $graphEnabled = ($input['graph_provided'] ?? false)
             ? (bool) ($input['graph_enabled'] ?? false)
             : (bool) $document->graph_enabled;
@@ -256,9 +252,10 @@ readonly class ManagedDocumentService
         $upload = $this->uploads->upload(
             $this->pipelineInput($document->dataset_id, $graphEnabled, $document->documentId()),
             $file,
+            $taskId,
         );
 
-        if (($upload->payload['success'] ?? false) !== true) {
+        if (($upload->payload['success'] ?? false) !== true || ($upload->payload['status'] ?? null) === 'failed') {
             $document = $this->documents->save($document, [
                 'status' => ManagedDocument::STATUS_FAILED,
                 'last_error' => (string) ($upload->payload['message'] ?? 'Replacement upload failed.'),
@@ -294,6 +291,7 @@ readonly class ManagedDocumentService
         $document = $this->sync->sync($document);
 
         return $this->acceptedPayload('update', $document);
+        });
     }
 
     /**
@@ -307,48 +305,30 @@ readonly class ManagedDocumentService
         }
 
         $document = $this->sync->sync($document);
-        $document = $this->documents->save($document, [
-            'status' => ManagedDocument::STATUS_DELETING,
-            'last_error' => null,
-        ]);
-
-        $activeOutputs = $this->outputs->backfillScopes(
-            $document,
-            $this->outputs->activeForDocument($document->documentId()),
-        );
-
         try {
-            $deletion = $this->deletions->deleteActiveOutputs($activeOutputs, $idempotencyKey);
-        } catch (\Throwable $exception) {
-            $document = $this->documents->save($document, [
-                'status' => ManagedDocument::STATUS_FAILED,
-                'last_error' => $exception->getMessage(),
-            ]);
-
-            return $this->failurePayload($document, 'delete', 502, 'Failed to delete one or more indexed bridge documents.', $exception->getMessage());
+            $operation = $this->deletions->prepare($document, 'delete', $idempotencyKey);
+        } catch (\App\Services\Document\Exceptions\ManagedDeletionException $error) {
+            return $this->failurePayload($document, 'delete', 409, $error->getMessage());
         }
+        return $this->deletionPayload($this->deletions->dispatch($operation));
+    }
 
-        $deletedAt = $this->now();
-        if ($activeOutputs->isNotEmpty()) {
-            $this->outputs->deactivateActiveOutputs($document, $deletedAt);
-        }
-
-        $document = $this->documents->save($document, [
-            'status' => ManagedDocument::STATUS_DELETED,
-            'deleted_at' => $deletedAt,
-            'last_error' => null,
-        ]);
-
+    private function deletionPayload(\App\Models\ManagedDocumentDeletion $operation): array
+    {
+        $completed = $operation->status === 'completed';
         return [
-            'status' => 200,
+            'status' => $completed ? 200 : ($operation->last_error ? 502 : 202),
             'payload' => [
-                'success' => true,
+                'success' => $operation->last_error === null,
                 'operation' => [
-                    'type' => 'delete',
-                    'status' => 'completed',
+                    'type' => $operation->purpose, 'status' => $operation->status,
+                    'operation_id' => $operation->operation_id, 'workflow_id' => $operation->workflow_id,
+                    'run_id' => $operation->run_id,
+                    'recovery' => $operation->purpose === 'update' ? 'Resubmit the same PUT, file and Idempotency-Key to resume replacement.' : 'Repeat DELETE to resume the same operation.',
                 ],
-                'document' => $this->payloads->build($document),
-                'deletion' => $deletion,
+                'document' => $this->payloads->build($this->documents->find($operation->document_id)),
+                'deletion' => ['bridge_documents_deleted' => $completed ? count($operation->workflow_input['targets']) : 0, 'results' => $operation->results],
+                'error' => $operation->last_error,
             ],
         ];
     }

@@ -44,7 +44,7 @@ class PipelineUploadService
         private readonly ClockInterface $clock = new Clock(),
     ) {}
 
-    public function upload(PipelineUploadInput $input, ?UploadedFile $file): PipelineUploadResult
+    public function upload(PipelineUploadInput $input, ?UploadedFile $file, ?string $managedReplacementTaskId = null): PipelineUploadResult
     {
         if (! $file || ! $file->isValid()) {
             return $this->results->unreadableFile();
@@ -56,7 +56,13 @@ class PipelineUploadService
             return $this->results->unsupportedFile($input);
         }
 
-        $taskId = $this->identifiers->uploadTaskId();
+        $taskId = $managedReplacementTaskId ?? $this->identifiers->uploadTaskId();
+        if ($managedReplacementTaskId !== null) {
+            $existing = $this->resumeManagedUpload($taskId);
+            if ($existing !== null) {
+                return $existing;
+            }
+        }
 
         try {
             $storedUpload = $this->storage->store($taskId, $file, $extension);
@@ -73,7 +79,7 @@ class PipelineUploadService
         $sourceUrl = $this->identifiers->sourceUrl($storedUpload);
         $sourceId = $this->workflowPayloads->sourceId(
             $input->datasetId,
-            $sourceUrl.'|'.$storedUpload->contentHash,
+            $sourceUrl.'|'.$storedUpload->contentHash.($managedReplacementTaskId === null ? '' : '|'.$taskId),
         );
         $storage = $this->workflowPayloads->storagePaths($sourceId);
 
@@ -145,6 +151,9 @@ class PipelineUploadService
         $workflowId = $this->workflowPayloads->workflowId($sourceId);
         $workflowInput = $this->workflowPayloads->input($task, $job, $source);
 
+        if ($managedReplacementTaskId !== null) {
+            $source = $this->ingestionSources->recordPlannedWorkflow($source, $workflowId);
+        }
         try {
             $execution = $this->temporalBridge->startIngestWorkflow($workflowInput, $workflowId);
             $metadata['temporal'] = array_filter([
@@ -161,6 +170,9 @@ class PipelineUploadService
                 'Unable to start Temporal ingest workflow: '.$exception->getMessage(),
                 $this->now(),
             );
+            if ($managedReplacementTaskId !== null) {
+                return PipelineUploadResult::fromPayload(['success' => false, 'message' => 'Replacement startup is unconfirmed; resubmit the same PUT and file.', 'task_id' => $taskId], 502);
+            }
         }
 
         $task = $this->refresher->recalculate($task);
@@ -175,6 +187,32 @@ class PipelineUploadService
         ]);
 
         return $this->results->success($task, $job);
+    }
+
+    private function resumeManagedUpload(string $taskId): ?PipelineUploadResult
+    {
+        $task = $this->taskRepository->findWithOrderedJobs($taskId);
+        if ($task === null) {
+            return null;
+        }
+        $job = $task->jobs->first();
+        $source = $job ? $this->ingestionSources->findBySourceId($job->source_id) : null;
+        if (! $job || ! $source) {
+            throw new \RuntimeException('Durable replacement upload has incomplete task/source state.');
+        }
+        if ($job->temporal_run_id) {
+            return $this->results->success($task, $job);
+        }
+        $workflowId = $this->workflowPayloads->workflowId($source->source_id);
+        $source = $this->ingestionSources->recordPlannedWorkflow($source, $workflowId);
+        try {
+            $execution = $this->temporalBridge->startIngestWorkflow($this->workflowPayloads->input($task, $job, $source), $workflowId);
+            $this->ingestionSources->confirmWorkflowStarted($source, $execution->workflowId, $execution->runId);
+            $job = $this->jobStates->markTemporalStarted($job, $execution->workflowId, $execution->runId, null, $job->metadata ?? []);
+        } catch (\Throwable $error) {
+            return PipelineUploadResult::fromPayload(['success' => false, 'message' => 'Replacement startup is unconfirmed; resubmit the same PUT and file.', 'task_id' => $taskId], 502);
+        }
+        return $this->results->success($this->refresher->recalculate($task), $job);
     }
 
     private function now(): Carbon
