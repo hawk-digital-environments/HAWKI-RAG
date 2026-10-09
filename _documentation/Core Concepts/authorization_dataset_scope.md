@@ -19,9 +19,9 @@ generalize query authorization to every public API route.
 | Surface | Implemented policy |
 |---|---|
 | REST query and query dataset list | Explicit query-capable bearer user, existing eligible request user, or sole active local user for a credential-free request |
-| MCP transport | Sanctum authentication, `query` ability, query-principal gate, and throttling |
+| MCP transport | Sanctum authentication, `query` ability, and query-principal gate |
 | Direct-text submit/delete | Real Sanctum personal access token with the literal `rag:text-ingest` ability, plus an explicit dataset `ingest` grant |
-| Management APIs (including dataset creation, pipelines, storage cleanup) | Shared throttling and operation-specific throttles; the route group does not require an authenticated admin |
+| Management APIs (including dataset creation, pipelines, storage cleanup) | Single-user management API; the routes do not require an authenticated admin |
 
 If there is no eligible query identity, credential-free query requests fail
 instead of choosing a user arbitrarily. An invalid explicit Authorization

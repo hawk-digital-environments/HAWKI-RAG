@@ -192,5 +192,4 @@ the deleted source.
 | 422 | Invalid fields, metadata, format, or key |
 | 500 | Unhandled artifact storage/database/recovery failure |
 | 502 | Workflow start cannot be confirmed, or deletion fails |
-| 429 | Operation throttle |
 

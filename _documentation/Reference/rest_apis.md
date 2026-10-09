@@ -19,12 +19,13 @@ and the owning service remain the source of truth for runtime behavior.
 | Dataset management | `GET/POST /api/datasets`, `GET /api/datasets/{datasetId}` | Management API |
 | Documents | `GET/POST /api/documents`, `POST /api/documents/batch`, `GET/PUT/DELETE /api/documents/{documentId}` | Management API |
 | Pipeline | `POST /api/pipeline/tasks/start`, `GET /api/pipeline/tasks/{taskId}`, `POST /api/pipeline/controller/files` | Management API |
-| Recovery/control | Task cancel/retry and `/api/pipeline/recovery/...` routes | Management API with operation-specific throttles |
+| Recovery/control | Task cancel/retry and `/api/pipeline/recovery/...` routes | Management API |
 | Graph / statistics | `/api/rag/neo4j/...`, `GET /api/rag/stats` | Management API; semantic graph search adds query-principal middleware |
 | Worker events | `POST /api/internal/pipeline/worker-events` | Exact-body HMAC |
 | Health / monitoring | `/up`, `/api/pipeline/health`, `/api/rag/health`, `/api/rag/monitor` | See [Monitoring](../Operations/monitoring.md) |
 
-The management group has throttling, not blanket Sanctum authentication.
+The management API does not require blanket Sanctum authentication. Application
+request rate limits are disabled.
 Direct-text and MCP always need their explicit credentials. See
 [Authorization & Dataset Scope](../Core%20Concepts/authorization_dataset_scope.md)
 before exposing this deployment.

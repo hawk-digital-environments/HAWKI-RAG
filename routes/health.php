@@ -12,9 +12,9 @@ use Illuminate\Support\Facades\Route;
 |--------------------------------------------------------------------------
 | Minimaler Laravel Liveness Check fuer Load Balancer, Docker und Uptime Tools.
 */
-Route::get('/up', static fn (): Response => response()->noContent())->middleware('throttle:hawki-health');
+Route::get('/up', static fn (): Response => response()->noContent());
 
-Route::middleware(['web', 'throttle:hawki-health'])->group(function (): void {
+Route::middleware('web')->group(function (): void {
     Route::get('/pipeline-health', static function (): View {
         return view('svelte-page', [
             'title' => 'HAWKI Pipeline Health',
