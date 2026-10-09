@@ -41,7 +41,7 @@ class HawkiRagSearchTool extends Tool
     public function schema(JsonSchema $schema): array
     {
         return [
-            'query' => $schema->string()
+            'query' => $schema->string()->min(1)->max(6000)
                 ->description('Retrieve relevant information from the knowledge base.
                 Formulate a precise and context-rich search query including specific names, entities, relationships, dates, or domain terminology.
                 Avoid vague or generic wording.
@@ -62,7 +62,7 @@ class HawkiRagSearchTool extends Tool
         LoggerInterface $log
     ): ResponseFactory|Response {
         $validated = $request->validate([
-            'query' => 'required|string',
+            'query' => 'required|string|max:6000',
             'dataset_id' => 'required|string|max:191',
             'top_k' => 'integer|min:1|max:50',
         ]);
@@ -102,8 +102,7 @@ class HawkiRagSearchTool extends Tool
      * direct-text ingestions) and `metadata.document_id` (managed
      * documents, `adoc_*`). Named by the hit title.
      *
-     * @param array<string, mixed> $response
-     *
+     * @param  array<string, mixed>  $response
      * @return list<array{kind: string, document_id: string, name: string}>
      */
     private function sourceDocuments(array $response): array
@@ -122,11 +121,11 @@ class HawkiRagSearchTool extends Tool
             ];
 
             foreach ($references as [$kind, $id]) {
-                if (!is_string($id) || trim($id) === '' || isset($seen[$kind . ':' . $id])) {
+                if (! is_string($id) || trim($id) === '' || isset($seen[$kind.':'.$id])) {
                     continue;
                 }
 
-                $seen[$kind . ':' . $id] = true;
+                $seen[$kind.':'.$id] = true;
 
                 $documents[] = [
                     'kind' => $kind,
