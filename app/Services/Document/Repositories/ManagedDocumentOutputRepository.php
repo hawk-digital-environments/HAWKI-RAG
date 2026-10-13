@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace App\Services\Document\Repositories;
 
-use App\Models\Dataset;
+use App\Models\IngestionSource;
 use App\Models\ManagedDocument;
 use App\Models\ManagedDocumentOutput;
+use App\Models\PipelineJob;
+use App\Services\Document\Exceptions\ManagedDeletionException;
 use App\Services\Document\Values\ManagedDocumentId;
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Support\Carbon;
@@ -31,6 +33,37 @@ readonly class ManagedDocumentOutputRepository
             ->where('active', true)
             ->orderBy('id')
             ->get();
+    }
+
+    public function unverifiedForDocument(string $documentId): Collection
+    {
+        return ManagedDocumentOutput::query()->where('document_id', $documentId)
+            ->where('status', '!=', 'deleted')->orderBy('id')->get();
+    }
+
+    public function registerWriterTarget(ManagedDocument $document, IngestionSource $source, PipelineJob $job, array $target, array $scope, bool $reconciled = false): void
+    {
+        $existing = ManagedDocumentOutput::query()->where('document_id', $document->document_id)
+            ->where('bridge_document_id', $target['doc_id'])->first();
+        $namespace = ! empty($scope['graph']) ? ($scope['neo4j_namespace'] ?? null) : null;
+        if ($existing && $existing->source_id === $source->source_id && $existing->qdrant_collection === $scope['collection']
+            && ($existing->status !== 'deleted' || $reconciled) && $existing->neo4j_namespace === null && $namespace !== null) {
+            // Effective requirements may expand on a retry; never erase earlier graph ownership.
+            $existing->forceFill(['neo4j_namespace' => $namespace])->save();
+        }
+        if ($existing && ($existing->source_id !== $source->source_id || $existing->qdrant_collection !== $scope['collection']
+            || $existing->neo4j_namespace !== $namespace || ($existing->status === 'deleted' && ! $reconciled))) {
+            throw ManagedDeletionException::conflict('Recorded writer target scope conflicts with historical output metadata.');
+        }
+        if ($existing && $existing->status === 'deleted' && $reconciled) {
+            // Local reconciliation reopens metadata for fresh physical verification.
+            $existing->forceFill(['active' => true, 'status' => 'writing', 'deleted_at' => null])->save();
+        }
+        ManagedDocumentOutput::query()->firstOrCreate(['document_id' => $document->document_id, 'bridge_document_id' => $target['doc_id']], [
+            'source_id' => $source->source_id, 'task_id' => $job->task_id, 'job_id' => $job->job_id,
+            'qdrant_collection' => $scope['collection'], 'neo4j_namespace' => $namespace,
+            'active' => true, 'status' => 'writing', 'metadata_json' => ['relative_path' => $target['relative_path'], 'writer_registered' => true],
+        ]);
     }
 
     /**
@@ -139,15 +172,12 @@ readonly class ManagedDocumentOutputRepository
             return $outputs;
         }
 
-        $dataset = Dataset::query()
-            ->where('dataset_id', $document->dataset_id)
-            ->first();
-
-        $fallbackCollection = $this->stringValue($dataset?->qdrant_collection);
-        $fallbackNamespace = $this->stringValue($dataset?->neo4j_namespace);
-
         foreach ($outputs as $output) {
             $updates = [];
+            $source = IngestionSource::query()->where('source_id', $output->source_id)->first();
+            $historical = $source?->metadata['managed_dispatch']['input']['ingestion'] ?? $source?->metadata['dataset'] ?? [];
+            $fallbackCollection = $this->stringValue($historical['collection'] ?? $historical['qdrant_collection'] ?? null);
+            $fallbackNamespace = ($historical['graph'] ?? true) ? $this->stringValue($historical['neo4j_namespace'] ?? null) : null;
 
             if ($this->stringValue($output->qdrant_collection) === null && $fallbackCollection !== null) {
                 $updates['qdrant_collection'] = $fallbackCollection;
@@ -162,7 +192,7 @@ readonly class ManagedDocumentOutputRepository
             }
         }
 
-        return $this->activeForDocument($document->documentId());
+        return $outputs;
     }
 
     /** Only frozen output rows may become inactive after verified cleanup. */
@@ -174,7 +204,10 @@ readonly class ManagedDocumentOutputRepository
                 ->where('source_id', $target['source_id'])->where('qdrant_collection', $target['collection'])
                 ->where('neo4j_namespace', $target['neo4j_namespace']);
             if (! $query->exists()) {
-                throw new \RuntimeException('Recorded deletion output scope has changed.');
+                if (! ManagedDocumentOutput::query()->where('document_id', $document->document_id)->whereKey($target['output_id'])->exists()) {
+                    continue; // The frozen scope was verified and the metadata row is already absent.
+                }
+                throw ManagedDeletionException::conflict('Recorded deletion output scope has changed.');
             }
             $query->update(['active' => false, 'status' => 'deleted', 'deleted_at' => $deletedAt, 'updated_at' => $deletedAt]);
         }

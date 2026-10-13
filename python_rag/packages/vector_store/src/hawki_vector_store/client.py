@@ -230,7 +230,9 @@ class QdrantHTTP:
     def count_points_verified(self, filter_body: dict[str, Any]) -> int:
         """Exact deletion proof; transport errors must never look like zero points."""
         response = self._gateway.count_points(
-            self.collection, exact=True, timeout=self._http_settings.count_timeout,
+            self.collection,
+            exact=True,
+            timeout=self._http_settings.count_timeout,
             filter_body=filter_body,
         )
         if response.status_code == 404:

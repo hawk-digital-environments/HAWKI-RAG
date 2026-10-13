@@ -7,7 +7,6 @@ namespace App\Services\Document;
 use App\Models\IngestionSource;
 use App\Models\ManagedDocument;
 use App\Models\RagIngestionArtifact;
-use App\Services\Dataset\DatasetRepository;
 use App\Services\Document\Repositories\ManagedIngestionMetadataRepository;
 use App\Services\Document\Values\ManagedDocumentSyncState;
 use Illuminate\Container\Attributes\Singleton;
@@ -20,7 +19,6 @@ readonly class ManagedDocumentSyncStateResolver
 {
     public function __construct(
         private ManagedIngestionMetadataRepository $metadata,
-        private DatasetRepository $datasets,
         private ClockInterface $clock = new Clock,
     ) {}
 
@@ -74,9 +72,9 @@ readonly class ManagedDocumentSyncStateResolver
         $documents = is_array($summary['documents'] ?? null) ? $summary['documents'] : [];
         $chunkCounts = is_array($documents['chunks_per_doc'] ?? null) ? $documents['chunks_per_doc'] : [];
         $documentIds = is_array($documents['doc_ids'] ?? null) ? $documents['doc_ids'] : array_keys($chunkCounts);
-        $dataset = $this->datasets->findByDatasetId($managedDocument->dataset_id);
+        $historical = $source->metadata['managed_dispatch']['input']['ingestion'] ?? $source->metadata['dataset'] ?? [];
         $qdrantCollection = $this->stringValue(data_get($summary, 'qdrant_preview.collection'))
-            ?? $this->stringValue($dataset?->qdrant_collection);
+            ?? $this->stringValue($historical['collection'] ?? $historical['qdrant_collection'] ?? null);
 
         if ($qdrantCollection === null) {
             return [];
@@ -88,11 +86,12 @@ readonly class ManagedDocumentSyncStateResolver
             if ($bridgeDocumentId === null || isset($outputs[$bridgeDocumentId])) {
                 continue;
             }
+            $registered = $source->metadata['managed_targets'][$bridgeDocumentId] ?? null;
 
             $outputs[$bridgeDocumentId] = [
                 'bridge_document_id' => $bridgeDocumentId,
-                'qdrant_collection' => $qdrantCollection,
-                'neo4j_namespace' => $this->stringValue($dataset?->neo4j_namespace),
+                'qdrant_collection' => $registered['collection'] ?? $qdrantCollection,
+                'neo4j_namespace' => is_array($registered) ? $registered['neo4j_namespace'] : (($historical['graph'] ?? true) ? $this->stringValue($historical['neo4j_namespace'] ?? null) : null),
                 'source_id' => $source->source_id,
                 'task_id' => $this->stringValue($artifact->task_id) ?? $this->stringValue($source->task_id),
                 'job_id' => $this->stringValue($artifact->job_id),

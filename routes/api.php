@@ -7,6 +7,8 @@ use App\Http\Controllers\API\RagStatsController;
 use App\Http\Controllers\DatasetController;
 use App\Http\Controllers\DatasetIngestionGrantController;
 use App\Http\Controllers\DatasetQueryGrantController;
+use App\Http\Controllers\Document\ManagedDocumentDeletionEventController;
+use App\Http\Controllers\Document\ManagedDocumentWriterController;
 use App\Http\Controllers\Document\UnifiedDocumentController;
 use App\Http\Controllers\DocumentBrowserController;
 use App\Http\Controllers\Graph\ClearGraphViewController;
@@ -72,7 +74,11 @@ Route::post('/internal/pipeline/worker-events', PipelineWorkerEventController::c
     ->middleware(VerifyPipelineWorkerSignature::class)
     ->defaults('openapi', false);
 
-Route::post('/internal/pipeline/managed-deletion-events', \App\Http\Controllers\Document\ManagedDocumentDeletionEventController::class)
+Route::post('/internal/pipeline/managed-deletion-events', ManagedDocumentDeletionEventController::class)
+    ->middleware(VerifyPipelineWorkerSignature::class)
+    ->defaults('openapi', false);
+
+Route::post('/internal/pipeline/managed-writers', ManagedDocumentWriterController::class)
     ->middleware(VerifyPipelineWorkerSignature::class)
     ->defaults('openapi', false);
 

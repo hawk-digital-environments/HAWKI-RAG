@@ -15,6 +15,14 @@ class DeletionTarget(BaseModel):
     neo4j_namespace: str | None = Field(default=None, min_length=1, max_length=191)
 
 
+class ManagedDeletionSinkInput(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    operation_id: str = Field(pattern=r"^delete_[0-9a-f]{64}$")
+    dataset_id: str = Field(min_length=1, max_length=191)
+    target: DeletionTarget
+
+
 class DeletionWriter(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 

@@ -6,7 +6,7 @@ namespace App\Http\Requests\Document;
 
 use Illuminate\Validation\Rule;
 
-class UpdateManagedDocumentRequest extends ManagedDocumentRequest
+class UpdateManagedDocumentRequest extends MutateManagedDocumentRequest
 {
     public function rules(): array
     {

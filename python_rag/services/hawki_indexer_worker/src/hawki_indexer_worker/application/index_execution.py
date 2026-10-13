@@ -54,6 +54,7 @@ class IndexActivityDependencies:
     workflow_dependencies: IngestWorkflowDependencies
     status_reporter: StatusReporter
     ingest_documents: IngestDocuments
+    target_registrar: Callable[[list[dict[str, Any]]], None] | None = None
 
 
 def execute_index_activity(
@@ -130,6 +131,7 @@ def execute_index_activity(
                 workflow_dependencies=dependencies.workflow_dependencies,
                 ingest_documents=dependencies.ingest_documents,
                 heartbeat_sender=context.heartbeat_sender,
+                target_registrar=dependencies.target_registrar,
             ),
         )
     except Exception as exc:

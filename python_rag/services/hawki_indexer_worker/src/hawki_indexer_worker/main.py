@@ -16,7 +16,9 @@ from hawki_indexer_worker.activities.index import (
 )
 from hawki_indexer_worker.settings import IndexerSettings
 from hawki_indexer_worker.activities.deletion import (
-    verify_managed_deletion_writers, delete_managed_vectors, delete_managed_graph,
+    verify_managed_deletion_writers,
+    delete_managed_vectors,
+    delete_managed_graph,
     report_managed_deletion,
 )
 
@@ -36,9 +38,14 @@ async def serve() -> None:
             Worker(
                 client,
                 task_queue=task_queue,
-                activities=[ingest_markdown_files, mark_source_ready,
-                    verify_managed_deletion_writers, delete_managed_vectors,
-                    delete_managed_graph, report_managed_deletion],
+                activities=[
+                    ingest_markdown_files,
+                    mark_source_ready,
+                    verify_managed_deletion_writers,
+                    delete_managed_vectors,
+                    delete_managed_graph,
+                    report_managed_deletion,
+                ],
                 activity_executor=executor,
             )
             for task_queue in task_queues

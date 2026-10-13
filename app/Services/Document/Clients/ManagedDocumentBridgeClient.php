@@ -40,6 +40,7 @@ readonly class ManagedDocumentBridgeClient
         if (! is_array($result) || ($result['workflow_id'] ?? null) !== $workflowId) {
             throw new \RuntimeException('Deletion workflow acknowledgement has an unexpected identity.');
         }
+
         return $result;
     }
 }

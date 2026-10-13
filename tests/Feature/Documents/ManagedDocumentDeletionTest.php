@@ -10,17 +10,25 @@ use App\Models\ManagedDocument;
 use App\Models\ManagedDocumentDeletion;
 use App\Models\ManagedDocumentOutput;
 use App\Services\Authorization\DatasetIngestionAuthorizationService;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use App\Services\Pipeline\Repositories\IngestionSourceRepository;
+use Illuminate\Foundation\Testing\DatabaseMigrations;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
+use PHPUnit\Framework\Attributes\TestWith;
 use Tests\TestCase;
 
 class ManagedDocumentDeletionTest extends TestCase
 {
-    use RefreshDatabase;
+    use DatabaseMigrations;
+
     private bool $loseDeletionAck = false;
+
     private bool $loseUploadAck = false;
+
+    private string $deletionRun = 'delete-run';
+
+    private ?\Closure $beforeDeletionAck = null;
 
     protected function setUp(): void
     {
@@ -30,7 +38,7 @@ class ManagedDocumentDeletionTest extends TestCase
         $dataset = Dataset::query()->create(['dataset_id' => 'delete-test', 'name' => 'delete-test', 'status' => 'active', 'qdrant_collection' => 'test_collection', 'neo4j_namespace' => 'test_namespace']);
         app(DatasetIngestionAuthorizationService::class)->grantAccess($user, $dataset);
         ManagedDocument::query()->create(['document_id' => 'adoc_delete_test', 'dataset_id' => 'delete-test', 'source_type' => 'upload', 'status' => 'indexed', 'graph_enabled' => true, 'latest_source_id' => 'source-old']);
-        IngestionSource::query()->create(['source_id' => 'source-old', 'dataset_id' => 'delete-test', 'source_url' => 'upload://old.pdf', 'index_status' => 'ready', 'metadata' => ['request' => ['managed_document_id' => 'adoc_delete_test']]]);
+        IngestionSource::query()->create(['source_id' => 'source-old', 'dataset_id' => 'delete-test', 'source_url' => 'upload://old.pdf', 'index_status' => 'ready', 'metadata' => ['request' => ['metadata' => ['managed_document_id' => 'adoc_delete_test']], 'managed_writer_protocol' => 1, 'managed_writer_gate' => 'closed', 'managed_target_manifest_complete' => true]]);
         ManagedDocumentOutput::query()->create(['document_id' => 'adoc_delete_test', 'bridge_document_id' => 'doc-shared-id', 'source_id' => 'source-old', 'qdrant_collection' => 'historic_collection', 'neo4j_namespace' => 'historic_namespace', 'active' => true, 'status' => 'indexed']);
         Http::preventStrayRequests();
         $this->pendingBridge();
@@ -70,7 +78,7 @@ class ManagedDocumentDeletionTest extends TestCase
         $this->sendReceipt($this->receipt($operation, 'failed'))->assertOk();
         $this->assertDatabaseHas('managed_document_outputs', ['active' => true]);
         $this->assertDatabaseHas('managed_documents', ['status' => 'deleting']);
-        $this->deleteJson('/api/documents/adoc_delete_test')->assertAccepted()->assertJsonPath('operation.operation_id', $first->json('operation.operation_id'));
+        $this->deleteJson('/api/documents/adoc_delete_test')->assertStatus(502)->assertJsonPath('operation.operation_id', $first->json('operation.operation_id'));
         $this->sendReceipt($this->receipt($operation))->assertOk();
     }
 
@@ -128,7 +136,7 @@ class ManagedDocumentDeletionTest extends TestCase
         $this->deleteJson('/api/documents/adoc_delete_test')->assertAccepted();
         $this->expectException(\RuntimeException::class);
         $this->expectExceptionMessage('Managed deletion prevents restarting');
-        app(\App\Services\Pipeline\Repositories\IngestionSourceRepository::class)->upsertStarting('source-old', []);
+        app(IngestionSourceRepository::class)->upsertStarting('source-old', []);
     }
 
     public function test_update_waits_for_cleanup_and_resumes_one_replacement_task(): void
@@ -141,7 +149,7 @@ class ManagedDocumentDeletionTest extends TestCase
         $headers = ['Accept' => 'application/json', 'Idempotency-Key' => 'update-once'];
         try {
             $this->put('/api/documents/adoc_delete_test', $input(), $headers)->assertAccepted()->assertJsonPath('operation.status', 'pending');
-            $this->assertDatabaseCount('pipeline_tasks', 0);
+            $this->assertDatabaseCount('pipeline_tasks', 1); // Preparation is durable before cleanup; no ingestion is dispatched yet.
             $operation = ManagedDocumentDeletion::query()->firstOrFail();
             $changed = ['force' => true, 'file' => UploadedFile::fake()->createWithContent('replacement.pdf', 'different bytes')];
             $this->put('/api/documents/adoc_delete_test', $changed, $headers)->assertStatus(409);
@@ -157,8 +165,235 @@ class ManagedDocumentDeletionTest extends TestCase
             $this->assertDatabaseCount('pipeline_tasks', 1);
             $this->assertDatabaseCount('pipeline_jobs', 1);
             $this->assertDatabaseHas('managed_document_deletions', ['status' => 'continued']);
+            Http::assertSent(fn ($request) => str_ends_with($request->url(), '/workflows/ingest') && ($request->data()['reuse_completed'] ?? false) === true && $request->hasHeader('X-Hawki-Signature'));
+            $replacementSource = IngestionSource::query()->where('source_id', $response->json('pipeline.source_id'))->firstOrFail();
+            $this->assertSame('adoc_delete_test', $replacementSource->metadata['request']['metadata']['managed_document_id']);
             $this->sendReceipt($this->receipt($operation))->assertOk()->assertJsonPath('status', 'continued');
             $this->assertDatabaseHas('managed_documents', ['deleted_at' => null, 'latest_task_id' => $taskId]);
+        } finally {
+            File::deleteDirectory($root);
+        }
+    }
+
+    public function test_real_upload_metadata_and_identical_files_have_independent_owners(): void
+    {
+        $root = storage_path('framework/testing/managed-deletion-real-upload');
+        File::deleteDirectory($root);
+        config()->set('temporal.storage.shared_root', $root);
+        config()->set('file_converter.raganything_supported_extensions', ['pdf']);
+        try {
+            $input = fn () => ['dataset_id' => 'delete-test', 'file' => UploadedFile::fake()->createWithContent('same.pdf', 'same bytes')];
+            $first = $this->post('/api/documents', $input(), ['Accept' => 'application/json'])->assertAccepted();
+            $second = $this->post('/api/documents', $input(), ['Accept' => 'application/json'])->assertAccepted();
+            $firstDoc = ManagedDocument::query()->findOrFail($first->json('document.document_id'));
+            $secondDoc = ManagedDocument::query()->findOrFail($second->json('document.document_id'));
+            $this->assertNotSame($firstDoc->latest_source_id, $secondDoc->latest_source_id);
+            $source = IngestionSource::query()->where('source_id', $firstDoc->latest_source_id)->firstOrFail();
+            $this->assertSame($firstDoc->document_id, $source->metadata['request']['metadata']['managed_document_id']);
+            $metadata = $source->metadata;
+            $metadata['managed_writer_protocol'] = 1;
+            $metadata['managed_target_manifest_complete'] = true;
+            $metadata['managed_writer_gate'] = 'closed';
+            $source->update(['index_status' => 'ready', 'metadata' => $metadata]);
+            ManagedDocumentOutput::query()->create(['document_id' => $firstDoc->document_id, 'bridge_document_id' => 'doc-real-upload', 'source_id' => $source->source_id, 'qdrant_collection' => 'test_collection', 'neo4j_namespace' => 'test_namespace', 'active' => true]);
+            $this->deleteJson('/api/documents/'.$firstDoc->document_id)->assertAccepted();
+            $operation = ManagedDocumentDeletion::query()->where('document_id', $firstDoc->document_id)->firstOrFail();
+            $this->assertSame($source->source_id, $operation->workflow_input['targets'][0]['source_id']);
+            $this->assertSame('replacement-run', $operation->workflow_input['writers'][0]['run_id']);
+            $this->assertDatabaseHas('ingestion_sources', ['source_id' => $secondDoc->latest_source_id, 'index_status' => 'running']);
+        } finally {
+            File::deleteDirectory($root);
+        }
+    }
+
+    public function test_an_older_continued_operation_cannot_hide_a_pending_operation(): void
+    {
+        $response = $this->deleteJson('/api/documents/adoc_delete_test')->assertAccepted();
+        $operation = ManagedDocumentDeletion::query()->firstOrFail();
+        ManagedDocumentDeletion::query()->create([
+            'operation_id' => 'delete_'.str_repeat('f', 64), 'document_id' => $operation->document_id,
+            'dataset_id' => $operation->dataset_id, 'purpose' => 'update', 'status' => 'continued',
+            'workflow_id' => 'old-workflow', 'workflow_input' => [], 'created_at' => $operation->created_at,
+        ]);
+        $this->deleteJson('/api/documents/adoc_delete_test')->assertAccepted()->assertJsonPath('operation.operation_id', $response->json('operation.operation_id'));
+        $this->assertDatabaseCount('managed_document_deletions', 2);
+    }
+
+    public function test_completion_verifies_dataset_source_and_missing_metadata_is_idempotent(): void
+    {
+        $this->deleteJson('/api/documents/adoc_delete_test')->assertAccepted();
+        $operation = ManagedDocumentDeletion::query()->firstOrFail();
+        $wrongDataset = $this->receipt($operation);
+        $wrongDataset['results'][0]['qdrant']['dataset_id'] = 'another-dataset';
+        $this->sendReceipt($wrongDataset)->assertStatus(409);
+        $wrongSource = $this->receipt($operation);
+        $wrongSource['results'][0]['qdrant']['source_id'] = 'another-source';
+        $this->sendReceipt($wrongSource)->assertStatus(409);
+        ManagedDocumentOutput::query()->delete();
+        $this->sendReceipt($this->receipt($operation))->assertOk()->assertJsonPath('status', 'completed');
+        $this->assertDatabaseHas('managed_documents', ['status' => 'deleted']);
+    }
+
+    public function test_malformed_signed_callback_is_rejected_before_metadata_changes(): void
+    {
+        $this->deleteJson('/api/documents/adoc_delete_test')->assertAccepted();
+        $receipt = $this->receipt(ManagedDocumentDeletion::query()->firstOrFail());
+        $receipt['results'] = ['not-output-proof'];
+        $this->sendReceipt($receipt)->assertUnprocessable();
+        $this->assertDatabaseHas('managed_document_outputs', ['active' => true]);
+    }
+
+    public function test_unconfirmed_ingestion_start_cannot_be_deleted(): void
+    {
+        IngestionSource::query()->firstOrFail()->update(['index_status' => 'failed', 'temporal_workflow_id' => 'planned-without-ack']);
+        $this->deleteJson('/api/documents/adoc_delete_test')->assertStatus(409);
+        $this->assertDatabaseCount('managed_document_deletions', 0);
+        Http::assertNothingSent();
+    }
+
+    public function test_unsupported_replacement_preserves_content_without_dispatch(): void
+    {
+        config()->set('file_converter.raganything_supported_extensions', ['pdf']);
+        $this->put('/api/documents/adoc_delete_test', ['force' => true, 'file' => UploadedFile::fake()->createWithContent('invalid.exe', 'invalid')], ['Accept' => 'application/json'])->assertStatus(422);
+        Http::assertNothingSent();
+        $this->assertDatabaseCount('managed_document_deletions', 0);
+        $this->assertDatabaseHas('managed_document_outputs', ['active' => true]);
+        $this->assertDatabaseHas('managed_documents', ['status' => 'indexed']);
+    }
+
+    public function test_failed_callback_before_pending_acknowledgement_is_monotonic(): void
+    {
+        $this->beforeDeletionAck = function ($request) {
+            $operation = ManagedDocumentDeletion::query()->firstOrFail();
+            $this->sendReceipt($this->receipt($operation, 'failed'))->assertOk();
+        };
+        $this->deleteJson('/api/documents/adoc_delete_test')->assertStatus(502)->assertJsonPath('operation.status', 'failed');
+        $this->assertStringContainsString('Sink cleanup failed', ManagedDocumentDeletion::query()->firstOrFail()->last_error);
+    }
+
+    public function test_completed_callback_before_pending_acknowledgement_is_monotonic(): void
+    {
+        $this->beforeDeletionAck = function ($request) {
+            $operation = ManagedDocumentDeletion::query()->firstOrFail();
+            $this->sendReceipt($this->receipt($operation))->assertOk();
+        };
+        $this->deleteJson('/api/documents/adoc_delete_test')->assertOk()->assertJsonPath('operation.status', 'completed');
+    }
+
+    public function test_new_run_can_recover_but_a_superseded_pending_ack_cannot_replace_it(): void
+    {
+        $this->deleteJson('/api/documents/adoc_delete_test')->assertAccepted();
+        $operation = ManagedDocumentDeletion::query()->firstOrFail();
+        $this->sendReceipt($this->receipt($operation, 'failed'))->assertOk();
+        $this->deletionRun = 'new-run';
+        $this->deleteJson('/api/documents/adoc_delete_test')->assertAccepted()->assertJsonPath('operation.run_id', 'new-run');
+        $this->deletionRun = 'delete-run';
+        $this->deleteJson('/api/documents/adoc_delete_test')->assertAccepted()->assertJsonPath('operation.run_id', 'new-run');
+    }
+
+    public function test_failed_source_without_writer_evidence_cannot_prove_empty_sinks(): void
+    {
+        ManagedDocumentOutput::query()->delete();
+        $source = IngestionSource::query()->firstOrFail();
+        $metadata = $source->metadata;
+        unset($metadata['managed_writer_protocol']);
+        $source->update(['index_status' => 'failed', 'metadata' => $metadata, 'temporal_workflow_id' => 'failed-writer']);
+        $this->deleteJson('/api/documents/adoc_delete_test')->assertStatus(409);
+        Http::assertNothingSent();
+        $this->assertDatabaseHas('managed_documents', ['deleted_at' => null]);
+    }
+
+    public function test_cancelled_writer_with_unreleased_permission_blocks_cleanup(): void
+    {
+        $source = IngestionSource::query()->firstOrFail();
+        $metadata = $source->metadata;
+        $metadata['managed_writers'] = ['old' => ['workflow_id' => 'old-workflow', 'run_id' => 'old-run', 'status' => 'active']];
+        $source->update(['index_status' => 'cancelled', 'metadata' => $metadata]);
+        $this->deleteJson('/api/documents/adoc_delete_test')->assertStatus(409);
+        Http::assertNothingSent();
+        $metadata['managed_writers']['old']['status'] = 'uncertain';
+        $source->update(['metadata' => $metadata]);
+        $this->deleteJson('/api/documents/adoc_delete_test')->assertStatus(409);
+        Http::assertNothingSent();
+    }
+
+    public function test_all_historical_writer_identities_are_preserved(): void
+    {
+        $source = IngestionSource::query()->firstOrFail();
+        $metadata = $source->metadata;
+        $metadata['temporal'] = ['run_id' => 'latest-run'];
+        $metadata['managed_writer_history'] = ['old' => ['workflow_id' => 'older-workflow', 'run_id' => 'older-run']];
+        $source->update(['metadata' => $metadata, 'temporal_workflow_id' => 'latest-workflow']);
+        $this->deleteJson('/api/documents/adoc_delete_test')->assertAccepted();
+        $writers = ManagedDocumentDeletion::query()->firstOrFail()->workflow_input['writers'];
+        $this->assertCount(2, $writers);
+        $this->assertContains(['workflow_id' => 'older-workflow', 'run_id' => 'older-run'], $writers);
+    }
+
+    public function test_historical_scope_is_used_and_missing_scope_fails_closed(): void
+    {
+        $source = IngestionSource::query()->firstOrFail();
+        $metadata = $source->metadata;
+        $metadata['dataset'] = ['qdrant_collection' => 'historic_collection', 'neo4j_namespace' => 'historic_namespace'];
+        $source->update(['metadata' => $metadata]);
+        ManagedDocumentOutput::query()->update(['qdrant_collection' => '', 'neo4j_namespace' => null]);
+        $this->deleteJson('/api/documents/adoc_delete_test')->assertAccepted();
+        $this->assertSame('historic_collection', ManagedDocumentDeletion::query()->firstOrFail()->workflow_input['targets'][0]['collection']);
+    }
+
+    public function test_missing_historical_scope_is_not_guessed_from_dataset_configuration(): void
+    {
+        ManagedDocumentOutput::query()->update(['qdrant_collection' => '', 'neo4j_namespace' => null]);
+        $this->deleteJson('/api/documents/adoc_delete_test')->assertStatus(409);
+        Http::assertNothingSent();
+    }
+
+    public function test_document_with_no_ingestion_ever_started_has_no_sink_targets(): void
+    {
+        ManagedDocument::query()->create(['document_id' => 'adoc_never_started', 'dataset_id' => 'delete-test', 'source_type' => 'upload', 'status' => 'pending']);
+        $this->deleteJson('/api/documents/adoc_never_started')->assertAccepted();
+        $this->assertSame([], ManagedDocumentDeletion::query()->firstOrFail()->workflow_input['targets']);
+    }
+
+    public function test_legacy_operation_cannot_dispatch_or_accept_unproven_completion(): void
+    {
+        $this->deleteJson('/api/documents/adoc_delete_test')->assertAccepted();
+        $operation = ManagedDocumentDeletion::query()->firstOrFail();
+        $operation->update(['attempts' => null]);
+        $this->sendReceipt($this->receipt($operation))->assertStatus(409);
+        $this->deleteJson('/api/documents/adoc_delete_test')->assertStatus(409);
+        $this->assertDatabaseHas('managed_document_deletions', ['status' => 'pending']);
+        $this->assertTrue(ManagedDocumentOutput::query()->firstOrFail()->active);
+        Http::assertSentCount(1);
+    }
+
+    #[TestWith([false])]
+    #[TestWith([true])]
+    public function test_missing_durable_file_allows_corrected_intent_or_authorized_delete(bool $correctedReplacement): void
+    {
+        $root = storage_path('framework/testing/managed-permanent-failure');
+        config()->set('temporal.storage.shared_root', $root);
+        config()->set('file_converter.raganything_supported_extensions', ['pdf']);
+        $input = fn () => ['force' => true, 'file' => UploadedFile::fake()->createWithContent('replacement.pdf', 'same bytes')];
+        try {
+            $this->put('/api/documents/adoc_delete_test', $input(), ['Accept' => 'application/json', 'Idempotency-Key' => 'failed-intent'])->assertAccepted();
+            $operation = ManagedDocumentDeletion::query()->firstOrFail();
+            $this->sendReceipt($this->receipt($operation))->assertOk();
+            $source = IngestionSource::query()->where('source_id', $operation->replacement['payload']['source_id'])->firstOrFail();
+            File::delete($source->metadata['upload']['local_path']);
+            $this->put('/api/documents/adoc_delete_test', $input(), ['Accept' => 'application/json', 'Idempotency-Key' => 'failed-intent'])->assertStatus(422);
+            $this->assertDatabaseHas('managed_document_deletions', ['status' => 'abandoned']);
+            $this->sendReceipt($this->receipt($operation, 'failed'))->assertOk()->assertJsonPath('status', 'abandoned');
+            if ($correctedReplacement) {
+                $corrected = fn () => ['force' => true, 'file' => UploadedFile::fake()->createWithContent('corrected.pdf', 'corrected bytes')];
+                $this->put('/api/documents/adoc_delete_test', $corrected(), ['Accept' => 'application/json', 'Idempotency-Key' => 'corrected-intent'])->assertAccepted();
+                $replacement = ManagedDocumentDeletion::query()->where('status', 'pending')->firstOrFail();
+                $this->sendReceipt($this->receipt($replacement))->assertOk();
+                $this->put('/api/documents/adoc_delete_test', $corrected(), ['Accept' => 'application/json', 'Idempotency-Key' => 'corrected-intent'])->assertAccepted();
+                $this->assertDatabaseHas('managed_document_deletions', ['operation_id' => $replacement->operation_id, 'status' => 'continued']);
+            } else {
+                $this->deleteJson('/api/documents/adoc_delete_test')->assertAccepted();
+            }
         } finally {
             File::deleteDirectory($root);
         }
@@ -168,11 +403,20 @@ class ManagedDocumentDeletionTest extends TestCase
     {
         Http::fake(function ($request) {
             if (str_ends_with($request->url(), 'delete-managed-document')) {
-                return $this->loseDeletionAck ? (Http::failedConnection())($request) : Http::response(['workflow_id' => $request->data()['workflow_id'], 'run_id' => 'delete-run', 'status' => 'pending']);
+                if ($this->beforeDeletionAck) {
+                    ($this->beforeDeletionAck)($request);
+                }
+
+                return $this->loseDeletionAck ? (Http::failedConnection())($request) : Http::response(['workflow_id' => $request->data()['workflow_id'], 'run_id' => $this->deletionRun, 'status' => 'pending']);
             }
             if (str_ends_with($request->url(), '/workflows/ingest')) {
                 return $this->loseUploadAck ? (Http::failedConnection())($request) : Http::response(['workflow_id' => $request->data()['workflow_id'], 'run_id' => 'replacement-run']);
             }
+
+            if (str_ends_with($request->url(), '/workflows/status')) {
+                return Http::response(['workflow_id' => $request->data()['workflow_id'], 'run_id' => $request->data()['run_id'], 'status' => 'RUNNING']);
+            }
+
             return null;
         });
     }
@@ -182,8 +426,8 @@ class ManagedDocumentDeletionTest extends TestCase
         return ['schema_version' => 1, 'event_id' => 'deletion-event', 'operation_id' => $operation->operation_id,
             'workflow_id' => $operation->workflow_id, 'run_id' => 'delete-run', 'status' => $status,
             'results' => array_map(fn ($target) => ['output_id' => $target['output_id'],
-                'qdrant' => ['verified' => true, 'remaining_points' => 0, 'doc_id' => $target['doc_id'], 'collection' => $target['collection']],
-                'neo4j' => ['verified' => true, 'required' => $target['neo4j_namespace'] !== null, 'remaining_contributions' => 0, 'doc_id' => $target['doc_id'], 'namespace' => $target['neo4j_namespace']],
+                'qdrant' => ['verified' => true, 'remaining_points' => 0, 'doc_id' => $target['doc_id'], 'collection' => $target['collection'], 'dataset_id' => $operation->dataset_id, 'source_id' => $target['source_id']],
+                'neo4j' => ['verified' => true, 'required' => $target['neo4j_namespace'] !== null, 'remaining_contributions' => 0, 'doc_id' => $target['doc_id'], 'namespace' => $target['neo4j_namespace'], 'dataset_id' => $operation->dataset_id],
             ], $operation->workflow_input['targets'])];
     }
 
@@ -191,6 +435,7 @@ class ManagedDocumentDeletionTest extends TestCase
     {
         $body = json_encode($receipt, JSON_THROW_ON_ERROR);
         $timestamp = (string) time();
+
         return $this->call('POST', '/api/internal/pipeline/managed-deletion-events', [], [], [], [
             'CONTENT_TYPE' => 'application/json', 'HTTP_ACCEPT' => 'application/json', 'HTTP_X_HAWKI_TIMESTAMP' => $timestamp,
             'HTTP_X_HAWKI_SIGNATURE' => 'v1='.hash_hmac('sha256', $timestamp.'.'.$body, 'managed-test-secret'),

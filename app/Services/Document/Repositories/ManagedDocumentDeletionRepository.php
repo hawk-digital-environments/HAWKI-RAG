@@ -21,6 +21,12 @@ readonly class ManagedDocumentDeletionRepository
         return ManagedDocumentDeletion::query()->where('document_id', $id)->latest('created_at')->latest('operation_id')->first();
     }
 
+    public function blocking(string $documentId): ?ManagedDocumentDeletion
+    {
+        return ManagedDocumentDeletion::query()->where('document_id', $documentId)
+            ->whereIn('status', ['preparing', 'pending', 'failed', 'completed'])->first();
+    }
+
     public function find(string $id): ?ManagedDocumentDeletion
     {
         return ManagedDocumentDeletion::query()->find($id);
@@ -45,12 +51,13 @@ readonly class ManagedDocumentDeletionRepository
     public function save(ManagedDocumentDeletion $operation, array $attributes): ManagedDocumentDeletion
     {
         $operation->forceFill($attributes)->save();
+
         return $operation->refresh();
     }
 
     public function blocksSync(string $id): bool
     {
         return ManagedDocumentDeletion::query()->where('document_id', $id)
-            ->whereIn('status', ['pending', 'failed', 'completed'])->exists();
+            ->whereIn('status', ['preparing', 'pending', 'failed', 'completed'])->exists();
     }
 }

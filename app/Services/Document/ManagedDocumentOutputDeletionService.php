@@ -12,6 +12,8 @@ use App\Services\Document\Exceptions\ManagedDeletionException;
 use App\Services\Document\Repositories\ManagedDocumentDeletionRepository;
 use App\Services\Document\Repositories\ManagedDocumentOutputRepository;
 use App\Services\Document\Repositories\ManagedDocumentRepository;
+use App\Services\Document\Repositories\ManagedDocumentWriterRepository;
+use App\Services\Document\Values\ManagedDocumentId;
 use App\Services\Pipeline\Repositories\IngestionSourceRepository;
 use App\Services\Pipeline\Repositories\PipelineTransactionRepository;
 use Illuminate\Container\Attributes\Singleton;
@@ -32,6 +34,7 @@ readonly class ManagedDocumentOutputDeletionService
         private IngestionSourceRepository $sources,
         private PipelineTransactionRepository $transactions,
         private ConfigRepository $config,
+        private ManagedDocumentWriterRepository $writerJobs,
         private ClockInterface $clock = new Clock,
     ) {}
 
@@ -53,26 +56,74 @@ readonly class ManagedDocumentOutputDeletionService
             $keyHash = $key === null ? null : hash('sha256', $key);
             $existing = $this->operations->forRequest($document->document_id, $purpose, $keyHash);
             $latest = $this->operations->latest($document->document_id);
-            $existing ??= $latest && in_array($latest->status, ['pending', 'failed', 'completed'], true) ? $latest : null;
+            $existing ??= $this->operations->blocking($document->document_id);
             if ($existing) {
+                $this->assertEffectiveGraphScope($existing);
+                if (($existing->attempts['writer_protocol'] ?? null) !== 1) {
+                    throw ManagedDeletionException::conflict('This operation predates registered writer evidence. Stop its workflow and reconcile its full historical scope before retiring the old operation and retrying with a new key.');
+                }
+                if ($existing->status === 'abandoned') {
+                    throw ManagedDeletionException::conflict('The replacement was abandoned before startup; use a new Idempotency-Key for corrected input.');
+                }
                 if ($existing->purpose !== $purpose || $existing->request_hash !== $requestHash) {
                     throw ManagedDeletionException::conflict('A different managed-document operation must be recovered first.');
                 }
+
                 return $existing;
             }
             if ($document->deleted_at !== null) {
                 throw ManagedDeletionException::conflict('A deleted document cannot be replaced.');
             }
             $document = $this->sync->sync($document);
-            $outputs = $this->outputs->backfillScopes($document, $this->outputs->activeForDocument($document->document_id));
+            $owned = $this->sources->ownedManagedSources($document->document_id, $document->dataset_id);
+            foreach ($owned as $source) {
+                $source = $this->sources->lockBySourceId($source->source_id);
+                if (isset($source->metadata['managed_deletion']) && $source->index_status === IngestionSource::STATUS_DELETED) {
+                    continue;
+                }
+                foreach ($source->metadata['managed_targets'] ?? [] as $docId => $target) {
+                    $job = $this->writerJobs->job($target['job_id']);
+                    if (! $job) {
+                        throw ManagedDeletionException::conflict('Registered partial output job is missing; restore ingestion metadata before deletion.');
+                    }
+                    $this->outputs->registerWriterTarget($document, $source, $job, ['doc_id' => $docId, 'relative_path' => $target['relative_path']],
+                        ['collection' => $target['collection'], 'graph' => $target['neo4j_namespace'] !== null, 'neo4j_namespace' => $target['neo4j_namespace']]);
+                }
+            }
+            $outputs = $this->outputs->backfillScopes($document, $this->outputs->unverifiedForDocument($document->document_id));
+            if ($outputs->count() > 1000) {
+                throw ManagedDeletionException::conflict('Managed deletion exceeds the supported output limit of 1000.');
+            }
             $targets = [];
             $writers = [];
-            $sourceIds = $outputs->pluck('source_id')->push($document->latest_source_id)->filter()->unique()->sort()->values();
+            $sourceStates = [];
+            $sourceIds = $outputs->pluck('source_id')->merge($owned->pluck('source_id'))->push($document->latest_source_id)->filter()->unique()->sort()->values();
             foreach ($sourceIds as $id) {
                 $source = $this->sources->lockBySourceId($id);
+                $sourceStates[$id] = $source?->index_status;
+                $request = $source?->metadata['request'] ?? [];
+                $request = is_array($request) ? $request : [];
+                $owner = ManagedDocumentId::fromRequestMetadata(is_array($request['metadata'] ?? null) ? $request['metadata'] : $request);
                 if (! $source || $source->dataset_id !== $document->dataset_id
-                    || ($source->metadata['request']['managed_document_id'] ?? null) !== $document->document_id) {
+                    || $owner?->value !== $document->document_id) {
                     throw ManagedDeletionException::conflict('Indexed source ownership cannot be established.');
+                }
+                if (isset($source->metadata['managed_deletion']) && $source->index_status === IngestionSource::STATUS_DELETED) {
+                    continue; // Prior verified cleanup or never-dispatched abandonment fenced this source permanently.
+                }
+                if (isset($source->metadata['managed_dispatch']) && ($source->metadata['managed_dispatch']['attempted'] ?? null) === false) {
+                    continue; // SQL preparation exists, but no external dispatch has ever been attempted.
+                }
+                if (($source->metadata['managed_writer_protocol'] ?? null) !== 1) {
+                    throw ManagedDeletionException::conflict('Managed writer evidence is missing. Reconcile historical manifests and stop untracked writers before deletion.');
+                }
+                if (($source->metadata['managed_target_manifest_complete'] ?? null) !== true) {
+                    throw ManagedDeletionException::conflict('The owned target manifest is missing or incomplete; reconcile converter artifacts before cleanup.');
+                }
+                foreach ($source->metadata['managed_writers'] ?? [] as $writer) {
+                    if ($writer['status'] !== 'released') {
+                        throw ManagedDeletionException::conflict('Managed writer is active or uncertain. Stop and reconcile that execution before deletion; workflow cancellation alone is insufficient.');
+                    }
                 }
                 if (in_array($source->index_status, [IngestionSource::STATUS_RUNNING, IngestionSource::STATUS_PENDING], true)
                     || $source->temporal_schedule_id) {
@@ -80,18 +131,30 @@ readonly class ManagedDocumentOutputDeletionService
                 }
                 $workflowId = $source->temporal_workflow_id;
                 $runId = $source->metadata['temporal']['run_id'] ?? $source->metadata['worker_event']['run_id'] ?? null;
-                if ($workflowId && ! $runId) {
+                if (($workflowId && ! $runId) || (! $workflowId && $source->index_status === IngestionSource::STATUS_FAILED)) {
                     throw ManagedDeletionException::conflict('The ingestion workflow run must be reconciled before deletion.');
                 }
                 if ($workflowId) {
                     $writers[] = ['workflow_id' => $workflowId, 'run_id' => $runId];
+                }
+                foreach ($source->metadata['managed_writer_history'] ?? [] as $writer) {
+                    if (empty($writer['run_id'])) {
+                        throw ManagedDeletionException::conflict('A historical writer start is unconfirmed; reconcile its recorded workflow identity.');
+                    }
+                    $writers[] = $writer;
                 }
             }
             foreach ($outputs as $output) {
                 if (! $output->source_id || ! $output->bridge_document_id || ! trim((string) $output->qdrant_collection)) {
                     throw ManagedDeletionException::conflict('Indexed output has no trusted document, source or collection scope.');
                 }
-                if ($document->graph_enabled && ! $output->neo4j_namespace) {
+                $source = $this->sources->findBySourceId($output->source_id);
+                $historical = $source->metadata['managed_dispatch']['input']['ingestion'] ?? $source->metadata['dataset'] ?? [];
+                if ($output->neo4j_namespace === null
+                    && ($source->metadata['managed_targets'][$output->bridge_document_id]['graph_scope_resolved'] ?? null) !== true) {
+                    throw ManagedDeletionException::conflict('Historical output has unresolved effective graph scope; reconcile converter evidence before cleanup.');
+                }
+                if (($historical['graph'] ?? false) && ! $output->neo4j_namespace) {
                     throw ManagedDeletionException::conflict('Graph-enabled output has no trusted graph namespace.');
                 }
                 $targets[] = [
@@ -100,6 +163,7 @@ readonly class ManagedDocumentOutputDeletionService
                     'neo4j_namespace' => $output->neo4j_namespace,
                 ];
             }
+            $writers = array_values(array_unique($writers, SORT_REGULAR));
             $operationId = 'delete_'.hash('sha256', json_encode([
                 $document->document_id, $document->dataset_id, $purpose, $keyHash, $requestHash, $targets,
                 $latest?->operation_id,
@@ -107,8 +171,9 @@ readonly class ManagedDocumentOutputDeletionService
             $operation = $this->operations->create([
                 'operation_id' => $operationId, 'document_id' => $document->document_id,
                 'dataset_id' => $document->dataset_id, 'purpose' => $purpose,
-                'request_key' => $keyHash, 'request_hash' => $requestHash, 'status' => 'pending',
+                'request_key' => $keyHash, 'request_hash' => $requestHash, 'status' => $purpose === 'update' ? 'preparing' : 'pending',
                 'workflow_id' => 'managed-'.$operationId,
+                'attempts' => ['writer_protocol' => 1, 'effective_graph_scope' => true, 'source_states' => $sourceStates, 'document_status' => $document->status],
                 'workflow_input' => [
                     'operation_id' => $operationId, 'managed_document_id' => $document->document_id,
                     'dataset_id' => $document->dataset_id, 'targets' => $targets, 'writers' => $writers,
@@ -116,9 +181,13 @@ readonly class ManagedDocumentOutputDeletionService
                 ],
             ]);
             foreach ($sourceIds as $id) {
-                $this->sources->markManagedDeletion($this->sources->findBySourceId($id), $operationId, IngestionSource::STATUS_DELETING);
+                $source = $this->sources->findBySourceId($id);
+                if ($source->index_status !== IngestionSource::STATUS_DELETED) {
+                    $this->sources->markManagedDeletion($source, $operationId, IngestionSource::STATUS_DELETING);
+                }
             }
             $this->documents->save($document, ['status' => ManagedDocument::STATUS_DELETING, 'last_error' => null]);
+
             return $operation;
         });
     }
@@ -126,9 +195,28 @@ readonly class ManagedDocumentOutputDeletionService
     /** Unknown startup leaves the same operation available for redispatch. */
     public function dispatch(ManagedDocumentDeletion $operation): ManagedDocumentDeletion
     {
-        if (in_array($operation->status, ['completed', 'continued'], true)) {
+        $this->assertEffectiveGraphScope($operation);
+        if (($operation->attempts['writer_protocol'] ?? null) !== 1) {
+            throw ManagedDeletionException::conflict('Legacy deletion scope requires reconciliation before dispatch.');
+        }
+        if (in_array($operation->status, ['preparing', 'completed', 'continued', 'abandoned'], true)) {
             return $operation;
         }
+        $operation = $this->transactions->run(function () use ($operation): ManagedDocumentDeletion {
+            $this->operations->lockDocument($operation->document_id);
+            $current = $this->operations->lock($operation->operation_id);
+            if (in_array($current->status, ['preparing', 'completed', 'continued', 'abandoned'], true)) {
+                return $current;
+            }
+            $attempts = $current->attempts ?? [];
+            $attempts['dispatch_sequence'] = ($attempts['dispatch_sequence'] ?? 0) + 1;
+
+            return $this->operations->save($current, ['attempts' => $attempts]);
+        });
+        if (in_array($operation->status, ['preparing', 'completed', 'continued', 'abandoned'], true)) {
+            return $operation;
+        }
+        $sequence = $operation->attempts['dispatch_sequence'];
         try {
             $receipt = $this->bridge->deleteOutputs($operation->workflow_id, $operation->workflow_input);
             if (($receipt['status'] ?? null) === 'completed') {
@@ -136,24 +224,47 @@ readonly class ManagedDocumentOutputDeletionService
                 if ($this->canonicalJson($result['input'] ?? null) !== $this->canonicalJson($operation->workflow_input)) {
                     throw new \RuntimeException('Deletion result does not match the recorded scope.');
                 }
+
                 return $this->applyReceipt([
                     'operation_id' => $operation->operation_id, 'workflow_id' => $operation->workflow_id,
                     'run_id' => $receipt['run_id'], 'status' => 'completed', 'results' => $result['results'] ?? [],
                 ]);
             }
-            return $this->transactions->run(function () use ($operation, $receipt): ManagedDocumentDeletion {
+
+            return $this->transactions->run(function () use ($operation, $receipt, $sequence): ManagedDocumentDeletion {
                 $this->operations->lockDocument($operation->document_id);
                 $current = $this->operations->lock($operation->operation_id);
-                if (in_array($current->status, ['completed', 'continued'], true)) {
+                if (in_array($current->status, ['completed', 'continued', 'abandoned'], true)
+                    || ($current->attempts['dispatch_sequence'] ?? null) !== $sequence) {
                     return $current;
                 }
-                return $this->operations->save($current, ['run_id' => $receipt['run_id'] ?? $current->run_id, 'last_error' => null]);
+                $runId = $receipt['run_id'] ?? null;
+                if (! is_string($runId) || $runId === '' || ! in_array($receipt['status'] ?? null, ['pending', 'failed'], true)) {
+                    throw ManagedDeletionException::conflict('Deletion acknowledgement has no confirmed run identity.');
+                }
+                $attempts = $current->attempts ?? [];
+                if (($attempts['runs'][$runId]['superseded'] ?? false) && $current->run_id !== $runId) {
+                    return $current; // A delayed receipt cannot adopt an already superseded run.
+                }
+                $failed = ($receipt['status'] === 'failed') || (($attempts['runs'][$runId]['status'] ?? null) === 'failed');
+                $attempts['runs'][$runId] = ['status' => $failed ? 'failed' : 'pending'];
+                if ($current->run_id && $current->run_id !== $runId) {
+                    $attempts['runs'][$current->run_id]['superseded'] = true;
+                }
+
+                return $this->operations->save($current, [
+                    'run_id' => $runId, 'attempts' => $attempts,
+                    'status' => $failed ? 'failed' : 'pending',
+                    'last_error' => $failed ? ($current->last_error ?? 'Deletion workflow failed; retry the original request.') : null,
+                ]);
             });
         } catch (\Throwable $error) {
-            return $this->transactions->run(function () use ($operation, $error): ManagedDocumentDeletion {
+            return $this->transactions->run(function () use ($operation, $error, $sequence): ManagedDocumentDeletion {
                 $this->operations->lockDocument($operation->document_id);
                 $current = $this->operations->lock($operation->operation_id);
-                return in_array($current->status, ['completed', 'continued'], true) ? $current
+
+                return in_array($current->status, ['completed', 'continued', 'failed', 'abandoned'], true)
+                    || ($current->attempts['dispatch_sequence'] ?? null) !== $sequence ? $current
                     : $this->operations->save($current, ['last_error' => 'Startup or completion is unconfirmed: '.$error->getMessage()]);
             });
         }
@@ -166,21 +277,32 @@ readonly class ManagedDocumentOutputDeletionService
         if (! $operation) {
             throw ManagedDeletionException::conflict('Unknown deletion operation.');
         }
+
         return $this->transactions->run(function () use ($operation, $receipt): ManagedDocumentDeletion {
             $document = $this->operations->lockDocument($operation->document_id);
             $operation = $this->operations->lock($operation->operation_id);
+            $this->assertEffectiveGraphScope($operation);
+            if (($operation->attempts['writer_protocol'] ?? null) !== 1) {
+                throw ManagedDeletionException::conflict('Legacy deletion completion has no registered writer proof; reconcile it before accepting completion.');
+            }
             if ($receipt['workflow_id'] !== $operation->workflow_id || empty($receipt['run_id'])) {
                 throw ManagedDeletionException::conflict('Deletion callback workflow identity is invalid.');
             }
-            if (in_array($operation->status, ['completed', 'continued'], true)) {
+            if (in_array($operation->status, ['completed', 'continued', 'abandoned'], true)) {
                 return $operation;
             }
+            if (! in_array($receipt['status'] ?? null, ['completed', 'failed'], true)) {
+                throw ManagedDeletionException::conflict('Deletion callback status is invalid.');
+            }
             if ($receipt['status'] === 'failed') {
+                $attempts = $operation->attempts ?? [];
+                $attempts['runs'][$receipt['run_id']]['status'] = 'failed';
                 if ($operation->run_id && $operation->run_id !== $receipt['run_id']) {
-                    return $operation;
+                    return $this->operations->save($operation, ['attempts' => $attempts]);
                 }
+
                 return $this->operations->save($operation, [
-                    'status' => 'failed', 'run_id' => $receipt['run_id'], 'results' => $receipt['results'],
+                    'status' => 'failed', 'run_id' => $receipt['run_id'], 'results' => $receipt['results'], 'attempts' => $attempts,
                     'last_error' => 'Sink cleanup failed; retry the original request.',
                 ]);
             }
@@ -191,8 +313,8 @@ readonly class ManagedDocumentOutputDeletionService
             }
             $byId = [];
             foreach ($results as $result) {
-                $id = $result['output_id'] ?? null;
-                if (isset($byId[$id])) {
+                $id = is_array($result) ? ($result['output_id'] ?? null) : null;
+                if (! is_int($id) || $id < 1 || isset($byId[$id])) {
                     throw ManagedDeletionException::conflict('Deletion callback has duplicate output evidence.');
                 }
                 $byId[$id] = $result;
@@ -202,10 +324,11 @@ readonly class ManagedDocumentOutputDeletionService
                 $vector = $proof['qdrant'] ?? [];
                 $graph = $proof['neo4j'] ?? [];
                 if (($vector['verified'] ?? null) !== true || ($vector['remaining_points'] ?? null) !== 0
+                    || ($vector['dataset_id'] ?? null) !== $operation->dataset_id || ($vector['source_id'] ?? null) !== $target['source_id']
                     || ($vector['doc_id'] ?? null) !== $target['doc_id'] || ($vector['collection'] ?? null) !== $target['collection']
                     || ($graph['verified'] ?? null) !== true || ($graph['remaining_contributions'] ?? null) !== 0
                     || ($graph['required'] ?? null) !== ($target['neo4j_namespace'] !== null)
-                    || ($target['neo4j_namespace'] !== null && (($graph['namespace'] ?? null) !== $target['neo4j_namespace']
+                    || ($target['neo4j_namespace'] !== null && (($graph['dataset_id'] ?? null) !== $operation->dataset_id || ($graph['namespace'] ?? null) !== $target['neo4j_namespace']
                         || ($graph['doc_id'] ?? null) !== $target['doc_id']))) {
                     throw ManagedDeletionException::conflict('Deletion callback has no verified scoped sink evidence.');
                 }
@@ -222,17 +345,18 @@ readonly class ManagedDocumentOutputDeletionService
                 'status' => $operation->purpose === 'delete' ? ManagedDocument::STATUS_DELETED : ManagedDocument::STATUS_DELETING,
                 'deleted_at' => $operation->purpose === 'delete' ? $now : null, 'last_error' => null,
             ]);
+
             return $this->operations->save($operation, [
                 'status' => 'completed', 'run_id' => $receipt['run_id'], 'results' => $results, 'last_error' => null,
             ]);
         });
     }
 
-    public function continueUpdate(ManagedDocumentDeletion $operation, callable $replace): array
+    public function continueUpdate(ManagedDocumentDeletion $operation, callable $dispatch, callable $publish): array
     {
-        // Serializes concurrent PUT continuations. The upload task has a durable deterministic identity.
-        return $this->transactions->run(function () use ($operation, $replace): array {
-            $this->operations->lockDocument($operation->document_id);
+        $generation = null;
+        $recorded = $this->transactions->run(function () use ($operation, &$generation): ?array {
+            $document = $this->operations->lockDocument($operation->document_id);
             $operation = $this->operations->lock($operation->operation_id);
             if ($operation->status === 'continued') {
                 return $operation->replacement_result;
@@ -240,13 +364,105 @@ readonly class ManagedDocumentOutputDeletionService
             if ($operation->status !== 'completed') {
                 throw ManagedDeletionException::conflict('Replacement must wait for verified cleanup.');
             }
-            $result = $replace('task_managed_replace_'.substr($operation->operation_id, 7));
+            if ($document->deleted_at !== null || $this->operations->blocking($document->document_id)?->operation_id !== $operation->operation_id) {
+                throw ManagedDeletionException::conflict('Replacement operation is no longer current.');
+            }
+            $generation = [$document->latest_source_id, $document->latest_task_id, $document->latest_job_id];
+
+            return null;
+        });
+        if ($recorded !== null) {
+            return $recorded;
+        }
+        // Preparation is committed. Temporal dispatch and status reads must occur outside SQL.
+        $dispatched = $dispatch('task_managed_replace_'.substr($operation->operation_id, 7));
+
+        return $this->transactions->run(function () use ($operation, $dispatched, $publish, $generation): array {
+            $document = $this->operations->lockDocument($operation->document_id);
+            $operation = $this->operations->lock($operation->operation_id);
+            if ($operation->status === 'continued') {
+                return $operation->replacement_result;
+            }
+            if ($operation->status !== 'completed' || $document->deleted_at !== null
+                || $this->operations->blocking($document->document_id)?->operation_id !== $operation->operation_id
+                || [$document->latest_source_id, $document->latest_task_id, $document->latest_job_id] !== $generation) {
+                throw ManagedDeletionException::conflict('Replacement publication was superseded; document state was preserved.');
+            }
+            // Publication and its operation transition commit together. No network I/O here.
+            $result = $publish($document, $dispatched);
             if (($result['payload']['success'] ?? false) === true) {
                 $this->operations->save($operation, ['status' => 'continued', 'replacement_result' => $result]);
             }
+
             return $result;
         });
     }
+
+    public function prepareReplacement(ManagedDocumentDeletion $operation, callable $prepare): array
+    {
+        return $this->transactions->run(function () use ($operation, $prepare): array {
+            $this->operations->lockDocument($operation->document_id);
+            $operation = $this->operations->lock($operation->operation_id);
+            if ($operation->replacement !== null) {
+                return $operation->replacement;
+            }
+            if ($operation->status !== 'preparing') {
+                throw ManagedDeletionException::conflict('Replacement preparation must precede cleanup dispatch.');
+            }
+            $result = $prepare('task_managed_replace_'.substr($operation->operation_id, 7));
+            if (($result['payload']['success'] ?? false) !== true) {
+                throw ManagedDeletionException::conflict('Replacement could not be durably prepared: '.($result['payload']['message'] ?? 'restore the original file and retry'));
+            }
+            $this->operations->save($operation, ['replacement' => $result, 'status' => 'pending']);
+
+            return $result;
+        });
+    }
+
+    public function abandonReplacement(ManagedDocumentDeletion $operation): void
+    {
+        $this->transactions->run(function () use ($operation): void {
+            $document = $this->operations->lockDocument($operation->document_id);
+            $operation = $this->operations->lock($operation->operation_id);
+            $sourceId = $operation->replacement['payload']['source_id'] ?? null;
+            if ($sourceId) {
+                $source = $this->sources->lockBySourceId($sourceId);
+                if ($source->metadata['managed_dispatch']['attempted'] ?? false) {
+                    throw ManagedDeletionException::conflict('Replacement startup is uncertain; reconcile the recorded execution before changing intent.');
+                }
+                $this->sources->markManagedDeletion($source, $operation->operation_id, IngestionSource::STATUS_DELETED);
+            }
+            if ($operation->status === 'preparing' && empty($operation->attempts['dispatch_sequence'])) {
+                foreach ($operation->attempts['source_states'] ?? [] as $id => $status) {
+                    $source = $this->sources->lockBySourceId($id);
+                    $metadata = $source->metadata ?? [];
+                    unset($metadata['managed_deletion']);
+                    $source->forceFill(['metadata' => $metadata, 'index_status' => $status])->save();
+                }
+                $this->documents->save($document, ['status' => $operation->attempts['document_status'], 'last_error' => null]);
+            } elseif ($operation->status !== 'completed') {
+                throw ManagedDeletionException::conflict('Only verified cleanup permits abandonment of replacement intent.');
+            }
+            $this->operations->save($operation, ['status' => 'abandoned', 'last_error' => 'Replacement preparation failed permanently; corrected input or DELETE is permitted.']);
+        });
+    }
+
+    public function requestHash(array $input, ?string $fileName, ?string $fileHash): string
+    {
+        $value = json_decode(json_encode([$input, $fileName, $fileHash], JSON_THROW_ON_ERROR), true, flags: JSON_THROW_ON_ERROR);
+
+        return hash('sha256', $this->canonicalJson($value));
+    }
+
+    /** An old frozen vector-only snapshot cannot be repaired by changing its receipt. */
+    private function assertEffectiveGraphScope(ManagedDocumentDeletion $operation): void
+    {
+        if (($operation->attempts['effective_graph_scope'] ?? null) === true || $operation->status === 'abandoned') {
+            return;
+        }
+        throw ManagedDeletionException::conflict('This deletion predates validated effective graph-scope evidence. Reconcile and retire its frozen snapshot before retrying.');
+    }
+
     private function canonicalJson(mixed $value): string
     {
         if (is_array($value)) {
@@ -255,6 +471,7 @@ readonly class ManagedDocumentOutputDeletionService
             }
             $value = array_map(fn ($item) => json_decode($this->canonicalJson($item), true, flags: JSON_THROW_ON_ERROR), $value);
         }
+
         return json_encode($value, JSON_THROW_ON_ERROR);
     }
 }

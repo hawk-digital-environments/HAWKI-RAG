@@ -18,19 +18,35 @@ def deletion_input() -> dict[str, Any]:
         "operation_id": "delete_" + "a" * 64,
         "managed_document_id": "adoc_contract",
         "dataset_id": "dataset-contract",
-        "targets": [{"output_id": 1, "doc_id": "same-id", "source_id": "source-contract",
-                     "collection": "historic_collection", "neo4j_namespace": "historic_namespace"}],
+        "targets": [
+            {
+                "output_id": 1,
+                "doc_id": "same-id",
+                "source_id": "source-contract",
+                "collection": "historic_collection",
+                "neo4j_namespace": "historic_namespace",
+            }
+        ],
         "writers": [],
         "task_queues": {"workflow": "workflow-contract", "indexer": "indexer-contract"},
     }
 
 
-def php_wire(payload: dict[str, Any]) -> dict[str, Any]:
-    root = next(parent for parent in Path(__file__).resolve().parents if (parent / "artisan").exists())
+def php_wire(payload: dict[str, Any], mode: str = "deletion") -> dict[str, Any]:
+    root = next(
+        parent
+        for parent in Path(__file__).resolve().parents
+        if (parent / "artisan").exists()
+    )
     if shutil.which("php") is None or not (root / "vendor/autoload.php").exists():
         pytest.skip("PHP/vendor dependencies required for the cross-language contract")
-    result = subprocess.run(["php", str(root / "tests/Support/managed_deletion_wire.php")],
-                            input=json.dumps(payload), text=True, capture_output=True, check=True)
+    result = subprocess.run(
+        ["php", str(root / "tests/Support/managed_deletion_wire.php"), mode],
+        input=json.dumps(payload),
+        text=True,
+        capture_output=True,
+        check=True,
+    )
     return json.loads(result.stdout)
 
 
@@ -38,18 +54,35 @@ def test_real_php_request_is_authenticated_and_delegated(asgi_test_client_class)
     payload = deletion_input()
     wire = php_wire(payload)
     temporal = AsyncMock()
-    temporal.start_managed_deletion.return_value = {"workflow_id": "managed-" + payload["operation_id"], "run_id": "contract-run", "status": "pending"}
-    app = build_app(runtime_summary=lambda: {}, temporal_client_factory=lambda _settings: temporal,
-                    settings=load_settings({"HAWKI_RAG_WORKER_CALLBACK_SECRET": "contract-test-secret"}))
+    temporal.start_managed_deletion.return_value = {
+        "workflow_id": "managed-" + payload["operation_id"],
+        "run_id": "contract-run",
+        "status": "pending",
+    }
+    app = build_app(
+        runtime_summary=lambda: {},
+        temporal_client_factory=lambda _settings: temporal,
+        settings=load_settings(
+            {"HAWKI_RAG_WORKER_CALLBACK_SECRET": "contract-test-secret"}
+        ),
+    )
     with asgi_test_client_class(app) as client:
-        response = client.post("/temporal/workflows/delete-managed-document", content=wire["body"], headers={**wire["headers"], "Content-Type": "application/json"})
+        response = client.post(
+            "/temporal/workflows/delete-managed-document",
+            content=wire["body"],
+            headers={**wire["headers"], "Content-Type": "application/json"},
+        )
         assert response.status_code == 200, response.text
         assert response.json()["status"] == "pending"
         assert client.request("DELETE", "/documents/same-id").status_code in (404, 405)
-    temporal.start_managed_deletion.assert_awaited_once_with(workflow_id="managed-" + payload["operation_id"], workflow_input=payload)
+    temporal.start_managed_deletion.assert_awaited_once_with(
+        workflow_id="managed-" + payload["operation_id"], workflow_input=payload
+    )
 
 
-@pytest.mark.parametrize("invalid", ["unsigned", "tampered", "expired", "identity", "extra_scope"])
+@pytest.mark.parametrize(
+    "invalid", ["unsigned", "tampered", "expired", "identity", "extra_scope"]
+)
 def test_invalid_request_cannot_dispatch(invalid, asgi_test_client_class):
     payload = deletion_input()
     if invalid == "extra_scope":
@@ -66,9 +99,71 @@ def test_invalid_request_cannot_dispatch(invalid, asgi_test_client_class):
     elif invalid == "identity":
         body = body.replace('"workflow_id":"managed-', '"workflow_id":"other-')
     temporal = AsyncMock()
-    app = build_app(runtime_summary=lambda: {}, temporal_client_factory=lambda _settings: temporal,
-                    settings=load_settings({"HAWKI_RAG_WORKER_CALLBACK_SECRET": "contract-test-secret"}))
+    app = build_app(
+        runtime_summary=lambda: {},
+        temporal_client_factory=lambda _settings: temporal,
+        settings=load_settings(
+            {"HAWKI_RAG_WORKER_CALLBACK_SECRET": "contract-test-secret"}
+        ),
+    )
     with asgi_test_client_class(app) as client:
-        response = client.post("/temporal/workflows/delete-managed-document", content=body, headers=headers)
+        response = client.post(
+            "/temporal/workflows/delete-managed-document", content=body, headers=headers
+        )
         assert response.status_code in (401, 422), response.text
     temporal.start_managed_deletion.assert_not_called()
+
+
+def test_real_php_replacement_request_is_authenticated_and_reuses_closed_runs(
+    asgi_test_client_class,
+):
+    payload = {
+        "source_id": "source-contract",
+        "source_url": "upload://replacement.pdf",
+        "task_id": "task-contract",
+        "job_id": "job-contract",
+        "dataset_id": "dataset-contract",
+        "managed_document_id": "adoc_contract",
+        "raw_output_path": "/shared/raw",
+        "markdown_output_path": "/shared/markdown",
+        "storage": {"shared_root": "/shared"},
+        "ingestion": {
+            "provider": "ollama",
+            "embedding_model": "bge-m3",
+            "graph_model": "llama3.1:8b",
+            "vision_model": "qwen2.5vl:7b",
+        },
+    }
+    wire = php_wire(payload, "replacement")
+    temporal = AsyncMock()
+    from hawki_bridge.adapters.temporal_client import TemporalExecution
+
+    temporal.start_ingest_workflow.return_value = TemporalExecution(
+        "ingest-source-source-contract", "replacement-run"
+    )
+    app = build_app(
+        runtime_summary=lambda: {},
+        temporal_client_factory=lambda _settings: temporal,
+        settings=load_settings(
+            {"HAWKI_RAG_WORKER_CALLBACK_SECRET": "contract-test-secret"}
+        ),
+    )
+    with asgi_test_client_class(app) as client:
+        response = client.post(
+            "/temporal/workflows/ingest",
+            content=wire["body"],
+            headers={**wire["headers"], "Content-Type": "application/json"},
+        )
+        assert response.status_code == 200, response.text
+        assert response.json()["run_id"] == "replacement-run"
+        unsigned = client.post(
+            "/temporal/workflows/ingest",
+            content=wire["body"],
+            headers={"Content-Type": "application/json"},
+        )
+        assert unsigned.status_code == 401
+    temporal.start_ingest_workflow.assert_awaited_once_with(
+        workflow_id="ingest-source-source-contract",
+        workflow_input=payload,
+        reuse_completed=True,
+    )

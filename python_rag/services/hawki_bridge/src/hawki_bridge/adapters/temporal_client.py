@@ -100,6 +100,7 @@ class TemporalBridgeClient:
         *,
         workflow_id: str,
         workflow_input: dict[str, Any],
+        reuse_completed: bool = False,
     ) -> TemporalExecution:
         """Start or reuse an ingest workflow and return its execution identity.
 
@@ -107,30 +108,44 @@ class TemporalBridgeClient:
         an active-ID conflict. Configured workflow timeouts remain attached.
         """
         client = await self.connect_temporal()
-        handle = await client.start_workflow(
-            self.settings.workflow_type,
-            workflow_input,
-            id=workflow_id,
-            task_queue=self.settings.workflow_task_queue,
-            id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE,
-            id_conflict_policy=WorkflowIDConflictPolicy.USE_EXISTING,
-            execution_timeout=self.settings.workflow_execution_timeout,
-            run_timeout=self.settings.workflow_run_timeout,
-            task_timeout=self.settings.workflow_task_timeout,
-        )
-
+        try:
+            handle = await client.start_workflow(
+                self.settings.workflow_type,
+                workflow_input,
+                id=workflow_id,
+                task_queue=self.settings.workflow_task_queue,
+                id_reuse_policy=(
+                    WorkflowIDReusePolicy.ALLOW_DUPLICATE_FAILED_ONLY
+                    if reuse_completed
+                    else WorkflowIDReusePolicy.ALLOW_DUPLICATE
+                ),
+                id_conflict_policy=WorkflowIDConflictPolicy.USE_EXISTING,
+                execution_timeout=self.settings.workflow_execution_timeout,
+                run_timeout=self.settings.workflow_run_timeout,
+                task_timeout=self.settings.workflow_task_timeout,
+            )
+        except WorkflowAlreadyStartedError:
+            if not reuse_completed:
+                raise
+            handle = client.get_workflow_handle(workflow_id)
         run_id = self.resolve_run_id(handle)
+        if reuse_completed and not run_id:
+            run_id = (await handle.describe(rpc_timeout=timedelta(seconds=5))).run_id
         logger.info(
             "temporal_bridge:start workflow_id=%s run_id=%s", workflow_id, run_id
         )
         return TemporalExecution(workflow_id=workflow_id, run_id=run_id)
 
-    async def start_managed_deletion(self, *, workflow_id: str, workflow_input: dict[str, Any]) -> dict[str, Any]:
+    async def start_managed_deletion(
+        self, *, workflow_id: str, workflow_input: dict[str, Any]
+    ) -> dict[str, Any]:
         """Reuse active/completed deletion; only failed runs may restart under the same ID."""
         client = await self.connect_temporal()
         try:
             handle = await client.start_workflow(
-                DELETE_MANAGED_DOCUMENT_WORKFLOW, workflow_input, id=workflow_id,
+                DELETE_MANAGED_DOCUMENT_WORKFLOW,
+                workflow_input,
+                id=workflow_id,
                 task_queue=self.settings.workflow_task_queue,
                 id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE_FAILED_ONLY,
                 id_conflict_policy=WorkflowIDConflictPolicy.USE_EXISTING,
@@ -140,12 +155,18 @@ class TemporalBridgeClient:
             )
         except WorkflowAlreadyStartedError:
             handle = client.get_workflow_handle(workflow_id)
-        description = await handle.describe()
-        receipt = {"workflow_id": workflow_id, "run_id": description.run_id, "status": "pending"}
+        description = await handle.describe(rpc_timeout=timedelta(seconds=5))
+        receipt = {
+            "workflow_id": workflow_id,
+            "run_id": description.run_id,
+            "status": "pending",
+        }
         try:
             result = await asyncio.wait_for(handle.result(), timeout=3)
-        except (TimeoutError, WorkflowFailureError):
+        except TimeoutError:
             return receipt
+        except WorkflowFailureError:
+            return {**receipt, "status": "failed"}
         return {**receipt, "status": "completed", "result": result}
 
     async def start_text_ingest_workflow(

@@ -46,6 +46,7 @@ class StartIngestWorkflowRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     workflow_id: str = Field(min_length=1, max_length=255)
     workflow_input: IngestSourceWorkflowInput
+    reuse_completed: bool = False
 
 
 class StartTextIngestWorkflowRequest(BaseModel):

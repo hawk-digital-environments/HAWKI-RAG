@@ -7,6 +7,7 @@ namespace App\Services\Pipeline\Tasks;
 use App\Models\IngestionSource;
 use App\Models\PipelineJob;
 use App\Models\PipelineTask;
+use App\Services\Document\Values\ManagedDocumentId;
 use App\Services\Pipeline\Repositories\IngestionSourceRepository;
 use App\Services\Pipeline\Repositories\PipelineTaskRepository;
 use Illuminate\Container\Attributes\Singleton;
@@ -36,6 +37,33 @@ readonly class PipelineTaskStorageCleanupService
             'skipped' => [],
             'failed' => [],
         ];
+
+        // Preflight every source before removing any task, job or source evidence.
+        $request = $task->metadata['request'] ?? [];
+        $managedTask = ManagedDocumentId::fromRequestMetadata($request['metadata'] ?? $request) !== null;
+        $sourceIds = $this->sourceIds($task);
+        if ($managedTask && $sourceIds === []) {
+            $result['failed'][] = ['path' => 'task:'.$task->task_id, 'message' => 'Managed source cleanup evidence is missing.'];
+        }
+        foreach ($sourceIds as $sourceId) {
+            $source = $this->sources->findBySourceId($sourceId);
+            $request = $source?->metadata['request'] ?? [];
+            if (! $managedTask && ManagedDocumentId::fromRequestMetadata($request['metadata'] ?? $request) === null
+                && ! isset($source?->metadata['managed_dispatch'])) {
+                continue;
+            }
+            $released = collect($source?->metadata['managed_writers'] ?? [])->every(fn ($writer) => ($writer['status'] ?? null) === 'released');
+            if (! $source || $source->index_status !== IngestionSource::STATUS_DELETED
+                || ($source->metadata['managed_deletion']['status'] ?? null) !== IngestionSource::STATUS_DELETED
+                || empty($source->metadata['managed_deletion']['operation_id']) || ! $released) {
+                $result['failed'][] = ['path' => 'source:'.$sourceId, 'message' => 'Managed evidence must remain until verified deletion and writer quiescence.'];
+            }
+        }
+        if ($result['failed'] !== []) {
+            $result['ok'] = false;
+
+            return $result;
+        }
 
         $this->deleteDirectory($this->taskRoot($task), $result);
 
