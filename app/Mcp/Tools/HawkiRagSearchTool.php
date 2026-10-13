@@ -84,7 +84,6 @@ class HawkiRagSearchTool extends Tool
                 ->execute();
 
             return Response::structured([
-                'instructions' => 'When using this tool, always rely on the response from the RAG system. The response contains all relevant information, and the `documents` list names every source it was built from. Use the content comprehensively to answer queries, provide context, or perform reasoning; prioritize completeness and relevance. Cite sources by the document names from the `documents` list. Never quote, extract, or cite URLs that appear inside the retrieved content (such as printed page footers or body text) as source links — those are content, not sources.',
                 'response' => $response,
                 'documents' => $this->sourceDocuments($response),
             ]);
