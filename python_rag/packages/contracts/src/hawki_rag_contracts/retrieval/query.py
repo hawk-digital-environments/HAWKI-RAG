@@ -22,7 +22,7 @@ class QueryRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
-    query: str = Field(min_length=1)
+    query: str = Field(min_length=1, max_length=6000)
     authorized_scope: AuthorizedQueryScope
     top_k: int = Field(default=5, gt=0)
     provider: str = Field(min_length=1, max_length=80)

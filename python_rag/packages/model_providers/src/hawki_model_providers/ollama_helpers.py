@@ -39,7 +39,7 @@ def embedding_timeout_from_env() -> float:
 
 
 def embedding_max_chars_from_env() -> int:
-    return _int_env("OLLAMA_EMBED_MAX_CHARS", 4000)
+    return _int_env("OLLAMA_EMBED_MAX_CHARS", 6000)
 
 
 def clean_embedding_text(text: str, *, max_chars: int | None = None) -> str:

@@ -50,7 +50,7 @@ The tool name is `query-search`.
 
 | Field | Type | Required | Validation and behavior |
 |---|---|---:|---|
-| `query` | string | Yes | Required by Laravel; FastAPI rejects it if sanitization leaves an empty query. |
+| `query` | string | Yes | Maximum 6,000 characters; FastAPI rejects it if sanitization leaves an empty query. |
 | `dataset_id` | string | Yes | Maximum 191 characters; must resolve to a dataset the authenticated user may query. |
 | `top_k` | integer | No | Range 1–50; defaults to 5 in the MCP tool. |
 

@@ -3227,7 +3227,7 @@ components:
           description: Dataset identifier selected from `GET /query/datasets`.
         query:
           type: string
-          maxLength: 4000
+          maxLength: 6000
         top_k:
           type: integer
           minimum: 1
