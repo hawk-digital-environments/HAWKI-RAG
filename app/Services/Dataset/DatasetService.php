@@ -10,6 +10,10 @@ use App\Services\Dataset\Exceptions\DatasetCreationConflictException;
 use App\Services\Dataset\Exceptions\DatasetInactiveException;
 use App\Services\Dataset\Exceptions\DatasetNotFoundException;
 use App\Services\Dataset\Values\DatasetCreationResult;
+use App\Services\Document\Exceptions\ManagedDeletionException;
+use App\Services\Document\ManagedDocumentOutputDeletionService;
+use App\Services\Document\Repositories\ManagedDocumentDeletionRepository;
+use App\Services\Document\Repositories\ManagedDocumentRepository;
 use App\Services\Settings\SettingsService;
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Database\DatabaseManager;
@@ -27,6 +31,9 @@ readonly class DatasetService
         private SettingsService $settings,
         private DatasetGrantTokenService $grantTokens,
         private DatabaseManager $database,
+        private ManagedDocumentRepository $managedDocuments,
+        private ManagedDocumentOutputDeletionService $managedDeletion,
+        private ManagedDocumentDeletionRepository $deletionOperations,
         private ClockInterface $clock = new Clock,
     ) {}
 
@@ -104,7 +111,7 @@ readonly class DatasetService
         $safe = $this->identifiers->safeName($datasetId);
         $embedding = $this->embeddingRuntime();
 
-        return $this->datasets->firstOrCreate($datasetId, [
+        $result = $this->datasets->firstOrCreate($datasetId, [
             'name' => $this->identifiers->displayName($datasetId, $input['name'] ?? null),
             'description' => $this->identifiers->stringValue($input['description'] ?? null),
             'status' => Dataset::STATUS_ACTIVE,
@@ -116,6 +123,11 @@ readonly class DatasetService
             'embedding_model' => $embedding['model'],
             'created_at' => $this->clock->now(),
         ]);
+        if ($result->status !== Dataset::STATUS_ACTIVE) {
+            throw DatasetInactiveException::forId($datasetId);
+        }
+
+        return $result;
     }
 
     /**
@@ -123,12 +135,41 @@ readonly class DatasetService
      */
     public function delete(string $datasetId): ?array
     {
-        $dataset = $this->datasets->findByDatasetId($datasetId);
+        $dataset = $this->database->transaction(fn () => $this->datasets->archiveForDeletion($datasetId));
 
         if (! $dataset) {
             return null;
         }
 
+        foreach ($this->managedDocuments->undeletedForDataset($datasetId) as $document) {
+            try {
+                $replacement = $this->deletionOperations->blocking($document->document_id);
+                if ($replacement?->purpose === 'update') {
+                    if ($replacement->status !== 'preparing' || ! empty($replacement->attempts['dispatch_sequence'])) {
+                        $replacement = $this->managedDeletion->dispatch($replacement);
+                        if ($replacement->status !== 'completed') {
+                            return ['dataset_deleted' => false, 'status' => $replacement->last_error ? 502 : 202,
+                                'message' => $replacement->last_error ?? 'Existing replacement cleanup is pending verification; repeat DELETE to resume.',
+                                'operation_id' => $replacement->operation_id];
+                        }
+                    }
+                    // Reuse verified cleanup without starting a replacement in an archived dataset.
+                    $this->managedDeletion->abandonReplacement($replacement);
+                }
+                $operation = $this->managedDeletion->dispatch($this->managedDeletion->prepare($document, 'delete', null));
+            } catch (ManagedDeletionException $error) {
+                return ['dataset_deleted' => false, 'status' => 409, 'message' => $error->getMessage()];
+            }
+            if ($operation->status !== 'completed') {
+                return ['dataset_deleted' => false, 'status' => $operation->last_error ? 502 : 202,
+                    'message' => $operation->last_error ?? 'Dataset document cleanup is pending verification; repeat DELETE to resume.',
+                    'operation_id' => $operation->operation_id];
+            }
+        }
+        if ($this->datasets->unverifiedSources($dataset)->isNotEmpty()) {
+            return ['dataset_deleted' => false, 'status' => 409,
+                'message' => 'Dataset has unverified or untracked writers; existing cleanup and reconciliation must finish first.'];
+        }
         $cleanup = $this->storageCleanup->deleteStorage($dataset);
         $cleanupOk = ($cleanup['qdrant']['ok'] ?? false) && ($cleanup['neo4j']['ok'] ?? false);
 

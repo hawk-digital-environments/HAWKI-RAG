@@ -329,9 +329,17 @@ readonly class PipelineTaskPayloadService
 
         return $job->stages
             ->mapWithKeys(function (PipelineStageState $stage) use ($scrapePageLimit): array {
+                $counts = is_array($stage->counts) ? $stage->counts : [];
+                if ($stage->stage === 'ingest') {
+                    $metrics = $stage->metadata['metrics'] ?? [];
+                    $counts += [
+                        'chunks' => (int) ($metrics['chunks_indexed'] ?? 0),
+                        'vectors' => (int) ($metrics['vectors_upserted'] ?? 0),
+                    ];
+                }
                 $counts = $this->stageCounts(
                     (string) $stage->stage,
-                    is_array($stage->counts) ? $stage->counts : [],
+                    $counts,
                     $scrapePageLimit,
                 );
 

@@ -5,9 +5,11 @@ declare(strict_types=1);
 namespace App\Services\Document;
 
 use App\Models\ManagedDocument;
-use App\Services\Document\Repositories\ManagedDocumentOutputRepository;
+use App\Models\ManagedDocumentDeletion;
+use App\Services\Document\Exceptions\ManagedDeletionException;
 use App\Services\Document\Repositories\ManagedDocumentRepository;
 use App\Services\Document\Values\ManagedDocumentId;
+use App\Services\Pipeline\Repositories\PipelineTransactionRepository;
 use App\Services\Pipeline\Uploads\PipelineUploadService;
 use App\Services\Pipeline\Values\PipelineUploadInput;
 use App\Services\Pipeline\Values\PipelineUploadResult;
@@ -22,12 +24,12 @@ readonly class ManagedDocumentService
 {
     public function __construct(
         private ManagedDocumentRepository $documents,
-        private ManagedDocumentOutputRepository $outputs,
         private ManagedDocumentSyncService $sync,
         private ManagedDocumentPayloadBuilder $payloads,
         private ManagedDocumentOutputDeletionService $deletions,
         private PipelineUploadService $uploads,
         private ManagedDocumentPipelineStateResolver $pipelineState,
+        private PipelineTransactionRepository $transactions,
         private ClockInterface $clock = new Clock,
     ) {}
 
@@ -38,41 +40,49 @@ readonly class ManagedDocumentService
     public function create(array $input, ?UploadedFile $file, ?string $idempotencyKey): array
     {
         $managedDocumentId = $this->documents->nextManagedDocumentId();
-        $upload = $this->uploads->upload(
-            $this->pipelineInput(
-                (string) ($input['dataset_id'] ?? ''),
-                (bool) ($input['graph_enabled'] ?? false),
-                $managedDocumentId,
-            ),
-            $file,
+        $pipelineInput = $this->pipelineInput(
+            (string) ($input['dataset_id'] ?? ''),
+            (bool) ($input['graph_enabled'] ?? false),
+            $managedDocumentId,
         );
+        $taskId = 'task_managed_create_'.$managedDocumentId->value;
+        [$upload, $document] = $this->transactions->run(function () use ($pipelineInput, $file, $taskId, $managedDocumentId, $input): array {
+            $upload = $this->uploads->upload($pipelineInput, $file, $taskId, true);
 
-        if (($upload->payload['success'] ?? false) !== true) {
-            return [
-                'status' => $upload->status,
-                'payload' => $upload->payload,
-            ];
+            if (($upload->payload['success'] ?? false) !== true) {
+                return [$upload, null];
+            }
+
+            $state = $this->pipelineState->resolve($upload->payload);
+            $document = $this->documents->create([
+                'document_id' => $managedDocumentId->value,
+                'dataset_id' => (string) $input['dataset_id'],
+                'display_name' => $input['display_name'] ?? $file?->getClientOriginalName(),
+                'source_type' => 'upload',
+                'source_url' => $input['source_url'] ?? null,
+                'source_updated_at' => $input['source_updated_at'] ?? null,
+                'source_checksum_sha256' => $input['source_checksum_sha256'] ?? $state->checksumSha256,
+                'graph_enabled' => (bool) ($input['graph_enabled'] ?? false),
+                'status' => $state->status,
+                'last_error' => $state->lastError,
+                'latest_source_id' => $state->sourceId,
+                'latest_task_id' => $state->taskId,
+                'latest_job_id' => $state->jobId,
+                'latest_document_version' => $state->documentVersion,
+                'indexed_at' => $state->indexedAt,
+                'metadata_json' => $input['metadata_json'] ?? null,
+            ]);
+
+            return [$upload, $document];
+        });
+        if ($document === null) {
+            return ['status' => $upload->status, 'payload' => $upload->payload];
         }
-
-        $state = $this->pipelineState->resolve($upload->payload);
-        $document = $this->documents->create([
-            'document_id' => $managedDocumentId->value,
-            'dataset_id' => (string) $input['dataset_id'],
-            'display_name' => $input['display_name'] ?? $file?->getClientOriginalName(),
-            'source_type' => 'upload',
-            'source_url' => $input['source_url'] ?? null,
-            'source_updated_at' => $input['source_updated_at'] ?? null,
-            'source_checksum_sha256' => $input['source_checksum_sha256'] ?? $state->checksumSha256,
-            'graph_enabled' => (bool) ($input['graph_enabled'] ?? false),
-            'status' => $state->status,
-            'last_error' => $state->lastError,
-            'latest_source_id' => $state->sourceId,
-            'latest_task_id' => $state->taskId,
-            'latest_job_id' => $state->jobId,
-            'latest_document_version' => $state->documentVersion,
-            'indexed_at' => $state->indexedAt,
-            'metadata_json' => $input['metadata_json'] ?? null,
-        ]);
+        // Owner, task, source, job and dispatch input are now visible to fast workers.
+        $upload = $this->uploads->dispatchPreparedManagedUpload($taskId);
+        if (($upload->payload['success'] ?? false) !== true) {
+            return ['status' => $upload->status, 'payload' => array_merge($upload->payload, ['document' => $this->payloads->build($document)])];
+        }
 
         $document = $this->sync->sync($document);
 
@@ -85,29 +95,39 @@ readonly class ManagedDocumentService
     public function createFromPipelineUpload(PipelineUploadInput $input, ?UploadedFile $file): PipelineUploadResult
     {
         $managedDocumentId = $this->documents->nextManagedDocumentId();
-        $upload = $this->uploads->upload($input->withManagedDocumentId($managedDocumentId), $file);
+        $input = $input->withManagedDocumentId($managedDocumentId);
+        $taskId = 'task_managed_create_'.$managedDocumentId->value;
+        [$upload, $document] = $this->transactions->run(function () use ($input, $file, $taskId, $managedDocumentId): array {
+            $upload = $this->uploads->upload($input, $file, $taskId, true);
 
-        if (($upload->payload['success'] ?? false) !== true) {
+            if (($upload->payload['success'] ?? false) !== true) {
+                return [$upload, null];
+            }
+
+            $state = $this->pipelineState->resolve($upload->payload);
+            $document = $this->documents->create([
+                'document_id' => $managedDocumentId->value,
+                'dataset_id' => $input->datasetId,
+                'display_name' => $file?->getClientOriginalName(),
+                'source_type' => 'upload',
+                'source_url' => $this->uploadSourceUrl($file),
+                'source_checksum_sha256' => $state->checksumSha256,
+                'graph_enabled' => $input->graph,
+                'status' => $state->status,
+                'last_error' => $state->lastError,
+                'latest_source_id' => $state->sourceId,
+                'latest_task_id' => $state->taskId,
+                'latest_job_id' => $state->jobId,
+                'latest_document_version' => $state->documentVersion,
+                'indexed_at' => $state->indexedAt,
+            ]);
+
+            return [$upload, $document];
+        });
+        if ($document === null) {
             return $upload;
         }
-
-        $state = $this->pipelineState->resolve($upload->payload);
-        $document = $this->documents->create([
-            'document_id' => $managedDocumentId->value,
-            'dataset_id' => $input->datasetId,
-            'display_name' => $file?->getClientOriginalName(),
-            'source_type' => 'upload',
-            'source_url' => $this->uploadSourceUrl($file),
-            'source_checksum_sha256' => $state->checksumSha256,
-            'graph_enabled' => $input->graph,
-            'status' => $state->status,
-            'last_error' => $state->lastError,
-            'latest_source_id' => $state->sourceId,
-            'latest_task_id' => $state->taskId,
-            'latest_job_id' => $state->jobId,
-            'latest_document_version' => $state->documentVersion,
-            'indexed_at' => $state->indexedAt,
-        ]);
+        $upload = $this->uploads->dispatchPreparedManagedUpload($taskId);
 
         $document = $this->sync->sync($document);
 
@@ -214,7 +234,7 @@ readonly class ManagedDocumentService
             (bool) ($input['force'] ?? false),
         );
 
-        if (! $decision['replace']) {
+        if (! $decision['replace'] && ! $this->deletions->pending($managedDocumentId) && ! $this->deletions->hasRequest($managedDocumentId, $idempotencyKey)) {
             $document = $this->documents->save($document, $this->nonContentUpdates($document, $input));
 
             return [
@@ -231,69 +251,83 @@ readonly class ManagedDocumentService
             ];
         }
 
-        try {
-            $activeOutputs = $this->outputs->backfillScopes(
-                $document,
-                $this->outputs->activeForDocument($document->documentId()),
-            );
-            $this->deletions->deleteActiveOutputs($activeOutputs, $idempotencyKey);
-            if ($activeOutputs->isNotEmpty()) {
-                $this->outputs->deactivateActiveOutputs($document, $this->now());
-            }
-        } catch (\Throwable $exception) {
-            $document = $this->documents->save($document, [
-                'status' => ManagedDocument::STATUS_FAILED,
-                'last_error' => $exception->getMessage(),
-            ]);
-
-            return $this->failurePayload($document, 'update', 502, 'Failed to delete the existing indexed document.', $exception->getMessage());
+        $graphEnabled = ($input['graph_provided'] ?? false) ? (bool) ($input['graph_enabled'] ?? false) : (bool) $document->graph_enabled;
+        $pipelineInput = $this->pipelineInput($document->dataset_id, $graphEnabled, $document->documentId());
+        if ($failure = $this->uploads->preflight($pipelineInput, $file)) {
+            return ['status' => $failure->status, 'payload' => $failure->payload];
         }
-
-        $graphEnabled = ($input['graph_provided'] ?? false)
-            ? (bool) ($input['graph_enabled'] ?? false)
-            : (bool) $document->graph_enabled;
-
-        $upload = $this->uploads->upload(
-            $this->pipelineInput($document->dataset_id, $graphEnabled, $document->documentId()),
-            $file,
+        $requestHash = $this->deletions->requestHash(
+            $input, $file->getClientOriginalName(), hash_file('sha256', $file->getRealPath()),
         );
+        try {
+            $operation = $this->deletions->prepare($document, 'update', $idempotencyKey, $requestHash);
+            $this->deletions->prepareReplacement($operation, function (string $taskId) use ($pipelineInput, $file): array {
+                $upload = $this->uploads->upload($pipelineInput, $file, $taskId, true);
 
-        if (($upload->payload['success'] ?? false) !== true) {
-            $document = $this->documents->save($document, [
-                'status' => ManagedDocument::STATUS_FAILED,
-                'last_error' => (string) ($upload->payload['message'] ?? 'Replacement upload failed.'),
-            ]);
+                return ['status' => $upload->status, 'payload' => $upload->payload];
+            });
+            $operation = $operation->refresh();
+        } catch (ManagedDeletionException $error) {
+            if (isset($operation) && $operation->status === 'preparing') {
+                $this->deletions->abandonReplacement($operation);
+            }
 
-            return $this->failurePayload(
-                $document,
-                'update',
-                $upload->status,
-                (string) ($upload->payload['message'] ?? 'Replacement upload failed.'),
-                $this->stringValue($upload->payload['error'] ?? null),
-            );
+            return $this->failurePayload($document, 'update', 409, $error->getMessage());
+        }
+        $operation = $this->deletions->dispatch($operation);
+        if (! in_array($operation->status, ['completed', 'continued'], true)) {
+            return $this->deletionPayload($operation);
         }
 
-        $state = $this->pipelineState->resolve($upload->payload);
-        $document = $this->documents->save($document, array_merge(
-            $this->nonContentUpdates($document, $input, $file),
-            [
-                'source_updated_at' => $input['source_updated_at'] ?? $document->source_updated_at,
-                'source_checksum_sha256' => $input['source_checksum_sha256'] ?? $state->checksumSha256 ?? $document->source_checksum_sha256,
-                'graph_enabled' => $graphEnabled,
-                'status' => $state->status,
-                'last_error' => $state->lastError,
-                'latest_source_id' => $state->sourceId,
-                'latest_task_id' => $state->taskId,
-                'latest_job_id' => $state->jobId,
-                'latest_document_version' => $state->documentVersion,
-                'indexed_at' => null,
-                'deleted_at' => null,
-            ],
-        ));
+        try {
+            return $this->deletions->continueUpdate($operation, function (string $taskId) use ($pipelineInput, $file): array {
+                $upload = $this->uploads->upload($pipelineInput, $file, $taskId);
 
-        $document = $this->sync->sync($document);
+                return ['status' => $upload->status, 'payload' => $upload->payload];
+            }, function (ManagedDocument $document, array $upload) use ($input, $file, $operation, $graphEnabled): array {
+                if (($upload['payload']['success'] ?? false) !== true || ($upload['payload']['status'] ?? null) === 'failed') {
+                    if ($upload['payload']['permanent'] ?? false) {
+                        $this->deletions->abandonReplacement($operation);
+                    }
+                    $document = $this->documents->save($document, [
+                        'status' => ManagedDocument::STATUS_FAILED,
+                        'last_error' => (string) ($upload['payload']['message'] ?? 'Replacement upload failed.'),
+                    ]);
 
-        return $this->acceptedPayload('update', $document);
+                    return $this->failurePayload(
+                        $document,
+                        'update',
+                        $upload['status'],
+                        (string) ($upload['payload']['message'] ?? 'Replacement upload failed.'),
+                        $this->stringValue($upload['payload']['error'] ?? null),
+                    );
+                }
+
+                $state = $this->pipelineState->resolve($upload['payload']);
+                $document = $this->documents->save($document, array_merge(
+                    $this->nonContentUpdates($document, $input, $file),
+                    [
+                        'source_updated_at' => $input['source_updated_at'] ?? $document->source_updated_at,
+                        'source_checksum_sha256' => $input['source_checksum_sha256'] ?? $state->checksumSha256 ?? $document->source_checksum_sha256,
+                        'graph_enabled' => $graphEnabled,
+                        'status' => $state->status,
+                        'last_error' => $state->lastError,
+                        'latest_source_id' => $state->sourceId,
+                        'latest_task_id' => $state->taskId,
+                        'latest_job_id' => $state->jobId,
+                        'latest_document_version' => $state->documentVersion,
+                        'indexed_at' => null,
+                        'deleted_at' => null,
+                    ],
+                ));
+
+                $document = $this->sync->sync($document);
+
+                return $this->acceptedPayload('update', $document);
+            });
+        } catch (ManagedDeletionException $error) {
+            return $this->failurePayload($this->documents->find($managedDocumentId), 'update', 409, $error->getMessage());
+        }
     }
 
     /**
@@ -307,48 +341,32 @@ readonly class ManagedDocumentService
         }
 
         $document = $this->sync->sync($document);
-        $document = $this->documents->save($document, [
-            'status' => ManagedDocument::STATUS_DELETING,
-            'last_error' => null,
-        ]);
-
-        $activeOutputs = $this->outputs->backfillScopes(
-            $document,
-            $this->outputs->activeForDocument($document->documentId()),
-        );
-
         try {
-            $deletion = $this->deletions->deleteActiveOutputs($activeOutputs, $idempotencyKey);
-        } catch (\Throwable $exception) {
-            $document = $this->documents->save($document, [
-                'status' => ManagedDocument::STATUS_FAILED,
-                'last_error' => $exception->getMessage(),
-            ]);
-
-            return $this->failurePayload($document, 'delete', 502, 'Failed to delete one or more indexed bridge documents.', $exception->getMessage());
+            $operation = $this->deletions->prepare($document, 'delete', $idempotencyKey);
+        } catch (ManagedDeletionException $error) {
+            return $this->failurePayload($document, 'delete', 409, $error->getMessage());
         }
 
-        $deletedAt = $this->now();
-        if ($activeOutputs->isNotEmpty()) {
-            $this->outputs->deactivateActiveOutputs($document, $deletedAt);
-        }
+        return $this->deletionPayload($this->deletions->dispatch($operation));
+    }
 
-        $document = $this->documents->save($document, [
-            'status' => ManagedDocument::STATUS_DELETED,
-            'deleted_at' => $deletedAt,
-            'last_error' => null,
-        ]);
+    private function deletionPayload(ManagedDocumentDeletion $operation): array
+    {
+        $completed = $operation->status === 'completed';
 
         return [
-            'status' => 200,
+            'status' => $completed ? 200 : ($operation->last_error ? 502 : 202),
             'payload' => [
-                'success' => true,
+                'success' => $operation->last_error === null,
                 'operation' => [
-                    'type' => 'delete',
-                    'status' => 'completed',
+                    'type' => $operation->purpose, 'status' => $operation->status,
+                    'operation_id' => $operation->operation_id, 'workflow_id' => $operation->workflow_id,
+                    'run_id' => $operation->run_id,
+                    'recovery' => $operation->purpose === 'update' ? 'Resubmit the same PUT, file and Idempotency-Key to resume replacement.' : 'Repeat DELETE to resume the same operation.',
                 ],
-                'document' => $this->payloads->build($document),
-                'deletion' => $deletion,
+                'document' => $this->payloads->build($this->documents->find($operation->document_id)),
+                'deletion' => ['bridge_documents_deleted' => $completed ? count($operation->workflow_input['targets']) : 0, 'results' => $operation->results],
+                'error' => $operation->last_error,
             ],
         ];
     }

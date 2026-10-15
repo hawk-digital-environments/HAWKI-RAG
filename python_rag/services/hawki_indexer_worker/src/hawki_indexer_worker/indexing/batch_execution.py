@@ -56,6 +56,7 @@ class IndexBatchDependencies:
     workflow_dependencies: IngestWorkflowDependencies
     ingest_documents: IngestDocuments
     heartbeat_sender: Callable[[object], None] | None = None
+    target_registrar: Callable[[list[dict[str, Any]]], None] | None = None
 
 
 def execute_index_batches(
@@ -86,7 +87,6 @@ def execute_index_batches(
         manifest_records.extend(prepared.manifest_records)
         if not prepared.documents:
             continue
-
         operation_id = _operation_id(
             request.workflow_input,
             str(prepared.documents[0].id),
@@ -103,6 +103,19 @@ def execute_index_batches(
             operation_id=operation_id,
             requires_graph=requires_graph,
         )
+        # Passthrough can require canonical graph writes even for graph=false.
+        # Resolve that requirement before Laravel freezes and grants sink scope.
+        if dependencies.target_registrar is not None:
+            dependencies.target_registrar(
+                [
+                    {
+                        "doc_id": record["document_id"],
+                        "relative_path": record["relative_path"],
+                        "graph": index_request.graph,
+                    }
+                    for record in prepared.manifest_records
+                ]
+            )
         response = dependencies.ingest_documents(
             index_request,
             rag_service=dependencies.graph_service,

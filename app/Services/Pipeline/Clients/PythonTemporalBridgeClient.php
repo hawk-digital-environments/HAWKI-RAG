@@ -7,8 +7,10 @@ namespace App\Services\Pipeline\Clients;
 use App\Services\Pipeline\Values\TemporalWorkflowExecution;
 use Illuminate\Config\Repository as ConfigRepository;
 use Illuminate\Container\Attributes\Singleton;
-use Illuminate\Support\Facades\Http;
+use Illuminate\Http\Client\Factory as HttpFactory;
+use Psr\Clock\ClockInterface;
 use Psr\Log\LoggerInterface;
+use Symfony\Component\Clock\Clock;
 
 #[Singleton]
 readonly class PythonTemporalBridgeClient
@@ -16,12 +18,14 @@ readonly class PythonTemporalBridgeClient
     public function __construct(
         private ConfigRepository $config,
         private LoggerInterface $logger,
+        private HttpFactory $http,
+        private ClockInterface $clock = new Clock,
     ) {}
 
     /**
      * @param  array<string, mixed>  $input
      */
-    public function startIngestWorkflow(array $input, ?string $workflowId = null): TemporalWorkflowExecution
+    public function startIngestWorkflow(array $input, ?string $workflowId = null, bool $reuseCompleted = false): TemporalWorkflowExecution
     {
         $this->ensureEnabled();
 
@@ -30,7 +34,14 @@ readonly class PythonTemporalBridgeClient
             'workflow_input' => $input,
         ];
 
-        $body = $this->post('/temporal/workflows/ingest', $payload);
+        if ($reuseCompleted) {
+            $payload['reuse_completed'] = true;
+        }
+        $body = $reuseCompleted ? $this->postSigned('/temporal/workflows/ingest', $payload)
+            : $this->post('/temporal/workflows/ingest', $payload);
+        if ($reuseCompleted && (($body['workflow_id'] ?? null) !== $payload['workflow_id'] || empty($body['run_id']))) {
+            throw new \RuntimeException('Managed replacement workflow identity is unconfirmed.');
+        }
 
         $execution = new TemporalWorkflowExecution(
             $this->stringValue($body['workflow_id'] ?? $payload['workflow_id']),
@@ -147,6 +158,21 @@ readonly class PythonTemporalBridgeClient
         ]);
     }
 
+    /** @return array<string, mixed> */
+    public function deleteOutputs(string $workflowId, array $input): array
+    {
+        $this->ensureEnabled();
+        $result = $this->postSigned('/temporal/workflows/delete-managed-document', [
+            'workflow_id' => $workflowId,
+            'workflow_input' => $input,
+        ]);
+        if (($result['workflow_id'] ?? null) !== $workflowId) {
+            throw new \RuntimeException('Deletion workflow acknowledgement has an unexpected identity.');
+        }
+
+        return $result;
+    }
+
     public function cancelWorkflow(string $workflowId, ?string $runId = null): void
     {
         $this->ensureEnabled();
@@ -183,7 +209,7 @@ readonly class PythonTemporalBridgeClient
      */
     private function post(string $path, array $payload): array
     {
-        $response = Http::timeout($this->timeout())
+        $response = $this->http->timeout($this->timeout())
             ->acceptJson()
             ->asJson()
             ->post($this->bridgeUrl().$path, $payload);
@@ -208,6 +234,27 @@ readonly class PythonTemporalBridgeClient
     /**
      * @param  array<string, mixed>  $input
      */
+    private function postSigned(string $path, array $payload): array
+    {
+        $secret = (string) $this->config->get('temporal.callbacks.secret');
+        if ($secret === '') {
+            throw new \RuntimeException('Authenticated managed Temporal control is not configured.');
+        }
+        $body = json_encode($payload, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
+        $timestamp = (string) $this->clock->now()->getTimestamp();
+        $response = $this->http->timeout($this->timeout())->acceptJson()->withHeaders([
+            'X-Hawki-Timestamp' => $timestamp,
+            'X-Hawki-Signature' => 'v1='.hash_hmac('sha256', $timestamp.'.'.$body, $secret),
+        ])->withBody($body, 'application/json')->post($this->bridgeUrl().$path);
+        $response->throw();
+        $result = $response->json();
+        if (! is_array($result)) {
+            throw new \RuntimeException('Managed Temporal bridge returned invalid JSON.');
+        }
+
+        return $result;
+    }
+
     private function workflowIdFor(array $input): string
     {
         $sourceId = is_scalar($input['source_id'] ?? null) ? (string) $input['source_id'] : 'unknown';

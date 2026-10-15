@@ -8,18 +8,9 @@ from typing import Any
 
 from temporalio import activity
 
-from hawki_rag_contracts.pipeline.ingestion import (
-    IndexActivityInput,
-    ReadyActivityInput,
-)
-from hawki_rag_contracts.pipeline.temporal import (
-    INDEX_MARKDOWN_ACTIVITY,
-    MARK_SOURCE_READY_ACTIVITY,
-)
+from hawki_rag_contracts.pipeline import ingestion, temporal
 
-from hawki_indexer_worker.adapters.composition import (
-    build_ingest_workflow_dependencies,
-)
+from hawki_indexer_worker.adapters.composition import build_ingest_workflow_dependencies
 from hawki_indexer_worker.adapters.providers.composition import (
     create_graph_extractor,
     get_provider,
@@ -39,44 +30,59 @@ from hawki_indexer_worker.application.ready_projection import (
 )
 from hawki_indexer_worker.indexing.orchestration import ingest_documents
 from hawki_indexer_worker.settings import IndexerSettings
+from hawki_indexer_worker.adapters.managed_writer import ManagedWriterRegistration
 
 logger = logging.getLogger(__name__)
 
 
-@activity.defn(name=INDEX_MARKDOWN_ACTIVITY)
+@activity.defn(name=temporal.INDEX_MARKDOWN_ACTIVITY)
 def ingest_markdown_files(payload: dict[str, Any]) -> dict[str, Any]:
     """Decode one Temporal payload, execute indexing, and encode its result."""
-
     settings = IndexerSettings.from_env()
-    activity_input = IndexActivityInput.model_validate(payload)
-    with create_callback_sender(settings) as callback_sender:
-        result = execute_index_activity(
-            activity_input,
-            context=IndexActivityContext(
-                settings=settings,
-                activity_info=activity.info(),
-                heartbeat_sender=activity.heartbeat,
-            ),
-            dependencies=IndexActivityDependencies(
-                artifact_store=None,
-                graph_service=create_graph_extractor(
-                    settings.rag_working_dir,
-                    logger_obj=logger,
+    activity_input = ingestion.IndexActivityInput.model_validate(payload)
+    registration = ManagedWriterRegistration.acquire_for(
+        settings, dict(activity_input.workflow_input), activity.info()
+    )
+    try:
+        dependencies = build_ingest_workflow_dependencies()
+        if registration:
+            dependencies = registration.bind_dependencies(dependencies)
+        graph = create_graph_extractor(settings.rag_working_dir, logger_obj=logger)
+        registrar = registration.register_targets if registration else None
+        with create_callback_sender(settings) as callback_sender:
+            result = execute_index_activity(
+                activity_input,
+                context=IndexActivityContext(
+                    settings=settings,
+                    activity_info=activity.info(),
+                    heartbeat_sender=activity.heartbeat,
                 ),
-                provider_resolver=get_provider,
-                workflow_dependencies=build_ingest_workflow_dependencies(),
-                status_reporter=partial(report_status, sender=callback_sender),
-                ingest_documents=ingest_documents,
-            ),
-        )
+                dependencies=IndexActivityDependencies(
+                    artifact_store=None,
+                    graph_service=graph,
+                    provider_resolver=get_provider,
+                    workflow_dependencies=dependencies,
+                    status_reporter=partial(report_status, sender=callback_sender),
+                    ingest_documents=ingest_documents,
+                    target_registrar=registrar,
+                ),
+            )
+    finally:
+        if registration:
+            # The activity body has unwound. Release only after all admitted sink
+            # calls have returned; a lost acknowledgement still fails closed.
+            with activity.shield_thread_cancel_exception():
+                try:
+                    registration.release()
+                except Exception:
+                    logger.warning("Managed writer drain is unconfirmed", exc_info=True)
     return result.model_dump(mode="json")
 
 
-@activity.defn(name=MARK_SOURCE_READY_ACTIVITY)
+@activity.defn(name=temporal.MARK_SOURCE_READY_ACTIVITY)
 def mark_source_ready(payload: dict[str, Any]) -> dict[str, Any]:
     """Decode one Temporal payload, project readiness, and encode its result."""
-
-    activity_input = ReadyActivityInput.model_validate(payload)
+    activity_input = ingestion.ReadyActivityInput.model_validate(payload)
     settings = IndexerSettings.from_env()
     with create_callback_sender(settings) as callback_sender:
         projection = project_source_ready(

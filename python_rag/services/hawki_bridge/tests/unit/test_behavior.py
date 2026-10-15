@@ -448,13 +448,15 @@ def test_temporal_routes_delegate_to_the_injected_client() -> None:
         "POST",
     )
     workflow_input = _workflow_input(source_id="source-9")
+    from starlette.requests import Request
 
     assert asyncio.run(
         start(
             StartIngestWorkflowRequest(
                 workflow_id="ingest-source-9",
                 workflow_input=workflow_input,
-            )
+            ),
+            Request({"type": "http", "headers": []}),
         )
     ) == {
         "workflow_id": "ingest-source-9",

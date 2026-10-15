@@ -254,7 +254,7 @@ class DatasetManagementTest extends TestCase
             ->assertJsonPath('dataset.graph_stats.qdrant.message', 'Collection not created yet');
     }
 
-    public function test_deleting_dataset_removes_neo4j_nodes_by_single_doc_id_and_attached_relationships(): void
+    public function test_dataset_deletion_retains_ambiguous_legacy_output_evidence(): void
     {
         config()->set('config.qdrant_http_url', 'http://qdrant.test');
         config()->set('config.neo4j_http_url', 'http://neo4j.test');
@@ -305,27 +305,43 @@ class DatasetManagementTest extends TestCase
         $this->actingAsApiUser();
 
         $this->deleteJson('/api/datasets/delete-dataset/storage')
-            ->assertOk()
-            ->assertJsonPath('success', true)
-            ->assertJsonPath('cleanup.neo4j.document_job_ids', 1)
-            ->assertJsonPath('cleanup.neo4j.nodes', 4)
-            ->assertJsonPath('cleanup.neo4j.relationships', 6);
+            ->assertStatus(409)
+            ->assertJsonPath('success', false);
+        $this->assertDatabaseHas('datasets', ['dataset_id' => 'delete-dataset', 'status' => Dataset::STATUS_ARCHIVED]);
+        $this->assertDatabaseHas('managed_document_outputs', ['active' => true]);
+        Http::assertNothingSent();
+    }
 
-        $this->assertDatabaseMissing('datasets', ['dataset_id' => 'delete-dataset']);
+    public function test_dataset_final_verification_preserves_shared_storage_and_requires_zero_owned_data(): void
+    {
+        $dataset = Dataset::query()->create(['dataset_id' => 'scoped-delete', 'name' => 'Scoped delete',
+            'qdrant_collection' => 'shared_collection', 'neo4j_namespace' => 'owned_namespace']);
+        config()->set('config.qdrant_http_url', 'http://qdrant.test');
+        config()->set('config.neo4j_http_url', 'http://neo4j.test');
+        $remaining = 1;
+        Http::preventStrayRequests();
+        Http::fake(function (Request $request) use (&$remaining) {
+            if (str_starts_with($request->url(), 'http://qdrant.test')) {
+                $this->assertSame('POST', $request->method());
+                $this->assertSame(['must' => [['key' => 'dataset_id', 'match' => ['value' => 'scoped-delete']]]], $request['filter']);
+                $this->assertTrue($request['exact']);
 
-        Http::assertSent(function (Request $request): bool {
-            if (! str_starts_with($request->url(), 'http://neo4j.test/')) {
-                return false;
+                return Http::response(['result' => ['count' => $remaining]]);
+            }
+            foreach ($request['statements'] as $statement) {
+                $this->assertStringContainsString('dataset_id = $dataset_id AND', $statement['statement']);
+                $this->assertStringNotContainsString(' OR ', $statement['statement']);
+                $this->assertStringNotContainsString('DELETE', $statement['statement']);
+                $this->assertSame(['dataset_id' => 'scoped-delete', 'namespace' => 'owned_namespace'], $statement['parameters']);
             }
 
-            $statements = $request['statements'];
-            $nodeCleanup = (string) ($statements[1]['statement'] ?? '');
-
-            return ($statements[1]['parameters']['document_job_ids'] ?? []) === ['ingest-delete-dataset']
-                && str_contains($nodeCleanup, 'OR n.doc_id IN $document_job_ids')
-                && str_contains($nodeCleanup, 'OPTIONAL MATCH (node)-[attached]-()')
-                && str_contains($nodeCleanup, 'FOREACH (node IN nodes | DELETE node)');
+            return Http::response(['results' => [['data' => [['row' => [0]]]], ['data' => [['row' => [0]]]]], 'errors' => []]);
         });
+        $this->deleteJson('/api/datasets/scoped-delete/storage')->assertStatus(502);
+        $this->assertDatabaseHas('datasets', ['dataset_id' => $dataset->dataset_id, 'status' => Dataset::STATUS_ARCHIVED]);
+        $remaining = 0;
+        $this->deleteJson('/api/datasets/scoped-delete/storage')->assertOk()->assertJsonPath('success', true);
+        $this->assertDatabaseMissing('datasets', ['dataset_id' => $dataset->dataset_id]);
     }
 
     private function fakeGraphStats(int $points, int $nodes, int $relationships): void

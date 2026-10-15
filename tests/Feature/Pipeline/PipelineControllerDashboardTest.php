@@ -9,7 +9,7 @@ use App\Models\ManagedDocumentOutput;
 use App\Models\PipelineJob;
 use App\Models\PipelineStageState;
 use App\Models\PipelineTask;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Foundation\Testing\DatabaseMigrations;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\File;
@@ -19,13 +19,14 @@ use Tests\TestCase;
 
 class PipelineControllerDashboardTest extends TestCase
 {
-    use RefreshDatabase;
+    use DatabaseMigrations;
 
     protected function setUp(): void
     {
         parent::setUp();
 
         $this->actingAsApiUser();
+        config()->set('temporal.callbacks.secret', 'managed-test-secret');
     }
 
     public function test_pipeline_controller_has_its_own_page_and_is_removed_from_playground(): void
@@ -53,8 +54,8 @@ class PipelineControllerDashboardTest extends TestCase
         config()->set('temporal.storage.shared_root', $root);
         config()->set('file_converter.raganything_supported_extensions', ['pdf']);
         Http::fake([
-            '*temporal/workflows/ingest' => Http::response([
-                'workflow_id' => 'ingest-source-upload-workflow',
+            '*temporal/workflows/ingest' => fn ($request) => Http::response([
+                'workflow_id' => $request->data()['workflow_id'],
                 'run_id' => 'upload-run-1',
             ]),
         ]);
@@ -99,7 +100,7 @@ class PipelineControllerDashboardTest extends TestCase
             'source_url' => 'upload://sample.pdf',
             'status' => PipelineJob::STATUS_RUNNING,
             'current_stage' => 'temporal.workflow_started',
-            'temporal_workflow_id' => 'ingest-source-upload-workflow',
+            'temporal_workflow_id' => 'ingest-source-'.$response->json('source_id'),
             'temporal_run_id' => 'upload-run-1',
         ]);
         $this->assertDatabaseHas('ingestion_sources', [
@@ -107,7 +108,7 @@ class PipelineControllerDashboardTest extends TestCase
             'task_id' => $taskId,
             'dataset_id' => 'controller-test',
             'index_status' => 'running',
-            'temporal_workflow_id' => 'ingest-source-upload-workflow',
+            'temporal_workflow_id' => 'ingest-source-'.$response->json('source_id'),
         ]);
         $this->assertDatabaseHas('managed_documents', [
             'document_id' => $documentId,
@@ -361,8 +362,8 @@ class PipelineControllerDashboardTest extends TestCase
         config()->set('file_converter.raganything_supported_extensions', ['pdf']);
         config()->set('file_converter.custom_converter_status_path', '/jobs/{job_id}');
         Http::fake([
-            '*temporal/workflows/ingest' => Http::response([
-                'workflow_id' => 'ingest-source-custom-workflow',
+            '*temporal/workflows/ingest' => fn ($request) => Http::response([
+                'workflow_id' => $request->data()['workflow_id'],
                 'run_id' => 'upload-custom-run-1',
             ]),
         ]);
@@ -424,8 +425,8 @@ class PipelineControllerDashboardTest extends TestCase
         config()->set('temporal.storage.shared_root', $root);
         config()->set('file_converter.raganything_supported_extensions', ['pdf']);
         Http::fake([
-            '*temporal/workflows/ingest' => Http::response([
-                'workflow_id' => 'ingest-source-settings-workflow',
+            '*temporal/workflows/ingest' => fn ($request) => Http::response([
+                'workflow_id' => $request->data()['workflow_id'],
                 'run_id' => 'upload-settings-run-1',
             ]),
         ]);

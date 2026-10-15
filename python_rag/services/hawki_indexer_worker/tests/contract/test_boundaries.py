@@ -105,8 +105,14 @@ def test_temporal_activity_module_contains_only_transport_wrappers() -> None:
 
 def test_indexer_store_packages_are_visible_only_to_database_adapters() -> None:
     allowed = {
-        SOURCE / "adapters" / "qdrant_writer.py": {"hawki_vector_store.client"},
-        SOURCE / "adapters" / "neo4j_writer.py": {"hawki_graph_store.graph"},
+        SOURCE / "adapters" / "qdrant_writer.py": {
+            "hawki_vector_store.client",
+            "hawki_vector_store.settings",
+        },
+        SOURCE / "adapters" / "neo4j_writer.py": {
+            "hawki_graph_store.graph",
+            "hawki_graph_store.settings",
+        },
         SOURCE / "adapters" / "neo4j_cleanup.py": {"neo4j", "neo4j.exceptions"},
         SOURCE / "adapters" / "raganything" / "edge_parser.py": {
             "hawki_graph_store.normalization"
