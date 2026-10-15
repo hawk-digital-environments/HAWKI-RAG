@@ -8,7 +8,6 @@ use App\Services\Pipeline\Values\TemporalWorkflowExecution;
 use Illuminate\Config\Repository as ConfigRepository;
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Http\Client\Factory as HttpFactory;
-use Illuminate\Support\Facades\Http;
 use Psr\Clock\ClockInterface;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\Clock\Clock;
@@ -159,6 +158,21 @@ readonly class PythonTemporalBridgeClient
         ]);
     }
 
+    /** @return array<string, mixed> */
+    public function deleteOutputs(string $workflowId, array $input): array
+    {
+        $this->ensureEnabled();
+        $result = $this->postSigned('/temporal/workflows/delete-managed-document', [
+            'workflow_id' => $workflowId,
+            'workflow_input' => $input,
+        ]);
+        if (($result['workflow_id'] ?? null) !== $workflowId) {
+            throw new \RuntimeException('Deletion workflow acknowledgement has an unexpected identity.');
+        }
+
+        return $result;
+    }
+
     public function cancelWorkflow(string $workflowId, ?string $runId = null): void
     {
         $this->ensureEnabled();
@@ -195,7 +209,7 @@ readonly class PythonTemporalBridgeClient
      */
     private function post(string $path, array $payload): array
     {
-        $response = Http::timeout($this->timeout())
+        $response = $this->http->timeout($this->timeout())
             ->acceptJson()
             ->asJson()
             ->post($this->bridgeUrl().$path, $payload);
@@ -224,7 +238,7 @@ readonly class PythonTemporalBridgeClient
     {
         $secret = (string) $this->config->get('temporal.callbacks.secret');
         if ($secret === '') {
-            throw new \RuntimeException('Authenticated managed replacement is not configured.');
+            throw new \RuntimeException('Authenticated managed Temporal control is not configured.');
         }
         $body = json_encode($payload, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
         $timestamp = (string) $this->clock->now()->getTimestamp();
@@ -235,7 +249,7 @@ readonly class PythonTemporalBridgeClient
         $response->throw();
         $result = $response->json();
         if (! is_array($result)) {
-            throw new \RuntimeException('Managed replacement bridge returned invalid JSON.');
+            throw new \RuntimeException('Managed Temporal bridge returned invalid JSON.');
         }
 
         return $result;

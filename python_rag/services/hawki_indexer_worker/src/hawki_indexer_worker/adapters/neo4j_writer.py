@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass, replace
 
 from hawki_graph_store.graph import Neo4jGraph
@@ -74,10 +75,12 @@ class RegisteredGraphWriter(Neo4jWriter):
         authorize: Callable[[str, str, str], None],
         dataset_id: str,
         neo4j_namespace: str,
+        write_guard: Callable[[], AbstractContextManager[None]] = nullcontext,
     ) -> None:
         super().__init__(client)
         self.failed_write = failed_write
         self.authorize = authorize
+        self.write_guard = write_guard
         self.dataset_id = dataset_id
         self.neo4j_namespace = neo4j_namespace
 
@@ -90,20 +93,21 @@ class RegisteredGraphWriter(Neo4jWriter):
         dataset_id: str,
         neo4j_namespace: str,
     ) -> object:
-        try:
+        with self.write_guard():
             if dataset_id != self.dataset_id or neo4j_namespace != self.neo4j_namespace:
                 raise RuntimeError("Graph mutation exceeds client scope")
             self.authorize(doc_id, dataset_id, neo4j_namespace)
-            return super().upsert_triplets(
-                triplets,
-                doc_id=doc_id,
-                request_id=request_id,
-                dataset_id=dataset_id,
-                neo4j_namespace=neo4j_namespace,
-            )
-        except BaseException:
-            self.failed_write()
-            raise
+            try:
+                return super().upsert_triplets(
+                    triplets,
+                    doc_id=doc_id,
+                    request_id=request_id,
+                    dataset_id=dataset_id,
+                    neo4j_namespace=neo4j_namespace,
+                )
+            except BaseException:
+                self.failed_write()
+                raise
 
     def delete_by_doc_id(self, doc_id: str, *, request_id: str | None = None) -> object:
         return self.delete_scoped_document(doc_id, request_id=request_id)
@@ -111,12 +115,13 @@ class RegisteredGraphWriter(Neo4jWriter):
     def delete_scoped_document(
         self, doc_id: str, *, request_id: str | None = None
     ) -> dict[str, object]:
-        try:
+        with self.write_guard():
             self.authorize(doc_id, self.dataset_id, self.neo4j_namespace)
-            return super().delete_scoped_document(doc_id, request_id=request_id)
-        except BaseException:
-            self.failed_write()
-            raise
+            try:
+                return super().delete_scoped_document(doc_id, request_id=request_id)
+            except BaseException:
+                self.failed_write()
+                raise
 
 
 def create_registered_graph_writer(
@@ -126,6 +131,7 @@ def create_registered_graph_writer(
     dataset_id: str | None = None,
     neo4j_namespace: str | None = None,
     authorize: Callable[[str, str, str], None],
+    write_guard: Callable[[], AbstractContextManager[None]] = nullcontext,
 ) -> GraphWriterPort:
     client = Neo4jGraph(
         database=database,
@@ -140,6 +146,7 @@ def create_registered_graph_writer(
         authorize=authorize,
         dataset_id=dataset_id,
         neo4j_namespace=neo4j_namespace,
+        write_guard=write_guard,
     )
 
 

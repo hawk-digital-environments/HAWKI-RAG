@@ -6,11 +6,11 @@ namespace App\Services\Pipeline\Tasks;
 
 use App\Models\PipelineJob;
 use App\Models\PipelineTask;
+use App\Services\Pipeline\Clients\PythonTemporalBridgeClient;
 use App\Services\Pipeline\Repositories\IngestionSourceRepository;
 use App\Services\Pipeline\Repositories\PipelineJobStateMutationRepository;
 use App\Services\Pipeline\Repositories\PipelineTaskRepository;
 use App\Services\Pipeline\Repositories\Queries\PipelineTaskJobsQuery;
-use App\Services\Pipeline\Clients\PythonTemporalBridgeClient;
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Support\Carbon;
 use Psr\Clock\ClockInterface;
@@ -26,11 +26,10 @@ readonly class PipelineTaskCancellationService
         private IngestionSourceRepository $sources,
         private PipelineTaskStatusRefresher $refresher,
         private PythonTemporalBridgeClient $temporalBridge,
-        private ClockInterface $clock = new Clock(),
-    ) {
-    }
+        private ClockInterface $clock = new Clock,
+    ) {}
 
-    public function cancel(string $taskId): ?PipelineTask
+    public function cancel(string $taskId, ?string $sourceId = null): ?PipelineTask
     {
         $task = $this->taskRepository->findByTaskId($taskId);
         if (! $task) {
@@ -38,7 +37,8 @@ readonly class PipelineTaskCancellationService
         }
 
         $jobs = $this->taskJobs->forTask($taskId)
-            ->filter(fn (PipelineJob $job): bool => $this->isCancellableTemporalJob($job));
+            ->filter(fn (PipelineJob $job): bool => ($sourceId === null || $job->source_id === $sourceId)
+                && $this->isCancellableTemporalJob($job));
 
         foreach ($jobs as $job) {
             $workflowId = (string) $job->temporal_workflow_id;
@@ -46,18 +46,19 @@ readonly class PipelineTaskCancellationService
                 ? $job->temporal_run_id
                 : null;
 
+            if (is_string($job->source_id) && $job->source_id !== '') {
+                $source = $this->sources->findBySourceId($job->source_id);
+                if ($source) {
+                    // Persist the managed gate before an uncertain cancellation request.
+                    $this->sources->markCancelled($source);
+                }
+            }
             $this->temporalBridge->cancelWorkflow($workflowId, $runId);
 
             $metadata = $job->metadata ?? [];
             $metadata['cancelled_at'] = $this->timestamp();
             $this->jobStates->markTemporalCancellationRequested($job, $this->now(), $metadata);
 
-            if (is_string($job->source_id) && $job->source_id !== '') {
-                $source = $this->sources->findBySourceId($job->source_id);
-                if ($source) {
-                    $this->sources->markCancelled($source);
-                }
-            }
         }
 
         return $this->refresher->recalculate($task);

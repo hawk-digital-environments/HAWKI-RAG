@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Database;
 
+use App\Models\Dataset;
 use App\Models\IngestionSource;
 use App\Models\ManagedDocument;
 use App\Models\ManagedDocumentDeletion;
@@ -11,6 +12,8 @@ use App\Models\PipelineJob;
 use App\Models\PipelineTask;
 use App\Models\User;
 use App\Services\Document\ManagedDocumentOutputDeletionService;
+use App\Services\Pipeline\Repositories\IngestionSourceRepository;
+use App\Services\Pipeline\Repositories\PipelineTaskRepository;
 use App\Services\Pipeline\Tasks\IngestSourceWorkflowPayloadFactory;
 use App\Services\Pipeline\Uploads\PipelineUploadService;
 use App\Services\Pipeline\Values\PipelineUploadInput;
@@ -179,6 +182,70 @@ final class ManagedDeletionPostgresTest extends TestCase
         $this->assertTrue($result->payload['success']);
         $this->assertSame('redispatched-initial-run', PipelineJob::query()->where('task_id', $taskId)->firstOrFail()->temporal_run_id);
         $this->assertSame($frozen, $source->fresh()->metadata['managed_dispatch']['input']);
+    }
+
+    #[TestWith([true])]
+    #[TestWith([false])]
+    public function test_dataset_archival_serializes_with_new_source_reservation(bool $archiveFirst): void
+    {
+        ManagedDocument::query()->delete();
+        PipelineJob::query()->delete();
+        IngestionSource::query()->delete();
+        PipelineTask::query()->delete();
+        File::ensureDirectoryExists($this->storageRoot);
+        $code = <<<'PHP'
+require 'vendor/autoload.php';
+$app = require 'bootstrap/app.php';
+$app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+$input = json_decode(stream_get_contents(STDIN), true, 512, JSON_THROW_ON_ERROR);
+config()->set('database.connections.managed_delete_child', $input['connection']);
+config()->set('database.default', 'managed_delete_child');
+Illuminate\Support\Facades\Http::preventStrayRequests();
+file_put_contents($input['marker'], 'ready');
+if ($input['archive_first']) {
+    try {
+        app(App\Services\Pipeline\Repositories\IngestionSourceRepository::class)->upsertStarting('late-source', ['dataset_id' => 'writer-test', 'source_url' => 'upload://late.pdf']);
+        exit(1);
+    } catch (RuntimeException $error) {
+        echo $error->getMessage();
+    }
+} else {
+    echo app(App\Services\Dataset\DatasetService::class)->delete('writer-test')['status'];
+}
+PHP;
+        $process = new Process([PHP_BINARY, '-r', $code], base_path(), ['APP_ENV' => 'testing']);
+        $process->setInput(json_encode(['connection' => $this->connection, 'archive_first' => $archiveFirst,
+            'marker' => $this->storageRoot.'/reservation-ready'], JSON_THROW_ON_ERROR));
+        $process->setTimeout(15);
+        DB::beginTransaction();
+        try {
+            if ($archiveFirst) {
+                Dataset::query()->where('dataset_id', 'writer-test')->update(['status' => 'archived']);
+            } else {
+                app(IngestionSourceRepository::class)->upsertStarting('late-source', ['dataset_id' => 'writer-test', 'source_url' => 'upload://late.pdf']);
+            }
+            $process->start();
+            $deadline = microtime(true) + 10;
+            while (! File::exists($this->storageRoot.'/reservation-ready') && microtime(true) < $deadline) {
+                usleep(100_000);
+            }
+            $this->assertFileExists($this->storageRoot.'/reservation-ready');
+            usleep(100_000);
+            $this->assertTrue($process->isRunning(), $process->getErrorOutput().$process->getOutput());
+            DB::commit();
+            $process->wait();
+            $this->assertTrue($process->isSuccessful(), $process->getErrorOutput().$process->getOutput());
+            $this->assertSame($archiveFirst ? 'Dataset is unavailable for new ingestion.' : '409', $process->getOutput());
+            $this->assertSame($archiveFirst ? 0 : 1, IngestionSource::query()->where('source_id', 'late-source')->count());
+            $this->assertDatabaseHas('datasets', ['dataset_id' => 'writer-test', 'status' => 'archived']);
+        } finally {
+            if (DB::transactionLevel() > 0) {
+                DB::rollBack();
+            }
+            if ($process->isRunning()) {
+                $process->stop();
+            }
+        }
     }
 
     public function test_deletion_fences_committed_creation_before_delayed_dispatch(): void
@@ -454,6 +521,32 @@ PHP;
         $this->assertSame($frozen, $source->fresh()->metadata['managed_dispatch']['input']);
     }
 
+    public function test_pending_cleanup_dispatch_waits_for_outer_release_commit(): void
+    {
+        $this->signedWriter($this->writerEvent('acquire', [$this->target()]))->assertOk();
+        $this->deleteJson('/api/documents/adoc_writer_test')->assertAccepted();
+        Http::assertNothingSent();
+        Http::fake(function ($request) {
+            $this->assertSame(0, DB::transactionLevel());
+            $query = $this->independentConnectionWithSchema()->query("SELECT metadata FROM ingestion_sources WHERE source_id = 'source-writer'");
+            $metadata = json_decode($query->fetchColumn(), true);
+            $this->assertSame('released', array_values($metadata['managed_writers'])[0]['status']);
+
+            return Http::response(['workflow_id' => $request['workflow_id'], 'run_id' => 'delete-run', 'status' => 'pending']);
+        });
+        DB::beginTransaction();
+        try {
+            $this->signedWriter($this->writerEvent('release'))->assertOk();
+            Http::assertNothingSent();
+            DB::commit();
+            Http::assertSentCount(1);
+        } finally {
+            if (DB::transactionLevel() > 0) {
+                DB::rollBack();
+            }
+        }
+    }
+
     public function test_writer_release_does_not_wait_for_document_lock(): void
     {
         $this->signedWriter($this->writerEvent('acquire', [$this->target()]))->assertOk();
@@ -572,6 +665,22 @@ PHP;
             }
         }
         $this->assertDatabaseCount('managed_document_outputs', 2);
+    }
+
+    public function test_hidden_task_flag_retains_evidence_and_survives_a_stale_recovery_update(): void
+    {
+        $task = PipelineTask::query()->firstOrFail();
+        $repository = app(PipelineTaskRepository::class);
+        $this->signedWriter($this->writerEvent('acquire', [$this->target()]))->assertOk();
+        $this->deleteJson('/api/pipeline/tasks/writer-task')->assertOk()->assertJsonPath('history_hidden', true);
+        $this->assertTrue($task->fresh()->metadata['history_hidden']);
+        $this->assertCount(0, $repository->recent());
+        $repository->markRecoveryRunning($task, ['retry_count' => 1]);
+        $this->assertCount(0, $repository->recent());
+        $this->assertTrue($task->fresh()->metadata['history_hidden']);
+        $this->assertDatabaseHas('pipeline_jobs', ['job_id' => 'writer-job']);
+        $this->assertDatabaseHas('ingestion_sources', ['source_id' => 'source-writer']);
+        $this->assertSame(200, $this->concurrentWriter($this->writerEvent('release')));
     }
 
     private function concurrentWriter(array $event, string $path = '/api/internal/pipeline/managed-writers'): int

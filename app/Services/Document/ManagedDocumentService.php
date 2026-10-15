@@ -7,7 +7,6 @@ namespace App\Services\Document;
 use App\Models\ManagedDocument;
 use App\Models\ManagedDocumentDeletion;
 use App\Services\Document\Exceptions\ManagedDeletionException;
-use App\Services\Document\Repositories\ManagedDocumentOutputRepository;
 use App\Services\Document\Repositories\ManagedDocumentRepository;
 use App\Services\Document\Values\ManagedDocumentId;
 use App\Services\Pipeline\Repositories\PipelineTransactionRepository;
@@ -25,7 +24,6 @@ readonly class ManagedDocumentService
 {
     public function __construct(
         private ManagedDocumentRepository $documents,
-        private ManagedDocumentOutputRepository $outputs,
         private ManagedDocumentSyncService $sync,
         private ManagedDocumentPayloadBuilder $payloads,
         private ManagedDocumentOutputDeletionService $deletions,

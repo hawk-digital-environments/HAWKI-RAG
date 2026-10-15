@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Pipeline\Repositories;
 
+use App\Models\Dataset;
 use App\Models\IngestionSource;
 use App\Models\PipelineJob;
 use Illuminate\Container\Attributes\Singleton;
@@ -53,6 +54,14 @@ readonly class IngestionSourceRepository
     public function upsertStarting(string $sourceId, array $attributes): IngestionSource
     {
         return $this->database->transaction(function () use ($sourceId, $attributes): IngestionSource {
+            if (! $this->findBySourceId($sourceId) && isset($attributes['dataset_id'])) {
+                // New reservations serialize with dataset archival. Existing source
+                // recovery retains its established job/source lock order.
+                $dataset = Dataset::query()->where('dataset_id', $attributes['dataset_id'])->lockForUpdate()->first();
+                if (! $dataset || $dataset->status !== Dataset::STATUS_ACTIVE) {
+                    throw new \RuntimeException('Dataset is unavailable for new ingestion.');
+                }
+            }
             $current = $this->lockBySourceId($sourceId);
             if ($current && isset($current->metadata['managed_deletion'])) {
                 throw new \RuntimeException('Managed deletion prevents restarting this ingestion source.');
@@ -252,13 +261,22 @@ readonly class IngestionSourceRepository
         return $source->refresh();
     }
 
-    public function markCancelled(IngestionSource $source): IngestionSource
+    public function markCancelled(IngestionSource $source, bool $changeStatus = true): IngestionSource
     {
-        $source->forceFill([
-            'index_status' => IngestionSource::STATUS_CANCELLED,
-        ])->save();
+        return $this->database->transaction(function () use ($source, $changeStatus): IngestionSource {
+            $current = $this->lockBySourceId($source->source_id);
+            if (isset($current->metadata['managed_deletion'])) {
+                return $current;
+            }
+            $metadata = $current->metadata ?? [];
+            $request = $metadata['request'] ?? [];
+            if (isset($metadata['managed_dispatch']) || isset(($request['metadata'] ?? $request)['managed_document_id'])) {
+                $metadata['managed_writer_gate'] = 'closed';
+            }
+            $current->forceFill(['metadata' => $metadata, ...($changeStatus ? ['index_status' => IngestionSource::STATUS_CANCELLED] : [])])->save();
 
-        return $source->refresh();
+            return $current->refresh();
+        });
     }
 
     public function markDeletionRequested(

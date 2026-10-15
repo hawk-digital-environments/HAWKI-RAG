@@ -1,6 +1,5 @@
 <?php
 
-use App\Services\Document\Clients\ManagedDocumentBridgeClient;
 use App\Services\Pipeline\Clients\PythonTemporalBridgeClient;
 use Illuminate\Config\Repository;
 use Illuminate\Http\Client\Factory;
@@ -27,6 +26,6 @@ if (($argv[1] ?? null) === 'replacement') {
     (new PythonTemporalBridgeClient($config, new NullLogger, $http))
         ->startIngestWorkflow($input, 'ingest-source-'.$input['source_id'], true);
 } else {
-    (new ManagedDocumentBridgeClient($config, $http))
+    (new PythonTemporalBridgeClient($config, new NullLogger, $http))
         ->deleteOutputs('managed-'.$input['operation_id'], $input);
 }

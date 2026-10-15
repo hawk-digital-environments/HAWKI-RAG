@@ -46,32 +46,46 @@ def ingest_markdown_files(payload: dict[str, Any]) -> dict[str, Any]:
     registration = ManagedWriterRegistration.acquire_for(
         settings, dict(activity_input.workflow_input), activity.info()
     )
-    workflow_dependencies = build_ingest_workflow_dependencies()
-    if registration:
-        workflow_dependencies = registration.bind_dependencies(workflow_dependencies)
-    graph_service = create_graph_extractor(settings.rag_working_dir, logger_obj=logger)
-    with create_callback_sender(settings) as callback_sender:
-        result = execute_index_activity(
-            activity_input,
-            context=IndexActivityContext(
-                settings=settings,
-                activity_info=activity.info(),
-                heartbeat_sender=activity.heartbeat,
-            ),
-            dependencies=IndexActivityDependencies(
-                artifact_store=None,
-                graph_service=graph_service,
-                provider_resolver=get_provider,
-                workflow_dependencies=workflow_dependencies,
-                status_reporter=partial(report_status, sender=callback_sender),
-                ingest_documents=ingest_documents,
-                target_registrar=registration.register_targets
-                if registration
-                else None,
-            ),
+    try:
+        workflow_dependencies = build_ingest_workflow_dependencies()
+        if registration:
+            workflow_dependencies = registration.bind_dependencies(
+                workflow_dependencies
+            )
+        graph_service = create_graph_extractor(
+            settings.rag_working_dir, logger_obj=logger
         )
-    if registration:
-        registration.release()
+        with create_callback_sender(settings) as callback_sender:
+            result = execute_index_activity(
+                activity_input,
+                context=IndexActivityContext(
+                    settings=settings,
+                    activity_info=activity.info(),
+                    heartbeat_sender=activity.heartbeat,
+                ),
+                dependencies=IndexActivityDependencies(
+                    artifact_store=None,
+                    graph_service=graph_service,
+                    provider_resolver=get_provider,
+                    workflow_dependencies=workflow_dependencies,
+                    status_reporter=partial(report_status, sender=callback_sender),
+                    ingest_documents=ingest_documents,
+                    target_registrar=registration.register_targets
+                    if registration
+                    else None,
+                ),
+            )
+    finally:
+        if registration:
+            # The activity body has unwound. Release only after all admitted sink
+            # calls have returned; a lost acknowledgement still fails closed.
+            with activity.shield_thread_cancel_exception():
+                try:
+                    registration.release()
+                except Exception:
+                    logger.warning(
+                        "Managed writer drain/release is unconfirmed", exc_info=True
+                    )
     return result.model_dump(mode="json")
 
 

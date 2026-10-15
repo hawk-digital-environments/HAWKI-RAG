@@ -84,7 +84,7 @@ function bootDatasetsDashboard() {
         const data = text ? JSON.parse(text) : {};
 
         if (!response.ok || data.success === false) {
-            throw new Error(data.message || `HTTP ${response.status}`);
+            throw new Error(data.message || data.error || `HTTP ${response.status}`);
         }
 
         return data;
@@ -208,6 +208,21 @@ function bootDatasetsDashboard() {
         button.disabled = doc.id === state.selectedDocumentId;
 
         return button;
+    }
+
+    function documentActions(doc) {
+        const actions = document.createElement('span');
+        actions.className = 'evidence-stack';
+        actions.append(openDocumentButton(doc));
+        if (doc.id && doc.status !== 'deleted') {
+            actions.append(actionButton(
+                doc.status === 'deleting' ? 'Retry deletion' : 'Delete',
+                () => deleteDocument(doc),
+                'Document deletion failed. Retry to resume cleanup.',
+            ));
+        }
+
+        return actions;
     }
 
     function evidencePills(doc) {
@@ -371,7 +386,7 @@ function bootDatasetsDashboard() {
             evidencePills(doc),
             doc.source_url,
             formatDate(doc.updated_at || doc.created_at),
-            openDocumentButton(doc),
+            documentActions(doc),
         ], 'No documents found for this dataset.');
     }
 
@@ -676,11 +691,27 @@ function bootDatasetsDashboard() {
         setStatus(`Queued retry for ${jobId}.`, 'success');
     }
 
+    async function deleteDocument(doc) {
+        const label = doc.title || doc.original_filename || doc.id;
+        if (!window.confirm(`Delete ${label}? This removes this document's indexed content. Cleanup must be verified before deletion completes.`)) return;
+
+        setStatus(`Deleting ${label}; awaiting cleanup verification...`, 'warn');
+        const data = await requestJson(`documents/${encodeURIComponent(doc.id)}`, { method: 'DELETE' });
+        const completed = data.operation?.status === 'completed' && data.document?.status === 'deleted';
+        await loadDatasets({ keepSelection: true });
+        setStatus(
+            completed
+                ? `Deleted ${label}. Indexed content cleanup is verified.`
+                : `Deletion of ${label} is pending cleanup verification. Cleanup resumes automatically after the writer acknowledges completion.`,
+            completed ? 'success' : 'warn',
+        );
+    }
+
     async function deleteDatasetStorage(dataset) {
         const qdrant = dataset.qdrant_collection || 'the linked Qdrant collection';
         const neo4j = dataset.neo4j_namespace || 'the linked Neo4j namespace';
         const confirmed = window.confirm(
-            `Delete dataset ${dataset.dataset_id}?\n\nThis deletes Qdrant collection "${qdrant}", Neo4j graph data for "${neo4j}", and removes the dataset from this browser. Historical task and document records stay in the database.`,
+            `Delete dataset ${dataset.dataset_id}?\n\nThis removes owned points from "${qdrant}", owned Neo4j contributions in "${neo4j}", and removes the dataset from this browser. Historical task and document records stay in the database.`,
         );
         if (!confirmed) return;
 

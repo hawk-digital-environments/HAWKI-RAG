@@ -7,15 +7,16 @@ namespace App\Services\Document;
 use App\Models\IngestionSource;
 use App\Models\ManagedDocument;
 use App\Models\ManagedDocumentDeletion;
-use App\Services\Document\Clients\ManagedDocumentBridgeClient;
 use App\Services\Document\Exceptions\ManagedDeletionException;
 use App\Services\Document\Repositories\ManagedDocumentDeletionRepository;
 use App\Services\Document\Repositories\ManagedDocumentOutputRepository;
 use App\Services\Document\Repositories\ManagedDocumentRepository;
 use App\Services\Document\Repositories\ManagedDocumentWriterRepository;
 use App\Services\Document\Values\ManagedDocumentId;
+use App\Services\Pipeline\Clients\PythonTemporalBridgeClient;
 use App\Services\Pipeline\Repositories\IngestionSourceRepository;
 use App\Services\Pipeline\Repositories\PipelineTransactionRepository;
+use App\Services\Pipeline\Tasks\PipelineTaskCancellationService;
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Contracts\Config\Repository as ConfigRepository;
 use Illuminate\Support\Carbon;
@@ -26,7 +27,7 @@ use Symfony\Component\Clock\Clock;
 readonly class ManagedDocumentOutputDeletionService
 {
     public function __construct(
-        private ManagedDocumentBridgeClient $bridge,
+        private PythonTemporalBridgeClient $bridge,
         private ManagedDocumentDeletionRepository $operations,
         private ManagedDocumentRepository $documents,
         private ManagedDocumentSyncService $sync,
@@ -35,12 +36,13 @@ readonly class ManagedDocumentOutputDeletionService
         private PipelineTransactionRepository $transactions,
         private ConfigRepository $config,
         private ManagedDocumentWriterRepository $writerJobs,
+        private PipelineTaskCancellationService $cancellations,
         private ClockInterface $clock = new Clock,
     ) {}
 
     public function pending(string $documentId): bool
     {
-        return $this->operations->blocksSync($documentId);
+        return $this->operations->blocking($documentId) !== null;
     }
 
     public function hasRequest(string $documentId, ?string $key): bool
@@ -51,7 +53,23 @@ readonly class ManagedDocumentOutputDeletionService
     /** Persist the immutable scope before any network call. */
     public function prepare(ManagedDocument $document, string $purpose, ?string $key, ?string $requestHash = null): ManagedDocumentDeletion
     {
-        return $this->transactions->run(function () use ($document, $purpose, $key, $requestHash): ManagedDocumentDeletion {
+        $blocking = $this->operations->blocking($document->document_id);
+        $cancel = [];
+        if ($purpose === 'delete' && (! $blocking || $blocking->purpose === 'delete')) {
+            foreach ($this->sources->ownedManagedSources($document->document_id, $document->dataset_id) as $source) {
+                if ($source->index_status === IngestionSource::STATUS_DELETED) {
+                    continue;
+                }
+                // Closing a gate is durable even when writer quiescence is still uncertain.
+                $active = in_array($source->index_status, [IngestionSource::STATUS_RUNNING, IngestionSource::STATUS_PENDING], true);
+                $this->sources->markCancelled($source, $active);
+                if ($source->task_id && $active && ($source->metadata['managed_dispatch']['attempted'] ?? null) !== false) {
+                    $cancel[] = [$source->task_id, $source->source_id];
+                }
+            }
+        }
+
+        $operation = $this->transactions->run(function () use ($document, $purpose, $key, $requestHash): ManagedDocumentDeletion {
             $document = $this->operations->lockDocument($document->document_id);
             $keyHash = $key === null ? null : hash('sha256', $key);
             $existing = $this->operations->forRequest($document->document_id, $purpose, $keyHash);
@@ -90,9 +108,9 @@ readonly class ManagedDocumentOutputDeletionService
                         ['collection' => $target['collection'], 'graph' => $target['neo4j_namespace'] !== null, 'neo4j_namespace' => $target['neo4j_namespace']]);
                 }
             }
-            $outputs = $this->outputs->backfillScopes($document, $this->outputs->unverifiedForDocument($document->document_id));
-            if ($outputs->count() > 1000) {
-                throw ManagedDeletionException::conflict('Managed deletion exceeds the supported output limit of 1000.');
+            $outputs = $this->outputs->backfillScopes($this->outputs->unverifiedForDocument($document->document_id));
+            if ($outputs->count() > 2000) {
+                throw ManagedDeletionException::conflict('Managed deletion exceeds the supported output limit of 2000.');
             }
             $targets = [];
             $writers = [];
@@ -117,21 +135,23 @@ readonly class ManagedDocumentOutputDeletionService
                 if (($source->metadata['managed_writer_protocol'] ?? null) !== 1) {
                     throw ManagedDeletionException::conflict('Managed writer evidence is missing. Reconcile historical manifests and stop untracked writers before deletion.');
                 }
-                if (($source->metadata['managed_target_manifest_complete'] ?? null) !== true) {
+                $awaitingWriter = $purpose === 'delete' && ! empty($source->metadata['managed_writers'])
+                    && collect($source->metadata['managed_writers'])->contains(fn ($writer): bool => $writer['status'] !== 'released');
+                if (($source->metadata['managed_target_manifest_complete'] ?? null) !== true && ! $awaitingWriter) {
                     throw ManagedDeletionException::conflict('The owned target manifest is missing or incomplete; reconcile converter artifacts before cleanup.');
                 }
                 foreach ($source->metadata['managed_writers'] ?? [] as $writer) {
-                    if ($writer['status'] !== 'released') {
+                    if ($writer['status'] !== 'released' && $purpose !== 'delete') {
                         throw ManagedDeletionException::conflict('Managed writer is active or uncertain. Stop and reconcile that execution before deletion; workflow cancellation alone is insufficient.');
                     }
                 }
-                if (in_array($source->index_status, [IngestionSource::STATUS_RUNNING, IngestionSource::STATUS_PENDING], true)
+                if (($purpose !== 'delete' && in_array($source->index_status, [IngestionSource::STATUS_RUNNING, IngestionSource::STATUS_PENDING], true))
                     || $source->temporal_schedule_id) {
                     throw ManagedDeletionException::conflict('An active or scheduled ingestion must finish before managed deletion.');
                 }
                 $workflowId = $source->temporal_workflow_id;
                 $runId = $source->metadata['temporal']['run_id'] ?? $source->metadata['worker_event']['run_id'] ?? null;
-                if (($workflowId && ! $runId) || (! $workflowId && $source->index_status === IngestionSource::STATUS_FAILED)) {
+                if (($workflowId && ! $runId) || (! $workflowId && in_array($source->index_status, [IngestionSource::STATUS_FAILED, IngestionSource::STATUS_CANCELLED], true))) {
                     throw ManagedDeletionException::conflict('The ingestion workflow run must be reconciled before deletion.');
                 }
                 if ($workflowId) {
@@ -190,6 +210,21 @@ readonly class ManagedDocumentOutputDeletionService
 
             return $operation;
         });
+        foreach ($cancel as [$taskId, $sourceId]) {
+            try {
+                $this->cancellations->cancel($taskId, $sourceId);
+            } catch (\Throwable $error) {
+                $operation = $this->transactions->run(function () use ($operation, $error): ManagedDocumentDeletion {
+                    $this->operations->lockDocument($operation->document_id);
+                    $current = $this->operations->lock($operation->operation_id);
+
+                    return $current->status === 'pending'
+                        ? $this->operations->save($current, ['attempts' => [...$current->attempts, 'cancellation_error' => $error->getMessage()]]) : $current;
+                });
+            }
+        }
+
+        return $operation;
     }
 
     /** Unknown startup leaves the same operation available for redispatch. */
@@ -202,18 +237,23 @@ readonly class ManagedDocumentOutputDeletionService
         if (in_array($operation->status, ['preparing', 'completed', 'continued', 'abandoned'], true)) {
             return $operation;
         }
-        $operation = $this->transactions->run(function () use ($operation): ManagedDocumentDeletion {
+        $ready = false;
+        $operation = $this->transactions->run(function () use ($operation, &$ready): ManagedDocumentDeletion {
             $this->operations->lockDocument($operation->document_id);
             $current = $this->operations->lock($operation->operation_id);
             if (in_array($current->status, ['preparing', 'completed', 'continued', 'abandoned'], true)) {
                 return $current;
             }
+            if (! $this->writersReleased($current)) {
+                return $current; // Durable pending operation; never infer drain from workflow closure.
+            }
+            $ready = true;
             $attempts = $current->attempts ?? [];
             $attempts['dispatch_sequence'] = ($attempts['dispatch_sequence'] ?? 0) + 1;
 
             return $this->operations->save($current, ['attempts' => $attempts]);
         });
-        if (in_array($operation->status, ['preparing', 'completed', 'continued', 'abandoned'], true)) {
+        if (! $ready || in_array($operation->status, ['preparing', 'completed', 'continued', 'abandoned'], true)) {
             return $operation;
         }
         $sequence = $operation->attempts['dispatch_sequence'];
@@ -306,6 +346,9 @@ readonly class ManagedDocumentOutputDeletionService
                     'last_error' => 'Sink cleanup failed; retry the original request.',
                 ]);
             }
+            if (! $this->writersReleased($operation)) {
+                throw ManagedDeletionException::conflict('Writer completion is not acknowledged; cleanup must remain pending.');
+            }
             $targets = $operation->workflow_input['targets'];
             $results = $receipt['results'];
             if (count($results) !== count($targets)) {
@@ -335,7 +378,7 @@ readonly class ManagedDocumentOutputDeletionService
             }
             $now = Carbon::instance($this->clock->now());
             $this->outputs->deactivateSelected($document, $targets, $now);
-            foreach (array_unique(array_filter([...array_column($targets, 'source_id'), $document->latest_source_id])) as $id) {
+            foreach (array_unique(array_filter([...array_keys($operation->attempts['source_states'] ?? []), ...array_column($targets, 'source_id'), $document->latest_source_id])) as $id) {
                 $source = $this->sources->findBySourceId($id);
                 if ($source) {
                     $this->sources->markManagedDeletion($source, $operation->operation_id, IngestionSource::STATUS_DELETED);
@@ -350,6 +393,43 @@ readonly class ManagedDocumentOutputDeletionService
                 'status' => 'completed', 'run_id' => $receipt['run_id'], 'results' => $results, 'last_error' => null,
             ]);
         });
+    }
+
+    private function writersReleased(ManagedDocumentDeletion $operation): bool
+    {
+        if (! is_array($operation->attempts['source_states'] ?? null)) {
+            return false;
+        }
+        $targets = [];
+        foreach ($operation->workflow_input['targets'] as $target) {
+            $targets[$target['source_id'].'|'.$target['doc_id']] = $target;
+        }
+        foreach (array_keys($operation->attempts['source_states'] ?? []) as $id) {
+            $source = $this->sources->lockBySourceId($id);
+            if (! $source || $source->dataset_id !== $operation->dataset_id) {
+                return false;
+            }
+            if (($source->metadata['managed_dispatch']['attempted'] ?? null) === false) {
+                continue;
+            }
+            if ($source->index_status === IngestionSource::STATUS_DELETED
+                && ($source->metadata['managed_deletion']['status'] ?? null) === IngestionSource::STATUS_DELETED) {
+                continue;
+            }
+            if (($source->metadata['managed_writer_protocol'] ?? null) !== 1
+                || ($source->metadata['managed_target_manifest_complete'] ?? null) !== true
+                || collect($source->metadata['managed_writers'] ?? [])->contains(fn ($writer): bool => $writer['status'] !== 'released')) {
+                return false;
+            }
+            foreach ($source->metadata['managed_targets'] ?? [] as $docId => $scope) {
+                $target = $targets[$id.'|'.$docId] ?? null;
+                if (! $target || $target['collection'] !== $scope['collection'] || $target['neo4j_namespace'] !== $scope['neo4j_namespace']) {
+                    return false; // A changed historical manifest cannot expand an immutable cleanup snapshot.
+                }
+            }
+        }
+
+        return true;
     }
 
     public function continueUpdate(ManagedDocumentDeletion $operation, callable $dispatch, callable $publish): array

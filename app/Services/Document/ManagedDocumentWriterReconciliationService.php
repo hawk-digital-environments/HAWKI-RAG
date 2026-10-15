@@ -74,8 +74,8 @@ readonly class ManagedDocumentWriterReconciliationService
         } catch (\Throwable $error) {
             throw ManagedDeletionException::conflict('The owned manifest is corrupt: '.$error->getMessage());
         }
-        if (! is_array($records) || ! array_is_list($records) || count($records) > 1000) {
-            throw ManagedDeletionException::conflict('The owned manifest must list at most 1000 complete artifact identities.');
+        if (! is_array($records) || ! array_is_list($records) || count($records) > 2000) {
+            throw ManagedDeletionException::conflict('The owned manifest must list at most 2000 complete artifact identities.');
         }
         $scope = $source->metadata['managed_dispatch']['input']['ingestion'] ?? $source->metadata['dataset'] ?? [];
         $scope['collection'] ??= $scope['qdrant_collection'] ?? null;

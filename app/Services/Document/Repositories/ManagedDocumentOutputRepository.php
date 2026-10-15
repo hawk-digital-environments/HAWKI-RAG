@@ -143,30 +143,10 @@ readonly class ManagedDocumentOutputRepository
     }
 
     /**
-     * @return Collection<int, ManagedDocumentOutput>
-     */
-    public function deactivateActiveOutputs(ManagedDocument $document, Carbon $deletedAt): Collection
-    {
-        $outputs = $this->activeForDocument($document->documentId());
-
-        ManagedDocumentOutput::query()
-            ->where('document_id', $document->documentId()->value)
-            ->where('active', true)
-            ->update([
-                'active' => false,
-                'status' => 'deleted',
-                'deleted_at' => $deletedAt,
-                'updated_at' => $deletedAt,
-            ]);
-
-        return $outputs;
-    }
-
-    /**
      * @param  Collection<int, ManagedDocumentOutput>  $outputs
      * @return Collection<int, ManagedDocumentOutput>
      */
-    public function backfillScopes(ManagedDocument $document, Collection $outputs): Collection
+    public function backfillScopes(Collection $outputs): Collection
     {
         if ($outputs->isEmpty()) {
             return $outputs;

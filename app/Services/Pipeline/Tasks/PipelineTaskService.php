@@ -108,7 +108,7 @@ class PipelineTaskService
     }
 
     /**
-     * @return array{deleted: bool, storageCleanup: array<string, mixed>}|null
+     * @return array{deleted: bool, history_hidden?: bool, storageCleanup: array<string, mixed>}|null
      */
     public function delete(string $taskId): ?array
     {
@@ -117,6 +117,10 @@ class PipelineTaskService
             return null;
         }
 
+        if ($this->taskRepository->hideManagedHistory($task)) {
+            return ['deleted' => true, 'history_hidden' => true,
+                'storageCleanup' => ['ok' => true, 'deleted' => [], 'skipped' => [['path' => 'task:'.$taskId, 'reason' => 'Managed document data and recovery evidence are retained.']], 'failed' => []]];
+        }
         $storageCleanup = $this->storageCleanup->deleteForTask($task);
         if (! ($storageCleanup['ok'] ?? false)) {
             return [

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Dataset;
 
 use App\Models\Dataset;
+use App\Models\IngestionSource;
 use App\Models\ManagedDocument;
 use App\Models\PipelineJob;
 use App\Models\PipelineTask;
@@ -49,6 +50,28 @@ readonly class DatasetRepository
     public function delete(Dataset $dataset): bool
     {
         return (bool) $dataset->delete();
+    }
+
+    /** Caller commits this short transaction before invoking cleanup or Temporal. */
+    public function archiveForDeletion(string $datasetId): ?Dataset
+    {
+        $dataset = Dataset::query()->where('dataset_id', $datasetId)->lockForUpdate()->first();
+        $dataset?->forceFill(['status' => Dataset::STATUS_ARCHIVED])->save();
+
+        return $dataset;
+    }
+
+    /**
+     * @return Collection<int, IngestionSource>
+     */
+    public function unverifiedSources(Dataset $dataset): Collection
+    {
+        return IngestionSource::query()->where('dataset_id', $dataset->dataset_id)->get()
+            ->filter(fn (IngestionSource $source): bool => $source->index_status !== IngestionSource::STATUS_DELETED
+                || ($source->metadata['managed_deletion']['status'] ?? null) !== IngestionSource::STATUS_DELETED
+                || empty($source->metadata['managed_deletion']['operation_id'])
+                || $source->temporal_schedule_id !== null
+                || collect($source->metadata['managed_writers'] ?? [])->contains(fn ($writer): bool => ($writer['status'] ?? null) !== 'released'));
     }
 
     public function documentCount(Dataset $dataset): int

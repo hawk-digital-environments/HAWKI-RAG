@@ -50,8 +50,15 @@ def php_wire(payload: dict[str, Any], mode: str = "deletion") -> dict[str, Any]:
     return json.loads(result.stdout)
 
 
-def test_real_php_request_is_authenticated_and_delegated(asgi_test_client_class):
+@pytest.mark.parametrize("target_count", [1, 1728])
+def test_real_php_request_is_authenticated_and_delegated(
+    asgi_test_client_class, target_count
+):
     payload = deletion_input()
+    target = payload["targets"][0]
+    payload["targets"] = [
+        {**target, "output_id": index + 1} for index in range(target_count)
+    ]
     wire = php_wire(payload)
     temporal = AsyncMock()
     temporal.start_managed_deletion.return_value = {

@@ -34,7 +34,7 @@ readonly class ManagedDocumentRecoveryGuard
         if ($source->temporal_workflow_id) {
             $history[] = ['workflow_id' => $source->temporal_workflow_id, 'run_id' => $source->metadata['temporal']['run_id'] ?? $source->metadata['worker_event']['run_id'] ?? null];
         }
-        foreach ($history as $writer) {
+        foreach (array_unique($history, SORT_REGULAR) as $writer) {
             if (empty($writer['run_id'])) {
                 throw ManagedDeletionException::conflict('Reconcile the original managed workflow start before recovery.');
             }

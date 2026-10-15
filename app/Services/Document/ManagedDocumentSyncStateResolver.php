@@ -34,7 +34,7 @@ readonly class ManagedDocumentSyncStateResolver
             $attributes['indexed_at'] = $source->ready_at ?? Carbon::instance($this->clock->now());
             $attributes['last_error'] = null;
 
-            return new ManagedDocumentSyncState($attributes, $this->resolvedOutputs($document, $source));
+            return new ManagedDocumentSyncState($attributes, $this->artifactOutputs($source));
         }
 
         if ($source->index_status === IngestionSource::STATUS_FAILED || $source->index_status === IngestionSource::STATUS_CANCELLED) {
@@ -51,17 +51,9 @@ readonly class ManagedDocumentSyncStateResolver
     }
 
     /**
-     * @return array<int, array<string, mixed>>
-     */
-    private function resolvedOutputs(ManagedDocument $managedDocument, IngestionSource $source): array
-    {
-        return $this->artifactOutputs($managedDocument, $source);
-    }
-
-    /**
      * @return list<array<string, mixed>>
      */
-    private function artifactOutputs(ManagedDocument $managedDocument, IngestionSource $source): array
+    private function artifactOutputs(IngestionSource $source): array
     {
         $artifact = $this->metadata->latestArtifactForSource($source->source_id);
         if (! $artifact instanceof RagIngestionArtifact) {

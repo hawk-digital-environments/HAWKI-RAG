@@ -29,7 +29,7 @@ readonly class ManagedDocumentSyncService
         return $this->transactions->run(function () use ($document): ManagedDocument {
             $document = $this->deletions->lockDocument($document->document_id);
             if ($document->status === ManagedDocument::STATUS_DELETED || $document->deleted_at !== null
-                || $this->deletions->blocksSync($document->document_id)) {
+                || $this->deletions->blocking($document->document_id) !== null) {
                 return $this->documents->find($document->documentId()) ?? $document;
             }
 
@@ -48,17 +48,10 @@ readonly class ManagedDocumentSyncService
                 $this->outputs->syncActiveOutputs($document, $state->outputs);
             }
 
-            $document = $state->attributes === []
-                ? ($this->documents->find($document->documentId()) ?? $document)
-                : $this->documents->save($document, $state->attributes);
+            $document = $this->documents->save($document, $state->attributes);
+            $this->outputs->backfillScopes($document->outputs->where('active', true)->values());
 
-            $document = $this->documents->find($document->documentId()) ?? $document;
-            $this->outputs->backfillScopes(
-                $document,
-                $document->outputs->where('active', true)->values(),
-            );
-
-            return $this->documents->find($document->documentId()) ?? $document;
+            return $document;
         });
     }
 

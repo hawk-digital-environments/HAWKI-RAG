@@ -74,8 +74,8 @@ class DatasetController extends Controller
             'success' => $ok,
             'message' => $ok
                 ? "Deleted dataset {$datasetId}."
-                : "Dataset delete failed for {$datasetId}.",
+                : ($result['message'] ?? "Dataset delete failed for {$datasetId}."),
             'cleanup' => $result,
-        ], $ok ? 200 : 502);
+        ], $ok ? 200 : ($result['status'] ?? 502));
     }
 }

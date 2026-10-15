@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace App\Services\Document;
 
+use App\Models\Dataset;
 use App\Models\ManagedDocument;
+use App\Services\Dataset\DatasetRepository;
 use App\Services\Document\Exceptions\ManagedDeletionException;
 use App\Services\Document\Repositories\ManagedDocumentDeletionRepository;
 use App\Services\Document\Repositories\ManagedDocumentOutputRepository;
@@ -23,11 +25,14 @@ readonly class ManagedDocumentWriterService
         private ManagedDocumentOutputRepository $outputs,
         private PipelineTransactionRepository $transactions,
         private ManagedDocumentDeletionRepository $operations,
+        private DatasetRepository $datasets,
+        private ManagedDocumentOutputDeletionService $deletions,
     ) {}
 
     public function record(array $input): array
     {
-        return $this->transactions->run(function () use ($input): array {
+        $operationId = null;
+        $receipt = $this->transactions->run(function () use ($input, &$operationId): array {
             $lockedDocument = null;
             $grants = [];
             if ($input['action'] === 'acquire') {
@@ -63,6 +68,9 @@ readonly class ManagedDocumentWriterService
             $writers = $metadata['managed_writers'] ?? [];
             $previous = $writers[$key] ?? null;
             if ($input['action'] === 'acquire') {
+                if ($this->datasets->findByDatasetId($document->dataset_id)?->status !== Dataset::STATUS_ACTIVE) {
+                    throw ManagedDeletionException::conflict('Dataset is closed to managed writers.');
+                }
                 if ($document->status === ManagedDocument::STATUS_DELETING) {
                     $operation = $this->operations->blocking($document->document_id);
                     // Only the durably prepared replacement may start after verified cleanup.
@@ -126,6 +134,7 @@ readonly class ManagedDocumentWriterService
                 }
                 if ($input['action'] === 'release' && $writers[$key]['status'] === 'released') {
                     $metadata['managed_target_manifest_complete'] = true;
+                    $operationId = $metadata['managed_deletion']['operation_id'] ?? null;
                 }
             }
             $metadata['managed_writers'] = $writers;
@@ -136,5 +145,15 @@ readonly class ManagedDocumentWriterService
 
             return ['success' => true, 'status' => $writers[$key]['status'], 'targets' => $grants];
         });
+        if ($operationId !== null) {
+            $this->transactions->afterCommit(function () use ($operationId): void {
+                $operation = $this->operations->find($operationId);
+                if ($operation?->status === 'pending' && ($operation->attempts['effective_graph_scope'] ?? null) === true) {
+                    $this->deletions->dispatch($operation);
+                }
+            });
+        }
+
+        return $receipt;
     }
 }

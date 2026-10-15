@@ -54,10 +54,4 @@ readonly class ManagedDocumentDeletionRepository
 
         return $operation->refresh();
     }
-
-    public function blocksSync(string $id): bool
-    {
-        return ManagedDocumentDeletion::query()->where('document_id', $id)
-            ->whereIn('status', ['preparing', 'pending', 'failed', 'completed'])->exists();
-    }
 }

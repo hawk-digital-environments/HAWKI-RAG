@@ -1,8 +1,14 @@
 """Durable permission to write managed sinks; ambiguous writes never release it."""
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import replace
+from threading import Condition
 import hashlib
 from typing import Any
+
+from temporalio import activity
+from temporalio.exceptions import CancelledError
 
 from hawki_pipeline_callbacks import LaravelCallbackClient, LaravelCallbackSettings
 from hawki_indexer_worker.adapters.neo4j_writer import create_registered_graph_writer
@@ -22,9 +28,17 @@ class ManagedWriterRegistration:
         self.workflow_input = workflow_input
         self.info = info
         self.uncertain = False
+        self.mutation_started = False
         self.targets: dict[str, str | None] = {}
+        self._writes = Condition()
+        self._inflight = 0
+        self._closing = False
 
     def send(self, action: str, targets: list[dict[str, Any]]) -> dict[str, Any]:
+        if action == "acquire" and activity.in_activity():
+            activity.heartbeat()
+            if activity.is_cancelled():
+                raise CancelledError("Managed indexing was canceled")
         identity = f"{self.info.workflow_id}|{self.info.workflow_run_id}|{self.info.activity_id}|{self.info.attempt}"
         suffix = hashlib.sha256(repr(targets).encode()).hexdigest()[:16]
         event = {
@@ -84,25 +98,56 @@ class ManagedWriterRegistration:
         self.targets.update(accepted)
 
     def authorize_vector(self, payload: dict[str, Any]) -> None:
+        if activity.in_activity():
+            activity.heartbeat()
+            if activity.is_cancelled():
+                raise CancelledError("Managed indexing was canceled")
         if (
             payload.get("doc_id") not in self.targets
             or payload.get("source_id") != self.workflow_input["source_id"]
             or payload.get("dataset_id") != self.workflow_input.get("dataset_id")
         ):
             raise RuntimeError("Vector mutation exceeds registered target scope")
+        self.mutation_started = True
 
     def authorize_graph(self, doc_id: str, dataset_id: str, namespace: str) -> None:
+        if activity.in_activity():
+            activity.heartbeat()
+            if activity.is_cancelled():
+                raise CancelledError("Managed indexing was canceled")
         if (
             not namespace
             or self.targets.get(doc_id) != namespace
             or dataset_id != self.workflow_input.get("dataset_id")
         ):
             raise RuntimeError("Graph mutation exceeds registered target scope")
+        self.mutation_started = True
+
+    @contextmanager
+    def sink_write(self) -> Iterator[None]:
+        """Close admission before release, and drain every admitted sink call."""
+        with self._writes:
+            if self._closing:
+                raise RuntimeError(
+                    "Managed writer has finished; sink mutations are closed"
+                )
+            self._inflight += 1
+        try:
+            yield
+        finally:
+            with self._writes:
+                self._inflight -= 1
+                self._writes.notify_all()
 
     def failed_write(self) -> None:
-        self.uncertain = True
+        with self._writes:
+            self.uncertain = True
 
     def release(self) -> None:
+        with self._writes:
+            self._closing = True
+            while self._inflight:
+                self._writes.wait()
         if self.uncertain:
             raise RuntimeError(
                 "A managed sink acknowledgement is uncertain; writer reconciliation is required"
@@ -118,6 +163,7 @@ class ManagedWriterRegistration:
             source_id=self.workflow_input["source_id"],
             dataset_id=self.workflow_input["dataset_id"],
             authorize=self.authorize_vector,
+            write_guard=self.sink_write,
         )
 
     def graph_writer(
@@ -142,6 +188,7 @@ class ManagedWriterRegistration:
             dataset_id=dataset_id,
             neo4j_namespace=neo4j_namespace,
             authorize=self.authorize_graph,
+            write_guard=self.sink_write,
         )
 
     @classmethod

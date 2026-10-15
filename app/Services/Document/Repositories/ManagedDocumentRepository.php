@@ -37,6 +37,13 @@ readonly class ManagedDocumentRepository
             ->first();
     }
 
+    /** @return Collection<int, ManagedDocument> */
+    public function undeletedForDataset(string $datasetId): Collection
+    {
+        return ManagedDocument::query()->where('dataset_id', $datasetId)->whereNull('deleted_at')
+            ->orderBy('document_id')->get();
+    }
+
     /**
      * @return Collection<int, ManagedDocument>
      */

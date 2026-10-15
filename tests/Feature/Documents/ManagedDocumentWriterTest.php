@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Documents;
 
+use App\Models\Dataset;
 use App\Models\IngestionSource;
 use App\Models\ManagedDocument;
 use App\Models\ManagedDocumentDeletion;
@@ -14,9 +15,10 @@ use App\Services\Document\Exceptions\ManagedDeletionException;
 use App\Services\Document\ManagedDocumentOutputDeletionService;
 use App\Services\Document\ManagedDocumentRecoveryGuard;
 use App\Services\Pipeline\Repositories\IngestionSourceRepository;
+use App\Services\Pipeline\Repositories\PipelineTaskRepository;
 use App\Services\Pipeline\Tasks\PipelineTaskService;
 use Illuminate\Foundation\Testing\DatabaseMigrations;
-use Illuminate\Http\Client\Factory;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Tests\Support\ManagedWriterFixture;
@@ -26,12 +28,15 @@ final class ManagedDocumentWriterTest extends TestCase
 {
     use DatabaseMigrations, ManagedWriterFixture;
 
+    private string $workflowStatus = 'RUNNING';
+
     protected function setUp(): void
     {
         parent::setUp();
         $this->seedWriter();
         Http::preventStrayRequests();
-        Http::fake(fn ($request) => Http::response(['workflow_id' => $request->data()['workflow_id'], 'run_id' => 'delete-run', 'status' => 'pending']));
+        Http::fake(fn ($request) => Http::response(['workflow_id' => $request->data()['workflow_id'], 'run_id' => 'delete-run',
+            'status' => str_ends_with($request->url(), '/workflows/status') ? $this->workflowStatus : 'pending']));
     }
 
     public function test_writer_endpoint_requires_exact_body_authentication(): void
@@ -40,11 +45,63 @@ final class ManagedDocumentWriterTest extends TestCase
         $this->assertSame([], IngestionSource::query()->firstOrFail()->metadata['managed_writers'] ?? []);
     }
 
+    public function test_selected_document_delete_fences_before_cancel_and_preserves_other_sources(): void
+    {
+        $this->signedWriter($this->writerEvent('acquire', [$this->target()]))->assertOk();
+        IngestionSource::query()->firstOrFail()->update(['index_status' => 'running']);
+        PipelineJob::query()->firstOrFail()->update(['status' => 'running']);
+        $other = IngestionSource::query()->create(['source_id' => 'source-other', 'dataset_id' => 'writer-test',
+            'task_id' => 'writer-task', 'source_url' => 'upload://other.pdf', 'index_status' => 'running']);
+        PipelineJob::query()->create(['job_id' => 'other-job', 'task_id' => 'writer-task', 'source_id' => $other->source_id,
+            'job_type' => 'ingest', 'status' => 'running', 'temporal_workflow_id' => 'other-workflow']);
+        Http::fake(function ($request) {
+            $this->assertSame('writer-workflow', $request['workflow_id']);
+            $this->assertSame('closed', IngestionSource::query()->where('source_id', 'source-writer')->firstOrFail()->metadata['managed_writer_gate']);
+
+            return Http::response([]);
+        });
+        $this->flushHeaders();
+        $this->deleteJson('/api/documents/adoc_writer_test')->assertAccepted();
+        $this->assertSame('running', $other->fresh()->index_status);
+        $this->assertSame('running', PipelineJob::query()->where('job_id', 'other-job')->firstOrFail()->status);
+        $this->assertSame('active', array_values(IngestionSource::query()->where('source_id', 'source-writer')->firstOrFail()->metadata['managed_writers'])[0]['status']);
+        $this->signedWriter($this->writerEvent())->assertStatus(409);
+        Http::assertSentCount(1);
+    }
+
+    public function test_dataset_archival_blocks_writer_acquisition_and_new_source_reservation(): void
+    {
+        Dataset::query()->where('dataset_id', 'writer-test')->update(['status' => 'archived']);
+        $this->signedWriter($this->writerEvent())->assertStatus(409);
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('Dataset is unavailable for new ingestion.');
+        app(IngestionSourceRepository::class)->upsertStarting('late-source', ['dataset_id' => 'writer-test']);
+    }
+
+    public function test_public_task_cancel_keeps_gate_closed_after_lost_temporal_acknowledgement(): void
+    {
+        $this->signedWriter($this->writerEvent('acquire', [$this->target()]))->assertOk();
+        IngestionSource::query()->firstOrFail()->update(['index_status' => 'running']);
+        PipelineJob::query()->firstOrFail()->update(['status' => 'running']);
+        Http::fake(function ($request) {
+            $this->assertSame('closed', IngestionSource::query()->firstOrFail()->metadata['managed_writer_gate']);
+
+            return (Http::failedConnection())($request);
+        });
+        $this->flushHeaders();
+        $this->postJson('/api/pipeline/tasks/writer-task/cancel')->assertStatus(500);
+        $source = IngestionSource::query()->firstOrFail();
+        $this->assertSame('cancelled', $source->index_status);
+        $this->assertSame('active', array_values($source->metadata['managed_writers'])[0]['status']);
+        $this->signedWriter($this->writerEvent())->assertStatus(409);
+        $this->assertDatabaseCount('managed_document_outputs', 1);
+    }
+
     public function test_partial_outputs_are_registered_before_writes_and_missing_rows_are_reconciled(): void
     {
         $this->signedWriter($this->writerEvent('acquire', [$this->target(), $this->target('two.md')]))->assertOk();
         $this->assertDatabaseCount('managed_document_outputs', 2);
-        $this->deleteJson('/api/documents/adoc_writer_test')->assertStatus(409);
+        $this->deleteJson('/api/documents/adoc_writer_test')->assertAccepted();
         $this->signedWriter($this->writerEvent('release'))->assertOk();
         ManagedDocumentOutput::query()->delete(); // Lost projection cannot erase the durable target registry.
         $this->deleteJson('/api/documents/adoc_writer_test')->assertAccepted();
@@ -61,11 +118,76 @@ final class ManagedDocumentWriterTest extends TestCase
         $event = $this->writerEvent();
         $event['attempt'] = 2;
         $this->signedWriter($event)->assertStatus(409);
-        $this->deleteJson('/api/documents/adoc_writer_test')->assertStatus(409);
+        $this->deleteJson('/api/documents/adoc_writer_test')->assertAccepted();
         $this->signedWriter($this->writerEvent('uncertain'))->assertOk()->assertJsonPath('status', 'uncertain');
         $this->signedWriter($this->writerEvent('release'))->assertOk()->assertJsonPath('status', 'uncertain');
-        $this->deleteJson('/api/documents/adoc_writer_test')->assertStatus(409);
+        $this->deleteJson('/api/documents/adoc_writer_test')->assertAccepted();
         Http::assertNothingSent();
+    }
+
+    public function test_pending_delete_starts_cleanup_on_committed_writer_release_and_rejects_early_completion(): void
+    {
+        IngestionSource::query()->create(['source_id' => 'source-never-started', 'dataset_id' => 'writer-test', 'task_id' => 'writer-task',
+            'source_url' => 'upload://never.pdf', 'index_status' => 'pending',
+            'metadata' => ['request' => ['metadata' => ['managed_document_id' => 'adoc_writer_test']], 'managed_dispatch' => ['attempted' => false]]]);
+        $this->signedWriter($this->writerEvent('acquire', [$this->target()]))->assertOk();
+        $this->deleteJson('/api/documents/adoc_writer_test')->assertAccepted();
+        Http::assertNothingSent();
+        $operation = ManagedDocumentDeletion::query()->firstOrFail();
+        $target = $operation->workflow_input['targets'][0];
+        $event = ['schema_version' => 1, 'event_id' => 'drained-delete', 'operation_id' => $operation->operation_id,
+            'workflow_id' => $operation->workflow_id, 'run_id' => 'delete-run', 'status' => 'completed', 'results' => [[
+                'output_id' => $target['output_id'],
+                'qdrant' => ['verified' => true, 'remaining_points' => 0, 'doc_id' => $target['doc_id'],
+                    'collection' => $target['collection'], 'dataset_id' => 'writer-test', 'source_id' => 'source-writer'],
+                'neo4j' => ['verified' => true, 'required' => true, 'remaining_contributions' => 0,
+                    'doc_id' => $target['doc_id'], 'namespace' => $target['neo4j_namespace'], 'dataset_id' => 'writer-test'],
+            ]]];
+        $send = function () use ($event) {
+            $body = json_encode($event, JSON_THROW_ON_ERROR);
+            $time = (string) time();
+
+            return $this->call('POST', '/api/internal/pipeline/managed-deletion-events', [], [], [], [
+                'CONTENT_TYPE' => 'application/json', 'HTTP_ACCEPT' => 'application/json',
+                'HTTP_X_HAWKI_TIMESTAMP' => $time, 'HTTP_X_HAWKI_SIGNATURE' => 'v1='.hash_hmac('sha256', $time.'.'.$body, 'writer-test-secret'),
+            ], $body);
+        };
+        $send()->assertStatus(409);
+        $this->assertDatabaseHas('managed_document_outputs', ['active' => true]);
+        Http::fake(function ($request) use ($operation) {
+            $this->assertSame(0, DB::transactionLevel());
+            $this->assertSame($operation->workflow_id, $request['workflow_id']);
+            $this->assertSame('released', array_values(IngestionSource::query()->firstOrFail()->metadata['managed_writers'])[0]['status']);
+
+            return Http::response(['workflow_id' => $operation->workflow_id, 'run_id' => 'delete-run', 'status' => 'pending']);
+        });
+        $this->signedWriter($this->writerEvent('release'))->assertOk();
+        Http::assertSentCount(1);
+        $send()->assertOk();
+        $this->assertDatabaseHas('managed_documents', ['document_id' => 'adoc_writer_test', 'status' => 'deleted']);
+        $this->assertDatabaseHas('ingestion_sources', ['source_id' => 'source-never-started', 'index_status' => 'deleted']);
+        $this->signedWriter($this->writerEvent())->assertStatus(409);
+    }
+
+    public function test_lost_cancel_ack_keeps_durable_delete_pending_until_writer_release(): void
+    {
+        $this->signedWriter($this->writerEvent('acquire', [$this->target()]))->assertOk();
+        IngestionSource::query()->firstOrFail()->update(['index_status' => 'running']);
+        PipelineJob::query()->firstOrFail()->update(['status' => 'running']);
+        Http::fake(function ($request) {
+            if (! str_ends_with($request->url(), '/temporal/workflows/cancel')) {
+                return null;
+            }
+            $this->assertDatabaseHas('managed_document_deletions', ['status' => 'pending']);
+
+            return (Http::failedConnection())($request);
+        });
+        $this->deleteJson('/api/documents/adoc_writer_test')->assertAccepted()->assertJsonPath('operation.status', 'pending');
+        $operation = ManagedDocumentDeletion::query()->firstOrFail();
+        $this->assertNotEmpty($operation->attempts['cancellation_error']);
+        $this->assertNull($operation->run_id);
+        $this->signedWriter($this->writerEvent('release'))->assertOk();
+        $this->assertSame('delete-run', $operation->fresh()->run_id);
     }
 
     public function test_writer_identity_scope_and_gate_are_enforced(): void
@@ -153,9 +275,7 @@ final class ManagedDocumentWriterTest extends TestCase
         File::ensureDirectoryExists($root);
         config()->set('temporal.storage.shared_root', $root);
         $manifest = $root.'/manifest.json';
-        app()->forgetInstance(Factory::class);
-        Http::clearResolvedInstance(Factory::class);
-        Http::fake(['*/workflows/status' => Http::response(['status' => 'COMPLETED'])]);
+        $this->workflowStatus = 'COMPLETED';
         try {
             File::put($manifest, json_encode([['document_id' => $this->target()['doc_id'], 'relative_path' => 'one.md']], JSON_THROW_ON_ERROR));
             $this->artisan('documents:reconcile-writer', ['sourceId' => 'source-writer', 'manifest' => $manifest, '--confirm-quiescence' => true])->assertExitCode(1);
@@ -227,9 +347,7 @@ final class ManagedDocumentWriterTest extends TestCase
         config()->set('temporal.storage.shared_root', $root);
         $metadata['managed_dispatch']['input']['ingestion'] = ['collection' => 'historic_collection', 'graph' => false, 'neo4j_namespace' => null];
         $source->update(['metadata' => $metadata]);
-        app()->forgetInstance(Factory::class);
-        Http::clearResolvedInstance(Factory::class);
-        Http::fake(['*/workflows/status' => Http::response(['status' => 'COMPLETED'])]);
+        $this->workflowStatus = 'COMPLETED';
         try {
             $manifest = $root.'/manifest.json';
             $record = ['document_id' => $this->target()['doc_id'], 'relative_path' => 'one.md'];
@@ -245,7 +363,7 @@ final class ManagedDocumentWriterTest extends TestCase
         }
     }
 
-    public function test_generic_task_cleanup_preserves_managed_evidence_until_verified_deletion(): void
+    public function test_managed_task_history_can_be_hidden_without_blocking_on_writers_or_deletion(): void
     {
         $root = storage_path('framework/testing/managed-task-cleanup-'.bin2hex(random_bytes(8)));
         config()->set('temporal.storage.shared_root', $root);
@@ -266,8 +384,11 @@ final class ManagedDocumentWriterTest extends TestCase
                     $this->deleteJson('/api/documents/adoc_writer_test')->assertAccepted();
                 }
                 $result = $service->delete('writer-task');
-                $this->assertFalse($result['deleted'], $state);
-                $this->assertFalse($result['storageCleanup']['ok'], $state);
+                $this->assertTrue($result['deleted'], $state);
+                $this->assertTrue($result['history_hidden'], $state);
+                $this->assertTrue($result['storageCleanup']['ok'], $state);
+                $this->assertTrue(PipelineTask::query()->firstOrFail()->metadata['history_hidden']);
+                $this->assertSame([], $service->list());
                 foreach ($paths as $path) {
                     $this->assertFileExists($path);
                 }
@@ -284,10 +405,10 @@ final class ManagedDocumentWriterTest extends TestCase
                 ]]])->assertOk();
             $this->assertTrue($service->delete('writer-task')['deleted']);
             foreach ($paths as $path) {
-                $this->assertFileDoesNotExist($path);
+                $this->assertFileExists($path);
             }
-            $this->assertDatabaseMissing('ingestion_sources', ['source_id' => 'source-writer']);
-            $this->assertDatabaseMissing('pipeline_jobs', ['job_id' => 'writer-job']);
+            $this->assertDatabaseHas('ingestion_sources', ['source_id' => 'source-writer']);
+            $this->assertDatabaseHas('pipeline_jobs', ['job_id' => 'writer-job']);
         } finally {
             File::deleteDirectory($root);
         }
@@ -308,7 +429,7 @@ final class ManagedDocumentWriterTest extends TestCase
         $this->assertTrue($operation->attempts['effective_graph_scope']);
     }
 
-    public function test_generic_task_cleanup_rejects_missing_managed_source_evidence_before_filesystem_deletion(): void
+    public function test_managed_task_history_can_be_hidden_when_source_evidence_is_missing(): void
     {
         $root = storage_path('framework/testing/missing-managed-cleanup-'.bin2hex(random_bytes(8)));
         config()->set('temporal.storage.shared_root', $root);
@@ -318,12 +439,29 @@ final class ManagedDocumentWriterTest extends TestCase
         PipelineTask::query()->firstOrFail()->update(['metadata' => ['request' => ['metadata' => ['managed_document_id' => 'adoc_writer_test']]]]);
         IngestionSource::query()->delete();
         try {
-            $this->assertFalse(app(PipelineTaskService::class)->delete('writer-task')['deleted']);
+            $this->assertTrue(app(PipelineTaskService::class)->delete('writer-task')['deleted']);
+            $this->assertTrue(PipelineTask::query()->firstOrFail()->metadata['history_hidden']);
             $this->assertFileExists($path);
             $this->assertDatabaseHas('pipeline_jobs', ['job_id' => 'writer-job']);
         } finally {
             File::deleteDirectory($root);
         }
+    }
+
+    public function test_hidden_task_flag_survives_stale_recovery_and_does_not_block_writer_release(): void
+    {
+        $task = PipelineTask::query()->firstOrFail();
+        $this->signedWriter($this->writerEvent('acquire', [$this->target()]))->assertOk();
+        $this->deleteJson('/api/pipeline/tasks/writer-task')->assertOk()->assertJsonPath('history_hidden', true);
+        $this->getJson('/api/pipeline/tasks')->assertOk()->assertJsonCount(0, 'tasks');
+        app(PipelineTaskRepository::class)->markRecoveryRunning($task, ['retry_count' => 1]);
+        $this->assertTrue($task->fresh()->metadata['history_hidden']);
+        $this->getJson('/api/pipeline/tasks')->assertJsonCount(0, 'tasks');
+        $this->deleteJson('/api/pipeline/tasks/writer-task')->assertOk()->assertJsonPath('history_hidden', true);
+        $this->signedWriter($this->writerEvent('release'))->assertOk();
+        $this->assertNull(ManagedDocument::query()->firstOrFail()->deleted_at);
+        $this->assertTrue(ManagedDocumentOutput::query()->firstOrFail()->active);
+        Http::assertNothingSent();
     }
 
     private function signedDeletion(array $event)
@@ -351,10 +489,26 @@ final class ManagedDocumentWriterTest extends TestCase
         $this->signedWriter($this->writerEvent('acquire', [$this->target()]))->assertOk();
         $this->signedWriter($this->writerEvent('release'))->assertOk();
         // Status is read from Temporal separately from the durable sink permission.
-        Http::fake(['*/workflows/status' => Http::response(['workflow_id' => 'writer-workflow', 'run_id' => 'writer-run', 'status' => 'RUNNING'])]);
         $this->expectException(ManagedDeletionException::class);
         $this->expectExceptionMessage('Original managed workflow is still retrying');
         app(ManagedDocumentRecoveryGuard::class)->verify(IngestionSource::query()->firstOrFail());
+    }
+
+    public function test_recovery_checks_each_distinct_historical_run_once(): void
+    {
+        $this->signedWriter($this->writerEvent('acquire', [$this->target()]))->assertOk();
+        $this->signedWriter($this->writerEvent('release'))->assertOk();
+        $source = IngestionSource::query()->firstOrFail();
+        $metadata = $source->metadata;
+        $metadata['managed_writer_history']['older|older-run'] = ['workflow_id' => 'older', 'run_id' => 'older-run'];
+        $source->metadata = $metadata;
+        $this->workflowStatus = 'COMPLETED';
+
+        app(ManagedDocumentRecoveryGuard::class)->verify($source);
+
+        Http::assertSentCount(2);
+        Http::assertSent(fn ($request) => $request['workflow_id'] === 'writer-workflow' && $request['run_id'] === 'writer-run');
+        Http::assertSent(fn ($request) => $request['workflow_id'] === 'older' && $request['run_id'] === 'older-run');
     }
 
     public function test_recovery_reservation_keeps_old_runs_and_scope_and_rejects_competing_reservation(): void
@@ -385,9 +539,7 @@ final class ManagedDocumentWriterTest extends TestCase
         $manifest = $root.'/manifest.json';
         File::put($manifest, '{broken');
         // Override the generic test fake by resetting the HTTP factory.
-        app()->forgetInstance(Factory::class);
-        Http::clearResolvedInstance(Factory::class);
-        Http::fake(['*/workflows/status' => Http::response(['status' => 'CANCELED'])]);
+        $this->workflowStatus = 'CANCELED';
         try {
             $this->artisan('documents:reconcile-writer', ['sourceId' => 'source-writer', 'manifest' => $manifest])->assertExitCode(1);
             $this->assertArrayNotHasKey('managed_writer_gate', IngestionSource::query()->firstOrFail()->metadata);

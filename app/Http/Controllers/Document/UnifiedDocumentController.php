@@ -7,10 +7,10 @@ namespace App\Http\Controllers\Document;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Document\CreateManagedDocumentBatchRequest;
 use App\Http\Requests\Document\CreateManagedDocumentRequest;
-use App\Http\Requests\Document\DeleteManagedDocumentRequest;
 use App\Http\Requests\Document\UpdateManagedDocumentRequest;
 use App\Services\Document\UnifiedDocumentService;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 
 class UnifiedDocumentController extends Controller
 {
@@ -59,9 +59,10 @@ class UnifiedDocumentController extends Controller
         return response()->json($result['payload'], $result['status']);
     }
 
-    public function destroy(DeleteManagedDocumentRequest $request, string $documentId): JsonResponse
+    public function destroy(Request $request, string $documentId): JsonResponse
     {
-        $result = $this->documents->delete($documentId, $request->idempotencyKey());
+        $key = $request->header('Idempotency-Key');
+        $result = $this->documents->delete($documentId, is_string($key) && trim($key) !== '' ? trim($key) : null);
 
         if ($result === null) {
             return response()->json([

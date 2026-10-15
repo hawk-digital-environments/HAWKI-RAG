@@ -170,8 +170,8 @@ Route::prefix('documents')->group(function (): void {
         ->name('documents.uploads.download')
         ->defaults('openapi', false);
     Route::get('/{documentId}', [DocumentBrowserController::class, 'show']);
-    Route::put('/{documentId}', [UnifiedDocumentController::class, 'update'])->middleware('auth:sanctum');
-    Route::delete('/{documentId}', [UnifiedDocumentController::class, 'destroy'])->middleware('auth:sanctum');
+    Route::put('/{documentId}', [UnifiedDocumentController::class, 'update']);
+    Route::delete('/{documentId}', [UnifiedDocumentController::class, 'destroy']);
 });
 
 /*

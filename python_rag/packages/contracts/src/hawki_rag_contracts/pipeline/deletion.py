@@ -36,7 +36,7 @@ class DeleteManagedDocumentInput(BaseModel):
     operation_id: str = Field(pattern=r"^delete_[0-9a-f]{64}$")
     managed_document_id: str = Field(min_length=1, max_length=191)
     dataset_id: str = Field(min_length=1, max_length=191)
-    targets: list[DeletionTarget] = Field(max_length=1000)
+    targets: list[DeletionTarget] = Field(max_length=2000)
     writers: list[DeletionWriter] = Field(default_factory=list, max_length=1000)
     task_queues: dict[str, str] = Field(default_factory=dict)
 

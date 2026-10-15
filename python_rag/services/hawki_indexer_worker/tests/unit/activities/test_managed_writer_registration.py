@@ -21,8 +21,9 @@ from hawki_indexer_worker.settings import IndexerSettings
 from hawki_artifact_store.local import LocalArtifactStore
 from hawki_pipeline_callbacks import LaravelCallbackClient
 from hawki_rag_contracts.pipeline.ingestion import IndexResult
-from hawki_vector_store.client import QdrantHTTP
+from hawki_vector_store.client import QdrantHTTP, ScopedCollectionNotReadyError
 from hawki_indexer_worker.indexing.point_identity import deterministic_point_id
+from temporalio.exceptions import CancelledError
 
 
 def registration(tmp_path, attempt=1):
@@ -119,10 +120,17 @@ def test_signed_registration_uses_actual_execution_and_sibling_endpoint(
 
 
 @pytest.mark.parametrize(
-    "failure", [None, RuntimeError("partial indexing"), KeyboardInterrupt()]
+    "failure, mutation_started, uncertain, released",
+    [
+        (None, False, False, True),
+        (RuntimeError("failure before sink writes"), False, False, True),
+        (RuntimeError("partial indexing"), True, False, True),
+        (TimeoutError("collection creation acknowledgement lost"), False, True, False),
+        (KeyboardInterrupt(), False, False, True),
+    ],
 )
-def test_index_transport_acquires_before_dependencies_and_only_releases_success(
-    tmp_path, monkeypatch, failure
+def test_index_transport_releases_only_after_acknowledged_sink_drain(
+    tmp_path, monkeypatch, failure, mutation_started, uncertain, released
 ):
     writer = registration(tmp_path)
     calls = []
@@ -134,6 +142,7 @@ def test_index_transport_acquires_before_dependencies_and_only_releases_success(
     )
     monkeypatch.setattr(index.IndexerSettings, "from_env", lambda: writer.settings)
     monkeypatch.setattr(index.activity, "info", lambda: writer.info)
+    monkeypatch.setattr(index.activity, "shield_thread_cancel_exception", nullcontext)
     monkeypatch.setattr(
         index, "create_callback_sender", lambda *_args: nullcontext(object())
     )
@@ -150,6 +159,8 @@ def test_index_transport_acquires_before_dependencies_and_only_releases_success(
             == writer.vector_writer
         )
         calls.append("index")
+        writer.mutation_started = mutation_started
+        writer.uncertain = uncertain
         if failure is not None:
             raise failure
         return IndexResult(source_id="source", status="success")
@@ -169,8 +180,80 @@ def test_index_transport_acquires_before_dependencies_and_only_releases_success(
     else:
         index.ingest_markdown_files(payload)
     assert calls == ["acquire", "graph-dependency", "index"] + (
-        ["release"] if failure is None else []
+        ["release"] if released else []
     )
+
+
+def test_missing_ingestion_collection_has_no_existing_pages_but_queries_fail_closed(
+    tmp_path, monkeypatch
+):
+    writer = registration(tmp_path)
+    writer.targets["owned"] = None
+    sink = writer.vector_writer()
+    missing = SimpleNamespace(status_code=404)
+    monkeypatch.setattr(sink._gateway, "scroll", lambda *_args, **_kwargs: missing)
+    monkeypatch.setattr(
+        sink, "_pick_default_collection", lambda: pytest.fail("unscoped fallback")
+    )
+    assert sink.find_points_by_payload({"doc_id": "owned"}) == []
+    assert sink.collection == "historic"
+    assert not writer.mutation_started
+    created = []
+    monkeypatch.setattr(sink._gateway, "get_collection", lambda: missing)
+    monkeypatch.setattr(
+        sink._gateway,
+        "ensure_collection",
+        lambda **kwargs: (
+            created.append(kwargs),
+            SimpleNamespace(raise_for_status=lambda: None),
+        )[1],
+    )
+    sink.ensure_collection(2)
+    assert created == [{"vector_size": 2, "distance": "Cosine"}]
+
+    query = QdrantHTTP()
+    query.select_scoped_collection("historic")
+    monkeypatch.setattr(query._gateway, "scroll", lambda *_args, **_kwargs: missing)
+    with pytest.raises(ScopedCollectionNotReadyError):
+        query.find_points_by_payload({"doc_id": "owned"})
+
+
+def test_unacknowledged_collection_creation_keeps_writer_uncertain(
+    tmp_path, monkeypatch
+):
+    writer = registration(tmp_path)
+    writer.targets["owned"] = None
+    sink = writer.vector_writer()
+    monkeypatch.setattr(
+        QdrantHTTP,
+        "ensure_collection",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(TimeoutError("lost ack")),
+    )
+    with pytest.raises(TimeoutError):
+        sink.ensure_collection(2)
+    assert writer.uncertain
+    assert not writer.mutation_started
+    with pytest.raises(RuntimeError, match="uncertain"):
+        writer.release()
+
+
+@pytest.mark.parametrize("sink", ["vector", "graph"])
+def test_canceled_managed_activity_cannot_begin_another_sink_mutation(
+    tmp_path, monkeypatch, sink
+):
+    writer = registration(tmp_path)
+    writer.targets["owned"] = "historic"
+    monkeypatch.setattr(index.activity, "in_activity", lambda: True)
+    monkeypatch.setattr(index.activity, "heartbeat", lambda *_args: None)
+    monkeypatch.setattr(index.activity, "is_cancelled", lambda: True)
+    with pytest.raises(CancelledError):
+        if sink == "vector":
+            writer.authorize_vector(
+                {"doc_id": "owned", "source_id": "source", "dataset_id": "dataset"}
+            )
+        else:
+            writer.authorize_graph("owned", "dataset", "historic")
+    assert not writer.mutation_started
 
 
 def test_unacknowledged_acquisition_cannot_start_indexing(tmp_path, monkeypatch):
@@ -185,6 +268,7 @@ def test_unacknowledged_acquisition_cannot_start_indexing(tmp_path, monkeypatch)
     )
     monkeypatch.setattr(index.IndexerSettings, "from_env", lambda: writer.settings)
     monkeypatch.setattr(index.activity, "info", lambda: writer.info)
+    monkeypatch.setattr(index.activity, "shield_thread_cancel_exception", nullcontext)
     monkeypatch.setattr(
         index,
         "create_graph_extractor",
@@ -524,3 +608,72 @@ def test_ambiguous_canonical_graph_write_cannot_release_permission(
     )
     with pytest.raises(RuntimeError, match="uncertain"):
         writer.release()
+
+
+@pytest.mark.parametrize("sink_kind", ["vector", "graph"])
+def test_release_drains_admitted_writes_and_closes_cached_adapters(
+    tmp_path, monkeypatch, sink_kind
+):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Event
+
+    writer = registration(tmp_path)
+    writer.targets["owned"] = "historic"
+    entered, proceed, closing, released = Event(), Event(), Event(), Event()
+
+    def delayed(*_args, **_kwargs):
+        entered.set()
+        assert proceed.wait(3)
+
+    monkeypatch.setattr(writer, "send", lambda *_args: released.set())
+    if sink_kind == "vector":
+        monkeypatch.setattr(QdrantHTTP, "upsert", delayed)
+        sink = writer.vector_writer()
+
+        def mutate():
+            return sink.upsert_points(
+                [
+                    {
+                        "id": deterministic_point_id("owned", 0),
+                        "payload": {
+                            "doc_id": "owned",
+                            "source_id": "source",
+                            "dataset_id": "dataset",
+                        },
+                    }
+                ]
+            )
+    else:
+        monkeypatch.setattr(neo4j_writer.Neo4jWriter, "upsert_triplets", delayed)
+        sink = writer.graph_writer(dataset_id="dataset", neo4j_namespace="historic")
+
+        def mutate():
+            return sink.upsert_triplets(
+                [("A", "KNOWS", "B")],
+                doc_id="owned",
+                request_id=None,
+                dataset_id="dataset",
+                neo4j_namespace="historic",
+            )
+
+    def finish():
+        closing.set()
+        writer.release()
+
+    try:
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            write = executor.submit(mutate)
+            assert entered.wait(3)
+            finish_future = executor.submit(finish)
+            assert closing.wait(3)
+            assert not released.wait(0.05)
+            proceed.set()
+            write.result(3)
+            finish_future.result(3)
+        assert released.is_set()
+        with pytest.raises(RuntimeError, match="mutations are closed"):
+            mutate()
+    finally:
+        proceed.set()
+        if sink_kind == "graph":
+            sink.close()

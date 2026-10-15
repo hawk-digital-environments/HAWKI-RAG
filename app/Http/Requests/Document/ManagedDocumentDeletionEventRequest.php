@@ -20,7 +20,7 @@ final class ManagedDocumentDeletionEventRequest extends FormRequest
             'schema_version' => 'required|integer|in:1', 'event_id' => 'required|string|max:255',
             'operation_id' => ['required', 'string', 'regex:/^delete_[0-9a-f]{64}$/'],
             'workflow_id' => 'required|string|max:191', 'run_id' => 'required|string|max:255',
-            'status' => 'required|string|in:completed,failed', 'results' => 'present|array|max:1000',
+            'status' => 'required|string|in:completed,failed', 'results' => 'present|array|max:2000',
             'results.*' => 'required|array', 'results.*.output_id' => 'required|integer|min:1',
             'results.*.qdrant' => 'sometimes|array', 'results.*.neo4j' => 'sometimes|array',
         ];

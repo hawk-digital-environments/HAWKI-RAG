@@ -16,7 +16,7 @@ from unittest.mock import patch
 from uuid import uuid4
 
 import pytest
-from temporalio import workflow
+from temporalio import activity, workflow
 from temporalio.client import Client, WorkflowFailureError
 from temporalio.common import RetryPolicy
 from temporalio.worker import Worker, UnsandboxedWorkflowRunner
@@ -123,25 +123,34 @@ async def _cancelled_writer_live() -> None:
 
     def delayed_sink_write(_input, *, context, dependencies):
         dependencies.target_registrar([{"doc_id": doc_id, "relative_path": "one.md"}])
-        started.set()
-        if not proceed.wait(timeout=15):
-            raise RuntimeError("Fault harness timed out")
         sink = dependencies.workflow_dependencies.vector_writer_factory()
         sink.set_collection(collection)
-        sink.upsert_points(
-            [
-                {
-                    "id": deterministic_point_id(doc_id, 0),
-                    "vector": [0.1, 0.2],
-                    "payload": {
-                        "doc_id": doc_id,
-                        "source_id": source_id,
-                        "dataset_id": "test-" + token,
-                    },
-                }
-            ]
-        )
-        wrote.set()
+        send = sink._gateway.upsert
+
+        def in_flight_request(*args, **kwargs):
+            # Authorization already ran. Model a request whose acknowledgement
+            # finishes after cancellation, rather than starting a new mutation.
+            started.set()
+            if not proceed.wait(timeout=15):
+                raise RuntimeError("Fault harness timed out")
+            return send(*args, **kwargs)
+
+        sink._gateway.upsert = in_flight_request
+        with activity.shield_thread_cancel_exception():
+            sink.upsert_points(
+                [
+                    {
+                        "id": deterministic_point_id(doc_id, 0),
+                        "vector": [0.1, 0.2],
+                        "payload": {
+                            "doc_id": doc_id,
+                            "source_id": source_id,
+                            "dataset_id": "test-" + token,
+                        },
+                    }
+                ]
+            )
+            wrote.set()
         raise RuntimeError("Canceled activity failed after its delayed sink write")
 
     try:
@@ -191,10 +200,14 @@ async def _cancelled_writer_live() -> None:
                 assert await asyncio.to_thread(wrote.wait, 10)
                 # A real Qdrant mutation completed after Temporal declared the workflow closed.
                 assert writer.count_points_verified({"must": []}) == 1
-                assert list(ledger.values()) == ["active"]
+                for _ in range(100):
+                    if list(ledger.values()) == ["released"]:
+                        break
+                    await asyncio.sleep(0.05)
+                assert list(ledger.values()) == ["released"]
                 assert next(iter(ledger))[1] == handle.first_execution_run_id
         print(
-            "LIVE PASS: delayed Qdrant write after workflow cancellation retains active writer permission; cancellation is not quiescence"
+            "LIVE PASS: writer permission stays active during canceled in-flight write, then releases only after acknowledged drain"
         )
     finally:
         proceed.set()
@@ -209,7 +222,70 @@ async def _cancelled_writer_live() -> None:
 
 
 @pytest.mark.integration
-def test_cancelled_workflow_does_not_release_a_delayed_sink_writer():
+def test_registered_ingestion_creates_only_its_missing_collection():
+    if os.environ.get("RAWKI_MANAGED_DELETION_LIVE") != "1":
+        pytest.skip("Requires explicit disposable live services")
+    with patch.dict(
+        os.environ,
+        {
+            **disposable_environment(),
+            "HAWKI_RAG_WORKER_CALLBACK_SECRET": "isolated-adapter-test-secret",
+        },
+    ):
+        token = uuid4().hex
+        collection = "test_managed_delete_" + token
+        source_id, dataset_id, doc_id = (
+            "source-" + token,
+            "test-" + token,
+            "doc-" + token,
+        )
+        registration = ManagedWriterRegistration(
+            IndexerSettings.from_env(),
+            {
+                "source_id": source_id,
+                "dataset_id": dataset_id,
+                "ingestion": {"collection": collection, "graph": False},
+            },
+            SimpleNamespace(),
+        )
+        registration.targets[doc_id] = None
+        sink = registration.vector_writer()
+        try:
+            assert sink._gateway.get_collection().status_code == 404
+            assert sink.find_points_by_payload({"doc_id": doc_id}) == []
+            assert not registration.mutation_started
+            sink.ensure_collection(2)
+            sink.upsert_points(
+                [
+                    {
+                        "id": deterministic_point_id(doc_id, 0),
+                        "vector": [0.1, 0.2],
+                        "payload": {
+                            "doc_id": doc_id,
+                            "source_id": source_id,
+                            "dataset_id": dataset_id,
+                        },
+                    }
+                ]
+            )
+            assert registration.mutation_started
+            assert not registration.uncertain
+            points = sink.find_points_by_payload({"doc_id": doc_id})
+            assert len(points) == 1
+            assert points[0]["payload"]["dataset_id"] == dataset_id
+            with pytest.raises(RuntimeError):
+                sink.set_collection("outside-the-granted-scope")
+        finally:
+            assert sink.collection == "test_managed_delete_" + token
+            sink._gateway.send(
+                QdrantRequest(
+                    "DELETE", f"/collections/{collection}", timeout=30, retryable=False
+                )
+            ).raise_for_status()
+
+
+@pytest.mark.integration
+def test_cancelled_workflow_releases_writer_only_after_acknowledged_delayed_write():
     if os.environ.get("RAWKI_MANAGED_DELETION_LIVE") != "1":
         pytest.skip("Requires explicit disposable live services")
     with patch.dict(os.environ, disposable_environment()):
