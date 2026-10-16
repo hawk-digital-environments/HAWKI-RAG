@@ -21,8 +21,18 @@ readonly class PipelineWorkerHealthCheck
      */
     public function scraper(int $timeout): array
     {
-        $url = rtrim((string) $this->config->get('temporal.external_services.scraper_url'), '/').'/health';
+        $scraperUrl = trim((string) $this->config->get('temporal.external_services.scraper_url'));
         $taskQueue = (string) $this->config->get('temporal.task_queues.scraper', 'rag-scraper-task-queue');
+
+        // Skip the HTTP probe when no scraper URL is configured instead of reporting a false failure.
+        if ($scraperUrl === '') {
+            return $this->results->ok(
+                'Scraper adapter worker',
+                'No external scraper configured (EXTERNAL_SCRAPER_URL / CUSTOM_CRAWLER_URL not set). Web crawling is disabled; direct-text and file ingestion are unaffected.',
+            );
+        }
+
+        $url = rtrim($scraperUrl, '/').'/health';
 
         return $this->httpChecks->reachabilityCheck(
             'Scraper adapter worker',
@@ -55,15 +65,18 @@ readonly class PipelineWorkerHealthCheck
         $url = (string) $this->config->get('file_converter.health_url');
         $taskQueue = (string) $this->config->get('temporal.task_queues.converter', 'rag-converter-task-queue');
 
+        // FILE_CONVERTER_HEALTH_URL may be empty; fall back to base URL + /health.
+        // Without this second guard, an empty base URL still produced '/health' and fired a request.
         if (trim($url) === '') {
-            $url = rtrim((string) $this->config->get('temporal.external_services.converter_url'), '/').'/health';
+            $converterBase = trim((string) $this->config->get('temporal.external_services.converter_url'));
+            $url = $converterBase !== '' ? rtrim($converterBase, '/').'/health' : '';
         }
 
+        // Skip the HTTP probe when no converter URL is configured instead of reporting a false failure.
         if (trim($url) === '') {
-            return $this->results->failure(
+            return $this->results->ok(
                 'Converter adapter worker',
-                'Converter health URL is empty.',
-                'Set EXTERNAL_CONVERTER_URL or FILE_CONVERTER_HEALTH_URL and start hawki-rag-temporal-converter-worker.',
+                'No external converter configured (EXTERNAL_CONVERTER_URL / FILE_CONVERTER_HEALTH_URL not set). File conversion is disabled; direct-text ingestion is unaffected.',
             );
         }
 
