@@ -2,10 +2,12 @@
 
 use App\Http\Middleware\RequireBrowserQueryPrincipal;
 use App\Http\Middleware\SecurityHeaders;
+use App\Services\Dataset\DatasetService;
 use App\Services\TextIngestion\Exceptions\TextIngestionDeletionException;
 use App\Services\TextIngestion\Exceptions\TextIngestionIdempotencyException;
 use App\Services\TextIngestion\Exceptions\TextIngestionSourceBusyException;
 use App\Services\TextIngestion\Exceptions\TextIngestionWorkflowStartException;
+use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -22,6 +24,10 @@ return Application::configure(basePath: dirname(__DIR__))
         },
     )
     ->withCommands([__DIR__.'/../app/Console/Commands'])
+    ->withSchedule(function (Schedule $schedule): void {
+        $schedule->call(fn (DatasetService $datasets) => $datasets->resumeArchivedDeletions())
+            ->name('dataset-cleanup')->everyMinute()->withoutOverlapping(5);
+    })
     ->withMiddleware(function (Middleware $middleware) {
         $skipTextIngestionTransforms = static fn (Request $request): bool => $request->is(
             'api/integrations/text-ingestions',

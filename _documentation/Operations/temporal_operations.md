@@ -121,6 +121,32 @@ Direct-text deletion uses `/temporal/workflows/cancel-and-wait` to establish
 closure before removing source vectors and artifacts. Laravel exposes this
 through the [source deletion contract](../Reference/direct_text_ingestion.md#delete-a-source).
 
+## Dataset deletion in the background
+
+`DELETE /api/datasets/{datasetId}/storage` commits `archived` and returns **202**
+without contacting Temporal or the sinks. The dataset is hidden and unavailable
+for new ingestion, prepared dispatch, retries and authorized queries. Acceptance
+does not mean physical cleanup is complete.
+
+Laravel's scheduler scans archived datasets every minute, reusing their existing
+managed-document operations and historical Qdrant/Neo4j scopes. Active writers
+are canceled in the background; cleanup waits for confirmed writer drain. A signed
+release resumes pending document cleanup. Failures remain discoverable in SQL and
+are retried by later scans, including after restarts. Other datasets, shared graph
+provenance and recovery evidence remain intact.
+
+After all owned sources and scoped sink counts are verified clean, the dataset
+becomes `deleted`. Its row remains as a tombstone so the identity cannot be reused.
+Repeated DELETE is idempotent. Ambiguous or legacy writer evidence still requires
+the existing `documents:reconcile-writer` procedure after independent physical
+quiescence; cancellation alone is insufficient.
+
+Rebuild and restart the app image to run `php artisan schedule:work` under the
+existing Supervisor. Outside that image, run Laravel's standard scheduler every
+minute. Confirm `php artisan schedule:list` includes `dataset-cleanup`. A crashed
+scan's overlap lock expires within five minutes. Pending cleanup/retry errors are
+logged with the dataset ID; no browser request is needed to resume them.
+
 ## Signed worker callbacks
 
 Workers post to `/api/internal/pipeline/worker-events`.

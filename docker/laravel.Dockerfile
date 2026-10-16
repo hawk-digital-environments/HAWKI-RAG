@@ -77,6 +77,7 @@ RUN mkdir -p \
 
 # Copy container config
 COPY ./docker/rag_app /container/custom/
+COPY ./docker/rag_app/supervisor/dataset-cleanup.conf /container/templates/supervisor/conf.d/dataset-cleanup.service.mode-web.conf
 
 # Dump composer autoload
 RUN composer dump-autoload --optimize

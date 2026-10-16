@@ -235,7 +235,7 @@ PHP;
             DB::commit();
             $process->wait();
             $this->assertTrue($process->isSuccessful(), $process->getErrorOutput().$process->getOutput());
-            $this->assertSame($archiveFirst ? 'Dataset is unavailable for new ingestion.' : '409', $process->getOutput());
+            $this->assertSame($archiveFirst ? 'Dataset is unavailable for new ingestion.' : 'archived', $process->getOutput());
             $this->assertSame($archiveFirst ? 0 : 1, IngestionSource::query()->where('source_id', 'late-source')->count());
             $this->assertDatabaseHas('datasets', ['dataset_id' => 'writer-test', 'status' => 'archived']);
         } finally {
@@ -681,6 +681,66 @@ PHP;
         $this->assertDatabaseHas('pipeline_jobs', ['job_id' => 'writer-job']);
         $this->assertDatabaseHas('ingestion_sources', ['source_id' => 'source-writer']);
         $this->assertSame(200, $this->concurrentWriter($this->writerEvent('release')));
+    }
+
+    public function test_dataset_cleanup_resumes_in_a_new_process_after_dispatch_crash(): void
+    {
+        $this->signedWriter($this->writerEvent('acquire', [$this->target()]))->assertOk();
+        $this->signedWriter($this->writerEvent('release'))->assertOk();
+        $this->deleteJson('/api/datasets/writer-test/storage')->assertAccepted();
+        Http::assertNothingSent();
+        $code = <<<'PHP'
+require 'vendor/autoload.php';
+$app = require 'bootstrap/app.php';
+$app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+$input = json_decode(stream_get_contents(STDIN), true, 512, JSON_THROW_ON_ERROR);
+config()->set('database.connections.managed_delete_child', $input['connection']);
+config()->set('database.default', 'managed_delete_child');
+config()->set('temporal.enabled', true);
+config()->set('temporal.callbacks.secret', 'writer-test-secret');
+config()->set('config.qdrant_http_url', 'http://qdrant.test');
+config()->set('config.neo4j_http_url', 'http://neo4j.test');
+Illuminate\Support\Facades\Http::preventStrayRequests();
+Illuminate\Support\Facades\Http::fake(function ($request) use ($input) {
+    if (str_ends_with($request->url(), '/delete-managed-document')) {
+        if (Illuminate\Support\Facades\DB::transactionLevel() !== 0) { exit(72); }
+        if ($input['crash']) { exit(71); }
+        $scope = $request['workflow_input'];
+        $results = array_map(fn ($t) => ['output_id' => $t['output_id'],
+            'qdrant' => ['verified' => true, 'remaining_points' => 0, 'collection' => $t['collection'], 'source_id' => $t['source_id'], 'dataset_id' => $scope['dataset_id'], 'doc_id' => $t['doc_id']],
+            'neo4j' => ['verified' => true, 'required' => true, 'remaining_contributions' => 0, 'namespace' => $t['neo4j_namespace'], 'dataset_id' => $scope['dataset_id'], 'doc_id' => $t['doc_id']]], $scope['targets']);
+        return Illuminate\Support\Facades\Http::response(['workflow_id' => $request['workflow_id'], 'run_id' => 'resumed-dataset-run', 'status' => 'completed', 'result' => ['input' => $scope, 'results' => $results]]);
+    }
+    if (str_starts_with($request->url(), 'http://qdrant.test')) {
+        return Illuminate\Support\Facades\Http::response(['result' => ['count' => 0]]);
+    }
+    if (str_starts_with($request->url(), 'http://neo4j.test')) {
+        return Illuminate\Support\Facades\Http::response(['results' => [['data' => [['row' => [0]]]], ['data' => [['row' => [0]]]]], 'errors' => []]);
+    }
+    return null;
+});
+app(App\Services\Dataset\DatasetService::class)->resumeArchivedDeletions();
+echo App\Models\Dataset::query()->where('dataset_id', 'writer-test')->firstOrFail()->status;
+PHP;
+        foreach ([true, false] as $crash) {
+            $process = new Process([PHP_BINARY, '-r', $code], base_path(), ['APP_ENV' => 'testing']);
+            $process->setInput(json_encode(['connection' => $this->connection, 'crash' => $crash], JSON_THROW_ON_ERROR));
+            $process->setTimeout(15);
+            $process->run();
+            $this->assertSame($crash ? 71 : 0, $process->getExitCode(), $process->getErrorOutput().$process->getOutput());
+            $this->assertDatabaseCount('managed_document_deletions', 1);
+            $operation = ManagedDocumentDeletion::query()->firstOrFail();
+            if ($crash) {
+                $workflowId = $operation->workflow_id;
+                $this->assertNull($operation->run_id);
+                $this->assertDatabaseHas('datasets', ['dataset_id' => 'writer-test', 'status' => 'archived']);
+            } else {
+                $this->assertSame($workflowId, $operation->workflow_id);
+                $this->assertSame('completed', $operation->status);
+                $this->assertSame('deleted', $process->getOutput());
+                $this->assertDatabaseHas('ingestion_sources', ['source_id' => 'source-writer', 'index_status' => 'deleted']);
+            }
+        }
     }
 
     private function concurrentWriter(array $event, string $path = '/api/internal/pipeline/managed-writers'): int

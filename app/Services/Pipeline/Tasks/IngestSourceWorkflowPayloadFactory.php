@@ -4,9 +4,12 @@ declare(strict_types=1);
 
 namespace App\Services\Pipeline\Tasks;
 
+use App\Models\Dataset;
 use App\Models\IngestionSource;
 use App\Models\PipelineJob;
 use App\Models\PipelineTask;
+use App\Services\Dataset\DatasetRepository;
+use App\Services\Dataset\Exceptions\DatasetInactiveException;
 use App\Services\Document\Values\ManagedDocumentId;
 use App\Services\Pipeline\Recovery\PipelineRetryResumeService;
 use App\Services\Settings\SettingsService;
@@ -22,6 +25,7 @@ readonly class IngestSourceWorkflowPayloadFactory
         private ConfigRepository $config,
         private SettingsService $settings,
         private PipelineRetryResumeService $resume,
+        private DatasetRepository $datasets,
         private ClockInterface $clock = new Clock,
     ) {}
 
@@ -112,6 +116,10 @@ readonly class IngestSourceWorkflowPayloadFactory
     /** @return array<string, mixed> */
     public function retryInput(PipelineTask $task, PipelineJob $job, IngestionSource $source): array
     {
+        if ($this->datasets->findByDatasetId((string) $task->dataset_id)?->status !== Dataset::STATUS_ACTIVE) {
+            throw DatasetInactiveException::forId((string) $task->dataset_id);
+        }
+
         return array_merge($this->input($task, $job, $source), [
             'resume' => $this->resume->forJob($job, $source)->toArray(),
         ]);

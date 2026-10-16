@@ -298,6 +298,7 @@ def ingest_documents(
             graph_settings=graph_settings,
             logger_obj=logger,
             replace_doc_ids_by_doc=replace_doc_ids_by_doc,
+            checkpoint=dependencies.checkpoint,
         )
         graph_preview = graph_result.graph_preview
         graph_failures = graph_result.graph_failures

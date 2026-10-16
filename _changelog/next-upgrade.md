@@ -33,3 +33,14 @@ the host port mapping:
 
 Both remain host-side only (defaults `127.0.0.1` and `8081`); the container always
 listens internally on 8080.
+
+## 3. Enable automatic dataset cleanup
+
+Rebuild and restart the Laravel app image. Its existing Supervisor now runs
+`php artisan schedule:work`; external Laravel deployments must run the standard
+scheduler every minute. `php artisan schedule:list` should show `dataset-cleanup`.
+
+Archived datasets are treated as pending deletions and retried automatically.
+Verified cleanup retains their rows with status `deleted`, preventing reuse of
+dataset identities. Keep source, writer and operation evidence for recovery.
+No database migration or additional queue service is required for this change.

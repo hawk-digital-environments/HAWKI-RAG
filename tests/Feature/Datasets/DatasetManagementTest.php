@@ -7,6 +7,7 @@ use App\Models\ManagedDocument;
 use App\Models\ManagedDocumentOutput;
 use App\Models\PipelineJob;
 use App\Models\PipelineTask;
+use App\Services\Dataset\DatasetService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\File;
@@ -305,8 +306,9 @@ class DatasetManagementTest extends TestCase
         $this->actingAsApiUser();
 
         $this->deleteJson('/api/datasets/delete-dataset/storage')
-            ->assertStatus(409)
-            ->assertJsonPath('success', false);
+            ->assertAccepted()
+            ->assertJsonPath('success', true);
+        $this->assertSame(409, app(DatasetService::class)->cleanup('delete-dataset')['status']);
         $this->assertDatabaseHas('datasets', ['dataset_id' => 'delete-dataset', 'status' => Dataset::STATUS_ARCHIVED]);
         $this->assertDatabaseHas('managed_document_outputs', ['active' => true]);
         Http::assertNothingSent();
@@ -337,11 +339,14 @@ class DatasetManagementTest extends TestCase
 
             return Http::response(['results' => [['data' => [['row' => [0]]]], ['data' => [['row' => [0]]]]], 'errors' => []]);
         });
-        $this->deleteJson('/api/datasets/scoped-delete/storage')->assertStatus(502);
+        $this->deleteJson('/api/datasets/scoped-delete/storage')->assertAccepted();
+        Http::assertNothingSent();
+        $this->artisan('schedule:run')->assertExitCode(0);
         $this->assertDatabaseHas('datasets', ['dataset_id' => $dataset->dataset_id, 'status' => Dataset::STATUS_ARCHIVED]);
         $remaining = 0;
+        $this->artisan('schedule:run')->assertExitCode(0);
         $this->deleteJson('/api/datasets/scoped-delete/storage')->assertOk()->assertJsonPath('success', true);
-        $this->assertDatabaseMissing('datasets', ['dataset_id' => $dataset->dataset_id]);
+        $this->assertDatabaseHas('datasets', ['dataset_id' => $dataset->dataset_id, 'status' => Dataset::STATUS_DELETED]);
     }
 
     private function fakeGraphStats(int $points, int $nodes, int $relationships): void
