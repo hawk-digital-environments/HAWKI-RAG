@@ -11,6 +11,7 @@ use App\Models\ManagedDocument;
 use App\Models\ManagedDocumentDeletion;
 use App\Models\ManagedDocumentOutput;
 use App\Services\Authorization\DatasetIngestionAuthorizationService;
+use App\Services\Dataset\DatasetService;
 use App\Services\Pipeline\Clients\PythonTemporalBridgeClient;
 use App\Services\Pipeline\Repositories\IngestionSourceRepository;
 use Illuminate\Foundation\Testing\DatabaseMigrations;
@@ -177,7 +178,9 @@ class ManagedDocumentDeletionTest extends TestCase
     public function test_dataset_delete_archives_then_reuses_verified_document_cleanup(): void
     {
         $this->flushHeaders();
-        $this->deleteJson('/api/datasets/delete-test/storage')->assertAccepted()->assertJsonPath('success', false);
+        $this->deleteJson('/api/datasets/delete-test/storage')->assertAccepted()->assertJsonPath('success', true);
+        Http::assertNothingSent();
+        app(DatasetService::class)->resumeArchivedDeletions();
         $this->assertDatabaseHas('datasets', ['dataset_id' => 'delete-test', 'status' => Dataset::STATUS_ARCHIVED]);
         $operation = ManagedDocumentDeletion::query()->firstOrFail();
         $this->sendReceipt($this->receipt($operation))->assertOk();
@@ -187,8 +190,9 @@ class ManagedDocumentDeletionTest extends TestCase
             'http://qdrant.test/*/points/count' => Http::response(['result' => ['count' => 0]]),
             'http://neo4j.test/*' => Http::response(['results' => [['data' => [['row' => [0]]]], ['data' => [['row' => [0]]]]], 'errors' => []]),
         ]);
+        app(DatasetService::class)->resumeArchivedDeletions();
         $this->deleteJson('/api/datasets/delete-test/storage')->assertOk()->assertJsonPath('success', true);
-        $this->assertDatabaseMissing('datasets', ['dataset_id' => 'delete-test']);
+        $this->assertDatabaseHas('datasets', ['dataset_id' => 'delete-test', 'status' => Dataset::STATUS_DELETED]);
         Http::assertNotSent(fn ($request): bool => $request->method() === 'DELETE');
     }
 
@@ -201,10 +205,11 @@ class ManagedDocumentDeletionTest extends TestCase
             $this->put('/api/documents/adoc_delete_test', ['force' => true,
                 'file' => UploadedFile::fake()->createWithContent('new.pdf', 'replacement bytes')], ['Accept' => 'application/json'])->assertAccepted();
             $replacement = ManagedDocumentDeletion::query()->firstOrFail();
-            $this->deleteJson('/api/datasets/delete-test/storage')->assertAccepted()
-                ->assertJsonPath('cleanup.operation_id', $replacement->operation_id);
+            $this->deleteJson('/api/datasets/delete-test/storage')->assertAccepted();
+            app(DatasetService::class)->resumeArchivedDeletions();
             $this->sendReceipt($this->receipt($replacement))->assertOk();
             $this->deleteJson('/api/datasets/delete-test/storage')->assertAccepted();
+            app(DatasetService::class)->resumeArchivedDeletions();
             $this->assertSame('abandoned', $replacement->fresh()->status);
             $deletion = ManagedDocumentDeletion::query()->where('purpose', 'delete')->firstOrFail();
             $this->sendReceipt($this->receipt($deletion))->assertOk();

@@ -92,6 +92,7 @@ def test_signed_registration_uses_actual_execution_and_sibling_endpoint(
         (None, False, False, True),
         (RuntimeError("failure before sink writes"), False, False, True),
         (RuntimeError("partial indexing"), True, False, True),
+        (CancelledError("Canceled graph batch"), True, False, True),
         (TimeoutError("collection creation acknowledgement lost"), False, True, False),
         (KeyboardInterrupt(), False, False, True),
     ],
@@ -121,6 +122,7 @@ def test_index_transport_releases_only_after_acknowledged_sink_drain(
 
     def execute(_input, *, context, dependencies):
         assert dependencies.target_registrar == writer.register_targets
+        assert dependencies.workflow_dependencies.checkpoint == writer.check_cancelled
         assert (
             dependencies.workflow_dependencies.vector_writer_factory
             == writer.vector_writer

@@ -8,9 +8,11 @@
   Neo4j contributions through durable Temporal orchestration. Deletion remains
   pending until owned writers have drained and scoped sink cleanup is verified;
   failed or uncertain operations retain the evidence needed for retries.
-- **Safe dataset cleanup.** Archive a dataset before cleanup to block new ingestion,
-  reuse managed-document deletion, and remove dataset metadata only after verified
-  cleanup. Other datasets and shared graph contributions remain intact.
+- **Immediate dataset removal with background cleanup.** Dataset DELETE hides and
+  archives the dataset immediately, blocking ingestion, retries and queries. The
+  scheduler resumes scoped cleanup automatically after writer drain, failures or
+  restarts. Verified completion retains a dataset tombstone; other datasets and
+  shared graph contributions remain intact.
 
 ### Quality of Life
 
@@ -52,8 +54,8 @@
 - **Deletion safety regressions and operations guidance.** Cover transaction races,
   signed cross-language contracts, UI deletion, shared graph preservation and live
   writes completing after cancellation. See the
-  [managed-deletion runbook](../docs/managed-document-deletion.md) for deployment
-  ordering, retry procedures and legacy reconciliation requirements.
+  [deletion operations guide](../_documentation/Operations/temporal_operations.md#dataset-deletion-in-the-background)
+  for scheduler deployment and recovery behavior.
 
 - The bridge `GET /config` endpoint was removed, and the Python services no longer
 read model-selection environment variables (`RAG_DEFAULT_PROVIDER`,

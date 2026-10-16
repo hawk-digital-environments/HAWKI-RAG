@@ -6,6 +6,7 @@ from datetime import timedelta
 from temporalio import activity
 from temporalio.client import Client, WorkflowExecutionStatus
 from temporalio.exceptions import ApplicationError
+from temporalio.service import RPCError, RPCStatusCode
 
 from hawki_pipeline_callbacks import LaravelCallbackClient, LaravelCallbackSettings
 from hawki_rag_contracts.pipeline.deletion import (
@@ -30,9 +31,19 @@ async def verify_managed_deletion_writers(payload: dict[str, Any]) -> None:
         settings.temporal_address, namespace=settings.temporal_namespace
     )
     for writer in body.writers:
-        description = await client.get_workflow_handle(
-            writer.workflow_id, run_id=writer.run_id
-        ).describe(rpc_timeout=timedelta(seconds=5))
+        try:
+            description = await client.get_workflow_handle(
+                writer.workflow_id, run_id=writer.run_id
+            ).describe(rpc_timeout=timedelta(seconds=5))
+        except RPCError as error:
+            # Workflow was already cleaned up by Temporal; nothing to wait for.
+            if getattr(
+                error, "status", None
+            ) == RPCStatusCode.NOT_FOUND or "workflow execution not found" in str(
+                error
+            ):
+                continue
+            raise
         if description.status not in {
             WorkflowExecutionStatus.COMPLETED,
             WorkflowExecutionStatus.FAILED,

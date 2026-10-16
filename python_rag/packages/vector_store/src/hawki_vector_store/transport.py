@@ -105,6 +105,7 @@ class QdrantHTTPTransport:
                 should_retry = (
                     request.retryable
                     and response.status_code in QDRANT_RETRYABLE_STATUS_CODES
+                    and response.status_code != 404
                     and attempt < max_attempts
                 )
                 if should_retry:

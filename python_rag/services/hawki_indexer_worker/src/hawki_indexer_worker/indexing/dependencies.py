@@ -26,6 +26,7 @@ class IngestWorkflowDependencies:
     graph_writer_factory: GraphWriterFactory
     page_state_factory: PageStateFactory
     graph_settings_loader: GraphSettingsLoader = load_graph_ingest_settings
+    checkpoint: Callable[[], None] | None = None
 
 
 __all__ = [

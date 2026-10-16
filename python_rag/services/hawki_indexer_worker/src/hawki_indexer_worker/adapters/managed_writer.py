@@ -34,11 +34,15 @@ class ManagedWriterRegistration:
         self._inflight = 0
         self._closing = False
 
-    def send(self, action: str, targets: list[dict[str, Any]]) -> dict[str, Any]:
-        if action == "acquire" and activity.in_activity():
+    def check_cancelled(self) -> None:
+        if activity.in_activity():
             activity.heartbeat()
             if activity.is_cancelled():
                 raise CancelledError("Managed indexing was canceled")
+
+    def send(self, action: str, targets: list[dict[str, Any]]) -> dict[str, Any]:
+        if action == "acquire":
+            self.check_cancelled()
         identity = f"{self.info.workflow_id}|{self.info.workflow_run_id}|{self.info.activity_id}|{self.info.attempt}"
         suffix = hashlib.sha256(repr(targets).encode()).hexdigest()[:16]
         event = {
@@ -98,10 +102,7 @@ class ManagedWriterRegistration:
         self.targets.update(accepted)
 
     def authorize_vector(self, payload: dict[str, Any]) -> None:
-        if activity.in_activity():
-            activity.heartbeat()
-            if activity.is_cancelled():
-                raise CancelledError("Managed indexing was canceled")
+        self.check_cancelled()
         if (
             payload.get("doc_id") not in self.targets
             or payload.get("source_id") != self.workflow_input["source_id"]
@@ -111,10 +112,7 @@ class ManagedWriterRegistration:
         self.mutation_started = True
 
     def authorize_graph(self, doc_id: str, dataset_id: str, namespace: str) -> None:
-        if activity.in_activity():
-            activity.heartbeat()
-            if activity.is_cancelled():
-                raise CancelledError("Managed indexing was canceled")
+        self.check_cancelled()
         if (
             not namespace
             or self.targets.get(doc_id) != namespace
@@ -208,4 +206,5 @@ class ManagedWriterRegistration:
             dependencies,
             vector_writer_factory=self.vector_writer,
             graph_writer_factory=self.graph_writer,
+            checkpoint=self.check_cancelled,
         )

@@ -18,6 +18,7 @@ use App\Services\Settings\SettingsService;
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Database\DatabaseManager;
 use Psr\Clock\ClockInterface;
+use Psr\Log\LoggerInterface;
 use Symfony\Component\Clock\Clock;
 
 #[Singleton]
@@ -34,6 +35,7 @@ readonly class DatasetService
         private ManagedDocumentRepository $managedDocuments,
         private ManagedDocumentOutputDeletionService $managedDeletion,
         private ManagedDocumentDeletionRepository $deletionOperations,
+        private LoggerInterface $logger,
         private ClockInterface $clock = new Clock,
     ) {}
 
@@ -50,7 +52,7 @@ readonly class DatasetService
     {
         $dataset = $this->datasets->findByDatasetId($datasetId);
 
-        return $dataset ? $this->payloads->payload($dataset, includeDetails: true) : null;
+        return $dataset?->status === Dataset::STATUS_ACTIVE ? $this->payloads->payload($dataset, includeDetails: true) : null;
     }
 
     public function create(array $input): DatasetCreationResult
@@ -137,10 +139,38 @@ readonly class DatasetService
     {
         $dataset = $this->database->transaction(fn () => $this->datasets->archiveForDeletion($datasetId));
 
+        return $dataset ? ['dataset_id' => $datasetId, 'status' => $dataset->status,
+            'cleanup_pending' => $dataset->status !== Dataset::STATUS_DELETED] : null;
+    }
+
+    /** The archived row is the durable work item, including after a process restart. */
+    public function resumeArchivedDeletions(): void
+    {
+        foreach ($this->datasets->pendingDeletions() as $dataset) {
+            try {
+                $result = $this->cleanup($dataset->dataset_id);
+                if ($result && ! ($result['dataset_deleted'] ?? false)) {
+                    $this->logger->warning('Dataset cleanup remains pending.', ['dataset_id' => $dataset->dataset_id,
+                        'message' => $result['message'] ?? 'Scoped sink cleanup is incomplete.']);
+                }
+            } catch (\Throwable $error) {
+                $this->logger->error('Dataset cleanup will retry on the next scan.', ['dataset_id' => $dataset->dataset_id, 'exception' => $error]);
+            }
+        }
+    }
+
+    /** Resume existing document operations; never reactivate a dataset or start replacement ingestion. */
+    public function cleanup(string $datasetId): ?array
+    {
+        $dataset = $this->datasets->findByDatasetId($datasetId);
         if (! $dataset) {
             return null;
         }
+        if ($dataset->status !== Dataset::STATUS_ARCHIVED) {
+            return ['dataset_deleted' => $dataset->status === Dataset::STATUS_DELETED];
+        }
 
+        $operations = [];
         foreach ($this->managedDocuments->undeletedForDataset($datasetId) as $document) {
             try {
                 $replacement = $this->deletionOperations->blocking($document->document_id);
@@ -148,23 +178,33 @@ readonly class DatasetService
                     if ($replacement->status !== 'preparing' || ! empty($replacement->attempts['dispatch_sequence'])) {
                         $replacement = $this->managedDeletion->dispatch($replacement);
                         if ($replacement->status !== 'completed') {
-                            return ['dataset_deleted' => false, 'status' => $replacement->last_error ? 502 : 202,
-                                'message' => $replacement->last_error ?? 'Existing replacement cleanup is pending verification; repeat DELETE to resume.',
-                                'operation_id' => $replacement->operation_id];
+                            $operations[] = $replacement;
+
+                            continue;
                         }
                     }
                     // Reuse verified cleanup without starting a replacement in an archived dataset.
                     $this->managedDeletion->abandonReplacement($replacement);
                 }
                 $operation = $this->managedDeletion->dispatch($this->managedDeletion->prepare($document, 'delete', null));
+                $operations[] = $operation;
             } catch (ManagedDeletionException $error) {
                 return ['dataset_deleted' => false, 'status' => 409, 'message' => $error->getMessage()];
             }
-            if ($operation->status !== 'completed') {
-                return ['dataset_deleted' => false, 'status' => $operation->last_error ? 502 : 202,
-                    'message' => $operation->last_error ?? 'Dataset document cleanup is pending verification; repeat DELETE to resume.',
-                    'operation_id' => $operation->operation_id];
-            }
+        }
+
+        $pending = array_filter($operations, fn ($op): bool => $op->status !== 'completed');
+        if ($pending) {
+            return [
+                'dataset_deleted' => false,
+                'status' => 202,
+                'message' => 'Dataset document cleanup is pending verification; background cleanup will retry.',
+                'operations' => array_values(array_map(fn ($op): array => [
+                    'operation_id' => $op->operation_id,
+                    'status' => $op->status,
+                    'document_id' => $op->document_id,
+                ], $pending)),
+            ];
         }
         if ($this->datasets->unverifiedSources($dataset)->isNotEmpty()) {
             return ['dataset_deleted' => false, 'status' => 409,
@@ -175,7 +215,7 @@ readonly class DatasetService
 
         return [
             ...$cleanup,
-            'dataset_deleted' => $cleanupOk ? $this->datasets->delete($dataset) : false,
+            'dataset_deleted' => $cleanupOk ? $this->datasets->completeDeletion($dataset) : false,
         ];
     }
 

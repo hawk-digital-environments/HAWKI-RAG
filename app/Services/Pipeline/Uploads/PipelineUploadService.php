@@ -237,6 +237,7 @@ class PipelineUploadService
         if ($prepareOnly) {
             return $this->preparedResult($task, $job);
         }
+        $this->datasets->requireActive((string) $source->dataset_id);
         if ($this->database->connection()->transactionLevel() !== 0) {
             throw new \LogicException('Managed Temporal dispatch requires committed SQL preparation.');
         }

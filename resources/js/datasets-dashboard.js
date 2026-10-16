@@ -717,9 +717,6 @@ function bootDatasetsDashboard() {
 
         setStatus(`Deleting dataset ${dataset.dataset_id}...`);
         const data = await requestJson(`datasets/${encodeURIComponent(dataset.dataset_id)}/storage`, { method: 'DELETE' });
-        const qdrantMessage = data.cleanup?.qdrant?.message || 'Qdrant cleanup finished.';
-        const neo4jNodes = data.cleanup?.neo4j?.nodes ?? 0;
-        const neo4jRelationships = data.cleanup?.neo4j?.relationships ?? 0;
 
         if (dataset.dataset_id === state.selectedDatasetId) {
             state.selectedDatasetId = '';
@@ -729,7 +726,7 @@ function bootDatasetsDashboard() {
         }
 
         await loadDatasets({ keepSelection: false });
-        setStatus(`Deleted ${dataset.dataset_id}. ${qdrantMessage} Neo4j deleted ${neo4jNodes} nodes and ${neo4jRelationships} relationships.`, 'success');
+        setStatus(data.message || `Dataset ${dataset.dataset_id} is hidden; cleanup continues in the background.`, 'success');
     }
 
     function clearDocumentDetail() {

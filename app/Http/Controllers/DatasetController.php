@@ -68,14 +68,12 @@ class DatasetController extends Controller
             ], 404);
         }
 
-        $ok = ($result['qdrant']['ok'] ?? false) && ($result['neo4j']['ok'] ?? false) && ($result['dataset_deleted'] ?? false);
-
         return response()->json([
-            'success' => $ok,
-            'message' => $ok
-                ? "Deleted dataset {$datasetId}."
-                : ($result['message'] ?? "Dataset delete failed for {$datasetId}."),
+            'success' => true,
+            'message' => $result['cleanup_pending']
+                ? "Dataset {$datasetId} is hidden. Scoped cleanup will continue automatically in the background."
+                : "Dataset {$datasetId} cleanup is complete.",
             'cleanup' => $result,
-        ], $ok ? 200 : ($result['status'] ?? 502));
+        ], $result['cleanup_pending'] ? 202 : 200);
     }
 }
