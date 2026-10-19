@@ -81,6 +81,83 @@ def _request(*, graph_enabled: bool):
 class QueryCharacterizationTests(unittest.TestCase):
     """Protect the public query workflow without implementation-level injection."""
 
+    def test_fast_is_default_and_only_explicit_deep_mode_reads_an_enabled_graph(
+        self,
+    ) -> None:
+        from hawki_bridge.application.dependencies import QueryDependencies
+        from hawki_bridge.application.query.execution import execute_authorized_query
+        from hawki_rag_contracts.retrieval.query import QueryRequest
+
+        for fast_mode, authorized_graph, expected_graph in [
+            (None, True, False),
+            (True, True, False),
+            (False, False, False),
+            (False, True, True),
+        ]:
+            with self.subTest(fast_mode=fast_mode, authorized_graph=authorized_graph):
+                graph_calls: list[str] = []
+
+                class GraphSearch:
+                    def build_structural_hits(self, *_args, **_kwargs):
+                        graph_calls.append("structural")
+                        return []
+
+                    def fetch_related_graph(self, *_args, **_kwargs):
+                        graph_calls.append("facts")
+                        return [{"subject": "Train", "relation": "IS", "object": "Toy"}]
+
+                vector_search = _VectorSearch(
+                    [
+                        {
+                            "id": "a",
+                            "score": 0.9,
+                            "payload": {
+                                "content": "toy train",
+                                "component_type": "chunk",
+                            },
+                        },
+                    ]
+                )
+                payload = _request(graph_enabled=authorized_graph).model_dump()
+                if fast_mode is None:
+                    payload.pop("fast_mode")
+                else:
+                    payload["fast_mode"] = fast_mode
+                request = QueryRequest.model_validate(payload)
+                dependencies = QueryDependencies(
+                    vector_search_factory=lambda: vector_search,
+                    graph_search=GraphSearch(),
+                    resolve_model_provider=lambda _name: _Provider([]),
+                    rerank_hits=lambda *, hits, **kwargs: hits,
+                )
+
+                with patch.dict(
+                    os.environ,
+                    {
+                        "RAG_ITERATIVE_RETRIEVAL": "false",
+                        "RAG_MIN_SCORE": "0.0",
+                        "RAG_GENERATE_ANSWER": "false",
+                    },
+                ):
+                    result = execute_authorized_query(
+                        request, dependencies=dependencies
+                    )
+
+                self.assertEqual(result.count, 1)
+                self.assertEqual(
+                    graph_calls, ["structural", "facts"] if expected_graph else []
+                )
+                self.assertEqual(bool(result.kg), expected_graph)
+                self.assertEqual(result.retrieval["graph_enabled"], expected_graph)
+                expected_reason = (
+                    None
+                    if expected_graph
+                    else ("graph_not_enabled" if fast_mode is False else "fast_mode")
+                )
+                self.assertEqual(
+                    result.retrieval["graph_disabled_reason"], expected_reason
+                )
+
     def test_query_uses_reranked_order_through_typed_dependencies(self) -> None:
         from hawki_bridge.application.dependencies import QueryDependencies
         from hawki_bridge.application.query.execution import execute_authorized_query

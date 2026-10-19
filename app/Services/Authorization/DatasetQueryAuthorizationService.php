@@ -13,6 +13,7 @@ use App\Services\Authorization\Repositories\DatasetGrantRepository;
 use App\Services\Authorization\Values\AuthenticatedPrincipal;
 use App\Services\Authorization\Values\AuthorizedDatasetScope;
 use App\Services\Dataset\QdrantCollectionCatalog;
+use App\Services\Dataset\Repositories\DatasetGraphAvailabilityRepository;
 use Illuminate\Container\Attributes\Config;
 use Illuminate\Container\Attributes\Singleton;
 
@@ -21,12 +22,13 @@ readonly class DatasetQueryAuthorizationService
 {
     public function __construct(
         private DatasetGrantRepository $grants,
+        private DatasetGraphAvailabilityRepository $graphs,
         private QdrantCollectionCatalog $qdrantCollections,
         #[Config('config.query_auth.all_datasets_by_default')]
         private bool $allDatasetsByDefault,
     ) {}
 
-    public function authorize(User $user, string $datasetId): AuthorizedDatasetScope
+    public function authorize(User $user, string $datasetId, bool $includeGraph = false): AuthorizedDatasetScope
     {
         $principal = $this->principalFor($user);
         $dataset = $this->grants->findActiveDatasetForQuery(
@@ -49,6 +51,9 @@ readonly class DatasetQueryAuthorizationService
             neo4jNamespace: trim((string) $dataset->neo4j_namespace),
             embeddingProvider: trim((string) $dataset->embedding_provider),
             embeddingModel: trim((string) $dataset->embedding_model),
+            graphEnabled: $includeGraph
+                && trim((string) $dataset->neo4j_namespace) !== ''
+                && $this->graphs->hasReadyGraph((string) $dataset->dataset_id),
         );
     }
 
@@ -133,7 +138,6 @@ readonly class DatasetQueryAuthorizationService
     public function isReadyForQuery(Dataset $dataset): bool
     {
         return trim((string) $dataset->qdrant_collection) !== ''
-            && trim((string) $dataset->neo4j_namespace) !== ''
             && trim((string) $dataset->embedding_provider) !== ''
             && trim((string) $dataset->embedding_model) !== '';
     }

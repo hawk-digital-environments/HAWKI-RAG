@@ -108,7 +108,7 @@ class TwoDatasetIsolationTest extends SystemTestCase
                     'neo4j_namespace' => 'graph_system_alpha',
                     'embedding_provider' => 'ollama',
                     'embedding_model' => 'bge-m3',
-                    'graph_enabled' => true,
+                    'graph_enabled' => false,
                 ]
                 && ! array_key_exists('dataset_id', $payload)
                 && ! str_contains(json_encode($payload, JSON_THROW_ON_ERROR), 'system-beta');

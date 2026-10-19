@@ -43,6 +43,12 @@ readonly class RagSearchResponseFilter
                     'timestamp' => $payload['updated_at'] ?? null,
                     'tags' => ! empty($payload['tags']) && is_array($payload['tags']) ? implode(',', $payload['tags']) : null,
                     'collection' => $hit['collection'] ?? null,
+                    // Managed document identity (adoc_*) so callers can turn
+                    // hits into per-document source references.
+                    'document_id' => $payload['managed_document_id'] ?? null,
+                    // Caller-owned document identity of direct-text
+                    // ingestions (stored per chunk at ingestion time).
+                    'external_document_id' => $payload['external_document_id'] ?? null,
                 ]),
                 'content' => $payload['content'] ?? null,
                 'component_type' => $payload['component_type'] ?? null,

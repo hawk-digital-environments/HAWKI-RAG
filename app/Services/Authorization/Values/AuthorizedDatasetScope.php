@@ -21,6 +21,7 @@ final readonly class AuthorizedDatasetScope
         string $neo4jNamespace,
         string $embeddingProvider,
         string $embeddingModel,
+        bool $graphEnabled = false,
     ): self {
         return new self(
             datasetId: $datasetId,
@@ -28,12 +29,12 @@ final readonly class AuthorizedDatasetScope
             neo4jNamespace: $neo4jNamespace,
             embeddingProvider: $embeddingProvider,
             embeddingModel: $embeddingModel,
-            graphEnabled: true,
+            graphEnabled: $graphEnabled,
         );
     }
 
     /**
-     * @return array{dataset_id:string,qdrant_collection:string,neo4j_namespace:string,embedding_provider:string,embedding_model:string,graph_enabled:true}
+     * @return array{dataset_id:string,qdrant_collection:string,neo4j_namespace:string,embedding_provider:string,embedding_model:string,graph_enabled:bool}
      */
     public function toArray(): array
     {

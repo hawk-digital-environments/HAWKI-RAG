@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 import signal
 import threading
 import time
@@ -106,6 +107,7 @@ def build_triplets_by_doc(
     graph_settings: GraphIngestSettings | None = None,
     request_id: str | None = None,
     replace_doc_ids_by_doc: dict[str, set[str]] | None = None,
+    checkpoint: Callable[[], None] | None = None,
 ) -> tuple[dict[str, list[tuple[str, str, str]]], list[dict[str, Any]]]:
     resolved_settings = graph_settings or load_graph_ingest_settings()
     if graph_debug is None:
@@ -162,6 +164,8 @@ def build_triplets_by_doc(
     if graph_doc_timeout_s > 0 and not use_alarm:
         logger.info("graph:extract doc_timeout using thread fallback")
     for doc_id, parts in grouped.items():
+        if checkpoint is not None:
+            checkpoint()
         doc_total_start = time.perf_counter()
         doc_index += 1
         prep_start = time.perf_counter()
@@ -241,6 +245,8 @@ def build_triplets_by_doc(
         triplets, error = run_graph_extract_with_timeout(
             _extract, graph_doc_timeout_s, allow_alarm=use_alarm
         )
+        if checkpoint is not None:
+            checkpoint()
         extract_ms = (time.perf_counter() - extract_start) * 1000
         if error:
             failures.append(

@@ -39,7 +39,7 @@ class QueryRequest(BaseModel):
     filters: dict[str, QueryFilterScalar] = Field(default_factory=dict)
     generate: bool = True
     is_optimized: bool = False
-    fast_mode: bool = False
+    fast_mode: bool = True
     smart_lookup: bool = False
     structural_hops: int | None = Field(default=None, ge=0)
     preferred_tags: list[str] | None = None

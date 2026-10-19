@@ -7,7 +7,7 @@ namespace Tests\System;
 use App\Models\IngestionSource;
 use App\Models\PipelineJob;
 use App\Models\PipelineTask;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Foundation\Testing\DatabaseMigrations;
 use Illuminate\Http\Client\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\File;
@@ -26,7 +26,7 @@ use Illuminate\Support\Facades\Http;
  */
 class PdfIngestionFlowTest extends SystemTestCase
 {
-    use RefreshDatabase;
+    use DatabaseMigrations;
 
     private string $sharedRoot;
 
@@ -38,6 +38,7 @@ class PdfIngestionFlowTest extends SystemTestCase
         File::deleteDirectory($this->sharedRoot);
         config()->set('temporal.storage.shared_root', $this->sharedRoot);
         config()->set('temporal.enabled', true);
+        config()->set('temporal.callbacks.secret', 'managed-test-secret');
         config()->set('temporal.ingestion.provider', 'ollama');
         config()->set('file_converter.raganything_supported_extensions', ['pdf']);
 
@@ -58,9 +59,13 @@ class PdfIngestionFlowTest extends SystemTestCase
         $bridgeEndpoint = rtrim((string) config('config.hawki_rag_bridge_url'), '/')
             .'/temporal/workflows/ingest';
         Http::fake([
-            $bridgeEndpoint => Http::response([
-                'workflow_id' => 'ingest-source-system-ten-page-pdf',
+            $bridgeEndpoint => fn ($request) => Http::response([
+                'workflow_id' => $request->data()['workflow_id'],
                 'run_id' => 'system-ten-page-run-1',
+            ]),
+            rtrim((string) config('config.hawki_rag_bridge_url'), '/').'/temporal/workflows/status' => Http::response([
+                'workflow_id' => 'ingest-source-system-ten-page-pdf',
+                'run_id' => 'system-ten-page-run-1', 'status' => 'RUNNING',
             ]),
         ]);
 
@@ -113,7 +118,7 @@ class PdfIngestionFlowTest extends SystemTestCase
             'source_url' => 'upload://ten-page-handbook.pdf',
             'status' => PipelineJob::STATUS_RUNNING,
             'current_stage' => 'temporal.workflow_started',
-            'temporal_workflow_id' => 'ingest-source-system-ten-page-pdf',
+            'temporal_workflow_id' => 'ingest-source-'.$sourceId,
             'temporal_run_id' => 'system-ten-page-run-1',
         ]);
         $this->assertDatabaseHas('ingestion_sources', [
@@ -122,12 +127,16 @@ class PdfIngestionFlowTest extends SystemTestCase
             'dataset_id' => 'system-pdf-ten-pages',
             'source_url' => 'upload://ten-page-handbook.pdf',
             'index_status' => IngestionSource::STATUS_RUNNING,
-            'temporal_workflow_id' => 'ingest-source-system-ten-page-pdf',
+            'temporal_workflow_id' => 'ingest-source-'.$sourceId,
         ]);
 
         $storedPath = null;
-        Http::assertSentCount(1);
+        Http::assertSentCount(2);
+        $this->assertCount(1, Http::recorded(fn (Request $request) => $request->url() === $bridgeEndpoint));
         Http::assertSent(function (Request $request) use ($bridgeEndpoint, $sourceId, &$storedPath): bool {
+            if ($request->url() !== $bridgeEndpoint) {
+                return false;
+            }
             $payload = $request->data();
             $storedPath = data_get($payload, 'workflow_input.upload.local_path');
 

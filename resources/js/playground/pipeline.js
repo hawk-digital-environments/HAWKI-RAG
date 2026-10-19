@@ -33,6 +33,7 @@ let taskListPollTimer = null;
 let runListPollTimer = null;
 let taskCatalogLoading = false;
 let taskRunLoading = false;
+const retryingPipelineTasks = new Set();
 
 localStorage.removeItem('hawkiPipelineJobId');
 localStorage.removeItem('hawkiPipelineRunTaskId');
@@ -584,6 +585,17 @@ function renderPipelineTaskRuns(tasks) {
         const actions = document.createElement('div');
         actions.className = 'pipeline-run-actions';
 
+        if (String(task.status || '').toLowerCase() === 'failed' || Number(task.counters?.jobs_failed || 0) > 0) {
+            const retry = document.createElement('button');
+            retry.type = 'button';
+            retry.className = 'pipeline-run-retry';
+            retry.textContent = retryingPipelineTasks.has(task.task_id) ? 'Retrying…' : 'Retry';
+            retry.disabled = retryingPipelineTasks.has(task.task_id);
+            retry.title = 'Resume each failed job at its failed stage using the current configuration';
+            retry.addEventListener('click', () => retryPipelineTask(task.task_id));
+            actions.appendChild(retry);
+        }
+
         if (isPipelineTaskCancellable(task)) {
             const cancel = document.createElement('button');
             cancel.type = 'button';
@@ -598,7 +610,7 @@ function renderPipelineTaskRuns(tasks) {
         deleteButton.type = 'button';
         deleteButton.className = 'pipeline-run-delete';
         deleteButton.textContent = 'Delete';
-        deleteButton.title = 'Delete this pipeline task history and owned shared-storage folders';
+        deleteButton.title = 'Delete owned indexed content, then remove the task from the list';
         deleteButton.addEventListener('click', () => deletePipelineTask(task.task_id, deleteButton));
         actions.appendChild(deleteButton);
 
@@ -749,6 +761,49 @@ async function selectPipelineTask(taskId) {
     await pollPipeline();
 }
 
+async function retryPipelineTask(taskId) {
+    if (!taskId || retryingPipelineTasks.has(taskId)) return;
+
+    retryingPipelineTasks.add(taskId);
+    renderPipelineTaskRuns(pipelineTaskRuns);
+    setTaskNote(`Resuming failed jobs for ${taskId} at their failed stages...`);
+
+    try {
+        const response = await fetch(apiUrl(`pipeline/recovery/tasks/${encodeURIComponent(taskId)}/retry-failed`), {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: {
+                'Accept': 'application/json',
+                'X-CSRF-TOKEN': csrfToken(),
+            },
+        });
+        const data = await parseResponseJson(response);
+        if (!response.ok || !data.success) {
+            throw new Error(data.message || `Pipeline task retry failed (${response.status})`);
+        }
+
+        const recovery = data.recovery;
+        if (!recovery || Number(recovery.retried || 0) === 0) {
+            const failure = recovery?.jobs?.find((job) => job.result === 'failed');
+            throw new Error(failure?.message || 'No failed jobs were eligible for retry.');
+        }
+
+        const failed = Number(recovery.failed || 0);
+        const message = `Started ${recovery.retried} job retries for ${taskId}.`
+            + (failed > 0 ? ` ${failed} retries could not be started.` : '');
+        setTaskNote(message, failed > 0 ? 'warn' : 'success');
+        pushActivity('Pipeline', message);
+        await loadPipelineTaskRuns({ quiet: true });
+        await selectPipelineTask(taskId);
+    } catch (error) {
+        setTaskNote(error.message || 'Pipeline task retry failed.', 'error');
+        pushActivity('Pipeline', error.message || 'Pipeline task retry failed.');
+    } finally {
+        retryingPipelineTasks.delete(taskId);
+        renderPipelineTaskRuns(pipelineTaskRuns);
+    }
+}
+
 async function cancelPipelineTask(taskId, button = null) {
     if (!taskId) return;
 
@@ -780,7 +835,7 @@ async function cancelPipelineTask(taskId, button = null) {
         }
 
         pushActivity('Pipeline', `cancel requested for task ${taskId}`);
-        setTaskNote(`Cancel requested for ${taskId}.`, 'success');
+        setTaskNote(`Cancel requested for ${taskId}. In-flight work may finish; existing indexed data is retained until verified deletion.`, 'warn');
         await loadPipelineTaskRuns();
     } catch (error) {
         setTaskNote(error.message || 'Pipeline task cancel failed.', 'error');
@@ -795,17 +850,49 @@ async function deletePipelineTask(taskId, button = null) {
 
     const task = pipelineTaskRuns.find((candidate) => candidate.task_id === taskId);
     const activeWarning = isPipelineTaskCancellable(task)
-        ? '\n\nThis task still looks active. Use Cancel first if workers may still be reading its files.'
+        ? '\n\nActive writers must stop before deletion can complete.'
         : '';
     const confirmed = window.confirm(
-        `Delete pipeline task ${taskId}?${activeWarning}\n\nWarning: this removes its task, job, and stage history, plus owned shared-storage folders such as /app/shared/${taskId} and unshared /app/shared/sources/<source_id> workspaces.\n\nDataset content in Qdrant and Neo4j is not deleted. Continue?`,
+        `Delete pipeline task ${taskId} and its owned indexed documents?${activeWarning}\n\nOwned Qdrant points and Neo4j contributions will be cleaned up. History is removed from this list only after verified cleanup. Continue?`,
     );
     if (!confirmed) return;
 
     if (button) button.disabled = true;
-    setTaskNote(`Deleting cached task ${taskId}...`, 'warn');
+    setTaskNote(`Verifying document cleanup for task ${taskId}...`, 'warn');
 
     try {
+        const detailResponse = await fetch(apiUrl(`pipeline/tasks/${encodeURIComponent(taskId)}`), {
+            credentials: 'same-origin', headers: { Accept: 'application/json' },
+        });
+        const detail = await parseResponseJson(detailResponse);
+        if (!detailResponse.ok || !detail.success) {
+            throw new Error(detail.message || 'Unable to establish task document ownership.');
+        }
+        const documentIds = new Set((detail.task?.managed_documents || []).map((doc) => doc.document_id));
+        const declaredOwner = detail.task?.metadata?.request?.metadata?.managed_document_id;
+        if (declaredOwner) documentIds.add(declaredOwner);
+        if ([...documentIds].some((id) => !id) || (!documentIds.size
+            && (detail.task?.sources || []).some((source) => source.metadata?.managed_dispatch))) {
+            throw new Error('Managed document ownership is missing; cleanup evidence is retained.');
+        }
+        for (const documentId of documentIds) {
+            while (true) {
+                const cleanupResponse = await fetch(apiUrl(`documents/${encodeURIComponent(documentId)}`), {
+                    method: 'DELETE', credentials: 'same-origin',
+                    headers: { Accept: 'application/json', 'X-CSRF-TOKEN': csrfToken() },
+                });
+                const cleanup = await parseResponseJson(cleanupResponse);
+                if (!cleanupResponse.ok || !cleanup.success) {
+                    throw new Error(cleanup.error || cleanup.message || 'Document cleanup failed; history and retry evidence are retained.');
+                }
+                if (cleanup.operation?.status !== 'completed' || cleanup.document?.status !== 'deleted') {
+                    setTaskNote(`Document cleanup for task ${taskId} is pending verification. Waiting for writer completion and scoped cleanup; history and evidence are retained.`, 'warn');
+                    await new Promise((resolve) => setTimeout(resolve, 2000));
+                    continue;
+                }
+                break;
+            }
+        }
         const response = await fetch(apiUrl(`pipeline/tasks/${encodeURIComponent(taskId)}`), {
             method: 'DELETE',
             credentials: 'same-origin',
@@ -846,7 +933,9 @@ async function deletePipelineTask(taskId, button = null) {
             ? ` Removed ${removedCount} folder(s); skipped ${skippedCount}.`
             : '';
         pushActivity('Pipeline', `deleted task ${taskId}`);
-        setTaskNote(`Deleted task ${taskId}.${cleanupMessage}`, 'success');
+        setTaskNote(data.history_hidden
+            ? `Deleted indexed documents and removed task ${taskId} from the list. Recovery evidence is retained.`
+            : `Deleted task ${taskId}.${cleanupMessage}`, 'success');
         await loadPipelineTaskRuns();
     } catch (error) {
         setTaskNote(error.message || 'Pipeline task delete failed.', 'error');
@@ -888,7 +977,7 @@ function settingsMetadata(task) {
 function pipelineTaskPayload(task) {
     const sourceUrl = task.primaryUrl || '';
     const sitemapUrl = task.sitemapUrl || '';
-    const graphEnabled = taskGraphInput instanceof HTMLInputElement ? taskGraphInput.checked : true;
+    const graphEnabled = taskGraphInput instanceof HTMLInputElement ? taskGraphInput.checked : false;
     const metadata = {
         source: task.source || 'scraper-task',
         catalog_task_id: task.id,

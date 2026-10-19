@@ -6,6 +6,7 @@ namespace App\Services\Pipeline\Tasks;
 
 use App\Models\PipelineJob;
 use App\Models\PipelineTask;
+use App\Services\Document\ManagedDocumentRecoveryGuard;
 use App\Services\Pipeline\Clients\PythonTemporalBridgeClient;
 use App\Services\Pipeline\Repositories\IngestionSourceRepository;
 use App\Services\Pipeline\Repositories\PipelineJobStateMutationRepository;
@@ -29,6 +30,7 @@ readonly class PipelineTaskRetryService
         private PipelineTaskStatusRefresher $refresher,
         private PythonTemporalBridgeClient $temporalBridge,
         private TextIngestionRecoveryService $textIngestionRecovery,
+        private ManagedDocumentRecoveryGuard $managedRecovery,
         private ClockInterface $clock = new Clock,
     ) {}
 
@@ -78,7 +80,10 @@ readonly class PipelineTaskRetryService
             return;
         }
 
-        $source = $this->ingestionSources->upsertStarting($source->source_id, [
+        $workflowInput = $directText ? null : $this->workflowPayloads->retryInput($task, $job, $source);
+        $this->managedRecovery->verify($source);
+
+        $startingAttributes = [
             'source_url' => $source->source_url,
             'task_id' => $task->task_id,
             'dataset_id' => $task->dataset_id,
@@ -88,7 +93,10 @@ readonly class PipelineTaskRetryService
             'metadata' => array_merge($source->metadata ?? [], [
                 'retried_at' => $this->timestamp(),
             ]),
-        ]);
+        ];
+        if (! isset($source->metadata['managed_dispatch'])) {
+            $source = $this->ingestionSources->upsertStarting($source->source_id, $startingAttributes);
+        }
 
         if ($directText) {
             $execution = $this->textIngestionRecovery->startOrReuse($task, $job, $source);
@@ -98,7 +106,10 @@ readonly class PipelineTaskRetryService
                 $source->source_id,
                 (int) ($metadata['retry_count'] ?? 1),
             );
-            $workflowInput = $this->workflowPayloads->input($task, $job, $source);
+            if (isset($source->metadata['managed_dispatch'])) {
+                $source = $this->ingestionSources->reserveManagedRecovery($source, $job, $workflowId, $workflowInput, $startingAttributes);
+                $workflowInput = $source->metadata['managed_dispatch']['input'];
+            }
             $execution = $this->temporalBridge->startIngestWorkflow($workflowInput, $workflowId);
         }
         $metadata['temporal'] = array_filter([

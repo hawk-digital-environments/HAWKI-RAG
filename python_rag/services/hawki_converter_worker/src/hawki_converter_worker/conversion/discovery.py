@@ -52,13 +52,14 @@ def find_raw_conversion_candidates(
     return candidates
 
 
-def converter_output_directory_name(raw_file: Path) -> str:
+def converter_output_directory_name(raw_file: Path, raw_root: Path) -> str:
     """Return a stable collision-resistant directory name for one input file."""
 
     safe_stem = "".join(
         character.lower() if character.isalnum() else "-" for character in raw_file.stem
     ).strip("-")
-    digest = hashlib.sha256(str(raw_file.resolve()).encode("utf-8")).hexdigest()[:8]
+    relative_path = raw_file.resolve().relative_to(raw_root.resolve()).as_posix()
+    digest = hashlib.sha256(relative_path.encode("utf-8")).hexdigest()[:16]
     return f"{safe_stem or 'document'}-{digest}"
 
 

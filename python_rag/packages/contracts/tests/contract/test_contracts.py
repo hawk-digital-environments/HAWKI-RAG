@@ -179,9 +179,18 @@ def test_artifact_and_reranker_contracts_reject_malformed_wire_data() -> None:
     assert response.results[0].index == 0
 
 
-def test_laravel_workflow_payload_accepts_flat_services_and_optional_collection() -> (
-    None
-):
+@pytest.mark.parametrize(
+    "resume",
+    [
+        None,
+        {"stage": "scrape"},
+        {"stage": "convert", "raw_dir": "/shared/crawler-job"},
+        {"stage": "ingest", "markdown_dir": "/shared/saved-markdown"},
+    ],
+)
+def test_laravel_workflow_payload_accepts_flat_services_and_optional_collection(
+    resume,
+) -> None:
     workflow_input = IngestSourceWorkflowInput.model_validate(
         {
             "source_id": "source-a",
@@ -203,10 +212,16 @@ def test_laravel_workflow_payload_accepts_flat_services_and_optional_collection(
                 "scraper_url": "http://crawl4ai-service",
                 "scraper_token": "secret-reference-value",
             },
+            "resume": resume,
         }
     )
 
     assert workflow_input.ingestion.collection is None
+    assert (
+        workflow_input.resume.model_dump(exclude_none=True)
+        if workflow_input.resume
+        else None
+    ) == resume
     assert workflow_input.external_services["scraper_url"] == (
         "http://crawl4ai-service"
     )

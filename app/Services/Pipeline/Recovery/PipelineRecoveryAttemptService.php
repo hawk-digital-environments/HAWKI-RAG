@@ -6,6 +6,7 @@ namespace App\Services\Pipeline\Recovery;
 
 use App\Models\PipelineJob;
 use App\Models\PipelineTask;
+use App\Services\Document\ManagedDocumentRecoveryGuard;
 use App\Services\Pipeline\Clients\PythonTemporalBridgeClient;
 use App\Services\Pipeline\Repositories\IngestionSourceRepository;
 use App\Services\Pipeline\Repositories\PipelineJobRecoveryRepository;
@@ -36,6 +37,7 @@ readonly class PipelineRecoveryAttemptService
         private PipelineTransactionRepository $transactions,
         private PythonTemporalBridgeClient $temporalBridge,
         private TextIngestionRecoveryService $textIngestionRecovery,
+        private ManagedDocumentRecoveryGuard $managedRecovery,
         private LoggerInterface $logger,
         private ClockInterface $clock = new Clock,
     ) {}
@@ -181,7 +183,11 @@ readonly class PipelineRecoveryAttemptService
             throw new \RuntimeException('Deleted direct-text ingestions cannot be recovered.');
         }
 
-        $source = $this->ingestionSources->upsertStarting($source->source_id, [
+        $directText = $this->textIngestionRecovery->supports($job, $source);
+        $workflowInput = $directText ? null : $this->workflowPayloads->retryInput($task, $job, $source);
+        $this->managedRecovery->verify($source);
+
+        $startingAttributes = [
             'source_url' => $source->source_url,
             'task_id' => $task->task_id,
             'dataset_id' => $task->dataset_id,
@@ -191,9 +197,12 @@ readonly class PipelineRecoveryAttemptService
             'metadata' => array_merge($source->metadata ?? [], [
                 'retried_at' => $this->clock->now()->format(\DateTimeInterface::ATOM),
             ]),
-        ]);
+        ];
+        if (! isset($source->metadata['managed_dispatch'])) {
+            $source = $this->ingestionSources->upsertStarting($source->source_id, $startingAttributes);
+        }
 
-        if ($this->textIngestionRecovery->supports($job, $source)) {
+        if ($directText) {
             $execution = $this->textIngestionRecovery->startOrReuse($task, $job, $source);
         } else {
             $workflowId = $this->retryWorkflowId(
@@ -201,8 +210,12 @@ readonly class PipelineRecoveryAttemptService
                 $source->source_id,
                 (int) ($metadata['retry_count'] ?? 1),
             );
+            if (isset($source->metadata['managed_dispatch'])) {
+                $source = $this->ingestionSources->reserveManagedRecovery($source, $job, $workflowId, $workflowInput, $startingAttributes);
+                $workflowInput = $source->metadata['managed_dispatch']['input'];
+            }
             $execution = $this->temporalBridge->startIngestWorkflow(
-                $this->workflowPayloads->input($task, $job, $source),
+                $workflowInput,
                 $workflowId,
             );
         }

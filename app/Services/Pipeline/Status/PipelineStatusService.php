@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Pipeline\Status;
 
+use App\Services\Pipeline\Repositories\Queries\ActivePipelineJobsQuery;
 use App\Services\Pipeline\State\PipelineStateService;
 use Illuminate\Container\Attributes\Singleton;
 use Psr\Clock\ClockInterface;
@@ -13,6 +14,8 @@ use Symfony\Component\Clock\Clock;
 readonly class PipelineStatusService
 {
     public function __construct(
+        private PipelineWorkflowStatusSynchronizer $workflows,
+        private ActivePipelineJobsQuery $jobs,
         private PipelineScrapeStatusService $scrapeStatuses,
         private PipelineConversionStatusService $conversionStatuses,
         private PipelineStateService $pipelineState,
@@ -27,10 +30,21 @@ readonly class PipelineStatusService
      */
     public function show(string $jobId): array
     {
+        $job = $this->jobs->findByJobId($jobId);
+        $temporal = $job && $job->temporal_workflow_id;
+        if ($temporal) {
+            $this->workflows->sync($job);
+        }
         $tracked = $this->pipelineState->status($jobId);
-        $scrape = $this->scrapeStatuses->stage($jobId);
+        // Signed worker callbacks own Temporal stage state. Legacy crawler and
+        // directory scans refer to earlier attempts and can regress this state.
+        $scrape = $temporal
+            ? ($tracked['stages']['scrape'] ?? $this->emptyStages->stage('not_tracked', 'Scraping has not started.'))
+            : $this->scrapeStatuses->stage($jobId);
         $datasetPath = $tracked['dataset_path'] ?? $tracked['datasetPath'] ?? $scrape['dataset_path'] ?? $scrape['datasetPath'] ?? null;
-        $convert = $this->convertStage($jobId, $datasetPath);
+        $convert = $temporal
+            ? ($tracked['stages']['convert'] ?? $this->emptyStages->stage('not_tracked', 'Conversion has not started.'))
+            : $this->convertStage($jobId, $datasetPath);
 
         // Reconciliation can persist conversion and ingest stages during this request.
         $tracked = $this->pipelineState->status($jobId);

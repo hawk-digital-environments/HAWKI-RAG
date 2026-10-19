@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 import time
 from dataclasses import dataclass
 from typing import Any
@@ -43,6 +44,7 @@ def commit_graph_triplets(
     graph_settings: GraphIngestSettings,
     logger_obj: logging.Logger,
     replace_doc_ids_by_doc: dict[str, set[str]] | None = None,
+    checkpoint: Callable[[], None] | None = None,
 ) -> GraphCommitResult:
     """Extract graph triplets, upsert them to Neo4j, and build graph preview data."""
 
@@ -88,6 +90,7 @@ def commit_graph_triplets(
             request_id=operation_id,
             replace_doc_ids_by_doc=replace_doc_ids_by_doc,
             graph_settings=graph_settings,
+            checkpoint=checkpoint,
         )
         triplet_ms = (time.perf_counter() - triplet_start) * 1000
         total_triplets = sum(len(v) for v in triplets_by_doc.values())

@@ -721,6 +721,31 @@ final class PipelineWorkerEventCallbackTest extends TestCase
         $this->assertSame('Graph extraction timed out.', $reader->graphFailures(5)[0]['error']);
     }
 
+    public function test_pipeline_task_displays_chunk_and_vector_metrics_from_completion_callback(): void
+    {
+        $this->actingAsApiUser();
+        $execution = $this->createExecution();
+        $this->sendEvent($this->event([
+            'producer' => 'indexer',
+            'activity_id' => 'mark_source_ready',
+            'stage' => 'ingest',
+            'phase' => 'mark_source_ready',
+            'status' => 'completed',
+            'counts' => ['total' => 1, 'processed' => 1, 'failed' => 0, 'skipped' => 0],
+            'metrics' => ['chunks_indexed' => 2, 'vectors_upserted' => 2],
+        ]))->assertAccepted();
+
+        foreach ([[], ['request' => ['mode' => 'uploaded_file_convert_ingest']]] as $metadata) {
+            $execution['task']->forceFill(['metadata' => $metadata])->save();
+            $this->getJson('/api/pipeline/tasks/task-worker-1')
+                ->assertOk()
+                ->assertJsonPath('task.stages.ingest.status', PipelineJob::STATUS_COMPLETED)
+                ->assertJsonPath('task.stages.ingest.counts.completed', 1)
+                ->assertJsonPath('task.stages.ingest.counts.chunks', 2)
+                ->assertJsonPath('task.stages.ingest.counts.vectors', 2);
+        }
+    }
+
     public function test_worker_events_cannot_restore_a_source_being_deleted(): void
     {
         $execution = $this->createExecution();

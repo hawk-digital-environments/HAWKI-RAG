@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from enum import StrEnum
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 
@@ -99,6 +100,26 @@ class IngestionOptions(BaseModel):
         return self
 
 
+class SourceWorkflowResume(BaseModel):
+    """Completed artifact locations for a retry beginning at a failed stage."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True, str_strip_whitespace=True)
+
+    stage: Literal["scrape", "convert", "ingest"]
+    raw_dir: str | None = Field(default=None, min_length=1, max_length=4096)
+    markdown_dir: str | None = Field(default=None, min_length=1, max_length=4096)
+
+    @model_validator(mode="after")
+    def require_completed_artifacts(self) -> "SourceWorkflowResume":
+        if self.stage == "convert" and not self.raw_dir:
+            raise ValueError("Conversion retry requires the completed scrape directory")
+        if self.stage == "ingest" and not self.markdown_dir:
+            raise ValueError(
+                "Ingestion retry requires the completed Markdown directory"
+            )
+        return self
+
+
 class IngestSourceWorkflowInput(BaseModel):
     """Production payload used to start ``IngestSourceWorkflow``."""
 
@@ -122,6 +143,7 @@ class IngestSourceWorkflowInput(BaseModel):
     task_queues: TaskQueueConfig = Field(default_factory=TaskQueueConfig)
     ingestion: IngestionOptions
     external_services: dict[str, JsonValue] = Field(default_factory=dict)
+    resume: SourceWorkflowResume | None = None
 
 
 class IngestTextWorkflowInput(BaseModel):
@@ -259,6 +281,7 @@ __all__ = [
     "ReadyActivityInput",
     "ScrapeResult",
     "StorageConfig",
+    "SourceWorkflowResume",
     "TaskQueueConfig",
     "shared_storage_root",
 ]

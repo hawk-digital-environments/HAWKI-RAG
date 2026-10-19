@@ -68,7 +68,7 @@ class BrowserDatasetScopedQueryTest extends TestCase
                 'neo4j_namespace' => 'graph_browser-session-dataset',
                 'embedding_provider' => 'ollama',
                 'embedding_model' => 'bge-m3',
-                'graph_enabled' => true,
+                'graph_enabled' => false,
             ];
         });
     }

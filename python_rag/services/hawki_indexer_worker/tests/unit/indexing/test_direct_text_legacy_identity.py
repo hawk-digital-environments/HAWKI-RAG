@@ -4,12 +4,20 @@ import hashlib
 import logging
 from types import SimpleNamespace
 
+import pytest
+
 from hawki_indexer_worker.indexing.chunking import prepare_documents
 from hawki_indexer_worker.indexing.incremental import plan_incremental_ingest
 from hawki_rag_contracts.pipeline.identity import document_id
 
 
-def test_direct_text_reingestion_replaces_legacy_url_identity_by_source_id() -> None:
+@pytest.mark.parametrize(
+    "artifact_metadata",
+    [{}, {"document_identity": "source_path", "relative_path": "document.md"}],
+)
+def test_direct_text_reingestion_replaces_legacy_url_identity_by_source_id(
+    artifact_metadata,
+) -> None:
     source_id = "source_stable_external_a"
     artifact_doc_id = document_id(source_id, "document.md")
     new_records, new_stats = prepare_documents(
@@ -18,6 +26,7 @@ def test_direct_text_reingestion_replaces_legacy_url_identity_by_source_id() -> 
                 id=artifact_doc_id,
                 text="Unchanged text",
                 payload={
+                    **artifact_metadata,
                     "dataset_id": "dataset-a",
                     "source_id": source_id,
                     "external_document_id": "A",

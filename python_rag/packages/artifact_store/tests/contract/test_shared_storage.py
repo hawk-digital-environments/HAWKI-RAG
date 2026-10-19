@@ -21,7 +21,6 @@ COMPOSE_FILES = (
 )
 ENV_EXAMPLE_FILE = ROOT / ".env.example"
 MAKEFILE = ROOT / "Makefile"
-LARAVEL_DOCKERFILE = ROOT / "docker" / "laravel.Dockerfile"
 APP_ENTRYPOINT = ROOT / "docker" / "rag_app" / "entrypoint" / "entrypoint.sh"
 NEO4J_ENV_FILE = ROOT / "docker" / "env" / "neo4j.env"
 GRAPH_PREPARE = (
@@ -58,30 +57,6 @@ def test_compose_files_do_not_define_a_migrator_container() -> None:
     assert migrator_name not in MAKEFILE.read_text(encoding="utf-8")
 
 
-def test_app_entrypoint_creates_group_writable_setgid_directories() -> None:
-    entrypoint = APP_ENTRYPOINT.read_text(encoding="utf-8")
-
-    for path in ("sources", "logs", "public", "storage/logs"):
-        assert f'"$CRAWLED_DATA_ROOT/{path}"' in entrypoint
-    assert 'chgrp -R "$SHARED_STORAGE_GID" "$CRAWLED_DATA_ROOT"' in entrypoint
-    assert 'chmod -R 775 "$CRAWLED_DATA_ROOT"' in entrypoint
-    assert 'find "$CRAWLED_DATA_ROOT" -type d -exec chmod g+s {} +' in entrypoint
-
-
-def test_app_entrypoint_repairs_acl_access_for_the_configured_uid() -> None:
-    entrypoint = APP_ENTRYPOINT.read_text(encoding="utf-8")
-    dockerfile = LARAVEL_DOCKERFILE.read_text(encoding="utf-8")
-    env_example = ENV_EXAMPLE_FILE.read_text(encoding="utf-8")
-
-    assert re.search(r"(?m)^\s*acl\s*\\$", dockerfile)
-    assert "PIPELINE_SHARED_STORAGE_UID=${PUID}" in env_example
-    assert (
-        'setfacl -R -P -m "u:$SHARED_STORAGE_UID:rwX,m::rwX" '
-        '"$CRAWLED_DATA_ROOT"' in entrypoint
-    )
-    assert '"d:u:$SHARED_STORAGE_UID:rwx,d:g::rwx,d:m::rwx"' in entrypoint
-
-
 def test_make_runs_migrations_inside_the_laravel_app() -> None:
     makefile = MAKEFILE.read_text(encoding="utf-8")
 
@@ -95,7 +70,9 @@ def test_app_becomes_healthy_only_after_initialization() -> None:
 
     assert '["CMD", "test", "-f", "/tmp/hawki-rag-app-ready"]' in app
     assert 'touch "$APP_READY_MARKER"' in entrypoint
-    assert entrypoint.index('touch "$APP_READY_MARKER"') > entrypoint.index("setfacl")
+    assert entrypoint.index('touch "$APP_READY_MARKER"') > entrypoint.index(
+        "php artisan package:discover"
+    )
 
 
 def test_writable_python_roles_use_root_bootstrap_and_nonroot_runtime_contract() -> (

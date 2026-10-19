@@ -1,95 +1,91 @@
-# 1. HAWKI RAG – Requirements
+# Requirements
 
-## Hardware
-- CPU: 8+ cores recommended; ARM (Apple Silicon) or x86_64.
-- RAM: 16 GB minimum; 32 GB recommended for smoother Docker usage.
-- Disk: ≥20 GB free (Docker images, volumes, Ollama models).
-- GPU (optional): NVIDIA with CUDA for faster rerank/model inference; verify with `nvidia-smi`.
+HAWKI RAG runs through Docker. Host installations of PHP, Python, PostgreSQL,
+Qdrant, Neo4j, and Ollama are unnecessary for the container workflow.
 
-## Network & Ports
+## Software and platforms
 
-Docker containers communicate with each other through service names on the
-internal Docker networks. A container port is not automatically reachable from
-the host.
+| Requirement | Notes |
+|---|---|
+| Docker Engine or Docker Desktop, with Compose v2 | The development override uses Compose's `!override` YAML tag; the installed Compose must support it. |
+| Git and Make | Obtain the checkout and run the repository's lifecycle commands. |
+| curl and OpenSSL | Verify HTTP endpoints and generate installation secrets. |
+| Linux | CPU mode or NVIDIA acceleration. |
+| macOS, Intel or Apple Silicon | Docker Desktop; Make selects CPU mode automatically. |
+| Windows through WSL2 | Use a Linux shell with Docker Desktop integration. The Makefile assumes Unix tools; there is no native Windows startup script. |
+| Optional NVIDIA driver and container toolkit | GPU images use the CUDA 13.0 PyTorch variant. Make's automatic detection checks whether `nvidia-smi` exists; it does not validate driver compatibility. |
 
-| Service | Purpose | Docker-internal endpoint |
+Keep a WSL checkout in its Linux filesystem for source-mount performance.
+Developers running tools outside containers should consult
+[Testing](../Developer/testing.md) for the locked Python workspace.
+
+Verify the host tools before installation:
+
+```bash
+docker --version
+docker compose version
+make --version
+```
+
+The `!override` requirement comes specifically from `networks` in
+`docker-compose.local.yml`; it matters when selecting local development mode.
+
+## Hardware planning
+
+The repository does **not** establish a tested minimum hardware specification or
+a platform certification matrix. Treat these as planning estimates, not
+guarantees:
+
+| Resource | Starting estimate | Recommended headroom |
 |---|---|---|
-| Laravel / Nginx | Web UI and API | `hawki_rag_app:80` |
-| PostgreSQL | Laravel metadata and Temporal persistence | `postgres:5432` |
-| Temporal | Workflow orchestration | `temporal:7233` |
-| Qdrant | Vector database HTTP API | `qdrant:6333` |
-| Neo4j HTTP | Graph database browser and HTTP API | `hawki_rag_neo4j:7474` |
-| Neo4j Bolt | Graph database driver connection | `hawki_rag_neo4j:7687` |
-| RAG bridge | Read-only query, graph-read, health, and Temporal-control API | `hawki_rag_bridge:80` |
-| Reranker | Local reranking API | `hawki_rag_rerank:80` |
-| Ollama | Local model API | `hawki_ollama:11434` |
-| LiteLLM | Optional OpenAI-compatible gateway | `litellm:4000` |
-| External crawler | Crawl API and task UI; started outside this Compose stack | `crawl4ai-service:80` |
+| RAM available to Docker | 16 GB for small CPU experiments | 32 GB or more for local models and graph extraction |
+| CPU | Multicore processor | 8 or more cores |
+| Free disk | At least 20 GB to begin | Substantially more for image builds, model caches, documents, and persistent databases |
+| GPU | Optional | Size VRAM for the selected models; CPU mode remains available |
 
-The workflow, scraper, converter, and indexer workers do not listen on inbound
-ports. Together with the bridge and reranker, they form the six Python
-production service roles. The Laravel app initializes shared storage during its
-own startup; no separate initialization or migration container is created.
-Workers connect to Temporal and their owned dependencies through Docker; the
-indexer performs indexing directly in-process and does not call an ingestion
-endpoint on the bridge.
+The indexer and reranker have separate dependency stacks. Image builds and local
+vision models can need considerably more space and memory than a small
+retrieval-only workload.
 
-- `make up-core-local` publishes the UI on `http://localhost:8080`, mounts the
-  source tree into the containers, and enables Laravel development mode.
-- `make up-core` also publishes `http://localhost:8080`, but runs the
-  production-mode images without source mounts.
-- `make up-core-server` does not bind the Laravel UI to a host port. The
-  separately managed reverse proxy on `hosting_network` supplies the public
-  HTTP/HTTPS ports and forwards requests to `hawki_rag_app:80`.
-- LiteLLM is not started by default. If its profile is enabled, its host port
-  defaults to `4000` and can be changed with `LITELLM_PORT`.
-- The crawler must already be running as `crawl4ai-service`. The supported
-  `make up-core*` commands attach that container to `hawki-network`
-  automatically so Laravel and the Temporal scraper worker can resolve it.
+## Host-exposed ports
 
-## Common Software (all platforms)
-- Docker Engine + Compose v2 (Docker Desktop acceptable).
-- `make`.
-- Optional: `nvidia-container-toolkit` for GPU.
+Only published ports must be available on the host.
 
-## Install `make` (quick)
-- Linux (Debian/Ubuntu): `sudo apt update && sudo apt install -y make`
-- Linux (RHEL/CentOS/Fedora): `sudo yum install -y make` or `sudo dnf install -y make`
-- macOS: `xcode-select --install` (includes `make`) or `brew install make`
-- Windows (WSL2 Ubuntu): `sudo apt update && sudo apt install -y make`
+| Port / binding | When needed |
+|---|---|
+| `127.0.0.1:8080` | Laravel UI/API with `up-core` or `up-core-local` |
+| `127.0.0.1:8081` | Optional Temporal UI; configurable host binding and port |
+| `127.0.0.1:4000` | Optional LiteLLM profile; configurable port |
+| Reverse proxy's HTTP/HTTPS ports | Server deployment; the core server profile publishes no Laravel host port |
 
-## Linux (Debian/Ubuntu/CentOS)
-- Install Docker Engine + Compose plugin; add user to `docker` group.
-- Install `make` (see commands above).
-- For GPU: install NVIDIA driver + `nvidia-container-toolkit`; test with `nvidia-smi`.
-- Compose behavior:
-  - Base file is `docker-compose.yml`.
-  - `make up-core` auto-enables `docker-compose-gpu-override.yml` when `nvidia-smi` is available (`USE_OLLAMA_GPU=auto`).
-  - For CPU-only runs, use `USE_OLLAMA_GPU=0 make up-core`.
+The external-tool Make targets report crawler UI port **8041** and converter
+health port **8004**. Their actual bindings belong to the sibling projects'
+Compose files; verify those projects before reserving host ports.
 
-## macOS
-- Works on Apple Silicon or Intel.
-- Install Docker Desktop and ensure `make` is installed (see commands above).
-- Compose behavior:
-  - Makefile uses CPU mode by default (`USE_OLLAMA_GPU=0` on non-Linux hosts).
-  - `ollama` uses `ollama/ollama:latest` unless GPU override is explicitly enabled.
-- Start Docker Desktop before running any Make targets.
+## Docker-internal service ports
 
-## Windows
-- Use **WSL2 (Ubuntu)** for reliability; native Windows is not supported for Ollama/Make targets.
-- Install: Docker Desktop with WSL2 integration, then inside WSL2 install `make` (see commands above).
-- Map project into WSL2 filesystem (`/home/...`), not a mounted Windows drive, for volume performance.
-- Run all commands from WSL2 shell.
+These do **not** need to be free on the host.
 
+| Service | Internal endpoint |
+|---|---|
+| Laravel / Nginx | `hawki_rag_app:80` |
+| PostgreSQL | `postgres:5432` |
+| Temporal | `temporal:7233` |
+| Qdrant HTTP | `qdrant:6333` |
+| Neo4j HTTP / Bolt | `hawki_rag_neo4j:7474` / `hawki_rag_neo4j:7687` |
+| Query / Temporal-control bridge | `hawki_rag_bridge:80` |
+| Reranker / Ollama | `hawki_rag_rerank:80` / `hawki_ollama:11434` |
+| Optional LiteLLM / Temporal UI | `litellm:4000` / `temporal-ui:8080` |
+| External crawler | `crawl4ai-service:80` |
+| External file converter | `hawki-toolkit-file-converter-file-converter-1:80` |
 
-## Environment files
-- App/Laravel: copy `.env.example` → `.env`, fill secrets (DB, the worker
-  callback HMAC, external scraper/converter, keys). Generate
-  `HAWKI_RAG_WORKER_CALLBACK_SECRET` with `openssl rand -hex 32`.
+Workflow and activity workers expose no application HTTP API.
 
-## Checklist before first run
-- Docker running and `docker ps` works.
-- Ports listed above are unused.
-- `.env` exists and is filled.
-- `HAWKI_RAG_WORKER_CALLBACK_SECRET` is non-empty.
-- If GPU: `nvidia-smi` returns successfully.
+## Ingestion prerequisites
+
+Direct text needs the core stack and an embedding provider. Website ingestion
+also needs the external crawler; file conversion needs the external converter.
+The external tools must share the expected network and artifact volume.
+[Installation](./4_installation_zero_to_up.md) explains first startup;
+[Run HAWKI RAG](./2_setup.md#external-tools) covers the sibling-tool commands.
+

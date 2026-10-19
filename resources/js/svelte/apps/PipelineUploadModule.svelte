@@ -46,7 +46,7 @@
     }: Props = $props();
 
     let datasetId = $state('controller-uploads');
-    let graph = $state(true);
+    let graph = $state(false);
     let busy = $state(false);
     let status = $state(initialStatus());
     let tone = $state<UploadTone>('info');

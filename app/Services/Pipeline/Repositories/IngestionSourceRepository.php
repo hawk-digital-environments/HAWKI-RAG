@@ -4,13 +4,19 @@ declare(strict_types=1);
 
 namespace App\Services\Pipeline\Repositories;
 
+use App\Models\Dataset;
 use App\Models\IngestionSource;
+use App\Models\PipelineJob;
 use Illuminate\Container\Attributes\Singleton;
+use Illuminate\Database\DatabaseManager;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 
 #[Singleton]
 readonly class IngestionSourceRepository
 {
+    public function __construct(private DatabaseManager $database) {}
+
     public function findBySourceId(string $sourceId): ?IngestionSource
     {
         return IngestionSource::query()
@@ -26,6 +32,14 @@ readonly class IngestionSourceRepository
             ->first();
     }
 
+    public function ownedManagedSources(string $documentId, string $datasetId): Collection
+    {
+        return IngestionSource::query()->where('dataset_id', $datasetId)->where(function ($query) use ($documentId): void {
+            $query->where('metadata->request->metadata->managed_document_id', $documentId)
+                ->orWhere('metadata->request->managed_document_id', $documentId);
+        })->orderBy('source_id')->get();
+    }
+
     public function deleteIfOwnedByTask(string $sourceId, string $taskId): bool
     {
         return (bool) IngestionSource::query()
@@ -39,12 +53,98 @@ readonly class IngestionSourceRepository
      */
     public function upsertStarting(string $sourceId, array $attributes): IngestionSource
     {
-        return IngestionSource::query()->updateOrCreate(
-            ['source_id' => $sourceId],
-            array_merge($attributes, [
+        return $this->database->transaction(function () use ($sourceId, $attributes): IngestionSource {
+            if (! $this->findBySourceId($sourceId) && isset($attributes['dataset_id'])) {
+                // New reservations serialize with dataset archival. Existing source
+                // recovery retains its established job/source lock order.
+                $dataset = Dataset::query()->where('dataset_id', $attributes['dataset_id'])->lockForUpdate()->first();
+                if (! $dataset || $dataset->status !== Dataset::STATUS_ACTIVE) {
+                    throw new \RuntimeException('Dataset is unavailable for new ingestion.');
+                }
+            }
+            $current = $this->lockBySourceId($sourceId);
+            if ($current && isset($current->metadata['managed_deletion'])) {
+                throw new \RuntimeException('Managed deletion prevents restarting this ingestion source.');
+            }
+            if ($current) {
+                if (isset($current->metadata['managed_dispatch']) && in_array($current->index_status, [IngestionSource::STATUS_RUNNING, IngestionSource::STATUS_PENDING], true)) {
+                    throw new \RuntimeException('Managed source already has a reserved or active ingestion execution.');
+                }
+                foreach ($current->metadata['managed_writers'] ?? [] as $writer) {
+                    if ($writer['status'] !== 'released') {
+                        throw new \RuntimeException('Managed writer quiescence must be reconciled before recovery.');
+                    }
+                }
+                // Recovery callers may hold an old model while callbacks advance the ledger.
+                $metadata = $attributes['metadata'] ?? [];
+                foreach ($current->metadata ?? [] as $key => $value) {
+                    if (str_starts_with($key, 'managed_') || in_array($key, ['temporal', 'worker_event'], true)) {
+                        $metadata[$key] = $value;
+                    }
+                }
+                $attributes['metadata'] = $metadata;
+            }
+
+            return IngestionSource::query()->updateOrCreate(['source_id' => $sourceId], array_merge($attributes, [
                 'index_status' => IngestionSource::STATUS_RUNNING,
-            ]),
-        )->refresh();
+            ]))->refresh();
+        });
+    }
+
+    /** Reserve one recovery identity and commit it before any external start. */
+    public function reserveManagedRecovery(IngestionSource $source, PipelineJob $job, string $workflowId, array $input, array $attributes = []): IngestionSource
+    {
+        return $this->database->transaction(function () use ($source, $job, $workflowId, $input, $attributes): IngestionSource {
+            $lockedJob = PipelineJob::query()->whereKey($job->getKey())->lockForUpdate()->firstOrFail();
+            $current = $this->lockBySourceId($source->source_id);
+            if (! $current || $current->temporal_workflow_id !== $source->temporal_workflow_id
+                || isset($current->metadata['managed_deletion']) || ($current->metadata['managed_writer_gate'] ?? null) === 'closed') {
+                throw new \RuntimeException('Managed recovery identity changed or was fenced; reconcile before retrying.');
+            }
+            foreach ($current->metadata['managed_writers'] ?? [] as $writer) {
+                if ($writer['status'] !== 'released') {
+                    throw new \RuntimeException('Another managed writer acquired permission before recovery reservation.');
+                }
+            }
+            $historical = $current->metadata['managed_dispatch']['input']['ingestion'] ?? null;
+            if (! is_array($historical)) {
+                throw new \RuntimeException('Managed recovery requires immutable historical sink settings.');
+            }
+            $input['ingestion'] = $historical;
+            $attributes['metadata'] ??= $current->metadata ?? [];
+            $current = $this->upsertStarting($current->source_id, $attributes);
+            $current = $this->recordPlannedWorkflow($current, $workflowId, $input);
+            $lockedJob->forceFill(['temporal_workflow_id' => $workflowId, 'temporal_run_id' => null])->save();
+
+            return $current;
+        });
+    }
+
+    public function recordPlannedWorkflow(IngestionSource $source, string $workflowId, ?array $input = null): IngestionSource
+    {
+        $metadata = $source->metadata ?? [];
+        if ($source->temporal_workflow_id) {
+            $runId = $metadata['temporal']['run_id'] ?? $metadata['worker_event']['run_id'] ?? null;
+            $metadata['managed_writer_history'][$source->temporal_workflow_id.'|'.($runId ?? 'unknown')] = ['workflow_id' => $source->temporal_workflow_id, 'run_id' => $runId];
+        }
+        if ($source->temporal_workflow_id !== $workflowId) {
+            unset($metadata['temporal']['run_id'], $metadata['worker_event']);
+        }
+        if ($input !== null) {
+            $metadata['managed_dispatch'] = ['input' => $input, 'attempted' => true];
+        }
+        $source->forceFill(['temporal_workflow_id' => $workflowId, 'metadata' => $metadata])->save();
+
+        return $source->refresh();
+    }
+
+    public function markManagedDeletion(IngestionSource $source, string $operationId, string $status): IngestionSource
+    {
+        $metadata = $source->metadata ?? [];
+        $metadata['managed_deletion'] = ['operation_id' => $operationId, 'status' => $status];
+        $source->forceFill(['metadata' => $metadata, 'index_status' => $status])->save();
+
+        return $source->refresh();
     }
 
     public function markWorkflowStarted(
@@ -53,12 +153,17 @@ readonly class IngestionSourceRepository
         ?string $runId,
         ?string $scheduleId,
     ): IngestionSource {
+        if (isset($source->metadata['managed_dispatch'])) {
+            return $this->database->transaction(fn () => $this->confirmWorkflowStarted($source, $workflowId, $runId));
+        }
         $metadata = $source->metadata ?? [];
         $metadata['temporal'] = array_filter([
             'workflow_id' => $workflowId,
             'run_id' => $runId,
             'schedule_id' => $scheduleId,
         ], static fn (mixed $value): bool => $value !== null && $value !== '');
+        $metadata['managed_writer_history'][$workflowId.'|'.($runId ?? 'unknown')] = ['workflow_id' => $workflowId, 'run_id' => $runId];
+        unset($metadata['managed_writer_history'][$workflowId.'|unknown']);
 
         $source->forceFill([
             'temporal_workflow_id' => $workflowId,
@@ -93,17 +198,25 @@ readonly class IngestionSourceRepository
         $workerEvent = is_array($metadata['worker_event'] ?? null)
             ? $metadata['worker_event']
             : [];
+        if (isset($metadata['managed_dispatch']) && $runId && ! empty($temporal['run_id']) && $runId !== $temporal['run_id']) {
+            throw new \RuntimeException('Temporal acknowledgement conflicts with the registered managed writer run.');
+        }
         $metadata['temporal'] = array_filter([
             ...$temporal,
             'workflow_id' => $workflowId,
             'run_id' => $runId
                 ?: ($temporal['run_id'] ?? $workerEvent['run_id'] ?? null),
         ], static fn (mixed $value): bool => $value !== null && $value !== '');
+        $resolvedRunId = $metadata['temporal']['run_id'] ?? null;
+        $metadata['managed_writer_history'][$workflowId.'|'.($resolvedRunId ?? 'unknown')] = ['workflow_id' => $workflowId, 'run_id' => $resolvedRunId];
+        if ($resolvedRunId) {
+            unset($metadata['managed_writer_history'][$workflowId.'|unknown']);
+        }
         $attributes = [
             'temporal_workflow_id' => $workflowId,
             'metadata' => $metadata,
         ];
-        if ($current->index_status !== IngestionSource::STATUS_READY) {
+        if ($current->index_status !== IngestionSource::STATUS_READY && ! isset($metadata['managed_deletion'])) {
             $attributes['index_status'] = IngestionSource::STATUS_RUNNING;
             $attributes['ready_at'] = null;
         }
@@ -124,6 +237,19 @@ readonly class IngestionSourceRepository
 
     public function markFailed(IngestionSource $source, string $message): IngestionSource
     {
+        if (isset($source->metadata['managed_dispatch'])) {
+            return $this->database->transaction(function () use ($source, $message) {
+                $current = $this->lockBySourceId($source->source_id);
+                if ($current->index_status === IngestionSource::STATUS_READY || isset($current->metadata['managed_deletion'])) {
+                    return $current;
+                }
+                $metadata = $current->metadata ?? [];
+                $metadata['error'] = $message;
+                $current->forceFill(['metadata' => $metadata, 'index_status' => IngestionSource::STATUS_FAILED])->save();
+
+                return $current->refresh();
+            });
+        }
         $metadata = $source->metadata ?? [];
         $metadata['error'] = $message;
 
@@ -135,13 +261,22 @@ readonly class IngestionSourceRepository
         return $source->refresh();
     }
 
-    public function markCancelled(IngestionSource $source): IngestionSource
+    public function markCancelled(IngestionSource $source, bool $changeStatus = true): IngestionSource
     {
-        $source->forceFill([
-            'index_status' => IngestionSource::STATUS_CANCELLED,
-        ])->save();
+        return $this->database->transaction(function () use ($source, $changeStatus): IngestionSource {
+            $current = $this->lockBySourceId($source->source_id);
+            if (isset($current->metadata['managed_deletion'])) {
+                return $current;
+            }
+            $metadata = $current->metadata ?? [];
+            $request = $metadata['request'] ?? [];
+            if (isset($metadata['managed_dispatch']) || isset(($request['metadata'] ?? $request)['managed_document_id'])) {
+                $metadata['managed_writer_gate'] = 'closed';
+            }
+            $current->forceFill(['metadata' => $metadata, ...($changeStatus ? ['index_status' => IngestionSource::STATUS_CANCELLED] : [])])->save();
 
-        return $source->refresh();
+            return $current->refresh();
+        });
     }
 
     public function markDeletionRequested(

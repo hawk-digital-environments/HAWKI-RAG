@@ -5,12 +5,20 @@ declare(strict_types=1);
 namespace App\Services\Dataset;
 
 use App\Models\Dataset;
+use App\Services\Authorization\DatasetGrantTokenService;
 use App\Services\Dataset\Exceptions\DatasetCreationConflictException;
 use App\Services\Dataset\Exceptions\DatasetInactiveException;
 use App\Services\Dataset\Exceptions\DatasetNotFoundException;
+use App\Services\Dataset\Values\DatasetCreationResult;
+use App\Services\Document\Exceptions\ManagedDeletionException;
+use App\Services\Document\ManagedDocumentOutputDeletionService;
+use App\Services\Document\Repositories\ManagedDocumentDeletionRepository;
+use App\Services\Document\Repositories\ManagedDocumentRepository;
 use App\Services\Settings\SettingsService;
 use Illuminate\Container\Attributes\Singleton;
+use Illuminate\Database\DatabaseManager;
 use Psr\Clock\ClockInterface;
+use Psr\Log\LoggerInterface;
 use Symfony\Component\Clock\Clock;
 
 #[Singleton]
@@ -22,6 +30,12 @@ readonly class DatasetService
         private DatasetPayloadBuilder $payloads,
         private DatasetStorageCleanupService $storageCleanup,
         private SettingsService $settings,
+        private DatasetGrantTokenService $grantTokens,
+        private DatabaseManager $database,
+        private ManagedDocumentRepository $managedDocuments,
+        private ManagedDocumentOutputDeletionService $managedDeletion,
+        private ManagedDocumentDeletionRepository $deletionOperations,
+        private LoggerInterface $logger,
         private ClockInterface $clock = new Clock,
     ) {}
 
@@ -38,34 +52,40 @@ readonly class DatasetService
     {
         $dataset = $this->datasets->findByDatasetId($datasetId);
 
-        return $dataset ? $this->payloads->payload($dataset, includeDetails: true) : null;
+        return $dataset?->status === Dataset::STATUS_ACTIVE ? $this->payloads->payload($dataset, includeDetails: true) : null;
     }
 
-    public function create(array $input): Dataset
+    public function create(array $input): DatasetCreationResult
     {
-        $datasetId = $this->identifiers->datasetId($input['dataset_id'] ?? $input['datasetId'] ?? null);
-        $safe = $this->identifiers->safeName($datasetId);
-        $embedding = $this->embeddingRuntime();
+        return $this->database->transaction(function () use ($input): DatasetCreationResult {
+            $datasetId = $this->identifiers->datasetId($input['dataset_id'] ?? $input['datasetId'] ?? null);
+            $safe = $this->identifiers->safeName($datasetId);
+            $embedding = $this->embeddingRuntime();
 
-        $dataset = $this->datasets->firstOrCreate($datasetId, [
-            'dataset_id' => $datasetId,
-            'name' => $this->identifiers->displayName($datasetId, $input['name'] ?? null),
-            'description' => $this->identifiers->stringValue($input['description'] ?? null),
-            'status' => $this->identifiers->stringValue($input['status'] ?? null) ?? Dataset::STATUS_ACTIVE,
-            'qdrant_collection' => $this->identifiers->stringValue($input['qdrant_collection'] ?? $input['qdrantCollection'] ?? null)
-                ?? $this->identifiers->qdrantCollection($safe),
-            'neo4j_namespace' => $this->identifiers->stringValue($input['neo4j_namespace'] ?? $input['neo4jNamespace'] ?? null)
-                ?? $this->identifiers->neo4jNamespace($safe),
-            'embedding_provider' => $embedding['provider'],
-            'embedding_model' => $embedding['model'],
-            'created_at' => $this->clock->now(),
-        ]);
+            $dataset = $this->datasets->firstOrCreate($datasetId, [
+                'dataset_id' => $datasetId,
+                'name' => $this->identifiers->displayName($datasetId, $input['name'] ?? null),
+                'description' => $this->identifiers->stringValue($input['description'] ?? null),
+                'status' => $this->identifiers->stringValue($input['status'] ?? null) ?? Dataset::STATUS_ACTIVE,
+                'qdrant_collection' => $this->identifiers->stringValue($input['qdrant_collection'] ?? $input['qdrantCollection'] ?? null)
+                    ?? $this->identifiers->qdrantCollection($safe),
+                'neo4j_namespace' => $this->identifiers->stringValue($input['neo4j_namespace'] ?? $input['neo4jNamespace'] ?? null)
+                    ?? $this->identifiers->neo4jNamespace($safe),
+                'embedding_provider' => $embedding['provider'],
+                'embedding_model' => $embedding['model'],
+                'created_at' => $this->clock->now(),
+            ]);
 
-        if (! $dataset->wasRecentlyCreated) {
-            $this->ensureCompatibleCreationRequest($dataset, $input);
-        }
+            if (! $dataset->wasRecentlyCreated) {
+                $this->ensureCompatibleCreationRequest($dataset, $input);
 
-        return $dataset;
+                // A compatible replay never re-issues the creator's bootstrap
+                // token: ownership was proven at first creation.
+                return new DatasetCreationResult($dataset, false, null);
+            }
+
+            return new DatasetCreationResult($dataset, true, $this->grantTokens->issue($dataset));
+        });
     }
 
     public function requireActive(string $datasetId): Dataset
@@ -93,7 +113,7 @@ readonly class DatasetService
         $safe = $this->identifiers->safeName($datasetId);
         $embedding = $this->embeddingRuntime();
 
-        return $this->datasets->firstOrCreate($datasetId, [
+        $result = $this->datasets->firstOrCreate($datasetId, [
             'name' => $this->identifiers->displayName($datasetId, $input['name'] ?? null),
             'description' => $this->identifiers->stringValue($input['description'] ?? null),
             'status' => Dataset::STATUS_ACTIVE,
@@ -105,6 +125,11 @@ readonly class DatasetService
             'embedding_model' => $embedding['model'],
             'created_at' => $this->clock->now(),
         ]);
+        if ($result->status !== Dataset::STATUS_ACTIVE) {
+            throw DatasetInactiveException::forId($datasetId);
+        }
+
+        return $result;
     }
 
     /**
@@ -112,18 +137,85 @@ readonly class DatasetService
      */
     public function delete(string $datasetId): ?array
     {
-        $dataset = $this->datasets->findByDatasetId($datasetId);
+        $dataset = $this->database->transaction(fn () => $this->datasets->archiveForDeletion($datasetId));
 
+        return $dataset ? ['dataset_id' => $datasetId, 'status' => $dataset->status,
+            'cleanup_pending' => $dataset->status !== Dataset::STATUS_DELETED] : null;
+    }
+
+    /** The archived row is the durable work item, including after a process restart. */
+    public function resumeArchivedDeletions(): void
+    {
+        foreach ($this->datasets->pendingDeletions() as $dataset) {
+            try {
+                $result = $this->cleanup($dataset->dataset_id);
+                if ($result && ! ($result['dataset_deleted'] ?? false)) {
+                    $this->logger->warning('Dataset cleanup remains pending.', ['dataset_id' => $dataset->dataset_id,
+                        'message' => $result['message'] ?? 'Scoped sink cleanup is incomplete.']);
+                }
+            } catch (\Throwable $error) {
+                $this->logger->error('Dataset cleanup will retry on the next scan.', ['dataset_id' => $dataset->dataset_id, 'exception' => $error]);
+            }
+        }
+    }
+
+    /** Resume existing document operations; never reactivate a dataset or start replacement ingestion. */
+    public function cleanup(string $datasetId): ?array
+    {
+        $dataset = $this->datasets->findByDatasetId($datasetId);
         if (! $dataset) {
             return null;
         }
+        if ($dataset->status !== Dataset::STATUS_ARCHIVED) {
+            return ['dataset_deleted' => $dataset->status === Dataset::STATUS_DELETED];
+        }
 
+        $operations = [];
+        foreach ($this->managedDocuments->undeletedForDataset($datasetId) as $document) {
+            try {
+                $replacement = $this->deletionOperations->blocking($document->document_id);
+                if ($replacement?->purpose === 'update') {
+                    if ($replacement->status !== 'preparing' || ! empty($replacement->attempts['dispatch_sequence'])) {
+                        $replacement = $this->managedDeletion->dispatch($replacement);
+                        if ($replacement->status !== 'completed') {
+                            $operations[] = $replacement;
+
+                            continue;
+                        }
+                    }
+                    // Reuse verified cleanup without starting a replacement in an archived dataset.
+                    $this->managedDeletion->abandonReplacement($replacement);
+                }
+                $operation = $this->managedDeletion->dispatch($this->managedDeletion->prepare($document, 'delete', null));
+                $operations[] = $operation;
+            } catch (ManagedDeletionException $error) {
+                return ['dataset_deleted' => false, 'status' => 409, 'message' => $error->getMessage()];
+            }
+        }
+
+        $pending = array_filter($operations, fn ($op): bool => $op->status !== 'completed');
+        if ($pending) {
+            return [
+                'dataset_deleted' => false,
+                'status' => 202,
+                'message' => 'Dataset document cleanup is pending verification; background cleanup will retry.',
+                'operations' => array_values(array_map(fn ($op): array => [
+                    'operation_id' => $op->operation_id,
+                    'status' => $op->status,
+                    'document_id' => $op->document_id,
+                ], $pending)),
+            ];
+        }
+        if ($this->datasets->unverifiedSources($dataset)->isNotEmpty()) {
+            return ['dataset_deleted' => false, 'status' => 409,
+                'message' => 'Dataset has unverified or untracked writers; existing cleanup and reconciliation must finish first.'];
+        }
         $cleanup = $this->storageCleanup->deleteStorage($dataset);
         $cleanupOk = ($cleanup['qdrant']['ok'] ?? false) && ($cleanup['neo4j']['ok'] ?? false);
 
         return [
             ...$cleanup,
-            'dataset_deleted' => $cleanupOk ? $this->datasets->delete($dataset) : false,
+            'dataset_deleted' => $cleanupOk ? $this->datasets->completeDeletion($dataset) : false,
         ];
     }
 

@@ -21,6 +21,12 @@ readonly class ScrapeCrawlerHttpClient
 
     public function request(string $method, string $path, array $payload = []): array
     {
+        // Fail immediately when no URL is set; avoids 2× retry delay (~1 s) on every page load
+        // when the scraper is intentionally not deployed.
+        if ($this->apiUrl() === '') {
+            return $this->responses->exceptionResult(new \RuntimeException('Scraper API URL is not configured.'));
+        }
+
         try {
             $url = $this->apiUrl().'/'.ltrim($path, '/');
             $request = $this->http->timeout(30)

@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
+from hawki_rag_contracts.pipeline.deletion import DELETE_MANAGED_DOCUMENT_WORKFLOW
+from temporalio.exceptions import WorkflowAlreadyStartedError
+
 from dataclasses import dataclass
 from datetime import timedelta
 import logging
@@ -15,6 +19,7 @@ from temporalio.client import (
     SchedulePolicy,
     ScheduleSpec,
     WorkflowHandle,
+    WorkflowHistoryEventFilterType,
     WorkflowExecutionStatus,
     WorkflowFailureError,
 )
@@ -22,10 +27,25 @@ from temporalio.common import (
     WorkflowIDConflictPolicy,
     WorkflowIDReusePolicy,
 )
+from temporalio.api.failure.v1 import Failure
 from temporalio.service import RPCError, RPCStatusCode
 
 from hawki_bridge.settings import BridgeSettings
 from hawki_rag_contracts.pipeline.temporal import INGEST_TEXT_WORKFLOW
+
+
+def _failure_chain_message(failure: Failure) -> str:
+    """Join a failure with its cause chain, truncated for error reporting."""
+
+    messages: list[str] = []
+    while failure:
+        if failure.message:
+            messages.append(failure.message)
+        if not failure.HasField("cause"):
+            break
+        failure = failure.cause
+    return ": ".join(messages)[:2048]
+
 
 logger = logging.getLogger(__name__)
 
@@ -50,11 +70,37 @@ class TemporalBridgeClient:
     def __init__(self, settings: BridgeSettings) -> None:
         self.settings = settings
 
+    async def workflow_status(
+        self, *, workflow_id: str, run_id: str
+    ) -> dict[str, str | None]:
+        """Read a specific execution; never wait for a running workflow's result."""
+        client = await self.connect_temporal()
+        handle = client.get_workflow_handle(workflow_id, run_id=run_id)
+        description = await handle.describe(rpc_timeout=timedelta(seconds=5))
+        status = description.status.name if description.status else "UNKNOWN"
+        error = None
+        if status == "FAILED":
+            history = await handle.fetch_history(
+                event_filter_type=WorkflowHistoryEventFilterType.CLOSE_EVENT,
+                rpc_timeout=timedelta(seconds=5),
+            )
+            for event in history.events:
+                if event.HasField("workflow_execution_failed_event_attributes"):
+                    failure = event.workflow_execution_failed_event_attributes.failure
+                    error = _failure_chain_message(failure)
+        return {
+            "workflow_id": workflow_id,
+            "run_id": run_id,
+            "status": status,
+            "error": error,
+        }
+
     async def start_ingest_workflow(
         self,
         *,
         workflow_id: str,
         workflow_input: dict[str, Any],
+        reuse_completed: bool = False,
     ) -> TemporalExecution:
         """Start or reuse an ingest workflow and return its execution identity.
 
@@ -62,23 +108,66 @@ class TemporalBridgeClient:
         an active-ID conflict. Configured workflow timeouts remain attached.
         """
         client = await self.connect_temporal()
-        handle = await client.start_workflow(
-            self.settings.workflow_type,
-            workflow_input,
-            id=workflow_id,
-            task_queue=self.settings.workflow_task_queue,
-            id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE,
-            id_conflict_policy=WorkflowIDConflictPolicy.USE_EXISTING,
-            execution_timeout=self.settings.workflow_execution_timeout,
-            run_timeout=self.settings.workflow_run_timeout,
-            task_timeout=self.settings.workflow_task_timeout,
-        )
-
+        try:
+            handle = await client.start_workflow(
+                self.settings.workflow_type,
+                workflow_input,
+                id=workflow_id,
+                task_queue=self.settings.workflow_task_queue,
+                id_reuse_policy=(
+                    WorkflowIDReusePolicy.ALLOW_DUPLICATE_FAILED_ONLY
+                    if reuse_completed
+                    else WorkflowIDReusePolicy.ALLOW_DUPLICATE
+                ),
+                id_conflict_policy=WorkflowIDConflictPolicy.USE_EXISTING,
+                execution_timeout=self.settings.workflow_execution_timeout,
+                run_timeout=self.settings.workflow_run_timeout,
+                task_timeout=self.settings.workflow_task_timeout,
+            )
+        except WorkflowAlreadyStartedError:
+            if not reuse_completed:
+                raise
+            handle = client.get_workflow_handle(workflow_id)
         run_id = self.resolve_run_id(handle)
+        if reuse_completed and not run_id:
+            run_id = (await handle.describe(rpc_timeout=timedelta(seconds=5))).run_id
         logger.info(
             "temporal_bridge:start workflow_id=%s run_id=%s", workflow_id, run_id
         )
         return TemporalExecution(workflow_id=workflow_id, run_id=run_id)
+
+    async def start_managed_deletion(
+        self, *, workflow_id: str, workflow_input: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Reuse active/completed deletion; only failed runs may restart under the same ID."""
+        client = await self.connect_temporal()
+        try:
+            handle = await client.start_workflow(
+                DELETE_MANAGED_DOCUMENT_WORKFLOW,
+                workflow_input,
+                id=workflow_id,
+                task_queue=self.settings.workflow_task_queue,
+                id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE_FAILED_ONLY,
+                id_conflict_policy=WorkflowIDConflictPolicy.USE_EXISTING,
+                execution_timeout=self.settings.workflow_execution_timeout,
+                run_timeout=self.settings.workflow_run_timeout,
+                task_timeout=self.settings.workflow_task_timeout,
+            )
+        except WorkflowAlreadyStartedError:
+            handle = client.get_workflow_handle(workflow_id)
+        description = await handle.describe(rpc_timeout=timedelta(seconds=5))
+        receipt = {
+            "workflow_id": workflow_id,
+            "run_id": description.run_id,
+            "status": "pending",
+        }
+        try:
+            result = await asyncio.wait_for(handle.result(), timeout=3)
+        except TimeoutError:
+            return receipt
+        except WorkflowFailureError:
+            return {**receipt, "status": "failed"}
+        return {**receipt, "status": "completed", "result": result}
 
     async def start_text_ingest_workflow(
         self,

@@ -47,6 +47,12 @@ class VectorWriterPort(Protocol):
         self, filters: Mapping[str, object], *, limit: int = 1
     ) -> Sequence[object]: ...
 
+    def count_points_verified(self, filter_body: dict[str, Any]) -> int: ...
+
+    def delete_by_filter(
+        self, filter_body: dict[str, Any], *, idempotency_key: str | None = None
+    ) -> object: ...
+
     def count_points_by_doc_id(
         self,
         doc_id: str,
@@ -75,6 +81,10 @@ class GraphWriterPort(Protocol):
         *,
         request_id: str | None = None,
     ) -> object: ...
+
+    def delete_scoped_document(
+        self, doc_id: str, *, request_id: str | None = None
+    ) -> dict[str, Any]: ...
 
     def close(self) -> None: ...
 

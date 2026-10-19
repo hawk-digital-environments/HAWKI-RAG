@@ -25,7 +25,7 @@ readonly class PipelineUploadInput
     {
         $datasetId = self::stringValue($validated['dataset_id'] ?? $validated['datasetId'] ?? null)
             ?? 'controller-uploads';
-        $graph = filter_var($validated['graph'] ?? true, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+        $graph = filter_var($validated['graph'] ?? false, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
         $converterMode = self::stringValue($validated['converter_mode'] ?? $validated['converterMode'] ?? null);
         $converterMode = $converterMode === 'custom' ? 'custom' : 'native';
         $defaultUrl = self::stringValue($customConverterDefaults['api_url'] ?? null);
@@ -33,7 +33,7 @@ readonly class PipelineUploadInput
 
         return new self(
             $datasetId,
-            $graph ?? true,
+            $graph ?? false,
             $converterMode,
             self::stringValue($validated['converter_url'] ?? $validated['converterUrl'] ?? null) ?? $defaultUrl,
             self::stringValue($validated['converter_token'] ?? $validated['converterToken'] ?? null),

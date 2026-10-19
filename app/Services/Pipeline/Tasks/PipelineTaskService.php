@@ -9,12 +9,14 @@ use App\Models\PipelineTask;
 use App\Services\Pipeline\Repositories\PipelineTaskRepository;
 use App\Services\Pipeline\Repositories\Queries\FailedPipelineJobsQuery;
 use App\Services\Pipeline\Repositories\Queries\PipelineTaskJobsQuery;
+use App\Services\Pipeline\Status\PipelineWorkflowStatusSynchronizer;
 use Illuminate\Container\Attributes\Singleton;
 
 #[Singleton]
 class PipelineTaskService
 {
     public function __construct(
+        private readonly PipelineWorkflowStatusSynchronizer $workflows,
         private readonly PipelineTaskCounterService $counters,
         private readonly PipelineTaskPayloadService $payloads,
         private readonly PipelineTaskStarter $starter,
@@ -41,6 +43,7 @@ class PipelineTaskService
             return null;
         }
 
+        $this->refreshWorkflowStatuses($task);
         $task = $this->recalculateTaskStatus($task);
 
         return $this->payloads->detail($task, $this->activeJobCount($task), $this->counters->defaults());
@@ -50,11 +53,19 @@ class PipelineTaskService
     {
         return $this->taskRepository->recent($limit)
             ->map(function (PipelineTask $task): array {
+                $this->refreshWorkflowStatuses($task);
                 $task = $this->recalculateTaskStatus($task);
 
                 return $this->payloads->summary($task, $this->activeJobCount($task), $this->counters->defaults());
             })
             ->all();
+    }
+
+    private function refreshWorkflowStatuses(PipelineTask $task): void
+    {
+        foreach ($this->taskJobs->forTask($task->task_id) as $job) {
+            $this->workflows->sync($job);
+        }
     }
 
     public function jobs(string $taskId): array
@@ -97,7 +108,7 @@ class PipelineTaskService
     }
 
     /**
-     * @return array{deleted: bool, storageCleanup: array<string, mixed>}|null
+     * @return array{deleted: bool, history_hidden?: bool, storageCleanup: array<string, mixed>}|null
      */
     public function delete(string $taskId): ?array
     {
@@ -106,6 +117,10 @@ class PipelineTaskService
             return null;
         }
 
+        if ($this->taskRepository->hideManagedHistory($task)) {
+            return ['deleted' => true, 'history_hidden' => true,
+                'storageCleanup' => ['ok' => true, 'deleted' => [], 'skipped' => [['path' => 'task:'.$taskId, 'reason' => 'Managed document data and recovery evidence are retained.']], 'failed' => []]];
+        }
         $storageCleanup = $this->storageCleanup->deleteForTask($task);
         if (! ($storageCleanup['ok'] ?? false)) {
             return [

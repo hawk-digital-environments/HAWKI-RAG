@@ -29,7 +29,7 @@ class PipelineUploadInputTest extends TestCase
         ]);
 
         $this->assertSame('camel-dataset', $input->datasetId);
-        $this->assertTrue($input->graph);
+        $this->assertFalse($input->graph);
     }
 
     public function test_it_defaults_blank_dataset_and_invalid_graph(): void
@@ -40,7 +40,7 @@ class PipelineUploadInputTest extends TestCase
         ]);
 
         $this->assertSame('controller-uploads', $input->datasetId);
-        $this->assertTrue($input->graph);
+        $this->assertFalse($input->graph);
     }
 
     public function test_it_normalizes_custom_converter_fields(): void

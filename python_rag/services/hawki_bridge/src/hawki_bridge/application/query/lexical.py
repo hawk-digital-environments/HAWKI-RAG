@@ -151,9 +151,7 @@ def document_terms(text: str | None) -> DocumentTerms:
 # are unvalidated heuristics. Once a eval set exists, evaluate
 # local BM25-style "IDF term weighting + RRF rank fusion"
 # https://qdrant.tech/documentation/search/hybrid-queries/
-def boost_lexical_hits(
-    hits: list[dict[str, Any]], query: str
-) -> list[dict[str, Any]]:
+def boost_lexical_hits(hits: list[dict[str, Any]], query: str) -> list[dict[str, Any]]:
     """Boost lexically matching hits and discard insufficient matches.
 
     Bonuses reflect term count plus title and URL matches. Returned copies are

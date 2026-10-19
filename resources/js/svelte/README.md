@@ -1,4 +1,4 @@
-# HAWKI-RAG Svelte Migration
+# HAWKI RAG Svelte Migration
 
 Svelte is the owner for browser page markup. Laravel keeps routing and one thin
 Blade document shell for CSRF, base-path metadata, Vite tags, and initial JSON
@@ -7,7 +7,7 @@ config.
 ## Structure
 
 - `apps/`: page-level or global Svelte islands mounted from existing Vite entry files.
-- `components/`: reusable HAWKI-RAG components with no route assumptions.
+- `components/`: reusable HAWKI RAG components with no route assumptions.
 - `components/ui/`: low-level primitives with no business logic.
 - `stores/`: shared cross-component state classes using Svelte 5 runes.
 - `types/`: shared TypeScript payload and UI types.

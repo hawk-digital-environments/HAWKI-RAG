@@ -5,14 +5,17 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
+from hawki_bridge.http.control_signature import verify_control_signature
 
 from hawki_bridge.adapters.temporal_client import TemporalBridgeClient
 from hawki_bridge.http.schemas import (
     CancelWorkflowRequest,
+    WorkflowStatusRequest,
     DeleteScheduleRequest,
     StartIngestWorkflowRequest,
     StartTextIngestWorkflowRequest,
+    StartManagedDeletionRequest,
     UpsertIngestScheduleRequest,
 )
 
@@ -28,14 +31,48 @@ def build_temporal_router(
     def client() -> TemporalBridgeClient:
         return client_factory(settings)
 
+    @router.post("/workflows/delete-managed-document")
+    async def delete_managed(
+        body: StartManagedDeletionRequest, request: Request
+    ) -> dict:
+        await verify_control_signature(request, settings.control_plane_secret)
+        try:
+            return await client().start_managed_deletion(
+                workflow_id=body.workflow_id,
+                workflow_input=body.workflow_input.model_dump(mode="json"),
+            )
+        except Exception as exc:
+            logger.exception("temporal:managed_delete failed")
+            raise HTTPException(
+                502,
+                "Managed deletion startup is unconfirmed; retry the same operation.",
+            ) from exc
+
+    @router.post("/workflows/status")
+    async def status(body: WorkflowStatusRequest) -> dict[str, str | None]:
+        try:
+            return await client().workflow_status(
+                workflow_id=body.workflow_id, run_id=body.run_id
+            )
+        except Exception as exc:
+            logger.exception("temporal:status failed")
+            raise HTTPException(
+                status_code=502, detail="Temporal workflow status is unavailable."
+            ) from exc
+
     @router.post("/workflows/ingest")
-    async def start(body: StartIngestWorkflowRequest) -> dict[str, str | None]:
+    async def start(
+        body: StartIngestWorkflowRequest, request: Request
+    ) -> dict[str, str | None]:
+        if body.reuse_completed:
+            await verify_control_signature(request, settings.control_plane_secret)
         try:
             result = await client().start_ingest_workflow(
                 workflow_id=body.workflow_id,
                 workflow_input=body.workflow_input.model_dump(
                     mode="json", exclude_unset=True
                 ),
+                **({"reuse_completed": True} if body.reuse_completed else {}),
             )
             return result.to_payload()
         except Exception as exc:

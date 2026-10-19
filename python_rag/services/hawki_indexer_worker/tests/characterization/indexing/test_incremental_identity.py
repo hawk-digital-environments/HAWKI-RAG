@@ -374,8 +374,11 @@ class IncrementalIngestTests(unittest.TestCase):
         from hawki_indexer_worker.indexing.chunking import prepare_documents
         from hawki_indexer_worker.indexing.page_state import build_page_state_records
 
+        from hawki_rag_contracts.pipeline.identity import document_id
+
+        artifact_id = document_id("source-upload-1", "pages/00001.md")
         doc = SimpleNamespace(
-            id="doc_upload_page_1",
+            id=artifact_id,
             text="Page one of an uploaded PDF.",
             payload={
                 "title": "upload.pdf",
@@ -394,10 +397,10 @@ class IncrementalIngestTests(unittest.TestCase):
         )
 
         payload = chunk_records[0]["payload"]
-        self.assertEqual(chunk_records[0]["doc_id"], "doc_upload_page_1")
-        self.assertEqual(payload["doc_id"], "doc_upload_page_1")
-        self.assertEqual(payload["source_identity"], "doc:doc_upload_page_1")
-        self.assertEqual(stats["doc_ids"], ["doc_upload_page_1"])
+        self.assertEqual(chunk_records[0]["doc_id"], artifact_id)
+        self.assertEqual(payload["doc_id"], artifact_id)
+        self.assertEqual(payload["source_identity"], f"doc:{artifact_id}")
+        self.assertEqual(stats["doc_ids"], [artifact_id])
 
         registry_records = build_page_state_records(
             chunk_records,
@@ -406,8 +409,8 @@ class IncrementalIngestTests(unittest.TestCase):
         )
 
         self.assertEqual(len(registry_records), 1)
-        self.assertEqual(registry_records[0].doc_id, "doc_upload_page_1")
-        self.assertEqual(registry_records[0].source_identity, "doc:doc_upload_page_1")
+        self.assertEqual(registry_records[0].doc_id, artifact_id)
+        self.assertEqual(registry_records[0].source_identity, f"doc:{artifact_id}")
         self.assertEqual(registry_records[0].source_id, "source-upload-1")
         self.assertEqual(registry_records[0].chunks_count, 1)
 

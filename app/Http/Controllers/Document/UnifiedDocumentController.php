@@ -10,13 +10,13 @@ use App\Http\Requests\Document\CreateManagedDocumentRequest;
 use App\Http\Requests\Document\UpdateManagedDocumentRequest;
 use App\Services\Document\UnifiedDocumentService;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 
 class UnifiedDocumentController extends Controller
 {
     public function __construct(
         private readonly UnifiedDocumentService $documents,
-    ) {
-    }
+    ) {}
 
     public function store(CreateManagedDocumentRequest $request): JsonResponse
     {
@@ -59,9 +59,10 @@ class UnifiedDocumentController extends Controller
         return response()->json($result['payload'], $result['status']);
     }
 
-    public function destroy(string $documentId): JsonResponse
+    public function destroy(Request $request, string $documentId): JsonResponse
     {
-        $result = $this->documents->delete($documentId, request()->header('Idempotency-Key'));
+        $key = $request->header('Idempotency-Key');
+        $result = $this->documents->delete($documentId, is_string($key) && trim($key) !== '' ? trim($key) : null);
 
         if ($result === null) {
             return response()->json([

@@ -13,7 +13,9 @@ use App\Models\PipelineStageState;
 use App\Models\PipelineTask;
 use App\Models\PipelineWorkerEventRecord;
 use App\Models\RagIngestionArtifact;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use App\Models\User;
+use App\Services\Authorization\DatasetIngestionAuthorizationService;
+use Illuminate\Foundation\Testing\DatabaseMigrations;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\File;
@@ -22,13 +24,17 @@ use Tests\TestCase;
 
 class DocumentUnifiedApiTest extends TestCase
 {
-    use RefreshDatabase;
+    // Dispatch must observe a real commit, rather than a test-owned outer transaction.
+    use DatabaseMigrations;
+
+    private User $apiUser;
 
     protected function setUp(): void
     {
         parent::setUp();
 
-        $this->actingAsApiUser();
+        $this->apiUser = $this->actingAsApiUser();
+        config()->set('temporal.callbacks.secret', 'managed-test-secret');
     }
 
     public function test_create_uploads_and_tracks_managed_document_through_unified_documents_route(): void
@@ -38,8 +44,8 @@ class DocumentUnifiedApiTest extends TestCase
         config()->set('temporal.storage.shared_root', $root);
         config()->set('file_converter.raganything_supported_extensions', ['pdf']);
         Http::fake([
-            '*temporal/workflows/ingest' => Http::response([
-                'workflow_id' => 'documents-create-workflow',
+            '*temporal/workflows/ingest' => fn ($request) => Http::response([
+                'workflow_id' => $request->data()['workflow_id'],
                 'run_id' => 'documents-create-run-1',
             ]),
         ]);
@@ -94,8 +100,8 @@ class DocumentUnifiedApiTest extends TestCase
         config()->set('temporal.storage.shared_root', $root);
         config()->set('file_converter.raganything_supported_extensions', ['pdf']);
         Http::fake([
-            '*temporal/workflows/ingest' => Http::response([
-                'workflow_id' => 'documents-default-graph-workflow',
+            '*temporal/workflows/ingest' => fn ($request) => Http::response([
+                'workflow_id' => $request->data()['workflow_id'],
                 'run_id' => 'documents-default-graph-run-1',
             ]),
         ]);
@@ -126,17 +132,10 @@ class DocumentUnifiedApiTest extends TestCase
         File::deleteDirectory($root);
         config()->set('temporal.storage.shared_root', $root);
         config()->set('file_converter.raganything_supported_extensions', ['pdf']);
-        Http::fake([
-            '*temporal/workflows/ingest' => Http::sequence()
-                ->push([
-                    'workflow_id' => 'documents-batch-workflow-1',
-                    'run_id' => 'documents-batch-run-1',
-                ])
-                ->push([
-                    'workflow_id' => 'documents-batch-workflow-2',
-                    'run_id' => 'documents-batch-run-2',
-                ]),
-        ]);
+        $starts = 0;
+        Http::fake(['*temporal/workflows/ingest' => function ($request) use (&$starts) {
+            return Http::response(['workflow_id' => $request->data()['workflow_id'], 'run_id' => 'documents-batch-run-'.++$starts]);
+        }]);
 
         $response = $this->post('/api/documents/batch', [
             'dataset_id' => 'documents-batch',
@@ -179,7 +178,7 @@ class DocumentUnifiedApiTest extends TestCase
             'graph_enabled' => 0,
         ]);
 
-        Http::assertSentCount(2);
+        $this->assertCount(2, Http::recorded(fn ($request) => str_ends_with($request->url(), '/temporal/workflows/ingest')));
         Http::assertSent(fn ($request): bool => $request->method() === 'POST'
             && $request->url() === config('config.hawki_rag_bridge_url').'/temporal/workflows/ingest'
             && data_get($request->data(), 'workflow_input.dataset_id') === 'documents-batch'
@@ -316,7 +315,7 @@ class DocumentUnifiedApiTest extends TestCase
             'content_hash' => hash('sha256', 'artifact-output.pdf'),
             'document_version' => 'version-artifact-output-1',
             'index_status' => IngestionSource::STATUS_READY,
-            'metadata' => [],
+            'metadata' => ['dataset' => ['qdrant_collection' => 'hawki_documents_artifact_output', 'neo4j_namespace' => 'hawki_documents_artifact_output']],
             'ready_at' => Carbon::parse('2026-08-07T01:15:30Z'),
         ]);
 
@@ -440,6 +439,7 @@ class DocumentUnifiedApiTest extends TestCase
 
         Http::fake();
 
+        $this->grantIngest('documents-skip');
         $this->put('/api/documents/adoc_skip_1', [
             'file' => UploadedFile::fake()->create('replacement.pdf', 12, 'application/pdf'),
             'source_updated_at' => '2026-07-13T13:34:00Z',
@@ -485,27 +485,9 @@ class DocumentUnifiedApiTest extends TestCase
             'active' => true,
         ]);
 
-        Http::fake([
-            '*documents/doc-delete-1*' => Http::response([
-                'ok' => true,
-                'doc_id' => 'doc-delete-1',
-                'qdrant' => [
-                    'doc_id' => 'doc-delete-1',
-                    'collection' => 'hawki_documents_delete',
-                    'deleted_points' => 83,
-                    'result' => [
-                        'status' => 'completed',
-                        'deleted' => 83,
-                    ],
-                ],
-                'neo4j' => [
-                    'doc_id' => 'doc-delete-1',
-                    'namespace' => 'hawki_documents_delete',
-                    'relationships_deleted' => 214,
-                    'entities_deleted' => 97,
-                ],
-            ]),
-        ]);
+        $this->grantIngest('documents-delete');
+        IngestionSource::query()->create(['source_id' => 'source-delete-1', 'source_url' => 'upload://test.pdf', 'dataset_id' => 'documents-delete', 'index_status' => 'ready', 'metadata' => ['request' => ['managed_document_id' => 'adoc_delete_1'], 'managed_writer_protocol' => 1, 'managed_writer_gate' => 'closed', 'managed_target_manifest_complete' => true]]);
+        Http::fake(fn ($request) => $this->deletionResponse($request));
 
         $this->deleteJson('/api/documents/adoc_delete_1', [], [
             'Idempotency-Key' => 'documents-delete-1',
@@ -519,14 +501,13 @@ class DocumentUnifiedApiTest extends TestCase
             ->assertJsonPath('document.status', ManagedDocument::STATUS_DELETED)
             ->assertJsonMissingPath('document.assistant_document_id')
             ->assertJsonPath('deletion.bridge_documents_deleted', 1)
-            ->assertJsonPath('deletion.qdrant.0.bridge_document_id', 'doc-delete-1')
-            ->assertJsonPath('deletion.qdrant.0.collection', 'hawki_documents_delete')
-            ->assertJsonPath('deletion.qdrant.0.deleted_points', 83)
-            ->assertJsonPath('deletion.qdrant.0.result.deleted_points', 83)
-            ->assertJsonPath('deletion.neo4j.0.bridge_document_id', 'doc-delete-1')
-            ->assertJsonPath('deletion.neo4j.0.namespace', 'hawki_documents_delete')
-            ->assertJsonPath('deletion.neo4j.0.relationships_deleted', 214)
-            ->assertJsonPath('deletion.neo4j.0.entities_deleted', 97);
+            ->assertJsonPath('deletion.results.0.qdrant.doc_id', 'doc-delete-1')
+            ->assertJsonPath('deletion.results.0.qdrant.collection', 'hawki_documents_delete')
+            ->assertJsonPath('deletion.results.0.qdrant.deleted_points', 83)
+            ->assertJsonPath('deletion.results.0.neo4j.doc_id', 'doc-delete-1')
+            ->assertJsonPath('deletion.results.0.neo4j.namespace', 'hawki_documents_delete')
+            ->assertJsonPath('deletion.results.0.neo4j.relationships_deleted', 214)
+            ->assertJsonPath('deletion.results.0.neo4j.entities_deleted', 97);
 
         $this->assertDatabaseHas('managed_documents', [
             'document_id' => 'adoc_delete_1',
@@ -539,9 +520,10 @@ class DocumentUnifiedApiTest extends TestCase
             'status' => 'deleted',
         ]);
 
-        Http::assertSent(fn ($request): bool => $request->method() === 'DELETE'
-            && $request->url() === config('config.hawki_rag_bridge_url').'/documents/doc-delete-1?collection=hawki_documents_delete&neo4j_namespace=hawki_documents_delete'
-            && $request->hasHeader('Idempotency-Key', ['documents-delete-1']));
+        Http::assertSent(fn ($request): bool => $request->method() === 'POST'
+            && str_ends_with($request->url(), '/temporal/workflows/delete-managed-document')
+            && $request->hasHeader('X-Hawki-Signature'));
+
     }
 
     public function test_delete_backfills_missing_output_scope_from_dataset_before_bridge_delete_through_unified_documents_route(): void
@@ -578,32 +560,15 @@ class DocumentUnifiedApiTest extends TestCase
             'active' => true,
         ]);
 
-        Http::fake([
-            '*documents/doc-delete-backfill-1*' => Http::response([
-                'ok' => true,
-                'doc_id' => 'doc-delete-backfill-1',
-                'qdrant' => [
-                    'doc_id' => 'doc-delete-backfill-1',
-                    'collection' => 'hawki_documents_delete_backfill',
-                    'deleted_points' => 2,
-                    'result' => [
-                        'status' => 'completed',
-                    ],
-                ],
-                'neo4j' => [
-                    'doc_id' => 'doc-delete-backfill-1',
-                    'namespace' => 'hawki_documents_delete_backfill',
-                    'relationships_deleted' => 0,
-                    'entities_deleted' => 0,
-                ],
-            ]),
-        ]);
+        $this->grantIngest('documents-delete-backfill');
+        IngestionSource::query()->create(['source_id' => 'source-delete-backfill-1', 'source_url' => 'upload://test.pdf', 'dataset_id' => 'documents-delete-backfill', 'index_status' => 'ready', 'metadata' => ['request' => ['managed_document_id' => 'adoc_delete_backfill_1'], 'managed_writer_protocol' => 1, 'managed_writer_gate' => 'closed', 'managed_target_manifest_complete' => true, 'dataset' => ['qdrant_collection' => 'hawki_documents_delete_backfill', 'neo4j_namespace' => 'hawki_documents_delete_backfill']]]);
+        Http::fake(fn ($request) => $this->deletionResponse($request));
 
         $this->deleteJson('/api/documents/adoc_delete_backfill_1')
             ->assertOk()
             ->assertJsonPath('document.id', 'adoc_delete_backfill_1')
-            ->assertJsonPath('deletion.qdrant.0.collection', 'hawki_documents_delete_backfill')
-            ->assertJsonPath('deletion.neo4j.0.namespace', 'hawki_documents_delete_backfill');
+            ->assertJsonPath('deletion.results.0.qdrant.collection', 'hawki_documents_delete_backfill')
+            ->assertJsonPath('deletion.results.0.neo4j.namespace', 'hawki_documents_delete_backfill');
 
         $this->assertDatabaseHas('managed_document_outputs', [
             'document_id' => 'adoc_delete_backfill_1',
@@ -613,7 +578,25 @@ class DocumentUnifiedApiTest extends TestCase
             'active' => 0,
         ]);
 
-        Http::assertSent(fn ($request): bool => $request->method() === 'DELETE'
-            && $request->url() === config('config.hawki_rag_bridge_url').'/documents/doc-delete-backfill-1?collection=hawki_documents_delete_backfill&neo4j_namespace=hawki_documents_delete_backfill');
+        Http::assertSent(fn ($request): bool => data_get($request->data(), 'workflow_input.targets.0.collection') === 'hawki_documents_delete_backfill');
+
+    }
+
+    private function grantIngest(string $id): void
+    {
+        $dataset = Dataset::query()->firstOrCreate(['dataset_id' => $id], ['name' => $id, 'status' => 'active', 'qdrant_collection' => 'hawki_'.str_replace('-', '_', $id), 'neo4j_namespace' => 'hawki_'.str_replace('-', '_', $id)]);
+        app(DatasetIngestionAuthorizationService::class)->grantAccess($this->apiUser, $dataset);
+    }
+
+    private function deletionResponse($request)
+    {
+        $input = $request->data()['workflow_input'];
+        $results = array_map(fn ($target) => [
+            'output_id' => $target['output_id'],
+            'qdrant' => ['verified' => true, 'remaining_points' => 0, 'deleted_points' => 83, 'doc_id' => $target['doc_id'], 'collection' => $target['collection'], 'dataset_id' => $input['dataset_id'], 'source_id' => $target['source_id']],
+            'neo4j' => ['verified' => true, 'required' => true, 'remaining_contributions' => 0, 'doc_id' => $target['doc_id'], 'namespace' => $target['neo4j_namespace'], 'dataset_id' => $input['dataset_id'], 'relationships_deleted' => 214, 'entities_deleted' => 97],
+        ], $input['targets']);
+
+        return Http::response(['workflow_id' => $request->data()['workflow_id'], 'run_id' => 'delete-run', 'status' => 'completed', 'result' => ['input' => $input, 'status' => 'completed', 'results' => $results]]);
     }
 }

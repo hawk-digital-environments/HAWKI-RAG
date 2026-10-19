@@ -36,14 +36,35 @@ mkdir -p \
     "$CRAWLED_DATA_ROOT/logs" \
     "$CRAWLED_DATA_ROOT/public" \
     "$CRAWLED_DATA_ROOT/storage/logs"
-chown -R www-data:www-data "$CRAWLED_DATA_ROOT"
-chgrp -R "$SHARED_STORAGE_GID" "$CRAWLED_DATA_ROOT"
-chmod -R 775 "$CRAWLED_DATA_ROOT"
-setfacl -R -P -m "u:$SHARED_STORAGE_UID:rwX,m::rwX" "$CRAWLED_DATA_ROOT"
-find "$CRAWLED_DATA_ROOT" -type d -exec setfacl -m \
-    "d:u:$SHARED_STORAGE_UID:rwx,d:g::rwx,d:m::rwx" {} +
-find "$CRAWLED_DATA_ROOT" -type d -exec chmod g+s {} +
+# get www-data user id
 
+current_www_data_uid=$(id -u www-data)
+echo "www-data user ID: $current_www_data_uid"
+
+# get current owner and group of the directory
+
+current_owner=$(stat -c "%U" "$CRAWLED_DATA_ROOT")
+
+current_owner_id=$(stat -c "%u" "$CRAWLED_DATA_ROOT")
+
+# show the current owner and group for debugging
+echo "Current owner of $CRAWLED_DATA_ROOT: $current_owner"
+echo "Current owner ID of $CRAWLED_DATA_ROOT: $current_owner_id"
+current_group=$(stat -c "%g" "$CRAWLED_DATA_ROOT")
+echo "Current group of $CRAWLED_DATA_ROOT:$current_group"
+# If the current owner id is not equal to the uid of www-data, change the owner to www-data and the group to the shared storage group.
+if [[ "$current_owner_id" -ne "$current_www_data_uid" ]]; then
+    echo "Changing owner of $CRAWLED_DATA_ROOT to www-data and group to $SHARED_STORAGE_GID..."
+    chown -R www-data:"$SHARED_STORAGE_GID" "$CRAWLED_DATA_ROOT"
+fi
+# check if the outer moste directory has the correct permissions
+current_permissions=$(stat -c "%a" "$CRAWLED_DATA_ROOT")
+echo "Current permissions of $CRAWLED_DATA_ROOT: $current_permissions"
+if [[ "$current_permissions" != "2775" ]]; then
+    # Otherwise set the correct permissions recursively
+    echo "Setting permissions of $CRAWLED_DATA_ROOT to 2775..."
+    chmod -R 2775 "$CRAWLED_DATA_ROOT"
+fi
 echo "Permissions fixed successfully!"
 
 # Run Laravel package discovery (skipped during build)

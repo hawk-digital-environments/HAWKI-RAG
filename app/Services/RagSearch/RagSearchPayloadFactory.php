@@ -16,7 +16,7 @@ readonly class RagSearchPayloadFactory
     /**
      * @return array<string, mixed>
      */
-    public function make(string $query, int $topK, AuthorizedDatasetScope $scope): array
+    public function make(string $query, int $topK, AuthorizedDatasetScope $scope, bool $fastMode = true): array
     {
         $modelRuntime = $this->settings->modelRuntimeForProvider($scope->embeddingProvider);
 
@@ -30,8 +30,8 @@ readonly class RagSearchPayloadFactory
             'generate' => false,
             'reranker' => 'external',
             'rerank_top_n' => 20,
-            'fast_mode' => false,
-            'smart_lookup' => true,
+            'fast_mode' => $fastMode,
+            'smart_lookup' => ! $fastMode,
             'structural_hops' => null,
         ], static fn (mixed $value): bool => $value !== null);
     }

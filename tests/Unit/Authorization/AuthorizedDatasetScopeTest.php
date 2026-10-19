@@ -10,7 +10,7 @@ use PHPUnit\Framework\TestCase;
 
 class AuthorizedDatasetScopeTest extends TestCase
 {
-    public function test_scope_serializes_only_server_derived_ready_targets_with_graph_enabled(): void
+    public function test_scope_serializes_only_server_derived_ready_targets_with_graph_disabled_by_default(): void
     {
         $scope = AuthorizedDatasetScope::fromStorageTargets(
             datasetId: 'dataset-a',
@@ -26,7 +26,7 @@ class AuthorizedDatasetScopeTest extends TestCase
             'neo4j_namespace' => 'graph_dataset_a',
             'embedding_provider' => 'ollama',
             'embedding_model' => 'hawki-ollama-embedding',
-            'graph_enabled' => true,
+            'graph_enabled' => false,
         ], $scope->toArray());
     }
 
