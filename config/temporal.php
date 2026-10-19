@@ -57,7 +57,9 @@ return [
     ],
 
     'external_services' => [
-        'scraper_url' => env('EXTERNAL_SCRAPER_URL', env('CUSTOM_CRAWLER_URL', 'http://crawl4ai-service')),
+        // Default changed from 'http://crawl4ai-service' to '' so health checks treat
+        // an unconfigured scraper as disabled rather than reporting a spurious failure.
+        'scraper_url' => env('EXTERNAL_SCRAPER_URL', env('CUSTOM_CRAWLER_URL', '')),
         'scraper_start_path' => env('EXTERNAL_SCRAPER_START_PATH', '/crawl'),
         'scraper_status_path' => env('EXTERNAL_SCRAPER_STATUS_PATH', '/status/{job_id}'),
         'scraper_token' => env('EXTERNAL_SCRAPER_TOKEN', env('CUSTOM_CRAWLER_API_KEY', '')),
