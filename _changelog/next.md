@@ -11,8 +11,8 @@
 - **Immediate dataset removal with background cleanup.** Dataset DELETE hides and
   archives the dataset immediately, blocking ingestion, retries and queries. The
   scheduler resumes scoped cleanup automatically after writer drain, failures or
-  restarts. Verified completion retains a dataset tombstone; other datasets and
-  shared graph contributions remain intact.
+  restarts. A later upload may reactivate the dataset only after cleanup reaches
+  verified `deleted`; other datasets and shared graph contributions remain intact.
 
 ### Quality of Life
 
@@ -43,6 +43,9 @@
 - **Consistent management access.** Align document update, delete and cancel with
   the existing single-user management upload model. Direct-text token and dataset
   grant checks, query authorization and internal worker HMAC remain unchanged.
+- **Duplicate Pipeline Controller uploads.** Reject an identical file while an
+  undeleted managed copy exists in the same dataset, before Temporal or either
+  sink receives new work. The file can be uploaded again after verified deletion.
 
 ### Internals
 

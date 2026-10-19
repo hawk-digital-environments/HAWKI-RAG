@@ -23,6 +23,14 @@ readonly class PipelineTransactionRepository
         return $this->database->transaction($callback);
     }
 
+    /** Serialize a logical operation for the lifetime of the current PostgreSQL transaction. */
+    public function lock(string $key): void
+    {
+        if ($this->database->connection()->getDriverName() === 'pgsql') {
+            $this->database->select('select pg_advisory_xact_lock(hashtext(?))', [$key]);
+        }
+    }
+
     public function afterCommit(callable $callback): void
     {
         if ($this->database->connection()->transactionLevel() > 0) {

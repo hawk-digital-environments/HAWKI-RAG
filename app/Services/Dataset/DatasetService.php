@@ -113,7 +113,7 @@ readonly class DatasetService
         $safe = $this->identifiers->safeName($datasetId);
         $embedding = $this->embeddingRuntime();
 
-        $result = $this->datasets->firstOrCreate($datasetId, [
+        $result = $this->database->transaction(fn (): Dataset => $this->datasets->firstOrCreate($datasetId, [
             'name' => $this->identifiers->displayName($datasetId, $input['name'] ?? null),
             'description' => $this->identifiers->stringValue($input['description'] ?? null),
             'status' => Dataset::STATUS_ACTIVE,
@@ -124,7 +124,7 @@ readonly class DatasetService
             'embedding_provider' => $embedding['provider'],
             'embedding_model' => $embedding['model'],
             'created_at' => $this->clock->now(),
-        ]);
+        ]));
         if ($result->status !== Dataset::STATUS_ACTIVE) {
             throw DatasetInactiveException::forId($datasetId);
         }

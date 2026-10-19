@@ -26,6 +26,16 @@ readonly class ManagedDocumentRepository
             ->first();
     }
 
+    public function findUndeletedByDatasetAndChecksum(string $datasetId, string $checksum): ?ManagedDocument
+    {
+        return $this->queryWithOutputs()
+            ->where('dataset_id', $datasetId)
+            ->where('source_checksum_sha256', $checksum)
+            ->whereNull('deleted_at')
+            ->orderByDesc('created_at')
+            ->first();
+    }
+
     public function latestIndexed(): ?ManagedDocument
     {
         return $this->queryWithOutputs()

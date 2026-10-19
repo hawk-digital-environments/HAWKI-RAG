@@ -153,8 +153,11 @@ final class DatasetDeletionBackgroundTest extends TestCase
         $this->assertGreaterThanOrEqual(2, count($this->dispatches));
         $this->assertSame([$operation->workflow_id], array_values(array_unique($this->dispatches)));
         $this->assertDatabaseHas('datasets', ['dataset_id' => 'writer-test', 'status' => 'deleted']);
-        $this->expectException(DatasetInactiveException::class);
-        app(DatasetService::class)->ensure('writer-test');
+        $dataset = app(DatasetService::class)->ensure('writer-test');
+        $this->assertSame(Dataset::STATUS_ACTIVE, $dataset->status);
+        $this->assertSame('current_collection', $dataset->qdrant_collection);
+        $this->assertSame('current_namespace', $dataset->neo4j_namespace);
+        $this->signedWriter([...$this->writerEvent('acquire', [$this->target()]), 'attempt' => 2])->assertStatus(409);
     }
 
     public function test_archived_dataset_cannot_retry_before_background_cleanup_starts(): void

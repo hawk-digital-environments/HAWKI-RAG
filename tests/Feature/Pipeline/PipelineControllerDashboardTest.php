@@ -138,6 +138,95 @@ class PipelineControllerDashboardTest extends TestCase
         File::deleteDirectory($root);
     }
 
+    public function test_uploading_to_a_verified_deleted_dataset_reactivates_it(): void
+    {
+        $root = storage_path('framework/testing/pipeline-controller-reuse');
+        File::deleteDirectory($root);
+        config()->set('temporal.storage.shared_root', $root);
+        config()->set('file_converter.raganything_supported_extensions', ['pdf']);
+        Http::fake([
+            '*temporal/workflows/ingest' => fn ($request) => Http::response([
+                'workflow_id' => $request->data()['workflow_id'],
+                'run_id' => 'reuse-run-1',
+            ]),
+        ]);
+        Dataset::query()->create([
+            'dataset_id' => 'anatomy',
+            'name' => 'Anatomy',
+            'status' => Dataset::STATUS_DELETED,
+            'qdrant_collection' => 'hawki_anatomy',
+            'neo4j_namespace' => 'hawki_anatomy',
+        ]);
+        ManagedDocument::query()->create([
+            'document_id' => 'adoc_deleted_anatomy',
+            'dataset_id' => 'anatomy',
+            'display_name' => 'anatomy.pdf',
+            'source_type' => 'upload',
+            'source_checksum_sha256' => hash('sha256', 'reusable anatomy bytes'),
+            'status' => ManagedDocument::STATUS_DELETED,
+            'deleted_at' => now(),
+        ]);
+
+        $this->post('/api/pipeline/controller/files', [
+            'dataset_id' => 'anatomy',
+            'file' => UploadedFile::fake()->createWithContent('anatomy.pdf', 'reusable anatomy bytes'),
+        ], ['Accept' => 'application/json'])
+            ->assertCreated()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('dataset_id', 'anatomy');
+
+        $this->assertDatabaseHas('datasets', [
+            'dataset_id' => 'anatomy',
+            'status' => Dataset::STATUS_ACTIVE,
+            'qdrant_collection' => 'hawki_anatomy',
+            'neo4j_namespace' => 'hawki_anatomy',
+        ]);
+        $this->assertDatabaseCount('managed_documents', 2);
+
+        File::deleteDirectory($root);
+    }
+
+    public function test_uploading_identical_file_twice_does_not_dispatch_duplicate_ingestion(): void
+    {
+        $root = storage_path('framework/testing/pipeline-controller-deduplication');
+        File::deleteDirectory($root);
+        config()->set('temporal.storage.shared_root', $root);
+        config()->set('file_converter.raganything_supported_extensions', ['pdf']);
+        Http::fake([
+            '*temporal/workflows/ingest' => fn ($request) => Http::response([
+                'workflow_id' => $request->data()['workflow_id'],
+                'run_id' => 'deduplication-run-1',
+            ]),
+        ]);
+
+        $upload = fn (): array => [
+            'dataset_id' => 'anatomy',
+            'graph' => 'true',
+            'file' => UploadedFile::fake()->createWithContent('anatomy.pdf', 'identical anatomy bytes'),
+        ];
+
+        $first = $this->post('/api/pipeline/controller/files', $upload(), ['Accept' => 'application/json'])
+            ->assertCreated()
+            ->assertJsonPath('success', true);
+
+        $this->post('/api/pipeline/controller/files', $upload(), ['Accept' => 'application/json'])
+            ->assertConflict()
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('dataset_id', 'anatomy')
+            ->assertJsonPath('document_id', $first->json('document_id'))
+            ->assertJsonPath('task_id', $first->json('task_id'));
+
+        $this->assertDatabaseCount('managed_documents', 1);
+        $this->assertDatabaseCount('pipeline_tasks', 1);
+        $this->assertDatabaseCount('pipeline_jobs', 1);
+        $this->assertDatabaseCount('ingestion_sources', 1);
+        $this->assertCount(1, Http::recorded(
+            fn ($request): bool => str_ends_with($request->url(), '/temporal/workflows/ingest'),
+        ));
+
+        File::deleteDirectory($root);
+    }
+
     public function test_scraper_task_detail_includes_temporal_stage_rows(): void
     {
         $task = PipelineTask::query()->create([

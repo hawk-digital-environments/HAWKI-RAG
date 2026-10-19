@@ -136,7 +136,9 @@ are retried by later scans, including after restarts. Other datasets, shared gra
 provenance and recovery evidence remain intact.
 
 After all owned sources and scoped sink counts are verified clean, the dataset
-becomes `deleted`. Its row remains as a tombstone so the identity cannot be reused.
+becomes `deleted`. Its row remains as a tombstone until a later explicit creation
+or upload reactivates the same dataset identity. Archived datasets cannot be
+reactivated while cleanup is pending.
 Repeated DELETE is idempotent. Ambiguous or legacy writer evidence still requires
 the existing `documents:reconcile-writer` procedure after independent physical
 quiescence; cancellation alone is insufficient.

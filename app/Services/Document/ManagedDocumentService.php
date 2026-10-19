@@ -94,10 +94,37 @@ readonly class ManagedDocumentService
      */
     public function createFromPipelineUpload(PipelineUploadInput $input, ?UploadedFile $file): PipelineUploadResult
     {
+        if ($failure = $this->uploads->preflight($input, $file)) {
+            return $failure;
+        }
+        $checksum = hash_file('sha256', $file->getRealPath());
+        if (! is_string($checksum)) {
+            return PipelineUploadResult::fromPayload([
+                'success' => false,
+                'message' => 'Upload a readable document file.',
+            ], 422);
+        }
         $managedDocumentId = $this->documents->nextManagedDocumentId();
         $input = $input->withManagedDocumentId($managedDocumentId);
         $taskId = 'task_managed_create_'.$managedDocumentId->value;
-        [$upload, $document] = $this->transactions->run(function () use ($input, $file, $taskId, $managedDocumentId): array {
+        [$upload, $document] = $this->transactions->run(function () use ($input, $file, $taskId, $managedDocumentId, $checksum): array {
+            $this->transactions->lock('managed-upload|'.$input->datasetId.'|'.$checksum);
+            $duplicate = $this->documents->findUndeletedByDatasetAndChecksum($input->datasetId, $checksum);
+            if ($duplicate !== null) {
+                return [PipelineUploadResult::fromPayload([
+                    'success' => false,
+                    'message' => sprintf(
+                        'This file is already managed in dataset [%s] as document [%s]. Delete or update that document before uploading it again.',
+                        $input->datasetId,
+                        $duplicate->document_id,
+                    ),
+                    'dataset_id' => $input->datasetId,
+                    'document_id' => $duplicate->document_id,
+                    'task_id' => $duplicate->latest_task_id,
+                    'job_id' => $duplicate->latest_job_id,
+                    'source_id' => $duplicate->latest_source_id,
+                ], 409), null];
+            }
             $upload = $this->uploads->upload($input, $file, $taskId, true);
 
             if (($upload->payload['success'] ?? false) !== true) {
