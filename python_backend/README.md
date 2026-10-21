@@ -7,8 +7,8 @@ to work.
 
 The boundary is deliberately narrow. It answers *who is calling*, *for which
 tenant*, and *with which coarse scopes*. It does not decide what a caller may
-read or write. Dataset grants, policy decisions and retrieval filtering are
-not part of this boundary and are not described here.
+read or write. The separate dataset grant boundary that does is described in
+[Authorization Boundary](#authorization-boundary).
 
 ## Supported signature algorithms
 
@@ -130,3 +130,61 @@ validity (`exp - now`).
 boundary. It reports process health only; it does not report whether the
 authentication boundary is configured or whether the key service is
 reachable.
+
+## Authorization Boundary
+
+`hawki_backend.authorization` answers one question: may an authenticated
+principal perform an action on a logical dataset?
+
+### Actions and coarse scopes
+
+| Action | Coarse scope |
+|---|---|
+| `query` | `rag:query` |
+| `ingest` | `rag:ingest` |
+
+There is no delete action. Text-ingestion deletion is authorized with the
+ingest grant, so a separate action would have no counterpart to be granted
+from.
+
+### Grant identity
+
+A grant is held by one principal, on one dataset, for one action, inside one
+tenant. All five parts are part of the identity:
+
+```
+tenant + principal kind + principal id + dataset + action
+```
+
+The tenant is part of the identity even though the current Laravel
+authorization model has no tenant at all. The authentication boundary
+already requires a validated tenant, and fixing the identity now keeps a
+later persistence branch from having to change it.
+
+### What authorization requires
+
+Both of the following, never one of them:
+
+* the coarse scope the action requires, and
+* the exact local dataset grant, confirmed by the grant reader.
+
+A request is denied by default. The boundary has no query-all fallback, no
+anonymous fallback, no self-grant, and no way to create, widen or revoke a
+grant. The policy answers with a plain boolean and no reason: a missing
+dataset, an inactive dataset, a grant held by another tenant, a missing grant
+and a missing coarse scope are all the same `False`, so a caller cannot learn
+whether a dataset exists. A grant source that cannot be reached is not a
+denial; it raises `AuthorizationUnavailableError` instead.
+
+A dataset identifier is compared exactly. It is never trimmed, it is at most
+191 characters, and it may not carry control, format or surrogate characters.
+
+The reader is where the tenant isolation and the dataset conditions live. The
+in-memory reader treats every grant it holds as referring to an existing,
+active dataset; the persistent reader performs that check in its query, in
+the persistence branch.
+
+### Current surface
+
+No HTTP route uses this policy yet. The only route is the public
+`GET /v1/health`.

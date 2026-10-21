@@ -20,6 +20,12 @@ _MODULES = (
     "hawki_backend.auth.jwks",
     "hawki_backend.auth.jwt",
     "hawki_backend.auth.dependencies",
+    "hawki_backend.authorization",
+    "hawki_backend.authorization.models",
+    "hawki_backend.authorization.ports",
+    "hawki_backend.authorization.policy",
+    "hawki_backend.authorization.reader",
+    "hawki_backend.authorization.errors",
     "hawki_backend.main",
 )
 
