@@ -26,6 +26,7 @@ from urllib.parse import urlsplit
 from hawki_backend.auth.models import PrincipalKind
 
 _PREFIX = "HAWKI_BACKEND_AUTH_"
+_DB_PREFIX = "HAWKI_BACKEND_DB_"
 
 _ALLOWED_ALGORITHMS = frozenset({"RS256", "PS256", "ES256"})
 _TENANT_CLAIM_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_.:-]{0,63}$")
@@ -40,6 +41,12 @@ _DEFAULT_JWKS_MIN_REFRESH_SECONDS = 60
 _DEFAULT_JWKS_MAX_STALE_SECONDS = 3600
 _DEFAULT_JWKS_TIMEOUT_SECONDS = 3
 _DEFAULT_JWKS_MAX_BYTES = 512 * 1024
+
+_DEFAULT_DB_POOL_SIZE = 5
+_DEFAULT_DB_POOL_TIMEOUT_SECONDS = 3
+_DEFAULT_DB_POOL_RECYCLE_SECONDS = 300
+_DEFAULT_DB_CONNECT_TIMEOUT_SECONDS = 3
+_DEFAULT_DB_STATEMENT_TIMEOUT_MS = 2000
 
 _MIN_LEEWAY_SECONDS = 0
 _MAX_LEEWAY_SECONDS = 300
@@ -71,12 +78,38 @@ _KNOWN_SUFFIXES = frozenset(
     }
 )
 
+_DB_KNOWN_SUFFIXES = frozenset(
+    {
+        "DSN",
+        "POOL_SIZE",
+        "POOL_TIMEOUT_SECONDS",
+        "POOL_RECYCLE_SECONDS",
+        "CONNECT_TIMEOUT_SECONDS",
+        "STATEMENT_TIMEOUT_MS",
+        # A marker the persistence tests read. It is not a setting of the
+        # service, but it shares the prefix, so it has to be known here or
+        # the loader would refuse it as a typo.
+        "TESTING",
+    }
+)
+
+_DATABASE_SCHEME = "postgresql+psycopg"
+
 
 class AuthConfigurationError(Exception):
     """Raised when the authentication configuration is missing or invalid.
 
     This is a startup failure, not a refused credential. The service must not
     boot with a partially understood authentication configuration.
+    """
+
+
+class DatabaseConfigurationError(Exception):
+    """Raised when the database configuration is missing or invalid.
+
+    This is a startup failure. The service must not boot with a partially
+    understood database configuration, and it must not boot with a
+    configuration that points at a schema the backend does not own.
     """
 
 
@@ -112,6 +145,30 @@ class AuthSettings:
         """Freeze the collections so the settings cannot be mutated."""
         object.__setattr__(self, "clients", MappingProxyType(dict(self.clients)))
         object.__setattr__(self, "algorithms", tuple(self.algorithms))
+
+
+@dataclass(frozen=True, slots=True)
+class DatabaseSettings:
+    """Immutable configuration for the backend's persistence boundary.
+
+    The schema the backend reads is not configurable. It owns one
+    PostgreSQL schema and the tables in it, and pointing the connection at
+    another schema would put the backend inside Laravel's tables.
+
+    This object is produced by `load_database_settings`, which is the only
+    validated construction path.
+
+    The connection string is excluded from the representation. It can carry
+    an account and a password, and a representation reaches pytest
+    assertion output, traceback locals and ordinary logging.
+    """
+
+    dsn: str = field(repr=False)
+    pool_size: int = _DEFAULT_DB_POOL_SIZE
+    pool_timeout_seconds: int = _DEFAULT_DB_POOL_TIMEOUT_SECONDS
+    pool_recycle_seconds: int = _DEFAULT_DB_POOL_RECYCLE_SECONDS
+    connect_timeout_seconds: int = _DEFAULT_DB_CONNECT_TIMEOUT_SECONDS
+    statement_timeout_ms: int = _DEFAULT_DB_STATEMENT_TIMEOUT_MS
 
 
 def load_auth_settings(environ: Mapping[str, str] | None = None) -> AuthSettings | None:
@@ -191,6 +248,143 @@ def load_auth_settings(environ: Mapping[str, str] | None = None) -> AuthSettings
             _MAX_JWKS_MAX_BYTES,
         ),
     )
+
+
+def load_database_settings(
+    environ: Mapping[str, str] | None = None,
+) -> DatabaseSettings | None:
+    """Load the database configuration from an environment mapping.
+
+    Args:
+        environ: The environment to read. Defaults to `os.environ` when it
+            is not supplied, so the call site decides what is read.
+
+    Returns:
+        The validated configuration, or ``None`` when no ``HAWKI_BACKEND_DB_*``
+        variable is present. ``None`` means the persistence boundary is not
+        configured.
+
+    Raises:
+        DatabaseConfigurationError: When any database variable is present but
+            the configuration is incomplete or invalid.
+    """
+    source = os.environ if environ is None else environ
+    present = {name for name in source if name.startswith(_DB_PREFIX)}
+    if not present:
+        return None
+    _reject_unknown_database_names(present)
+    return DatabaseSettings(
+        dsn=_database_dsn(source),
+        pool_size=_database_integer(
+            source,
+            "POOL_SIZE",
+            _DEFAULT_DB_POOL_SIZE,
+            1,
+            64,
+        ),
+        pool_timeout_seconds=_database_integer(
+            source,
+            "POOL_TIMEOUT_SECONDS",
+            _DEFAULT_DB_POOL_TIMEOUT_SECONDS,
+            1,
+            60,
+        ),
+        pool_recycle_seconds=_database_integer(
+            source,
+            "POOL_RECYCLE_SECONDS",
+            _DEFAULT_DB_POOL_RECYCLE_SECONDS,
+            0,
+            3600,
+        ),
+        connect_timeout_seconds=_database_integer(
+            source,
+            "CONNECT_TIMEOUT_SECONDS",
+            _DEFAULT_DB_CONNECT_TIMEOUT_SECONDS,
+            1,
+            60,
+        ),
+        statement_timeout_ms=_database_integer(
+            source,
+            "STATEMENT_TIMEOUT_MS",
+            _DEFAULT_DB_STATEMENT_TIMEOUT_MS,
+            100,
+            60000,
+        ),
+    )
+
+
+def _database_env_name(suffix: str) -> str:
+    """Return the full environment variable name for a database suffix."""
+    return f"{_DB_PREFIX}{suffix}"
+
+
+def _reject_unknown_database_names(present: set[str]) -> None:
+    """Reject an unknown ``HAWKI_BACKEND_DB_*`` variable as a typo."""
+    known = {_database_env_name(suffix) for suffix in _DB_KNOWN_SUFFIXES}
+    unknown = sorted(present - known)
+    if unknown:
+        raise DatabaseConfigurationError(
+            "unknown database configuration: " + ", ".join(unknown)
+        )
+
+
+def _database_dsn(source: Mapping[str, str]) -> str:
+    """Return the validated connection string of the database."""
+    raw = source.get(_database_env_name("DSN"))
+    if raw is None:
+        raise DatabaseConfigurationError(f"{_database_env_name('DSN')} is required")
+    dsn = raw.strip()
+    if not dsn:
+        raise DatabaseConfigurationError(
+            f"{_database_env_name('DSN')} must not be empty"
+        )
+    if any(character.isspace() for character in dsn):
+        raise DatabaseConfigurationError(
+            f"{_database_env_name('DSN')} must not contain whitespace"
+        )
+    try:
+        parts = urlsplit(dsn)
+    except ValueError as error:
+        raise DatabaseConfigurationError(
+            f"{_database_env_name('DSN')} is not a valid connection string"
+        ) from error
+    if parts.scheme != _DATABASE_SCHEME:
+        raise DatabaseConfigurationError(
+            f"{_database_env_name('DSN')} must use the {_DATABASE_SCHEME} scheme"
+        )
+    if not parts.hostname:
+        raise DatabaseConfigurationError(
+            f"{_database_env_name('DSN')} must include a host"
+        )
+    if parts.fragment:
+        raise DatabaseConfigurationError(
+            f"{_database_env_name('DSN')} must not contain a fragment"
+        )
+    return dsn
+
+
+def _database_integer(
+    source: Mapping[str, str],
+    suffix: str,
+    default: int,
+    minimum: int,
+    maximum: int,
+) -> int:
+    """Return a bounded integer value for the database configuration."""
+    raw = source.get(_database_env_name(suffix))
+    if raw is None:
+        return default
+    text = raw.strip()
+    if not _INTEGER_PATTERN.fullmatch(text):
+        raise DatabaseConfigurationError(
+            f"{_database_env_name(suffix)} must be an integer"
+        )
+    value = int(text)
+    if value < minimum or value > maximum:
+        raise DatabaseConfigurationError(
+            f"{_database_env_name(suffix)} must be between {minimum} and {maximum}"
+        )
+    return value
 
 
 def _env_name(suffix: str) -> str:
@@ -375,4 +569,11 @@ def _tenant_claim(source: Mapping[str, str]) -> str:
     return claim
 
 
-__all__ = ["AuthConfigurationError", "AuthSettings", "load_auth_settings"]
+__all__ = [
+    "AuthConfigurationError",
+    "AuthSettings",
+    "DatabaseConfigurationError",
+    "DatabaseSettings",
+    "load_auth_settings",
+    "load_database_settings",
+]

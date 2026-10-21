@@ -188,3 +188,96 @@ the persistence branch.
 
 No HTTP route uses this policy yet. The only route is the public
 `GET /v1/health`.
+
+## Persistence Boundary
+
+`hawki_backend.persistence` makes the dataset grant reader real against a
+database. It is an adapter: it knows the domain, and the domain never knows
+it. The authorization package imports no database driver.
+
+### The owned schema
+
+The backend owns one PostgreSQL schema, `hawki_backend`, with two tables in
+it. The application that still serves the legacy surfaces owns `public` and
+pins its search path to it, so the backend's tables are never addressed by
+it and the two migration histories never collide. The backend never reads
+the application's tables.
+
+| Table | Primary key | Purpose |
+|---|---|---|
+| `hawki_backend.datasets` | `(tenant_id, dataset_id)` | which datasets exist, and in which state |
+| `hawki_backend.dataset_grants` | `(tenant_id, dataset_id, principal_type, principal_id, permission)` | which principal holds which action on which dataset |
+
+The tenant is part of both identities. A grant references its dataset by
+`(tenant_id, dataset_id)`, so a grant that names a dataset of another
+tenant cannot be stored at all. The dataset status is limited to `active`,
+`archived` and `deleted`, and only an active dataset answers a lookup.
+
+The tables carry no storage target. The collection, the namespace and the
+embedding configuration stay with the application that owns them.
+
+### The lookup
+
+One statement answers the whole question: the tenant, the principal kind,
+the principal id, the dataset, the action and the active state of the
+dataset. There is no second question about the dataset, so the answer
+cannot be assembled from two lookups. An unknown dataset, an inactive
+dataset and a missing grant are all the same empty answer.
+
+### Failure
+
+A database that cannot be reached is not a refusal. It raises
+`AuthorizationUnavailableError`, which carries no detail of the
+connection, so a refused request and an outage never look the same.
+
+### Configuration
+
+| Variable | Required | Default | Notes |
+|---|---|---|---|
+| `HAWKI_BACKEND_DB_DSN` | yes | — | `postgresql+psycopg://…` URL of the database. |
+| `HAWKI_BACKEND_DB_POOL_SIZE` | no | `5` | Connections in the pool. |
+| `HAWKI_BACKEND_DB_POOL_TIMEOUT_SECONDS` | no | `3` | How long a caller waits for a connection. |
+| `HAWKI_BACKEND_DB_POOL_RECYCLE_SECONDS` | no | `300` | Age at which a connection is replaced. |
+| `HAWKI_BACKEND_DB_CONNECT_TIMEOUT_SECONDS` | no | `3` | Connection timeout. |
+| `HAWKI_BACKEND_DB_STATEMENT_TIMEOUT_MS` | no | `2000` | Statement timeout. |
+
+No `HAWKI_BACKEND_DB_*` variable means the backend runs without
+persistence. Any variable that is present must form a complete and valid
+configuration.
+
+### Migrations
+
+The schema is versioned with Alembic. The version table lives in the owned
+schema, so the backend's migration history is separate from the
+application's. `alembic upgrade head` applies the migrations and
+`alembic check` reports any drift between the schema and the definition
+the runtime uses.
+
+### Tests
+
+The persistence tests are destructive: they run `alembic downgrade base`,
+delete every row of the owned tables and recreate the migration state. They
+run only when **both** of the following hold:
+
+* `HAWKI_BACKEND_DB_TESTING=1`, and
+* the database name ends with `_test`.
+
+The database name has one authoritative source, the connection string read
+the way the driver reads it. A connection string that also names a database
+in its query string, with a `dbname` parameter, is refused by the test
+safety guard, because the driver would connect to the database in the query
+rather than the one in the path. The guard is never satisfied by a host, a
+port, an account or a schema name.
+
+### Current surface
+
+The tables start empty. There is no data migration and no dual write: the
+backend's own grant management populates them, and the rows of the legacy
+application stay where they are. No HTTP route uses the reader yet, and
+`main.py` does not construct it.
+
+> **A dedicated database account is required before the reader is wired
+> into production.** The connection above is expected to use an account
+> that may only reach the `hawki_backend` schema. An account that can also
+> read `public` would break the rule that the backend never queries the
+> application's tables.
