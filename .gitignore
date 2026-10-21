@@ -97,3 +97,7 @@ Homestead.yaml
 refactor_code_python.md
 refactor_code*.md
 refacor_code*.md
+
+# Local OpenCode config
+opencode.json
+.opencode/

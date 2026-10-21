@@ -1,0 +1,50 @@
+name: Python Backend
+
+on:
+  push:
+    paths:
+      - "python_backend/**"
+      - ".github/workflows/python-backend.yml"
+  pull_request:
+    paths:
+      - "python_backend/**"
+      - ".github/workflows/python-backend.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13.14"
+
+      - name: Install pinned uv
+        run: python -m pip install "uv==0.11.26"
+
+      - name: Verify the dependency lock is current
+        working-directory: python_backend
+        run: uv lock --check
+
+      - name: Install the pinned environment
+        working-directory: python_backend
+        run: uv sync --frozen --all-groups
+
+      - name: Verify linting
+        working-directory: python_backend
+        run: uv run --frozen --no-sync ruff check .
+
+      - name: Verify formatting
+        working-directory: python_backend
+        run: uv run --frozen --no-sync ruff format --check .
+
+      - name: Run tests
+        working-directory: python_backend
+        run: uv run --frozen --no-sync pytest
