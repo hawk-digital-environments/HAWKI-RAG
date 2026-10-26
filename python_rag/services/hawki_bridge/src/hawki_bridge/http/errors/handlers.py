@@ -11,7 +11,7 @@ from requests import RequestException
 
 from hawki_observability.events import API_REQUEST_ERROR as API_REQUEST_ERROR_EVENT
 from hawki_observability.redaction import log_redacted_value
-from hawki_bridge.adapters.neo4j_reader import (
+from hawki_rag_retrieval.adapters import (
     DriverError,
     NEO4J_ERRORS,
     NEO4J_UNAVAILABLE_ERRORS,

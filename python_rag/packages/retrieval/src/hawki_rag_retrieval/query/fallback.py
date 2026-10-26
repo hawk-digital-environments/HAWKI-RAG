@@ -7,12 +7,13 @@ import os
 from collections.abc import Callable
 from typing import Any
 
-from hawki_bridge.application.query.hits import merge_retrieval_hits
-from hawki_bridge.application.query.lexical import query_terms
-from hawki_bridge.domain.errors import DatasetVectorStoreNotReadyError
-from hawki_bridge.domain.ports import ScopedFilters, VectorSearchPort
+from hawki_rag_retrieval.query.hits import merge_retrieval_hits
+from hawki_rag_retrieval.query.lexical import query_terms
+from hawki_rag_retrieval.errors import DatasetVectorStoreNotReadyError
+from hawki_rag_retrieval.ports import ScopedFilters, VectorSearchPort
 
-logger = logging.getLogger(__name__)
+# Preserve historical logger identity per Epoch 4 D3 decision
+logger = logging.getLogger("hawki_bridge.application.query.fallback")
 
 
 def _text_scroll_limit_default(top_k: int) -> int:

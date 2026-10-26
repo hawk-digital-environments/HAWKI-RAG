@@ -9,9 +9,9 @@ from fastapi import FastAPI
 
 from hawki_bridge.adapters.temporal_client import TemporalBridgeClient
 from hawki_bridge.application.graph import GraphReadService
-from hawki_bridge.application.dependencies import QueryDependencies
 from hawki_bridge.composition import build_query_dependencies
-from hawki_bridge.domain.ports import GraphReader
+from hawki_rag_retrieval.dependencies import QueryDependencies
+from hawki_rag_retrieval.ports import GraphReader
 from hawki_bridge.http.errors import install_exception_handlers
 from hawki_bridge.http.middleware import install_request_context_middleware
 from hawki_bridge.http.routers import (

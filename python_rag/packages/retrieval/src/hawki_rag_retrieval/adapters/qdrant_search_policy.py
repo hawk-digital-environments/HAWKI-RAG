@@ -1,4 +1,4 @@
-"""Bridge-owned Qdrant search and fallback policy."""
+"""Retrieval Qdrant search and fallback policy."""
 
 from __future__ import annotations
 
@@ -8,7 +8,8 @@ from typing import Any
 
 from hawki_vector_store.client import QdrantHTTP
 
-logger = logging.getLogger(__name__)
+# Preserve historical logger identity per Epoch 4 D3 decision
+logger = logging.getLogger("hawki_bridge.adapters.qdrant_search_policy")
 
 
 def semantic_search_basic(

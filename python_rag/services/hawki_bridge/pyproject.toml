@@ -13,6 +13,7 @@ dependencies = [
     "hawki-model-providers==0.1.0",
     "hawki-observability==0.1.0",
     "hawki-rag-contracts==0.1.0",
+    "hawki-rag-retrieval==0.1.0",
     "hawki-rag-text==0.1.0",
     "hawki-vector-store==0.1.0",
     "pydantic==2.13.4",
@@ -40,5 +41,6 @@ hawki-graph-store = { workspace = true }
 hawki-model-providers = { workspace = true }
 hawki-observability = { workspace = true }
 hawki-rag-contracts = { workspace = true }
+hawki-rag-retrieval = { workspace = true }
 hawki-rag-text = { workspace = true }
 hawki-vector-store = { workspace = true }

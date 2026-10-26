@@ -1,4 +1,4 @@
-"""Bridge-owned ports for model, vector, graph, and reranking dependencies."""
+"""Retrieval ports for model, vector, graph, and reranking dependencies."""
 
 from __future__ import annotations
 

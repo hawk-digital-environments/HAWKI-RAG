@@ -130,7 +130,7 @@ def test_bridge_application_has_no_http_adapter_or_private_package_imports() -> 
 
 
 def test_query_use_case_has_one_typed_boundary_without_forwarding_modules() -> None:
-    from hawki_bridge.application.query.execution import execute_authorized_query
+    from hawki_rag_retrieval.query.execution import execute_authorized_query
 
     signature = inspect.signature(execute_authorized_query)
     assert list(signature.parameters) == ["request", "dependencies"]
@@ -142,7 +142,16 @@ def test_query_use_case_has_one_typed_boundary_without_forwarding_modules() -> N
 
 
 def test_query_term_extraction_is_declared_only_in_the_lexical_seam() -> None:
-    seam = SOURCE / "application" / "query" / "lexical.py"
+    # The lexical seam is now in the shared retrieval package
+    seam = (
+        Path(__file__).parents[4]
+        / "packages"
+        / "retrieval"
+        / "src"
+        / "hawki_rag_retrieval"
+        / "query"
+        / "lexical.py"
+    )
     assert seam.is_file()
     violations: list[str] = []
     for layer in (SOURCE / "application", SOURCE / "domain"):
@@ -156,13 +165,23 @@ def test_query_term_extraction_is_declared_only_in_the_lexical_seam() -> None:
 
 
 def test_bridge_store_packages_are_visible_only_to_their_adapters() -> None:
+    # The concrete adapters have been moved to the shared retrieval package.
+    # The bridge should only depend on the retrieval package, not directly on store packages.
+    retrieval_adapters = (
+        Path(__file__).parents[4]
+        / "packages"
+        / "retrieval"
+        / "src"
+        / "hawki_rag_retrieval"
+        / "adapters"
+    )
     allowed = {
-        SOURCE / "adapters" / "qdrant_reader.py": {"hawki_vector_store"},
-        SOURCE / "adapters" / "qdrant_search_policy.py": {"hawki_vector_store"},
-        SOURCE / "adapters" / "neo4j_reader.py": {"hawki_graph_store", "neo4j"},
+        retrieval_adapters / "qdrant_reader.py": {"hawki_vector_store"},
+        retrieval_adapters / "qdrant_search_policy.py": {"hawki_vector_store"},
+        retrieval_adapters / "neo4j_reader.py": {"hawki_graph_store", "neo4j"},
     }
     violations: list[str] = []
-    for path in sorted(SOURCE.rglob("*.py")):
+    for path in sorted(retrieval_adapters.rglob("*.py")):
         for line, name in _imports(path):
             root = name.split(".", 1)[0]
             if root not in {"hawki_vector_store", "hawki_graph_store", "neo4j"}:

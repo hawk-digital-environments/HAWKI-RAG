@@ -7,10 +7,11 @@ import logging
 import re
 from typing import Any, TypedDict
 
-from hawki_bridge.application.query.lexical import query_terms
-from hawki_bridge.domain.ports import ModelProvider
+from hawki_rag_retrieval.query.lexical import query_terms
+from hawki_rag_retrieval.ports import ModelProvider
 
-logger = logging.getLogger(__name__)
+# Preserve historical logger identity per Epoch 4 D3 decision
+logger = logging.getLogger("hawki_bridge.application.query.rewrite")
 
 _MULTIMODAL_HINT_PATTERN = re.compile(
     r"\b(figure|fig\.|image|photo|diagram|chart|table|equation|grafik|"

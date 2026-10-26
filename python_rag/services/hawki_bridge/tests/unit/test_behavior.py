@@ -12,14 +12,14 @@ from fastapi import APIRouter
 from fastapi.routing import APIRoute
 from neo4j.exceptions import Neo4jError, ServiceUnavailable
 
-from hawki_bridge.adapters.neo4j_reader import Neo4jReader
-from hawki_bridge.adapters.qdrant_reader import QdrantReader
+from hawki_rag_retrieval.adapters import Neo4jReader
+from hawki_rag_retrieval.adapters import QdrantReader
 from hawki_bridge.adapters.temporal_client import (
     TemporalExecution,
 )
-from hawki_bridge.application.dependencies import QueryDependencies
+from hawki_rag_retrieval.dependencies import QueryDependencies
 from hawki_bridge.application.graph import GraphReadService
-from hawki_bridge.domain.errors import (
+from hawki_rag_retrieval.errors import (
     AnswerGenerationError,
     BridgeQueryError,
     DatasetVectorStoreNotReadyError,
@@ -102,7 +102,7 @@ def _scope(*, graph_enabled: bool = False) -> AuthorizedQueryScope:
 
 
 def test_query_model_selection_uses_validated_contract_fields() -> None:
-    from hawki_bridge.application.query.model_selection import apply_query_models
+    from hawki_rag_retrieval.query.model_selection import apply_query_models
 
     class Provider:
         embed_model = "initial-embedding"
@@ -262,7 +262,7 @@ def test_graph_application_rejects_a_scope_without_graph_authorization() -> None
 def test_neo4j_adapter_delegates_a_read_without_changing_scope(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from hawki_bridge.adapters import neo4j_reader as reader_module
+    from hawki_rag_retrieval.adapters import neo4j_reader as reader_module
 
     observed: dict[str, Any] = {}
 
@@ -304,7 +304,7 @@ def test_neo4j_adapter_propagates_non_availability_errors(
     error: BaseException,
     operation: str,
 ) -> None:
-    from hawki_bridge.adapters import neo4j_reader as reader_module
+    from hawki_rag_retrieval.adapters import neo4j_reader as reader_module
 
     class FailingGraph:
         def __init__(self, **_kwargs: Any) -> None:
@@ -343,7 +343,7 @@ def test_neo4j_adapter_degrades_only_unavailability_to_empty(
     monkeypatch: pytest.MonkeyPatch,
     operation: str,
 ) -> None:
-    from hawki_bridge.adapters import neo4j_reader as reader_module
+    from hawki_rag_retrieval.adapters import neo4j_reader as reader_module
 
     class UnavailableGraph:
         def __init__(self, **_kwargs: Any) -> None:

@@ -71,7 +71,7 @@ def _dependencies(
     provider: _FakeProvider | None = None,
     vector_search: _RecordingVectorSearch | None = None,
 ):
-    from hawki_bridge.application.dependencies import QueryDependencies
+    from hawki_rag_retrieval.dependencies import QueryDependencies
 
     selected_provider = provider or _FakeProvider()
     selected_vector_search = vector_search or _RecordingVectorSearch()
@@ -259,7 +259,7 @@ class TestQueryApiFlow:
     def test_application_failure_keeps_the_public_error_envelope(
         self, tmp_path: Path, asgi_test_client_class: type[Any]
     ) -> None:
-        from hawki_bridge.domain.errors import DatasetVectorStoreNotReadyError
+        from hawki_rag_retrieval.errors import DatasetVectorStoreNotReadyError
 
         with patch(
             "hawki_bridge.http.routers.query.execute_authorized_query",

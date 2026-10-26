@@ -1,0 +1,47 @@
+[project]
+name = "hawki-rag-retrieval"
+version = "0.1.0"
+description = "Shared RAG query/retrieval package for RAWKI"
+readme = "README.md"
+authors = [
+    { name = "Yazdan Asadi", email = "wentlerhiphop@gmail.com" }
+]
+requires-python = "==3.13.14"
+dependencies = [
+    "hawki-graph-store==0.1.0",
+    "hawki-model-providers==0.1.0",
+    "hawki-observability==0.1.0",
+    "hawki-rag-contracts==0.1.0",
+    "hawki-rag-text==0.1.0",
+    "hawki-vector-store==0.1.0",
+    "neo4j==6.2.0",
+    "pydantic==2.13.4",
+    "requests==2.34.2",
+]
+
+[dependency-groups]
+test = [
+    "pytest==8.4.2",
+]
+
+[build-system]
+requires = ["uv_build==0.11.26"]
+build-backend = "uv_build"
+
+[tool.uv.sources]
+hawki-graph-store = { workspace = true }
+hawki-model-providers = { workspace = true }
+hawki-observability = { workspace = true }
+hawki-rag-contracts = { workspace = true }
+hawki-rag-text = { workspace = true }
+hawki-vector-store = { workspace = true }
+
+[tool.ruff]
+target-version = "py313"
+line-length = 88
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]
+
+[tool.ruff.lint.per-file-ignores]
+"**/tests/**/*.py" = ["E402"]

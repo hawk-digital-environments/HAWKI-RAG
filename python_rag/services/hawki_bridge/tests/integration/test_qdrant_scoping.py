@@ -130,7 +130,7 @@ class TestLiveQdrantScoping:
         live_qdrant: Any,
         qdrant_scope_resources: dict[str, str],
     ) -> None:
-        from hawki_bridge.application.query.scope import build_scoped_query_filters
+        from hawki_rag_retrieval.query.scope import build_scoped_query_filters
 
         resource = qdrant_scope_resources
         _create_collection(live_qdrant, resource["collection_a"])

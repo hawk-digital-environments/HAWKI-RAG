@@ -1,4 +1,4 @@
-"""Qdrant adapter implementing the bridge-owned vector search port."""
+"""Qdrant adapter implementing the retrieval vector search port."""
 
 from __future__ import annotations
 
@@ -10,15 +10,16 @@ from typing import Any, TypeVar
 from requests import RequestException
 
 from hawki_vector_store.client import QdrantHTTP, ScopedCollectionNotReadyError
-from hawki_bridge.adapters.qdrant_search_policy import (
+from hawki_rag_retrieval.adapters.qdrant_search_policy import (
     semantic_search_basic,
     semantic_search_high_recall,
     optimized_semantic_search,
     semantic_search_smart,
 )
-from hawki_bridge.domain.errors import DatasetVectorStoreNotReadyError
+from hawki_rag_retrieval.errors import DatasetVectorStoreNotReadyError
 
-logger = logging.getLogger(__name__)
+# Preserve historical logger identity per Epoch 4 D3 decision
+logger = logging.getLogger("hawki_bridge.adapters.qdrant_reader")
 QDRANT_OPERATION_ERRORS = (RequestException,)
 ResultT = TypeVar("ResultT")
 

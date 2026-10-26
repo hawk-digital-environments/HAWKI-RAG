@@ -126,8 +126,8 @@ class QueryExecutionScopeTests(unittest.TestCase):
         *,
         generate: bool,
     ) -> tuple[Any, list[dict[str, Any]], Any]:
-        from hawki_bridge.application.dependencies import QueryDependencies
-        from hawki_bridge.application.query.execution import execute_authorized_query
+        from hawki_rag_retrieval.dependencies import QueryDependencies
+        from hawki_rag_retrieval.query.execution import execute_authorized_query
 
         calls: list[dict[str, Any]] = []
         provider = _Provider(calls)
@@ -172,8 +172,8 @@ class QueryExecutionScopeTests(unittest.TestCase):
         return result, calls, provider
 
     def execute_expansion_case(self, expanded_vector: Any) -> dict[str, Any]:
-        from hawki_bridge.application.dependencies import QueryDependencies
-        from hawki_bridge.application.query.execution import execute_authorized_query
+        from hawki_rag_retrieval.dependencies import QueryDependencies
+        from hawki_rag_retrieval.query.execution import execute_authorized_query
 
         captured: dict[str, Any] = {}
 
@@ -233,9 +233,7 @@ class QueryExecutionScopeTests(unittest.TestCase):
                 },
                 clear=False,
             ),
-            patch(
-                "hawki_bridge.application.query.execution.logger.warning"
-            ) as log_warning,
+            patch("hawki_rag_retrieval.query.execution.logger.warning") as log_warning,
         ):
             result = execute_authorized_query(request, dependencies=dependencies)
 
@@ -269,7 +267,7 @@ class QueryExecutionScopeTests(unittest.TestCase):
         self.assertEqual(result.answer, "")
 
     def test_kg_timing_is_recorded_before_it_is_logged(self) -> None:
-        with patch("hawki_bridge.application.query.execution.logger.info") as log_info:
+        with patch("hawki_rag_retrieval.query.execution.logger.info") as log_info:
             result, _calls, _provider = self._run_generation_query(generate=False)
 
         kg_timing = result.retrieval["timings_ms"]["kg"]
@@ -283,8 +281,8 @@ class QueryExecutionScopeTests(unittest.TestCase):
         self.assertEqual(kg_log.args[2], kg_timing)
 
     def test_vector_paths_share_filters_and_disabled_graph_is_not_called(self) -> None:
-        from hawki_bridge.application.dependencies import QueryDependencies
-        from hawki_bridge.application.query.execution import execute_authorized_query
+        from hawki_rag_retrieval.dependencies import QueryDependencies
+        from hawki_rag_retrieval.query.execution import execute_authorized_query
 
         captured: dict[str, Any] = {}
         vector_search = _VectorSearch(
@@ -419,8 +417,8 @@ class QueryExecutionScopeTests(unittest.TestCase):
     def test_expansion_embedding_failure_logs_safe_metadata_and_reuses_original_vector(
         self,
     ) -> None:
-        from hawki_bridge.application.dependencies import QueryDependencies
-        from hawki_bridge.application.query.execution import execute_authorized_query
+        from hawki_rag_retrieval.dependencies import QueryDependencies
+        from hawki_rag_retrieval.query.execution import execute_authorized_query
 
         secret_error = "DO-NOT-LOG-THIS-SECRET"
         original_vector = [0.1, 0.2]
@@ -481,9 +479,7 @@ class QueryExecutionScopeTests(unittest.TestCase):
                 },
                 clear=False,
             ),
-            patch(
-                "hawki_bridge.application.query.execution.logger.warning"
-            ) as log_warning,
+            patch("hawki_rag_retrieval.query.execution.logger.warning") as log_warning,
         ):
             result = execute_authorized_query(request, dependencies=dependencies)
 
@@ -512,9 +508,9 @@ class QueryExecutionScopeTests(unittest.TestCase):
         self.assertTrue(result.retrieval["expansion_terms"])
 
     def test_missing_scoped_collection_raises_application_error(self) -> None:
-        from hawki_bridge.application.dependencies import QueryDependencies
-        from hawki_bridge.application.query.execution import execute_authorized_query
-        from hawki_bridge.domain.errors import DatasetVectorStoreNotReadyError
+        from hawki_rag_retrieval.dependencies import QueryDependencies
+        from hawki_rag_retrieval.query.execution import execute_authorized_query
+        from hawki_rag_retrieval.errors import DatasetVectorStoreNotReadyError
 
         class MissingVectorSearch(_VectorSearch):
             def search_candidates(self, **_kwargs: Any) -> list[dict[str, Any]]:

@@ -274,7 +274,7 @@ catch path logs the query and exception; those logs still require access control
 | Inner response normalization | `app/Services/RagSearch/RagSearchResponseFilter.php` |
 | Advertised output schema | `app/Services/RagSearch/RagSearchSchemaFactory.php` |
 | FastAPI request validation | `python_rag/services/hawki_bridge/src/hawki_bridge/http/schemas.py` |
-| Raw query execution and response | `python_rag/services/hawki_bridge/src/hawki_bridge/application/query/execution.py` |
+| Raw query execution and response | `python_rag/packages/retrieval/src/hawki_rag_retrieval/query/execution.py` |
 
 The existing `RagSearcherDatasetScopeTest` protects server-derived dataset
 scope. A dedicated MCP structured-output test is still needed to prevent the

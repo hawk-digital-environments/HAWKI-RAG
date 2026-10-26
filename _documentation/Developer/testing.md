@@ -120,7 +120,7 @@ Source-code links point to GitHub. When changing the repository map, verify the
 corresponding paths in your checkout; for example:
 
 ```bash
-test -f python_rag/services/hawki_bridge/src/hawki_bridge/application/query/execution.py
+test -f python_rag/packages/retrieval/src/hawki_rag_retrieval/query/execution.py
 test -d python_rag/services/hawki_indexer_worker/tests
 ```
 

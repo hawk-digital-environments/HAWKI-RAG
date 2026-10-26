@@ -4,9 +4,9 @@ from fastapi import APIRouter
 
 from hawki_rag_contracts.retrieval.query import QueryResponse
 
-from hawki_bridge.application.dependencies import QueryDependencies
-from hawki_bridge.application.query.execution import execute_authorized_query
-from hawki_bridge.domain.errors import BridgeQueryError
+from hawki_rag_retrieval.dependencies import QueryDependencies
+from hawki_rag_retrieval.query import execute_authorized_query
+from hawki_rag_retrieval.errors import BridgeQueryError
 from hawki_bridge.http.errors import query_error_to_http_exception
 from hawki_bridge.http.schemas import QueryRequest, apply_query_defaults
 from hawki_bridge.settings import BridgeSettings

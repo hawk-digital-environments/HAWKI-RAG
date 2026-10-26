@@ -12,7 +12,7 @@ class QueryCharacterizationTests(unittest.TestCase):
     """Protect query settings, fallback, deduplication, reranking, rewriting, and execution flow."""
 
     def test_query_rewrite_contract_is_multimodal_and_dedupes_terms(self) -> None:
-        from hawki_bridge.application.query import rewrite as query_rewrite
+        from hawki_rag_retrieval.query import rewrite as query_rewrite
 
         with (
             patch.object(
@@ -60,7 +60,7 @@ class QueryCharacterizationTests(unittest.TestCase):
         multimodal_check.assert_called_once()
 
     def test_disabled_query_rewrite_returns_complete_normalized_shape(self) -> None:
-        from hawki_bridge.application.query import rewrite as query_rewrite
+        from hawki_rag_retrieval.query import rewrite as query_rewrite
 
         with patch.object(query_rewrite, "request_query_rewrite") as rewrite_request:
             rewrite = query_rewrite.build_query_rewrite(
@@ -86,7 +86,7 @@ class QueryCharacterizationTests(unittest.TestCase):
     def test_query_ranking_preserves_best_path_and_fallback(
         self,
     ) -> None:
-        from hawki_bridge.application.query import ranking as query_ranking
+        from hawki_rag_retrieval.query import ranking as query_ranking
 
         class RerankService:
             def __init__(self) -> None:
@@ -143,7 +143,7 @@ class QueryCharacterizationTests(unittest.TestCase):
         self.assertEqual([item["id"] for item in fallback], ["a", "b"])
 
     def test_query_rewrite_module_normalizes_model_response(self) -> None:
-        from hawki_bridge.application.query import rewrite as query_rewrite
+        from hawki_rag_retrieval.query import rewrite as query_rewrite
 
         with (
             patch.object(query_rewrite, "is_multimodal_query", return_value=True),
@@ -187,7 +187,7 @@ class QueryCharacterizationTests(unittest.TestCase):
         self.assertEqual(terms, ["train", "planes", "toys", "visual"])
 
     def test_query_ranking_module_iterate_and_expansion_terms(self) -> None:
-        from hawki_bridge.application.query import ranking as query_ranking
+        from hawki_rag_retrieval.query import ranking as query_ranking
 
         class RerankService:
             def rerank_hits(self, **kwargs) -> list[dict[str, object]]:
@@ -241,7 +241,7 @@ class QueryCharacterizationTests(unittest.TestCase):
         self.assertEqual(expansion, ["blocks", "toys"])
 
     def test_query_lexical_boost_folds_fuzzy_matches_and_boosts_scores(self) -> None:
-        from hawki_bridge.application.query.lexical import (
+        from hawki_rag_retrieval.query.lexical import (
             boost_lexical_hits,
             fold_text,
             fuzzy_term_in_words,
@@ -279,7 +279,7 @@ class QueryCharacterizationTests(unittest.TestCase):
         self.assertEqual(boosted[0]["score"], 0.25)
 
     def test_query_settings_parse_env_with_caps_and_fallbacks(self) -> None:
-        from hawki_bridge.application.query.settings import (
+        from hawki_rag_retrieval.query.settings import (
             context_limits,
             fusion_weights,
             generation_enabled,

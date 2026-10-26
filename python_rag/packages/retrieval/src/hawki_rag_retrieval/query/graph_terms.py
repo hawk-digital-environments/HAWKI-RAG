@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from typing import Any
 
-from hawki_bridge.application.query.lexical import document_terms
+from hawki_rag_retrieval.query.lexical import document_terms
 
 
 def terms_from_payload(payload: dict[str, Any]) -> list[str]:

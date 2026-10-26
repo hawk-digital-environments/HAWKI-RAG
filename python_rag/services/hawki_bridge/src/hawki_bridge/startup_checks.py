@@ -8,12 +8,10 @@ from collections.abc import Callable
 from typing import Any
 
 from hawki_observability.redaction import sanitize_for_log
-from hawki_bridge.adapters.neo4j_reader import (
+from hawki_rag_retrieval.adapters import (
     NEO4J_ERRORS,
-    ping_neo4j,
-)
-from hawki_bridge.adapters.qdrant_reader import (
     QDRANT_OPERATION_ERRORS,
+    ping_neo4j,
     ping_qdrant,
 )
 

@@ -6,9 +6,9 @@ import math
 from collections.abc import Iterable
 from typing import Any, Callable
 
-from hawki_bridge.application.query.hits import dedupe_hits_by_identity
-from hawki_bridge.application.query.lexical import boost_lexical_hits, document_terms
-from hawki_bridge.domain.ports import ModelProvider, RerankHitsPort
+from hawki_rag_retrieval.query.hits import dedupe_hits_by_identity
+from hawki_rag_retrieval.query.lexical import boost_lexical_hits, document_terms
+from hawki_rag_retrieval.ports import ModelProvider, RerankHitsPort
 
 
 DedupeHits = Callable[[list[dict[str, Any]]], list[dict[str, Any]]]

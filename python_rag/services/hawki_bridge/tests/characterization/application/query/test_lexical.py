@@ -9,7 +9,7 @@ class QueryTermExtractionTests(unittest.TestCase):
     """Protect query term policy: folding, ordinals, scope stripping."""
 
     def test_query_terms_keep_folded_pairs_for_lexical_matching(self) -> None:
-        from hawki_bridge.application.query.lexical import fold_text, query_terms
+        from hawki_rag_retrieval.query.lexical import fold_text, query_terms
 
         terms = query_terms("Bauklötze")
 
@@ -20,7 +20,7 @@ class QueryTermExtractionTests(unittest.TestCase):
         )
 
     def test_query_terms_keep_ordinals_and_remove_dataset_instructions(self) -> None:
-        from hawki_bridge.application.query.lexical import query_terms
+        from hawki_rag_retrieval.query.lexical import query_terms
 
         terms = query_terms("Was ist die dritte Mahnung in mein Dataset?")
 
@@ -30,7 +30,7 @@ class QueryTermExtractionTests(unittest.TestCase):
         self.assertNotIn("mein", terms.terms)
 
     def test_query_terms_fallback_keeps_short_words(self) -> None:
-        from hawki_bridge.application.query.lexical import query_terms
+        from hawki_rag_retrieval.query.lexical import query_terms
 
         terms = query_terms("Was ist das?")
 
@@ -38,7 +38,7 @@ class QueryTermExtractionTests(unittest.TestCase):
         self.assertEqual(terms.folded, ("was", "ist", "das"))
 
     def test_query_terms_behave_like_an_ordered_term_collection(self) -> None:
-        from hawki_bridge.application.query.lexical import query_terms
+        from hawki_rag_retrieval.query.lexical import query_terms
 
         terms = query_terms("Bauklötze Holzspielzeug")
 
@@ -51,14 +51,14 @@ class DocumentTermExtractionTests(unittest.TestCase):
     """Protect document term policy: plain extraction without query heuristics."""
 
     def test_document_terms_filter_stopwords_without_folding(self) -> None:
-        from hawki_bridge.application.query.lexical import document_terms
+        from hawki_rag_retrieval.query.lexical import document_terms
 
         terms = document_terms("Termine für neue Mitarbeiter")
 
         self.assertEqual(terms.terms, ("termine", "mitarbeiter"))
 
     def test_document_terms_do_not_strip_dataset_instructions(self) -> None:
-        from hawki_bridge.application.query.lexical import document_terms
+        from hawki_rag_retrieval.query.lexical import document_terms
 
         terms = document_terms("Weiterführende Einträge in unserem Datensatz")
 

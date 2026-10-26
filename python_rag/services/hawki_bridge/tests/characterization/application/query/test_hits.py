@@ -10,7 +10,7 @@ class QueryCharacterizationTests(unittest.TestCase):
     """Protect query settings, fallback, deduplication, reranking, rewriting, and execution flow."""
 
     def test_query_hit_helpers_preserve_distinct_chunks_until_ranking(self) -> None:
-        from hawki_bridge.application.query import hits as query_hits
+        from hawki_rag_retrieval.query import hits as query_hits
 
         primary = [
             {
@@ -44,7 +44,7 @@ class QueryCharacterizationTests(unittest.TestCase):
         self.assertEqual([hit["id"] for hit in deduped], [hit["id"] for hit in merged])
 
     def test_query_hit_merge_normalizes_stage_scores_for_the_same_point(self) -> None:
-        from hawki_bridge.application.query import hits as query_hits
+        from hawki_rag_retrieval.query import hits as query_hits
 
         merged = query_hits.merge_retrieval_hits(
             [
@@ -83,7 +83,7 @@ class QueryCharacterizationTests(unittest.TestCase):
     def test_query_hit_dedupe_keeps_chunks_with_the_same_document_metadata(
         self,
     ) -> None:
-        from hawki_bridge.application.query import hits as query_hits
+        from hawki_rag_retrieval.query import hits as query_hits
 
         hits = [
             {
@@ -123,7 +123,7 @@ class QueryCharacterizationTests(unittest.TestCase):
         self.assertEqual([hit["id"] for hit in deduped], ["chunk-1", "chunk-2"])
 
     def test_legacy_dedupe_helper_delegates_to_identity_deduplication(self) -> None:
-        from hawki_bridge.application.query import hits as query_hits
+        from hawki_rag_retrieval.query import hits as query_hits
 
         hits = [{"id": "chunk-1", "payload": {"title": "Shared title"}}]
         delegated_result = [{"id": "delegated"}]
@@ -139,7 +139,7 @@ class QueryCharacterizationTests(unittest.TestCase):
         self.assertIs(result, delegated_result)
 
     def test_query_hit_merge_uses_chunk_index_when_point_id_is_missing(self) -> None:
-        from hawki_bridge.application.query import hits as query_hits
+        from hawki_rag_retrieval.query import hits as query_hits
 
         merged = query_hits.merge_retrieval_hits(
             [{"score": 0.4, "payload": {"doc_id": "doc-a", "chunk_index": 0}}],
@@ -153,7 +153,7 @@ class QueryCharacterizationTests(unittest.TestCase):
         )
 
     def test_graph_fusion_does_not_collapse_chunks_from_the_same_document(self) -> None:
-        from hawki_bridge.application.query import hits as query_hits
+        from hawki_rag_retrieval.query import hits as query_hits
 
         fused = query_hits.fuse_retrieval_hits(
             [
@@ -174,7 +174,7 @@ class QueryCharacterizationTests(unittest.TestCase):
     def test_graph_fusion_keeps_one_aggregate_for_a_structural_only_document(
         self,
     ) -> None:
-        from hawki_bridge.application.query import hits as query_hits
+        from hawki_rag_retrieval.query import hits as query_hits
 
         fused = query_hits.fuse_retrieval_hits(
             [],
@@ -190,7 +190,7 @@ class QueryCharacterizationTests(unittest.TestCase):
         self.assertAlmostEqual(fused[0]["score"], 0.3)
 
     def test_query_context_summaries_trim_to_token_budget(self) -> None:
-        from hawki_bridge.application.query import context as query_context
+        from hawki_rag_retrieval.query import context as query_context
 
         hits = [
             {

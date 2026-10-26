@@ -66,7 +66,7 @@ flowchart TB
 ```
 
 The implementation entrypoint is
-[execute_authorized_query](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/python_rag/services/hawki_bridge/src/hawki_bridge/application/query/execution.py).
+[execute_authorized_query](https://github.com/hawk-digital-environments/HAWKI-RAG/blob/main/python_rag/packages/retrieval/src/hawki_rag_retrieval/query/execution.py).
 
 ## 1. Bind trusted scope and prepare the query
 

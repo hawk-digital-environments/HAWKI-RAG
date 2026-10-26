@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 
-from hawki_bridge.domain.ports import (
+from hawki_rag_retrieval.ports import (
     GraphSearchPort,
     ModelProviderResolver,
     RerankHitsPort,
@@ -12,7 +12,7 @@ from hawki_bridge.domain.ports import (
 
 @dataclass(frozen=True, slots=True)
 class QueryDependencies:
-    """I/O collaborators supplied once by the bridge composition root."""
+    """I/O collaborators supplied once by the composition root."""
 
     vector_search_factory: VectorSearchFactory
     graph_search: GraphSearchPort

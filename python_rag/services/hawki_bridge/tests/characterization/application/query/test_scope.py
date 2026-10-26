@@ -194,7 +194,7 @@ class AuthorizedScopeSchemaTests(unittest.TestCase):
             )
 
     def test_mandatory_dataset_filter_overrides_reserved_user_filters(self) -> None:
-        from hawki_bridge.application.query.scope import build_scoped_query_filters
+        from hawki_rag_retrieval.query.scope import build_scoped_query_filters
 
         filters = build_scoped_query_filters(
             "dataset-a",
@@ -215,7 +215,7 @@ class AuthorizedScopeSchemaTests(unittest.TestCase):
         self.assertEqual(filters, {"source_format": "pdf", "dataset_id": "dataset-a"})
 
     def test_scoped_filters_preserve_supported_scalar_values(self) -> None:
-        from hawki_bridge.application.query.scope import build_scoped_query_filters
+        from hawki_rag_retrieval.query.scope import build_scoped_query_filters
 
         filters = build_scoped_query_filters(
             "dataset-a",

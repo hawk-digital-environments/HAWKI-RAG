@@ -1,4 +1,4 @@
-"""Bridge application errors translated at the HTTP boundary."""
+"""Retrieval application errors translated at the HTTP boundary."""
 
 
 class BridgeQueryError(RuntimeError):

@@ -78,3 +78,10 @@ strategies are application-owned.
 Temporal activity-executor construction, heartbeat delivery, retry-delay value
 objects, and worker logging/settings. Laravel callbacks and external jobs live
 in their own packages.
+
+### `retrieval/`
+
+Query execution, semantic/lexical fusion, graph retrieval, reranking, context
+assembly, and answer generation. Concrete Qdrant, Neo4j, and reranker adapters.
+Retrieval core contains no HTTP dependency; it exports one typed query use case
+and ports for model, vector, graph, and reranker capabilities.

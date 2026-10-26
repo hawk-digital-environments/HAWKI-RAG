@@ -2,10 +2,8 @@
 
 from hawki_model_providers.factory import create_model_provider
 
-from hawki_bridge.adapters.neo4j_reader import Neo4jReader
-from hawki_bridge.adapters.qdrant_reader import QdrantReader
-from hawki_bridge.adapters.reranker_client import rerank_hits
-from hawki_bridge.application.dependencies import QueryDependencies
+from hawki_rag_retrieval.adapters import Neo4jReader, QdrantReader, rerank_hits
+from hawki_rag_retrieval.dependencies import QueryDependencies
 
 
 def build_query_dependencies() -> QueryDependencies:

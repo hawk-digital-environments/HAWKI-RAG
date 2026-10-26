@@ -15,35 +15,35 @@ from hawki_rag_text.safety import (
     sanitize_prompt_text,
 )
 
-from hawki_bridge.application.dependencies import QueryDependencies
-from hawki_bridge.application.query.context import (
+from hawki_rag_retrieval.dependencies import QueryDependencies
+from hawki_rag_retrieval.query.context import (
     ContextSummary,
     build_grounded_answer_prompt,
     build_context_summaries,
     normalize_generated_answer,
 )
-from hawki_bridge.application.query.fallback import retrieve_lexical_hits
-from hawki_bridge.application.query.graph_terms import terms_from_payload, unique_terms
-from hawki_bridge.application.query.hits import (
+from hawki_rag_retrieval.query.fallback import retrieve_lexical_hits
+from hawki_rag_retrieval.query.graph_terms import terms_from_payload, unique_terms
+from hawki_rag_retrieval.query.hits import (
     fuse_retrieval_hits,
     merge_retrieval_hits,
 )
-from hawki_bridge.application.query.model_selection import apply_query_models
-from hawki_bridge.application.query.lexical import document_terms, query_terms
-from hawki_bridge.application.query.ranking import (
+from hawki_rag_retrieval.query.model_selection import apply_query_models
+from hawki_rag_retrieval.query.lexical import document_terms, query_terms
+from hawki_rag_retrieval.query.ranking import (
     collect_expansion_terms,
     rerank_and_filter_hits,
     select_ranked_hits,
     should_expand_retrieval,
     validate_vector,
 )
-from hawki_bridge.application.query.rewrite import (
+from hawki_rag_retrieval.query.rewrite import (
     QueryRewrite,
     build_query_rewrite,
     build_query_terms,
 )
-from hawki_bridge.application.query.scope import build_scoped_query_filters
-from hawki_bridge.application.query.settings import (
+from hawki_rag_retrieval.query.scope import build_scoped_query_filters
+from hawki_rag_retrieval.query.settings import (
     context_limits,
     fusion_weights,
     generation_enabled,
@@ -54,13 +54,13 @@ from hawki_bridge.application.query.settings import (
     structural_hops,
     structural_limit,
 )
-from hawki_bridge.domain.errors import (
+from hawki_rag_retrieval.errors import (
     AnswerGenerationError,
     EmbeddingGenerationError,
     InvalidQueryError,
     UnsupportedModelProviderError,
 )
-from hawki_bridge.domain.ports import (
+from hawki_rag_retrieval.ports import (
     GraphSearchPort,
     ModelProvider,
     ModelProviderResolver,
@@ -70,7 +70,8 @@ from hawki_bridge.domain.ports import (
     VectorSearchPort,
 )
 
-logger = logging.getLogger(__name__)
+# Preserve historical logger identity per Epoch 4 D3 decision
+logger = logging.getLogger("hawki_bridge.application.query.execution")
 
 _KEYWORD_FIELDS = [
     "title",

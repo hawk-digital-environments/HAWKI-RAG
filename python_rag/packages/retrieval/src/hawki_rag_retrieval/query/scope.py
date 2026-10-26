@@ -9,7 +9,7 @@ from __future__ import annotations
 import math
 from typing import Any
 
-from hawki_bridge.domain.ports import ScopedFilters
+from hawki_rag_retrieval.ports import ScopedFilters
 
 
 _RESERVED_FILTER_KEYS = frozenset(

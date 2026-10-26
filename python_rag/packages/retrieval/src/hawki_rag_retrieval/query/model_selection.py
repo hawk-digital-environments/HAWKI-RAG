@@ -8,7 +8,7 @@ from hawki_model_providers.configuration import (
 )
 from hawki_rag_contracts.retrieval.query import QueryRequest
 
-from hawki_bridge.domain.ports import ModelProvider
+from hawki_rag_retrieval.ports import ModelProvider
 
 
 def apply_query_models(provider: ModelProvider, request: QueryRequest) -> None:

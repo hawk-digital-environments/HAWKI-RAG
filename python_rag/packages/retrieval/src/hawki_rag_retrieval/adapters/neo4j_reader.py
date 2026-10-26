@@ -1,4 +1,4 @@
-"""Read-only Neo4j adapter exposed to bridge application code."""
+"""Read-only Neo4j adapter for retrieval operations."""
 
 from __future__ import annotations
 
@@ -16,7 +16,8 @@ from hawki_graph_store.errors import (
 from hawki_graph_store.graph import Neo4jGraph
 from hawki_graph_store.settings import load_neo4j_settings
 
-logger = logging.getLogger(__name__)
+# Preserve historical logger identity per Epoch 4 D3 decision
+logger = logging.getLogger("hawki_bridge.adapters.neo4j_reader")
 
 
 def fetch_related_graph(
@@ -121,7 +122,7 @@ def _close_graph(graph: Neo4jGraph | None) -> None:
 
 @dataclass(frozen=True, slots=True)
 class Neo4jReader:
-    """Adapt dataset-scoped graph-store reads to the bridge graph port."""
+    """Adapt dataset-scoped graph-store reads to the retrieval graph port."""
 
     def fetch_related_graph(
         self,

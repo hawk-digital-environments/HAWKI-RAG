@@ -2,7 +2,7 @@
 
 import unittest
 
-from hawki_bridge.application.query.context import (
+from hawki_rag_retrieval.query.context import (
     build_grounded_answer_prompt,
     normalize_generated_answer,
 )

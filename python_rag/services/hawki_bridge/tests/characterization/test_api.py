@@ -167,7 +167,7 @@ class ApiCharacterizationTests(unittest.TestCase):
     def test_api_schema_defaults_and_query_errors_are_validation_boundaries(
         self,
     ) -> None:
-        from hawki_bridge.domain.errors import UnsupportedModelProviderError
+        from hawki_rag_retrieval.errors import UnsupportedModelProviderError
         from hawki_bridge.http.errors import query_error_to_http_exception
         from hawki_bridge.http.schemas import QueryRequest, apply_query_defaults
         from hawki_bridge.settings import load_settings
@@ -327,7 +327,7 @@ class ApiCharacterizationTests(unittest.TestCase):
         self.assertEqual(runtime_summary.calls, 1)
 
     def test_app_query_route_uses_injected_dependencies(self) -> None:
-        from hawki_bridge.application.dependencies import QueryDependencies
+        from hawki_rag_retrieval.dependencies import QueryDependencies
         from hawki_bridge.factory import build_app
         from hawki_bridge.http.schemas import QueryRequest
         from hawki_bridge.settings import load_settings

@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 from hawki_rag_contracts.retrieval.auth_scope import AuthorizedQueryScope
 
-from hawki_bridge.domain.ports import GraphReader
+from hawki_rag_retrieval.ports import GraphReader
 
 
 @dataclass(frozen=True, slots=True)

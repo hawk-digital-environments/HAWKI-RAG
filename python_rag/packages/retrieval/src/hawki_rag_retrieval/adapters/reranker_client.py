@@ -7,7 +7,8 @@ from typing import Any, Optional, Protocol, cast
 import requests as requests_module
 from hawki_rag_text.safety import strip_control_characters
 
-logger = logging.getLogger(__name__)
+# Preserve historical logger identity per Epoch 4 D3 decision
+logger = logging.getLogger("hawki_bridge.adapters.reranker_client")
 
 
 class _RerankerHTTPResponse(Protocol):

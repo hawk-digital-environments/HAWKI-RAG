@@ -84,8 +84,8 @@ class QueryCharacterizationTests(unittest.TestCase):
     def test_fast_is_default_and_only_explicit_deep_mode_reads_an_enabled_graph(
         self,
     ) -> None:
-        from hawki_bridge.application.dependencies import QueryDependencies
-        from hawki_bridge.application.query.execution import execute_authorized_query
+        from hawki_rag_retrieval.dependencies import QueryDependencies
+        from hawki_rag_retrieval.query.execution import execute_authorized_query
         from hawki_rag_contracts.retrieval.query import QueryRequest
 
         for fast_mode, authorized_graph, expected_graph in [
@@ -159,8 +159,8 @@ class QueryCharacterizationTests(unittest.TestCase):
                 )
 
     def test_query_uses_reranked_order_through_typed_dependencies(self) -> None:
-        from hawki_bridge.application.dependencies import QueryDependencies
-        from hawki_bridge.application.query.execution import execute_authorized_query
+        from hawki_rag_retrieval.dependencies import QueryDependencies
+        from hawki_rag_retrieval.query.execution import execute_authorized_query
 
         calls: list[str] = []
         vector_search = _VectorSearch(
@@ -228,8 +228,8 @@ class QueryCharacterizationTests(unittest.TestCase):
         self.assertEqual(calls, ["embed"])
 
     def test_query_passes_authorized_scope_to_both_graph_operations(self) -> None:
-        from hawki_bridge.application.dependencies import QueryDependencies
-        from hawki_bridge.application.query.execution import execute_authorized_query
+        from hawki_rag_retrieval.dependencies import QueryDependencies
+        from hawki_rag_retrieval.query.execution import execute_authorized_query
 
         graph_calls: list[tuple[str, dict[str, object]]] = []
 

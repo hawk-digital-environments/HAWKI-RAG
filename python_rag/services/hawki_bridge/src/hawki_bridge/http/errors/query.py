@@ -1,8 +1,8 @@
-"""Translate bridge query errors into stable HTTP exceptions."""
+"""Translate retrieval query errors into stable HTTP exceptions."""
 
 from fastapi import HTTPException
 
-from hawki_bridge.domain.errors import (
+from hawki_rag_retrieval.errors import (
     AnswerGenerationError,
     BridgeQueryError,
     DatasetVectorStoreNotReadyError,

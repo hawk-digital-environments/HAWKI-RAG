@@ -67,7 +67,7 @@ class ExternalRerankerContractTests(unittest.TestCase):
     """Verify external reranking preserves document identity while normalizing provider scores."""
 
     def test_external_reranker_uses_string_documents_and_cohere_scores(self) -> None:
-        from hawki_bridge.adapters.reranker_client import rerank_hits
+        from hawki_rag_retrieval.adapters import rerank_hits
 
         fake_requests = _FakeRequests(
             {
@@ -111,7 +111,7 @@ class ExternalRerankerContractTests(unittest.TestCase):
         )
 
     def test_external_reranker_retains_legacy_id_score_response_support(self) -> None:
-        from hawki_bridge.adapters.reranker_client import rerank_hits
+        from hawki_rag_retrieval.adapters import rerank_hits
 
         fake_requests = _FakeRequests(
             {
@@ -145,7 +145,7 @@ class ExternalRerankerContractTests(unittest.TestCase):
         self.assertEqual([hit["id"] for hit in ranked], ["second", "first"])
 
     def test_mixed_reranker_exposes_comparable_final_scores(self) -> None:
-        from hawki_bridge.adapters.reranker_client import rerank_hits
+        from hawki_rag_retrieval.adapters import rerank_hits
 
         fake_requests = _FakeRequests(
             {
