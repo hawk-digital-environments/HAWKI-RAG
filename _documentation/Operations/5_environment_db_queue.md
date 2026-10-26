@@ -187,10 +187,12 @@ An existence check does not establish compatible vector dimensions or distance.
 |---|---|---|---|---|---|
 | `RAG_DEFAULT_PROVIDER`, `GRAPH_PROVIDER` | `ollama` | Laravel defaults/settings | Change default runtime | Yes | Existing dataset scope persists |
 | `OLLAMA_API_URL` | `http://hawki_ollama:11434/api` | Provider clients | Ollama endpoint changes | Yes | None |
-| `OLLAMA_RAG_MODEL` | `llama3.1:8b` | Laravel settings / provider | Chat/graph default changes | Yes | New answers/extraction |
-| `OLLAMA_EMBED_MODEL` | `bge-m3` | Laravel settings / provider | New embedding contract | Yes | Rebuild existing target intentionally |
-| `OLLAMA_VISION_MODEL` | `qwen2.5vl:7b` | Laravel settings / provider | Vision model changes | Yes | New multimodal extraction |
-| `OLLAMA_CHAT_MODELS`, `OLLAMA_EMBED_MODELS`, `OLLAMA_VISION_MODELS` | The matching models above | Laravel Settings allowlists | Offer additional models | Yes | Dataset model selected at creation |
+| `EMBED_MODEL` | `ollama/bge-m3` | Laravel settings / provider / warmup | New embedding contract | Yes | Rebuild existing target intentionally |
+| `CHAT_MODEL` | `ollama_chat/llama3.1:8b` | Laravel settings / provider / warmup | Chat/graph default changes | Yes | New answers/extraction |
+| `VISION_MODEL` | `ollama_chat/qwen2.5vl:7b` | Laravel settings / provider / warmup | Vision model changes | Yes | New multimodal extraction |
+| `GRAPH_RAG_MODEL` | Follows `CHAT_MODEL` | Laravel settings / provider | Graph-extraction override | Yes | New extraction |
+| `EMBED_MODELS`, `CHAT_MODELS`, `VISION_MODELS` | The matching models above | Laravel Settings allowlists | Offer additional models | Yes | Dataset model selected at creation |
+| `OLLAMA_KEEP_ALIVE` | `24h` | Ollama server / provider clients | Model residency tuning | Yes | None |
 | `CHUNK_SIZE`, `CHUNK_OVERLAP_SIZE` | `1200`, `250` | Laravel workflow payloads | Change text segmentation | Yes | Controlled reindex |
 | `INGEST_BATCH_SIZE` | `64` | Laravel / indexer options | Throughput tuning | Yes | No semantic rebuild |
 | `RAG_GENERATE_ANSWER` | `true` | Bridge | Enable generated answers | Yes | No index change |
@@ -210,10 +212,8 @@ through Settings. No upstream cloud key is needed for direct Ollama.
 |---|---|---|
 | `LITELLM_API_URL` | `http://litellm:4000/v1` | Gateway endpoint |
 | `LITELLM_API_KEY` | Empty | Client bearer credential if gateway requires it |
-| `LITELLM_CHAT_MODEL` | `hawki-ollama-chat` | Chat/graph alias |
-| `LITELLM_EMBED_MODEL` | `hawki-ollama-embedding` | Embedding alias |
-| `LITELLM_VISION_MODEL` | `hawki-ollama-vision` | Vision alias |
-| `LITELLM_CHAT_ALIASES`, `LITELLM_EMBED_ALIASES`, `LITELLM_VISION_ALIASES` | Lists in the template | Settings allowlists |
+| `EMBED_MODEL`, `CHAT_MODEL`, `VISION_MODEL` | Bare gateway aliases when the gateway runs | Model aliases (provider-prefixed keys stay valid) |
+| `EMBED_MODELS`, `CHAT_MODELS`, `VISION_MODELS` | Lists in the template | Settings allowlists |
 | `OPENAI_API_KEY`, `ANTHROPIC_API_KEY` | Empty | Upstream gateway credentials |
 | `LITELLM_PORT` | `4000` | Loopback host port |
 

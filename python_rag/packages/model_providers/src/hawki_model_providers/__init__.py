@@ -1,39 +1,28 @@
-"""Concrete model clients with lazy compatibility exports."""
+"""Model provider configuration and the LiteLLM SDK client."""
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from hawki_model_providers.factory import create_model_provider, get_provider
-    from hawki_model_providers.litellm import LiteLLMProvider
-    from hawki_model_providers.ollama import OllamaProvider
+    from hawki_model_providers.factory import create_model_provider
+    from hawki_model_providers.litellm_sdk import LiteLLMSDKProvider
 
 __all__ = [
-    "LiteLLMProvider",
-    "OllamaProvider",
+    "LiteLLMSDKProvider",
     "create_model_provider",
-    "get_provider",
 ]
 
 
 def __getattr__(name: str) -> object:
     """Load concrete adapters only when a compatibility export is requested."""
 
-    if name in {"create_model_provider", "get_provider"}:
+    if name == "create_model_provider":
         from hawki_model_providers import factory
 
-        value = getattr(factory, name)
-    elif name == "LiteLLMProvider":
-        from hawki_model_providers.litellm import LiteLLMProvider
+        return factory.create_model_provider
+    if name == "LiteLLMSDKProvider":
+        from hawki_model_providers.litellm_sdk import LiteLLMSDKProvider
 
-        value = LiteLLMProvider
-    elif name == "OllamaProvider":
-        from hawki_model_providers.ollama import OllamaProvider
-
-        value = OllamaProvider
-    else:
-        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-
-    globals()[name] = value
-    return value
+        return LiteLLMSDKProvider
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

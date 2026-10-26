@@ -89,6 +89,8 @@ class DatasetManagementTest extends TestCase
             'status' => Dataset::STATUS_ACTIVE,
             'qdrant_collection' => 'hawki_dataset_ui',
             'neo4j_namespace' => 'hawki_dataset_ui',
+            'embedding_provider' => 'ollama',
+            'embedding_model' => 'bge-m3',
             'created_at' => now()->subHour(),
         ]);
 
@@ -191,7 +193,7 @@ class DatasetManagementTest extends TestCase
             'qdrant_collection' => 'hawki_dataset_start',
             'neo4j_namespace' => 'hawki_dataset_start',
             'embedding_provider' => 'ollama',
-            'embedding_model' => 'bge-m3',
+            'embedding_model' => 'ollama/bge-m3',
         ]);
         $this->assertDatabaseHas('pipeline_tasks', [
             'task_id' => 'task-dataset-start',
@@ -205,7 +207,7 @@ class DatasetManagementTest extends TestCase
         $this->assertSame('hawki_dataset_start', $job->metadata['dataset']['qdrant_collection'] ?? null);
         $this->assertSame('hawki_dataset_start', $job->metadata['dataset']['neo4j_namespace'] ?? null);
         $this->assertSame('ollama', $job->metadata['dataset']['embedding_provider'] ?? null);
-        $this->assertSame('bge-m3', $job->metadata['dataset']['embedding_model'] ?? null);
+        $this->assertSame('ollama/bge-m3', $job->metadata['dataset']['embedding_model'] ?? null);
     }
 
     public function test_missing_qdrant_collection_is_reported_as_empty_dataset_stats(): void

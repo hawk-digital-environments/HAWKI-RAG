@@ -11,40 +11,39 @@ $csv = static function (string $name, string $default): array {
 
 $secretConfigured = static fn (string $name): bool => trim((string) env($name, '')) !== '';
 
-$litellmChatAliases = $csv(
-    'LITELLM_CHAT_ALIASES',
-    'hawki-ollama-chat,hawki-gpt-chat,hawki-claude-chat,hawki-chat',
-);
-$litellmEmbeddingAliases = $csv(
-    'LITELLM_EMBED_ALIASES',
-    'hawki-ollama-embedding,hawki-openai-embedding,hawki-embedding',
-);
-$litellmVisionAliases = $csv(
-    'LITELLM_VISION_ALIASES',
-    'hawki-ollama-vision,hawki-gpt-vision,hawki-claude-vision,hawki-vision',
-);
-$ollamaChatModel = trim((string) env('OLLAMA_RAG_MODEL', 'llama3.1:8b'));
-$ollamaEmbeddingModel = trim((string) env('OLLAMA_EMBED_MODEL', 'bge-m3'));
-$ollamaVisionModel = trim((string) env('OLLAMA_VISION_MODEL', 'qwen2.5vl:7b'));
-$ollamaChatModel = $ollamaChatModel !== '' ? $ollamaChatModel : 'llama3.1:8b';
-$ollamaEmbeddingModel = $ollamaEmbeddingModel !== '' ? $ollamaEmbeddingModel : 'bge-m3';
-$ollamaVisionModel = $ollamaVisionModel !== '' ? $ollamaVisionModel : 'qwen2.5vl:7b';
-$ollamaChatModels = array_values(array_unique(array_merge(
-    [$ollamaChatModel],
-    $csv('OLLAMA_CHAT_MODELS', 'llama3.1:8b'),
-)));
-$ollamaEmbeddingModels = array_values(array_unique(array_merge(
-    [$ollamaEmbeddingModel],
-    $csv('OLLAMA_EMBED_MODELS', 'bge-m3'),
-)));
-$ollamaVisionModels = array_values(array_unique(array_merge(
-    [$ollamaVisionModel],
-    $csv('OLLAMA_VISION_MODELS', 'qwen2.5vl:7b'),
-)));
-$ollamaOptions = static fn (array $models): array => array_map(
-    static fn (string $model): array => ['value' => $model, 'label' => "Ollama · {$model}"],
+// Canonical, provider-prefixed model configuration: the prefix routes the
+// request in the Python runtime (see hawki-model-providers), so one set of
+// keys serves direct Ollama, a LiteLLM gateway, and hosted backends.
+$canonicalEmbeddingModel = trim((string) env('EMBED_MODEL', 'ollama/bge-m3'));
+$canonicalChatModel = trim((string) env('CHAT_MODEL', 'ollama_chat/llama3.1:8b'));
+$canonicalVisionModel = trim((string) env('VISION_MODEL', 'ollama_chat/qwen2.5vl:7b'));
+$canonicalEmbeddingModel = $canonicalEmbeddingModel !== '' ? $canonicalEmbeddingModel : 'ollama/bge-m3';
+$canonicalChatModel = $canonicalChatModel !== '' ? $canonicalChatModel : 'ollama_chat/llama3.1:8b';
+$canonicalVisionModel = $canonicalVisionModel !== '' ? $canonicalVisionModel : 'ollama_chat/qwen2.5vl:7b';
+
+$displayModel = static fn (string $model): string => str_contains($model, '/')
+    ? explode('/', $model, 2)[1]
+    : $model;
+$canonicalOptions = static fn (array $models): array => array_map(
+    static fn (string $model): array => ['value' => $model, 'label' => $displayModel($model)],
     $models,
 );
+
+$gatewayEmbeddingModels = $csv('EMBED_MODELS', 'hawki-ollama-embedding,hawki-openai-embedding,hawki-embedding');
+$gatewayChatModels = $csv('CHAT_MODELS', 'hawki-ollama-chat,hawki-gpt-chat,hawki-claude-chat,hawki-chat');
+$gatewayVisionModels = $csv('VISION_MODELS', 'hawki-ollama-vision,hawki-gpt-vision,hawki-claude-vision,hawki-vision');
+$directEmbeddingModels = array_values(array_unique(array_merge(
+    [$canonicalEmbeddingModel],
+    $csv('EMBED_MODELS', $canonicalEmbeddingModel),
+)));
+$directChatModels = array_values(array_unique(array_merge(
+    [$canonicalChatModel],
+    $csv('CHAT_MODELS', $canonicalChatModel),
+)));
+$directVisionModels = array_values(array_unique(array_merge(
+    [$canonicalVisionModel],
+    $csv('VISION_MODELS', $canonicalVisionModel),
+)));
 
 return [
 
@@ -72,16 +71,16 @@ return [
                 'chat' => 'chat/completions',
             ],
             'models' => [
-                'embedding' => env('LITELLM_EMBED_MODEL', 'hawki-ollama-embedding'),
-                'graph' => env('LITELLM_CHAT_MODEL', 'hawki-ollama-chat'),
-                'text' => env('LITELLM_CHAT_MODEL', 'hawki-ollama-chat'),
-                'multimodal' => env('LITELLM_VISION_MODEL', 'hawki-ollama-vision'),
-                'rag' => env('LITELLM_CHAT_MODEL', 'hawki-ollama-chat'),
+                'embedding' => env('EMBED_MODEL', 'hawki-ollama-embedding'),
+                'graph' => env('CHAT_MODEL', 'hawki-ollama-chat'),
+                'text' => env('CHAT_MODEL', 'hawki-ollama-chat'),
+                'multimodal' => env('VISION_MODEL', 'hawki-ollama-vision'),
+                'rag' => env('CHAT_MODEL', 'hawki-ollama-chat'),
             ],
             'allowed_models' => [
-                'graph' => $litellmChatAliases,
-                'embedding' => $litellmEmbeddingAliases,
-                'vision' => $litellmVisionAliases,
+                'graph' => $gatewayChatModels,
+                'embedding' => $gatewayEmbeddingModels,
+                'vision' => $gatewayVisionModels,
             ],
             'model_placeholders' => [
                 'graph' => 'hawki-ollama-chat, hawki-gpt-chat, or hawki-claude-chat',
@@ -139,35 +138,35 @@ return [
             'runtime_supported' => true,
             'api_url' => env('OLLAMA_API_URL', 'http://hawki_ollama:11434/api'),
             'models' => [
-                'embedding' => $ollamaEmbeddingModel,
-                'graph' => $ollamaChatModel,
-                'text' => $ollamaChatModel,
-                'multimodal' => $ollamaVisionModel,
-                'rag' => $ollamaChatModel,
+                'embedding' => $canonicalEmbeddingModel,
+                'graph' => $canonicalChatModel,
+                'text' => $canonicalChatModel,
+                'multimodal' => $canonicalVisionModel,
+                'rag' => $canonicalChatModel,
             ],
             'allowed_models' => [
-                'graph' => $ollamaChatModels,
-                'embedding' => $ollamaEmbeddingModels,
-                'vision' => $ollamaVisionModels,
+                'graph' => $directChatModels,
+                'embedding' => $directEmbeddingModels,
+                'vision' => $directVisionModels,
             ],
             'model_placeholders' => [
-                'graph' => 'llama3.1:8b',
-                'embedding' => 'bge-m3',
-                'vision' => 'qwen2.5vl:7b',
+                'graph' => 'ollama_chat/llama3.1:8b',
+                'embedding' => 'ollama/bge-m3',
+                'vision' => 'ollama_chat/qwen2.5vl:7b',
             ],
             'model_options' => [
-                'graph' => $ollamaOptions($ollamaChatModels),
-                'embedding' => $ollamaOptions($ollamaEmbeddingModels),
-                'vision' => $ollamaOptions($ollamaVisionModels),
+                'graph' => $canonicalOptions($directChatModels),
+                'embedding' => $canonicalOptions($directEmbeddingModels),
+                'vision' => $canonicalOptions($directVisionModels),
             ],
             'environment_variables' => [
                 ['name' => 'OLLAMA_API_URL', 'placeholder' => 'http://hawki_ollama:11434/api', 'description' => 'Direct Ollama API root visible from Python services.', 'secret' => false, 'configured' => true],
-                ['name' => 'OLLAMA_RAG_MODEL', 'placeholder' => 'llama3.1:8b', 'description' => 'Default direct chat and graph model.', 'secret' => false, 'configured' => true],
-                ['name' => 'OLLAMA_EMBED_MODEL', 'placeholder' => 'bge-m3', 'description' => 'Default direct embedding model.', 'secret' => false, 'configured' => true],
-                ['name' => 'OLLAMA_VISION_MODEL', 'placeholder' => 'qwen2.5vl:7b', 'description' => 'Default direct vision model.', 'secret' => false, 'configured' => true],
-                ['name' => 'OLLAMA_CHAT_MODELS', 'placeholder' => 'llama3.1:8b', 'description' => 'Allowlisted direct chat and graph models shown in Settings.', 'secret' => false, 'configured' => true],
-                ['name' => 'OLLAMA_EMBED_MODELS', 'placeholder' => 'bge-m3', 'description' => 'Allowlisted direct embedding models shown in Settings.', 'secret' => false, 'configured' => true],
-                ['name' => 'OLLAMA_VISION_MODELS', 'placeholder' => 'qwen2.5vl:7b', 'description' => 'Allowlisted direct vision models shown in Settings.', 'secret' => false, 'configured' => true],
+                ['name' => 'EMBED_MODEL', 'placeholder' => 'ollama/bge-m3', 'description' => 'Canonical embedding model; the prefix routes the request.', 'secret' => false, 'configured' => true],
+                ['name' => 'CHAT_MODEL', 'placeholder' => 'ollama_chat/llama3.1:8b', 'description' => 'Canonical chat and graph model.', 'secret' => false, 'configured' => true],
+                ['name' => 'VISION_MODEL', 'placeholder' => 'ollama_chat/qwen2.5vl:7b', 'description' => 'Canonical vision model.', 'secret' => false, 'configured' => true],
+                ['name' => 'EMBED_MODELS', 'placeholder' => 'ollama/bge-m3', 'description' => 'Allowlisted embedding models shown in Settings.', 'secret' => false, 'configured' => true],
+                ['name' => 'CHAT_MODELS', 'placeholder' => 'ollama_chat/llama3.1:8b', 'description' => 'Allowlisted chat and graph models shown in Settings.', 'secret' => false, 'configured' => true],
+                ['name' => 'VISION_MODELS', 'placeholder' => 'ollama_chat/qwen2.5vl:7b', 'description' => 'Allowlisted vision models shown in Settings.', 'secret' => false, 'configured' => true],
             ],
         ],
         'openai' => [

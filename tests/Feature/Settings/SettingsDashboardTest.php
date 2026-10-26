@@ -23,16 +23,16 @@ class SettingsDashboardTest extends TestCase
                 'customConverter' => [],
                 'models' => [
                     'provider' => 'ollama',
-                    'graphModel' => 'llama3.1:8b',
-                    'embeddingModel' => 'bge-m3',
-                    'visionModel' => 'qwen2.5vl:7b',
+                    'graphModel' => 'ollama_chat/llama3.1:8b',
+                    'embeddingModel' => 'ollama/bge-m3',
+                    'visionModel' => 'ollama_chat/qwen2.5vl:7b',
                 ],
             ], ['X-CSRF-TOKEN' => 'test-token'])
             ->assertOk()
             ->assertJsonPath('models.provider', 'ollama')
-            ->assertJsonPath('models.graph_model', 'llama3.1:8b')
-            ->assertJsonPath('models.embedding_model', 'bge-m3')
-            ->assertJsonPath('models.vision_model', 'qwen2.5vl:7b')
+            ->assertJsonPath('models.graph_model', 'ollama_chat/llama3.1:8b')
+            ->assertJsonPath('models.embedding_model', 'ollama/bge-m3')
+            ->assertJsonPath('models.vision_model', 'ollama_chat/qwen2.5vl:7b')
             ->assertJsonPath('providers.0.key', 'ollama')
             ->assertJsonPath('providers.0.runtimeSupported', true)
             ->assertJsonFragment([
@@ -129,6 +129,15 @@ class SettingsDashboardTest extends TestCase
         $settingsPath = storage_path('framework/testing/settings-dashboard-litellm.json');
         File::delete($settingsPath);
         config()->set('config.admin_settings_path', $settingsPath);
+        // Pin the gateway catalog to bare proxy aliases regardless of the
+        // canonical keys present in the host environment.
+        config()->set('model_providers.providers.litellm.models', [
+            'embedding' => 'hawki-ollama-embedding',
+            'graph' => 'hawki-ollama-chat',
+            'text' => 'hawki-ollama-chat',
+            'multimodal' => 'hawki-ollama-vision',
+            'rag' => 'hawki-ollama-chat',
+        ]);
 
         $response = $this->withSession(['_token' => 'test-token'])
             ->putJson('/api/settings/config', [
@@ -193,8 +202,8 @@ class SettingsDashboardTest extends TestCase
                 'models' => [
                     'provider' => 'ollama',
                     'graphModel' => 'unknown-local-model',
-                    'embeddingModel' => 'bge-m3',
-                    'visionModel' => 'qwen2.5vl:7b',
+                    'embeddingModel' => 'ollama/bge-m3',
+                    'visionModel' => 'ollama_chat/qwen2.5vl:7b',
                 ],
             ], ['X-CSRF-TOKEN' => 'test-token'])
             ->assertUnprocessable()

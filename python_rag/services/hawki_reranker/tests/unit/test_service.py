@@ -39,7 +39,9 @@ def test_health_does_not_invoke_the_model(
     response = asgi_test_client_class(app).get("/health")
 
     assert response.status_code == 200
-    assert response.json() == {"ok": True}
+    # Fakes without an is_loaded marker report as loaded so the probe stays
+    # a pure liveness check for them.
+    assert response.json() == {"ok": True, "model_loaded": True}
     assert model.calls == []
 
 

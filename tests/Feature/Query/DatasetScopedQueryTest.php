@@ -45,8 +45,8 @@ class DatasetScopedQueryTest extends TestCase
                 && ($payload['query'] ?? null) === 'What is in this dataset?'
                 && ($payload['top_k'] ?? null) === 7
                 && ($payload['provider'] ?? null) === 'ollama'
-                && ($payload['chat_model'] ?? null) === 'llama3.1:8b'
-                && ($payload['vision_model'] ?? null) === 'qwen2.5vl:7b'
+                && ($payload['chat_model'] ?? null) === 'ollama_chat/llama3.1:8b'
+                && ($payload['vision_model'] ?? null) === 'ollama_chat/qwen2.5vl:7b'
                 && ($payload['filters'] ?? null) === [
                     'source_type' => 'pdf',
                     'language' => 'en',
