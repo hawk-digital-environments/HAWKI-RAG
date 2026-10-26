@@ -103,7 +103,7 @@ class PdfIngestionFlowTest extends SystemTestCase
             'qdrant_collection' => 'hawki_system_pdf_ten_pages',
             'neo4j_namespace' => 'hawki_system_pdf_ten_pages',
             'embedding_provider' => 'ollama',
-            'embedding_model' => 'bge-m3',
+            'embedding_model' => 'ollama/bge-m3',
         ]);
         $this->assertDatabaseHas('pipeline_tasks', [
             'task_id' => $taskId,
@@ -148,7 +148,7 @@ class PdfIngestionFlowTest extends SystemTestCase
                 && data_get($payload, 'workflow_input.upload.original_filename') === 'ten-page-handbook.pdf'
                 && data_get($payload, 'workflow_input.converter_mode') === 'native'
                 && data_get($payload, 'workflow_input.ingestion.provider') === 'ollama'
-                && data_get($payload, 'workflow_input.ingestion.embedding_model') === 'bge-m3'
+                && data_get($payload, 'workflow_input.ingestion.embedding_model') === 'ollama/bge-m3'
                 && data_get($payload, 'workflow_input.ingestion.collection') === 'hawki_system_pdf_ten_pages'
                 && data_get($payload, 'workflow_input.ingestion.neo4j_namespace') === 'hawki_system_pdf_ten_pages'
                 && data_get($payload, 'workflow_input.ingestion.graph') === true

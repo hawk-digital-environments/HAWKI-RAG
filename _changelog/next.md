@@ -13,6 +13,20 @@
   scheduler resumes scoped cleanup automatically after writer drain, failures or
   restarts. Verified completion retains a dataset tombstone; other datasets and
   shared graph contributions remain intact.
+- **One model client, canonical model keys.** The hand-rolled Ollama and LiteLLM
+  HTTP clients were replaced by a single LiteLLM SDK client behind the unchanged
+  provider names (`RAG_DEFAULT_PROVIDER`). Model configuration now uses the
+  provider-prefixed keys `EMBED_MODEL`, `CHAT_MODEL`, `VISION_MODEL` (allowlist
+  plurals feed the Settings UI), and `GRAPH_RAG_MODEL` optionally overrides the
+  graph model. The SDK talks to direct Ollama, a LiteLLM gateway, or hosted
+  APIs without code changes; verified against live Ollama (cosine 1.0 vs the
+  previous route; safe under `QDRANT_DISTANCE=Cosine`).
+- **Model warmup workflow.** A Temporal workflow loads every configured model
+  at worker startup and daily at 06:00, then validates the stack with one real
+  retrieval query through the bridge API. The reranker preloads its model
+  during container startup (`HAWKI_RERANKER_PRELOAD`) and keeps its weights in
+  the `hf_models` volume; `OLLAMA_KEEP_ALIVE` (default 24h) pins loaded Ollama
+  models between queries.
 
 ### Quality of Life
 

@@ -169,12 +169,22 @@ services:
     container_name: hawki_rag_rerank
     restart: unless-stopped
     stop_grace_period: 40s
+    environment:
+      # HuggingFace weights live in the shared cache volume so container
+      # recreation does not re-download the cross-encoder model.
+      - HF_HOME=/home/rawki/.cache/huggingface
+      # Load the model during startup instead of on the first request.
+      - HAWKI_RERANKER_PRELOAD=${HAWKI_RERANKER_PRELOAD:-true}
+    volumes:
+      - hf_models:/home/rawki/.cache/huggingface
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1/health', timeout=3)"]
       interval: 15s
       timeout: 5s
       retries: 10
-      start_period: 20s
+      # The startup preload loads the model weights before serving; the
+      # first-ever run may still download them from HuggingFace.
+      start_period: 120s
 
   # -------------------------------------------------
   # Read-only FastAPI bridge (query, configuration, health, and Temporal control)
@@ -315,6 +325,11 @@ services:
     image: ollama/ollama:0.32.1
     pull_policy: always
     container_name: hawki_ollama
+    environment:
+      # Keep loaded models resident; the warmup workflow re-pins them daily.
+      # Normal requests without keep_alive would otherwise reset this to the
+      # 5-minute default.
+      - OLLAMA_KEEP_ALIVE=${OLLAMA_KEEP_ALIVE:-24h}
 
   # -------------------------------------------------
   # Optional OpenAI-compatible LiteLLM gateway
@@ -349,6 +364,8 @@ volumes:
   neo4j_data:
   hawki_postgres_data:
   ollama:
+  hf_models:
+    name: hawki_rag_hf_models
 
 networks:
   hawki-network:

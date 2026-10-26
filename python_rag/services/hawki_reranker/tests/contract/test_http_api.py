@@ -50,7 +50,9 @@ class TestRerankerApiFlow:
             response = client.get("/health")
 
         assert response.status_code == 200
-        assert response.json() == {"ok": True}
+        # Fakes without an is_loaded marker report as loaded; the probe
+        # stays a pure liveness check for them.
+        assert response.json() == {"ok": True, "model_loaded": True}
         assert model.model_name == "mixedbread-ai/mxbai-rerank-base-v1"
         assert model.predict_calls == []
 

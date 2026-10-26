@@ -39,6 +39,8 @@ FROM python-builder-base AS workflow-builder
 
 COPY python_rag/packages/contracts/pyproject.toml python_rag/packages/contracts/README.md packages/contracts/
 COPY python_rag/packages/contracts/src packages/contracts/src
+COPY python_rag/packages/model_providers/pyproject.toml python_rag/packages/model_providers/README.md packages/model_providers/
+COPY python_rag/packages/model_providers/src packages/model_providers/src
 COPY python_rag/services/hawki_workflow_worker/pyproject.toml python_rag/services/hawki_workflow_worker/README.md services/hawki_workflow_worker/
 COPY python_rag/services/hawki_workflow_worker/src services/hawki_workflow_worker/src
 RUN --mount=type=cache,id=rawki-uv,target=/root/.cache/uv,sharing=locked \

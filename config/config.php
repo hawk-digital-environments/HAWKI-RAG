@@ -34,13 +34,9 @@ return [
     'shared_root' => $pipelineRoot,
     'crawled_data_root' => $crawledDataRoot,
     'rag_monitor_retention_days' => (int) env('HAWKI_RAG_MONITOR_RETENTION_DAYS', 30),
-    'embedding_models' => array_values(array_filter(array_map('trim', explode(',', env('OLLAMA_EMBED_MODEL', 'bge-m3'))))),
-    'embedding_default' => env('OLLAMA_EMBED_MODEL', 'bge-m3'),
-    'graph_models' => array_values(array_filter(array_map(
-        'trim',
-        explode(',', env('HAWKI_RAG_GRAPH_MODELS', env('GRAPH_OLLAMA_RAG_MODEL', 'llama3.1:8b')))
-    ))),
-    'graph_default' => env('HAWKI_RAG_GRAPH_MODEL', env('GRAPH_OLLAMA_RAG_MODEL', 'llama3.1:8b')),
+    'embedding_models' => array_values(array_filter(array_map('trim', explode(',', env('EMBED_MODELS', env('EMBED_MODEL', 'ollama/bge-m3')))))),
+    'embedding_default' => env('EMBED_MODEL', 'ollama/bge-m3'),
+    'graph_default' => env('GRAPH_RAG_MODEL', env('CHAT_MODEL', 'ollama_chat/llama3.1:8b')),
     'qdrant_distance' => env('QDRANT_DISTANCE', 'Cosine'),
     'chunk_size' => (int) env('CHUNK_SIZE', 1200),
     'chunk_overlap_size' => (int) env('CHUNK_OVERLAP_SIZE', 250),

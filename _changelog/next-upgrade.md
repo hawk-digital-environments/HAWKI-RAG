@@ -44,3 +44,58 @@ Archived datasets are treated as pending deletions and retried automatically.
 Verified cleanup retains their rows with status `deleted`, preventing reuse of
 dataset identities. Keep source, writer and operation evidence for recovery.
 No database migration or additional queue service is required for this change.
+
+## 4. Canonical model keys replace the per-provider model keys
+
+The model layer now reads **one canonical set of provider-prefixed keys** whose
+prefix routes the request; the LiteLLM Python SDK client is the single
+implementation behind both public provider names (`ollama`, `litellm`):
+
+| Key | Example |
+|---|---|
+| `EMBED_MODEL` | `ollama/bge-m3` |
+| `CHAT_MODEL` | `ollama_chat/llama3.1:8b` |
+| `VISION_MODEL` | `ollama_chat/qwen2.5vl:7b` |
+| `EMBED_MODELS` / `CHAT_MODELS` / `VISION_MODELS` | optional Settings-UI allowlists |
+
+Provider selection stays on `RAG_DEFAULT_PROVIDER` (`ollama` or `litellm`).
+Bare proxy aliases (`hawki-ollama-embedding`, `hawki-gpt-chat`) remain valid
+values for gateway deployments. Dataset-pinned bare names (`bge-m3`) keep
+working: the client prefixes unprefixed names per provider.
+
+**Actions:**
+
+1. Add the three canonical keys to `.env`.
+2. Remove the retired keys from `.env`:
+
+   | Removed | Replacement |
+   |---|---|
+   | `OLLAMA_EMBED_MODEL`, `OLLAMA_EMBED_MODELS` | `EMBED_MODEL`, `EMBED_MODELS` |
+   | `OLLAMA_RAG_MODEL`, `OLLAMA_CHAT_MODELS` | `CHAT_MODEL`, `CHAT_MODELS` |
+   | `OLLAMA_VISION_MODEL`, `OLLAMA_VISION_MODELS` | `VISION_MODEL`, `VISION_MODELS` |
+   | `GRAPH_OLLAMA_RAG_MODEL`, `HAWKI_RAG_GRAPH_MODEL`, `HAWKI_RAG_GRAPH_MODELS` | `GRAPH_RAG_MODEL` (optional; defaults to `CHAT_MODEL`) |
+   | `GRAPH_OLLAMA_VISION_MODEL` | `VISION_MODEL` |
+   | `LITELLM_CHAT_MODEL`, `LITELLM_EMBED_MODEL`, `LITELLM_VISION_MODEL` | `CHAT_MODEL`, `EMBED_MODEL`, `VISION_MODEL` |
+   | `LITELLM_CHAT_ALIASES`, `LITELLM_EMBED_ALIASES`, `LITELLM_VISION_ALIASES` | `CHAT_MODELS`, `EMBED_MODELS`, `VISION_MODELS` |
+
+   `LITELLM_OLLAMA_*` stay: they configure the optional gateway container.
+3. No database migration: existing datasets keep their pinned model strings.
+
+**Executed cleanups (nothing pending):**
+
+- The hand-rolled `OllamaProvider` and `LiteLLMProvider` clients were removed;
+  their battle-tested hygiene (prompt cleaning, embedding-dimension inference,
+  the NaN zero-vector fallback, chat retry knobs) moved into the SDK client and
+  `hawki_model_providers.helpers`.
+- The `MODEL_PROVIDER_CLIENT` implementation switch was removed together with
+  the native clients — there is exactly one implementation.
+- `config/model_providers.php` and `config/config.php` source defaults and
+  allowlists from the canonical keys.
+- Verified against live Ollama: `/api/embed` (SDK route) and the former
+  `/api/embeddings` route return directionally identical vectors (cosine 1.0;
+  the legacy endpoint returns unnormalized vectors, the new one normalizes —
+  irrelevant under `QDRANT_DISTANCE=Cosine`). Collections must not use the
+  `Dot` metric when mixing pre/post-migration vectors.
+- The legacy `/api/generate` chat fallback is gone with the native client;
+  the SDK client speaks `/api/chat` directly.
+

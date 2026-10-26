@@ -18,4 +18,15 @@ def ingestion_activity_retry_policy() -> RetryPolicy:
     )
 
 
-__all__ = ["ingestion_activity_retry_policy"]
+def warmup_activity_retry_policy() -> RetryPolicy:
+    """Return the bounded retry policy used by model warmup activities."""
+
+    return RetryPolicy(
+        initial_interval=timedelta(seconds=15),
+        backoff_coefficient=2.0,
+        maximum_interval=timedelta(minutes=5),
+        maximum_attempts=3,
+    )
+
+
+__all__ = ["ingestion_activity_retry_policy", "warmup_activity_retry_policy"]

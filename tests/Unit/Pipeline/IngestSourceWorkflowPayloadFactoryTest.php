@@ -22,6 +22,20 @@ class IngestSourceWorkflowPayloadFactoryTest extends TestCase
         config()->set('temporal.task_queues.indexer', 'rag-indexer-task-queue');
         config()->set('temporal.ingestion.provider', 'litellm');
         config()->set('temporal.ingestion.graph', true);
+        // Pin the gateway catalog so the payload defaults stay deterministic
+        // regardless of the canonical model keys in the host environment.
+        config()->set('model_providers.providers.litellm.models', [
+            'embedding' => 'hawki-ollama-embedding',
+            'graph' => 'hawki-ollama-chat',
+            'text' => 'hawki-ollama-chat',
+            'multimodal' => 'hawki-ollama-vision',
+            'rag' => 'hawki-ollama-chat',
+        ]);
+        config()->set('model_providers.providers.litellm.allowed_models', [
+            'graph' => ['hawki-ollama-chat'],
+            'embedding' => ['hawki-ollama-embedding'],
+            'vision' => ['hawki-ollama-vision'],
+        ]);
 
         $factory = app(IngestSourceWorkflowPayloadFactory::class);
         $sourceId = $factory->sourceId('dataset-a', 'https://example.edu');

@@ -27,21 +27,13 @@ def test_model_provider_package_exposes_clients_not_consumer_owned_ports() -> No
     assert "hawki_model_providers.ollama" not in eager_imports
 
 
-def test_legacy_root_exports_resolve_to_the_concrete_clients() -> None:
-    from hawki_model_providers import (
-        LiteLLMProvider,
-        OllamaProvider,
-        create_model_provider,
-        get_provider,
-    )
-    from hawki_model_providers.factory import (
-        create_model_provider as canonical_factory,
-    )
-    from hawki_model_providers.factory import get_provider as legacy_factory
-    from hawki_model_providers.litellm import LiteLLMProvider as CanonicalLiteLLM
-    from hawki_model_providers.ollama import OllamaProvider as CanonicalOllama
+def test_native_clients_are_removed_and_only_sdk_exports_remain() -> None:
+    assert not (SOURCE / "ollama.py").exists()
+    assert not (SOURCE / "litellm.py").exists()
+    assert not (SOURCE / "ollama_helpers.py").exists()
 
-    assert LiteLLMProvider is CanonicalLiteLLM
-    assert OllamaProvider is CanonicalOllama
-    assert create_model_provider is canonical_factory
-    assert get_provider is legacy_factory
+    from hawki_model_providers import LiteLLMSDKProvider, create_model_provider
+    from hawki_model_providers.factory import create_model_provider as canonical
+
+    assert create_model_provider is canonical
+    assert LiteLLMSDKProvider is not None

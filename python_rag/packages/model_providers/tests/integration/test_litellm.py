@@ -1,7 +1,7 @@
 """Live compatibility tests for the optional LiteLLM gateway.
 
-The tests call RAWKI's LiteLLM adapter through advertised local aliases. They
-do not fall back to Ollama directly: an unavailable upstream is reported as a
+The tests call the SDK client through advertised local aliases. They do not
+fall back to Ollama directly: an unavailable upstream is reported as a
 missing integration dependency (or a failure in required/release mode).
 """
 
@@ -57,12 +57,13 @@ def _configure_provider(
     monkeypatch.setenv("LITELLM_API_URL", live_litellm.api_url)
     monkeypatch.setenv("LITELLM_API_KEY", live_litellm.api_key)
     timeout = os.environ.get("RAWKI_INTEGRATION_MODEL_TIMEOUT", "120")
-    monkeypatch.setenv("LITELLM_CHAT_TIMEOUT", timeout)
-    monkeypatch.setenv("LITELLM_EMBED_TIMEOUT", timeout)
+    monkeypatch.setenv("OLLAMA_CHAT_TIMEOUT", timeout)
+    monkeypatch.setenv("OLLAMA_EMBED_TIMEOUT", timeout)
+    monkeypatch.delenv("OLLAMA_KEEP_ALIVE", raising=False)
 
 
-class TestLiveLiteLLMProvider:
-    """Prove configured aliases work through LiteLLM's OpenAI-compatible API."""
+class TestLiveLiteLLMSDKProvider:
+    """Prove configured aliases work through the LiteLLM gateway."""
 
     def test_embedding_alias_returns_a_finite_nonzero_vector(
         self,
@@ -70,20 +71,17 @@ class TestLiveLiteLLMProvider:
         integration_unavailable: Callable[[str], NoReturn],
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        from hawki_model_providers.litellm import LiteLLMProvider
+        from hawki_model_providers.litellm_sdk import LiteLLMSDKProvider
 
-        chat_model = _configured_model("LITELLM_CHAT_MODEL", "hawki-ollama-chat")
-        embed_model = _configured_model(
-            "LITELLM_EMBED_MODEL",
-            "hawki-ollama-embedding",
-        )
+        chat_model = _configured_model("CHAT_MODEL", "hawki-ollama-chat")
+        embed_model = _configured_model("EMBED_MODEL", "hawki-ollama-embedding")
         if not live_litellm.has_model(embed_model):
             integration_unavailable(
                 f"LiteLLM model alias '{embed_model}' is not advertised by /v1/models"
             )
 
         _configure_provider(monkeypatch, live_litellm)
-        provider = LiteLLMProvider()
+        provider = LiteLLMSDKProvider("litellm")
         provider.rag_model = chat_model
         provider.embed_model = embed_model
         provider.vision_model = chat_model
@@ -96,7 +94,6 @@ class TestLiveLiteLLMProvider:
         )
 
         assert provider.base == live_litellm.api_url
-        assert provider.embed_model == embed_model
         assert len(vector) > 0
         assert all(math.isfinite(value) for value in vector)
         assert any(abs(value) > 0 for value in vector)
@@ -107,20 +104,17 @@ class TestLiveLiteLLMProvider:
         integration_unavailable: Callable[[str], NoReturn],
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        from hawki_model_providers.litellm import LiteLLMProvider
+        from hawki_model_providers.litellm_sdk import LiteLLMSDKProvider
 
-        chat_model = _configured_model("LITELLM_CHAT_MODEL", "hawki-ollama-chat")
-        embed_model = _configured_model(
-            "LITELLM_EMBED_MODEL",
-            "hawki-ollama-embedding",
-        )
+        chat_model = _configured_model("CHAT_MODEL", "hawki-ollama-chat")
+        embed_model = _configured_model("EMBED_MODEL", "hawki-ollama-embedding")
         if not live_litellm.has_model(chat_model):
             integration_unavailable(
                 f"LiteLLM model alias '{chat_model}' is not advertised by /v1/models"
             )
 
         _configure_provider(monkeypatch, live_litellm)
-        provider = LiteLLMProvider()
+        provider = LiteLLMSDKProvider("litellm")
         provider.rag_model = chat_model
         provider.embed_model = embed_model
         provider.vision_model = chat_model
@@ -128,13 +122,10 @@ class TestLiveLiteLLMProvider:
             lambda: provider.chat(
                 "Reply with one short word.",
                 [{"role": "user", "content": "Is the LiteLLM route working?"}],
-                temperature=0.0,
             ),
             description=f"chat alias '{chat_model}'",
             unavailable=integration_unavailable,
         )
 
-        assert provider.base == live_litellm.api_url
-        assert provider.rag_model == chat_model
         assert isinstance(answer, str)
         assert answer.strip()
