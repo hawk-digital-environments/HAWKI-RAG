@@ -26,7 +26,7 @@ def provider_fingerprint(provider: object) -> str:
         str(getattr(provider, "rag_model", "")),
         str(getattr(provider, "vision_model", "")),
         str(getattr(provider, "embed_model", "")),
-        str(getattr(provider, "key", ""))[
+        str(getattr(provider, "key", getattr(provider, "api_key", "")))[
             :8
         ],  # enough to detect config changes, avoids logging secrets
     ]
@@ -46,6 +46,7 @@ def clone_provider_for_graph(provider: Any) -> Any:
     for attr in (
         "base",
         "key",
+        "api_key",
         "rag_model",
         "vision_model",
         "embed_model",

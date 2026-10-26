@@ -12,8 +12,7 @@ class SettingsDashboardTest extends TestCase
 {
     public function test_settings_accepts_direct_ollama_as_the_default_runtime(): void
     {
-        config()->set('temporal.ingestion.provider', 'ollama');
-        config()->set('config.graph_provider', 'ollama');
+        config()->set('config.provider', 'ollama');
         $settingsPath = storage_path('framework/testing/settings-dashboard-ollama.json');
         File::delete($settingsPath);
         config()->set('config.admin_settings_path', $settingsPath);
@@ -23,16 +22,16 @@ class SettingsDashboardTest extends TestCase
                 'customConverter' => [],
                 'models' => [
                     'provider' => 'ollama',
-                    'graphModel' => 'llama3.1:8b',
-                    'embeddingModel' => 'bge-m3',
-                    'visionModel' => 'qwen2.5vl:7b',
+                    'graphModel' => 'ollama_chat/llama3.1:8b',
+                    'embeddingModel' => 'ollama/bge-m3',
+                    'visionModel' => 'ollama_chat/qwen2.5vl:7b',
                 ],
             ], ['X-CSRF-TOKEN' => 'test-token'])
             ->assertOk()
             ->assertJsonPath('models.provider', 'ollama')
-            ->assertJsonPath('models.graph_model', 'llama3.1:8b')
-            ->assertJsonPath('models.embedding_model', 'bge-m3')
-            ->assertJsonPath('models.vision_model', 'qwen2.5vl:7b')
+            ->assertJsonPath('models.graph_model', 'ollama_chat/llama3.1:8b')
+            ->assertJsonPath('models.embedding_model', 'ollama/bge-m3')
+            ->assertJsonPath('models.vision_model', 'ollama_chat/qwen2.5vl:7b')
             ->assertJsonPath('providers.0.key', 'ollama')
             ->assertJsonPath('providers.0.runtimeSupported', true)
             ->assertJsonFragment([
@@ -52,6 +51,13 @@ class SettingsDashboardTest extends TestCase
         $settingsPath = storage_path('framework/testing/settings-dashboard.json');
         File::delete($settingsPath);
         config()->set('config.admin_settings_path', $settingsPath);
+        // Simulate an operator's CHAT/EMBED/VISION_MODELS allowlists that
+        // include hosted entries.
+        config()->set('model_providers.providers.litellm.allowed_models', [
+            'graph' => ['ollama_chat/llama3.1:8b', 'openai/gpt-4.1-mini'],
+            'embedding' => ['ollama/bge-m3', 'openai/text-embedding-3-small'],
+            'vision' => ['ollama_chat/qwen2.5vl:7b', 'openai/gpt-4.1-mini'],
+        ]);
 
         $payload = [
             'customConverter' => [
@@ -63,9 +69,9 @@ class SettingsDashboardTest extends TestCase
             ],
             'models' => [
                 'provider' => 'litellm',
-                'graphModel' => 'hawki-gpt-chat',
-                'embeddingModel' => 'hawki-openai-embedding',
-                'visionModel' => 'hawki-gpt-vision',
+                'graphModel' => 'openai/gpt-4.1-mini',
+                'embeddingModel' => 'openai/text-embedding-3-small',
+                'visionModel' => 'openai/gpt-4.1-mini',
             ],
             'providerCredentials' => [
                 'openai' => [
@@ -82,9 +88,9 @@ class SettingsDashboardTest extends TestCase
             ->assertJsonPath('customConverter.apiKeySet', true)
             ->assertJsonPath('customConverter.startPath', '/extract')
             ->assertJsonPath('models.provider', 'litellm')
-            ->assertJsonPath('models.graph_model', 'hawki-gpt-chat')
-            ->assertJsonPath('models.embedding_model', 'hawki-openai-embedding')
-            ->assertJsonPath('models.vision_model', 'hawki-gpt-vision');
+            ->assertJsonPath('models.graph_model', 'openai/gpt-4.1-mini')
+            ->assertJsonPath('models.embedding_model', 'openai/text-embedding-3-small')
+            ->assertJsonPath('models.vision_model', 'openai/gpt-4.1-mini');
 
         $this->assertStringNotContainsString('secret-converter-key', $response->getContent());
         $this->assertStringNotContainsString('openai-key', $response->getContent());
@@ -129,15 +135,29 @@ class SettingsDashboardTest extends TestCase
         $settingsPath = storage_path('framework/testing/settings-dashboard-litellm.json');
         File::delete($settingsPath);
         config()->set('config.admin_settings_path', $settingsPath);
+        // Pin the gateway catalog to canonical models regardless of the
+        // host environment, with an Anthropic entry in the allowlists.
+        config()->set('model_providers.providers.litellm.models', [
+            'embedding' => 'ollama/bge-m3',
+            'graph' => 'ollama_chat/llama3.1:8b',
+            'text' => 'ollama_chat/llama3.1:8b',
+            'multimodal' => 'ollama_chat/qwen2.5vl:7b',
+            'rag' => 'ollama_chat/llama3.1:8b',
+        ]);
+        config()->set('model_providers.providers.litellm.allowed_models', [
+            'graph' => ['ollama_chat/llama3.1:8b', 'anthropic/claude-sonnet-4-5-20250929'],
+            'embedding' => ['ollama/bge-m3', 'openai/text-embedding-3-small'],
+            'vision' => ['ollama_chat/qwen2.5vl:7b', 'anthropic/claude-sonnet-4-5-20250929'],
+        ]);
 
         $response = $this->withSession(['_token' => 'test-token'])
             ->putJson('/api/settings/config', [
                 'customConverter' => [],
                 'models' => [
                     'provider' => 'litellm',
-                    'graphModel' => 'hawki-claude-chat',
-                    'embeddingModel' => 'hawki-ollama-embedding',
-                    'visionModel' => 'hawki-claude-vision',
+                    'graphModel' => 'anthropic/claude-sonnet-4-5-20250929',
+                    'embeddingModel' => 'ollama/bge-m3',
+                    'visionModel' => 'anthropic/claude-sonnet-4-5-20250929',
                 ],
                 'providerCredentials' => [
                     'litellm' => [
@@ -148,16 +168,16 @@ class SettingsDashboardTest extends TestCase
             ], ['X-CSRF-TOKEN' => 'test-token'])
             ->assertOk()
             ->assertJsonPath('models.provider', 'litellm')
-            ->assertJsonPath('models.graph_model', 'hawki-claude-chat')
-            ->assertJsonPath('models.embedding_model', 'hawki-ollama-embedding')
-            ->assertJsonPath('models.vision_model', 'hawki-claude-vision')
+            ->assertJsonPath('models.graph_model', 'anthropic/claude-sonnet-4-5-20250929')
+            ->assertJsonPath('models.embedding_model', 'ollama/bge-m3')
+            ->assertJsonPath('models.vision_model', 'anthropic/claude-sonnet-4-5-20250929')
             ->assertJsonFragment([
                 'key' => 'litellm',
                 'configurationMode' => 'environment',
                 'modelSelectionMode' => 'settings',
-                'defaultGraphModel' => 'hawki-ollama-chat',
-                'defaultEmbeddingModel' => 'hawki-ollama-embedding',
-                'defaultVisionModel' => 'hawki-ollama-vision',
+                'defaultGraphModel' => 'ollama_chat/llama3.1:8b',
+                'defaultEmbeddingModel' => 'ollama/bge-m3',
+                'defaultVisionModel' => 'ollama_chat/qwen2.5vl:7b',
             ]);
 
         $this->assertStringNotContainsString('ignored-litellm-key', $response->getContent());
@@ -169,7 +189,7 @@ class SettingsDashboardTest extends TestCase
         File::delete($settingsPath);
     }
 
-    public function test_settings_rejects_unknown_litellm_aliases(): void
+    public function test_settings_rejects_unknown_litellm_models(): void
     {
         $this->withSession(['_token' => 'test-token'])
             ->putJson('/api/settings/config', [
@@ -177,8 +197,8 @@ class SettingsDashboardTest extends TestCase
                 'models' => [
                     'provider' => 'litellm',
                     'graphModel' => 'unpriced-arbitrary-model',
-                    'embeddingModel' => 'hawki-ollama-embedding',
-                    'visionModel' => 'hawki-ollama-vision',
+                    'embeddingModel' => 'ollama/bge-m3',
+                    'visionModel' => 'ollama_chat/qwen2.5vl:7b',
                 ],
             ], ['X-CSRF-TOKEN' => 'test-token'])
             ->assertUnprocessable()
@@ -193,8 +213,8 @@ class SettingsDashboardTest extends TestCase
                 'models' => [
                     'provider' => 'ollama',
                     'graphModel' => 'unknown-local-model',
-                    'embeddingModel' => 'bge-m3',
-                    'visionModel' => 'qwen2.5vl:7b',
+                    'embeddingModel' => 'ollama/bge-m3',
+                    'visionModel' => 'ollama_chat/qwen2.5vl:7b',
                 ],
             ], ['X-CSRF-TOKEN' => 'test-token'])
             ->assertUnprocessable()
@@ -207,5 +227,18 @@ class SettingsDashboardTest extends TestCase
         $this->expectExceptionMessage('provider fallback is disabled');
 
         app(SettingsService::class)->modelRuntimeForProvider('unavailable-provider');
+    }
+
+    public function test_missing_provider_fails_loud_instead_of_defaulting(): void
+    {
+        $settingsPath = storage_path('framework/testing/settings-dashboard-noprovider.json');
+        File::delete($settingsPath);
+        config()->set('config.admin_settings_path', $settingsPath);
+        config()->set('config.provider', null);
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('RAG_PROVIDER is not configured');
+
+        app(SettingsService::class)->modelRuntime();
     }
 }

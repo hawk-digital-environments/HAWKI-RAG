@@ -20,8 +20,22 @@ class IngestSourceWorkflowPayloadFactoryTest extends TestCase
         config()->set('temporal.task_queues.converter', 'rag-converter-task-queue');
         config()->set('temporal.task_queues.ingestion', 'rag-ingestion-task-queue');
         config()->set('temporal.task_queues.indexer', 'rag-indexer-task-queue');
-        config()->set('temporal.ingestion.provider', 'litellm');
+        config()->set('config.provider', 'litellm');
         config()->set('temporal.ingestion.graph', true);
+        // Pin the gateway catalog so the payload defaults stay deterministic
+        // regardless of the canonical model keys in the host environment.
+        config()->set('model_providers.providers.litellm.models', [
+            'embedding' => 'ollama/bge-m3',
+            'graph' => 'ollama_chat/llama3.1:8b',
+            'text' => 'ollama_chat/llama3.1:8b',
+            'multimodal' => 'ollama_chat/qwen2.5vl:7b',
+            'rag' => 'ollama_chat/llama3.1:8b',
+        ]);
+        config()->set('model_providers.providers.litellm.allowed_models', [
+            'graph' => ['ollama_chat/llama3.1:8b'],
+            'embedding' => ['ollama/bge-m3'],
+            'vision' => ['ollama_chat/qwen2.5vl:7b'],
+        ]);
 
         $factory = app(IngestSourceWorkflowPayloadFactory::class);
         $sourceId = $factory->sourceId('dataset-a', 'https://example.edu');
@@ -36,7 +50,7 @@ class IngestSourceWorkflowPayloadFactoryTest extends TestCase
                         'qdrant_collection' => 'hawki_dataset_a',
                         'neo4j_namespace' => 'hawki_dataset_a',
                         'embedding_provider' => 'litellm',
-                        'embedding_model' => 'hawki-ollama-embedding',
+                        'embedding_model' => 'ollama/bge-m3',
                     ],
                 ],
             ]),
@@ -73,9 +87,9 @@ class IngestSourceWorkflowPayloadFactoryTest extends TestCase
         $this->assertSame('rag-ingestion-task-queue', $payload['task_queues']['ingestion']);
         $this->assertSame('rag-indexer-task-queue', $payload['task_queues']['indexer']);
         $this->assertSame('litellm', $payload['ingestion']['provider']);
-        $this->assertSame('hawki-ollama-chat', $payload['ingestion']['graph_model']);
-        $this->assertSame('hawki-ollama-embedding', $payload['ingestion']['embedding_model']);
-        $this->assertSame('hawki-ollama-vision', $payload['ingestion']['vision_model']);
+        $this->assertSame('ollama_chat/llama3.1:8b', $payload['ingestion']['graph_model']);
+        $this->assertSame('ollama/bge-m3', $payload['ingestion']['embedding_model']);
+        $this->assertSame('ollama_chat/qwen2.5vl:7b', $payload['ingestion']['vision_model']);
         $this->assertSame('hawki_dataset_a', $payload['ingestion']['collection']);
         $this->assertSame('hawki_dataset_a', $payload['ingestion']['neo4j_namespace']);
         $this->assertTrue($payload['ingestion']['graph']);

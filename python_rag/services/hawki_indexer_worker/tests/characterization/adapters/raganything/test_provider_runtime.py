@@ -23,9 +23,9 @@ class RagAnythingProviderRuntimeTests(unittest.TestCase):
             def __init__(self) -> None:
                 self.base = "http://litellm:4000/v1"
                 self.key = ""
-                self.rag_model = "hawki-chat"
-                self.embed_model = "hawki-embedding"
-                self.vision_model = "hawki-vision"
+                self.rag_model = "ollama_chat/llama3.1:8b"
+                self.embed_model = "ollama/bge-m3"
+                self.vision_model = "ollama_chat/qwen2.5vl:7b"
                 self._last_embed_dim = None
                 self._explicit_graph_model = None
                 self._explicit_vision_model = None
@@ -35,9 +35,9 @@ class RagAnythingProviderRuntimeTests(unittest.TestCase):
         apply_provider_overrides(
             provider,
             SimpleNamespace(
-                embedding_model="hawki-openai-embedding",
-                graph_model="hawki-gpt-chat",
-                vision_model="hawki-gpt-vision",
+                embedding_model="openai/text-embedding-3-small",
+                graph_model="openai/gpt-4.1-mini",
+                vision_model="openai/gpt-4.1-mini",
             ),
         )
         self.assertIsNone(provider._last_embed_dim)
@@ -51,10 +51,10 @@ class RagAnythingProviderRuntimeTests(unittest.TestCase):
             graph_provider = clone_provider_for_graph(provider)
 
         self.assertIsNot(graph_provider, provider)
-        self.assertEqual(graph_provider.rag_model, "hawki-gpt-chat")
-        self.assertEqual(graph_provider.embed_model, "hawki-openai-embedding")
-        self.assertEqual(graph_provider.vision_model, "hawki-gpt-vision")
-        self.assertEqual(graph_provider._explicit_vision_model, "hawki-gpt-vision")
+        self.assertEqual(graph_provider.rag_model, "openai/gpt-4.1-mini")
+        self.assertEqual(graph_provider.embed_model, "openai/text-embedding-3-small")
+        self.assertEqual(graph_provider.vision_model, "openai/gpt-4.1-mini")
+        self.assertEqual(graph_provider._explicit_vision_model, "openai/gpt-4.1-mini")
         self.assertEqual(graph_provider._last_embed_dim, 1536)
 
     def test_observed_embedding_dimension_takes_priority_over_alias_configuration(
@@ -69,19 +69,19 @@ class RagAnythingProviderRuntimeTests(unittest.TestCase):
 
         with patch.dict(
             os.environ,
-            {"GRAPH_EMBEDDING_DIMENSIONS": "hawki-openai-embedding=1536"},
+            {"GRAPH_EMBEDDING_DIMENSIONS": "openai/text-embedding-3-small=1536"},
             clear=True,
         ):
             settings = load_raganything_graph_settings()
 
         provider = SimpleNamespace(
-            embed_model="hawki-openai-embedding",
+            embed_model="openai/text-embedding-3-small",
             _last_embed_dim=768,
         )
 
         self.assertEqual(_embed_model_dim(provider, settings), 768)
 
-    def test_default_graph_only_alias_dimensions_cover_litellm_embeddings(self) -> None:
+    def test_default_graph_only_dimensions_cover_canonical_embeddings(self) -> None:
         from hawki_indexer_worker.adapters.raganything.client_config import (
             _embed_model_dim,
         )
@@ -93,11 +93,11 @@ class RagAnythingProviderRuntimeTests(unittest.TestCase):
             settings = load_raganything_graph_settings()
 
         local_provider = SimpleNamespace(
-            embed_model="hawki-ollama-embedding",
+            embed_model="ollama/bge-m3",
             _last_embed_dim=None,
         )
         openai_provider = SimpleNamespace(
-            embed_model="hawki-openai-embedding",
+            embed_model="openai/text-embedding-3-small",
             _last_embed_dim=None,
         )
 

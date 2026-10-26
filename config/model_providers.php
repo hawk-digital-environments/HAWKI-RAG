@@ -11,40 +11,38 @@ $csv = static function (string $name, string $default): array {
 
 $secretConfigured = static fn (string $name): bool => trim((string) env($name, '')) !== '';
 
-$litellmChatAliases = $csv(
-    'LITELLM_CHAT_ALIASES',
-    'hawki-ollama-chat,hawki-gpt-chat,hawki-claude-chat,hawki-chat',
-);
-$litellmEmbeddingAliases = $csv(
-    'LITELLM_EMBED_ALIASES',
-    'hawki-ollama-embedding,hawki-openai-embedding,hawki-embedding',
-);
-$litellmVisionAliases = $csv(
-    'LITELLM_VISION_ALIASES',
-    'hawki-ollama-vision,hawki-gpt-vision,hawki-claude-vision,hawki-vision',
-);
-$ollamaChatModel = trim((string) env('OLLAMA_RAG_MODEL', 'llama3.1:8b'));
-$ollamaEmbeddingModel = trim((string) env('OLLAMA_EMBED_MODEL', 'bge-m3'));
-$ollamaVisionModel = trim((string) env('OLLAMA_VISION_MODEL', 'qwen2.5vl:7b'));
-$ollamaChatModel = $ollamaChatModel !== '' ? $ollamaChatModel : 'llama3.1:8b';
-$ollamaEmbeddingModel = $ollamaEmbeddingModel !== '' ? $ollamaEmbeddingModel : 'bge-m3';
-$ollamaVisionModel = $ollamaVisionModel !== '' ? $ollamaVisionModel : 'qwen2.5vl:7b';
-$ollamaChatModels = array_values(array_unique(array_merge(
-    [$ollamaChatModel],
-    $csv('OLLAMA_CHAT_MODELS', 'llama3.1:8b'),
-)));
-$ollamaEmbeddingModels = array_values(array_unique(array_merge(
-    [$ollamaEmbeddingModel],
-    $csv('OLLAMA_EMBED_MODELS', 'bge-m3'),
-)));
-$ollamaVisionModels = array_values(array_unique(array_merge(
-    [$ollamaVisionModel],
-    $csv('OLLAMA_VISION_MODELS', 'qwen2.5vl:7b'),
-)));
-$ollamaOptions = static fn (array $models): array => array_map(
-    static fn (string $model): array => ['value' => $model, 'label' => "Ollama · {$model}"],
+// Canonical, provider-prefixed model configuration: the prefix routes the
+// request in the Python runtime (see hawki-model-providers), so one set of
+// keys serves direct Ollama, a LiteLLM gateway, and hosted backends.
+$canonicalEmbeddingModel = trim((string) env('EMBED_MODEL', 'ollama/bge-m3'));
+$canonicalChatModel = trim((string) env('CHAT_MODEL', 'ollama_chat/llama3.1:8b'));
+$canonicalVisionModel = trim((string) env('VISION_MODEL', 'ollama_chat/qwen2.5vl:7b'));
+$canonicalEmbeddingModel = $canonicalEmbeddingModel !== '' ? $canonicalEmbeddingModel : 'ollama/bge-m3';
+$canonicalChatModel = $canonicalChatModel !== '' ? $canonicalChatModel : 'ollama_chat/llama3.1:8b';
+$canonicalVisionModel = $canonicalVisionModel !== '' ? $canonicalVisionModel : 'ollama_chat/qwen2.5vl:7b';
+
+$displayModel = static fn (string $model): string => str_contains($model, '/')
+    ? explode('/', $model, 2)[1]
+    : $model;
+$canonicalOptions = static fn (array $models): array => array_map(
+    static fn (string $model): array => ['value' => $model, 'label' => $displayModel($model)],
     $models,
 );
+
+// One canonical allowlist per capability feeds both provider surfaces: the
+// Settings UI menus and the gateway's rendered route list.
+$embeddingModels = array_values(array_unique(array_merge(
+    [$canonicalEmbeddingModel],
+    $csv('EMBED_MODELS', $canonicalEmbeddingModel),
+)));
+$chatModels = array_values(array_unique(array_merge(
+    [$canonicalChatModel],
+    $csv('CHAT_MODELS', $canonicalChatModel),
+)));
+$visionModels = array_values(array_unique(array_merge(
+    [$canonicalVisionModel],
+    $csv('VISION_MODELS', $canonicalVisionModel),
+)));
 
 return [
 
@@ -54,15 +52,15 @@ return [
     |--------------------------------------------------------------------------
     |
     |   List of model providers suggested for the project.
-    |   Direct Ollama is the local default. LiteLLM is an optional explicit
-    |   runtime boundary for Ollama aliases, OpenAI, Anthropic, and other
-    |   proxy-managed routes. Provider failures never trigger silent fallback.
+    |   Direct Ollama and the LiteLLM gateway are the two runtimes, selected
+    |   through the required RAG_PROVIDER key. Provider failures never
+    |   trigger silent fallback.
     |
     */
     'providers' => [
         'litellm' => [
             'label' => 'LiteLLM Gateway',
-            'description' => 'Optional OpenAI-compatible gateway for allowlisted Ollama, GPT, Claude, and other proxy-managed route aliases.',
+            'description' => 'Optional OpenAI-compatible gateway serving the canonical provider-prefixed models from the allowlists.',
             'configuration_mode' => 'environment',
             'model_selection_mode' => 'settings',
             'runtime_supported' => true,
@@ -72,40 +70,26 @@ return [
                 'chat' => 'chat/completions',
             ],
             'models' => [
-                'embedding' => env('LITELLM_EMBED_MODEL', 'hawki-ollama-embedding'),
-                'graph' => env('LITELLM_CHAT_MODEL', 'hawki-ollama-chat'),
-                'text' => env('LITELLM_CHAT_MODEL', 'hawki-ollama-chat'),
-                'multimodal' => env('LITELLM_VISION_MODEL', 'hawki-ollama-vision'),
-                'rag' => env('LITELLM_CHAT_MODEL', 'hawki-ollama-chat'),
+                'embedding' => env('EMBED_MODEL', 'ollama/bge-m3'),
+                'graph' => env('CHAT_MODEL', 'ollama_chat/llama3.1:8b'),
+                'text' => env('CHAT_MODEL', 'ollama_chat/llama3.1:8b'),
+                'multimodal' => env('VISION_MODEL', 'ollama_chat/qwen2.5vl:7b'),
+                'rag' => env('CHAT_MODEL', 'ollama_chat/llama3.1:8b'),
             ],
             'allowed_models' => [
-                'graph' => $litellmChatAliases,
-                'embedding' => $litellmEmbeddingAliases,
-                'vision' => $litellmVisionAliases,
+                'graph' => $chatModels,
+                'embedding' => $embeddingModels,
+                'vision' => $visionModels,
             ],
             'model_placeholders' => [
-                'graph' => 'hawki-ollama-chat, hawki-gpt-chat, or hawki-claude-chat',
-                'embedding' => 'hawki-ollama-embedding or hawki-openai-embedding',
-                'vision' => 'hawki-ollama-vision, hawki-gpt-vision, or hawki-claude-vision',
+                'graph' => 'ollama_chat/llama3.1:8b, openai/gpt-4.1-mini, or anthropic/claude-sonnet-4-5-20250929',
+                'embedding' => 'ollama/bge-m3 or openai/text-embedding-3-small',
+                'vision' => 'ollama_chat/qwen2.5vl:7b or openai/gpt-4.1-mini',
             ],
             'model_options' => [
-                'graph' => [
-                    ['value' => 'hawki-ollama-chat', 'label' => 'Ollama · local chat'],
-                    ['value' => 'hawki-gpt-chat', 'label' => 'OpenAI · GPT chat'],
-                    ['value' => 'hawki-claude-chat', 'label' => 'Anthropic · Claude chat'],
-                    ['value' => 'hawki-chat', 'label' => 'Legacy local chat alias'],
-                ],
-                'embedding' => [
-                    ['value' => 'hawki-ollama-embedding', 'label' => 'Ollama · local embedding'],
-                    ['value' => 'hawki-openai-embedding', 'label' => 'OpenAI · embedding'],
-                    ['value' => 'hawki-embedding', 'label' => 'Legacy local embedding alias'],
-                ],
-                'vision' => [
-                    ['value' => 'hawki-ollama-vision', 'label' => 'Ollama · local vision'],
-                    ['value' => 'hawki-gpt-vision', 'label' => 'OpenAI · GPT vision'],
-                    ['value' => 'hawki-claude-vision', 'label' => 'Anthropic · Claude vision'],
-                    ['value' => 'hawki-vision', 'label' => 'Legacy local vision alias'],
-                ],
+                'graph' => $canonicalOptions($chatModels),
+                'embedding' => $canonicalOptions($embeddingModels),
+                'vision' => $canonicalOptions($visionModels),
             ],
             'environment_variables' => [
                 [
@@ -124,8 +108,15 @@ return [
                 ],
                 [
                     'name' => 'GRAPH_EMBEDDING_DIMENSIONS',
-                    'placeholder' => 'hawki-ollama-embedding=1024,hawki-openai-embedding=1536,hawki-embedding=1024',
-                    'description' => 'Trusted alias dimensions used when graph-only ingestion has not observed an embedding response.',
+                    'placeholder' => 'ollama/bge-m3=1024,ollama/nomic-embed-text=768',
+                    'description' => 'Trusted model dimensions (provider-prefixed names) used when graph-only ingestion has not observed an embedding response.',
+                    'secret' => false,
+                    'configured' => true,
+                ],
+                [
+                    'name' => 'CHAT_MODELS',
+                    'placeholder' => 'ollama_chat/llama3.1:8b,openai/gpt-4.1-mini',
+                    'description' => 'Gateway routes render at container startup from the canonical keys and these allowlists.',
                     'secret' => false,
                     'configured' => true,
                 ],
@@ -139,72 +130,74 @@ return [
             'runtime_supported' => true,
             'api_url' => env('OLLAMA_API_URL', 'http://hawki_ollama:11434/api'),
             'models' => [
-                'embedding' => $ollamaEmbeddingModel,
-                'graph' => $ollamaChatModel,
-                'text' => $ollamaChatModel,
-                'multimodal' => $ollamaVisionModel,
-                'rag' => $ollamaChatModel,
+                'embedding' => $canonicalEmbeddingModel,
+                'graph' => $canonicalChatModel,
+                'text' => $canonicalChatModel,
+                'multimodal' => $canonicalVisionModel,
+                'rag' => $canonicalChatModel,
             ],
             'allowed_models' => [
-                'graph' => $ollamaChatModels,
-                'embedding' => $ollamaEmbeddingModels,
-                'vision' => $ollamaVisionModels,
+                'graph' => $chatModels,
+                'embedding' => $embeddingModels,
+                'vision' => $visionModels,
             ],
             'model_placeholders' => [
-                'graph' => 'llama3.1:8b',
-                'embedding' => 'bge-m3',
-                'vision' => 'qwen2.5vl:7b',
+                'graph' => 'ollama_chat/llama3.1:8b',
+                'embedding' => 'ollama/bge-m3',
+                'vision' => 'ollama_chat/qwen2.5vl:7b',
             ],
             'model_options' => [
-                'graph' => $ollamaOptions($ollamaChatModels),
-                'embedding' => $ollamaOptions($ollamaEmbeddingModels),
-                'vision' => $ollamaOptions($ollamaVisionModels),
+                'graph' => $canonicalOptions($chatModels),
+                'embedding' => $canonicalOptions($embeddingModels),
+                'vision' => $canonicalOptions($visionModels),
             ],
             'environment_variables' => [
                 ['name' => 'OLLAMA_API_URL', 'placeholder' => 'http://hawki_ollama:11434/api', 'description' => 'Direct Ollama API root visible from Python services.', 'secret' => false, 'configured' => true],
-                ['name' => 'OLLAMA_RAG_MODEL', 'placeholder' => 'llama3.1:8b', 'description' => 'Default direct chat and graph model.', 'secret' => false, 'configured' => true],
-                ['name' => 'OLLAMA_EMBED_MODEL', 'placeholder' => 'bge-m3', 'description' => 'Default direct embedding model.', 'secret' => false, 'configured' => true],
-                ['name' => 'OLLAMA_VISION_MODEL', 'placeholder' => 'qwen2.5vl:7b', 'description' => 'Default direct vision model.', 'secret' => false, 'configured' => true],
-                ['name' => 'OLLAMA_CHAT_MODELS', 'placeholder' => 'llama3.1:8b', 'description' => 'Allowlisted direct chat and graph models shown in Settings.', 'secret' => false, 'configured' => true],
-                ['name' => 'OLLAMA_EMBED_MODELS', 'placeholder' => 'bge-m3', 'description' => 'Allowlisted direct embedding models shown in Settings.', 'secret' => false, 'configured' => true],
-                ['name' => 'OLLAMA_VISION_MODELS', 'placeholder' => 'qwen2.5vl:7b', 'description' => 'Allowlisted direct vision models shown in Settings.', 'secret' => false, 'configured' => true],
+                ['name' => 'EMBED_MODEL', 'placeholder' => 'ollama/bge-m3', 'description' => 'Canonical embedding model; the prefix routes the request.', 'secret' => false, 'configured' => true],
+                ['name' => 'CHAT_MODEL', 'placeholder' => 'ollama_chat/llama3.1:8b', 'description' => 'Canonical chat and graph model.', 'secret' => false, 'configured' => true],
+                ['name' => 'VISION_MODEL', 'placeholder' => 'ollama_chat/qwen2.5vl:7b', 'description' => 'Canonical vision model.', 'secret' => false, 'configured' => true],
+                ['name' => 'EMBED_MODELS', 'placeholder' => 'ollama/bge-m3', 'description' => 'Allowlisted embedding models shown in Settings.', 'secret' => false, 'configured' => true],
+                ['name' => 'CHAT_MODELS', 'placeholder' => 'ollama_chat/llama3.1:8b', 'description' => 'Allowlisted chat and graph models shown in Settings.', 'secret' => false, 'configured' => true],
+                ['name' => 'VISION_MODELS', 'placeholder' => 'ollama_chat/qwen2.5vl:7b', 'description' => 'Allowlisted vision models shown in Settings.', 'secret' => false, 'configured' => true],
             ],
         ],
         'openai' => [
             'label' => 'OpenAI GPT (via LiteLLM)',
-            'description' => 'GPT chat, embedding, and vision routes are configured on the LiteLLM proxy.',
+            'description' => 'Add openai/ entries to the model allowlists; they render as gateway routes and Settings options.',
             'configuration_mode' => 'proxy',
             'model_selection_mode' => 'none',
             'runtime_supported' => false,
             'api_url' => env('OPENAI_API_URL', 'https://api.openai.com/v1'),
             'models' => [
-                'embedding' => 'hawki-openai-embedding',
-                'graph' => 'hawki-gpt-chat',
-                'multimodal' => 'hawki-gpt-vision',
+                'embedding' => 'openai/text-embedding-3-small',
+                'graph' => 'openai/gpt-4.1-mini',
+                'multimodal' => 'openai/gpt-4.1-mini',
             ],
             'environment_variables' => [
                 ['name' => 'OPENAI_API_KEY', 'placeholder' => 'sk-...', 'description' => 'OpenAI key read only by the LiteLLM container.', 'secret' => true, 'configured' => $secretConfigured('OPENAI_API_KEY')],
-                ['name' => 'LITELLM_OPENAI_CHAT_MODEL', 'placeholder' => 'openai/gpt-4.1-mini', 'description' => 'Target behind hawki-gpt-chat.', 'secret' => false, 'configured' => true],
-                ['name' => 'LITELLM_OPENAI_EMBED_MODEL', 'placeholder' => 'openai/text-embedding-3-small', 'description' => 'Target behind hawki-openai-embedding.', 'secret' => false, 'configured' => true],
-                ['name' => 'LITELLM_OPENAI_VISION_MODEL', 'placeholder' => 'openai/gpt-4.1-mini', 'description' => 'Target behind hawki-gpt-vision.', 'secret' => false, 'configured' => true],
+                ['name' => 'CHAT_MODELS', 'placeholder' => 'ollama_chat/llama3.1:8b,openai/gpt-4.1-mini', 'description' => 'openai/ entries serve GPT chat through the gateway.', 'secret' => false, 'configured' => true],
+                ['name' => 'EMBED_MODELS', 'placeholder' => 'ollama/bge-m3,openai/text-embedding-3-small', 'description' => 'openai/ entries serve GPT embeddings through the gateway.', 'secret' => false, 'configured' => true],
+                ['name' => 'VISION_MODELS', 'placeholder' => 'ollama_chat/qwen2.5vl:7b,openai/gpt-4.1-mini', 'description' => 'openai/ entries serve GPT vision through the gateway.', 'secret' => false, 'configured' => true],
+                ['name' => 'OPENAI_API_BASE', 'placeholder' => 'https://api.openai.com/v1', 'description' => 'Optional standard endpoint override for corporate proxies.', 'secret' => false, 'configured' => $secretConfigured('OPENAI_API_BASE')],
             ],
         ],
         'anthropic' => [
             'label' => 'Anthropic Claude (via LiteLLM)',
-            'description' => 'Claude chat and vision routes are configured on the LiteLLM proxy. Use Ollama or OpenAI for embeddings.',
+            'description' => 'Add anthropic/ entries to the model allowlists; they render as gateway routes and Settings options. Use Ollama or OpenAI for embeddings.',
             'configuration_mode' => 'proxy',
             'model_selection_mode' => 'none',
             'runtime_supported' => false,
             'api_url' => env('ANTHROPIC_API_URL', 'https://api.anthropic.com/v1'),
             'models' => [
                 'embedding' => '',
-                'graph' => 'hawki-claude-chat',
-                'multimodal' => 'hawki-claude-vision',
+                'graph' => 'anthropic/claude-sonnet-4-5-20250929',
+                'multimodal' => 'anthropic/claude-sonnet-4-5-20250929',
             ],
             'environment_variables' => [
                 ['name' => 'ANTHROPIC_API_KEY', 'placeholder' => 'sk-ant-...', 'description' => 'Anthropic key read only by the LiteLLM container.', 'secret' => true, 'configured' => $secretConfigured('ANTHROPIC_API_KEY')],
-                ['name' => 'LITELLM_ANTHROPIC_CHAT_MODEL', 'placeholder' => 'anthropic/claude-sonnet-4-5-20250929', 'description' => 'Target behind hawki-claude-chat.', 'secret' => false, 'configured' => true],
-                ['name' => 'LITELLM_ANTHROPIC_VISION_MODEL', 'placeholder' => 'anthropic/claude-sonnet-4-5-20250929', 'description' => 'Target behind hawki-claude-vision.', 'secret' => false, 'configured' => true],
+                ['name' => 'CHAT_MODELS', 'placeholder' => 'ollama_chat/llama3.1:8b,anthropic/claude-sonnet-4-5-20250929', 'description' => 'anthropic/ entries serve Claude chat through the gateway.', 'secret' => false, 'configured' => true],
+                ['name' => 'VISION_MODELS', 'placeholder' => 'ollama_chat/qwen2.5vl:7b,anthropic/claude-sonnet-4-5-20250929', 'description' => 'anthropic/ entries serve Claude vision through the gateway.', 'secret' => false, 'configured' => true],
+                ['name' => 'ANTHROPIC_API_BASE', 'placeholder' => 'https://api.anthropic.com', 'description' => 'Optional standard endpoint override for corporate proxies.', 'secret' => false, 'configured' => $secretConfigured('ANTHROPIC_API_BASE')],
             ],
         ],
     ],

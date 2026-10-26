@@ -45,8 +45,8 @@ class DatasetScopedQueryTest extends TestCase
                 && ($payload['query'] ?? null) === 'What is in this dataset?'
                 && ($payload['top_k'] ?? null) === 7
                 && ($payload['provider'] ?? null) === 'ollama'
-                && ($payload['chat_model'] ?? null) === 'llama3.1:8b'
-                && ($payload['vision_model'] ?? null) === 'qwen2.5vl:7b'
+                && ($payload['chat_model'] ?? null) === 'ollama_chat/llama3.1:8b'
+                && ($payload['vision_model'] ?? null) === 'ollama_chat/qwen2.5vl:7b'
                 && ($payload['filters'] ?? null) === [
                     'source_type' => 'pdf',
                     'language' => 'en',
@@ -70,8 +70,8 @@ class DatasetScopedQueryTest extends TestCase
         File::put($settingsPath, json_encode([
             'models' => [
                 'provider' => 'litellm',
-                'graph_model' => 'hawki-chat',
-                'embedding_model' => 'hawki-embedding',
+                'graph_model' => 'ollama_chat/llama3.1:8b',
+                'embedding_model' => 'ollama/bge-m3',
             ],
         ], JSON_THROW_ON_ERROR));
         config()->set('config.admin_settings_path', $settingsPath);
@@ -81,7 +81,7 @@ class DatasetScopedQueryTest extends TestCase
             'litellm-query',
             'LiteLLM Query Dataset',
             embeddingProvider: 'litellm',
-            embeddingModel: 'hawki-embedding',
+            embeddingModel: 'ollama/bge-m3',
         );
         $this->grant($user, $dataset);
         Http::fake([

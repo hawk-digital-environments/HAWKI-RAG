@@ -443,7 +443,7 @@
                         type="text"
                         bind:value={graphModel}
                         list="settings-graph-model-options"
-                        placeholder={selectedProvider.graphModelPlaceholder || 'hawki-ollama-chat'}
+                        placeholder={selectedProvider.graphModelPlaceholder || 'ollama_chat/llama3.1:8b'}
                         autocomplete="off"
                         disabled={isModelSelectionManaged(selectedProvider)}
                     />
@@ -460,7 +460,7 @@
                         type="text"
                         bind:value={embeddingModel}
                         list="settings-embedding-model-options"
-                        placeholder={selectedProvider.embeddingModelPlaceholder || 'hawki-ollama-embedding'}
+                        placeholder={selectedProvider.embeddingModelPlaceholder || 'ollama/bge-m3'}
                         autocomplete="off"
                         disabled={!selectedProvider?.embeddingSupported || isModelSelectionManaged(selectedProvider)}
                     />
@@ -477,7 +477,7 @@
                         type="text"
                         bind:value={visionModel}
                         list="settings-vision-model-options"
-                        placeholder={selectedProvider.visionModelPlaceholder || 'hawki-ollama-vision'}
+                        placeholder={selectedProvider.visionModelPlaceholder || 'ollama_chat/qwen2.5vl:7b'}
                         autocomplete="off"
                         disabled={isModelSelectionManaged(selectedProvider)}
                     />

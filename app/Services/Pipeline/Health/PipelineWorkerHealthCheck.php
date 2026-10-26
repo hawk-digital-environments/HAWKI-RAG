@@ -109,7 +109,7 @@ readonly class PipelineWorkerHealthCheck
                 'Temporal task queue %s indexes artifacts directly into Qdrant/Neo4j; legacy queue %s remains polled while executions drain. Provider: %s, graph: %s.',
                 $taskQueue,
                 $legacyQueue,
-                $this->config->get('temporal.ingestion.provider'),
+                $this->config->get('config.provider') ?? 'unset',
                 filter_var($this->config->get('temporal.ingestion.graph'), FILTER_VALIDATE_BOOLEAN) ? 'true' : 'false',
             ),
         );

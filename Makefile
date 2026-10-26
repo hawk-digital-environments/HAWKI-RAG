@@ -291,6 +291,28 @@ up-core-server: PROFILE_MESSAGE = $(GPU_MESSAGE) Reverse-proxy mode loaded from 
 up-core-server: _up-core ## Start without a host UI port, using ENV_FILE.
 
 # ==============================================================================
+# Optional LiteLLM gateway
+# ==============================================================================
+
+##@ Optional gateway
+
+up-gateway: ## Start the LiteLLM gateway profile (routes render from ENV_FILE).
+	@$(COMPOSE_CMD) --profile litellm up -d litellm
+	@echo "LiteLLM gateway listening on 127.0.0.1:\$$(grep -E '^LITELLM_PORT=' $(ENV_FILE) | cut -d= -f2 || echo 4000)."
+	@echo "Switch the stack with the deltas in .env.example.litellm, then recreate the Python services."
+
+down-gateway: ## Stop the LiteLLM gateway profile.
+	@$(COMPOSE_CMD) --profile litellm stop litellm
+
+gateway-smoke: ## Live-check embed+chat through the running gateway.
+	cd python_rag && PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 uv run --frozen --no-sync \
+		pytest -c pytest.ini packages/model_providers/tests/integration/test_litellm.py -q
+
+gateway-render: ## Preview the gateway config ENV_FILE renders (stdout).
+	cd python_rag && uv run --frozen --no-sync python -m \
+		hawki_model_providers.gateway_config --env ../$(ENV_FILE) --output -
+
+# ==============================================================================
 # Health and service diagnostics
 # ==============================================================================
 

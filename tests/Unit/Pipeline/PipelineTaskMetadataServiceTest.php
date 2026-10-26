@@ -19,7 +19,7 @@ class PipelineTaskMetadataServiceTest extends TestCase
             'qdrant_collection' => 'hawki_dataset_meta',
             'neo4j_namespace' => 'hawki_dataset_meta',
             'embedding_provider' => 'litellm',
-            'embedding_model' => 'hawki-ollama-embedding',
+            'embedding_model' => 'ollama/bge-m3',
         ]));
 
         $this->assertSame([
@@ -27,7 +27,7 @@ class PipelineTaskMetadataServiceTest extends TestCase
             'qdrant_collection' => 'hawki_dataset_meta',
             'neo4j_namespace' => 'hawki_dataset_meta',
             'embedding_provider' => 'litellm',
-            'embedding_model' => 'hawki-ollama-embedding',
+            'embedding_model' => 'ollama/bge-m3',
         ], $metadata);
     }
 

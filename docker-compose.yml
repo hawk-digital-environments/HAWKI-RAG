@@ -167,12 +167,22 @@ services:
     container_name: hawki_rag_rerank
     restart: unless-stopped
     stop_grace_period: 40s
+    environment:
+      # HuggingFace weights live in the shared cache volume so container
+      # recreation does not re-download the cross-encoder model.
+      - HF_HOME=/home/rawki/.cache/huggingface
+      # Load the model during startup instead of on the first request.
+      - HAWKI_RERANKER_PRELOAD=${HAWKI_RERANKER_PRELOAD:-true}
+    volumes:
+      - hf_models:/home/rawki/.cache/huggingface
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1/health', timeout=3)"]
       interval: 15s
       timeout: 5s
       retries: 10
-      start_period: 20s
+      # The startup preload loads the model weights before serving; the
+      # first-ever run may still download them from HuggingFace.
+      start_period: 120s
 
   # -------------------------------------------------
   # Read-only FastAPI bridge (query, configuration, health, and Temporal control)
@@ -313,6 +323,11 @@ services:
     image: ollama/ollama:0.40.13
     pull_policy: always
     container_name: hawki_ollama
+    environment:
+      # Keep loaded models resident; the warmup workflow re-pins them daily.
+      # Normal requests without keep_alive would otherwise reset this to the
+      # 5-minute default.
+      - OLLAMA_KEEP_ALIVE=${OLLAMA_KEEP_ALIVE:-24h}
 
   # -------------------------------------------------
   # Optional OpenAI-compatible LiteLLM gateway
@@ -322,9 +337,18 @@ services:
     profiles: ["litellm"]
     image: ${LITELLM_IMAGE}
     container_name: hawki_litellm
-    command: ["--config=/app/config.yaml", "--port=4000"]
+    # The proxy config renders at container startup from the canonical model
+    # keys (EMBED/CHAT/VISION_MODEL plus the plural allowlists) and the
+    # standard provider credentials. The renderer is the
+    # hawki-model-providers package, mounted read-only from the checkout;
+    # its import closure is pinned image-safe by contract tests.
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        PYTHONPATH=/opt/hawki python3 -m hawki_model_providers.gateway_config --output /tmp/config.yaml
+        exec litellm --config /tmp/config.yaml --port 4000
     volumes:
-      - ./docker/litellm/config.yaml:/app/config.yaml:ro
+      - ./python_rag/packages/model_providers/src/hawki_model_providers:/opt/hawki/hawki_model_providers:ro
     ports:
       - "127.0.0.1:${LITELLM_PORT}:4000"
     networks:
@@ -347,6 +371,8 @@ volumes:
   neo4j_data:
   hawki_postgres_data:
   ollama:
+  hf_models:
+    name: hawki_rag_hf_models
 
 networks:
   hawki-network:
