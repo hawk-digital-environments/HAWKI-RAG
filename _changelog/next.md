@@ -59,6 +59,12 @@
   writes completing after cancellation. See the
   [deletion operations guide](../_documentation/Operations/temporal_operations.md#dataset-deletion-in-the-background)
   for scheduler deployment and recovery behavior.
+- **Future deletion architecture documented.** Record the target design for
+  dataset deletion — a Postgres generation registry as the single
+  accessibility switch, generation-scoped Qdrant/Neo4j resources, and
+  asynchronous teardown — plus its limits around partial deletion and
+  property-based graph generations. See the
+  [deletion workflow guide](../_documentation/Operations/deletion_workflow.md#future-deletion-architecture).
 
 - The bridge `GET /config` endpoint was removed, and the Python services no longer
 read model-selection environment variables (`RAG_DEFAULT_PROVIDER`,

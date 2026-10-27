@@ -123,6 +123,9 @@ through the [source deletion contract](../Reference/direct_text_ingestion.md#del
 
 ## Dataset deletion in the background
 
+The full lifecycle, state model, and recovery matrix for all three deletion
+paths live in [Deletion Workflow](./deletion_workflow.md).
+
 `DELETE /api/datasets/{datasetId}/storage` commits `archived` and returns **202**
 without contacting Temporal or the sinks. The dataset is hidden and unavailable
 for new ingestion, prepared dispatch, retries and authorized queries. Acceptance

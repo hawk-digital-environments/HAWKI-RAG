@@ -72,6 +72,7 @@ grounded in those passages.
 | Understand who can access a dataset | [Authorization & Dataset Scope](./Core%20Concepts/authorization_dataset_scope.md) |
 | Understand vector, graph, and application state | [Storage](./Core%20Concepts/storage.md) |
 | Inspect workflows, queues, and callbacks | [Temporal Operations](./Operations/temporal_operations.md) |
+| Delete a document, dataset, or source | [Deletion Workflow](./Operations/deletion_workflow.md) |
 | Diagnose a failed or incomplete run | [Monitoring](./Operations/monitoring.md), [Troubleshooting](./Operations/troubleshooting.md), and [Recovery](./Operations/ingestion_recovery.md) |
 | Integrate an application | [REST APIs](./Reference/rest_apis.md) and [Direct Text Ingestion](./Reference/direct_text_ingestion.md) |
 | Contribute a change | [Testing](./Developer/testing.md) and [Architecture Rules](./Developer/architecture_rules.md) |
