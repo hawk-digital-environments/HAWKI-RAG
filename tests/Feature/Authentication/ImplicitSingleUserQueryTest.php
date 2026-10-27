@@ -79,6 +79,7 @@ final class ImplicitSingleUserQueryTest extends TestCase
                     'embedding_provider' => 'ollama',
                     'embedding_model' => 'bge-m3',
                     'graph_enabled' => false,
+                    'excluded_doc_ids' => [],
                 ]
                 && ! array_key_exists('auth_context', $payload);
         });

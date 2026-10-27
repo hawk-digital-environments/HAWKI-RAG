@@ -39,6 +39,7 @@ class GraphReadService:
             dataset_id=authorized_scope.dataset_id,
             neo4j_namespace=namespace,
             limit=limit,
+            excluded_doc_ids=list(authorized_scope.excluded_doc_ids),
         )
 
 

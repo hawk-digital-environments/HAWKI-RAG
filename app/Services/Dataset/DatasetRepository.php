@@ -88,11 +88,33 @@ readonly class DatasetRepository
     public function unverifiedSources(Dataset $dataset): Collection
     {
         return IngestionSource::query()->where('dataset_id', $dataset->dataset_id)->get()
-            ->filter(fn (IngestionSource $source): bool => $source->index_status !== IngestionSource::STATUS_DELETED
-                || ($source->metadata['managed_deletion']['status'] ?? null) !== IngestionSource::STATUS_DELETED
-                || empty($source->metadata['managed_deletion']['operation_id'])
-                || $source->temporal_schedule_id !== null
-                || collect($source->metadata['managed_writers'] ?? [])->contains(fn ($writer): bool => ($writer['status'] ?? null) !== 'released'));
+            ->filter(fn (IngestionSource $source): bool => $this->unverifiedReasons($source) !== []);
+    }
+
+    /**
+     * Machine-readable reasons this source blocks verified dataset cleanup.
+     * Keep in sync with the drain gate; an empty list means verified.
+     *
+     * @return list<string>
+     */
+    public function unverifiedReasons(IngestionSource $source): array
+    {
+        $reasons = [];
+        if ($source->index_status !== IngestionSource::STATUS_DELETED) {
+            $reasons[] = 'not_deleted';
+        }
+        if (($source->metadata['managed_deletion']['status'] ?? null) !== IngestionSource::STATUS_DELETED
+            || empty($source->metadata['managed_deletion']['operation_id'])) {
+            $reasons[] = 'cleanup_tombstone_missing';
+        }
+        if ($source->temporal_schedule_id !== null) {
+            $reasons[] = 'scheduled_ingestion_active';
+        }
+        if (collect($source->metadata['managed_writers'] ?? [])->contains(fn ($writer): bool => ($writer['status'] ?? null) !== 'released')) {
+            $reasons[] = 'unreleased_writer';
+        }
+
+        return $reasons;
     }
 
     public function documentCount(Dataset $dataset): int

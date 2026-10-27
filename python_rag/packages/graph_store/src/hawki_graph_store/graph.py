@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Any, Callable, Iterable
+from typing import Any, Callable, Iterable, Sequence
 
 from neo4j import GraphDatabase
 from neo4j.exceptions import ClientError, DriverError, Neo4jError
@@ -422,12 +422,21 @@ class Neo4jGraph:
         dataset_id: str,
         neo4j_namespace: str,
         limit: int = 25,
+        excluded_doc_ids: Sequence[str] = (),
     ) -> list[dict[str, str]]:
-        """Pull related entities/relations that match any of the supplied terms."""
+        """Pull related entities/relations that match any of the supplied terms.
+
+        ``excluded_doc_ids`` hides facts whose contributing documents are all
+        pending deletion. Shared contributions with at least one live
+        document, and legacy rows without document attribution, are retained.
+        """
         dataset_id, neo4j_namespace = _required_read_scope(dataset_id, neo4j_namespace)
         cleaned = clean_query_terms(terms)
         if not cleaned:
             return []
+        excluded = [
+            str(doc_id).strip() for doc_id in excluded_doc_ids if str(doc_id).strip()
+        ]
 
         query = Neo4jQueryRequest(
             build_fetch_related_query(),
@@ -436,6 +445,7 @@ class Neo4jGraph:
                 "dataset_id": dataset_id,
                 "neo4j_namespace": neo4j_namespace,
                 "limit": int(limit),
+                "excluded_doc_ids": excluded,
             },
             operation="neo4j.fetch_related",
         )

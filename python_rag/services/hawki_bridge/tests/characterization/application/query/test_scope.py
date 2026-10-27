@@ -207,12 +207,62 @@ class AuthorizedScopeSchemaTests(unittest.TestCase):
                 "neo4j-namespace": "other-kebab-case",
                 "authContext": "caller-owned",
                 "graph-enabled": True,
+                "excluded_doc_ids": "doc-attacker",
+                "excludedDocIds": "doc-attacker-camel",
                 "source_format": "pdf",
                 "": "ignored",
             },
         )
 
         self.assertEqual(filters, {"source_format": "pdf", "dataset_id": "dataset-a"})
+
+    def test_trusted_exclusions_hide_pending_deletion_documents(self) -> None:
+        from hawki_bridge.application.query.scope import build_scoped_query_filters
+
+        filters = build_scoped_query_filters(
+            "dataset-a",
+            {"source_format": "pdf"},
+            [" doc-pending ", "", "doc-pending", "doc-other"],
+        )
+
+        self.assertEqual(
+            filters,
+            {
+                "source_format": "pdf",
+                "dataset_id": "dataset-a",
+                "excluded_doc_ids": ["doc-pending", "doc-other"],
+            },
+        )
+
+    def test_trusted_exclusions_are_omitted_when_empty(self) -> None:
+        from hawki_bridge.application.query.scope import build_scoped_query_filters
+
+        self.assertEqual(
+            build_scoped_query_filters("dataset-a", None, []),
+            {"dataset_id": "dataset-a"},
+        )
+
+    def test_scope_normalizes_trusted_excluded_doc_ids(self) -> None:
+        from hawki_rag_contracts.retrieval.auth_scope import AuthorizedQueryScope
+
+        scope = AuthorizedQueryScope(
+            dataset_id="dataset-a",
+            qdrant_collection="hawki_dataset_a",
+            embedding_provider="ollama",
+            embedding_model="hawki-ollama-embedding",
+            excluded_doc_ids=[" doc-a ", "", "doc-b", "doc-a"],
+        )
+
+        self.assertEqual(scope.excluded_doc_ids, ["doc-a", "doc-b"])
+
+        with self.assertRaises(ValidationError):
+            AuthorizedQueryScope(
+                dataset_id="dataset-a",
+                qdrant_collection="hawki_dataset_a",
+                embedding_provider="ollama",
+                embedding_model="hawki-ollama-embedding",
+                excluded_doc_ids=[f"doc-{index}" for index in range(1001)],
+            )
 
     def test_scoped_filters_preserve_supported_scalar_values(self) -> None:
         from hawki_bridge.application.query.scope import build_scoped_query_filters

@@ -44,6 +44,7 @@ class TestReadOnlyGraphApiFlow:
                 dataset_id: str,
                 neo4j_namespace: str,
                 limit: int,
+                excluded_doc_ids: list[str] = [],
             ) -> list[dict[str, str]]:
                 calls.append(
                     {
@@ -51,6 +52,7 @@ class TestReadOnlyGraphApiFlow:
                         "dataset_id": dataset_id,
                         "neo4j_namespace": neo4j_namespace,
                         "limit": limit,
+                        "excluded_doc_ids": excluded_doc_ids,
                     }
                 )
                 return [{"subject": "fee", "predicate": "costs", "object": "320"}]
@@ -72,6 +74,7 @@ class TestReadOnlyGraphApiFlow:
                 "dataset_id": "dataset-a",
                 "neo4j_namespace": "hawki_dataset_a",
                 "limit": 12,
+                "excluded_doc_ids": [],
             }
         ]
 

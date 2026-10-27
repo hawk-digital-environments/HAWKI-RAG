@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\Query;
 
 use App\Models\Dataset;
+use App\Models\ManagedDocumentDeletion;
 use App\Models\User;
 use App\Services\Authorization\DatasetQueryAuthorizationService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -58,6 +59,7 @@ class DatasetScopedQueryTest extends TestCase
                     'embedding_provider' => 'ollama',
                     'embedding_model' => 'bge-m3',
                     'graph_enabled' => false,
+                    'excluded_doc_ids' => [],
                 ]
                 && ! array_key_exists('dataset_id', $payload);
         });
@@ -344,6 +346,78 @@ class DatasetScopedQueryTest extends TestCase
             'dataset_id' => $otherDataset->dataset_id,
             'principal_id' => (string) $user->id,
         ]);
+    }
+
+    public function test_query_hides_documents_with_pending_deletion_operations(): void
+    {
+        $user = $this->actingAsApiUser();
+        $dataset = $this->createDataset('authorized', 'Authorized Dataset');
+        $this->grant($user, $dataset);
+        Http::fake([
+            '*' => Http::response(['ok' => true, 'answer' => 'Scoped answer.']),
+        ]);
+
+        ManagedDocumentDeletion::query()->create([
+            'operation_id' => 'delete_'.str_repeat('a', 64),
+            'document_id' => 'adoc_pending',
+            'dataset_id' => 'authorized',
+            'purpose' => 'delete',
+            'status' => 'pending',
+            'workflow_id' => 'managed-delete-pending',
+            'workflow_input' => ['targets' => [
+                ['output_id' => 1, 'doc_id' => 'doc_pending_one', 'source_id' => 'source-a'],
+                ['output_id' => 2, 'doc_id' => 'doc_pending_two', 'source_id' => 'source-b'],
+            ]],
+        ]);
+
+        $this->postJson('/api/query', [
+            'dataset_id' => 'authorized',
+            'query' => 'What is in this dataset?',
+        ])->assertOk();
+
+        Http::assertSent(function (Request $request): bool {
+            $scope = $request->data()['authorized_scope'] ?? null;
+
+            return $request->url() === rtrim((string) config('config.hawki_rag_bridge_url'), '/').'/query'
+                && ($scope['dataset_id'] ?? null) === 'authorized'
+                && ($scope['excluded_doc_ids'] ?? null) === ['doc_pending_one', 'doc_pending_two'];
+        });
+    }
+
+    public function test_query_scope_excludes_only_unverified_deletion_operations(): void
+    {
+        $user = $this->actingAsApiUser();
+        $dataset = $this->createDataset('authorized', 'Authorized Dataset');
+        $this->grant($user, $dataset);
+        Http::fake([
+            '*' => Http::response(['ok' => true, 'answer' => 'Scoped answer.']),
+        ]);
+
+        foreach (['completed' => 'doc_verified_done', 'continued' => 'doc_replaced', 'abandoned' => 'doc_abandoned'] as $status => $docId) {
+            ManagedDocumentDeletion::query()->create([
+                'operation_id' => 'delete_'.sha1($status),
+                'document_id' => 'adoc_'.$status,
+                'dataset_id' => 'authorized',
+                'purpose' => 'delete',
+                'status' => $status,
+                'workflow_id' => 'managed-'.$status,
+                'workflow_input' => ['targets' => [
+                    ['output_id' => 1, 'doc_id' => $docId, 'source_id' => 'source-a'],
+                ]],
+            ]);
+        }
+
+        $this->postJson('/api/query', [
+            'dataset_id' => 'authorized',
+            'query' => 'What is in this dataset?',
+        ])->assertOk();
+
+        Http::assertSent(function (Request $request): bool {
+            $scope = $request->data()['authorized_scope'] ?? null;
+
+            return $request->url() === rtrim((string) config('config.hawki_rag_bridge_url'), '/').'/query'
+                && ($scope['excluded_doc_ids'] ?? null) === [];
+        });
     }
 
     private function grant(User $user, Dataset $dataset): void

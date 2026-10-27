@@ -79,6 +79,7 @@ class DatasetScopedGraphReadTests(unittest.TestCase):
                 dataset_id="dataset-a",
                 neo4j_namespace="graph-a",
                 limit=7,
+                excluded_doc_ids=["doc-pending"],
             )
 
         self.assertEqual(result, [])
@@ -88,6 +89,85 @@ class DatasetScopedGraphReadTests(unittest.TestCase):
             dataset_id="dataset-a",
             neo4j_namespace="graph-a",
             limit=7,
+            excluded_doc_ids=["doc-pending"],
+        )
+
+    def test_graph_utils_defaults_to_no_exclusions_for_legacy_callers(self) -> None:
+        from hawki_bridge.adapters.neo4j_reader import fetch_related_graph
+
+        with patch("hawki_bridge.adapters.neo4j_reader.Neo4jGraph") as graph_type:
+            graph_type.return_value.fetch_related.return_value = []
+
+            fetch_related_graph(
+                ["subject"],
+                dataset_id="dataset-a",
+                neo4j_namespace="graph-a",
+                limit=7,
+            )
+
+        graph_type.return_value.fetch_related.assert_called_once_with(
+            ["subject"],
+            dataset_id="dataset-a",
+            neo4j_namespace="graph-a",
+            limit=7,
+            excluded_doc_ids=(),
+        )
+
+    def test_structural_hits_drop_rows_of_pending_deletion_documents(self) -> None:
+        from hawki_bridge.adapters.neo4j_reader import build_structural_hits
+
+        class _Graph:
+            def __init__(self, *_args: Any, **_kwargs: Any) -> None:
+                pass
+
+            def search_structural(self, *_args: Any, **_kwargs: Any) -> list[Any]:
+                return [
+                    {
+                        "subject": "Live subject",
+                        "relation": "supports",
+                        "object": "Live object",
+                        "doc_id": "doc-live",
+                        "hops": 1,
+                    },
+                    {
+                        "subject": "Deleted subject",
+                        "relation": "supported",
+                        "object": "Deleted object",
+                        "doc_id": "doc-pending",
+                        "hops": 1,
+                    },
+                    {
+                        "subject": "Legacy subject",
+                        "relation": "relates",
+                        "object": "Legacy object",
+                        "doc_id": None,
+                        "hops": 2,
+                    },
+                ]
+
+            def close(self) -> None:
+                return None
+
+        with patch(
+            "hawki_bridge.adapters.neo4j_reader.Neo4jGraph",
+            side_effect=lambda *_args, **_kwargs: _Graph(),
+        ):
+            hits = build_structural_hits(
+                ["subject"],
+                dataset_id="dataset-a",
+                neo4j_namespace="graph-a",
+                limit=10,
+                hops=2,
+                include_rel_match=False,
+                excluded_doc_ids=["doc-pending"],
+            )
+
+        self.assertEqual(
+            [hit["payload"]["doc_id"] for hit in hits],
+            ["doc-live", None],
+        )
+        self.assertTrue(
+            all(hit["payload"]["dataset_id"] == "dataset-a" for hit in hits)
         )
 
     def test_two_dataset_fact_reads_bind_independent_scope_without_leakage(

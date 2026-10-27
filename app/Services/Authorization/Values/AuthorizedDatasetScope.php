@@ -13,6 +13,7 @@ final readonly class AuthorizedDatasetScope
         public string $embeddingProvider,
         public string $embeddingModel,
         public bool $graphEnabled,
+        public array $excludedDocIds = [],
     ) {}
 
     public static function fromStorageTargets(
@@ -22,6 +23,7 @@ final readonly class AuthorizedDatasetScope
         string $embeddingProvider,
         string $embeddingModel,
         bool $graphEnabled = false,
+        array $excludedDocIds = [],
     ): self {
         return new self(
             datasetId: $datasetId,
@@ -30,11 +32,15 @@ final readonly class AuthorizedDatasetScope
             embeddingProvider: $embeddingProvider,
             embeddingModel: $embeddingModel,
             graphEnabled: $graphEnabled,
+            excludedDocIds: array_values(array_unique(array_filter(
+                array_map(fn (mixed $docId): string => is_string($docId) ? trim($docId) : '', $excludedDocIds),
+                fn (string $docId): bool => $docId !== '',
+            ))),
         );
     }
 
     /**
-     * @return array{dataset_id:string,qdrant_collection:string,neo4j_namespace:string,embedding_provider:string,embedding_model:string,graph_enabled:bool}
+     * @return array{dataset_id:string,qdrant_collection:string,neo4j_namespace:string,embedding_provider:string,embedding_model:string,graph_enabled:bool,excluded_doc_ids:list<string>}
      */
     public function toArray(): array
     {
@@ -45,6 +51,7 @@ final readonly class AuthorizedDatasetScope
             'embedding_provider' => $this->embeddingProvider,
             'embedding_model' => $this->embeddingModel,
             'graph_enabled' => $this->graphEnabled,
+            'excluded_doc_ids' => $this->excludedDocIds,
         ];
     }
 }

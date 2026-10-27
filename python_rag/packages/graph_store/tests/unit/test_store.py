@@ -296,3 +296,40 @@ def test_graph_does_not_fallback_for_authentication_errors(
             )
         )
     assert driver.closed is True
+
+
+def test_fetch_related_forwards_trusted_excluded_doc_ids() -> None:
+    captured: dict[str, Any] = {}
+
+    def run_read(query: Any, *, callback: Any = None) -> list[dict[str, Any]]:
+        captured["statement"] = query.statement
+        captured["params"] = query.params
+        return []
+
+    graph = Neo4jGraph(
+        dataset_id="dataset-a",
+        neo4j_namespace="graph-a",
+        settings=SimpleNamespace(database=None, log_latency=False, perf_log=False),
+        query_executor=SimpleNamespace(run_read=run_read, run_write=None),
+    )
+
+    graph.fetch_related(
+        ["alpha"],
+        dataset_id="dataset-a",
+        neo4j_namespace="graph-a",
+        excluded_doc_ids=["doc-pending"],
+    )
+
+    assert captured["params"]["excluded_doc_ids"] == ["doc-pending"]
+    statement = captured["statement"]
+    assert "$excluded_doc_ids" in statement
+    # Shared contributions and unattributed legacy rows must survive the gate.
+    assert "any(d IN r.doc_ids WHERE NOT d IN $excluded_doc_ids)" in statement
+    assert "OR (r.doc_id IS NULL AND coalesce(size(r.doc_ids), 0) = 0)" in statement
+
+    graph.fetch_related(
+        ["alpha"],
+        dataset_id="dataset-a",
+        neo4j_namespace="graph-a",
+    )
+    assert captured["params"]["excluded_doc_ids"] == []

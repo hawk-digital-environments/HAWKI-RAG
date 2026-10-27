@@ -116,6 +116,7 @@ class DatasetScopedGraphSearchTest extends TestCase
                     'embedding_provider' => 'ollama',
                     'embedding_model' => 'bge-m3',
                     'graph_enabled' => true,
+                    'excluded_doc_ids' => [],
                 ];
         });
 

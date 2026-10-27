@@ -69,6 +69,7 @@ class BrowserDatasetScopedQueryTest extends TestCase
                 'embedding_provider' => 'ollama',
                 'embedding_model' => 'bge-m3',
                 'graph_enabled' => false,
+                'excluded_doc_ids' => [],
             ];
         });
     }

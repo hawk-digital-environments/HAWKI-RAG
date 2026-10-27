@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 import logging
 from typing import Any
@@ -25,11 +26,13 @@ def fetch_related_graph(
     dataset_id: str,
     neo4j_namespace: str,
     limit: int = 30,
+    excluded_doc_ids: Sequence[str] = (),
 ) -> list[dict[str, str]]:
     """Fetch scoped relationship records and degrade availability failures.
 
     Dataset and namespace values reach Neo4j unchanged, database fallback stays
-    disabled, and non-availability errors propagate.
+    disabled, and non-availability errors propagate. Facts contributed solely
+    by pending-deletion documents are hidden by the graph-store predicate.
     """
 
     if not terms:
@@ -42,6 +45,7 @@ def fetch_related_graph(
             dataset_id=dataset_id,
             neo4j_namespace=neo4j_namespace,
             limit=limit,
+            excluded_doc_ids=excluded_doc_ids,
         )
     except NEO4J_UNAVAILABLE_ERRORS as exc:
         logger.warning("graph:fetch_related unavailable error=%s", type(exc).__name__)
@@ -58,11 +62,19 @@ def build_structural_hits(
     limit: int,
     hops: int,
     include_rel_match: bool = False,
+    excluded_doc_ids: Sequence[str] = (),
 ) -> list[dict[str, Any]]:
-    """Project dataset-scoped Neo4j rows into bridge retrieval candidates."""
+    """Project dataset-scoped Neo4j rows into bridge retrieval candidates.
+
+    Rows attributed (via ``doc_id``/``doc_ids``) solely to pending-deletion
+    documents are dropped. Unattributed legacy rows are retained.
+    """
 
     if not terms:
         return []
+    excluded = {
+        str(doc_id).strip() for doc_id in excluded_doc_ids if str(doc_id).strip()
+    }
     graph: Neo4jGraph | None = None
     try:
         graph = Neo4jGraph(allow_database_fallback=False)
@@ -84,11 +96,13 @@ def build_structural_hits(
 
     hits: list[dict[str, Any]] = []
     for row in rows:
+        doc_id = row.get("doc_id")
+        if excluded and doc_id and doc_id in excluded:
+            continue
         subject = row.get("subject") or ""
         relation = row.get("relation") or ""
         object_ = row.get("object") or ""
         hops_used = int(row.get("hops") or 1)
-        doc_id = row.get("doc_id")
         hits.append(
             {
                 "id": f"neo4j:{subject}:{relation}:{object_}:{doc_id or ''}",
@@ -130,6 +144,7 @@ class Neo4jReader:
         dataset_id: str,
         neo4j_namespace: str,
         limit: int,
+        excluded_doc_ids: Sequence[str] = (),
     ) -> list[dict[str, str]]:
         """Forward trusted dataset and namespace scope to the Neo4j read."""
         return fetch_related_graph(
@@ -137,6 +152,7 @@ class Neo4jReader:
             dataset_id=dataset_id,
             neo4j_namespace=neo4j_namespace,
             limit=limit,
+            excluded_doc_ids=excluded_doc_ids,
         )
 
     def build_structural_hits(
@@ -148,6 +164,7 @@ class Neo4jReader:
         limit: int,
         hops: int,
         include_rel_match: bool,
+        excluded_doc_ids: Sequence[str] = (),
     ) -> list[dict[str, Any]]:
         return build_structural_hits(
             terms,
@@ -156,6 +173,7 @@ class Neo4jReader:
             limit=limit,
             hops=hops,
             include_rel_match=include_rel_match,
+            excluded_doc_ids=excluded_doc_ids,
         )
 
 

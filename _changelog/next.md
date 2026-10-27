@@ -33,6 +33,12 @@
   reject late writer retries, and prevent stale callbacks or replacement
   continuations from restoring deleted state. Cancellation alone no longer counts
   as proof that sink writes have stopped.
+- **Pending deletions are hidden from retrieval.** Documents whose deletion
+  operation is preparing, pending, or failed are excluded from every vector,
+  lexical, and graph read through the trusted query scope
+  (`authorized_scope.excluded_doc_ids`), derived from durable deletion
+  operations and closed to caller influence. Shared graph contributions with
+  at least one live document remain visible until verified cleanup.
 - **Exact historical cleanup scope.** Use recorded document/source/dataset ownership
   and physical collection/namespace evidence, including effective graph indexing
   enabled by converter passthrough. Preserve shared Neo4j provenance and reject
@@ -63,8 +69,12 @@
   dataset deletion — a Postgres generation registry as the single
   accessibility switch, generation-scoped Qdrant/Neo4j resources, and
   asynchronous teardown — plus its limits around partial deletion and
-  property-based graph generations. See the
+  property-based graph generations, the SpiceDB authorization layering, and
+  the three-phase rollout. See the
   [deletion workflow guide](../_documentation/Operations/deletion_workflow.md#future-deletion-architecture).
+- **Actionable dataset cleanup diagnostics.** The stuck-dataset 409 now lists
+  each blocking source with its status, kind, machine-readable reasons, and a
+  remediation hint, in the cleanup result and the scheduler log.
 
 - The bridge `GET /config` endpoint was removed, and the Python services no longer
 read model-selection environment variables (`RAG_DEFAULT_PROVIDER`,

@@ -251,15 +251,17 @@ def build_query_runtime(
     filters = build_scoped_query_filters(
         request.authorized_scope.dataset_id,
         request.filters,
+        request.authorized_scope.excluded_doc_ids,
     )
     logger.info(
-        "query:start provider=%s dataset_id=%s top_k=%s fast=%s smart=%s optimized=%s",
+        "query:start provider=%s dataset_id=%s top_k=%s fast=%s smart=%s optimized=%s excluded_docs=%s",
         request.provider,
         request.authorized_scope.dataset_id,
         request.top_k,
         request.fast_mode,
         request.smart_lookup,
         request.is_optimized,
+        len(request.authorized_scope.excluded_doc_ids),
     )
     return QueryRuntime(provider, vector_search, user_query, filters)
 
@@ -361,6 +363,7 @@ def retrieve_query_hits(
             limit=structural_limit(request.top_k),
             hops=hops,
             include_rel_match=request.smart_lookup,
+            excluded_doc_ids=list(request.authorized_scope.excluded_doc_ids),
         )
     )
     timings["graph_ms"] = (time.perf_counter() - started) * 1000
@@ -528,6 +531,7 @@ def retrieve_query_graph(
                 dataset_id=request.authorized_scope.dataset_id,
                 neo4j_namespace=str(request.authorized_scope.neo4j_namespace),
                 limit=term_limit,
+                excluded_doc_ids=list(request.authorized_scope.excluded_doc_ids),
             )
     timings["kg_ms"] = (time.perf_counter() - started) * 1000
     logger.info("query:kg facts=%s ms=%.2f", len(facts), timings["kg_ms"])

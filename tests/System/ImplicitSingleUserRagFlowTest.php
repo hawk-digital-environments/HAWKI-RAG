@@ -89,6 +89,7 @@ class ImplicitSingleUserRagFlowTest extends SystemTestCase
                     'embedding_provider' => 'ollama',
                     'embedding_model' => 'bge-m3',
                     'graph_enabled' => false,
+                    'excluded_doc_ids' => [],
                 ]
                 && ! array_key_exists('dataset_id', $payload);
         });

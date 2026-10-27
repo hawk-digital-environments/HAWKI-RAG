@@ -109,6 +109,7 @@ class TwoDatasetIsolationTest extends SystemTestCase
                     'embedding_provider' => 'ollama',
                     'embedding_model' => 'bge-m3',
                     'graph_enabled' => false,
+                    'excluded_doc_ids' => [],
                 ]
                 && ! array_key_exists('dataset_id', $payload)
                 && ! str_contains(json_encode($payload, JSON_THROW_ON_ERROR), 'system-beta');

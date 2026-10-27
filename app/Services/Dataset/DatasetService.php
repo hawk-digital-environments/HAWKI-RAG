@@ -15,6 +15,7 @@ use App\Services\Document\ManagedDocumentOutputDeletionService;
 use App\Services\Document\Repositories\ManagedDocumentDeletionRepository;
 use App\Services\Document\Repositories\ManagedDocumentRepository;
 use App\Services\Settings\SettingsService;
+use App\Services\TextIngestion\Values\TextIngestionMode;
 use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Database\DatabaseManager;
 use Psr\Clock\ClockInterface;
@@ -151,7 +152,8 @@ readonly class DatasetService
                 $result = $this->cleanup($dataset->dataset_id);
                 if ($result && ! ($result['dataset_deleted'] ?? false)) {
                     $this->logger->warning('Dataset cleanup remains pending.', ['dataset_id' => $dataset->dataset_id,
-                        'message' => $result['message'] ?? 'Scoped sink cleanup is incomplete.']);
+                        'message' => $result['message'] ?? 'Scoped sink cleanup is incomplete.',
+                        'blocking_sources' => array_column($result['blocking_sources'] ?? [], 'source_id')]);
                 }
             } catch (\Throwable $error) {
                 $this->logger->error('Dataset cleanup will retry on the next scan.', ['dataset_id' => $dataset->dataset_id, 'exception' => $error]);
@@ -206,9 +208,19 @@ readonly class DatasetService
                 ], $pending)),
             ];
         }
-        if ($this->datasets->unverifiedSources($dataset)->isNotEmpty()) {
+        $blocking = $this->datasets->unverifiedSources($dataset);
+        if ($blocking->isNotEmpty()) {
             return ['dataset_deleted' => false, 'status' => 409,
-                'message' => 'Dataset has unverified or untracked writers; existing cleanup and reconciliation must finish first.'];
+                'message' => 'Dataset has unverified or untracked writers; existing cleanup and reconciliation must finish first.',
+                'blocking_sources' => $blocking->map(fn ($source): array => [
+                    'source_id' => (string) $source->source_id,
+                    'index_status' => (string) $source->index_status,
+                    'kind' => TextIngestionMode::isDirectText(is_array($source->metadata) ? $source->metadata : []) ? 'direct_text' : 'managed',
+                    'reasons' => $this->datasets->unverifiedReasons($source),
+                    'remediation' => TextIngestionMode::isDirectText(is_array($source->metadata) ? $source->metadata : [])
+                        ? 'Delete this direct-text source via DELETE /api/integrations/text-ingestions/{sourceId}.'
+                        : 'Establish writer quiescence, then run documents:reconcile-writer for this source.',
+                ])->values()->all()];
         }
         $cleanup = $this->storageCleanup->deleteStorage($dataset);
         $cleanupOk = ($cleanup['qdrant']['ok'] ?? false) && ($cleanup['neo4j']['ok'] ?? false);

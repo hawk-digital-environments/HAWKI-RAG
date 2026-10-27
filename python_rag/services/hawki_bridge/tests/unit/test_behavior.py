@@ -240,6 +240,7 @@ def test_graph_route_delegates_only_the_authorized_dataset_scope() -> None:
             "dataset_id": "dataset-42",
             "neo4j_namespace": "dataset_42_graph",
             "limit": 17,
+            "excluded_doc_ids": [],
         }
     ]
 
@@ -285,6 +286,7 @@ def test_neo4j_adapter_delegates_a_read_without_changing_scope(
         "dataset_id": "dataset-42",
         "neo4j_namespace": "dataset_42_graph",
         "limit": 11,
+        "excluded_doc_ids": (),
     }
 
 

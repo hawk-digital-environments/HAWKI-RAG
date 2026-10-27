@@ -27,7 +27,23 @@ class AuthorizedDatasetScopeTest extends TestCase
             'embedding_provider' => 'ollama',
             'embedding_model' => 'hawki-ollama-embedding',
             'graph_enabled' => false,
+            'excluded_doc_ids' => [],
         ], $scope->toArray());
+    }
+
+    public function test_scope_normalizes_excluded_doc_ids_from_blocking_deletion_operations(): void
+    {
+        $scope = AuthorizedDatasetScope::fromStorageTargets(
+            datasetId: 'dataset-a',
+            qdrantCollection: 'hawki_dataset_a',
+            neo4jNamespace: 'graph_dataset_a',
+            embeddingProvider: 'ollama',
+            embeddingModel: 'hawki-ollama-embedding',
+            excludedDocIds: [' doc-a ', '', 'doc-b', 'doc-a', 42, null],
+        );
+
+        $this->assertSame(['doc-a', 'doc-b'], $scope->excludedDocIds);
+        $this->assertSame(['doc-a', 'doc-b'], $scope->toArray()['excluded_doc_ids']);
     }
 
     public function test_user_principal_requires_a_persisted_identifier(): void

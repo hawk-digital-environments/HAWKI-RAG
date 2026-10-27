@@ -7,7 +7,7 @@ storage targets. Caller metadata filters cannot change that trusted scope.
 from __future__ import annotations
 
 import math
-from typing import Any
+from typing import Any, Sequence
 
 from hawki_bridge.domain.ports import ScopedFilters
 
@@ -18,6 +18,8 @@ _RESERVED_FILTER_KEYS = frozenset(
         "authorized_scope",
         "collection",
         "dataset_id",
+        "doc_id",
+        "excluded_doc_ids",
         "graph_enabled",
         "neo4j_namespace",
         "qdrant_collection",
@@ -44,11 +46,15 @@ def normalize_filter_key(key: str) -> str:
 def build_scoped_query_filters(
     dataset_id: str,
     user_filters: dict[str, Any] | None,
+    excluded_doc_ids: Sequence[str] | None = None,
 ) -> ScopedFilters:
     """Combine sanitized user metadata with the mandatory dataset predicate.
 
     The mandatory value is written last so a caller cannot replace it. Storage
     routing keys are not user-searchable metadata and are removed as well.
+    Pending-deletion document exclusions are trusted control-plane state: they
+    are written after sanitization and cannot be supplied or removed by the
+    caller.
     """
 
     sanitized_filters: ScopedFilters = {}
@@ -68,6 +74,13 @@ def build_scoped_query_filters(
         sanitized_filters[normalized_key] = value
 
     sanitized_filters["dataset_id"] = dataset_id
+    excluded = [
+        str(doc_id).strip()
+        for doc_id in (excluded_doc_ids or [])
+        if str(doc_id).strip()
+    ]
+    if excluded:
+        sanitized_filters["excluded_doc_ids"] = list(dict.fromkeys(excluded))
     return sanitized_filters
 
 

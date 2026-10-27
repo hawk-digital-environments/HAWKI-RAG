@@ -40,21 +40,30 @@ by marking datapoints in the sinks:
 | Level | Gate | Effect |
 |---|---|---|
 | Whole dataset | `datasets.status` (`active` / `archived` / `deleted`); query and ingestion grants require `active` | Archived dataset is instantly unqueryable, uningestible, and hidden from dashboards — while its points still physically exist |
-| Managed document | Points remain queryable until **verified physical cleanup completes** (the 202 → 200 window) | See [known gaps](#known-gaps) |
+| Managed document | Pending-deletion documents are **excluded from retrieval** through the trusted query scope while their deletion operation is `preparing`, `pending`, or `failed`; points/graph facts match filters again only if the operation is abandoned without cleanup | The exclusion list rides `authorized_scope.excluded_doc_ids` into every vector, lexical, and graph read |
 | Direct-text source | Same window as documents, but deletion is synchronous (200), so it is usually immediate | — |
 
-There is deliberately **no `archived` flag inside Qdrant or Neo4j**: Neo4j
+There is deliberately **no `archived` flag written inside Qdrant or Neo4j**: Neo4j
 contributions are reference-counted on shared entities and relationships
 (`doc_ids`), and query-path flag filtering would complicate the provenance
 model. The sink contract is *physically clean, verified*: either a scope has
-a verified remaining count of zero, or it is untouched.
+a verified remaining count of zero, or it is untouched. Invisibility before
+physical cleanup is enforced by the Laravel authorization layer: the dataset
+status gate for whole datasets, and the trusted-scope exclusion list for
+pending managed-document deletions (Laravel derives it from
+`managed_document_deletions`; callers cannot influence it, and graph facts
+contributed solely by an excluded document are filtered by the graph-store
+predicate while shared contributions survive).
 
 ## Path A: Managed document (a dataset entry)
 
 `DELETE /api/documents/{documentId}` (Sanctum token plus dataset ingest
 grant), optional `Idempotency-Key`. Responses: **202** pending, **200**
 verified complete, **502** startup/failure uncertainty, **409** conflict.
-Repeat the DELETE to resume the same operation.
+Repeat the DELETE to resume the same operation. While an operation is
+pending or failed, the document is already excluded from retrieval through
+the trusted query scope — see
+[Retrieval gating](#retrieval-gating-why-deleted-content-stops-being-findable).
 
 ```text
 prepare()                              dispatch()                 applyReceipt()
@@ -193,34 +202,37 @@ physically clean (verified count of zero) or untouched.
 | 502 startup unconfirmed | `last_error`, `attempts.runs` | Repeat DELETE/PUT; the deterministic workflow ID redelivers, and signed `reuse_completed` prevents duplicate completed runs |
 | Workflow `failed` | operation `failed` | Repeat the original request — a new run may recover; activity retries keep acknowledged sink results in Temporal history |
 | 409 "writer evidence missing / unreleased" | writer ledger | Stop and reconcile: `php artisan documents:reconcile-writer {sourceId} {manifest.json} --confirm-quiescence`. The operator attests physical quiescence (all relevant workers stopped, runs closed, schedules disabled, sink requests drained); the manifest is a JSON list of `{document_id, relative_path}` records under shared storage, with an explicit `graph` boolean for historical graph-enabled records. Legacy frozen operations additionally need `--retire-operation={id}` after every owned source is reconciled and the old deletion run is closed |
-| Dataset stuck `archived`, 409 "unverified or untracked writers" | scheduler log | Usually a non-managed source (for example direct text) that is not yet `DELETED` — delete it through its own API and the scan proceeds; or an unreleased writer → reconcile |
+| Dataset stuck `archived`, 409 "unverified or untracked writers" | scheduler log | The 409 result and log now list the blocking sources with reasons and remediation. Usually a non-managed source (for example direct text) that is not yet `DELETED` — delete it through its own API and the scan proceeds; or an unreleased writer → reconcile |
 | Crash mid-scan | schedule overlap lock | The lock expires within five minutes; the next scan resumes |
 
 Limits: at most 2000 outputs per deletion operation and at most 1000 recorded
-activity attempts per source. Verification spans independent stores (Postgres,
-Qdrant, Neo4j, Temporal): tombstones and retries provide recovery, not a
-distributed transaction.
+writers. The trusted retrieval exclusion list is capped at 500 documents per
+dataset on the Laravel side (1000 at the contract boundary); a dataset with
+more concurrent pending deletions than that keeps the remainder visible until
+cleanup verifies — in practice only reachable through the dataset archive
+path, which hides everything anyway. Verification spans independent stores
+(Postgres, Qdrant, Neo4j, Temporal): tombstones and retries provide recovery,
+not a distributed transaction.
 
 ## Known gaps
 
-1. **Document-level retrieval window.** Between the 202 acceptance and
-   verified completion, a pending-deletion document remains retrievable:
-   queries filter by dataset, and there is no per-document gate. Possible
-   mitigations: a query-time exclusion list fed from
-   `managed_document_deletions`, or accepting and documenting the window.
-2. **Direct-text sources are not auto-cleaned by dataset archive.** They block
+1. **Direct-text sources are not auto-cleaned by dataset archive.** They block
    finalization with 409 until individually deleted through the integrations
-   API (which still works on an archived dataset).
-3. **Direct-text deletion bypasses the writer protocol** (see Path C).
-4. **Dataset cleanup needs the scheduler running.** Without
+   API (which still works on an archived dataset). The 409 cleanup result now
+   lists the blocking sources, their statuses, reasons, and remediation.
+   Planned fix: rollout phase 2 (direct-text unification).
+2. **Direct-text deletion bypasses the writer protocol** (see Path C).
+   Planned fix: rollout phase 2.
+3. **Dataset cleanup needs the scheduler running.** Without
    `php artisan schedule:work`, archived datasets stay archived silently.
    Confirm `php artisan schedule:list` includes `dataset-cleanup`.
-5. **Partial deletion is not generation-based.** The planned generation
+   Planned fix: rollout phase 1 (Temporal dataset workflow).
+4. **Partial deletion is not generation-based.** The planned generation
    model (see [future deletion architecture](#future-deletion-architecture))
    is whole-dataset only; deleting a document or source inside the active
    generation remains in-place scoped deletion (Path A). That is a permanent
    design element, not a gap to close.
-6. **Graph generations are property-based.** Neo4j Community runs a single
+5. **Graph generations are property-based.** Neo4j Community runs a single
    database, so per-generation isolation is a versioned `neo4j_namespace`
    property (plus index), not a separate graph per generation; teardown is
    `DETACH DELETE` by property with verified zero counts. A store with
@@ -287,15 +299,61 @@ with the generation: generations make late writes self-cleaning.
 - **Partial deletion stays in place.** Generations are whole-dataset;
   document- and source-level deletion inside the active generation remains
   the scoped, verified Path A.
+- **The trusted-scope exclusion list stays.** Generations hide whole
+  datasets; documents deleted inside the active generation keep using the
+  `excluded_doc_ids` retrieval gate described in
+  [Retrieval gating](#retrieval-gating-why-deleted-content-stops-being-findable).
+  The two mechanisms compose: the registry decides *whether the dataset is
+  reachable*, the exclusion list decides *which documents inside it are*.
 - Fail-closed evidence rules and verified-zero teardown checks.
 - Retrieval denial remains application-level. The registry is the gate; the
   stores only hold data.
+
+### Authorization layer (SpiceDB)
+
+Access-control decisions are planned to move from the Laravel grant tables
+to SpiceDB together with the Python control-plane port. This changes **who
+decides**, not **where enforcement happens**:
+
+- **Gateway prefilter stays the shape.** The Python API performs the
+  permission check, then builds the same trusted retrieval scope; retrieval
+  remains a pure executor and never sees user identity. SpiceDB replaces the
+  decision source, not the enforcement point — retrieval-time per-hit
+  permission filtering is explicitly not adopted.
+- **Permission is not availability.** A dataset with a valid permission but
+  `archived` status or no active generation stays unreachable: the lifecycle
+  gate (Postgres) composes after the permission check, and both must pass.
+- **Tombstone policy.** Permission relationships keyed by dataset identity
+  survive delete-and-recreate (`reset`); they are retired by explicit grant
+  revocation, not by deletion.
+- **Future invariant.** If document-level permission relationships are ever
+  added, verified deletion completion must retire the deleted document's
+  relationships in the same transition.
+- **Fail-closed.** An unreachable permission backend denies access, matching
+  the existing missing-grant and missing-scope behavior.
 
 ### Migration
 
 Adopt-then-version: today's `qdrant_collection` / `neo4j_namespace` columns
 become generation-1 resource pointers; the first reset creates `_g2`. No
 backfill of sink data is required.
+
+### Rollout
+
+Each phase is shippable on its own; Laravel stays until cutover.
+
+1. **Temporal dataset workflow.** `DeleteDatasetWorkflow` replaces the
+   scheduler loop — the supervisor config, `withoutOverlapping`, and the
+   silent `schedule:work` dependency (known gap 3) disappear; teardown stays
+   resource-scoped so generations drop in later without another redesign.
+2. **Direct-text unification.** Path C becomes a single-target Path A
+   operation; Laravel's direct Qdrant HTTP deletion is removed, and dataset
+   archive cleans direct-text sources automatically — closing known gaps 1
+   and 2.
+3. **Python control plane.** FastAPI owns the API and Postgres; the
+   generation registry, SpiceDB authorization, and the state-machine port
+   land here. The HMAC callback boundary stays live until cutover, and the
+   grant-event log keeps permission writes replayable.
 
 ## Where to look
 
@@ -304,6 +362,15 @@ backfill of sink data is required.
 - `app/Services/Dataset/DatasetService.php` — archive, background resume,
   finalization; `DatasetStorageCleanupService.php` — final verification only
 - `app/Services/TextIngestion/TextIngestionDeletionService.php` — Path C
+- Retrieval exclusions for pending deletions:
+  `app/Services/Document/Repositories/ManagedDocumentDeletionRepository.php`
+  (blocking doc IDs),
+  `python_rag/packages/contracts/src/hawki_rag_contracts/retrieval/auth_scope.py`
+  (`excluded_doc_ids` trusted contract),
+  `python_rag/packages/vector_store/src/hawki_vector_store/payloads.py`
+  (`must_not` filter — single choke point for every search path), and
+  `python_rag/packages/graph_store/src/hawki_graph_store/requests.py`
+  (`fetch_related` predicate)
 - `python_rag/services/hawki_workflow_worker/src/hawki_workflow_worker/workflows/delete_managed_document.py`
   — the deletion workflow
 - `python_rag/services/hawki_indexer_worker/src/hawki_indexer_worker/activities/deletion.py`

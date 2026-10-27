@@ -168,6 +168,31 @@ final class DatasetDeletionBackgroundTest extends TestCase
         app(PipelineTaskRetryService::class)->retryFailedJobs('writer-task');
     }
 
+    public function test_cleanup_reports_which_sources_block_dataset_finalization(): void
+    {
+        Dataset::query()->create(['dataset_id' => 'mixed', 'name' => 'Mixed', 'status' => 'active',
+            'qdrant_collection' => 'mixed_collection', 'neo4j_namespace' => 'mixed_namespace']);
+        IngestionSource::query()->create([
+            'source_id' => 'source-direct', 'source_url' => 'direct-text', 'dataset_id' => 'mixed',
+            'index_status' => IngestionSource::STATUS_READY,
+            'metadata' => ['ingestion_mode' => 'direct_text'],
+        ]);
+        $this->deleteJson('/api/datasets/mixed/storage')->assertAccepted();
+
+        $result = app(DatasetService::class)->cleanup('mixed');
+
+        $this->assertFalse($result['dataset_deleted']);
+        $this->assertSame(409, $result['status']);
+        $this->assertSame([[
+            'source_id' => 'source-direct',
+            'index_status' => 'ready',
+            'kind' => 'direct_text',
+            'reasons' => ['not_deleted', 'cleanup_tombstone_missing'],
+            'remediation' => 'Delete this direct-text source via DELETE /api/integrations/text-ingestions/{sourceId}.',
+        ]], $result['blocking_sources']);
+        $this->assertDatabaseHas('datasets', ['dataset_id' => 'mixed', 'status' => 'archived']);
+    }
+
     public function test_ambiguous_writer_is_preserved_without_blocking_other_archived_datasets(): void
     {
         $this->signedWriter($this->writerEvent('acquire', [$this->target()]))->assertOk();

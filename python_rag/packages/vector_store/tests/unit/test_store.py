@@ -122,6 +122,26 @@ def test_payload_and_response_primitives_preserve_existing_shapes() -> None:
     ) == ([{"id": "one"}], "next")
 
 
+def test_match_filter_hides_pending_deletion_documents_with_must_not() -> None:
+    scoped = build_match_filter(
+        {"dataset_id": "dataset-a", "excluded_doc_ids": ["doc-a", "doc-b"]}
+    )
+    assert scoped == {
+        "must": [{"key": "dataset_id", "match": {"value": "dataset-a"}}],
+        "must_not": [{"key": "doc_id", "match": {"any": ["doc-a", "doc-b"]}}],
+    }
+    # Exclusions reach every search path through the same filter builder.
+    assert build_search_body(
+        [0.1, 0.2],
+        top_k=3,
+        filters={"dataset_id": "dataset-a", "excluded_doc_ids": ["doc-a"]},
+    )["filter"]["must_not"] == [{"key": "doc_id", "match": {"any": ["doc-a"]}}]
+    # Empty exclusions keep the historical single-clause shape.
+    assert build_match_filter({"dataset_id": "dataset-a", "excluded_doc_ids": []}) == {
+        "must": [{"key": "dataset_id", "match": {"value": "dataset-a"}}]
+    }
+
+
 def test_gateway_retries_writes_only_when_operation_id_exists() -> None:
     class RecordingTransport:
         def __init__(self) -> None:

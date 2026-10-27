@@ -5,6 +5,9 @@ from __future__ import annotations
 from collections.abc import Iterable, Sequence
 from typing import Any, Iterator, Optional
 
+EXCLUDED_DOC_IDS_FILTER_KEY = "excluded_doc_ids"
+DOC_ID_PAYLOAD_KEY = "doc_id"
+
 
 def iter_batches(items: Sequence[Any], batch_size: int) -> Iterator[list[Any]]:
     size = max(1, int(batch_size))
@@ -13,13 +16,36 @@ def iter_batches(items: Sequence[Any], batch_size: int) -> Iterator[list[Any]]:
 
 
 def build_match_filter(filters: Optional[dict[str, Any]]) -> dict[str, Any]:
+    """Build a Qdrant filter from trusted match filters.
+
+    ``excluded_doc_ids`` is a trusted control-plane key (never caller
+    metadata): it becomes a ``must_not`` clause on the point ``doc_id`` so
+    pending-deletion documents are invisible to retrieval.
+    """
+
     if not filters:
         return {}
-    return {
-        "must": [
-            {"key": key, "match": {"value": value}} for key, value in filters.items()
-        ]
-    }
+    must_clauses: list[dict[str, Any]] = []
+    must_not_clauses: list[dict[str, Any]] = []
+    for key, value in filters.items():
+        if key == EXCLUDED_DOC_IDS_FILTER_KEY:
+            if isinstance(value, (list, tuple)):
+                excluded = [str(item) for item in value if str(item).strip()]
+                if excluded:
+                    must_not_clauses.append(
+                        {
+                            "key": DOC_ID_PAYLOAD_KEY,
+                            "match": {"any": excluded},
+                        }
+                    )
+            continue
+        must_clauses.append({"key": key, "match": {"value": value}})
+    filter_body: dict[str, Any] = {}
+    if must_clauses:
+        filter_body["must"] = must_clauses
+    if must_not_clauses:
+        filter_body["must_not"] = must_not_clauses
+    return filter_body
 
 
 def build_keyword_should_filter(
