@@ -151,9 +151,11 @@ readonly class DatasetService
             try {
                 $result = $this->cleanup($dataset->dataset_id);
                 if ($result && ! ($result['dataset_deleted'] ?? false)) {
+                    $blocking = $result['blocking_sources'] ?? [];
                     $this->logger->warning('Dataset cleanup remains pending.', ['dataset_id' => $dataset->dataset_id,
                         'message' => $result['message'] ?? 'Scoped sink cleanup is incomplete.',
-                        'blocking_sources' => array_column($result['blocking_sources'] ?? [], 'source_id')]);
+                        'blocking_sources' => array_slice($blocking, 0, 20),
+                        'blocking_sources_total' => count($blocking)]);
                 }
             } catch (\Throwable $error) {
                 $this->logger->error('Dataset cleanup will retry on the next scan.', ['dataset_id' => $dataset->dataset_id, 'exception' => $error]);

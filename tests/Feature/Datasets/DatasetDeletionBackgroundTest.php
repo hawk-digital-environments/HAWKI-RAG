@@ -17,6 +17,7 @@ use App\Services\Pipeline\Tasks\PipelineTaskRetryService;
 use Illuminate\Foundation\Testing\DatabaseMigrations;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Tests\Support\ManagedWriterFixture;
 use Tests\TestCase;
 
@@ -191,6 +192,33 @@ final class DatasetDeletionBackgroundTest extends TestCase
             'remediation' => 'Delete this direct-text source via DELETE /api/integrations/text-ingestions/{sourceId}.',
         ]], $result['blocking_sources']);
         $this->assertDatabaseHas('datasets', ['dataset_id' => 'mixed', 'status' => 'archived']);
+    }
+
+    public function test_scheduler_logs_the_full_blocking_source_detail(): void
+    {
+        Dataset::query()->create(['dataset_id' => 'mixed', 'name' => 'Mixed', 'status' => 'active',
+            'qdrant_collection' => 'mixed_collection', 'neo4j_namespace' => 'mixed_namespace']);
+        IngestionSource::query()->create([
+            'source_id' => 'source-direct', 'source_url' => 'direct-text', 'dataset_id' => 'mixed',
+            'index_status' => IngestionSource::STATUS_READY,
+            'metadata' => ['ingestion_mode' => 'direct_text'],
+        ]);
+        $this->deleteJson('/api/datasets/mixed/storage')->assertAccepted();
+
+        Log::spy();
+        app()->forgetInstance(DatasetService::class);
+        app(DatasetService::class)->resumeArchivedDeletions();
+
+        Log::shouldHaveReceived('warning')->once()->withArgs(
+            fn (string $message, array $context): bool => $message === 'Dataset cleanup remains pending.'
+                && $context['dataset_id'] === 'mixed'
+                && $context['blocking_sources_total'] === 1
+                && ($context['blocking_sources'][0]['source_id'] ?? null) === 'source-direct'
+                && ($context['blocking_sources'][0]['index_status'] ?? null) === 'ready'
+                && ($context['blocking_sources'][0]['kind'] ?? null) === 'direct_text'
+                && ($context['blocking_sources'][0]['reasons'] ?? null) === ['not_deleted', 'cleanup_tombstone_missing']
+                && str_contains((string) ($context['blocking_sources'][0]['remediation'] ?? ''), 'text-ingestions')
+        );
     }
 
     public function test_ambiguous_writer_is_preserved_without_blocking_other_archived_datasets(): void
