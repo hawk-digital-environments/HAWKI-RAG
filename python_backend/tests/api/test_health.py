@@ -22,8 +22,9 @@ def test_health_returns_ok() -> None:
     assert response.json() == {"status": "ok"}
 
 
-def test_health_is_the_only_endpoint() -> None:
+def test_health_and_query_are_the_only_endpoints() -> None:
     paths = app.openapi()["paths"]
 
-    assert set(paths) == {"/v1/health"}
+    assert set(paths) == {"/v1/health", "/v1/query"}
     assert set(paths["/v1/health"]) == {"get"}
+    assert set(paths["/v1/query"]) == {"post"}

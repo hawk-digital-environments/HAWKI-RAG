@@ -74,16 +74,13 @@ def test_retrieval_import_registers_no_fastapi_routes() -> None:
     )
 
 
-def test_openapi_remains_health_only() -> None:
-    """The backend OpenAPI schema must remain exactly /v1/health (no query route)."""
+def test_openapi_exposes_health_and_query_only() -> None:
+    """The backend OpenAPI schema must expose exactly health and query."""
     from hawki_backend.main import app
 
     openapi = app.openapi()
     paths = set(openapi["paths"].keys())
 
-    # Only health endpoint should exist
-    assert paths == {"/v1/health"}, f"Unexpected paths: {paths}"
-
-    # Verify no query route exists
-    assert "/query" not in str(paths), "Query route must not exist in OpenAPI"
-    assert "/v1/query" not in str(paths), "Query route must not exist in OpenAPI"
+    assert paths == {"/v1/health", "/v1/query"}, f"Unexpected paths: {paths}"
+    assert set(openapi["paths"]["/v1/health"]) == {"get"}
+    assert set(openapi["paths"]["/v1/query"]) == {"post"}

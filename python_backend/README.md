@@ -1,14 +1,15 @@
-# HAWKI backend — authentication boundary
+# HAWKI backend — public API boundary
 
 `python_backend` hosts the public API. This document describes the
-authentication boundary that protects it: how a bearer token is turned into
-an `AuthenticatedPrincipal`, and what an operator has to configure for that
-to work.
+authentication boundary that protects it, the dataset authorization boundary
+behind it, and the authenticated query endpoint built on both.
 
-The boundary is deliberately narrow. It answers *who is calling*, *for which
-tenant*, and *with which coarse scopes*. It does not decide what a caller may
-read or write. The separate dataset grant boundary that does is described in
-[Authorization Boundary](#authorization-boundary).
+The authentication boundary is deliberately narrow. It answers *who is
+calling*, *for which tenant*, and *with which coarse scopes*. It does not
+decide what a caller may read or write. The separate dataset grant boundary
+that does is described in [Authorization Boundary](#authorization-boundary),
+and the endpoint that combines both is described in
+[Query API](#query-api).
 
 ## Supported signature algorithms
 
@@ -131,6 +132,139 @@ boundary. It reports process health only; it does not report whether the
 authentication boundary is configured or whether the key service is
 reachable.
 
+## Query API
+
+`POST /v1/query` is the authenticated, authorized, dataset-scoped query
+endpoint. It authenticates the caller, authorizes the logical dataset, resolves
+trusted physical scope on the server, and runs the shared retrieval use case
+**in process**. It never calls the bridge over HTTP and imports no bridge code.
+
+The route is synchronous. The grant lookup and the retrieval pipeline are
+blocking, so FastAPI runs the handler in its worker threadpool.
+
+### Request
+
+The body carries logical query input only. Unknown fields are rejected with
+`422`, so a caller cannot smuggle a physical or model-selection field in.
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `dataset_id` | string | — | Required. 1–191 characters, `[A-Za-z0-9][A-Za-z0-9._:-]*`. |
+| `query` | string | — | Required. 1–4000 characters. |
+| `top_k` | integer | `5` | 1–100. |
+| `is_optimized` | boolean | `false` | |
+| `generate` | boolean | `true` | |
+| `fast_mode` | boolean | `true` | `true` disables graph retrieval. |
+| `smart_lookup` | boolean | `false` | |
+| `preferred_tags` | string list | `null` | At most 20, each 1–80 characters. |
+| `filters` | object | `{}` | At most 20 scalar metadata filters; keys ≤ 200 characters, string values ≤ 4000. |
+
+`tenant_id`, `authorized_scope`, `auth_context`, `collection`,
+`qdrant_collection`/`qdrantCollection`, `neo4j_namespace`/`neo4jNamespace`,
+`graph_enabled`, `provider`, `embedding_provider`, `embedding_model`,
+`chat_model`, `graph_model` and `vision_model` are not accepted. The tenant
+comes only from the authenticated principal.
+
+Filter keys that name authorization or storage state (`dataset_id`,
+`authorized_scope`, `auth_context`, `collection`, `qdrant_collection`,
+`neo4j_namespace`, `graph_enabled`, `provider`, `embedding_provider`,
+`embedding_model`, `chat_model`, `graph_model`, `vision_model`) are rejected
+with `422`. The mandatory `dataset_id` predicate is always added by the
+server, so a caller filter cannot replace it.
+
+### Scope registry
+
+The registry is **migration-time** configuration: a server-owned source of
+physical dataset scope that an operator fills from the deployment inventory.
+It is never read from Laravel's `public` tables, and this service never writes
+it. It exists so the Python query API can resolve trusted Qdrant and Neo4j
+targets before Python owns dataset metadata itself. A later migration epoch
+is expected to replace it with a Python-owned dataset registry.
+
+All settings are read from `HAWKI_BACKEND_QUERY_*` variables. A present but
+incomplete or invalid configuration refuses to start; an unknown
+`HAWKI_BACKEND_QUERY_*` name is rejected rather than ignored.
+
+| Variable | Required | Default | Notes |
+|---|---|---|---|
+| `HAWKI_BACKEND_QUERY_DATASETS` | yes | — | JSON object keyed by logical `dataset_id`. |
+| `HAWKI_BACKEND_QUERY_MODELS` | yes | — | JSON object keyed by model provider. |
+| `HAWKI_BACKEND_QUERY_RERANKER` | no | `none` | Server-owned default reranker mode. |
+| `HAWKI_BACKEND_QUERY_RERANK_TOP_N` | no | `20` | 1–1000. |
+| `HAWKI_BACKEND_QUERY_RERANKER_MIX_MODE` | no | `true` | Boolean. |
+| `HAWKI_BACKEND_QUERY_RERANKER_MIX_WEIGHT` | no | `0.5` | Finite, 0.0–1.0. |
+
+A dataset entry requires `qdrant_collection`, `embedding_provider` and
+`embedding_model`. `graph_enabled` defaults to `false`; when it is `true`,
+`neo4j_namespace` is required. Every provider a dataset references must have
+a model entry with `chat_model` and `vision_model`.
+
+```json
+{
+  "example-dataset": {
+    "qdrant_collection": "hawki_example_dataset",
+    "neo4j_namespace": "hawki_example_dataset",
+    "embedding_provider": "ollama",
+    "embedding_model": "bge-m3",
+    "graph_enabled": true
+  }
+}
+```
+
+```json
+{
+  "ollama": {
+    "chat_model": "llama3.1",
+    "vision_model": "llava"
+  }
+}
+```
+
+The internal retrieval request is built from the public input plus this
+configuration. `provider` is the authorized scope's `embedding_provider`; the
+embedding model comes from the scope; the chat and vision models come from the
+provider entry; reranker and mix defaults come from the settings. The client
+has no way to override any of them.
+
+When the query service itself is not configured, the route fails closed with
+`503 query_unavailable`.
+
+### Error contract
+
+Authentication responses are unchanged:
+
+| Situation | Status | Body |
+|---|---|---|
+| No credential | 401 | `{"detail": "authentication_required"}` |
+| Invalid credential | 401 | `{"detail": "invalid_token"}` |
+| Missing `rag:query` | 403 | `{"detail": "insufficient_scope"}` |
+| Authentication unavailable | 503 | `{"detail": "authentication_unavailable"}` |
+
+Query responses use a stable, non-leaking envelope:
+
+| Situation | Status | `detail.error` |
+|---|---|---|
+| Authorization denied (missing, wrong tenant, inactive) | 404 | `dataset_not_found` |
+| Authorization infrastructure unavailable | 503 | `authorization_unavailable` |
+| Authorized dataset without valid scope | 409 | `dataset_not_ready` |
+| Vector store not ready | 409 | `dataset_not_ready` |
+| Invalid query / unsupported model provider | 400 | `invalid_query` |
+| Embedding generation failed | 500 | `embedding_failed` |
+| Answer generation failed | 502 | `answer_generation_failed` |
+| Unexpected query failure | 500 | `query_failed` |
+
+Bodies never carry a raw database error, a provider message, a credential, a
+collection name, a namespace name, or tenant/grant internals.
+
+### Response
+
+The response is the shared logical `QueryResponse` shape: `ok`, `count`,
+`hits`, `kg`, `answer` and `retrieval`. Before it leaves the public boundary,
+physical identifiers (`qdrant_collection`, `neo4j_namespace` and their camel
+case variants) are removed recursively from hits and nested payloads. The
+shared retrieval package keeps its current output semantics; sanitization
+happens only here.
+
 ## Authorization Boundary
 
 `hawki_backend.authorization` answers one question: may an authenticated
@@ -186,8 +320,8 @@ the persistence branch.
 
 ### Current surface
 
-No HTTP route uses this policy yet. The only route is the public
-`GET /v1/health`.
+`POST /v1/query` uses this policy. It is the only route that authorizes a
+dataset today; `GET /v1/health` stays public. See [Query API](#query-api).
 
 ## Persistence Boundary
 
@@ -273,8 +407,9 @@ port, an account or a schema name.
 
 The tables start empty. There is no data migration and no dual write: the
 backend's own grant management populates them, and the rows of the legacy
-application stay where they are. No HTTP route uses the reader yet, and
-`main.py` does not construct it.
+application stay where they are. `main.py` builds the reader when
+`HAWKI_BACKEND_DB_DSN` is configured, and `POST /v1/query` consults it
+through `LocalGrantPolicy`.
 
 > **A dedicated database account is required before the reader is wired
 > into production.** The connection above is expected to use an account

@@ -753,10 +753,13 @@ def test_health_stays_public(
     assert response.json() == {"status": "ok"}
 
 
-def test_the_production_application_exposes_only_health() -> None:
+def test_the_production_application_exposes_health_and_query() -> None:
     from hawki_backend.main import app
 
-    assert set(app.openapi()["paths"]) == {"/v1/health"}
+    paths = app.openapi()["paths"]
+    assert set(paths) == {"/v1/health", "/v1/query"}
+    assert set(paths["/v1/health"]) == {"get"}
+    assert set(paths["/v1/query"]) == {"post"}
 
 
 # ---------------------------------------------------------------------- logging

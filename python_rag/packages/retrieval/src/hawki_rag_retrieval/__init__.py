@@ -2,6 +2,7 @@
 
 __version__ = "0.1.0"
 
+from hawki_rag_retrieval.composition import build_query_dependencies
 from hawki_rag_retrieval.dependencies import QueryDependencies
 from hawki_rag_retrieval.errors import (
     AnswerGenerationError,
@@ -37,5 +38,6 @@ __all__ = [
     "UnsupportedModelProviderError",
     "VectorSearchFactory",
     "VectorSearchPort",
+    "build_query_dependencies",
     "execute_authorized_query",
 ]
