@@ -7,10 +7,17 @@ from pathlib import Path
 
 BACKEND_SRC = Path(__file__).resolve().parents[1] / "src"
 QUERY_MODULE = BACKEND_SRC / "hawki_backend" / "api" / "v1" / "query.py"
+PARITY_DIR = Path(__file__).resolve().parent / "parity"
+PARITY_FIXTURE = PARITY_DIR / "fixtures" / "laravel_query_parity.json"
 
 # Fail closed if the source tree moves: an empty scan must not pass vacuously.
 assert BACKEND_SRC.is_dir(), f"Expected backend source tree: {BACKEND_SRC}"
 assert QUERY_MODULE.is_file(), f"Expected query module: {QUERY_MODULE}"
+assert PARITY_DIR.is_dir(), f"Expected parity test package: {PARITY_DIR}"
+assert PARITY_FIXTURE.is_file(), f"Expected parity fixture: {PARITY_FIXTURE}"
+
+# The parity fixture is test-only. Production source must never reach for it.
+_PARITY_REFERENCES = ("tests/parity", "laravel_query_parity", "parity")
 
 # Names that belong to the shared retrieval implementation. Defining one of
 # them in python_backend would mean the use case was copied instead of called.
@@ -101,3 +108,45 @@ def test_python_backend_does_not_reimplement_retrieval() -> None:
                     violations.append(f"{path}:{node.lineno} defines {node.name}")
 
     assert not violations, f"python_backend reimplements retrieval: {violations}"
+
+
+def test_python_backend_sources_do_not_reference_parity_artifacts() -> None:
+    """The parity fixture is test-only and must never be read at request time."""
+
+    violations: list[str] = []
+    for path in _backend_sources():
+        text = path.read_text(encoding="utf-8").lower()
+        for reference in _PARITY_REFERENCES:
+            if reference in text:
+                violations.append(f"{path}: references {reference}")
+
+    assert not violations, (
+        f"python_backend production sources depend on parity artifacts: {violations}"
+    )
+
+
+def test_python_backend_does_not_import_test_modules() -> None:
+    """Production code must not import test packages or parity helpers."""
+
+    violations: list[str] = []
+    for path in _backend_sources():
+        for imported in _imports(path):
+            if imported == "tests" or imported.startswith("tests."):
+                violations.append(f"{path}: imports {imported}")
+            if "parity" in imported:
+                violations.append(f"{path}: imports {imported}")
+
+    assert not violations, f"python_backend imports test code: {violations}"
+
+
+def test_python_backend_does_not_address_legacy_public_dataset_tables() -> None:
+    """Both legacy dataset table names are checked independently."""
+
+    for reference in _LEGACY_TABLE_REFERENCES:
+        violations = [
+            str(path)
+            for path in _backend_sources()
+            if reference in path.read_text(encoding="utf-8")
+        ]
+
+        assert not violations, f"python_backend references {reference}: {violations}"

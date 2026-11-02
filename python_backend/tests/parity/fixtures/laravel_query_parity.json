@@ -1,0 +1,1867 @@
+{
+  "_meta": {
+    "purpose": "Canonical, test-only characterization of the Laravel POST /api/query contract used to verify request, scope, execution and public-contract parity of the Python POST /v1/query boundary before Epoch 7 cutover.",
+    "captured_from": [
+      "app/Http/Requests/Rag/QueryDatasetRequest.php",
+      "app/Http/Controllers/API/HawkiRagProxyController.php",
+      "app/Services/Rag/RagProxyService.php",
+      "app/Services/Authorization/DatasetQueryAuthorizationService.php",
+      "app/Services/Authorization/Values/AuthorizedDatasetScope.php",
+      "app/Services/Settings/SettingsService.php",
+      "app/Http/Middleware/RequireBrowserQueryPrincipal.php",
+      "python_rag/services/hawki_bridge/src/hawki_bridge/http/schemas.py",
+      "python_rag/services/hawki_bridge/src/hawki_bridge/http/routers/query.py",
+      "python_rag/services/hawki_bridge/src/hawki_bridge/http/errors/query.py",
+      "python_rag/services/hawki_bridge/src/hawki_bridge/http/errors/handlers.py",
+      "python_rag/services/hawki_bridge/src/hawki_bridge/settings.py",
+      "python_rag/packages/retrieval/src/hawki_rag_retrieval/query/execution.py"
+    ],
+    "source_tests": [
+      "Laravel feature tests for POST /api/query (Laravel-owned, not modified by this epoch)",
+      "python_backend/tests/api/test_query.py",
+      "python_backend/tests/parity/test_request_parity.py",
+      "python_backend/tests/parity/test_scope_parity.py",
+      "python_backend/tests/parity/test_response_parity.py",
+      "python_backend/tests/parity/test_error_parity.py"
+    ],
+    "inventory_version": 1,
+    "normalization_rules": [
+      "An omitted optional field and the documented contract default are the same value.",
+      "A null optional field and an absent optional field are the same value.",
+      "Laravel omits preferred_tags and filters when they are empty; the bridge and Python default them to null and {}.",
+      "Laravel does not send structural_hops; the bridge contract defaults it to null.",
+      "For a graph-enabled dataset in fast mode, Laravel derives authorized_scope.graph_enabled=false while Python keeps the registry value and suppresses graph access during execution. The effective response must match; the scope value difference is covered by D-GRAPH-DERIVATION.",
+      "Laravel does not send reranker, rerank_top_n, mix_mode or mix_weight; the bridge fills them from RERANKER_MODE, 20, RERANKER_MIX_MODE and RERANKER_MIX_WEIGHT. The captured laravel.request is the effective bridge request after that defaulting.",
+      "retrieval.timings_ms is wall-clock telemetry and is dropped before comparing deterministic responses.",
+      "Hit scores are compared at at most 6 decimal places; ordering and ids are compared exactly.",
+      "Physical storage identifiers are removed from the Python response by design; the Laravel golden retains them. See D1."
+    ],
+    "accepted_deviations": [
+      {
+        "id": "D1",
+        "name": "physical_identifier_stripping",
+        "description": "Python recursively removes qdrant_collection, qdrantCollection, neo4j_namespace and neo4jNamespace from every hit payload. Laravel passes the bridge response through unchanged. Python must not leak them for compatibility.",
+        "classification": "ACCEPTED_DEVIATION"
+      },
+      {
+        "id": "D2",
+        "name": "authentication_mechanism_and_envelope",
+        "description": "Laravel resolves a browser/session or single active user and answers flat message bodies. Python requires a JWT bearer token with the rag:query scope and answers detail envelopes. This is cutover blocker G12.",
+        "classification": "CUTOVER_BLOCKER",
+        "blocker": "G12"
+      },
+      {
+        "id": "D3",
+        "name": "validation_envelope",
+        "description": "Both sides reject invalid input with 422, but Laravel answers {message,errors} while Python answers FastAPI's {detail:[...]}. The rejection and status must match; the envelope is accepted.",
+        "classification": "ACCEPTED_DEVIATION"
+      },
+      {
+        "id": "D4",
+        "name": "query_error_envelope",
+        "description": "Laravel query errors are flat {message,error} for Laravel-native refusals and nested {error:{type,status,message,path,request_id,code}} for bridge failures. Python answers {detail:{error,message}}. Stable status and error code must match where recorded; the envelope is accepted.",
+        "classification": "ACCEPTED_DEVIATION"
+      },
+      {
+        "id": "D5",
+        "name": "unknown_top_level_fields",
+        "description": "Laravel silently ignores top-level fields that are not in QueryDatasetRequest rules. Python rejects every unknown top-level field with 422. Python is intentionally stricter; no unknown field may ever become trusted scope.",
+        "classification": "ACCEPTED_DEVIATION"
+      },
+      {
+        "id": "D6",
+        "name": "embedding_provider_filter",
+        "description": "Laravel forwards filters.embedding_provider to the bridge because embedding_provider is not in its reserved filter list. Python rejects it as a reserved authorization/storage key with 422. Python must not accept it.",
+        "classification": "ACCEPTED_DEVIATION"
+      },
+      {
+        "id": "D7",
+        "name": "filter_key_whitespace_normalization",
+        "description": "Laravel forwards a filter key with surrounding whitespace unchanged; the shared scoped-filter builder strips it at execution time. Python strips dict keys at validation. The effective scoped filter is identical, but the raw internal QueryRequest.filters differs for whitespace-padded keys.",
+        "classification": "ACCEPTED_DEVIATION"
+      },
+      {
+        "id": "D8",
+        "name": "vector_store_not_ready_status",
+        "description": "The bridge maps DatasetVectorStoreNotReadyError to 503 and Laravel preserves it. Python maps it to 409 dataset_not_ready. The error code matches; the status is accepted.",
+        "classification": "ACCEPTED_DEVIATION"
+      },
+      {
+        "id": "D9",
+        "name": "authorization_unavailable_status",
+        "description": "Laravel leaves an unreachable grant store as a generic 500. Python answers 503 authorization_unavailable and never treats an outage as a denial.",
+        "classification": "ACCEPTED_DEVIATION"
+      },
+      {
+        "id": "D10",
+        "name": "generic_non_leaking_messages",
+        "description": "Laravel passes bridge messages and, when the bridge is unreachable, the raw exception text to the client. Python returns stable generic messages and never echoes provider, database, collection or namespace detail.",
+        "classification": "ACCEPTED_DEVIATION"
+      },
+      {
+        "id": "D11",
+        "name": "bridge_unreachable_surface_removed",
+        "description": "Laravel has a 502 'Failed to reach HAWKI RAG bridge' branch that leaks the exception message. Python executes retrieval in-process and has no equivalent failure surface. This is an improvement, not a regression.",
+        "classification": "ACCEPTED_DEVIATION"
+      },
+      {
+        "id": "D12",
+        "name": "generation_disabled_by_shared_default",
+        "description": "The shared retrieval package enables generation only when RAG_GENERATE_ANSWER is true and defaults it to false; the deployment currently sets RAG_GENERATE_ANSWER=true. Both sides must receive the same value at cutover. See C-RAGENV.",
+        "classification": "CUTOVER_BLOCKER",
+        "blocker": "C-RAGENV"
+      },
+      {
+        "id": "D-GRAPH-DERIVATION",
+        "name": "graph_enabled_derivation",
+        "description": "Laravel derives graph_enabled per request from !fast_mode, a non-empty namespace and graph readiness. Python resolves graph_enabled from the static registry and suppresses graph access later in shared execution when fast_mode is true. The effective execution result must match; the internal scope value may differ for graph-enabled datasets in fast mode.",
+        "classification": "ACCEPTED_DEVIATION"
+      }
+    ]
+  },
+  "registry": {
+    "environ": {
+      "HAWKI_BACKEND_QUERY_DATASETS": "{\"dataset-alpha\":{\"qdrant_collection\":\"hawki_dataset_alpha\",\"neo4j_namespace\":\"hawki_dataset_alpha\",\"embedding_provider\":\"ollama\",\"embedding_model\":\"bge-m3\",\"graph_enabled\":false},\"dataset-graph\":{\"qdrant_collection\":\"hawki_dataset_graph\",\"neo4j_namespace\":\"hawki_dataset_graph\",\"embedding_provider\":\"openai\",\"embedding_model\":\"text-embedding-3-large\",\"graph_enabled\":true}}",
+      "HAWKI_BACKEND_QUERY_MODELS": "{\"ollama\":{\"chat_model\":\"llama3.1\",\"vision_model\":\"llava\"},\"openai\":{\"chat_model\":\"gpt-4o-mini\",\"vision_model\":\"gpt-4o\"}}",
+      "HAWKI_BACKEND_QUERY_RERANKER": "none",
+      "HAWKI_BACKEND_QUERY_RERANK_TOP_N": "20",
+      "HAWKI_BACKEND_QUERY_RERANKER_MIX_MODE": "true",
+      "HAWKI_BACKEND_QUERY_RERANKER_MIX_WEIGHT": "0.5"
+    }
+  },
+  "dataset_inventory": [
+    {
+      "dataset_id": "dataset-alpha",
+      "qdrant_collection": "hawki_dataset_alpha",
+      "neo4j_namespace": "hawki_dataset_alpha",
+      "embedding_provider": "ollama",
+      "embedding_model": "bge-m3",
+      "graph_enabled": false,
+      "chat_model": "llama3.1",
+      "vision_model": "llava",
+      "expected_reranker": "none",
+      "rerank_top_n": 20,
+      "mix_mode": true,
+      "mix_weight": 0.5
+    },
+    {
+      "dataset_id": "dataset-graph",
+      "qdrant_collection": "hawki_dataset_graph",
+      "neo4j_namespace": "hawki_dataset_graph",
+      "embedding_provider": "openai",
+      "embedding_model": "text-embedding-3-large",
+      "graph_enabled": true,
+      "chat_model": "gpt-4o-mini",
+      "vision_model": "gpt-4o",
+      "expected_reranker": "none",
+      "rerank_top_n": 20,
+      "mix_mode": true,
+      "mix_weight": 0.5
+    }
+  ],
+  "request_cases": [
+    {
+      "id": "defaults_minimal",
+      "description": "Only the two required public fields; every other value is the contract default.",
+      "python_body": {
+        "dataset_id": "dataset-alpha",
+        "query": "delta epsilon"
+      },
+      "laravel": {
+        "outcome": "request",
+        "request": {
+          "query": "delta epsilon",
+          "authorized_scope": {
+            "dataset_id": "dataset-alpha",
+            "qdrant_collection": "hawki_dataset_alpha",
+            "neo4j_namespace": "hawki_dataset_alpha",
+            "embedding_provider": "ollama",
+            "embedding_model": "bge-m3",
+            "graph_enabled": false
+          },
+          "top_k": 5,
+          "provider": "ollama",
+          "chat_model": "llama3.1",
+          "vision_model": "llava",
+          "generate": true,
+          "is_optimized": false,
+          "fast_mode": true,
+          "smart_lookup": false,
+          "reranker": "none",
+          "rerank_top_n": 20,
+          "mix_mode": true,
+          "mix_weight": 0.5
+        }
+      }
+    },
+    {
+      "id": "all_public_fields",
+      "description": "Every public query field is present and explicitly non-default.",
+      "python_body": {
+        "dataset_id": "dataset-graph",
+        "query": "show the workflow diagram",
+        "top_k": 4,
+        "is_optimized": true,
+        "generate": false,
+        "fast_mode": false,
+        "smart_lookup": true,
+        "preferred_tags": ["handbook", "guide"],
+        "filters": {"source": "handbook", "year": 2025, "draft": false}
+      },
+      "laravel": {
+        "outcome": "request",
+        "request": {
+          "query": "show the workflow diagram",
+          "authorized_scope": {
+            "dataset_id": "dataset-graph",
+            "qdrant_collection": "hawki_dataset_graph",
+            "neo4j_namespace": "hawki_dataset_graph",
+            "embedding_provider": "openai",
+            "embedding_model": "text-embedding-3-large",
+            "graph_enabled": true
+          },
+          "top_k": 4,
+          "provider": "openai",
+          "chat_model": "gpt-4o-mini",
+          "vision_model": "gpt-4o",
+          "filters": {"source": "handbook", "year": 2025, "draft": false},
+          "generate": false,
+          "is_optimized": true,
+          "fast_mode": false,
+          "smart_lookup": true,
+          "preferred_tags": ["handbook", "guide"],
+          "reranker": "none",
+          "rerank_top_n": 20,
+          "mix_mode": true,
+          "mix_weight": 0.5
+        }
+      }
+    },
+    {
+      "id": "fast_mode_suppresses_graph_scope",
+      "description": "Laravel derives graph_enabled=false from fast_mode even for a graph-enabled dataset.",
+      "python_body": {
+        "dataset_id": "dataset-graph",
+        "query": "delta epsilon",
+        "fast_mode": true
+      },
+      "laravel": {
+        "outcome": "request",
+        "request": {
+          "query": "delta epsilon",
+          "authorized_scope": {
+            "dataset_id": "dataset-graph",
+            "qdrant_collection": "hawki_dataset_graph",
+            "neo4j_namespace": "hawki_dataset_graph",
+            "embedding_provider": "openai",
+            "embedding_model": "text-embedding-3-large",
+            "graph_enabled": false
+          },
+          "top_k": 5,
+          "provider": "openai",
+          "chat_model": "gpt-4o-mini",
+          "vision_model": "gpt-4o",
+          "generate": true,
+          "is_optimized": false,
+          "fast_mode": true,
+          "smart_lookup": false,
+          "reranker": "none",
+          "rerank_top_n": 20,
+          "mix_mode": true,
+          "mix_weight": 0.5
+        }
+      },
+      "_deviation": {
+        "id": "D-GRAPH-DERIVATION",
+        "description": "Python resolves graph_enabled from the static registry (true for dataset-graph) and suppresses graph access later in shared execution when fast_mode is true. The effective request therefore differs from Laravel's derived scope; response parity covers the execution result.",
+        "classification": "ACCEPTED_DEVIATION",
+        "ignored_paths": ["authorized_scope.graph_enabled"],
+        "python_expected_paths": {
+          "authorized_scope.graph_enabled": true
+        }
+      }
+    },
+    {
+      "id": "metadata_filters",
+      "description": "Scalar metadata filters of each allowed type.",
+      "python_body": {
+        "dataset_id": "dataset-alpha",
+        "query": "delta epsilon",
+        "filters": {"source": "handbook", "page": 3, "draft": false}
+      },
+      "laravel": {
+        "outcome": "request",
+        "request": {
+          "query": "delta epsilon",
+          "authorized_scope": {
+            "dataset_id": "dataset-alpha",
+            "qdrant_collection": "hawki_dataset_alpha",
+            "neo4j_namespace": "hawki_dataset_alpha",
+            "embedding_provider": "ollama",
+            "embedding_model": "bge-m3",
+            "graph_enabled": false
+          },
+          "top_k": 5,
+          "provider": "ollama",
+          "chat_model": "llama3.1",
+          "vision_model": "llava",
+          "filters": {"source": "handbook", "page": 3, "draft": false},
+          "generate": true,
+          "is_optimized": false,
+          "fast_mode": true,
+          "smart_lookup": false,
+          "reranker": "none",
+          "rerank_top_n": 20,
+          "mix_mode": true,
+          "mix_weight": 0.5
+        }
+      }
+    },
+    {
+      "id": "preferred_tags",
+      "description": "Preferred tags are forwarded unchanged when non-empty.",
+      "python_body": {
+        "dataset_id": "dataset-alpha",
+        "query": "delta epsilon",
+        "preferred_tags": ["handbook", "guide"]
+      },
+      "laravel": {
+        "outcome": "request",
+        "request": {
+          "query": "delta epsilon",
+          "authorized_scope": {
+            "dataset_id": "dataset-alpha",
+            "qdrant_collection": "hawki_dataset_alpha",
+            "neo4j_namespace": "hawki_dataset_alpha",
+            "embedding_provider": "ollama",
+            "embedding_model": "bge-m3",
+            "graph_enabled": false
+          },
+          "top_k": 5,
+          "provider": "ollama",
+          "chat_model": "llama3.1",
+          "vision_model": "llava",
+          "generate": true,
+          "is_optimized": false,
+          "fast_mode": true,
+          "smart_lookup": false,
+          "preferred_tags": ["handbook", "guide"],
+          "reranker": "none",
+          "rerank_top_n": 20,
+          "mix_mode": true,
+          "mix_weight": 0.5
+        }
+      }
+    },
+    {
+      "id": "optimized_smart_lookup",
+      "description": "Both retrieval switches set to true.",
+      "python_body": {
+        "dataset_id": "dataset-alpha",
+        "query": "delta epsilon",
+        "is_optimized": true,
+        "smart_lookup": true
+      },
+      "laravel": {
+        "outcome": "request",
+        "request": {
+          "query": "delta epsilon",
+          "authorized_scope": {
+            "dataset_id": "dataset-alpha",
+            "qdrant_collection": "hawki_dataset_alpha",
+            "neo4j_namespace": "hawki_dataset_alpha",
+            "embedding_provider": "ollama",
+            "embedding_model": "bge-m3",
+            "graph_enabled": false
+          },
+          "top_k": 5,
+          "provider": "ollama",
+          "chat_model": "llama3.1",
+          "vision_model": "llava",
+          "generate": true,
+          "is_optimized": true,
+          "fast_mode": true,
+          "smart_lookup": true,
+          "reranker": "none",
+          "rerank_top_n": 20,
+          "mix_mode": true,
+          "mix_weight": 0.5
+        }
+      }
+    },
+    {
+      "id": "top_k_lower_bound",
+      "description": "top_k=1 is accepted by both boundaries.",
+      "python_body": {
+        "dataset_id": "dataset-alpha",
+        "query": "delta epsilon",
+        "top_k": 1
+      },
+      "laravel": {
+        "outcome": "request",
+        "request": {
+          "query": "delta epsilon",
+          "authorized_scope": {
+            "dataset_id": "dataset-alpha",
+            "qdrant_collection": "hawki_dataset_alpha",
+            "neo4j_namespace": "hawki_dataset_alpha",
+            "embedding_provider": "ollama",
+            "embedding_model": "bge-m3",
+            "graph_enabled": false
+          },
+          "top_k": 1,
+          "provider": "ollama",
+          "chat_model": "llama3.1",
+          "vision_model": "llava",
+          "generate": true,
+          "is_optimized": false,
+          "fast_mode": true,
+          "smart_lookup": false,
+          "reranker": "none",
+          "rerank_top_n": 20,
+          "mix_mode": true,
+          "mix_weight": 0.5
+        }
+      }
+    },
+    {
+      "id": "top_k_upper_bound",
+      "description": "top_k=100 is accepted by both boundaries.",
+      "python_body": {
+        "dataset_id": "dataset-alpha",
+        "query": "delta epsilon",
+        "top_k": 100
+      },
+      "laravel": {
+        "outcome": "request",
+        "request": {
+          "query": "delta epsilon",
+          "authorized_scope": {
+            "dataset_id": "dataset-alpha",
+            "qdrant_collection": "hawki_dataset_alpha",
+            "neo4j_namespace": "hawki_dataset_alpha",
+            "embedding_provider": "ollama",
+            "embedding_model": "bge-m3",
+            "graph_enabled": false
+          },
+          "top_k": 100,
+          "provider": "ollama",
+          "chat_model": "llama3.1",
+          "vision_model": "llava",
+          "generate": true,
+          "is_optimized": false,
+          "fast_mode": true,
+          "smart_lookup": false,
+          "reranker": "none",
+          "rerank_top_n": 20,
+          "mix_mode": true,
+          "mix_weight": 0.5
+        }
+      }
+    },
+    {
+      "id": "query_whitespace",
+      "description": "Laravel TrimStrings and Python str_strip_whitespace both trim the query.",
+      "python_body": {
+        "dataset_id": "dataset-alpha",
+        "query": "  delta epsilon  "
+      },
+      "laravel": {
+        "outcome": "request",
+        "request": {
+          "query": "delta epsilon",
+          "authorized_scope": {
+            "dataset_id": "dataset-alpha",
+            "qdrant_collection": "hawki_dataset_alpha",
+            "neo4j_namespace": "hawki_dataset_alpha",
+            "embedding_provider": "ollama",
+            "embedding_model": "bge-m3",
+            "graph_enabled": false
+          },
+          "top_k": 5,
+          "provider": "ollama",
+          "chat_model": "llama3.1",
+          "vision_model": "llava",
+          "generate": true,
+          "is_optimized": false,
+          "fast_mode": true,
+          "smart_lookup": false,
+          "reranker": "none",
+          "rerank_top_n": 20,
+          "mix_mode": true,
+          "mix_weight": 0.5
+        }
+      }
+    },
+    {
+      "id": "filter_value_whitespace",
+      "description": "Both sides trim filter string values before the request is built.",
+      "python_body": {
+        "dataset_id": "dataset-alpha",
+        "query": "delta epsilon",
+        "filters": {"source": "  handbook  "}
+      },
+      "laravel": {
+        "outcome": "request",
+        "request": {
+          "query": "delta epsilon",
+          "authorized_scope": {
+            "dataset_id": "dataset-alpha",
+            "qdrant_collection": "hawki_dataset_alpha",
+            "neo4j_namespace": "hawki_dataset_alpha",
+            "embedding_provider": "ollama",
+            "embedding_model": "bge-m3",
+            "graph_enabled": false
+          },
+          "top_k": 5,
+          "provider": "ollama",
+          "chat_model": "llama3.1",
+          "vision_model": "llava",
+          "filters": {"source": "handbook"},
+          "generate": true,
+          "is_optimized": false,
+          "fast_mode": true,
+          "smart_lookup": false,
+          "reranker": "none",
+          "rerank_top_n": 20,
+          "mix_mode": true,
+          "mix_weight": 0.5
+        }
+      }
+    },
+    {
+      "id": "filter_key_whitespace",
+      "description": "A whitespace-padded filter key is forwarded raw by Laravel and stripped by Python.",
+      "python_body": {
+        "dataset_id": "dataset-alpha",
+        "query": "delta epsilon",
+        "filters": {"  source  ": "handbook"}
+      },
+      "laravel": {
+        "outcome": "request",
+        "request": {
+          "query": "delta epsilon",
+          "authorized_scope": {
+            "dataset_id": "dataset-alpha",
+            "qdrant_collection": "hawki_dataset_alpha",
+            "neo4j_namespace": "hawki_dataset_alpha",
+            "embedding_provider": "ollama",
+            "embedding_model": "bge-m3",
+            "graph_enabled": false
+          },
+          "top_k": 5,
+          "provider": "ollama",
+          "chat_model": "llama3.1",
+          "vision_model": "llava",
+          "filters": {"  source  ": "handbook"},
+          "generate": true,
+          "is_optimized": false,
+          "fast_mode": true,
+          "smart_lookup": false,
+          "reranker": "none",
+          "rerank_top_n": 20,
+          "mix_mode": true,
+          "mix_weight": 0.5
+        }
+      },
+      "_deviation": {
+        "id": "D7",
+        "description": "The raw internal filters differ; the shared scoped-filter builder strips the Laravel key, so the effective filter is identical.",
+        "classification": "ACCEPTED_DEVIATION",
+        "ignored_paths": ["filters"],
+        "python_expected_paths": {
+          "filters": {"source": "handbook"}
+        }
+      }
+    },
+    {
+      "id": "unknown_top_level_field",
+      "description": "Laravel ignores a top-level field it has no rule for; Python rejects it.",
+      "python_body": {
+        "dataset_id": "dataset-alpha",
+        "query": "delta epsilon",
+        "embedding_provider": "openai"
+      },
+      "laravel": {
+        "outcome": "request",
+        "request": {
+          "query": "delta epsilon",
+          "authorized_scope": {
+            "dataset_id": "dataset-alpha",
+            "qdrant_collection": "hawki_dataset_alpha",
+            "neo4j_namespace": "hawki_dataset_alpha",
+            "embedding_provider": "ollama",
+            "embedding_model": "bge-m3",
+            "graph_enabled": false
+          },
+          "top_k": 5,
+          "provider": "ollama",
+          "chat_model": "llama3.1",
+          "vision_model": "llava",
+          "generate": true,
+          "is_optimized": false,
+          "fast_mode": true,
+          "smart_lookup": false,
+          "reranker": "none",
+          "rerank_top_n": 20,
+          "mix_mode": true,
+          "mix_weight": 0.5
+        }
+      },
+      "python_expectation": {"outcome": "rejected", "status": 422},
+      "_deviation": {
+        "id": "D5",
+        "description": "Python is intentionally stricter and must never let an unknown field become trusted scope.",
+        "classification": "ACCEPTED_DEVIATION"
+      }
+    },
+    {
+      "id": "embedding_provider_filter",
+      "description": "Laravel forwards this filter; Python rejects it as a reserved key.",
+      "python_body": {
+        "dataset_id": "dataset-alpha",
+        "query": "delta epsilon",
+        "filters": {"embedding_provider": "openai"}
+      },
+      "laravel": {
+        "outcome": "request",
+        "request": {
+          "query": "delta epsilon",
+          "authorized_scope": {
+            "dataset_id": "dataset-alpha",
+            "qdrant_collection": "hawki_dataset_alpha",
+            "neo4j_namespace": "hawki_dataset_alpha",
+            "embedding_provider": "ollama",
+            "embedding_model": "bge-m3",
+            "graph_enabled": false
+          },
+          "top_k": 5,
+          "provider": "ollama",
+          "chat_model": "llama3.1",
+          "vision_model": "llava",
+          "filters": {"embedding_provider": "openai"},
+          "generate": true,
+          "is_optimized": false,
+          "fast_mode": true,
+          "smart_lookup": false,
+          "reranker": "none",
+          "rerank_top_n": 20,
+          "mix_mode": true,
+          "mix_weight": 0.5
+        }
+      },
+      "python_expectation": {"outcome": "rejected", "status": 422},
+      "_deviation": {
+        "id": "D6",
+        "description": "Python treats embedding_provider as an authorization-owned key and rejects it.",
+        "classification": "ACCEPTED_DEVIATION"
+      }
+    },
+    {
+      "id": "forbidden_top_level_field",
+      "description": "Both sides reject a client-supplied physical identifier.",
+      "python_body": {
+        "dataset_id": "dataset-alpha",
+        "query": "delta epsilon",
+        "qdrant_collection": "leaked-collection"
+      },
+      "laravel": {
+        "outcome": "rejected",
+        "status": 422,
+        "request": null
+      },
+      "python_expectation": {"outcome": "rejected", "status": 422},
+      "_deviation": {
+        "id": "D3",
+        "description": "Rejection and status match; the validation envelope differs.",
+        "classification": "ACCEPTED_DEVIATION"
+      }
+    },
+    {
+      "id": "forbidden_filter_key",
+      "description": "Both sides reject a reserved authorization filter key.",
+      "python_body": {
+        "dataset_id": "dataset-alpha",
+        "query": "delta epsilon",
+        "filters": {"dataset_id": "dataset-beta"}
+      },
+      "laravel": {
+        "outcome": "rejected",
+        "status": 422,
+        "request": null
+      },
+      "python_expectation": {"outcome": "rejected", "status": 422},
+      "_deviation": {
+        "id": "D3",
+        "description": "Rejection and status match; the validation envelope differs.",
+        "classification": "ACCEPTED_DEVIATION"
+      }
+    },
+    {
+      "id": "empty_filter_key",
+      "description": "Both sides reject a blank filter key.",
+      "python_body": {
+        "dataset_id": "dataset-alpha",
+        "query": "delta epsilon",
+        "filters": {"  ": "handbook"}
+      },
+      "laravel": {
+        "outcome": "rejected",
+        "status": 422,
+        "request": null
+      },
+      "python_expectation": {"outcome": "rejected", "status": 422},
+      "_deviation": {
+        "id": "D3",
+        "description": "Rejection and status match; the validation envelope differs.",
+        "classification": "ACCEPTED_DEVIATION"
+      }
+    },
+    {
+      "id": "empty_preferred_tag",
+      "description": "Laravel converts the empty string to null and rejects it; Python rejects it directly.",
+      "python_body": {
+        "dataset_id": "dataset-alpha",
+        "query": "delta epsilon",
+        "preferred_tags": ["handbook", ""]
+      },
+      "laravel": {
+        "outcome": "rejected",
+        "status": 422,
+        "request": null
+      },
+      "python_expectation": {"outcome": "rejected", "status": 422},
+      "_deviation": {
+        "id": "D3",
+        "description": "Rejection and status match; the validation envelope differs.",
+        "classification": "ACCEPTED_DEVIATION"
+      }
+    },
+    {
+      "id": "invalid_top_k_zero",
+      "description": "Both sides reject top_k=0.",
+      "python_body": {
+        "dataset_id": "dataset-alpha",
+        "query": "delta epsilon",
+        "top_k": 0
+      },
+      "laravel": {
+        "outcome": "rejected",
+        "status": 422,
+        "request": null
+      },
+      "python_expectation": {"outcome": "rejected", "status": 422},
+      "_deviation": {
+        "id": "D3",
+        "description": "Rejection and status match; the validation envelope differs.",
+        "classification": "ACCEPTED_DEVIATION"
+      }
+    },
+    {
+      "id": "invalid_top_k_too_large",
+      "description": "Both sides reject top_k=101.",
+      "python_body": {
+        "dataset_id": "dataset-alpha",
+        "query": "delta epsilon",
+        "top_k": 101
+      },
+      "laravel": {
+        "outcome": "rejected",
+        "status": 422,
+        "request": null
+      },
+      "python_expectation": {"outcome": "rejected", "status": 422},
+      "_deviation": {
+        "id": "D3",
+        "description": "Rejection and status match; the validation envelope differs.",
+        "classification": "ACCEPTED_DEVIATION"
+      }
+    },
+    {
+      "id": "invalid_dataset_id",
+      "description": "Both sides reject a dataset id that does not match the public pattern.",
+      "python_body": {
+        "dataset_id": "-leading-dash",
+        "query": "delta epsilon"
+      },
+      "laravel": {
+        "outcome": "rejected",
+        "status": 422,
+        "request": null
+      },
+      "python_expectation": {"outcome": "rejected", "status": 422},
+      "_deviation": {
+        "id": "D3",
+        "description": "Rejection and status match; the validation envelope differs.",
+        "classification": "ACCEPTED_DEVIATION"
+      }
+    }
+  ],
+  "response_cases": [
+    {
+      "id": "semantic_success",
+      "description": "Simple semantic query on a graph-disabled dataset with generation disabled.",
+      "request": {
+        "dataset_id": "dataset-alpha",
+        "query": "delta epsilon",
+        "top_k": 3,
+        "generate": false
+      },
+      "env": {},
+      "dependencies": {
+        "semantic_hits": [
+          {
+            "id": "point-alpha-1",
+            "score": 0.9,
+            "payload": {
+              "content": "alpha beta guide",
+              "doc_id": "doc-alpha",
+              "title": "Alpha",
+              "page_url": "https://x.test/a",
+              "dataset_id": "dataset-alpha"
+            }
+          },
+          {
+            "id": "point-alpha-2",
+            "score": 0.6,
+            "payload": {
+              "content": "beta supplement",
+              "doc_id": "doc-beta",
+              "title": "Beta",
+              "page_url": "https://x.test/b",
+              "dataset_id": "dataset-alpha"
+            }
+          },
+          {
+            "id": "point-alpha-3",
+            "score": 0.3,
+            "payload": {
+              "content": "gamma appendix",
+              "doc_id": "doc-gamma",
+              "title": "Gamma",
+              "page_url": "https://x.test/c",
+              "dataset_id": "dataset-alpha"
+            }
+          }
+        ],
+        "lexical_hits": [],
+        "secondary_hits": [],
+        "structural_hits": [],
+        "facts": [],
+        "chat_answer": ""
+      },
+      "expected": {
+        "ok": true,
+        "count": 3,
+        "hits": [
+          {
+            "id": "point-alpha-1",
+            "score": 0.54,
+            "payload": {
+              "content": "alpha beta guide",
+              "doc_id": "doc-alpha",
+              "title": "Alpha",
+              "page_url": "https://x.test/a",
+              "dataset_id": "dataset-alpha"
+            }
+          },
+          {
+            "id": "point-alpha-2",
+            "score": 0.36,
+            "payload": {
+              "content": "beta supplement",
+              "doc_id": "doc-beta",
+              "title": "Beta",
+              "page_url": "https://x.test/b",
+              "dataset_id": "dataset-alpha"
+            }
+          },
+          {
+            "id": "point-alpha-3",
+            "score": 0.18,
+            "payload": {
+              "content": "gamma appendix",
+              "doc_id": "doc-gamma",
+              "title": "Gamma",
+              "page_url": "https://x.test/c",
+              "dataset_id": "dataset-alpha"
+            }
+          }
+        ],
+        "kg": [],
+        "answer": "",
+        "retrieval": {
+          "dataset_id": "dataset-alpha",
+          "graph_enabled": false,
+          "graph_disabled_reason": "fast_mode",
+          "iterative_pass": false,
+          "expansion_terms": [],
+          "context_tokens_used": 25,
+          "context_docs": 3,
+          "context_trimmed": [],
+          "max_context_tokens": 2800,
+          "rewrite": {
+            "query": null,
+            "high_level_keys": [],
+            "low_level_keys": [],
+            "entity_terms": [],
+            "modality_hints": [],
+            "enabled": false
+          },
+          "timings_ms": {
+            "rewrite": 0.0,
+            "embed": 0.0,
+            "qdrant": 0.0,
+            "graph": 0.0,
+            "rerank": 0.0,
+            "kg": 0.0,
+            "generation": 0.0
+          }
+        }
+      }
+    },
+    {
+      "id": "lexical_fallback",
+      "description": "Semantic retrieval is empty; a keyword hit is merged, lexically boosted and returned through the iterative second pass.",
+      "request": {
+        "dataset_id": "dataset-alpha",
+        "query": "alpha beta",
+        "top_k": 3,
+        "generate": false
+      },
+      "env": {},
+      "dependencies": {
+        "semantic_hits": [],
+        "lexical_hits": [
+          {
+            "id": "point-lex-1",
+            "score": 0.9,
+            "payload": {
+              "content": "alpha beta keyword",
+              "doc_id": "doc-lex",
+              "title": "Alpha",
+              "page_url": "https://x.test/lex",
+              "dataset_id": "dataset-alpha"
+            }
+          }
+        ],
+        "secondary_hits": [],
+        "structural_hits": [],
+        "facts": [],
+        "chat_answer": ""
+      },
+      "expected": {
+        "ok": true,
+        "count": 1,
+        "hits": [
+          {
+            "id": "point-lex-1",
+            "score": 0.72,
+            "payload": {
+              "content": "alpha beta keyword",
+              "doc_id": "doc-lex",
+              "title": "Alpha",
+              "page_url": "https://x.test/lex",
+              "dataset_id": "dataset-alpha"
+            }
+          }
+        ],
+        "kg": [],
+        "answer": "",
+        "retrieval": {
+          "dataset_id": "dataset-alpha",
+          "graph_enabled": false,
+          "graph_disabled_reason": "fast_mode",
+          "iterative_pass": true,
+          "expansion_terms": ["alpha", "beta", "keyword"],
+          "context_tokens_used": 9,
+          "context_docs": 1,
+          "context_trimmed": [],
+          "max_context_tokens": 2800,
+          "rewrite": {
+            "query": null,
+            "high_level_keys": [],
+            "low_level_keys": [],
+            "entity_terms": [],
+            "modality_hints": [],
+            "enabled": false
+          },
+          "timings_ms": {
+            "rewrite": 0.0,
+            "embed": 0.0,
+            "qdrant": 0.0,
+            "graph": 0.0,
+            "rerank": 0.0,
+            "kg": 0.0,
+            "generation": 0.0
+          }
+        }
+      }
+    },
+    {
+      "id": "graph_disabled_by_fast_mode",
+      "description": "Graph-enabled dataset queried in fast mode: graph access is suppressed and no structural hit is read.",
+      "request": {
+        "dataset_id": "dataset-graph",
+        "query": "delta epsilon",
+        "top_k": 3,
+        "generate": false,
+        "fast_mode": true
+      },
+      "env": {},
+      "dependencies": {
+        "semantic_hits": [
+          {
+            "id": "point-graph-1",
+            "score": 0.9,
+            "payload": {
+              "content": "alpha beta guide",
+              "doc_id": "doc-alpha",
+              "title": "Alpha",
+              "page_url": "https://x.test/a",
+              "dataset_id": "dataset-graph"
+            }
+          },
+          {
+            "id": "point-graph-2",
+            "score": 0.6,
+            "payload": {
+              "content": "beta supplement",
+              "doc_id": "doc-beta",
+              "title": "Beta",
+              "page_url": "https://x.test/b",
+              "dataset_id": "dataset-graph"
+            }
+          },
+          {
+            "id": "point-graph-3",
+            "score": 0.3,
+            "payload": {
+              "content": "gamma appendix",
+              "doc_id": "doc-gamma",
+              "title": "Gamma",
+              "page_url": "https://x.test/c",
+              "dataset_id": "dataset-graph"
+            }
+          }
+        ],
+        "lexical_hits": [],
+        "secondary_hits": [],
+        "structural_hits": [
+          {
+            "id": "neo4j:doc-graph:must-not-be-read",
+            "score": 0.8,
+            "payload": {
+              "component_type": "relation",
+              "doc_id": "doc-graph",
+              "dataset_id": "dataset-graph",
+              "neo4j_namespace": "hawki_dataset_graph",
+              "content": "alpha relates to omega",
+              "title": "Graph relation",
+              "page_url": "https://x.test/g"
+            }
+          }
+        ],
+        "facts": [
+          {"subject": "Alpha", "relation": "relates_to", "object": "Omega"}
+        ],
+        "chat_answer": ""
+      },
+      "expected": {
+        "ok": true,
+        "count": 3,
+        "hits": [
+          {
+            "id": "point-graph-1",
+            "score": 0.54,
+            "payload": {
+              "content": "alpha beta guide",
+              "doc_id": "doc-alpha",
+              "title": "Alpha",
+              "page_url": "https://x.test/a",
+              "dataset_id": "dataset-graph"
+            }
+          },
+          {
+            "id": "point-graph-2",
+            "score": 0.36,
+            "payload": {
+              "content": "beta supplement",
+              "doc_id": "doc-beta",
+              "title": "Beta",
+              "page_url": "https://x.test/b",
+              "dataset_id": "dataset-graph"
+            }
+          },
+          {
+            "id": "point-graph-3",
+            "score": 0.18,
+            "payload": {
+              "content": "gamma appendix",
+              "doc_id": "doc-gamma",
+              "title": "Gamma",
+              "page_url": "https://x.test/c",
+              "dataset_id": "dataset-graph"
+            }
+          }
+        ],
+        "kg": [],
+        "answer": "",
+        "retrieval": {
+          "dataset_id": "dataset-graph",
+          "graph_enabled": false,
+          "graph_disabled_reason": "fast_mode",
+          "iterative_pass": false,
+          "expansion_terms": [],
+          "context_tokens_used": 25,
+          "context_docs": 3,
+          "context_trimmed": [],
+          "max_context_tokens": 2800,
+          "rewrite": {
+            "query": null,
+            "high_level_keys": [],
+            "low_level_keys": [],
+            "entity_terms": [],
+            "modality_hints": [],
+            "enabled": false
+          },
+          "timings_ms": {
+            "rewrite": 0.0,
+            "embed": 0.0,
+            "qdrant": 0.0,
+            "graph": 0.0,
+            "rerank": 0.0,
+            "kg": 0.0,
+            "generation": 0.0
+          }
+        }
+      }
+    },
+    {
+      "id": "graph_enabled",
+      "description": "Graph-enabled dataset in full mode: structural scores fuse with semantic hits and a graph-only document is returned.",
+      "request": {
+        "dataset_id": "dataset-graph",
+        "query": "delta epsilon",
+        "top_k": 4,
+        "generate": false,
+        "fast_mode": false
+      },
+      "env": {},
+      "dependencies": {
+        "semantic_hits": [
+          {
+            "id": "point-graph-1",
+            "score": 0.9,
+            "payload": {
+              "content": "alpha beta guide",
+              "doc_id": "doc-alpha",
+              "title": "Alpha",
+              "page_url": "https://x.test/a",
+              "dataset_id": "dataset-graph"
+            }
+          },
+          {
+            "id": "point-graph-2",
+            "score": 0.6,
+            "payload": {
+              "content": "beta supplement",
+              "doc_id": "doc-beta",
+              "title": "Beta",
+              "page_url": "https://x.test/b",
+              "dataset_id": "dataset-graph"
+            }
+          },
+          {
+            "id": "point-graph-3",
+            "score": 0.3,
+            "payload": {
+              "content": "gamma appendix",
+              "doc_id": "doc-gamma",
+              "title": "Gamma",
+              "page_url": "https://x.test/c",
+              "dataset_id": "dataset-graph"
+            }
+          }
+        ],
+        "lexical_hits": [],
+        "secondary_hits": [],
+        "structural_hits": [
+          {
+            "id": "neo4j:doc-alpha:r1",
+            "score": 0.5,
+            "payload": {
+              "component_type": "relation",
+              "doc_id": "doc-alpha",
+              "dataset_id": "dataset-graph",
+              "neo4j_namespace": "hawki_dataset_graph",
+              "content": "alpha relates omega",
+              "title": "Alpha relation",
+              "page_url": "https://x.test/ar"
+            }
+          },
+          {
+            "id": "neo4j:doc-graph:r1",
+            "score": 0.8,
+            "payload": {
+              "component_type": "relation",
+              "doc_id": "doc-graph",
+              "dataset_id": "dataset-graph",
+              "neo4j_namespace": "hawki_dataset_graph",
+              "content": "alpha relates to omega",
+              "title": "Graph relation",
+              "page_url": "https://x.test/g"
+            }
+          }
+        ],
+        "facts": [
+          {"subject": "Alpha", "relation": "relates_to", "object": "Omega"}
+        ],
+        "chat_answer": ""
+      },
+      "expected": {
+        "ok": true,
+        "count": 4,
+        "hits": [
+          {
+            "id": "point-graph-1",
+            "score": 0.74,
+            "payload": {
+              "content": "alpha beta guide",
+              "doc_id": "doc-alpha",
+              "title": "Alpha",
+              "page_url": "https://x.test/a",
+              "dataset_id": "dataset-graph"
+            }
+          },
+          {
+            "id": "point-graph-2",
+            "score": 0.36,
+            "payload": {
+              "content": "beta supplement",
+              "doc_id": "doc-beta",
+              "title": "Beta",
+              "page_url": "https://x.test/b",
+              "dataset_id": "dataset-graph"
+            }
+          },
+          {
+            "id": "neo4j:doc-graph:r1",
+            "score": 0.32,
+            "payload": {
+              "component_type": "relation",
+              "doc_id": "doc-graph",
+              "dataset_id": "dataset-graph",
+              "neo4j_namespace": "hawki_dataset_graph",
+              "content": "alpha relates to omega",
+              "title": "Graph relation",
+              "page_url": "https://x.test/g"
+            }
+          },
+          {
+            "id": "point-graph-3",
+            "score": 0.18,
+            "payload": {
+              "content": "gamma appendix",
+              "doc_id": "doc-gamma",
+              "title": "Gamma",
+              "page_url": "https://x.test/c",
+              "dataset_id": "dataset-graph"
+            }
+          }
+        ],
+        "kg": [
+          {"subject": "Alpha", "relation": "relates_to", "object": "Omega"}
+        ],
+        "answer": "",
+        "retrieval": {
+          "dataset_id": "dataset-graph",
+          "graph_enabled": true,
+          "graph_disabled_reason": null,
+          "iterative_pass": false,
+          "expansion_terms": [],
+          "context_tokens_used": 37,
+          "context_docs": 4,
+          "context_trimmed": [],
+          "max_context_tokens": 2800,
+          "rewrite": {
+            "query": null,
+            "high_level_keys": [],
+            "low_level_keys": [],
+            "entity_terms": [],
+            "modality_hints": [],
+            "enabled": false
+          },
+          "timings_ms": {
+            "rewrite": 0.0,
+            "embed": 0.0,
+            "qdrant": 0.0,
+            "graph": 0.0,
+            "rerank": 0.0,
+            "kg": 0.0,
+            "generation": 0.0
+          }
+        }
+      }
+    },
+    {
+      "id": "no_hits",
+      "description": "No semantic, lexical or graph hit: empty result, empty answer, and one iterative pass with no expansion terms.",
+      "request": {
+        "dataset_id": "dataset-alpha",
+        "query": "delta epsilon",
+        "top_k": 3,
+        "generate": false
+      },
+      "env": {},
+      "dependencies": {
+        "semantic_hits": [],
+        "lexical_hits": [],
+        "secondary_hits": [],
+        "structural_hits": [],
+        "facts": [],
+        "chat_answer": ""
+      },
+      "expected": {
+        "ok": true,
+        "count": 0,
+        "hits": [],
+        "kg": [],
+        "answer": "",
+        "retrieval": {
+          "dataset_id": "dataset-alpha",
+          "graph_enabled": false,
+          "graph_disabled_reason": "fast_mode",
+          "iterative_pass": true,
+          "expansion_terms": [],
+          "context_tokens_used": 0,
+          "context_docs": 0,
+          "context_trimmed": [],
+          "max_context_tokens": 2800,
+          "rewrite": {
+            "query": null,
+            "high_level_keys": [],
+            "low_level_keys": [],
+            "entity_terms": [],
+            "modality_hints": [],
+            "enabled": false
+          },
+          "timings_ms": {
+            "rewrite": 0.0,
+            "embed": 0.0,
+            "qdrant": 0.0,
+            "graph": 0.0,
+            "rerank": 0.0,
+            "kg": 0.0,
+            "generation": 0.0
+          }
+        }
+      }
+    },
+    {
+      "id": "generation_enabled",
+      "description": "Generation is enabled for the process and the request, so the deterministic provider answer is returned.",
+      "request": {
+        "dataset_id": "dataset-alpha",
+        "query": "delta epsilon",
+        "top_k": 3,
+        "generate": true
+      },
+      "env": {"RAG_GENERATE_ANSWER": "true"},
+      "dependencies": {
+        "semantic_hits": [
+          {
+            "id": "point-alpha-1",
+            "score": 0.9,
+            "payload": {
+              "content": "alpha beta guide",
+              "doc_id": "doc-alpha",
+              "title": "Alpha",
+              "page_url": "https://x.test/a",
+              "dataset_id": "dataset-alpha"
+            }
+          },
+          {
+            "id": "point-alpha-2",
+            "score": 0.6,
+            "payload": {
+              "content": "beta supplement",
+              "doc_id": "doc-beta",
+              "title": "Beta",
+              "page_url": "https://x.test/b",
+              "dataset_id": "dataset-alpha"
+            }
+          },
+          {
+            "id": "point-alpha-3",
+            "score": 0.3,
+            "payload": {
+              "content": "gamma appendix",
+              "doc_id": "doc-gamma",
+              "title": "Gamma",
+              "page_url": "https://x.test/c",
+              "dataset_id": "dataset-alpha"
+            }
+          }
+        ],
+        "lexical_hits": [],
+        "secondary_hits": [],
+        "structural_hits": [],
+        "facts": [],
+        "chat_answer": "Alpha beta guidance."
+      },
+      "expected": {
+        "ok": true,
+        "count": 3,
+        "hits": [
+          {
+            "id": "point-alpha-1",
+            "score": 0.54,
+            "payload": {
+              "content": "alpha beta guide",
+              "doc_id": "doc-alpha",
+              "title": "Alpha",
+              "page_url": "https://x.test/a",
+              "dataset_id": "dataset-alpha"
+            }
+          },
+          {
+            "id": "point-alpha-2",
+            "score": 0.36,
+            "payload": {
+              "content": "beta supplement",
+              "doc_id": "doc-beta",
+              "title": "Beta",
+              "page_url": "https://x.test/b",
+              "dataset_id": "dataset-alpha"
+            }
+          },
+          {
+            "id": "point-alpha-3",
+            "score": 0.18,
+            "payload": {
+              "content": "gamma appendix",
+              "doc_id": "doc-gamma",
+              "title": "Gamma",
+              "page_url": "https://x.test/c",
+              "dataset_id": "dataset-alpha"
+            }
+          }
+        ],
+        "kg": [],
+        "answer": "Alpha beta guidance.",
+        "retrieval": {
+          "dataset_id": "dataset-alpha",
+          "graph_enabled": false,
+          "graph_disabled_reason": "fast_mode",
+          "iterative_pass": false,
+          "expansion_terms": [],
+          "context_tokens_used": 25,
+          "context_docs": 3,
+          "context_trimmed": [],
+          "max_context_tokens": 2800,
+          "rewrite": {
+            "query": null,
+            "high_level_keys": [],
+            "low_level_keys": [],
+            "entity_terms": [],
+            "modality_hints": [],
+            "enabled": false
+          },
+          "timings_ms": {
+            "rewrite": 0.0,
+            "embed": 0.0,
+            "qdrant": 0.0,
+            "graph": 0.0,
+            "rerank": 0.0,
+            "kg": 0.0,
+            "generation": 0.0
+          }
+        }
+      }
+    }
+  ],
+  "error_cases": [
+    {
+      "id": "validation",
+      "description": "A malformed public body is rejected before execution.",
+      "trigger": "invalid_top_k",
+      "laravel": {
+        "status": 422,
+        "code": null,
+        "envelope": "laravel_validation"
+      },
+      "python": {
+        "status": 422,
+        "code": null,
+        "envelope": "fastapi_validation"
+      },
+      "classification": "ACCEPTED_DEVIATION",
+      "must_match": ["status"],
+      "_deviation": "D3"
+    },
+    {
+      "id": "authentication",
+      "description": "No usable credential.",
+      "trigger": "no_token",
+      "laravel": {
+        "status": 503,
+        "code": "single_user_query_principal_unavailable",
+        "envelope": "laravel_flat"
+      },
+      "python": {
+        "status": 401,
+        "code": "authentication_required",
+        "envelope": "fastapi_detail_string"
+      },
+      "classification": "CUTOVER_BLOCKER",
+      "blocker": "G12",
+      "must_match": []
+    },
+    {
+      "id": "insufficient_scope",
+      "description": "Authenticated principal without the query permission.",
+      "trigger": "missing_scope",
+      "laravel": {
+        "status": 403,
+        "code": null,
+        "envelope": "laravel_flat"
+      },
+      "python": {
+        "status": 403,
+        "code": "insufficient_scope",
+        "envelope": "fastapi_detail_string"
+      },
+      "classification": "CUTOVER_BLOCKER",
+      "blocker": "G12",
+      "must_match": ["status"]
+    },
+    {
+      "id": "authorization_denial",
+      "description": "The principal holds no grant for the logical dataset.",
+      "trigger": "missing_grant",
+      "laravel": {
+        "status": 404,
+        "code": "dataset_not_found",
+        "envelope": "laravel_flat"
+      },
+      "python": {
+        "status": 404,
+        "code": "dataset_not_found",
+        "envelope": "fastapi_detail_object"
+      },
+      "classification": "ACCEPTED_DEVIATION",
+      "must_match": ["status", "code"],
+      "_deviation": "D4"
+    },
+    {
+      "id": "authorization_unavailable",
+      "description": "The grant store cannot be consulted.",
+      "trigger": "grant_store_unavailable",
+      "laravel": {
+        "status": 500,
+        "code": null,
+        "envelope": "laravel_flat"
+      },
+      "python": {
+        "status": 503,
+        "code": "authorization_unavailable",
+        "envelope": "fastapi_detail_object"
+      },
+      "classification": "ACCEPTED_DEVIATION",
+      "must_match": [],
+      "_deviation": "D9"
+    },
+    {
+      "id": "dataset_scope_missing",
+      "description": "The dataset is authorized but the trusted scope registry has no entry.",
+      "trigger": "missing_scope_registry",
+      "laravel": {
+        "status": 409,
+        "code": "dataset_not_ready",
+        "envelope": "laravel_flat"
+      },
+      "python": {
+        "status": 409,
+        "code": "dataset_not_ready",
+        "envelope": "fastapi_detail_object"
+      },
+      "classification": "ACCEPTED_DEVIATION",
+      "must_match": ["status", "code"],
+      "_deviation": "D4"
+    },
+    {
+      "id": "vector_store_not_ready",
+      "description": "The authorized Qdrant collection is unavailable.",
+      "trigger": "vector_store_not_ready",
+      "laravel": {
+        "status": 503,
+        "code": "dataset_not_ready",
+        "envelope": "bridge_nested"
+      },
+      "python": {
+        "status": 409,
+        "code": "dataset_not_ready",
+        "envelope": "fastapi_detail_object"
+      },
+      "classification": "ACCEPTED_DEVIATION",
+      "must_match": ["code"],
+      "_deviation": "D8"
+    },
+    {
+      "id": "invalid_query",
+      "description": "The shared query use case rejects the query.",
+      "trigger": "invalid_query",
+      "laravel": {
+        "status": 400,
+        "code": null,
+        "envelope": "bridge_nested"
+      },
+      "python": {
+        "status": 400,
+        "code": "invalid_query",
+        "envelope": "fastapi_detail_object"
+      },
+      "classification": "ACCEPTED_DEVIATION",
+      "must_match": ["status"],
+      "_deviation": "D4"
+    },
+    {
+      "id": "unsupported_provider",
+      "description": "The dataset's embedding provider cannot be resolved.",
+      "trigger": "unsupported_provider",
+      "laravel": {
+        "status": 500,
+        "code": null,
+        "envelope": "laravel_flat"
+      },
+      "python": {
+        "status": 400,
+        "code": "invalid_query",
+        "envelope": "fastapi_detail_object"
+      },
+      "classification": "ACCEPTED_DEVIATION",
+      "must_match": [],
+      "_deviation": "D10"
+    },
+    {
+      "id": "embedding_failure",
+      "description": "The embedding provider fails while preparing the query.",
+      "trigger": "embedding_failure",
+      "laravel": {
+        "status": 500,
+        "code": null,
+        "envelope": "bridge_nested"
+      },
+      "python": {
+        "status": 500,
+        "code": "embedding_failed",
+        "envelope": "fastapi_detail_object"
+      },
+      "classification": "ACCEPTED_DEVIATION",
+      "must_match": ["status"],
+      "_deviation": "D4"
+    },
+    {
+      "id": "generation_failure",
+      "description": "The chat provider fails while generating the answer.",
+      "trigger": "generation_failure",
+      "laravel": {
+        "status": 502,
+        "code": null,
+        "envelope": "bridge_nested"
+      },
+      "python": {
+        "status": 502,
+        "code": "answer_generation_failed",
+        "envelope": "fastapi_detail_object"
+      },
+      "classification": "ACCEPTED_DEVIATION",
+      "must_match": ["status"],
+      "_deviation": "D4"
+    },
+    {
+      "id": "unexpected_retrieval_failure",
+      "description": "An unexpected failure occurs inside retrieval.",
+      "trigger": "unexpected_failure",
+      "laravel": {
+        "status": 500,
+        "code": null,
+        "envelope": "bridge_nested"
+      },
+      "python": {
+        "status": 500,
+        "code": "query_failed",
+        "envelope": "fastapi_detail_object"
+      },
+      "classification": "ACCEPTED_DEVIATION",
+      "must_match": ["status"],
+      "_deviation": "D4"
+    }
+  ],
+  "graph_parity": {
+    "laravel_derivation": "graph_enabled = !fast_mode && non-empty neo4j_namespace && DatasetGraphAvailabilityRepository::hasReadyGraph(dataset_id)",
+    "python_derivation": "graph_enabled comes from the static server registry; shared execution suppresses structural reads and graph facts when fast_mode is true",
+    "classification": "ACCEPTED_DEVIATION",
+    "cases": [
+      {
+        "id": "graph_disabled_dataset",
+        "inventory": "dataset-alpha",
+        "fast_mode": true,
+        "effective_graph_enabled": false,
+        "reason": "graph_not_configured"
+      },
+      {
+        "id": "graph_enabled_dataset",
+        "inventory": "dataset-graph",
+        "fast_mode": false,
+        "effective_graph_enabled": true,
+        "reason": null
+      },
+      {
+        "id": "graph_enabled_fast_mode",
+        "inventory": "dataset-graph",
+        "fast_mode": true,
+        "effective_graph_enabled": false,
+        "reason": "fast_mode"
+      }
+    ],
+    "invariant": "graph_enabled=true requires a non-empty neo4j_namespace on both sides"
+  },
+  "configuration_risks": {
+    "shared_rag_env": [
+      "RAG_GENERATE_ANSWER",
+      "RAG_FUSION_SEM_WEIGHT",
+      "RAG_FUSION_STR_WEIGHT",
+      "RAG_MIN_SCORE",
+      "RAG_MIN_SCORE_FALLBACK",
+      "RAG_CONTEXT_TOKENS",
+      "RAG_CONTEXT_DOCS",
+      "RAG_ITERATIVE_RETRIEVAL",
+      "RAG_STRUCTURAL_LIMIT",
+      "RAG_STRUCTURAL_HOPS",
+      "RAG_SEARCH_TOP_K_MULT",
+      "RAG_SEARCH_TOP_K_CAP",
+      "RAG_GRAPH_TERMS_PER_HIT",
+      "RAG_GRAPH_TERM_LIMIT",
+      "RAG_EXHAUSTIVE_TEXT",
+      "QDRANT_TEXT_SCROLL_LIMIT"
+    ],
+    "items": [
+      {
+        "key": "reranker_mode",
+        "laravel_source": "RERANKER_MODE",
+        "laravel_effective": "external",
+        "python_source": "HAWKI_BACKEND_QUERY_RERANKER",
+        "python_default": "none",
+        "classification": "CUTOVER_BLOCKER",
+        "blocker": "C-RERANKER"
+      },
+      {
+        "key": "rerank_top_n",
+        "laravel_source": "bridge QueryRequest default",
+        "laravel_effective": 20,
+        "python_source": "HAWKI_BACKEND_QUERY_RERANK_TOP_N",
+        "python_default": 20,
+        "classification": "MUST_MATCH",
+        "blocker": null
+      },
+      {
+        "key": "mix_mode",
+        "laravel_source": "RERANKER_MIX_MODE",
+        "laravel_effective": true,
+        "python_source": "HAWKI_BACKEND_QUERY_RERANKER_MIX_MODE",
+        "python_default": true,
+        "classification": "MUST_MATCH",
+        "blocker": null
+      },
+      {
+        "key": "mix_weight",
+        "laravel_source": "RERANKER_MIX_WEIGHT",
+        "laravel_effective": 0.5,
+        "python_source": "HAWKI_BACKEND_QUERY_RERANKER_MIX_WEIGHT",
+        "python_default": 0.5,
+        "classification": "MUST_MATCH",
+        "blocker": null
+      },
+      {
+        "key": "chat_model",
+        "laravel_source": "SettingsService::modelRuntimeForProvider()['graph_model']",
+        "laravel_effective": "deployment-configured",
+        "python_source": "HAWKI_BACKEND_QUERY_MODELS[provider].chat_model",
+        "python_default": "static registry",
+        "classification": "CUTOVER_BLOCKER",
+        "blocker": "C-MODELS"
+      },
+      {
+        "key": "vision_model",
+        "laravel_source": "SettingsService::modelRuntimeForProvider()['vision_model']",
+        "laravel_effective": "deployment-configured",
+        "python_source": "HAWKI_BACKEND_QUERY_MODELS[provider].vision_model",
+        "python_default": "static registry",
+        "classification": "CUTOVER_BLOCKER",
+        "blocker": "C-MODELS"
+      },
+      {
+        "key": "rag_generate_answer",
+        "laravel_source": "RAG_GENERATE_ANSWER (deployment .env.example sets true)",
+        "laravel_effective": true,
+        "python_source": "shared hawki_rag_retrieval setting RAG_GENERATE_ANSWER",
+        "python_default": false,
+        "classification": "CUTOVER_BLOCKER",
+        "blocker": "C-RAGENV"
+      },
+      {
+        "key": "shared_rag_environment",
+        "laravel_source": "bridge and worker process environment",
+        "laravel_effective": "deployment-configured",
+        "python_source": "python_backend process environment",
+        "python_default": "package defaults",
+        "classification": "CUTOVER_BLOCKER",
+        "blocker": "C-RAGENV"
+      }
+    ]
+  },
+  "cutover_blockers": [
+    {
+      "id": "G1",
+      "area": "authorization",
+      "description": "Laravel defaults HAWKI_RAG_QUERY_ALL_DATASETS_BY_DEFAULT=true; Python always requires an explicit grant. Epoch 6 must not add query-all behavior to Python."
+    },
+    {
+      "id": "G2",
+      "area": "authorization",
+      "description": "Python grant tables may start empty. Cutover requires a grant/data backfill plan."
+    },
+    {
+      "id": "G3",
+      "area": "authorization",
+      "description": "Laravel grant identity has no tenant while Python grants require tenant_id. Cutover requires an explicit tenant convention and verified backfill."
+    },
+    {
+      "id": "G12",
+      "area": "authentication",
+      "description": "Laravel browser/session/single-user authentication differs from Python JWT + rag:query. Cutover requires a consumer/token/BFF decision."
+    },
+    {
+      "id": "C-RERANKER",
+      "area": "retrieval-configuration",
+      "description": "Deployment RERANKER_MODE=external while Python HAWKI_BACKEND_QUERY_RERANKER defaults to none. Cutover requires identical reranker mode."
+    },
+    {
+      "id": "C-MODELS",
+      "area": "retrieval-configuration",
+      "description": "Chat and vision models must be the same deployment values on both sides, including the Laravel graph_model -> Python chat_model mapping."
+    },
+    {
+      "id": "C-RAGENV",
+      "area": "retrieval-configuration",
+      "description": "Both processes must receive identical RAG_GENERATE_ANSWER, RAG_FUSION_*, RAG_MIN_SCORE*, RAG_CONTEXT_*, RAG_ITERATIVE_RETRIEVAL, RAG_STRUCTURAL_*, RAG_SEARCH_TOP_K_* and QDRANT_TEXT_SCROLL_LIMIT values."
+    },
+    {
+      "id": "C-CONTRACT",
+      "area": "consumer-contract",
+      "description": "Consumers must accept the Python error envelopes, the JWT authentication mechanism, the 409 vector-store-not-ready status and physical identifier stripping."
+    }
+  ]
+}

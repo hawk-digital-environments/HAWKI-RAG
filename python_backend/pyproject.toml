@@ -38,3 +38,6 @@ select = ["E4", "E7", "E9", "F"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "integration: opt-in live parity checks; skipped unless HAWKI_PARITY_INTEGRATION=1",
+]

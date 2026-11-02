@@ -265,6 +265,146 @@ case variants) are removed recursively from hits and nested payloads. The
 shared retrieval package keeps its current output semantics; sanitization
 happens only here.
 
+## Query parity (Epoch 6)
+
+`tests/parity/` verifies that Laravel `POST /api/query` and Python
+`POST /v1/query` agree before Epoch 7 cutover. The harness is self-contained:
+it does not import the API test doubles and never runs a real model. The
+canonical contract lives in
+`tests/parity/fixtures/laravel_query_parity.json`; it is **test-only**, and no
+production module may read it (`tests/test_boundaries.py` enforces that).
+
+The deterministic suite runs with the normal test command. The live checks are
+collected but skipped unless enabled:
+
+```sh
+HAWKI_PARITY_INTEGRATION=1 \
+HAWKI_PARITY_QDRANT_URL=http://localhost:6333 \
+HAWKI_PARITY_NEO4J_URL=http://localhost:7474 \
+HAWKI_PARITY_NEO4J_AUTH=neo4j:password \
+HAWKI_PARITY_BRIDGE_URL=http://localhost:8000 \
+uv run --frozen --no-sync pytest tests/parity -m integration
+```
+
+`HAWKI_PARITY_DATASETS` restricts the inventory check to a comma-separated
+list of fixture dataset ids; `HAWKI_PARITY_DATASET` selects the dataset for the
+bridge comparison. The bridge is contacted over plain HTTP; `hawki_bridge` is
+never imported.
+
+The live checks use the fixture's synthetic inventory (`dataset-alpha`,
+`dataset-graph`, `hawki_dataset_*`), so they must run against a staging stack
+that actually contains those datasets. Pointing them at another environment
+requires updating the inventory, bumping `_meta.inventory_version`, and
+refreshing the goldens. The live assertions compare hit identity, order,
+score, count and `kg`; full payload parity stays with the deterministic
+suite.
+
+### MUST MATCH
+
+- The public request fields: `dataset_id`, `query`, `top_k`, `is_optimized`,
+  `generate`, `fast_mode`, `smart_lookup`, `preferred_tags`, `filters`.
+- The internal `QueryRequest` built from those fields and trusted scope,
+  including collection, namespace, embedding provider/model, graph flag,
+  provider, chat/vision models, reranker values and tag/filter pass-through.
+- Dataset inventory resolution: the Python registry equals the Laravel dataset
+  inventory field for field, with no missing or extra dataset.
+- `provider == authorized_scope.embedding_provider`, and a graph-enabled
+  dataset always has a non-empty namespace.
+- The stable status and error code of every error case recorded as
+  `must_match` in the fixture.
+- Deterministic response payloads: hit order, ids, scores (6 decimals), count,
+  `kg`, answer semantics and retrieval metadata other than timings.
+- Generation runs only when the request asks for it **and** the shared
+  `RAG_GENERATE_ANSWER` switch is enabled.
+
+### MAY DIFFER INTENTIONALLY
+
+| Deviation | Difference | Classification |
+|---|---|---|
+| D1 | Python recursively removes `qdrant_collection`, `qdrantCollection`, `neo4j_namespace`, `neo4jNamespace` from responses. | Accepted |
+| D2 / G12 | Laravel browser/session/single-user principal and flat bodies vs Python JWT `rag:query` and `detail` bodies. | Cutover blocker |
+| D3 | Validation envelope (`{message,errors}` vs FastAPI `detail`) while both reject with 422. | Accepted |
+| D4 | Query error envelope (Laravel flat or bridge nested vs `{detail:{error,message}}`). | Accepted |
+| D5 | Laravel ignores unknown top-level fields; Python rejects them with 422. | Accepted |
+| D6 | Laravel forwards a `filters.embedding_provider`; Python rejects it as reserved. | Accepted |
+| D7 | Python strips whitespace-padded filter keys; Laravel forwards them and the shared builder strips them later. The effective filter is identical. | Accepted |
+| D8 | Vector-store-not-ready is 409 in Python and 503 through the bridge/Laravel. | Accepted |
+| D9 | Authorization-unavailable is 503 in Python and a generic 500 in Laravel. | Accepted |
+| D10 | Python returns generic non-leaking messages; Laravel can echo bridge or exception text. | Accepted |
+| D11 | Laravel's bridge-unreachable 502 surface does not exist in-process. | Accepted |
+| D12 | Shared generation defaults to off while the deployment currently sets `RAG_GENERATE_ANSWER=true`. | Cutover blocker |
+| D-GRAPH | Laravel derives `graph_enabled` per request; Python resolves it from the registry and suppresses graph access during execution when `fast_mode=true`. | Accepted |
+
+Each intentional difference is also annotated on the relevant fixture case
+with an explicit `_deviation`; the tests fail if a case documents a deviation
+that is not registered.
+
+### MUST NOT REGRESS
+
+- No request field may widen trusted scope. Unknown fields, physical fields and
+  reserved filter keys stay rejected, and the mandatory `dataset_id` predicate
+  stays server-derived.
+- Tenant and dataset isolation stay exact; a missing grant, wrong tenant and
+  inactive dataset remain the same `dataset_not_found` refusal.
+- An authorization outage stays distinct from a denial (`503` vs `404`).
+- `graph_enabled=false` and `fast_mode=true` never touch Qdrant-adjacent graph
+  reads or Neo4j facts.
+- Physical identifiers never appear in a public Python response, even nested
+  in lists or payloads.
+- Errors never echo a database/provider message, collection, namespace, tenant
+  or grant detail.
+- `retrieval.timings_ms` is the only response field dropped by parity; no
+  functional difference may be normalized away.
+
+### Epoch 7 cutover checklist
+
+Epoch 7 must not begin until every item below is resolved or explicitly
+approved.
+
+**Authorization / data**
+
+- [ ] Laravel `HAWKI_RAG_QUERY_ALL_DATASETS_BY_DEFAULT=true` is disabled or an
+      equivalent policy is formally decided (G1).
+- [ ] Python query grants are populated (G2).
+- [ ] A tenant convention is defined for grants (G3).
+- [ ] Grant backfill is verified against the Laravel dataset inventory.
+- [ ] Negative authorization tests are green (missing, wrong tenant, inactive,
+      unavailable).
+
+**Scope**
+
+- [ ] The Python registry equals the Laravel dataset inventory.
+- [ ] `qdrant_collection`, `neo4j_namespace`, `embedding_provider` and
+      `embedding_model` match for every dataset.
+- [ ] The graph readiness invariant is decided (static registry vs dynamic
+      readiness) and the live scope test is green.
+
+**Models / retrieval configuration**
+
+- [ ] Reranker mode is identical (currently `RERANKER_MODE=external` vs Python
+      `HAWKI_BACKEND_QUERY_RERANKER=none`, C-RERANKER).
+- [ ] `rerank_top_n=20`, mix mode and mix weight match.
+- [ ] Chat and vision models match the deployment settings (C-MODELS).
+- [ ] Both processes receive identical `RAG_GENERATE_ANSWER`, `RAG_FUSION_*`,
+      `RAG_MIN_SCORE*`, `RAG_CONTEXT_*`, `RAG_ITERATIVE_RETRIEVAL`,
+      `RAG_STRUCTURAL_*`, `RAG_SEARCH_TOP_K_*` and `QDRANT_TEXT_SCROLL_LIMIT`
+      values (C-RAGENV).
+- [ ] Provider credentials and endpoints are available to `python_backend`.
+
+**Contract**
+
+- [ ] The deterministic parity suite is green.
+- [ ] The graph-disabled and graph-enabled integration checks are green.
+- [ ] Physical identifiers remain stripped.
+- [ ] Consumers accept the error envelopes and the `409` vector-store status
+      (C-CONTRACT).
+- [ ] Consumers accept the JWT authentication mechanism, or a BFF/token
+      decision is made (G12).
+- [ ] The `/api/query` consumer inventory is complete.
+- [ ] MCP and `GET /api/rag/neo4j/*` surfaces are explicitly out of scope.
+- [ ] Ownership of `GET /api/query/datasets` is decided.
+- [ ] Timeout and rate-limit behavior is decided.
+
 ## Authorization Boundary
 
 `hawki_backend.authorization` answers one question: may an authenticated

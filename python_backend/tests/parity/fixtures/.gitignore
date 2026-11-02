@@ -1,0 +1,3 @@
+# The repository ignores broad *.json output. This canonical, test-only
+# parity fixture must be tracked; the exception is scoped to this directory.
+!laravel_query_parity.json
