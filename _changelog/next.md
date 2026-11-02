@@ -72,12 +72,17 @@
   `indexer-worker` and their `-gpu` counterparts).
 - **Production deployment setup.** `_docker_production/` mirrors the main
   HAWKI production setup: a pull-only `docker-compose.yml` that pins every
-  image through `HAWKI_RAG_VERSION` (with `pull_policy: always`, so Dokploy
+  image through `HAWKI_RAG_VERSION` (with `pull_policy: always`, so
   redeploys actually pull freshly pushed `-latest` tags), a one-shot migrator
   service gating the stack against outdated database schemas, a
   `docker-compose.gpu-override.yml` that switches the reranker and indexer
   worker to the `-gpu` images and reserves NVIDIA devices (Ollama included),
-  plus `deploy.sh`, an `.env.example` and the `gpu_guard.sh` entrypoint wrapper.
+  plus `deploy.sh` and an `.env.example`. The Ollama service runs through a
+  single `ollama-entrypoint.sh` that guards the GPU (degrading inference to
+  CPU when the free VRAM drops below `GPU_MIN_FREE_MB`) and pulls the models
+  listed in `HAWKI_RAG_OLLAMA_MODELS` (embedding, chat, graph and vision by
+  default) when the service starts, so model pulling also works on
+  deployments that run the Compose file directly instead of `deploy.sh`.
 - **Internal deployment pipelines.** `deploy-rag-testing.yml` and
   `deploy-rag-prod.yml` deploy our own servers, independent of the public
   Docker Hub releases: pushing to `rag/test-1..3` or `rag/prod` builds every

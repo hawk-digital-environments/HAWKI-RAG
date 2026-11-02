@@ -70,7 +70,9 @@ For a server deployment, set `APP_ENV=production`, `APP_DEBUG=false`,
 `APP_URL` to the public HTTPS URL, and `SESSION_SECURE_COOKIE=true`.
 The Make target does not override these values. Review the
 [actual access boundaries](../Core%20Concepts/authorization_dataset_scope.md#access-boundaries)
-before exposing the management application.
+before exposing the management application. These instructions build from
+source; [Production Deployment](./5_production_deployment.md) covers a full
+production setup from the published Docker Hub images instead.
 
 ## 3. Start the core stack
 

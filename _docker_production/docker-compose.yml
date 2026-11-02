@@ -120,11 +120,7 @@ services:
         volumes:
             - qdrant_data:/qdrant/storage
         healthcheck:
-            test:
-                - CMD
-                - bash
-                - -c
-                - 'exec 3<>/dev/tcp/127.0.0.1/6333 && printf "GET /readyz HTTP/1.0\r\n\r\n" >&3 && grep -q " 200 " <&3'
+            test: ["CMD", "bash", "-c", 'exec 3<>/dev/tcp/127.0.0.1/6333 && printf "GET /readyz HTTP/1.0\r\n\r\n" >&3 && grep -q " 200 " <&3']
             interval: 30s
             timeout: 10s
             retries: 5
@@ -149,10 +145,11 @@ services:
             retries: 5
             start_period: 30s
 
-    # Ollama serves the local embedding, chat and vision models. The entrypoint
-    # wrapper disables GPU usage for the process when the free VRAM reported by
-    # nvidia-smi drops below GPU_MIN_FREE_MB, so inference degrades to CPU
-    # instead of starving other GPU tenants on a shared host.
+    # Ollama serves the local embedding, chat and vision models. The mounted
+    # entrypoint guards the GPU (degrades to CPU when the free VRAM drops
+    # below GPU_MIN_FREE_MB), pulls the models listed in
+    # HAWKI_RAG_OLLAMA_MODELS once the API answers, and forwards stop signals
+    # to the server process.
     ollama:
         container_name: hawki_ollama
         image: ollama/ollama:0.40.13
@@ -160,8 +157,8 @@ services:
             - .env
         volumes:
             - ollama:/root/.ollama
-            - ./gpu_guard.sh:/usr/local/bin/gpu_guard.sh:ro
-        entrypoint: ["/usr/local/bin/gpu_guard.sh", "ollama"]
+            - ./ollama-entrypoint.sh:/usr/local/bin/ollama-entrypoint.sh:ro
+        entrypoint: ["/usr/local/bin/ollama-entrypoint.sh"]
         command: ["serve"]
         networks:
             default: {}
