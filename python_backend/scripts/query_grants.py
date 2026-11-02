@@ -406,9 +406,10 @@ def main(argv: list[str] | None = None) -> int:
         report = json.loads(args.laravel_report.read_text())
         env = dict(os.environ)
         if args.inspect_containers:
-            from query_readiness import container_environment
+            from query_readiness import bound_backend, container_environment
 
-            env = container_environment("hawki_backend")
+            backend_id, _ = bound_backend(report)
+            env = container_environment(backend_id)
         source_dsn = os.environ.get("HAWKI_QUERY_MIGRATION_SOURCE_DSN", "")
         require(
             sa.engine.make_url(source_dsn).drivername == "postgresql+psycopg",

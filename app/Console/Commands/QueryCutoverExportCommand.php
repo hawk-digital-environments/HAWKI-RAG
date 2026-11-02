@@ -37,10 +37,33 @@ class QueryCutoverExportCommand extends Command
             ksort($models);
             $bff = config('config.query_bff');
             unset($bff['private_key_path']);
+            $pythonUrl = config('config.python_query_url');
+            $parts = is_string($pythonUrl) ? parse_url($pythonUrl) : false;
+            if ($parts === false || preg_match('/[\x00-\x20\x7f]/', $pythonUrl)
+                || ! in_array($parts['scheme'] ?? '', ['http', 'https'], true)
+                || empty($parts['host']) || ($parts['path'] ?? '') !== '/v1/query'
+                || isset($parts['user']) || isset($parts['pass']) || isset($parts['query']) || isset($parts['fragment'])) {
+                throw new \RuntimeException('Invalid Python query destination.');
+            }
+            $bridgeBase = config('config.hawki_rag_bridge_url');
+            $bridgeParts = is_string($bridgeBase) ? parse_url($bridgeBase) : false;
+            if ($bridgeParts === false || preg_match('/[\x00-\x20\x7f]/', $bridgeBase)
+                || ! in_array($bridgeParts['scheme'] ?? '', ['http', 'https'], true)
+                || empty($bridgeParts['host']) || isset($bridgeParts['user']) || isset($bridgeParts['pass'])
+                || trim((string) ($bridgeParts['path'] ?? ''), '/') !== ''
+                || isset($bridgeParts['query']) || isset($bridgeParts['fragment'])
+                || str_contains($bridgeBase, '\\') || str_contains($bridgeBase, '%')) {
+                throw new \RuntimeException('Invalid legacy bridge destination.');
+            }
+            // Match RagProxyService::queryEndpoint(), the actual rollback route.
+            $legacyBridgeQueryUrl = rtrim($bridgeBase, '/').'/query';
             $report = [
                 'version' => 1,
                 'generated_at' => time(),
                 'tenant' => config('config.query_bff.tenant'),
+                'python_query_url' => $pythonUrl,
+                'legacy_bridge_query_url' => $legacyBridgeQueryUrl,
+                'key_forbidden_paths' => [public_path(), storage_path(), config('config.shared_root')],
                 'backend' => config('config.query_backend', 'laravel'),
                 'query_all' => config('config.query_auth.all_datasets_by_default'),
                 'auth_default_guard' => config('auth.defaults.guard'),

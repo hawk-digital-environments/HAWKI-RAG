@@ -194,8 +194,11 @@ The real BFF smoke probes prove signed-token admission without exposing the JWT.
 Live parity has **no golden/toy inventory fallback** and no in-process mocked auth.
 It reads the fresh actual Laravel export, compares it with the deployed registry,
 checks Qdrant dataset payloads and Neo4j dataset **and namespace**, and invokes
-`query:cutover-probe` for a fresh BFF token for each real Python query. Bridge
-requests use identical models, scope and configured reranker settings, generate=false.
+`query:cutover-probe` for a fresh BFF token for each real Python query. The
+matching legacy request uses `query:cutover-probe --legacy`, which calls the real
+`RagProxyService` with the same user, dataset, query and graph mode. Laravel derives
+the legacy scope and models; the bridge applies its configured reranker defaults.
+Both probes use generate=false.
 Select a query that actually returns graph evidence for graph-on; empty graphs
 are not a successful graph gate. Only read/query operations run, no ingestion.
 
@@ -207,28 +210,113 @@ export HAWKI_PARITY_USER_ID='ACTUAL_ACTIVE_STAGING_USER_ID'
 export HAWKI_PARITY_GRAPH_OFF_DATASET='ACTUAL_AUTHORIZED_DATASET_ID'
 export HAWKI_PARITY_GRAPH_ON_DATASET='ACTUAL_AUTHORIZED_GRAPH_DATASET_ID'
 export HAWKI_PARITY_QUERY='ACTUAL_QUERY_WITH_MATCHING_VECTOR_AND_GRAPH_DATA'
-export HAWKI_PARITY_BRIDGE_URL='http://STAGING_BRIDGE_HOST:PORT'
-export HAWKI_PARITY_PYTHON_URL='https://STAGING_PYTHON_HOST'
-export HAWKI_PARITY_QDRANT_URL='http://STAGING_QDRANT_HOST:PORT'
-export HAWKI_PARITY_NEO4J_URL='http://STAGING_NEO4J_HOST:PORT'
-# Set HAWKI_PARITY_QDRANT_API_KEY if required and HAWKI_PARITY_NEO4J_AUTH via secret manager.
-# Supply a freshly signed, short-lived staging-only wrong-tenant credential,
-# using the same legitimate issuer/audience/client/user and a tenant without grants.
+# Optional confirmation only: HAWKI_PARITY_BRIDGE_URL must match Laravel's
+# effective legacy bridge base URL or /query endpoint if set.
+# No separate Python URL: probes use effective Laravel HAWKI_PYTHON_QUERY_URL.
+# Storage probes run inside the BFF-bound backend with its deployed credentials.
+# Optional confirmations only (omit to use deployed values):
+# HAWKI_PARITY_QDRANT_URL must match the deployed Qdrant base URL.
+# HAWKI_PARITY_NEO4J_URI must match the deployed Bolt/Neo4j URI.
+# HAWKI_PARITY_NEO4J_DATABASE must match the configured database.
+# Legacy HAWKI_PARITY_NEO4J_URL is also URI confirmation only; HTTP URLs fail.
+# HAWKI_PARITY_QDRANT_API_KEY / HAWKI_PARITY_NEO4J_AUTH, if set, must match.
+# Supply a freshly signed, short-lived staging-only PAIR of credentials.
+# Headers and ALL claims (including iat/exp/jti) must be identical except tenant_id.
+# Baseline uses default; negative uses a tenant without grants. Same active BFF user.
 # Keep it in a mode-0600 file outside the checkout. Never paste tokens into commands.
+export HAWKI_PARITY_BASELINE_TOKEN_FILE='/secure/STAGING_ONLY_BASELINE_TOKEN_FILE'
 export HAWKI_PARITY_WRONG_TENANT_TOKEN_FILE='/secure/STAGING_ONLY_TOKEN_FILE'
 HAWKI_PARITY_INTEGRATION=1 uv run --project python_backend --group test pytest python_backend/tests/parity/test_live_scope_integration.py -q
 ```
 
 The negative test runs first to avoid expiry during slow retrieval. It requires
-401 for no credential and 404 for an otherwise valid wrong-tenant token; an
+health 200, 401 for no credential, 200 for the baseline token on the selected
+dataset, then 404 dataset_not_found for the token differing only in tenant_id; an
 invalid/expired token producing 401 cannot masquerade as tenant-isolation proof.
-Provision that credential independently in staging; do not change the live
+Provision that pair independently in staging; if paired fixtures cannot be produced,
+the gate fails explicitly. Tokens travel through stdin to a Laravel-container
+probe, never command-line arguments or probe output. Retrieval is not directly
+observable from this black-box live test; the exact denial response is checked.
+Do not refresh just one token: mint the pair together.
+Provision only in staging; do not change the live
 Laravel tenant, expose signer endpoints, or create persistent test principals.
 Standalone pytest may contain sensitive assertion data on failures: run in a
 protected operator console. Readiness captures that output and reports only gate
 status. Missing live inputs fail, never skip. All four tests and zero skips are
 required. Run with safe staging inventory only. No staging inventory means
 **NOT EXECUTED — ACTIVATION PREREQUISITE**, never PASS.
+
+### Authoritative Python and legacy bridge targets
+
+`query:cutover-export` now reports the effective cached `config.python_query_url`
+used by `PythonQueryClient`. Readiness re-exports it from the running Laravel
+container and rejects drift. This local Compose checker certifies only the direct
+`http://hawki_backend:80/v1/query` destination (omitted default port and host
+case are equivalent). External endpoints, proxies, changed ports/schemes or base
+paths fail closed; they need a separately reviewed deployment check, not an override.
+The backend must belong to the same Compose project, have the expected service
+label, and exclusively match DNS resolution from the Laravel container on a shared
+network. Subsequent configuration, database and JWKS inspections use that container's
+ID. This is deployment/configuration binding, not cryptographic instance attestation.
+Proxy variables in the Laravel container must be unset for this direct binding;
+otherwise the BFF HTTP client could bypass the checked Docker DNS result.
+
+All live backend probes validate this binding. Health and anonymous/baseline/tenant
+probes run inside Laravel using its effective URL; parity uses the existing real
+BFF CLI client. If the legacy `HAWKI_PARITY_PYTHON_URL` variable is set, it must
+normalize to the same destination; it cannot select a different target. Freeze
+configuration/container changes during the gate and activation, as with inventory.
+
+Private signing keys are certified only below `/run/secrets`, outside configured
+public/storage/shared paths. Use one dedicated read-only mount. Overlapping host
+sources or container destinations, including aliases in the same application
+container, fail closed. Do not put private keys under web or artifact roots.
+Readiness security checks are unconditional and also run under optimized Python.
+
+The same Laravel export reports `legacy_bridge_query_url`, formed exactly as
+`RagProxyService` does from effective cached `config.hawki_rag_bridge_url`:
+remove trailing base slashes and append `/query`. Embedded credentials, query
+strings, fragments and malformed URLs fail closed. This local checker certifies
+the direct Compose `http://hawki_rag_bridge:80/query` route and verifies the
+bridge service identity and DNS from Laravel. The live parity probe uses
+`query:cutover-probe --legacy`, so a 200 response proves Laravel's actual rollback
+route is reachable; it does not use a host-side bridge URL. An optional
+`HAWKI_PARITY_BRIDGE_URL` only confirms the exported route. A different host,
+port, scheme or path stops readiness before live parity.
+
+### Authoritative storage inventory
+
+The `storage_identity` readiness check and live inventory use
+`scripts/query_storage.py` inside the already BFF-bound backend container by ID.
+It imports the same `qdrant_settings_from_env()` and `load_neo4j_settings()`
+loaders as retrieval. No host-side storage settings select a destination.
+Qdrant HTTP requests use Requests sessions, as production `QdrantHTTPTransport`
+does, with the effective base URL, API key and timeout and redirects disabled.
+Inventory inherits the bound backend's deployed proxy environment; operator-shell
+proxy values cannot select its route. Neo4j reads use the native driver with the
+effective URI, credentials, retry setting and explicit database, in a read session;
+there is no separate HTTP endpoint or hard-coded `/db/neo4j/` path.
+
+This checker requires explicit deployed `QDRANT_SCHEME`, `QDRANT_HOST`,
+`QDRANT_PORT`, `NEO4J_URI`, `NEO4J_USER` (or `NEO4J_USERNAME`),
+`NEO4J_PASSWORD` and `NEO4J_DATABASE`. An implicit Neo4j home database is not
+certified. Qdrant authentication remains optional when the deployed service has
+none; any configured key is used. Optional operator confirmations must agree
+with the deployed values; only host case, default ports and a trailing root slash
+normalize as equivalent. Alternate DNS aliases, schemes, paths, ports and
+databases fail. Credentials travel only in stdin/in-container memory; probe
+output contains status only for inventory/configuration probes. The shared-environment
+`qdrant_routing` gate computes a route digest inside each bound backend/rollback
+bridge container using its installed Requests proxy resolution. Only digests leave
+those probes; readiness exposes PASS/FAIL, never proxy URLs or credentials.
+The digest covers the Qdrant target and effective proxy scheme, host, port and
+authentication, distinguishing direct from proxied access. Differences that alter
+the effective route fail; ignored proxy values or equivalent bypasses do not.
+Requests resolves `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, `NO_PROXY` and lowercase
+variants using its environment helpers, including lowercase precedence, CIDR
+bypass and the `REQUEST_METHOD` CGI protection. No separate proxy parser chooses
+the route. Existing shared-environment checks still reject
+backend/legacy bridge storage configuration differences before live gates run.
 
 ## Reversible 44-step procedure
 

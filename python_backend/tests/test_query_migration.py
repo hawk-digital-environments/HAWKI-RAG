@@ -73,6 +73,12 @@ def inventory():
         "generated_at": int(time.time()),
         "tenant": "default",
         "backend": "laravel",
+        "legacy_bridge_query_url": "http://hawki_rag_bridge/query",
+        "key_forbidden_paths": [
+            "/var/www/html/public",
+            "/var/www/html/storage",
+            "/shared",
+        ],
         "query_all": False,
         "datasets": [{**r, "graph_enabled": r["dataset_id"] == "a"} for r in rows],
         "models": {
@@ -504,13 +510,24 @@ def test_private_mount_gate(inventory, tmp_path, mutation):
     elif mutation == "inside_repo":
         app["Mounts"][0]["Source"] = str(repository / "private")
     elif mutation == "shared":
-        other["Mounts"] = [{"Source": str(source), "Destination": "/public"}]
+        other["Mounts"] = [
+            {"Source": str(source), "Destination": "/public", "RW": False}
+        ]
     elif mutation == "parent_shared":
-        other["Mounts"] = [{"Source": str(tmp_path), "Destination": "/public"}]
+        other["Mounts"] = [
+            {"Source": str(tmp_path), "Destination": "/public", "RW": False}
+        ]
     elif mutation == "weak":
         report["key"]["bits"] = 1024
     elif mutation == "no_mount":
         app["Mounts"] = []
+    if mutation in {"shared", "parent_shared"}:
+        # With otherwise identical, valid metadata, removing only the source
+        # overlap must make the topology safe.
+        original_source = other["Mounts"][0]["Source"]
+        other["Mounts"][0]["Source"] = "/unrelated-mount-source"
+        assert readiness.mounted_key_isolated(report, [app, other], repository)
+        other["Mounts"][0]["Source"] = original_source
     assert readiness.mounted_key_isolated(report, [app, other], repository) == (
         mutation == "none"
     )
@@ -528,8 +545,26 @@ def test_readiness_pass_requires_all_real_gates_and_no_secrets(
         RERANKER_API_KEY="SECRET-NEVER-EMITTED",
     )
     env.update(bridge)
-    monkeypatch.setattr(readiness, "container_environment", lambda name: bridge)
-    monkeypatch.setattr(readiness, "deployed_target_matches", lambda plan: True)
+    monkeypatch.setattr(
+        readiness,
+        "container_environment",
+        lambda name: bridge if name == "bridge-id" else env,
+    )
+    monkeypatch.setattr(
+        readiness,
+        "bound_backend",
+        lambda report: ("bound-id", "http://hawki_backend:80/v1/query"),
+    )
+    monkeypatch.setattr(
+        readiness,
+        "bound_bridge",
+        lambda report: ("bridge-id", "http://hawki_rag_bridge:80/query"),
+    )
+    monkeypatch.setattr(
+        readiness, "deployed_target_matches", lambda plan, backend_id: True
+    )
+    monkeypatch.setattr(readiness, "probe_storage", lambda backend_id: True)
+    monkeypatch.setattr(readiness, "qdrant_routing_matches", lambda *args: True)
     monkeypatch.setattr(
         readiness,
         "live_gates",
@@ -552,6 +587,58 @@ def test_readiness_pass_requires_all_real_gates_and_no_secrets(
         )
         assert result["status"] == "PASS"
         assert "SECRET-NEVER-EMITTED" not in json.dumps(result)
+        assert result["shared_names"]["qdrant_routing"] == "PASS"
+        monkeypatch.setattr(readiness, "qdrant_routing_matches", lambda *args: False)
+        routing_mismatch = readiness.check_readiness(
+            connection,
+            plan,
+            inventory[1],
+            env,
+            inspect_containers=True,
+            live=True,
+            phase="activate",
+        )
+        assert routing_mismatch["status"] == "FAIL"
+        assert routing_mismatch["checks"]["shared_environment"] == "FAIL"
+        assert routing_mismatch["shared_names"]["qdrant_routing"] == "FAIL"
+        assert routing_mismatch["checks"]["live_parity_and_admission"] == "NOT EXECUTED"
+        monkeypatch.setattr(readiness, "qdrant_routing_matches", lambda *args: True)
+        monkeypatch.setattr(readiness, "probe_storage", lambda backend_id: False)
+        storage_mismatch = readiness.check_readiness(
+            connection,
+            plan,
+            inventory[1],
+            env,
+            inspect_containers=True,
+            live=True,
+            phase="activate",
+        )
+        assert storage_mismatch["status"] == "FAIL"
+        assert storage_mismatch["checks"]["storage_identity"] == "FAIL"
+        assert storage_mismatch["checks"]["live_parity_and_admission"] == "NOT EXECUTED"
+        monkeypatch.setattr(readiness, "probe_storage", lambda backend_id: True)
+        monkeypatch.setattr(
+            readiness,
+            "bound_bridge",
+            lambda report: (_ for _ in ()).throw(ValueError("conflicting bridge")),
+        )
+        mismatched = readiness.check_readiness(
+            connection,
+            plan,
+            inventory[1],
+            env,
+            inspect_containers=True,
+            live=True,
+            phase="activate",
+        )
+        assert mismatched["status"] == "FAIL"
+        assert mismatched["checks"]["legacy_bridge_target"] == "FAIL"
+        assert mismatched["checks"]["live_parity_and_admission"] == "NOT EXECUTED"
+        monkeypatch.setattr(
+            readiness,
+            "bound_bridge",
+            lambda report: ("bridge-id", "http://hawki_rag_bridge:80/query"),
+        )
         result = readiness.check_readiness(
             connection,
             plan,
@@ -563,6 +650,59 @@ def test_readiness_pass_requires_all_real_gates_and_no_secrets(
         )
         assert result["status"] == "FAIL"
         assert result["checks"]["live_parity_and_admission"] == "NOT EXECUTED"
+
+
+@pytest.mark.parametrize(
+    "name",
+    ["QDRANT_HOST", "QDRANT_PORT", "QDRANT_SCHEME", "NEO4J_URI", "NEO4J_DATABASE"],
+)
+def test_runtime_bridge_storage_disagreement_blocks_readiness(
+    inventory, engine, monkeypatch, name
+):
+    plan = migration.make_plan(*inventory)
+    env = environment(plan)
+    env.update({key: "same" for key in readiness.REQUIRED_RAG})
+    env.update(RERANKER_MODE="external", RERANKER_API_URL="http://reranker.test")
+    env[name] = "backend-value"
+    bridge = {**env, name: "different-bridge-value"}
+    monkeypatch.setattr(
+        readiness,
+        "bound_backend",
+        lambda report: ("backend-id", "http://hawki_backend/v1/query"),
+    )
+    monkeypatch.setattr(
+        readiness,
+        "bound_bridge",
+        lambda report: ("bridge-id", "http://hawki_rag_bridge/query"),
+    )
+    monkeypatch.setattr(
+        readiness,
+        "container_environment",
+        lambda name: bridge if name == "bridge-id" else env,
+    )
+    monkeypatch.setattr(readiness, "deployed_target_matches", lambda *args: True)
+    monkeypatch.setattr(readiness, "probe_storage", lambda *args: True)
+    monkeypatch.setattr(readiness, "qdrant_routing_matches", lambda *args: True)
+    monkeypatch.setattr(
+        readiness,
+        "live_gates",
+        lambda report: pytest.fail("Mismatched storage must stop before live gates"),
+    )
+    with engine.begin() as connection:
+        migration.apply_plan(connection, plan, plan.digest)
+        result = readiness.check_readiness(
+            connection,
+            plan,
+            inventory[1],
+            env,
+            inspect_containers=True,
+            live=True,
+            phase="activate",
+        )
+    assert result["status"] == "FAIL"
+    assert result["checks"]["shared_environment"] == "FAIL"
+    assert result["shared_names"][name] == "FAIL"
+    assert result["checks"]["live_parity_and_admission"] == "NOT EXECUTED"
 
 
 def test_runtime_target_digest_compares_exact_status_and_subject(
@@ -579,9 +719,9 @@ def test_runtime_target_digest_compares_exact_status_and_subject(
     monkeypatch.setattr(
         readiness, "run_json", lambda command: {"status": "PASS", "digest": digest}
     )
-    assert readiness.deployed_target_matches(plan)
+    assert readiness.deployed_target_matches(plan, "bound-id")
     plan.grants.add(("b", "2"))
-    assert not readiness.deployed_target_matches(plan)
+    assert not readiness.deployed_target_matches(plan, "bound-id")
 
 
 def test_cli_dry_run_apply_verify_and_idempotency_without_public_writes(

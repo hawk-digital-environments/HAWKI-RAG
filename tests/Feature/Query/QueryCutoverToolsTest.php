@@ -40,6 +40,10 @@ class QueryCutoverToolsTest extends TestCase
         $output = Artisan::output();
         $report = json_decode($output, true, flags: JSON_THROW_ON_ERROR);
         self::assertSame('laravel', $report['backend']);
+        self::assertSame(config('config.python_query_url'), $report['python_query_url']);
+        self::assertSame(rtrim((string) config('config.hawki_rag_bridge_url'), '/').'/query', $report['legacy_bridge_query_url']);
+        self::assertContains(public_path(), $report['key_forbidden_paths']);
+        self::assertContains(storage_path(), $report['key_forbidden_paths']);
         self::assertTrue($report['datasets'][0]['graph_enabled']);
         self::assertSame('pinned-embedding', $report['datasets'][0]['embedding_model']);
         self::assertSame(['chat_model' => 'effective-chat', 'vision_model' => 'effective-vision'], $report['models']['ollama']);
@@ -66,6 +70,63 @@ class QueryCutoverToolsTest extends TestCase
         }
     }
 
+    #[DataProvider('unsafePythonUrls')]
+    public function test_export_refuses_unsafe_effective_python_url(string $url): void
+    {
+        config()->set('config.python_query_url', $url);
+        $inventory = $this->createMock(QueryCutoverInventoryRepository::class);
+        $inventory->method('datasets')->willReturn(collect());
+        $this->app->instance(QueryCutoverInventoryRepository::class, $inventory);
+
+        self::assertSame(1, Artisan::call('query:cutover-export'));
+        self::assertStringNotContainsString($url, Artisan::output());
+    }
+
+    public static function unsafePythonUrls(): array
+    {
+        return [
+            ['http://hawki_backend/v1/query'."\n"],
+            ['http://user:secret@hawki_backend/v1/query'],
+            ['http://hawki_backend/other/query'],
+        ];
+    }
+
+    public function test_export_uses_laravels_effective_legacy_bridge_endpoint(): void
+    {
+        config()->set('config.hawki_rag_bridge_url', 'http://hawki_rag_bridge/');
+        $inventory = $this->createMock(QueryCutoverInventoryRepository::class);
+        $inventory->method('datasets')->willReturn(collect());
+        $this->app->instance(QueryCutoverInventoryRepository::class, $inventory);
+
+        self::assertSame(0, Artisan::call('query:cutover-export'));
+        $report = json_decode(Artisan::output(), true, flags: JSON_THROW_ON_ERROR);
+        self::assertSame('http://hawki_rag_bridge/query', $report['legacy_bridge_query_url']);
+    }
+
+    #[DataProvider('unsafeBridgeUrls')]
+    public function test_export_refuses_unsafe_legacy_bridge_url(mixed $url): void
+    {
+        config()->set('config.hawki_rag_bridge_url', $url);
+        $inventory = $this->createMock(QueryCutoverInventoryRepository::class);
+        $inventory->method('datasets')->willReturn(collect());
+        $this->app->instance(QueryCutoverInventoryRepository::class, $inventory);
+
+        self::assertSame(1, Artisan::call('query:cutover-export'));
+        self::assertStringNotContainsString('secret', Artisan::output());
+    }
+
+    public static function unsafeBridgeUrls(): array
+    {
+        return [
+            [null],
+            ['http://user:secret@hawki_rag_bridge'],
+            ['http://hawki_rag_bridge?secret=1'],
+            ['http://hawki_rag_bridge'."\n"],
+            ['http://hawki_rag_bridge/token'],
+            ['http://hawki_rag_bridge/%73ecret'],
+        ];
+    }
+
     public function test_probe_is_explicit_non_generating_and_never_dispatches_legacy_by_default(): void
     {
         $inventory = $this->createMock(QueryCutoverInventoryRepository::class);
@@ -81,6 +142,23 @@ class QueryCutoverToolsTest extends TestCase
         $this->app->instance(RagProxyService::class, $legacy);
         self::assertSame(0, Artisan::call('query:cutover-probe', ['user' => '7', 'dataset' => 'a', '--graph' => true]));
         self::assertSame('laravel', config('config.query_backend'));
+    }
+
+    public function test_legacy_probe_dispatches_laravels_rollback_service(): void
+    {
+        $inventory = $this->createMock(QueryCutoverInventoryRepository::class);
+        $user = new User;
+        $user->id = 7;
+        $inventory->method('activeUser')->with('7')->willReturn($user);
+        $python = $this->createMock(PythonQueryClient::class);
+        $python->expects(self::never())->method('query');
+        $legacy = $this->createMock(RagProxyService::class);
+        $legacy->expects(self::once())->method('query')->with($user, ['dataset_id' => 'a', 'query' => 'handbook policy', 'generate' => false, 'top_k' => 5, 'fast_mode' => true])->willReturn(['status' => 200, 'payload' => ['ok' => true]]);
+        $this->app->instance(QueryCutoverInventoryRepository::class, $inventory);
+        $this->app->instance(PythonQueryClient::class, $python);
+        $this->app->instance(RagProxyService::class, $legacy);
+
+        self::assertSame(0, Artisan::call('query:cutover-probe', ['user' => '7', 'dataset' => 'a', '--legacy' => true]));
     }
 
     #[DataProvider('pythonErrors')]

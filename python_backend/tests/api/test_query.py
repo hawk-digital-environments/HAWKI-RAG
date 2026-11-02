@@ -395,15 +395,25 @@ def test_missing_grant_returns_dataset_not_found() -> None:
 
 
 def test_wrong_tenant_returns_dataset_not_found() -> None:
+    dependencies, _, vector_search, _ = _dependencies()
+    grants = InMemoryGrantReader([_grant(tenant_id="tenant-a")])
+    baseline = _post_json(
+        _app(query_dependencies=dependencies, grant_reader=grants), _body()
+    )
+    assert baseline.status_code == 200
+    searches_before_denial = len(vector_search.search_calls)
+
     app = _app(
+        query_dependencies=dependencies,
         principal=_principal(tenant_id="tenant-b"),
-        grant_reader=InMemoryGrantReader([_grant(tenant_id="tenant-a")]),
+        grant_reader=grants,
     )
 
     response = _post_json(app, _body())
 
     assert response.status_code == 404
     assert response.json()["detail"]["error"] == "dataset_not_found"
+    assert len(vector_search.search_calls) == searches_before_denial
 
 
 def test_inactive_dataset_returns_dataset_not_found() -> None:
