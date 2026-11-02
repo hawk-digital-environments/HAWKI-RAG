@@ -8,12 +8,12 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Rag\ListAuthorizedQueryDatasetsRequest;
 use App\Http\Requests\Rag\QueryDatasetRequest;
 use App\Services\Authorization\DatasetQueryAuthorizationService;
-use App\Services\Rag\RagProxyService;
+use App\Services\Rag\RagQueryService;
 use Illuminate\Http\JsonResponse;
 
 class HawkiRagProxyController extends Controller
 {
-    public function query(QueryDatasetRequest $request, RagProxyService $proxy): JsonResponse
+    public function query(QueryDatasetRequest $request, RagQueryService $proxy): JsonResponse
     {
         $result = $proxy->query($request->authenticatedUser(), $request->validated());
 

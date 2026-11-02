@@ -18,6 +18,18 @@ $stageRuntimeLogPaths = static function (string $stage, string $file) use ($pipe
 
 return [
 
+    'query_backend' => env('HAWKI_QUERY_BACKEND', 'laravel'),
+    'python_query_url' => env('HAWKI_PYTHON_QUERY_URL', 'http://hawki_backend/v1/query'),
+    'query_bff' => [
+        'issuer' => env('HAWKI_QUERY_BFF_ISSUER', ''),
+        'audience' => env('HAWKI_QUERY_BFF_AUDIENCE', 'hawki-backend'),
+        'client_id' => env('HAWKI_QUERY_BFF_CLIENT_ID', 'hawki-bff'),
+        'tenant' => env('HAWKI_QUERY_BFF_TENANT', 'default'),
+        'private_key_path' => env('HAWKI_QUERY_BFF_PRIVATE_KEY_PATH', '/run/secrets/query-bff/private.pem'),
+        'key_id' => env('HAWKI_QUERY_BFF_KEY_ID', ''),
+        'token_ttl' => env('HAWKI_QUERY_BFF_TOKEN_TTL', 60),
+    ],
+
     'hawki_rag_bridge_url' => env('HAWKI_RAG_BRIDGE_URL', 'http://hawki_rag_bridge'),
     'hawki_rag_query_timeout' => (int) env('HAWKI_RAG_QUERY_TIMEOUT', 300),
     'qdrant_http_url' => env('QDRANT_HTTP_URL', 'http://qdrant:6333'),

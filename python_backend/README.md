@@ -629,3 +629,10 @@ docker compose exec hawki_backend python -c \
 Without `HAWKI_BACKEND_*` and query registry configuration, the service is
 healthy while `/v1/query` fails closed. That is the expected state for this
 slice: the runtime exists, but query traffic is not cut over.
+
+### Laravel BFF trust boundary
+
+The disabled-by-default [BFF deployment guide](../_documentation/Operations/python_query_bff.md)
+documents the server-owned RS256 token profile, verifier configuration agreement,
+opt-in key/JWKS mounts, HTTPS/CA requirements, rotation and activation gates.
+No Python authentication requirement is relaxed for this integration.

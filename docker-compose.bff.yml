@@ -1,0 +1,17 @@
+# Opt-in only. Provision both directories outside the checkout before use.
+# This file does not select the Python query backend or provision real keys.
+services:
+  hawki_rag_app:
+    volumes:
+      - type: bind
+        source: ${HAWKI_QUERY_BFF_PRIVATE_DIR:?Provision the external private-key directory}
+        target: /run/secrets/query-bff
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${HAWKI_QUERY_BFF_PUBLIC_DIR:?Provision the external public-JWKS directory}
+        target: /run/query-bff-public
+        read_only: true
+        bind:
+          create_host_path: false

@@ -1,0 +1,12 @@
+# Optional addition for an operator-managed CA, never a substitute for TLS.
+services:
+  hawki_backend:
+    environment:
+      SSL_CERT_FILE: /run/query-bff-ca/ca-bundle.pem
+    volumes:
+      - type: bind
+        source: ${HAWKI_QUERY_BFF_CA_DIR:?Provision the external CA-bundle directory}
+        target: /run/query-bff-ca
+        read_only: true
+        bind:
+          create_host_path: false
