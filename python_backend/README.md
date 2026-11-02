@@ -636,3 +636,15 @@ The disabled-by-default [BFF deployment guide](../_documentation/Operations/pyth
 documents the server-owned RS256 token profile, verifier configuration agreement,
 opt-in key/JWKS mounts, HTTPS/CA requirements, rotation and activation gates.
 No Python authentication requirement is relaxed for this integration.
+
+### Operator query cutover tooling
+
+[`scripts/query_grants.py`](scripts/query_grants.py) plans, explicitly applies,
+and verifies the one-time dataset/query-grant migration. It runs outside the
+backend runtime and is never invoked by startup. `--expand-default-grants` is
+deliberate, `--apply` requires a reviewed plan hash, and readiness fails on
+unexecuted external gates. Source credentials must be SELECT-only; no Laravel
+writes or target deletes occur. See the
+[Epoch 7C runbook](../_documentation/Operations/python_query_cutover.md) for exact
+export, grant, scope/model/reranker/auth checks, actual-inventory live parity,
+the separate query-all transition, controlled activation, and rollback commands.

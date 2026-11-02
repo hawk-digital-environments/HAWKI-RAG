@@ -9,21 +9,16 @@ imported.
 from __future__ import annotations
 
 import os
+import json
+import subprocess
+import time
+from pathlib import Path
 from typing import Any
 
 import httpx
 import pytest
 
-from hawki_rag_retrieval import build_query_dependencies
-
-from .doubles import (
-    build_app,
-    fixture_settings,
-    load_fixture,
-    post_query,
-)
-
-FIXTURE = load_fixture()
+from hawki_backend.query.settings import load_query_settings
 
 _INTEGRATION_ENABLED = os.environ.get(
     "HAWKI_PARITY_INTEGRATION", ""
@@ -51,22 +46,61 @@ def _required(name: str) -> str:
 
     value = os.environ.get(name, "").strip()
     if not value:
-        pytest.skip(f"{name} is not configured")
+        pytest.fail(f"{name} is required when live parity is enabled")
     return value
 
 
 def _configured_datasets() -> list[dict[str, Any]]:
     """Return the inventory entries selected for this integration run."""
 
-    selected = os.environ.get("HAWKI_PARITY_DATASETS", "").strip()
-    inventory = FIXTURE["dataset_inventory"]
-    if not selected:
-        return inventory
-    wanted = {item.strip() for item in selected.split(",") if item.strip()}
-    chosen = [entry for entry in inventory if entry["dataset_id"] in wanted]
-    missing = wanted - {entry["dataset_id"] for entry in chosen}
-    assert not missing, f"HAWKI_PARITY_DATASETS names unknown inventory ids: {missing}"
-    return chosen
+    report = json.loads(Path(_required("HAWKI_PARITY_INVENTORY_FILE")).read_text())
+    assert report["version"] == 1 and report["tenant"] == "default"
+    assert 0 <= time.time() - report["generated_at"] <= 300, (
+        "Refresh operator inventory"
+    )
+    inventory = [row for row in report["datasets"] if row["status"] == "active"]
+    assert inventory, "Actual staging inventory is required"
+    settings = _deployed_settings()
+    assert set(settings.datasets) == {r["dataset_id"] for r in inventory}
+    assert (
+        json.loads(_backend_environment()["HAWKI_BACKEND_QUERY_MODELS"])
+        == report["models"]
+    )
+    for row in inventory:
+        scope = settings.resolve_scope(row["dataset_id"])
+        for key in (
+            "qdrant_collection",
+            "neo4j_namespace",
+            "embedding_provider",
+            "embedding_model",
+        ):
+            expected = (
+                row[key].strip() or None if isinstance(row[key], str) else row[key]
+            )
+            assert getattr(scope, key) == expected
+        assert scope.graph_enabled == row["graph_enabled"]
+    return inventory
+
+
+def _backend_environment() -> dict[str, str]:
+    result = subprocess.run(
+        ["docker", "inspect", "hawki_backend"],
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+    assert result.returncode == 0, "Cannot inspect deployed backend"
+    return dict(
+        item.split("=", 1)
+        for item in json.loads(result.stdout)[0]["Config"]["Env"]
+        if "=" in item
+    )
+
+
+def _deployed_settings():
+    settings = load_query_settings(_backend_environment())
+    assert settings is not None, "Deployed query registry required"
+    return settings
 
 
 def _qdrant_headers() -> dict[str, str]:
@@ -104,7 +138,7 @@ def _physical_paths(value: Any, prefix: str = "") -> list[str]:
 def _trusted_request(dataset_id: str, *, fast_mode: bool) -> dict[str, Any]:
     """Build the bridge request Laravel would send for the same logical request."""
 
-    settings = fixture_settings()
+    settings = _deployed_settings()
     scope = settings.resolve_scope(dataset_id)
     assert scope is not None
     models = settings.models_for(scope.embedding_provider)
@@ -128,10 +162,10 @@ def _trusted_request(dataset_id: str, *, fast_mode: bool) -> dict[str, Any]:
         "is_optimized": False,
         "fast_mode": fast_mode,
         "smart_lookup": False,
-        "reranker": "none",
-        "rerank_top_n": 20,
-        "mix_mode": True,
-        "mix_weight": 0.5,
+        "reranker": settings.reranker,
+        "rerank_top_n": settings.rerank_top_n,
+        "mix_mode": settings.reranker_mix_mode,
+        "mix_weight": settings.reranker_mix_weight,
     }
 
 
@@ -140,26 +174,31 @@ def _bridge_response(request: dict[str, Any]) -> dict[str, Any]:
 
     bridge_url = _required("HAWKI_PARITY_BRIDGE_URL").rstrip("/")
     response = httpx.post(f"{bridge_url}/query", json=request, timeout=120.0)
-    assert response.status_code == 200, response.text
+    assert response.status_code == 200, "Live HTTP request failed"
     return response.json()
 
 
 def _python_response(dataset_id: str, *, fast_mode: bool) -> dict[str, Any]:
     """POST the equivalent public request to the real Python boundary."""
 
-    application = build_app(query_dependencies=build_query_dependencies())
-    response = post_query(
-        application,
-        {
-            "dataset_id": dataset_id,
-            "query": os.environ.get("HAWKI_PARITY_QUERY", "handbook policy"),
-            "top_k": 5,
-            "generate": False,
-            "fast_mode": fast_mode,
-        },
-    )
-    assert response.status_code == 200, response.text
-    return response.json()
+    command = [
+        "docker",
+        "exec",
+        "hawki_rag_app",
+        "php",
+        "artisan",
+        "query:cutover-probe",
+        _required("HAWKI_PARITY_USER_ID"),
+        dataset_id,
+        "--query=" + os.environ.get("HAWKI_PARITY_QUERY", "handbook policy"),
+    ]
+    if not fast_mode:
+        command.append("--graph")
+    response = subprocess.run(command, capture_output=True, text=True, timeout=330)
+    assert response.returncode == 0, "Real BFF-signed Python query failed"
+    result = json.loads(response.stdout)
+    assert result["status"] == 200, "BFF query did not succeed"
+    return result["payload"]
 
 
 def _assert_hits_parity(python: dict[str, Any], bridge: dict[str, Any]) -> None:
@@ -173,6 +212,33 @@ def _assert_hits_parity(python: dict[str, Any], bridge: dict[str, Any]) -> None:
         round(float(hit["score"]), 6) for hit in bridge["hits"]
     ]
     assert python["kg"] == bridge["kg"]
+
+
+def test_real_unauthorized_and_wrong_tenant_denied() -> None:
+    """A valid, independently provisioned wrong-tenant credential must be denied."""
+    url = _required("HAWKI_PARITY_PYTHON_URL").rstrip("/") + "/v1/query"
+    token_path = Path(_required("HAWKI_PARITY_WRONG_TENANT_TOKEN_FILE"))
+    assert token_path.stat().st_mode & 0o077 == 0, "Protect the temporary token file"
+    token = token_path.read_text().strip()
+    # This decode only prevents a meaningless negative test with a default-tenant
+    # or invalid fixture. The real server must authenticate and then return 404.
+    import jwt
+
+    claims = jwt.decode(token, options={"verify_signature": False})
+    assert claims.get("tenant_id") not in (None, "", "default")
+    payload = {
+        "dataset_id": _required("HAWKI_PARITY_GRAPH_OFF_DATASET"),
+        "query": "access check",
+        "generate": False,
+    }
+    response = httpx.post(url, json=payload, timeout=30)
+    assert response.status_code == 401, "Anonymous query must fail authentication"
+    response = httpx.post(
+        url, json=payload, headers={"Authorization": "Bearer " + token}, timeout=30
+    )
+    assert response.status_code == 404, (
+        "Valid wrong-tenant query must fail authorization"
+    )
 
 
 def test_inventory_targets_exist_in_live_storage() -> None:
@@ -189,7 +255,9 @@ def test_inventory_targets_exist_in_live_storage() -> None:
             timeout=30.0,
         ) as client:
             collection_response = client.get(f"/collections/{collection}")
-            assert collection_response.status_code == 200, collection_response.text
+            assert collection_response.status_code == 200, (
+                "Qdrant collection unavailable"
+            )
 
             scroll_response = client.post(
                 f"/collections/{collection}/points/scroll",
@@ -206,7 +274,7 @@ def test_inventory_targets_exist_in_live_storage() -> None:
                     "with_payload": True,
                 },
             )
-            assert scroll_response.status_code == 200, scroll_response.text
+            assert scroll_response.status_code == 200, "Qdrant scroll failed"
             points = scroll_response.json().get("result", {}).get("points", [])
             assert points, f"{entry['dataset_id']} has no points in {collection}"
 
@@ -221,15 +289,19 @@ def test_inventory_targets_exist_in_live_storage() -> None:
                         {
                             "statement": (
                                 "MATCH (n) WHERE n.dataset_id = $dataset_id "
+                                "AND n.neo4j_namespace = $namespace "
                                 "RETURN count(n) AS count"
                             ),
-                            "parameters": {"dataset_id": entry["dataset_id"]},
+                            "parameters": {
+                                "dataset_id": entry["dataset_id"],
+                                "namespace": entry["neo4j_namespace"],
+                            },
                         }
                     ]
                 },
                 timeout=30.0,
             )
-            assert response.status_code == 200, response.text
+            assert response.status_code == 200, "Live HTTP request failed"
             rows = response.json()["results"][0]["data"]
             assert rows and rows[0]["row"][0] > 0, (
                 f"{entry['dataset_id']} has no graph data"
@@ -239,7 +311,8 @@ def test_inventory_targets_exist_in_live_storage() -> None:
 def test_graph_disabled_parity_against_the_bridge() -> None:
     """B: graph-off hits, order, score, count and kg match the bridge."""
 
-    dataset_id = os.environ.get("HAWKI_PARITY_DATASET", "dataset-alpha")
+    dataset_id = _required("HAWKI_PARITY_GRAPH_OFF_DATASET")
+    assert dataset_id in {r["dataset_id"] for r in _configured_datasets()}
     python = _python_response(dataset_id, fast_mode=True)
     bridge = _bridge_response(_trusted_request(dataset_id, fast_mode=True))
 
@@ -251,12 +324,18 @@ def test_graph_disabled_parity_against_the_bridge() -> None:
 def test_graph_enabled_parity_and_identifier_stripping() -> None:
     """C: graph-on results match and Python never leaks physical identifiers."""
 
-    dataset_id = os.environ.get("HAWKI_PARITY_DATASET", "dataset-graph")
+    dataset_id = _required("HAWKI_PARITY_GRAPH_ON_DATASET")
+    assert dataset_id in {
+        r["dataset_id"] for r in _configured_datasets() if r["graph_enabled"]
+    }
     python = _python_response(dataset_id, fast_mode=False)
     bridge = _bridge_response(_trusted_request(dataset_id, fast_mode=False))
 
     _assert_hits_parity(python, bridge)
     assert python["retrieval"]["graph_enabled"] is True
+    assert python["kg"] or any(
+        str(hit["id"]).startswith("neo4j:") for hit in python["hits"]
+    ), "Choose a staging query that exercises graph retrieval"
     assert _physical_paths(python) == []
 
     for hit in python["hits"]:

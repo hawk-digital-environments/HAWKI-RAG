@@ -114,8 +114,10 @@ Use directory mounts and an operator-controlled atomic publication process.
 ## Failures and rollback
 
 Signing/configuration failure returns a generic 503; connection failure a generic
-502; timeout a generic 504. Recognized Python JSON statuses/bodies are preserved,
-including auth, grant denial, readiness, retrieval failures, and validation errors.
+502; timeout a generic 504. The internal client preserves recognized Python
+statuses/bodies. At the browser dispatcher, errors keep Laravel's top-level
+`ok=false`, `error`, `message` envelope (and `errors` for 422), rather than requiring
+clients to parse Python's `detail`. Success payloads and status codes are preserved.
 Redirects, malformed/non-JSON/debug responses, and unrecognized bodies become a
 generic 502. No raw transport exception, JWT, or upstream dump is logged/returned.
 
@@ -128,6 +130,10 @@ Before activation: provision real keys, verify HTTPS JWKS/certificates, approve
 the canonical tenant, backfill and validate Python grants, resolve the query-all
 transition and Laravel-owned dataset-list parity, then run live query parity.
 These are activation gates; this implementation does not execute them.
+
+See [the Epoch 7C operator runbook](python_query_cutover.md) for reviewed grant
+plans, configuration gates, actual-inventory parity, the separate query-all
+transition, controlled activation, and rollback.
 
 ## Tests
 

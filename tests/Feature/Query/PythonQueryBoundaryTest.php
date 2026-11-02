@@ -57,7 +57,7 @@ class PythonQueryBoundaryTest extends TestCase
             ->willReturn(['status' => 503, 'payload' => ['detail' => 'authentication_unavailable']]);
         $this->app->instance(PythonQueryClient::class, $python);
         $this->postJson('/api/query', ['dataset_id' => 'a', 'query' => 'Q'])
-            ->assertStatus(503)->assertExactJson(['detail' => 'authentication_unavailable']);
+            ->assertStatus(503)->assertExactJson(['ok' => false, 'error' => 'authentication_unavailable', 'message' => 'Query execution failed.']);
     }
 
     #[DataProvider('invalidBackends')]
@@ -68,7 +68,7 @@ class PythonQueryBoundaryTest extends TestCase
         $this->prohibit(RagProxyService::class);
         $this->prohibit(PythonQueryClient::class);
         $this->postJson('/api/query', ['dataset_id' => 'a', 'query' => 'Q'])
-            ->assertStatus(503)->assertJsonPath('detail.error', 'query_backend_configuration_invalid');
+            ->assertStatus(503)->assertJsonPath('error', 'query_backend_configuration_invalid');
     }
 
     public static function invalidBackends(): array
