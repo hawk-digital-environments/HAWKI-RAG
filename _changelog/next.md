@@ -56,6 +56,13 @@
   writes completing after cancellation. See the
   [deletion operations guide](../_documentation/Operations/temporal_operations.md#dataset-deletion-in-the-background)
   for scheduler deployment and recovery behavior.
+- **Simplified Docker image setup.** All Dockerfiles now live under `docker/`
+  (`python_rag/Dockerfile` moved to `docker/python_rag.Dockerfile`). The local
+  CUDA source build of Ollama and the curl-installing Qdrant wrapper image were
+  removed in favour of the pinned official images (`ollama/ollama:0.40.13`,
+  `qdrant/qdrant:v1.19.2`); the official Ollama image already ships CUDA support
+  for current NVIDIA GPUs, and the Qdrant health check now probes `/readyz`
+  through bash's `/dev/tcp` instead of requiring curl inside the image.
 
 - The bridge `GET /config` endpoint was removed, and the Python services no longer
 read model-selection environment variables (`RAG_DEFAULT_PROVIDER`,

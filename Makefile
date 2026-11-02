@@ -184,7 +184,7 @@ network: ## Create the external Docker networks when they do not exist.
 	done
 
 pull-core: ## Pull third-party runtime images used directly by the core stack.
-	@$(COMPOSE_CMD) pull postgres temporal hawki_rag_neo4j $(OLLAMA_SERVICE)
+	@$(COMPOSE_CMD) pull postgres temporal qdrant hawki_rag_neo4j $(OLLAMA_SERVICE)
 
 build-app: ## Build the Laravel HAWKI RAG application image.
 	@$(COMPOSE_CMD) build hawki_rag_app
@@ -361,7 +361,7 @@ health: ## Check required and optional containers plus service endpoints.
 	echo "Service checks"; \
 	check_exec "PostgreSQL ping" hawki_rag_postgres 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"' 1; \
 	check_exec "Laravel artisan" hawki_rag_app "php artisan list --raw" 1; \
-	check_exec "Qdrant readyz" hawki_qdrant "curl -fsS http://localhost:6333/readyz" 1; \
+	check_exec "Qdrant readyz" hawki_qdrant "bash -c 'exec 3<>/dev/tcp/127.0.0.1/6333 && printf \"GET /readyz HTTP/1.0\r\n\r\n\" >&3 && grep -q \" 200 \" <&3'" 1; \
 	check_exec "Neo4j browser" hawki_rag_neo4j "wget --spider -q http://localhost:7474/browser" 1; \
 	check_exec "Ollama models" $(OLLAMA_CONTAINER) "ollama list" 1; \
 	check_exec "Read-only RAG bridge" hawki_rag_bridge "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost/health?runtime=false\", timeout=5).read()'" 0; \

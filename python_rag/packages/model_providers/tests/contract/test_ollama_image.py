@@ -32,7 +32,7 @@ def test_gpu_ollama_uses_the_pinned_official_image_without_a_source_build() -> N
     base_ollama = _service_block(BASE_COMPOSE_FILE, "ollama")
     gpu_ollama = _service_block(GPU_COMPOSE_FILE, "ollama")
 
-    assert "image: ollama/ollama:0.32.1" in base_ollama
+    assert "image: ollama/ollama:0.40.13" in base_ollama
     assert "build:" not in gpu_ollama
     assert "image:" not in gpu_ollama
     assert "pull_policy:" not in gpu_ollama

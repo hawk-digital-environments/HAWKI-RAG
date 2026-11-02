@@ -94,7 +94,7 @@ def test_writable_python_roles_use_root_bootstrap_and_nonroot_runtime_contract()
     ):
         service = _service_block(name)
         assert "user:" not in service
-        assert "dockerfile: python_rag/Dockerfile" in service
+        assert "dockerfile: docker/python_rag.Dockerfile" in service
         assert "stop_grace_period: 15s" in service
         assert "hawki_rag_app:" in service
         assert "condition: service_healthy" in service
