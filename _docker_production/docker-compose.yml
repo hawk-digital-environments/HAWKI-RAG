@@ -1,8 +1,10 @@
 # This docker compose file defines the services for the production environment
 # of the HAWKI RAG application. It is the pull-only counterpart of the build-based
 # docker-compose.yml in the repository root: instead of building images from
-# source, every HAWKI RAG image is pulled from Docker Hub, pinned to the version
-# configured through HAWKI_RAG_VERSION in the .env file.
+# source, every HAWKI RAG image is pulled from the registry, pinned to the version
+# configured through HAWKI_RAG_VERSION in the .env file. For our own servers that
+# registry is ghcr.io (see the deploy-rag-*.yml workflows); public deployments
+# pull the Docker Hub releases from publish-version.yml.
 #
 # Third-party services (PostgreSQL, Temporal, Qdrant, Neo4j and Ollama) are
 # pulled exactly like in the development stack. Start the stack with deploy.sh,
@@ -21,6 +23,7 @@ services:
     migrator:
         container_name: hawki_rag_migrator
         image: ${HAWKI_RAG_IMAGE_REPOSITORY:-digitalenvironments/hawki-rag}:laravel-${HAWKI_RAG_VERSION:-latest}
+        pull_policy: always
         env_file:
             - .env
         command: ["php", "artisan", "migrate", "--force"]
@@ -39,6 +42,7 @@ services:
     hawki_rag_app:
         container_name: hawki_rag_app
         image: ${HAWKI_RAG_IMAGE_REPOSITORY:-digitalenvironments/hawki-rag}:laravel-${HAWKI_RAG_VERSION:-latest}
+        pull_policy: always
         env_file:
             - .env
         volumes:
@@ -178,6 +182,7 @@ services:
     hawki_rag_bridge:
         container_name: hawki_rag_bridge
         image: ${HAWKI_RAG_IMAGE_REPOSITORY:-digitalenvironments/hawki-rag}:bridge-${HAWKI_RAG_VERSION:-latest}
+        pull_policy: always
         env_file:
             - .env
         depends_on:
@@ -206,6 +211,7 @@ services:
     hawki_rag_rerank:
         container_name: hawki_rag_rerank
         image: ${HAWKI_RAG_IMAGE_REPOSITORY:-digitalenvironments/hawki-rag}:rerank-${HAWKI_RAG_VERSION:-latest}
+        pull_policy: always
         env_file:
             - .env
         restart: always
@@ -223,6 +229,7 @@ services:
     hawki-rag-temporal-workflow-worker:
         container_name: hawki_rag_temporal_workflow_worker
         image: ${HAWKI_RAG_IMAGE_REPOSITORY:-digitalenvironments/hawki-rag}:workflow-worker-${HAWKI_RAG_VERSION:-latest}
+        pull_policy: always
         env_file:
             - .env
         depends_on:
@@ -239,6 +246,7 @@ services:
     hawki-rag-temporal-scraper-worker:
         container_name: hawki_rag_temporal_scraper_worker
         image: ${HAWKI_RAG_IMAGE_REPOSITORY:-digitalenvironments/hawki-rag}:scraper-worker-${HAWKI_RAG_VERSION:-latest}
+        pull_policy: always
         env_file:
             - .env
         volumes:
@@ -261,6 +269,7 @@ services:
     hawki-rag-temporal-converter-worker:
         container_name: hawki_rag_temporal_converter_worker
         image: ${HAWKI_RAG_IMAGE_REPOSITORY:-digitalenvironments/hawki-rag}:converter-worker-${HAWKI_RAG_VERSION:-latest}
+        pull_policy: always
         env_file:
             - .env
         volumes:
@@ -286,6 +295,7 @@ services:
     hawki-rag-indexer-worker:
         container_name: hawki_rag_indexer_worker
         image: ${HAWKI_RAG_IMAGE_REPOSITORY:-digitalenvironments/hawki-rag}:indexer-worker-${HAWKI_RAG_VERSION:-latest}
+        pull_policy: always
         env_file:
             - .env
         volumes:

@@ -1,0 +1,110 @@
+# Deploys the HAWKI RAG stack to the production machine, following the pattern
+# of the HAWKI deploy pipelines:
+#
+#   1. Every role image is built for linux/amd64 and pushed to ghcr.io, tagged
+#      <role>-prod-<sha> and <role>-prod-latest.
+#   2. The Dokploy webhook is triggered; the central Dokploy instance then
+#      deploys the stack onto the machine over SSH and pulls the freshly
+#      pushed images (HAWKI_RAG_VERSION=prod-latest in its environment
+#      configuration).
+#
+# This pipeline is decoupled from publish-version.yml, which publishes the
+# public multi-arch release images to Docker Hub. The production machine has
+# a single GPU, so the two torch roles build their CUDA ("gpu") variants here;
+# the production Dokploy compose merges docker-compose.gpu-override.yml, so
+# the reranker and the indexer worker resolve the rerank-gpu-<version> and
+# indexer-worker-gpu-<version> tags.
+name: Deploy RAG to Production
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - 'rag/prod'
+
+jobs:
+  build-and-push:
+    name: Build & push ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: laravel
+            dockerfile: docker/laravel.Dockerfile
+            target: laravel-app
+          - name: bridge
+            dockerfile: docker/python_rag.Dockerfile
+            target: bridge-runtime
+          - name: rerank-gpu
+            dockerfile: docker/python_rag.Dockerfile
+            target: reranker-runtime
+            build-args: TORCH_VARIANT=gpu
+          - name: workflow-worker
+            dockerfile: docker/python_rag.Dockerfile
+            target: workflow-runtime
+          - name: scraper-worker
+            dockerfile: docker/python_rag.Dockerfile
+            target: scraper-runtime
+          - name: converter-worker
+            dockerfile: docker/python_rag.Dockerfile
+            target: converter-runtime
+          - name: indexer-worker-gpu
+            dockerfile: docker/python_rag.Dockerfile
+            target: indexer-runtime
+            build-args: TORCH_VARIANT=gpu
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v7
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build and push Docker image
+        id: push
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./${{ matrix.dockerfile }}
+          target: ${{ matrix.target }}
+          push: true
+          tags: |
+            ghcr.io/hawk-digital-environments/hawki-rag:${{ matrix.name }}-prod-${{ github.sha }}
+            ghcr.io/hawk-digital-environments/hawki-rag:${{ matrix.name }}-prod-latest
+          build-args: ${{ matrix.build-args }}
+          cache-from: type=gha,scope=deploy-${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=deploy-${{ matrix.name }}
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    steps:
+      - name: Trigger Dokploy webhook
+        run: curl -fsSL "${{ secrets.DOKPLOY_DEPLOYMENT_WEBHOOK_PROD }}"
+
+  remove-old-images:
+    permissions:
+      packages: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: snok/container-retention-policy@v3.1.0
+        with:
+          account: ${{ github.repository_owner }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+          image-names: "hawki-rag"
+          # Tags are named <role>-prod-<sha>, so one deployment produces seven
+          # role tags; keep enough of them to cover a full deployment.
+          image-tags: "*-prod-* !*-prod-latest"
+          keep-n-most-recent: 8
+          cut-off: 1h

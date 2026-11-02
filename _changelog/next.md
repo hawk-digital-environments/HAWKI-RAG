@@ -72,11 +72,19 @@
   `indexer-worker` and their `-gpu` counterparts).
 - **Production deployment setup.** `_docker_production/` mirrors the main
   HAWKI production setup: a pull-only `docker-compose.yml` that pins every
-  image through `HAWKI_RAG_VERSION`, a one-shot migrator service gating the
-  stack against outdated database schemas, a `docker-compose.gpu-override.yml`
-  that switches the reranker and indexer worker to the `-gpu` images and
-  reserves NVIDIA devices (Ollama included), plus `deploy.sh`, an `.env.example`
-  and the `gpu_guard.sh` entrypoint wrapper.
+  image through `HAWKI_RAG_VERSION` (with `pull_policy: always`, so Dokploy
+  redeploys actually pull freshly pushed `-latest` tags), a one-shot migrator
+  service gating the stack against outdated database schemas, a
+  `docker-compose.gpu-override.yml` that switches the reranker and indexer
+  worker to the `-gpu` images and reserves NVIDIA devices (Ollama included),
+  plus `deploy.sh`, an `.env.example` and the `gpu_guard.sh` entrypoint wrapper.
+- **Internal deployment pipelines.** `deploy-rag-testing.yml` and
+  `deploy-rag-prod.yml` deploy our own servers, independent of the public
+  Docker Hub releases: pushing to `rag/test-1..3` or `rag/prod` builds every
+  role image for amd64, pushes it to the GitHub Container Registry as
+  `<role>-<environment>-latest`, and triggers the Dokploy webhook that deploys
+  the stack onto the machine. Testing instances build the CPU torch variants,
+  production builds the `-gpu` variants for the single-GPU machine.
 
 - The bridge `GET /config` endpoint was removed, and the Python services no longer
 read model-selection environment variables (`RAG_DEFAULT_PROVIDER`,
