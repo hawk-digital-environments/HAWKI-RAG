@@ -1,0 +1,155 @@
+name: Release Pipeline
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - '[0-9]+.[0-9]+.[0-9]+'
+
+permissions:
+  contents: write
+
+jobs:
+  detect-version:
+    name: Detect Version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      major-version: ${{ steps.version.outputs.major-version }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Detect latest version from changelog
+        uses: hawk-digital-environments/hawk-pipeline-actions/detect-version@v1
+        id: version
+        with:
+          strategy: 'changelog'
+
+  build-and-publish:
+    name: Build & Publish ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    needs: [ detect-version ]
+    permissions:
+      packages: write
+      contents: read
+      attestations: write
+      id-token: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Release images publish BOTH dependency variants for the two torch
+          # roles: the default tags carry the CPU wheels, the "-gpu" tags the
+          # CUDA wheels (uv.lock covers amd64 and arm64 for both). GPU
+          # deployments pull the -gpu tags via docker-compose.gpu-override.yml
+          # instead of building locally.
+          - name: laravel
+            dockerfile: docker/laravel.Dockerfile
+            target: laravel-app
+          - name: bridge
+            dockerfile: docker/python_rag.Dockerfile
+            target: bridge-runtime
+          - name: rerank
+            dockerfile: docker/python_rag.Dockerfile
+            target: reranker-runtime
+            build-args: TORCH_VARIANT=cpu
+          - name: rerank-gpu
+            dockerfile: docker/python_rag.Dockerfile
+            target: reranker-runtime
+            build-args: TORCH_VARIANT=gpu
+          - name: workflow-worker
+            dockerfile: docker/python_rag.Dockerfile
+            target: workflow-runtime
+          - name: scraper-worker
+            dockerfile: docker/python_rag.Dockerfile
+            target: scraper-runtime
+          - name: converter-worker
+            dockerfile: docker/python_rag.Dockerfile
+            target: converter-runtime
+          - name: indexer-worker
+            dockerfile: docker/python_rag.Dockerfile
+            target: indexer-runtime
+            build-args: TORCH_VARIANT=cpu
+          - name: indexer-worker-gpu
+            dockerfile: docker/python_rag.Dockerfile
+            target: indexer-runtime
+            build-args: TORCH_VARIANT=gpu
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      # Release images publish the CPU dependency variants. GPU deployments
+      # build TORCH_VARIANT=gpu locally through docker-compose-gpu-override.yml.
+      - name: Build and push Docker image
+        id: push
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./${{ matrix.dockerfile }}
+          target: ${{ matrix.target }}
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: |
+            digitalenvironments/hawki-rag:${{ matrix.name }}-latest
+            digitalenvironments/hawki-rag:${{ matrix.name }}-${{ needs.detect-version.outputs.major-version }}
+            digitalenvironments/hawki-rag:${{ matrix.name }}-${{ needs.detect-version.outputs.version }}
+          build-args: ${{ matrix.build-args }}
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
+
+      - name: Generate artifact attestation
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-name: index.docker.io/digitalenvironments/hawki-rag
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
+
+  github-release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: [ build-and-publish, detect-version ]
+    permissions:
+      contents: write
+    outputs:
+      release-name: ${{ steps.release.outputs.release-name }}
+      release-body: ${{ steps.release.outputs.release-body }}
+      release-url: ${{ steps.release.outputs.release-url }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - id: release
+        uses: hawk-digital-environments/hawk-pipeline-actions/create-github-release@v1
+        with:
+          version: ${{ needs.detect-version.outputs.version }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+  notify-discord:
+    name: Notify Discord
+    runs-on: ubuntu-latest
+    needs: [ build-and-publish, github-release, detect-version ]
+    if: ${{ success() && false }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: hawk-digital-environments/hawk-pipeline-actions/send-discord-notification@v1
+        with:
+          webhook-url: ${{ secrets.DISCORD_UPDATE_WEBHOOK_URL }}
+          release-name: ${{ needs.github-release.outputs.release-name }}
+          release-body: ${{ needs.github-release.outputs.release-body }}
+          release-url: ${{ needs.github-release.outputs.release-url }}
+          content: "||@everyone|| Beware! a new **HAWKI RAG** version just dropped **${{ needs.detect-version.outputs.version }}**!"

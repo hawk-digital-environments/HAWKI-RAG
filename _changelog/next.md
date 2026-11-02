@@ -63,6 +63,20 @@
   `qdrant/qdrant:v1.19.2`); the official Ollama image already ships CUDA support
   for current NVIDIA GPUs, and the Qdrant health check now probes `/readyz`
   through bash's `/dev/tcp` instead of requiring curl inside the image.
+- **Release pipeline.** Three manual/automated GitHub workflows publish the
+  Docker images: create a release branch, trigger the release (which validates
+  the branch and test-builds every image for both platforms), and a tag-triggered
+  pipeline that builds and publishes the Laravel image plus the Python role
+  images to Docker Hub with build attestations and creates the GitHub release.
+  Both dependency variants of the two torch roles are published (`rerank` /
+  `indexer-worker` and their `-gpu` counterparts).
+- **Production deployment setup.** `_docker_production/` mirrors the main
+  HAWKI production setup: a pull-only `docker-compose.yml` that pins every
+  image through `HAWKI_RAG_VERSION`, a one-shot migrator service gating the
+  stack against outdated database schemas, a `docker-compose.gpu-override.yml`
+  that switches the reranker and indexer worker to the `-gpu` images and
+  reserves NVIDIA devices (Ollama included), plus `deploy.sh`, an `.env.example`
+  and the `gpu_guard.sh` entrypoint wrapper.
 
 - The bridge `GET /config` endpoint was removed, and the Python services no longer
 read model-selection environment variables (`RAG_DEFAULT_PROVIDER`,

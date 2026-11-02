@@ -1,0 +1,332 @@
+# This docker compose file defines the services for the production environment
+# of the HAWKI RAG application. It is the pull-only counterpart of the build-based
+# docker-compose.yml in the repository root: instead of building images from
+# source, every HAWKI RAG image is pulled from Docker Hub, pinned to the version
+# configured through HAWKI_RAG_VERSION in the .env file.
+#
+# Third-party services (PostgreSQL, Temporal, Qdrant, Neo4j and Ollama) are
+# pulled exactly like in the development stack. Start the stack with deploy.sh,
+# which pulls fresh images and starts everything in dependency order.
+#
+# NVIDIA GPUs: copy docker-compose.gpu-override.yml over this setup by running
+# deploy.sh with COMPOSE_FILE including the override file, so the reranker and
+# the indexer worker use the published "-gpu" image variants and get access to
+# the NVIDIA devices reserved there.
+services:
+    # The migrator is a one-shot instance of the Laravel application image.
+    # It runs the database migrations once, with --force so it never prompts,
+    # and only after PostgreSQL reports healthy. Every other HAWKI RAG service
+    # waits for it to complete successfully, so the stack never starts against
+    # an outdated database schema.
+    migrator:
+        container_name: hawki_rag_migrator
+        image: ${HAWKI_RAG_IMAGE_REPOSITORY:-digitalenvironments/hawki-rag}:laravel-${HAWKI_RAG_VERSION:-latest}
+        env_file:
+            - .env
+        command: ["php", "artisan", "migrate", "--force"]
+        volumes:
+            - shared_storage:/app/shared
+            - shared_storage:/shared
+            - ./storage:/var/www/html/storage
+        depends_on:
+            postgres:
+                condition: service_healthy
+        restart: "no"
+
+    # The HAWKI RAG application. Serves the web UI and the HTTP API through the
+    # NGINX + PHP-FPM pair shipped inside the image. The health report is only
+    # written after the container initialization finished successfully.
+    hawki_rag_app:
+        container_name: hawki_rag_app
+        image: ${HAWKI_RAG_IMAGE_REPOSITORY:-digitalenvironments/hawki-rag}:laravel-${HAWKI_RAG_VERSION:-latest}
+        env_file:
+            - .env
+        volumes:
+            - shared_storage:/app/shared
+            - shared_storage:/shared
+            - ./storage:/var/www/html/storage
+            # Name your own certificates cert.pem and key.pem in ./certs to
+            # serve HTTPS directly; without them the container self-signs.
+            - ./certs:/container/custom/certs
+        ports:
+            # Bind the application to a host port (loopback by default) so an
+            # external reverse proxy can forward traffic to it. Point
+            # DOCKER_PROJECT_IP in the .env file at the interface the proxy
+            # expects, or change HAWKI_RAG_APP_PORT if 8080 is taken.
+            - ${DOCKER_PROJECT_IP:-127.0.0.1}:${HAWKI_RAG_APP_PORT:-8080}:80
+        networks:
+            - default
+            - hawki-network
+        depends_on:
+            migrator:
+                condition: service_completed_successfully
+            postgres:
+                condition: service_healthy
+            temporal:
+                condition: service_started
+        restart: always
+        healthcheck:
+            test: ["CMD", "test", "-f", "/tmp/hawki-rag-app-ready"]
+            interval: 30s
+            timeout: 5s
+            retries: 12
+            start_period: 30s
+
+    # PostgreSQL stores the Laravel metadata and the Temporal persistence.
+    postgres:
+        container_name: hawki_rag_postgres
+        image: postgres:16
+        env_file:
+            - .env
+        restart: always
+        volumes:
+            - postgres_data:/var/lib/postgresql/data
+        healthcheck:
+            test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+            interval: 10s
+            timeout: 5s
+            retries: 12
+            start_period: 15s
+        logging:
+            options:
+                max-size: "128m"
+                max-file: "3"
+
+    # The Temporal server manages the ingestion workflow orchestration. The
+    # auto-setup variant creates and updates the database schema on startup.
+    temporal:
+        container_name: temporal
+        image: temporalio/auto-setup:1.25.2
+        env_file:
+            - .env
+        restart: always
+        depends_on:
+            postgres:
+                condition: service_healthy
+        networks:
+            - default
+            - hawki-network
+
+    # Qdrant stores the semantic vectors. The official image ships bash but no
+    # HTTP client, so the health check probes /readyz through bash's /dev/tcp.
+    qdrant:
+        container_name: hawki_qdrant
+        image: qdrant/qdrant:v1.19.2
+        restart: always
+        volumes:
+            - qdrant_data:/qdrant/storage
+        healthcheck:
+            test:
+                - CMD
+                - bash
+                - -c
+                - 'exec 3<>/dev/tcp/127.0.0.1/6333 && printf "GET /readyz HTTP/1.0\r\n\r\n" >&3 && grep -q " 200 " <&3'
+            interval: 30s
+            timeout: 10s
+            retries: 5
+            start_period: 30s
+
+    # Neo4j stores the knowledge graph extracted during ingestion.
+    hawki_rag_neo4j:
+        container_name: hawki_rag_neo4j
+        image: neo4j:5.22
+        # Neo4j converts every NEO4J_* variable into a server setting. Only
+        # pass the credentials here; client variables such as NEO4J_HTTP_URL
+        # and NEO4J_URI stay in the .env file for the application containers.
+        environment:
+            NEO4J_AUTH: ${NEO4J_USER}/${NEO4J_PASSWORD}
+        restart: always
+        volumes:
+            - neo4j_data:/data
+        healthcheck:
+            test: ["CMD", "wget", "--spider", "-q", "http://localhost:7474/browser"]
+            interval: 30s
+            timeout: 10s
+            retries: 5
+            start_period: 30s
+
+    # Ollama serves the local embedding, chat and vision models. The entrypoint
+    # wrapper disables GPU usage for the process when the free VRAM reported by
+    # nvidia-smi drops below GPU_MIN_FREE_MB, so inference degrades to CPU
+    # instead of starving other GPU tenants on a shared host.
+    ollama:
+        container_name: hawki_ollama
+        image: ollama/ollama:0.40.13
+        env_file:
+            - .env
+        volumes:
+            - ollama:/root/.ollama
+            - ./gpu_guard.sh:/usr/local/bin/gpu_guard.sh:ro
+        entrypoint: ["/usr/local/bin/gpu_guard.sh", "ollama"]
+        command: ["serve"]
+        networks:
+            default: {}
+            hawki-network:
+                aliases:
+                    - ollama
+                    - hawki_ollama
+        restart: always
+        healthcheck:
+            test: ["CMD", "ollama", "list"]
+            interval: 30s
+            timeout: 10s
+            retries: 10
+            start_period: 30s
+
+    # The read-only FastAPI bridge fronts query, configuration, health and
+    # Temporal control operations for the Laravel application.
+    hawki_rag_bridge:
+        container_name: hawki_rag_bridge
+        image: ${HAWKI_RAG_IMAGE_REPOSITORY:-digitalenvironments/hawki-rag}:bridge-${HAWKI_RAG_VERSION:-latest}
+        env_file:
+            - .env
+        depends_on:
+            migrator:
+                condition: service_completed_successfully
+            qdrant:
+                condition: service_healthy
+            hawki_rag_neo4j:
+                condition: service_healthy
+            temporal:
+                condition: service_started
+            ollama:
+                condition: service_healthy
+        restart: always
+        stop_grace_period: 40s
+        healthcheck:
+            test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1/health?runtime=false', timeout=3)"]
+            interval: 30s
+            timeout: 10s
+            retries: 5
+            start_period: 30s
+
+    # The Cohere-compatible reranker orders retrieved passages by relevance.
+    # The docker-compose.gpu-override.yml swaps this to the "-gpu" image
+    # variant and reserves an NVIDIA device for it.
+    hawki_rag_rerank:
+        container_name: hawki_rag_rerank
+        image: ${HAWKI_RAG_IMAGE_REPOSITORY:-digitalenvironments/hawki-rag}:rerank-${HAWKI_RAG_VERSION:-latest}
+        env_file:
+            - .env
+        restart: always
+        stop_grace_period: 40s
+        healthcheck:
+            test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1/health', timeout=3)"]
+            interval: 30s
+            timeout: 10s
+            retries: 5
+            start_period: 30s
+
+    # The Python Temporal workers. Each runs as its own image variant, waits
+    # for the migrations and the application health report, and shares the
+    # crawled-data root with the application through the shared volume.
+    hawki-rag-temporal-workflow-worker:
+        container_name: hawki_rag_temporal_workflow_worker
+        image: ${HAWKI_RAG_IMAGE_REPOSITORY:-digitalenvironments/hawki-rag}:workflow-worker-${HAWKI_RAG_VERSION:-latest}
+        env_file:
+            - .env
+        depends_on:
+            migrator:
+                condition: service_completed_successfully
+            temporal:
+                condition: service_started
+        restart: always
+        stop_grace_period: 15s
+        networks:
+            - default
+            - hawki-network
+
+    hawki-rag-temporal-scraper-worker:
+        container_name: hawki_rag_temporal_scraper_worker
+        image: ${HAWKI_RAG_IMAGE_REPOSITORY:-digitalenvironments/hawki-rag}:scraper-worker-${HAWKI_RAG_VERSION:-latest}
+        env_file:
+            - .env
+        volumes:
+            - shared_storage:/shared
+        group_add:
+            - "${PGID}"
+        depends_on:
+            migrator:
+                condition: service_completed_successfully
+            temporal:
+                condition: service_started
+            hawki_rag_app:
+                condition: service_healthy
+        restart: always
+        stop_grace_period: 15s
+        networks:
+            - default
+            - hawki-network
+
+    hawki-rag-temporal-converter-worker:
+        container_name: hawki_rag_temporal_converter_worker
+        image: ${HAWKI_RAG_IMAGE_REPOSITORY:-digitalenvironments/hawki-rag}:converter-worker-${HAWKI_RAG_VERSION:-latest}
+        env_file:
+            - .env
+        volumes:
+            - shared_storage:/shared
+        group_add:
+            - "${PGID}"
+        depends_on:
+            migrator:
+                condition: service_completed_successfully
+            temporal:
+                condition: service_started
+            hawki_rag_app:
+                condition: service_healthy
+        restart: always
+        stop_grace_period: 15s
+        networks:
+            - default
+            - hawki-network
+
+    # The indexer worker embeds and indexes the converted documents. The
+    # docker-compose.gpu-override.yml swaps this to the "-gpu" image variant
+    # and reserves an NVIDIA device for it.
+    hawki-rag-indexer-worker:
+        container_name: hawki_rag_indexer_worker
+        image: ${HAWKI_RAG_IMAGE_REPOSITORY:-digitalenvironments/hawki-rag}:indexer-worker-${HAWKI_RAG_VERSION:-latest}
+        env_file:
+            - .env
+        volumes:
+            - shared_storage:/shared
+        group_add:
+            - "${PGID}"
+        depends_on:
+            migrator:
+                condition: service_completed_successfully
+            temporal:
+                condition: service_started
+            hawki_rag_app:
+                condition: service_healthy
+            qdrant:
+                condition: service_started
+            hawki_rag_neo4j:
+                condition: service_started
+            ollama:
+                condition: service_healthy
+        restart: always
+        stop_grace_period: 15s
+        networks:
+            - default
+            - hawki-network
+
+volumes:
+    shared_storage:
+        name: rawki_shared_storage
+    postgres_data:
+        driver: local
+    qdrant_data:
+        driver: local
+    neo4j_data:
+        driver: local
+    ollama:
+        driver: local
+
+networks:
+    # Shared with the main HAWKI application stack, so both sides can reach
+    # each other by service name. Create it once with:
+    #   docker network create hawki-network
+    hawki-network:
+        name: hawki-network
+        external: true
