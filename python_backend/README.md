@@ -556,3 +556,76 @@ through `LocalGrantPolicy`.
 > that may only reach the `hawki_backend` schema. An account that can also
 > read `public` would break the rule that the backend never queries the
 > application's tables.
+
+## Deployment
+
+The backend ships as a container image built from
+[`python_backend/Dockerfile`](Dockerfile). It reuses the repository's Python
+runtime image, so it is served the same way as the other Python services:
+nginx in front of gunicorn with a uvicorn worker, running as `www-data`.
+
+| Property | Value |
+|---|---|
+| Compose service | `hawki_backend` |
+| Container name | `hawki_backend` |
+| Internal URL | `http://hawki_backend` (networks `default` and `hawki-network`) |
+| Container port | `80` (nginx, the only exposed port) |
+| Health check | `GET /v1/health` |
+| ASGI runtime | gunicorn with `uvicorn.workers.UvicornWorker` (`uvicorn[standard]==0.30.6`) |
+| Workers | `GUNICORN_WORKERS=1` (override in the service definition if needed) |
+| Image | `hawki-backend:local` |
+
+The service publishes no host port. A future Laravel BFF can reach it over the
+internal Docker network; nothing routes production query traffic to it yet.
+
+### Configuration injection
+
+The image contains no secrets and no `.env` file. Configuration is injected by
+the deployment; the compose service receives the shared env file through the
+`x-service-env` anchor, so the keys are added there exactly like the other
+services.
+
+[`python_backend/.env.example`](.env.example) documents the keys and holds
+placeholders only:
+
+* `HAWKI_BACKEND_AUTH_*` — the JWT boundary. With none of these variables
+  present the application starts without an authentication boundary and
+  `/v1/query` answers `503`; the health endpoint still answers `200`. With any
+  of them present the whole configuration must be valid or the application
+  refuses to start. There is no anonymous mode.
+* `HAWKI_BACKEND_DB_*` — the grant store. The account should only reach the
+  `hawki_backend` schema.
+* `HAWKI_BACKEND_QUERY_*` — the server-owned dataset/model scope registry.
+
+The shared retrieval package reads plain process environment variables. The
+backend must therefore receive the same `RAG_*`, `QDRANT_*`, `NEO4J_*`,
+`RERANKER_*` and provider endpoint/model variables that `hawki_bridge` runs
+with. Do not give the backend its own retrieval defaults: copy the bridge's
+effective values so both query paths execute the same pipeline.
+
+### Runtime model
+
+`POST /v1/query` is intentionally synchronous. The grant lookup and the
+retrieval pipeline are blocking calls, and FastAPI runs synchronous routes in
+its worker threadpool, so a request does not block the event loop. Gunicorn
+runs one uvicorn worker by default; increase `GUNICORN_WORKERS` only after
+measuring the deployment, because each worker is a separate process with its
+own threadpool and database pool.
+
+Query timeout and retry policy belong to the caller of this service (the
+future Laravel BFF or the reverse proxy), not to the application. The backend
+keeps the retrieval client timeouts it shares with `hawki_bridge`.
+
+### Building and running
+
+```bash
+docker build -f python_backend/Dockerfile -t hawki-backend:local .
+docker compose up -d hawki_backend
+docker compose ps hawki_backend
+docker compose exec hawki_backend python -c \
+  "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1/v1/health').read())"
+```
+
+Without `HAWKI_BACKEND_*` and query registry configuration, the service is
+healthy while `/v1/query` fails closed. That is the expected state for this
+slice: the runtime exists, but query traffic is not cut over.

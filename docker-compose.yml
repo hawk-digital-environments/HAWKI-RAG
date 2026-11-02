@@ -207,6 +207,43 @@ services:
       start_period: 20s
 
   # -------------------------------------------------
+  # Authenticated public query backend
+  #
+  # Not on the query traffic path yet: nothing routes to it. The service joins
+  # both networks so a future Laravel BFF can reach it as `http://hawki_backend`
+  # but publishes no host port. Configuration arrives through the shared
+  # env_file; add the HAWKI_BACKEND_* keys there (see python_backend/.env.example).
+  # -------------------------------------------------
+  hawki_backend:
+    <<: *service_env
+    build:
+      context: .
+      dockerfile: python_backend/Dockerfile
+    image: hawki-backend:local
+    pull_policy: never
+    container_name: hawki_backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+      hawki_rag_neo4j:
+        condition: service_healthy
+      ollama:
+        condition: service_healthy
+    restart: unless-stopped
+    stop_grace_period: 40s
+    networks:
+      - default
+      - hawki-network
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1/v1/health', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  # -------------------------------------------------
   # Python Temporal workers
   # -------------------------------------------------
   hawki-rag-temporal-workflow-worker:
