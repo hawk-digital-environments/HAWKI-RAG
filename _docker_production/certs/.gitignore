@@ -1,0 +1,5 @@
+# Place your SSL certificates here as cert.pem and key.pem when the stack
+# should serve HTTPS directly. Without them the container generates self-signed
+# certificates on startup (fine behind a reverse proxy that terminates TLS).
+cert.pem
+key.pem

@@ -16,7 +16,7 @@ RUN npm config set fetch-retries 5 \
  && npm config set fetch-retry-mintimeout 20000 \
  && npm config set fetch-retry-maxtimeout 120000 \
  && npm config set fetch-timeout 300000 \
- && npm ci --with-dev
+ && npm ci --include=dev
 
 # Copy rest of application
 COPY --chown=www-data:www-data . .
@@ -77,7 +77,8 @@ RUN mkdir -p \
 
 # Copy container config
 COPY ./docker/rag_app /container/custom/
-COPY ./docker/rag_app/supervisor/dataset-cleanup.conf /container/templates/supervisor/conf.d/dataset-cleanup.service.mode-web.conf
+# Run the Laravel scheduler (dataset-cleanup and future tasks) in web mode.
+COPY ./docker/rag_app/supervisor/laravel-scheduler.conf /container/templates/supervisor/conf.d/laravel-scheduler.service.mode-web.conf
 
 # Dump composer autoload
 RUN composer dump-autoload --optimize

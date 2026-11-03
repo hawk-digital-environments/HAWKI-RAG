@@ -1,0 +1,41 @@
+# NVIDIA GPU override for the HAWKI RAG production stack.
+#
+# Adds GPU acceleration on top of docker-compose.yml: the reranker and the
+# indexer worker switch from the default CPU images to the published "-gpu"
+# image variants (built with TORCH_VARIANT=gpu / CUDA torch wheels), Ollama
+# gets direct access to the NVIDIA device, and Docker reserves the device for
+# all three services. Every other service is untouched.
+#
+# Apply together with the base file, either through COMPOSE_FILE:
+#   COMPOSE_FILE=docker-compose.yml:docker-compose.gpu-override.yml ./deploy.sh
+# or by exporting COMPOSE_FILE in the .env file (the deploy script picks it up
+# from there as well).
+services:
+    hawki_rag_rerank:
+        image: ${HAWKI_RAG_IMAGE_REPOSITORY:-digitalenvironments/hawki-rag}:rerank-gpu-${HAWKI_RAG_VERSION:-latest}
+        deploy:
+            resources:
+                reservations:
+                    devices:
+                        - driver: nvidia
+                          count: 1
+                          capabilities: [gpu]
+
+    hawki-rag-indexer-worker:
+        image: ${HAWKI_RAG_IMAGE_REPOSITORY:-digitalenvironments/hawki-rag}:indexer-worker-gpu-${HAWKI_RAG_VERSION:-latest}
+        deploy:
+            resources:
+                reservations:
+                    devices:
+                        - driver: nvidia
+                          count: 1
+                          capabilities: [gpu]
+
+    ollama:
+        deploy:
+            resources:
+                reservations:
+                    devices:
+                        - driver: nvidia
+                          count: 1
+                          capabilities: [gpu]

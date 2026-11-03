@@ -56,6 +56,44 @@
   writes completing after cancellation. See the
   [deletion operations guide](../_documentation/Operations/temporal_operations.md#dataset-deletion-in-the-background)
   for scheduler deployment and recovery behavior.
+- **Simplified Docker image setup.** All Dockerfiles now live under `docker/`
+  (`python_rag/Dockerfile` moved to `docker/python_rag.Dockerfile`). The local
+  CUDA source build of Ollama and the curl-installing Qdrant wrapper image were
+  removed in favour of the pinned official images (`ollama/ollama:0.40.13`,
+  `qdrant/qdrant:v1.19.2`); the official Ollama image already ships CUDA support
+  for current NVIDIA GPUs, and the Qdrant health check now probes `/readyz`
+  through bash's `/dev/tcp` instead of requiring curl inside the image.
+- **Release pipeline.** Three manual/automated GitHub workflows publish the
+  Docker images: create a release branch, trigger the release (which validates
+  the branch and test-builds every image for both platforms), and a tag-triggered
+  pipeline that builds and publishes the Laravel image plus the Python role
+  images to Docker Hub with build attestations and creates the GitHub release.
+  Both dependency variants of the two torch roles are published (`rerank` /
+  `indexer-worker` and their `-gpu` counterparts). Republishing an already
+  published version is only possible through the separate rebuild workflow:
+  it re-detects the version from the checked-out rebuild target, only accepts
+  `main`, a release tag or a full commit SHA, and leaves the `latest` and
+  major tags untouched unless `main` is rebuilt.
+- **Production deployment setup.** `_docker_production/` mirrors the main
+  HAWKI production setup: a pull-only `docker-compose.yml` that pins every
+  image through `HAWKI_RAG_VERSION` (with `pull_policy: always`, so
+  redeploys actually pull freshly pushed `-latest` tags), a one-shot migrator
+  service gating the stack against outdated database schemas, a
+  `docker-compose.gpu-override.yml` that switches the reranker and indexer
+  worker to the `-gpu` images and reserves NVIDIA devices (Ollama included),
+  plus `deploy.sh` and an `.env.example`. The Ollama service runs through a
+  single `ollama-entrypoint.sh` that guards the GPU (degrading inference to
+  CPU when the free VRAM drops below `GPU_MIN_FREE_MB`) and pulls the models
+  listed in `HAWKI_RAG_OLLAMA_MODELS` (embedding, chat, graph and vision by
+  default) when the service starts, so model pulling also works on
+  deployments that run the Compose file directly instead of `deploy.sh`.
+- **Internal deployment pipelines.** `deploy-rag-testing.yml` and
+  `deploy-rag-prod.yml` deploy our own servers, independent of the public
+  Docker Hub releases: pushing to `rag/test-1..3` or `rag/prod` builds every
+  role image for amd64, pushes it to the GitHub Container Registry as
+  `<role>-<environment>-latest`, and triggers the Dokploy webhook that deploys
+  the stack onto the machine. Testing instances build the CPU torch variants,
+  production builds the `-gpu` variants for the single-GPU machine.
 
 - The bridge `GET /config` endpoint was removed, and the Python services no longer
 read model-selection environment variables (`RAG_DEFAULT_PROVIDER`,

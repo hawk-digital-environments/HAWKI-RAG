@@ -16,6 +16,7 @@ PYTHON_RAG = next(
     for parent in Path(__file__).resolve().parents
     if (parent / "uv.lock").is_file()
 )
+REPOSITORY_ROOT = PYTHON_RAG.parent
 SERVICE = PYTHON_RAG / "services" / "hawki_bridge"
 SOURCE = SERVICE / "src" / "hawki_bridge"
 
@@ -178,7 +179,9 @@ def test_bridge_manifest_and_dockerfile_are_production_pinned() -> None:
     assert all("==" in dependency for dependency in manifest["project"]["dependencies"])
     assert manifest["build-system"]["requires"] == ["uv_build==0.11.26"]
 
-    dockerfile = (PYTHON_RAG / "Dockerfile").read_text(encoding="utf-8")
+    dockerfile = (REPOSITORY_ROOT / "docker" / "python_rag.Dockerfile").read_text(
+        encoding="utf-8"
+    )
     assert dockerfile.count("FROM ") >= 3
     assert (
         "neunerlei/python-nginx:3.13@sha256:"

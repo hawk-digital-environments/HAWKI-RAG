@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - "python_rag/**"
+      - "docker/python_rag.Dockerfile"
       - "docker/python_rag/**"
       - "docker-compose*.yml"
       - ".dockerignore"
@@ -22,6 +23,7 @@ on:
       - main
     paths:
       - "python_rag/**"
+      - "docker/python_rag.Dockerfile"
       - "docker/python_rag/**"
       - "docker-compose*.yml"
       - ".dockerignore"

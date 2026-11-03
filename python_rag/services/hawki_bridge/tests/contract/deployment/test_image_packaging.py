@@ -12,7 +12,7 @@ PYTHON_ROOT = next(
     if (parent / "uv.lock").is_file()
 )
 REPOSITORY_ROOT = PYTHON_ROOT.parent
-DOCKERFILE = PYTHON_ROOT / "Dockerfile"
+DOCKERFILE = REPOSITORY_ROOT / "docker" / "python_rag.Dockerfile"
 PINNED_PYTHON_NGINX = (
     "neunerlei/python-nginx:3.13@sha256:"
     "05b581371d0d9faef2f160079acd0a4e18503b99d47b995825205e71fd13c136"
