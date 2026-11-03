@@ -69,7 +69,11 @@
   pipeline that builds and publishes the Laravel image plus the Python role
   images to Docker Hub with build attestations and creates the GitHub release.
   Both dependency variants of the two torch roles are published (`rerank` /
-  `indexer-worker` and their `-gpu` counterparts).
+  `indexer-worker` and their `-gpu` counterparts). Republishing an already
+  published version is only possible through the separate rebuild workflow:
+  it re-detects the version from the checked-out rebuild target, only accepts
+  `main`, a release tag or a full commit SHA, and leaves the `latest` and
+  major tags untouched unless `main` is rebuilt.
 - **Production deployment setup.** `_docker_production/` mirrors the main
   HAWKI production setup: a pull-only `docker-compose.yml` that pins every
   image through `HAWKI_RAG_VERSION` (with `pull_policy: always`, so
