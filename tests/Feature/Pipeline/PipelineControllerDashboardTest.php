@@ -9,6 +9,7 @@ use App\Models\ManagedDocumentOutput;
 use App\Models\PipelineJob;
 use App\Models\PipelineStageState;
 use App\Models\PipelineTask;
+use App\Services\Pipeline\Tasks\PipelineTaskService;
 use Illuminate\Foundation\Testing\DatabaseMigrations;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
@@ -47,6 +48,26 @@ class PipelineControllerDashboardTest extends TestCase
             ->assertDontSee('pipeline-task-select', false);
     }
 
+    public function test_source_control_observes_committed_preparation_and_server_queue_ownership(): void
+    {
+        $seen = false;
+        Http::fake(function ($request) use (&$seen) {
+            $this->assertSame(0, app('db')->connection()->transactionLevel());
+            $input = $request->data()['workflow_input'];
+            $this->assertDatabaseHas('pipeline_jobs', ['job_id' => $input['job_id'], 'temporal_workflow_id' => $request->data()['workflow_id']]);
+            $this->assertDatabaseHas('ingestion_sources', ['source_id' => $input['source_id'], 'temporal_workflow_id' => $request->data()['workflow_id']]);
+            $this->assertArrayNotHasKey('task_queues', $input);
+            $this->assertTrue($request->hasHeader('X-Hawki-Signature'));
+            $seen = true;
+
+            return Http::response(['workflow_id' => $request->data()['workflow_id'], 'run_id' => 'committed-run']);
+        });
+        app(PipelineTaskService::class)->start([
+            'dataset_id' => 'committed-source-test', 'urls' => ['https://example.test/committed'],
+        ]);
+        $this->assertTrue($seen);
+    }
+
     public function test_uploading_file_defaults_to_vector_only_temporal_ingest(): void
     {
         $root = storage_path('framework/testing/pipeline-controller');
@@ -54,7 +75,7 @@ class PipelineControllerDashboardTest extends TestCase
         config()->set('temporal.storage.shared_root', $root);
         config()->set('file_converter.raganything_supported_extensions', ['pdf']);
         Http::fake([
-            '*temporal/workflows/ingest' => fn ($request) => Http::response([
+            '*internal/workflow-control/source/start' => fn ($request) => Http::response([
                 'workflow_id' => $request->data()['workflow_id'],
                 'run_id' => 'upload-run-1',
             ]),
@@ -128,7 +149,7 @@ class PipelineControllerDashboardTest extends TestCase
         $this->getJson('/api/datasets/controller-test')
             ->assertOk()
             ->assertJsonPath('dataset.document_count', 1);
-        Http::assertSent(fn ($request): bool => $request->url() === config('config.hawki_rag_bridge_url').'/temporal/workflows/ingest'
+        Http::assertSent(fn ($request): bool => $request->url() === config('temporal.control_url').'/internal/workflow-control/source/start'
             && data_get($request->data(), 'workflow_input.upload.original_filename') === 'sample.pdf'
             && data_get($request->data(), 'workflow_input.upload.local_path') !== null
             && data_get($request->data(), 'workflow_input.managed_document_id') === $documentId
@@ -362,7 +383,7 @@ class PipelineControllerDashboardTest extends TestCase
         config()->set('file_converter.raganything_supported_extensions', ['pdf']);
         config()->set('file_converter.custom_converter_status_path', '/jobs/{job_id}');
         Http::fake([
-            '*temporal/workflows/ingest' => fn ($request) => Http::response([
+            '*internal/workflow-control/source/start' => fn ($request) => Http::response([
                 'workflow_id' => $request->data()['workflow_id'],
                 'run_id' => 'upload-custom-run-1',
             ]),
@@ -389,14 +410,14 @@ class PipelineControllerDashboardTest extends TestCase
             $data = $request->data();
             $profilePath = data_get($data, 'workflow_input.custom_converter_profile_path');
 
-            return $request->url() === config('config.hawki_rag_bridge_url').'/temporal/workflows/ingest'
+            return $request->url() === config('temporal.control_url').'/internal/workflow-control/source/start'
                 && data_get($data, 'workflow_input.converter_mode') === 'custom'
                 && is_string($profilePath)
                 && str_contains($profilePath, 'custom_converter.json')
                 && ! str_contains(json_encode($data, JSON_UNESCAPED_SLASHES), 'secret-user-api-key');
         });
 
-        $ingestRequest = Http::recorded(fn ($request): bool => $request->url() === config('config.hawki_rag_bridge_url').'/temporal/workflows/ingest'
+        $ingestRequest = Http::recorded(fn ($request): bool => $request->url() === config('temporal.control_url').'/internal/workflow-control/source/start'
         )->first()[0];
         $profilePath = data_get($ingestRequest->data(), 'workflow_input.custom_converter_profile_path');
         $this->assertIsString($profilePath);
@@ -425,7 +446,7 @@ class PipelineControllerDashboardTest extends TestCase
         config()->set('temporal.storage.shared_root', $root);
         config()->set('file_converter.raganything_supported_extensions', ['pdf']);
         Http::fake([
-            '*temporal/workflows/ingest' => fn ($request) => Http::response([
+            '*internal/workflow-control/source/start' => fn ($request) => Http::response([
                 'workflow_id' => $request->data()['workflow_id'],
                 'run_id' => 'upload-settings-run-1',
             ]),
@@ -466,7 +487,7 @@ class PipelineControllerDashboardTest extends TestCase
             $data = $request->data();
             $profilePath = data_get($data, 'workflow_input.custom_converter_profile_path');
 
-            return $request->url() === config('config.hawki_rag_bridge_url').'/temporal/workflows/ingest'
+            return $request->url() === config('temporal.control_url').'/internal/workflow-control/source/start'
                 && data_get($data, 'workflow_input.converter_mode') === 'custom'
                 && data_get($data, 'workflow_input.ingestion.provider') === 'litellm'
                 && data_get($data, 'workflow_input.ingestion.graph_model') === 'hawki-ollama-chat'
@@ -476,7 +497,7 @@ class PipelineControllerDashboardTest extends TestCase
                 && ! str_contains(json_encode($data, JSON_UNESCAPED_SLASHES), 'stored-converter-key');
         });
 
-        $ingestRequest = Http::recorded(fn ($request): bool => $request->url() === config('config.hawki_rag_bridge_url').'/temporal/workflows/ingest'
+        $ingestRequest = Http::recorded(fn ($request): bool => $request->url() === config('temporal.control_url').'/internal/workflow-control/source/start'
         )->first()[0];
         $profilePath = data_get($ingestRequest->data(), 'workflow_input.custom_converter_profile_path');
         $this->assertIsString($profilePath);
@@ -492,7 +513,8 @@ class PipelineControllerDashboardTest extends TestCase
     public function test_retry_failed_temporal_job_uses_unique_retry_workflow_id(): void
     {
         Http::fake([
-            '*temporal/workflows/ingest' => Http::response([
+            '*internal/workflow-control/source/retry-identity' => Http::response(['workflow_id' => 'ingest-source-source-retry-retry-2-ingest-retry']),
+            '*internal/workflow-control/source/start' => Http::response([
                 'workflow_id' => 'ingest-source-source-retry-retry-2-ingest-retry',
                 'run_id' => 'retry-run-2',
             ]),
@@ -557,7 +579,7 @@ class PipelineControllerDashboardTest extends TestCase
             ->assertOk()
             ->assertJsonPath('success', true);
 
-        Http::assertSent(fn ($request): bool => $request->url() === config('config.hawki_rag_bridge_url').'/temporal/workflows/ingest'
+        Http::assertSent(fn ($request): bool => $request->url() === config('temporal.control_url').'/internal/workflow-control/source/start'
             && data_get($request->data(), 'workflow_id') === 'ingest-source-source-retry-retry-2-ingest-retry'
             && data_get($request->data(), 'workflow_input.metadata.request.metadata.max_pages') === 1);
     }

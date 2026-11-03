@@ -6,32 +6,24 @@ namespace App\Services\Pipeline\Tasks;
 
 use App\Models\PipelineJob;
 use App\Models\PipelineTask;
-use App\Services\Document\ManagedDocumentRecoveryGuard;
-use App\Services\Pipeline\Clients\PythonTemporalBridgeClient;
+use App\Services\Pipeline\PipelineRecoveryWorkflowService;
 use App\Services\Pipeline\Repositories\IngestionSourceRepository;
-use App\Services\Pipeline\Repositories\PipelineJobStateMutationRepository;
 use App\Services\Pipeline\Repositories\PipelineTaskRepository;
 use App\Services\Pipeline\Repositories\Queries\FailedPipelineJobsQuery;
 use App\Services\TextIngestion\TextIngestionRecoveryService;
 use Illuminate\Container\Attributes\Singleton;
-use Psr\Clock\ClockInterface;
-use Symfony\Component\Clock\Clock;
 
 #[Singleton]
 readonly class PipelineTaskRetryService
 {
     public function __construct(
         private PipelineTaskMetadataService $metadata,
-        private IngestSourceWorkflowPayloadFactory $workflowPayloads,
         private IngestionSourceRepository $ingestionSources,
         private PipelineTaskRepository $taskRepository,
         private FailedPipelineJobsQuery $failedJobs,
-        private PipelineJobStateMutationRepository $jobStates,
         private PipelineTaskStatusRefresher $refresher,
-        private PythonTemporalBridgeClient $temporalBridge,
         private TextIngestionRecoveryService $textIngestionRecovery,
-        private ManagedDocumentRecoveryGuard $managedRecovery,
-        private ClockInterface $clock = new Clock,
+        private PipelineRecoveryWorkflowService $workflows,
     ) {}
 
     public function retryFailedJobs(string $taskId): ?PipelineTask
@@ -44,11 +36,7 @@ readonly class PipelineTaskRetryService
         $jobs = $this->failedJobs->forRetry($task);
 
         foreach ($jobs as $job) {
-            $metadata = $job->metadata ?? [];
-            $metadata['retry_count'] = (int) ($metadata['retry_count'] ?? 0) + 1;
-            $metadata['retried_at'] = $this->timestamp();
-
-            $this->restartTemporalWorkflow($task, $job, $metadata);
+            $this->restartTemporalWorkflow($task, $job);
         }
 
         if ($jobs->isNotEmpty()) {
@@ -61,10 +49,7 @@ readonly class PipelineTaskRetryService
         return $this->refresher->recalculate($task);
     }
 
-    /**
-     * @param  array<string, mixed>  $metadata
-     */
-    private function restartTemporalWorkflow(PipelineTask $task, PipelineJob $job, array $metadata): void
+    private function restartTemporalWorkflow(PipelineTask $task, PipelineJob $job): void
     {
         if (! is_string($job->source_id) || trim($job->source_id) === '') {
             return;
@@ -80,67 +65,9 @@ readonly class PipelineTaskRetryService
             return;
         }
 
-        $workflowInput = $directText ? null : $this->workflowPayloads->retryInput($task, $job, $source);
-        $this->managedRecovery->verify($source);
-
-        $startingAttributes = [
-            'source_url' => $source->source_url,
-            'task_id' => $task->task_id,
-            'dataset_id' => $task->dataset_id,
-            'refresh_cadence' => $source->refresh_cadence,
-            'raw_storage_path' => $source->raw_storage_path,
-            'markdown_storage_path' => $source->markdown_storage_path,
-            'metadata' => array_merge($source->metadata ?? [], [
-                'retried_at' => $this->timestamp(),
-            ]),
-        ];
-        if (! isset($source->metadata['managed_dispatch'])) {
-            $source = $this->ingestionSources->upsertStarting($source->source_id, $startingAttributes);
+        $prepared = $this->workflows->reserve($job);
+        if ($prepared) {
+            $this->workflows->start($task, $prepared);
         }
-
-        if ($directText) {
-            $execution = $this->textIngestionRecovery->startOrReuse($task, $job, $source);
-        } else {
-            $workflowId = $this->retryWorkflowId(
-                $job,
-                $source->source_id,
-                (int) ($metadata['retry_count'] ?? 1),
-            );
-            if (isset($source->metadata['managed_dispatch'])) {
-                $source = $this->ingestionSources->reserveManagedRecovery($source, $job, $workflowId, $workflowInput, $startingAttributes);
-                $workflowInput = $source->metadata['managed_dispatch']['input'];
-            }
-            $execution = $this->temporalBridge->startIngestWorkflow($workflowInput, $workflowId);
-        }
-        $metadata['temporal'] = array_filter([
-            'workflow_id' => $execution->workflowId,
-            'run_id' => $execution->runId,
-            'schedule_id' => $job->temporal_schedule_id,
-        ], static fn (mixed $value): bool => $value !== null && $value !== '');
-
-        $this->ingestionSources->markWorkflowStarted($source, $execution->workflowId, $execution->runId, $job->temporal_schedule_id);
-        $this->jobStates->markTemporalStarted(
-            $job,
-            $execution->workflowId,
-            $execution->runId,
-            is_string($job->temporal_schedule_id) ? $job->temporal_schedule_id : null,
-            $metadata,
-        );
-    }
-
-    private function timestamp(): string
-    {
-        return $this->clock->now()->format(\DateTimeInterface::ATOM);
-    }
-
-    private function retryWorkflowId(PipelineJob $job, string $sourceId, int $retryCount): string
-    {
-        $baseWorkflowId = is_string($job->temporal_workflow_id) && trim($job->temporal_workflow_id) !== ''
-            ? $job->temporal_workflow_id
-            : $this->workflowPayloads->workflowId($sourceId);
-
-        $safeJobId = preg_replace('/[^A-Za-z0-9_.-]+/', '-', (string) $job->job_id) ?: 'job';
-
-        return sprintf('%s-retry-%d-%s', $baseWorkflowId, max(1, $retryCount), $safeJobId);
     }
 }

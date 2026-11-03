@@ -88,10 +88,10 @@ final class ManagedDeletionPostgresTest extends TestCase
         $seenInput = null;
         Http::fake(function ($request) use (&$seenInput) {
             $payload = $request->data();
-            if (str_ends_with($request->url(), '/delete-managed-document')) {
+            if (str_ends_with($request->url(), '/deletion/start')) {
                 return Http::response(['workflow_id' => $payload['workflow_id'], 'run_id' => 'cleanup-run', 'status' => 'completed', 'result' => ['input' => $payload['workflow_input'], 'results' => []]]);
             }
-            if (str_ends_with($request->url(), '/workflows/ingest')) {
+            if (str_ends_with($request->url(), '/source/start')) {
                 $this->assertSame(0, DB::connection()->transactionLevel());
                 $pdo = $this->independentConnection();
                 $pdo->exec('SET search_path TO '.$this->schema);
@@ -131,7 +131,7 @@ final class ManagedDeletionPostgresTest extends TestCase
     {
         $registered = false;
         Http::fake(function ($request) use (&$registered) {
-            if (! str_ends_with($request->url(), '/workflows/ingest')) {
+            if (! str_ends_with($request->url(), '/source/start')) {
                 return Http::response(['status' => 'RUNNING']);
             }
             $this->assertSame(0, DB::connection()->transactionLevel());
@@ -169,7 +169,7 @@ final class ManagedDeletionPostgresTest extends TestCase
         $this->assertFalse($source->metadata['managed_dispatch']['attempted']);
         $frozen = $source->metadata['managed_dispatch']['input'];
         Http::fake(function ($request) use ($frozen) {
-            if (str_ends_with($request->url(), '/workflows/ingest')) {
+            if (str_ends_with($request->url(), '/source/start')) {
                 $this->assertSame(0, DB::connection()->transactionLevel());
                 $this->assertSame($frozen, $request->data()['workflow_input']);
 
@@ -289,11 +289,11 @@ PHP;
         $cleanupPending = true;
         Http::fake(function ($request) use (&$cleanupPending) {
             $payload = $request->data();
-            if (str_ends_with($request->url(), '/delete-managed-document')) {
+            if (str_ends_with($request->url(), '/deletion/start')) {
                 return Http::response(['workflow_id' => $payload['workflow_id'], 'run_id' => 'cleanup-run', 'status' => $cleanupPending ? 'pending' : 'completed',
                     'result' => ['input' => $payload['workflow_input'], 'results' => []]]);
             }
-            if (str_ends_with($request->url(), '/workflows/ingest')) {
+            if (str_ends_with($request->url(), '/source/start')) {
                 $this->assertSame(0, DB::connection()->transactionLevel());
                 $input = $payload['workflow_input'];
                 $event = array_merge($this->writerEvent(), ['source_id' => $input['source_id'], 'job_id' => $input['job_id'], 'workflow_id' => $payload['workflow_id'], 'run_id' => 'replacement-race-run']);
@@ -375,7 +375,7 @@ if ($input['mode'] === 'crash') {
     $app->instance(App\Services\Pipeline\Uploads\PipelineUploadService::class, $proxy);
 } else {
     Illuminate\Support\Facades\Http::fake(function ($request) use ($input) {
-        if (str_ends_with($request->url(), '/workflows/ingest')) {
+        if (str_ends_with($request->url(), '/source/start')) {
             if (Illuminate\Support\Facades\DB::connection()->transactionLevel() !== 0) { exit(87); }
             file_put_contents($input['root'].'/paused', '1');
             for ($poll = 0; $poll < 150 && ! is_file($input['root'].'/resume'); $poll++) { usleep(100000); }
@@ -460,7 +460,11 @@ config()->set('database.default', 'managed_delete_child');
 config()->set('temporal.storage.shared_root', $input['root']);
 Illuminate\Support\Facades\Http::preventStrayRequests();
 Illuminate\Support\Facades\Http::fake(function ($request) {
-    if (! str_ends_with($request->url(), '/workflows/status')) { exit(88); }
+    if (str_ends_with($request->url(), '/source/retry-identity')) {
+        $body = $request->data();
+        return Illuminate\Support\Facades\Http::response(['workflow_id' => $body['previous_workflow_id'].'-retry-'.$body['attempt'].'-'.$body['job_id']]);
+    }
+    if (! str_ends_with($request->url(), '/execution/status')) { exit(88); }
     return Illuminate\Support\Facades\Http::response(['status' => 'FAILED']);
 });
 if ($input['crash_point'] === 'before_commit') {
@@ -509,6 +513,7 @@ PHP;
         $frozen = $source->metadata['managed_dispatch']['input'];
         Http::fake(function ($request) use ($job, $frozen) {
             $this->assertSame(0, DB::connection()->transactionLevel());
+            $this->assertArrayNotHasKey('managed_replacement', $request->data());
             $this->assertSame($frozen, $request->data()['workflow_input']);
             $event = array_merge($this->writerEvent(), ['workflow_id' => $job->temporal_workflow_id, 'run_id' => 'resumed-recovery-run']);
             $this->assertSame(200, $this->concurrentWriter($event));
@@ -518,7 +523,71 @@ PHP;
         $result = app(PipelineUploadService::class)->dispatchPreparedManagedUpload('writer-task');
         $this->assertTrue($result->payload['success'], json_encode($result->payload, JSON_THROW_ON_ERROR));
         $this->assertSame('resumed-recovery-run', $job->fresh()->temporal_run_id);
+        $this->assertSame('confirmed', $job->fresh()->metadata['pending_recovery']['state']);
         $this->assertSame($frozen, $source->fresh()->metadata['managed_dispatch']['input']);
+    }
+
+    public function test_concurrent_recovery_reservations_serialize_on_job_before_identity_selection(): void
+    {
+        File::ensureDirectoryExists($this->storageRoot);
+        $code = <<<'PHP'
+require 'vendor/autoload.php';
+$app = require 'bootstrap/app.php';
+$app->instance('request', Illuminate\Http\Request::create('/'));
+$app->make(Illuminate\Contracts\Http\Kernel::class)->bootstrap();
+$input = json_decode(stream_get_contents(STDIN), true, 512, JSON_THROW_ON_ERROR);
+config()->set('database.connections.recovery_concurrent', $input['connection']);
+config()->set('database.default', 'recovery_concurrent');
+Illuminate\Support\Facades\Http::preventStrayRequests();
+$job = App\Models\PipelineJob::query()->firstOrFail();
+$service = $app->make(App\Services\Pipeline\PipelineRecoveryWorkflowService::class);
+if ($input['caller'] === 'a') {
+    $reserved = Illuminate\Support\Facades\DB::transaction(function () use ($service, $job, $input) {
+        $reserved = $service->reserve($job);
+        file_put_contents($input['root'].'/locked', '1');
+        for ($i = 0; $i < 200 && ! is_file($input['root'].'/release'); $i++) { usleep(25000); }
+        if (! is_file($input['root'].'/release')) { exit(81); }
+        return $reserved;
+    });
+} else {
+    file_put_contents($input['root'].'/waiting', '1');
+    $reserved = $service->reserve($job);
+}
+if (Illuminate\Support\Facades\DB::transactionLevel() !== 0) { exit(82); }
+echo json_encode($reserved->metadata['pending_recovery'], JSON_THROW_ON_ERROR);
+PHP;
+        $processes = [];
+        foreach (['a', 'b'] as $caller) {
+            $process = new Process([PHP_BINARY, '-r', $code], base_path(), ['APP_ENV' => 'testing']);
+            $process->setInput(json_encode(['connection' => $this->connection, 'root' => $this->storageRoot, 'caller' => $caller], JSON_THROW_ON_ERROR));
+            $process->setTimeout(10);
+            $processes[$caller] = $process;
+        }
+        $processes['a']->start();
+        try {
+            for ($i = 0; $i < 200 && ! is_file($this->storageRoot.'/locked'); $i++) {
+                usleep(25000);
+            }
+            $this->assertFileExists($this->storageRoot.'/locked');
+            $processes['b']->start();
+            for ($i = 0; $i < 200 && ! is_file($this->storageRoot.'/waiting'); $i++) {
+                usleep(25000);
+            }
+            $this->assertFileExists($this->storageRoot.'/waiting');
+            $this->assertTrue($processes['b']->isRunning());
+        } finally {
+            File::put($this->storageRoot.'/release', '1');
+        }
+        foreach ($processes as $process) {
+            $process->wait();
+            $this->assertSame(0, $process->getExitCode(), $process->getErrorOutput());
+        }
+        $first = json_decode($processes['a']->getOutput(), true, flags: JSON_THROW_ON_ERROR);
+        $second = json_decode($processes['b']->getOutput(), true, flags: JSON_THROW_ON_ERROR);
+        $this->assertSame($first, $second);
+        $this->assertSame(1, $first['attempt']);
+        $this->assertSame('reserved', $first['state']);
+        $this->assertSame(1, PipelineJob::query()->firstOrFail()->metadata['retry_count']);
     }
 
     public function test_pending_cleanup_dispatch_waits_for_outer_release_commit(): void
@@ -702,7 +771,7 @@ config()->set('config.qdrant_http_url', 'http://qdrant.test');
 config()->set('config.neo4j_http_url', 'http://neo4j.test');
 Illuminate\Support\Facades\Http::preventStrayRequests();
 Illuminate\Support\Facades\Http::fake(function ($request) use ($input) {
-    if (str_ends_with($request->url(), '/delete-managed-document')) {
+    if (str_ends_with($request->url(), '/deletion/start')) {
         if (Illuminate\Support\Facades\DB::transactionLevel() !== 0) { exit(72); }
         if ($input['crash']) { exit(71); }
         $scope = $request['workflow_input'];

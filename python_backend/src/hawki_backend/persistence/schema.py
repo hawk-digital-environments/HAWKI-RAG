@@ -1,7 +1,8 @@
 """The Python-owned database schema for the backend's authorization boundary.
 
-The backend owns one PostgreSQL schema, `hawki_backend`, and two tables in
-it. Laravel owns `public` and cannot see these tables: its connection pins
+The authorization boundary owns two tables in `hawki_backend`. Workflow control
+extends the same metadata from its separate schema module. Laravel owns `public`:
+its connection pins
 its search path to `public`, so the legacy application never addresses them
 and its migrations never collide with them.
 

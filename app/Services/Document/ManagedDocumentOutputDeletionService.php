@@ -197,7 +197,6 @@ readonly class ManagedDocumentOutputDeletionService
                 'workflow_input' => [
                     'operation_id' => $operationId, 'managed_document_id' => $document->document_id,
                     'dataset_id' => $document->dataset_id, 'targets' => $targets, 'writers' => $writers,
-                    'task_queues' => $this->config->get('temporal.task_queues'),
                 ],
             ]);
             foreach ($sourceIds as $id) {

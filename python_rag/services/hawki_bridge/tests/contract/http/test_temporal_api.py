@@ -1,390 +1,44 @@
-"""Direct FastAPI scenarios for Laravel-to-Temporal bridge commands."""
+"""The retired bridge must never construct a second Temporal controller."""
 
-from __future__ import annotations
-
-from dataclasses import dataclass
-from pathlib import Path
-from typing import Any
 from unittest.mock import Mock
 
 import pytest
 
-
-@dataclass(frozen=True)
-class _TemporalRouteCase:
-    """One Temporal bridge route and its observable delegation contract."""
-
-    name: str
-    path: str
-    payload: dict[str, Any]
-    required_field: str
-    operation: str
-    expected_call: dict[str, Any]
-    expected_response: dict[str, Any]
-    public_error: str | None = None
+from hawki_bridge.factory import build_app
+from hawki_bridge.settings import load_settings
 
 
-def _workflow_input(*, source_id: str = "source-1") -> dict[str, Any]:
-    return {
-        "source_id": source_id,
-        "source_url": "https://example.test/source",
-        "dataset_id": "dataset-a",
-        "task_id": "task-a",
-        "job_id": "job-a",
-        "raw_output_path": f"/shared/sources/{source_id}/raw",
-        "markdown_output_path": f"/shared/sources/{source_id}/markdown",
-        "storage": {"mode": "shared", "shared_root": "/shared"},
-        "ingestion": {
-            "provider": "ollama",
-            "embedding_model": "bge-m3",
-            "graph_model": "llama3.1:8b",
-            "vision_model": "qwen2.5vl:7b",
-            "collection": None,
-        },
-        "external_services": {
-            "scraper_url": "http://crawl4ai-service",
-            "scraper_token": "test-token",
-        },
-    }
-
-
-WORKFLOW_INPUT = _workflow_input()
-TEXT_WORKFLOW_INPUT = {
-    "source_id": "source-1",
-    "source_url": "external://document-1",
-    "task_id": "task-1",
-    "job_id": "job-1",
-    "dataset_id": "dataset-a",
-    "external_document_id": "document-1",
-    "markdown_path": "/shared/sources/source-1/markdown/document.md",
-    "markdown_output_path": "/shared/sources/source-1/markdown",
-    "content_hash": "a" * 64,
-    "storage": {"mode": "shared", "shared_root": "/shared"},
-    "ingestion": {
-        "provider": "ollama",
-        "embedding_model": "bge-m3",
-        "graph_model": "llama3.1:8b",
-        "vision_model": "qwen2.5vl:7b",
-        "graph": False,
-        "collection": "hawki_dataset_a",
-    },
-}
-
-
-TEMPORAL_ROUTE_CASES = [
-    _TemporalRouteCase(
-        name="start-text-workflow",
-        path="/temporal/workflows/ingest-text",
-        payload={
-            "workflow_id": "ingest-text-dataset-a",
-            "workflow_input": TEXT_WORKFLOW_INPUT,
-        },
-        required_field="workflow_id",
-        operation="start_text",
-        expected_call={
-            "workflow_id": "ingest-text-dataset-a",
-            "workflow_input": TEXT_WORKFLOW_INPUT,
-        },
-        expected_response={
-            "workflow_id": "ingest-text-dataset-a",
-            "run_id": "run-ingest-text-dataset-a",
-            "schedule_id": None,
-        },
-        public_error="Temporal text ingestion workflow could not be started.",
-    ),
-    _TemporalRouteCase(
-        name="start-workflow",
-        path="/temporal/workflows/ingest",
-        payload={
-            "workflow_id": "ingest-dataset-a",
-            "workflow_input": WORKFLOW_INPUT,
-        },
-        required_field="workflow_id",
-        operation="start",
-        expected_call={
-            "workflow_id": "ingest-dataset-a",
-            "workflow_input": WORKFLOW_INPUT,
-        },
-        expected_response={
-            "workflow_id": "ingest-dataset-a",
-            "run_id": "run-ingest-dataset-a",
-            "schedule_id": None,
-        },
-    ),
-    _TemporalRouteCase(
-        name="upsert-schedule",
-        path="/temporal/schedules/ingest",
-        payload={
-            "schedule_id": "schedule-dataset-a",
-            "workflow_id": "refresh-dataset-a",
-            "cadence": "daily",
-            "workflow_input": WORKFLOW_INPUT,
-        },
-        required_field="cadence",
-        operation="upsert_schedule",
-        expected_call={
-            "schedule_id": "schedule-dataset-a",
-            "workflow_id": "refresh-dataset-a",
-            "cadence": "daily",
-            "workflow_input": WORKFLOW_INPUT,
-        },
-        expected_response={
-            "workflow_id": "refresh-dataset-a",
-            "run_id": None,
-            "schedule_id": "schedule-dataset-a",
-        },
-    ),
-    _TemporalRouteCase(
-        name="delete-schedule",
-        path="/temporal/schedules/delete",
-        payload={"schedule_id": "schedule-dataset-a"},
-        required_field="schedule_id",
-        operation="delete_schedule",
-        expected_call={"schedule_id": "schedule-dataset-a"},
-        expected_response={"ok": True},
-    ),
-    _TemporalRouteCase(
-        name="cancel-workflow",
-        path="/temporal/workflows/cancel",
-        payload={
-            "workflow_id": "ingest-dataset-a",
-            "run_id": "run-ingest-dataset-a",
-        },
-        required_field="workflow_id",
-        operation="cancel",
-        expected_call={
-            "workflow_id": "ingest-dataset-a",
-            "run_id": "run-ingest-dataset-a",
-        },
-        expected_response={"ok": True},
-    ),
-    _TemporalRouteCase(
-        name="cancel-workflow-and-wait",
-        path="/temporal/workflows/cancel-and-wait",
-        payload={
-            "workflow_id": "ingest-dataset-a",
-            "run_id": "run-ingest-dataset-a",
-        },
-        required_field="workflow_id",
-        operation="cancel_and_wait",
-        expected_call={
-            "workflow_id": "ingest-dataset-a",
-            "run_id": "run-ingest-dataset-a",
-        },
-        expected_response={"ok": True},
-        public_error="Temporal workflow could not be stopped before deletion.",
-    ),
-]
-
-
-class _FakeTemporalBridgeClient:
-    """Record Temporal commands without opening a Temporal connection."""
-
-    def __init__(self, *, failure_operation: str | None = None) -> None:
-        self.failure_operation = failure_operation
-        self.calls: list[tuple[str, dict[str, Any]]] = []
-
-    def _record(self, operation: str, arguments: dict[str, Any]) -> None:
-        self.calls.append((operation, arguments))
-        if operation == self.failure_operation:
-            raise RuntimeError(f"Temporal {operation} failed.")
-
-    async def start_ingest_workflow(
-        self,
-        *,
-        workflow_id: str,
-        workflow_input: dict[str, Any],
-    ) -> Any:
-        from hawki_bridge.adapters.temporal_client import TemporalExecution
-
-        arguments = {
-            "workflow_id": workflow_id,
-            "workflow_input": workflow_input,
-        }
-        self._record("start", arguments)
-        return TemporalExecution(
-            workflow_id=workflow_id,
-            run_id=f"run-{workflow_id}",
-        )
-
-    async def start_text_ingest_workflow(
-        self,
-        *,
-        workflow_id: str,
-        workflow_input: dict[str, Any],
-    ) -> Any:
-        from hawki_bridge.adapters.temporal_client import TemporalExecution
-
-        arguments = {
-            "workflow_id": workflow_id,
-            "workflow_input": workflow_input,
-        }
-        self._record("start_text", arguments)
-        return TemporalExecution(
-            workflow_id=workflow_id,
-            run_id=f"run-{workflow_id}",
-        )
-
-    async def upsert_ingest_schedule(
-        self,
-        *,
-        schedule_id: str,
-        workflow_id: str,
-        cadence: str,
-        workflow_input: dict[str, Any],
-    ) -> Any:
-        from hawki_bridge.adapters.temporal_client import TemporalExecution
-
-        arguments = {
-            "schedule_id": schedule_id,
-            "workflow_id": workflow_id,
-            "cadence": cadence,
-            "workflow_input": workflow_input,
-        }
-        self._record("upsert_schedule", arguments)
-        return TemporalExecution(
-            workflow_id=workflow_id,
-            schedule_id=schedule_id,
-        )
-
-    async def delete_schedule(self, *, schedule_id: str) -> None:
-        self._record("delete_schedule", {"schedule_id": schedule_id})
-
-    async def cancel_workflow(
-        self,
-        *,
-        workflow_id: str,
-        run_id: str | None = None,
-    ) -> None:
-        self._record(
-            "cancel",
-            {"workflow_id": workflow_id, "run_id": run_id},
-        )
-
-    async def cancel_workflow_and_wait(
-        self,
-        *,
-        workflow_id: str,
-        run_id: str | None = None,
-    ) -> None:
-        self._record(
-            "cancel_and_wait",
-            {"workflow_id": workflow_id, "run_id": run_id},
-        )
-
-
-def _build_test_client(
-    tmp_path: Path,
-    client_factory: Any,
-    asgi_test_client_class: type[Any],
-) -> Any:
-    from hawki_bridge.factory import build_app
-    from hawki_bridge.settings import load_settings
-
-    settings = load_settings({})
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/temporal/workflows/ingest",
+        "/temporal/workflows/ingest-text",
+        "/temporal/schedules/ingest",
+        "/temporal/schedules/delete",
+        "/temporal/workflows/cancel",
+        "/temporal/workflows/cancel-and-wait",
+    ],
+)
+@pytest.mark.parametrize("nonempty", [False, True])
+def test_control_is_retired_before_client_creation(
+    path, nonempty, asgi_test_client_class
+):
+    constructor = Mock()
     app = build_app(
-        runtime_summary=lambda: {"mode": "test"},
-        temporal_client_factory=client_factory,
-        logger_name="test.temporal_api_flow",
-        settings=settings,
+        settings=load_settings({}),
+        runtime_summary=lambda: {},
+        temporal_client_factory=constructor,
     )
-    return asgi_test_client_class(app)
-
-
-class TestTemporalApiFlow:
-    """Describe validation, delegation, and failure output for each bridge command."""
-
-    @pytest.mark.parametrize(
-        "case",
-        TEMPORAL_ROUTE_CASES,
-        ids=[case.name for case in TEMPORAL_ROUTE_CASES],
-    )
-    def test_valid_command_is_serialized_and_delegated(
-        self,
-        case: _TemporalRouteCase,
-        tmp_path: Path,
-        asgi_test_client_class: type[Any],
-    ) -> None:
-        temporal = _FakeTemporalBridgeClient()
-        bridge_constructor = Mock(return_value=temporal)
-
-        with _build_test_client(
-            tmp_path, bridge_constructor, asgi_test_client_class
-        ) as client:
-            response = client.post(
-                case.path,
-                headers={"X-Request-ID": f"{case.name}-success"},
-                json=case.payload,
-            )
-
-        assert response.status_code == 200
-        assert response.json() == case.expected_response
-        assert response.headers["X-Request-ID"] == f"{case.name}-success"
-        assert temporal.calls == [(case.operation, case.expected_call)]
-        bridge_constructor.assert_called_once()
-
-    @pytest.mark.parametrize(
-        "case",
-        TEMPORAL_ROUTE_CASES,
-        ids=[case.name for case in TEMPORAL_ROUTE_CASES],
-    )
-    def test_missing_required_field_is_rejected_before_client_creation(
-        self,
-        case: _TemporalRouteCase,
-        tmp_path: Path,
-        asgi_test_client_class: type[Any],
-    ) -> None:
-        invalid_payload = {
-            key: value
-            for key, value in case.payload.items()
-            if key != case.required_field
+    payload = (
+        {
+            "workflow_id": "ingest-source-source-a",
+            "workflow_input": {"source_id": "source-a"},
         }
-
-        bridge_constructor = Mock()
-        with _build_test_client(
-            tmp_path, bridge_constructor, asgi_test_client_class
-        ) as client:
-            response = client.post(case.path, json=invalid_payload)
-
-        assert response.status_code == 422
-        assert any(
-            error["loc"] == ["body", case.required_field] and error["type"] == "missing"
-            for error in response.json()["detail"]
-        )
-        bridge_constructor.assert_not_called()
-
-    @pytest.mark.parametrize(
-        "case",
-        TEMPORAL_ROUTE_CASES,
-        ids=[case.name for case in TEMPORAL_ROUTE_CASES],
+        if nonempty
+        else {}
     )
-    def test_temporal_failure_uses_the_main_bridge_error_envelope(
-        self,
-        case: _TemporalRouteCase,
-        tmp_path: Path,
-        asgi_test_client_class: type[Any],
-    ) -> None:
-        temporal = _FakeTemporalBridgeClient(failure_operation=case.operation)
-        request_id = f"{case.name}-error"
-        bridge_constructor = Mock(return_value=temporal)
-
-        with _build_test_client(
-            tmp_path, bridge_constructor, asgi_test_client_class
-        ) as client:
-            response = client.post(
-                case.path,
-                headers={"X-Request-ID": request_id},
-                json=case.payload,
-            )
-
-        assert response.status_code == 502
-        assert response.json() == {
-            "error": {
-                "type": "HTTPException",
-                "status": 502,
-                "message": case.public_error or f"Temporal {case.operation} failed.",
-                "path": case.path,
-                "request_id": request_id,
-            }
-        }
-        assert temporal.calls == [(case.operation, case.expected_call)]
+    with asgi_test_client_class(app) as client:
+        response = client.post(path, json=payload)
+    assert response.status_code == 410
+    assert "Workflow control moved" in response.text
+    constructor.assert_not_called()

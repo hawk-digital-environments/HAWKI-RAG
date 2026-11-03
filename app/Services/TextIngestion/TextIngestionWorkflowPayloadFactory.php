@@ -130,11 +130,6 @@ final readonly class TextIngestionWorkflowPayloadFactory
                 'mode' => 'shared',
                 'shared_root' => $this->config->get('temporal.storage.shared_root', '/shared'),
             ],
-            'task_queues' => [
-                'workflow' => $this->config->get('temporal.task_queues.workflow', 'rag-workflow-task-queue'),
-                'indexer' => $this->config->get('temporal.task_queues.indexer', 'rag-ingestion-task-queue'),
-                'ingestion' => $this->config->get('temporal.task_queues.ingestion', 'rag-ingestion-task-queue'),
-            ],
             'ingestion' => [
                 'provider' => $runtime['provider'],
                 'embedding_model' => $dataset->embedding_model,

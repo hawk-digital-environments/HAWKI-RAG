@@ -31,7 +31,8 @@ def test_workspace_has_one_root_lock_and_no_nested_workspace_metadata() -> None:
     ]
 
     assert workspace_owners == [ROOT / "pyproject.toml"]
-    assert len(_members()) == 16
+    # Includes the extracted retrieval package and the Epoch 8 control adapter.
+    assert len(_members()) == 18
     assert list(ROOT.rglob("uv.lock")) == [ROOT / "uv.lock"]
     assert list((ROOT / "packages").rglob(".python-version")) == []
     assert list((ROOT / "services").rglob(".python-version")) == []
@@ -73,7 +74,7 @@ def test_vcs_source_and_workspace_override_are_immutable() -> None:
     assert re.fullmatch(r"[0-9a-f]{40}", source["rev"])
 
 
-def test_package_dependencies_are_limited_to_intentional_observability_edges() -> None:
+def test_package_dependencies_are_limited_to_intentional_shared_edges() -> None:
     package_manifests = sorted((ROOT / "packages").glob("*/pyproject.toml"))
     projects = {
         path: tomllib.loads(path.read_text(encoding="utf-8"))["project"]
@@ -111,6 +112,17 @@ def test_package_dependencies_are_limited_to_intentional_observability_edges() -
     expected_edges = {
         ("hawki-graph-store", "hawki-observability"),
         ("hawki-vector-store", "hawki-observability"),
+        ("hawki-rag-retrieval", "hawki-graph-store"),
+        ("hawki-rag-retrieval", "hawki-model-providers"),
+        ("hawki-rag-retrieval", "hawki-observability"),
+        ("hawki-rag-retrieval", "hawki-rag-contracts"),
+        ("hawki-rag-retrieval", "hawki-rag-text"),
+        ("hawki-rag-retrieval", "hawki-vector-store"),
+        ("hawki-workflow-control", "hawki-rag-contracts"),
     }
     assert declared_edges == expected_edges
-    assert imported_edges == expected_edges
+    # Retrieval intentionally retains its observability dependency for adapter
+    # composition, although its current modules use standard-library logging.
+    assert imported_edges == expected_edges - {
+        ("hawki-rag-retrieval", "hawki-observability")
+    }

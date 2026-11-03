@@ -2,6 +2,7 @@
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+import os
 
 from fastapi import FastAPI
 from sqlalchemy.engine import Engine
@@ -25,6 +26,11 @@ from hawki_backend.settings import (
     load_database_settings,
 )
 from hawki_rag_retrieval import QueryDependencies, build_query_dependencies
+from hawki_backend.workflow_control.api import router as workflow_router
+from hawki_backend.workflow_control.repository import OperationRepository
+from hawki_backend.workflow_control.service import WorkflowControl
+from hawki_workflow_control.settings import load_settings as load_workflow_settings
+from hawki_workflow_control.temporal_client import TemporalControlClient
 
 
 def create_app(
@@ -37,6 +43,8 @@ def create_app(
     policy: AuthorizationPort | None = None,
     query_settings: QuerySettings | None = None,
     query_dependencies: QueryDependencies | None = None,
+    workflow_control: WorkflowControl | None = None,
+    workflow_control_secret: str | None = None,
 ) -> FastAPI:
     """Create an application with health, authentication and query surfaces.
 
@@ -102,6 +110,25 @@ def create_app(
     if resolved_query_settings is not None and resolved_query_dependencies is None:
         resolved_query_dependencies = build_query_dependencies()
 
+    resolved_workflow_control = workflow_control
+    control_secret = (
+        workflow_control_secret
+        if workflow_control_secret is not None
+        else os.environ.get("HAWKI_RAG_WORKER_CALLBACK_SECRET", "")
+    )
+    if resolved_workflow_control is None and os.environ.get(
+        "HAWKI_WORKFLOW_CONTROL_ENABLED", ""
+    ).lower() in {"1", "true", "yes"}:
+        if owned_engine is None:
+            control_database = database_settings or load_database_settings()
+            if control_database is not None:
+                owned_engine = build_engine(control_database)
+        if owned_engine is not None and control_secret:
+            resolved_workflow_control = WorkflowControl(
+                OperationRepository(owned_engine),
+                TemporalControlClient(load_workflow_settings()),
+            )
+
     @asynccontextmanager
     async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         """Release the resources the application owns."""
@@ -121,10 +148,13 @@ def create_app(
     )
     application.include_router(health_router, prefix="/v1")
     application.include_router(query_router, prefix="/v1")
+    application.include_router(workflow_router)
     application.state.authenticator = resolved_authenticator
     application.state.grant_policy = resolved_policy
     application.state.query_settings = resolved_query_settings
     application.state.query_dependencies = resolved_query_dependencies
+    application.state.workflow_control = resolved_workflow_control
+    application.state.workflow_control_secret = control_secret
     return application
 
 

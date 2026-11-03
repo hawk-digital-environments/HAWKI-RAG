@@ -31,6 +31,7 @@ final readonly class TextIngestionIdentifierFactory
 
     public function workflowId(string $taskId): string
     {
+        // SQL preparation needs this projection; Python owns and validates dispatch identity.
         return 'ingest-text-'.substr(
             hash('sha256', $taskId),
             0,

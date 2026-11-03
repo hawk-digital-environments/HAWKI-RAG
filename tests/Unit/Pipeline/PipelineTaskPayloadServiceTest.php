@@ -44,7 +44,9 @@ class PipelineTaskPayloadServiceTest extends TestCase
                 'status' => PipelineJob::STATUS_COMPLETED,
                 'started_at' => Carbon::parse('2026-06-08 11:05:00'),
                 'finished_at' => Carbon::parse('2026-06-08 11:06:00'),
-                'metadata' => ['label' => 'Page'],
+                'metadata' => ['label' => 'Page', 'pending_recovery' => [
+                    'input' => ['external_services' => ['converter_token' => 'recovery-secret-canary']],
+                ]],
             ]),
         ]));
 
@@ -64,6 +66,8 @@ class PipelineTaskPayloadServiceTest extends TestCase
         $this->assertSame('parent-job', $payload['jobs'][0]['parent_job_id']);
         $this->assertSame('https://example.test/page', $payload['jobs'][0]['source_url']);
         $this->assertSame(['label' => 'Page'], $payload['jobs'][0]['metadata']);
+        $this->assertStringNotContainsString('recovery-secret-canary', json_encode($payload, JSON_THROW_ON_ERROR));
+        $this->assertArrayHasKey('pending_recovery', $task->jobs[0]->metadata);
         $this->assertSame([], $payload['jobs'][0]['managed_documents']);
         $this->assertSame(0, $payload['jobs'][0]['managed_document_count']);
         $this->assertSame('https://example.test/page', $payload['jobs'][0]['source']['source_url']);

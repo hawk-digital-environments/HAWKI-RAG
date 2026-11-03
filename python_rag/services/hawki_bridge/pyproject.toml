@@ -16,6 +16,7 @@ dependencies = [
     "hawki-rag-retrieval==0.1.0",
     "hawki-rag-text==0.1.0",
     "hawki-vector-store==0.1.0",
+    "hawki-workflow-control==0.1.0",
     "pydantic==2.13.4",
     "requests==2.34.2",
     "starlette==1.3.1",
@@ -44,3 +45,4 @@ hawki-rag-contracts = { workspace = true }
 hawki-rag-retrieval = { workspace = true }
 hawki-rag-text = { workspace = true }
 hawki-vector-store = { workspace = true }
+hawki-workflow-control = { workspace = true }

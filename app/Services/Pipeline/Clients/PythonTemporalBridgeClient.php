@@ -13,6 +13,7 @@ use Psr\Log\LoggerInterface;
 use Symfony\Component\Clock\Clock;
 
 #[Singleton]
+/** Compatibility facade: Python owns workflow identity validation and Temporal policies. */
 readonly class PythonTemporalBridgeClient
 {
     public function __construct(
@@ -25,7 +26,7 @@ readonly class PythonTemporalBridgeClient
     /**
      * @param  array<string, mixed>  $input
      */
-    public function startIngestWorkflow(array $input, ?string $workflowId = null, bool $reuseCompleted = false): TemporalWorkflowExecution
+    public function startIngestWorkflow(array $input, ?string $workflowId = null, bool $managedReplacement = false): TemporalWorkflowExecution
     {
         $this->ensureEnabled();
 
@@ -34,12 +35,12 @@ readonly class PythonTemporalBridgeClient
             'workflow_input' => $input,
         ];
 
-        if ($reuseCompleted) {
-            $payload['reuse_completed'] = true;
+        if ($managedReplacement) {
+            $payload['managed_replacement'] = true;
         }
-        $body = $reuseCompleted ? $this->postSigned('/temporal/workflows/ingest', $payload)
-            : $this->post('/temporal/workflows/ingest', $payload);
-        if ($reuseCompleted && (($body['workflow_id'] ?? null) !== $payload['workflow_id'] || empty($body['run_id']))) {
+        $body = $managedReplacement ? $this->postSigned('/source/start', $payload)
+            : $this->post('/source/start', $payload);
+        if ($managedReplacement && (($body['workflow_id'] ?? null) !== $payload['workflow_id'] || empty($body['run_id']))) {
             throw new \RuntimeException('Managed replacement workflow identity is unconfirmed.');
         }
 
@@ -64,16 +65,18 @@ readonly class PythonTemporalBridgeClient
     public function startTextIngestWorkflow(
         array $input,
         string $workflowId,
+        int $recoveryAttempt = 0,
     ): TemporalWorkflowExecution {
         $this->ensureEnabled();
 
         $payload = [
             'workflow_id' => $workflowId,
             'workflow_input' => $input,
+            ...($recoveryAttempt > 0 ? ['recovery_attempt' => $recoveryAttempt] : []),
         ];
 
         $body = $this->post(
-            '/temporal/workflows/ingest-text',
+            '/text/start',
             $payload,
         );
 
@@ -107,7 +110,7 @@ readonly class PythonTemporalBridgeClient
     {
         $this->ensureEnabled();
 
-        $body = $this->post('/temporal/schedules/ingest', [
+        $body = $this->post('/schedule/upsert', [
             'schedule_id' => $scheduleId,
             'workflow_id' => $workflowId,
             'cadence' => $cadence,
@@ -135,14 +138,13 @@ readonly class PythonTemporalBridgeClient
         $this->ensureEnabled();
 
         try {
-            $this->post('/temporal/schedules/delete', [
+            $this->post('/schedule/delete', [
                 'schedule_id' => $scheduleId,
             ]);
         } catch (\Throwable $exception) {
             $this->logger->warning('Temporal ingest schedule delete through Python bridge failed.', [
                 'schedule_id' => $scheduleId,
-                'error' => $exception->getMessage(),
-                'exception' => $exception,
+                'exception_class' => $exception::class,
             ]);
         }
     }
@@ -152,7 +154,7 @@ readonly class PythonTemporalBridgeClient
     {
         $this->ensureEnabled();
 
-        return $this->post('/temporal/workflows/status', [
+        return $this->post('/execution/status', [
             'workflow_id' => $workflowId,
             'run_id' => $runId,
         ]);
@@ -162,7 +164,7 @@ readonly class PythonTemporalBridgeClient
     public function deleteOutputs(string $workflowId, array $input): array
     {
         $this->ensureEnabled();
-        $result = $this->postSigned('/temporal/workflows/delete-managed-document', [
+        $result = $this->postSigned('/deletion/start', [
             'workflow_id' => $workflowId,
             'workflow_input' => $input,
         ]);
@@ -177,7 +179,7 @@ readonly class PythonTemporalBridgeClient
     {
         $this->ensureEnabled();
 
-        $this->post('/temporal/workflows/cancel', [
+        $this->post('/execution/cancel', [
             'workflow_id' => $workflowId,
             'run_id' => $runId,
         ]);
@@ -192,7 +194,7 @@ readonly class PythonTemporalBridgeClient
     {
         $this->ensureEnabled();
 
-        $this->post('/temporal/workflows/cancel-and-wait', [
+        $this->post('/execution/stop-for-deletion', [
             'workflow_id' => $workflowId,
             'run_id' => $runId,
         ]);
@@ -209,26 +211,7 @@ readonly class PythonTemporalBridgeClient
      */
     private function post(string $path, array $payload): array
     {
-        $response = $this->http->timeout($this->timeout())
-            ->acceptJson()
-            ->asJson()
-            ->post($this->bridgeUrl().$path, $payload);
-
-        if (! $response->successful()) {
-            throw new \RuntimeException(sprintf(
-                'Python Temporal bridge request failed [%s %s]: %s',
-                $response->status(),
-                $path,
-                $response->body(),
-            ));
-        }
-
-        $body = $response->json();
-        if (! is_array($body)) {
-            throw new \RuntimeException("Python Temporal bridge returned non-object JSON for [{$path}].");
-        }
-
-        return $body;
+        return $this->postSigned($path, $payload);
     }
 
     /**
@@ -242,17 +225,38 @@ readonly class PythonTemporalBridgeClient
         }
         $body = json_encode($payload, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
         $timestamp = (string) $this->clock->now()->getTimestamp();
-        $response = $this->http->timeout($this->timeout())->acceptJson()->withHeaders([
-            'X-Hawki-Timestamp' => $timestamp,
-            'X-Hawki-Signature' => 'v1='.hash_hmac('sha256', $timestamp.'.'.$body, $secret),
-        ])->withBody($body, 'application/json')->post($this->bridgeUrl().$path);
-        $response->throw();
-        $result = $response->json();
-        if (! is_array($result)) {
-            throw new \RuntimeException('Managed Temporal bridge returned invalid JSON.');
+        $signingInput = "hawki-workflow-control-v1\nPOST\n/internal/workflow-control{$path}\n{$timestamp}\n".$body;
+        try {
+            $response = $this->http->timeout($this->timeout())->acceptJson()->withoutRedirecting()
+                ->withOptions(['cookies' => false])->withHeaders([
+                    'X-Hawki-Timestamp' => $timestamp,
+                    'X-Hawki-Signature' => 'v1='.hash_hmac('sha256', $signingInput, $secret),
+                ])->withBody($body, 'application/json')->post($this->bridgeUrl().$path);
+            $result = $response->json();
+            if (! $response->successful() || ! is_array($result)) {
+                throw new \RuntimeException;
+            }
+        } catch (\Throwable) {
+            // Never retain raw HTTP/Temporal errors or authenticated request bodies.
+            throw new \RuntimeException('Python workflow control is unconfirmed; reconcile the same prepared operation.');
         }
 
         return $result;
+    }
+
+    /** Python decides retry identities; Laravel persists the returned preparation. */
+    public function sourceRetryIdentity(string $sourceId, ?string $previous, int $attempt, string $jobId): string
+    {
+        $this->ensureEnabled();
+        $body = $this->post('/source/retry-identity', [
+            'source_id' => $sourceId, 'previous_workflow_id' => $previous,
+            'attempt' => max(1, $attempt), 'job_id' => $jobId,
+        ]);
+        if (! is_string($body['workflow_id'] ?? null) || $body['workflow_id'] === '') {
+            throw new \RuntimeException('Python workflow preparation has no confirmed identity.');
+        }
+
+        return $body['workflow_id'];
     }
 
     private function workflowIdFor(array $input): string
@@ -271,7 +275,7 @@ readonly class PythonTemporalBridgeClient
 
     private function bridgeUrl(): string
     {
-        return rtrim((string) $this->config->get('config.hawki_rag_bridge_url', 'http://hawki_rag_bridge'), '/');
+        return rtrim((string) $this->config->get('temporal.control_url', 'http://hawki_backend'), '/').'/internal/workflow-control';
     }
 
     private function timeout(): int

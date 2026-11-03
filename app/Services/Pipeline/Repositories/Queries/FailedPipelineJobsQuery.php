@@ -33,7 +33,8 @@ readonly class FailedPipelineJobsQuery
     {
         return PipelineJob::query()
             ->where('task_id', $task->task_id)
-            ->where('status', PipelineJob::STATUS_FAILED)
+            ->where(fn ($query) => $query->where('status', PipelineJob::STATUS_FAILED)
+                ->orWhereIn('metadata->pending_recovery->state', ['reserved', 'dispatching', 'uncertain']))
             ->orderBy('id')
             ->get();
     }
@@ -65,7 +66,8 @@ readonly class FailedPipelineJobsQuery
     private function forRecoveryQuery(?string $taskId, ?string $datasetId): Builder
     {
         return PipelineJob::query()
-            ->where('status', PipelineJob::STATUS_FAILED)
+            ->where(fn ($query) => $query->where('status', PipelineJob::STATUS_FAILED)
+                ->orWhereIn('metadata->pending_recovery->state', ['reserved', 'dispatching', 'uncertain']))
             ->when($taskId, fn ($query) => $query->where('task_id', $taskId))
             ->when($datasetId, fn ($query) => $query->whereHas('task', fn ($taskQuery) => $taskQuery->where('dataset_id', $datasetId)));
     }

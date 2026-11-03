@@ -9,6 +9,7 @@ use App\Models\PipelineTask;
 use App\Services\Dataset\DatasetService;
 use App\Services\Pipeline\Clients\PythonTemporalBridgeClient;
 use App\Services\Pipeline\Exceptions\PipelineUploadStorageException;
+use App\Services\Pipeline\PipelineRecoveryWorkflowService;
 use App\Services\Pipeline\Repositories\IngestionSourceRepository;
 use App\Services\Pipeline\Repositories\PipelineJobCreationRepository;
 use App\Services\Pipeline\Repositories\PipelineJobStateMutationRepository;
@@ -45,6 +46,7 @@ class PipelineUploadService
         private readonly PipelineUploadResultFactory $results,
         private readonly LoggerInterface $logger,
         private readonly DatabaseManager $database,
+        private readonly PipelineRecoveryWorkflowService $recoveryWorkflows,
         private readonly ClockInterface $clock = new Clock,
     ) {}
 
@@ -240,6 +242,17 @@ class PipelineUploadService
         $this->datasets->requireActive((string) $source->dataset_id);
         if ($this->database->connection()->transactionLevel() !== 0) {
             throw new \LogicException('Managed Temporal dispatch requires committed SQL preparation.');
+        }
+        if ($this->recoveryWorkflows->hasPending($job)) {
+            try {
+                // A recovery reservation retains its original control policy and
+                // payload even when resumed through the replacement entry point.
+                $job = $this->recoveryWorkflows->start($task, $job);
+            } catch (\Throwable) {
+                return PipelineUploadResult::fromPayload(['success' => false, 'message' => 'Replacement startup is unconfirmed; resubmit the same PUT and file.', 'task_id' => $taskId], 502);
+            }
+
+            return $this->results->success($this->refresher->recalculate($task), $job);
         }
         if ($job->temporal_run_id) {
             return $this->results->success($task, $job);

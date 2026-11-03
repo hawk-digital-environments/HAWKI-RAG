@@ -87,16 +87,6 @@ readonly class IngestSourceWorkflowPayloadFactory
             'storage' => [
                 'shared_root' => $this->sharedRoot(),
             ],
-            'task_queues' => [
-                'workflow' => $this->config->get('temporal.task_queues.workflow', 'rag-workflow-task-queue'),
-                'scraper' => $this->config->get('temporal.task_queues.scraper', 'rag-scraper-task-queue'),
-                'converter' => $this->config->get('temporal.task_queues.converter', 'rag-converter-task-queue'),
-                'ingestion' => $this->config->get('temporal.task_queues.ingestion', 'rag-ingestion-task-queue'),
-                'indexer' => $this->config->get(
-                    'temporal.task_queues.indexer',
-                    $this->config->get('temporal.task_queues.ingestion', 'rag-ingestion-task-queue'),
-                ),
-            ],
             'ingestion' => [
                 'provider' => $modelRuntime['provider'],
                 'graph_model' => $modelRuntime['graph_model'],
@@ -132,6 +122,7 @@ readonly class IngestSourceWorkflowPayloadFactory
 
     public function workflowId(string $sourceId): string
     {
+        // Persisted compatibility projection, validated by Python before dispatch.
         return 'ingest-source-'.$sourceId;
     }
 

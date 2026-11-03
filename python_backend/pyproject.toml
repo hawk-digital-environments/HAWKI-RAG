@@ -7,6 +7,7 @@ dependencies = [
     "alembic==1.20.0",
     "fastapi==0.139.2",
     "hawki-rag-retrieval==0.1.0",
+    "hawki-workflow-control==0.1.0",
     "httpx==0.27.2",
     "psycopg[binary]==3.3.6",
     "pydantic==2.13.4",
@@ -29,6 +30,7 @@ build-backend = "uv_build"
 
 [tool.uv.sources]
 hawki-rag-retrieval = { path = "../python_rag/packages/retrieval", editable = true }
+hawki-workflow-control = { path = "../python_rag/packages/workflow_control", editable = true }
 
 [tool.ruff]
 target-version = "py313"

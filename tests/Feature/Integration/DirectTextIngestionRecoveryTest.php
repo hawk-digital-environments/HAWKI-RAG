@@ -9,12 +9,16 @@ use App\Models\IngestionSource;
 use App\Models\PipelineJob;
 use App\Models\PipelineStageState;
 use App\Models\PipelineTask;
+use App\Services\Pipeline\PipelineRecoveryWorkflowService;
 use App\Services\Pipeline\Recovery\PipelineRecoveryAttemptService;
 use App\Services\Pipeline\Tasks\PipelineTaskRetryService;
 use App\Services\TextIngestion\TextIngestionIdentifierFactory;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\Factory;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
+use PHPUnit\Framework\Attributes\TestWith;
 use Tests\TestCase;
 
 final class DirectTextIngestionRecoveryTest extends TestCase
@@ -33,10 +37,14 @@ final class DirectTextIngestionRecoveryTest extends TestCase
             'temporal.enabled' => true,
             'temporal.storage.shared_root' => $this->sharedRoot,
         ]);
-        Http::fake(static fn ($request) => Http::response([
-            'workflow_id' => $request->data()['workflow_id'],
-            'run_id' => 'run-recovered',
-        ], 200));
+        Http::fake(static function ($request) {
+            $input = $request->data();
+            if (str_ends_with($request->url(), '/source/retry-identity')) {
+                return Http::response(['workflow_id' => ($input['previous_workflow_id'] ?? 'ingest-source-'.$input['source_id']).'-retry-'.$input['attempt'].'-'.preg_replace('/[^A-Za-z0-9_.-]+/', '-', $input['job_id'])]);
+            }
+
+            return Http::response(['workflow_id' => $input['workflow_id'], 'run_id' => 'run-recovered']);
+        });
     }
 
     protected function tearDown(): void
@@ -55,9 +63,9 @@ final class DirectTextIngestionRecoveryTest extends TestCase
         $job->refresh();
         Http::assertSentCount(1);
         Http::assertSent(function ($request) use ($task, $job): bool {
-            $input = $request->data()['workflow_input'] ?? [];
+            $input = ($request->data()['workflow_input'] ?? []) ?? [];
 
-            return str_ends_with($request->url(), '/temporal/workflows/ingest-text')
+            return str_ends_with($request->url(), '/internal/workflow-control/text/start')
                 && $request->data()['workflow_id'] === app(TextIngestionIdentifierFactory::class)->workflowId($task->task_id)
                 && ($input['source_id'] ?? null) === $job->source_id
                 && ($input['task_id'] ?? null) === $task->task_id
@@ -82,11 +90,11 @@ final class DirectTextIngestionRecoveryTest extends TestCase
 
         app(PipelineTaskRetryService::class)->retryFailedJobs($task->task_id);
 
-        Http::assertSentCount(1);
+        Http::assertSentCount(2);
         Http::assertSent(function ($request): bool {
-            $input = $request->data()['workflow_input'] ?? [];
+            $input = ($request->data()['workflow_input'] ?? []) ?? [];
 
-            return str_ends_with($request->url(), '/temporal/workflows/ingest')
+            return str_ends_with($request->url(), '/internal/workflow-control/source/start')
                 && ($input['raw_output_path'] ?? null) === '/shared/sources/source-web/raw/';
         });
         $this->assertSame(PipelineJob::STATUS_RUNNING, $job->refresh()->status);
@@ -121,9 +129,9 @@ final class DirectTextIngestionRecoveryTest extends TestCase
 
         $this->assertSame('retried', $result['result']);
         Http::assertSent(function ($request): bool {
-            $input = $request->data()['workflow_input'];
+            $input = ($request->data()['workflow_input'] ?? []);
 
-            return $input['resume'] === ['stage' => 'convert', 'raw_dir' => $this->sharedRoot.'/raw']
+            return ($input['resume'] ?? null) === ['stage' => 'convert', 'raw_dir' => $this->sharedRoot.'/raw']
                 && $input['external_services']['converter_token'] === 'updated-test-key';
         });
         $this->assertSame('completed', $job->stages()->where('stage', 'scrape')->value('status'));
@@ -136,7 +144,7 @@ final class DirectTextIngestionRecoveryTest extends TestCase
 
         app(PipelineTaskRetryService::class)->retryFailedJobs($task->task_id);
 
-        Http::assertSent(fn ($request): bool => $request->data()['workflow_input']['resume'] === [
+        Http::assertSent(fn ($request): bool => ($request->data()['workflow_input']['resume'] ?? null) === [
             'stage' => 'ingest', 'markdown_dir' => $this->sharedRoot.'/markdown',
         ]);
         $this->assertSame('completed', $job->stages()->where('stage', 'convert')->value('status'));
@@ -168,9 +176,9 @@ final class DirectTextIngestionRecoveryTest extends TestCase
         $this->assertSame('retried', $result['result']);
         Http::assertSentCount(1);
         Http::assertSent(function ($request) use ($task, $job): bool {
-            $input = $request->data()['workflow_input'] ?? [];
+            $input = ($request->data()['workflow_input'] ?? []) ?? [];
 
-            return str_ends_with($request->url(), '/temporal/workflows/ingest-text')
+            return str_ends_with($request->url(), '/internal/workflow-control/text/start')
                 && $request->data()['workflow_id'] === app(TextIngestionIdentifierFactory::class)->workflowId($task->task_id)
                 && ($input['markdown_path'] ?? null) === $job->local_path
                 && data_get($input, 'ingestion.graph') === false;
@@ -190,10 +198,10 @@ final class DirectTextIngestionRecoveryTest extends TestCase
         );
 
         $this->assertSame('retried', $result['result']);
-        Http::assertSentCount(1);
+        Http::assertSentCount(2);
         Http::assertSent(fn ($request): bool => str_ends_with(
             $request->url(),
-            '/temporal/workflows/ingest',
+            '/internal/workflow-control/source/start',
         ));
     }
 
@@ -217,6 +225,111 @@ final class DirectTextIngestionRecoveryTest extends TestCase
         Http::assertNothingSent();
         $this->assertSame(IngestionSource::STATUS_DELETED, $source->refresh()->index_status);
         $this->assertSame(PipelineJob::STATUS_FAILED, $job->refresh()->status);
+    }
+
+    #[TestWith([false, 'recovery'])]
+    #[TestWith([false, 'task'])]
+    #[TestWith([true, 'recovery'])]
+    #[TestWith([true, 'task'])]
+    public function test_uncertain_retry_reuses_committed_identity_payload_and_counter_across_entrypoints(bool $text, string $entrypoint): void
+    {
+        [$task, $job] = $text ? $this->failedDirectTextIngestion() : $this->failedOrdinaryIngestion();
+        $baseline = DB::transactionLevel();
+        $requests = [];
+        $identityCalls = 0;
+        $confirmed = false;
+        Http::swap(new Factory);
+        Http::fake(function ($request) use ($job, $text, $baseline, &$requests, &$identityCalls, &$confirmed) {
+            $this->assertSame($baseline, DB::transactionLevel());
+            if (str_ends_with($request->url(), '/source/retry-identity')) {
+                $identityCalls++;
+                $this->assertSame(1, $job->fresh()->metadata['pending_recovery']['attempt']);
+
+                return Http::response(['workflow_id' => 'ingest-source-source-web-retry-1-job-web']);
+            }
+            $persisted = $job->fresh();
+            $pending = $persisted->metadata['pending_recovery'];
+            $this->assertSame($pending['workflow_id'], $persisted->temporal_workflow_id);
+            $this->assertNull($persisted->temporal_run_id);
+            $this->assertSame($pending['workflow_id'], $request->data()['workflow_id']);
+            $this->assertSame($pending['input'], $request->data()['workflow_input']);
+            $this->assertSame(hash('sha256', json_encode($pending['input'], JSON_THROW_ON_ERROR)), $pending['input_hash']);
+            $this->assertSame($text ? 'IngestTextWorkflow' : 'IngestSourceWorkflow', $pending['workflow_type']);
+            $this->assertStringEndsWith($text ? '/text/start' : '/source/start', $request->url());
+            $requests[] = $request->data();
+
+            return $confirmed
+                ? Http::response(['workflow_id' => $pending['workflow_id'], 'run_id' => 'adopted-run'])
+                : Http::response(['detail' => 'dispatch unconfirmed'], 502);
+        });
+        $invoke = function (string $path) use ($task, $job): void {
+            if ($path === 'recovery') {
+                app(PipelineRecoveryAttemptService::class)->retry($job->fresh(), 'job', $job->job_id);
+            } else {
+                try {
+                    app(PipelineTaskRetryService::class)->retryFailedJobs($task->task_id);
+                } catch (\RuntimeException $error) {
+                    $this->assertStringContainsString('unconfirmed', $error->getMessage());
+                }
+            }
+        };
+        $invoke($entrypoint);
+        $first = $job->fresh()->metadata['pending_recovery'];
+        $this->assertSame('uncertain', $first['state']);
+        $this->assertSame(1, $job->fresh()->metadata['retry_count']);
+        config()->set('temporal.external_services.converter_token', 'changed-after-first-preparation');
+        $invoke($entrypoint === 'task' ? 'recovery' : 'task');
+        $this->assertSame($first, $job->fresh()->metadata['pending_recovery']);
+        $this->assertSame(1, $job->fresh()->metadata['retry_count']);
+        $confirmed = true;
+        $invoke('recovery');
+        $this->assertCount(3, $requests);
+        $this->assertSame($requests[0], $requests[1]);
+        $this->assertSame($requests[0], $requests[2]);
+        $this->assertSame($text ? 0 : 1, $identityCalls);
+        $this->assertSame('confirmed', $job->fresh()->metadata['pending_recovery']['state']);
+        $this->assertSame('adopted-run', $job->fresh()->temporal_run_id);
+        $this->assertSame(1, $job->fresh()->metadata['retry_count']);
+    }
+
+    public function test_reentrant_recovery_reserves_one_attempt_and_delayed_timeout_cannot_erase_confirmation(): void
+    {
+        [$task, $job] = $this->failedOrdinaryIngestion();
+        $nested = false;
+        Http::swap(new Factory);
+        Http::fake(function ($request) use ($task, &$nested) {
+            if (str_ends_with($request->url(), '/source/retry-identity')) {
+                return Http::response(['workflow_id' => 'ingest-source-source-web-retry-1-job-web']);
+            }
+            if (! $nested) {
+                $nested = true;
+                app(PipelineTaskRetryService::class)->retryFailedJobs($task->task_id);
+
+                return Http::response([], 502); // Older caller loses its response.
+            }
+
+            return Http::response(['workflow_id' => $request->data()['workflow_id'], 'run_id' => 'concurrent-run']);
+        });
+        app(PipelineRecoveryAttemptService::class)->retry($job, 'job', $job->job_id);
+        $pending = $job->fresh()->metadata['pending_recovery'];
+        $this->assertSame(1, $pending['attempt']);
+        $this->assertSame('confirmed', $pending['state']);
+        $this->assertSame('concurrent-run', $job->fresh()->temporal_run_id);
+        $this->assertSame(PipelineJob::STATUS_RUNNING, $job->fresh()->status);
+        Http::assertSentCount(3);
+    }
+
+    public function test_reserved_attempt_survives_crash_and_is_visible_to_both_recovery_entrypoints(): void
+    {
+        [$task, $job] = $this->failedOrdinaryIngestion();
+        $service = app(PipelineRecoveryWorkflowService::class);
+        $first = $service->reserve($job);
+        $this->assertSame('reserved', $first->metadata['pending_recovery']['state']);
+        $this->assertSame(1, $service->reserve($job)->metadata['retry_count']);
+        $first->forceFill(['status' => PipelineJob::STATUS_QUEUED])->save();
+        app(PipelineTaskRetryService::class)->retryFailedJobs($task->task_id);
+        $this->assertSame('confirmed', $job->fresh()->metadata['pending_recovery']['state']);
+        $this->assertSame(1, $job->fresh()->metadata['retry_count']);
     }
 
     /**

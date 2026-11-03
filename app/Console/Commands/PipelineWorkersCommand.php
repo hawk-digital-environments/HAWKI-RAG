@@ -18,7 +18,7 @@ class PipelineWorkersCommand extends Command
         $queues = (array) $config->get('temporal.task_queues', []);
 
         $this->line('HAWKI RAG Temporal ingestion workers');
-        $this->line('Laravel starts/cancels/schedules workflows. Temporal coordinates durable phase transitions.');
+        $this->line('The Python backend starts/cancels/schedules workflows. Temporal coordinates durable phase transitions.');
         $this->newLine();
 
         $this->line('Start the production stack (including all Temporal workers):');

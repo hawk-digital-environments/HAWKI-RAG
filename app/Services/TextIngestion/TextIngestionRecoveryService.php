@@ -43,13 +43,21 @@ final readonly class TextIngestionRecoveryService
         PipelineTask $task,
         PipelineJob $job,
         IngestionSource $source,
+        int $recoveryAttempt = 1,
     ): TemporalWorkflowExecution {
-        $dataset = $this->datasets->requireActive((string) $task->dataset_id);
-        $workflowId = $this->identifiers->workflowId((string) $task->task_id);
+        $prepared = $this->prepare($task, $job, $source);
 
-        return $this->temporal->startTextIngestWorkflow(
-            $this->payloads->createFromPersisted($dataset, $task, $job, $source),
-            $workflowId,
-        );
+        return $this->temporal->startTextIngestWorkflow($prepared['input'], $prepared['workflow_id'], $recoveryAttempt);
+    }
+
+    /** @return array{workflow_id: string, input: array<string, mixed>} */
+    public function prepare(PipelineTask $task, PipelineJob $job, IngestionSource $source): array
+    {
+        $dataset = $this->datasets->requireActive((string) $task->dataset_id);
+
+        return [
+            'workflow_id' => $this->identifiers->workflowId((string) $task->task_id),
+            'input' => $this->payloads->createFromPersisted($dataset, $task, $job, $source),
+        ];
     }
 }

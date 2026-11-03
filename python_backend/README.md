@@ -648,3 +648,10 @@ writes or target deletes occur. See the
 [Epoch 7C runbook](../_documentation/Operations/python_query_cutover.md) for exact
 export, grant, scope/model/reranker/auth checks, actual-inventory live parity,
 the separate query-all transition, controlled activation, and rollback commands.
+
+## Epoch 8 workflow control
+
+The backend now owns signed internal workflow control through a durable dispatch
+ledger. Public ingestion stays in Laravel. See the coordinated
+[deployment and rollback procedure](../_documentation/Operations/python_workflow_control.md)
+before enabling `HAWKI_WORKFLOW_CONTROL_ENABLED`.

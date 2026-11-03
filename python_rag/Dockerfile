@@ -30,6 +30,8 @@ COPY python_rag/packages/vector_store/pyproject.toml python_rag/packages/vector_
 COPY python_rag/packages/vector_store/src packages/vector_store/src
 COPY python_rag/packages/retrieval/pyproject.toml python_rag/packages/retrieval/README.md packages/retrieval/
 COPY python_rag/packages/retrieval/src packages/retrieval/src
+COPY python_rag/packages/workflow_control/pyproject.toml python_rag/packages/workflow_control/README.md packages/workflow_control/
+COPY python_rag/packages/workflow_control/src packages/workflow_control/src
 COPY python_rag/services/hawki_bridge/pyproject.toml python_rag/services/hawki_bridge/README.md services/hawki_bridge/
 COPY python_rag/services/hawki_bridge/src services/hawki_bridge/src
 RUN --mount=type=cache,id=rawki-uv,target=/root/.cache/uv,sharing=locked \

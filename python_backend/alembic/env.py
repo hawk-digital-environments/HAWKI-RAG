@@ -12,6 +12,7 @@ from alembic import context
 from sqlalchemy import engine_from_config, pool, text
 
 from hawki_backend.persistence.schema import SCHEMA_NAME, metadata
+from hawki_backend.workflow_control.schema import operations  # noqa: F401
 from hawki_backend.settings import load_database_settings
 
 config = context.config

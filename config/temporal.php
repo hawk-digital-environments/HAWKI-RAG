@@ -7,7 +7,7 @@ return [
     |--------------------------------------------------------------------------
     |
     | Laravel stores metadata and delegates Temporal client operations to the
-    | Python bridge. Python starts workflows and runs activities/workers.
+    | Python backend. The backend controls Temporal; separate workers execute it.
     |
     */
 
@@ -16,6 +16,7 @@ return [
     'namespace' => env('TEMPORAL_NAMESPACE', 'default'),
     'identity' => env('TEMPORAL_CLIENT_IDENTITY', 'hawki-rag-laravel'),
     'bridge_timeout' => env('HAWKI_RAG_BRIDGE_TIMEOUT', 30),
+    'control_url' => env('HAWKI_WORKFLOW_CONTROL_URL', 'http://hawki_backend'),
 
     'callbacks' => [
         'secret' => env('HAWKI_RAG_WORKER_CALLBACK_SECRET', ''),

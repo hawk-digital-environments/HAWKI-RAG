@@ -120,7 +120,7 @@ final class PipelineStatusTest extends TestCase
             ->assertJsonPath('current_stage', 'ingest')
             ->assertJsonPath('stages.ingest.status', 'running');
         Http::assertSentCount(1);
-        Http::assertSent(fn ($request) => str_ends_with($request->url(), '/temporal/workflows/status'));
+        Http::assertSent(fn ($request) => str_ends_with($request->url(), '/internal/workflow-control/execution/status'));
         $this->assertSame('ingest', $job->refresh()->current_stage);
     }
 

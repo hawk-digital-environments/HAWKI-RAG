@@ -44,7 +44,7 @@ class DocumentUnifiedApiTest extends TestCase
         config()->set('temporal.storage.shared_root', $root);
         config()->set('file_converter.raganything_supported_extensions', ['pdf']);
         Http::fake([
-            '*temporal/workflows/ingest' => fn ($request) => Http::response([
+            '*internal/workflow-control/source/start' => fn ($request) => Http::response([
                 'workflow_id' => $request->data()['workflow_id'],
                 'run_id' => 'documents-create-run-1',
             ]),
@@ -86,7 +86,7 @@ class DocumentUnifiedApiTest extends TestCase
         ]);
 
         Http::assertSent(fn ($request): bool => $request->method() === 'POST'
-            && $request->url() === config('config.hawki_rag_bridge_url').'/temporal/workflows/ingest'
+            && $request->url() === config('temporal.control_url').'/internal/workflow-control/source/start'
             && data_get($request->data(), 'workflow_input.dataset_id') === 'documents-create'
             && data_get($request->data(), 'workflow_input.managed_document_id') === $publicDocumentId);
 
@@ -100,7 +100,7 @@ class DocumentUnifiedApiTest extends TestCase
         config()->set('temporal.storage.shared_root', $root);
         config()->set('file_converter.raganything_supported_extensions', ['pdf']);
         Http::fake([
-            '*temporal/workflows/ingest' => fn ($request) => Http::response([
+            '*internal/workflow-control/source/start' => fn ($request) => Http::response([
                 'workflow_id' => $request->data()['workflow_id'],
                 'run_id' => 'documents-default-graph-run-1',
             ]),
@@ -120,7 +120,7 @@ class DocumentUnifiedApiTest extends TestCase
             ->assertJsonMissingPath('document.assistant_document_id');
 
         Http::assertSent(fn ($request): bool => $request->method() === 'POST'
-            && $request->url() === config('config.hawki_rag_bridge_url').'/temporal/workflows/ingest'
+            && $request->url() === config('temporal.control_url').'/internal/workflow-control/source/start'
             && data_get($request->data(), 'workflow_input.ingestion.graph') === false);
 
         File::deleteDirectory($root);
@@ -133,7 +133,7 @@ class DocumentUnifiedApiTest extends TestCase
         config()->set('temporal.storage.shared_root', $root);
         config()->set('file_converter.raganything_supported_extensions', ['pdf']);
         $starts = 0;
-        Http::fake(['*temporal/workflows/ingest' => function ($request) use (&$starts) {
+        Http::fake(['*internal/workflow-control/source/start' => function ($request) use (&$starts) {
             return Http::response(['workflow_id' => $request->data()['workflow_id'], 'run_id' => 'documents-batch-run-'.++$starts]);
         }]);
 
@@ -178,9 +178,9 @@ class DocumentUnifiedApiTest extends TestCase
             'graph_enabled' => 0,
         ]);
 
-        $this->assertCount(2, Http::recorded(fn ($request) => str_ends_with($request->url(), '/temporal/workflows/ingest')));
+        $this->assertCount(2, Http::recorded(fn ($request) => str_ends_with($request->url(), '/internal/workflow-control/source/start')));
         Http::assertSent(fn ($request): bool => $request->method() === 'POST'
-            && $request->url() === config('config.hawki_rag_bridge_url').'/temporal/workflows/ingest'
+            && $request->url() === config('temporal.control_url').'/internal/workflow-control/source/start'
             && data_get($request->data(), 'workflow_input.dataset_id') === 'documents-batch'
             && data_get($request->data(), 'workflow_input.ingestion.graph') === false);
 
@@ -521,7 +521,7 @@ class DocumentUnifiedApiTest extends TestCase
         ]);
 
         Http::assertSent(fn ($request): bool => $request->method() === 'POST'
-            && str_ends_with($request->url(), '/temporal/workflows/delete-managed-document')
+            && str_ends_with($request->url(), '/internal/workflow-control/deletion/start')
             && $request->hasHeader('X-Hawki-Signature'));
 
     }

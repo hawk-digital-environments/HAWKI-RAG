@@ -17,9 +17,8 @@ readonly class PipelineTaskPayloadService
 {
     public function __construct(
         private PipelineManagedDocumentViewService $documents,
-        private ClockInterface $clock = new Clock(),
-    ) {
-    }
+        private ClockInterface $clock = new Clock,
+    ) {}
 
     /**
      * @param  array<string, int>  $defaultCounters
@@ -90,7 +89,8 @@ readonly class PipelineTaskPayloadService
             'error_message' => $job->error_message,
             'started_at' => $this->dateValue($job->started_at),
             'finished_at' => $this->dateValue($job->finished_at),
-            'metadata' => $job->metadata ?? [],
+            // Recovery preparation can contain deployment-owned service credentials.
+            'metadata' => array_diff_key($job->metadata ?? [], ['pending_recovery' => true]),
             'managed_documents' => $managedDocuments,
             'managed_document_count' => count($managedDocuments),
             'source' => $source ?? $this->documents->source(
@@ -147,7 +147,7 @@ readonly class PipelineTaskPayloadService
     }
 
     /**
-     * @param array<string, array<string, mixed>> $sourceMap
+     * @param  array<string, array<string, mixed>>  $sourceMap
      * @return array<string, mixed>|null
      */
     private function sourceForJob(PipelineJob $job, array $sourceMap): ?array
@@ -245,7 +245,7 @@ readonly class PipelineTaskPayloadService
     }
 
     /**
-     * @param array<string, mixed> $details
+     * @param  array<string, mixed>  $details
      */
     private function uploadedConvertStatus(PipelineJob $job, string $phase, array $details): string
     {
@@ -288,7 +288,7 @@ readonly class PipelineTaskPayloadService
     }
 
     /**
-     * @param array<string, mixed> $details
+     * @param  array<string, mixed>  $details
      * @return array<string, int>
      */
     private function uploadedConvertCounts(string $status, array $details): array
@@ -305,7 +305,7 @@ readonly class PipelineTaskPayloadService
     }
 
     /**
-     * @param array<string, mixed> $details
+     * @param  array<string, mixed>  $details
      * @return array<string, int>
      */
     private function uploadedIngestCounts(array $details): array
@@ -357,7 +357,7 @@ readonly class PipelineTaskPayloadService
     }
 
     /**
-     * @param array<string, mixed> $counts
+     * @param  array<string, mixed>  $counts
      * @return array<string, int>
      */
     private function stageCounts(string $stage, array $counts, ?int $scrapePageLimit = null): array
@@ -407,7 +407,7 @@ readonly class PipelineTaskPayloadService
     }
 
     /**
-     * @param array<string, mixed> $counts
+     * @param  array<string, mixed>  $counts
      */
     private function stageStatus(PipelineStageState $stage, array $counts): string
     {
@@ -422,7 +422,7 @@ readonly class PipelineTaskPayloadService
     }
 
     /**
-     * @param array<string, mixed> $counts
+     * @param  array<string, mixed>  $counts
      * @return list<mixed>
      */
     private function stageErrors(PipelineStageState $stage, array $counts): array
@@ -443,7 +443,7 @@ readonly class PipelineTaskPayloadService
     }
 
     /**
-     * @param array<string, mixed> $counts
+     * @param  array<string, mixed>  $counts
      */
     private function scrapeStoppedBeforeLimit(array $counts): bool
     {
@@ -502,7 +502,7 @@ readonly class PipelineTaskPayloadService
     }
 
     /**
-     * @param array<string, string> $messages
+     * @param  array<string, string>  $messages
      */
     private function stageMessage(string $status, array $messages): string
     {

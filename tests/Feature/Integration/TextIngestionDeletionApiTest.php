@@ -113,7 +113,7 @@ final class TextIngestionDeletionApiTest extends TestCase
                 && data_get($request->data(), 'filter.must.1.match.value') === $sourceId
                 && data_get($request->data(), 'filter.must.2.match.value') === 'delete_text_e2e';
         });
-        Http::assertNotSent(fn ($request): bool => str_contains($request->url(), 'cancel-and-wait'));
+        Http::assertNotSent(fn ($request): bool => str_contains($request->url(), 'stop-for-deletion'));
 
         $sentBeforeReplay = count(Http::recorded());
         $this->deleteRequest($sourceId)
@@ -133,7 +133,7 @@ final class TextIngestionDeletionApiTest extends TestCase
             ->map(static fn (array $record): string => $record[0]->url())
             ->all();
         $cancelIndex = array_search(
-            'http://hawki_rag_bridge/temporal/workflows/cancel-and-wait',
+            'http://hawki_backend/internal/workflow-control/execution/stop-for-deletion',
             $urls,
             true,
         );
@@ -258,7 +258,7 @@ final class TextIngestionDeletionApiTest extends TestCase
     {
         Http::swap(new HttpFactory);
         Http::fake([
-            '*temporal/workflows/ingest-text' => static fn ($request) => Http::response([
+            '*internal/workflow-control/text/start' => static fn ($request) => Http::response([
                 'workflow_id' => $request->data()['workflow_id'],
                 'run_id' => 'run-delete-text',
             ], 202),
@@ -314,11 +314,11 @@ final class TextIngestionDeletionApiTest extends TestCase
     private function fakeDownstreamServices(): void
     {
         Http::fake([
-            '*temporal/workflows/ingest-text' => static fn ($request) => Http::response([
+            '*internal/workflow-control/text/start' => static fn ($request) => Http::response([
                 'workflow_id' => $request->data()['workflow_id'],
                 'run_id' => 'run-delete-text',
             ], 202),
-            '*temporal/workflows/cancel-and-wait' => Http::response(['ok' => true]),
+            '*internal/workflow-control/execution/stop-for-deletion' => Http::response(['ok' => true]),
             'http://qdrant.test:6333/*' => Http::response([
                 'result' => ['status' => 'completed'],
                 'status' => 'ok',

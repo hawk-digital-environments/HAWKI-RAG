@@ -41,6 +41,8 @@ COPY python_rag/packages/vector_store/pyproject.toml python_rag/packages/vector_
 COPY python_rag/packages/vector_store/src ../python_rag/packages/vector_store/src
 COPY python_rag/packages/retrieval/pyproject.toml python_rag/packages/retrieval/README.md ../python_rag/packages/retrieval/
 COPY python_rag/packages/retrieval/src ../python_rag/packages/retrieval/src
+COPY python_rag/packages/workflow_control/pyproject.toml python_rag/packages/workflow_control/README.md ../python_rag/packages/workflow_control/
+COPY python_rag/packages/workflow_control/src ../python_rag/packages/workflow_control/src
 COPY python_backend/src ./src
 
 RUN --mount=type=cache,id=rawki-uv,target=/root/.cache/uv,sharing=locked \

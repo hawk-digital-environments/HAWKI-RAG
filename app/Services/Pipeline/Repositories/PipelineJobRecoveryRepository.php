@@ -11,8 +11,18 @@ use Illuminate\Support\Carbon;
 #[Singleton]
 readonly class PipelineJobRecoveryRepository
 {
+    /** @param array<string, mixed> $metadata
+     * @param  array<string, mixed>  $attributes
+     */
+    public function savePreparation(PipelineJob $job, array $metadata, array $attributes = []): PipelineJob
+    {
+        $job->forceFill([...$attributes, 'metadata' => $metadata])->save();
+
+        return $job->refresh();
+    }
+
     /**
-     * @param array<string, mixed> $metadata
+     * @param  array<string, mixed>  $metadata
      */
     public function markQueuedForRetry(PipelineJob $job, array $metadata): PipelineJob
     {
@@ -35,7 +45,7 @@ readonly class PipelineJobRecoveryRepository
     }
 
     /**
-     * @param array<string, mixed> $metadata
+     * @param  array<string, mixed>  $metadata
      */
     public function markRecoveryQueued(PipelineJob $job, array $metadata): PipelineJob
     {
@@ -51,7 +61,7 @@ readonly class PipelineJobRecoveryRepository
     }
 
     /**
-     * @param array<string, mixed> $metadata
+     * @param  array<string, mixed>  $metadata
      */
     public function markRecoveryPublishFailed(
         PipelineJob $job,

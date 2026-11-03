@@ -38,10 +38,10 @@ final class DatasetDeletionBackgroundTest extends TestCase
         config()->set('config.neo4j_http_url', 'http://neo4j.test');
         Http::preventStrayRequests();
         Http::fake(function ($request) {
-            if (str_ends_with($request->url(), '/workflows/cancel')) {
+            if (str_ends_with($request->url(), '/execution/cancel')) {
                 return Http::response([]);
             }
-            if (str_ends_with($request->url(), '/delete-managed-document')) {
+            if (str_ends_with($request->url(), '/deletion/start')) {
                 $this->assertSame(0, DB::transactionLevel());
                 $this->dispatches[] = $request['workflow_id'];
                 if ($this->failStartup) {

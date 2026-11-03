@@ -78,14 +78,11 @@ def test_status_endpoint_requires_run_id_and_delegates(asgi_test_client_class):
             client.post(
                 "/temporal/workflows/status", json={"workflow_id": "workflow"}
             ).status_code
-            == 422
+            == 410
         )
         result = client.post(
             "/temporal/workflows/status",
             json={"workflow_id": "workflow", "run_id": "run"},
         )
-        assert result.status_code == 200
-        assert result.json()["status"] == "RUNNING"
-    bridge.workflow_status.assert_awaited_once_with(
-        workflow_id="workflow", run_id="run"
-    )
+        assert result.status_code == 410
+    bridge.workflow_status.assert_not_awaited()

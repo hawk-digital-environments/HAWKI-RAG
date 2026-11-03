@@ -19,7 +19,7 @@ use Illuminate\Support\Facades\Http;
  * The test exercises the unlocked operator upload API, multipart validation,
  * physical shared-storage persistence, hashing, dataset, task/job/source
  * creation, and Temporal workflow-payload construction. Only
- * the Python Temporal endpoint is faked: workers, conversion, model inference,
+ * the Python workflow-control endpoint is faked: workers, conversion, model inference,
  * Qdrant writes, Neo4j writes, and workflow completion are intentionally not
  * claimed by this test. Relational persistence uses the isolated SQLite test
  * connection rather than live PostgreSQL.
@@ -56,14 +56,14 @@ class PdfIngestionFlowTest extends SystemTestCase
 
     public function test_real_ten_page_pdf_is_persisted_and_handed_to_temporal(): void
     {
-        $bridgeEndpoint = rtrim((string) config('config.hawki_rag_bridge_url'), '/')
-            .'/temporal/workflows/ingest';
+        $bridgeEndpoint = rtrim((string) config('temporal.control_url'), '/')
+            .'/internal/workflow-control/source/start';
         Http::fake([
             $bridgeEndpoint => fn ($request) => Http::response([
                 'workflow_id' => $request->data()['workflow_id'],
                 'run_id' => 'system-ten-page-run-1',
             ]),
-            rtrim((string) config('config.hawki_rag_bridge_url'), '/').'/temporal/workflows/status' => Http::response([
+            rtrim((string) config('temporal.control_url'), '/').'/internal/workflow-control/execution/status' => Http::response([
                 'workflow_id' => 'ingest-source-system-ten-page-pdf',
                 'run_id' => 'system-ten-page-run-1', 'status' => 'RUNNING',
             ]),

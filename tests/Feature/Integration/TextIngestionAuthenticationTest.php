@@ -41,7 +41,7 @@ final class TextIngestionAuthenticationTest extends TestCase
             'created_at' => now(),
         ]);
         Http::fake([
-            '*temporal/workflows/ingest-text' => static fn ($request) => Http::response([
+            '*internal/workflow-control/text/start' => static fn ($request) => Http::response([
                 'workflow_id' => $request->data()['workflow_id'],
                 'run_id' => 'run-auth',
             ], 202),

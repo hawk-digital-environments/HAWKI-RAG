@@ -15,11 +15,11 @@ final class StartTextIngestWorkflowClientTest extends TestCase
     {
         config()->set([
             'temporal.enabled' => true,
-            'config.hawki_rag_bridge_url' => 'http://bridge.test',
+            'temporal.control_url' => 'http://bridge.test',
         ]);
 
         Http::fake([
-            'http://bridge.test/temporal/workflows/ingest-text' => Http::response([
+            'http://bridge.test/internal/workflow-control/text/start' => Http::response([
                 'workflow_id' => 'ingest-text-workflow-123',
                 'run_id' => 'run-123',
             ], 202),
@@ -43,7 +43,7 @@ final class StartTextIngestWorkflowClientTest extends TestCase
 
         Http::assertSent(static function (Request $request) use ($input): bool {
             return $request->method() === 'POST'
-                && $request->url() === 'http://bridge.test/temporal/workflows/ingest-text'
+                && $request->url() === 'http://bridge.test/internal/workflow-control/text/start'
                 && $request->data() === [
                     'workflow_id' => 'ingest-text-workflow-123',
                     'workflow_input' => $input,
@@ -55,10 +55,10 @@ final class StartTextIngestWorkflowClientTest extends TestCase
     {
         config()->set([
             'temporal.enabled' => true,
-            'config.hawki_rag_bridge_url' => 'http://bridge.test',
+            'temporal.control_url' => 'http://bridge.test',
         ]);
         Http::fake([
-            'http://bridge.test/temporal/workflows/ingest-text' => Http::response([
+            'http://bridge.test/internal/workflow-control/text/start' => Http::response([
                 'workflow_id' => 'unexpected-workflow',
                 'run_id' => 'run-123',
             ]),
@@ -76,10 +76,10 @@ final class StartTextIngestWorkflowClientTest extends TestCase
     {
         config()->set([
             'temporal.enabled' => true,
-            'config.hawki_rag_bridge_url' => 'http://bridge.test',
+            'temporal.control_url' => 'http://bridge.test',
         ]);
         Http::fake([
-            'http://bridge.test/temporal/workflows/cancel-and-wait' => Http::response([
+            'http://bridge.test/internal/workflow-control/execution/stop-for-deletion' => Http::response([
                 'ok' => true,
             ]),
         ]);
@@ -90,10 +90,33 @@ final class StartTextIngestWorkflowClientTest extends TestCase
         );
 
         Http::assertSent(static fn (Request $request): bool => $request->method() === 'POST'
-            && $request->url() === 'http://bridge.test/temporal/workflows/cancel-and-wait'
+            && $request->url() === 'http://bridge.test/internal/workflow-control/execution/stop-for-deletion'
             && $request->data() === [
                 'workflow_id' => 'ingest-text-workflow-123',
                 'run_id' => 'run-123',
             ]);
+    }
+
+    public function test_control_is_signed_and_failure_never_falls_back_or_exposes_remote_body(): void
+    {
+        config()->set('temporal.control_url', 'http://backend.test');
+        Http::fake(['http://backend.test/internal/workflow-control/execution/status' => Http::response(['detail' => 'private-address provider-secret'], 502)]);
+
+        try {
+            app(PythonTemporalBridgeClient::class)->workflowStatus('ingest-source-source-a', 'run-a');
+            self::fail('Unconfirmed workflow control must fail.');
+        } catch (\RuntimeException $error) {
+            self::assertStringContainsString('unconfirmed', $error->getMessage());
+            self::assertStringNotContainsString('provider-secret', $error->getMessage());
+            self::assertNull($error->getPrevious());
+        }
+        Http::assertSentCount(1);
+        Http::assertSent(static function (Request $request): bool {
+            $stamp = $request->header('X-Hawki-Timestamp')[0];
+            $expected = 'v1='.hash_hmac('sha256', "hawki-workflow-control-v1\nPOST\n/internal/workflow-control/execution/status\n{$stamp}\n".$request->body(), config('temporal.callbacks.secret'));
+
+            return $request->url() === 'http://backend.test/internal/workflow-control/execution/status'
+                && $request->header('X-Hawki-Signature')[0] === $expected;
+        });
     }
 }

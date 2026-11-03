@@ -16,6 +16,7 @@ abstract class TestCase extends BaseTestCase
         $this->assertSafeTestDatabaseEnvironment();
 
         parent::setUp();
+        config()->set('temporal.callbacks.secret', 'workflow-control-test-secret');
     }
 
     public function createApplication(): Application

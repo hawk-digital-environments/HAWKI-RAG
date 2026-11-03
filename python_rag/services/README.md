@@ -9,7 +9,7 @@ for cross-service behavior and runtime diagrams.
 
 | Member | Responsibility |
 |---|---|
-| [hawki_bridge](hawki_bridge/README.md) | Query/graph reads and health; Temporal controls; no canonical Qdrant/Neo4j ingestion writes |
+| [hawki_bridge](hawki_bridge/README.md) | Query/graph reads and health; legacy Temporal controls return 410; no canonical Qdrant/Neo4j ingestion writes |
 | [hawki_workflow_worker](hawki_workflow_worker/README.md) | Deterministic source and direct-text orchestration |
 | [hawki_scraper_worker](hawki_scraper_worker/README.md) | External crawling or upload staging into raw artifacts |
 | [hawki_converter_worker](hawki_converter_worker/README.md) | Inspection/conversion into Markdown artifacts |

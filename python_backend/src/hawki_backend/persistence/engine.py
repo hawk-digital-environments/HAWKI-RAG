@@ -21,6 +21,8 @@ def build_engine(settings: DatabaseSettings) -> Engine:
     """
     return create_engine(
         settings.dsn,
+        # Workflow preparation can contain server-side provider credentials.
+        hide_parameters=True,
         pool_size=settings.pool_size,
         max_overflow=0,
         pool_timeout=settings.pool_timeout_seconds,

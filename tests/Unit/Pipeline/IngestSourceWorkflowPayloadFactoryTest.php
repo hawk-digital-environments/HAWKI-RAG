@@ -67,11 +67,7 @@ class IngestSourceWorkflowPayloadFactoryTest extends TestCase
         $this->assertSame('native', $payload['converter_mode']);
         $this->assertSame('daily', $payload['refresh']['cadence']);
         $this->assertSame('etag-a', $payload['refresh']['etag']);
-        $this->assertSame('rag-workflow-task-queue', $payload['task_queues']['workflow']);
-        $this->assertSame('rag-scraper-task-queue', $payload['task_queues']['scraper']);
-        $this->assertSame('rag-converter-task-queue', $payload['task_queues']['converter']);
-        $this->assertSame('rag-ingestion-task-queue', $payload['task_queues']['ingestion']);
-        $this->assertSame('rag-indexer-task-queue', $payload['task_queues']['indexer']);
+        $this->assertArrayNotHasKey('task_queues', $payload);
         $this->assertSame('litellm', $payload['ingestion']['provider']);
         $this->assertSame('hawki-ollama-chat', $payload['ingestion']['graph_model']);
         $this->assertSame('hawki-ollama-embedding', $payload['ingestion']['embedding_model']);

@@ -36,7 +36,7 @@ final class ManagedDocumentWriterTest extends TestCase
         $this->seedWriter();
         Http::preventStrayRequests();
         Http::fake(fn ($request) => Http::response(['workflow_id' => $request->data()['workflow_id'], 'run_id' => 'delete-run',
-            'status' => str_ends_with($request->url(), '/workflows/status') ? $this->workflowStatus : 'pending']));
+            'status' => str_ends_with($request->url(), '/execution/status') ? $this->workflowStatus : 'pending']));
     }
 
     public function test_writer_endpoint_requires_exact_body_authentication(): void
@@ -175,7 +175,7 @@ final class ManagedDocumentWriterTest extends TestCase
         IngestionSource::query()->firstOrFail()->update(['index_status' => 'running']);
         PipelineJob::query()->firstOrFail()->update(['status' => 'running']);
         Http::fake(function ($request) {
-            if (! str_ends_with($request->url(), '/temporal/workflows/cancel')) {
+            if (! str_ends_with($request->url(), '/internal/workflow-control/execution/cancel')) {
                 return null;
             }
             $this->assertDatabaseHas('managed_document_deletions', ['status' => 'pending']);

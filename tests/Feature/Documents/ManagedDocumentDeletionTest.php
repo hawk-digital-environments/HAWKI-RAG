@@ -85,7 +85,7 @@ class ManagedDocumentDeletionTest extends TestCase
     }
 
     #[TestWith([['workflow_id' => 'another-workflow'], 'unexpected identity'])]
-    #[TestWith(['invalid-json', 'invalid JSON'])]
+    #[TestWith(['invalid-json', 'unconfirmed'])]
     public function test_shared_bridge_transport_rejects_invalid_deletion_acknowledgements(array|string $response, string $message): void
     {
         $http = new HttpFactory;
@@ -214,7 +214,7 @@ class ManagedDocumentDeletionTest extends TestCase
             $deletion = ManagedDocumentDeletion::query()->where('purpose', 'delete')->firstOrFail();
             $this->sendReceipt($this->receipt($deletion))->assertOk();
             $this->assertDatabaseHas('managed_documents', ['status' => 'deleted']);
-            Http::assertNotSent(fn ($request) => str_ends_with($request->url(), '/workflows/ingest'));
+            Http::assertNotSent(fn ($request) => str_ends_with($request->url(), '/source/start'));
         } finally {
             File::deleteDirectory($root);
         }
@@ -275,7 +275,7 @@ class ManagedDocumentDeletionTest extends TestCase
             $this->assertDatabaseCount('pipeline_tasks', 1);
             $this->assertDatabaseCount('pipeline_jobs', 1);
             $this->assertDatabaseHas('managed_document_deletions', ['status' => 'continued']);
-            Http::assertSent(fn ($request) => str_ends_with($request->url(), '/workflows/ingest') && ($request->data()['reuse_completed'] ?? false) === true && $request->hasHeader('X-Hawki-Signature'));
+            Http::assertSent(fn ($request) => str_ends_with($request->url(), '/source/start') && ($request->data()['managed_replacement'] ?? false) === true && $request->hasHeader('X-Hawki-Signature'));
             $replacementSource = IngestionSource::query()->where('source_id', $response->json('pipeline.source_id'))->firstOrFail();
             $this->assertSame('adoc_delete_test', $replacementSource->metadata['request']['metadata']['managed_document_id']);
             $this->sendReceipt($this->receipt($operation))->assertOk()->assertJsonPath('status', 'continued');
@@ -512,18 +512,18 @@ class ManagedDocumentDeletionTest extends TestCase
     private function pendingBridge(): void
     {
         Http::fake(function ($request) {
-            if (str_ends_with($request->url(), 'delete-managed-document')) {
+            if (str_ends_with($request->url(), 'deletion/start')) {
                 if ($this->beforeDeletionAck) {
                     ($this->beforeDeletionAck)($request);
                 }
 
                 return $this->loseDeletionAck ? (Http::failedConnection())($request) : Http::response(['workflow_id' => $request->data()['workflow_id'], 'run_id' => $this->deletionRun, 'status' => 'pending']);
             }
-            if (str_ends_with($request->url(), '/workflows/ingest')) {
+            if (str_ends_with($request->url(), '/source/start')) {
                 return $this->loseUploadAck ? (Http::failedConnection())($request) : Http::response(['workflow_id' => $request->data()['workflow_id'], 'run_id' => 'replacement-run']);
             }
 
-            if (str_ends_with($request->url(), '/workflows/status')) {
+            if (str_ends_with($request->url(), '/execution/status')) {
                 return Http::response(['workflow_id' => $request->data()['workflow_id'], 'run_id' => $request->data()['run_id'], 'status' => 'RUNNING']);
             }
 

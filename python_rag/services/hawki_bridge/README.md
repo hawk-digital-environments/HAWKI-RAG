@@ -1,7 +1,12 @@
 # HAWKI bridge
 
-`hawki_bridge` provides Laravel-authorized query/graph-read APIs, health, and
-Temporal control operations. It does not provide canonical Qdrant/Neo4j ingestion
+> Epoch 8: `/temporal/*` control endpoints are retired and return 410. Laravel
+> calls the authenticated Python backend instead; there is no bridge fallback.
+> Any Temporal endpoint examples below describe the historical surface. Follow
+> [Python workflow control](../../../_documentation/Operations/python_workflow_control.md)
+> for deployment and rollback. Query and graph reads remain on this bridge.
+
+`hawki_bridge` provides Laravel-authorized query/graph-read APIs and health. It does not provide canonical Qdrant/Neo4j ingestion
 writes or resolve the caller's dataset grants.
 
 The handbook owns the full [architecture](../../../_documentation/Getting%20Started/3_introduction_architecture.md),

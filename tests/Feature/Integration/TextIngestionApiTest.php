@@ -50,7 +50,7 @@ final class TextIngestionApiTest extends TestCase
         $this->withToken($this->plainTextToken);
         $this->dataset('assistant_42');
         Http::fake([
-            '*temporal/workflows/ingest-text' => static fn ($request) => Http::response([
+            '*internal/workflow-control/text/start' => static fn ($request) => Http::response([
                 'workflow_id' => $request->data()['workflow_id'],
                 'run_id' => 'run-123',
             ], 202),
@@ -347,7 +347,7 @@ final class TextIngestionApiTest extends TestCase
     {
         Http::swap(new HttpFactory($this->app['events']));
         Http::fake([
-            '*temporal/workflows/ingest-text' => Http::response([
+            '*internal/workflow-control/text/start' => Http::response([
                 'detail' => 'temporary bridge failure',
             ], 502),
         ]);
@@ -424,7 +424,7 @@ final class TextIngestionApiTest extends TestCase
         );
         Http::swap(new HttpFactory($this->app['events']));
         Http::fake([
-            '*temporal/workflows/ingest-text' => Http::sequence()
+            '*internal/workflow-control/text/start' => Http::sequence()
                 ->push(['workflow_id' => $workflowId, 'run_id' => 'run-initial'], 202)
                 ->push(['workflow_id' => $workflowId, 'run_id' => 'run-restarted'], 200),
         ]);
@@ -560,7 +560,7 @@ final class TextIngestionApiTest extends TestCase
         );
         Http::swap(new HttpFactory($this->app['events']));
         Http::fake([
-            '*temporal/workflows/ingest-text' => Http::sequence()
+            '*internal/workflow-control/text/start' => Http::sequence()
                 ->push(['detail' => 'temporary bridge failure'], 502)
                 ->push([
                     'workflow_id' => $workflowId,

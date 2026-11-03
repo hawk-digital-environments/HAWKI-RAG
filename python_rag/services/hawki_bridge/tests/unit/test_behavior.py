@@ -14,9 +14,6 @@ from neo4j.exceptions import Neo4jError, ServiceUnavailable
 
 from hawki_rag_retrieval.adapters import Neo4jReader
 from hawki_rag_retrieval.adapters import QdrantReader
-from hawki_bridge.adapters.temporal_client import (
-    TemporalExecution,
-)
 from hawki_rag_retrieval.dependencies import QueryDependencies
 from hawki_bridge.application.graph import GraphReadService
 from hawki_rag_retrieval.errors import (
@@ -33,12 +30,8 @@ from hawki_bridge.http.routers.health import build_health_router
 from hawki_bridge.http.routers.query import build_query_router
 from hawki_bridge.http.routers.temporal import build_temporal_router
 from hawki_bridge.http.schemas import (
-    CancelWorkflowRequest,
-    DeleteScheduleRequest,
     GraphReadRequest,
     QueryRequest,
-    StartIngestWorkflowRequest,
-    UpsertIngestScheduleRequest,
 )
 from hawki_bridge.settings import load_settings
 from hawki_rag_contracts.retrieval.auth_scope import AuthorizedQueryScope
@@ -400,115 +393,17 @@ def test_health_route_can_include_or_omit_the_runtime_summary() -> None:
     assert calls == 1
 
 
-def test_temporal_routes_delegate_to_the_injected_client() -> None:
-    calls: list[tuple[str, dict[str, Any]]] = []
-
-    class TemporalClient:
-        async def start_ingest_workflow(self, **arguments: Any) -> TemporalExecution:
-            calls.append(("start", arguments))
-            return TemporalExecution(
-                workflow_id=arguments["workflow_id"], run_id="run-7"
-            )
-
-        async def upsert_ingest_schedule(self, **arguments: Any) -> TemporalExecution:
-            calls.append(("upsert", arguments))
-            return TemporalExecution(
-                workflow_id=arguments["workflow_id"],
-                schedule_id=arguments["schedule_id"],
-            )
-
-        async def delete_schedule(self, **arguments: Any) -> None:
-            calls.append(("delete", arguments))
-
-        async def cancel_workflow(self, **arguments: Any) -> None:
-            calls.append(("cancel", arguments))
-
-        async def cancel_workflow_and_wait(self, **arguments: Any) -> None:
-            calls.append(("cancel_and_wait", arguments))
-
-    settings = load_settings({})
-    temporal_client = TemporalClient()
-
-    def client_factory(received_settings):
-        assert received_settings is settings
-        return temporal_client
-
+def test_temporal_routes_are_retired_without_constructing_a_client() -> None:
+    calls = []
     router = build_temporal_router(
-        settings=settings,
-        logger=logging.getLogger("test.hawki_bridge.temporal"),
-        client_factory=client_factory,
+        settings=load_settings({}),
+        logger=logging.getLogger("test.retired"),
+        client_factory=lambda settings: calls.append(settings),
     )
-    start = _endpoint(router, "/temporal/workflows/ingest", "POST")
-    upsert = _endpoint(router, "/temporal/schedules/ingest", "POST")
-    delete = _endpoint(router, "/temporal/schedules/delete", "POST")
-    cancel = _endpoint(router, "/temporal/workflows/cancel", "POST")
-    cancel_and_wait = _endpoint(
-        router,
-        "/temporal/workflows/cancel-and-wait",
-        "POST",
-    )
-    workflow_input = _workflow_input(source_id="source-9")
-    from starlette.requests import Request
+    endpoint = _endpoint(router, "/temporal/{operation:path}", "POST")
+    from fastapi import HTTPException
 
-    assert asyncio.run(
-        start(
-            StartIngestWorkflowRequest(
-                workflow_id="ingest-source-9",
-                workflow_input=workflow_input,
-            ),
-            Request({"type": "http", "headers": []}),
-        )
-    ) == {
-        "workflow_id": "ingest-source-9",
-        "run_id": "run-7",
-        "schedule_id": None,
-    }
-    assert asyncio.run(
-        upsert(
-            UpsertIngestScheduleRequest(
-                schedule_id="refresh-source-9",
-                workflow_id="ingest-source-9",
-                cadence="daily",
-                workflow_input=workflow_input,
-            )
-        )
-    ) == {
-        "workflow_id": "ingest-source-9",
-        "run_id": None,
-        "schedule_id": "refresh-source-9",
-    }
-    assert asyncio.run(
-        delete(DeleteScheduleRequest(schedule_id="refresh-source-9"))
-    ) == {"ok": True}
-    assert asyncio.run(
-        cancel(CancelWorkflowRequest(workflow_id="ingest-source-9", run_id="run-7"))
-    ) == {"ok": True}
-    assert asyncio.run(
-        cancel_and_wait(
-            CancelWorkflowRequest(
-                workflow_id="ingest-source-9",
-                run_id="run-7",
-            )
-        )
-    ) == {"ok": True}
-    assert calls == [
-        (
-            "start",
-            {"workflow_id": "ingest-source-9", "workflow_input": workflow_input},
-        ),
-        (
-            "upsert",
-            {
-                "schedule_id": "refresh-source-9",
-                "workflow_id": "ingest-source-9",
-                "cadence": "daily",
-                "workflow_input": workflow_input,
-            },
-        ),
-        ("delete", {"schedule_id": "refresh-source-9"}),
-        ("cancel", {"workflow_id": "ingest-source-9", "run_id": "run-7"}),
-        (
-            "cancel_and_wait",
-            {"workflow_id": "ingest-source-9", "run_id": "run-7"},
-        ),
-    ]
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(endpoint("workflows/ingest"))
+    assert error.value.status_code == 410
+    assert calls == []

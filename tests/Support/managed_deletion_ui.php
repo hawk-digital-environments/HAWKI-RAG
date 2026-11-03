@@ -57,9 +57,9 @@ config()->set('config.virtual_path', '/');
 config()->set('config.hawki_rag_bridge_url', 'http://bridge.test');
 Http::preventStrayRequests();
 Http::fake(function ($request) use ($root) {
-    if (str_ends_with($request->url(), '/temporal/workflows/delete-managed-document')) {
+    if (str_ends_with($request->url(), '/internal/workflow-control/deletion/start')) {
         $time = $request->header('X-Hawki-Timestamp')[0];
-        $signature = 'v1='.hash_hmac('sha256', $time.'.'.$request->body(), 'ui-test-secret');
+        $signature = 'v1='.hash_hmac('sha256', "hawki-workflow-control-v1\nPOST\n/internal/workflow-control/deletion/start\n{$time}\n".$request->body(), 'ui-test-secret');
         if ($request->method() !== 'POST' || $request->header('X-Hawki-Signature')[0] !== $signature) {
             throw new RuntimeException('The managed deletion control signature is invalid.');
         }
