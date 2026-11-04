@@ -236,17 +236,28 @@ def test_the_same_grant_cannot_be_stored_twice(database: Engine) -> None:
         _add_grant(database)
 
 
-def test_removing_a_dataset_removes_its_grants(database: Engine) -> None:
+def test_a_dataset_refuses_deletion_while_its_grants_exist(database: Engine) -> None:
     _add_dataset(database)
     _add_grant(database)
 
+    with pytest.raises(IntegrityError):
+        with database.begin() as connection:
+            connection.execute(
+                datasets.delete().where(
+                    datasets.c.tenant_id == TENANT, datasets.c.dataset_id == DATASET
+                )
+            )
+
+    reader = DatabaseGrantReader(database)
+
+    assert reader.has_grant(_principal(), DATASET, AuthorizationAction.QUERY)
+
     with database.begin() as connection:
+        connection.execute(dataset_grants.delete())
         connection.execute(
             datasets.delete().where(
                 datasets.c.tenant_id == TENANT, datasets.c.dataset_id == DATASET
             )
         )
-
-    reader = DatabaseGrantReader(database)
 
     assert not reader.has_grant(_principal(), DATASET, AuthorizationAction.QUERY)
