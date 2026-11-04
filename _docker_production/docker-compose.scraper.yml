@@ -1,0 +1,122 @@
+# Optional website scraper for the HAWKI RAG production stack.
+#
+# The base stack always runs the scraper WORKER (the Temporal activity
+# service that submits and polls crawl jobs), but the scraper container
+# itself is a separate image with heavy dependencies (a Playwright chromium
+# browser), so deployments that do not scrape websites - or point the worker
+# at an external crawler - do not pay for it. This file adds the scraper
+# service from the HAWKI RAG Scraper project to this compose project: it
+# becomes reachable under the service name "scraper" inside the Docker
+# networks (the default network of this stack plus the shared
+# hawki-rag-network), shares the crawled-data volume (rawki_shared_storage)
+# with the RAG services, and publishes no host port - the main HAWKI stack
+# on hawki-rag-network reaches its UI and API directly.
+#
+# Apply together with the base file, either through COMPOSE_FILE:
+#   COMPOSE_FILE=docker-compose.yml:docker-compose.scraper.yml ./deploy.sh
+# or by exporting COMPOSE_FILE in the .env file (the deploy script picks it
+# up from there as well). Then wire the .env side as documented in the
+# "Website Scraper" section of .env.example.
+services:
+    # The HAWKI RAG Scraper. Serves the admin UI under /ui/ and the crawl
+    # API at / through the nginx + gunicorn + node trio shipped inside the
+    # image (same service definition as the scraper's own production stack).
+    # Profiles, task definitions and crawl results live in named volumes,
+    # so they survive image updates without any host paths. PUID/PGID from
+    # the .env file (adapter section) shape its container user, so crawled
+    # results land in the shared volume with the same group the RAG
+    # services expect. The crawl API ships without authentication, which is
+    # why it publishes no host port: only containers on the Docker networks
+    # below can reach it.
+    scraper:
+        container_name: hawki_rag_scraper
+        image: ${HAWKI_RAG_SCRAPER_IMAGE_REPOSITORY:-digitalenvironments/hawki-rag-scraper}:${HAWKI_RAG_SCRAPER_VERSION:-latest}
+        pull_policy: always
+        env_file:
+            - .env
+        environment:
+            # The image default, set explicitly so a stray ENVIRONMENT entry
+            # in .env cannot flip the stack into development tuning.
+            ENVIRONMENT: production
+        volumes:
+            # Crawl profiles the UI manages.
+            - profiles_storage:/var/www/html/profiles
+            # UI task definitions (cron schedules per profile).
+            - tasks_storage:/var/www/html/tasks
+            # Crawl output directory, kept for backwards compatibility.
+            - output_storage:/var/www/html/output
+            # Hosts and URL patterns the scraper must never visit. Edit the
+            # copy in this directory; empty lines and "#" comments are fine.
+            - ./forbidden_urls.txt:/var/www/html/forbidden_urls.txt
+            # Shared memory for Playwright (prevents chromium crashes).
+            - /dev/shm:/dev/shm
+            # Crawl results land here. The volume is the same fixed-name
+            # rawki_shared_storage the rest of this stack uses, so the
+            # scraper worker reads what the scraper wrote.
+            - shared_storage:/var/www/html/shared
+            # Name your own certificates cert.pem and key.pem in ./certs to
+            # serve HTTPS directly; without them the container self-signs.
+            - ./certs:/container/custom/certs
+        # No published host port: the scraper is reachable only inside
+        # Docker. The default network connects it with this stack (the
+        # scraper worker polls it as "http://scraper"), and
+        # hawki-rag-network adds the main HAWKI stack, whose reverse proxy
+        # can forward its UI and API (set ORIGIN in the .env file to the
+        # public URL it is served under).
+        networks:
+            - default
+            - hawki-rag-network
+        restart: always
+        healthcheck:
+            test: ["CMD", "curl", "-f", "http://localhost/80/health"]
+            interval: 30s
+            timeout: 10s
+            retries: 3
+            start_period: 40s
+        # Resource limits (adjust based on your needs). The memory headroom
+        # matters most: the Playwright chromium instances the scraper spawns
+        # are the biggest driver.
+        deploy:
+            resources:
+                limits:
+                    cpus: '2'
+                    memory: 8G
+                reservations:
+                    cpus: '1'
+                    memory: 1G
+        # Crawl jobs are chatty, so keep the json-file log driver bounded.
+        logging:
+            options:
+                max-size: "128m"
+                max-file: "3"
+
+    # With the scraper in place, the scraper worker waits for it to report
+    # healthy instead of failing its first activities against a booting
+    # scraper. This merges with the worker's dependencies from the base
+    # file; no other service changes.
+    hawki-rag-temporal-scraper-worker:
+        depends_on:
+            scraper:
+                condition: service_healthy
+
+volumes:
+    # Private data volumes of the scraper; compose creates them on first
+    # start and keeps them across container and image updates. The shared
+    # crawl-data volume carries the same fixed name as in the base compose
+    # file (rawki_shared_storage), so the scraper writes what the scraper
+    # worker reads: whichever stack starts first creates the volume, the
+    # other reuses it.
+    shared_storage:
+        name: rawki_shared_storage
+    profiles_storage:
+    tasks_storage:
+    output_storage:
+
+networks:
+    # The shared network with the main HAWKI application stack. The
+    # declaration mirrors the base compose file (which owns the network);
+    # create the network once with:
+    #   docker network create hawki-rag-network
+    hawki-rag-network:
+        name: hawki-rag-network
+        driver: bridge
