@@ -37,11 +37,11 @@ A few things to consider:
   `${DOCKER_PROJECT_IP:-127.0.0.1}:${HAWKI_RAG_APP_PORT:-8080}:80`, loopback by
   default, so an external reverse proxy terminates TLS and forwards traffic to
   it. Set `APP_URL` to the public HTTPS URL and `SESSION_SECURE_COOKIE=true`.
-* Shared network - The stack joins the external Docker network `hawki-network`,
+* Shared network - The stack joins the Docker network `hawki-rag-network`,
   which the main HAWKI application stack also joins, so both sides can reach
   each other by service name. Create it once with
-  `docker network create hawki-network`, or remove the network block if you
-  run HAWKI RAG standalone.
+  `docker network create hawki-rag-network`, or remove the network block if
+  you run HAWKI RAG standalone.
 * Persistent data - PostgreSQL, Qdrant, Neo4j and Ollama store their data in
   named volumes, and ingestion artifacts flow through the shared
   `rawki_shared_storage` volume. Laravel storage is a bind mount at
@@ -115,12 +115,12 @@ The `docker-compose.yml` contains a setup of multiple services:
 ### Deployment
 
 Copy `.env.example` to `.env` and fill the required settings at the top of
-the file: `./generate-env-secrets.sh` prints the four secrets as a
+the file: `./generate-env-secrets.sh` prints the five secrets as a
 paste-ready block. Then put the `_docker_production` directory on the
 server (cloning the repository works) and run:
 
 ```bash
-docker network create hawki-network
+docker network create hawki-rag-network
 chmod +x deploy.sh && ./deploy.sh
 ```
 
@@ -161,7 +161,7 @@ pulls the models listed in `HAWKI_RAG_OLLAMA_MODELS` when the service starts.
 
 ### Website scraper
 
-The scraper worker belongs to the base stack, but the crawler container - the
+The scraper worker belongs to the base stack, but the scraper container - the
 service that actually visits websites - is optional: it ships a Playwright
 browser and costs real resources, and deployments can point the worker at an
 external crawler instead. To run it inside this stack, apply the override:
@@ -171,13 +171,14 @@ COMPOSE_FILE=docker-compose.yml:docker-compose.scraper.yml ./deploy.sh
 ```
 
 Then uncomment the "Website Scraper" block in `.env`; the URLs point at the
-`crawler` service through `${...}` references. The crawler publishes its UI
-and API on `${HAWKI_RAG_SCRAPER_PORT:-8041}` (loopback by default - the crawl
-API ships without authentication, so keep a reverse proxy with its own
-access control in front when exposing it), writes its crawl results into
-the shared `rawki_shared_storage` volume the scraper worker reads from, and
-the scraper worker waits for its health report before polling. Edit
-`forbidden_urls.txt` in the deployment directory to keep hosts and URL
+`scraper` service through `${...}` references. The scraper publishes no host
+port: it joins the default network (for this stack) and `hawki-rag-network`
+(for the main HAWKI stack), so its unauthenticated API stays unreachable
+from the host. Serve its UI through the reverse proxy of the HAWKI stack
+and set `ORIGIN` to that public URL. The scraper writes its crawl results
+into the shared `rawki_shared_storage` volume the scraper worker reads
+from, and the scraper worker waits for its health report before polling.
+Edit `forbidden_urls.txt` in the deployment directory to keep hosts and URL
 patterns out of every crawl. The override merges with the GPU file:
 
 ```bash
