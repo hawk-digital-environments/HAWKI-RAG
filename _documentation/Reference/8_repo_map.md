@@ -50,7 +50,7 @@ build.
 | [tests](https://github.com/hawk-digital-environments/HAWKI-RAG/tree/main/tests) | Laravel unit, feature, system, and migration tests |
 | [python_rag/tests](https://github.com/hawk-digital-environments/HAWKI-RAG/tree/main/python_rag/tests) | Cross-service end-to-end tests; member tests live beside each member's source |
 | [docker](https://github.com/hawk-digital-environments/HAWKI-RAG/tree/main/docker) | Container entrypoints, service configuration, assets |
-| [_docker_production](https://github.com/hawk-digital-environments/HAWKI-RAG/tree/main/_docker_production) | Pull-only production stack: version-pinned compose files, GPU override, migrator, deploy and secret-generation scripts |
+| [_docker_production](https://github.com/hawk-digital-environments/HAWKI-RAG/tree/main/_docker_production) | Pull-only production stack: version-pinned compose files, GPU and scraper overrides, migrator, deploy and secret-generation scripts |
 | [_documentation.build](https://github.com/hawk-digital-environments/HAWKI-RAG/tree/main/_documentation.build) | Docusaurus build and documentation validation |
 
 ## Follow one query

@@ -1,0 +1,11 @@
+# Hosts and URL patterns the scraper must never visit, one rule per line.
+#
+# - A plain line (without "/", "?" or "://") is treated as a forbidden
+#   hostname, for example:
+#       mail.example.com
+# - A line containing "/", "?" or "://" is treated as a URL pattern matched
+#   against every crawled URL, for example:
+#       /form/contact?form_type=functioncontact
+#
+# Empty lines and lines starting with "#" are ignored.
+# Every rule in this example is commented out: as shipped it forbids nothing.
