@@ -47,18 +47,22 @@ A few things to consider:
 * External ingestion tools - The website crawler and file converter are
   separate projects; this stack only points at their service names on
   `hawki-network`. See [Run HAWKI RAG](./2_setup.md#external-tools).
-* Configuration - Copy `.env.example` to `.env` and adjust it. Production
-  defaults such as `APP_ENV=production` and `APP_DEBUG=false` are already set.
-  The file is the configuration reference for this stack: extend it rather
-  than guessing variable names.
+* Configuration - Copy `.env.example` to `.env` and adjust it. Everything
+  that must be filled in sits in the "Required Settings" section at the top
+  of the file; the remaining production defaults such as
+  `APP_ENV=production` and `APP_DEBUG=false` rarely need touching. The file
+  is the configuration reference for this stack: extend it rather than
+  guessing variable names.
 
 :::warning Fill in the secrets before the first start
 
 `APP_KEY`, `DB_PASSWORD`, `NEO4J_PASSWORD`, and
-`HAWKI_RAG_WORKER_CALLBACK_SECRET` must be set before `deploy.sh` runs. A
-stack started with placeholder passwords exposes its databases, and an empty
-callback secret prevents the workers from reporting status to Laravel.
-Generate them as described in
+`HAWKI_RAG_WORKER_CALLBACK_SECRET` ship empty in `.env.example` (they open
+the "Required Settings" section at the top of the file) and must be set
+before `deploy.sh` runs; the stack does not come up with empty secrets, and
+an empty callback secret prevents the workers from reporting status to
+Laravel. Generate all four in one go with `./generate-env-secrets.sh`, which
+prints a ready-to-paste env block; the equivalent manual commands live in
 [Installation](./4_installation_zero_to_up.md#2-set-the-installation-secrets).
 
 :::
@@ -97,7 +101,9 @@ The `docker-compose.yml` contains a setup of multiple services:
 
 ### Deployment
 
-Once `.env` is configured, put the `_docker_production` directory on the
+Copy `.env.example` to `.env` and fill the required settings at the top of
+the file: `./generate-env-secrets.sh` prints the four secrets as a
+paste-ready block. Then put the `_docker_production` directory on the
 server (cloning the repository works) and run:
 
 ```bash
