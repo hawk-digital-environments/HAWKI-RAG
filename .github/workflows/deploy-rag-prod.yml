@@ -20,7 +20,7 @@ on:
   workflow_dispatch:
   push:
     branches:
-      - 'rag/prod'
+      - 'hawk/prod'
 
 jobs:
   build-and-push:

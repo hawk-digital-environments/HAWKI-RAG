@@ -17,9 +17,9 @@ on:
   workflow_dispatch:
   push:
     branches:
-      - 'rag/test-1'
-      - 'rag/test-2'
-      - 'rag/test-3'
+      - 'hawk/test-1'
+      - 'hawk/test-2'
+      - 'hawk/test-3'
 
 jobs:
   setup:
