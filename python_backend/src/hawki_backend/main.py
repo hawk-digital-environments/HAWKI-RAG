@@ -25,6 +25,18 @@ from hawki_backend.settings import (
     load_auth_settings,
     load_database_settings,
 )
+from hawki_backend.text_ingestion.api import (
+    internal_router as text_ingestion_internal_router,
+)
+from hawki_backend.text_ingestion.api import router as text_ingestion_router
+from hawki_backend.text_ingestion.artifacts import TextArtifactStorage
+from hawki_backend.text_ingestion.repository import TextOperationRepository
+from hawki_backend.text_ingestion.service import TextIngestionService
+from hawki_backend.text_ingestion.settings import (
+    TextIngestionSettings,
+    load_text_ingestion_settings,
+)
+from hawki_backend.text_ingestion.vectors import TextVectorDeletion
 from hawki_rag_retrieval import QueryDependencies, build_query_dependencies
 from hawki_backend.workflow_control.api import router as workflow_router
 from hawki_backend.workflow_control.repository import OperationRepository
@@ -45,6 +57,9 @@ def create_app(
     query_dependencies: QueryDependencies | None = None,
     workflow_control: WorkflowControl | None = None,
     workflow_control_secret: str | None = None,
+    text_ingestion_settings: TextIngestionSettings | None = None,
+    text_ingestion_service: TextIngestionService | None = None,
+    text_ingestion_secret: str | None = None,
 ) -> FastAPI:
     """Create an application with health, authentication and query surfaces.
 
@@ -129,6 +144,34 @@ def create_app(
                 TemporalControlClient(load_workflow_settings()),
             )
 
+    resolved_text_settings = (
+        text_ingestion_settings
+        if text_ingestion_settings is not None
+        else load_text_ingestion_settings()
+    )
+    resolved_text_service = text_ingestion_service
+    if resolved_text_service is None and resolved_text_settings.enabled:
+        if owned_engine is None:
+            text_database = database_settings or load_database_settings()
+            if text_database is not None:
+                owned_engine = build_engine(text_database)
+        if owned_engine is not None:
+            resolved_text_service = TextIngestionService(
+                repository=TextOperationRepository(owned_engine),
+                artifacts=TextArtifactStorage(resolved_text_settings.shared_root),
+                vectors=TextVectorDeletion(resolved_text_settings),
+                settings=resolved_text_settings,
+                policy=resolved_policy,
+                query_settings=resolved_query_settings,
+                workflow_control=resolved_workflow_control,
+                chunk_size=_positive_int("CHUNK_SIZE", 1200),
+                chunk_overlap=_positive_int("CHUNK_OVERLAP_SIZE", 250, allow_zero=True),
+                batch_size=_positive_int("INGEST_BATCH_SIZE", 64),
+            )
+    text_secret = (
+        text_ingestion_secret if text_ingestion_secret is not None else control_secret
+    )
+
     @asynccontextmanager
     async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         """Release the resources the application owns."""
@@ -148,6 +191,8 @@ def create_app(
     )
     application.include_router(health_router, prefix="/v1")
     application.include_router(query_router, prefix="/v1")
+    application.include_router(text_ingestion_router, prefix="/v1")
+    application.include_router(text_ingestion_internal_router)
     application.include_router(workflow_router)
     application.state.authenticator = resolved_authenticator
     application.state.grant_policy = resolved_policy
@@ -155,7 +200,24 @@ def create_app(
     application.state.query_dependencies = resolved_query_dependencies
     application.state.workflow_control = resolved_workflow_control
     application.state.workflow_control_secret = control_secret
+    application.state.text_ingestion_service = resolved_text_service
+    application.state.text_ingestion_settings = resolved_text_settings
+    application.state.text_ingestion_secret = text_secret
     return application
+
+
+def _positive_int(name: str, default: int, *, allow_zero: bool = False) -> int:
+    """Read one positive integer environment setting or fail the startup."""
+    raw = os.environ.get(name)
+    if raw is None or raw.strip() == "":
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        raise ValueError(f"{name} must be an integer") from None
+    if value < 0 or (value == 0 and not allow_zero):
+        raise ValueError(f"{name} must be positive")
+    return value
 
 
 def _build_authenticator(

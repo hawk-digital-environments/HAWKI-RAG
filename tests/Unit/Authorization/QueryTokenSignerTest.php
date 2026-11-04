@@ -49,6 +49,15 @@ class QueryTokenSignerTest extends TestCase
         self::assertNotSame($jti, $second['jti']);
     }
 
+    public function test_ingest_signing_rejects_a_non_bff_client(): void
+    {
+        $this->fixture->config->set('config.query_bff.client_id', 'other-client');
+        $user = new User;
+        $user->id = 42;
+        $this->expectException(QueryTokenSigningException::class);
+        $this->fixture->signer()->signIngest($user);
+    }
+
     public function test_shorter_configured_lifetime_is_used_exactly(): void
     {
         $this->fixture->config->set('config.query_bff.token_ttl', 30);

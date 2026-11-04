@@ -15,6 +15,14 @@ use Ramsey\Uuid\Uuid;
 #[Singleton]
 readonly class QueryTokenSigner
 {
+    private const QUERY_SCOPE = 'rag:query';
+
+    /**
+     * The direct-text boundary's coarse scope. It is a property of the action,
+     * never caller input, and the dataset grant is still checked by Python.
+     */
+    private const INGEST_SCOPE = 'rag:ingest';
+
     public function __construct(
         private ConfigRepository $config,
         private ClockInterface $clock,
@@ -22,10 +30,23 @@ readonly class QueryTokenSigner
 
     public function sign(User $user): string
     {
+        return $this->encode($user, self::QUERY_SCOPE);
+    }
+
+    public function signIngest(User $user): string
+    {
+        return $this->encode($user, self::INGEST_SCOPE);
+    }
+
+    private function encode(User $user, string $scope): string
+    {
         try {
             $issuer = $this->text('issuer');
             $audience = $this->text('audience');
             $client = $this->text('client_id');
+            if ($scope === self::INGEST_SCOPE && $client !== 'hawki-bff') {
+                throw QueryTokenSigningException::unavailable();
+            }
             $tenant = $this->text('tenant');
             $kid = $this->text('key_id');
             $subject = (string) $user->getAuthIdentifier();
@@ -58,7 +79,7 @@ readonly class QueryTokenSigner
                 'sub' => $subject,
                 'tenant_id' => $tenant,
                 'azp' => $client,
-                'scope' => 'rag:query',
+                'scope' => $scope,
                 'iat' => $issuedAt,
                 'exp' => $issuedAt + $ttl,
                 'jti' => Uuid::uuid4()->toString(),

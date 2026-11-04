@@ -652,6 +652,58 @@ the separate query-all transition, controlled activation, and rollback commands.
 ## Epoch 8 workflow control
 
 The backend now owns signed internal workflow control through a durable dispatch
-ledger. Public ingestion stays in Laravel. See the coordinated
+ledger. Public ingestion stays in Laravel by default; Epoch 9 below adds the
+opt-in direct-text BFF. See the coordinated
 [deployment and rollback procedure](../_documentation/Operations/python_workflow_control.md)
 before enabling `HAWKI_WORKFLOW_CONTROL_ENABLED`.
+
+## Epoch 9 direct-text ingestion
+
+`TEXT_INGESTION_BACKEND=laravel` remains the default. In Python mode Laravel
+is a compatibility BFF for `/api/integrations/text-ingestions`: it checks the
+Sanctum PAT and exact `rag:text-ingest` ability, bounds raw request bytes,
+mints an internal JWT, forwards the raw POST body, and maps safe responses.
+Python owns POST validation, exact dataset `AuthorizationAction.INGEST` grants,
+identities, immutable artifacts, idempotency, persistence, workflow preparation,
+completion and direct-text DELETE. There is no fallback or dual dispatch.
+Managed-document/file, URL and crawler ingestion remain Laravel-owned.
+
+The internal token has `sub=<Laravel user ID>`, the configured canonical
+`tenant_id`, `azp=hawki-bff` and scope exactly `rag:ingest`. The existing RS256
+issuer/audience/JWKS agreement still applies. Python runtime SQL uses only its
+owned schema; Laravel `public.*` reads occur exclusively in explicit operator
+migration tools.
+
+Enable the service with `HAWKI_BACKEND_TEXT_INGESTION_ENABLED=true` only after
+migration `0003`, server-owned dataset/model registry, shared artifact volume,
+Qdrant access, Epoch 8 workflow control and verified ingest grants are ready.
+`POST /v1/text-ingestions` returns 202 initially and 200 on replay; changed input
+under the same key returns 409. The signed `/internal/text-ingestion/events`
+endpoint owns completion. Laravel relays exact `ingest-text-*` event bytes;
+other worker events remain Laravel-owned. `DELETE /v1/text-ingestions/{source_id}`
+requires the same ingest authorization, cancels active writers and verifies
+owned Qdrant point removal before releasing the source for reuse. No Neo4j
+cleanup or contribution occurs.
+
+Python text workers reuse the signed managed-writer protocol and registered sink
+adapters. The BFF relays text writer callbacks to `/internal/text-ingestion/writers`;
+Python alone stores writer receipts and fences. DELETE freezes one locked snapshot,
+closes admission and requires acknowledged writer drainage before vector cleanup.
+Workflow closure alone never releases ownership. Missing/uncertain writer evidence
+blocks cleanup and re-ingestion pending reconciliation. Grant backfill writes only
+grants and refuses missing/mismatched dataset inventory.
+
+The [Epoch 9 operations guide](../_documentation/Operations/python_text_ingestion.md)
+covers the required real grant backfill, drift freeze, coordinated cutover,
+rollback and interrupted cleanup. No production activation is implied by this
+implementation or its tests.
+
+Focused checks (from `python_backend`):
+
+```bash
+uv run --frozen --no-sync pytest tests/text_ingestion
+# Only a disposable database whose name ends in _test is accepted:
+HAWKI_EPOCH9_TEST_DSN='<disposable PostgreSQL DSN>' \
+  uv run --frozen --no-sync pytest tests/text_ingestion/test_postgres.py
+uv run --frozen --no-sync python -O -m pytest tests/text_ingestion tests/test_workflow_control.py tests/auth tests/authorization
+```

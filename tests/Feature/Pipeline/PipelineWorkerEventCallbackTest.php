@@ -18,6 +18,7 @@ use App\Services\Pipeline\Values\PipelineStage;
 use App\Services\Rag\RagMonitorArtifactReader;
 use App\Services\TextIngestion\Values\TextIngestionMode;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Testing\TestResponse;
 use Tests\TestCase;
 
@@ -35,6 +36,16 @@ final class PipelineWorkerEventCallbackTest extends TestCase
 
         config()->set('temporal.callbacks.secret', self::SECRET);
         config()->set('temporal.callbacks.max_age_seconds', 300);
+    }
+
+    public function test_non_text_event_remains_laravel_owned_in_python_mode(): void
+    {
+        config()->set('config.text_ingestion_backend', 'python');
+        Http::preventStrayRequests();
+        $this->createExecution();
+        $this->sendEvent($this->event(['event_id' => 'non-text-python-mode']))->assertAccepted();
+        $this->assertDatabaseHas('pipeline_worker_events', ['event_id' => 'non-text-python-mode']);
+        Http::assertNothingSent();
     }
 
     public function test_a_valid_signed_event_updates_laravel_owned_pipeline_state(): void

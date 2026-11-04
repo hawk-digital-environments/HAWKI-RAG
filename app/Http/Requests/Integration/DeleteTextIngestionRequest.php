@@ -23,6 +23,10 @@ final class DeleteTextIngestionRequest extends FormRequest
 
     public function rules(): array
     {
+        if (config('config.text_ingestion_backend', 'laravel') !== 'laravel') {
+            return [];
+        }
+
         return [
             'idempotency_key' => 'required|string|max:191|regex:/\A[A-Za-z0-9][A-Za-z0-9._:-]*\z/',
         ];
@@ -30,7 +34,9 @@ final class DeleteTextIngestionRequest extends FormRequest
 
     public function idempotencyKey(): string
     {
-        return (string) $this->validated('idempotency_key');
+        return config('config.text_ingestion_backend', 'laravel') === 'laravel'
+            ? (string) $this->validated('idempotency_key')
+            : (string) $this->header('Idempotency-Key');
     }
 
     public function authenticatedUser(): User

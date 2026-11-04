@@ -81,6 +81,13 @@ def test_openapi_exposes_health_and_query_only() -> None:
     openapi = app.openapi()
     paths = set(openapi["paths"].keys())
 
-    assert paths == {"/v1/health", "/v1/query"}, f"Unexpected paths: {paths}"
+    assert paths == {
+        "/v1/health",
+        "/v1/query",
+        "/v1/text-ingestions",
+        "/v1/text-ingestions/{source_id}",
+    }, f"Unexpected paths: {paths}"
     assert set(openapi["paths"]["/v1/health"]) == {"get"}
     assert set(openapi["paths"]["/v1/query"]) == {"post"}
+    assert set(openapi["paths"]["/v1/text-ingestions"]) == {"post"}
+    assert set(openapi["paths"]["/v1/text-ingestions/{source_id}"]) == {"delete"}

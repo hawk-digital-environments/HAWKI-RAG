@@ -32,6 +32,10 @@ final class IngestTextRequest extends FormRequest
 
     protected function prepareForValidation(): void
     {
+        if (config('config.text_ingestion_backend', 'laravel') !== 'laravel') {
+            return;
+        }
+
         $body = $this->isJson()
             ? $this->json()->all()
             : $this->request->all();
@@ -47,6 +51,10 @@ final class IngestTextRequest extends FormRequest
 
     public function rules(): array
     {
+        if (config('config.text_ingestion_backend', 'laravel') !== 'laravel') {
+            return [];
+        }
+
         return [
             'idempotency_key' => 'required|string|max:191|regex:/\A[A-Za-z0-9][A-Za-z0-9._:-]*\z/',
             'external_document_id' => 'required|string|max:191|regex:/\A[A-Za-z0-9][A-Za-z0-9._:-]*\z/',
@@ -97,6 +105,10 @@ final class IngestTextRequest extends FormRequest
      */
     public function after(): array
     {
+        if (config('config.text_ingestion_backend', 'laravel') !== 'laravel') {
+            return [];
+        }
+
         return [function (Validator $validator): void {
             $unexpectedFields = array_diff(
                 $this->submittedBodyFields,

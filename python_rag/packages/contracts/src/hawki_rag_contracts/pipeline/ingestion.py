@@ -161,6 +161,8 @@ class IngestTextWorkflowInput(BaseModel):
     markdown_output_path: str = Field(min_length=1, max_length=4096)
     ingest_manifest_path: str | None = Field(default=None, max_length=4096)
     content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    # Opt-in for Python-owned direct text. Absent in historical Laravel inputs.
+    text_writer_protocol: Literal[1] | None = None
     display_name: str | None = Field(default=None, max_length=255)
     storage: StorageConfig
     task_queues: TaskQueueConfig = Field(default_factory=TaskQueueConfig)

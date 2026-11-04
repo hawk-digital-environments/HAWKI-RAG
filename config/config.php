@@ -62,6 +62,19 @@ return [
         'max_metadata_bytes' => 65_536,
         'max_request_bytes' => 4_300_000,
     ],
+    // The cutover flag. ``laravel`` keeps the legacy implementation; ``python``
+    // proxies to the Python-owned operation. There is no fallback and no dual
+    // execution: an unknown value is a configuration failure, not a retry.
+    'text_ingestion_backend' => env('TEXT_INGESTION_BACKEND', 'laravel'),
+    'python_text_ingestion_url' => env(
+        'HAWKI_PYTHON_TEXT_INGESTION_URL',
+        'http://hawki_backend/v1/text-ingestions',
+    ),
+    'python_text_ingestion_events_url' => env(
+        'HAWKI_PYTHON_TEXT_INGESTION_EVENTS_URL',
+        'http://hawki_backend/internal/text-ingestion/events',
+    ),
+    'python_text_ingestion_timeout' => (int) env('HAWKI_PYTHON_TEXT_INGESTION_TIMEOUT', 30),
     'graph_engine' => env('GRAPH_ENGINE', 'raganything'),
     'graph_provider' => env('GRAPH_PROVIDER', 'ollama'),
     'graph_doc_max_chars' => (int) env('GRAPH_DOC_MAX_CHARS', 0),

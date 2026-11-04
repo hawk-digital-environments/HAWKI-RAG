@@ -25,6 +25,13 @@ def test_health_returns_ok() -> None:
 def test_health_and_query_are_the_only_endpoints() -> None:
     paths = app.openapi()["paths"]
 
-    assert set(paths) == {"/v1/health", "/v1/query"}
+    assert set(paths) == {
+        "/v1/health",
+        "/v1/query",
+        "/v1/text-ingestions",
+        "/v1/text-ingestions/{source_id}",
+    }
     assert set(paths["/v1/health"]) == {"get"}
     assert set(paths["/v1/query"]) == {"post"}
+    assert set(paths["/v1/text-ingestions"]) == {"post"}
+    assert set(paths["/v1/text-ingestions/{source_id}"]) == {"delete"}

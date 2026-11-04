@@ -129,6 +129,11 @@ class ManagedWriterRegistration:
                 raise RuntimeError(
                     "Managed writer has finished; sink mutations are closed"
                 )
+            if self.workflow_input.get("text_writer_protocol") == 1:
+                # Reuse the signed acquisition check at each sink admission.
+                # A fence rejects new calls; an already-admitted call keeps its
+                # durable writer active until the existing drain/release path.
+                self.send("acquire", [])
             self._inflight += 1
         try:
             yield
@@ -193,7 +198,10 @@ class ManagedWriterRegistration:
     def acquire_for(
         cls, settings: IndexerSettings, workflow_input: dict[str, Any], info: Any
     ) -> "ManagedWriterRegistration | None":
-        if not workflow_input.get("managed_document_id"):
+        if (
+            not workflow_input.get("managed_document_id")
+            and workflow_input.get("text_writer_protocol") != 1
+        ):
             return None
         registration = cls(settings, workflow_input, info)
         registration.register_targets([])
