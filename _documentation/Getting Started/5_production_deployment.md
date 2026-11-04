@@ -13,7 +13,9 @@ The [`_docker_production`](https://github.com/hawk-digital-environments/HAWKI-RA
 directory of the repository holds a preconfigured production setup: a
 pull-only `docker-compose.yml` that runs the migrator, the Laravel application,
 PostgreSQL, Temporal, Qdrant, Neo4j, Ollama, the FastAPI bridge, the reranker,
-and the four Python Temporal workers. Every HAWKI RAG image is pulled from the
+the file converter, and the four Python Temporal workers. The optional website
+scraper joins through its own override file (see
+[Website scraper](#website-scraper)). Every HAWKI RAG image is pulled from the
 registry and pinned through the environment file; nothing is built on the
 server.
 
@@ -44,25 +46,32 @@ A few things to consider:
   named volumes, and ingestion artifacts flow through the shared
   `rawki_shared_storage` volume. Laravel storage is a bind mount at
   `./storage`, which ships with the directory.
-* External ingestion tools - The website crawler and file converter are
-  separate projects; this stack only points at their service names on
-  `hawki-network`. See [Run HAWKI RAG](./2_setup.md#external-tools).
+* Ingestion tools - The file converter runs inside the stack (service
+  `file-converter`), because every ingest path needs it; the website scraper
+  is optional and joins through `docker-compose.scraper.yml` (see
+  [Website scraper](#website-scraper)). Deployments can also point the
+  scraper worker at an external crawler instead; the development wiring is
+  described in [Run HAWKI RAG](./2_setup.md#external-tools).
 * Configuration - Copy `.env.example` to `.env` and adjust it. Everything
   that must be filled in sits in the "Required Settings" section at the top
   of the file; the remaining production defaults such as
-  `APP_ENV=production` and `APP_DEBUG=false` rarely need touching. The file
-  is the configuration reference for this stack: extend it rather than
-  guessing variable names.
+  `APP_ENV=production` and `APP_DEBUG=false` rarely need touching. Values
+  may reference variables defined earlier in the file (for example
+  `EXTERNAL_CONVERTER_URL=${FILE_CONVERTER_BASE_URL}`); Docker Compose
+  expands such references when it builds the container environments. The
+  file is the configuration reference for this stack: extend it rather
+  than guessing variable names.
 
 :::warning Fill in the secrets before the first start
 
-`APP_KEY`, `DB_PASSWORD`, `NEO4J_PASSWORD`, and
-`HAWKI_RAG_WORKER_CALLBACK_SECRET` ship empty in `.env.example` (they open
-the "Required Settings" section at the top of the file) and must be set
-before `deploy.sh` runs; the stack does not come up with empty secrets, and
-an empty callback secret prevents the workers from reporting status to
-Laravel. Generate all four in one go with `./generate-env-secrets.sh`, which
-prints a ready-to-paste env block; the equivalent manual commands live in
+`APP_KEY`, `DB_PASSWORD`, `NEO4J_PASSWORD`,
+`HAWKI_RAG_WORKER_CALLBACK_SECRET`, and `FILE_CONVERTER_TOKEN` ship empty in
+`.env.example` (they open the "Required Settings" section at the top of the
+file) and must be set before `deploy.sh` runs; the stack does not come up
+with empty secrets, and an empty callback secret prevents the workers from
+reporting status to Laravel. Generate them in one go with
+`./generate-env-secrets.sh`, which prints a ready-to-paste env block; the
+equivalent manual commands live in
 [Installation](./4_installation_zero_to_up.md#2-set-the-installation-secrets).
 
 :::
@@ -94,6 +103,10 @@ The `docker-compose.yml` contains a setup of multiple services:
   configuration, health, and Temporal control operations for Laravel.
 * `hawki_rag_rerank` - The reranker that orders retrieved passages by
   relevance.
+* `file-converter` - The HAWKI toolkit service that extracts text from
+  uploaded and crawled files before embedding. Every ingest path runs
+  through it; Laravel and the converter worker authenticate with the shared
+  `FILE_CONVERTER_TOKEN` and wait for its health report.
 * `hawki-rag-temporal-workflow-worker`, `hawki-rag-temporal-scraper-worker`,
   `hawki-rag-temporal-converter-worker`, `hawki-rag-indexer-worker` - The
   Python activity workers. Each runs as its own image variant and shares the
@@ -145,6 +158,31 @@ The mounted `ollama-entrypoint.sh` disables GPU usage for the server when the
 free VRAM drops below `GPU_MIN_FREE_MB` (default 4096 MB), so inference
 degrades to CPU instead of starving other GPU tenants on a shared host, and
 pulls the models listed in `HAWKI_RAG_OLLAMA_MODELS` when the service starts.
+
+### Website scraper
+
+The scraper worker belongs to the base stack, but the crawler container - the
+service that actually visits websites - is optional: it ships a Playwright
+browser and costs real resources, and deployments can point the worker at an
+external crawler instead. To run it inside this stack, apply the override:
+
+```bash
+COMPOSE_FILE=docker-compose.yml:docker-compose.scraper.yml ./deploy.sh
+```
+
+Then uncomment the "Website Scraper" block in `.env`; the URLs point at the
+`crawler` service through `${...}` references. The crawler publishes its UI
+and API on `${HAWKI_RAG_SCRAPER_PORT:-8041}` (loopback by default - the crawl
+API ships without authentication, so keep a reverse proxy with its own
+access control in front when exposing it), writes its crawl results into
+the shared `rawki_shared_storage` volume the scraper worker reads from, and
+the scraper worker waits for its health report before polling. Edit
+`forbidden_urls.txt` in the deployment directory to keep hosts and URL
+patterns out of every crawl. The override merges with the GPU file:
+
+```bash
+COMPOSE_FILE=docker-compose.yml:docker-compose.scraper.yml:docker-compose.gpu-override.yml ./deploy.sh
+```
 
 ### Backups
 
